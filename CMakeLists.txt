@@ -23,6 +23,7 @@ add_library(rolltui STATIC
   Screen.cpp
   Keys.cpp
   Terminal.cpp                # the one unit that touches a file descriptor
+  Transcript.cpp
   third_party/md4c/md4c.c     # vendored, MIT; see third_party/md4c/README.md
 )
 target_include_directories(rolltui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -65,3 +66,15 @@ add_rolltui_test(rolltui-screen-test tests/screen_test.cpp)
 add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+
+# Milestone 7: the playground — renders a fixture transcript in a theme; `--frame WxH`
+# prints one frame and exits, which is also the golden-frame harness and the
+# screenshot tool. Interactive mode hot-reloads a theme file on mtime change.
+add_executable(rolltui-playground tools/playground.cpp)
+target_link_libraries(rolltui-playground PRIVATE rolltui)
+target_compile_options(rolltui-playground PRIVATE -Wall -Wextra)
+
+add_rolltui_test(rolltui-playground-golden-test tests/playground_golden_test.cpp)
+target_compile_definitions(rolltui-playground-golden-test PRIVATE
+  ROLLTUI_PLAYGROUND_BIN="$<TARGET_FILE:rolltui-playground>")
+add_dependencies(rolltui-playground-golden-test rolltui-playground)

@@ -1,0 +1,24 @@
+> write me a plan for the wrap engine, with a table and some code
+
+# Plan
+
+1. First step
+
+   • a nested bullet with bold and code
+   • another, with a link (https://example.com/docs)
+
+2. Second step
+
+   A loose paragraph inside the second item.
+
+   ┌ sh ───────────────────────────────────────────────────────────────────────┐
+   │ cmake --build build -j                                                    │
+   └───────────────────────────────────────────────────────────────────────────┘
+
+3. Third struck step
+
+[ ] todo item
+[x] done item
+
+│ A quote with emphasis that continues on a second line               ▼ 90 more
+ default-dark  80x24  line 1/113  truecolor
