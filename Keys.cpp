@@ -105,7 +105,11 @@ bool decode_csi(std::string_view seq, std::vector<Event>& out) {
     int low = b & 3;
     bool motion = b & 32;
     if (b & 64) {
-      m.kind = (low == 0) ? MouseEvent::Kind::WheelUp : MouseEvent::Kind::WheelDown;
+      // xterm buttons 4-7: 64 up, 65 down, 66 left, 67 right. Left/right are a
+      // trackpad's sideways ticks and must never become vertical scrolling.
+      static const MouseEvent::Kind wheel[4] = {MouseEvent::Kind::WheelUp, MouseEvent::Kind::WheelDown,
+                                                MouseEvent::Kind::WheelLeft, MouseEvent::Kind::WheelRight};
+      m.kind = wheel[low];
       m.button = 0;
     } else if (motion) {
       m.kind = (low == 3) ? MouseEvent::Kind::Move : MouseEvent::Kind::Drag;
@@ -314,7 +318,7 @@ std::string to_string(const Event& e) {
       return s;
     }
     std::string operator()(const MouseEvent& m) const {
-      static const char* kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown"};
+      static const char* kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
       std::string s = "Mouse ";
       if (m.ctrl) s += "Ctrl+";
       if (m.alt) s += "Alt+";

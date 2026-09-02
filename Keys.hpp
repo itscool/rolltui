@@ -34,7 +34,14 @@ struct KeyEvent {
 };
 
 struct MouseEvent {
-  enum class Kind : std::uint8_t { Press, Release, Drag, Move, WheelUp, WheelDown };
+  // WheelLeft/WheelRight are xterm's buttons 6/7 (SGR codes 66/67): a trackpad's
+  // sideways ticks. They are their own kinds so a host cannot mistake them for
+  // vertical scrolling — the terminal has already split the gesture into per-axis
+  // ticks, so there are no deltas to apply a dead zone to; a host that does not
+  // scroll sideways simply ignores them. (Found 2026-09-01: both decoded as
+  // WheelDown, so a sideways drag scrolled down and a gesture starting sideways at
+  // the top jumped the wrong way.)
+  enum class Kind : std::uint8_t { Press, Release, Drag, Move, WheelUp, WheelDown, WheelLeft, WheelRight };
   Kind kind = Kind::Press;
   int x = 0, y = 0;     // 0-based cells
   int button = 0;       // 1 left, 2 middle, 3 right; 0 for motion/wheel

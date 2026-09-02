@@ -84,6 +84,9 @@ int main() {
   table("\x1b[<35;3;4M", "Mouse Move @2,3");
   table("\x1b[<64;1;1M", "Mouse WheelUp @0,0");
   table("\x1b[<65;1;1M", "Mouse WheelDown @0,0");
+  table("\x1b[<66;1;1M", "Mouse WheelLeft @0,0");    // a trackpad's sideways tick is never vertical scrolling
+  table("\x1b[<67;1;1M", "Mouse WheelRight @0,0");
+  table("\x1b[<70;3;4M", "Mouse Shift+WheelLeft @2,3");
   table("\x1b[<16;1;1M", "Mouse Ctrl+Press 1 @0,0");
   table("\x1b[<4;1;1M", "Mouse Shift+Press 1 @0,0");
   table("\x1b[200~hello\x1b[201~", "Paste(5 bytes)");
