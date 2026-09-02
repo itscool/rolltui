@@ -2,6 +2,7 @@
 #include "theme_editor.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace rolltui::tools {
 
@@ -82,6 +83,7 @@ void ThemeEditor::set_mode(ThemeMode m) {
   mode_ = m;
   menu_.set_value("mode", m == ThemeMode::Dark ? "dark" : "light");
   sync_values();
+  refresh_fixes();
 }
 
 json::Value ThemeEditor::colours_json(std::string_view name) const {
@@ -131,11 +133,18 @@ void ThemeEditor::rebuild_menu() {
   std::vector<MenuItem> load_opts, shipped_opts;
   for (const std::string& n : presets_) load_opts.push_back(MenuItem::action(n, n));
   for (const std::string& n : shipped_) shipped_opts.push_back(MenuItem::action(n, n));
+  std::vector<MenuItem> rulesets;
+  for (Ruleset r : kRulesets) rulesets.push_back(MenuItem::action(std::string(ruleset_name(r)), std::string(ruleset_name(r))));
   MenuItem root = MenuItem::submenu(
       "root", "theme editor",
       {MenuItem::submenu("roles", "Roles", std::move(roles)),
        MenuItem::choice("mode", "Mode (edit + preview)", {MenuItem::action("dark", "dark"), MenuItem::action("light", "light")},
                         mode_ == ThemeMode::Dark ? "dark" : "light"),
+       MenuItem::action("check", "Check: contrast, colour-vision, badges"),
+       MenuItem::submenu("fixes", "Fixes (proposals; Enter applies one, undoable)", {}),
+       MenuItem::submenu("generate", "Generate a theme (seeded)",
+                         {MenuItem::choice("gen.ruleset", "Ruleset", rulesets, "analogous"), MenuItem::input("gen.seed", "Seed", "1"),
+                          MenuItem::input("gen.chaos", "Chaos 0..1", "0"), MenuItem::action("gen.run", "Generate (replaces both variants, undoable)")}),
        MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
        MenuItem::choice("load", "Load preset", std::move(load_opts), ""),
        MenuItem::input("save", "Save as preset"),
@@ -147,7 +156,26 @@ void ThemeEditor::rebuild_menu() {
   menu_.set_root(std::move(root));
   menu_.set_enabled("write_shipped", may_write_shipped_ && !shipped_.empty());
   sync_values();
+  refresh_fixes();
 }
+
+void ThemeEditor::refresh_fixes() {
+  fixes_ = propose_fixes(mode_ == ThemeMode::Dark ? undo_.current().dark : undo_.current().light);
+  std::vector<MenuItem> items;
+  for (std::size_t i = 0; i < fixes_.size(); ++i) items.push_back(MenuItem::action("fix." + std::to_string(i), fixes_[i].what));
+  if (items.empty()) { items.push_back(MenuItem::action("fix.none", "(nothing to fix in this variant)")); items.back().enabled = false; }
+  menu_.set_options("fixes", std::move(items));
+}
+
+std::string ThemeEditor::badges_line() const {
+  std::string s = "badges:";
+  const std::vector<std::string> names = badge_names(analyse(current()).badges);
+  for (const std::string& n : names) s += " " + n;
+  if (names.empty()) s += " (none)";
+  return s;
+}
+
+std::string ThemeEditor::report() const { return report_text(analyse(current())); }
 
 void ThemeEditor::sync_values() {
   const Theme& t = mode_ == ThemeMode::Dark ? undo_.current().dark : undo_.current().light;
@@ -193,6 +221,7 @@ ThemeEditor::Outcome ThemeEditor::commit_current() {
     }
   }
   sync_values();
+  refresh_fixes();
   return {Outcome::Kind::Committed, {}};
 }
 
@@ -209,6 +238,7 @@ bool ThemeEditor::undo() {
   if (!undo_.undo()) return false;
   current_ = undo_.current();
   sync_values();
+  refresh_fixes();
   status_ = "undone";
   return true;
 }
@@ -218,6 +248,7 @@ bool ThemeEditor::redo() {
   if (!undo_.redo()) return false;
   current_ = undo_.current();
   sync_values();
+  refresh_fixes();
   status_ = "redone";
   return true;
 }
@@ -296,6 +327,41 @@ ThemeEditor::Outcome ThemeEditor::handle(const Event& e) {
     if (ev.id == "redo") { status_ = redo() ? "redone" : "nothing to redo"; return {O::Changed, {}}; }
     if (ev.id == "reset_loaded") return {O::ResetLoaded, {}};
     if (ev.id == "reset_builtin") return {O::ResetBuiltin, {}};
+    if (ev.id == "check") return {O::Check, {}};
+    if (ev.id.rfind("fix.", 0) == 0 && ev.id != "fix.none") {
+      const std::size_t i = static_cast<std::size_t>(std::atoi(ev.id.c_str() + 4));
+      if (i < fixes_.size()) {
+        begin_preview();
+        Theme& t = mode_ == ThemeMode::Dark ? current_.dark : current_.light;
+        t = apply_fix(t, fixes_[i]);
+        status_ = "applied: " + fixes_[i].what;
+        Outcome o = commit_current();
+        menu_.handle(KeyEvent{Key::Left});  // back to the (refreshed) Fixes level's parent
+        return o;
+      }
+      return {O::None, {}};
+    }
+    if (ev.id == "gen.run") {
+      const std::optional<Ruleset> rs = ruleset_from_name(menu_.find("gen.ruleset")->value);
+      const std::uint64_t seed = static_cast<std::uint64_t>(std::strtoull(menu_.find("gen.seed")->value.c_str(), nullptr, 10));
+      const double chaos = std::strtod(menu_.find("gen.chaos")->value.c_str(), nullptr);
+      if (!rs) { status_ = "pick a ruleset first"; return {O::Changed, {}}; }
+      GenOptions dark_opts, light_opts;
+      dark_opts.dark = true;
+      light_opts.dark = false;
+      const Generated gd = generate(seed, *rs, chaos, dark_opts), gl = generate(seed, *rs, chaos, light_opts);
+      preview_.reset();
+      current_ = {gd.theme, gl.theme};
+      undo_.commit(current_);
+      rebuild_palette();
+      sync_values();
+      refresh_fixes();
+      std::string b;
+      for (const std::string& x : (mode_ == ThemeMode::Dark ? gd : gl).badges) b += " " + x;
+      status_ = "generated " + gd.theme.name + " \xE2\x80\x94" + (b.empty() ? " no badges" : b) +
+                ((mode_ == ThemeMode::Dark ? gd : gl).broken.empty() ? "" : "; broken: " + (mode_ == ThemeMode::Dark ? gd : gl).broken[0]);
+      return {O::Committed, {}};
+    }
     return {O::None, {}};
   }
   if (ev.kind == K::Closed) return {O::Closed, {}};

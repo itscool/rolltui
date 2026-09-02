@@ -48,19 +48,24 @@
       },
       "accent_1": {
         "fg": "none",
-        "bg": "none"
+        "bg": "none",
+        "bold": true
       },
       "accent_2": {
         "fg": "none",
-        "bg": "none"
+        "bg": "none",
+        "italic": true
       },
       "accent_3": {
         "fg": "none",
-        "bg": "none"
+        "bg": "none",
+        "underline": true
       },
       "accent_4": {
         "fg": "none",
-        "bg": "none"
+        "bg": "none",
+        "bold": true,
+        "italic": true
       },
       "prompt": {
         "fg": "none",

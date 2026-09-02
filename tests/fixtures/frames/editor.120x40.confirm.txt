@@ -30,11 +30,11 @@
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
-│ │ int add(int a, int b) {                                           │ preset: default-dark                           │
-│ │   return a + b;                                                   │ Roles âº a role âº fg âº a colour; the transcr │
-│ └───────────────────────────────────────────────────────────────────│ type to filter Â· Enter commits Â· Esc cancels │
-├─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ preset: default-dark                           │
+│ │ int add(int a, int b) {                                           │ Roles âº a role âº fg âº a colour; the transcr │
+│ │   return a + b;                                                   │ type to filter Â· Enter commits Â· Esc cancels │
+│ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
+├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
  default-dark [editor]  default  120x40  line 75/109  follow  truecolor  focus:confirm

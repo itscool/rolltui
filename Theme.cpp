@@ -26,10 +26,17 @@ Style S(Color fg, Color bg = Color::none(), bool bold = false, bool italic = fal
 
 Theme make_default_dark() {
   // A restrained palette: text on a near-black ground, four accents, muted chrome.
+  // The accents and the muted grey were re-picked 2026-09-02 by ThemeAnalysis
+  // (milestone 15): the first cut's muted text missed 4.5:1 on the panel by a hair,
+  // and blue/purple and green/yellow were confusable under protanopia and
+  // deuteranopia. These five sit at hues 255/145/90/310/25 in OKLCH with their
+  // lightness spread so every must-differ pair keeps an OKLab dE >= 0.13 under all
+  // three simulations (a grid search, not taste) — rolltui-theme-analysis-test asserts
+  // dark + readable + cvd-safe on this theme.
   const Color bg = rgb(0x14, 0x16, 0x1A), panel = rgb(0x1B, 0x1E, 0x24), fg = rgb(0xD8, 0xDC, 0xE2);
-  const Color muted = rgb(0x7C, 0x84, 0x90), border = rgb(0x3A, 0x40, 0x4A), border_active = rgb(0x6C, 0xA0, 0xE0);
-  const Color blue = rgb(0x6C, 0xA0, 0xE0), green = rgb(0x8C, 0xC6, 0x7A), yellow = rgb(0xE5, 0xC0, 0x7B);
-  const Color red = rgb(0xE0, 0x6C, 0x75), purple = rgb(0xC6, 0x9A, 0xE6), cyan = rgb(0x6C, 0xC8, 0xC8);
+  const Color muted = rgb(0x85, 0x8D, 0x99), border = rgb(0x3A, 0x40, 0x4A), border_active = rgb(0x84, 0xB7, 0xF9);
+  const Color blue = rgb(0x84, 0xB7, 0xF9), green = rgb(0xAD, 0xEE, 0xAE), yellow = rgb(0xCB, 0xA6, 0x3A);
+  const Color red = rgb(0xC0, 0x6A, 0x64), purple = rgb(0x9A, 0x73, 0xB8), cyan = rgb(0x6C, 0xC8, 0xC8);
   const Color code_bg = rgb(0x1E, 0x22, 0x28), sel = rgb(0x2E, 0x44, 0x60);
   Theme t;
   t.name = "default-dark";
@@ -82,10 +89,14 @@ Theme make_default_dark() {
 }
 
 Theme make_default_light() {
+  // Same story as the dark theme (2026-09-02): the light accents were confusable in
+  // five pairs under deuteranopia and the muted grey missed 4.5:1 on the panel; these
+  // are the grid search's pick at the same hues (a "yellow" readable on white is an
+  // olive), min dE 0.12 under every simulation.
   const Color bg = rgb(0xFA, 0xFA, 0xF8), panel = rgb(0xEF, 0xF0, 0xF2), fg = rgb(0x22, 0x26, 0x2C);
-  const Color muted = rgb(0x6B, 0x72, 0x7C), border = rgb(0xC8, 0xCC, 0xD2), border_active = rgb(0x2B, 0x6C, 0xC4);
-  const Color blue = rgb(0x2B, 0x6C, 0xC4), green = rgb(0x2E, 0x7D, 0x32), yellow = rgb(0x9A, 0x6A, 0x00);
-  const Color red = rgb(0xC6, 0x28, 0x28), purple = rgb(0x7B, 0x3F, 0xB5), cyan = rgb(0x00, 0x7A, 0x8A);
+  const Color muted = rgb(0x5F, 0x66, 0x70), border = rgb(0xC8, 0xCC, 0xD2), border_active = rgb(0x2D, 0x4E, 0x78);
+  const Color blue = rgb(0x2D, 0x4E, 0x78), green = rgb(0x50, 0x7B, 0x51), yellow = rgb(0x5E, 0x4B, 0x0C);
+  const Color red = rgb(0x4F, 0x1A, 0x18), purple = rgb(0x40, 0x14, 0x59), cyan = rgb(0x00, 0x7A, 0x8A);
   const Color code_bg = rgb(0xF0, 0xF1, 0xF3), sel = rgb(0xCC, 0xDF, 0xF5);
   Theme t;
   t.name = "default-light";
@@ -146,6 +157,12 @@ Theme make_mono() {
   t.name = "mono";
   for (Style& s : t.styles) s = S(n, n);
   auto set = [&](Role r, Style s) { t.style(r) = s; };
+  // The four accents differ by attribute alone (milestone 15 found them identical):
+  // bold, italic, underline, bold+italic.
+  set(Role::accent_1, S(n, n, true));
+  set(Role::accent_2, S(n, n, false, true));
+  set(Role::accent_3, S(n, n, false, false, true));
+  set(Role::accent_4, S(n, n, true, true));
   set(Role::text_muted, S(n, n, false, false, false, true));
   set(Role::border, S(n, n, false, false, false, true));
   set(Role::border_active, S(n, n, true));
@@ -293,6 +310,11 @@ std::uint8_t nearest_16(Rgb c) {
 }
 
 }  // namespace
+
+Color ansi_index_rgb(std::uint8_t index) {
+  const Rgb c = rgb_of_index(index);
+  return Color::rgb(static_cast<std::uint8_t>(c.r), static_cast<std::uint8_t>(c.g), static_cast<std::uint8_t>(c.b));
+}
 
 Color downgrade(Color c, ColorDepth depth) {
   if (c.kind == Color::Kind::None) return c;
@@ -462,7 +484,7 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
   report = ThemeLoadReport{};
   if (!root.is_object()) { report.error = "theme file must be a JSON object"; return std::nullopt; }
   for (const auto& [k, v] : root.obj)
-    if (k != "name" && k != "defs" && k != "roles") report.unknown_keys.push_back(k);
+    if (k != "name" && k != "defs" && k != "roles" && k != "meta") report.unknown_keys.push_back(k);
   const json::Value& defs = root.get("defs");
   const json::Value& roles = root.get("roles");
   if (!roles.is_object()) { report.error = "theme file has no \"roles\" object"; return std::nullopt; }
@@ -471,6 +493,13 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
 
   Theme t;
   t.name = std::string(root.get("name").as_string("unnamed"));
+  if (root.get("meta").is_object()) {
+    t.meta = root.get("meta");
+    // Claimed badges may be per variant ({"dark": [...], "light": [...]}): resolve
+    // them for this mode like a colour pair, so check_claims sees one list.
+    const json::Value& b = t.meta.get("badges");
+    if (b.is_object() && b.has(mode == ThemeMode::Dark ? "dark" : "light")) t.meta.set("badges", b.get(mode == ThemeMode::Dark ? "dark" : "light"));
+  }
   for (const auto& [k, v] : roles.obj)
     if (role_from_name(k) == Role::count_) report.unknown_keys.push_back("roles." + k);
 
@@ -560,6 +589,7 @@ json::Value style_to_json(const Style& s, const Style* light) {
 json::Value theme_to_json_value(const Theme& theme) {
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(theme.name));
+  if (theme.meta.is_object()) root.set("meta", theme.meta);
   json::Value roles = json::Value::object();
   for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(theme.styles[i], nullptr));
   root.set("roles", std::move(roles));
@@ -574,6 +604,17 @@ json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std:
   // rolltui-theme-editor-test with an attribute set in one variant only).
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(std::string(name)));
+  if (dark.meta.is_object()) {
+    json::Value meta = dark.meta;
+    // Each variant's claimed badges, as a pair when they differ.
+    if (light.meta.is_object() && !(dark.meta.get("badges") == light.meta.get("badges"))) {
+      json::Value pair = json::Value::object();
+      pair.set("dark", dark.meta.get("badges"));
+      pair.set("light", light.meta.get("badges"));
+      meta.set("badges", std::move(pair));
+    }
+    root.set("meta", std::move(meta));
+  }
   json::Value roles = json::Value::object();
   for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(dark.styles[i], &light.styles[i]));
   root.set("roles", std::move(roles));

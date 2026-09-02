@@ -33,6 +33,8 @@
 #include "rolltui/Menu.hpp"
 #include "rolltui/Presets.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/ThemeAnalysis.hpp"
+#include "rolltui/ThemeGen.hpp"
 #include "rolltui/Undo.hpp"
 
 namespace rolltui::tools {
@@ -51,7 +53,7 @@ struct PaletteEntry {
 class ThemeEditor {
  public:
   struct Outcome {
-    enum class Kind { None, Changed, Committed, SaveAs, WriteShipped, LoadPreset, ResetLoaded, ResetBuiltin, Closed };
+    enum class Kind { None, Changed, Committed, SaveAs, WriteShipped, LoadPreset, ResetLoaded, ResetBuiltin, Check, Closed };
     Kind kind = Kind::None;
     std::string value;  // SaveAs: the name; WriteShipped: the shipped name; LoadPreset: the preset name
     bool operator==(const Outcome&) const = default;
@@ -89,10 +91,14 @@ class ThemeEditor {
   void replace(ThemeEdit e);
 
   // For the host's sample box: the role the menu is on (nullopt at the top levels), the
-  // colour highlighted in a palette choice, and a one-line status.
+  // colour highlighted in a palette choice, a one-line status, and the badges the
+  // analysis (milestone 15) computes for the variant being edited.
   std::optional<Role> focused_role() const;
   std::optional<Color> highlighted_color() const;
   std::string status_line() const;
+  std::string badges_line() const;   // "badges: dark readable cvd-safe" (computed, never declared)
+  std::string report() const;        // report_text(analyse(current()))
+  const std::vector<Fix>& fixes() const { return fixes_; }  // the Fixes level's proposals
 
  private:
   struct Field { Role role; std::string name; };  // "fg" | "bg" | attribute
@@ -101,6 +107,7 @@ class ThemeEditor {
   void rebuild_palette();
   void sync_values();
   void apply(Field f, Color c);
+  void refresh_fixes();
   void begin_preview();
   void cancel_preview();
   Outcome commit_current();
@@ -111,6 +118,7 @@ class ThemeEditor {
   UndoStack<ThemeEdit> undo_;
   std::optional<ThemeEdit> preview_;  // the committed value while a live change is shown
   std::vector<PaletteEntry> palette_;
+  std::vector<Fix> fixes_;
   std::vector<std::string> presets_, shipped_;
   bool may_write_shipped_ = false;
   ThemeMode mode_ = ThemeMode::Dark;

@@ -25,6 +25,14 @@
 //     --mode dark|light        which variant a theme's {dark,light} values use
 //                              (default: the working copy's mode; auto asks the
 //                              terminal in interactive mode, dark under --frame)
+//     --check NAME|FILE        milestone 15: print the analysis report (contrast, APCA,
+//                              colour-vision simulations, badges) for a preset or a
+//                              theme file, at both modes for a preset with pairs, and
+//                              exit 1 when a badge the file CLAIMS in "meta" does not
+//                              hold — so it can sit in a CI step
+//     --generate RULESET --seed N --chaos X   print a generated theme file (dark and
+//                              light variants as pairs) to stdout; the same inputs
+//                              always print the same file
 //     --dump-role ROLE         after a --frame, print the effective style of ROLE
 //                              ("md_heading fg=#6ca0e0 bg=#14161a bold") — the
 //                              golden harness's way to see a colour
@@ -112,6 +120,8 @@
 #include "rolltui/Presets.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Terminal.hpp"
+#include "rolltui/ThemeAnalysis.hpp"
+#include "rolltui/ThemeGen.hpp"
 #include "rolltui/Theme.hpp"
 #include "rolltui/Transcript.hpp"
 #include "rolltui/Unicode.hpp"
@@ -223,6 +233,8 @@ struct App {
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
   std::string confirm_text;
   std::function<void()> confirm_action;
+  std::string report_text_;  // the Check popup's text
+  int report_top = 0;
   std::string hint;
   WindowStack stack;
   Transcript transcript;
@@ -375,6 +387,19 @@ struct App {
     l.focus = "editor";
     return l;
   }
+  static Layer report_popup() {
+    Layer l;
+    l.id = "report";
+    l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.8), Dim::rel(0.85), Anchor::Center, true, Dim::abs(30), Dim::abs(5), {}, {}};
+    l.modal = true;
+    Node n = Node::window("report");
+    n.border = Border::Rounded;
+    n.title = "report";
+    n.focusable = true;
+    n.background = Role::panel_background;
+    l.root = n;
+    return l;
+  }
   static Layer confirm_popup() {
     Layer l;
     l.id = "confirm";
@@ -451,16 +476,45 @@ struct App {
           hint = "reset to the built-in default (undoable)";
         });
         break;
+      case K::Check:
+        report_text_ = teditor.report();
+        report_top = 0;
+        stack.push(report_popup());
+        break;
       case K::Closed:
         toggle_editor();
         break;
     }
   }
+  void draw_report(const ResolvedNode& rn, Frame& f) {
+    const Rect r = text_area(rn);
+    if (r.w <= 0 || r.h <= 0) return;
+    WrapOptions wo;
+    wo.ambiguous_wide = ambiguous;
+    const std::vector<Line> lines = wrap(report_text_, r.w, wo);
+    int y = r.y;
+    for (std::size_t i = static_cast<std::size_t>(std::max(report_top, 0)); i < lines.size() && y < r.y + r.h; ++i)
+      f.put_text(r.x + lines[i].indent, y++, lines[i].text, theme.style(Role::text), std::max(r.w - lines[i].indent, 0), ambiguous);
+    if (static_cast<int>(lines.size()) > r.h) {
+      const std::string more = "\xE2\x96\xBC " + std::to_string(std::max(static_cast<int>(lines.size()) - report_top - r.h, 0)) + "  (Up/Down, Esc)";
+      f.put_text(r.x + std::max(r.w - unicode::display_width(more), 0), r.y + r.h - 1, more, theme.style(Role::scroll_marker), r.w, ambiguous);
+    }
+  }
+  void report_key(const KeyEvent& k) {
+    if (k.key == Key::Up) report_top = std::max(0, report_top - 1);
+    else if (k.key == Key::Down) report_top += 1;
+    else if (k.key == Key::PageUp) report_top = std::max(0, report_top - 10);
+    else if (k.key == Key::PageDown) report_top += 10;
+    else if (k.key == Key::Home) report_top = 0;
+    WrapOptions wo;
+    const int total = static_cast<int>(wrap(report_text_, 60, wo).size());
+    report_top = std::clamp(report_top, 0, std::max(total - 1, 0));
+  }
   // The editor's sample box: the focused role's fields, a sample in its style, swatches.
   void draw_editor(const ResolvedNode& rn, Frame& f) {
     Rect r = text_area(rn);
     if (r.w <= 0 || r.h <= 0) return;
-    const int box = std::min(5, r.h);
+    const int box = std::min(6, r.h);
     Rect m = r;
     m.h = r.h - box;
     MenuOptions mo;
@@ -497,7 +551,7 @@ struct App {
       if (y < r.y + r.h) f.put_text(r.x, y++, "type to filter Â· Enter commits Â· Esc cancels Â· Ctrl-Z / Ctrl-Y", value, r.w, ambiguous);
     }
     if (y < r.y + r.h) f.put_text(r.x, y++, teditor.status_line(), value, r.w, ambiguous);
-    if (y < r.y + r.h && !hint.empty()) f.put_text(r.x, y++, hint, theme.style(Role::warning), r.w, ambiguous);
+    if (y < r.y + r.h) f.put_text(r.x, y++, hint.empty() ? teditor.badges_line() : hint, hint.empty() ? label : theme.style(Role::warning), r.w, ambiguous);
   }
   void draw_confirm(const ResolvedNode& rn, Frame& f) {
     const Rect r = text_area(rn);
@@ -662,6 +716,8 @@ struct App {
       draw_editor(rn, f);
     } else if (c == "confirm") {
       draw_confirm(rn, f);
+    } else if (c == "report") {
+      draw_report(rn, f);
     } else if (c.rfind("text:", 0) == 0) {
       draw_text(rn, f, std::string_view(c).substr(5), Role::text);
     } else {
@@ -742,6 +798,10 @@ struct App {
     if (r.kind != Route::Kind::Deliver) return true;
     if (r.window == "menu") return menu_event(menu.handle(ev));
     if (r.window == "editor") { hint.clear(); editor_outcome(teditor.handle(ev)); return true; }
+    if (r.window == "report") {
+      if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) report_key(*k);
+      return true;
+    }
     if (r.window == "confirm") {
       if (const KeyEvent* k = std::get_if<KeyEvent>(&ev); k && k->key == Key::Char && !k->ctrl && !k->alt) {
         if (k->ch == 'y' || k->ch == 'Y') { close_popup("confirm"); if (confirm_action) confirm_action(); confirm_action = nullptr; }
@@ -952,7 +1012,8 @@ void print_frame_plain(const Frame& f) {
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-playground FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE]\n"
+               "usage: rolltui-playground --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
+               "       rolltui-playground FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
                "       [--dump-role ROLE] [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
@@ -985,7 +1046,7 @@ std::uint64_t now_ms() {
 int main(int argc, char** argv) {
   App app;
   app.depth = detect_color_depth(std::getenv("COLORTERM"), std::getenv("TERM"), std::getenv("ROLL_COLOR_DEPTH"));
-  std::string frame_spec, keys_spec, dump_role;
+  std::string frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
   std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
   bool frame_sgr = false;
   for (int i = 1; i < argc; ++i) {
@@ -996,6 +1057,10 @@ int main(int argc, char** argv) {
     else if (a == "--presets") presets_dir = next();
     else if (a == "--shipped") shipped_dir = next();
     else if (a == "--dump-role") dump_role = next();
+    else if (a == "--check") check_arg = next();
+    else if (a == "--generate") generate_arg = next();
+    else if (a == "--seed") seed_arg = next();
+    else if (a == "--chaos") chaos_arg = next();
     else if (a == "--mode") app.mode_flag = (next() == "light") ? ThemeMode::Light : ThemeMode::Dark;
     else if (a == "--depth") {
       std::string d = next();
@@ -1006,6 +1071,42 @@ int main(int argc, char** argv) {
     else if (a == "--keys") keys_spec = next();
     else if (a.rfind("--", 0) == 0) return usage();
     else app.fixture_path = a;
+  }
+  // ---- milestone 15: the CLI checks and the generator need no fixture ----
+  if (!generate_arg.empty()) {
+    const std::optional<Ruleset> rs = ruleset_from_name(generate_arg);
+    if (!rs) { std::fprintf(stderr, "no ruleset named %s (analogous | complementary | triadic | tetradic | monochrome | pastel | neon | earth)\n", generate_arg.c_str()); return 2; }
+    const std::uint64_t seed = std::strtoull(seed_arg.c_str(), nullptr, 10);
+    const double chaos = std::strtod(chaos_arg.c_str(), nullptr);
+    GenOptions d, l;
+    d.dark = true;
+    l.dark = false;
+    const Generated gd = generate(seed, *rs, chaos, d), gl = generate(seed, *rs, chaos, l);
+    std::string text = json::dump(theme_pair_to_json_value(gd.theme, gl.theme, gd.theme.name), 2) + "\n";
+    std::fwrite(text.data(), 1, text.size(), stdout);
+    return 0;
+  }
+  if (!check_arg.empty()) {
+    ThemePresets store(ThemePresets::Options{presets_dir, false, shipped_dir});
+    PresetLoadReport rep;
+    std::optional<ThemePreset> p = store.get(check_arg, rep);
+    if (!p) { std::fprintf(stderr, "%s\n", rep.error.c_str()); return 2; }
+    int rc = 0;
+    for (ThemeMode m : {ThemeMode::Dark, ThemeMode::Light}) {
+      ThemeLoadReport tr;
+      std::optional<Theme> t = resolve_colours(*p, m, tr);
+      if (!t) { std::fprintf(stderr, "%s\n", tr.error.c_str()); return 2; }
+      const ThemeReport r = analyse(*t);
+      std::printf("== %s, %s variant ==\n%s", check_arg.c_str(), m == ThemeMode::Dark ? "dark" : "light", report_text(r).c_str());
+      const std::vector<std::string> failed = check_claims(*t, r);
+      for (const std::string& f : failed) { std::printf("CLAIM FAILED: %s\n", f.c_str()); rc = 1; }
+      if (!t->meta.get("badges").is_array()) std::printf("(no badges claimed)\n");
+      else if (failed.empty()) std::printf("every claimed badge holds\n");
+      std::printf("\n");
+      // A colours object without pairs is the same at both modes: one report is enough.
+      if (json::dump(p->colours, 0).find("\"dark\"") == std::string::npos) break;
+    }
+    return rc;
   }
   if (app.fixture_path.empty()) return usage();
   if (!app.load_fixture()) { std::fprintf(stderr, "cannot read %s\n", app.fixture_path.c_str()); return 1; }

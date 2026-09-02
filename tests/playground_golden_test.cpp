@@ -49,6 +49,7 @@
 #include <string>
 #include <vector>
 
+#include "rolltui/Json.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui_test.hpp"
 
@@ -199,12 +200,15 @@ int main(int argc, char** argv) {
       {"editor.120x40.confirm", "--frame 120x40 --theme default-dark --keys \"F4 Type:built Enter\""},
       {"editor.120x40.save", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter Escape Escape Type:save Enter Type:mine Enter\""},
       {"tiny.8x3.editor", "--frame 8x3 --theme default-dark --keys \"F4 Enter Down Enter Type:x\""},
+      // milestone 15: the Check popup and the Fixes level
+      {"editor.120x40.check", "--frame 120x40 --theme default-dark --keys \"F4 Type:check Enter\""},
+      {"editor.120x40.fixes", "--frame 120x40 --theme default-dark --keys \"F4 Type:fixes Enter\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
-  std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save;
+  std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
@@ -269,6 +273,8 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "editor.120x40.heading-undo") ed_undo = out;
     if (std::string(c.name) == "editor.120x40.confirm") ed_confirm = out;
     if (std::string(c.name) == "editor.120x40.save") ed_save = out;
+    if (std::string(c.name) == "editor.120x40.check") ed_check = out;
+    if (std::string(c.name) == "editor.120x40.fixes") ed_fixes = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -404,15 +410,15 @@ int main(int argc, char** argv) {
     // ---- milestone 14: the theme editor, asserted beyond the bytes ----
     check(ed_open.find("\xE2\x94\x8C theme editor ") != std::string::npos && ed_open.find("focus:editor") != std::string::npos && ed_open.find("Roles") != std::string::npos,
           "F4 opens the theme editor popup with focus and the Roles level");
-    check(ed_fg.find("Roles \xE2\x80\xBA md_heading \xE2\x80\xBA fg") != std::string::npos && role_part(ed_fg) == "md_heading fg=#e5c07b bg=#14161a bold" &&
+    check(ed_fg.find("Roles \xE2\x80\xBA md_heading \xE2\x80\xBA fg") != std::string::npos && role_part(ed_fg) == "md_heading fg=#cba63a bg=#14161a bold" &&
               ed_fg.find("previewing") != std::string::npos,
-          "Roles › md_heading › fg two entries down previews #e5c07b on the heading and says previewing [" + role_part(ed_fg) + "]");
-    check(role_part(ed_cancel) == "md_heading fg=#6ca0e0 bg=#14161a bold" && ed_cancel.find("focus:editor") != std::string::npos,
-          "Escape puts the committed #6ca0e0 back and stays in the editor [" + role_part(ed_cancel) + "]");
-    check(role_part(ed_commit) == "md_heading fg=#e5c07b bg=#14161a bold" && ed_commit.find("undo 1") != std::string::npos,
-          "Enter commits: the heading is #e5c07b, undo depth 1 [" + role_part(ed_commit) + "]");
-    check(role_part(ed_undo) == "md_heading fg=#6ca0e0 bg=#14161a bold" && ed_undo.find("undo 0") != std::string::npos && ed_undo.find("redo 1") != std::string::npos,
-          "Ctrl-Z undoes it: #6ca0e0, undo 0, redo 1");
+          "Roles › md_heading › fg two entries down previews #cba63a on the heading and says previewing [" + role_part(ed_fg) + "]");
+    check(role_part(ed_cancel) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_cancel.find("focus:editor") != std::string::npos,
+          "Escape puts the committed #84b7f9 back and stays in the editor [" + role_part(ed_cancel) + "]");
+    check(role_part(ed_commit) == "md_heading fg=#cba63a bg=#14161a bold" && ed_commit.find("undo 1") != std::string::npos,
+          "Enter commits: the heading is #cba63a, undo depth 1 [" + role_part(ed_commit) + "]");
+    check(role_part(ed_undo) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_undo.find("undo 0") != std::string::npos && ed_undo.find("redo 1") != std::string::npos,
+          "Ctrl-Z undoes it: #84b7f9, undo 0, redo 1");
     check(ed_confirm.find("\xE2\x95\xAD confirm ") != std::string::npos && ed_confirm.find("built-in default? (y/n)") != std::string::npos,
           "Reset to the built-in default asks in a confirm popup, never applies bare");
     check(ed_save.find("saved preset 'mine'") != std::string::npos && std::filesystem::exists(scratch + "/p/themes/mine.json"),
@@ -422,12 +428,46 @@ int main(int argc, char** argv) {
       const std::string relaunch = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 80x24 --presets '" +
                                    scratch + "/p2' --theme '" + scratch + "/p/themes/mine.json' --dump-role md_heading";
       const std::string again = run(relaunch, rc);
-      check(rc == 0 && role_part(again) == "md_heading fg=#e5c07b bg=#14161a bold", "a relaunch with --theme <that file> shows the saved heading colour [" + role_part(again) + "]");
+      check(rc == 0 && role_part(again) == "md_heading fg=#cba63a bg=#14161a bold", "a relaunch with --theme <that file> shows the saved heading colour [" + role_part(again) + "]");
       // Under --frame nothing autosaves from an edit; the explicit save-as records its
       // new origin in the working copy, which is the one write the frame runs made.
       bool ok = false;
       std::string wc = read_file(scratch + "/p/theme.working.json", ok);
       check(ok && wc.find("\"preset\": \"mine\"") != std::string::npos, "the working copy written by the save-as records preset 'mine' — and nothing wrote it before that (the earlier frames' edits did not persist)");
+    }
+    // ---- milestone 15: --check, --generate, the Check popup ----
+    check(ed_check.find("\xE2\x95\xAD report ") != std::string::npos && ed_check.find("badges: dark") != std::string::npos && ed_check.find("roles (fg on bg") != std::string::npos,
+          "Check opens the report popup with the badges and the per-role numbers");
+    check(ed_fixes.find("nothing to fix") != std::string::npos, "the shipped default has nothing to fix");
+    {
+      int rc = 0;
+      const std::string bin = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "'";
+      for (const char* name : {"default", "default-dark", "default-light", "mono"}) {
+        const std::string out = run(bin + " --check " + name + presets, rc);
+        check(rc == 0 && out.find("badges:") != std::string::npos, std::string("--check ") + name + " runs, prints badges, exit 0");
+        if (std::string(name) == "default") check(out.find("badges: dark") != std::string::npos && out.find("badges: light") != std::string::npos && out.find("cvd-safe") != std::string::npos,
+                                                  "--check default reports both variants, and the dark one cvd-safe");
+      }
+      const std::string g1 = run(bin + " --generate triadic --seed 3 --chaos 0", rc);
+      const std::string g2 = run(bin + " --generate triadic --seed 3 --chaos 0", rc);
+      check(rc == 0 && !g1.empty() && g1 == g2 && g1.find("\"generator\"") != std::string::npos, "--generate is deterministic and records its inputs in meta");
+      std::ofstream(scratch + "/gen.json", std::ios::binary) << g1;
+      const std::string dumped = run(bin + " '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 80x24 --presets '" + scratch + "/p3' --theme '" + scratch + "/gen.json' --dump-role md_heading", rc);
+      check(rc == 0 && role_part(dumped).rfind("md_heading fg=#", 0) == 0, "a generated file loads as a colours-only theme [" + role_part(dumped) + "]");
+      const std::string checked = run(bin + " --check '" + scratch + "/gen.json'" + presets, rc);
+      check(rc == 0 && checked.find("every claimed badge holds") != std::string::npos, "--check on it: every badge the generator claimed holds");
+      // A false claim fails the check.
+      std::string err;
+      rolltui::json::Value lying = rolltui::json::parse(g1, err);
+      rolltui::json::Value claims = rolltui::json::Value::array();
+      claims.arr.push_back(rolltui::json::Value::string("high-contrast"));
+      claims.arr.push_back(rolltui::json::Value::string("mono"));
+      rolltui::json::Value meta = lying.get("meta");
+      meta.set("badges", claims);
+      lying.set("meta", meta);
+      std::ofstream(scratch + "/lying.json", std::ios::binary) << rolltui::json::dump(lying, 2);
+      const std::string liar = run(bin + " --check '" + scratch + "/lying.json'" + presets, rc);
+      check(rc != 0 && liar.find("CLAIM FAILED: mono") != std::string::npos, "a file claiming a badge it does not have fails --check with the claim named");
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +

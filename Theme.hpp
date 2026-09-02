@@ -51,6 +51,7 @@ enum class ColorDepth { Mono, Ansi16, Ansi256, TrueColor };
 
 struct Theme {
   std::string name;
+  json::Value meta;  // free-form file metadata ("meta" in the file): a generator's seed, claimed badges
   std::array<Style, kRoleCount> styles{};
   const Style& style(Role r) const { return styles[static_cast<std::size_t>(r)]; }
   Style& style(Role r) { return styles[static_cast<std::size_t>(r)]; }
@@ -90,6 +91,10 @@ json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std:
 // Colour parsing/printing, exposed for the tests and for config values.
 std::optional<Color> parse_color(std::string_view text);  // "#rrggbb" | "none" | "0".."255"
 std::string color_to_string(Color c);
+// The RGB an ANSI index shows in xterm's default palette (0-15 the system colours,
+// 16-231 the 6x6x6 cube, 232-255 the grey ramp) — what the analysis (m15) measures an
+// indexed colour as, since a terminal's own palette cannot be seen.
+Color ansi_index_rgb(std::uint8_t index);
 
 // Pure colour reduction: TrueColor keeps everything; Ansi256 maps rgb to the nearest
 // of the 6x6x6 cube + grey ramp; Ansi16 maps to the nearest of the 16 system colours

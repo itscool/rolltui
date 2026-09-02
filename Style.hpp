@@ -35,6 +35,21 @@ enum class Role : std::uint8_t {
 
 inline constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
 
+// MUST-DIFFER pairs (milestone 15): roles a reader must be able to tell apart at a
+// glance, checked by ThemeAnalysis under normal vision and under the three
+// colour-vision-deficiency simulations. The list lives here, next to the enum, so a
+// new role has to say what it may not be confused with (or say nothing, explicitly).
+struct RolePair {
+  Role a, b;
+};
+inline constexpr RolePair kMustDiffer[] = {
+    {Role::diff_added, Role::diff_removed}, {Role::warning, Role::error},
+    {Role::accent_1, Role::accent_2},       {Role::accent_1, Role::accent_3}, {Role::accent_1, Role::accent_4},
+    {Role::accent_2, Role::accent_3},       {Role::accent_2, Role::accent_4}, {Role::accent_3, Role::accent_4},
+    {Role::menu_item, Role::menu_selected}, {Role::input_text, Role::input_placeholder},
+};
+inline constexpr std::size_t kMustDifferCount = sizeof(kMustDiffer) / sizeof(kMustDiffer[0]);
+
 inline constexpr std::array<std::string_view, kRoleCount> kRoleNames = {
     "text", "text_muted", "background", "panel_background", "border", "border_active",
     "title", "label", "value", "accent_1", "accent_2", "accent_3", "accent_4", "prompt",

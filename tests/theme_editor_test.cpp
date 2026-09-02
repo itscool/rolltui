@@ -177,5 +177,52 @@ int main() {
     o = ed.handle(key(Key::Escape));
     check(o.kind == ThemeEditor::Outcome::Kind::Closed, "Escape at the top asks the host to close the editor");
   }
+  // ---- milestone 15: check, fixes, generate ----
+  {
+    ThemeEditor e2;
+    ThemePreset broken = *ThemePresets::shipped("default");
+    // Break the dark variant: a dim link and an identical diff pair.
+    ThemeLoadReport r;
+    e2.load(broken, r);
+    check(e2.fixes().empty() && e2.badges_line().find("readable") != std::string::npos && e2.badges_line().find("cvd-safe") != std::string::npos,
+          "the shipped default has nothing to fix and its badges read dark + readable + cvd-safe [" + e2.badges_line() + "]");
+    check(e2.report().find("badges: dark") == 0, "report() is the analysis text");
+    ThemeEdit bad = e2.committed();
+    bad.dark.style(Role::md_link).fg = Color::rgb(0x30, 0x34, 0x3a);
+    bad.dark.style(Role::diff_removed).fg = bad.dark.style(Role::diff_added).fg;
+    e2.replace(bad);
+    check(e2.fixes().size() == 2 && e2.menu().find("fixes")->children.size() == 2, "a broken variant lists its proposals under Fixes (" + std::to_string(e2.fixes().size()) + ")");
+    type(e2, "check");
+    ThemeEditor::Outcome o = e2.handle(key(Key::Enter));
+    check(o.kind == ThemeEditor::Outcome::Kind::Check, "Check asks the host to show the report");
+    e2.handle(key(Key::Escape));
+    e2.handle(key(Key::Home));
+    type(e2, "fixes");
+    e2.handle(key(Key::Enter));  // Fixes level
+    const std::string first = e2.menu().selected_item()->label;
+    o = e2.handle(key(Key::Enter));
+    check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.fixes().size() == 1 && e2.undo_depth() == 2,
+          "Enter on a proposal applies it as a commit (undoable) and the list shrinks: applied [" + first + "]");
+    e2.handle(ctrl('z'));
+    check(e2.fixes().size() == 2, "Ctrl-Z brings the proposal back");
+    e2.handle(key(Key::Home));
+    e2.handle(key(Key::Escape));
+    e2.handle(key(Key::Home));
+    type(e2, "generate");
+    e2.handle(key(Key::Enter));
+    e2.handle(key(Key::Down));  // seed
+    e2.handle(key(Key::Enter));
+    e2.handle(key(Key::Backspace));
+    type(e2, "7");
+    e2.handle(key(Key::Enter));
+    e2.handle(key(Key::Down));
+    e2.handle(key(Key::Down));  // generate
+    o = e2.handle(key(Key::Enter));
+    check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.committed().dark.name == "gen-analogous-7-0.00" && e2.committed().light.name == "gen-analogous-7-0.00",
+          "Generate replaces both variants with the seeded theme (dark and light grounds from one seed) [" + e2.committed().dark.name + "]");
+    check(e2.status_line().find("generated gen-analogous-7") != std::string::npos && e2.badges_line().find("readable") != std::string::npos,
+          "…the status names it and the generated variant is readable [" + e2.badges_line() + "]");
+    check(e2.fixes().empty(), "…with nothing left to fix at chaos 0");
+  }
   return report("rolltui theme_editor_test");
 }

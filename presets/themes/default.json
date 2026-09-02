@@ -17,8 +17,8 @@
       },
       "text_muted": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -57,8 +57,8 @@
       },
       "border_active": {
         "fg": {
-          "dark": "#6ca0e0",
-          "light": "#2b6cc4"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -78,8 +78,8 @@
       },
       "label": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#1b1e24",
@@ -98,8 +98,8 @@
       },
       "accent_1": {
         "fg": {
-          "dark": "#6ca0e0",
-          "light": "#2b6cc4"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -108,8 +108,8 @@
       },
       "accent_2": {
         "fg": {
-          "dark": "#8cc67a",
-          "light": "#2e7d32"
+          "dark": "#adeeae",
+          "light": "#507b51"
         },
         "bg": {
           "dark": "#14161a",
@@ -118,8 +118,8 @@
       },
       "accent_3": {
         "fg": {
-          "dark": "#e5c07b",
-          "light": "#9a6a00"
+          "dark": "#cba63a",
+          "light": "#5e4b0c"
         },
         "bg": {
           "dark": "#14161a",
@@ -128,8 +128,8 @@
       },
       "accent_4": {
         "fg": {
-          "dark": "#c69ae6",
-          "light": "#7b3fb5"
+          "dark": "#9a73b8",
+          "light": "#401459"
         },
         "bg": {
           "dark": "#14161a",
@@ -149,8 +149,8 @@
       },
       "note": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -160,8 +160,8 @@
       },
       "warning": {
         "fg": {
-          "dark": "#e5c07b",
-          "light": "#9a6a00"
+          "dark": "#cba63a",
+          "light": "#5e4b0c"
         },
         "bg": {
           "dark": "#14161a",
@@ -170,8 +170,8 @@
       },
       "error": {
         "fg": {
-          "dark": "#e06c75",
-          "light": "#c62828"
+          "dark": "#c06a64",
+          "light": "#4f1a18"
         },
         "bg": {
           "dark": "#14161a",
@@ -181,8 +181,8 @@
       },
       "md_heading": {
         "fg": {
-          "dark": "#6ca0e0",
-          "light": "#2b6cc4"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -214,8 +214,8 @@
       },
       "md_code_inline": {
         "fg": {
-          "dark": "#e5c07b",
-          "light": "#7b3fb5"
+          "dark": "#cba63a",
+          "light": "#401459"
         },
         "bg": {
           "dark": "#1e2228",
@@ -234,8 +234,8 @@
       },
       "md_code_label": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -245,7 +245,7 @@
       "md_link": {
         "fg": {
           "dark": "#6cc8c8",
-          "light": "#2b6cc4"
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -255,8 +255,8 @@
       },
       "md_link_url": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -265,8 +265,8 @@
       },
       "md_quote": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -276,8 +276,8 @@
       },
       "md_list_marker": {
         "fg": {
-          "dark": "#6ca0e0",
-          "light": "#2b6cc4"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -317,8 +317,8 @@
       },
       "md_strikethrough": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -328,8 +328,8 @@
       },
       "diff_added": {
         "fg": {
-          "dark": "#8cc67a",
-          "light": "#2e7d32"
+          "dark": "#adeeae",
+          "light": "#507b51"
         },
         "bg": {
           "dark": "#14161a",
@@ -338,8 +338,8 @@
       },
       "diff_removed": {
         "fg": {
-          "dark": "#e06c75",
-          "light": "#c62828"
+          "dark": "#c06a64",
+          "light": "#4f1a18"
         },
         "bg": {
           "dark": "#14161a",
@@ -348,8 +348,8 @@
       },
       "diff_context": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -378,8 +378,8 @@
       },
       "input_placeholder": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -393,8 +393,8 @@
           "light": "#fafaf8"
         },
         "bg": {
-          "dark": "#e5c07b",
-          "light": "#9a6a00"
+          "dark": "#cba63a",
+          "light": "#5e4b0c"
         },
         "bold": true
       },
@@ -410,8 +410,8 @@
       },
       "overlay": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#14161a",
@@ -435,15 +435,15 @@
           "light": "#fafaf8"
         },
         "bg": {
-          "dark": "#6ca0e0",
-          "light": "#2b6cc4"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bold": true
       },
       "menu_breadcrumb": {
         "fg": {
-          "dark": "#7c8490",
-          "light": "#6b727c"
+          "dark": "#858d99",
+          "light": "#5f6670"
         },
         "bg": {
           "dark": "#1b1e24",
@@ -452,8 +452,8 @@
       },
       "menu_shortcut": {
         "fg": {
-          "dark": "#e5c07b",
-          "light": "#7b3fb5"
+          "dark": "#cba63a",
+          "light": "#401459"
         },
         "bg": {
           "dark": "#1b1e24",

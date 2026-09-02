@@ -230,6 +230,7 @@ int main() {
     std::vector<std::string> offenders;
     for (const std::string& f : files) {
       if (f == "Theme.cpp" || f == "Style.hpp") continue;  // the definitions, and the constructors themselves
+      if (f == "ThemeAnalysis.cpp" || f == "ThemeGen.cpp") continue;  // colour MATHS: they construct colours from numbers they computed, never name one
       std::string src = read_file(dir + "/" + f);
       std::istringstream in(src);
       std::string line;
