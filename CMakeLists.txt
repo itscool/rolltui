@@ -20,6 +20,9 @@ add_library(rolltui STATIC
   Markdown.cpp
   Json.cpp
   Theme.cpp
+  Screen.cpp
+  Keys.cpp
+  Terminal.cpp                # the one unit that touches a file descriptor
   third_party/md4c/md4c.c     # vendored, MIT; see third_party/md4c/README.md
 )
 target_include_directories(rolltui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -55,3 +58,10 @@ add_rolltui_test(rolltui-markdown-test tests/markdown_test.cpp)
 
 # Milestone 5: theme (roles → styles), our JSON, downgrade, SGR, the grep control.
 add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
+
+# Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
+# (table), and Terminal on a real pty with a forked child killed by SIGTERM.
+add_rolltui_test(rolltui-screen-test tests/screen_test.cpp)
+add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
+add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
+set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
