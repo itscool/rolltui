@@ -1,0 +1,320 @@
+//
+// markdown_test.cpp — the markdown renderer (rolltui/Markdown.hpp) over vendored md4c.
+//
+// The load-bearing assertion is "never drops a character": for every fixture under
+// rolltui/tests/fixtures/md/ (real model-written markdown copied from this repo's own
+// journal and plan, plus an unterminated fence, an over-wide table and a nested-list
+// torture case) and at widths 8, 20, 40, 80, 120, the non-space graphemes of the
+// rendered plain text contain, in order, every non-space grapheme md4c's text
+// callbacks reported. The renderer may add markers, borders and URLs; it may never
+// lose model output. Plus: no line wider than the width, and shape checks on the
+// individual constructs.
+//
+#include <algorithm>
+#include <fstream>
+#include <map>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include <dirent.h>
+
+#include "rolltui/Markdown.hpp"
+#include "rolltui/Unicode.hpp"
+#include "rolltui/third_party/md4c/md4c.h"
+#include "rolltui_test.hpp"
+
+using namespace rolltui;
+using namespace rolltui::markdown;
+using namespace rolltui_test;
+
+#ifndef ROLLTUI_FIXTURE_DIR
+#error "ROLLTUI_FIXTURE_DIR must point at rolltui/tests/fixtures"
+#endif
+
+namespace {
+
+std::string read_file(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream ss;
+  ss << in.rdbuf();
+  return ss.str();
+}
+
+// Every chunk md4c reports as text, in order, gathered independently of the renderer
+// (a second parse with our own callbacks — the reference, not the product), and
+// whether the document holds a table (whose grid interleaves cells across lines, so
+// order is checked per chunk there rather than globally).
+struct Collected {
+  std::vector<std::string> chunks;
+  bool has_table = false;
+};
+int c_enter_block(MD_BLOCKTYPE t, void*, void* ud) {
+  if (t == MD_BLOCK_TABLE) static_cast<Collected*>(ud)->has_table = true;
+  return 0;
+}
+int c_leave_block(MD_BLOCKTYPE, void*, void*) { return 0; }
+int c_enter_span(MD_SPANTYPE, void*, void*) { return 0; }
+int c_leave_span(MD_SPANTYPE, void*, void*) { return 0; }
+int c_text(MD_TEXTTYPE type, const MD_CHAR* t, MD_SIZE n, void* ud) {
+  Collected& c = *static_cast<Collected*>(ud);
+  std::string_view s(t, n);
+  if (type == MD_TEXT_NULLCHAR) c.chunks.emplace_back("\xEF\xBF\xBD");
+  else if (type == MD_TEXT_ENTITY) c.chunks.push_back(decode_entity(s));
+  else if (type == MD_TEXT_BR || type == MD_TEXT_SOFTBR) c.chunks.emplace_back(" ");
+  else c.chunks.emplace_back(s);
+  return 0;
+}
+Collected md4c_text(const std::string& src) {
+  Collected c;
+  MD_PARSER p{};
+  p.flags = parser_flags();
+  p.enter_block = c_enter_block; p.leave_block = c_leave_block;
+  p.enter_span = c_enter_span; p.leave_span = c_leave_span;
+  p.text = c_text;
+  md_parse(src.data(), static_cast<MD_SIZE>(src.size()), &p, &c);
+  return c;
+}
+
+std::vector<std::string> nonspace_graphemes(const std::string& s) {
+  std::vector<std::string> v;
+  for (const unicode::Grapheme& g : unicode::graphemes(s)) {
+    std::string t(s.substr(g.offset, g.length));
+    if (t == " " || t == "\n" || t == "\t" || t == "\r" || t == "\xC2\xA0") continue;
+    if (unicode::display_width(t) == 0) continue;
+    v.push_back(t);
+  }
+  return v;
+}
+
+// Is `needle` a subsequence of `hay`? Reports the first missing element.
+std::string subsequence_gap(const std::vector<std::string>& needle, const std::vector<std::string>& hay) {
+  std::size_t h = 0;
+  for (std::size_t i = 0; i < needle.size(); ++i) {
+    while (h < hay.size() && hay[h] != needle[i]) ++h;
+    if (h == hay.size()) return "grapheme #" + std::to_string(i) + " [" + needle[i] + "] never rendered in order";
+    ++h;
+  }
+  return "";
+}
+
+std::string never_drops(const std::string& src, int width) {
+  std::vector<StyledLine> lines = render(src, RenderOptions{.width = width});
+  std::string plain = plain_text(lines);
+  Collected ref = md4c_text(src);
+  std::vector<std::string> rendered = nonspace_graphemes(plain);
+  // 1. Never drops: every grapheme is drawn at least as often as md4c reported it.
+  {
+    std::map<std::string, long> count;
+    for (const std::string& g : rendered) ++count[g];
+    std::string all;
+    for (const std::string& c : ref.chunks) all += c;
+    for (const std::string& g : nonspace_graphemes(all))
+      if (--count[g] < 0) return "grapheme [" + g + "] rendered fewer times than the source has it";
+  }
+  // 2. In order: globally when the document has no table; per text chunk otherwise
+  //    (a table's grid interleaves cells across lines, which is layout, not loss).
+  if (!ref.has_table) {
+    std::string all;
+    for (const std::string& c : ref.chunks) all += c;
+    std::string gap = subsequence_gap(nonspace_graphemes(all), rendered);
+    if (!gap.empty()) return gap;
+  } else {
+    for (const std::string& c : ref.chunks) {
+      std::string gap = subsequence_gap(nonspace_graphemes(c), rendered);
+      if (!gap.empty()) return "chunk [" + c + "]: " + gap;
+    }
+  }
+  for (const StyledLine& l : lines) {
+    int w = 0;
+    for (const Span& s : l.spans) w += s.width;
+    if (w != l.width) return "StyledLine::width disagrees with its spans";
+    if (l.width - width > 1)  // the wrap engine's single-oversized-grapheme allowance
+      return "line exceeds width by " + std::to_string(l.width - width) + ": [" + plain_text({l}) + "]";
+  }
+  return "";
+}
+
+std::vector<std::string> lines_of(const std::vector<StyledLine>& v) {
+  std::vector<std::string> out;
+  for (const StyledLine& l : v) out.push_back(plain_text({l}));
+  return out;
+}
+
+bool has_role(const std::vector<StyledLine>& v, Role r, const std::string& text) {
+  for (const StyledLine& l : v)
+    for (const Span& s : l.spans)
+      if (s.role == r && s.text.find(text) != std::string::npos) return true;
+  return false;
+}
+
+}  // namespace
+
+int main() {
+  // ---- fixtures: never drop a character, at several widths -----------------------
+  std::string dir = std::string(ROLLTUI_FIXTURE_DIR) + "/md";
+  std::vector<std::string> fixtures;
+  if (DIR* d = opendir(dir.c_str())) {
+    while (dirent* e = readdir(d)) {
+      std::string n = e->d_name;
+      if (n.size() > 3 && n.substr(n.size() - 3) == ".md") fixtures.push_back(n);
+    }
+    closedir(d);
+  }
+  std::sort(fixtures.begin(), fixtures.end());
+  check(fixtures.size() >= 8, "found the fixtures (" + std::to_string(fixtures.size()) + ")");
+  for (const std::string& f : fixtures) {
+    std::string src = read_file(dir + "/" + f);
+    check(!src.empty(), f + " is non-empty");
+    for (int w : {8, 20, 40, 80, 120}) {
+      std::string err = never_drops(src, w);
+      check(err.empty(), f + " @ " + std::to_string(w) + ": never drops a character, never overflows" +
+                             (err.empty() ? "" : " — " + err));
+    }
+  }
+
+  // ---- constructs ----------------------------------------------------------------
+  {
+    auto v = render("# Title\n\nA paragraph with *em*, **strong**, `code`, ~~gone~~ and a [link](https://x.y/z).\n",
+                    RenderOptions{.width = 80});
+    auto L = lines_of(v);
+    check(L.size() == 3 && L[0] == "# Title" && L[1].empty(), "heading, blank line, paragraph");
+    check(has_role(v, Role::md_heading, "# Title"), "heading role");
+    check(has_role(v, Role::md_emphasis, "em") && has_role(v, Role::md_strong, "strong") &&
+              has_role(v, Role::md_code_inline, "code") && has_role(v, Role::md_strikethrough, "gone"),
+          "inline roles: emphasis, strong, code, strikethrough");
+    check(has_role(v, Role::md_link, "link") && has_role(v, Role::md_link_url, "(https://x.y/z)"),
+          "link text in md_link, URL shown after it in md_link_url");
+    check(L[2] == "A paragraph with em, strong, code, gone and a link (https://x.y/z).",
+          "paragraph plain text: [" + L[2] + "]");
+  }
+  {
+    auto v = render("An autolink https://example.com/p here.\n", RenderOptions{.width = 80});
+    check(lines_of(v)[0] == "An autolink https://example.com/p here.", "autolink URL is not repeated");
+  }
+  {
+    auto v = render("**bold across a wrap point that is long** enough", RenderOptions{.width = 20});
+    check(v.size() >= 2 && has_role(v, Role::md_strong, "bold") && has_role(v, Role::md_strong, "long"),
+          "inline style survives a wrap: strong on both lines");
+  }
+  {
+    auto v = render("```cpp\nint x = 1;\n```\n", RenderOptions{.width = 30});
+    auto L = lines_of(v);
+    check(L.size() == 3, "fenced code: top rule, one line, bottom rule (" + std::to_string(L.size()) + ")");
+    check(L[0].rfind("\xE2\x94\x8C cpp ", 0) == 0 && L[0].size() > 10, "code box top carries the info string: [" + L[0] + "]");
+    check(L[1] == "\xE2\x94\x82 int x = 1;                 \xE2\x94\x82", "code line is padded to the box: [" + L[1] + "]");
+    check(has_role(v, Role::md_code_block, "int x = 1;") && has_role(v, Role::md_code_label, "cpp"), "code roles");
+    check(v[0].width == 30 && v[1].width == 30 && v[2].width == 30, "code box is exactly the width");
+  }
+  {
+    auto v = render("Text before\n\n```python\ndef f():\n    return 1\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 6 && L[2].rfind("\xE2\x94\x8C python", 0) == 0 && L[5].rfind("\xE2\x94\x94", 0) == 0,
+          "an unterminated fence renders as a code block to the end");
+    check(has_role(v, Role::md_code_block, "return 1"), "its last line is code");
+  }
+  {
+    auto v = render("<div>\n<b>raw</b>\n</div>\n", RenderOptions{.width = 30});
+    check(has_role(v, Role::md_code_block, "<b>raw</b>") && has_role(v, Role::md_code_label, "html"),
+          "an HTML block is shown as code, never interpreted");
+  }
+  {
+    auto v = render("- one\n- two\n  - nested\n- three\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 4 && L[0] == "\xE2\x80\xA2 one" && L[2] == "  \xE2\x80\xA2 nested" && L[3] == "\xE2\x80\xA2 three",
+          "tight bullet list with a nested list: " + L[0] + " | " + L[2]);
+    check(has_role(v, Role::md_list_marker, "\xE2\x80\xA2"), "bullet in md_list_marker");
+  }
+  {
+    auto v = render("1. a\n2. b\n3. c\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 3 && L[0] == "1. a" && L[2] == "3. c", "ordered list numbering");
+    auto w = render("9. a\n10. b\n", RenderOptions{.width = 40});
+    auto M = lines_of(w);
+    check(M.size() == 2 && M[0] == " 9. a" && M[1] == "10. b", "ordered markers align on the widest number: [" + M[0] + "]");
+  }
+  {
+    auto v = render("- [ ] todo\n- [x] done\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 2 && L[0] == "[ ] todo" && L[1] == "[x] done", "task list markers");
+  }
+  {
+    auto v = render("- a long item that wraps onto a second line for sure\n", RenderOptions{.width = 24});
+    auto L = lines_of(v);
+    check(L.size() >= 2 && L[0].rfind("\xE2\x80\xA2 ", 0) == 0 && L[1].rfind("  ", 0) == 0 && L[1][2] != ' ',
+          "hanging indent under a bullet: [" + L[1] + "]");
+  }
+  {
+    auto v = render("1. first\n\n   para two\n2. second\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 5 && L[0] == "1. first" && L[1].empty() && L[2] == "   para two" && L[3].empty() && L[4] == "2. second",
+          "loose list: blank lines between blocks and items");
+  }
+  {
+    auto v = render("> quoted *text*\n> more\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 1 && L[0] == "\xE2\x94\x82 quoted text more", "blockquote bar and joined soft break: [" + L[0] + "]");
+    check(has_role(v, Role::md_quote, "quoted") && has_role(v, Role::md_emphasis, "text"), "quote base role, emphasis inside");
+    auto n = render("> outer\n>\n> > inner\n", RenderOptions{.width = 40});
+    auto N = lines_of(n);
+    check(N.size() == 3 && N[1] == "\xE2\x94\x82" && N[2] == "\xE2\x94\x82 \xE2\x94\x82 inner", "nested quotes: [" + N[2] + "]");
+  }
+  {
+    auto v = render("---\n", RenderOptions{.width = 10});
+    auto L = lines_of(v);
+    check(L.size() == 1 && v[0].width == 10 && has_role(v, Role::md_rule, "\xE2\x94\x80"), "thematic break spans the width");
+  }
+  {
+    auto v = render("| a | b |\n|---|--:|\n| longer cell | 1 |\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 5, "table: top, head, separator, body, bottom (" + std::to_string(L.size()) + ")");
+    check(L.size() == 5 && L[1] == "\xE2\x94\x82 a           \xE2\x94\x82 b \xE2\x94\x82", "header row: [" + L[1] + "]");
+    check(L.size() == 5 && L[3] == "\xE2\x94\x82 longer cell \xE2\x94\x82 1 \xE2\x94\x82", "right-aligned cell: [" + L[3] + "]");
+    check(has_role(v, Role::md_table_header, "a") && has_role(v, Role::md_table_border, "\xE2\x94\x82"), "table roles");
+  }
+  {
+    auto v = render("| alpha beta gamma | delta epsilon |\n|---|---|\n| one two three four | five |\n", RenderOptions{.width = 24});
+    auto L = lines_of(v);
+    bool fits = true;
+    for (const StyledLine& l : v) fits &= (l.width <= 24);
+    check(fits && L.size() > 5, "a wide table shrinks by wrapping cells (" + std::to_string(L.size()) + " lines)");
+    check(never_drops("| alpha beta gamma | delta epsilon |\n|---|---|\n| one two three four | five |\n", 24).empty(),
+          "…and keeps every character");
+  }
+  {
+    std::string src = "| a | b | c | d | e |\n|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 |\n";
+    auto v = render(src, RenderOptions{.width = 12});
+    check(has_role(v, Role::md_code_label, "table") && has_role(v, Role::md_code_block, "| a |") &&
+              has_role(v, Role::md_code_block, "---|"),
+          "a table that cannot fit at one cell per column is shown as its source in a code block");
+    check(never_drops(src, 12).empty(), "…and keeps every character");
+  }
+  {
+    auto v = render("line one  \nline two\n", RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L.size() == 2 && L[0] == "line one" && L[1] == "line two", "hard break splits the paragraph");
+  }
+  {
+    std::string src = std::string("&amp; &lt;x&gt; &#65;&#x42; &copy; &bogus; a") + '\0' + "b";
+    auto v = render(src, RenderOptions{.width = 40});
+    auto L = lines_of(v);
+    check(L[0].find("& <x> AB \xC2\xA9 &bogus; a\xEF\xBF\xBD" "b") != std::string::npos, "entities decoded, unknown kept, NUL → U+FFFD: [" + L[0] + "]");
+  }
+  {
+    auto v = render("![alt text](https://x.y/i.png)", RenderOptions{.width = 40});
+    check(lines_of(v)[0] == "alt text (https://x.y/i.png)", "image renders as alt text plus URL");
+  }
+  {
+    auto v = render("", RenderOptions{.width = 40});
+    check(v.empty(), "empty source renders no lines");
+    auto w = render("\n\n\n", RenderOptions{.width = 40});
+    check(w.empty(), "blank source renders no lines");
+  }
+  {
+    Document d = parse("# H\n\n- a\n\n```\nc\n```\n");
+    check(d.blocks.size() == 3 && d.blocks[0].kind == Block::Kind::Heading && d.blocks[1].kind == Block::Kind::List &&
+              d.blocks[2].kind == Block::Kind::Code && d.blocks[2].code == "c\n",
+          "block tree shape");
+  }
+  return report("rolltui markdown_test");
+}

@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "rolltui/Unicode.hpp"
 #include "rolltui/Wrap.hpp"
 #include "rolltui_test.hpp"
 

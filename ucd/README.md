@@ -15,8 +15,8 @@ sha256 of every file and refuses a mismatch. Checked in so that a clone can rege
 | `GraphemeBreakTest.txt` | `rolltui-grapheme-break-test` | the UAX #29 conformance suite, run in full |
 | `LineBreakTest.txt` | `rolltui-line-break-test` | the UAX #14 conformance suite, run in full |
 
-`rolltui-unicode-tables-current` (ctest) regenerates the header from these files and
-fails if the checked-in one differs, so the header can never be edited by hand or fall
-behind the generator without a red test.
+`rolltui-unicode-tables-current` (ctest) regenerates `unicode_tables.hpp` and
+`unicode_tables.cpp` from these files and fails if the checked-in ones differ, so the
+tables can never be edited by hand or fall behind the generator without a red test.
 
 Terms of use: <https://www.unicode.org/terms_of_use.html> (the Unicode License v3).
