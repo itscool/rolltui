@@ -1,0 +1,83 @@
+//
+// grapheme_break_test.cpp — UAX #29 extended grapheme cluster conformance: every case
+// in GraphemeBreakTest.txt (Unicode 17.0.0, checked in under rolltui/ucd/), run in
+// full. A failing case prints the suite's own rule annotations next to our marks.
+//
+// Also: the UTF-8 layer (invalid bytes become one U+FFFD each, never dropped) and the
+// byte-span form `graphemes()` that the wrap engine consumes.
+//
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "rolltui/Unicode.hpp"
+#include "rolltui_test.hpp"
+#include "ucd_test_file.hpp"
+
+using namespace rolltui::unicode;
+using namespace rolltui_test;
+
+#ifndef ROLLTUI_UCD_DIR
+#error "ROLLTUI_UCD_DIR must point at rolltui/ucd"
+#endif
+
+int main() {
+  // ---- the conformance suite, in full ----
+  std::vector<UcdCase> cases = read_ucd_cases(std::string(ROLLTUI_UCD_DIR) + "/GraphemeBreakTest.txt");
+  check(cases.size() > 700, "GraphemeBreakTest.txt parsed (" + std::to_string(cases.size()) +
+                                " cases; a truncated file would be a silent green)");
+  for (const UcdCase& c : cases) {
+    std::vector<bool> got = grapheme_boundaries(c.cps);
+    bool ok = (got == c.breaks);
+    check_quiet(ok, "GraphemeBreakTest.txt:" + std::to_string(c.line_number) + "  " +
+                        cps_to_hex(c.cps) + "\n         expected " +
+                        marks_to_string(c.cps, c.breaks) + "\n         got      " +
+                        marks_to_string(c.cps, got) + "\n         suite:" + c.comment);
+  }
+
+  // ---- UTF-8 decoding is total and lossless in byte count ----
+  {
+    std::string bad = "a\xFF" "b\xC3" "c\xE2\x82" "\xF0\x9F\x98\x80" "\xED\xA0\x80" "z";
+    std::vector<DecodedChar> d = decode_utf8(bad);
+    std::size_t total = 0;
+    int replacements = 0;
+    for (const DecodedChar& x : d) {
+      total += x.length;
+      if (!x.valid) ++replacements;
+    }
+    check(total == bad.size(), "decode_utf8 accounts for every byte exactly once");
+    // FF; C3 (lead with no continuation); E2 then 82 (a truncated 3-byte form is
+    // reported one byte at a time); ED A0 80 (an encoded surrogate: the lead is
+    // rejected, then each orphaned continuation byte) = 7.
+    check(replacements == 7, "each malformed byte is one U+FFFD (got " +
+                                 std::to_string(replacements) + ", expected 7)");
+    check(d[0].cp == 'a' && d[d.size() - 1].cp == 'z', "valid neighbours survive");
+    bool emoji_ok = false;
+    for (const DecodedChar& x : d) emoji_ok |= (x.cp == 0x1F600 && x.length == 4 && x.valid);
+    check(emoji_ok, "a 4-byte sequence decodes to U+1F600");
+    check(decode_one("\xC0\x80", 0).valid == false, "overlong C0 80 is rejected");
+    check(decode_one("\xF4\x90\x80\x80", 0).valid == false, "> U+10FFFF is rejected");
+  }
+
+  // ---- graphemes(): byte spans and widths the renderer consumes ----
+  {
+    // "e" + combining acute, then a family ZWJ sequence, then a flag.
+    std::string s = "e\xCC\x81" "\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB" "\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5";
+    std::vector<Grapheme> g = graphemes(s);
+    check(g.size() == 3, "three clusters (got " + std::to_string(g.size()) + ")");
+    if (g.size() == 3) {
+      check(g[0].offset == 0 && g[0].length == 3 && g[0].width == 1, "e + U+0301: 3 bytes, width 1");
+      check(g[1].offset == 3 && g[1].length == 11 && g[1].width == 2, "woman ZWJ laptop: 11 bytes, width 2");
+      check(g[2].offset == 14 && g[2].length == 8 && g[2].width == 2, "flag JP: 8 bytes, width 2");
+    }
+    std::size_t covered = 0;
+    for (const Grapheme& x : g) covered += x.length;
+    check(covered == s.size(), "clusters tile the input");
+    check(graphemes("").empty(), "empty input: no clusters");
+    std::vector<Grapheme> bad = graphemes("\xFF\xFE");
+    check(bad.size() == 2 && bad[0].width == 1 && bad[1].width == 1,
+          "invalid bytes are 1-cell clusters of their own, never dropped");
+  }
+
+  return report("rolltui grapheme_break_test");
+}
