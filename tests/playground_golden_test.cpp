@@ -213,6 +213,11 @@ int main(int argc, char** argv) {
       {"layout-editor.120x40.click", "--frame 120x40 --theme default-dark --keys \"F6 Click 30,37\""},
       {"layout-editor.120x40.save", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Type:title Enter CtrlU Type:chat Enter Escape Type:save Enter Type:two Enter\""},
       {"tiny.9x4.layout-editor", "--frame 9x4 --theme default-dark --keys \"F6 Tab Type:split Enter Type:x\""},
+      // the seam rule: the FIXED side takes the new size — the status before the seam
+      // (panel-left) and the status after it (a fixture with a 55-wide right panel), both
+      // seams left of the editor's popup
+      {"layout-editor.120x40.drag-fixed-before", "--frame 120x40 --theme default-dark --layout panel-left --keys \"F6 Click 31,10 Drag 20,10 Release\""},
+      {"layout-editor.120x40.drag-fixed-after", "--frame 120x40 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-right.json' --keys \"F6 Click 65,10 Drag 50,10 Release\""},
       // milestone 17 (bindings as data): a vim-ish file, the help rendered from it, the
       // input obeying it, and the keys editor
       {"keys.120x40.help-default", "--frame 120x40 --theme default-dark --keys \"F1 PageDown\""},
@@ -230,7 +235,7 @@ int main(int argc, char** argv) {
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
-  std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save;
+  std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
   std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
   bool tiny_failed = false;
   for (const Case& c : cases) {
@@ -306,6 +311,8 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "layout-editor.120x40.drag") le_drag = out;
     if (std::string(c.name) == "layout-editor.120x40.click") le_click = out;
     if (std::string(c.name) == "layout-editor.120x40.save") le_save = out;
+    if (std::string(c.name) == "layout-editor.120x40.drag-fixed-before") le_fixed_before = out;
+    if (std::string(c.name) == "layout-editor.120x40.drag-fixed-after") le_fixed_after = out;
     if (std::string(c.name) == "keys.120x40.help-default") kh_default = out;
     if (std::string(c.name) == "keys.120x40.help-vim") kh_vim = out;
     if (std::string(c.name) == "keys.80x24.input-default") ki_default = out;
@@ -510,6 +517,10 @@ int main(int argc, char** argv) {
     check(le_drag.find("selected: transcript ") != std::string::npos && le_drag.find("size 31") != std::string::npos && le_drag.find("undo 2") != std::string::npos,
           "after the split, a press on the seam between the two panes dragged left narrows the first to 31 cells, one more commit");
     check(le_click.find("layout editor \xE2\x80\xA2 input") != std::string::npos, "a click on the input window selects it");
+    check(le_fixed_before.find("selected: status") != std::string::npos && le_fixed_before.find("size 21") != std::string::npos,
+          "panel-left: the seam's fixed side (the 32-wide status, before the seam) is dragged to 21 cells");
+    check(le_fixed_after.find("selected: status") != std::string::npos && le_fixed_after.find("size 70") != std::string::npos,
+          "wide-right: the fixed status AFTER a fill seam is the side that resizes (to 70), never the fill — no gap opens");
     check(le_save.find("saved layout file") != std::string::npos && std::filesystem::exists(scratch + "/p/layouts/two.json") && le_save.find("\xE2\x94\x8C chat ") != std::string::npos,
           "title 'chat' and save-as 'two' write layouts/two.json under the scratch presets directory");
     {

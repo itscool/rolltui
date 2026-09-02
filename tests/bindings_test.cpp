@@ -132,6 +132,15 @@ int main() {
     Bindings vim = default_bindings();
     vim.bind("input.word_left", *parse_chord("alt+b"));
     check(help_lines(vim, "input", {"input.word_left"})[0].find("Alt-B") != std::string::npos, "help follows a rebinding: it is rendered from the live table");
+    // The chord column is capped at 24 cells: one long chord list does not push every
+    // other description across a narrow popup (found by a 46-column golden).
+    Bindings wide = default_bindings();
+    wide.bind("input.word_right", *parse_chord("ctrl+shift+f12"));
+    wide.bind("input.word_right", *parse_chord("alt+shift+f11"));
+    const std::vector<std::string> capped = help_lines(wide, "input", {"input.left", "input.word_right"});
+    check(capped[0].find("move one grapheme left") <= 24, "a short chord's description starts within the 24-cell column (at " + std::to_string(capped[0].find("move one grapheme left")) + ")");
+    check(capped[1].find("  move one word right") != std::string::npos && capped[1].find("move one word right") > 24,
+          "a chord list longer than the column is followed by two spaces, not padded");
   }
   return report("rolltui bindings_test");
 }

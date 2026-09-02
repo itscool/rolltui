@@ -1,0 +1,40 @@
+┌ transcript ─────────────────────────────────────┌ status ───────────┌ layout editor ─────────────────────────────────┐
+│ │ layers,       │             │ header;       │ │ theme   default-da│ layout editor • status                         │
+│ │ placement     │             │ resolve(Place │ │ keys    default   │ Select the next node                       Tab │
+│ │ (Dim abs/rel  │             │ ment, parent) │ │ layout  wide-right│ Select the previous node             Shift-Tab │
+│ │ per axis),    │             │ → Rect is a   │ │ size    120x40    │ Split into a row (side by side)                │
+│ │ focus         │             │ pure function │ │ line    146/180   │ Split into a column (stacked)                  │
+│ │ Menu widget   │ build       │ single header │ │ follow  yes       │ Swap with the previous sibling                 │
+│ │ (hierarchical │             │ each; the     │ │ depth   truecolor │ Swap with the next sibling                     │
+│ │ , filterable) │             │ widget set is │ │ focus   editor    │ [x] Visible                                    │
+│ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
+│ │ widgets       │             │ this small    │ │                   │ Title: status                                  │
+│ │ Layout files  │ build       │ reuses the    │ │                   │ Content slot                          status ▸ │
+│ │ (JSON:        │             │ theme         │ │                   │ Size (fill | fill N | N% | cells; Alt+arrows n │
+│ │ windows +     │             │ loader's hand │ │                   │ [ ] Focusable                                  │
+│ │ placements +  │             │ parser; hot-  │ │                   │ Delete this node                               │
+│ │ content       │             │ reloaded      │ │                   │ Popups                                       ▸ │
+│ │ slots)        │             │               │ │                   │ Undo                                    Ctrl-Z │
+│ │ Markdown      │ build       │ single header │ │                   │ Redo                                    Ctrl-Y │
+│ │ block         │             │ over md4c +   │ │                   │ Load layout                                  ▸ │
+│ │ renderer      │             │ wrap          │ │                   │ Save layout file as (layouts/<name>.json):     │
+│ │ (blocks →     │             │               │ │                   │ Reset to the loaded layout…                    │
+│ │ styled        │             │               │ │                   │                                                │
+│ │ wrapped       │             │               │ │                   │                                                │
+│ │ lines)        │             │               │ │                   │                                                │
+│ │ Theme (roles  │ build       │ single header │ │                   │                                                │
+│ │ → styles,     │             │               │ │                   │                                                │
+│ │ JSON loader,  │             │               │ │                   │                                                │
+│ │ built-ins)    │             │               │ │                   │                                                │
+│ └───────────────┴─────────────┴───────────────┘ │                   │                                                │
+│                                                 │                   │                                                │
+│ Here is the function you asked for:             │                   │                                                │
+│                                                 │                   │                                                │
+│ ┌ cpp ────────────────────────────────────────┐ │                   │                                                │
+│ │ int add(int a, int b) {                     │ │                   │                                                │
+│ │   return a + b;                             │ │                   │ selected: status  slot status  size 70  border │
+│ └─────────────────────────────────────────────┘ │                   │ Tab next node · click selects · drag an edge r │
+├─────────────────────────────────────────────────│                   │ loaded wide-right · undo 1 · redo 0            │
+│ > type here                                     │                   │                                                │
+└─────────────────────────────────────────────────└───────────────────└────────────────────────────────────────────────┘
+ default-dark (modified) [layout editor]  wide-right  120x40  line 146/180  follow  truecolor  focus:editor

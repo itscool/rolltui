@@ -37,6 +37,11 @@ int main() {
   KeysEditor::Outcome o = go(ed, key(Key::Enter));  // add a chord
   check(o.kind == O::Changed && ed.capturing() && ed.capturing_action() == "input.word_left" && ed.status_line().find("press the chord for input.word_left") == 0,
         "Enter on 'add a chord' starts capture and says so");
+  KeyEvent unknown;
+  unknown.key = Key::Unknown;
+  unknown.raw = "\x1b[99~";
+  o = go(ed, unknown);
+  check(ed.capturing() && o.kind == O::Changed && ed.status_line().find("no chord name") != std::string::npos, "a key with no chord name is refused and the capture continues");
   o = go(ed, key(Key::Escape));
   check(!ed.capturing() && o.kind == O::Changed && ed.status_line().find("cancelled") != std::string::npos, "Escape cancels the capture");
   go(ed, key(Key::Enter));

@@ -119,7 +119,11 @@ bool KeysEditor::redo() {
 }
 
 std::string KeysEditor::status_line() const {
-  std::string s = capture_ ? "press the chord for " + *capture_ + " (Esc cancels)" : (status_.empty() ? "Enter on an action: add, remove or clear its chords" : status_);
+  // While capturing, a refusal (an unnameable key) is shown WITH the prompt, so the
+  // reason and what to do next are both on the line.
+  const std::string prompt = capture_ ? "press the chord for " + *capture_ + " (Esc cancels)" : "";
+  std::string s = capture_ ? (status_.empty() ? prompt : status_ + " \xE2\x80\x94 " + prompt)
+                           : (status_.empty() ? "Enter on an action: add, remove or clear its chords" : status_);
   s += " \xC2\xB7 undo " + std::to_string(undo_.undo_depth()) + " \xC2\xB7 redo " + std::to_string(undo_.redo_depth());
   return s;
 }
@@ -154,7 +158,7 @@ KeysEditor::Outcome KeysEditor::handle(const Event& e, const Bindings& nav) {
   status_.clear();
   const MenuEvent ev = menu_.handle(e, nav);
   if (ev.kind == K::Activate) {
-    if (ev.id.rfind("bind.", 0) == 0) { capture_ = ev.id.substr(5); return {O::Changed, {}}; }
+    if (ev.id.rfind("bind.", 0) == 0) { capture_ = ev.id.substr(5); status_.clear(); return {O::Changed, {}}; }
     if (ev.id.rfind("unbind.", 0) == 0) {
       const std::string rest = ev.id.substr(7);
       // "<action>.<chord>": the action has one dot; the chord is what follows the second.

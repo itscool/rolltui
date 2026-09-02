@@ -161,6 +161,16 @@ int main() {
           "two greys: the rotation cannot help, so the proposal adds an attribute (" + (h ? h->what : std::string("none")) + ")");
     const std::vector<Fix> all = propose_fixes(v);
     check(!all.empty(), "propose_fixes lists every failing role and pair (" + std::to_string(all.size()) + ")");
+    // Once the attribute is applied the pair is REPAIRED: not proposed again (the repair
+    // loop would otherwise add underline, then bold, then italic to the same pair and
+    // give up — found by the generator at chaos 0), though it still costs cvd-safe.
+    const Theme v2 = apply_fix(v, *h);
+    bool proposed_again = false;
+    for (const Fix& f : propose_fixes(v2)) proposed_again |= f.role == Role::error || f.role == Role::warning;
+    bool redundant = false, still_confusable = false;
+    for (const PairCheck& c : analyse(v2).pairs) if (c.a == Role::warning) { redundant = c.attribute_redundant; still_confusable = !(c.distinct && c.cvd_distinct); }
+    check(!proposed_again && redundant && still_confusable && !has_badge(analyse(v2).badges, "cvd-safe"),
+          "a pair told apart by an attribute is not proposed again; it is attribute-redundant, still colour-confusable, and cvd-safe is withheld");
     check(propose_fixes(*builtin_theme("default-dark")).empty(), "…and nothing for a theme that passes");
   }
   return report("rolltui theme_analysis_test");

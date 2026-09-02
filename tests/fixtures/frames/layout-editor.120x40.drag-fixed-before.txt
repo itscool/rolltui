@@ -1,0 +1,40 @@
+┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+│ theme   default-da│ │ component                             │ decisi│ layout editor • status                         │
+│ keys    default   │ ├───────────────────────────────────────┼───────│ Select the next node                       Tab │
+│ layout  panel-left│ │ Unicode tables (line-break class,     │ genera│ Select the previous node             Shift-Tab │
+│ size    120x40    │ │ East-Asian width, grapheme property,  │       │ Split into a row (side by side)                │
+│ line    69/103    │ │ Extended_Pictographic, InCB)          │       │ Split into a column (stacked)                  │
+│ follow  yes       │ │ UAX #14 line breaking, UAX #29        │ build │ Swap with the previous sibling                 │
+│ depth   truecolor │ │ grapheme clusters, display width      │       │ Swap with the next sibling                     │
+│ focus   editor    │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
+│                   │ │                                       │       │ Border                                single ▸ │
+│                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Title: status                                  │
+│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Content slot                          status ▸ │
+│                   │ │ mode)                                 │       │ Size (fill | fill N | N% | cells; Alt+arrows n │
+│                   │ │ Key + mouse decoding                  │ build │ [ ] Focusable                                  │
+│                   │ │                                       │       │ Delete this node                               │
+│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Popups                                       ▸ │
+│                   │ │ downgrade                             │       │ Undo                                    Ctrl-Z │
+│                   │ │ Wrap engine                           │ build │ Redo                                    Ctrl-Y │
+│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Load layout                                  ▸ │
+│                   │ │ rel per axis), focus                  │       │ Save layout file as (layouts/<name>.json):     │
+│                   │ │ Menu widget (hierarchical,            │ build │ Reset to the loaded layout…                    │
+│                   │ │ filterable) + list/text widgets       │       │                                                │
+│                   │ │ Layout files (JSON: windows +         │ build │                                                │
+│                   │ │ placements + content slots)           │       │                                                │
+│                   │ │ Markdown block renderer (blocks →     │ build │                                                │
+│                   │ │ styled wrapped lines)                 │       │                                                │
+│                   │ │ Theme (roles → styles, JSON loader,   │ build │                                                │
+│                   │ │ built-ins)                            │       │                                                │
+│                   │ └───────────────────────────────────────┴───────│                                                │
+│                   │                                                 │                                                │
+│                   │ Here is the function you asked for:             │                                                │
+│                   │                                                 │                                                │
+│                   │ ┌ cpp ──────────────────────────────────────────│                                                │
+│                   │ │ int add(int a, int b) {                       │                                                │
+│                   │ │   return a + b;                               │ selected: status  slot status  size 21  border │
+│                   │ └───────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+│                   ├─────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
+│                   │ > type here                                     │                                                │
+└───────────────────┴─────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark (modified) [layout editor]  panel-left  120x40  line 69/103  follow  truecolor  focus:editor
