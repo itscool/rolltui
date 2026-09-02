@@ -171,6 +171,21 @@ std::string render_full(const Frame& next, ColorDepth depth) {
   return out;
 }
 
+std::string frame_to_text(const Frame& f) {
+  std::string out;
+  for (int y = 0; y < f.height(); ++y) {
+    std::string row;
+    for (int x = 0; x < f.width(); ++x) {
+      const Cell& c = f.at(x, y);
+      if (!c.continuation) row += c.text;
+    }
+    const std::size_t end = row.find_last_not_of(' ');
+    out += (end == std::string::npos) ? "" : row.substr(0, end + 1);
+    out += '\n';
+  }
+  return out;
+}
+
 std::string render_diff(const Frame* prev, const Frame& next, ColorDepth depth) {
   if (!prev || prev->width() != next.width() || prev->height() != next.height())
     return render_full(next, depth);

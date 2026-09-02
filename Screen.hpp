@@ -107,6 +107,10 @@ class Frame {
   std::vector<std::string> links_;  // links_[id - 1]
 };
 
+// The frame as plain text: one line per row, continuation cells skipped, trailing
+// spaces trimmed — the golden harness's and the pty test's view of a frame.
+std::string frame_to_text(const Frame& f);
+
 // Bytes that bring the terminal from `prev` (nullptr: unknown) to `next`.
 std::string render_diff(const Frame* prev, const Frame& next, ColorDepth depth);
 

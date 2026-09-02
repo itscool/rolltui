@@ -1316,16 +1316,8 @@ void run_steps(App& app, const std::vector<Step>& steps) {
 }
 
 void print_frame_plain(const Frame& f) {
-  for (int y = 0; y < f.height(); ++y) {
-    std::string row;
-    for (int x = 0; x < f.width(); ++x) {
-      const Cell& c = f.at(x, y);
-      if (!c.continuation) row += c.text;
-    }
-    std::size_t end = row.find_last_not_of(' ');
-    row = (end == std::string::npos) ? "" : row.substr(0, end + 1);
-    std::printf("%s\n", row.c_str());
-  }
+  const std::string text = frame_to_text(f);
+  std::fwrite(text.data(), 1, text.size(), stdout);
 }
 
 int usage() {
