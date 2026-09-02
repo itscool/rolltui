@@ -233,6 +233,9 @@ json::Value layout_to_json_value(const Layout& layout);
 std::optional<Dim> parse_dim(std::string_view text);  // "50%" | "100% - 32" | "25%+2"; NOT "32"
 std::string dim_to_string(Dim d);                     // "32" | "50%" | "100% - 32"
 std::optional<SplitSize> parse_split_size(std::string_view text);  // "fill" | "fill 2" | a dim string
+// The same, plus a bare integer as cells — a size as TYPED (the file says cells with a
+// JSON number; typed, it can only be a string). The menu's `size` input type uses it.
+std::optional<SplitSize> parse_size_text(std::string_view text);
 std::string split_size_to_string(SplitSize s);
 std::string_view anchor_name(Anchor a);
 std::optional<Anchor> anchor_from_name(std::string_view name);

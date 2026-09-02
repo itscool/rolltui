@@ -125,8 +125,10 @@ void ThemeEditor::rebuild_menu() {
     std::vector<MenuItem> fields;
     fields.push_back(MenuItem::choice(base + ".fg", "fg", palette_opts, ""));
     fields.push_back(MenuItem::choice(base + ".bg", "bg", palette_opts, ""));
-    fields.push_back(MenuItem::input(base + ".fg.custom", "custom fg (#rrggbb, 0-255, none)"));
-    fields.push_back(MenuItem::input(base + ".bg.custom", "custom bg (#rrggbb, 0-255, none)"));
+    InputSpec colour;
+    colour.type = InputType::Color;
+    fields.push_back(MenuItem::input(base + ".fg.custom", "custom fg", colour));
+    fields.push_back(MenuItem::input(base + ".bg.custom", "custom bg", colour));
     for (const char* a : kAttrs) fields.push_back(MenuItem::toggle(base + "." + a, a, false));
     roles.push_back(MenuItem::submenu(base, name, std::move(fields)));
   }
@@ -135,6 +137,15 @@ void ThemeEditor::rebuild_menu() {
   for (const std::string& n : shipped_) shipped_opts.push_back(MenuItem::action(n, n));
   std::vector<MenuItem> rulesets;
   for (Ruleset r : kRulesets) rulesets.push_back(MenuItem::action(std::string(ruleset_name(r)), std::string(ruleset_name(r))));
+  InputSpec seed, chaos, name;
+  seed.type = InputType::Int;
+  seed.min = 0;
+  chaos.type = InputType::Float;
+  chaos.min = 0;
+  chaos.max = 1;
+  chaos.step = 0.1;
+  chaos.precision = 2;
+  name.type = InputType::Name;
   MenuItem root = MenuItem::submenu(
       "root", "theme editor",
       {MenuItem::submenu("roles", "Roles", std::move(roles)),
@@ -143,11 +154,11 @@ void ThemeEditor::rebuild_menu() {
        MenuItem::action("check", "Check: contrast, colour-vision, badges"),
        MenuItem::submenu("fixes", "Fixes (proposals; Enter applies one, undoable)", {}),
        MenuItem::submenu("generate", "Generate a theme (seeded)",
-                         {MenuItem::choice("gen.ruleset", "Ruleset", rulesets, "analogous"), MenuItem::input("gen.seed", "Seed", "1"),
-                          MenuItem::input("gen.chaos", "Chaos 0..1", "0"), MenuItem::action("gen.run", "Generate (replaces both variants, undoable)")}),
+                         {MenuItem::choice("gen.ruleset", "Ruleset", rulesets, "analogous"), MenuItem::input("gen.seed", "Seed", seed, "1"),
+                          MenuItem::input("gen.chaos", "Chaos", chaos, "0"), MenuItem::action("gen.run", "Generate (replaces both variants, undoable)")}),
        MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
        MenuItem::choice("load", "Load preset", std::move(load_opts), ""),
-       MenuItem::input("save", "Save as preset"),
+       MenuItem::input("save", "Save as preset", name),
        MenuItem::choice("write_shipped", "Write a SHIPPED preset (the editor's privilege)", std::move(shipped_opts), ""),
        MenuItem::action("reset_loaded", "Reset to the loaded preset\xE2\x80\xA6"),
        MenuItem::action("reset_builtin", "Reset to the built-in default\xE2\x80\xA6")});
@@ -270,14 +281,15 @@ std::optional<Role> ThemeEditor::focused_role() const {
 std::optional<Color> ThemeEditor::highlighted_color() const {
   const MenuItem* it = menu_.selected_item();
   if (!it) return std::nullopt;
-  if (menu_.editing() && it->id.size() > 7 && it->id.substr(it->id.size() - 7) == ".custom") return parse_color(it->value);
+  if (menu_.editing() && it->id.size() > 7 && it->id.substr(it->id.size() - 7) == ".custom") return parse_color(menu_.editing_text());
   if (const std::optional<Field> f = field_of(menu_.level().id); f && (f->name == "fg" || f->name == "bg")) return parse_color(it->id);
   return std::nullopt;
 }
 
 std::string ThemeEditor::status_line() const {
   std::string s;
-  if (preview_) s = "previewing \xE2\x80\x94 Enter commits, Esc cancels";
+  if (menu_.editing() && !menu_.edit_reason().empty()) s = "refused: " + menu_.edit_reason();
+  else if (preview_) s = "previewing \xE2\x80\x94 Enter commits, Esc cancels";
   else s = status_.empty() ? "Enter commits, Esc cancels" : status_;
   s += " \xC2\xB7 undo " + std::to_string(undo_.undo_depth()) + " \xC2\xB7 redo " + std::to_string(undo_.redo_depth());
   s += std::string(" \xC2\xB7 ") + (mode_ == ThemeMode::Dark ? "dark" : "light");
@@ -380,7 +392,8 @@ ThemeEditor::Outcome ThemeEditor::handle(const Event& e, const Bindings& nav) {
   if (menu_.editing() && sel) {
     if (const std::optional<Field> f = field_of(sel->id)) {
       begin_preview();
-      if (std::optional<Color> c = parse_color(sel->value)) apply(*f, *c);
+      // The editing text, never the item's value: that is the committed colour.
+      if (std::optional<Color> c = parse_color(menu_.editing_text())) apply(*f, *c);
       else {  // not (yet) a colour: show the committed value while typing continues
         const Theme& pt = mode_ == ThemeMode::Dark ? preview_->dark : preview_->light;
         apply(*f, f->name == "fg" ? pt.style(f->role).fg : pt.style(f->role).bg);

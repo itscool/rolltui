@@ -10,7 +10,7 @@
 │ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
 │ │ widgets       │             │ this small    │ │                   │ Title: status                                  │
 │ │ Layout files  │ build       │ reuses the    │ │                   │ Content slot                          status ▸ │
-│ │ (JSON:        │             │ theme         │ │                   │ Size (fill | fill N | N% | cells; Alt+arrows n │
+│ │ (JSON:        │             │ theme         │ │                   │ Size (Alt+arrows nudge): 70                    │
 │ │ windows +     │             │ loader's hand │ │                   │ [ ] Focusable                                  │
 │ │ placements +  │             │ parser; hot-  │ │                   │ Delete this node                               │
 │ │ content       │             │ reloaded      │ │                   │ Popups                                       ▸ │

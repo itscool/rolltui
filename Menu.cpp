@@ -3,8 +3,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 #include "rolltui/Json.hpp"
+#include "rolltui/Layout.hpp"
 #include "rolltui/Unicode.hpp"
 
 namespace rolltui {
@@ -52,6 +56,283 @@ MenuItem MenuItem::input(std::string id, std::string label, std::string value) {
   m.value = std::move(value);
   return m;
 }
+MenuItem MenuItem::input(std::string id, std::string label, InputSpec spec, std::string value) {
+  MenuItem m = input(std::move(id), std::move(label), std::move(value));
+  m.spec = std::move(spec);
+  return m;
+}
+
+// ---- typed inputs: prefix validity, validity, canonical form -------------------------
+
+std::string_view input_type_name(InputType t) {
+  switch (t) {
+    case InputType::Text: return "text";
+    case InputType::Int: return "int";
+    case InputType::Float: return "float";
+    case InputType::Color: return "color";
+    case InputType::Size: return "size";
+    case InputType::Dim: return "dim";
+    case InputType::Name: return "name";
+  }
+  return "text";
+}
+
+std::optional<InputType> input_type_from_name(std::string_view s) {
+  for (InputType t : {InputType::Text, InputType::Int, InputType::Float, InputType::Color, InputType::Size, InputType::Dim, InputType::Name})
+    if (input_type_name(t) == s) return t;
+  return std::nullopt;
+}
+
+namespace {
+
+std::string num_text(double v, int precision) {
+  char b[64];
+  if (precision >= 0) {
+    std::snprintf(b, sizeof b, "%.*f", precision, v);
+    return b;
+  }
+  if (v == std::floor(v) && std::fabs(v) < 1e15) {
+    std::snprintf(b, sizeof b, "%.0f", v);
+    return b;
+  }
+  std::snprintf(b, sizeof b, "%.10g", v);
+  return b;
+}
+
+bool all_digits(std::string_view s) {
+  if (s.empty()) return false;
+  for (char c : s)
+    if (c < '0' || c > '9') return false;
+  return true;
+}
+
+// Could an integer whose decimal text begins with `v` (already read, `neg` signed)
+// still land in [min, max] by appending digits?  ∃k ≥ 0: [v·10^k, v·10^k + 10^k − 1]
+// (mirrored for negatives) meets the range.
+bool int_reachable(double v, bool neg, double min, double max) {
+  double scale = 1;
+  for (int k = 0; k <= 18; ++k, scale *= 10) {
+    const double lo = v * scale, hi = v * scale + (scale - 1);
+    const double a = neg ? -hi : lo, b = neg ? -lo : hi;
+    if (b >= min && a <= max) return true;
+    if (lo > std::max(std::fabs(min), std::fabs(max))) break;
+  }
+  return false;
+}
+
+// Reads a signed decimal prefix: sign, integer digits, optional '.', fraction digits.
+// Returns false when a character is not part of a number.
+struct NumParts {
+  bool neg = false, dot = false;
+  std::string ip, fp;
+};
+bool split_number(std::string_view s, NumParts& out) {
+  std::size_t i = 0;
+  if (i < s.size() && s[i] == '-') { out.neg = true; ++i; }
+  for (; i < s.size(); ++i) {
+    const char c = s[i];
+    if (c >= '0' && c <= '9') { (out.dot ? out.fp : out.ip).push_back(c); continue; }
+    if (c == '.' && !out.dot) { out.dot = true; continue; }
+    return false;
+  }
+  return true;
+}
+
+InputCheck check_int(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const std::string range = input_hint(spec);
+  NumParts p;
+  if (!split_number(text, p) || p.dot) { c.reason = "only digits" + std::string(spec.min < 0 ? " and a leading '-'" : "") + " (" + range + ")"; return c; }
+  if (p.neg && spec.min >= 0) { c.reason = "no negatives (" + range + ")"; return c; }
+  const double v = p.ip.empty() ? 0 : std::strtod(p.ip.c_str(), nullptr);
+  if (!p.ip.empty() && !int_reachable(v, p.neg, spec.min, spec.max)) { c.reason = "nothing starting with '" + std::string(text) + "' fits " + range; return c; }
+  if (p.ip.empty() && p.neg && !int_reachable(0, true, spec.min, spec.max) && !(spec.min < 0)) { c.reason = "no negatives (" + range + ")"; return c; }
+  c.prefix_ok = true;
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : "a value is needed (" + range + ")"; return c; }
+  if (p.ip.empty()) { c.reason = "a whole number (" + range + ")"; return c; }
+  const double signed_v = p.neg ? -v : v;
+  if (signed_v < spec.min || signed_v > spec.max) { c.reason = "a whole number " + range; return c; }
+  c.valid = true;
+  c.canonical = num_text(signed_v, 0);
+  return c;
+}
+
+InputCheck check_float(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const std::string range = input_hint(spec);
+  NumParts p;
+  if (!split_number(text, p)) { c.reason = "only digits, one '.'" + std::string(spec.min < 0 ? " and a leading '-'" : "") + " (" + range + ")"; return c; }
+  if (p.neg && spec.min >= 0) { c.reason = "no negatives (" + range + ")"; return c; }
+  if (spec.precision >= 0 && static_cast<int>(p.fp.size()) > spec.precision) { c.reason = "at most " + std::to_string(spec.precision) + " digits after the point"; return c; }
+  const double ip = p.ip.empty() ? 0 : std::strtod(p.ip.c_str(), nullptr);
+  // Reachable values: without a point, any integer continuation plus a fraction; with a
+  // point and d fraction digits, [v, v + 10^-d).
+  bool reachable;
+  if (!p.dot) {
+    const double lo = ip, hi = ip + 1;  // ip followed by ".xxx"
+    const double a = p.neg ? -hi : lo, b = p.neg ? -lo : hi;
+    reachable = p.ip.empty() ? (p.neg ? spec.min < 0 : true) : (int_reachable(ip, p.neg, spec.min, spec.max) || (b >= spec.min && a <= spec.max));
+  } else {
+    const double v = std::strtod(((p.ip.empty() ? "0" : p.ip) + "." + (p.fp.empty() ? "0" : p.fp)).c_str(), nullptr);
+    const double width = std::pow(10.0, -static_cast<double>(p.fp.size()));
+    const double lo = v, hi = v + width;
+    const double a = p.neg ? -hi : lo, b = p.neg ? -lo : hi;
+    reachable = b >= spec.min && a <= spec.max;
+  }
+  if (!reachable) { c.reason = "nothing starting with '" + std::string(text) + "' fits " + range; return c; }
+  c.prefix_ok = true;
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : "a value is needed (" + range + ")"; return c; }
+  if (p.ip.empty() && p.fp.empty()) { c.reason = "a number (" + range + ")"; return c; }
+  const double v = std::strtod(std::string(text).c_str(), nullptr);
+  if (v < spec.min || v > spec.max) { c.reason = "a number " + range; return c; }
+  c.valid = true;
+  c.canonical = num_text(v, spec.precision);
+  return c;
+}
+
+bool is_prefix_ci(std::string_view text, std::string_view word) {
+  if (text.size() > word.size()) return false;
+  for (std::size_t i = 0; i < text.size(); ++i)
+    if (std::tolower(static_cast<unsigned char>(text[i])) != word[i]) return false;
+  return true;
+}
+
+InputCheck check_color(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const char* hint = "#rrggbb | 0-255 | none";
+  bool prefix = text.empty() || is_prefix_ci(text, "none");
+  if (!prefix && text[0] == '#') {
+    prefix = text.size() <= 7;
+    for (std::size_t i = 1; prefix && i < text.size(); ++i) prefix = std::isxdigit(static_cast<unsigned char>(text[i])) != 0;
+  } else if (!prefix && all_digits(text)) {
+    prefix = text.size() <= 3 && int_reachable(std::strtod(std::string(text).c_str(), nullptr), false, 0, 255);
+  }
+  if (!prefix) { c.reason = std::string("not the start of a colour (") + hint + ")"; return c; }
+  c.prefix_ok = true;
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : std::string("a colour is needed (") + hint + ")"; return c; }
+  std::string lower(text);
+  for (char& ch : lower) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  if (std::optional<Color> col = parse_color(lower)) { c.valid = true; c.canonical = color_to_string(*col); return c; }
+  c.reason = std::string("not a colour yet (") + hint + ")";
+  return c;
+}
+
+// N | N% | N% ± M — the shapes a Dim can be typed in; `size` adds fill / fill N.
+bool dim_prefix(std::string_view t, bool size) {
+  std::size_t i = 0;
+  if (size && !t.empty() && t[0] == 'f') {
+    if (is_prefix_ci(t, "fill")) return true;
+    if (t.size() < 4 || t.substr(0, 4) != "fill") return false;
+    i = 4;
+    if (i < t.size() && t[i] != ' ') return false;
+    if (i < t.size()) ++i;
+    for (; i < t.size(); ++i)
+      if (t[i] < '0' || t[i] > '9') return false;
+    return true;
+  }
+  while (i < t.size() && t[i] >= '0' && t[i] <= '9') ++i;
+  if (i == t.size()) return true;
+  if (i == 0 || t[i] != '%') return false;
+  ++i;
+  if (i == t.size()) return true;
+  if (t[i] == ' ') ++i;
+  if (i == t.size()) return true;
+  if (t[i] != '+' && t[i] != '-') return false;
+  ++i;
+  if (i < t.size() && t[i] == ' ') ++i;
+  for (; i < t.size(); ++i)
+    if (t[i] < '0' || t[i] > '9') return false;
+  return true;
+}
+
+InputCheck check_size(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const char* hint = "fill | fill N | N% | N% ± cells | cells";
+  if (!dim_prefix(text, true)) { c.reason = std::string("not the start of a size (") + hint + ")"; return c; }
+  c.prefix_ok = true;
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : std::string("a size is needed (") + hint + ")"; return c; }
+  if (std::optional<SplitSize> s = parse_size_text(text)) { c.valid = true; c.canonical = split_size_to_string(*s); return c; }
+  c.reason = std::string("not a size yet (") + hint + ")";
+  return c;
+}
+
+InputCheck check_dim(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const char* hint = "cells | N% | N% ± cells";
+  if (!dim_prefix(text, false)) { c.reason = std::string("not the start of a dim (") + hint + ")"; return c; }
+  c.prefix_ok = true;
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : std::string("a dim is needed (") + hint + ")"; return c; }
+  std::optional<Dim> d = parse_dim(text);
+  if (!d && all_digits(text)) d = Dim::abs(std::atoi(std::string(text).c_str()));
+  if (d) { c.valid = true; c.canonical = dim_to_string(*d); return c; }
+  c.reason = std::string("not a dim yet (") + hint + ")";
+  return c;
+}
+
+InputCheck check_name(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const std::size_t cap = spec.max_len ? spec.max_len : 64;
+  const char* hint = "letters, digits, - _ . (no leading dot)";
+  if (text.size() > cap) { c.reason = "at most " + std::to_string(cap) + " characters"; return c; }
+  if (!text.empty() && text[0] == '.') { c.reason = std::string("a name cannot start with a dot (") + hint + ")"; return c; }
+  for (char ch : text)
+    if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch == '-' || ch == '_' || ch == '.')) { c.reason = std::string("only ") + hint; return c; }
+  c.prefix_ok = true;
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : "a name is needed"; return c; }
+  c.valid = true;
+  c.canonical = std::string(text);
+  return c;
+}
+
+InputCheck check_text(const InputSpec& spec, std::string_view text) {
+  InputCheck c;
+  const std::size_t len = unicode::graphemes(text).size();
+  if (spec.max_len && len > spec.max_len) { c.reason = "at most " + std::to_string(spec.max_len) + " characters"; return c; }
+  c.prefix_ok = true;
+  if (spec.min_len && len < spec.min_len) { c.reason = "at least " + std::to_string(spec.min_len) + " characters"; return c; }
+  c.valid = true;
+  c.canonical = std::string(text);
+  return c;
+}
+
+}  // namespace
+
+std::string input_hint(const InputSpec& spec) {
+  if (!spec.hint.empty()) return spec.hint;
+  auto bound = [&](double v, bool is_min) {
+    if (spec.type == InputType::Int) {
+      if (is_min && v <= -1e15) return std::string("any");
+      if (!is_min && v >= 1e15) return std::string("any");
+      return num_text(v, 0);
+    }
+    if (is_min && v <= -1e15) return std::string("any");
+    if (!is_min && v >= 1e15) return std::string("any");
+    return num_text(v, spec.precision >= 0 ? spec.precision : 1);
+  };
+  switch (spec.type) {
+    case InputType::Int: return bound(spec.min, true) + ".." + bound(spec.max, false);
+    case InputType::Float: return bound(spec.min, true) + ".." + bound(spec.max, false) + (spec.precision >= 0 ? " (" + std::to_string(spec.precision) + " digits)" : "");
+    case InputType::Color: return "#rrggbb | 0-255 | none";
+    case InputType::Size: return "fill | fill N | N% | N% ± cells | cells";
+    case InputType::Dim: return "cells | N% | N% ± cells";
+    case InputType::Name: return "a name: letters, digits, - _ .";
+    case InputType::Text: return spec.max_len ? "up to " + std::to_string(spec.max_len) + " characters" : "";
+  }
+  return "";
+}
+
+InputCheck check_input(const InputSpec& spec, std::string_view text) {
+  switch (spec.type) {
+    case InputType::Int: return check_int(spec, text);
+    case InputType::Float: return check_float(spec, text);
+    case InputType::Color: return check_color(spec, text);
+    case InputType::Size: return check_size(spec, text);
+    case InputType::Dim: return check_dim(spec, text);
+    case InputType::Name: return check_name(spec, text);
+    case InputType::Text: return check_text(spec, text);
+  }
+  return {};
+}
 
 // ---- JSON ----------------------------------------------------------------------------
 
@@ -85,6 +366,7 @@ MenuItem item_from_json(const Value& v, const std::string& where, MenuLoadReport
   MenuItem it;
   if (!v.is_object()) { rep.bad_values.push_back(where + ": expected an item object"); return it; }
   bool kind_given = false;
+  std::vector<std::pair<std::string, const Value*>> spec_keys;
   for (const auto& [k, x] : v.obj) {
     const std::string at = where + "." + k;
     if (k == "id" || k == "label" || k == "shortcut" || k == "value") {
@@ -106,11 +388,41 @@ MenuItem item_from_json(const Value& v, const std::string& where, MenuLoadReport
       std::vector<std::string> option_ids;
       for (std::size_t i = 0; i < x.arr.size(); ++i)
         it.children.push_back(item_from_json(x.arr[i], at + "[" + std::to_string(i) + "]", rep, choice ? option_ids : ids));
+    } else if (k == "type" || k == "min" || k == "max" || k == "step" || k == "precision" || k == "max_len" || k == "min_len" || k == "optional" ||
+               k == "validator" || k == "hint") {
+      spec_keys.emplace_back(k, &x);
     } else {
       rep.unknown_keys.push_back(at);
     }
   }
   if (!kind_given) it.kind = v.has("items") ? MenuItem::Kind::Submenu : MenuItem::Kind::Action;
+  for (const auto& [k, xp] : spec_keys) {
+    const Value& x = *xp;
+    const std::string at = where + "." + k;
+    if (it.kind != MenuItem::Kind::Input) { rep.unknown_keys.push_back(at + " (only an input has it)"); continue; }
+    if (k == "type") {
+      auto t = x.is_string() ? input_type_from_name(x.str) : std::nullopt;
+      if (!t) rep.bad_values.push_back(at + ": expected text | int | float | color | size | dim | name");
+      else it.spec.type = *t;
+    } else if (k == "min" || k == "max" || k == "step") {
+      if (!x.is_number()) { rep.bad_values.push_back(at + ": expected a number"); continue; }
+      (k == "min" ? it.spec.min : k == "max" ? it.spec.max : it.spec.step) = x.num;
+    } else if (k == "precision" || k == "max_len" || k == "min_len") {
+      if (!x.is_number() || x.num < 0 || x.num != std::floor(x.num)) { rep.bad_values.push_back(at + ": expected a whole number ≥ 0"); continue; }
+      if (k == "precision") it.spec.precision = static_cast<int>(x.num);
+      else if (k == "max_len") it.spec.max_len = static_cast<std::size_t>(x.num);
+      else it.spec.min_len = static_cast<std::size_t>(x.num);
+    } else if (k == "optional") {
+      if (!x.is_bool()) { rep.bad_values.push_back(at + ": expected true or false"); continue; }
+      it.spec.optional = x.b;
+    } else if (k == "validator" || k == "hint") {
+      if (!x.is_string()) { rep.bad_values.push_back(at + ": expected a string"); continue; }
+      (k == "validator" ? it.spec.validator : it.spec.hint) = x.str;
+    }
+  }
+  if (it.kind == MenuItem::Kind::Input && it.spec.min > it.spec.max) rep.bad_values.push_back(where + ": min is above max");
+  if (it.kind == MenuItem::Kind::Input && !it.spec.validator.empty() && it.spec.type != InputType::Text)
+    rep.bad_values.push_back(where + ".validator: only a text input takes a validator (a typed input validates itself)");
   if (it.id.empty()) rep.bad_values.push_back(where + ": an item needs an \"id\"");
   else if (std::find(ids.begin(), ids.end(), it.id) != ids.end()) rep.bad_values.push_back(where + ".id: duplicate id '" + it.id + "'");
   else ids.push_back(it.id);
@@ -129,6 +441,20 @@ Value item_to_json(const MenuItem& it) {
   if (!it.enabled) o.set("enabled", Value::boolean(false));
   if (it.checked) o.set("checked", Value::boolean(true));
   if (!it.value.empty()) o.set("value", Value::string(it.value));
+  if (it.kind == MenuItem::Kind::Input) {
+    const InputSpec d;
+    const InputSpec& s = it.spec;
+    if (s.type != d.type) o.set("type", Value::string(std::string(input_type_name(s.type))));
+    if (s.min != d.min) o.set("min", Value::number(s.min));
+    if (s.max != d.max) o.set("max", Value::number(s.max));
+    if (s.step != d.step) o.set("step", Value::number(s.step));
+    if (s.precision != d.precision) o.set("precision", Value::number(s.precision));
+    if (s.max_len != d.max_len) o.set("max_len", Value::number(static_cast<double>(s.max_len)));
+    if (s.min_len != d.min_len) o.set("min_len", Value::number(static_cast<double>(s.min_len)));
+    if (s.optional) o.set("optional", Value::boolean(true));
+    if (!s.validator.empty()) o.set("validator", Value::string(s.validator));
+    if (!s.hint.empty()) o.set("hint", Value::string(s.hint));
+  }
   if (!it.children.empty()) {
     Value arr = Value::array();
     for (const MenuItem& c : it.children) arr.arr.push_back(item_to_json(c));
@@ -168,8 +494,14 @@ std::string menu_to_json(const MenuItem& root) { return json::dump(item_to_json(
 
 // ---- the widget ----------------------------------------------------------------------
 
-Menu::Menu() { root_.kind = MenuItem::Kind::Submenu; }
-Menu::Menu(MenuItem root) { set_root(std::move(root)); }
+Menu::Menu() {
+  root_.kind = MenuItem::Kind::Submenu;
+  InputOptions o;
+  o.single_line = true;
+  o.prompt.clear();
+  edit_.set_options(o);
+}
+Menu::Menu(MenuItem root) : Menu() { set_root(std::move(root)); }
 
 void Menu::set_root(MenuItem root) {
   root_ = std::move(root);
@@ -183,6 +515,7 @@ void Menu::reset() {
   top_ = 0;
   filter_.clear();
   editing_ = false;
+  edit_reason_.clear();
   palette_ = false;
   rebuild_flat();
 }
@@ -193,6 +526,11 @@ MenuItem* find_in(MenuItem& it, std::string_view id) {
   for (MenuItem& c : it.children)
     if (MenuItem* f = find_in(c, id)) return f;
   return nullptr;
+}
+void collect_validators(const MenuItem& it, std::vector<std::string>& out) {
+  if (it.kind == MenuItem::Kind::Input && !it.spec.validator.empty() && std::find(out.begin(), out.end(), it.spec.validator) == out.end())
+    out.push_back(it.spec.validator);
+  for (const MenuItem& c : it.children) collect_validators(c, out);
 }
 }  // namespace
 
@@ -226,6 +564,23 @@ bool Menu::set_options(std::string_view id, std::vector<MenuItem> options) {
   return true;
 }
 
+void Menu::set_validator(std::string_view name, Validator v) {
+  for (auto& [n, fn] : validators_)
+    if (n == name) { fn = std::move(v); return; }
+  validators_.emplace_back(std::string(name), std::move(v));
+}
+
+std::vector<std::string> Menu::unknown_validators() const {
+  std::vector<std::string> used, out;
+  collect_validators(root_, used);
+  for (const std::string& u : used) {
+    bool known = false;
+    for (const auto& [n, fn] : validators_) known |= n == u;
+    if (!known) out.push_back(u);
+  }
+  return out;
+}
+
 MenuItem* Menu::by_path(const std::vector<std::size_t>& p) {
   MenuItem* it = &root_;
   for (std::size_t i : p) {
@@ -248,7 +603,6 @@ MenuItem& Menu::level_mut() {
 void Menu::rebuild_flat() {
   flat_.clear();
   std::vector<std::size_t> p;
-  std::string crumbs;
   auto walk = [&](auto& self, const MenuItem& it, const std::string& prefix) -> void {
     for (std::size_t i = 0; i < it.children.size(); ++i) {
       const MenuItem& c = it.children[i];
@@ -334,7 +688,6 @@ void Menu::descend(std::size_t child) {
   filter_.clear();
   sel_ = 0;
   top_ = 0;
-  // A Choice opens on its current option.
   const MenuItem& lv = level();
   if (lv.kind == MenuItem::Kind::Choice)
     for (std::size_t i = 0; i < lv.children.size(); ++i)
@@ -353,10 +706,97 @@ bool Menu::ascend() {
   return true;
 }
 
+// ---- editing a typed field -------------------------------------------------------------
+
+void Menu::begin_edit(MenuItem& it) {
+  editing_ = true;
+  edit_reason_.clear();
+  edit_.set_text(it.value);
+  edit_.select_all();  // typing replaces; a first arrow key places the caret
+}
+
+void Menu::refresh_reason() {
+  const MenuItem* it = item_at(sel_);
+  if (!it) return;
+  const InputCheck c = check_input(it->spec, edit_.text());
+  edit_reason_ = c.valid ? "" : c.reason;
+}
+
+bool Menu::try_insert(std::string_view text) {
+  MenuItem* it = item_at_mut(sel_);
+  if (!it) return false;
+  // What the text would be after the insertion (replacing a selection), checked as a
+  // prefix of some valid value before it lands. Never a coercion: refused or inserted.
+  Input probe = edit_;
+  probe.insert(text);
+  const InputCheck c = check_input(it->spec, probe.text());
+  if (!c.prefix_ok) { edit_reason_ = c.reason; return false; }
+  edit_ = std::move(probe);
+  refresh_reason();
+  return true;
+}
+
+void Menu::step(int direction) {
+  MenuItem* it = item_at_mut(sel_);
+  if (!it || (it->spec.type != InputType::Int && it->spec.type != InputType::Float)) return;
+  const InputSpec& s = it->spec;
+  InputCheck now = check_input(s, edit_.text());
+  double v;
+  if (now.valid && !edit_.text().empty()) v = std::strtod(edit_.text().c_str(), nullptr);
+  else {
+    const InputCheck committed = check_input(s, it->value);
+    v = committed.valid && !it->value.empty() ? std::strtod(it->value.c_str(), nullptr) : (s.min > -1e15 ? s.min : 0);
+    if (!(now.valid && !edit_.text().empty())) { edit_.set_text(num_text(v, s.type == InputType::Int ? 0 : s.precision)); refresh_reason(); return; }
+  }
+  v = std::clamp(v + direction * s.step, s.min, s.max);
+  edit_.set_text(num_text(v, s.type == InputType::Int ? 0 : s.precision));
+  refresh_reason();
+}
+
+MenuEvent Menu::handle_edit(const Event& e, const Bindings& b) {
+  using K = MenuEvent::Kind;
+  MenuItem* it = item_at_mut(sel_);
+  if (!it) { editing_ = false; return {}; }
+  if (const auto* p = std::get_if<PasteEvent>(&e)) { try_insert(p->text); return {}; }
+  const auto* k = std::get_if<KeyEvent>(&e);
+  if (!k) return {};
+  const std::string_view ed = b.action_for(*k, "edit");
+  if (ed == "edit.commit") {
+    InputCheck c = check_input(it->spec, edit_.text());
+    if (c.valid && it->spec.type == InputType::Text && !it->spec.validator.empty()) {
+      bool known = false;
+      for (const auto& [n, fn] : validators_)
+        if (n == it->spec.validator) {
+          known = true;
+          if (std::optional<std::string> why = fn(edit_.text())) { c.valid = false; c.reason = *why; }
+        }
+      if (!known) { c.valid = false; c.reason = "no validator named '" + it->spec.validator + "' is registered"; }
+    }
+    if (!c.valid) { edit_reason_ = c.reason; return {}; }
+    it->value = c.canonical;
+    editing_ = false;
+    edit_reason_.clear();
+    return {K::Input, it->id, it->value, false};
+  }
+  if (ed == "edit.cancel") { editing_ = false; edit_reason_.clear(); return {}; }
+  if (ed == "edit.step_up") { step(+1); return {}; }
+  if (ed == "edit.step_down") { step(-1); return {}; }
+  if (k->key == Key::Char && !k->ctrl && !k->alt && k->ch >= 0x20 && k->ch != 0x7F) {
+    std::string s;
+    unicode::append_utf8(s, k->ch);
+    try_insert(s);
+    return {};
+  }
+  // Everything else is the input widget's: the caret, selection, deletions, kills.
+  // Submit/Eof there are not ours (Enter is edit.commit above; Ctrl-D deletes forward).
+  const InputAction a = edit_.handle(e, b);
+  if (a == InputAction::Handled) refresh_reason();
+  return {};
+}
+
 MenuEvent Menu::act(std::size_t vis_index) {
   MenuItem* it = item_at_mut(vis_index);
   if (!it || !it->enabled) return {};
-  // In palette mode the leaf may be a Choice option: its parent is the Choice.
   if (palette_) {
     const FlatEntry& fe = flat_[visible()[vis_index]];
     if (fe.path.size() >= 2) {
@@ -386,19 +826,19 @@ MenuEvent Menu::act(std::size_t vis_index) {
       descend(visible()[vis_index]);
       return {};
     case MenuItem::Kind::Input:
-      editing_ = true;
-      edit_backup_ = it->value;
       sel_ = vis_index;
+      begin_edit(*it);
       return {};
   }
   return {};
 }
 
 MenuEvent Menu::handle(const Event& e, const Bindings& b) {
+  if (editing_) return handle_edit(e, b);
   if (const auto* k = std::get_if<KeyEvent>(&e)) return handle_key(*k, b);
   if (const auto* m = std::get_if<MouseEvent>(&e)) return handle_mouse(*m);
   if (const auto* p = std::get_if<PasteEvent>(&e)) {
-    // Pasted text goes where typed text would: the edit, else the filter.
+    // Pasted text goes where typed text would: the filter.
     for (char c : p->text)
       if (static_cast<unsigned char>(c) >= 0x20 && c != 0x7F) {
         KeyEvent ke;
@@ -415,21 +855,6 @@ MenuEvent Menu::handle_key(const KeyEvent& k, const Bindings& b) {
   using K = MenuEvent::Kind;
   const bool text = k.key == Key::Char && !k.ctrl && !k.alt && k.ch >= 0x20 && k.ch != 0x7F;
   const std::string_view action = text ? std::string_view() : b.action_for(k, "menu");
-  if (editing_) {
-    MenuItem* it = item_at_mut(sel_);
-    if (!it) { editing_ = false; return {}; }
-    if (text) { unicode::append_utf8(it->value, k.ch); return {}; }
-    if (action == "menu.activate") { editing_ = false; return {K::Input, it->id, it->value, false}; }
-    if (action == "menu.back") { it->value = edit_backup_; editing_ = false; return {}; }
-    if (action == "menu.erase") {
-      if (it->value.empty()) return {};
-      std::vector<unicode::Grapheme> g = unicode::graphemes(it->value);
-      it->value.erase(g.back().offset);
-      return {};
-    }
-    if (action == "menu.clear_value") { it->value.clear(); return {}; }
-    return {};
-  }
   const std::vector<std::size_t> vis = visible();
   const std::size_t n = vis.size();
   auto move_to = [&](std::size_t i) {
@@ -487,7 +912,6 @@ MenuEvent Menu::handle_mouse(const MouseEvent& m) {
   if (m.y < first_item_row) return {};
   const std::size_t idx = static_cast<std::size_t>(top_) + static_cast<std::size_t>(m.y - first_item_row);
   if (idx >= visible().size()) return {};
-  if (editing_) editing_ = false;
   sel_ = idx;
   return act(sel_);
 }
@@ -534,11 +958,20 @@ void Menu::draw(Frame& f, const Theme& theme, bool focused) const {
   const std::vector<std::size_t> vis = visible();
   int y = a.y;
   if (a.h >= 2) {
-    std::string crumb = breadcrumb();
-    int used = f.put_text(x0, y, crumb, theme.style(Role::menu_breadcrumb), w, opt_.ambiguous_wide);
-    if (!filter_.empty() || editing_) {
-      const std::string tail = editing_ ? "  (editing: Enter saves, Esc cancels)" : "  /" + filter_;
-      f.put_text(x0 + used, y, tail, theme.style(Role::menu_shortcut), std::max(w - used, 0), opt_.ambiguous_wide);
+    if (editing_) {
+      // The breadcrumb yields to the field's guidance: the reason a key or a commit was
+      // refused when there is one, else the constraint — first, because a popup is
+      // narrow and where you are is already shown by the highlighted field with the
+      // caret in it.
+      const MenuItem* it = item_at(sel_);
+      const std::string hint = it ? input_hint(it->spec) : "";
+      std::string line = !edit_reason_.empty() ? "\xE2\x9C\x97 " + edit_reason_
+                         : hint.empty()        ? "editing \xE2\x80\x94 Enter commits, Esc cancels"
+                                               : "editing \xE2\x80\x94 " + hint;
+      f.put_text(x0, y, line, theme.style(edit_reason_.empty() ? Role::menu_shortcut : Role::warning), w, opt_.ambiguous_wide);
+    } else {
+      const int used = f.put_text(x0, y, breadcrumb(), theme.style(Role::menu_breadcrumb), w, opt_.ambiguous_wide);
+      if (!filter_.empty()) f.put_text(x0 + used, y, "  /" + filter_, theme.style(Role::menu_shortcut), std::max(w - used, 0), opt_.ambiguous_wide);
     }
     ++y;
   }
@@ -557,8 +990,22 @@ void Menu::draw(Frame& f, const Theme& theme, bool focused) const {
     const bool is_sel = i == sel_;
     const Style& base = is_sel ? sel : (it->enabled ? item : muted);
     f.fill({x0, y + r, w, 1}, base);
+    if (is_sel && editing_) {
+      // The field: its label, then the input widget's own drawing (caret, selection).
+      const std::string label = it->label + ": ";
+      const int used = f.put_text(x0, y + r, label, base, w, opt_.ambiguous_wide);
+      const Rect field{x0 + used, y + r, std::max(w - used, 0), 1};
+      if (field.w > 0) {
+        Input& ed = const_cast<Input&>(edit_);
+        InputOptions o = ed.options();
+        o.ambiguous_wide = opt_.ambiguous_wide;
+        if (!(o == ed.options())) ed.set_options(o);
+        ed.layout(field);
+        ed.draw(f, theme, focused);
+      }
+      continue;
+    }
     std::string text = row_text(*it, palette_, i);
-    // The right-hand side: a Choice's value and/or the descend arrow, or a shortcut.
     std::string right;
     if (!palette_) {
       if (it->kind == MenuItem::Kind::Choice) right = it->value + " \xE2\x96\xB8";
@@ -572,17 +1019,11 @@ void Menu::draw(Frame& f, const Theme& theme, bool focused) const {
       const Style rs = is_sel ? sel : (it->kind == MenuItem::Kind::Choice || it->kind == MenuItem::Kind::Submenu ? base : shortcut);
       f.put_text(x0 + std::max(w - rw, used + 1), y + r, right, rs, std::max(w - std::max(w - rw, used + 1), 0), opt_.ambiguous_wide);
     }
-    if (is_sel && editing_ && focused) {
-      const int cx = std::min(x0 + used, x0 + w - 1);
-      f.set_cursor(cx, y + r, true);
-    }
   }
-  // Scroll markers on the right edge when items are hidden above or below.
   if (w >= 1 && rows >= 1) {
     if (top_ > 0) f.put(x0 + w - 1, y, "\xE2\x96\xB2", 1, marker);
     if (static_cast<std::size_t>(top_ + rows) < vis.size()) f.put(x0 + w - 1, y + rows - 1, "\xE2\x96\xBC", 1, marker);
   }
-  (void)focused;
 }
 
 }  // namespace rolltui

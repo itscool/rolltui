@@ -46,16 +46,6 @@ std::string LayoutEditor::unique_id(const std::string& base) const {
 
 // ---- construction ---------------------------------------------------------------------
 
-// A size as typed: fill | fill N | N% (± cells) | a bare integer, which is cells (the
-// file format says so with a JSON number; typed, it can only be a string).
-static std::optional<SplitSize> parse_size_text(const std::string& text) {
-  if (std::optional<SplitSize> s = parse_split_size(text)) return s;
-  char* end = nullptr;
-  const long v = std::strtol(text.c_str(), &end, 10);
-  if (!text.empty() && end && *end == '\0' && v >= 0) return SplitSize::fixed(Dim::abs(static_cast<int>(v)));
-  return std::nullopt;
-}
-
 LayoutEditor::LayoutEditor() {
   current_ = *builtin_layout("default");
   undo_.reset(current_);
@@ -114,26 +104,32 @@ void LayoutEditor::rebuild_menu() {
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
   for (const std::string& s : slots_) slots.push_back(MenuItem::action(s, s));
   for (const std::string& n : layouts_) loads.push_back(MenuItem::action(n, n));
+  InputSpec dim, size, name, text;
+  dim.type = InputType::Dim;
+  size.type = InputType::Size;
+  name.type = InputType::Name;
+  text.type = InputType::Text;
+  text.optional = true;  // a window may have no title
   std::vector<MenuItem> popups;
   for (const Layer& p : current_.popups) {
     popups.push_back(MenuItem::submenu("popup." + p.id, p.id,
-                                       {MenuItem::input("popup." + p.id + ".x", "x", dim_to_string(p.placement.x)), MenuItem::input("popup." + p.id + ".y", "y", dim_to_string(p.placement.y)),
-                                        MenuItem::input("popup." + p.id + ".w", "w", dim_to_string(p.placement.w)), MenuItem::input("popup." + p.id + ".h", "h", dim_to_string(p.placement.h)),
+                                       {MenuItem::input("popup." + p.id + ".x", "x", dim, dim_to_string(p.placement.x)), MenuItem::input("popup." + p.id + ".y", "y", dim, dim_to_string(p.placement.y)),
+                                        MenuItem::input("popup." + p.id + ".w", "w", dim, dim_to_string(p.placement.w)), MenuItem::input("popup." + p.id + ".h", "h", dim, dim_to_string(p.placement.h)),
                                         MenuItem::choice("popup." + p.id + ".anchor", "anchor", anchors, std::string(anchor_name(p.placement.anchor))),
                                         MenuItem::toggle("popup." + p.id + ".modal", "modal", p.modal), MenuItem::action("popup." + p.id + ".remove", "remove this popup")}));
   }
-  popups.push_back(MenuItem::input("popup.add", "add a popup (id)"));
+  popups.push_back(MenuItem::input("popup.add", "add a popup (id)", name));
   MenuItem root = MenuItem::submenu(
       "root", "layout editor",
       {MenuItem::action("next", "Select the next node", "Tab"), MenuItem::action("prev", "Select the previous node", "Shift-Tab"),
        MenuItem::action("split_row", "Split into a row (side by side)"), MenuItem::action("split_column", "Split into a column (stacked)"),
        MenuItem::action("swap_prev", "Swap with the previous sibling"), MenuItem::action("swap_next", "Swap with the next sibling"),
-       MenuItem::toggle("visible", "Visible", true), MenuItem::choice("border", "Border", borders, "single"), MenuItem::input("title", "Title"),
-       MenuItem::choice("content", "Content slot", slots, "transcript"), MenuItem::input("size", "Size (fill | fill N | N% | cells; Alt+arrows nudge)"),
+       MenuItem::toggle("visible", "Visible", true), MenuItem::choice("border", "Border", borders, "single"), MenuItem::input("title", "Title", text),
+       MenuItem::choice("content", "Content slot", slots, "transcript"), MenuItem::input("size", "Size (Alt+arrows nudge)", size),
        MenuItem::toggle("focusable", "Focusable", false), MenuItem::action("delete", "Delete this node"),
        MenuItem::submenu("popups", "Popups", std::move(popups)),
        MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
-       MenuItem::choice("load", "Load layout", std::move(loads), ""), MenuItem::input("save", "Save layout file as (layouts/<name>.json)"),
+       MenuItem::choice("load", "Load layout", std::move(loads), ""), MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name),
        MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6")});
   menu_.set_root(std::move(root));
   sync_values();
@@ -279,7 +275,9 @@ LayoutEditor::Outcome LayoutEditor::end_drag() {
 }
 
 std::string LayoutEditor::status_line() const {
-  std::string s = preview_ ? "previewing \xE2\x80\x94 Enter commits, Esc cancels" : (status_.empty() ? "Enter commits, Esc cancels" : status_);
+  std::string s = menu_.editing() && !menu_.edit_reason().empty() ? "refused: " + menu_.edit_reason()
+                  : preview_                                       ? "previewing \xE2\x80\x94 Enter commits, Esc cancels"
+                                                                   : (status_.empty() ? "Enter commits, Esc cancels" : status_);
   s += " \xC2\xB7 undo " + std::to_string(undo_.undo_depth()) + " \xC2\xB7 redo " + std::to_string(undo_.redo_depth());
   return s;
 }
@@ -438,10 +436,11 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
     return {O::Changed, {}};
   }
   if (menu_.editing() && sel) {
-    if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = sel->value; return {O::Changed, {}}; }
+    // The editing text, never the item's value: that is the committed one.
+    if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = menu_.editing_text(); return {O::Changed, {}}; }
     if (sel->id == "size") {
       begin_preview();
-      if (std::optional<SplitSize> s = parse_size_text(sel->value)) { if (Node* n = sel_node()) n->size = *s; }
+      if (std::optional<SplitSize> s = parse_size_text(menu_.editing_text())) { if (Node* n = sel_node()) n->size = *s; }
       else if (Node* n = sel_node()) n->size = find_node(preview_->base.root, sel_)->size;
       return {O::Changed, {}};
     }

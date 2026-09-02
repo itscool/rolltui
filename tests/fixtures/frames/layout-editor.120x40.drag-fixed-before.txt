@@ -10,7 +10,7 @@
 │                   │ │                                       │       │ Border                                single ▸ │
 │                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Title: status                                  │
 │                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Content slot                          status ▸ │
-│                   │ │ mode)                                 │       │ Size (fill | fill N | N% | cells; Alt+arrows n │
+│                   │ │ mode)                                 │       │ Size (Alt+arrows nudge): 21                    │
 │                   │ │ Key + mouse decoding                  │ build │ [ ] Focusable                                  │
 │                   │ │                                       │       │ Delete this node                               │
 │                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Popups                                       ▸ │

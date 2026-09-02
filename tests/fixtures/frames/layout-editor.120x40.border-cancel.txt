@@ -10,7 +10,7 @@
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Border                                single ▸ │
 │ │ mouse mode)                      │             │                  │ Title: transcript                              │
 │ │ Key + mouse decoding             │ build       │ single header, pu│ Content slot                      transcript ▸ │
-│ │                                  │             │ Event, table-test│ Size (fill | fill N | N% | cells; Alt+arrows n │
+│ │                                  │             │ Event, table-test│ Size (Alt+arrows nudge): fill                  │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ [x] Focusable                                  │
 │ │ colour downgrade                 │             │ tested           │ Delete this node                               │
 │ │ Wrap engine                      │ build       │ single header ove│ Popups                                       ▸ │

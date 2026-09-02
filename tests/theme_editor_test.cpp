@@ -123,9 +123,17 @@ int main() {
     check(in_palette && ed.menu().find("role.text.fg")->children.size() == ed.palette().size(), "…and it joins the palette offered to every role");
     ed.handle(key(Key::Enter));
     type(ed, "orange");
+    // Prefix validity, one key at a time: o, r, a refused (no colour starts so), n
+    // accepted (a prefix of "none"), g and e refused ("ng", "ne" begin no colour) — the
+    // text is "n".
+    check(ed.menu().editing() && ed.menu().editing_text() == "n" && ed.status_line().find("refused: not the start of a colour") != std::string::npos,
+          "keys that cannot begin a colour are refused at the keystroke with the reason [" + ed.menu().editing_text() + " | " + ed.status_line() + "]");
     o = ed.handle(key(Key::Enter));
-    check(o.kind == ThemeEditor::Outcome::Kind::Changed && ed.current().style(Role::md_heading).fg == Color::rgb(0x12, 0x34, 0x56) && ed.status_line().find("not a colour") != std::string::npos,
-          "a value that is not a colour is refused with the reason and the field keeps its value");
+    check(o.kind == ThemeEditor::Outcome::Kind::Changed && ed.menu().editing() && ed.current().style(Role::md_heading).fg == Color::rgb(0x12, 0x34, 0x56) &&
+              ed.status_line().find("not a colour yet") != std::string::npos,
+          "Enter on a text that is not yet a colour is refused with the reason; the field keeps its committed value");
+    ed.handle(key(Key::Escape));
+    check(!ed.menu().editing() && ed.committed().dark.style(Role::md_heading).fg == Color::rgb(0x12, 0x34, 0x56), "Escape leaves the committed colour");
   }
   // ---- mode switch edits the other variant ----
   {

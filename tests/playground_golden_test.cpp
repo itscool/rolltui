@@ -200,6 +200,11 @@ int main(int argc, char** argv) {
       {"editor.120x40.confirm", "--frame 120x40 --theme default-dark --keys \"F4 Type:built Enter\""},
       {"editor.120x40.save", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter Escape Escape Type:save Enter Type:mine Enter\""},
       {"tiny.8x3.editor", "--frame 8x3 --theme default-dark --keys \"F4 Enter Down Enter Type:x\""},
+      // milestone 18: a typed field — Chaos is a float 0..1 with two digits: "1." is
+      // accepted, the 5 and the x are refused (the breadcrumb shows the hint and the
+      // reason, the row shows the label, the text and the caret); Up steps from 0 by 0.1
+      {"editor.120x40.chaos-typing", "--frame 120x40 --theme default-dark --keys \"F4 Type:generate Enter Down Down Enter Type:1.5x\""},
+      {"editor.120x40.chaos-step", "--frame 120x40 --theme default-dark --keys \"F4 Type:generate Enter Down Down Enter Up Up\""},
       // milestone 15: the Check popup and the Fixes level
       {"editor.120x40.check", "--frame 120x40 --theme default-dark --keys \"F4 Type:check Enter\""},
       {"editor.120x40.fixes", "--frame 120x40 --theme default-dark --keys \"F4 Type:fixes Enter\""},

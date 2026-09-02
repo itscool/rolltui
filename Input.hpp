@@ -98,6 +98,7 @@ struct InputOptions {
   std::string placeholder;         // drawn after the prompt while the text is empty
   std::uint64_t multi_click_ms = 400;
   std::size_t history_limit = 1000;
+  bool single_line = false;        // a newline (typed, pasted, or input.newline) is dropped — a menu field
   bool operator==(const InputOptions&) const = default;
 };
 

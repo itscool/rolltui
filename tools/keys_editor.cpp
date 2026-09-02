@@ -6,7 +6,7 @@
 namespace rolltui::tools {
 
 namespace {
-const char* kScopes[] = {"input", "transcript", "menu", "stack", "app", "editor", "playground"};
+const char* kScopes[] = {"input", "transcript", "menu", "edit", "stack", "app", "editor", "playground"};
 }
 
 KeysEditor::KeysEditor() : current_(default_bindings()) {
@@ -61,11 +61,13 @@ void KeysEditor::rebuild_menu() {
   std::vector<MenuItem> loads, ships;
   for (const std::string& n : presets_) loads.push_back(MenuItem::action(n, n));
   for (const std::string& n : shipped_) ships.push_back(MenuItem::action(n, n));
+  InputSpec name;
+  name.type = InputType::Name;
   MenuItem root = MenuItem::submenu(
       "root", "keys editor",
       {MenuItem::submenu("scopes", "Actions by scope", std::move(scopes)),
        MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
-       MenuItem::choice("load", "Load preset", std::move(loads), ""), MenuItem::input("save", "Save as preset"),
+       MenuItem::choice("load", "Load preset", std::move(loads), ""), MenuItem::input("save", "Save as preset", name),
        MenuItem::choice("write_shipped", "Write a SHIPPED preset (the editor's privilege)", std::move(ships), ""),
        MenuItem::action("reset_loaded", "Reset to the loaded preset\xE2\x80\xA6")});
   menu_.set_root(std::move(root));

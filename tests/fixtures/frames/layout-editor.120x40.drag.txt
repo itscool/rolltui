@@ -10,7 +10,7 @@
 │ │ (bloc │        │        │ │ │ axis), focus      │             │ is│ Border                                single ▸ │
 │ │ ks →  │        │        │ │ │                   │             │ fu│ Title: transcript                              │
 │ │ style │        │        │ │ │ Menu widget       │ build       │ si│ Content slot                      transcript ▸ │
-│ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ Size (fill | fill N | N% | cells; Alt+arrows n │
+│ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ Size (Alt+arrows nudge): 31                    │
 │ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ [x] Focusable                                  │
 │ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Delete this node                               │
 │ │ lines │        │        │ │ │                   │             │ sm│ Popups                                       ▸ │

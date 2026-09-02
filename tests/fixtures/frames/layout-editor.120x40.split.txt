@@ -10,7 +10,7 @@
 │ │ files      │            │ theme       │ │ │ files      │          │ Border                                single ▸ │
 │ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Title: transcript                              │
 │ │ windows +  │            │ hand        │ │ │ windows +  │          │ Content slot                      transcript ▸ │
-│ │ placements │            │ parser;     │ │ │ placements │          │ Size (fill | fill N | N% | cells; Alt+arrows n │
+│ │ placements │            │ parser;     │ │ │ placements │          │ Size (Alt+arrows nudge): fill                  │
 │ │ + content  │            │ hot-        │ │ │ + content  │          │ [x] Focusable                                  │
 │ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Delete this node                               │
 │ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Popups                                       ▸ │

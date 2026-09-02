@@ -112,7 +112,7 @@ int main() {
     for (char c : std::string("mine")) m.handle(ch(c));
     m.handle(key(Key::Backspace));
     m.handle(ch('e'));
-    check(m.find("save")->value == "mine" && m.selected() == 3, "typing while editing edits the value, not the filter");
+    check(m.editing_text() == "mine" && m.find("save")->value.empty() && m.selected() == 3, "typing while editing edits the EDITING text, not the filter and not the committed value");
     m.handle(key(Key::Down));
     check(m.selected() == 3, "Down while editing does not move");
     ev = m.handle(key(Key::Enter));
@@ -125,7 +125,7 @@ int main() {
     KeyEvent ctrl_u = ch('u');
     ctrl_u.ctrl = true;
     m.handle(ctrl_u);
-    check(m.editing() && m.find("save")->value.empty(), "Ctrl-U while editing clears the whole value");
+    check(m.editing() && m.editing_text().empty() && m.find("save")->value == "mine", "Ctrl-U (input.kill_to_line_start) while editing clears the text; the value waits for a commit");
     m.handle(key(Key::Escape));
     check(m.find("save")->value == "mine", "…and Escape still restores it");
   }
@@ -242,6 +242,174 @@ int main() {
     check(kinds && kinds->children[0].kind == MenuItem::Kind::Toggle && kinds->children[0].checked && kinds->children[1].kind == MenuItem::Kind::Choice &&
               kinds->children[1].value == "x" && rep.bad_values.size() == 1 && rep.bad_values[0].find("items[2].kind") == 0,
           "kinds load; an unknown kind is a bad value naming its path [" + (rep.bad_values.empty() ? "" : rep.bad_values[0]) + "]");
+  }
+  // ---- typed inputs (milestone 18): prefix validity at the keystroke, validity at the commit ----
+  {
+    auto spec = [](InputType t, double min = -1e15, double max = 1e15) {
+      InputSpec s;
+      s.type = t;
+      s.min = min;
+      s.max = max;
+      return s;
+    };
+    InputSpec flt = spec(InputType::Float, 0, 1);
+    flt.precision = 2;
+    flt.step = 0.1;
+    InputSpec txt = spec(InputType::Text);
+    txt.max_len = 3;
+    txt.min_len = 2;
+    txt.validator = "even";
+    InputSpec opt = spec(InputType::Int, 0, 9);
+    opt.optional = true;
+    MenuItem typed = MenuItem::submenu(
+        "root", "typed",
+        {MenuItem::input("pct", "Percent", spec(InputType::Int, 0, 100), "50"),        // 0
+         MenuItem::input("delta", "Delta", spec(InputType::Int, -10, 10), "0"),        // 1
+         MenuItem::input("digit", "Digit", spec(InputType::Int, 5, 9), "7"),           // 2
+         MenuItem::input("teen", "Teen", spec(InputType::Int, 10, 19), "15"),          // 3
+         MenuItem::input("chaos", "Chaos", flt, "0.5"),                                // 4
+         MenuItem::input("col", "Colour", spec(InputType::Color), "#112233"),          // 5
+         MenuItem::input("sz", "Size", spec(InputType::Size), "fill"),                 // 6
+         MenuItem::input("dm", "Dim", spec(InputType::Dim), "1"),                      // 7
+         MenuItem::input("nm", "Name", spec(InputType::Name), "abc"),                  // 8
+         MenuItem::input("txt", "Text", txt, "ok"),                                    // 9
+         MenuItem::input("opt", "Optional", opt, "")});                                // 10
+    Menu m(typed);
+    auto open = [&](int index) {
+      m.reset();
+      for (int i = 0; i < index; ++i) m.handle(key(Key::Down));
+      m.handle(key(Key::Enter));
+    };
+    auto type = [&](std::string_view s) { for (char c : s) m.handle(ch(c)); };
+    KeyEvent ctrl_u = ch('u');
+    ctrl_u.ctrl = true;
+    // Each row: the item, what is typed into the CLEARED field (Ctrl-U first, so a row
+    // whose every key is refused ends empty rather than at the selected-all value), the
+    // text that results (refused keys leave no trace), then Enter: whether it commits
+    // and to what.
+    struct Row { int item; const char* typed; const char* text; bool commits; const char* canonical; const char* why; };
+    const Row rows[] = {
+        {0, "100", "100", true, "100", "int: the top of the range"},
+        {0, "1000", "100", true, "100", "int: a fourth digit is refused (nothing 1000.. fits 0..100)"},
+        {0, "-5", "5", true, "5", "int: '-' is refused when min >= 0"},
+        {0, "007", "007", true, "7", "int: leading zeros are allowed and normalised on commit"},
+        {0, "", "", false, "", "int: empty is a valid prefix but not a value ('a value is needed')"},
+        {1, "-10", "-10", true, "-10", "int: '-' is a key when min < 0"},
+        {1, "-11", "-1", true, "-1", "int: -11 is out of -10..10, so the second 1 is refused"},
+        {1, "-", "-", false, "", "int: a lone '-' is a prefix, not a value"},
+        {2, "1", "", false, "", "int 5..9: '1' is refused outright (no continuation fits)"},
+        {2, "7", "7", true, "7", "int 5..9: 7"},
+        {4, "1.5", "1.", true, "1.00", "float 0..1: '1.' is fine, the 5 is refused"},
+        {4, "0.123", "0.12", true, "0.12", "float: a third fraction digit is refused (precision 2)"},
+        {4, ".5", ".5", true, "0.50", "float: '.5' commits as 0.50"},
+        {4, "2", "", false, "", "float 0..1: 2 is refused"},
+        {5, "#1234567", "#123456", true, "#123456", "colour: seven hex digits are refused"},
+        {5, "300", "30", true, "30", "colour: an index past 255 is refused at the third digit"},
+        {5, "no", "no", false, "", "colour: 'no' is a prefix of none, not a colour yet"},
+        {5, "none", "none", true, "none", "colour: none"},
+        {5, "orange", "n", false, "", "colour: o r a refused, n accepted (a prefix of none), g e refused ('ng', 'ne' begin no colour)"},
+        {6, "fill 2", "fill 2", true, "fill 2", "size: fill N"},
+        {6, "fil", "fil", false, "", "size: 'fil' is a prefix, not a size"},
+        {6, "50% + 1", "50% + 1", true, "50% + 1", "size: N% ± cells"},
+        {6, "5x", "5", true, "5", "size: 'x' is refused"},
+        {7, "10%", "10%", true, "10%", "dim: N%"},
+        {7, "fill", "", false, "", "dim: fill is not a placement dim"},
+        {8, ".a", "a", true, "a", "name: no leading dot"},
+        {8, "a b", "ab", true, "ab", "name: no spaces"},
+        {8, "my-theme_1.v2", "my-theme_1.v2", true, "my-theme_1.v2", "name: letters, digits, - _ ."},
+        {9, "abcd", "abc", false, "", "text: max_len 3 refuses the fourth; commit refused — no validator 'even' registered"},
+        {9, "a", "a", false, "", "text: min_len 2 refuses the commit"},
+        {10, "", "", true, "", "optional int: empty commits as empty"},
+    };
+    for (const Row& r : rows) {
+      open(r.item);
+      m.handle(ctrl_u);
+      type(r.typed);
+      const std::string text = m.editing_text();
+      const MenuEvent ev = m.handle(key(Key::Enter));
+      const bool committed = ev.kind == MenuEvent::Kind::Input;
+      check(text == r.text && committed == r.commits && (!r.commits || ev.value == r.canonical) && m.editing() == !r.commits,
+            std::string(r.why) + " [text '" + text + "', " + (committed ? "committed '" + ev.value + "'" : "refused: " + m.edit_reason()) + "]");
+      if (r.commits) check(m.selected_item()->value == r.canonical, "…the item's value is the canonical text");
+    }
+    // A registered validator: consulted at the commit only, never at a key.
+    m.set_validator("even", [](std::string_view s) -> std::optional<std::string> {
+      if (s.size() % 2 == 0) return std::nullopt;
+      return "an even number of characters";
+    });
+    check(m.unknown_validators().empty(), "the tree's validators are all registered now");
+    open(9);
+    type("abc");
+    MenuEvent ev = m.handle(key(Key::Enter));
+    check(ev.kind == MenuEvent::Kind::None && m.editing() && m.edit_reason() == "an even number of characters", "the validator's reason refuses the commit [" + m.edit_reason() + "]");
+    m.handle(key(Key::Backspace));
+    ev = m.handle(key(Key::Enter));
+    check(ev.kind == MenuEvent::Kind::Input && ev.value == "ab", "…and a text it accepts commits");
+    // Deletions are never refused, even off every valid path; the commit says so.
+    open(3);
+    m.handle(key(Key::Home));
+    m.handle(key(Key::Delete));
+    check(m.editing_text() == "5" && !m.edit_reason().empty(), "deleting the 1 of 15 (10..19) is allowed; the reason shows [" + m.edit_reason() + "]");
+    ev = m.handle(key(Key::Enter));
+    check(ev.kind == MenuEvent::Kind::None && m.editing() && m.selected_item()->value == "15", "…and the commit is refused, the value kept");
+    // Select-all on open: typing replaces; an arrow places the caret.
+    m.set_value("nm", "abc");
+    open(8);
+    m.handle(key(Key::End));
+    type("d");
+    m.handle(key(Key::Home));
+    type("z");
+    check(m.editing_text() == "zabcd", "End / Home place the caret in the selected-all text; typing inserts there [" + m.editing_text() + "]");
+    m.handle(key(Key::Escape));
+    check(!m.editing() && m.selected_item()->value == "abc", "Escape cancels: the value is untouched");
+    // Steppers: from a valid text, ± step, clamped; from an empty text, the committed value.
+    open(4);
+    m.handle(key(Key::Up));
+    check(m.editing_text() == "0.60", "Up on 0.5 (step 0.1, precision 2) is 0.60 [" + m.editing_text() + "]");
+    for (int i = 0; i < 6; ++i) m.handle(key(Key::Up));
+    check(m.editing_text() == "1.00", "…clamped at max [" + m.editing_text() + "]");
+    m.handle(key(Key::Down));
+    check(m.editing_text() == "0.90", "Down steps back [" + m.editing_text() + "]");
+    m.set_value("pct", "50");
+    open(0);
+    m.handle(ctrl_u);
+    m.handle(key(Key::Up));
+    check(m.editing_text() == "50", "Up from an empty text lands on the committed value first [" + m.editing_text() + "]");
+    m.handle(key(Key::Up));
+    check(m.editing_text() == "51", "…then steps");
+    m.handle(key(Key::Escape));
+    // Paste is prefix-checked as a whole.
+    open(0);
+    PasteEvent good, bad;
+    good.text = "12";
+    bad.text = "abc";
+    m.handle(Event(good));
+    check(m.editing_text() == "12", "a pasted '12' replaces the selection [" + m.editing_text() + "]");
+    m.handle(Event(bad));
+    check(m.editing_text() == "12" && !m.edit_reason().empty(), "a pasted 'abc' is refused whole, with the reason");
+    m.handle(key(Key::Escape));
+    // Hints, and the spec round-tripping through the file format.
+    check(input_hint(spec(InputType::Int, 0, 100)) == "0..100" && input_hint(flt) == "0.00..1.00 (2 digits)", "hints name the constraint [" + input_hint(flt) + "]");
+    MenuLoadReport rep;
+    std::optional<MenuItem> back = menu_from_json(menu_to_json(typed), rep);
+    check(back && rep.clean() && *back == typed, "typed inputs round-trip through JSON with their specs [" + (rep.bad_values.empty() ? "" : rep.bad_values[0]) + "]");
+    menu_from_json(R"({"id":"r","items":[{"id":"n","kind":"input","type":"int","validator":"even"}]})", rep);
+    check(rep.bad_values.size() == 1 && rep.bad_values[0].find("validator") != std::string::npos, "a validator on a typed (non-text) input is a bad value");
+    menu_from_json(R"({"id":"r","items":[{"id":"n","kind":"action","type":"int"}]})", rep);
+    check(rep.unknown_keys.size() == 1, "a spec key on a non-input is an unknown key");
+    // Drawing while editing: the field row shows the label and the editing text, and the
+    // breadcrumb carries the hint and the reason.
+    {
+      Frame f(48, 4);
+      f.clear(theme.style(Role::background));
+      open(0);
+      type("7x");
+      m.layout({0, 0, 48, 4});
+      m.draw(f, theme, true);
+      check(row(f, 0).find("0..100") != std::string::npos && row(f, 0).find("\xE2\x9C\x97") != std::string::npos, "the breadcrumb shows the hint and the refusal [" + row(f, 0) + "]");
+      check(row(f, 1).rfind("Percent: 7", 0) == 0, "the field row is the label and the editing text [" + row(f, 1) + "]");
+      m.handle(key(Key::Escape));
+    }
   }
   // ---- degenerate sizes ----
   {

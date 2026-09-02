@@ -128,7 +128,7 @@ int main() {
     check(lines.size() == 2 && lines[0].find("Enter") == 0 && lines[0].find("send the line") != std::string::npos && lines[1].find("Ctrl-W, Alt-Backspace") == 0,
           "help_lines: the chords, then the description [" + (lines.empty() ? "" : lines[0]) + "]");
     const std::vector<std::string> all = help_lines(default_bindings(), "menu");
-    check(all.size() == 12 && all[0].find("Up") == 0, "an empty list means every action of the scope (menu: 12)");
+    check(all.size() == 11 && all[0].find("Up") == 0, "an empty list means every action of the scope (menu: 11)");
     Bindings vim = default_bindings();
     vim.bind("input.word_left", *parse_chord("alt+b"));
     check(help_lines(vim, "input", {"input.word_left"})[0].find("Alt-B") != std::string::npos, "help follows a rebinding: it is rendered from the live table");

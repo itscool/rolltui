@@ -1,14 +1,14 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ theme editor › Roles › md_heading              │
-│ │ grapheme property,               │             │ unicode_tables.hp│ fg                                   #84b7f9 ▸ │
-│ │ Extended_Pictographic, InCB)     │             │                  │ bg                                   #14161a ▸ │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ custom fg:                                     │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ custom bg:                                     │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ [x] bold                                       │
-│ │                                  │             │ block tree is the│ [ ] italic                                     │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [ ] underline                                  │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ [ ] dim                                        │
-│ │ mouse mode)                      │             │                  │ [ ] reverse                                    │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ editing — 0.00..1.00 (2 digits)                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ Ruleset                            analogous ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ Seed: 1                                        │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Chaos: 0.20                                    │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ Generate (replaces both variants, undoable)    │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│                                                │
+│ │                                  │             │ block tree is the│                                                │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
+│ │ mouse mode)                      │             │                  │                                                │
 │ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
 │ │                                  │             │ Event, table-test│                                                │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
@@ -30,13 +30,11 @@
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ md_heading  fg #84b7f9  bg #14161a  bold       │
-│ │ int add(int a, int b) {                                           │  Aa  the quick brown fox â sample in this role │
-│ │   return a + b;                                                   │ fg         bg                                  │
-│ └───────────────────────────────────────────────────────────────────│ undone · undo 0 · redo 1 · dark                │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ preset: default-dark                           │
+│ │ int add(int a, int b) {                                           │ Roles âº a role âº fg âº a colour; the transcr │
+│ │   return a + b;                                                   │ type to filter Â· Enter commits Â· Esc cancels │
+│ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
  default-dark [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
---- role ---
-md_heading fg=#84b7f9 bg=#14161a bold

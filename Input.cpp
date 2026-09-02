@@ -135,7 +135,8 @@ void Input::erase_range(std::size_t b, std::size_t e) {
 }
 
 void Input::insert(std::string_view utf8) {
-  const std::string s = sanitise(utf8);
+  std::string s = sanitise(utf8);
+  if (opt_.single_line) s.erase(std::remove(s.begin(), s.end(), '\n'), s.end());
   erase_selection();
   if (s.empty()) return;
   std::string t = text_;

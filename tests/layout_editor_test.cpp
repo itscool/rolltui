@@ -114,10 +114,16 @@ int main() {
     check(o.kind == O::Committed && LayoutEditor::find_node(ed.committed().base.root, "input")->size == SplitSize::fixed(Dim::abs(5)), "Enter commits the size");
     act(ed, "size");
     type(ed, "x");
+    check(ed.menu().editing() && ed.menu().editing_text() == "5" && ed.status_line().find("refused: not the start of a size") != std::string::npos &&
+              LayoutEditor::find_node(ed.current().base.root, "input")->size == SplitSize::fixed(Dim::abs(5)),
+          "a key that cannot begin a size is refused at the keystroke with the reason; the text and the size are kept [" + ed.status_line() + "]");
+    for (int i = 0; i < 2; ++i) ed.handle(key(Key::Backspace));
+    type(ed, "fil");
     o = ed.handle(key(Key::Enter));
-    check(o.kind == O::Changed && ed.status_line().find("not a size") != std::string::npos && LayoutEditor::find_node(ed.current().base.root, "input")->size == SplitSize::fixed(Dim::abs(5)),
-          "a value that is not a size is refused with the reason and the size kept");
+    check(o.kind == O::Changed && ed.menu().editing() && ed.status_line().find("not a size yet") != std::string::npos,
+          "Enter on a text that is not yet a size is refused with the reason [" + ed.status_line() + "]");
     ed.handle(key(Key::Escape));
+    check(!ed.menu().editing() && LayoutEditor::find_node(ed.current().base.root, "input")->size == SplitSize::fixed(Dim::abs(5)), "Escape restores the committed size");
     o = ed.handle(key(Key::Down, false, true));  // Alt+Down: input is in a column
     check(o.kind == O::Committed && LayoutEditor::find_node(ed.committed().base.root, "input")->size == SplitSize::fixed(Dim::abs(6)), "Alt+Down nudges the size to 6, a commit");
     o = ed.handle(key(Key::Right, false, true));

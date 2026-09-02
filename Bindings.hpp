@@ -15,8 +15,9 @@
 // end pageup pagedown insert delete f1..f12, or a single character. parse_chord and
 // chord_to_string round-trip; a KeyEvent's `raw` is never part of a chord.
 //
-// SCOPES: an action's name is "<scope>.<verb>" — input, transcript, menu, stack, app,
-// editor, playground. The same chord may serve different scopes (Up moves the caret in
+// SCOPES: an action's name is "<scope>.<verb>" — input, transcript, menu, edit (a menu
+// field being edited: commit, cancel, step; the caret keys are the input scope's), stack,
+// app, editor, playground. The same chord may serve different scopes (Up moves the caret in
 // the input, the selection in a menu, the view in the transcript); a chord bound to two
 // actions of ONE scope is a CONFLICT and the loader reports it. Lookup is by scope:
 // action_for(event, "input") answers with an input.* action or "".

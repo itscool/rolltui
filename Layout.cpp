@@ -197,6 +197,14 @@ std::optional<SplitSize> parse_split_size(std::string_view text) {
   return std::nullopt;
 }
 
+std::optional<SplitSize> parse_size_text(std::string_view text) {
+  if (std::optional<SplitSize> s = parse_split_size(text)) return s;
+  if (text.empty() || text.size() > 9) return std::nullopt;
+  for (char c : text)
+    if (c < '0' || c > '9') return std::nullopt;
+  return SplitSize::fixed(Dim::abs(std::atoi(std::string(text).c_str())));
+}
+
 std::string split_size_to_string(SplitSize s) {
   if (s.fill) return s.weight == 1 ? "fill" : "fill " + std::to_string(s.weight);
   return dim_to_string(s.dim);
