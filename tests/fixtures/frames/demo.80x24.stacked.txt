@@ -1,0 +1,24 @@
+│ Windows, layers, placement    │ build       │ single header;                 │
+│ (Dim abs/rel per axis), focus │             │ resolve(Placement, parent) →   │
+│                               │             │ Rect is a pure function        │
+│ Menu widget (hierarchical,    │ build       │ single header each; the widget │
+│ filterable) + list/text       │             │ set is deliberately this small │
+│ widgets                       │             │                                │
+│ Layout files (JSON: windows + │ build       │ reuses the theme loader's hand │
+│ placements + content slots)   │             │ parser; hot-reloaded           │
+│ Markdown block renderer       │ build       │ single header over md4c + wrap │
+│ (blocks → styled wrapped      │             │                                │
+│ lines)                        │             │                                │
+│ Theme (roles → styles, JSON   │ build       │ single header                  │
+│ loader, built-ins)            │             │                                │
+└───────────────────────────────┴─────────────┴────────────────────────────────┘
+
+Here is the function you asked for:
+
+┌ cpp ─────────────────────────────────────────────────────────────────────────┐
+│ int add(int a, int b) {                                                      │
+│   return a + b;                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ theme default-dark  layout stacked  size 80x24  line 93/113  follow yes  depth
+> type here (input is milestone 10)
+ default-dark  stacked  80x24  line 93/113  follow  truecolor  focus:input

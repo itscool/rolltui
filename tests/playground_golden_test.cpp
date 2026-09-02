@@ -9,7 +9,14 @@
 // playground's `--frame-sgr` shows the same frame in colour).
 //
 // Also asserts what a golden cannot: every row of every frame fits the width in
-// cells, and the scrolled frame differs from the unscrolled one.
+// cells, the scrolled frame differs from the unscrolled one, and (milestone 8)
+// opening the help popup and closing it with Escape gives back exactly the frame
+// without it — a popup leaves nothing behind.
+//
+// Milestone 8 added the layout cases: each built-in, the stacked fallback below a
+// layout's minimum size (40x12), Tab moving focus, a layout FILE with rounded /
+// double / heavy borders and a mixed-border seam, and the help popup at two sizes
+// (it re-places itself: Done-when h).
 //
 #include <cstdio>
 #include <cstring>
@@ -70,8 +77,18 @@ int main(int argc, char** argv) {
       {"demo.80x24.scrolled", "--frame 80x24 --theme default-dark --keys \"Home PageDown Down Down\""},
       {"demo.80x24.light", "--frame 80x24 --theme default-light"},
       {"demo.80x24.ambiguous", "--frame 80x24 --theme mono --ambiguous-wide"},
+      // milestone 8
+      {"demo.80x24.panel-left", "--frame 80x24 --theme default-dark --layout panel-left"},
+      {"demo.80x24.no-panel", "--frame 80x24 --theme default-dark --layout no-panel"},
+      {"demo.80x24.stacked", "--frame 80x24 --theme default-dark --layout stacked"},
+      {"demo.80x24.focus", "--frame 80x24 --theme default-dark --keys \"Tab\""},
+      {"demo.80x24.popup", "--frame 80x24 --theme default-dark --keys \"p\""},
+      {"demo.120x40.popup", "--frame 120x40 --theme default-dark --keys \"p\""},
+      {"demo.80x24.popup-closed", "--frame 80x24 --theme default-dark --keys \"p Escape\""},
+      {"demo.80x24.file", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json'"},
+      {"demo.80x24.file-popup", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json' --keys \"p\""},
   };
-  std::string bottom, top;
+  std::string bottom, top, popup, popup_closed, popup_big;
   for (const Case& c : cases) {
     int rc = 0;
     std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + fixture + "' " + c.args;
@@ -93,6 +110,9 @@ int main(int argc, char** argv) {
     check(fits && rows == h, std::string(c.name) + ": " + std::to_string(rows) + " rows of at most " + std::to_string(w) + " cells");
     if (std::string(c.name) == "demo.80x24") bottom = out;
     if (std::string(c.name) == "demo.80x24.top") top = out;
+    if (std::string(c.name) == "demo.80x24.popup") popup = out;
+    if (std::string(c.name) == "demo.80x24.popup-closed") popup_closed = out;
+    if (std::string(c.name) == "demo.120x40.popup") popup_big = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -126,6 +146,24 @@ int main(int argc, char** argv) {
     check(!bottom.empty() && !top.empty() && bottom != top, "the default frame follows the bottom; Home shows the top; they differ");
     check(bottom.find("\xE2\x96\xBC") == std::string::npos && top.find("\xE2\x96\xBC ") != std::string::npos,
           "the ▼ N more marker appears only when lines are hidden below");
+    check(!popup.empty() && popup.find("\xE2\x95\xAD help ") != std::string::npos && popup.find("focus:help") != std::string::npos,
+          "p opens the help popup (rounded ╭ help title, focus:help)");
+    check(!popup_closed.empty() && popup_closed == bottom, "p then Escape gives back exactly the frame without the popup");
+    // The popup re-places itself: at 120x40 its top edge sits on a different row than
+    // at 80x24. The layout area is the screen minus the playground's one-line status
+    // bar (80x23 / 120x39), so the centred 12-high popup starts at floor(23/2)-6 = 5
+    // and floor(39/2)-6 = 13 — the same arithmetic the table test does on a full
+    // 80x24 (row 6).
+    auto row_of = [](const std::string& frame, const char* needle) {
+      std::istringstream in(frame);
+      std::string row;
+      int y = 0;
+      while (std::getline(in, row)) { if (row.find(needle) != std::string::npos) return y; ++y; }
+      return -1;
+    };
+    check(row_of(popup, "\xE2\x95\xAD help ") == 5 && row_of(popup_big, "\xE2\x95\xAD help ") == 13,
+          "the popup's top edge is on row 5 at 80x24 and row 13 at 120x40 (" + std::to_string(row_of(popup, "\xE2\x95\xAD help ")) +
+              ", " + std::to_string(row_of(popup_big, "\xE2\x95\xAD help ")) + ")");
   }
   return report("rolltui playground_golden_test");
 }

@@ -78,6 +78,9 @@ class Frame {
   int put_text(int x, int y, std::string_view utf8, const Style& style, int max_cells,
                bool ambiguous_wide = false);
   void fill(Rect r, const Style& style, std::string_view grapheme = " ");
+  // Applies `style`'s set colours (fg/bg that are not None) and its attribute bits to
+  // every cell in r, leaving the glyphs — a modal's overlay (Layout.hpp).
+  void tint(Rect r, const Style& style);
   void set_cursor(int x, int y, bool visible) { cursor_ = {x, y, visible}; }
   const Cursor& cursor() const { return cursor_; }
 

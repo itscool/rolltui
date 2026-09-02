@@ -1,24 +1,24 @@
-│ and a second paragraph.
-
-────────────────────────────────────────────────────────────────────────────────
-
-Hard break here
-next line. Entities: & < > A B © and a NUL: ab. Autolink https://example.com/
-path and https://x.y/z too.
-
-[roll] escalated to cloud: capability gap (tools)
-
-> now the comparison table from the plan please
-
-Unicode data libraries — measured 2026-09-01, shallow clones at HEAD:
-
-┌──────────────────┬───────────────────┬───────────────────┬───────────────────┐
-│ library          │ what we'd use     │ size at HEAD      │ verdict           │
-├──────────────────┼───────────────────┼───────────────────┼───────────────────┤
-│ utf8proc (MIT)   │ charwidth,        │ 2.4 MB of C,      │ too heavy for two │
-│                  │ grapheme breaks   │ 17,141 lines of   │ functions —       │
-│                  │                   │ it a              │ rejected          │
-│                  │                   │ normalization/    │                   │
-│                  │                   │ case table we     │                   │
-│                  │                   │ would never call  │          ▼ 66 more
- default-dark  80x24  line 25/113  truecolor
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│                                               │ theme   default-dark         │
+│ 3. Third struck step                          │ layout  default              │
+│                                               │ size    80x24                │
+│ [ ] todo item                                 │ line    19/191               │
+│ [x] done item                                 │ follow  no                   │
+│                                               │ depth   truecolor            │
+│ │ A quote with emphasis that continues on a   │ focus   input                │
+│ │ second line                                 │                              │
+│ │                                             │                              │
+│ │ and a second paragraph.                     │                              │
+│                                               │                              │
+│ ───────────────────────────────────────────── │                              │
+│                                               │                              │
+│ Hard break here                               │                              │
+│ next line. Entities: & < > A B © and a NUL:   │                              │
+│ ab. Autolink https://example.com/path and     │                              │
+│ https://x.y/z too.                            │                              │
+│                                               │                              │
+│ [roll] escalated to cloud: capabil▼ 154 more  │                              │
+├───────────────────────────────────────────────┤                              │
+│> type here (input is milestone 10)            │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 19/191  truecolor  focus:input

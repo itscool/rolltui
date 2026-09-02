@@ -1,0 +1,24 @@
+╭ session ─────────────────────╮╭ chat ────────────────────────────────────────╮
+│ theme   default-dark         ││ │ styled      │             │              │ │
+│ layout  wide-left            ││ │ wrapped     │             │              │ │
+│ size    80x24                ││ │ lines)      │             │              │ │
+│ line    181/197              ││ │ Theme       │ build       │ single       │ │
+│ follow  yes                  ││ │ (roles →    │             │ header       │ │
+│ depth   truecolor            ││ │ styles,     │             │              │ │
+│ focus   input                ││ │ JSON        │             │              │ │
+│                              ││ │ loader,     │             │              │ │
+│                              ││ │ built-ins)  │             │              │ │
+│                              ││ └─────────────┴─────────────┴──────────────┘ │
+│                              ││                                              │
+│                              ││ Here is the function you asked for:          │
+│                              ││                                              │
+│                              ││ ┌ cpp ─────────────────────────────────────┐ │
+│                              ││ │ int add(int a, int b) {                  │ │
+│                              ││ │   return a + b;                          │ │
+│                              ││ └──────────────────────────────────────────┘ │
+│                              │╰──────────────────────────────────────────────╯
+╰──────────────────────────────╯ a label a layout file put here
+╔══════════════════════════════════════════════════════════════════════════════╗
+║> type here (input is milestone 10)                                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+ default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:input

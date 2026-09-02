@@ -1,0 +1,24 @@
+╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│ theme   default-dark         ││ │ styled  ┃ q / Ctrl-C  quit                 ┃
+│ layout  wide-left            ││ │ wrapped ┃ Tab / Shift-Tab  cycle focus     ┃
+│ size    80x24                ││ │ lines)  ┃ Esc  close the top popup         ┃
+│ line    181/197              ││ │ Theme   ┃ p  toggle this help              ┃
+│ follow  yes                  ││ │ (roles →┃ l  cycle layouts   t  cycle      ┃
+│ depth   truecolor            ││ │ styles, ┃ themes                           ┃
+│ focus   help                 ││ │ JSON    ┃ r  reload the fixture   Ctrl-L   ┃
+│                              ││ │ loader, ┃ repaint                          ┃
+│                              ││ │ built-in┃ PgUp/PgDn/Home/End, wheel        ┃
+│                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+│                              ││                                              │
+│                              ││ Here is the function you asked for:          │
+│                              ││                                              │
+│                              ││ ┌ cpp ─────────────────────────────────────┐ │
+│                              ││ │ int add(int a, int b) {                  │ │
+│                              ││ │   return a + b;                          │ │
+│                              ││ └──────────────────────────────────────────┘ │
+│                              │╰──────────────────────────────────────────────╯
+╰──────────────────────────────╯ a label a layout file put here
+╔══════════════════════════════════════════════════════════════════════════════╗
+║> type here (input is milestone 10)                                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+ default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:help

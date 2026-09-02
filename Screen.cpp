@@ -84,6 +84,21 @@ void Frame::fill(Rect r, const Style& style, std::string_view grapheme) {
     for (int xx = c.x; xx < c.x + c.w; xx += gw) put(xx, yy, grapheme, gw, style);
 }
 
+void Frame::tint(Rect r, const Style& style) {
+  Rect c = r.intersect(bounds());
+  for (int yy = c.y; yy < c.y + c.h; ++yy)
+    for (int xx = c.x; xx < c.x + c.w; ++xx) {
+      Style& s = mut(xx, yy).style;
+      if (style.fg.kind != Color::Kind::None) s.fg = style.fg;
+      if (style.bg.kind != Color::Kind::None) s.bg = style.bg;
+      s.bold |= style.bold;
+      s.italic |= style.italic;
+      s.underline |= style.underline;
+      s.dim |= style.dim;
+      s.reverse |= style.reverse;
+    }
+}
+
 namespace {
 
 std::string cup(int x, int y) {

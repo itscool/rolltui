@@ -1,5 +1,3 @@
-│ JSON       │            │            │
-│ loader,    │            │            │
 │ built-ins) │            │            │
 └────────────┴────────────┴────────────┘
 
@@ -9,4 +7,6 @@ Here is the function you asked for:
 │ int add(int a, int b) {              │
 │   return a + b;                      │
 └──────────────────────────────────────┘
- default-dark  40x12  line 206/216  foll
+ theme default-dark  layout stacked (fal
+> type here (input is milestone 10)
+ default-dark  stacked  40x12  line 208/

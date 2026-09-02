@@ -1,0 +1,22 @@
+{
+  "name": "wide-left",
+  "min_width": 40,
+  "min_height": 6,
+  "focus": "input",
+  "root": { "column": [
+    { "row": [
+      { "id": "session", "content": "status", "size": "40%", "border": "rounded", "title": "session",
+        "background": "panel_background" },
+      { "column": [
+        { "content": "transcript", "border": "rounded", "title": "chat", "focusable": true },
+        { "content": "text: a label a layout file put here", "size": 1, "background": "panel_background" }
+      ] }
+    ] },
+    { "content": "input", "size": 3, "border": "double", "focusable": true }
+  ] },
+  "popups": [
+    { "id": "help", "x": "100%", "y": 0, "w": 36, "h": "50%", "anchor": "top-right", "modal": false,
+      "root": { "content": "help", "border": "heavy", "title": "keys", "focusable": true,
+                "background": "panel_background" } }
+  ]
+}

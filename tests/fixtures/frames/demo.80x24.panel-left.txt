@@ -1,0 +1,24 @@
+┌ status ──────────────────────┬ transcript ───────────────────────────────────┐
+│ theme   default-dark         │ │ Markdown     │ build       │ single       │ │
+│ layout  panel-left           │ │ block        │             │ header over  │ │
+│ size    80x24                │ │ renderer     │             │ md4c + wrap  │ │
+│ line    173/191              │ │ (blocks →    │             │              │ │
+│ follow  yes                  │ │ styled       │             │              │ │
+│ depth   truecolor            │ │ wrapped      │             │              │ │
+│ focus   input                │ │ lines)       │             │              │ │
+│                              │ │ Theme (roles │ build       │ single       │ │
+│                              │ │ → styles,    │             │ header       │ │
+│                              │ │ JSON loader, │             │              │ │
+│                              │ │ built-ins)   │             │              │ │
+│                              │ └──────────────┴─────────────┴──────────────┘ │
+│                              │                                               │
+│                              │ Here is the function you asked for:           │
+│                              │                                               │
+│                              │ ┌ cpp ──────────────────────────────────────┐ │
+│                              │ │ int add(int a, int b) {                   │ │
+│                              │ │   return a + b;                           │ │
+│                              │ └───────────────────────────────────────────┘ │
+│                              ├───────────────────────────────────────────────┤
+│                              │> type here (input is milestone 10)            │
+└──────────────────────────────┴───────────────────────────────────────────────┘
+ default-dark  panel-left  80x24  line 173/191  follow  truecolor  focus:input

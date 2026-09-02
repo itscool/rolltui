@@ -5,24 +5,24 @@
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ line    75/109               │
 │ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ follow  yes                  │
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ depth   truecolor            │
-│ │                                  │             │ block tree is the API            │ │ focus   input                │
+│ │                                  │             │ block tree is the API            │ │ focus   help                 │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │                              │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineReader/StatusPane  │ │                              │
 │ │ mouse mode)                      │             │                                  │ │                              │
 │ │ Key + mouse decoding             │ build       │ single header, pure bytes →      │ │                              │
 │ │                                  │             │ Event, table-tested              │ │                              │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pure, golden-     │ │                              │
-│ │ colour downgrade                 │             │ tested                           │ │                              │
-│ │ Wrap engine                      │ build       │ single header over the Unicode   │ │                              │
-│ │                                  │             │ header                           │ │                              │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;                   │ │                              │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement, parent) →     │ │                              │
-│ │                                  │             │ Rect is a pure function          │ │                              │
-│ │ Menu widget (hierarchical,       │ build       │ single header each; the widget   │ │                              │
-│ │ filterable) + list/text widgets  │             │ set is deliberately this small   │ │                              │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme loader's hand   │ │                              │
-│ │ placements + content slots)      │             │ parser; hot-reloaded             │ │                              │
-│ │ Markdown block renderer (blocks  │ build       │ single header over md4c + wrap   │ │                              │
+│ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
+│ │ colour downgrade    │ q / Ctrl-C  quit                                                     │                       │
+│ │ Wrap engine         │ Tab / Shift-Tab  cycle focus                                         │                       │
+│ │                     │ Esc  close the top popup                                             │                       │
+│ │ Windows, layers, pla│ p  toggle this help                                                  │                       │
+│ │ abs/rel per axis), f│ l  cycle layouts   t  cycle themes                                   │                       │
+│ │                     │ r  reload the fixture   Ctrl-L  repaint                              │                       │
+│ │ Menu widget (hierarc│ PgUp/PgDn/Home/End, wheel  scroll the transcript                     │                       │
+│ │ filterable) + list/t│ Up/Down  scroll while the transcript has focus                       │                       │
+│ │ Layout files (JSON: │                                                                      │                       │
+│ │ placements + content│                                                                      │                       │
+│ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ → styled wrapped lines)          │             │                                  │ │                              │
 │ │ Theme (roles → styles, JSON      │ build       │ single header                    │ │                              │
 │ │ loader, built-ins)               │             │                                  │ │                              │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │> type here (input is milestone 10)                                                    │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 75/109  follow  truecolor  focus:input           q quit  p help  l layout  t theme
+ default-dark  default  120x40  line 75/109  follow  truecolor  focus:help            q quit  p help  l layout  t theme

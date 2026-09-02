@@ -24,6 +24,7 @@ add_library(rolltui STATIC
   Keys.cpp
   Terminal.cpp                # the one unit that touches a file descriptor
   Transcript.cpp
+  Layout.cpp
   third_party/md4c/md4c.c     # vendored, MIT; see third_party/md4c/README.md
 )
 target_include_directories(rolltui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -66,6 +67,10 @@ add_rolltui_test(rolltui-screen-test tests/screen_test.cpp)
 add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+
+# Milestone 8: placement (the resolve table + tiling properties), the split tree, the
+# layout loader and the four built-ins, border joining, the stack's focus routing.
+add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
 
 # Milestone 7: the playground — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the
