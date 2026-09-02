@@ -1,13 +1,11 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
-│ │ block        │             │ header over  │ │ layout  default              │
-│ │ renderer     │             │ md4c + wrap  │ │ size    80x24                │
-│ │ (blocks →    │             │              │ │ line    173/191              │
-│ │ styled       │             │              │ │ follow  yes                  │
-│ │ wrapped      │             │              │ │ depth   truecolor            │
-│ │ lines)       │             │              │ │ focus   input                │
-│ │ Theme (roles │ build       │ single       │ │                              │
-│ │ → styles,    │             │ header       │ │                              │
+│ │ renderer     │             │ md4c + wrap  │ │ theme   default-dark         │
+│ │ (blocks →    │             │              │ │ layout  default              │
+│ │ styled       │             │              │ │ size    80x24                │
+│ │ wrapped      │             │              │ │ line    175/193              │
+│ │ lines)       │             │              │ │ follow  yes                  │
+│ │ Theme (roles │ build       │ single       │ │ depth   truecolor            │
+│ │ → styles,    │             │ header       │ │ focus   input                │
 │ │ JSON loader, │             │              │ │                              │
 │ │ built-ins)   │             │              │ │                              │
 │ └──────────────┴─────────────┴──────────────┘ │                              │
@@ -18,7 +16,9 @@
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ │                              │
 │ └───────────────────────────────────────────┘ │                              │
+│                                               │                              │
+│ > hi there                                    │                              │
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 173/191  follow  truecolor  focus:input
+ default-dark  default  80x24  line 175/193  follow  truecolor  focus:input

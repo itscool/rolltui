@@ -12,13 +12,13 @@
 │ │ Key + mouse decoding             │ build       │ single header, pure bytes →      │ │                              │
 │ │                                  │             │ Event, table-tested              │ │                              │
 │ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
-│ │ colour downgrade    │ q / Ctrl-C  quit                                                     │                       │
+│ │ colour downgrade    │ Ctrl-C / Ctrl-Q  quit                                                │                       │
 │ │ Wrap engine         │ Tab / Shift-Tab  cycle focus                                         │                       │
 │ │                     │ Esc  close the top popup                                             │                       │
-│ │ Windows, layers, pla│ p  toggle this help                                                  │                       │
-│ │ abs/rel per axis), f│ l  cycle layouts   t  cycle themes                                   │                       │
-│ │                     │ r  reload the fixture   Ctrl-L  repaint                              │                       │
-│ │ Menu widget (hierarc│ PgUp/PgDn/Home/End, wheel  scroll the transcript                     │                       │
+│ │ Windows, layers, pla│ F1  toggle this help                                                 │                       │
+│ │ abs/rel per axis), f│ F2  cycle layouts   F3  cycle themes                                 │                       │
+│ │                     │ F5  reload the fixture   Ctrl-L  repaint                             │                       │
+│ │ Menu widget (hierarc│ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript               │                       │
 │ │ filterable) + list/t│ Up/Down  scroll while the transcript has focus                       │                       │
 │ │ Layout files (JSON: │ drag  select (auto-scrolls past an edge); release copies             │                       │
 │ │ placements + content│ double-click  word   triple-click  line   Alt-C  copy again          │                       │
@@ -35,6 +35,6 @@
 │ │   return a + b;                                                                   │ │                              │
 │ └───────────────────────────────────────────────────────────────────────────────────┘ │                              │
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
-│> type here (input is milestone 10)                                                    │                              │
+│ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 75/109  follow  truecolor  focus:help            q quit  p help  l layout  t theme
+ default-dark  default  120x40  line 75/109  follow  truecolor  focus:help        ^C quit  F1 help  F2 layout  F3 theme

@@ -1,15 +1,11 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
-│ │ block        │             │ header over  │ │ layout  default              │
-│ │ renderer     │             │ md4c + wrap  │ │ size    80x24                │
-│ │ (blocks →    │             │              │ │ line    173/191              │
-│ │ styled       │             │              │ │ follow  yes                  │
-│ │ wrapped      │             │              │ │ depth   truecolor            │
-│ │ lines)       │             │              │ │ focus   input                │
-│ │ Theme (roles │ build       │ single       │ │                              │
-│ │ → styles,    │             │ header       │ │                              │
-│ │ JSON loader, │             │              │ │                              │
-│ │ built-ins)   │             │              │ │                              │
+│ │ styled       │             │              │ │ theme   default-dark         │
+│ │ wrapped      │             │              │ │ layout  default              │
+│ │ lines)       │             │              │ │ size    80x24                │
+│ │ Theme (roles │ build       │ single       │ │ line    177/195              │
+│ │ → styles,    │             │ header       │ │ follow  yes                  │
+│ │ JSON loader, │             │              │ │ depth   truecolor            │
+│ │ built-ins)   │             │              │ │ focus   input                │
 │ └──────────────┴─────────────┴──────────────┘ │                              │
 │                                               │                              │
 │ Here is the function you asked for:           │                              │
@@ -18,7 +14,11 @@
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ │                              │
 │ └───────────────────────────────────────────┘ │                              │
+│                                               │                              │
+│ > first                                       │                              │
+│                                               │                              │
+│ > second                                      │                              │
 ├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
+│ > first                                       │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 173/191  follow  truecolor  focus:input
+ default-dark  default  80x24  line 177/195  follow  truecolor  focus:input

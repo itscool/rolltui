@@ -4,13 +4,13 @@
 │ │ renderer     │             │ md4c + wrap  │ │ size    80x24                │
 │ │ (blocks →    │             │              │ │ line    173/191              │
 │ │ styled      ╭ help ────────────────────────────────────────╮               │
-│ │ wrapped     │ q / Ctrl-C  quit                             │lor            │
+│ │ wrapped     │ Ctrl-C / Ctrl-Q  quit                        │lor            │
 │ │ lines)      │ Tab / Shift-Tab  cycle focus                 │               │
 │ │ Theme (roles│ Esc  close the top popup                     │               │
-│ │ → styles,   │ p  toggle this help                          │               │
-│ │ JSON loader,│ l  cycle layouts   t  cycle themes           │               │
-│ │ built-ins)  │ r  reload the fixture   Ctrl-L  repaint      │               │
-│ └─────────────│ PgUp/PgDn/Home/End, wheel  scroll the        │               │
+│ │ → styles,   │ F1  toggle this help                         │               │
+│ │ JSON loader,│ F2  cycle layouts   F3  cycle themes         │               │
+│ │ built-ins)  │ F5  reload the fixture   Ctrl-L  repaint     │               │
+│ └─────────────│ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the  │               │
 │               │ transcript                                   │               │
 │ Here is the fu│ Up/Down  scroll while the transcript has     │               │
 │               │ focus                                        │               │
@@ -19,6 +19,6 @@
 │ │   return a + b;                           │ │                              │
 │ └───────────────────────────────────────────┘ │                              │
 ├───────────────────────────────────────────────┤                              │
-│> type here (input is milestone 10)            │                              │
+│ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
  default-dark  default  80x24  line 173/191  follow  truecolor  focus:help

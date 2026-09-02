@@ -22,15 +22,19 @@
 //                              text follows the frame after a "--- copied ---" line.
 //     --frame-sgr WxH          the same frame with colours, for a terminal `cat`
 //     --keys "K K K"           scripted input applied before the frame (or before the
-//                              interactive loop): Up Down PageUp PageDown Home End
-//                              Tab ShiftTab Escape Enter WheelUp WheelDown CtrlO AltC,
-//                              mouse as Click X,Y · ShiftClick X,Y · DblClick X,Y ·
-//                              TripleClick X,Y · Drag X,Y · Release X,Y, Tick (one
-//                              auto-scroll step while a drag is past an edge), or a
-//                              single character (p opens the help popup, l cycles
-//                              layouts, t cycles themes). Scripted events are one
-//                              second apart except the presses of a DblClick /
-//                              TripleClick, which share a timestamp.
+//                              interactive loop): Up Down Left Right PageUp PageDown
+//                              Home End Tab Escape Enter Backspace Delete, each with
+//                              an optional Shift / Ctrl / Alt prefix (ShiftLeft,
+//                              CtrlHome, AltEnter, AltBackspace, ShiftTab), CtrlA/U/K/
+//                              W/D/O, AltC, AltD, F1 F2 F3 F5, WheelUp WheelDown,
+//                              Type:text (typed one code point at a time; `_` is a
+//                              space), Paste:text (one bracketed paste; `_` a space,
+//                              `\n` a newline), mouse as Click X,Y · ShiftClick X,Y ·
+//                              DblClick X,Y · TripleClick X,Y · Drag X,Y · Release
+//                              X,Y, Tick (one auto-scroll step while a drag is past
+//                              an edge), or a single character (typed). Scripted
+//                              events are one second apart except the presses of a
+//                              DblClick / TripleClick, which share a timestamp.
 //
 // Fixture format: a markdown file cut into entries by marker lines
 //   <!-- user -->   <!-- assistant -->   <!-- note -->   <!-- tool: summary text -->
@@ -41,23 +45,29 @@
 //
 // Slots the playground fills (a layout names them in "content"): transcript, status
 // (the playground's own facts as label/value rows, or one line when the slot is a
-// single row), input (a placeholder — typing is milestone 10), help (the key list),
-// text:<literal> (the literal, so a layout file can put a label on screen). Any other
-// slot draws "(no content for slot 'x')" — visible, never silent.
+// single row), input (a real rolltui::Input — the window grows with the text up to
+// half its parent's height and scrolls past that; Enter appends the text to the
+// transcript as a user entry and keeps it in history), help (the key list),
+// text:<literal> (the literal, so a layout file
+// can put a label on screen). Any other slot draws "(no content for slot 'x')" —
+// visible, never silent.
 //
-// Keys: q / Ctrl-C quit · Tab / Shift-Tab cycle focus · Esc closes the top popup ·
-// p toggles the help popup · l cycles the built-in layouts · t cycles the built-in
-// themes · r re-reads the fixture · Ctrl-L repaints. Scrolling: PgUp/PgDn/Home/End
-// and the wheel over the transcript always scroll it (the input never steals them);
-// Up/Down scroll only while the transcript has focus. Mouse: click and drag select
-// (auto-scrolling past an edge), double-click a word, triple-click a line, release
-// copies (the playground shows the byte count — it has no clipboard of its own),
-// Alt-C copies again, a click on a folded block's summary line unfolds it, Ctrl-O
-// toggles the first fold in view. Every event goes through WindowStack::route, so
+// Keys: Ctrl-C / Ctrl-Q quit · Tab / Shift-Tab cycle focus · Esc closes the top popup
+// · F1 toggles the help popup · F2 cycles the built-in layouts · F3 cycles the
+// built-in themes · F5 re-reads the fixture · Ctrl-L repaints. (Letters type, since
+// milestone 10 — the app keys moved off them.) Scrolling: PgUp/PgDn, Ctrl-Home/End
+// and the wheel always scroll the transcript; Home/End scroll it only while the input
+// is empty (otherwise they move the caret); Up/Down scroll only while the transcript
+// has focus. Mouse: click and drag select (auto-scrolling past an edge), double-click
+// a word, triple-click a line, release copies (the playground shows the byte count —
+// it has no clipboard of its own), Alt-C copies again, a click on a folded block's
+// summary line unfolds it, Ctrl-O toggles the first fold in view; the same selection
+// gestures work inside the input. Every event goes through WindowStack::route, so
 // what the playground does is what a host would do. The status line shows theme,
 // layout, size, scroll position, focus and the last frame's render time
 // (instrumented from the first line — a slow frame is a number, not a feeling).
 //
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -71,6 +81,7 @@
 #include <unistd.h>
 
 #include "rolltui/Document.hpp"
+#include "rolltui/Input.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Screen.hpp"
@@ -142,17 +153,18 @@ Document parse_fixture(const std::string& text) {
 }
 
 const char* kHelpText =
-    "q / Ctrl-C  quit\n"
+    "Ctrl-C / Ctrl-Q  quit\n"
     "Tab / Shift-Tab  cycle focus\n"
     "Esc  close the top popup\n"
-    "p  toggle this help\n"
-    "l  cycle layouts   t  cycle themes\n"
-    "r  reload the fixture   Ctrl-L  repaint\n"
-    "PgUp/PgDn/Home/End, wheel  scroll the transcript\n"
+    "F1  toggle this help\n"
+    "F2  cycle layouts   F3  cycle themes\n"
+    "F5  reload the fixture   Ctrl-L  repaint\n"
+    "PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript\n"
     "Up/Down  scroll while the transcript has focus\n"
     "drag  select (auto-scrolls past an edge); release copies\n"
     "double-click  word   triple-click  line   Alt-C  copy again\n"
-    "click a folded block / Ctrl-O  toggle a fold";
+    "click a folded block / Ctrl-O  toggle a fold\n"
+    "Enter  add the input to the transcript   Alt-Enter  newline";
 
 struct App {
   std::string fixture_path, theme_arg = "default-dark", layout_arg = "default";
@@ -170,14 +182,20 @@ struct App {
   bool stacked_fallback = false;
   WindowStack stack;
   Transcript transcript;
+  Input editor;
+  int submitted = 0;        // entries the input added to the document
   std::string copied;       // the last copy (the playground has no clipboard)
   bool copied_any = false;
-  std::uint64_t clock_ms = 0;  // the clock handed to the widget (real or scripted)
+  std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   long last_frame_us = 0;
   std::size_t builtin_theme_index = 0, builtin_layout_index = 0;
 
   App() {
     transcript.on_copy = [this](const std::string& s) { copied = s; copied_any = true; };
+    editor.on_copy = transcript.on_copy;
+    InputOptions o;
+    o.placeholder = "type here";
+    editor.set_options(o);
   }
 
   bool load_theme_arg() {
@@ -273,14 +291,37 @@ struct App {
     o.inset = rn.node->border != Border::None ? 1 : 0;
     return o;
   }
-  // Lays the transcript out for the current size so an event can be hit-tested
-  // against the same geometry the frame will draw (the cache makes this free).
-  void ensure_transcript_layout() {
-    for (const ResolvedNode& rn : stack.resolve(layout_area()))
-      if (rn.node->is_window() && rn.node->content == "transcript") {
-        transcript.layout(doc, rn.inner, transcript_options(rn));
-        return;
+  // Sizes the input window from its text (it grows with it, to half its parent's
+  // height — the user's rule; past that the editor scrolls), then lays the transcript
+  // and the input out for the current size so an event can be hit-tested against the
+  // same geometry the frame will draw (the caches make this free). The input's width
+  // does not depend on its height, so one resolve gives the width, the size is set,
+  // and the second resolve is final.
+  void ensure_layout() {
+    InputOptions o = editor.options();
+    o.ambiguous_wide = ambiguous;
+    if (!(o == editor.options())) editor.set_options(o);
+    const std::vector<ResolvedNode> nodes = stack.resolve(layout_area());
+    for (const ResolvedNode& rn : nodes)
+      if (rn.node->is_window() && rn.node->content == "input") {
+        o.inset = rn.node->border != Border::None ? 1 : 0;  // the widget owns the breathing room, as the transcript does
+        if (!(o == editor.options())) editor.set_options(o);
+        int parent_h = layout_area().h;  // the smallest split holding the input, else the screen
+        for (const ResolvedNode& p : nodes)
+          if (!p.node->is_window() && p.layer == rn.layer && p.inner.contains(rn.outer.x, rn.outer.y) && p.inner.h <= parent_h)
+            parent_h = p.inner.h;
+        if (Node* nd = stack.find("input")) {
+          const int border = nd->border != Border::None ? 2 : 0;
+          const int rows = std::clamp(editor.rows_for(rn.inner.w), 1, std::max(1, parent_h / 2 - border));
+          nd->size = SplitSize::fixed(Dim::abs(rows + border));
+        }
+        break;
       }
+    for (const ResolvedNode& rn : stack.resolve(layout_area())) {
+      if (!rn.node->is_window()) continue;
+      if (rn.node->content == "transcript") transcript.layout(doc, rn.inner, transcript_options(rn));
+      else if (rn.node->content == "input") editor.layout(rn.inner);
+    }
   }
   void toggle_help() {
     if (stack.has_popup("help")) { while (stack.depth() > 1 && stack.layers().back().id != "help") stack.pop(); stack.pop(); return; }
@@ -317,10 +358,23 @@ struct App {
     }
   }
   void draw_input(const ResolvedNode& rn, Frame& f) {
-    const Rect r = rn.inner;
-    int used = f.put_text(r.x, r.y, "> ", theme.style(Role::prompt), r.w, ambiguous);
-    f.put_text(r.x + used, r.y, "type here (input is milestone 10)", theme.style(Role::input_placeholder), std::max(r.w - used, 0), ambiguous);
-    if (rn.focused) f.set_cursor(r.x + used, r.y, true);
+    editor.layout(rn.inner);
+    editor.draw(f, theme, rn.focused);
+  }
+  // Enter: the text becomes a user entry at the end of the document (so the
+  // playground exercises a growing transcript too) and goes into the history.
+  void submit_input() {
+    std::string text = editor.text();
+    editor.push_history(text);
+    editor.clear();
+    if (text.empty()) return;
+    DocEntry e;
+    e.id = "input" + std::to_string(submitted++);
+    e.text = std::move(text);
+    e.markdown = false;
+    e.prefix = "> ";
+    e.prefix_role = Role::prompt;
+    doc.entries.push_back(std::move(e));
   }
   void draw_text(const ResolvedNode& rn, Frame& f, std::string_view text, Role role) {
     const Rect r = text_area(rn);
@@ -353,6 +407,8 @@ struct App {
   // The frame: the layout above a one-line status bar of the playground's own.
   Frame render(bool with_timing) {
     auto t0 = std::chrono::steady_clock::now();
+    ensure_layout();  // the input window's size follows its text (found by the paste golden: a lone
+                      // event left the size one event behind)
     Frame f(w, h, theme.style(Role::background));
     const Rect area = layout_area();
     stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { draw_slot(rn, fr, with_timing); }, ambiguous);
@@ -369,7 +425,7 @@ struct App {
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
-      std::string help = "q quit  p help  l layout  t theme ";
+      std::string help = "^C quit  F1 help  F2 layout  F3 theme ";
       int hw = unicode::display_width(help);
       if (hw + unicode::display_width(status) + 2 <= w) f.put_text(w - hw, h - 1, help, theme.style(Role::text_muted), hw, ambiguous);
     }
@@ -381,48 +437,66 @@ struct App {
   bool handle(const Event& ev) {
     // App-level keys first; everything else is routed by the stack.
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
-      if (k->key == Key::Char && k->ctrl && k->ch == 'c') return false;
-      if (k->key == Key::Char && !k->ctrl && !k->alt) {
-        if (k->ch == 'q') return false;
-        if (k->ch == 't') {
-          std::vector<std::string_view> names = builtin_theme_names();
-          builtin_theme_index = (builtin_theme_index + 1) % names.size();
-          theme_arg = std::string(names[builtin_theme_index]);
-          load_theme_arg();
-          return true;
-        }
-        if (k->ch == 'l') {
-          std::vector<std::string_view> names = builtin_layout_names();
-          builtin_layout_index = (builtin_layout_index + 1) % names.size();
-          layout_arg = std::string(names[builtin_layout_index]);
-          load_layout_arg();
-          return true;
-        }
-        if (k->ch == 'r') { load_fixture(); return true; }
-        if (k->ch == 'p') { toggle_help(); return true; }
+      if (k->key == Key::Char && k->ctrl && (k->ch == 'c' || k->ch == 'q')) return false;
+      if (k->key == Key::F3) {
+        std::vector<std::string_view> names = builtin_theme_names();
+        builtin_theme_index = (builtin_theme_index + 1) % names.size();
+        theme_arg = std::string(names[builtin_theme_index]);
+        load_theme_arg();
+        return true;
       }
+      if (k->key == Key::F2) {
+        std::vector<std::string_view> names = builtin_layout_names();
+        builtin_layout_index = (builtin_layout_index + 1) % names.size();
+        layout_arg = std::string(names[builtin_layout_index]);
+        load_layout_arg();
+        return true;
+      }
+      if (k->key == Key::F5) { load_fixture(); return true; }
+      if (k->key == Key::F1) { toggle_help(); return true; }
       if (k->key == Key::Char && k->ctrl && k->ch == 'l') return true;  // the loop repaints
     }
-    ensure_transcript_layout();
+    ensure_layout();
+    if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) { editor.handle(*p, clock_ms); return true; }
     Route r = stack.route(ev, layout_area());
     if (r.kind != Route::Kind::Deliver) return true;
     const bool to_transcript = r.window == "transcript";
     const bool to_input = r.window == "input";
-    if (to_transcript) { transcript.handle(ev, doc, clock_ms); return true; }
-    if (const KeyEvent* k = std::get_if<KeyEvent>(&ev); k && to_input) {
-      // The input never steals the transcript's keys (plan: typing never touches the
-      // offset; Ctrl-O and Alt-C act on the transcript from wherever focus is).
+    if (to_transcript) {
+      if (transcript.handle(ev, doc, clock_ms)) return true;
+      if (!std::holds_alternative<KeyEvent>(ev)) return true;
+      // typing while the transcript has focus still types (falls through to the input)
+    } else if (!to_input) {
+      return true;
+    }
+    return input_event(ev);
+  }
+  // An event for the input: the editor first; what it Ignores is the transcript's
+  // (plan: typing never touches the offset; PgUp/PgDn, Ctrl-Home/End, Home/End on an
+  // empty buffer, Ctrl-O, Alt-C without a selection and the wheel act on it from
+  // wherever focus is). Returns false to quit (Ctrl-D on an empty buffer).
+  bool input_event(const Event& ev) {
+    switch (editor.handle(ev, clock_ms)) {
+      case InputAction::Submit: submit_input(); return true;
+      case InputAction::Eof: return false;
+      case InputAction::Handled: return true;
+      case InputAction::Ignored: break;
+    }
+    if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
       if (k->key == Key::PageUp) transcript.scroll_page(-1);
       else if (k->key == Key::PageDown) transcript.scroll_page(1);
       else if (k->key == Key::Home) transcript.scroll_to_top();
       else if (k->key == Key::End) transcript.scroll_to_bottom();
       else if (k->key == Key::Char && k->ctrl && k->ch == 'o') transcript.toggle_fold_nearest_top(doc);
       else if (k->key == Key::Char && k->alt && k->ch == 'c') transcript.copy_selection();
+    } else if (const MouseEvent* m = std::get_if<MouseEvent>(&ev);
+               m && (m->kind == MouseEvent::Kind::WheelUp || m->kind == MouseEvent::Kind::WheelDown)) {
+      transcript.handle(ev, doc, clock_ms);
     }
     return true;
   }
   void tick() {
-    ensure_transcript_layout();
+    ensure_layout();
     transcript.tick();
   }
 };
@@ -447,9 +521,49 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   std::istringstream in(spec);
   std::string tok;
   std::uint64_t clock = 1000;
-  auto key = [](Key k, bool shift = false) { KeyEvent e; e.key = k; e.shift = shift; return e; };
+  auto key = [](Key k, bool shift = false, bool ctrl = false, bool alt = false) {
+    KeyEvent e;
+    e.key = k;
+    e.shift = shift;
+    e.ctrl = ctrl;
+    e.alt = alt;
+    return e;
+  };
   auto ctrl = [](char c) { KeyEvent e; e.key = Key::Char; e.ch = static_cast<char32_t>(c); e.ctrl = true; return e; };
   auto alt = [](char c) { KeyEvent e; e.key = Key::Char; e.ch = static_cast<char32_t>(c); e.alt = true; return e; };
+  // "Type:hello_world" → h e l l o ␠ w o r l d; "Paste:a\nb" → one paste event.
+  auto unescape = [](std::string s, bool newlines) {
+    std::string out;
+    for (std::size_t i = 0; i < s.size(); ++i) {
+      if (s[i] == '_') out.push_back(' ');
+      else if (newlines && s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') { out.push_back('\n'); ++i; }
+      else out.push_back(s[i]);
+    }
+    return out;
+  };
+  // A named key with an optional Shift/Ctrl/Alt prefix: "ShiftLeft", "CtrlHome", "AltEnter".
+  auto named = [&](std::string name, KeyEvent& out) {
+    bool shift = false, c = false, a = false;
+    for (;;) {
+      if (name.rfind("Shift", 0) == 0) { shift = true; name.erase(0, 5); }
+      else if (name.rfind("Ctrl", 0) == 0) { c = true; name.erase(0, 4); }
+      else if (name.rfind("Alt", 0) == 0) { a = true; name.erase(0, 3); }
+      else break;
+    }
+    static const std::pair<const char*, Key> keys[] = {
+        {"Up", Key::Up}, {"Down", Key::Down}, {"Left", Key::Left}, {"Right", Key::Right}, {"PageUp", Key::PageUp},
+        {"PageDown", Key::PageDown}, {"Home", Key::Home}, {"End", Key::End}, {"Enter", Key::Enter}, {"Escape", Key::Escape},
+        {"Tab", Key::Tab}, {"Backspace", Key::Backspace}, {"Delete", Key::Delete}, {"F1", Key::F1}, {"F2", Key::F2},
+        {"F3", Key::F3}, {"F5", Key::F5}};
+    for (const auto& [n, k] : keys)
+      if (name == n) { out = key(k, shift, c, a); return true; }
+    if (name.size() == 1 && (c || a) && name[0] >= 'A' && name[0] <= 'Z') {  // CtrlA, AltC, ...
+      out = c ? ctrl(static_cast<char>(name[0] - 'A' + 'a')) : alt(static_cast<char>(name[0] - 'A' + 'a'));
+      out.shift = shift;
+      return true;
+    }
+    return false;
+  };
   auto mouse = [](MouseEvent::Kind k, int x, int y, int button = 1, bool shift = false) {
     MouseEvent m;
     m.kind = k;
@@ -474,19 +588,18 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   };
   while (in >> tok) {
     int x = 0, y = 0;
-    if (tok == "Up") push(key(Key::Up));
-    else if (tok == "Down") push(key(Key::Down));
-    else if (tok == "PageUp") push(key(Key::PageUp));
-    else if (tok == "PageDown") push(key(Key::PageDown));
-    else if (tok == "Home") push(key(Key::Home));
-    else if (tok == "End") push(key(Key::End));
-    else if (tok == "Enter") push(key(Key::Enter));
-    else if (tok == "Escape") push(key(Key::Escape));
-    else if (tok == "Tab") push(key(Key::Tab));
-    else if (tok == "ShiftTab") push(key(Key::Tab, true));
-    else if (tok == "CtrlO") push(ctrl('o'));
-    else if (tok == "AltC") push(alt('c'));
-    else if (tok == "Tick") out.push_back({true, {}, clock});
+    KeyEvent k;
+    if (tok == "Tick") out.push_back({true, {}, clock});
+    else if (tok.rfind("Type:", 0) == 0) {
+      for (const unicode::DecodedChar& d : unicode::decode_utf8(unescape(tok.substr(5), false))) {
+        KeyEvent e;
+        e.key = Key::Char;
+        e.ch = d.cp;
+        push(e, false);
+      }
+      clock += 1000;
+    } else if (tok.rfind("Paste:", 0) == 0) push(PasteEvent{unescape(tok.substr(6), true)});
+    else if (named(tok, k)) push(k);
     else if (tok == "WheelUp" || tok == "WheelDown") {
       // Over the middle of the screen, which every built-in layout gives to the transcript.
       push(mouse(tok == "WheelUp" ? MouseEvent::Kind::WheelUp : MouseEvent::Kind::WheelDown, w / 4, h / 3, 0));
@@ -552,7 +665,7 @@ int usage() {
   std::fprintf(stderr,
                "usage: rolltui-playground FIXTURE.md [--theme NAME|FILE] [--layout NAME|FILE] [--mode dark|light]\n"
                "       [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
-               "       [--keys \"Up Down PageDown Tab p Click 5,3 Drag 20,6 Release ...\"]\n");
+               "       [--keys \"Up Down PageDown Tab F1 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
 }
 
@@ -593,7 +706,7 @@ int main(int argc, char** argv) {
     if (!parse_size(frame_spec, w, h)) return usage();
     app.resize(w, h);
     app.load_layout_arg();
-    app.ensure_transcript_layout();
+    app.ensure_layout();
     run_steps(app, scripted_keys(keys_spec, w, h));
     Frame f = app.render(false);
     if (frame_sgr) {
@@ -612,7 +725,7 @@ int main(int argc, char** argv) {
   if (!term.is_tty()) { std::fprintf(stderr, "not a terminal; use --frame WxH\n"); return 1; }
   app.resize(term.width(), term.height());
   app.load_layout_arg();
-  app.ensure_transcript_layout();
+  app.ensure_layout();
   run_steps(app, scripted_keys(keys_spec, app.w, app.h));
   Frame prev;
   bool have_prev = false;

@@ -35,6 +35,6 @@
 │                                                                                       │                              │
 │                                                                                       │                              │
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
-│> type here (input is milestone 10)                                                    │                              │
+│ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 1/30  follow  truecolor  focus:transcript        q quit  p help  l layout  t theme
+ default-dark  default  120x40  line 1/30  follow  truecolor  focus:transcript    ^C quit  F1 help  F2 layout  F3 theme

@@ -25,6 +25,7 @@ add_library(rolltui STATIC
   Terminal.cpp                # the one unit that touches a file descriptor
   Transcript.cpp
   Layout.cpp
+  Input.cpp
   third_party/md4c/md4c.c     # vendored, MIT; see third_party/md4c/README.md
 )
 target_include_directories(rolltui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -77,6 +78,10 @@ add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
 # Milestone 9: the transcript widget — layout cache, entry-anchored scroll, follow +
 # marker, folding, logical-coordinate selection with auto-scroll and copy, OSC 8.
 add_rolltui_test(rolltui-transcript-test tests/transcript_test.cpp)
+
+# Milestone 10: the input widget — grapheme-boundary caret, cell wrap, selection by
+# key and mouse, history with a draft, paste sanitising; the key table in Input.hpp.
+add_rolltui_test(rolltui-input-test tests/input_test.cpp)
 
 # Milestone 7: the playground — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the

@@ -195,6 +195,8 @@ int main() {
     std::optional<Layout> back = load_layout(layout_to_json(*l), rep);
     check(back && rep.clean() && *back == *l, "built-in '" + std::string(name) + "' round-trips through layout_to_json");
     check(l->popup("help") != nullptr && l->popup("help")->modal, "built-in '" + std::string(name) + "' declares the modal help popup");
+    check(l->popup("approval") != nullptr && l->popup("approval")->modal && l->popup("approval")->placement.anchor == Anchor::Bottom,
+          "built-in '" + std::string(name) + "' declares the modal approval popup, anchored to the bottom (milestone 10)");
     WindowStack s(*l);
     const Node* f = s.focused();
     check(f && f->id == "input", "built-in '" + std::string(name) + "' focuses input initially");

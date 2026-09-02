@@ -8,5 +8,5 @@ Here is the function you asked for:
 │   return a + b;                      │
 └──────────────────────────────────────┘
  theme default-dark  layout stacked (fal
-> type here (input is milestone 10)
+> type here
  default-dark  stacked  40x12  line 208/

@@ -1,0 +1,24 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ │ → styles,    │             │ header       │ │ theme   default-dark         │
+│ │ JSON loader, │             │              │ │ layout  default              │
+│ │ built-ins)   │             │              │ │ size    80x24                │
+│ └──────────────┴─────────────┴──────────────┘ │ line    181/191              │
+│                                               │ follow  yes                  │
+│ Here is the function you asked for:           │ depth   truecolor            │
+│                                               │ focus   input                │
+│ ┌ cpp ──────────────────────────────────────┐ │                              │
+│ │ int add(int a, int b) {                   │ │                              │
+│ │   return a + b;                           │ │                              │
+│ └───────────────────────────────────────────┘ │                              │
+├───────────────────────────────────────────────┤                              │
+│   l6                                          │                              │
+│   l7                                          │                              │
+│   l8                                          │                              │
+│   l9                                          │                              │
+│   l10                                         │                              │
+│   l11                                         │                              │
+│   l12                                         │                              │
+│   l13                                         │                              │
+│   l14                                         │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 181/191  follow  truecolor  focus:input

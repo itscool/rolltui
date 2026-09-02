@@ -19,6 +19,6 @@
 │                                               │                              │
 │ stop_heartbeat cancels the heartbea▼ 21 more  │                              │
 ├───────────────────────────────────────────────┤                              │
-│> type here (input is milestone 10)            │                              │
+│ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
  default-dark  default  80x24  line 1/40  truecolor  focus:transcript

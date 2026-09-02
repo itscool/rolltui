@@ -451,8 +451,17 @@ constexpr const char* kHelpPopup = R"(
       "root": { "content": "help", "border": "rounded", "title": "help", "focusable": true,
                 "background": "panel_background" } })";
 
+// The approval modal every built-in declares (milestone 10): a strip across the
+// bottom of the screen, over the input window, so the transcript — where the preview
+// being approved is — stays in view. A host without approvals never pushes it.
+constexpr const char* kApprovalPopup = R"(
+    { "id": "approval", "x": "50%", "y": "100%", "w": "70%", "h": 5, "anchor": "bottom",
+      "min_w": 44, "max_w": 96, "modal": true,
+      "root": { "content": "approval", "border": "rounded", "title": "approval", "focusable": true,
+                "background": "panel_background" } })";
+
 std::string builtin_json(std::string_view name) {
-  const std::string help = kHelpPopup;
+  const std::string help = std::string(kHelpPopup) + ",\n" + kApprovalPopup;
   if (name == "default")
     return R"({
   "name": "default", "min_width": 60, "min_height": 8, "focus": "input",

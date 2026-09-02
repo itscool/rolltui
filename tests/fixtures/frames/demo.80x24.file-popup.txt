@@ -1,13 +1,13 @@
 ╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ theme   default-dark         ││ │ styled  ┃ q / Ctrl-C  quit                 ┃
+│ theme   default-dark         ││ │ styled  ┃ Ctrl-C / Ctrl-Q  quit            ┃
 │ layout  wide-left            ││ │ wrapped ┃ Tab / Shift-Tab  cycle focus     ┃
 │ size    80x24                ││ │ lines)  ┃ Esc  close the top popup         ┃
-│ line    181/197              ││ │ Theme   ┃ p  toggle this help              ┃
-│ follow  yes                  ││ │ (roles →┃ l  cycle layouts   t  cycle      ┃
+│ line    181/197              ││ │ Theme   ┃ F1  toggle this help             ┃
+│ follow  yes                  ││ │ (roles →┃ F2  cycle layouts   F3  cycle    ┃
 │ depth   truecolor            ││ │ styles, ┃ themes                           ┃
-│ focus   help                 ││ │ JSON    ┃ r  reload the fixture   Ctrl-L   ┃
+│ focus   help                 ││ │ JSON    ┃ F5  reload the fixture   Ctrl-L  ┃
 │                              ││ │ loader, ┃ repaint                          ┃
-│                              ││ │ built-in┃ PgUp/PgDn/Home/End, wheel        ┃
+│                              ││ │ built-in┃ PgUp/PgDn, Ctrl-Home/End, wheel  ┃
 │                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │
@@ -19,6 +19,6 @@
 │                              │╰──────────────────────────────────────────────╯
 ╰──────────────────────────────╯ a label a layout file put here
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║> type here (input is milestone 10)                                           ║
+║ > type here                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
  default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:help

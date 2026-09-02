@@ -6,7 +6,7 @@
 │ │ styled       │             │              │ │ follow  yes                  │
 │ │ wrapped      │             │              │ │ depth   truecolor            │
 │ │ lines)       │             │              │ │ focus   input                │
-│ │ Theme (roles │ build       │ single       │ │                              │
+│ │ Theme (roles │ build       │ single       │ │ copied  11 bytes             │
 │ │ → styles,    │             │ header       │ │                              │
 │ │ JSON loader, │             │              │ │                              │
 │ │ built-ins)   │             │              │ │                              │
@@ -19,6 +19,8 @@
 │ │   return a + b;                           │ │                              │
 │ └───────────────────────────────────────────┘ │                              │
 ├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
+│ > hello world                                 │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 173/191  follow  truecolor  focus:input
+ default-dark  default  80x24  line 173/191  follow  truecolor  focus:input  cop
+--- copied ---
+hello world

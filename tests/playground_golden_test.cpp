@@ -103,11 +103,11 @@ int main(int argc, char** argv) {
       {"demo.80x24.no-panel", "--frame 80x24 --theme default-dark --layout no-panel"},
       {"demo.80x24.stacked", "--frame 80x24 --theme default-dark --layout stacked"},
       {"demo.80x24.focus", "--frame 80x24 --theme default-dark --keys \"Tab\""},
-      {"demo.80x24.popup", "--frame 80x24 --theme default-dark --keys \"p\""},
-      {"demo.120x40.popup", "--frame 120x40 --theme default-dark --keys \"p\""},
-      {"demo.80x24.popup-closed", "--frame 80x24 --theme default-dark --keys \"p Escape\""},
+      {"demo.80x24.popup", "--frame 80x24 --theme default-dark --keys \"F1\""},
+      {"demo.120x40.popup", "--frame 120x40 --theme default-dark --keys \"F1\""},
+      {"demo.80x24.popup-closed", "--frame 80x24 --theme default-dark --keys \"F1 Escape\""},
       {"demo.80x24.file", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json'"},
-      {"demo.80x24.file-popup", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json' --keys \"p\""},
+      {"demo.80x24.file-popup", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json' --keys \"F1\""},
       // milestone 9 (the transcript widget), on the tools fixture
       {"tools.80x24", "--frame 80x24 --theme default-dark", "tools.md"},
       {"tools.80x24.top", "--frame 80x24 --theme default-dark --keys \"Home\"", "tools.md"},
@@ -120,9 +120,35 @@ int main(int argc, char** argv) {
       // Ctrl-O unfolds the first block; the second block's summary then sits on row 29
       // and a click unfolds it (Ctrl-O again would re-fold the first, still nearest).
       {"tools.120x40.unfold-all", "--frame 120x40 --theme default-dark --keys \"Home CtrlO Click 5,29\"", "tools.md"},
+      // milestone 10 (the input widget) on the demo fixture; the input's inner row is
+      // 21 at 80x24 and, with the bordered window's inset, its text starts at x=4
+      {"input.80x24.typed", "--frame 80x24 --theme default-dark --keys \"Type:hello_world\""},
+      {"input.80x24.multiline", "--frame 80x24 --theme default-dark --keys \"Type:one AltEnter Type:two\""},
+      {"input.80x24.wrap", "--frame 80x24 --theme default-dark --keys \"Type:the_quick_brown_fox_jumps_over_the_lazy_dog_and_keeps_running_until_it_wraps\""},
+      {"input.80x24.stacked-multiline", "--frame 80x24 --theme default-dark --layout stacked --keys \"Type:one AltEnter Type:two\""},
+      {"input.80x24.select-all", "--frame 80x24 --theme default-dark --keys \"Type:hello_world CtrlA AltC\""},
+      {"input.80x24.drag", "--frame 80x24 --theme default-dark --keys \"Type:hello_world Click 4,21 Drag 8,21 Release\""},
+      {"input.80x24.dblclick", "--frame 80x24 --theme default-dark --keys \"Type:hello_world DblClick 10,21 Release\""},
+      {"input.80x24.submit", "--frame 80x24 --theme default-dark --keys \"Type:hi_there Enter\""},
+      {"input.80x24.history", "--frame 80x24 --theme default-dark --keys \"Type:first Enter Type:second Enter Up Up\""},
+      {"input.80x24.edit", "--frame 80x24 --theme default-dark --keys \"Type:hello_world CtrlLeft ShiftEnd Type:there Home Delete Type:J\""},
+      {"input.80x24.paste", "--frame 80x24 --theme default-dark --keys \"Paste:line_one\\nline_two\""},
+      // fourteen lines pasted: the window caps at half its parent (the 23-row column:
+      // 11 outer rows, 9 of text) and scrolls so the caret's row (line 14) is in view
+      {"input.80x24.cap", "--frame 80x24 --theme default-dark --keys \"Paste:l1\\nl2\\nl3\\nl4\\nl5\\nl6\\nl7\\nl8\\nl9\\nl10\\nl11\\nl12\\nl13\\nl14\""},
+      // degenerate sizes: 1 or 0 cells in either dimension for some window, with input
+      // and popups exercised — graceful, never a crash or an overflow
+      {"tiny.1x1", "--frame 1x1 --theme default-dark --keys \"Type:abc F1 Tab\""},
+      {"tiny.2x2", "--frame 2x2 --theme default-dark --keys \"Type:abc AltEnter Type:d F1\""},
+      {"tiny.6x1", "--frame 6x1 --theme default-dark --keys \"Paste:one\\ntwo Up Down Home End\""},
+      {"tiny.1x6", "--frame 1x6 --theme default-dark --keys \"Type:hello Click 0,3 Drag 0,5 Release F1\""},
+      {"tiny.20x3", "--frame 20x3 --theme default-dark --keys \"Type:a_prompt_that_is_longer_than_the_row F1 Escape Tab\""},
+      {"tiny.80x2", "--frame 80x2 --theme default-dark --layout default --keys \"Type:hi Enter Up PageUp F1\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
+  std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
+  bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
@@ -143,6 +169,7 @@ int main(int argc, char** argv) {
     }
     int h = std::atoi(std::strchr(c.args, 'x') + 1);
     check(fits && rows == h, std::string(c.name) + ": " + std::to_string(rows) + " rows of at most " + std::to_string(w) + " cells");
+    if (std::string(c.name).rfind("tiny.", 0) == 0 && !(rc == 0 && fits && rows == h)) tiny_failed = true;
     if (std::string(c.name) == "demo.80x24") bottom = out;
     if (std::string(c.name) == "demo.80x24.top") top = out;
     if (std::string(c.name) == "demo.80x24.popup") popup = out;
@@ -155,6 +182,18 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "tools.80x24.dblclick") dbl_copy = copied_part(out);
     if (std::string(c.name) == "tools.80x24.tripleclick") triple_copy = copied_part(out);
     if (std::string(c.name) == "tools.80x24.autoscroll") autoscroll_out = out;
+    if (std::string(c.name) == "input.80x24.typed") typed = out;
+    if (std::string(c.name) == "input.80x24.multiline") multiline = out;
+    if (std::string(c.name) == "input.80x24.wrap") wrapped = out;
+    if (std::string(c.name) == "input.80x24.stacked-multiline") stacked_ml = out;
+    if (std::string(c.name) == "input.80x24.select-all") select_all_copy = copied_part(out);
+    if (std::string(c.name) == "input.80x24.drag") in_drag_copy = copied_part(out);
+    if (std::string(c.name) == "input.80x24.dblclick") in_dbl_copy = copied_part(out);
+    if (std::string(c.name) == "input.80x24.submit") submitted = out;
+    if (std::string(c.name) == "input.80x24.history") history = out;
+    if (std::string(c.name) == "input.80x24.edit") edited = out;
+    if (std::string(c.name) == "input.80x24.paste") pasted = out;
+    if (std::string(c.name) == "input.80x24.cap") capped = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -235,6 +274,38 @@ int main(int argc, char** argv) {
               auto_copy.substr(0, 120) + "...]");
     check(autoscroll_out.find("line 1/27") == std::string::npos && autoscroll_out.find("line 9/27  follow") != std::string::npos,
           "two ticks past the bottom edge reach the end (line 9/27) and follow re-engages there");
+    // ---- milestone 10: the input widget, asserted beyond the bytes ----
+    auto row = [](const std::string& frame, int y) {
+      std::istringstream in(frame);
+      std::string r;
+      for (int i = 0; i <= y; ++i) if (!std::getline(in, r)) return std::string();
+      return r;
+    };
+    check(row(typed, 21).rfind("\xE2\x94\x82 > hello world", 0) == 0, "typed text shows after the prompt on the input row, one cell in [" + row(typed, 21) + "]");
+    check(row(multiline, 20).rfind("\xE2\x94\x82 > one", 0) == 0 && row(multiline, 21).rfind("\xE2\x94\x82   two", 0) == 0 &&
+              row(multiline, 19).rfind("\xE2\x94\x9C", 0) == 0,
+          "Alt-Enter makes a second row: the window grew upward by one and the transcript's bottom border moved up");
+    check(row(wrapped, 20).find("over the lazy dog") != std::string::npos && row(wrapped, 21).rfind("\xE2\x94\x82    and keeps running", 0) == 0,
+          "a long line cell-wraps at the window's width (43 text cells: the space after 'dog' starts the second row, under the hanging indent)");
+    check(row(stacked_ml, 21) == "> one" && row(stacked_ml, 22) == "  two", "the stacked layout's borderless input grows the same way");
+    check(select_all_copy == "hello world", "Ctrl-A then Alt-C copies the whole input [" + select_all_copy + "]");
+    check(in_drag_copy == "hello", "a drag inside the input from h to o copies hello [" + in_drag_copy + "]");
+    check(in_dbl_copy == "world", "a double-click inside the input copies the word [" + in_dbl_copy + "]");
+    check(submitted.find("\xE2\x94\x82 > hi there") != std::string::npos && row(submitted, 21).rfind("\xE2\x94\x82 > type here", 0) == 0,
+          "Enter appends the text to the transcript as a user entry and empties the input (placeholder back)");
+    check(row(history, 21).rfind("\xE2\x94\x82 > first", 0) == 0 && history.find("\xE2\x94\x82 > second") != std::string::npos,
+          "Up twice after two submits recalls the older entry; both entries are in the transcript");
+    check(row(edited, 21).rfind("\xE2\x94\x82 > Jello there", 0) == 0,
+          "Ctrl-Left, Shift-End, typing over the selection, Home, Delete, typing: \"Jello there\" [" + row(edited, 21) + "]");
+    check(row(pasted, 20).rfind("\xE2\x94\x82 > line one", 0) == 0 && row(pasted, 21).rfind("\xE2\x94\x82   line two", 0) == 0,
+          "a bracketed paste with a newline is inserted literally as two rows");
+    check(row(capped, 12).rfind("\xE2\x94\x9C", 0) == 0 && row(capped, 13).rfind("\xE2\x94\x82   l6", 0) == 0 &&
+              row(capped, 21).rfind("\xE2\x94\x82   l14", 0) == 0 && row(capped, 3).find("\xE2\x94\x82") == 0,
+          "fourteen pasted lines: the input caps at half its 23-row parent (11 outer rows, 9 of text, top border on row 12), scrolled so l6..l14 show with the caret's line last; the transcript keeps the top half");
+    // Degenerate sizes: every case above already asserted "ran, h rows, each within w
+    // cells" — for the tiny frames that is the whole point (the user, 2026-09-01:
+    // views can shrink to 1 or even 0 in either dimension; it must be graceful).
+    check(!tiny_failed, "the 1x1, 2x2, 6x1, 1x6, 20x3 and 80x2 frames render (typed text, a paste, the help popup and Tab included) without a row out of bounds");
   }
   return report("rolltui playground_golden_test");
 }

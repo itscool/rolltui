@@ -19,7 +19,7 @@
 │ roll/CLAUDE.md#hard-constraints) under hard   │                              │
 │ constraints.                        ▼ 8 more  │                              │
 ├───────────────────────────────────────────────┤                              │
-│> type here (input is milestone 10)            │                              │
+│ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
  default-dark  default  80x24  line 1/27  truecolor  focus:transcript  copied 21
 --- copied ---
