@@ -23,7 +23,8 @@
 //
 // A colour value is "#rrggbb", an integer 0-255 (an ANSI index), "none" (the
 // terminal's default), the name of a `defs` entry, or {"dark": v, "light": v}
-// resolved by the mode the theme is loaded for. A role's unspecified fields inherit
+// resolved by the mode the theme is loaded for; an attribute is a bool or the same
+// {"dark","light"} pair of bools. A role's unspecified fields inherit
 // from the theme's `text` role; a role missing entirely inherits `text` whole AND is
 // listed once in the load report, so "I forgot one" is visible and "everything is
 // grey" is not the silent result. Unknown keys are reported, not ignored.

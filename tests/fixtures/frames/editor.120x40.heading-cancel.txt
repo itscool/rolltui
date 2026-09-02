@@ -1,0 +1,42 @@
+┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
+│ │ class, East-Asian width,         │             │ +, not Python) → │ theme editor › Roles › md_heading              │
+│ │ grapheme property,               │             │ unicode_tables.hp│ fg                                   #6ca0e0 ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ bg                                   #14161a ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ custom fg (#rrggbb, 0-255, none):              │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ custom bg (#rrggbb, 0-255, none):              │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ [x] bold                                       │
+│ │                                  │             │ block tree is the│ [ ] italic                                     │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [ ] underline                                  │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ [ ] dim                                        │
+│ │ mouse mode)                      │             │                  │ [ ] reverse                                    │
+│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
+│ │                                  │             │ Event, table-test│                                                │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
+│ │ colour downgrade                 │             │ tested           │                                                │
+│ │ Wrap engine                      │ build       │ single header ove│                                                │
+│ │                                  │             │ header           │                                                │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
+│ │                                  │             │ Rect is a pure fu│                                                │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
+│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
+│ │ → styled wrapped lines)          │             │                  │                                                │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
+│ │ loader, built-ins)               │             │                  │                                                │
+│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
+│                                                                     │                                                │
+│ Here is the function you asked for:                                 │                                                │
+│                                                                     │                                                │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
+│ │ int add(int a, int b) {                                           │ md_heading  fg #6ca0e0  bg #14161a  bold       │
+│ │   return a + b;                                                   │  Aa  the quick brown fox â sample in this role │
+│ └───────────────────────────────────────────────────────────────────│ fg         bg                                  │
+├─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
+│ > type here                                                         │                                                │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark [editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+--- role ---
+md_heading fg=#6ca0e0 bg=#14161a bold

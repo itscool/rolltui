@@ -4,15 +4,30 @@
 // asserting it are the same command.
 //
 //   rolltui-playground FIXTURE.md [options]
-//     --theme NAME|FILE.json   default-dark | default-light | mono, or a theme file
-//                              (a file is re-read whenever its mtime changes — edit
-//                              it in another window and watch)
-//     --layout NAME|FILE.json  default | panel-left | no-panel | stacked, or a layout
-//                              file (hot-reloaded the same way; see Layout.hpp for
-//                              the format). Below the layout's own min_width /
-//                              min_height the `stacked` built-in is used instead and
-//                              the status line says so.
-//     --mode dark|light        which variant a theme file's {dark,light} values use
+//     --presets DIR            the preset store's directory (rolltui/Presets.hpp):
+//                              the Theme working copy, user presets, layout files.
+//                              Default $ROLL_CONFIG_DIR/rolltui, else ~/.config/roll/
+//                              rolltui — the playground is a rolltui host like roll,
+//                              and a runtime change it makes autosaves there
+//     --shipped DIR            where "write a shipped preset" writes (the editor's
+//                              privilege); default: the source tree's presets/themes
+//     --theme NAME|FILE.json   a preset (default | default-dark | default-light |
+//                              mono | a user preset) or a preset file or a
+//                              colours-only theme file, filling this run's working
+//                              copy without writing it (a file is re-read whenever
+//                              its mtime changes — edit it in another window and
+//                              watch)
+//     --layout NAME|FILE.json  a built-in, a layouts/ file name, or a layout file
+//                              (hot-reloaded the same way; see Layout.hpp for the
+//                              format). Below the layout's own min_width / min_height
+//                              the `stacked` built-in is used instead and the status
+//                              line says so.
+//     --mode dark|light        which variant a theme's {dark,light} values use
+//                              (default: the working copy's mode; auto asks the
+//                              terminal in interactive mode, dark under --frame)
+//     --dump-role ROLE         after a --frame, print the effective style of ROLE
+//                              ("md_heading fg=#6ca0e0 bg=#14161a bold") — the
+//                              golden harness's way to see a colour
 //     --depth truecolor|256|16|mono   colour depth (default: detect from the env)
 //     --ambiguous-wide         East Asian ambiguous width = 2
 //     --frame WxH              render exactly one frame at that size to stdout as
@@ -20,13 +35,15 @@
 //                              and exit — the golden-frame harness and screenshot tool.
 //                              If the scripted input copied a selection, the copied
 //                              text follows the frame after a "--- copied ---" line.
+//                              Under --frame the working copy is never written (a
+//                              manual save-as still is: it is explicit).
 //     --frame-sgr WxH          the same frame with colours, for a terminal `cat`
 //     --keys "K K K"           scripted input applied before the frame (or before the
 //                              interactive loop): Up Down Left Right PageUp PageDown
 //                              Home End Tab Escape Enter Backspace Delete, each with
 //                              an optional Shift / Ctrl / Alt prefix (ShiftLeft,
 //                              CtrlHome, AltEnter, AltBackspace, ShiftTab), CtrlA/U/K/
-//                              W/D/O, AltC, AltD, F1 F2 F3 F5, WheelUp WheelDown,
+//                              W/D/O, AltC, AltD, F1-F8, WheelUp WheelDown,
 //                              Type:text (typed one code point at a time; `_` is a
 //                              space), Paste:text (one bracketed paste; `_` a space,
 //                              `\n` a newline), mouse as Click X,Y · ShiftClick X,Y ·
@@ -57,8 +74,12 @@
 // rolltui::Menu in the layout's "menu" popup — Theme / Layout / Depth as choices,
 // ambiguous width as a toggle, reload / help / quit as actions; arrows, Enter, Left,
 // Esc, typing filters) · Ctrl-P the same menu flattened as a command palette · F3
-// cycles the built-in themes · F5 re-reads the fixture · Ctrl-L repaints. (Letters
-// type, since milestone 10 — the app keys moved off them.) Scrolling: PgUp/PgDn, Ctrl-Home/End
+// cycles the shipped theme presets · F4 opens the THEME EDITOR (milestone 14:
+// tools/theme_editor.hpp — a side popup drawn in the theme being edited; Roles ›
+// role › fg › palette entry with a live preview; Enter commits, Esc cancels, Ctrl-Z /
+// Ctrl-Y undo and redo; resets and shipped writes confirm in a popup; the transcript
+// is the preview) · F5 re-reads the fixture · Ctrl-L repaints. (Letters type, since
+// milestone 10 — the app keys moved off them.) Scrolling: PgUp/PgDn, Ctrl-Home/End
 // and the wheel always scroll the transcript; Home/End scroll it only while the input
 // is empty (otherwise they move the caret); Up/Down scroll only while the transcript
 // has focus. Mouse: click and drag select (auto-scrolling past an edge), double-click
@@ -88,14 +109,17 @@
 #include "rolltui/Keys.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Menu.hpp"
+#include "rolltui/Presets.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Terminal.hpp"
 #include "rolltui/Theme.hpp"
 #include "rolltui/Transcript.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui/Wrap.hpp"
+#include "theme_editor.hpp"
 
 using namespace rolltui;
+using rolltui::tools::ThemeEditor;
 
 namespace {
 
@@ -162,6 +186,7 @@ const char* kHelpText =
     "Esc  close the top popup\n"
     "F1  toggle this help\n"
     "F2  settings menu   Ctrl-P  command palette   F3  cycle themes\n"
+    "F4  theme editor (Enter commits, Esc cancels, Ctrl-Z/Ctrl-Y undo/redo)\n"
     "F5  reload the fixture   Ctrl-L  repaint\n"
     "PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript\n"
     "Up/Down  scroll while the transcript has focus\n"
@@ -171,19 +196,34 @@ const char* kHelpText =
     "Enter  add the input to the transcript   Alt-Enter  newline";
 
 struct App {
-  std::string fixture_path, theme_arg = "default-dark", layout_arg = "default";
-  ThemeMode mode = ThemeMode::Dark;
+  std::string fixture_path, theme_arg, layout_arg;
+  std::optional<ThemeMode> mode_flag;   // --mode; else the working copy's mode
+  ThemeMode mode = ThemeMode::Dark;     // the variant in use this frame
+  ThemeMode detected_mode = ThemeMode::Dark;  // OSC 11's answer (interactive), dark otherwise
   ColorDepth depth = ColorDepth::TrueColor;
   bool ambiguous = false;
   int w = 80, h = 24;  // the screen
   Document doc;
-  Theme theme;
+  // The look comes from the preset store's Theme working copy (rolltui/Presets.hpp),
+  // exactly as in roll; the editor, when open, previews its own current theme.
+  std::shared_ptr<ThemePresets> store;
+  bool persist = true;                  // false under --frame: the working copy is never written
+  std::uint64_t store_seen = 0;
+  Theme resolved;                       // the working copy's colours at `mode`
+  Theme theme;                          // what this frame draws with (resolved, or the editor's preview)
   std::string theme_note;
   long theme_mtime = -1;
   Layout layout;
   std::string layout_note;
   long layout_mtime = -1;
   bool stacked_fallback = false;
+  // The theme editor (milestone 14).
+  ThemeEditor teditor;
+  bool editor_open = false;
+  std::string pending_save;             // a save-as awaiting its overwrite confirmation
+  std::string confirm_text;
+  std::function<void()> confirm_action;
+  std::string hint;
   WindowStack stack;
   Transcript transcript;
   Input editor;
@@ -193,7 +233,7 @@ struct App {
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   long last_frame_us = 0;
-  std::size_t builtin_theme_index = 0;
+  std::size_t shipped_theme_index = 0;
 
   App() {
     transcript.on_copy = [this](const std::string& s) { copied = s; copied_any = true; };
@@ -208,23 +248,25 @@ struct App {
   // bound below in menu_event() — the structure knows nothing of what they do.
   void build_menu() {
     std::vector<MenuItem> themes, layouts;
-    for (std::string_view n : builtin_theme_names()) themes.push_back(MenuItem::action(std::string(n), std::string(n)));
+    if (store) for (const PresetInfo& p : store->list()) themes.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
     for (std::string_view n : builtin_layout_names()) layouts.push_back(MenuItem::action(std::string(n), std::string(n)));
+    if (store) for (const std::string& n : store->layout_files()) layouts.push_back(MenuItem::action(n, n + "  (file)"));
     std::vector<MenuItem> depths;
     for (const char* d : {"truecolor", "256", "16", "mono"}) depths.push_back(MenuItem::action(d, d));
     menu.set_root(MenuItem::submenu(
         "root", "settings",
-        {MenuItem::choice("theme", "Theme", themes, theme.name),
+        {MenuItem::choice("theme", "Theme", themes, store ? store->label() : ""),
          MenuItem::choice("layout", "Layout", layouts, layout.name),
          MenuItem::choice("depth", "Colour depth", depths, std::string(color_depth_name(depth))),
          MenuItem::toggle("ambiguous", "Ambiguous width = 2", ambiguous),
          MenuItem::submenu("commands", "Commands",
-                           {MenuItem::action("reload", "Reload the fixture", "F5"), MenuItem::action("help", "Help", "F1"),
-                            MenuItem::action("quit", "Quit", "Ctrl-Q")})}));
+                           {MenuItem::action("editor", "Theme editor", "F4"), MenuItem::action("reload", "Reload the fixture", "F5"),
+                            MenuItem::action("help", "Help", "F1"), MenuItem::action("quit", "Quit", "Ctrl-Q")})}));
   }
   void open_menu(bool palette) {
     if (stack.has_popup("menu")) { close_popup("menu"); return; }
-    menu.set_value("theme", theme.name);
+    build_menu();  // presets and layout files may have changed
+    menu.set_value("theme", store ? store->label() : "");
     menu.set_value("layout", layout.name);
     menu.set_value("depth", std::string(color_depth_name(depth)));
     menu.set_checked("ambiguous", ambiguous);
@@ -243,8 +285,8 @@ struct App {
       case K::None: return true;
       case K::Closed: close_popup("menu"); return true;
       case K::Choose:
-        if (ev.id == "theme") { theme_arg = ev.value; load_theme_arg(); }
-        else if (ev.id == "layout") { layout_arg = ev.value; load_layout_arg(); }
+        if (ev.id == "theme") { theme_arg.clear(); PresetLoadReport rep; if (!store->load(ev.value, rep, persist)) hint = rep.error; else hint = rep.summary(); }
+        else if (ev.id == "layout") { layout_arg.clear(); LayoutLoadReport rep; if (auto l = store->find_layout(ev.value, rep)) store->set_layout(*l, persist); else hint = rep.error; }
         else if (ev.id == "depth") depth = detect_color_depth(nullptr, nullptr, ev.value.c_str());
         return true;
       case K::Toggle:
@@ -254,6 +296,7 @@ struct App {
         close_popup("menu");
         if (ev.id == "reload") load_fixture();
         else if (ev.id == "help") toggle_help();
+        else if (ev.id == "editor") toggle_editor();
         else if (ev.id == "quit") return false;
         return true;
       case K::Input: return true;
@@ -261,62 +304,210 @@ struct App {
     return true;
   }
 
+  // --theme X / --layout X fill this run's working copy without writing it (the
+  // precedence rule in Presets.hpp); a file is re-read on mtime change.
   bool load_theme_arg() {
-    if (const Theme* b = builtin_theme(theme_arg)) {
-      theme = *b;
-      theme_note.clear();
-      return true;
-    }
-    bool ok;
-    std::string text = read_file(theme_arg, ok);
-    if (!ok) { theme_note = "theme file not readable: " + theme_arg; theme = *builtin_theme("default-dark"); return false; }
-    ThemeLoadReport rep;
-    auto t = load_theme(text, mode, rep);
+    if (theme_arg.empty()) return true;
+    PresetLoadReport rep;
     theme_mtime = mtime_of(theme_arg);
-    if (!t) { theme_note = "theme error: " + rep.error; theme = *builtin_theme("default-dark"); return false; }
-    theme = *t;
-    theme_note.clear();
-    if (!rep.missing_roles.empty()) theme_note += std::to_string(rep.missing_roles.size()) + " roles missing (inherit text); ";
-    if (!rep.unknown_keys.empty()) theme_note += "unknown: " + rep.unknown_keys[0] + "; ";
-    if (!rep.bad_values.empty()) theme_note += "bad: " + rep.bad_values[0] + "; ";
+    if (!store->load(theme_arg, rep, /*persist=*/false)) { theme_note = rep.error; return false; }
+    theme_note = rep.summary();
+    if (!rep.colours.missing_roles.empty()) theme_note = std::to_string(rep.colours.missing_roles.size()) + " roles missing (inherit text)";
     return true;
   }
   void maybe_reload_theme() {
-    if (builtin_theme(theme_arg)) return;
+    if (theme_arg.empty() || ThemePresets::is_shipped(theme_arg)) return;
+    if (theme_arg.find('/') == std::string::npos && theme_arg.find(".json") == std::string::npos) return;
     long m = mtime_of(theme_arg);
     if (m != theme_mtime) load_theme_arg();
   }
-
-  // Loads the layout named/pathed by layout_arg into `layout` and the stack's base
-  // (popups stay open across a reload).
   bool load_layout_arg() {
-    if (const Layout* b = builtin_layout(layout_arg)) {
-      layout = *b;
-      layout_note.clear();
-    } else {
-      bool ok;
-      std::string text = read_file(layout_arg, ok);
+    if (!layout_arg.empty()) {
+      LayoutLoadReport rep;
       layout_mtime = mtime_of(layout_arg);
-      if (!ok) { layout_note = "layout file not readable: " + layout_arg; layout = *builtin_layout("default"); }
+      std::optional<Layout> l = store->find_layout(layout_arg, rep);
+      if (!l) layout_note = rep.error;
       else {
-        LayoutLoadReport rep;
-        auto l = load_layout(text, rep);
-        if (!l) { layout_note = "layout error: " + rep.error; layout = *builtin_layout("default"); }
-        else {
-          layout = *l;
-          layout_note.clear();
-          if (!rep.unknown_keys.empty()) layout_note += "unknown: " + rep.unknown_keys[0] + "; ";
-          if (!rep.bad_values.empty()) layout_note += "bad: " + rep.bad_values[0] + "; ";
-        }
+        store->set_layout(*l, /*persist=*/false);
+        layout_note.clear();
+        if (!rep.unknown_keys.empty()) layout_note += "unknown: " + rep.unknown_keys[0] + "; ";
+        if (!rep.bad_values.empty()) layout_note += "bad: " + rep.bad_values[0] + "; ";
       }
     }
+    sync_look();
     apply_layout();
     return layout_note.empty();
   }
   void maybe_reload_layout() {
-    if (builtin_layout(layout_arg)) return;
+    if (layout_arg.empty() || builtin_layout(layout_arg)) return;
+    if (layout_arg.find('/') == std::string::npos && layout_arg.find(".json") == std::string::npos) return;
     long m = mtime_of(layout_arg);
     if (m != layout_mtime) load_layout_arg();
+  }
+  // Re-resolves the look from the working copy when the store changed; the editor's
+  // preview wins while it is open.
+  void sync_look() {
+    if (store && store->version() != store_seen) {
+      store_seen = store->version();
+      const ThemePreset working = store->working();
+      mode = mode_flag ? *mode_flag : mode_from_setting(working.mode).value_or(detected_mode);
+      ThemeLoadReport rep;
+      std::optional<Theme> t = resolve_colours(working, mode, rep);
+      resolved = t ? *t : *builtin_theme("default-dark");
+      if (!t) theme_note = "colours unusable: " + rep.error;
+      if (!(layout == working.layout)) { layout = working.layout; apply_layout(); }
+    }
+    theme = editor_open ? teditor.current() : resolved;
+  }
+
+  // ---- the theme editor (milestone 14) ----
+  static Layer editor_popup() {
+    Layer l;
+    l.id = "editor";
+    l.placement = {Dim::rel(1), Dim::abs(0), Dim::abs(50), Dim::rel(1), Anchor::TopRight, true, Dim::abs(24), Dim::abs(6), {}, {}};
+    l.modal = false;
+    Node n = Node::window("editor");
+    n.border = Border::Single;
+    n.title = "theme editor";
+    n.focusable = true;
+    n.background = Role::panel_background;
+    l.root = n;
+    l.focus = "editor";
+    return l;
+  }
+  static Layer confirm_popup() {
+    Layer l;
+    l.id = "confirm";
+    l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(5), Anchor::Center, true, Dim::abs(20), {}, Dim::abs(70), {}};
+    l.modal = true;
+    Node n = Node::window("confirm");
+    n.border = Border::Rounded;
+    n.title = "confirm";
+    n.focusable = true;
+    n.background = Role::panel_background;
+    l.root = n;
+    return l;
+  }
+  void toggle_editor() {
+    if (editor_open) { close_popup("editor"); editor_open = false; sync_look(); return; }
+    ThemeLoadReport rep;
+    teditor.load(store->working(), rep);
+    std::vector<std::string> names, shipped;
+    for (const PresetInfo& p : store->list()) names.push_back(p.name);
+    for (std::string_view n : ThemePresets::shipped_names()) shipped.push_back(std::string(n));
+    teditor.set_presets(names);
+    teditor.set_shipped(shipped, store->options().may_write_shipped);
+    teditor.set_mode(mode);
+    editor_open = true;
+    stack.push(editor_popup());
+    sync_look();
+  }
+  void ask(std::string text, std::function<void()> action) {
+    confirm_text = std::move(text);
+    confirm_action = std::move(action);
+    stack.push(confirm_popup());
+  }
+  void editor_outcome(const ThemeEditor::Outcome& o) {
+    using K = ThemeEditor::Outcome::Kind;
+    switch (o.kind) {
+      case K::None: case K::Changed: break;
+      case K::Committed:
+        store->set_colours(teditor.colours_json(store->origin()), persist);
+        break;
+      case K::SaveAs: {
+        std::string err;
+        const SaveResult r = store->save_as(o.value, pending_save == o.value, err);
+        if (r == SaveResult::ExistsAsk) { pending_save = o.value; hint = "preset '" + o.value + "' exists; Enter the same name again to overwrite"; }
+        else { pending_save.clear(); hint = r == SaveResult::Saved ? "saved preset '" + o.value + "'" : err; }
+        if (r == SaveResult::Saved) { std::vector<std::string> names; for (const PresetInfo& p : store->list()) names.push_back(p.name); teditor.set_presets(names); }
+        break;
+      }
+      case K::WriteShipped:
+        ask("Write the SHIPPED preset '" + o.value + "' into " + store->options().shipped_dir + "? (y/n)", [this, name = o.value] {
+          std::string err;
+          hint = store->save_as(name, true, err) == SaveResult::Saved ? "wrote shipped preset '" + name + "' (rebuild to embed it)" : err;
+        });
+        break;
+      case K::LoadPreset: {
+        PresetLoadReport rep;
+        if (!store->load(o.value, rep, persist)) hint = rep.error;
+        else { ThemeLoadReport tr; teditor.load(store->working(), tr); hint = "loaded '" + o.value + "'"; }
+        break;
+      }
+      case K::ResetLoaded:
+        ask("Reset every role to the preset '" + store->origin() + "'? (y/n)", [this] {
+          PresetLoadReport rep;
+          if (std::optional<ThemePreset> p = store->get(store->origin(), rep)) {
+            ThemeLoadReport tr;
+            std::optional<Theme> d = resolve_colours(*p, ThemeMode::Dark, tr), l = resolve_colours(*p, ThemeMode::Light, tr);
+            if (d && l) { teditor.replace({*d, *l}); editor_outcome({K::Committed, {}}); hint = "reset to '" + store->origin() + "' (undoable)"; }
+          } else hint = rep.error;
+        });
+        break;
+      case K::ResetBuiltin:
+        ask("Reset every role to the built-in default? (y/n)", [this] {
+          teditor.replace({*builtin_theme("default-dark"), *builtin_theme("default-light")});
+          editor_outcome({K::Committed, {}});
+          hint = "reset to the built-in default (undoable)";
+        });
+        break;
+      case K::Closed:
+        toggle_editor();
+        break;
+    }
+  }
+  // The editor's sample box: the focused role's fields, a sample in its style, swatches.
+  void draw_editor(const ResolvedNode& rn, Frame& f) {
+    Rect r = text_area(rn);
+    if (r.w <= 0 || r.h <= 0) return;
+    const int box = std::min(5, r.h);
+    Rect m = r;
+    m.h = r.h - box;
+    MenuOptions mo;
+    mo.ambiguous_wide = ambiguous;
+    teditor.menu().set_options(mo);
+    teditor.menu().layout(m);
+    if (m.h > 0) teditor.menu().draw(f, theme, rn.focused);
+    int y = r.y + m.h;
+    const Style label = theme.style(Role::label), value = theme.style(Role::value);
+    if (std::optional<Role> role = teditor.focused_role()) {
+      const Style& s = theme.style(*role);
+      std::string line = std::string(role_name(*role)) + "  fg " + color_to_string(s.fg) + "  bg " + color_to_string(s.bg);
+      for (const char* a : {"bold", "italic", "underline", "dim", "reverse"}) {
+        const bool on = std::string_view(a) == "bold" ? s.bold : std::string_view(a) == "italic" ? s.italic : std::string_view(a) == "underline" ? s.underline : std::string_view(a) == "dim" ? s.dim : s.reverse;
+        if (on) line += std::string("  ") + a;
+      }
+      if (y < r.y + r.h) f.put_text(r.x, y++, line, label, r.w, ambiguous);
+      if (y < r.y + r.h) f.put_text(r.x, y++, " Aa  the quick brown fox â sample in this role ", s, r.w, ambiguous);
+      if (y < r.y + r.h) {
+        int x = r.x;
+        x += f.put_text(x, y, "fg ", label, std::max(r.w - (x - r.x), 0), ambiguous);
+        Style sw; sw.bg = s.fg; x += f.put_text(x, y, "      ", sw, std::max(r.w - (x - r.x), 0), ambiguous);
+        x += f.put_text(x, y, "  bg ", label, std::max(r.w - (x - r.x), 0), ambiguous);
+        Style sb; sb.bg = s.bg; x += f.put_text(x, y, "      ", sb, std::max(r.w - (x - r.x), 0), ambiguous);
+        if (std::optional<Color> hc = teditor.highlighted_color()) {
+          x += f.put_text(x, y, "  â¶ ", label, std::max(r.w - (x - r.x), 0), ambiguous);
+          Style sh; sh.bg = *hc; f.put_text(x, y, "      ", sh, std::max(r.w - (x - r.x), 0), ambiguous);
+        }
+        ++y;
+      }
+    } else {
+      if (y < r.y + r.h) f.put_text(r.x, y++, "preset: " + store->label(), label, r.w, ambiguous);
+      if (y < r.y + r.h) f.put_text(r.x, y++, "Roles âº a role âº fg âº a colour; the transcript is the preview", value, r.w, ambiguous);
+      if (y < r.y + r.h) f.put_text(r.x, y++, "type to filter Â· Enter commits Â· Esc cancels Â· Ctrl-Z / Ctrl-Y", value, r.w, ambiguous);
+    }
+    if (y < r.y + r.h) f.put_text(r.x, y++, teditor.status_line(), value, r.w, ambiguous);
+    if (y < r.y + r.h && !hint.empty()) f.put_text(r.x, y++, hint, theme.style(Role::warning), r.w, ambiguous);
+  }
+  void draw_confirm(const ResolvedNode& rn, Frame& f) {
+    const Rect r = text_area(rn);
+    WrapOptions wo;
+    int y = r.y;
+    for (const Line& l : wrap(confirm_text, std::max(r.w, 1), wo)) {
+      if (y >= r.y + r.h) break;
+      f.put_text(r.x + l.indent, y++, l.text, theme.style(Role::warning), std::max(r.w - l.indent, 0), ambiguous);
+    }
+    if (y < r.y + r.h) f.put_text(r.x, y, "y = yes    n / Esc = no", theme.style(Role::prompt), r.w, ambiguous);
   }
   // The base layer for the current screen: the chosen layout, or `stacked` below its
   // stated minimum. Re-applied whenever the size or the layout changes.
@@ -397,7 +588,7 @@ struct App {
     struct Row { std::string label, value; };
     const std::size_t total = transcript.total_lines();
     std::vector<Row> rows = {
-        {"theme", theme.name},
+        {"theme", store ? store->label() : theme.name},
         {"layout", effective_layout().name + (stacked_fallback ? " (fallback)" : "")},
         {"size", std::to_string(w) + "x" + std::to_string(h)},
         {"line", std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total)},
@@ -467,6 +658,10 @@ struct App {
       menu.set_options(mo);
       menu.layout(rn.inner);
       menu.draw(f, theme, rn.focused);
+    } else if (c == "editor") {
+      draw_editor(rn, f);
+    } else if (c == "confirm") {
+      draw_confirm(rn, f);
     } else if (c.rfind("text:", 0) == 0) {
       draw_text(rn, f, std::string_view(c).substr(5), Role::text);
     } else {
@@ -477,6 +672,7 @@ struct App {
   // The frame: the layout above a one-line status bar of the playground's own.
   Frame render(bool with_timing) {
     auto t0 = std::chrono::steady_clock::now();
+    sync_look();
     ensure_layout();  // the input window's size follows its text (found by the paste golden: a lone
                       // event left the size one event behind)
     Frame f(w, h, theme.style(Role::background));
@@ -485,7 +681,7 @@ struct App {
     if (h > 1) {
       f.fill({0, h - 1, w, 1}, theme.style(Role::panel_background));
       const std::size_t total = transcript.total_lines();
-      std::string status = " " + theme.name + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
+      std::string status = " " + (store ? store->label() : theme.name) + (editor_open ? " [editor]" : "") + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
                            "  line " + std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total) +
                            (transcript.scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
@@ -495,7 +691,7 @@ struct App {
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
-      std::string help = "^C quit  F1 help  F2 menu  ^P palette ";
+      std::string help = "^C quit  F1 help  F2 menu  ^P palette  F4 editor ";
       int hw = unicode::display_width(help);
       if (hw + unicode::display_width(status) + 2 <= w) f.put_text(w - hw, h - 1, help, theme.style(Role::text_muted), hw, ambiguous);
     }
@@ -509,26 +705,49 @@ struct App {
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
       if (k->key == Key::Char && k->ctrl && (k->ch == 'c' || k->ch == 'q')) return false;
       if (k->key == Key::F3) {
-        std::vector<std::string_view> names = builtin_theme_names();
-        builtin_theme_index = (builtin_theme_index + 1) % names.size();
-        theme_arg = std::string(names[builtin_theme_index]);
-        load_theme_arg();
+        std::vector<std::string_view> names = ThemePresets::shipped_names();
+        shipped_theme_index = (shipped_theme_index + 1) % names.size();
+        PresetLoadReport rep;
+        theme_arg.clear();
+        store->load(names[shipped_theme_index], rep, persist);
+        if (editor_open) { ThemeLoadReport tr; teditor.load(store->working(), tr); }
         return true;
       }
+      if (k->key == Key::F4) { toggle_editor(); return true; }
       if (k->key == Key::F2) { open_menu(false); return true; }
       if (k->key == Key::Char && k->ctrl && k->ch == 'p') { open_menu(true); return true; }
       if (k->key == Key::F5) { load_fixture(); return true; }
       if (k->key == Key::F1) { toggle_help(); return true; }
       if (k->key == Key::Char && k->ctrl && k->ch == 'l') return true;  // the loop repaints
     }
+    sync_look();
     ensure_layout();
-    if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) { editor.handle(*p, clock_ms); return true; }
+    if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) {
+      if (stack.has_popup("editor") && stack.focused() && stack.focused()->id == "editor") { editor_outcome(teditor.handle(*p)); return true; }
+      editor.handle(*p, clock_ms);
+      return true;
+    }
+    // Escape belongs to the editor while it has focus (it cancels the focused change or
+    // ascends; the editor asks to close only from its top level) — the stack would
+    // otherwise close the popup first.
+    if (const KeyEvent* k = std::get_if<KeyEvent>(&ev);
+        k && k->key == Key::Escape && editor_open && stack.focused() && stack.focused()->id == "editor") {
+      hint.clear();
+      editor_outcome(teditor.handle(ev));
+      return true;
+    }
     Route r = stack.route(ev, layout_area());
+    if (r.kind == Route::Kind::ClosedPopup && r.window == "editor") { editor_open = false; sync_look(); return true; }
+    if (r.kind == Route::Kind::ClosedPopup && r.window == "confirm") { confirm_action = nullptr; return true; }
     if (r.kind != Route::Kind::Deliver) return true;
-    if (r.window == "menu") {
-      const Rect area = menu.area();
-      (void)area;
-      return menu_event(menu.handle(ev));
+    if (r.window == "menu") return menu_event(menu.handle(ev));
+    if (r.window == "editor") { hint.clear(); editor_outcome(teditor.handle(ev)); return true; }
+    if (r.window == "confirm") {
+      if (const KeyEvent* k = std::get_if<KeyEvent>(&ev); k && k->key == Key::Char && !k->ctrl && !k->alt) {
+        if (k->ch == 'y' || k->ch == 'Y') { close_popup("confirm"); if (confirm_action) confirm_action(); confirm_action = nullptr; }
+        else if (k->ch == 'n' || k->ch == 'N') { close_popup("confirm"); confirm_action = nullptr; }
+      }
+      return true;
     }
     const bool to_transcript = r.window == "transcript";
     const bool to_input = r.window == "input";
@@ -624,7 +843,7 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
         {"Up", Key::Up}, {"Down", Key::Down}, {"Left", Key::Left}, {"Right", Key::Right}, {"PageUp", Key::PageUp},
         {"PageDown", Key::PageDown}, {"Home", Key::Home}, {"End", Key::End}, {"Enter", Key::Enter}, {"Escape", Key::Escape},
         {"Tab", Key::Tab}, {"Backspace", Key::Backspace}, {"Delete", Key::Delete}, {"F1", Key::F1}, {"F2", Key::F2},
-        {"F3", Key::F3}, {"F5", Key::F5}};
+        {"F3", Key::F3}, {"F4", Key::F4}, {"F5", Key::F5}, {"F6", Key::F6}, {"F7", Key::F7}, {"F8", Key::F8}};
     for (const auto& [n, k] : keys)
       if (name == n) { out = key(k, shift, c, a); return true; }
     if (name.size() == 1 && (c || a) && name[0] >= 'A' && name[0] <= 'Z') {  // CtrlA, AltC, ...
@@ -733,10 +952,27 @@ void print_frame_plain(const Frame& f) {
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-playground FIXTURE.md [--theme NAME|FILE] [--layout NAME|FILE] [--mode dark|light]\n"
-               "       [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
-               "       [--keys \"Up Down PageDown Tab F1 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
+               "usage: rolltui-playground FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE]\n"
+               "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
+               "       [--dump-role ROLE] [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
+}
+
+std::string default_presets_dir() {
+  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return std::string(d) + "/rolltui";
+  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return std::string(x) + "/roll/rolltui";
+  const char* home = std::getenv("HOME");
+  return std::string(home && *home ? home : ".") + "/.config/roll/rolltui";
+}
+
+std::string style_dump(std::string_view role, const Style& s) {
+  std::string out = std::string(role) + " fg=" + color_to_string(s.fg) + " bg=" + color_to_string(s.bg);
+  if (s.bold) out += " bold";
+  if (s.italic) out += " italic";
+  if (s.underline) out += " underline";
+  if (s.dim) out += " dim";
+  if (s.reverse) out += " reverse";
+  return out;
 }
 
 std::uint64_t now_ms() {
@@ -749,14 +985,18 @@ std::uint64_t now_ms() {
 int main(int argc, char** argv) {
   App app;
   app.depth = detect_color_depth(std::getenv("COLORTERM"), std::getenv("TERM"), std::getenv("ROLL_COLOR_DEPTH"));
-  std::string frame_spec, keys_spec;
+  std::string frame_spec, keys_spec, dump_role;
+  std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
   bool frame_sgr = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
     if (a == "--theme") app.theme_arg = next();
     else if (a == "--layout") app.layout_arg = next();
-    else if (a == "--mode") app.mode = (next() == "light") ? ThemeMode::Light : ThemeMode::Dark;
+    else if (a == "--presets") presets_dir = next();
+    else if (a == "--shipped") shipped_dir = next();
+    else if (a == "--dump-role") dump_role = next();
+    else if (a == "--mode") app.mode_flag = (next() == "light") ? ThemeMode::Light : ThemeMode::Dark;
     else if (a == "--depth") {
       std::string d = next();
       app.depth = detect_color_depth(nullptr, nullptr, d.c_str());
@@ -769,13 +1009,23 @@ int main(int argc, char** argv) {
   }
   if (app.fixture_path.empty()) return usage();
   if (!app.load_fixture()) { std::fprintf(stderr, "cannot read %s\n", app.fixture_path.c_str()); return 1; }
+  // The preset store: the playground is a rolltui host, with the editor's privilege
+  // (it writes what ships). Under --frame nothing autosaves.
+  app.store = std::make_shared<ThemePresets>(ThemePresets::Options{presets_dir, true, shipped_dir});
+  app.persist = frame_spec.empty();
+  {
+    const PresetLoadReport start = app.store->start();
+    if (!start.error.empty()) app.theme_note = start.error;
+  }
   app.load_theme_arg();
+  app.build_menu();
 
   if (!frame_spec.empty()) {
     int w, h;
     if (!parse_size(frame_spec, w, h)) return usage();
     app.resize(w, h);
     app.load_layout_arg();
+    app.sync_look();
     app.ensure_layout();
     run_steps(app, scripted_keys(keys_spec, w, h));
     Frame f = app.render(false);
@@ -788,13 +1038,23 @@ int main(int argc, char** argv) {
       print_frame_plain(f);
     }
     if (app.copied_any) std::printf("--- copied ---\n%s\n", app.copied.c_str());
+    if (!dump_role.empty()) {
+      const Role r = role_from_name(dump_role);
+      if (r == Role::count_) { std::fprintf(stderr, "no role named %s\n", dump_role.c_str()); return 1; }
+      std::printf("--- role ---\n%s\n", style_dump(dump_role, app.theme.style(r)).c_str());
+    }
     return 0;
   }
 
   Terminal term(STDIN_FILENO, STDOUT_FILENO);
   if (!term.is_tty()) { std::fprintf(stderr, "not a terminal; use --frame WxH\n"); return 1; }
+  if (!app.mode_flag && app.store->working().mode == "auto") {
+    const std::optional<Color> bg = term.query_background(150);
+    app.detected_mode = bg ? mode_for_background(*bg) : ThemeMode::Dark;
+  }
   app.resize(term.width(), term.height());
   app.load_layout_arg();
+  app.sync_look();
   app.ensure_layout();
   run_steps(app, scripted_keys(keys_spec, app.w, app.h));
   Frame prev;

@@ -485,12 +485,20 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
       if (k == "fg" || k == "bg") {
         if (auto c = resolve_color(x, defs, mode, where + "." + k, report)) (k == "fg" ? s.fg : s.bg) = *c;
       } else if (k == "bold" || k == "italic" || k == "underline" || k == "dim" || k == "reverse") {
-        if (!x.is_bool()) { report.bad_values.push_back(where + "." + k + ": expected true or false"); continue; }
-        if (k == "bold") s.bold = x.b;
-        else if (k == "italic") s.italic = x.b;
-        else if (k == "underline") s.underline = x.b;
-        else if (k == "dim") s.dim = x.b;
-        else s.reverse = x.b;
+        // A bool, or a {"dark": bool, "light": bool} pair like a colour (the editor can
+        // set an attribute in one variant only, and the file must be able to say so).
+        const json::Value* b = &x;
+        if (x.is_object()) {
+          const char* key = mode == ThemeMode::Dark ? "dark" : "light";
+          if (!x.has(key)) { report.bad_values.push_back(where + "." + k + ": missing \"" + key + "\" variant"); continue; }
+          b = &x.get(key);
+        }
+        if (!b->is_bool()) { report.bad_values.push_back(where + "." + k + ": expected true or false"); continue; }
+        if (k == "bold") s.bold = b->b;
+        else if (k == "italic") s.italic = b->b;
+        else if (k == "underline") s.underline = b->b;
+        else if (k == "dim") s.dim = b->b;
+        else s.reverse = b->b;
       } else {
         report.unknown_keys.push_back(where + "." + k);
       }
@@ -529,11 +537,21 @@ json::Value style_to_json(const Style& s, const Style* light) {
   };
   o.set("fg", colour(s.fg, light ? &light->fg : nullptr));
   o.set("bg", colour(s.bg, light ? &light->bg : nullptr));
-  if (s.bold) o.set("bold", json::Value::boolean(true));
-  if (s.italic) o.set("italic", json::Value::boolean(true));
-  if (s.underline) o.set("underline", json::Value::boolean(true));
-  if (s.dim) o.set("dim", json::Value::boolean(true));
-  if (s.reverse) o.set("reverse", json::Value::boolean(true));
+  auto attr = [&](const char* name, bool d, bool l) {
+    if (light && d != l) {
+      json::Value pair = json::Value::object();
+      pair.set("dark", json::Value::boolean(d));
+      pair.set("light", json::Value::boolean(l));
+      o.set(name, std::move(pair));
+    } else if (d) {
+      o.set(name, json::Value::boolean(true));
+    }
+  };
+  attr("bold", s.bold, light ? light->bold : s.bold);
+  attr("italic", s.italic, light ? light->italic : s.italic);
+  attr("underline", s.underline, light ? light->underline : s.underline);
+  attr("dim", s.dim, light ? light->dim : s.dim);
+  attr("reverse", s.reverse, light ? light->reverse : s.reverse);
   return o;
 }
 
@@ -551,9 +569,9 @@ json::Value theme_to_json_value(const Theme& theme) {
 std::string theme_to_json(const Theme& theme) { return json::dump(theme_to_json_value(theme), 2) + "\n"; }
 
 json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std::string_view name) {
-  // Attributes must agree for a role to be written once; where they differ the pair
-  // form cannot express it, so the dark theme's attributes win and the test that
-  // asserts an exact round trip for both variants is what would catch it.
+  // Colours AND attributes are written as {"dark","light"} pairs wherever the two
+  // variants differ, so the round trip is exact for both (asserted in
+  // rolltui-theme-editor-test with an attribute set in one variant only).
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(std::string(name)));
   json::Value roles = json::Value::object();

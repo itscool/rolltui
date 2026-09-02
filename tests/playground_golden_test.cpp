@@ -25,6 +25,12 @@
 // is the same tree as a palette; a toggle shows [x]; three degenerate sizes with the
 // menu driven.
 //
+// Milestone 14 added the theme editor: F4 opens it as a side popup; Roles › md_heading
+// › fg with the selection moved previews a colour (--dump-role shows it), Escape puts
+// the committed one back, Enter commits, Ctrl-Z undoes, save-as writes a preset file
+// under a scratch --presets directory and a relaunch with --theme <that file> shows
+// the colour; the confirm popup for a reset; a degenerate size with the editor open.
+//
 // Milestone 9 added the transcript-widget cases on a second fixture (tools.md: two
 // foldable tool blocks, a link, a list): folded by default; a click on the summary
 // line and Ctrl-O both unfold the same block (asserted equal); a drag across a wrapped
@@ -33,8 +39,11 @@
 // over two ticks and copies across entries; ▼ marker placement. The copied text
 // follows the frame in the playground's output, so the golden holds both.
 //
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -88,8 +97,18 @@ std::string copied_part(const std::string& out) {
   return s;
 }
 std::string frame_part(const std::string& out) {
-  const std::size_t at = out.find("--- copied ---\n");
+  std::size_t at = out.find("--- copied ---\n");
+  const std::size_t role = out.find("--- role ---\n");
+  if (role != std::string::npos && (at == std::string::npos || role < at)) at = role;
   return at == std::string::npos ? out : out.substr(0, at);
+}
+// The "--- role ---" trailer's line ("md_heading fg=#.. bg=#.. bold"), "" when absent.
+std::string role_part(const std::string& out) {
+  const std::size_t at = out.find("--- role ---\n");
+  if (at == std::string::npos) return "";
+  std::string s = out.substr(at + 13);
+  if (!s.empty() && s.back() == '\n') s.pop_back();
+  return s;
 }
 
 }  // namespace
@@ -97,6 +116,12 @@ std::string frame_part(const std::string& out) {
 int main(int argc, char** argv) {
   const bool record = (argc > 1 && std::strcmp(argv[1], "--record") == 0);
   const std::string frames = std::string(ROLLTUI_FIXTURE_DIR) + "/frames/";
+  // A scratch preset directory for the editor cases (never the developer's own).
+  const char* tmp = std::getenv("TMPDIR");
+  const std::string scratch = std::string(tmp && *tmp ? tmp : "/tmp") + "/rolltui_golden_" + std::to_string(::getpid());
+  const std::string presets = " --presets '" + scratch + "/p' --shipped '" + scratch + "/s'";
+  std::filesystem::remove_all(scratch);
+  std::filesystem::create_directories(scratch);
   const Case cases[] = {
       {"demo.80x24", "--frame 80x24 --theme default-dark"},
       {"demo.120x40", "--frame 120x40 --theme default-dark"},
@@ -165,16 +190,27 @@ int main(int argc, char** argv) {
       {"tiny.1x1.menu", "--frame 1x1 --theme default-dark --keys \"F2 Enter Down Enter\""},
       {"tiny.3x3.menu", "--frame 3x3 --theme default-dark --keys \"F2 Down Enter Type:s\""},
       {"tiny.30x2.menu", "--frame 30x2 --theme default-dark --keys \"F2 Type:th Enter Down Enter CtrlP Type:q\""},
+      // milestone 14 (the theme editor); these get the scratch --presets appended
+      {"editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F4\""},
+      {"editor.120x40.heading-fg", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down\""},
+      {"editor.120x40.heading-cancel", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Escape\""},
+      {"editor.120x40.heading-commit", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter\""},
+      {"editor.120x40.heading-undo", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter CtrlZ\""},
+      {"editor.120x40.confirm", "--frame 120x40 --theme default-dark --keys \"F4 Type:built Enter\""},
+      {"editor.120x40.save", "--frame 120x40 --theme default-dark --dump-role md_heading --keys \"F4 Enter Type:heading Enter Enter Down Down Enter Escape Escape Type:save Enter Type:mine Enter\""},
+      {"tiny.8x3.editor", "--frame 8x3 --theme default-dark --keys \"F4 Enter Down Enter Type:x\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
+  std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
     std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + fixture + "' " + c.args;
+    if (std::string(c.name).find("editor") != std::string::npos) cmd += presets;
     std::string out = run(cmd, rc);
     check(rc == 0 && !out.empty(), std::string(c.name) + ": playground ran (rc " + std::to_string(rc) + ", " +
                                        std::to_string(out.size()) + " bytes)");
@@ -226,6 +262,13 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "menu.80x24.palette") menu_palette = out;
     if (std::string(c.name) == "menu.80x24.palette-choose") menu_palette_choose = out;
     if (std::string(c.name) == "menu.120x40.open") menu_big = out;
+    if (std::string(c.name) == "editor.120x40.open") ed_open = out;
+    if (std::string(c.name) == "editor.120x40.heading-fg") ed_fg = out;
+    if (std::string(c.name) == "editor.120x40.heading-cancel") ed_cancel = out;
+    if (std::string(c.name) == "editor.120x40.heading-commit") ed_commit = out;
+    if (std::string(c.name) == "editor.120x40.heading-undo") ed_undo = out;
+    if (std::string(c.name) == "editor.120x40.confirm") ed_confirm = out;
+    if (std::string(c.name) == "editor.120x40.save") ed_save = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -358,9 +401,38 @@ int main(int argc, char** argv) {
     check(menu_palette_choose.find("stacked") != std::string::npos && menu_palette_choose.find("\xE2\x95\xAD menu ") != std::string::npos &&
               menu_palette_choose.find("\xE2\x94\x8C transcript") == std::string::npos,
           "Enter on a palette row chooses the stacked layout (borderless transcript) with the menu still open");
+    // ---- milestone 14: the theme editor, asserted beyond the bytes ----
+    check(ed_open.find("\xE2\x94\x8C theme editor ") != std::string::npos && ed_open.find("focus:editor") != std::string::npos && ed_open.find("Roles") != std::string::npos,
+          "F4 opens the theme editor popup with focus and the Roles level");
+    check(ed_fg.find("Roles \xE2\x80\xBA md_heading \xE2\x80\xBA fg") != std::string::npos && role_part(ed_fg) == "md_heading fg=#e5c07b bg=#14161a bold" &&
+              ed_fg.find("previewing") != std::string::npos,
+          "Roles › md_heading › fg two entries down previews #e5c07b on the heading and says previewing [" + role_part(ed_fg) + "]");
+    check(role_part(ed_cancel) == "md_heading fg=#6ca0e0 bg=#14161a bold" && ed_cancel.find("focus:editor") != std::string::npos,
+          "Escape puts the committed #6ca0e0 back and stays in the editor [" + role_part(ed_cancel) + "]");
+    check(role_part(ed_commit) == "md_heading fg=#e5c07b bg=#14161a bold" && ed_commit.find("undo 1") != std::string::npos,
+          "Enter commits: the heading is #e5c07b, undo depth 1 [" + role_part(ed_commit) + "]");
+    check(role_part(ed_undo) == "md_heading fg=#6ca0e0 bg=#14161a bold" && ed_undo.find("undo 0") != std::string::npos && ed_undo.find("redo 1") != std::string::npos,
+          "Ctrl-Z undoes it: #6ca0e0, undo 0, redo 1");
+    check(ed_confirm.find("\xE2\x95\xAD confirm ") != std::string::npos && ed_confirm.find("built-in default? (y/n)") != std::string::npos,
+          "Reset to the built-in default asks in a confirm popup, never applies bare");
+    check(ed_save.find("saved preset 'mine'") != std::string::npos && std::filesystem::exists(scratch + "/p/themes/mine.json"),
+          "save-as writes themes/mine.json under the scratch presets directory (a manual save writes even under --frame)");
+    {
+      int rc = 0;
+      const std::string relaunch = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 80x24 --presets '" +
+                                   scratch + "/p2' --theme '" + scratch + "/p/themes/mine.json' --dump-role md_heading";
+      const std::string again = run(relaunch, rc);
+      check(rc == 0 && role_part(again) == "md_heading fg=#e5c07b bg=#14161a bold", "a relaunch with --theme <that file> shows the saved heading colour [" + role_part(again) + "]");
+      // Under --frame nothing autosaves from an edit; the explicit save-as records its
+      // new origin in the working copy, which is the one write the frame runs made.
+      bool ok = false;
+      std::string wc = read_file(scratch + "/p/theme.working.json", ok);
+      check(ok && wc.find("\"preset\": \"mine\"") != std::string::npos, "the working copy written by the save-as records preset 'mine' — and nothing wrote it before that (the earlier frames' edits did not persist)");
+    }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +
               std::to_string(row_of(menu_open, "\xE2\x95\xAD menu ")) + ", " + std::to_string(row_of(menu_big, "\xE2\x95\xAD menu ")) + ")");
   }
+  std::filesystem::remove_all(scratch);
   return report("rolltui playground_golden_test");
 }

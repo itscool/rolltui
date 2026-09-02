@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 1/30  follow  truecolor  focus:transcript    ^C quit  F1 help  F2 menu  ^P palette
+ default-dark  default  120x40  line 1/30  follow  truecolor  focus:transcript

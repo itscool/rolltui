@@ -1,13 +1,13 @@
 ╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ theme   default-dark         ││ │ styled  ┃ Ctrl-C / Ctrl-Q  quit            ┃
+│ theme   default-dark (modifie││ │ styled  ┃ Ctrl-C / Ctrl-Q  quit            ┃
 │ layout  wide-left            ││ │ wrapped ┃ Tab / Shift-Tab  cycle focus     ┃
 │ size    80x24                ││ │ lines)  ┃ Esc  close the top popup         ┃
 │ line    181/197              ││ │ Theme   ┃ F1  toggle this help             ┃
 │ follow  yes                  ││ │ (roles →┃ F2  settings menu   Ctrl-P       ┃
 │ depth   truecolor            ││ │ styles, ┃ command palette   F3  cycle      ┃
 │ focus   help                 ││ │ JSON    ┃ themes                           ┃
-│                              ││ │ loader, ┃ F5  reload the fixture   Ctrl-L  ┃
-│                              ││ │ built-in┃ repaint                          ┃
+│                              ││ │ loader, ┃ F4  theme editor (Enter commits, ┃
+│                              ││ │ built-in┃ Esc cancels, Ctrl-Z/Ctrl-Y undo/ ┃
 │                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │
@@ -21,4 +21,4 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║ > type here                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
- default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:help
+ default-dark (modified)  wide-left  80x24  line 181/197  follow  truecolor  foc

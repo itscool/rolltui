@@ -5,10 +5,10 @@
 │ │ (blocks →    │             │              │ │ line    173/191              │
 │ │ styled       │  ╭ menu ────────────────────────────────╮s                  │
 │ │ wrapped      │  │ settings › Theme                     │uecolor            │
-│ │ lines)       │  │ • default-dark                       │nu                 │
-│ │ Theme (roles │ b│ default-light                        │                   │
-│ │ → styles,    │  │ mono                                 │                   │
-│ │ JSON loader, │  │                                      │                   │
+│ │ lines)       │  │ default                              │nu                 │
+│ │ Theme (roles │ b│ • default-dark                       │                   │
+│ │ → styles,    │  │ default-light                        │                   │
+│ │ JSON loader, │  │ mono                                 │                   │
 │ │ built-ins)   │  │                                      │                   │
 │ └──────────────┴──│                                      │                   │
 │                   │                                      │                   │

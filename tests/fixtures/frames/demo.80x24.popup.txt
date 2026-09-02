@@ -10,10 +10,10 @@
 │ │ → styles,   │ F1  toggle this help                         │               │
 │ │ JSON loader,│ F2  settings menu   Ctrl-P  command palette  │               │
 │ │ built-ins)  │ F3  cycle themes                             │               │
-│ └─────────────│ F5  reload the fixture   Ctrl-L  repaint     │               │
+│ └─────────────│ F4  theme editor (Enter commits, Esc         │               │
+│               │ cancels, Ctrl-Z/Ctrl-Y undo/redo)            │               │
+│ Here is the fu│ F5  reload the fixture   Ctrl-L  repaint     │               │
 │               │ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the  │               │
-│ Here is the fu│ transcript                                   │               │
-│               │ Up/Down  scroll while the transcript has     │               │
 │ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ │                              │

@@ -1,5 +1,5 @@
 ╭ session ─────────────────────╮╭ chat ────────────────────────────────────────╮
-│ theme   default-dark         ││ │ styled      │             │              │ │
+│ theme   default-dark (modifie││ │ styled      │             │              │ │
 │ layout  wide-left            ││ │ wrapped     │             │              │ │
 │ size    80x24                ││ │ lines)      │             │              │ │
 │ line    181/197              ││ │ Theme       │ build       │ single       │ │
@@ -21,4 +21,4 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║ > type here                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
- default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:input
+ default-dark (modified)  wide-left  80x24  line 181/197  follow  truecolor  foc

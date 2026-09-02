@@ -111,9 +111,21 @@ add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 # Milestone 7: the playground — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the
 # screenshot tool. Interactive mode hot-reloads a theme file on mtime change.
-add_executable(rolltui-playground tools/playground.cpp)
+# Milestones 14-17 grow it into the library's own editor: the theme editor (tools/
+# theme_editor.*), the layout editor, the keys editor. ROLLTUI_SHIPPED_DIR is where the
+# editor's "write a shipped preset" privilege writes — the source tree, for the next
+# build — unless --shipped says otherwise.
+add_executable(rolltui-playground tools/playground.cpp tools/theme_editor.cpp)
 target_link_libraries(rolltui-playground PRIVATE rolltui)
 target_compile_options(rolltui-playground PRIVATE -Wall -Wextra)
+target_compile_definitions(rolltui-playground PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets/themes")
+
+# Milestone 14: the theme editor's model — every role reachable, live preview, commit,
+# cancel, undo/redo, the palette, the written-back pair object — driven without a
+# terminal.
+add_rolltui_test(rolltui-theme-editor-test tests/theme_editor_test.cpp)
+target_sources(rolltui-theme-editor-test PRIVATE tools/theme_editor.cpp)
+target_include_directories(rolltui-theme-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 add_rolltui_test(rolltui-playground-golden-test tests/playground_golden_test.cpp)
 target_compile_definitions(rolltui-playground-golden-test PRIVATE
