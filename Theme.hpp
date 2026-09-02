@@ -40,6 +40,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Json.hpp"
 #include "rolltui/Style.hpp"
 
 namespace rolltui {
@@ -70,10 +71,20 @@ std::vector<std::string_view> builtin_theme_names();
 // Parses a theme file. Returns nullopt only when the JSON itself is unusable
 // (report.error says why); everything else loads with the problems reported.
 std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report);
+// The same over an already-parsed object (a preset file embeds a theme object —
+// Presets.hpp); `report.error` is set when it is not a usable theme object.
+std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLoadReport& report);
 
 // The theme as a file in the format above (every role explicit, no defs), so a user can
 // dump a built-in, edit it, and load it back; round-trips exactly.
 std::string theme_to_json(const Theme& theme);
+json::Value theme_to_json_value(const Theme& theme);
+// Two themes as ONE file object whose colours are {"dark": .., "light": ..} pairs
+// wherever the two differ (a role identical in both is written once). Loading the
+// result for Dark gives back `dark` exactly, for Light `light` — asserted in
+// rolltui-presets-test. This is how the shipped "default" preset adapts to the
+// terminal's background.
+json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std::string_view name);
 
 // Colour parsing/printing, exposed for the tests and for config values.
 std::optional<Color> parse_color(std::string_view text);  // "#rrggbb" | "none" | "0".."255"
@@ -93,5 +104,14 @@ std::string sgr(const Style& style, ColorDepth depth);
 // truecolor|256|16|mono) wins when set and valid. Any argument may be null.
 ColorDepth detect_color_depth(const char* colorterm, const char* term, const char* force);
 std::string_view color_depth_name(ColorDepth d);
+
+// Light/dark auto-detect (milestone 11): the terminal's background as reported by an
+// OSC 11 reply ("\x1b]11;rgb:1414/1616/1a1a\x1b\\" or BEL-terminated; 1-4 hex digits
+// per channel, scaled to 8 bits), and the mode it implies — relative luminance (sRGB
+// linearised, Rec. 709 weights) above 0.5 is light, anything else including no answer
+// is dark. Pure; Terminal::query_background does the asking. Tested in
+// rolltui-presets-test.
+std::optional<Color> parse_osc11_reply(std::string_view reply);
+ThemeMode mode_for_background(Color bg);
 
 }  // namespace rolltui

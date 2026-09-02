@@ -54,6 +54,9 @@ struct Value {
   std::string_view as_string(std::string_view def = "") const { return is_string() ? str : def; }
   double as_number(double def = 0) const { return is_number() ? num : def; }
   bool as_bool(bool def = false) const { return is_bool() ? b : def; }
+
+  // Structural equality (objects compare in insertion order, as they dump).
+  bool operator==(const Value&) const = default;
 };
 
 // Parses `text`. On failure returns Null and sets `error` to "line N: message".

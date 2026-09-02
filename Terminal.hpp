@@ -22,11 +22,13 @@
 // flags, size, events from bytes written to the master, SIGWINCH → Resize, and a
 // forked child killed by SIGTERM whose restore bytes are seen by the parent.
 //
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "rolltui/Keys.hpp"
+#include "rolltui/Style.hpp"
 
 namespace rolltui {
 
@@ -62,6 +64,14 @@ class Terminal {
   // Writes every byte (loops on partial writes and EINTR).
   void write(std::string_view bytes);
 
+  // Asks the terminal for its background colour (OSC 11, milestone 11's light/dark
+  // auto-detect) and waits up to timeout_ms for the reply. Bytes that arrive and are
+  // not the reply (a user already typing) are kept and delivered by the next poll();
+  // nothing is lost. nullopt on a pipe, on no answer in time (a terminal that does not
+  // implement OSC 11 sends nothing), or on an unparseable answer — the caller treats
+  // every nullopt as "dark". Call before the event loop, once.
+  std::optional<Color> query_background(int timeout_ms);
+
   // The bytes that entered and will leave the modes, for tests and for `--frame`
   // tooling that wants to reproduce a session without a tty.
   const std::string& enter_sequence() const { return enter_; }
@@ -79,6 +89,7 @@ class Terminal {
   int w_ = 80, h_ = 24;
   std::string enter_, leave_;
   KeyDecoder decoder_;
+  std::vector<Event> queued_;  // decoded during a query; handed out by the next poll()
   int wake_[2] = {-1, -1};  // self-pipe: SIGWINCH handler writes, poll() reads
   TerminalOptions opts_;
   struct Saved;

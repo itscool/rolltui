@@ -53,9 +53,12 @@
 // visible, never silent.
 //
 // Keys: Ctrl-C / Ctrl-Q quit · Tab / Shift-Tab cycle focus · Esc closes the top popup
-// · F1 toggles the help popup · F2 cycles the built-in layouts · F3 cycles the
-// built-in themes · F5 re-reads the fixture · Ctrl-L repaints. (Letters type, since
-// milestone 10 — the app keys moved off them.) Scrolling: PgUp/PgDn, Ctrl-Home/End
+// · F1 toggles the help popup · F2 opens the settings menu (milestone 11: a
+// rolltui::Menu in the layout's "menu" popup — Theme / Layout / Depth as choices,
+// ambiguous width as a toggle, reload / help / quit as actions; arrows, Enter, Left,
+// Esc, typing filters) · Ctrl-P the same menu flattened as a command palette · F3
+// cycles the built-in themes · F5 re-reads the fixture · Ctrl-L repaints. (Letters
+// type, since milestone 10 — the app keys moved off them.) Scrolling: PgUp/PgDn, Ctrl-Home/End
 // and the wheel always scroll the transcript; Home/End scroll it only while the input
 // is empty (otherwise they move the caret); Up/Down scroll only while the transcript
 // has focus. Mouse: click and drag select (auto-scrolling past an edge), double-click
@@ -84,6 +87,7 @@
 #include "rolltui/Input.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Layout.hpp"
+#include "rolltui/Menu.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Terminal.hpp"
 #include "rolltui/Theme.hpp"
@@ -157,7 +161,7 @@ const char* kHelpText =
     "Tab / Shift-Tab  cycle focus\n"
     "Esc  close the top popup\n"
     "F1  toggle this help\n"
-    "F2  cycle layouts   F3  cycle themes\n"
+    "F2  settings menu   Ctrl-P  command palette   F3  cycle themes\n"
     "F5  reload the fixture   Ctrl-L  repaint\n"
     "PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript\n"
     "Up/Down  scroll while the transcript has focus\n"
@@ -183,12 +187,13 @@ struct App {
   WindowStack stack;
   Transcript transcript;
   Input editor;
+  Menu menu;
   int submitted = 0;        // entries the input added to the document
   std::string copied;       // the last copy (the playground has no clipboard)
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   long last_frame_us = 0;
-  std::size_t builtin_theme_index = 0, builtin_layout_index = 0;
+  std::size_t builtin_theme_index = 0;
 
   App() {
     transcript.on_copy = [this](const std::string& s) { copied = s; copied_any = true; };
@@ -196,6 +201,64 @@ struct App {
     InputOptions o;
     o.placeholder = "type here";
     editor.set_options(o);
+    build_menu();
+  }
+
+  // The settings menu: choices over the built-ins, a toggle, three actions. Ids are
+  // bound below in menu_event() — the structure knows nothing of what they do.
+  void build_menu() {
+    std::vector<MenuItem> themes, layouts;
+    for (std::string_view n : builtin_theme_names()) themes.push_back(MenuItem::action(std::string(n), std::string(n)));
+    for (std::string_view n : builtin_layout_names()) layouts.push_back(MenuItem::action(std::string(n), std::string(n)));
+    std::vector<MenuItem> depths;
+    for (const char* d : {"truecolor", "256", "16", "mono"}) depths.push_back(MenuItem::action(d, d));
+    menu.set_root(MenuItem::submenu(
+        "root", "settings",
+        {MenuItem::choice("theme", "Theme", themes, theme.name),
+         MenuItem::choice("layout", "Layout", layouts, layout.name),
+         MenuItem::choice("depth", "Colour depth", depths, std::string(color_depth_name(depth))),
+         MenuItem::toggle("ambiguous", "Ambiguous width = 2", ambiguous),
+         MenuItem::submenu("commands", "Commands",
+                           {MenuItem::action("reload", "Reload the fixture", "F5"), MenuItem::action("help", "Help", "F1"),
+                            MenuItem::action("quit", "Quit", "Ctrl-Q")})}));
+  }
+  void open_menu(bool palette) {
+    if (stack.has_popup("menu")) { close_popup("menu"); return; }
+    menu.set_value("theme", theme.name);
+    menu.set_value("layout", layout.name);
+    menu.set_value("depth", std::string(color_depth_name(depth)));
+    menu.set_checked("ambiguous", ambiguous);
+    menu.reset();
+    menu.set_palette(palette);
+    if (const Layer* p = effective_layout().popup("menu")) stack.push(*p);
+  }
+  void close_popup(const std::string& id) {
+    while (stack.depth() > 1 && stack.layers().back().id != id) stack.pop();
+    if (stack.depth() > 1) stack.pop();
+  }
+  // Returns false to quit.
+  bool menu_event(const MenuEvent& ev) {
+    using K = MenuEvent::Kind;
+    switch (ev.kind) {
+      case K::None: return true;
+      case K::Closed: close_popup("menu"); return true;
+      case K::Choose:
+        if (ev.id == "theme") { theme_arg = ev.value; load_theme_arg(); }
+        else if (ev.id == "layout") { layout_arg = ev.value; load_layout_arg(); }
+        else if (ev.id == "depth") depth = detect_color_depth(nullptr, nullptr, ev.value.c_str());
+        return true;
+      case K::Toggle:
+        if (ev.id == "ambiguous") ambiguous = ev.checked;
+        return true;
+      case K::Activate:
+        close_popup("menu");
+        if (ev.id == "reload") load_fixture();
+        else if (ev.id == "help") toggle_help();
+        else if (ev.id == "quit") return false;
+        return true;
+      case K::Input: return true;
+    }
+    return true;
   }
 
   bool load_theme_arg() {
@@ -397,6 +460,13 @@ struct App {
       draw_input(rn, f);
     } else if (c == "help") {
       draw_text(rn, f, kHelpText, Role::text);
+    } else if (c == "menu") {
+      MenuOptions mo;
+      mo.ambiguous_wide = ambiguous;
+      mo.inset = rn.node->border != Border::None ? 1 : 0;
+      menu.set_options(mo);
+      menu.layout(rn.inner);
+      menu.draw(f, theme, rn.focused);
     } else if (c.rfind("text:", 0) == 0) {
       draw_text(rn, f, std::string_view(c).substr(5), Role::text);
     } else {
@@ -425,7 +495,7 @@ struct App {
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
-      std::string help = "^C quit  F1 help  F2 layout  F3 theme ";
+      std::string help = "^C quit  F1 help  F2 menu  ^P palette ";
       int hw = unicode::display_width(help);
       if (hw + unicode::display_width(status) + 2 <= w) f.put_text(w - hw, h - 1, help, theme.style(Role::text_muted), hw, ambiguous);
     }
@@ -445,13 +515,8 @@ struct App {
         load_theme_arg();
         return true;
       }
-      if (k->key == Key::F2) {
-        std::vector<std::string_view> names = builtin_layout_names();
-        builtin_layout_index = (builtin_layout_index + 1) % names.size();
-        layout_arg = std::string(names[builtin_layout_index]);
-        load_layout_arg();
-        return true;
-      }
+      if (k->key == Key::F2) { open_menu(false); return true; }
+      if (k->key == Key::Char && k->ctrl && k->ch == 'p') { open_menu(true); return true; }
       if (k->key == Key::F5) { load_fixture(); return true; }
       if (k->key == Key::F1) { toggle_help(); return true; }
       if (k->key == Key::Char && k->ctrl && k->ch == 'l') return true;  // the loop repaints
@@ -460,6 +525,11 @@ struct App {
     if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) { editor.handle(*p, clock_ms); return true; }
     Route r = stack.route(ev, layout_area());
     if (r.kind != Route::Kind::Deliver) return true;
+    if (r.window == "menu") {
+      const Rect area = menu.area();
+      (void)area;
+      return menu_event(menu.handle(ev));
+    }
     const bool to_transcript = r.window == "transcript";
     const bool to_input = r.window == "input";
     if (to_transcript) {

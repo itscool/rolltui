@@ -1,0 +1,2 @@
+ theme default-light  layout s
+ default-light  stacked  30x2

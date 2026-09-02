@@ -3,22 +3,22 @@
 │ │ block        │             │ header over  │ │ layout  default              │
 │ │ renderer     │             │ md4c + wrap  │ │ size    80x24                │
 │ │ (blocks →    │             │              │ │ line    173/191              │
-│ │ styled      ╭ help ────────────────────────────────────────╮               │
-│ │ wrapped     │ Ctrl-C / Ctrl-Q  quit                        │lor            │
-│ │ lines)      │ Tab / Shift-Tab  cycle focus                 │               │
-│ │ Theme (roles│ Esc  close the top popup                     │               │
-│ │ → styles,   │ F1  toggle this help                         │               │
-│ │ JSON loader,│ F2  settings menu   Ctrl-P  command palette  │               │
-│ │ built-ins)  │ F3  cycle themes                             │               │
-│ └─────────────│ F5  reload the fixture   Ctrl-L  repaint     │               │
-│               │ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the  │               │
-│ Here is the fu│ transcript                                   │               │
-│               │ Up/Down  scroll while the transcript has     │               │
-│ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
+│ │ styled       │             │              │ │ follow  yes                  │
+│ │ wrapped      │             │              │ │ depth   truecolor            │
+│ │ lines)       │             │              │ │ focus   input                │
+│ │ Theme (roles │ build       │ single       │ │                              │
+│ │ → styles,    │             │ header       │ │                              │
+│ │ JSON loader, │             │              │ │                              │
+│ │ built-ins)   │             │              │ │                              │
+│ └──────────────┴─────────────┴──────────────┘ │                              │
+│                                               │                              │
+│ Here is the function you asked for:           │                              │
+│                                               │                              │
+│ ┌ cpp ──────────────────────────────────────┐ │                              │
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ │                              │
 │ └───────────────────────────────────────────┘ │                              │
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 173/191  follow  truecolor  focus:help
+ default-dark  default  80x24  line 173/191  follow  truecolor  focus:input

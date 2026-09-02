@@ -3,8 +3,11 @@
 
 #include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstring>
+
+#include "rolltui/Theme.hpp"  // parse_osc11_reply
 
 #include <fcntl.h>
 #include <poll.h>
@@ -149,8 +152,50 @@ void Terminal::wake() {
   (void)r;
 }
 
+std::optional<Color> Terminal::query_background(int timeout_ms) {
+  if (!tty_) return std::nullopt;
+  write("\x1b]11;?\x1b\\");
+  std::string buf;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  std::optional<Color> answer;
+  for (;;) {
+    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
+    if (left <= 0) break;
+    pollfd one{in_, POLLIN, 0};
+    const int n = ::poll(&one, 1, static_cast<int>(left));
+    if (n < 0) { if (errno == EINTR) continue; break; }
+    if (n == 0) break;
+    char b[512];
+    const ssize_t k = ::read(in_, b, sizeof b);
+    if (k <= 0) break;
+    buf.append(b, static_cast<std::size_t>(k));
+    const std::size_t at = buf.find("\x1b]11;");
+    if (at == std::string::npos) continue;
+    // A complete reply ends in ST (ESC \) or BEL; wait for it.
+    std::size_t end = std::string::npos, end_len = 0;
+    const std::size_t st = buf.find("\x1b\\", at + 5), bel = buf.find('\a', at + 5);
+    if (st != std::string::npos && (bel == std::string::npos || st < bel)) { end = st; end_len = 2; }
+    else if (bel != std::string::npos) { end = bel; end_len = 1; }
+    if (end == std::string::npos) continue;
+    answer = parse_osc11_reply(std::string_view(buf).substr(at, end + end_len - at));
+    buf.erase(at, end + end_len - at);
+    break;
+  }
+  // Whatever else arrived is input, not the reply: decode it for the next poll().
+  if (!buf.empty()) {
+    std::vector<Event> ev = decoder_.feed(buf);
+    queued_.insert(queued_.end(), ev.begin(), ev.end());
+  }
+  return answer;
+}
+
 std::vector<Event> Terminal::poll(int timeout_ms) {
   std::vector<Event> out;
+  if (!queued_.empty()) {
+    out = std::move(queued_);
+    queued_.clear();
+    timeout_ms = 0;  // deliver now; pick up anything else already waiting
+  }
   pollfd fds[2];
   fds[0] = {in_, POLLIN, 0};
   fds[1] = {wake_[0], POLLIN, 0};
@@ -160,7 +205,10 @@ std::vector<Event> Terminal::poll(int timeout_ms) {
     return out;
   }
   if (n == 0) {  // timeout: a pending ESC is the Escape key
-    if (decoder_.pending()) out = decoder_.flush();
+    if (decoder_.pending()) {
+      std::vector<Event> rest = decoder_.flush();
+      out.insert(out.end(), rest.begin(), rest.end());
+    }
     return out;
   }
   if (fds[1].revents & POLLIN) {

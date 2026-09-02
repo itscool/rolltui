@@ -113,6 +113,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Json.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Style.hpp"
@@ -220,8 +221,12 @@ struct LayoutLoadReport {
 // Parses a layout file. nullopt only when the JSON is unusable or there is no "root";
 // everything else loads with the problems reported (a bad field keeps its default).
 std::optional<Layout> load_layout(std::string_view json_text, LayoutLoadReport& report);
+// The same over an already-parsed object (a preset file embeds a layout object —
+// Presets.hpp).
+std::optional<Layout> load_layout(const json::Value& root, LayoutLoadReport& report);
 // The layout as a file in the format above; round-trips exactly.
 std::string layout_to_json(const Layout& layout);
+json::Value layout_to_json_value(const Layout& layout);
 
 // Text forms, exposed for the loader's tests and for config values.
 std::optional<Dim> parse_dim(std::string_view text);  // "50%" | "100% - 32" | "25%+2"; NOT "32"

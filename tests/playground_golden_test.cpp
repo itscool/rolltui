@@ -18,6 +18,13 @@
 // double / heavy borders and a mixed-border seam, and the help popup at two sizes
 // (it re-places itself: Done-when h).
 //
+// Milestone 11 added the menu cases: F2 opens the settings menu popup; Enter descends
+// into the Theme choice; Down + Enter chooses default-light three levels deep by
+// keyboard alone (the frame goes light and the choice shows its value); typing filters;
+// Left returns exactly to the opened frame; Escape leaves exactly the base frame; Ctrl-P
+// is the same tree as a palette; a toggle shows [x]; three degenerate sizes with the
+// menu driven.
+//
 // Milestone 9 added the transcript-widget cases on a second fixture (tools.md: two
 // foldable tool blocks, a link, a list): folded by default; a click on the summary
 // line and Ctrl-O both unfold the same block (asserted equal); a drag across a wrapped
@@ -144,10 +151,25 @@ int main(int argc, char** argv) {
       {"tiny.1x6", "--frame 1x6 --theme default-dark --keys \"Type:hello Click 0,3 Drag 0,5 Release F1\""},
       {"tiny.20x3", "--frame 20x3 --theme default-dark --keys \"Type:a_prompt_that_is_longer_than_the_row F1 Escape Tab\""},
       {"tiny.80x2", "--frame 80x2 --theme default-dark --layout default --keys \"Type:hi Enter Up PageUp F1\""},
+      // milestone 11 (the menu widget)
+      {"menu.80x24.open", "--frame 80x24 --theme default-dark --keys \"F2\""},
+      {"menu.80x24.theme", "--frame 80x24 --theme default-dark --keys \"F2 Enter\""},
+      {"menu.80x24.choose-light", "--frame 80x24 --theme default-dark --keys \"F2 Enter Down Enter\""},
+      {"menu.80x24.filter", "--frame 80x24 --theme default-dark --keys \"F2 Type:lay\""},
+      {"menu.80x24.left", "--frame 80x24 --theme default-dark --keys \"F2 Enter Left\""},
+      {"menu.80x24.escape", "--frame 80x24 --theme default-dark --keys \"F2 Escape\""},
+      {"menu.80x24.toggle", "--frame 80x24 --theme default-dark --keys \"F2 Down Down Down Enter\""},
+      {"menu.80x24.palette", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:mono\""},
+      {"menu.80x24.palette-choose", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:stacked Enter\""},
+      {"menu.120x40.open", "--frame 120x40 --theme default-dark --keys \"F2\""},
+      {"tiny.1x1.menu", "--frame 1x1 --theme default-dark --keys \"F2 Enter Down Enter\""},
+      {"tiny.3x3.menu", "--frame 3x3 --theme default-dark --keys \"F2 Down Enter Type:s\""},
+      {"tiny.30x2.menu", "--frame 30x2 --theme default-dark --keys \"F2 Type:th Enter Down Enter CtrlP Type:q\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
+  std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
@@ -194,6 +216,16 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "input.80x24.edit") edited = out;
     if (std::string(c.name) == "input.80x24.paste") pasted = out;
     if (std::string(c.name) == "input.80x24.cap") capped = out;
+    if (std::string(c.name) == "menu.80x24.open") menu_open = out;
+    if (std::string(c.name) == "menu.80x24.theme") menu_theme = out;
+    if (std::string(c.name) == "menu.80x24.choose-light") menu_light = out;
+    if (std::string(c.name) == "menu.80x24.filter") menu_filter = out;
+    if (std::string(c.name) == "menu.80x24.left") menu_left = out;
+    if (std::string(c.name) == "menu.80x24.escape") menu_escape = out;
+    if (std::string(c.name) == "menu.80x24.toggle") menu_toggle = out;
+    if (std::string(c.name) == "menu.80x24.palette") menu_palette = out;
+    if (std::string(c.name) == "menu.80x24.palette-choose") menu_palette_choose = out;
+    if (std::string(c.name) == "menu.120x40.open") menu_big = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -306,6 +338,29 @@ int main(int argc, char** argv) {
     // cells" — for the tiny frames that is the whole point (the user, 2026-09-01:
     // views can shrink to 1 or even 0 in either dimension; it must be graceful).
     check(!tiny_failed, "the 1x1, 2x2, 6x1, 1x6, 20x3 and 80x2 frames render (typed text, a paste, the help popup and Tab included) without a row out of bounds");
+    // ---- milestone 11: the menu, asserted beyond the bytes ----
+    check(menu_open.find("\xE2\x95\xAD menu ") != std::string::npos && menu_open.find("focus:menu") != std::string::npos &&
+              menu_open.find("settings") != std::string::npos && menu_open.find("Theme") != std::string::npos,
+          "F2 opens the menu popup (rounded ╭ menu title, focus:menu, the settings breadcrumb, the Theme row)");
+    check(menu_theme.find("settings \xE2\x80\xBA Theme") != std::string::npos && menu_theme.find("\xE2\x80\xA2 default-dark") != std::string::npos,
+          "Enter descends into the Theme choice: the breadcrumb grows and the current option is marked •");
+    check(menu_light.find("theme   default-light") != std::string::npos && menu_light.find("default-light \xE2\x96\xB8") != std::string::npos &&
+              menu_light.find("settings \xE2\x80\xBA Theme") == std::string::npos,
+          "Down + Enter chooses default-light three levels deep by keyboard alone: the status says so, the choice shows its value, the menu is back at the top");
+    check(!menu_light.empty() && menu_light != menu_open, "…and the frame changed (it went light)");
+    check(menu_filter.find("settings  /lay") != std::string::npos && menu_filter.find("/lay                       \xE2\x94\x82") != std::string::npos && menu_filter.find("Colour depth") == std::string::npos,
+          "typing \"lay\" filters the level to Layout and shows the filter after the breadcrumb");
+    check(!menu_left.empty() && menu_left == menu_open, "Enter then Left gives back exactly the opened frame");
+    check(!menu_escape.empty() && menu_escape == bottom, "F2 then Escape gives back exactly the frame without the menu");
+    check(menu_toggle.find("[x] Ambiguous width") != std::string::npos, "Enter on the toggle shows [x]");
+    check(menu_palette.find("Theme \xE2\x80\xBA mono") != std::string::npos && menu_palette.find("Layout") == std::string::npos,
+          "Ctrl-P opens the palette: rows are paths, and \"mono\" filters to the one theme option");
+    check(menu_palette_choose.find("stacked") != std::string::npos && menu_palette_choose.find("\xE2\x95\xAD menu ") != std::string::npos &&
+              menu_palette_choose.find("\xE2\x94\x8C transcript") == std::string::npos,
+          "Enter on a palette row chooses the stacked layout (borderless transcript) with the menu still open");
+    check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
+          "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +
+              std::to_string(row_of(menu_open, "\xE2\x95\xAD menu ")) + ", " + std::to_string(row_of(menu_big, "\xE2\x95\xAD menu ")) + ")");
   }
   return report("rolltui playground_golden_test");
 }

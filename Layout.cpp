@@ -392,6 +392,10 @@ std::optional<Layout> load_layout(std::string_view json_text, LayoutLoadReport& 
   std::string err;
   Value root = json::parse(json_text, err);
   if (!err.empty()) { report.error = err; return std::nullopt; }
+  return load_layout(root, report);
+}
+
+std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
   if (!root.is_object()) { report.error = "layout file must be a JSON object"; return std::nullopt; }
   if (!root.has("root")) { report.error = "layout file has no \"root\" node"; return std::nullopt; }
   Layout out;
@@ -424,7 +428,7 @@ std::optional<Layout> load_layout(std::string_view json_text, LayoutLoadReport& 
   return out;
 }
 
-std::string layout_to_json(const Layout& layout) {
+Value layout_to_json_value(const Layout& layout) {
   Value o = Value::object();
   o.set("name", Value::string(layout.name));
   if (layout.min_width) o.set("min_width", Value::number(layout.min_width));
@@ -436,8 +440,10 @@ std::string layout_to_json(const Layout& layout) {
     for (const Layer& p : layout.popups) arr.arr.push_back(layer_to_json(p, true));
     o.set("popups", std::move(arr));
   }
-  return json::dump(o, 2);
+  return o;
 }
+
+std::string layout_to_json(const Layout& layout) { return json::dump(layout_to_json_value(layout), 2); }
 
 // ---- built-ins -----------------------------------------------------------------------------
 
@@ -460,8 +466,24 @@ constexpr const char* kApprovalPopup = R"(
       "root": { "content": "approval", "border": "rounded", "title": "approval", "focusable": true,
                 "background": "panel_background" } })";
 
+// The settings menu every built-in declares (milestone 11): centred, modal, sized by
+// the screen so the menu widget scrolls inside it rather than the popup growing.
+constexpr const char* kMenuPopup = R"(
+    { "id": "menu", "x": "50%", "y": "50%", "w": "50%", "h": "60%", "anchor": "center",
+      "min_w": 30, "max_w": 80, "min_h": 5, "modal": true,
+      "root": { "content": "menu", "border": "rounded", "title": "menu", "focusable": true,
+                "background": "panel_background" } })";
+
+// The session-details popup (milestone 11): over the status panel's side of the
+// screen, full height, so a long report is read without leaving the transcript.
+constexpr const char* kDetailsPopup = R"(
+    { "id": "details", "x": "100%", "y": 0, "w": "45%", "h": "100%", "anchor": "top-right",
+      "min_w": 40, "max_w": 100, "modal": true,
+      "root": { "content": "details", "border": "rounded", "title": "session", "focusable": true,
+                "background": "panel_background" } })";
+
 std::string builtin_json(std::string_view name) {
-  const std::string help = std::string(kHelpPopup) + ",\n" + kApprovalPopup;
+  const std::string help = std::string(kHelpPopup) + ",\n" + kApprovalPopup + ",\n" + kMenuPopup + ",\n" + kDetailsPopup;
   if (name == "default")
     return R"({
   "name": "default", "min_width": 60, "min_height": 8, "focus": "input",

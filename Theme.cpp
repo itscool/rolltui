@@ -362,6 +362,52 @@ std::string_view color_depth_name(ColorDepth d) {
   return "mono";
 }
 
+// ---- OSC 11 --------------------------------------------------------------------------------
+
+std::optional<Color> parse_osc11_reply(std::string_view reply) {
+  // ESC ] 11 ; rgb:RRRR/GGGG/BBBB (ESC \ | BEL), each channel 1-4 hex digits.
+  const std::size_t at = reply.find("\x1b]11;");
+  if (at == std::string_view::npos) return std::nullopt;
+  std::string_view s = reply.substr(at + 5);
+  std::size_t end = s.find('\x1b');
+  const std::size_t bel = s.find('\a');
+  if (bel != std::string_view::npos && (end == std::string_view::npos || bel < end)) end = bel;
+  if (end != std::string_view::npos) s = s.substr(0, end);
+  if (s.rfind("rgb:", 0) != 0) return std::nullopt;
+  s.remove_prefix(4);
+  std::uint8_t ch[3];
+  for (int i = 0; i < 3; ++i) {
+    const std::size_t slash = s.find('/');
+    std::string_view part = (i < 2) ? s.substr(0, slash) : s;
+    if (i < 2 && slash == std::string_view::npos) return std::nullopt;
+    if (part.empty() || part.size() > 4) return std::nullopt;
+    unsigned v = 0;
+    for (char c : part) {
+      unsigned d;
+      if (c >= '0' && c <= '9') d = static_cast<unsigned>(c - '0');
+      else if (c >= 'a' && c <= 'f') d = static_cast<unsigned>(c - 'a' + 10);
+      else if (c >= 'A' && c <= 'F') d = static_cast<unsigned>(c - 'A' + 10);
+      else return std::nullopt;
+      v = (v << 4) | d;
+    }
+    // Scale to 8 bits from however many digits were given (4 → top byte; 1 → x*17).
+    const unsigned max = (1u << (4 * part.size())) - 1;
+    ch[i] = static_cast<std::uint8_t>((v * 255 + max / 2) / max);
+    if (i < 2) s = s.substr(slash + 1);
+  }
+  return Color::rgb(ch[0], ch[1], ch[2]);
+}
+
+ThemeMode mode_for_background(Color bg) {
+  if (bg.kind != Color::Kind::Rgb) return ThemeMode::Dark;
+  auto lin = [](std::uint8_t c) {
+    const double x = c / 255.0;
+    return x <= 0.04045 ? x / 12.92 : std::pow((x + 0.055) / 1.055, 2.4);
+  };
+  const double y = 0.2126 * lin(bg.r) + 0.7152 * lin(bg.g) + 0.0722 * lin(bg.b);
+  return y > 0.5 ? ThemeMode::Light : ThemeMode::Dark;
+}
+
 // ---- the JSON loader ---------------------------------------------------------------
 
 namespace {
@@ -409,6 +455,11 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   std::string err;
   json::Value root = json::parse(json_text, err);
   if (!err.empty()) { report.error = err; return std::nullopt; }
+  return load_theme(root, mode, report);
+}
+
+std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLoadReport& report) {
+  report = ThemeLoadReport{};
   if (!root.is_object()) { report.error = "theme file must be a JSON object"; return std::nullopt; }
   for (const auto& [k, v] : root.obj)
     if (k != "name" && k != "defs" && k != "roles") report.unknown_keys.push_back(k);
@@ -463,24 +514,52 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   return t;
 }
 
-std::string theme_to_json(const Theme& theme) {
+namespace {
+
+json::Value style_to_json(const Style& s, const Style* light) {
+  json::Value o = json::Value::object();
+  auto colour = [&](Color d, const Color* l) {
+    if (l && *l != d) {
+      json::Value pair = json::Value::object();
+      pair.set("dark", json::Value::string(color_to_string(d)));
+      pair.set("light", json::Value::string(color_to_string(*l)));
+      return pair;
+    }
+    return json::Value::string(color_to_string(d));
+  };
+  o.set("fg", colour(s.fg, light ? &light->fg : nullptr));
+  o.set("bg", colour(s.bg, light ? &light->bg : nullptr));
+  if (s.bold) o.set("bold", json::Value::boolean(true));
+  if (s.italic) o.set("italic", json::Value::boolean(true));
+  if (s.underline) o.set("underline", json::Value::boolean(true));
+  if (s.dim) o.set("dim", json::Value::boolean(true));
+  if (s.reverse) o.set("reverse", json::Value::boolean(true));
+  return o;
+}
+
+}  // namespace
+
+json::Value theme_to_json_value(const Theme& theme) {
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(theme.name));
   json::Value roles = json::Value::object();
-  for (std::size_t i = 0; i < kRoleCount; ++i) {
-    const Style& s = theme.styles[i];
-    json::Value o = json::Value::object();
-    o.set("fg", json::Value::string(color_to_string(s.fg)));
-    o.set("bg", json::Value::string(color_to_string(s.bg)));
-    if (s.bold) o.set("bold", json::Value::boolean(true));
-    if (s.italic) o.set("italic", json::Value::boolean(true));
-    if (s.underline) o.set("underline", json::Value::boolean(true));
-    if (s.dim) o.set("dim", json::Value::boolean(true));
-    if (s.reverse) o.set("reverse", json::Value::boolean(true));
-    roles.set(kRoleNames[i], std::move(o));
-  }
+  for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(theme.styles[i], nullptr));
   root.set("roles", std::move(roles));
-  return json::dump(root, 2) + "\n";
+  return root;
+}
+
+std::string theme_to_json(const Theme& theme) { return json::dump(theme_to_json_value(theme), 2) + "\n"; }
+
+json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std::string_view name) {
+  // Attributes must agree for a role to be written once; where they differ the pair
+  // form cannot express it, so the dark theme's attributes win and the test that
+  // asserts an exact round trip for both variants is what would catch it.
+  json::Value root = json::Value::object();
+  root.set("name", json::Value::string(std::string(name)));
+  json::Value roles = json::Value::object();
+  for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(dark.styles[i], &light.styles[i]));
+  root.set("roles", std::move(roles));
+  return root;
 }
 
 }  // namespace rolltui

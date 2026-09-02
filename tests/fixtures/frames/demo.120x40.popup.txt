@@ -16,7 +16,7 @@
 │ │ Wrap engine         │ Tab / Shift-Tab  cycle focus                                         │                       │
 │ │                     │ Esc  close the top popup                                             │                       │
 │ │ Windows, layers, pla│ F1  toggle this help                                                 │                       │
-│ │ abs/rel per axis), f│ F2  cycle layouts   F3  cycle themes                                 │                       │
+│ │ abs/rel per axis), f│ F2  settings menu   Ctrl-P  command palette   F3  cycle themes       │                       │
 │ │                     │ F5  reload the fixture   Ctrl-L  repaint                             │                       │
 │ │ Menu widget (hierarc│ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript               │                       │
 │ │ filterable) + list/t│ Up/Down  scroll while the transcript has focus                       │                       │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 75/109  follow  truecolor  focus:help        ^C quit  F1 help  F2 layout  F3 theme
+ default-dark  default  120x40  line 75/109  follow  truecolor  focus:help        ^C quit  F1 help  F2 menu  ^P palette

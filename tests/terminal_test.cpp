@@ -85,6 +85,15 @@ int main() {
     (void)!::write(master, "\x03", 1);
     check(names(t.poll(500)) == "Ctrl+c", "Ctrl-C arrives as a key, not a signal");
     check(t.poll(30).empty(), "poll times out empty");
+    // OSC 11: the query goes to the master; a reply written there (with a key typed
+    // ahead of it) comes back as a colour, and the key is not lost.
+    (void)!::write(master, "q\x1b]11;rgb:1414/1616/1a1a\x1b\\", 1 + 5 + 18 + 2);
+    std::optional<Color> bg = t.query_background(500);
+    check(read_until(master, "\x1b]11;?", 500).find("\x1b]11;?\x1b\\") != std::string::npos, "the OSC 11 query reaches the master");
+    check(bg && *bg == Color::rgb(0x14, 0x16, 0x1a), "the reply parses to the background colour");
+    check(names(t.poll(500)) == "q", "a key typed before the reply is delivered by the next poll, not lost");
+    check(!t.query_background(50), "no reply within the timeout: nullopt (the caller treats it as dark)");
+    check(read_until(master, "\x1b]11;?", 500).find("\x1b]11;?") != std::string::npos, "…after asking");
     t.write("xyz");
     check(read_until(master, "xyz", 500).find("xyz") != std::string::npos, "write reaches the master");
     ws.ws_col = 100;

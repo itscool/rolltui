@@ -3,11 +3,11 @@
 │ layout  wide-left            ││ │ wrapped ┃ Tab / Shift-Tab  cycle focus     ┃
 │ size    80x24                ││ │ lines)  ┃ Esc  close the top popup         ┃
 │ line    181/197              ││ │ Theme   ┃ F1  toggle this help             ┃
-│ follow  yes                  ││ │ (roles →┃ F2  cycle layouts   F3  cycle    ┃
-│ depth   truecolor            ││ │ styles, ┃ themes                           ┃
-│ focus   help                 ││ │ JSON    ┃ F5  reload the fixture   Ctrl-L  ┃
-│                              ││ │ loader, ┃ repaint                          ┃
-│                              ││ │ built-in┃ PgUp/PgDn, Ctrl-Home/End, wheel  ┃
+│ follow  yes                  ││ │ (roles →┃ F2  settings menu   Ctrl-P       ┃
+│ depth   truecolor            ││ │ styles, ┃ command palette   F3  cycle      ┃
+│ focus   help                 ││ │ JSON    ┃ themes                           ┃
+│                              ││ │ loader, ┃ F5  reload the fixture   Ctrl-L  ┃
+│                              ││ │ built-in┃ repaint                          ┃
 │                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │

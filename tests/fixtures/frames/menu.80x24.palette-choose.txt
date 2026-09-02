@@ -1,0 +1,24 @@
+│ Windows, layers, placement    │ build       │ single header;                 │
+│ (Dim abs/rel per axis), focus │             │ resolve(Placement, parent) →   │
+│                               │             │ Rect is a pure function        │
+│ Menu widget (hierarchical,    │ build       │ single header each; the widget │
+│ filterable) + list/text       │             │ set is deliberately this small │
+│ widgets           ╭ menu ────────────────────────────────╮                   │
+│ Layout files (JSON│ settings › …  /stacked               │heme loader's hand │
+│ placements + conte│ Layout › stacked                     │reloaded           │
+│ Markdown block ren│                                      │r over md4c + wrap │
+│ (blocks → styled w│                                      │                   │
+│ lines)            │                                      │                   │
+│ Theme (roles → sty│                                      │r                  │
+│ loader, built-ins)│                                      │                   │
+└───────────────────│                                      │───────────────────┘
+                    │                                      │
+Here is the function│                                      │
+                    │                                      │
+┌ cpp ──────────────╰──────────────────────────────────────╯───────────────────┐
+│ int add(int a, int b) {                                                      │
+│   return a + b;                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+ theme default-dark  layout stacked  size 80x24  line 93/113  follow yes  depth
+> type here
+ default-dark  stacked  80x24  line 93/113  follow  truecolor  focus:menu
