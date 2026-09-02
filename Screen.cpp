@@ -26,7 +26,20 @@ void Frame::clear(const Style& fill) {
   std::fill(cells_.begin(), cells_.end(), c);
 }
 
-int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& style) {
+std::uint32_t Frame::link_id(std::string_view url) {
+  if (url.empty()) return 0;
+  for (std::size_t i = 0; i < links_.size(); ++i)
+    if (links_[i] == url) return static_cast<std::uint32_t>(i + 1);
+  links_.emplace_back(url);
+  return static_cast<std::uint32_t>(links_.size());
+}
+
+std::string_view Frame::link(std::uint32_t id) const {
+  if (id == 0 || id > links_.size()) return {};
+  return links_[id - 1];
+}
+
+int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& style, std::uint32_t link) {
   if (y < 0 || y >= h_ || x < 0 || x >= w_ || cells <= 0) return 0;
   if (cells > 2) cells = 2;
   // Overwriting half of an existing wide glyph: blank the other half so no orphan
@@ -36,6 +49,7 @@ int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& 
     c.text = " ";
     c.width = 1;
     c.continuation = false;
+    c.link = 0;
   };
   if (mut(x, y).continuation && x > 0) blank(x - 1);
   if (mut(x, y).width == 2 && x + 1 < w_) blank(x + 1);
@@ -45,6 +59,7 @@ int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& 
     c.width = 1;
     c.continuation = false;
     c.style = style;
+    c.link = link;
     return 1;
   }
   if (cells == 2) {
@@ -54,24 +69,26 @@ int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& 
     r.width = 0;
     r.continuation = true;
     r.style = style;
+    r.link = link;
   }
   Cell& c = mut(x, y);
   c.text = std::string(grapheme);
   c.width = static_cast<std::uint8_t>(cells);
   c.continuation = false;
   c.style = style;
+  c.link = link;
   return cells;
 }
 
 int Frame::put_text(int x, int y, std::string_view utf8, const Style& style, int max_cells,
-                    bool ambiguous_wide) {
+                    bool ambiguous_wide, std::uint32_t link) {
   if (y < 0 || y >= h_) return 0;
   int used = 0;
   for (const unicode::Grapheme& g : unicode::graphemes(utf8, ambiguous_wide)) {
     if (g.width <= 0) continue;
     if (used + g.width > max_cells || x + used >= w_) break;
     if (g.width == 2 && x + used + 1 >= w_) break;  // never a half glyph at the edge
-    used += put(x + used, y, utf8.substr(g.offset, g.length), g.width, style);
+    used += put(x + used, y, utf8.substr(g.offset, g.length), g.width, style, link);
   }
   return used;
 }
@@ -105,19 +122,37 @@ std::string cup(int x, int y) {
   return "\x1b[" + std::to_string(y + 1) + ";" + std::to_string(x + 1) + "H";
 }
 
-// Emit cells [x0, x1) of row y, tracking the SGR state across calls.
+// Emit cells [x0, x1) of row y, tracking the SGR state across calls. A hyperlink is
+// opened when a run enters linked cells and always closed before the run ends.
 void emit_run(std::string& out, const Frame& f, int y, int x0, int x1, ColorDepth depth,
               const Style*& current) {
   out += cup(x0, y);
+  std::uint32_t link = 0;
   for (int x = x0; x < x1; ++x) {
     const Cell& c = f.at(x, y);
     if (c.continuation) continue;
+    if (c.link != link) {  // before the SGR, so a link closes right after its last glyph
+      out += "\x1b]8;;";
+      out += f.link(c.link);
+      out += "\x1b\\";
+      link = c.link;
+    }
     if (!current || !(*current == c.style)) {
       out += sgr(c.style, depth);
       current = &c.style;
     }
     out += c.text;
   }
+  if (link != 0) out += "\x1b]8;;\x1b\\";
+}
+
+// Two cells look the same on screen: everything equal, links compared by URL (the ids
+// are per frame).
+bool same(const Frame& a, const Frame& b, int x, int y) {
+  const Cell& p = a.at(x, y);
+  const Cell& q = b.at(x, y);
+  return p.text == q.text && p.width == q.width && p.continuation == q.continuation &&
+         p.style == q.style && a.link(p.link) == b.link(q.link);
 }
 
 void finish(std::string& out, const Frame& f) {
@@ -144,11 +179,11 @@ std::string render_diff(const Frame* prev, const Frame& next, ColorDepth depth) 
   for (int y = 0; y < next.height(); ++y) {
     int x = 0;
     while (x < next.width()) {
-      if (prev->at(x, y) == next.at(x, y)) { ++x; continue; }
+      if (same(*prev, next, x, y)) { ++x; continue; }
       int start = x;
       if (next.at(start, y).continuation && start > 0) --start;  // rewrite the glyph whole
       int end = x + 1;
-      while (end < next.width() && !(prev->at(end, y) == next.at(end, y))) ++end;
+      while (end < next.width() && !same(*prev, next, end, y)) ++end;
       if (end < next.width() && next.at(end, y).continuation) ++end;
       if (out.empty()) out += "\x1b[?25l";
       emit_run(out, next, y, start, end, depth, current);

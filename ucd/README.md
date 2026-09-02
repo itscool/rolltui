@@ -12,8 +12,10 @@ sha256 of every file and refuses a mismatch. Checked in so that a clone can rege
 | `DerivedCoreProperties.txt` | generator | Indic_Conjunct_Break (GB9c) and Default_Ignorable_Code_Point (width 0) |
 | `DerivedGeneralCategory.txt` | generator | General_Category, for LB1 / LB15a-b / LB30b and the width function |
 | `emoji-data.txt` | generator | Extended_Pictographic (GB11, LB30b, emoji cluster width) |
-| `GraphemeBreakTest.txt` | `rolltui-grapheme-break-test` | the UAX #29 conformance suite, run in full |
+| `WordBreakProperty.txt` | generator | UAX #29 Word_Break, for word boundaries (double-click word selection, milestone 9) |
+| `GraphemeBreakTest.txt` | `rolltui-grapheme-break-test` | the UAX #29 grapheme conformance suite, run in full |
 | `LineBreakTest.txt` | `rolltui-line-break-test` | the UAX #14 conformance suite, run in full |
+| `WordBreakTest.txt` | `rolltui-word-break-test` | the UAX #29 word conformance suite, run in full |
 
 `rolltui-unicode-tables-current` (ctest) regenerates `unicode_tables.hpp` and
 `unicode_tables.cpp` from these files and fails if the checked-in ones differ, so the

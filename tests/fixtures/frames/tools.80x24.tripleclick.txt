@@ -1,0 +1,26 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ > read the manager header and tell me what    │ theme   default-dark         │
+│   stop_heartbeat does                         │ layout  default              │
+│                                               │ size    80x24                │
+│ ▸ read_file include/ResilientModelManager.hpp │ line    1/27                 │
+│                                               │ follow  no                   │
+│ stop_heartbeat cancels the heartbeat timer    │ depth   truecolor            │
+│ and drains its queue: the dispatch_sync after │ focus   transcript           │
+│ the cancel is what makes shutdown race-free,  │ copied  217 bytes            │
+│ because dispatch_source_cancel does not wait  │                              │
+│ for a handler that is already running.        │                              │
+│                                               │                              │
+│ Without the drain a poll() blocked on the     │                              │
+│ state lock could resume after release()       │                              │
+│ decided it was the last client, re-register   │                              │
+│ itself and respawn the server release just    │                              │
+│ killed — a permanent orphan. The rule is      │                              │
+│ recorded in CLAUDE.md (https://example.com/   │                              │
+│ roll/CLAUDE.md#hard-constraints) under hard   │                              │
+│ constraints.                        ▼ 8 more  │                              │
+├───────────────────────────────────────────────┤                              │
+│> type here (input is milestone 10)            │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 1/27  truecolor  focus:transcript  copied 21
+--- copied ---
+stop_heartbeat cancels the heartbeat timer and drains its queue: the dispatch_sync after the cancel is what makes shutdown race-free, because dispatch_source_cancel does not wait for a handler that is already running.

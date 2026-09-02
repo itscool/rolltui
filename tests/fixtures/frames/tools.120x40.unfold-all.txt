@@ -1,0 +1,40 @@
+┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
+│ > read the manager header and tell me what stop_heartbeat does                        │ theme   default-dark         │
+│                                                                                       │ layout  default              │
+│ ▾ read_file include/ResilientModelManager.hpp (lines 40-52)                           │ size    120x40               │
+│   void stop_heartbeat() {                                                             │ line    1/30                 │
+│     if (!hb_source_) return;                                                          │ follow  yes                  │
+│     dispatch_source_cancel(hb_source_);                                               │ depth   truecolor            │
+│     // Drain: a handler that is already running must finish before we return,         │ focus   transcript           │
+│     // or a poll() blocked on the state lock can resume after release() and           │                              │
+│     // respawn the server that was just killed.                                       │                              │
+│     dispatch_sync(hb_queue_, ^{});                                                    │                              │
+│     dispatch_release(hb_source_);                                                     │                              │
+│     hb_source_ = nullptr;                                                             │                              │
+│   }                                                                                   │                              │
+│                                                                                       │                              │
+│ stop_heartbeat cancels the heartbeat timer and drains its queue: the dispatch_sync    │                              │
+│ after the cancel is what makes shutdown race-free, because dispatch_source_cancel     │                              │
+│ does not wait for a handler that is already running.                                  │                              │
+│                                                                                       │                              │
+│ Without the drain a poll() blocked on the state lock could resume after release()     │                              │
+│ decided it was the last client, re-register itself and respawn the server release     │                              │
+│ just killed — a permanent orphan. The rule is recorded in CLAUDE.md (https://         │                              │
+│ example.com/roll/CLAUDE.md#hard-constraints) under hard constraints.                  │                              │
+│                                                                                       │                              │
+│ 1. cancel the timer                                                                   │                              │
+│ 2. drain the queue                                                                    │                              │
+│ 3. release the source                                                                 │                              │
+│                                                                                       │                              │
+│ ▸ run_tests build_only (134 ms) (2 lines)                                             │                              │
+│                                                                                       │                              │
+│ > thanks                                                                              │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+├───────────────────────────────────────────────────────────────────────────────────────┤                              │
+│> type here (input is milestone 10)                                                    │                              │
+└───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  120x40  line 1/30  follow  truecolor  focus:transcript        q quit  p help  l layout  t theme

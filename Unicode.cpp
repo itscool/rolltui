@@ -193,6 +193,152 @@ int display_width(std::string_view utf8, bool ambiguous_wide) {
   return w;
 }
 
+// ---- UAX #29: words ----------------------------------------------------------------
+
+std::vector<bool> word_boundaries(std::span<const char32_t> cps) {
+  using WB = WordBreak;
+  const std::size_t n = cps.size();
+  std::vector<bool> b(n + 1, false);
+  b[0] = true;   // WB1
+  b[n] = true;   // WB2
+  if (n < 2) return b;
+  std::vector<WB> w(n);
+  std::vector<bool> pict(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    w[i] = word_break(cps[i]);
+    pict[i] = is_extended_pictographic(cps[i]);
+  }
+  auto ignorable = [](WB c) { return c == WB::Extend || c == WB::Format || c == WB::ZWJ; };
+  auto newline = [](WB c) { return c == WB::Newline || c == WB::CR || c == WB::LF; };
+  auto ah = [](WB c) { return c == WB::ALetter || c == WB::Hebrew_Letter; };
+  auto midnumletq = [](WB c) { return c == WB::MidNumLet || c == WB::Single_Quote; };
+  auto word_like = [&](WB c) { return ah(c) || c == WB::Numeric || c == WB::Katakana; };
+  // The class of the nearest non-ignorable code point strictly before `i`, per WB4,
+  // and its index; `none` when there is none.
+  const std::size_t none = static_cast<std::size_t>(-1);
+  auto prev_of = [&](std::size_t i) {
+    while (i > 0) {
+      --i;
+      if (!ignorable(w[i])) return i;
+    }
+    return none;
+  };
+  auto next_of = [&](std::size_t i) {  // nearest non-ignorable at or after i
+    while (i < n && ignorable(w[i])) ++i;
+    return i < n ? i : none;
+  };
+  for (std::size_t i = 1; i < n; ++i) {
+    const WB p = w[i - 1], q = w[i];
+    bool brk;
+    if (p == WB::CR && q == WB::LF) brk = false;                     // WB3
+    else if (newline(p)) brk = true;                                 // WB3a
+    else if (newline(q)) brk = true;                                 // WB3b
+    else if (p == WB::ZWJ && pict[i]) brk = false;                   // WB3c
+    else if (p == WB::WSegSpace && q == WB::WSegSpace) brk = false;  // WB3d
+    else if (ignorable(q)) brk = false;                              // WB4
+    else {
+      // From here on, WB4 has already erased Extend/Format/ZWJ: look through them.
+      const std::size_t pi = prev_of(i);
+      const WB a = pi == none ? WB::Other : w[pi];
+      const bool has_a = pi != none;
+      const std::size_t ppi = has_a ? prev_of(pi) : none;
+      const WB aa = ppi == none ? WB::Other : w[ppi];
+      const bool has_aa = ppi != none;
+      const WB c = q;
+      const std::size_t ni = next_of(i + 1);
+      const WB cc = ni == none ? WB::Other : w[ni];
+      const bool has_cc = ni != none;
+      brk = true;
+      if (!has_a) brk = true;                                                        // WB999 (only ignorables before)
+      else if (ah(a) && ah(c)) brk = false;                                          // WB5
+      else if (ah(a) && (c == WB::MidLetter || midnumletq(c)) && has_cc && ah(cc)) brk = false;   // WB6
+      else if (has_aa && ah(aa) && (a == WB::MidLetter || midnumletq(a)) && ah(c)) brk = false;   // WB7
+      else if (a == WB::Hebrew_Letter && c == WB::Single_Quote) brk = false;         // WB7a
+      else if (a == WB::Hebrew_Letter && c == WB::Double_Quote && has_cc && cc == WB::Hebrew_Letter) brk = false;  // WB7b
+      else if (has_aa && aa == WB::Hebrew_Letter && a == WB::Double_Quote && c == WB::Hebrew_Letter) brk = false;  // WB7c
+      else if (a == WB::Numeric && c == WB::Numeric) brk = false;                    // WB8
+      else if (ah(a) && c == WB::Numeric) brk = false;                               // WB9
+      else if (a == WB::Numeric && ah(c)) brk = false;                               // WB10
+      else if (has_aa && aa == WB::Numeric && (a == WB::MidNum || midnumletq(a)) && c == WB::Numeric) brk = false;  // WB11
+      else if (a == WB::Numeric && (c == WB::MidNum || midnumletq(c)) && has_cc && cc == WB::Numeric) brk = false;  // WB12
+      else if (a == WB::Katakana && c == WB::Katakana) brk = false;                  // WB13
+      else if ((word_like(a) || a == WB::ExtendNumLet) && c == WB::ExtendNumLet) brk = false;  // WB13a
+      else if (a == WB::ExtendNumLet && word_like(c)) brk = false;                   // WB13b
+      else if (a == WB::Regional_Indicator && c == WB::Regional_Indicator) {         // WB15/16
+        std::size_t run = 0, j = pi;
+        while (j != none && w[j] == WB::Regional_Indicator) { ++run; j = prev_of(j); }
+        brk = (run % 2 == 0);
+      }
+    }
+    b[i] = brk;
+  }
+  return b;
+}
+
+ByteRange word_range(std::string_view utf8, std::size_t offset) {
+  std::vector<DecodedChar> dc = decode_utf8(utf8);
+  if (offset >= utf8.size() || dc.empty()) return {utf8.size(), utf8.size()};
+  std::vector<char32_t> cps(dc.size());
+  for (std::size_t i = 0; i < dc.size(); ++i) cps[i] = dc[i].cp;
+  std::vector<bool> b = word_boundaries(cps);
+  std::size_t k = 0;  // the code point containing `offset`
+  while (k + 1 < dc.size() && dc[k + 1].offset <= offset) ++k;
+  std::size_t start = k, end = k + 1;
+  while (start > 0 && !b[start]) --start;
+  while (end < dc.size() && !b[end]) ++end;
+  return {dc[start].offset, dc[end - 1].offset + dc[end - 1].length};
+}
+
+// ---- sanitising ---------------------------------------------------------------------
+
+std::string strip_escape_sequences(std::string_view s) {
+  std::string out;
+  out.reserve(s.size());
+  const std::size_t n = s.size();
+  auto at = [&](std::size_t i) { return static_cast<unsigned char>(s[i]); };
+  // Skips a string sequence's payload up to and including its terminator (BEL, or
+  // ESC \, or the C1 ST U+009C); returns the index just past it (n if unterminated).
+  auto skip_string = [&](std::size_t i) {
+    while (i < n) {
+      if (at(i) == 0x07) return i + 1;
+      if (at(i) == 0x1B && i + 1 < n && s[i + 1] == '\\') return i + 2;
+      if (at(i) == 0xC2 && i + 1 < n && at(i + 1) == 0x9C) return i + 2;
+      ++i;
+    }
+    return n;
+  };
+  auto skip_csi = [&](std::size_t i) {  // i is just past the introducer
+    while (i < n && at(i) >= 0x20 && at(i) <= 0x3F) ++i;   // parameters + intermediates
+    if (i < n && at(i) >= 0x40 && at(i) <= 0x7E) ++i;      // final byte
+    return i;
+  };
+  for (std::size_t i = 0; i < n;) {
+    const unsigned char c = at(i);
+    if (c == 0x1B) {
+      if (i + 1 >= n) { ++i; continue; }  // a lone trailing ESC: dropped
+      const unsigned char d = at(i + 1);
+      if (d == '[') i = skip_csi(i + 2);
+      else if (d == ']' || d == 'P' || d == 'X' || d == '^' || d == '_') i = skip_string(i + 2);
+      else if (d >= 0x20 && d <= 0x2F) {  // ESC intermediate* final
+        std::size_t j = i + 1;
+        while (j < n && at(j) >= 0x20 && at(j) <= 0x2F) ++j;
+        i = (j < n && at(j) >= 0x30 && at(j) <= 0x7E) ? j + 1 : j;
+      } else if (d >= 0x30 && d <= 0x7E) i += 2;  // ESC final (ESC c, ESC 7, ESC = …)
+      else ++i;  // ESC before a control or a non-ASCII byte: drop the ESC alone
+      continue;
+    }
+    // 8-bit C1 introducers, as UTF-8 (C2 9B = CSI, C2 9D = OSC, C2 90/98/9E/9F strings).
+    if (c == 0xC2 && i + 1 < n) {
+      const unsigned char d = at(i + 1);
+      if (d == 0x9B) { i = skip_csi(i + 2); continue; }
+      if (d == 0x9D || d == 0x90 || d == 0x98 || d == 0x9E || d == 0x9F) { i = skip_string(i + 2); continue; }
+    }
+    out.push_back(s[i]);
+    ++i;
+  }
+  return out;
+}
+
 // ---- UAX #14 -----------------------------------------------------------------------
 
 std::vector<Break> line_break_opportunities(std::span<const char32_t> cps) {

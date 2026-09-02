@@ -50,9 +50,14 @@ class Terminal {
   int height() const { return h_; }
   void refresh_size();  // ioctl; also called on SIGWINCH
 
-  // Waits up to timeout_ms (-1: forever) for input or a resize; decodes what arrived.
-  // A lone ESC that nothing follows within the timeout is delivered as Escape.
+  // Waits up to timeout_ms (-1: forever) for input, a resize or a wake(); decodes what
+  // arrived. A lone ESC that nothing follows within the timeout is delivered as Escape.
   std::vector<Event> poll(int timeout_ms);
+
+  // Makes a blocked poll() return now, with whatever events are pending (possibly
+  // none). Thread-safe and async-signal-safe: one byte on the self-pipe. A frontend
+  // whose view changes on another thread uses it instead of a short poll timeout.
+  void wake();
 
   // Writes every byte (loops on partial writes and EINTR).
   void write(std::string_view bytes);

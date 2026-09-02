@@ -31,6 +31,22 @@
 //   - No syntax highlighting (plan/phase-9.md nice-to-have 9); a code block gets the
 //     md_code_block role and its info string as a label.
 //
+// LOGICAL TEXT (milestone 9, for selection): render_text() also returns the document's
+// logical text — what the rendered lines would be at infinite width — and every drawn
+// grapheme records the byte offset it came from in that text (or kNoSource for chrome:
+// borders, rules, continuation-line indentation, the blank lines between blocks). A
+// selection is therefore two offsets into this text and survives any re-wrap, and a
+// copy yields text with no wrap artefacts. What counts as text, stated once:
+//   - a paragraph or heading is one logical line (its inline text, heading marks
+//     included, soft breaks as spaces) ending in "\n";
+//   - a list marker, task box or quote bar on a block's FIRST line is text (a copied
+//     list keeps its bullets and its indentation); on continuation lines it is chrome;
+//   - a code block's lines are text, its box and label are chrome;
+//   - a table row is its cells joined by "\t" and ended by "\n"; borders are chrome;
+//   - a thematic break and a blank line between blocks each contribute "\n";
+//   - a link's text and its appended " (url)" are both text (they are both drawn).
+// The trailing "\n" of the last block is trimmed.
+//
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -97,10 +113,18 @@ Document parse(std::string_view source);
 
 // ---- rendering ---------------------------------------------------------------------
 
+inline constexpr std::uint32_t kNoSource = 0xFFFFFFFFu;
+
 struct Span {
   std::string text;
   int width = 0;
   Role role = Role::text;
+  std::string href;                    // non-empty: hyperlink target for these cells (OSC 8)
+  // One entry per grapheme cluster of `text` (as unicode::graphemes clusters it): the
+  // byte offset of that grapheme in Rendered::text, or kNoSource for chrome. A span's
+  // graphemes need not be contiguous in the logical text (a tab is eight spaces that
+  // all point at the tab). Spans merge only when role and href both match.
+  std::vector<std::uint32_t> sources;
 };
 
 struct StyledLine {
@@ -115,6 +139,13 @@ struct RenderOptions {
   Role base = Role::text;
 };
 
+struct Rendered {
+  std::vector<StyledLine> lines;
+  std::string text;  // the logical text every Span::sources offset indexes
+};
+
+Rendered render_text(const Document& doc, const RenderOptions& opt = {});
+Rendered render_text(std::string_view source, const RenderOptions& opt = {});
 std::vector<StyledLine> render(const Document& doc, const RenderOptions& opt = {});
 std::vector<StyledLine> render(std::string_view source, const RenderOptions& opt = {});
 

@@ -5,10 +5,11 @@
 //   DerivedLineBreak-17.0.0.txt  (2025-07-29, 13:52:13 GMT)
 //   DerivedEastAsianWidth-17.0.0.txt  (2025-07-24, 13:28:21 GMT)
 //   GraphemeBreakProperty-17.0.0.txt  (2025-06-30, 06:20:23 GMT)
+//   WordBreakProperty-17.0.0.txt  (2025-06-30, 06:20:49 GMT)
 //   DerivedCoreProperties-17.0.0.txt  (2025-07-30, 23:55:08 GMT)
 //   DerivedGeneralCategory-17.0.0.txt  (2025-07-24, 00:12:50 GMT)
 //   emoji-data.txt  (2025-07-25, 17:54:31 GMT)
-// generator commit: c8392d84427c-dirty
+// generator commit: e7c92a60f32a-dirty
 //
 // Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui
 // Verify:      gen_unicode_tables rolltui/ucd --check rolltui
@@ -44,6 +45,9 @@ inline constexpr EastAsianWidth kEastAsianWidthDefault = EastAsianWidth::N;
 enum class GraphemeBreak : std::uint8_t { Other, CR, LF, Control, Extend, ZWJ, Regional_Indicator, Prepend, SpacingMark, L, V, T, LV, LVT };
 inline constexpr GraphemeBreak kGraphemeBreakDefault = GraphemeBreak::Other;
 
+enum class WordBreak : std::uint8_t { Other, CR, LF, Newline, Extend, ZWJ, Regional_Indicator, Format, Katakana, Hebrew_Letter, ALetter, Single_Quote, Double_Quote, MidNumLet, MidLetter, MidNum, Numeric, ExtendNumLet, WSegSpace };
+inline constexpr WordBreak kWordBreakDefault = WordBreak::Other;
+
 enum class IndicConjunctBreak : std::uint8_t { None, Consonant, Extend, Linker };
 inline constexpr IndicConjunctBreak kIndicConjunctBreakDefault = IndicConjunctBreak::None;
 
@@ -56,6 +60,8 @@ extern const Range kEastAsianWidth[318];  // EastAsianWidth
 inline constexpr std::size_t kEastAsianWidthCount = 318;
 extern const Range kGraphemeBreak[1386];  // GraphemeBreak
 inline constexpr std::size_t kGraphemeBreakCount = 1386;
+extern const Range kWordBreak[1100];  // WordBreak
+inline constexpr std::size_t kWordBreakCount = 1100;
 extern const Range kIndicConjunctBreak[473];  // IndicConjunctBreak
 inline constexpr std::size_t kIndicConjunctBreakCount = 473;
 extern const Range kGeneralCategory[3409];  // GeneralCategory

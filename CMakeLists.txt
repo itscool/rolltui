@@ -51,6 +51,8 @@ endfunction()
 add_rolltui_test(rolltui-grapheme-break-test tests/grapheme_break_test.cpp)
 add_rolltui_test(rolltui-line-break-test tests/line_break_test.cpp)
 add_rolltui_test(rolltui-width-test tests/width_test.cpp)
+# Milestone 9: UAX #29 word boundaries (the double-click), plus the escape stripper.
+add_rolltui_test(rolltui-word-break-test tests/word_break_test.cpp)
 
 # Milestone 3: the wrap engine — edge-case table and the three properties.
 add_rolltui_test(rolltui-wrap-test tests/wrap_test.cpp)
@@ -71,6 +73,10 @@ set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
 # Milestone 8: placement (the resolve table + tiling properties), the split tree, the
 # layout loader and the four built-ins, border joining, the stack's focus routing.
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
+
+# Milestone 9: the transcript widget — layout cache, entry-anchored scroll, follow +
+# marker, folding, logical-coordinate selection with auto-scroll and copy, OSC 8.
+add_rolltui_test(rolltui-transcript-test tests/transcript_test.cpp)
 
 # Milestone 7: the playground — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the

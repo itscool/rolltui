@@ -320,22 +320,40 @@ Role role_for(unsigned style, Role base) {
   return base;
 }
 
-void push_span(StyledLine& line, std::string text, Role role, bool ambiguous) {
+// Appends text to a line as a span. `sources` has one offset per grapheme cluster of
+// `text` (chrome when empty: every grapheme kNoSource). Adjacent spans merge only when
+// role and href both match, so a link's cells stay one span.
+void push_span(StyledLine& line, std::string text, Role role, bool ambiguous,
+               std::vector<std::uint32_t> sources = {}, const std::string& href = "") {
   if (text.empty()) return;
-  int w = unicode::display_width(text, ambiguous);
-  if (!line.spans.empty() && line.spans.back().role == role) {
-    line.spans.back().text += text;
-    line.spans.back().width += w;
+  int w = 0;
+  std::size_t clusters = 0;
+  for (const unicode::Grapheme& g : unicode::graphemes(text, ambiguous)) { w += g.width; ++clusters; }
+  if (sources.size() != clusters) sources.assign(clusters, kNoSource);
+  if (!line.spans.empty() && line.spans.back().role == role && line.spans.back().href == href) {
+    Span& s = line.spans.back();
+    s.text += text;
+    s.width += w;
+    s.sources.insert(s.sources.end(), sources.begin(), sources.end());
   } else {
-    line.spans.push_back({std::move(text), w, role});
+    line.spans.push_back({std::move(text), w, role, href, std::move(sources)});
   }
   line.width += w;
 }
 
+// Consecutive logical offsets for `text` appended to the logical text at `base`.
+std::vector<std::uint32_t> sources_for(const std::string& text, std::size_t base, bool ambiguous) {
+  std::vector<std::uint32_t> s;
+  for (const unicode::Grapheme& g : unicode::graphemes(text, ambiguous))
+    s.push_back(static_cast<std::uint32_t>(base + g.offset));
+  return s;
+}
+
 std::string spaces(int n) { return std::string(static_cast<std::size_t>(n > 0 ? n : 0), ' '); }
 
-// Rendering context: the width available for content and the prefix each line
-// carries (a marker on the first line, indentation on the rest).
+// Rendering context: the width available for content, the prefix each line carries
+// (a marker on the first line, indentation on the rest), and the logical text being
+// accumulated (Markdown.hpp, "LOGICAL TEXT").
 struct Ctx {
   int width;
   std::vector<Span> prefix_first;
@@ -344,6 +362,8 @@ struct Ctx {
   Role base;
   bool ambiguous;
   int tab_width;
+  std::string* logical = nullptr;  // the document's logical text
+  const char* terminator = "\n";   // what ends a block's logical line ("\t" inside a table row)
 
   std::vector<Span> take_prefix() {
     if (!first_used) { first_used = true; return prefix_first; }
@@ -361,12 +381,29 @@ struct Ctx {
     c.base = new_base;
     return c;
   }
+  void end_logical_line() { *logical += terminator; }
 };
 
-StyledLine start_line(Ctx& ctx) {
+// Starts a line with the context's prefix. On a block's first line the prefix is
+// logical text (the marker is copied with the item); elsewhere it is chrome.
+StyledLine start_line(Ctx& ctx, bool first_of_block = false) {
   StyledLine l;
-  for (const Span& s : ctx.take_prefix()) push_span(l, s.text, s.role, ctx.ambiguous);
+  for (const Span& s : ctx.take_prefix()) {
+    if (first_of_block) {
+      std::size_t base = ctx.logical->size();
+      *ctx.logical += s.text;
+      push_span(l, s.text, s.role, ctx.ambiguous, sources_for(s.text, base, ctx.ambiguous));
+    } else {
+      push_span(l, s.text, s.role, ctx.ambiguous);
+    }
+  }
   return l;
+}
+
+// A chrome-only first line (a code box's top rule, a table's top border) still carries
+// the block's marker; the marker then stands on a logical line of its own.
+void finish_chrome_first_line(Ctx& ctx, std::size_t logical_before) {
+  if (ctx.logical->size() > logical_before) ctx.end_logical_line();
 }
 
 void blank_line(std::vector<StyledLine>& out, Ctx& ctx) {
@@ -386,20 +423,24 @@ void blank_line(std::vector<StyledLine>& out, Ctx& ctx) {
       s.text.resize(keep + 1);
       s.width -= dropped;
       l.width -= dropped;
+      s.sources.assign(unicode::graphemes(s.text, ctx.ambiguous).size(), kNoSource);
     }
     break;
   }
+  ctx.end_logical_line();
   out.push_back(std::move(l));
 }
 
-// Lay out inline runs as wrapped lines with per-grapheme roles.
+// Lay out inline runs as wrapped lines with per-grapheme roles and hrefs. The runs'
+// concatenated text becomes one logical line.
 void layout_runs(const std::vector<Run>& runs, Ctx& ctx, std::vector<StyledLine>& out,
                  int first_indent = 0, int hanging_indent = 0, Role role_override = Role::count_) {
   std::string text;
-  std::vector<std::pair<std::size_t, Role>> roles;  // start offset → role
+  struct RunAt { std::size_t start; Role role; const std::string* href; };
+  std::vector<RunAt> at;
   for (const Run& r : runs) {
     Role role = role_override != Role::count_ ? role_override : role_for(r.style, ctx.base);
-    roles.emplace_back(text.size(), role);
+    at.push_back({text.size(), role, (r.style & kLink) ? &r.href : nullptr});
     text += r.text;
   }
   WrapOptions wo;
@@ -408,21 +449,32 @@ void layout_runs(const std::vector<Run>& runs, Ctx& ctx, std::vector<StyledLine>
   wo.first_indent = first_indent;
   wo.hanging_indent = hanging_indent;
   std::vector<Line> lines = wrap(text, ctx.width, wo);
-  auto role_at = [&](std::size_t off) {
-    Role r = ctx.base;
-    for (const auto& [start, role] : roles) {
-      if (start <= off) r = role;
+  static const std::string kNoHref;
+  auto run_at = [&](std::size_t off) -> const RunAt* {
+    const RunAt* r = nullptr;
+    for (const RunAt& a : at) {
+      if (a.start <= off) r = &a;
       else break;
     }
     return r;
   };
-  for (const Line& ln : lines) {
-    StyledLine sl = start_line(ctx);
+  std::size_t base = 0;
+  for (std::size_t k = 0; k < lines.size(); ++k) {
+    const Line& ln = lines[k];
+    StyledLine sl = start_line(ctx, k == 0);
+    if (k == 0) {
+      base = ctx.logical->size();
+      *ctx.logical += text;
+    }
     if (ln.indent > 0) push_span(sl, spaces(ln.indent), ctx.base, ctx.ambiguous);
-    for (const WrapGrapheme& g : ln.graphemes)
-      push_span(sl, ln.text.substr(g.offset, g.length), role_at(g.source_offset), ctx.ambiguous);
+    for (const WrapGrapheme& g : ln.graphemes) {
+      const RunAt* r = run_at(g.source_offset);
+      push_span(sl, ln.text.substr(g.offset, g.length), r ? r->role : ctx.base, ctx.ambiguous,
+                {static_cast<std::uint32_t>(base + g.source_offset)}, (r && r->href) ? *r->href : kNoHref);
+    }
     out.push_back(std::move(sl));
   }
+  ctx.end_logical_line();
 }
 
 std::vector<std::string> split_lines(const std::string& code) {
@@ -447,8 +499,12 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
   WrapOptions wo;
   wo.ambiguous_wide = ctx.ambiguous;
   wo.tab_width = ctx.tab_width;
+  bool first = true;
   auto hrule = [&](const char* left, const char* right, const std::string& lab) {
-    StyledLine l = start_line(ctx);
+    std::size_t before = ctx.logical->size();
+    StyledLine l = start_line(ctx, first);
+    if (first) finish_chrome_first_line(ctx, before);
+    first = false;
     std::string s = left;
     int used = 1;
     if (!lab.empty()) {
@@ -464,10 +520,16 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
   if (boxed) hrule("\xE2\x94\x8C", "\xE2\x94\x90", label);  // ┌ ┐
   for (const std::string& raw : split_lines(code)) {
     std::vector<Line> lines = wrap(raw, inner, wo);
+    std::size_t base = ctx.logical->size();
+    *ctx.logical += raw;
+    ctx.end_logical_line();
     for (const Line& ln : lines) {
-      StyledLine sl = start_line(ctx);
+      StyledLine sl = start_line(ctx, first);
+      first = false;
       if (boxed) push_span(sl, "\xE2\x94\x82 ", Role::md_code_label, ctx.ambiguous);  // │
-      push_span(sl, ln.text, Role::md_code_block, ctx.ambiguous);
+      std::vector<std::uint32_t> src;
+      for (const WrapGrapheme& g : ln.graphemes) src.push_back(static_cast<std::uint32_t>(base + g.source_offset));
+      push_span(sl, ln.text, Role::md_code_block, ctx.ambiguous, std::move(src));
       int pad = inner - ln.width;
       if (pad > 0) push_span(sl, spaces(pad), Role::md_code_block, ctx.ambiguous);
       if (boxed) push_span(sl, " \xE2\x94\x82", Role::md_code_label, ctx.ambiguous);
@@ -507,7 +569,8 @@ void render_block(const Block& b, Ctx& ctx, std::vector<StyledLine>& out) {
       render_code(b.code, "html", ctx, out);
       break;
     case K::Rule: {
-      StyledLine l = start_line(ctx);
+      StyledLine l = start_line(ctx, true);
+      ctx.end_logical_line();
       std::string s;
       for (int i = 0; i < ctx.width; ++i) s += "\xE2\x94\x80";
       push_span(l, s, Role::md_rule, ctx.ambiguous);
@@ -515,7 +578,7 @@ void render_block(const Block& b, Ctx& ctx, std::vector<StyledLine>& out) {
       break;
     }
     case K::Quote: {
-      Span bar{"\xE2\x94\x82 ", 2, Role::md_quote};
+      Span bar{"\xE2\x94\x82 ", 2, Role::md_quote, {}, {}};
       Ctx c = ctx.child(2, {bar}, {bar}, Role::md_quote);
       render_blocks(b.children, c, out, false);
       break;
@@ -537,11 +600,14 @@ void render_block(const Block& b, Ctx& ctx, std::vector<StyledLine>& out) {
         int mw = unicode::display_width(m, ctx.ambiguous);
         int w = std::max(mw, marker_w);
         m = spaces(w - mw) + m;  // right-align numbers under the widest
-        Span marker{m, w, Role::md_list_marker};
-        Span pad{spaces(w), w, ctx.base};
+        Span marker{m, w, Role::md_list_marker, {}, {}};
+        Span pad{spaces(w), w, ctx.base, {}, {}};
         Ctx c = ctx.child(w, {marker}, {pad}, ctx.base);
         render_blocks(item.children, c, out, b.tight);
-        if (item.children.empty()) out.push_back(start_line(c));  // an empty item still shows its marker
+        if (item.children.empty()) {  // an empty item still shows its marker
+          out.push_back(start_line(c, true));
+          c.end_logical_line();
+        }
         ++n;
       }
       break;
@@ -597,8 +663,12 @@ void render_table(const Block& t, Ctx& ctx, std::vector<StyledLine>& out) {
     --cw[widest];
     --total;
   }
+  bool first = true;
   auto border = [&](const char* l, const char* m, const char* r) {
-    StyledLine ln = start_line(ctx);
+    std::size_t before = ctx.logical->size();
+    StyledLine ln = start_line(ctx, first);
+    if (first) finish_chrome_first_line(ctx, before);
+    first = false;
     std::string s = l;
     for (std::size_t c = 0; c < cols; ++c) {
       for (int i = 0; i < cw[c] + 2; ++i) s += "\xE2\x94\x80";
@@ -619,11 +689,15 @@ void render_table(const Block& t, Ctx& ctx, std::vector<StyledLine>& out) {
       cc.first_used = false;
       cc.width = cw[c];
       cc.base = head ? Role::md_table_header : ctx.base;
+      cc.terminator = "\t";  // cells of a row share one logical line
       if (c < t.rows[r].size())
         layout_runs(t.rows[r][c], cc, cells[c], 0, 0, head ? Role::md_table_header : Role::count_);
+      else
+        cc.end_logical_line();  // an absent cell still holds its column
       if (cells[c].empty()) cells[c].push_back({});
       height = std::max(height, cells[c].size());
     }
+    if (!ctx.logical->empty() && ctx.logical->back() == '\t') ctx.logical->back() = '\n';
     for (std::size_t h = 0; h < height; ++h) {
       StyledLine ln = start_line(ctx);
       push_span(ln, "\xE2\x94\x82", Role::md_table_border, ctx.ambiguous);
@@ -635,7 +709,7 @@ void render_table(const Block& t, Ctx& ctx, std::vector<StyledLine>& out) {
         if (t.aligns[c] == Align::Right) left = pad;
         else if (t.aligns[c] == Align::Center) left = pad / 2;
         if (left > 0) push_span(ln, spaces(left), ctx.base, ctx.ambiguous);
-        for (const Span& s : cell.spans) push_span(ln, s.text, s.role, ctx.ambiguous);
+        for (const Span& s : cell.spans) push_span(ln, s.text, s.role, ctx.ambiguous, s.sources, s.href);
         if (pad - left > 0) push_span(ln, spaces(pad - left), ctx.base, ctx.ambiguous);
         push_span(ln, " \xE2\x94\x82", Role::md_table_border, ctx.ambiguous);
       }
@@ -649,11 +723,20 @@ void render_table(const Block& t, Ctx& ctx, std::vector<StyledLine>& out) {
 
 }  // namespace
 
+Rendered render_text(const Document& doc, const RenderOptions& opt) {
+  Rendered r;
+  Ctx ctx{std::max(opt.width, 1), {}, {}, false, opt.base, opt.ambiguous_wide, opt.tab_width, &r.text, "\n"};
+  render_blocks(doc.blocks, ctx, r.lines, false);
+  if (!r.text.empty() && r.text.back() == '\n') r.text.pop_back();
+  return r;
+}
+
+Rendered render_text(std::string_view source, const RenderOptions& opt) {
+  return render_text(parse(source), opt);
+}
+
 std::vector<StyledLine> render(const Document& doc, const RenderOptions& opt) {
-  std::vector<StyledLine> out;
-  Ctx ctx{std::max(opt.width, 1), {}, {}, false, opt.base, opt.ambiguous_wide, opt.tab_width};
-  render_blocks(doc.blocks, ctx, out, false);
-  return out;
+  return render_text(doc, opt).lines;
 }
 
 std::vector<StyledLine> render(std::string_view source, const RenderOptions& opt) {

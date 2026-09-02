@@ -142,6 +142,13 @@ void Terminal::write(std::string_view bytes) {
   write_all_fd(out_, bytes.data(), bytes.size());
 }
 
+void Terminal::wake() {
+  if (wake_[1] < 0) return;
+  char c = 'k';
+  ssize_t r = ::write(wake_[1], &c, 1);  // non-blocking; a full pipe already wakes
+  (void)r;
+}
+
 std::vector<Event> Terminal::poll(int timeout_ms) {
   std::vector<Event> out;
   pollfd fds[2];
@@ -158,11 +165,16 @@ std::vector<Event> Terminal::poll(int timeout_ms) {
   }
   if (fds[1].revents & POLLIN) {
     char buf[64];
-    while (::read(wake_[0], buf, sizeof buf) > 0) {}
+    bool winch = false;
+    ssize_t k;
+    while ((k = ::read(wake_[0], buf, sizeof buf)) > 0)
+      for (ssize_t i = 0; i < k; ++i) winch |= (buf[i] == 'w');  // 'k' is a plain wake()
     // Every SIGWINCH is reported, even when the size reads back the same: the frame
     // may still need a full repaint (some terminals clear on a font change).
-    refresh_size();
-    out.emplace_back(ResizeEvent{w_, h_});
+    if (winch) {
+      refresh_size();
+      out.emplace_back(ResizeEvent{w_, h_});
+    }
   }
   if (fds[0].revents & (POLLIN | POLLHUP)) {
     char buf[4096];

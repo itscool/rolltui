@@ -1,0 +1,36 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ because dispatch_source_cancel does not wait  │ theme   default-dark         │
+│ for a handler that is already running.        │ layout  default              │
+│                                               │ size    80x24                │
+│ Without the drain a poll() blocked on the     │ line    9/27                 │
+│ state lock could resume after release()       │ follow  yes                  │
+│ decided it was the last client, re-register   │ depth   truecolor            │
+│ itself and respawn the server release just    │ focus   transcript           │
+│ killed — a permanent orphan. The rule is      │ copied  743 bytes            │
+│ recorded in CLAUDE.md (https://example.com/   │                              │
+│ roll/CLAUDE.md#hard-constraints) under hard   │                              │
+│ constraints.                                  │                              │
+│                                               │                              │
+│ 1. cancel the timer                           │                              │
+│ 2. drain the queue                            │                              │
+│ 3. release the source                         │                              │
+│                                               │                              │
+│ ▸ run_tests build_only (134 ms) (2 lines)     │                              │
+│                                               │                              │
+│ > thanks                                      │                              │
+├───────────────────────────────────────────────┤                              │
+│> type here (input is milestone 10)            │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 9/27  follow  truecolor  focus:transcript  c
+--- copied ---
+read the manager header and tell me what stop_heartbeat does
+read_file include/ResilientModelManager.hpp (lines 40-52)
+stop_heartbeat cancels the heartbeat timer and drains its queue: the dispatch_sync after the cancel is what makes shutdown race-free, because dispatch_source_cancel does not wait for a handler that is already running.
+
+Without the drain a poll() blocked on the state lock could resume after release() decided it was the last client, re-register itself and respawn the server release just killed — a permanent orphan. The rule is recorded in CLAUDE.md (https://example.com/roll/CLAUDE.md#hard-constraints) under hard constraints.
+
+1. cancel the timer
+2. drain the queue
+3. release the source
+run_tests build_only (134 ms)
+t

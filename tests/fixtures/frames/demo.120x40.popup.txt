@@ -20,8 +20,8 @@
 │ │                     │ r  reload the fixture   Ctrl-L  repaint                              │                       │
 │ │ Menu widget (hierarc│ PgUp/PgDn/Home/End, wheel  scroll the transcript                     │                       │
 │ │ filterable) + list/t│ Up/Down  scroll while the transcript has focus                       │                       │
-│ │ Layout files (JSON: │                                                                      │                       │
-│ │ placements + content│                                                                      │                       │
+│ │ Layout files (JSON: │ drag  select (auto-scrolls past an edge); release copies             │                       │
+│ │ placements + content│ double-click  word   triple-click  line   Alt-C  copy again          │                       │
 │ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ → styled wrapped lines)          │             │                                  │ │                              │
 │ │ Theme (roles → styles, JSON      │ build       │ single header                    │ │                              │

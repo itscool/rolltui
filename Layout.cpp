@@ -880,13 +880,24 @@ void WindowStack::compose(Frame& frame, Rect screen, const Theme& theme, const S
 
 Route WindowStack::route(const Event& e, Rect screen) {
   if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
+    // A captured pointer: drags and the release go to the pressed window, wherever
+    // the pointer is now (the window may even have gone: then the capture just ends).
+    if (!captured_.empty() && (m->kind == MouseEvent::Kind::Drag || m->kind == MouseEvent::Kind::Release)) {
+      std::string target = captured_;
+      if (m->kind == MouseEvent::Kind::Release) captured_.clear();
+      if (find(target)) return {Route::Kind::Deliver, target};
+      return {Route::Kind::Dropped, {}};
+    }
     std::vector<ResolvedNode> all = resolve(screen);
     const std::size_t top = layers_.size() - 1;
     for (std::size_t k = all.size(); k-- > 0;) {
       const ResolvedNode& rn = all[k];
       if (!rn.node->is_window() || !rn.outer.intersect(screen).contains(m->x, m->y)) continue;
       if (layers_[top].modal && rn.layer != top) return {Route::Kind::Dropped, {}};
-      if (m->kind == MouseEvent::Kind::Press && rn.node->focusable && rn.layer == focus_layer()) focus(rn.node->id);
+      if (m->kind == MouseEvent::Kind::Press) {
+        if (rn.node->focusable && rn.layer == focus_layer()) focus(rn.node->id);
+        captured_ = rn.node->id;
+      }
       return {Route::Kind::Deliver, rn.node->id};
     }
     return {Route::Kind::Dropped, {}};

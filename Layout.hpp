@@ -72,7 +72,10 @@
 // delivered (an input window may want Tab); other keys go to the focused window; a
 // mouse event goes to the topmost visible window under the pointer (dropped under a
 // modal when the hit is not in its layer), and a press on a focusable window in the
-// focus layer also focuses it.
+// focus layer also focuses it. A delivered press CAPTURES the pointer for its window:
+// every Drag and the Release that follow go to that window wherever the pointer is —
+// off the window, off the screen — so a selection can be dragged past an edge to
+// auto-scroll (milestone 9); the release ends the capture.
 //
 // File format (layouts/<name>.json; the built-ins are written in it and parsed by
 // the same loader, so the format is exercised every run):
@@ -296,9 +299,12 @@ class WindowStack {
   void cycle_focus(bool backwards = false);
 
   Route route(const Event& e, Rect screen);
+  // The window a press captured the pointer for, until its release ("" when none).
+  const std::string& captured() const { return captured_; }
 
  private:
   std::vector<Layer> layers_{Layer{}};
+  std::string captured_;
 };
 
 }  // namespace rolltui

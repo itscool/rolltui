@@ -8,12 +8,16 @@
 //                        consumed, so a byte offset is always recoverable)
 //   widths               codepoint_width, cluster_width — cells on a terminal
 //   UAX #29              grapheme_boundaries / graphemes: extended grapheme clusters,
-//                        incl. GB9c (Indic conjuncts) and GB11 (emoji ZWJ sequences)
+//                        incl. GB9c (Indic conjuncts) and GB11 (emoji ZWJ sequences);
+//                        word_boundaries / word_range: word boundaries (WB1-WB999),
+//                        for double-click selection
 //   UAX #14              line_break_opportunities: every rule LB1-LB31 as published
 //                        for Unicode 17.0 (tr14-55), untailored
+//   sanitising           strip_escape_sequences: removes ESC/C1-introduced control
+//                        sequences so model output can never be terminal input
 //
 // Implementations live in Unicode.cpp (the rolltui static library). Verified by the
-// two Unicode conformance suites in full (rolltui/tests/), and the width function by
+// three Unicode conformance suites in full (rolltui/tests/), and the width function by
 // a hand table plus a cross-check against libc wcwidth over the BMP in which every
 // disagreement is LISTED, not tolerated (rolltui/tests/width_test).
 //
@@ -55,6 +59,10 @@ inline EastAsianWidth east_asian_width(char32_t cp) {
 inline GraphemeBreak grapheme_break(char32_t cp) {
   return static_cast<GraphemeBreak>(lookup(kGraphemeBreak, kGraphemeBreakCount, cp,
                                            static_cast<std::uint8_t>(kGraphemeBreakDefault)));
+}
+inline WordBreak word_break(char32_t cp) {
+  return static_cast<WordBreak>(lookup(kWordBreak, kWordBreakCount, cp,
+                                       static_cast<std::uint8_t>(kWordBreakDefault)));
 }
 inline IndicConjunctBreak indic_conjunct_break(char32_t cp) {
   return static_cast<IndicConjunctBreak>(
@@ -142,6 +150,37 @@ struct Grapheme {
 // replacement character, never drops the byte.
 std::vector<Grapheme> graphemes(std::string_view utf8, bool ambiguous_wide = false);
 int display_width(std::string_view utf8, bool ambiguous_wide = false);
+
+// ---- UAX #29: word boundaries ------------------------------------------------------
+
+// boundaries[i] is true when a word boundary lies before cps[i]; boundaries[n] is the
+// end of text. Every rule WB1-WB999 as published for Unicode 17.0 (tr29-45),
+// untailored: WB4 treats Extend/Format/ZWJ as transparent, WB6/WB7 and WB11/WB12 look
+// one word character past a mid-letter/mid-number, WB15/WB16 pair regional
+// indicators. Note that a run of spaces is one "word" (WB3d) and punctuation is one
+// boundary per character (WB999) — what double-click needs, not a tokeniser.
+std::vector<bool> word_boundaries(std::span<const char32_t> cps);
+
+struct ByteRange {
+  std::size_t begin = 0, end = 0;  // [begin, end) in the source string
+};
+
+// The word (per word_boundaries) containing byte `offset` of a UTF-8 string, as a byte
+// range; an offset past the end returns {size, size}. Selection's double-click.
+ByteRange word_range(std::string_view utf8, std::size_t offset);
+
+// ---- sanitising ---------------------------------------------------------------------
+
+// Removes terminal control sequences from text that will be RENDERED, never written
+// through: ESC-introduced CSI (ESC [ … final), OSC (ESC ] … BEL | ESC \), DCS / SOS /
+// PM / APC strings to their ST, two- and three-byte ESC sequences (ESC + intermediate*
+// + final), and their 8-bit C1 forms (U+009B CSI, U+009D OSC, U+0090/98/9E/9F strings).
+// The whole sequence goes, parameters and payload included — a bare strip of ESC would
+// leave "[31m" on screen as text. A lone ESC with nothing that could follow it is
+// dropped too. Everything else, invalid UTF-8 included, passes through byte for byte.
+// (plan/phase-9.md: "Model output is data, never terminal input" — the adapter calls
+// this before any text reaches a renderer.)
+std::string strip_escape_sequences(std::string_view text);
 
 // ---- UAX #14: line break opportunities ---------------------------------------------
 

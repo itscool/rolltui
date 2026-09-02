@@ -392,6 +392,20 @@ int main() {
     wheel.kind = MouseEvent::Kind::WheelUp;
     wheel.x = 5; wheel.y = 5;
     check(s.route(wheel, scr) == Route{Route::Kind::Deliver, "transcript"} && s.focused()->id == "input", "a wheel goes to the window under the pointer, focus unchanged");
+    // Pointer capture (milestone 9): a press captures; drags and the release follow it
+    // wherever the pointer goes; after the release routing is by position again.
+    m.x = 5; m.y = 5;
+    check(s.route(m, scr) == Route{Route::Kind::Deliver, "transcript"} && s.captured() == "transcript", "a press captures the pointer for its window");
+    MouseEvent drag = m;
+    drag.kind = MouseEvent::Kind::Drag;
+    drag.x = 60; drag.y = 30;  // over the status panel, and below the screen
+    check(s.route(drag, scr) == Route{Route::Kind::Deliver, "transcript"}, "a drag off the window (even off the screen) still goes to the captured window");
+    MouseEvent release = drag;
+    release.kind = MouseEvent::Kind::Release;
+    check(s.route(release, scr) == Route{Route::Kind::Deliver, "transcript"} && s.captured().empty(), "the release goes there too and ends the capture");
+    check(s.route(drag, scr) == Route{Route::Kind::Dropped, ""}, "a drag with no capture and no window under it is dropped");
+    check(s.focused()->id == "transcript", "the press focused the transcript");
+    s.focus("input");
 
     // A modal popup.
     s.push(*builtin_layout("default")->popup("help"));
