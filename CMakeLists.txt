@@ -29,3 +29,6 @@ endfunction()
 add_rolltui_test(rolltui-grapheme-break-test tests/grapheme_break_test.cpp)
 add_rolltui_test(rolltui-line-break-test tests/line_break_test.cpp)
 add_rolltui_test(rolltui-width-test tests/width_test.cpp)
+
+# Milestone 3: the wrap engine — edge-case table and the three properties.
+add_rolltui_test(rolltui-wrap-test tests/wrap_test.cpp)
