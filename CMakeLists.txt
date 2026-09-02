@@ -18,6 +18,8 @@ add_library(rolltui STATIC
   Unicode.cpp
   Wrap.cpp
   Markdown.cpp
+  Json.cpp
+  Theme.cpp
   third_party/md4c/md4c.c     # vendored, MIT; see third_party/md4c/README.md
 )
 target_include_directories(rolltui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
@@ -35,7 +37,8 @@ function(add_rolltui_test name source)
   target_compile_options(${name} PRIVATE -Wall -Wextra)
   target_compile_definitions(${name} PRIVATE
     ROLLTUI_UCD_DIR="${ROLLTUI_UCD_DIR}"
-    ROLLTUI_FIXTURE_DIR="${ROLLTUI_FIXTURE_DIR}")
+    ROLLTUI_FIXTURE_DIR="${ROLLTUI_FIXTURE_DIR}"
+    ROLLTUI_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   add_test(NAME ${name} COMMAND ${name})
 endfunction()
 
@@ -49,3 +52,6 @@ add_rolltui_test(rolltui-wrap-test tests/wrap_test.cpp)
 
 # Milestone 4: the markdown renderer over vendored md4c — never drops a character.
 add_rolltui_test(rolltui-markdown-test tests/markdown_test.cpp)
+
+# Milestone 5: theme (roles → styles), our JSON, downgrade, SGR, the grep control.
+add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
