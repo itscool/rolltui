@@ -121,6 +121,13 @@ int main() {
     m.handle(ch('x'));
     m.handle(key(Key::Escape));
     check(m.find("save")->value == "mine" && !m.editing(), "Escape cancels the edit and restores the value");
+    m.handle(key(Key::Enter));
+    KeyEvent ctrl_u = ch('u');
+    ctrl_u.ctrl = true;
+    m.handle(ctrl_u);
+    check(m.editing() && m.find("save")->value.empty(), "Ctrl-U while editing clears the whole value");
+    m.handle(key(Key::Escape));
+    check(m.find("save")->value == "mine", "…and Escape still restores it");
   }
   // ---- the filter ----
   {

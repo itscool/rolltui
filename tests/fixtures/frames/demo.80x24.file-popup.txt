@@ -6,8 +6,8 @@
 │ follow  yes                  ││ │ (roles →┃ F2  settings menu   Ctrl-P       ┃
 │ depth   truecolor            ││ │ styles, ┃ command palette   F3  cycle      ┃
 │ focus   help                 ││ │ JSON    ┃ themes                           ┃
-│                              ││ │ loader, ┃ F4  theme editor (Enter commits, ┃
-│                              ││ │ built-in┃ Esc cancels, Ctrl-Z/Ctrl-Y undo/ ┃
+│                              ││ │ loader, ┃ F4  theme editor   F6  layout    ┃
+│                              ││ │ built-in┃ editor (Enter commits, Esc       ┃
 │                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │

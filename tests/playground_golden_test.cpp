@@ -203,18 +203,29 @@ int main(int argc, char** argv) {
       // milestone 15: the Check popup and the Fixes level
       {"editor.120x40.check", "--frame 120x40 --theme default-dark --keys \"F4 Type:check Enter\""},
       {"editor.120x40.fixes", "--frame 120x40 --theme default-dark --keys \"F4 Type:fixes Enter\""},
+      // milestone 16 (the layout editor); the scratch --presets is appended
+      {"layout-editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F6\""},
+      {"layout-editor.120x40.split", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter\""},
+      {"layout-editor.120x40.undo", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter CtrlZ\""},
+      {"layout-editor.120x40.border-preview", "--frame 120x40 --theme default-dark --keys \"F6 Type:border Enter Down\""},
+      {"layout-editor.120x40.border-cancel", "--frame 120x40 --theme default-dark --keys \"F6 Type:border Enter Down Escape\""},
+      {"layout-editor.120x40.drag", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Click 44,10 Drag 30,10 Release\""},
+      {"layout-editor.120x40.click", "--frame 120x40 --theme default-dark --keys \"F6 Click 30,37\""},
+      {"layout-editor.120x40.save", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Type:title Enter CtrlU Type:chat Enter Escape Type:save Enter Type:two Enter\""},
+      {"tiny.9x4.layout-editor", "--frame 9x4 --theme default-dark --keys \"F6 Tab Type:split Enter Type:x\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
+  std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
     std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + fixture + "' " + c.args;
-    if (std::string(c.name).find("editor") != std::string::npos) cmd += presets;
+    if (std::string(c.name).find("editor") != std::string::npos) cmd += presets;  // the theme AND layout editor cases
     std::string out = run(cmd, rc);
     check(rc == 0 && !out.empty(), std::string(c.name) + ": playground ran (rc " + std::to_string(rc) + ", " +
                                        std::to_string(out.size()) + " bytes)");
@@ -275,6 +286,14 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "editor.120x40.save") ed_save = out;
     if (std::string(c.name) == "editor.120x40.check") ed_check = out;
     if (std::string(c.name) == "editor.120x40.fixes") ed_fixes = out;
+    if (std::string(c.name) == "layout-editor.120x40.open") le_open = out;
+    if (std::string(c.name) == "layout-editor.120x40.split") le_split = out;
+    if (std::string(c.name) == "layout-editor.120x40.undo") le_undo = out;
+    if (std::string(c.name) == "layout-editor.120x40.border-preview") le_preview = out;
+    if (std::string(c.name) == "layout-editor.120x40.border-cancel") le_cancel = out;
+    if (std::string(c.name) == "layout-editor.120x40.drag") le_drag = out;
+    if (std::string(c.name) == "layout-editor.120x40.click") le_click = out;
+    if (std::string(c.name) == "layout-editor.120x40.save") le_save = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -434,6 +453,30 @@ int main(int argc, char** argv) {
       bool ok = false;
       std::string wc = read_file(scratch + "/p/theme.working.json", ok);
       check(ok && wc.find("\"preset\": \"mine\"") != std::string::npos, "the working copy written by the save-as records preset 'mine' — and nothing wrote it before that (the earlier frames' edits did not persist)");
+    }
+    // ---- milestone 16: the layout editor, asserted beyond the bytes ----
+    check(le_open.find("\xE2\x94\x8C layout editor ") != std::string::npos && le_open.find("layout editor \xE2\x80\xA2 transcript") != std::string::npos && le_open.find("focus:editor") != std::string::npos,
+          "F6 opens the layout editor with the transcript selected");
+    check(le_split.find("transcript-2") != std::string::npos && le_split.find("\xE2\x94\xAC") != std::string::npos && le_split.find("selected: transcript") != std::string::npos,
+          "split into a row: a second transcript pane appears beside the first (a ┬ junction on the top edge)");
+    check(!le_undo.empty() && le_undo.find("transcript-2") == std::string::npos && le_undo.find("(modified)") == std::string::npos && le_undo.find("redo 1") != std::string::npos,
+          "Ctrl-Z after the split removes the second pane, the working copy reads unmodified again (the undo was written back), redo 1");
+    check(le_preview.find("\xE2\x95\xAD transcript") != std::string::npos && le_preview.find("previewing") != std::string::npos,
+          "the Border choice on rounded previews a rounded transcript border and says previewing");
+    check(!le_cancel.empty() && le_cancel.find("\xE2\x95\xAD transcript") == std::string::npos && le_cancel.find("\xE2\x94\x8C transcript") != std::string::npos,
+          "Escape puts the single border back");
+    check(le_drag.find("selected: transcript ") != std::string::npos && le_drag.find("size 31") != std::string::npos && le_drag.find("undo 2") != std::string::npos,
+          "after the split, a press on the seam between the two panes dragged left narrows the first to 31 cells, one more commit");
+    check(le_click.find("layout editor \xE2\x80\xA2 input") != std::string::npos, "a click on the input window selects it");
+    check(le_save.find("saved layout file") != std::string::npos && std::filesystem::exists(scratch + "/p/layouts/two.json") && le_save.find("\xE2\x94\x8C chat ") != std::string::npos,
+          "title 'chat' and save-as 'two' write layouts/two.json under the scratch presets directory");
+    {
+      int rc = 0;
+      const std::string relaunch = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 120x40 --presets '" +
+                                   scratch + "/p4' --layout '" + scratch + "/p/layouts/two.json'";
+      const std::string again = run(relaunch, rc);
+      check(rc == 0 && again.find("\xE2\x94\x8C chat ") != std::string::npos && again.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && again.find("[layout editor]") == std::string::npos,
+            "a relaunch with --layout <that file> shows the two panes ('chat' and 'transcript-2') with no editor open (Done-when of m16)");
     }
     // ---- milestone 15: --check, --generate, the Check popup ----
     check(ed_check.find("\xE2\x95\xAD report ") != std::string::npos && ed_check.find("badges: dark") != std::string::npos && ed_check.find("roles (fg on bg") != std::string::npos,

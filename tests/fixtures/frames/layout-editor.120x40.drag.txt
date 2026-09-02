@@ -1,0 +1,40 @@
+┌ transcript ─────────────────┬ transcript-2 ─────────────────────────┌ layout editor ─────────────────────────────────┐
+│ │ nt    │        │        │ │ │ diff + SGR/colour │             │ pu│ layout editor • transcript                     │
+│ │ slots │        │        │ │ │ downgrade         │             │ te│ Select the next node                       Tab │
+│ │ )     │        │        │ │ │ Wrap engine       │ build       │ si│ Select the previous node             Shift-Tab │
+│ │ Markd │ build  │ single │ │ │                   │             │ ov│ Split into a row (side by side)                │
+│ │ own   │        │ header │ │ │                   │             │ he│ Split into a column (stacked)                  │
+│ │ block │        │ over   │ │ │ Windows, layers,  │ build       │ si│ Swap with the previous sibling                 │
+│ │ rende │        │ md4c + │ │ │ placement (Dim    │             │ re│ Swap with the next sibling                     │
+│ │ rer   │        │ wrap   │ │ │ abs/rel per       │             │ , │ [x] Visible                                    │
+│ │ (bloc │        │        │ │ │ axis), focus      │             │ is│ Border                                single ▸ │
+│ │ ks →  │        │        │ │ │                   │             │ fu│ Title: transcript                              │
+│ │ style │        │        │ │ │ Menu widget       │ build       │ si│ Content slot                      transcript ▸ │
+│ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ Size (fill | fill N | N% | cells; Alt+arrows n │
+│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ [x] Focusable                                  │
+│ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Delete this node                               │
+│ │ lines │        │        │ │ │                   │             │ sm│ Popups                                       ▸ │
+│ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Undo                                    Ctrl-Z │
+│ │ Theme │ build  │ single │ │ │ (JSON: windows +  │             │ lo│ Redo                                    Ctrl-Y │
+│ │ (role │        │ header │ │ │ placements +      │             │ pa│ Load layout                                  ▸ │
+│ │ s →   │        │        │ │ │ content slots)    │             │ re│ Save layout file as (layouts/<name>.json):     │
+│ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Reset to the loaded layout…                    │
+│ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│                                                │
+│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │                                                │
+│ │ loade │        │        │ │ │ lines)            │             │   │                                                │
+│ │ r,    │        │        │ │ │ Theme (roles →    │ build       │ si│                                                │
+│ │ built │        │        │ │ │ styles, JSON      │             │   │                                                │
+│ │ -ins) │        │        │ │ │ loader, built-    │             │   │                                                │
+│ └───────┴────────┴────────┘ │ │ ins)              │             │   │                                                │
+│                             │ └───────────────────┴─────────────┴───│                                                │
+│ Here is the function you    │                                       │                                                │
+│ asked for:                  │ Here is the function you asked for:   │                                                │
+│                             │                                       │                                                │
+│ ┌ cpp ────────────────────┐ │ ┌ cpp ────────────────────────────────│                                                │
+│ │ int add(int a, int b) { │ │ │ int add(int a, int b) {             │                                                │
+│ │   return a + b;         │ │ │   return a + b;                     │ selected: transcript  slot transcript  size 31 │
+│ └─────────────────────────┘ │ └─────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+├─────────────────────────────┴───────────────────────────────────────│ split transcript side by side · undo 2 · redo  │
+│ > type here                                                         │                                                │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark (modified) [layout editor]  default  120x40  line 120/154  follow  truecolor  focus:editor

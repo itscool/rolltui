@@ -86,7 +86,12 @@
 // tools/theme_editor.hpp — a side popup drawn in the theme being edited; Roles ›
 // role › fg › palette entry with a live preview; Enter commits, Esc cancels, Ctrl-Z /
 // Ctrl-Y undo and redo; resets and shipped writes confirm in a popup; the transcript
-// is the preview) · F5 re-reads the fixture · Ctrl-L repaints. (Letters type, since
+// is the preview) · F6 opens the LAYOUT EDITOR (milestone 16: tools/layout_editor.hpp —
+// the same side popup over the layout being edited; the selected node is drawn in
+// border_active; Tab selects the next node, a click selects a window, a drag on a
+// shared edge resizes it; split / swap / hide / border / title / slot / size / delete /
+// popups through the menu; Save writes layouts/<name>.json) · F5 re-reads the
+// fixture · Ctrl-L repaints. (Letters type, since
 // milestone 10 — the app keys moved off them.) Scrolling: PgUp/PgDn, Ctrl-Home/End
 // and the wheel always scroll the transcript; Home/End scroll it only while the input
 // is empty (otherwise they move the caret); Up/Down scroll only while the transcript
@@ -104,6 +109,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -126,9 +132,11 @@
 #include "rolltui/Transcript.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui/Wrap.hpp"
+#include "layout_editor.hpp"
 #include "theme_editor.hpp"
 
 using namespace rolltui;
+using rolltui::tools::LayoutEditor;
 using rolltui::tools::ThemeEditor;
 
 namespace {
@@ -196,7 +204,7 @@ const char* kHelpText =
     "Esc  close the top popup\n"
     "F1  toggle this help\n"
     "F2  settings menu   Ctrl-P  command palette   F3  cycle themes\n"
-    "F4  theme editor (Enter commits, Esc cancels, Ctrl-Z/Ctrl-Y undo/redo)\n"
+    "F4  theme editor   F6  layout editor (Enter commits, Esc cancels, Ctrl-Z/Y)\n"
     "F5  reload the fixture   Ctrl-L  repaint\n"
     "PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript\n"
     "Up/Down  scroll while the transcript has focus\n"
@@ -227,8 +235,12 @@ struct App {
   std::string layout_note;
   long layout_mtime = -1;
   bool stacked_fallback = false;
-  // The theme editor (milestone 14).
+  // The theme editor (milestone 14) and the layout editor (milestone 16) share the
+  // side popup; one is open at a time.
+  enum class EditorMode { None, Theme, Layout };
+  EditorMode editor_mode = EditorMode::None;
   ThemeEditor teditor;
+  LayoutEditor leditor;
   bool editor_open = false;
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
   std::string confirm_text;
@@ -272,7 +284,8 @@ struct App {
          MenuItem::choice("depth", "Colour depth", depths, std::string(color_depth_name(depth))),
          MenuItem::toggle("ambiguous", "Ambiguous width = 2", ambiguous),
          MenuItem::submenu("commands", "Commands",
-                           {MenuItem::action("editor", "Theme editor", "F4"), MenuItem::action("reload", "Reload the fixture", "F5"),
+                           {MenuItem::action("editor", "Theme editor", "F4"), MenuItem::action("layout_editor", "Layout editor", "F6"),
+                            MenuItem::action("reload", "Reload the fixture", "F5"),
                             MenuItem::action("help", "Help", "F1"), MenuItem::action("quit", "Quit", "Ctrl-Q")})}));
   }
   void open_menu(bool palette) {
@@ -369,18 +382,19 @@ struct App {
       if (!t) theme_note = "colours unusable: " + rep.error;
       if (!(layout == working.layout)) { layout = working.layout; apply_layout(); }
     }
-    theme = editor_open ? teditor.current() : resolved;
+    theme = editor_mode == EditorMode::Theme ? teditor.current() : resolved;
+    if (editor_mode == EditorMode::Layout && !(layout == leditor.current())) { layout = leditor.current(); apply_layout(); }
   }
 
   // ---- the theme editor (milestone 14) ----
-  static Layer editor_popup() {
+  static Layer editor_popup(const char* title) {
     Layer l;
     l.id = "editor";
     l.placement = {Dim::rel(1), Dim::abs(0), Dim::abs(50), Dim::rel(1), Anchor::TopRight, true, Dim::abs(24), Dim::abs(6), {}, {}};
     l.modal = false;
     Node n = Node::window("editor");
     n.border = Border::Single;
-    n.title = "theme editor";
+    n.title = title;
     n.focusable = true;
     n.background = Role::panel_background;
     l.root = n;
@@ -413,8 +427,17 @@ struct App {
     l.root = n;
     return l;
   }
+  void close_editor() {
+    if (!editor_open) return;
+    close_popup("editor");
+    editor_open = false;
+    editor_mode = EditorMode::None;
+    store_seen = 0;  // re-resolve the look from the working copy
+    sync_look();
+  }
   void toggle_editor() {
-    if (editor_open) { close_popup("editor"); editor_open = false; sync_look(); return; }
+    if (editor_mode == EditorMode::Theme) { close_editor(); return; }
+    close_editor();
     ThemeLoadReport rep;
     teditor.load(store->working(), rep);
     std::vector<std::string> names, shipped;
@@ -424,8 +447,107 @@ struct App {
     teditor.set_shipped(shipped, store->options().may_write_shipped);
     teditor.set_mode(mode);
     editor_open = true;
-    stack.push(editor_popup());
+    editor_mode = EditorMode::Theme;
+    stack.push(editor_popup("theme editor"));
     sync_look();
+  }
+  void toggle_layout_editor() {
+    if (editor_mode == EditorMode::Layout) { close_editor(); return; }
+    close_editor();
+    leditor.load(store->working().layout);
+    std::vector<std::string> names;
+    for (std::string_view n : builtin_layout_names()) names.push_back(std::string(n));
+    for (const std::string& n : store->layout_files()) names.push_back(n);
+    leditor.set_layouts(names);
+    leditor.set_slots({"transcript", "status", "input", "help", "text:pane"});
+    editor_open = true;
+    editor_mode = EditorMode::Layout;
+    stack.push(editor_popup("layout editor"));
+    sync_look();
+  }
+  void layout_outcome(const LayoutEditor::Outcome& o) {
+    using K = LayoutEditor::Outcome::Kind;
+    switch (o.kind) {
+      case K::None: case K::Changed: break;
+      case K::Committed:
+        store->set_layout(leditor.committed(), persist);
+        break;
+      case K::SaveAs: {
+        if (o.value.empty()) { hint = "a layout file needs a name"; break; }
+        const std::string path = store->options().dir + "/layouts/" + o.value + ".json";
+        std::error_code ec;
+        std::filesystem::create_directories(store->options().dir + "/layouts", ec);
+        Layout l = leditor.committed();
+        l.name = o.value;
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) { hint = "cannot write " + path; break; }
+        out << layout_to_json(l) << "\n";
+        hint = "saved layout file " + path;
+        std::vector<std::string> names;
+        for (std::string_view n : builtin_layout_names()) names.push_back(std::string(n));
+        for (const std::string& n : store->layout_files()) names.push_back(n);
+        leditor.set_layouts(names);
+        break;
+      }
+      case K::LoadLayout: {
+        LayoutLoadReport rep;
+        if (std::optional<Layout> l = store->find_layout(o.value, rep)) { leditor.replace(*l); store->set_layout(*l, persist); hint = "loaded layout " + l->name; }
+        else hint = rep.error;
+        break;
+      }
+      case K::ResetLoaded:
+        ask("Reset the layout to the working copy's '" + store->working().layout.name + "'? (y/n)", [this] {
+          leditor.replace(store->working().layout);
+          hint = "reset (undoable)";
+        });
+        break;
+      case K::Closed:
+        close_editor();
+        break;
+    }
+  }
+  // The window under a pointer in the base layer, and the seam a press may be on: the
+  // right/bottom edge cell of a child that has a following sibling in its Row/Column.
+  std::optional<std::string> window_at(int x, int y) {
+    std::optional<std::string> best;
+    for (const ResolvedNode& rn : resolve_tree(stack.base().root, layout_area(), layout_area()))
+      if (rn.node->is_window() && rn.outer.contains(x, y)) best = rn.node->id;
+    return best;
+  }
+  // A seam: the shared edge between two visible siblings. The node that takes the new
+  // size is the FIXED-size one when the other fills (dragging the fill would leave a
+  // gap the fixed sibling never closes); otherwise the one before the seam.
+  struct Seam { std::string id; bool after; bool horizontal; };
+  std::optional<Seam> seam_at(int x, int y) {
+    const std::vector<ResolvedNode> nodes = resolve_tree(stack.base().root, layout_area(), layout_area());
+    for (const ResolvedNode& rn : nodes) {
+      if (rn.node->is_window()) continue;
+      const bool horizontal = rn.node->kind == Node::Kind::Row;
+      for (std::size_t i = 0; i + 1 < rn.node->children.size(); ++i) {
+        const Node& child = rn.node->children[i];
+        const Node& next = rn.node->children[i + 1];
+        if (!child.visible || !next.visible) continue;
+        for (const ResolvedNode& c : nodes) {
+          if (c.node != &child) continue;
+          const int edge = horizontal ? c.outer.x + c.outer.w - 1 : c.outer.y + c.outer.h - 1;
+          const bool on = horizontal ? (x == edge || x == edge + 1) && y >= c.outer.y && y < c.outer.y + c.outer.h
+                                     : (y == edge || y == edge + 1) && x >= c.outer.x && x < c.outer.x + c.outer.w;
+          if (!on) continue;
+          const bool size_after = child.size.fill && !next.size.fill;
+          return Seam{size_after ? next.id : child.id, size_after, horizontal};
+        }
+      }
+    }
+    return std::nullopt;
+  }
+  std::optional<Seam> drag_seam;
+  // The layout editor's selection, drawn from the slot callback (after the window's own
+  // border, before the popups above it compose — a highlight drawn after composition
+  // would paint over the editor's popup). A split node shows only in the breadcrumb.
+  void draw_selection(const ResolvedNode& rn, Frame& f) {
+    if (editor_mode != EditorMode::Layout || rn.layer != 0 || rn.node->id != leditor.selected()) return;
+    if (rn.node->border != Border::None) draw_border(f, rn.outer, rn.node->border, theme.style(Role::border_active), rn.node->title, theme.style(Role::title), ambiguous);
+    else f.tint(rn.outer.intersect(layout_area()), theme.style(Role::selection));
   }
   void ask(std::string text, std::function<void()> action) {
     confirm_text = std::move(text);
@@ -511,7 +633,30 @@ struct App {
     report_top = std::clamp(report_top, 0, std::max(total - 1, 0));
   }
   // The editor's sample box: the focused role's fields, a sample in its style, swatches.
+  void draw_layout_editor(const ResolvedNode& rn, Frame& f) {
+    Rect r = text_area(rn);
+    if (r.w <= 0 || r.h <= 0) return;
+    const int box = std::min(4, r.h);
+    Rect m = r;
+    m.h = r.h - box;
+    MenuOptions mo;
+    mo.ambiguous_wide = ambiguous;
+    leditor.menu().set_options(mo);
+    leditor.menu().layout(m);
+    if (m.h > 0) leditor.menu().draw(f, theme, rn.focused);
+    int y = r.y + m.h;
+    const Style label = theme.style(Role::label), value = theme.style(Role::value);
+    if (const Node* n = leditor.selected_node()) {
+      std::string line = "selected: " + n->id + (n->is_window() ? "  slot " + n->content : n->kind == Node::Kind::Row ? "  (row)" : "  (column)") +
+                         "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) + (n->visible ? "" : "  hidden");
+      if (y < r.y + r.h) f.put_text(r.x, y++, line, label, r.w, ambiguous);
+    }
+    if (y < r.y + r.h) f.put_text(r.x, y++, "Tab next node \xC2\xB7 click selects \xC2\xB7 drag an edge resizes \xC2\xB7 Alt+arrows nudge", value, r.w, ambiguous);
+    if (y < r.y + r.h) f.put_text(r.x, y++, leditor.status_line(), value, r.w, ambiguous);
+    if (y < r.y + r.h && !hint.empty()) f.put_text(r.x, y++, hint, theme.style(Role::warning), r.w, ambiguous);
+  }
   void draw_editor(const ResolvedNode& rn, Frame& f) {
+    if (editor_mode == EditorMode::Layout) { draw_layout_editor(rn, f); return; }
     Rect r = text_area(rn);
     if (r.w <= 0 || r.h <= 0) return;
     const int box = std::min(6, r.h);
@@ -733,11 +878,11 @@ struct App {
                       // event left the size one event behind)
     Frame f(w, h, theme.style(Role::background));
     const Rect area = layout_area();
-    stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { draw_slot(rn, fr, with_timing); }, ambiguous);
+    stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { draw_slot(rn, fr, with_timing); draw_selection(rn, fr); }, ambiguous);
     if (h > 1) {
       f.fill({0, h - 1, w, 1}, theme.style(Role::panel_background));
       const std::size_t total = transcript.total_lines();
-      std::string status = " " + (store ? store->label() : theme.name) + (editor_open ? " [editor]" : "") + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
+      std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : "") + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
                            "  line " + std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total) +
                            (transcript.scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
@@ -747,7 +892,7 @@ struct App {
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
-      std::string help = "^C quit  F1 help  F2 menu  ^P palette  F4 editor ";
+      std::string help = "^C quit  F1 help  F2 menu  ^P palette  F4 theme  F6 layout ";
       int hw = unicode::display_width(help);
       if (hw + unicode::display_width(status) + 2 <= w) f.put_text(w - hw, h - 1, help, theme.style(Role::text_muted), hw, ambiguous);
     }
@@ -770,6 +915,7 @@ struct App {
         return true;
       }
       if (k->key == Key::F4) { toggle_editor(); return true; }
+      if (k->key == Key::F6) { toggle_layout_editor(); return true; }
       if (k->key == Key::F2) { open_menu(false); return true; }
       if (k->key == Key::Char && k->ctrl && k->ch == 'p') { open_menu(true); return true; }
       if (k->key == Key::F5) { load_fixture(); return true; }
@@ -779,7 +925,10 @@ struct App {
     sync_look();
     ensure_layout();
     if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) {
-      if (stack.has_popup("editor") && stack.focused() && stack.focused()->id == "editor") { editor_outcome(teditor.handle(*p)); return true; }
+      if (stack.has_popup("editor") && stack.focused() && stack.focused()->id == "editor") {
+        if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(*p)); else editor_outcome(teditor.handle(*p));
+        return true;
+      }
       editor.handle(*p, clock_ms);
       return true;
     }
@@ -787,17 +936,53 @@ struct App {
     // ascends; the editor asks to close only from its top level) — the stack would
     // otherwise close the popup first.
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev);
-        k && k->key == Key::Escape && editor_open && stack.focused() && stack.focused()->id == "editor") {
+        k && (k->key == Key::Escape || k->key == Key::Tab) && editor_open && stack.focused() && stack.focused()->id == "editor") {
       hint.clear();
-      editor_outcome(teditor.handle(ev));
+      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev));
+      else if (k->key == Key::Escape) editor_outcome(teditor.handle(ev));
       return true;
     }
+    // The layout editor's mouse: a press on a seam starts a resize drag, a press on a
+    // window selects it — in the BASE layer, under the editor's own popup.
+    if (editor_mode == EditorMode::Layout) {
+      if (const MouseEvent* m = std::get_if<MouseEvent>(&ev)) {
+        const bool in_editor_popup = [&] {
+          for (const ResolvedNode& rn : stack.resolve(layout_area()))
+            if (rn.layer > 0 && rn.node->is_window() && rn.outer.contains(m->x, m->y)) return true;
+          return false;
+        }();
+        if (!in_editor_popup) {
+          if (m->kind == MouseEvent::Kind::Press && m->button == 1) {
+            if (std::optional<Seam> seam = seam_at(m->x, m->y)) { drag_seam = seam; leditor.begin_drag(seam->id); return true; }
+            if (std::optional<std::string> w = window_at(m->x, m->y)) { leditor.select(*w); return true; }
+          }
+          if (m->kind == MouseEvent::Kind::Drag && leditor.dragging() && drag_seam) {
+            for (const ResolvedNode& rn : resolve_tree(leditor.current().base.root, layout_area(), layout_area()))
+              if (rn.node->id == leditor.selected()) {
+                // The pointer is the seam's new place: the sized node runs from its start
+                // to the pointer (before the seam) or from the pointer to its end (after).
+                const int extent = drag_seam->horizontal ? (drag_seam->after ? rn.outer.x + rn.outer.w - m->x : m->x - rn.outer.x + 1)
+                                                         : (drag_seam->after ? rn.outer.y + rn.outer.h - m->y : m->y - rn.outer.y + 1);
+                leditor.drag_to(extent);
+              }
+            sync_look();
+            return true;
+          }
+          if (m->kind == MouseEvent::Kind::Release && leditor.dragging()) { drag_seam.reset(); layout_outcome(leditor.end_drag()); return true; }
+        }
+      }
+    }
     Route r = stack.route(ev, layout_area());
-    if (r.kind == Route::Kind::ClosedPopup && r.window == "editor") { editor_open = false; sync_look(); return true; }
+    if (r.kind == Route::Kind::ClosedPopup && r.window == "editor") { editor_open = false; editor_mode = EditorMode::None; store_seen = 0; sync_look(); return true; }
     if (r.kind == Route::Kind::ClosedPopup && r.window == "confirm") { confirm_action = nullptr; return true; }
     if (r.kind != Route::Kind::Deliver) return true;
     if (r.window == "menu") return menu_event(menu.handle(ev));
-    if (r.window == "editor") { hint.clear(); editor_outcome(teditor.handle(ev)); return true; }
+    if (r.window == "editor") {
+      hint.clear();
+      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev));
+      else editor_outcome(teditor.handle(ev));
+      return true;
+    }
     if (r.window == "report") {
       if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) report_key(*k);
       return true;

@@ -432,6 +432,7 @@ MenuEvent Menu::handle_key(const KeyEvent& k) {
         return {};
       }
       case Key::Char:
+        if (k.ctrl && !k.alt && k.ch == 'u') { it->value.clear(); return {}; }  // kill the whole value (readline's Ctrl-U)
         if (!k.ctrl && !k.alt && k.ch >= 0x20 && k.ch != 0x7F) unicode::append_utf8(it->value, k.ch);
         return {};
       default:

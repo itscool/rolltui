@@ -92,7 +92,8 @@ int main() {
     check(ed.committed().light.style(Role::md_heading).fg == builtin_theme("default-light")->style(Role::md_heading).fg, "the light variant is untouched");
     // Undo / redo by key.
     o = ed.handle(ctrl('z'));
-    check(o.kind == ThemeEditor::Outcome::Kind::Changed && ed.current().style(Role::md_heading).fg == original && ed.undo_depth() == 0 && ed.redo_depth() == 1, "Ctrl-Z puts the original back");
+    check(o.kind == ThemeEditor::Outcome::Kind::Committed && ed.current().style(Role::md_heading).fg == original && ed.undo_depth() == 0 && ed.redo_depth() == 1,
+          "Ctrl-Z puts the original back — and reports Committed, so the host writes the undone value to the store");
     ed.handle(ctrl('y'));
     check(ed.current().style(Role::md_heading).fg == chosen && ed.redo_depth() == 0, "Ctrl-Y re-applies it");
   }

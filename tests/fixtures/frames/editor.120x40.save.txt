@@ -37,6 +37,6 @@
 ├─────────────────────────────────────────────────────────────────────│ saved preset 'mine'                            │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- mine [editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+ mine [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
 --- role ---
 md_heading fg=#cba63a bg=#14161a bold

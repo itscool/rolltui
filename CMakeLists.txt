@@ -124,7 +124,7 @@ add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 # theme_editor.*), the layout editor, the keys editor. ROLLTUI_SHIPPED_DIR is where the
 # editor's "write a shipped preset" privilege writes — the source tree, for the next
 # build — unless --shipped says otherwise.
-add_executable(rolltui-playground tools/playground.cpp tools/theme_editor.cpp)
+add_executable(rolltui-playground tools/playground.cpp tools/theme_editor.cpp tools/layout_editor.cpp)
 target_link_libraries(rolltui-playground PRIVATE rolltui)
 target_compile_options(rolltui-playground PRIVATE -Wall -Wextra)
 target_compile_definitions(rolltui-playground PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets/themes")
@@ -135,6 +135,13 @@ target_compile_definitions(rolltui-playground PRIVATE ROLLTUI_SHIPPED_DIR="${CMA
 add_rolltui_test(rolltui-theme-editor-test tests/theme_editor_test.cpp)
 target_sources(rolltui-theme-editor-test PRIVATE tools/theme_editor.cpp)
 target_include_directories(rolltui-theme-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+
+# Milestone 16: the layout editor's model — selection, split/swap/hide/delete, border
+# and content as live choices, title and size inputs, nudges, popups, the seam drag,
+# undo/redo, and the edited layout round-tripping through the loader.
+add_rolltui_test(rolltui-layout-editor-test tests/layout_editor_test.cpp)
+target_sources(rolltui-layout-editor-test PRIVATE tools/layout_editor.cpp)
+target_include_directories(rolltui-layout-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 add_rolltui_test(rolltui-playground-golden-test tests/playground_golden_test.cpp)
 target_compile_definitions(rolltui-playground-golden-test PRIVATE

@@ -37,4 +37,4 @@
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [editor]  default  120x40  line 75/109  follow  truecolor  focus:report
+ default-dark [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:report

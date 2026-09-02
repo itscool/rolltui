@@ -36,8 +36,8 @@
 //   printable text          append to the filter for the CURRENT level (case-insensitive
 //                           substring on the label); the selection returns to the first
 //                           match. The filter is dropped on descend and ascend
-//   while editing an Input  printable text appends, Backspace erases, Enter submits,
-//                           Escape cancels; nothing else moves
+//   while editing an Input  printable text appends, Backspace erases, Ctrl-U clears the
+//                           whole value, Enter submits, Escape cancels; nothing else moves
 //   mouse                   a press on an item row selects it and acts as Enter; the
 //                           wheel moves the selection
 // A disabled item is drawn muted and Enter on it emits None.

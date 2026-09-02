@@ -288,8 +288,9 @@ ThemeEditor::Outcome ThemeEditor::handle(const Event& e) {
   using K = MenuEvent::Kind;
   using O = Outcome::Kind;
   if (const auto* k = std::get_if<KeyEvent>(&e); k && k->key == Key::Char && k->ctrl && !k->alt) {
-    if (k->ch == 'z') { status_ = undo() ? "undone" : "nothing to undo"; return {O::Changed, {}}; }
-    if (k->ch == 'y') { status_ = redo() ? "redone" : "nothing to redo"; return {O::Changed, {}}; }
+    // An undo or redo changes the COMMITTED value: the host writes it to the store.
+    if (k->ch == 'z') { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (k->ch == 'y') { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
   }
   status_.clear();
   const MenuEvent ev = menu_.handle(e);
@@ -323,8 +324,8 @@ ThemeEditor::Outcome ThemeEditor::handle(const Event& e) {
     return {O::None, {}};
   }
   if (ev.kind == K::Activate) {
-    if (ev.id == "undo") { status_ = undo() ? "undone" : "nothing to undo"; return {O::Changed, {}}; }
-    if (ev.id == "redo") { status_ = redo() ? "redone" : "nothing to redo"; return {O::Changed, {}}; }
+    if (ev.id == "undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (ev.id == "redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
     if (ev.id == "reset_loaded") return {O::ResetLoaded, {}};
     if (ev.id == "reset_builtin") return {O::ResetBuiltin, {}};
     if (ev.id == "check") return {O::Check, {}};

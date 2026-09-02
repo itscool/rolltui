@@ -10,8 +10,8 @@
 │ │ → styles,   │ F1  toggle this help                         │               │
 │ │ JSON loader,│ F2  settings menu   Ctrl-P  command palette  │               │
 │ │ built-ins)  │ F3  cycle themes                             │               │
-│ └─────────────│ F4  theme editor (Enter commits, Esc         │               │
-│               │ cancels, Ctrl-Z/Ctrl-Y undo/redo)            │               │
+│ └─────────────│ F4  theme editor   F6  layout editor (Enter  │               │
+│               │ commits, Esc cancels, Ctrl-Z/Y)              │               │
 │ Here is the fu│ F5  reload the fixture   Ctrl-L  repaint     │               │
 │               │ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the  │               │
 │ ┌ cpp ────────╰──────────────────────────────────────────────╯               │

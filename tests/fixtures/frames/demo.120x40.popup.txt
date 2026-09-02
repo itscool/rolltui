@@ -17,8 +17,8 @@
 │ │                     │ Esc  close the top popup                                             │                       │
 │ │ Windows, layers, pla│ F1  toggle this help                                                 │                       │
 │ │ abs/rel per axis), f│ F2  settings menu   Ctrl-P  command palette   F3  cycle themes       │                       │
-│ │                     │ F4  theme editor (Enter commits, Esc cancels, Ctrl-Z/Ctrl-Y undo/    │                       │
-│ │ Menu widget (hierarc│ redo)                                                                │                       │
+│ │                     │ F4  theme editor   F6  layout editor (Enter commits, Esc cancels,    │                       │
+│ │ Menu widget (hierarc│ Ctrl-Z/Y)                                                            │                       │
 │ │ filterable) + list/t│ F5  reload the fixture   Ctrl-L  repaint                             │                       │
 │ │ Layout files (JSON: │ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript               │                       │
 │ │ placements + content│ Up/Down  scroll while the transcript has focus                       │                       │
