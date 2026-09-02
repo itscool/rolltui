@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
 │ > write me a plan for the wrap engine, with a │ theme   default-dark         │
-│   table and some code                         │ layout  default              │
-│                                               │ size    80x24                │
-│ # Plan                                        │ line    1/191                │
-│                                               │ follow  no                   │
-│ 1. First step                                 │ depth   truecolor            │
-│                                               │ focus   input                │
-│    • a nested bullet with bold and code       │                              │
+│   table and some code                         │ keys    default              │
+│                                               │ layout  default              │
+│ # Plan                                        │ size    80x24                │
+│                                               │ line    1/191                │
+│ 1. First step                                 │ follow  no                   │
+│                                               │ depth   truecolor            │
+│    • a nested bullet with bold and code       │ focus   input                │
 │    • another, with a link (https://           │                              │
 │      example.com/docs)                        │                              │
 │                                               │                              │

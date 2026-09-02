@@ -1,0 +1,24 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
+│ │ block        │             │ header over  │ │ keys    default              │
+│ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
+│ │ (blocks →    │             │              │ │ size    80x24                │
+│ │ styled      ╭ help ────────────────────────────────────────╮1              │
+│ │ wrapped     │ selection)                                   │               │
+│ │ lines)      │   Ctrl-W, Alt-Backspace              kill    │lor            │
+│ │ Theme (roles│ the word before the caret                    │               │
+│ │ → styles,   │   Alt-D, Ctrl-Delete                 kill    │               │
+│ │ JSON loader,│ the word after the caret                     │               │
+│ │ built-ins)  │   Ctrl-U                             kill to │               │
+│ └─────────────│ the start of the line                        │               │
+│               │   Ctrl-K                             kill to │               │
+│ Here is the fu│ the end of the line                          │               │
+│               │   Left                  ▼ 82  (Up/Down, Esc) │               │
+│ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
+│ │ int add(int a, int b) {                   │ │                              │
+│ │   return a + b;                           │ │                              │
+│ └───────────────────────────────────────────┘ │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 173/191  follow  truecolor  focus:help

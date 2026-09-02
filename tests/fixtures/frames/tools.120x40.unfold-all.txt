@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
 │ > read the manager header and tell me what stop_heartbeat does                        │ theme   default-dark         │
-│                                                                                       │ layout  default              │
-│ ▾ read_file include/ResilientModelManager.hpp (lines 40-52)                           │ size    120x40               │
-│   void stop_heartbeat() {                                                             │ line    1/30                 │
-│     if (!hb_source_) return;                                                          │ follow  yes                  │
-│     dispatch_source_cancel(hb_source_);                                               │ depth   truecolor            │
-│     // Drain: a handler that is already running must finish before we return,         │ focus   transcript           │
-│     // or a poll() blocked on the state lock can resume after release() and           │                              │
+│                                                                                       │ keys    default              │
+│ ▾ read_file include/ResilientModelManager.hpp (lines 40-52)                           │ layout  default              │
+│   void stop_heartbeat() {                                                             │ size    120x40               │
+│     if (!hb_source_) return;                                                          │ line    1/30                 │
+│     dispatch_source_cancel(hb_source_);                                               │ follow  yes                  │
+│     // Drain: a handler that is already running must finish before we return,         │ depth   truecolor            │
+│     // or a poll() blocked on the state lock can resume after release() and           │ focus   transcript           │
 │     // respawn the server that was just killed.                                       │                              │
 │     dispatch_sync(hb_queue_, ^{});                                                    │                              │
 │     dispatch_release(hb_source_);                                                     │                              │

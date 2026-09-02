@@ -213,6 +213,17 @@ int main(int argc, char** argv) {
       {"layout-editor.120x40.click", "--frame 120x40 --theme default-dark --keys \"F6 Click 30,37\""},
       {"layout-editor.120x40.save", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Type:title Enter CtrlU Type:chat Enter Escape Type:save Enter Type:two Enter\""},
       {"tiny.9x4.layout-editor", "--frame 9x4 --theme default-dark --keys \"F6 Tab Type:split Enter Type:x\""},
+      // milestone 17 (bindings as data): a vim-ish file, the help rendered from it, the
+      // input obeying it, and the keys editor
+      {"keys.120x40.help-default", "--frame 120x40 --theme default-dark --keys \"F1 PageDown\""},
+      {"keys.120x40.help-vim", "--frame 120x40 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"F1 PageDown\""},
+      {"keys.80x24.input-default", "--frame 80x24 --theme default-dark --keys \"Type:hello_world AltB Type:X\""},
+      {"keys.80x24.input-vim", "--frame 80x24 --theme default-dark --bindings '" ROLLTUI_FIXTURE_DIR "/bindings/vim-ish.json' --keys \"Type:hello_world AltB Type:X\""},
+      {"keys-editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F7\""},
+      {"keys-editor.120x40.capture", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter\""},
+      {"keys-editor.120x40.bound", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltB\""},
+      {"keys-editor.120x40.moved", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltD\""},
+      {"tiny.7x3.keys-editor", "--frame 7x3 --theme default-dark --keys \"F7 Enter Enter Enter Enter AltB Type:x\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
@@ -220,12 +231,13 @@ int main(int argc, char** argv) {
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save;
+  std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
     std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + fixture + "' " + c.args;
-    if (std::string(c.name).find("editor") != std::string::npos) cmd += presets;  // the theme AND layout editor cases
+    if (std::string(c.name).find("editor") != std::string::npos || std::string(c.name).rfind("keys.", 0) == 0) cmd += presets;  // every editor and bindings case
     std::string out = run(cmd, rc);
     check(rc == 0 && !out.empty(), std::string(c.name) + ": playground ran (rc " + std::to_string(rc) + ", " +
                                        std::to_string(out.size()) + " bytes)");
@@ -294,6 +306,14 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "layout-editor.120x40.drag") le_drag = out;
     if (std::string(c.name) == "layout-editor.120x40.click") le_click = out;
     if (std::string(c.name) == "layout-editor.120x40.save") le_save = out;
+    if (std::string(c.name) == "keys.120x40.help-default") kh_default = out;
+    if (std::string(c.name) == "keys.120x40.help-vim") kh_vim = out;
+    if (std::string(c.name) == "keys.80x24.input-default") ki_default = out;
+    if (std::string(c.name) == "keys.80x24.input-vim") ki_vim = out;
+    if (std::string(c.name) == "keys-editor.120x40.open") ke_open = out;
+    if (std::string(c.name) == "keys-editor.120x40.capture") ke_capture = out;
+    if (std::string(c.name) == "keys-editor.120x40.bound") ke_bound = out;
+    if (std::string(c.name) == "keys-editor.120x40.moved") ke_moved = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -454,6 +474,28 @@ int main(int argc, char** argv) {
       std::string wc = read_file(scratch + "/p/theme.working.json", ok);
       check(ok && wc.find("\"preset\": \"mine\"") != std::string::npos, "the working copy written by the save-as records preset 'mine' — and nothing wrote it before that (the earlier frames' edits did not persist)");
     }
+    // ---- milestone 17: bindings as data, asserted beyond the bytes ----
+    check(kh_default.find("Ctrl-Left, Alt-Left") != std::string::npos && kh_default.find("move one word left") != std::string::npos,
+          "the default help popup (scrolled a page) is rendered from the table: word motions on Ctrl/Alt-arrows");
+    check(kh_vim.find("Alt-B") != std::string::npos && kh_vim.find("Alt-F") != std::string::npos, "with vim-ish.json the help popup shows Alt-B / Alt-F: it is rendered from the LIVE table");
+    check(row(ki_vim, 21).rfind("\xE2\x94\x82 > hello Xworld", 0) == 0, "with vim-ish.json Alt-B moves a word back, so the X lands before 'world' [" + row(ki_vim, 21) + "]");
+    check(row(ki_default, 21).rfind("\xE2\x94\x82 > hello worldX", 0) == 0, "with the default table Alt-B is unbound and the X lands at the end [" + row(ki_default, 21) + "]");
+    {
+      std::istringstream a(ki_default), b(ki_vim);
+      std::string ra, rb;
+      int differing = 0, line = 0;
+      while (std::getline(a, ra) && std::getline(b, rb)) {
+        ++line;
+        if (ra != rb && line != 22 && ra.find("keys") == std::string::npos) ++differing;
+      }
+      check(differing == 0, "…and every other row is identical: a bindings change never touches the look (" + std::to_string(differing) + " rows differ)");
+    }
+    check(ke_open.find("\xE2\x94\x8C keys editor ") != std::string::npos && ke_open.find("Actions by scope") != std::string::npos && ke_open.find("preset: default") != std::string::npos,
+          "F7 opens the keys editor on the shipped default");
+    check(ke_capture.find("press the chord for input.word_left") != std::string::npos, "'add a chord' on word_left captures: the status asks for the chord");
+    check(ke_bound.find("bound Alt-B \xE2\x86\x92 word_left") != std::string::npos && ke_bound.find("remove Alt-B") != std::string::npos && ke_bound.find("preset: default (modified)") != std::string::npos,
+          "Alt-B becomes the chord: the status, a 'remove Alt-B' item and the preset label ('default (modified)') all say so");
+    check(ke_moved.find("(was kill_word_forward") != std::string::npos, "Alt-D, bound to kill_word_forward, moves and the status names the loser");
     // ---- milestone 16: the layout editor, asserted beyond the bytes ----
     check(le_open.find("\xE2\x94\x8C layout editor ") != std::string::npos && le_open.find("layout editor \xE2\x80\xA2 transcript") != std::string::npos && le_open.find("focus:editor") != std::string::npos,
           "F6 opens the layout editor with the transcript selected");

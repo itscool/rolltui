@@ -286,16 +286,16 @@ std::string LayoutEditor::status_line() const {
 
 // ---- events ---------------------------------------------------------------------------
 
-LayoutEditor::Outcome LayoutEditor::handle(const Event& e) {
+LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) {
   using K = MenuEvent::Kind;
   using O = Outcome::Kind;
   if (const auto* k = std::get_if<KeyEvent>(&e)) {
-    if (k->key == Key::Char && k->ctrl && !k->alt) {
-      // An undo or redo changes the COMMITTED value: the host writes it to the store.
-      if (k->ch == 'z') { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
-      if (k->ch == 'y') { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
-    }
-    if (k->key == Key::Tab && !menu_.editing()) { select_next(k->shift); return {O::Changed, {}}; }
+    // An undo or redo changes the COMMITTED value: the host writes it to the store.
+    const std::string_view ed = nav.action_for(*k, "editor");
+    if (ed == "editor.undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (ed == "editor.redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
+    const std::string_view st = nav.action_for(*k, "stack");
+    if ((st == "stack.focus_next" || st == "stack.focus_prev") && !menu_.editing()) { select_next(st == "stack.focus_prev"); return {O::Changed, {}}; }
     if (k->alt && !k->ctrl && (k->key == Key::Left || k->key == Key::Right || k->key == Key::Up || k->key == Key::Down)) {
       // Nudge the selected node's size by one cell along its parent's axis.
       Node* n = sel_node();
@@ -315,7 +315,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e) {
     }
   }
   status_.clear();
-  const MenuEvent ev = menu_.handle(e);
+  const MenuEvent ev = menu_.handle(e, nav);
   if (ev.kind == K::Activate) {
     if (ev.id == "next") { select_next(); return {O::Changed, {}}; }
     if (ev.id == "prev") { select_next(true); return {O::Changed, {}}; }

@@ -909,7 +909,7 @@ void WindowStack::compose(Frame& frame, Rect screen, const Theme& theme, const S
   }
 }
 
-Route WindowStack::route(const Event& e, Rect screen) {
+Route WindowStack::route(const Event& e, Rect screen, const Bindings& bindings) {
   if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
     // A captured pointer: drags and the release go to the pressed window, wherever
     // the pointer is now (the window may even have gone: then the capture just ends).
@@ -934,16 +934,17 @@ Route WindowStack::route(const Event& e, Rect screen) {
     return {Route::Kind::Dropped, {}};
   }
   if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    if (k->key == Key::Escape && !k->ctrl && !k->alt && layers_.size() > 1) {
+    const std::string_view action = bindings.action_for(*k, "stack");
+    if (action == "stack.close_popup" && layers_.size() > 1) {
       std::string id = layers_.back().id;
       pop();
       return {Route::Kind::ClosedPopup, id};
     }
-    if (k->key == Key::Tab && !k->ctrl && !k->alt) {
+    if (action == "stack.focus_next" || action == "stack.focus_prev") {
       std::vector<const Node*> f;
       focusables(layers_[focus_layer()].root, f);
       if (f.size() > 1) {
-        cycle_focus(k->shift);
+        cycle_focus(action == "stack.focus_prev");
         return {Route::Kind::FocusMoved, focused()->id};
       }
     }

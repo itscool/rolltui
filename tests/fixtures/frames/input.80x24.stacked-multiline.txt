@@ -18,7 +18,7 @@ Here is the function you asked for:
 │ int add(int a, int b) {                                                      │
 │   return a + b;                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- theme default-dark (modified)  layout stacked  size 80x24  line 94/113  follow
+ theme default-dark (modified)  keys default  layout stacked  size 80x24  line 9
 > one
   two
  default-dark (modified)  stacked  80x24  line 94/113  follow  truecolor  focus:

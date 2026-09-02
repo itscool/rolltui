@@ -1,13 +1,13 @@
 ╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ theme   default-dark (modifie││ │ styled  ┃ Ctrl-C / Ctrl-Q  quit            ┃
-│ layout  wide-left            ││ │ wrapped ┃ Tab / Shift-Tab  cycle focus     ┃
-│ size    80x24                ││ │ lines)  ┃ Esc  close the top popup         ┃
-│ line    181/197              ││ │ Theme   ┃ F1  toggle this help             ┃
-│ follow  yes                  ││ │ (roles →┃ F2  settings menu   Ctrl-P       ┃
-│ depth   truecolor            ││ │ styles, ┃ command palette   F3  cycle      ┃
-│ focus   help                 ││ │ JSON    ┃ themes                           ┃
-│                              ││ │ loader, ┃ F4  theme editor   F6  layout    ┃
-│                              ││ │ built-in┃ editor (Enter commits, Esc       ┃
+│ theme   default-dark (modifie││ │ styled  ┃ input:                           ┃
+│ keys    default              ││ │ wrapped ┃   Enter                   send   ┃
+│ layout  wide-left            ││ │ lines)  ┃ the line (always Enter)          ┃
+│ size    80x24                ││ │ Theme   ┃   Alt-Enter               insert ┃
+│ line    181/197              ││ │ (roles →┃ a newline                        ┃
+│ follow  yes                  ││ │ styles, ┃   Backspace               erase  ┃
+│ depth   truecolor            ││ │ JSON    ┃ before the caret (or the         ┃
+│ focus   help                 ││ │ loader, ┃ selection)                       ┃
+│                              ││ │ built-in┃   Delete   ▼ 114  (Up/Down, Esc) ┃
 │                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │

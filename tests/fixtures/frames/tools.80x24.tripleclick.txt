@@ -1,13 +1,13 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
 │ > read the manager header and tell me what    │ theme   default-dark         │
-│   stop_heartbeat does                         │ layout  default              │
-│                                               │ size    80x24                │
-│ ▸ read_file include/ResilientModelManager.hpp │ line    1/27                 │
-│                                               │ follow  no                   │
-│ stop_heartbeat cancels the heartbeat timer    │ depth   truecolor            │
-│ and drains its queue: the dispatch_sync after │ focus   transcript           │
-│ the cancel is what makes shutdown race-free,  │ copied  217 bytes            │
-│ because dispatch_source_cancel does not wait  │                              │
+│   stop_heartbeat does                         │ keys    default              │
+│                                               │ layout  default              │
+│ ▸ read_file include/ResilientModelManager.hpp │ size    80x24                │
+│                                               │ line    1/27                 │
+│ stop_heartbeat cancels the heartbeat timer    │ follow  no                   │
+│ and drains its queue: the dispatch_sync after │ depth   truecolor            │
+│ the cancel is what makes shutdown race-free,  │ focus   transcript           │
+│ because dispatch_source_cancel does not wait  │ copied  217 bytes            │
 │ for a handler that is already running.        │                              │
 │                                               │                              │
 │ Without the drain a poll() blocked on the     │                              │

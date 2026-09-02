@@ -29,6 +29,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Menu.hpp"
 #include "rolltui/Presets.hpp"
@@ -82,7 +83,8 @@ class ThemeEditor {
   const std::vector<PaletteEntry>& palette() const { return palette_; }
 
   // Events already routed to the editor's window. Ctrl-Z / Ctrl-Y are handled here.
-  Outcome handle(const Event& e);
+  Outcome handle(const Event& e, const Bindings& nav);  // `nav`: the host's bindings (menu + editor scopes)
+  Outcome handle(const Event& e) { return handle(e, default_bindings()); }
   bool undo();
   bool redo();
   std::size_t undo_depth() const { return undo_.undo_depth(); }

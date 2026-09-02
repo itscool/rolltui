@@ -1,9 +1,9 @@
-// rolltui/Presets.cpp — see Presets.hpp.
+// rolltui/Presets.cpp — see Presets.hpp and PresetStore.hpp.
 #include "rolltui/Presets.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -17,6 +17,8 @@ namespace rolltui {
 namespace embedded {
 extern const std::pair<std::string_view, std::string_view> kThemePresets[];
 extern const std::size_t kThemePresetCount;
+extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
+extern const std::size_t kBindingsPresetCount;
 }  // namespace embedded
 
 namespace fs = std::filesystem;
@@ -24,7 +26,7 @@ using json::Value;
 
 // ---- files ----------------------------------------------------------------------------
 
-namespace {
+namespace preset_files {
 
 bool read_file(const std::string& path, std::string& out) {
   std::ifstream in(path, std::ios::binary);
@@ -80,9 +82,7 @@ bool valid_preset_name(std::string_view name) {
   return true;
 }
 
-}  // namespace
-
-// ---- the Theme domain: file format ------------------------------------------------------
+}  // namespace preset_files
 
 std::string PresetLoadReport::summary() const {
   if (clean()) return "";
@@ -98,8 +98,22 @@ std::string PresetLoadReport::summary() const {
   if (!layout.error.empty()) add("layout: " + layout.error);
   for (const std::string& b : layout.bad_values) add("layout: " + b);
   for (const std::string& u : layout.unknown_keys) add("layout: unknown " + u);
+  if (!bindings.clean()) add("bindings: " + bindings.summary());
   return s;
 }
+
+std::string_view to_string(SaveResult r) {
+  switch (r) {
+    case SaveResult::Saved: return "saved";
+    case SaveResult::RefusedShipped: return "refused: a shipped preset is read-only";
+    case SaveResult::ExistsAsk: return "a preset with that name exists; confirm to overwrite";
+    case SaveResult::BadName: return "not a preset name (letters, digits, - _ . ; not starting with a dot)";
+    case SaveResult::WriteFailed: return "write failed";
+  }
+  return "";
+}
+
+// ---- the Theme domain: file format ------------------------------------------------------
 
 bool valid_mode_setting(std::string_view s) { return s == "auto" || s == "dark" || s == "light"; }
 bool valid_depth_setting(std::string_view s) { return s == "auto" || s == "truecolor" || s == "256" || s == "16" || s == "mono"; }
@@ -172,253 +186,51 @@ std::optional<Theme> resolve_colours(const ThemePreset& p, ThemeMode mode, Theme
   return load_theme(p.colours, mode, report);
 }
 
-// ---- shipped ----------------------------------------------------------------------------------
+// ---- the Theme domain: traits and the store's own methods -------------------------------
 
-std::string_view to_string(SaveResult r) {
-  switch (r) {
-    case SaveResult::Saved: return "saved";
-    case SaveResult::RefusedShipped: return "refused: a shipped preset is read-only";
-    case SaveResult::ExistsAsk: return "a preset with that name exists; confirm to overwrite";
-    case SaveResult::BadName: return "not a preset name (letters, digits, - _ . ; not starting with a dot)";
-    case SaveResult::WriteFailed: return "write failed";
-  }
-  return "";
-}
+std::size_t ThemeDomain::shipped_count() { return embedded::kThemePresetCount; }
+std::pair<std::string_view, std::string_view> ThemeDomain::shipped_at(std::size_t i) { return embedded::kThemePresets[i]; }
 
-std::vector<std::string_view> ThemePresets::shipped_names() {
-  std::vector<std::string_view> out;
-  // "default" first, then the rest in the order they were embedded (alphabetical).
-  for (std::size_t i = 0; i < embedded::kThemePresetCount; ++i)
-    if (embedded::kThemePresets[i].first == "default") out.push_back(embedded::kThemePresets[i].first);
-  for (std::size_t i = 0; i < embedded::kThemePresetCount; ++i)
-    if (embedded::kThemePresets[i].first != "default") out.push_back(embedded::kThemePresets[i].first);
-  return out;
-}
-
-bool ThemePresets::is_shipped(std::string_view name) {
-  for (std::size_t i = 0; i < embedded::kThemePresetCount; ++i)
-    if (embedded::kThemePresets[i].first == name) return true;
-  return false;
-}
-
-std::string_view ThemePresets::shipped_json(std::string_view name) {
-  for (std::size_t i = 0; i < embedded::kThemePresetCount; ++i)
-    if (embedded::kThemePresets[i].first == name) return embedded::kThemePresets[i].second;
-  return "";
-}
-
-const ThemePreset* ThemePresets::shipped(std::string_view name) {
-  static const std::vector<std::pair<std::string, ThemePreset>> cache = [] {
-    std::vector<std::pair<std::string, ThemePreset>> out;
-    bool have_default = false;
-    for (std::size_t i = 0; i < embedded::kThemePresetCount; ++i) {
-      std::string err;
-      Value v = json::parse(embedded::kThemePresets[i].second, err);
-      PresetLoadReport rep;
-      std::optional<ThemePreset> p = err.empty() ? theme_preset_from_json(v, rep) : std::nullopt;
-      if (!p || !rep.clean()) {
-        // A shipped preset that does not load cleanly is a programming error (the
-        // layout loader's standard); say so and stop rather than run half a theme.
-        std::fprintf(stderr, "rolltui: shipped preset '%.*s' is broken: %s\n", static_cast<int>(embedded::kThemePresets[i].first.size()),
-                     embedded::kThemePresets[i].first.data(), err.empty() ? rep.summary().c_str() : err.c_str());
-        std::abort();
-      }
-      have_default |= embedded::kThemePresets[i].first == "default";
-      out.emplace_back(std::string(embedded::kThemePresets[i].first), std::move(*p));
-    }
-    if (!have_default) { std::fprintf(stderr, "rolltui: no shipped preset named 'default' (rule 5)\n"); std::abort(); }
-    return out;
-  }();
-  for (const auto& [n, p] : cache)
-    if (n == name) return &p;
-  return nullptr;
-}
-
-// ---- the store -----------------------------------------------------------------------------------
-
-ThemePresets::ThemePresets(Options o) : opt_(std::move(o)) {
-  working_ = *shipped("default");
-  origin_ = "default";
-  origin_content_ = working_;
-}
-
-std::string ThemePresets::working_path() const { return opt_.dir + "/theme.working.json"; }
-std::string ThemePresets::preset_path(std::string_view name) const { return opt_.dir + "/themes/" + std::string(name) + ".json"; }
-
-PresetLoadReport ThemePresets::start() {
-  std::lock_guard<std::mutex> lock(mu_);
-  PresetLoadReport rep;
-  std::string text;
-  if (!read_file(working_path(), text)) {
-    rep.notes.push_back("no working copy at " + working_path() + "; started from the shipped 'default'");
-    return rep;
-  }
-  std::string err;
-  Value v = json::parse(text, err);
-  if (!err.empty()) {
-    rep.error = "working copy " + working_path() + " unreadable (" + err + "); started from the shipped 'default'";
-    return rep;
-  }
-  std::optional<ThemePreset> p = theme_preset_from_json(v, rep);
-  if (!p) {
-    rep.error = "working copy " + working_path() + ": " + rep.error + "; started from the shipped 'default'";
-    return rep;
-  }
-  working_ = std::move(*p);
-  origin_ = std::string(v.get("preset").as_string("default"));
-  // The origin's content, for the label: a shipped preset, a user file, or — when
-  // the origin no longer exists — the working copy itself (so it reads as unmodified
-  // rather than "(modified)" against nothing).
-  PresetLoadReport ignore;
-  std::optional<ThemePreset> oc = get_locked(origin_, ignore);
-  origin_content_ = oc ? *oc : working_;
-  if (!oc) rep.notes.push_back("the working copy's preset '" + origin_ + "' no longer exists");
-  rep.notes.push_back("loaded the working copy (" + origin_ + (working_ == origin_content_ ? "" : " (modified)") + ")");
-  ++version_;
-  return rep;
-}
-
-ThemePreset ThemePresets::working() const { std::lock_guard<std::mutex> lock(mu_); return working_; }
-std::string ThemePresets::origin() const { std::lock_guard<std::mutex> lock(mu_); return origin_; }
-bool ThemePresets::modified() const { std::lock_guard<std::mutex> lock(mu_); return !(working_ == origin_content_); }
-std::string ThemePresets::label() const {
-  std::lock_guard<std::mutex> lock(mu_);
-  return working_ == origin_content_ ? origin_ : origin_ + " (modified)";
-}
-std::uint64_t ThemePresets::version() const { std::lock_guard<std::mutex> lock(mu_); return version_; }
-std::string ThemePresets::last_error() const { std::lock_guard<std::mutex> lock(mu_); return last_error_; }
-
-bool ThemePresets::autosave_locked() {
-  Value v = theme_preset_to_json(working_, origin_);
-  v.set("preset", Value::string(origin_));
-  std::string err;
-  if (!write_file_atomic(working_path(), json::dump(v, 2) + "\n", err)) { last_error_ = err; return false; }
-  last_error_.clear();
-  return true;
-}
-
-void ThemePresets::touch(bool persist) {
-  ++version_;
-  if (persist) autosave_locked();
-}
-
-void ThemePresets::set_working(ThemePreset p, bool persist) {
-  std::lock_guard<std::mutex> lock(mu_);
-  working_ = std::move(p);
-  touch(persist);
-}
-void ThemePresets::set_colours(Value colours, bool persist) {
-  std::lock_guard<std::mutex> lock(mu_);
-  working_.colours = std::move(colours);
-  touch(persist);
-}
-void ThemePresets::set_layout(Layout l, bool persist) {
-  std::lock_guard<std::mutex> lock(mu_);
-  working_.layout = std::move(l);
-  touch(persist);
-}
-void ThemePresets::set_mode(std::string mode, bool persist) {
-  std::lock_guard<std::mutex> lock(mu_);
-  working_.mode = std::move(mode);
-  touch(persist);
-}
-void ThemePresets::set_depth(std::string depth, bool persist) {
-  std::lock_guard<std::mutex> lock(mu_);
-  working_.depth = std::move(depth);
-  touch(persist);
-}
-
-std::vector<PresetInfo> ThemePresets::list() const {
-  std::vector<PresetInfo> out;
-  for (std::string_view n : shipped_names()) out.push_back({std::string(n), true, ""});
-  for (const std::string& n : json_names_in(opt_.dir + "/themes"))
-    if (!is_shipped(n)) out.push_back({n, false, preset_path(n)});
-  return out;
-}
-
-std::optional<ThemePreset> ThemePresets::get_locked(std::string_view name_or_path, PresetLoadReport& report) const {
-  report = PresetLoadReport{};
-  if (const ThemePreset* s = shipped(name_or_path)) return *s;
-  std::string path;
-  if (looks_like_path(name_or_path)) path = std::string(name_or_path);
-  else path = preset_path(name_or_path);
-  std::string text;
-  if (!read_file(path, text)) {
-    report.error = "no preset '" + std::string(name_or_path) + "' (not shipped, and " + path + " is not readable)";
-    return std::nullopt;
-  }
-  std::string err;
-  Value v = json::parse(text, err);
-  if (!err.empty()) { report.error = path + ": " + err; return std::nullopt; }
-  if (v.is_object() && !v.has("colours") && v.has("roles")) {
-    // A colours-only theme file: the working copy's other parts are kept.
-    ThemePreset p = working_;
-    p.colours = v;
-    ThemeLoadReport tr;
-    if (!load_theme(v, ThemeMode::Dark, tr)) { report.error = path + ": " + tr.error; return std::nullopt; }
-    report.colours = tr;
-    report.notes.push_back(path + " is a colours-only theme file; layout, mode and depth are kept");
-    return p;
-  }
-  std::optional<ThemePreset> p = theme_preset_from_json(v, report);
-  if (!p) report.error = path + ": " + report.error;
+std::optional<ThemePreset> ThemeDomain::parse_partial(const json::Value& v, const ThemePreset& working, PresetLoadReport& report) {
+  if (!v.is_object() || v.has("colours") || !v.has("roles")) return std::nullopt;
+  ThemePreset p = working;
+  p.colours = v;
+  ThemeLoadReport tr;
+  if (!load_theme(v, ThemeMode::Dark, tr)) { report.error = tr.error; return std::nullopt; }
+  report.colours = tr;
+  report.notes.push_back("is a colours-only theme file; layout, mode and depth are kept");
   return p;
 }
 
-std::optional<ThemePreset> ThemePresets::get(std::string_view name_or_path, PresetLoadReport& report) const {
-  std::lock_guard<std::mutex> lock(mu_);
-  return get_locked(name_or_path, report);
-}
-
-bool ThemePresets::load(std::string_view name_or_path, PresetLoadReport& report, bool persist) {
-  std::lock_guard<std::mutex> lock(mu_);
-  std::optional<ThemePreset> p = get_locked(name_or_path, report);
-  if (!p) return false;
-  const bool colours_only = !report.notes.empty() && report.notes.back().find("colours-only") != std::string::npos;
-  working_ = std::move(*p);
-  if (!colours_only) {
-    origin_ = looks_like_path(name_or_path) ? fs::path(name_or_path).stem().string() : std::string(name_or_path);
-    origin_content_ = working_;
-  }
-  touch(persist);
-  return true;
-}
-
-SaveResult ThemePresets::save_as(std::string_view name, bool overwrite, std::string& error) {
-  std::lock_guard<std::mutex> lock(mu_);
-  error.clear();
-  if (!valid_preset_name(name)) { error = std::string(to_string(SaveResult::BadName)); return SaveResult::BadName; }
-  std::string path;
-  if (is_shipped(name)) {
-    if (!opt_.may_write_shipped) { error = std::string(to_string(SaveResult::RefusedShipped)); return SaveResult::RefusedShipped; }
-    path = opt_.shipped_dir + "/" + std::string(name) + ".json";
-  } else {
-    path = preset_path(name);
-    std::error_code ec;
-    if (!overwrite && fs::exists(path, ec)) { error = std::string(to_string(SaveResult::ExistsAsk)); return SaveResult::ExistsAsk; }
-  }
-  const std::string bytes = json::dump(theme_preset_to_json(working_, name), 2) + "\n";
-  if (!write_file_atomic(path, bytes, error)) return SaveResult::WriteFailed;
-  origin_ = std::string(name);
-  origin_content_ = working_;
-  touch(true);
-  return SaveResult::Saved;
-}
-
-std::vector<std::string> ThemePresets::layout_files() const { return json_names_in(opt_.dir + "/layouts"); }
+std::vector<std::string> ThemePresets::layout_files() const { return preset_files::json_names_in(opt_.dir + "/layouts"); }
 
 std::optional<Layout> ThemePresets::find_layout(std::string_view name_or_path, LayoutLoadReport& report) const {
   report = LayoutLoadReport{};
   if (const Layout* b = builtin_layout(name_or_path)) return *b;
-  const std::string path = looks_like_path(name_or_path) ? std::string(name_or_path) : opt_.dir + "/layouts/" + std::string(name_or_path) + ".json";
+  const std::string path = preset_files::looks_like_path(name_or_path) ? std::string(name_or_path) : opt_.dir + "/layouts/" + std::string(name_or_path) + ".json";
   std::string text;
-  if (!read_file(path, text)) {
+  if (!preset_files::read_file(path, text)) {
     report.error = "no layout '" + std::string(name_or_path) + "' (not built in, and " + path + " is not readable)";
     return std::nullopt;
   }
   std::optional<Layout> l = load_layout(text, report);
   if (!l) report.error = path + ": " + report.error;
   return l;
+}
+
+// ---- the Bindings domain -------------------------------------------------------------------
+
+std::size_t BindingsDomain::shipped_count() { return embedded::kBindingsPresetCount; }
+std::pair<std::string_view, std::string_view> BindingsDomain::shipped_at(std::size_t i) { return embedded::kBindingsPresets[i]; }
+
+std::optional<Bindings> BindingsDomain::parse(const json::Value& v, PresetLoadReport& report) {
+  report = PresetLoadReport{};
+  std::optional<Bindings> b = Bindings::from_json(v, report.bindings);
+  if (!b) { report.error = report.bindings.error; return std::nullopt; }
+  for (const auto& [k, x] : v.obj)
+    if (k != "name" && k != "bindings" && k != "preset") report.unknown_keys.push_back(k);
+  report.bindings.unknown_keys.clear();  // reported once, above
+  return b;
 }
 
 // ---- precedence -----------------------------------------------------------------------------------
@@ -446,12 +258,23 @@ const SettingSpec* theme_setting(std::string_view key) {
   return nullptr;
 }
 
+const SettingSpec* bindings_setting(std::string_view key) {
+  for (const SettingSpec& s : kBindingsSettings)
+    if (s.key == key) return &s;
+  return nullptr;
+}
+
 std::string working_value(const ThemePresets& store, std::string_view key) {
   if (key == "theme") return store.origin();
   const ThemePreset w = store.working();
   if (key == "layout") return w.layout.name;
   if (key == "theme_mode") return w.mode;
   if (key == "color_depth") return w.depth;
+  return "";
+}
+
+std::string working_value(const BindingsPresets& store, std::string_view key) {
+  if (key == "bindings") return store.origin();
   return "";
 }
 

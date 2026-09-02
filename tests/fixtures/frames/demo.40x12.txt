@@ -7,6 +7,6 @@ Here is the function you asked for:
 │ int add(int a, int b) {              │
 │   return a + b;                      │
 └──────────────────────────────────────┘
- theme default-dark  layout stacked (fal
+ theme default-dark  keys default  layou
 > type here
  default-dark  stacked  40x12  line 208/

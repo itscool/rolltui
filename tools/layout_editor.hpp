@@ -39,6 +39,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Menu.hpp"
@@ -70,7 +71,8 @@ class LayoutEditor {
 
   Menu& menu() { return menu_; }
   const Menu& menu() const { return menu_; }
-  Outcome handle(const Event& e);   // Alt+arrows nudge; Ctrl-Z/Ctrl-Y; Tab / Shift-Tab select; the rest is the menu's
+  Outcome handle(const Event& e, const Bindings& nav);  // `nav`: the host's bindings (menu + editor scopes)
+  Outcome handle(const Event& e) { return handle(e, default_bindings()); }   // Alt+arrows nudge; Ctrl-Z/Ctrl-Y; Tab / Shift-Tab select; the rest is the menu's
   bool undo();
   bool redo();
   std::size_t undo_depth() const { return undo_.undo_depth(); }

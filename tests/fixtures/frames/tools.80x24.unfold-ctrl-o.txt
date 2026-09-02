@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
 │ > read the manager header and tell me what    │ theme   default-dark         │
-│   stop_heartbeat does                         │ layout  default              │
-│                                               │ size    80x24                │
-│ ▾ read_file include/ResilientModelManager.hpp │ line    1/40                 │
-│   void stop_heartbeat() {                     │ follow  no                   │
-│     if (!hb_source_) return;                  │ depth   truecolor            │
-│     dispatch_source_cancel(hb_source_);       │ focus   input                │
-│     // Drain: a handler that is already       │                              │
+│   stop_heartbeat does                         │ keys    default              │
+│                                               │ layout  default              │
+│ ▾ read_file include/ResilientModelManager.hpp │ size    80x24                │
+│   void stop_heartbeat() {                     │ line    1/40                 │
+│     if (!hb_source_) return;                  │ follow  no                   │
+│     dispatch_source_cancel(hb_source_);       │ depth   truecolor            │
+│     // Drain: a handler that is already       │ focus   input                │
 │ running must finish before we return,         │                              │
 │     // or a poll() blocked on the state lock  │                              │
 │ can resume after release() and                │                              │

@@ -113,6 +113,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Json.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
@@ -303,7 +304,10 @@ class WindowStack {
   void focus(std::string_view id);  // no-op unless id names a focusable visible window in the focus layer
   void cycle_focus(bool backwards = false);
 
-  Route route(const Event& e, Rect screen);
+  // Escape and Tab are the stack's by data too (milestone 17): stack.close_popup,
+  // stack.focus_next, stack.focus_prev in the Bindings' stack scope.
+  Route route(const Event& e, Rect screen, const Bindings& bindings);
+  Route route(const Event& e, Rect screen) { return route(e, screen, default_bindings()); }
   // The window a press captured the pointer for, until its release ("" when none).
   const std::string& captured() const { return captured_; }
 

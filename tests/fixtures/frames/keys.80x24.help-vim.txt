@@ -1,0 +1,24 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
+│ │ block        │             │ header over  │ │ keys    vim-ish              │
+│ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
+│ │ (blocks →    │             │              │ │ size    80x24                │
+│ │ styled      ╭ help ────────────────────────────────────────╮1              │
+│ │ wrapped     │ caret                                        │               │
+│ │ lines)      │   Ctrl-U        kill to the start of the     │lor            │
+│ │ Theme (roles│ line                                         │               │
+│ │ → styles,   │   Ctrl-K        kill to the end of the line  │               │
+│ │ JSON loader,│   Left          move one grapheme left       │               │
+│ │ built-ins)  │   Right         move one grapheme right      │               │
+│ └─────────────│   Alt-B         move one word left           │               │
+│               │   Alt-F         move one word right          │               │
+│ Here is the fu│   Home, Ctrl-A  move to the start of the     │               │
+│               │ line (scrolls the transc▼ 67  (Up/Down, Esc) │               │
+│ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
+│ │ int add(int a, int b) {                   │ │                              │
+│ │   return a + b;                           │ │                              │
+│ └───────────────────────────────────────────┘ │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 173/191  follow  truecolor  focus:help

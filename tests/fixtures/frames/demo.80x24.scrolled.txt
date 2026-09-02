@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
 │                                               │ theme   default-dark         │
-│ 3. Third struck step                          │ layout  default              │
-│                                               │ size    80x24                │
-│ [ ] todo item                                 │ line    19/191               │
-│ [x] done item                                 │ follow  no                   │
-│                                               │ depth   truecolor            │
-│ │ A quote with emphasis that continues on a   │ focus   input                │
-│ │ second line                                 │                              │
+│ 3. Third struck step                          │ keys    default              │
+│                                               │ layout  default              │
+│ [ ] todo item                                 │ size    80x24                │
+│ [x] done item                                 │ line    19/191               │
+│                                               │ follow  no                   │
+│ │ A quote with emphasis that continues on a   │ depth   truecolor            │
+│ │ second line                                 │ focus   input                │
 │ │                                             │                              │
 │ │ and a second paragraph.                     │                              │
 │                                               │                              │

@@ -22,8 +22,12 @@
 // structure live in a file (menu_from_json / menu_to_json below) and be shared between
 // hosts that bind the ids differently.
 //
-// KEYS (table-tested in rolltui/tests/menu_test.cpp; anything not listed returns a
-// None event and changes nothing):
+// KEYS are DATA (milestone 17): handle() looks a key up in the Bindings' menu scope
+// (menu.up/down/page_up/page_down/first/last/activate/descend/ascend/back/erase/
+// clear_value); the shipped default is the list below, table-tested in
+// rolltui/tests/menu_test.cpp; anything not bound returns a None event and changes
+// nothing. A printable character without Ctrl or Alt types into the filter (or the
+// value being edited) and is never looked up:
 //   Up / Down               move the selection by one visible item (clamped, no wrap —
 //                           predictable at either end)
 //   PageUp / PageDown       move by the area's item rows;  Home / End  first / last
@@ -65,6 +69,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
@@ -156,7 +161,8 @@ class Menu {
   const std::vector<FlatEntry>& flat() const { return flat_; }
 
   // ---- events (already routed to this window by the host) ----
-  MenuEvent handle(const Event& e);
+  MenuEvent handle(const Event& e, const Bindings& bindings);
+  MenuEvent handle(const Event& e) { return handle(e, default_bindings()); }
 
   // ---- layout + drawing ----
   void set_options(const MenuOptions& o) { opt_ = o; }
@@ -177,7 +183,7 @@ class Menu {
   void rebuild_flat();
   void clamp_selection();
   MenuEvent act(std::size_t vis_index);
-  MenuEvent handle_key(const KeyEvent& k);
+  MenuEvent handle_key(const KeyEvent& k, const Bindings& b);
   MenuEvent handle_mouse(const MouseEvent& m);
   void descend(std::size_t child);
   bool ascend();

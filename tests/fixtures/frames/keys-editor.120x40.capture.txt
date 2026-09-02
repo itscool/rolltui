@@ -1,0 +1,40 @@
+┌ transcript ─────────────────────────────────────────────────────────┌ keys editor ───────────────────────────────────┐
+│ │ class, East-Asian width,         │             │ +, not Python) → │ keys editor › Actions by scope › input › word_ │
+│ │ grapheme property,               │             │ unicode_tables.hp│ add a chord (press it)…                        │
+│ │ Extended_Pictographic, InCB)     │             │                  │ remove Ctrl-Left                               │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ remove Alt-Left                                │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ clear every chord                              │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│                                                │
+│ │                                  │             │ block tree is the│                                                │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
+│ │ mouse mode)                      │             │                  │                                                │
+│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
+│ │                                  │             │ Event, table-test│                                                │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
+│ │ colour downgrade                 │             │ tested           │                                                │
+│ │ Wrap engine                      │ build       │ single header ove│                                                │
+│ │                                  │             │ header           │                                                │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
+│ │                                  │             │ Rect is a pure fu│                                                │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
+│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
+│ │ → styled wrapped lines)          │             │                  │                                                │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
+│ │ loader, built-ins)               │             │                  │                                                │
+│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
+│                                                                     │                                                │
+│ Here is the function you asked for:                                 │                                                │
+│                                                                     │                                                │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
+│ │ int add(int a, int b) {                                           │                                                │
+│ │   return a + b;                                                   │                                                │
+│ └───────────────────────────────────────────────────────────────────│ preset: default · Enter on an action, then pre │
+├─────────────────────────────────────────────────────────────────────│ press the chord for input.word_left (Esc cance │
+│ > type here                                                         │                                                │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark [keys editor]  default  120x40  line 75/109  follow  truecolor  focus:editor

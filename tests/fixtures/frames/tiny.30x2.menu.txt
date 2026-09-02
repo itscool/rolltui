@@ -1,2 +1,2 @@
- theme default-light  layout s
+ theme default-light  keys def
  default-light  stacked  30x2

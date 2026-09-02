@@ -1,19 +1,19 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
 │ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
-│ │ block        │             │ header over  │ │ layout  default              │
-│ │ renderer     │             │ md4c + wrap  │ │ size    80x24                │
-│ │ (blocks →    │             │              │ │ line    173/191              │
-│ │ styled      ╭ help ────────────────────────────────────────╮               │
-│ │ wrapped     │ Ctrl-C / Ctrl-Q  quit                        │lor            │
-│ │ lines)      │ Tab / Shift-Tab  cycle focus                 │               │
-│ │ Theme (roles│ Esc  close the top popup                     │               │
-│ │ → styles,   │ F1  toggle this help                         │               │
-│ │ JSON loader,│ F2  settings menu   Ctrl-P  command palette  │               │
-│ │ built-ins)  │ F3  cycle themes                             │               │
-│ └─────────────│ F4  theme editor   F6  layout editor (Enter  │               │
-│               │ commits, Esc cancels, Ctrl-Z/Y)              │               │
-│ Here is the fu│ F5  reload the fixture   Ctrl-L  repaint     │               │
-│               │ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the  │               │
+│ │ block        │             │ header over  │ │ keys    default              │
+│ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
+│ │ (blocks →    │             │              │ │ size    80x24                │
+│ │ styled      ╭ help ────────────────────────────────────────╮1              │
+│ │ wrapped     │ input:                                       │               │
+│ │ lines)      │   Enter                   send the line      │lor            │
+│ │ Theme (roles│ (always Enter)                               │               │
+│ │ → styles,   │   Alt-Enter               insert a newline   │               │
+│ │ JSON loader,│   Backspace               erase before the   │               │
+│ │ built-ins)  │ caret (or the selection)                     │               │
+│ └─────────────│   Delete                  erase after the    │               │
+│               │ caret (or the selection)                     │               │
+│ Here is the fu│   Ctrl-W, Alt-Backspace   kill the word      │               │
+│               │ before the caret        ▼ 83  (Up/Down, Esc) │               │
 │ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ │                              │

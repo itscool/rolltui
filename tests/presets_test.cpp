@@ -135,7 +135,7 @@ int main() {
     PresetLoadReport rep;
     check(store.load("mine", rep) && rep.clean() && store.working().depth == "256" && store.label() == "mine", "load copies the preset back into the working copy");
     check(store.load("default", rep) && store.label() == "default" && store.working() == *ThemePresets::shipped("default"), "load 'default' restores the shipped preset whole");
-    check(!store.load("nope", rep) && rep.error.find("no preset 'nope'") == 0, "loading an unknown name fails with a named error [" + rep.error + "]");
+    check(!store.load("nope", rep) && rep.error.find("no theme preset 'nope'") == 0, "loading an unknown name fails with a named error [" + rep.error + "]");
     check(store.label() == "default", "…and leaves the working copy alone");
   }
   // ---- persist=false: a flag fills the run's copy without writing it ----
@@ -241,6 +241,43 @@ int main() {
               working_value(store, "color_depth") == "auto",
           "working_value reads each setting from the working copy");
   }
+  // ---- the Bindings domain (milestone 17): the same five rules on the second domain ----
+  {
+    const std::string bdir = (world / "bindings").string();
+    BindingsPresets bs({bdir, false, ""});
+    PresetLoadReport rep = bs.start();
+    check(rep.clean() && bs.label() == "default" && bs.working() == default_bindings(), "a fresh directory starts from the shipped default bindings (rule 5), label 'default'");
+    check(BindingsPresets::is_shipped("default") && BindingsPresets::shipped_json("default") == default_bindings_json(), "the shipped 'default' is the embedded file, verbatim");
+    Bindings vim = bs.working();
+    vim.bind("input.word_left", *parse_chord("alt+b"));
+    vim.bind("input.word_right", *parse_chord("alt+f"));
+    bs.set_working(vim);
+    check(bs.label() == "default (modified)" && fs::exists(bs.working_path()) && bs.working().action_for(*parse_chord("alt+b"), "input") == "input.word_left",
+          "an edit autosaves bindings.working.json and the label reads 'default (modified)' (rules 2, 4)");
+    BindingsPresets again({bdir, false, ""});
+    rep = again.start();
+    check(rep.clean() && again.working() == bs.working() && again.label() == "default (modified)", "a restart loads the autosaved working copy with its label [" + rep.summary() + "]");
+    std::string err;
+    check(bs.save_as("default", false, err) == SaveResult::RefusedShipped, "save-as over the shipped name is refused (rule 5)");
+    check(bs.save_as("vim-ish", false, err) == SaveResult::Saved && bs.label() == "vim-ish" && fs::exists(bs.preset_path("vim-ish")), "save-as 'vim-ish' saves (rule 3) and becomes the origin");
+    check(bs.load("default", rep) && bs.working() == default_bindings() && bs.label() == "default", "load copies the shipped default back (rule 1: the whole domain)");
+    check(bs.load("vim-ish", rep) && bs.working().action_for(*parse_chord("alt+f"), "input") == "input.word_right", "…and the user preset back");
+    // A file that moves Enter is refused by name in the load report; the rest loads.
+    write_file(fs::path(bdir) / "bindings" / "bad.json", R"({"name":"bad","bindings":{"input.submit":["ctrl+j"],"input.newline":["enter"],"input.left":["hyper+x"]}})");
+    check(bs.load("bad", rep) && !rep.clean() && rep.bindings.bad_values.size() == 2 && rep.bindings.bad_values[0].find("input.newline: 'enter' is always input.submit") == 0 &&
+              rep.bindings.bad_chords.size() == 1 && bs.working().action_for(*parse_chord("enter"), "input") == "input.submit",
+          "a file binding Enter elsewhere loads with Enter refused by name and restored on submit [" + rep.summary() + "]");
+    check(!bs.load("nothing", rep) && rep.error.find("no bindings preset 'nothing'") == 0, "an unknown bindings preset is a named error");
+    check(working_value(bs, "bindings") == "bad" && bindings_setting("bindings") && bindings_setting("bindings")->builtin == "default" && !bindings_setting("theme"),
+          "the Bindings domain's one setting: 'bindings', built-in 'default'");
+    // Both domains in one directory, two working files, neither touching the other.
+    ThemePresets ts({bdir, false, ""});
+    ts.start();
+    ts.set_mode("light");
+    check(fs::exists(fs::path(bdir) / "theme.working.json") && fs::exists(fs::path(bdir) / "bindings.working.json") && bs.label() == "bad" && ts.label() == "default (modified)",
+          "a session is Theme X + Bindings Y: two working copies side by side, each with its own label");
+  }
+
   // ---- OSC 11 ----
   {
     std::optional<Color> c = parse_osc11_reply("\x1b]11;rgb:1414/1616/1a1a\x1b\\");

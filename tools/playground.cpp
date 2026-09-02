@@ -9,8 +9,12 @@
 //                              Default $ROLL_CONFIG_DIR/rolltui, else ~/.config/roll/
 //                              rolltui — the playground is a rolltui host like roll,
 //                              and a runtime change it makes autosaves there
-//     --shipped DIR            where "write a shipped preset" writes (the editor's
-//                              privilege); default: the source tree's presets/themes
+//     --shipped DIR            the shipped presets ROOT (themes/ and bindings/ under
+//                              it) that "write a shipped preset" writes into — the
+//                              editor's privilege; default: the source tree's presets/
+//     --bindings NAME|FILE     a bindings preset (default, or a user preset) or a
+//                              bindings file (milestone 17), filling this run's
+//                              Bindings working copy without writing it
 //     --theme NAME|FILE.json   a preset (default | default-dark | default-light |
 //                              mono | a user preset) or a preset file or a
 //                              colours-only theme file, filling this run's working
@@ -77,7 +81,15 @@
 // can put a label on screen). Any other slot draws "(no content for slot 'x')" —
 // visible, never silent.
 //
-// Keys: Ctrl-C / Ctrl-Q quit · Tab / Shift-Tab cycle focus · Esc closes the top popup
+// KEYS ARE DATA (milestone 17): every key below is the shipped default of an action in
+// rolltui/presets/bindings/default.json — the playground looks its own keys up in the
+// Bindings working copy (app.*, editor.*, playground.* scopes), hands the same table to
+// every widget, and renders the help popup and the status-bar hints from it, so a
+// rebinding shows everywhere at once. F7 opens the KEYS EDITOR (tools/keys_editor.hpp:
+// scope › action › add / remove / clear a chord; the next key pressed is the chord; a
+// conflict moves and says so; Enter stays on submit).
+//
+// Keys, as shipped: Ctrl-C / Ctrl-Q quit · Tab / Shift-Tab cycle focus · Esc closes the top popup
 // · F1 toggles the help popup · F2 opens the settings menu (milestone 11: a
 // rolltui::Menu in the layout's "menu" popup — Theme / Layout / Depth as choices,
 // ambiguous width as a toggle, reload / help / quit as actions; arrows, Enter, Left,
@@ -132,10 +144,12 @@
 #include "rolltui/Transcript.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui/Wrap.hpp"
+#include "keys_editor.hpp"
 #include "layout_editor.hpp"
 #include "theme_editor.hpp"
 
 using namespace rolltui;
+using rolltui::tools::KeysEditor;
 using rolltui::tools::LayoutEditor;
 using rolltui::tools::ThemeEditor;
 
@@ -198,20 +212,18 @@ Document parse_fixture(const std::string& text) {
   return doc;
 }
 
-const char* kHelpText =
-    "Ctrl-C / Ctrl-Q  quit\n"
-    "Tab / Shift-Tab  cycle focus\n"
-    "Esc  close the top popup\n"
-    "F1  toggle this help\n"
-    "F2  settings menu   Ctrl-P  command palette   F3  cycle themes\n"
-    "F4  theme editor   F6  layout editor (Enter commits, Esc cancels, Ctrl-Z/Y)\n"
-    "F5  reload the fixture   Ctrl-L  repaint\n"
-    "PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript\n"
-    "Up/Down  scroll while the transcript has focus\n"
-    "drag  select (auto-scrolls past an edge); release copies\n"
-    "double-click  word   triple-click  line   Alt-C  copy again\n"
-    "click a folded block / Ctrl-O  toggle a fold\n"
-    "Enter  add the input to the transcript   Alt-Enter  newline";
+// The help popup's text, RENDERED from the live bindings (milestone 17): it cannot
+// lie about a rebinding. One line per action of the scopes the playground uses.
+std::string help_text(const Bindings& b) {
+  std::string out;
+  for (const char* scope : {"input", "transcript", "app", "editor", "playground", "stack"}) {
+    out += std::string(scope) + ":\n";
+    for (const std::string& line : help_lines(b, scope)) out += "  " + line + "\n";
+  }
+  out += "mouse: drag selects (auto-scrolls past an edge); release copies; double-click a word; triple-click a line;\n"
+         "click a folded block's summary to toggle it; in the layout editor a click selects, a drag on a seam resizes";
+  return out;
+}
 
 struct App {
   std::string fixture_path, theme_arg, layout_arg;
@@ -225,6 +237,10 @@ struct App {
   // The look comes from the preset store's Theme working copy (rolltui/Presets.hpp),
   // exactly as in roll; the editor, when open, previews its own current theme.
   std::shared_ptr<ThemePresets> store;
+  std::shared_ptr<BindingsPresets> bstore;  // the Bindings working copy (milestone 17)
+  Bindings bindings = default_bindings();   // what this frame runs on
+  std::uint64_t bstore_seen = 0;
+  std::string bindings_arg;
   bool persist = true;                  // false under --frame: the working copy is never written
   std::uint64_t store_seen = 0;
   Theme resolved;                       // the working copy's colours at `mode`
@@ -237,16 +253,18 @@ struct App {
   bool stacked_fallback = false;
   // The theme editor (milestone 14) and the layout editor (milestone 16) share the
   // side popup; one is open at a time.
-  enum class EditorMode { None, Theme, Layout };
+  enum class EditorMode { None, Theme, Layout, Keys };
   EditorMode editor_mode = EditorMode::None;
   ThemeEditor teditor;
   LayoutEditor leditor;
+  KeysEditor keditor;
   bool editor_open = false;
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
   std::string confirm_text;
   std::function<void()> confirm_action;
   std::string report_text_;  // the Check popup's text
   int report_top = 0;
+  int help_top = 0;          // the help popup scrolls (its text is longer than any popup)
   std::string hint;
   WindowStack stack;
   Transcript transcript;
@@ -285,6 +303,7 @@ struct App {
          MenuItem::toggle("ambiguous", "Ambiguous width = 2", ambiguous),
          MenuItem::submenu("commands", "Commands",
                            {MenuItem::action("editor", "Theme editor", "F4"), MenuItem::action("layout_editor", "Layout editor", "F6"),
+                            MenuItem::action("keys_editor", "Keys editor", "F7"),
                             MenuItem::action("reload", "Reload the fixture", "F5"),
                             MenuItem::action("help", "Help", "F1"), MenuItem::action("quit", "Quit", "Ctrl-Q")})}));
   }
@@ -384,6 +403,15 @@ struct App {
     }
     theme = editor_mode == EditorMode::Theme ? teditor.current() : resolved;
     if (editor_mode == EditorMode::Layout && !(layout == leditor.current())) { layout = leditor.current(); apply_layout(); }
+    if (bstore && bstore->version() != bstore_seen) { bstore_seen = bstore->version(); bindings = bstore->working(); }
+    if (editor_mode == EditorMode::Keys) bindings = keditor.current();
+  }
+  bool load_bindings_arg() {
+    if (bindings_arg.empty()) return true;
+    PresetLoadReport rep;
+    if (!bstore->load(bindings_arg, rep, /*persist=*/false)) { hint = rep.error; return false; }
+    if (!rep.clean()) hint = "bindings: " + rep.summary();
+    return true;
   }
 
   // ---- the theme editor (milestone 14) ----
@@ -450,6 +478,76 @@ struct App {
     editor_mode = EditorMode::Theme;
     stack.push(editor_popup("theme editor"));
     sync_look();
+  }
+  void toggle_keys_editor() {
+    if (editor_mode == EditorMode::Keys) { close_editor(); return; }
+    close_editor();
+    keditor.load(bstore->working());
+    std::vector<std::string> names, shipped;
+    for (const PresetInfo& p : bstore->list()) names.push_back(p.name);
+    for (std::string_view n : BindingsPresets::shipped_names()) shipped.push_back(std::string(n));
+    keditor.set_presets(names);
+    keditor.set_shipped(shipped, bstore->options().may_write_shipped);
+    editor_open = true;
+    editor_mode = EditorMode::Keys;
+    stack.push(editor_popup("keys editor"));
+    sync_look();
+  }
+  void keys_outcome(const KeysEditor::Outcome& o) {
+    using K = KeysEditor::Outcome::Kind;
+    switch (o.kind) {
+      case K::None: case K::Changed: break;
+      case K::Committed:
+        bstore->set_working(keditor.committed(), persist);
+        break;
+      case K::SaveAs: {
+        std::string err;
+        const SaveResult r = bstore->save_as(o.value, pending_save == o.value, err);
+        if (r == SaveResult::ExistsAsk) { pending_save = o.value; hint = "bindings preset '" + o.value + "' exists; Enter the same name again to overwrite"; }
+        else { pending_save.clear(); hint = r == SaveResult::Saved ? "saved bindings preset '" + o.value + "'" : err; }
+        if (r == SaveResult::Saved) { std::vector<std::string> names; for (const PresetInfo& p : bstore->list()) names.push_back(p.name); keditor.set_presets(names); }
+        break;
+      }
+      case K::WriteShipped:
+        ask("Write the SHIPPED bindings preset '" + o.value + "' into " + bstore->options().shipped_dir + "? (y/n)", [this, name = o.value] {
+          std::string err;
+          hint = bstore->save_as(name, true, err) == SaveResult::Saved ? "wrote shipped bindings preset '" + name + "' (rebuild to embed it)" : err;
+        });
+        break;
+      case K::LoadPreset: {
+        PresetLoadReport rep;
+        if (!bstore->load(o.value, rep, persist)) hint = rep.error;
+        else { keditor.load(bstore->working()); hint = rep.clean() ? "loaded bindings '" + o.value + "'" : "loaded '" + o.value + "' with problems: " + rep.summary(); }
+        break;
+      }
+      case K::ResetLoaded:
+        ask("Reset every binding to the preset '" + bstore->origin() + "'? (y/n)", [this] {
+          PresetLoadReport rep;
+          if (std::optional<Bindings> b = bstore->get(bstore->origin(), rep)) { keditor.replace(*b); keys_outcome({K::Committed, {}}); hint = "reset (undoable)"; }
+          else hint = rep.error;
+        });
+        break;
+      case K::Closed:
+        close_editor();
+        break;
+    }
+  }
+  void draw_keys_editor(const ResolvedNode& rn, Frame& f) {
+    Rect r = text_area(rn);
+    if (r.w <= 0 || r.h <= 0) return;
+    const int box = std::min(3, r.h);
+    Rect m = r;
+    m.h = r.h - box;
+    MenuOptions mo;
+    mo.ambiguous_wide = ambiguous;
+    keditor.menu().set_options(mo);
+    keditor.menu().layout(m);
+    if (m.h > 0) keditor.menu().draw(f, theme, rn.focused);
+    int y = r.y + m.h;
+    const Style label = theme.style(Role::label), value = theme.style(Role::value);
+    if (y < r.y + r.h) f.put_text(r.x, y++, "preset: " + bstore->label() + " \xC2\xB7 Enter on an action, then press the chord", label, r.w, ambiguous);
+    if (y < r.y + r.h) f.put_text(r.x, y++, keditor.status_line(), keditor.capturing() ? theme.style(Role::warning) : value, r.w, ambiguous);
+    if (y < r.y + r.h && !hint.empty()) f.put_text(r.x, y++, hint, theme.style(Role::warning), r.w, ambiguous);
   }
   void toggle_layout_editor() {
     if (editor_mode == EditorMode::Layout) { close_editor(); return; }
@@ -608,30 +706,43 @@ struct App {
         break;
     }
   }
-  void draw_report(const ResolvedNode& rn, Frame& f) {
+  // A scrolled text popup (the Check report, help): wrapped lines from `top`, a ▼ marker
+  // for what is below.
+  void draw_scrolled_text(const ResolvedNode& rn, Frame& f, const std::string& text, int top) {
     const Rect r = text_area(rn);
     if (r.w <= 0 || r.h <= 0) return;
     WrapOptions wo;
     wo.ambiguous_wide = ambiguous;
-    const std::vector<Line> lines = wrap(report_text_, r.w, wo);
+    const std::vector<Line> lines = wrap(text, r.w, wo);
     int y = r.y;
-    for (std::size_t i = static_cast<std::size_t>(std::max(report_top, 0)); i < lines.size() && y < r.y + r.h; ++i)
+    for (std::size_t i = static_cast<std::size_t>(std::max(top, 0)); i < lines.size() && y < r.y + r.h; ++i)
       f.put_text(r.x + lines[i].indent, y++, lines[i].text, theme.style(Role::text), std::max(r.w - lines[i].indent, 0), ambiguous);
     if (static_cast<int>(lines.size()) > r.h) {
-      const std::string more = "\xE2\x96\xBC " + std::to_string(std::max(static_cast<int>(lines.size()) - report_top - r.h, 0)) + "  (Up/Down, Esc)";
+      const std::string more = "\xE2\x96\xBC " + std::to_string(std::max(static_cast<int>(lines.size()) - top - r.h, 0)) + "  (Up/Down, Esc)";
       f.put_text(r.x + std::max(r.w - unicode::display_width(more), 0), r.y + r.h - 1, more, theme.style(Role::scroll_marker), r.w, ambiguous);
     }
   }
-  void report_key(const KeyEvent& k) {
-    if (k.key == Key::Up) report_top = std::max(0, report_top - 1);
-    else if (k.key == Key::Down) report_top += 1;
-    else if (k.key == Key::PageUp) report_top = std::max(0, report_top - 10);
-    else if (k.key == Key::PageDown) report_top += 10;
-    else if (k.key == Key::Home) report_top = 0;
+  void draw_report(const ResolvedNode& rn, Frame& f) { draw_scrolled_text(rn, f, report_text_, report_top); }
+  // Scrolling keys for a text popup, by the transcript scope's actions (the same keys
+  // scroll the transcript); `page` is the popup's height.
+  void scroll_key(const KeyEvent& k, int& top, const std::string& text, int page) {
+    const std::string_view a = bindings.action_for(k, "transcript");
+    if (a == "transcript.line_up") top = std::max(0, top - 1);
+    else if (a == "transcript.line_down") top += 1;
+    else if (a == "transcript.page_up") top = std::max(0, top - std::max(page, 1));
+    else if (a == "transcript.page_down") top += std::max(page, 1);
+    else if (a == "transcript.top") top = 0;
+    else if (a == "transcript.bottom") top = 1 << 20;
     WrapOptions wo;
-    const int total = static_cast<int>(wrap(report_text_, 60, wo).size());
-    report_top = std::clamp(report_top, 0, std::max(total - 1, 0));
+    const int total = static_cast<int>(wrap(text, 60, wo).size());
+    top = std::clamp(top, 0, std::max(total - std::max(page, 1), 0));
   }
+  int popup_rows(const char* id) {
+    for (const ResolvedNode& rn : stack.resolve(layout_area()))
+      if (rn.node->is_window() && rn.node->content == id) return rn.inner.h;
+    return 10;
+  }
+  void report_key(const KeyEvent& k) { scroll_key(k, report_top, report_text_, popup_rows("report")); }
   // The editor's sample box: the focused role's fields, a sample in its style, swatches.
   void draw_layout_editor(const ResolvedNode& rn, Frame& f) {
     Rect r = text_area(rn);
@@ -657,6 +768,7 @@ struct App {
   }
   void draw_editor(const ResolvedNode& rn, Frame& f) {
     if (editor_mode == EditorMode::Layout) { draw_layout_editor(rn, f); return; }
+    if (editor_mode == EditorMode::Keys) { draw_keys_editor(rn, f); return; }
     Rect r = text_area(rn);
     if (r.w <= 0 || r.h <= 0) return;
     const int box = std::min(6, r.h);
@@ -778,6 +890,7 @@ struct App {
   }
   void toggle_help() {
     if (stack.has_popup("help")) { while (stack.depth() > 1 && stack.layers().back().id != "help") stack.pop(); stack.pop(); return; }
+    help_top = 0;
     if (const Layer* p = effective_layout().popup("help")) stack.push(*p);
   }
 
@@ -788,6 +901,7 @@ struct App {
     const std::size_t total = transcript.total_lines();
     std::vector<Row> rows = {
         {"theme", store ? store->label() : theme.name},
+        {"keys", bstore ? bstore->label() : "default"},
         {"layout", effective_layout().name + (stacked_fallback ? " (fallback)" : "")},
         {"size", std::to_string(w) + "x" + std::to_string(h)},
         {"line", std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total)},
@@ -849,7 +963,7 @@ struct App {
     } else if (c == "input") {
       draw_input(rn, f);
     } else if (c == "help") {
-      draw_text(rn, f, kHelpText, Role::text);
+      draw_scrolled_text(rn, f, help_text(bindings), help_top);
     } else if (c == "menu") {
       MenuOptions mo;
       mo.ambiguous_wide = ambiguous;
@@ -882,7 +996,7 @@ struct App {
     if (h > 1) {
       f.fill({0, h - 1, w, 1}, theme.style(Role::panel_background));
       const std::size_t total = transcript.total_lines();
-      std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : "") + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
+      std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "") + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
                            "  line " + std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total) +
                            (transcript.scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
@@ -892,7 +1006,10 @@ struct App {
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
-      std::string help = "^C quit  F1 help  F2 menu  ^P palette  F4 theme  F6 layout ";
+      // The hints come from the live table too.
+      auto hk = [&](const char* action) { const std::vector<KeyEvent>& c = bindings.chords_for(action); return c.empty() ? std::string("-") : chord_display(c[0]); };
+      std::string help = "^C quit  " + hk("app.help") + " help  " + hk("app.menu") + " menu  " + hk("app.palette") + " palette  " + hk("editor.theme") + " theme  " +
+                         hk("editor.layout") + " layout  " + hk("editor.keys") + " keys ";
       int hw = unicode::display_width(help);
       if (hw + unicode::display_width(status) + 2 <= w) f.put_text(w - hw, h - 1, help, theme.style(Role::text_muted), hw, ambiguous);
     }
@@ -903,43 +1020,52 @@ struct App {
   // Returns false to quit.
   bool handle(const Event& ev) {
     // App-level keys first; everything else is routed by the stack.
+    sync_look();
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
-      if (k->key == Key::Char && k->ctrl && (k->ch == 'c' || k->ch == 'q')) return false;
-      if (k->key == Key::F3) {
+      if (k->key == Key::Char && k->ctrl && !k->alt && k->ch == 'c') return false;  // Ctrl-C is the host's, not an action
+      // The keys editor is capturing: every key is the chord, nothing else acts.
+      if (editor_mode == EditorMode::Keys && keditor.capturing()) { keys_outcome(keditor.handle(ev, bindings)); return true; }
+      const std::string_view pg = bindings.action_for(*k, "playground"), app = bindings.action_for(*k, "app"), ed = bindings.action_for(*k, "editor");
+      if (pg == "playground.quit") return false;
+      if (pg == "playground.cycle_theme") {
         std::vector<std::string_view> names = ThemePresets::shipped_names();
         shipped_theme_index = (shipped_theme_index + 1) % names.size();
         PresetLoadReport rep;
         theme_arg.clear();
         store->load(names[shipped_theme_index], rep, persist);
-        if (editor_open) { ThemeLoadReport tr; teditor.load(store->working(), tr); }
+        if (editor_mode == EditorMode::Theme) { ThemeLoadReport tr; teditor.load(store->working(), tr); }
         return true;
       }
-      if (k->key == Key::F4) { toggle_editor(); return true; }
-      if (k->key == Key::F6) { toggle_layout_editor(); return true; }
-      if (k->key == Key::F2) { open_menu(false); return true; }
-      if (k->key == Key::Char && k->ctrl && k->ch == 'p') { open_menu(true); return true; }
-      if (k->key == Key::F5) { load_fixture(); return true; }
-      if (k->key == Key::F1) { toggle_help(); return true; }
-      if (k->key == Key::Char && k->ctrl && k->ch == 'l') return true;  // the loop repaints
+      if (pg == "playground.reload") { load_fixture(); return true; }
+      if (ed == "editor.theme") { toggle_editor(); return true; }
+      if (ed == "editor.layout") { toggle_layout_editor(); return true; }
+      if (ed == "editor.keys") { toggle_keys_editor(); return true; }
+      if (app == "app.help" && !(k->key == Key::Char && !k->ctrl && !k->alt && !editor.text().empty())) { toggle_help(); return true; }
+      if (app == "app.menu") { open_menu(false); return true; }
+      if (app == "app.palette") { open_menu(true); return true; }
+      if (app == "app.repaint") return true;  // the loop repaints
     }
-    sync_look();
     ensure_layout();
     if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) {
       if (stack.has_popup("editor") && stack.focused() && stack.focused()->id == "editor") {
-        if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(*p)); else editor_outcome(teditor.handle(*p));
+        if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(*p, bindings));
+        else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(*p, bindings));
+        else editor_outcome(teditor.handle(*p, bindings));
         return true;
       }
-      editor.handle(*p, clock_ms);
+      editor.handle(*p, bindings, clock_ms);
       return true;
     }
     // Escape belongs to the editor while it has focus (it cancels the focused change or
     // ascends; the editor asks to close only from its top level) — the stack would
     // otherwise close the popup first.
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev);
-        k && (k->key == Key::Escape || k->key == Key::Tab) && editor_open && stack.focused() && stack.focused()->id == "editor") {
+        k && editor_open && stack.focused() && stack.focused()->id == "editor" &&
+        (bindings.action_for(*k, "stack") == "stack.close_popup" || bindings.action_for(*k, "stack") == "stack.focus_next" || bindings.action_for(*k, "stack") == "stack.focus_prev")) {
       hint.clear();
-      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev));
-      else if (k->key == Key::Escape) editor_outcome(teditor.handle(ev));
+      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev, bindings));
+      else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(ev, bindings));
+      else if (bindings.action_for(*k, "stack") == "stack.close_popup") editor_outcome(teditor.handle(ev, bindings));
       return true;
     }
     // The layout editor's mouse: a press on a seam starts a resize drag, a press on a
@@ -972,19 +1098,24 @@ struct App {
         }
       }
     }
-    Route r = stack.route(ev, layout_area());
-    if (r.kind == Route::Kind::ClosedPopup && r.window == "editor") { editor_open = false; editor_mode = EditorMode::None; store_seen = 0; sync_look(); return true; }
+    Route r = stack.route(ev, layout_area(), bindings);
+    if (r.kind == Route::Kind::ClosedPopup && r.window == "editor") { editor_open = false; editor_mode = EditorMode::None; store_seen = 0; bstore_seen = 0; sync_look(); return true; }
     if (r.kind == Route::Kind::ClosedPopup && r.window == "confirm") { confirm_action = nullptr; return true; }
     if (r.kind != Route::Kind::Deliver) return true;
-    if (r.window == "menu") return menu_event(menu.handle(ev));
+    if (r.window == "menu") return menu_event(menu.handle(ev, bindings));
     if (r.window == "editor") {
       hint.clear();
-      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev));
-      else editor_outcome(teditor.handle(ev));
+      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev, bindings));
+      else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(ev, bindings));
+      else editor_outcome(teditor.handle(ev, bindings));
       return true;
     }
     if (r.window == "report") {
       if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) report_key(*k);
+      return true;
+    }
+    if (r.window == "help") {
+      if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) scroll_key(*k, help_top, help_text(bindings), popup_rows("help"));
       return true;
     }
     if (r.window == "confirm") {
@@ -997,7 +1128,7 @@ struct App {
     const bool to_transcript = r.window == "transcript";
     const bool to_input = r.window == "input";
     if (to_transcript) {
-      if (transcript.handle(ev, doc, clock_ms)) return true;
+      if (transcript.handle(ev, doc, clock_ms, bindings)) return true;
       if (!std::holds_alternative<KeyEvent>(ev)) return true;
       // typing while the transcript has focus still types (falls through to the input)
     } else if (!to_input) {
@@ -1010,22 +1141,24 @@ struct App {
   // empty buffer, Ctrl-O, Alt-C without a selection and the wheel act on it from
   // wherever focus is). Returns false to quit (Ctrl-D on an empty buffer).
   bool input_event(const Event& ev) {
-    switch (editor.handle(ev, clock_ms)) {
+    switch (editor.handle(ev, bindings, clock_ms)) {
       case InputAction::Submit: submit_input(); return true;
       case InputAction::Eof: return false;
       case InputAction::Handled: return true;
       case InputAction::Ignored: break;
     }
+    // What the input Ignored is offered to the transcript (its own scope of the table).
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
-      if (k->key == Key::PageUp) transcript.scroll_page(-1);
-      else if (k->key == Key::PageDown) transcript.scroll_page(1);
-      else if (k->key == Key::Home) transcript.scroll_to_top();
-      else if (k->key == Key::End) transcript.scroll_to_bottom();
-      else if (k->key == Key::Char && k->ctrl && k->ch == 'o') transcript.toggle_fold_nearest_top(doc);
-      else if (k->key == Key::Char && k->alt && k->ch == 'c') transcript.copy_selection();
+      const std::string_view a = bindings.action_for(*k, "transcript");
+      if (a == "transcript.page_up") transcript.scroll_page(-1);
+      else if (a == "transcript.page_down") transcript.scroll_page(1);
+      else if (a == "transcript.top") transcript.scroll_to_top();
+      else if (a == "transcript.bottom") transcript.scroll_to_bottom();
+      else if (a == "transcript.fold") transcript.toggle_fold_nearest_top(doc);
+      else if (a == "transcript.copy") transcript.copy_selection();
     } else if (const MouseEvent* m = std::get_if<MouseEvent>(&ev);
                m && (m->kind == MouseEvent::Kind::WheelUp || m->kind == MouseEvent::Kind::WheelDown)) {
-      transcript.handle(ev, doc, clock_ms);
+      transcript.handle(ev, doc, clock_ms, bindings);
     }
     return true;
   }
@@ -1198,7 +1331,7 @@ void print_frame_plain(const Frame& f) {
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-playground --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
-               "       rolltui-playground FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE]\n"
+               "       rolltui-playground FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
                "       [--dump-role ROLE] [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
@@ -1241,6 +1374,7 @@ int main(int argc, char** argv) {
     else if (a == "--layout") app.layout_arg = next();
     else if (a == "--presets") presets_dir = next();
     else if (a == "--shipped") shipped_dir = next();
+    else if (a == "--bindings") app.bindings_arg = next();
     else if (a == "--dump-role") dump_role = next();
     else if (a == "--check") check_arg = next();
     else if (a == "--generate") generate_arg = next();
@@ -1272,7 +1406,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (!check_arg.empty()) {
-    ThemePresets store(ThemePresets::Options{presets_dir, false, shipped_dir});
+    ThemePresets store(ThemePresets::Options{presets_dir, false, shipped_dir + "/themes"});
     PresetLoadReport rep;
     std::optional<ThemePreset> p = store.get(check_arg, rep);
     if (!p) { std::fprintf(stderr, "%s\n", rep.error.c_str()); return 2; }
@@ -1297,13 +1431,17 @@ int main(int argc, char** argv) {
   if (!app.load_fixture()) { std::fprintf(stderr, "cannot read %s\n", app.fixture_path.c_str()); return 1; }
   // The preset store: the playground is a rolltui host, with the editor's privilege
   // (it writes what ships). Under --frame nothing autosaves.
-  app.store = std::make_shared<ThemePresets>(ThemePresets::Options{presets_dir, true, shipped_dir});
+  app.store = std::make_shared<ThemePresets>(ThemePresets::Options{presets_dir, true, shipped_dir + "/themes"});
+  app.bstore = std::make_shared<BindingsPresets>(BindingsPresets::Options{presets_dir, true, shipped_dir + "/bindings"});
   app.persist = frame_spec.empty();
   {
     const PresetLoadReport start = app.store->start();
     if (!start.error.empty()) app.theme_note = start.error;
+    const PresetLoadReport bstart = app.bstore->start();
+    if (!bstart.error.empty()) app.hint = bstart.error;
   }
   app.load_theme_arg();
+  app.load_bindings_arg();
   app.build_menu();
 
   if (!frame_spec.empty()) {

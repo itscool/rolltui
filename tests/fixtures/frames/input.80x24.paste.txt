@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
 │ │ block        │             │ header over  │ │ theme   default-dark         │
-│ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
-│ │ (blocks →    │             │              │ │ size    80x24                │
-│ │ styled       │             │              │ │ line    174/191              │
-│ │ wrapped      │             │              │ │ follow  yes                  │
-│ │ lines)       │             │              │ │ depth   truecolor            │
-│ │ Theme (roles │ build       │ single       │ │ focus   input                │
-│ │ → styles,    │             │ header       │ │                              │
+│ │ renderer     │             │ md4c + wrap  │ │ keys    default              │
+│ │ (blocks →    │             │              │ │ layout  default              │
+│ │ styled       │             │              │ │ size    80x24                │
+│ │ wrapped      │             │              │ │ line    174/191              │
+│ │ lines)       │             │              │ │ follow  yes                  │
+│ │ Theme (roles │ build       │ single       │ │ depth   truecolor            │
+│ │ → styles,    │             │ header       │ │ focus   input                │
 │ │ JSON loader, │             │              │ │                              │
 │ │ built-ins)   │             │              │ │                              │
 │ └──────────────┴─────────────┴──────────────┘ │                              │

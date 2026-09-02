@@ -1,2 +1,2 @@
- theme default-d╶ help ────────────────────────────────────────╴2991/2991  follo
+ theme default-d╶ help ────────────────────────────────────────╴ze 80x2  line 29
  default-dark  stacked  80x2  line 2991/2991  truecolor  focus:help  [stacked: b

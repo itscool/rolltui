@@ -1,0 +1,40 @@
+┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
+│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme   default-dark         │
+│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys    default              │
+│ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout  default              │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size    120x40               │
+│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ line    75/109               │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow  yes                  │
+│ │                                  │             │ block tree is the API            │ │ depth   truecolor            │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │ focus   help                 │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineReader/StatusPane  │ │                              │
+│ │ mouse mode)                      │             │                                  │ │                              │
+│ │ Key + mouse decoding             │ build       │ single header, pure bytes →      │ │                              │
+│ │                                  │             │ Event, table-tested              │ │                              │
+│ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
+│ │ colour downgrade    │   Right                   move one grapheme right                    │                       │
+│ │ Wrap engine         │   Ctrl-Left, Alt-Left     move one word left                         │                       │
+│ │                     │   Ctrl-Right, Alt-Right   move one word right                        │                       │
+│ │ Windows, layers, pla│   Home                    start of the line (scrolls when empty)     │                       │
+│ │ abs/rel per axis), f│   End                     end of the line (scrolls when empty)       │                       │
+│ │                     │   Up                      up a row, or the previous history entry    │                       │
+│ │ Menu widget (hierarc│   Down                    down a row, or the next history entry      │                       │
+│ │ filterable) + list/t│   Shift-Left              extend the selection one grapheme left     │                       │
+│ │ Layout files (JSON: │   Shift-Right             extend the selection one grapheme right    │                       │
+│ │ placements + content│   Ctrl-Shift-Left, Alt-Shift-Left  extend the se▼ 47  (Up/Down, Esc) │                       │
+│ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
+│ │ → styled wrapped lines)          │             │                                  │ │                              │
+│ │ Theme (roles → styles, JSON      │ build       │ single header                    │ │                              │
+│ │ loader, built-ins)               │             │                                  │ │                              │
+│ └──────────────────────────────────┴─────────────┴──────────────────────────────────┘ │                              │
+│                                                                                       │                              │
+│ Here is the function you asked for:                                                   │                              │
+│                                                                                       │                              │
+│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ │                              │
+│ │ int add(int a, int b) {                                                           │ │                              │
+│ │   return a + b;                                                                   │ │                              │
+│ └───────────────────────────────────────────────────────────────────────────────────┘ │                              │
+├───────────────────────────────────────────────────────────────────────────────────────┤                              │
+│ > type here                                                                           │                              │
+└───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  120x40  line 75/109  follow  truecolor  focus:help

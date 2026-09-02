@@ -30,45 +30,44 @@
 // so the caret's row stays visible; `rows_for(width)` tells a host how tall the
 // window would have to be to show everything, so it can grow the window instead.
 //
-// KEYS (table-tested in rolltui/tests/input_test.cpp; every key not listed is
-// returned as Ignored, so the host can offer it to another window):
-//   printable text          insert at the caret, replacing the selection if any
-//   Enter                   Submit — the text is the host's to take. Enter is always
-//                           submit (plan/phase-9.md); no widget may claim it
-//   Alt+Enter               insert a newline (multi-line)
-//   Backspace / Delete      the selection if any, else the grapheme before / after
-//   Ctrl+W / Alt+Backspace  kill the word before the caret; Alt+D / Ctrl+Delete the
-//                           word after. A "word" motion skips spaces, then one UAX
-//                           #29 word (word_range) — so punctuation is its own step
-//   Ctrl+U / Ctrl+K         kill to the start / end of the logical line
-//   Left / Right            one grapheme; +Ctrl or +Alt one word; +Shift extends
-//   Home / End              start / end of the logical line; +Shift extends. On an
-//                           EMPTY buffer there is no caret to move and both are
-//                           Ignored (roll scrolls the transcript with them); +Ctrl is
-//                           always Ignored for the same host use
-//   Up / Down               one row, keeping a goal column, when the caret is not on
-//                           the first / last row; on the first / last row the
-//                           previous / next history entry. +Shift extends by a row and
-//                           never browses; +Ctrl / +Alt are Ignored
-//   Ctrl+A                  select all
-//   Escape                  clear the selection (Ignored when there is none)
-//   Alt+C                   copy the selection through on_copy (Ignored when none)
-//   Ctrl+D                  Eof on an empty buffer, else delete forward (readline)
-//   Tab                     Ignored (the WindowStack cycles focus with it)
-//   bracketed paste         inserted literally after the same sanitising as typed
-//                           text: CR LF and CR become LF, other controls are dropped
-//   mouse (button 1)        a press places the caret (Shift+press extends the
-//                           selection); a drag selects, including the grapheme under
-//                           the pointer at BOTH ends — the transcript's convention, so
-//                           a drag from the h to the o of "hello" selects "hello" in
-//                           either direction; double-click a word, triple-click a
-//                           logical line, and a drag after either grows by whole
-//                           units; a release where the pointer already is changes
-//                           nothing; release fires on_copy (copy-on-select); a click
-//                           that did not drag selects nothing. The wheel and the
-//                           other buttons are Ignored
+// KEYS are DATA (milestone 17): handle() takes a `const Bindings&` (Bindings.hpp) and
+// asks it which input.* ACTION a key is; the shipped default table (rolltui/presets/
+// bindings/default.json) is exactly the list below, and handle(e, now) without a table
+// uses it. Every key not bound is returned as Ignored, so the host can offer it to
+// another window. A printable character without Ctrl or Alt is TEXT and is never looked
+// up. The default, action by action:
+//   input.submit             Enter — the text is the host's to take. Enter is always
+//                            submit (plan/phase-9.md); no file may bind it elsewhere
+//   input.newline            Alt+Enter
+//   input.backspace / delete Backspace / Delete: the selection if any, else a grapheme
+//   input.kill_word_backward Ctrl+W, Alt+Backspace;  kill_word_forward  Alt+D, Ctrl+Delete.
+//                            A "word" motion skips spaces, then one UAX #29 word
+//   input.kill_to_line_start / _end   Ctrl+U / Ctrl+K
+//   input.left / right       one grapheme;  word_left / word_right  Ctrl+ or Alt+arrow;
+//   input.select_*           the Shift+ forms extend the selection instead
+//   input.line_start / _end  Home / End: on an EMPTY buffer there is no caret to move
+//                            and both are Ignored (roll scrolls the transcript with them)
+//   input.up / down          one row, keeping a goal column, when the caret is not on
+//                            the first / last row; there, the previous / next history
+//                            entry.  select_up / _down (Shift) extend by a row, never browse
+//   input.select_all         Ctrl+A
+//   input.clear_selection    Escape (Ignored when there is none)
+//   input.copy               Alt+C through on_copy (Ignored when none)
+//   input.eof                Ctrl+D: Eof on an empty buffer, else delete forward (readline)
+//   bracketed paste          inserted literally after the same sanitising as typed
+//                            text: CR LF and CR become LF, other controls are dropped
+//   mouse (button 1)         a press places the caret (Shift+press extends the
+//                            selection); a drag selects, including the grapheme under
+//                            the pointer at BOTH ends — the transcript's convention, so
+//                            a drag from the h to the o of "hello" selects "hello" in
+//                            either direction; double-click a word, triple-click a
+//                            logical line, and a drag after either grows by whole
+//                            units; a release where the pointer already is changes
+//                            nothing; release fires on_copy (copy-on-select); a click
+//                            that did not drag selects nothing. The wheel and the
+//                            other buttons are Ignored
 // Ctrl+C is not here: what it means (clear the line, cancel a turn, exit) is the
-// host's. So is Ctrl+L.
+// host's. So is Ctrl+L. Tab is the WindowStack's (stack.focus_next).
 //
 // The goal column and the scroll row are memos of the caret's recent history, never
 // inputs to what the text is; everything drawn is a function of (text, caret,
@@ -82,6 +81,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
@@ -158,7 +158,8 @@ class Input {
   bool history_next();
 
   // ---- events (already routed to this window by the host) ----
-  InputAction handle(const Event& e, std::uint64_t now_ms = 0);
+  InputAction handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms = 0);
+  InputAction handle(const Event& e, std::uint64_t now_ms = 0) { return handle(e, default_bindings(), now_ms); }
 
   // ---- layout + drawing ----
   void set_options(const InputOptions& o);
@@ -201,7 +202,7 @@ class Input {
   void place(std::size_t pos, bool extend);
   void erase_range(std::size_t b, std::size_t e);
   void unit_around(std::size_t off, bool word, std::size_t& b, std::size_t& e) const;
-  InputAction handle_key(const KeyEvent& k);
+  InputAction handle_key(const KeyEvent& k, const Bindings& b);
   InputAction handle_mouse(const MouseEvent& m, std::uint64_t now_ms);
   void drag_to(int x, int y);
 

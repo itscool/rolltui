@@ -537,7 +537,7 @@ void Transcript::end_drag() {
   copy_selection();
 }
 
-bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_ms) {
+bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings) {
   if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
     using K = MouseEvent::Kind;
     switch (m->kind) {
@@ -564,15 +564,16 @@ bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_m
     return false;
   }
   if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    if (k->key == Key::PageUp) { scroll_page(-1); return true; }
-    if (k->key == Key::PageDown) { scroll_page(1); return true; }
-    if (k->key == Key::Home) { scroll_to_top(); return true; }
-    if (k->key == Key::End) { scroll_to_bottom(); return true; }
-    if (k->key == Key::Up && !k->ctrl && !k->alt) { scroll_by(-1); return true; }
-    if (k->key == Key::Down && !k->ctrl && !k->alt) { scroll_by(1); return true; }
-    if (k->key == Key::Char && k->ctrl && !k->alt && k->ch == 'o') return toggle_fold_nearest_top(doc);
-    if (k->key == Key::Char && k->alt && !k->ctrl && k->ch == 'c') return copy_selection();
-    if (k->key == Key::Escape && !k->ctrl && !k->alt && sel_.active) { clear_selection(); return true; }
+    const std::string_view action = bindings.action_for(*k, "transcript");
+    if (action == "transcript.page_up") { scroll_page(-1); return true; }
+    if (action == "transcript.page_down") { scroll_page(1); return true; }
+    if (action == "transcript.top") { scroll_to_top(); return true; }
+    if (action == "transcript.bottom") { scroll_to_bottom(); return true; }
+    if (action == "transcript.line_up") { scroll_by(-1); return true; }
+    if (action == "transcript.line_down") { scroll_by(1); return true; }
+    if (action == "transcript.fold") return toggle_fold_nearest_top(doc);
+    if (action == "transcript.copy") return copy_selection();
+    if (action == "transcript.clear_selection" && sel_.active) { clear_selection(); return true; }
   }
   return false;
 }

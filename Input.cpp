@@ -448,91 +448,76 @@ void Input::unit_around(std::size_t off, bool word, std::size_t& b, std::size_t&
   e = line_end(off);
 }
 
-InputAction Input::handle(const Event& e, std::uint64_t now_ms) {
+InputAction Input::handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms) {
   if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
     insert(p->text);
     return InputAction::Handled;
   }
   if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) return handle_mouse(*m, now_ms);
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) return handle_key(*k);
+  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) return handle_key(*k, bindings);
   return InputAction::Ignored;
 }
 
-InputAction Input::handle_key(const KeyEvent& k) {
+InputAction Input::handle_key(const KeyEvent& k, const Bindings& b) {
   using A = InputAction;
-  const bool sh = k.shift, word = k.ctrl || k.alt;
-  switch (k.key) {
-    case Key::Enter:
-      if (k.alt && !k.ctrl) { insert("\n"); return A::Handled; }
-      return A::Submit;
-    case Key::Backspace:
-      if (word) kill_word_backward(); else erase_backward();
-      return A::Handled;
-    case Key::Delete:
-      if (word) kill_word_forward(); else erase_forward();
-      return A::Handled;
-    case Key::Left:
-      if (word) move_word_left(sh); else move_left(sh);
-      return A::Handled;
-    case Key::Right:
-      if (word) move_word_right(sh); else move_right(sh);
-      return A::Handled;
-    case Key::Home:
-      if (k.ctrl || k.alt || text_.empty()) return A::Ignored;
-      move_line_start(sh);
-      return A::Handled;
-    case Key::End:
-      if (k.ctrl || k.alt || text_.empty()) return A::Ignored;
-      move_line_end(sh);
-      return A::Handled;
-    case Key::Up:
-      if (k.ctrl || k.alt) return A::Ignored;
-      if (sh) { move_up(true); return A::Handled; }
-      if (!move_up(false)) history_prev();
-      return A::Handled;
-    case Key::Down:
-      if (k.ctrl || k.alt) return A::Ignored;
-      if (sh) { move_down(true); return A::Handled; }
-      if (!move_down(false)) history_next();
-      return A::Handled;
-    case Key::Escape:
-      if (k.ctrl || k.alt || sel_.empty()) return A::Ignored;
-      clear_selection();
-      return A::Handled;
-    case Key::Char:
-      break;
-    default:
-      return A::Ignored;
+  // Text is text: a printable character without Ctrl or Alt inserts and is never an action.
+  if (k.key == Key::Char && !k.ctrl && !k.alt) {
+    if (k.ch < 0x20 || k.ch == 0x7F) return A::Ignored;
+    std::string s;
+    unicode::append_utf8(s, k.ch);
+    insert(s);
+    return A::Handled;
   }
-  if (k.ctrl && !k.alt) {
-    switch (k.ch) {
-      case 'a': select_all(); return A::Handled;
-      case 'u': kill_to_line_start(); return A::Handled;
-      case 'k': kill_to_line_end(); return A::Handled;
-      case 'w': kill_word_backward(); return A::Handled;
-      case 'd':
-        if (text_.empty()) return A::Eof;
-        erase_forward();
-        return A::Handled;
-      default: return A::Ignored;
-    }
+  const std::string_view action = b.action_for(k, "input");
+  if (action.empty()) return A::Ignored;
+  // The table, once: an action name to what it does.
+  enum class Cmd { Submit, Newline, Backspace, Delete, KillWordBack, KillWordFwd, KillLineStart, KillLineEnd, Left, Right, WordLeft, WordRight,
+                   LineStart, LineEnd, Up, Down, SelLeft, SelRight, SelWordLeft, SelWordRight, SelLineStart, SelLineEnd, SelUp, SelDown,
+                   SelectAll, ClearSel, Copy, Eof };
+  static const std::pair<std::string_view, Cmd> cmds[] = {
+      {"input.submit", Cmd::Submit}, {"input.newline", Cmd::Newline}, {"input.backspace", Cmd::Backspace}, {"input.delete", Cmd::Delete},
+      {"input.kill_word_backward", Cmd::KillWordBack}, {"input.kill_word_forward", Cmd::KillWordFwd}, {"input.kill_to_line_start", Cmd::KillLineStart},
+      {"input.kill_to_line_end", Cmd::KillLineEnd}, {"input.left", Cmd::Left}, {"input.right", Cmd::Right}, {"input.word_left", Cmd::WordLeft},
+      {"input.word_right", Cmd::WordRight}, {"input.line_start", Cmd::LineStart}, {"input.line_end", Cmd::LineEnd}, {"input.up", Cmd::Up},
+      {"input.down", Cmd::Down}, {"input.select_left", Cmd::SelLeft}, {"input.select_right", Cmd::SelRight}, {"input.select_word_left", Cmd::SelWordLeft},
+      {"input.select_word_right", Cmd::SelWordRight}, {"input.select_line_start", Cmd::SelLineStart}, {"input.select_line_end", Cmd::SelLineEnd},
+      {"input.select_up", Cmd::SelUp}, {"input.select_down", Cmd::SelDown}, {"input.select_all", Cmd::SelectAll}, {"input.clear_selection", Cmd::ClearSel},
+      {"input.copy", Cmd::Copy}, {"input.eof", Cmd::Eof}};
+  std::optional<Cmd> cmd;
+  for (const auto& [name, c] : cmds)
+    if (name == action) { cmd = c; break; }
+  if (!cmd) return A::Ignored;
+  switch (*cmd) {
+    case Cmd::Submit: return A::Submit;
+    case Cmd::Newline: insert("\n"); return A::Handled;
+    case Cmd::Backspace: erase_backward(); return A::Handled;
+    case Cmd::Delete: erase_forward(); return A::Handled;
+    case Cmd::KillWordBack: kill_word_backward(); return A::Handled;
+    case Cmd::KillWordFwd: kill_word_forward(); return A::Handled;
+    case Cmd::KillLineStart: kill_to_line_start(); return A::Handled;
+    case Cmd::KillLineEnd: kill_to_line_end(); return A::Handled;
+    case Cmd::Left: move_left(false); return A::Handled;
+    case Cmd::Right: move_right(false); return A::Handled;
+    case Cmd::WordLeft: move_word_left(false); return A::Handled;
+    case Cmd::WordRight: move_word_right(false); return A::Handled;
+    case Cmd::SelLeft: move_left(true); return A::Handled;
+    case Cmd::SelRight: move_right(true); return A::Handled;
+    case Cmd::SelWordLeft: move_word_left(true); return A::Handled;
+    case Cmd::SelWordRight: move_word_right(true); return A::Handled;
+    case Cmd::LineStart: if (text_.empty()) return A::Ignored; move_line_start(false); return A::Handled;
+    case Cmd::LineEnd: if (text_.empty()) return A::Ignored; move_line_end(false); return A::Handled;
+    case Cmd::SelLineStart: if (text_.empty()) return A::Ignored; move_line_start(true); return A::Handled;
+    case Cmd::SelLineEnd: if (text_.empty()) return A::Ignored; move_line_end(true); return A::Handled;
+    case Cmd::Up: if (!move_up(false)) history_prev(); return A::Handled;
+    case Cmd::Down: if (!move_down(false)) history_next(); return A::Handled;
+    case Cmd::SelUp: move_up(true); return A::Handled;
+    case Cmd::SelDown: move_down(true); return A::Handled;
+    case Cmd::SelectAll: select_all(); return A::Handled;
+    case Cmd::ClearSel: if (sel_.empty()) return A::Ignored; clear_selection(); return A::Handled;
+    case Cmd::Copy: if (sel_.empty()) return A::Ignored; if (on_copy) on_copy(selected_text()); return A::Handled;
+    case Cmd::Eof: if (text_.empty()) return A::Eof; erase_forward(); return A::Handled;
   }
-  if (k.alt && !k.ctrl) {
-    switch (k.ch) {
-      case 'c':
-        if (sel_.empty()) return A::Ignored;
-        if (on_copy) on_copy(selected_text());
-        return A::Handled;
-      case 'd': kill_word_forward(); return A::Handled;
-      default: return A::Ignored;
-    }
-  }
-  if (k.ctrl || k.alt) return A::Ignored;
-  if (k.ch < 0x20 || k.ch == 0x7F) return A::Ignored;
-  std::string s;
-  unicode::append_utf8(s, k.ch);
-  insert(s);
-  return A::Handled;
+  return A::Ignored;
 }
 
 InputAction Input::handle_mouse(const MouseEvent& m, std::uint64_t now_ms) {

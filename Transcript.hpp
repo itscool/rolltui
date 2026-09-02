@@ -28,9 +28,14 @@
 //   the bottom-right corner counts the lines below the viewport. Scrolling to the
 //   bottom (End, PageDown, wheel, drag) re-engages follow; any upward scroll clears it.
 //
+//   Keys are DATA (milestone 17): handle() looks a key up in the Bindings' transcript
+//   scope — page_up/page_down, top/bottom, line_up/line_down, fold, copy,
+//   clear_selection; the shipped default is PgUp/PgDn, Home/End (and Ctrl+Home/End),
+//   Up/Down, Ctrl-O, Alt-C, Escape.
+//
 //   Folding — a foldable entry (Document.hpp) draws a summary line, "▸ summary (N
 //   lines)" folded or "▾ summary" plus its body unfolded. A click on the summary line
-//   toggles it; Ctrl-O toggles the first visible fold from the top of the viewport.
+//   toggles it; transcript.fold (Ctrl-O) toggles the first visible fold from the top.
 //   The toggle is kept by entry id, over the entry's own initial state. The summary
 //   line is one line: it is clipped at the width, never wrapped (a summary is a
 //   label, and a label that wraps stops being one).
@@ -66,6 +71,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Document.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Markdown.hpp"
@@ -138,7 +144,8 @@ class Transcript {
   // ---- events (already routed to this window by the host) ----
   // `now_ms` is any monotonic millisecond clock, used only to pair clicks. Returns
   // true when the event was consumed.
-  bool handle(const Event& e, const Document& doc, std::uint64_t now_ms);
+  bool handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings);
+  bool handle(const Event& e, const Document& doc, std::uint64_t now_ms) { return handle(e, doc, now_ms, default_bindings()); }
   // True while a drag holds the pointer outside the area: call tick() at a steady
   // rate (≈50 ms) and re-layout/draw after each.
   bool wants_tick() const { return drag_.active && drag_.outside; }

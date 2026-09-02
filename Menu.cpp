@@ -394,8 +394,8 @@ MenuEvent Menu::act(std::size_t vis_index) {
   return {};
 }
 
-MenuEvent Menu::handle(const Event& e) {
-  if (const auto* k = std::get_if<KeyEvent>(&e)) return handle_key(*k);
+MenuEvent Menu::handle(const Event& e, const Bindings& b) {
+  if (const auto* k = std::get_if<KeyEvent>(&e)) return handle_key(*k, b);
   if (const auto* m = std::get_if<MouseEvent>(&e)) return handle_mouse(*m);
   if (const auto* p = std::get_if<PasteEvent>(&e)) {
     // Pasted text goes where typed text would: the edit, else the filter.
@@ -404,40 +404,31 @@ MenuEvent Menu::handle(const Event& e) {
         KeyEvent ke;
         ke.key = Key::Char;
         ke.ch = static_cast<char32_t>(static_cast<unsigned char>(c));
-        handle_key(ke);
+        handle_key(ke, b);
       }
     return {};
   }
   return {};
 }
 
-MenuEvent Menu::handle_key(const KeyEvent& k) {
+MenuEvent Menu::handle_key(const KeyEvent& k, const Bindings& b) {
   using K = MenuEvent::Kind;
+  const bool text = k.key == Key::Char && !k.ctrl && !k.alt && k.ch >= 0x20 && k.ch != 0x7F;
+  const std::string_view action = text ? std::string_view() : b.action_for(k, "menu");
   if (editing_) {
     MenuItem* it = item_at_mut(sel_);
     if (!it) { editing_ = false; return {}; }
-    switch (k.key) {
-      case Key::Enter: {
-        editing_ = false;
-        return {K::Input, it->id, it->value, false};
-      }
-      case Key::Escape:
-        it->value = edit_backup_;
-        editing_ = false;
-        return {};
-      case Key::Backspace: {
-        if (it->value.empty()) return {};
-        std::vector<unicode::Grapheme> g = unicode::graphemes(it->value);
-        it->value.erase(g.back().offset);
-        return {};
-      }
-      case Key::Char:
-        if (k.ctrl && !k.alt && k.ch == 'u') { it->value.clear(); return {}; }  // kill the whole value (readline's Ctrl-U)
-        if (!k.ctrl && !k.alt && k.ch >= 0x20 && k.ch != 0x7F) unicode::append_utf8(it->value, k.ch);
-        return {};
-      default:
-        return {};
+    if (text) { unicode::append_utf8(it->value, k.ch); return {}; }
+    if (action == "menu.activate") { editing_ = false; return {K::Input, it->id, it->value, false}; }
+    if (action == "menu.back") { it->value = edit_backup_; editing_ = false; return {}; }
+    if (action == "menu.erase") {
+      if (it->value.empty()) return {};
+      std::vector<unicode::Grapheme> g = unicode::graphemes(it->value);
+      it->value.erase(g.back().offset);
+      return {};
     }
+    if (action == "menu.clear_value") { it->value.clear(); return {}; }
+    return {};
   }
   const std::vector<std::size_t> vis = visible();
   const std::size_t n = vis.size();
@@ -446,45 +437,44 @@ MenuEvent Menu::handle_key(const KeyEvent& k) {
     sel_ = std::min(i, n - 1);
     ensure_visible();
   };
-  switch (k.key) {
-    case Key::Up: move_to(sel_ == 0 ? 0 : sel_ - 1); return {};
-    case Key::Down: move_to(sel_ + 1); return {};
-    case Key::PageUp: { const std::size_t step = static_cast<std::size_t>(std::max(item_rows(), 1)); move_to(sel_ < step ? 0 : sel_ - step); return {}; }
-    case Key::PageDown: move_to(sel_ + static_cast<std::size_t>(std::max(item_rows(), 1))); return {};
-    case Key::Home: move_to(0); return {};
-    case Key::End: move_to(n == 0 ? 0 : n - 1); return {};
-    case Key::Enter: return act(sel_);
-    case Key::Right: {
-      const MenuItem* it = item_at(sel_);
-      if (it && it->enabled && !palette_ && (it->kind == MenuItem::Kind::Submenu || it->kind == MenuItem::Kind::Choice)) descend(vis[sel_]);
-      return {};
-    }
-    case Key::Left:
-      if (!filter_.empty()) { filter_.clear(); clamp_selection(); return {}; }
-      ascend();
-      return {};
-    case Key::Escape:
-      if (!filter_.empty()) { filter_.clear(); clamp_selection(); return {}; }
-      if (ascend()) return {};
-      return {K::Closed, {}, {}, false};
-    case Key::Backspace:
-      if (!filter_.empty()) {
-        std::vector<unicode::Grapheme> g = unicode::graphemes(filter_);
-        filter_.erase(g.back().offset);
-        clamp_selection();
-      }
-      return {};
-    case Key::Char:
-      if (!k.ctrl && !k.alt && k.ch >= 0x20 && k.ch != 0x7F) {
-        unicode::append_utf8(filter_, k.ch);
-        sel_ = 0;
-        top_ = 0;
-        ensure_visible();
-      }
-      return {};
-    default:
-      return {};
+  if (text) {
+    unicode::append_utf8(filter_, k.ch);
+    sel_ = 0;
+    top_ = 0;
+    ensure_visible();
+    return {};
   }
+  if (action == "menu.up") { move_to(sel_ == 0 ? 0 : sel_ - 1); return {}; }
+  if (action == "menu.down") { move_to(sel_ + 1); return {}; }
+  if (action == "menu.page_up") { const std::size_t step = static_cast<std::size_t>(std::max(item_rows(), 1)); move_to(sel_ < step ? 0 : sel_ - step); return {}; }
+  if (action == "menu.page_down") { move_to(sel_ + static_cast<std::size_t>(std::max(item_rows(), 1))); return {}; }
+  if (action == "menu.first") { move_to(0); return {}; }
+  if (action == "menu.last") { move_to(n == 0 ? 0 : n - 1); return {}; }
+  if (action == "menu.activate") return act(sel_);
+  if (action == "menu.descend") {
+    const MenuItem* it = item_at(sel_);
+    if (it && it->enabled && !palette_ && (it->kind == MenuItem::Kind::Submenu || it->kind == MenuItem::Kind::Choice)) descend(vis[sel_]);
+    return {};
+  }
+  if (action == "menu.ascend") {
+    if (!filter_.empty()) { filter_.clear(); clamp_selection(); return {}; }
+    ascend();
+    return {};
+  }
+  if (action == "menu.back") {
+    if (!filter_.empty()) { filter_.clear(); clamp_selection(); return {}; }
+    if (ascend()) return {};
+    return {K::Closed, {}, {}, false};
+  }
+  if (action == "menu.erase") {
+    if (!filter_.empty()) {
+      std::vector<unicode::Grapheme> g = unicode::graphemes(filter_);
+      filter_.erase(g.back().offset);
+      clamp_selection();
+    }
+    return {};
+  }
+  return {};
 }
 
 MenuEvent Menu::handle_mouse(const MouseEvent& m) {

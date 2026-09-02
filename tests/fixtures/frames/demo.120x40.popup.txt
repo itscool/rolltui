@@ -1,27 +1,27 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme   default-dark         │
-│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ layout  default              │
-│ │ Extended_Pictographic, InCB)     │             │                                  │ │ size    120x40               │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ line    75/109               │
-│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ follow  yes                  │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ depth   truecolor            │
-│ │                                  │             │ block tree is the API            │ │ focus   help                 │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │                              │
+│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys    default              │
+│ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout  default              │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size    120x40               │
+│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ line    75/109               │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow  yes                  │
+│ │                                  │             │ block tree is the API            │ │ depth   truecolor            │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │ focus   help                 │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineReader/StatusPane  │ │                              │
 │ │ mouse mode)                      │             │                                  │ │                              │
 │ │ Key + mouse decoding             │ build       │ single header, pure bytes →      │ │                              │
 │ │                                  │             │ Event, table-tested              │ │                              │
 │ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
-│ │ colour downgrade    │ Ctrl-C / Ctrl-Q  quit                                                │                       │
-│ │ Wrap engine         │ Tab / Shift-Tab  cycle focus                                         │                       │
-│ │                     │ Esc  close the top popup                                             │                       │
-│ │ Windows, layers, pla│ F1  toggle this help                                                 │                       │
-│ │ abs/rel per axis), f│ F2  settings menu   Ctrl-P  command palette   F3  cycle themes       │                       │
-│ │                     │ F4  theme editor   F6  layout editor (Enter commits, Esc cancels,    │                       │
-│ │ Menu widget (hierarc│ Ctrl-Z/Y)                                                            │                       │
-│ │ filterable) + list/t│ F5  reload the fixture   Ctrl-L  repaint                             │                       │
-│ │ Layout files (JSON: │ PgUp/PgDn, Ctrl-Home/End, wheel  scroll the transcript               │                       │
-│ │ placements + content│ Up/Down  scroll while the transcript has focus                       │                       │
+│ │ colour downgrade    │ input:                                                               │                       │
+│ │ Wrap engine         │   Enter                   send the line (always Enter)               │                       │
+│ │                     │   Alt-Enter               insert a newline                           │                       │
+│ │ Windows, layers, pla│   Backspace               erase before the caret (or the selection)  │                       │
+│ │ abs/rel per axis), f│   Delete                  erase after the caret (or the selection)   │                       │
+│ │                     │   Ctrl-W, Alt-Backspace   kill the word before the caret             │                       │
+│ │ Menu widget (hierarc│   Alt-D, Ctrl-Delete      kill the word after the caret              │                       │
+│ │ filterable) + list/t│   Ctrl-U                  kill to the start of the line              │                       │
+│ │ Layout files (JSON: │   Ctrl-K                  kill to the end of the line                │                       │
+│ │ placements + content│   Left                    move one grapheme left▼ 57  (Up/Down, Esc) │                       │
 │ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ → styled wrapped lines)          │             │                                  │ │                              │
 │ │ Theme (roles → styles, JSON      │ build       │ single header                    │ │                              │

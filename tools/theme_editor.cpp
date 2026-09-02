@@ -284,16 +284,17 @@ std::string ThemeEditor::status_line() const {
   return s;
 }
 
-ThemeEditor::Outcome ThemeEditor::handle(const Event& e) {
+ThemeEditor::Outcome ThemeEditor::handle(const Event& e, const Bindings& nav) {
   using K = MenuEvent::Kind;
   using O = Outcome::Kind;
-  if (const auto* k = std::get_if<KeyEvent>(&e); k && k->key == Key::Char && k->ctrl && !k->alt) {
+  if (const auto* k = std::get_if<KeyEvent>(&e)) {
     // An undo or redo changes the COMMITTED value: the host writes it to the store.
-    if (k->ch == 'z') { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
-    if (k->ch == 'y') { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
+    const std::string_view ed = nav.action_for(*k, "editor");
+    if (ed == "editor.undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (ed == "editor.redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
   }
   status_.clear();
-  const MenuEvent ev = menu_.handle(e);
+  const MenuEvent ev = menu_.handle(e, nav);
   // ---- committing events ----
   if (ev.kind == K::Choose) {
     if (const std::optional<Field> f = field_of(ev.id)) {
