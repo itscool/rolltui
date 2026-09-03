@@ -142,6 +142,7 @@
 #include "rolltui/Document.hpp"
 #include "rolltui/Input.hpp"
 #include "rolltui/Keys.hpp"
+#include "rolltui/AppProfile.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Menu.hpp"
 #include "rolltui/Presets.hpp"
@@ -278,6 +279,10 @@ struct App {
   Menu& menu() { return windows.menu("main"); }  // menus/main.json (Phase 10 m3)
   int submitted = 0;        // entries the input added to the document
   std::string copied;       // the last copy (the studio has no clipboard)
+  // The TARGET app being authored for (Phase 11 m4), or nullopt: the studio previews as
+  // itself. It is the studio's own state and never the library's — a profile describes an
+  // app, and only a tool that is authoring FOR one has any use for it.
+  std::optional<AppProfile> profile;
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   long last_frame_us = 0;
@@ -618,7 +623,11 @@ struct App {
     std::vector<std::string> names;
     for (const PresetInfo& p : lstore->list()) names.push_back(p.name);  // shipped first, then the user's
     leditor.set_layouts(names);
-    leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
+    // Under a profile the offered contents are the TARGET APP's, which is what turns the
+    // design editor's Source from a guess into a fact (Phase 11 m4). Without one they are
+    // the studio's own, exactly as before.
+    leditor.set_sources(profile ? profile_contents(*profile)
+                                : std::vector<std::string>{"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
     leditor.set_menus(windows.menu_names());
     editor_open = true;
     editor_mode = EditorMode::Layout;
@@ -867,7 +876,16 @@ struct App {
   // binary mounts (Phase 11 m1): they left library_actions(), so the host that mounts a
   // tool is what declares its actions — one authoritative declare() for both, then the
   // tools' own suggested chords into whatever the bindings file left unsaid.
-  void declare_actions() { bindings.declare(effective_layout().actions, mounted_tools()); }
+  // Under a profile, the actions a MENU ITEM may name are the target app's as well as
+  // this layout's — otherwise authoring roll's menu in the studio reports every one of
+  // roll's actions as undeclared, which is finding 2 again in a third place.
+  void declare_actions() {
+    std::vector<ActionDecl> declared = effective_layout().actions;
+    if (profile)
+      for (const ActionDecl& a : profile->actions)
+        if (std::none_of(declared.begin(), declared.end(), [&](const ActionDecl& d) { return d.name == a.name; })) declared.push_back(a);
+    bindings.declare(declared, mounted_tools());
+  }
   // The tools this binary MOUNTS: the three editors, and its own three keys. A host that
   // mounted only the theme editor would list only that one — which is the point of the
   // milestone, and why this list is here rather than in the library.
@@ -1280,6 +1298,7 @@ int usage() {
   std::fprintf(stderr,
                "usage: rolltui-studio --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
                "       rolltui-studio FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
+               "                                [--app PROFILE.json]  preview AS that app: its sources, samples, menus, actions and kinds\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
                "       [--dump-role ROLE] [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
@@ -1313,7 +1332,7 @@ int main(int argc, char** argv) {
   App app;
   app.depth = detect_color_depth(std::getenv("COLORTERM"), std::getenv("TERM"), std::getenv("ROLL_COLOR_DEPTH"));
   std::string frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
-  std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
+  std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR, app_profile_path;
   bool frame_sgr = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -1323,6 +1342,7 @@ int main(int argc, char** argv) {
     else if (a == "--presets") presets_dir = next();
     else if (a == "--shipped") shipped_dir = next();
     else if (a == "--bindings") app.bindings_arg = next();
+    else if (a == "--app") app_profile_path = next();
     else if (a == "--dump-role") dump_role = next();
     else if (a == "--check") check_arg = next();
     else if (a == "--generate") generate_arg = next();
@@ -1384,6 +1404,29 @@ int main(int argc, char** argv) {
   app.bstore = std::make_shared<BindingsPresets>(BindingsPresets::Options{presets_dir, true, shipped_dir + "/bindings"});
   app.persist = frame_spec.empty();
   app.windows.set_dir(presets_dir);  // a layout's `file:` paths are relative to the preset directory
+  // --app: preview AS the target app (Phase 11 m4). Mounted BEFORE the studio binds its
+  // own sources, so a name the profile supplies wins: the point of the flag is that
+  // `rows:status` shows roll's local/cloud/tokens rather than the studio's theme and
+  // size, and `menu:main` resolves to roll's menu rather than the studio's — the two
+  // places finding 2 said the preview was wrong. With no --app the studio previews as
+  // itself, exactly as before.
+  if (!app_profile_path.empty()) {
+    std::string text;
+    if (!preset_files::read_file(app_profile_path, text)) {
+      std::fprintf(stderr, "rolltui: cannot read app profile %s\n", app_profile_path.c_str());
+      return 1;
+    }
+    AppProfileReport prep;
+    std::optional<AppProfile> profile = load_app_profile(text, prep);
+    if (!profile) {
+      std::fprintf(stderr, "rolltui: app profile %s: %s\n", app_profile_path.c_str(), prep.summary().c_str());
+      return 1;
+    }
+    if (!prep.clean()) std::fprintf(stderr, "rolltui: app profile %s loaded with problems: %s\n", app_profile_path.c_str(), prep.summary().c_str());
+    mount_app_profile(app.windows, *profile);
+    app.profile = std::move(profile);
+    std::fprintf(stderr, "rolltui: previewing as '%s'\n", app.profile->app.c_str());
+  }
   {
     const MigrationReport mig = migrate_theme_layout(presets_dir);  // Phase 10 m1, once
     for (const std::string& n : mig.notes) std::fprintf(stderr, "rolltui: %s\n", n.c_str());
