@@ -198,6 +198,10 @@ class Windows {
 
   // ---- what a host binds (by source name; rebinding replaces) ----
   void bind_document(std::string name, const Document* doc);
+  // A document this `Windows` OWNS, built from markdown text — for a tool previewing
+  // someone else's app from a profile's sample (AppProfile.hpp), where there is no live
+  // document to point at and the sample must outlive the call that supplied it.
+  void bind_sample_document(std::string name, std::string markdown);
   void bind_rows(std::string name, RowsFn rows);
   void bind_submit(std::string name, SubmitFn submit);
   // An input's one-line note, drawn beside the prompt when it fits on the first row
@@ -291,6 +295,7 @@ class Windows {
   std::string help_lead_, help_note_;
   std::vector<std::string> help_scopes_;
   std::map<std::string, const Document*> documents_;
+  std::map<std::string, Document> owned_documents_;  // bind_sample_document's
   std::map<std::string, RowsFn> rows_;
   std::map<std::string, SubmitFn> submits_;
   std::map<std::string, TextFn> notes_;

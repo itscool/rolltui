@@ -521,6 +521,15 @@ Windows::Windows() = default;
 Windows::~Windows() = default;
 
 void Windows::bind_document(std::string name, const Document* doc) { documents_[std::move(name)] = doc; }
+
+void Windows::bind_sample_document(std::string name, std::string markdown) {
+  DocEntry e;
+  e.id = "sample";
+  e.text = std::move(markdown);
+  Document& d = owned_documents_[name];
+  d.entries.assign(1, std::move(e));
+  documents_[std::move(name)] = &d;
+}
 void Windows::bind_rows(std::string name, RowsFn rows) { rows_[std::move(name)] = std::move(rows); }
 void Windows::bind_submit(std::string name, SubmitFn submit) { submits_[std::move(name)] = std::move(submit); }
 void Windows::bind_note(std::string name, TextFn note) { notes_[std::move(name)] = std::move(note); }
