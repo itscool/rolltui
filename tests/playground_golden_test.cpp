@@ -685,6 +685,47 @@ int main(int argc, char** argv) {
       check(rc == 0 && help_out.find("Ctrl-G      zoom the transcript") != std::string::npos,
             "…and `help` RENDERS an action that exists only because a layout file declared it, with its chord");
     }
+    // ---- Phase 11 m1: the tool scopes leave library_actions() ------------------------
+    // The milestone's "every studio key still works", through the real binary and with a
+    // preset directory that has no bindings file at all — so the ONLY thing that can be
+    // binding these keys is the tool table this binary mounts. A quit is observable
+    // because a script stops at one: `CtrlQ F1` renders the frame WITHOUT the help popup
+    // that `F1` alone opens, so the assertion fails whether Ctrl-Q stops working OR stops
+    // being a quit.
+    {
+      int rc = 0;
+      const std::string p = scratch + "/p11";
+      const std::string bin = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md'";
+      const std::string base = bin + " --frame 80x24 --theme default-dark --presets '" + p + "'";
+      const std::string help = run(base + " --keys \"F1\"", rc);
+      const std::string quit = run(base + " --keys \"CtrlQ F1\"", rc);
+      const std::string none = run(base, rc);
+      check(help.find("focus:help") != std::string::npos && quit == none && quit != help,
+            "Ctrl-Q quits the studio with nothing but the mounted tool's own table (the one key a person actually presses)");
+      for (const auto& [keys, want] : {std::pair<const char*, const char*>{"F7", "[keys editor]"}, {"F4", "[theme editor]"}, {"F6", "[layout editor]"}})
+        check(run(base + " --keys \"" + keys + "\"", rc).find(want) != std::string::npos,
+              std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
+      check(run(base + " --keys \"F3 F3\"", rc).find("default-light") != std::string::npos,
+            "F3 still cycles the shipped themes (playground.cycle_theme), two presses on from default-dark");
+      // The keys editor lists what the studio declares — and `app`, empty since Phase 10
+      // m4 because the editor was handed the store's undeclared working copy, is in it.
+      const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
+      check(scopes.find("editor") != std::string::npos && scopes.find("playground") != std::string::npos && scopes.find("app") != std::string::npos,
+            "the keys editor lists the app, editor and playground scopes");
+      const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Enter\"", rc);
+      check(app_scope.find("Actions by scope \xE2\x80\xBA app") != std::string::npos && app_scope.find("help  F1, ?") != std::string::npos,
+            "…and the app scope is REBINDABLE at last: the editor now edits the live table, not the store's undeclared copy");
+      // A bindings file written before this phase — every one of the eight rows in it —
+      // loads clean and still drives the studio. Which side of the table the scope sits
+      // on is what decides this: a library scope would have made every row an unknown
+      // action and thrown the user's keys away.
+      const std::string p10 = " --bindings '" + std::string(ROLLTUI_FIXTURE_DIR) + "/bindings/vim-ish.json'";
+      const std::string old_quit = run(base + p10 + " --keys \"CtrlQ F1\"", rc);
+      const std::string old_none = run(base + p10, rc);
+      check(rc == 0 && old_quit == old_none && old_none.find("bindings:") == std::string::npos,
+            "a Phase 10 bindings file binding playground.quit loads with no complaint and its Ctrl-Q still quits");
+      check(run(base + p10 + " --keys \"F7\"", rc).find("[keys editor]") != std::string::npos, "…and its F7 still opens the keys editor");
+    }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +
               std::to_string(row_of(menu_open, "\xE2\x95\xAD menu ")) + ", " + std::to_string(row_of(menu_big, "\xE2\x95\xAD menu ")) + ")");

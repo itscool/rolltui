@@ -18,8 +18,8 @@ using namespace rolltui_test;
 namespace {
 KeyEvent key(Key k, bool ctrl = false, bool alt = false, bool shift = false) { KeyEvent e; e.key = k; e.ctrl = ctrl; e.alt = alt; e.shift = shift; return e; }
 KeyEvent ch(char32_t c, bool ctrl = false, bool alt = false) { KeyEvent e; e.key = Key::Char; e.ch = c; e.ctrl = ctrl; e.alt = alt; return e; }
-void type(KeysEditor& ed, const std::string& s) { for (char c : s) ed.handle(ch(static_cast<char32_t>(c)), default_bindings()); }
-KeysEditor::Outcome go(KeysEditor& ed, const KeyEvent& k) { return ed.handle(k, default_bindings()); }
+void type(KeysEditor& ed, const std::string& s) { for (char c : s) ed.handle(ch(static_cast<char32_t>(c)), editor_bindings()); }
+KeysEditor::Outcome go(KeysEditor& ed, const KeyEvent& k) { return ed.handle(k, editor_bindings()); }
 }  // namespace
 
 int main() {
@@ -108,5 +108,25 @@ int main() {
   BindingsLoadReport rep;
   std::optional<Bindings> back = Bindings::from_json(ed.committed().to_json("edited"), rep);
   check(back && rep.clean() && *back == ed.committed(), "the edited table round-trips through the file format");
+
+  // ---- Phase 11 m1: the tools' own tables ------------------------------------------
+  // tool_actions.hpp is where the library's tools' keys live now that library_actions()
+  // is the widget scopes only. Every row of it has to actually work when mounted, and
+  // nothing in the shipped bindings file can say so any more — so it is said here: mount
+  // both tables into a table that has never heard of them and press every chord.
+  {
+    Bindings b;
+    std::vector<ToolAction> both = editor_actions();
+    for (const ToolAction& t : playground_actions()) both.push_back(t);
+    b.declare({}, both);
+    std::string dead;
+    for (const ToolAction& t : both) {
+      const std::optional<KeyEvent> k = parse_chord(t.chord);
+      if (!k || !b.has(t.name) || b.action_for(*k, scope_of(t.name)) != t.name) dead += " " + std::string(t.name);
+      if (t.description.empty()) dead += " (no description) " + std::string(t.name);
+    }
+    check(dead.empty(), "every action the library's tools state is declared by mounting them, and its suggested chord answers that key —" + (dead.empty() ? " all 8" : dead));
+    check(!b.has("app.help") && b.action_for(key(Key::F1), "app").empty(), "…and mounting a tool declares nothing else: the app scope is a layout's");
+  }
   return report("rolltui keys_editor_test");
 }

@@ -21,19 +21,39 @@
 // reports it. Lookup is by scope: action_for(event, "input") answers with an input.*
 // action or "".
 //
-// WHO OWNS A SCOPE (Phase 10 milestone 4). The library's own are CLOSED and listed in
-// library_actions(): `input`, `transcript`, `menu`, `edit` (a menu field being edited:
-// commit, cancel, step; the caret keys are the input scope's), `stack` — the scopes the
-// library's widgets and window stack look up — plus `editor` and `playground`, the
-// actions of the library's own TOOLS (rolltui/tools/: the three editors and the
-// playground, which ship with the library the way its widgets do). Nothing may add to
-// one of those scopes.
+// WHO OWNS A SCOPE (Phase 10 milestone 4; split one level further in Phase 11 milestone
+// 1). The library's own are CLOSED and listed in library_actions(): `input`,
+// `transcript`, `menu`, `edit` (a menu field being edited: commit, cancel, step; the
+// caret keys are the input scope's) and `stack` — the scopes the library's WIDGETS and
+// window stack look up, and nothing else. Nothing may add to one of those scopes.
 //
-// EVERY OTHER SCOPE IS DECLARED BY A LAYOUT (`app` above all): a layout file lists the
-// actions its screen emits with what they do (Layout.hpp's "actions"), and a host adds
-// them to its table with declare() before looking a key up. That is the split the phase
-// exists for — the layout DECLARES an action, the bindings SUPPLY its keys — and it is
-// why "open the settings menu" is roll's fact rather than the library's.
+// A WIDGET's scope is universal, which is what makes it closed: every host that draws an
+// input has input.*. A TOOL's is not. `editor.*` and `playground.*` belong to the ONE
+// application that mounts the library's editors and its playground, and until Phase 11
+// m1 they sat in this table beside the widget scopes — so EVERY host declared eight
+// actions it could not perform, roll advertised Ctrl-Q / F4 / F6 / F7 and five more that
+// did nothing, and `roll bindings save` wrote another program's keys into the user's own
+// file. The rule that replaces it: A SCOPE IS CLOSED BECAUSE THE LIBRARY DEFINES IT,
+// NEVER BECAUSE THE LIBRARY HAPPENS TO SHIP THE TOOL.
+//
+// EVERY OTHER SCOPE IS DECLARED BY WHOEVER SUPPLIES IT. A layout file lists the actions
+// its screen emits with what they do (`app` above all — Layout.hpp's "actions"); a host
+// that MOUNTS a tool declares that tool's (ToolAction below, and the tables in
+// rolltui/tools/tool_actions.hpp). Both reach a table through declare(), which is
+// AUTHORITATIVE over every non-library scope — so a host declares its layout's actions
+// and its mounted tools' in ONE call, or the second call undeclares the first's. A host
+// that mounts no tool declares no tool action and so advertises none: that is the whole
+// of the milestone.
+//
+// A TOOL ALSO BRINGS THE CHORDS IT SUGGESTS; A LAYOUT NEVER DOES. Stated here because it
+// reads as an inconsistency and is not. A layout is a FILE, and the bindings file beside
+// it is exactly where its keys belong — the layout DECLARES an action, the bindings
+// SUPPLY its keys, which is why m6 deleted `"shortcut": "F3"` from a layout file as a
+// lie. A tool is CODE a host mounts, and no file can speak for it: the shipped bindings
+// file belongs to every host, so a tool row in it is a key that every host NOT mounting
+// that tool advertises and cannot press — the defect above, in file form. So the tool
+// carries its own default chord, suggest() installs it into a gap, and a bindings file
+// always wins (see suggest()).
 //
 // A CHORD FOR AN UNDECLARED ACTION IS KEPT AND DOES NOTHING. A bindings file is global
 // and the user's; the actions are the screen's. So a file written while one layout was
@@ -79,9 +99,18 @@ struct ActionDecl {
   std::string description;  // "open help"
   bool operator==(const ActionDecl&) const = default;
 };
-// Every action the library's own widgets, window stack and tools act on, with what it
-// does — the closed set (see WHO OWNS A SCOPE above). Everything else reaches a table
-// through Bindings::declare().
+// One action of a TOOL a host MOUNTS — the library's own three editors and its
+// playground (rolltui/tools/tool_actions.hpp), or a host's own — with the chord the tool
+// suggests for it. A tool states its keys here because no bindings file can: see A TOOL
+// ALSO BRINGS THE CHORDS IT SUGGESTS above.
+struct ToolAction {
+  std::string_view name;         // "playground.quit"
+  std::string_view description;  // "quit"
+  std::string_view chord;        // "ctrl+q" — a suggestion, never an override
+};
+// Every action the library's own WIDGETS and window stack act on, with what it does —
+// the closed set (see WHO OWNS A SCOPE above). A tool's actions are NOT here, and
+// neither is `app.*`: everything else reaches a table through Bindings::declare().
 const std::vector<ActionInfo>& library_actions();
 std::string_view scope_of(std::string_view action);  // "input" of "input.submit"
 // Whether `scope` is one of the library's closed scopes. A layout that declares into one
@@ -122,16 +151,29 @@ class Bindings {
   // a key. Named for a host that wants to say so; not a problem by itself.
   std::vector<std::string> undeclared() const;
 
-  // ---- declarations (a layout's; Layout.hpp) ----
-  // The non-library actions this table knows become EXACTLY `declared`, with their
-  // descriptions: what is new is added, what the previous layout declared and this one
-  // does not is undeclared again (its chords are kept — see the kept-and-inert rule
-  // above — but nothing can emit it). Authoritative rather than additive because the
-  // layout is what says which actions a screen has; merely adding leaves the last
-  // screen's keys live under the next one. The library's own scopes are never touched.
-  // Idempotent and cheap, so a host may call it every frame; call it after replacing the
-  // table from a preset store and after the layout changes.
-  void declare(const std::vector<ActionDecl>& declared);
+  // ---- what THIS SCREEN can do: its layout's actions and its mounted tools' ----
+  // The non-library actions this table knows become EXACTLY `declared` (the layout's)
+  // plus every action of `tools` (the ones this host mounts), with their descriptions:
+  // what is new is added, what the previous screen declared and this one does not is
+  // undeclared again (its chords are kept — see the kept-and-inert rule above — but
+  // nothing can emit it). Authoritative rather than additive because the layout is what
+  // says which actions a screen has; merely adding leaves the last screen's keys live
+  // under the next one. The library's own scopes are never touched. Idempotent and cheap,
+  // so a host may call it every frame; call it after replacing the table from a preset
+  // store and after the layout changes.
+  //
+  // BOTH IN ONE CALL, and the tools in this one rather than a second: declare() is
+  // authoritative, so a separate call would undeclare whatever the first declared. A
+  // tool's SUGGESTED CHORD is installed here too, for the same reason — the two cannot be
+  // ordered wrongly if there is only one order. A suggestion fills a GAP and never
+  // overrides: it is taken only when this table has no row for the action at all, so a
+  // bindings file's row wins, EMPTY INCLUDED (an empty row is a file, or a user in the
+  // keys editor, saying "unbound"; re-suggesting over it would bring a cleared key back
+  // on the next frame). It is also declined when its chord already serves another action
+  // of the same scope, or does not parse — the action is then declared UNBOUND, visible
+  // as "(unbound)", rather than quietly sharing a chord that lookup would resolve by
+  // table order.
+  void declare(const std::vector<ActionDecl>& declared, const std::vector<ToolAction>& tools = {});
 
   // ---- edits (an editor's; the loader uses them too) ----
   void add_action(std::string_view action, std::string_view description);  // a host's own; no-op when known
@@ -160,6 +202,7 @@ class Bindings {
   std::vector<std::string> descriptions_;
   std::vector<std::pair<std::string, std::vector<KeyEvent>>> table_;  // action → chords, table order
   std::vector<KeyEvent>& chords_mut(std::string_view action);
+  void suggest(const std::vector<ToolAction>& tools);  // declare()'s gap-filling half
 };
 
 // The shipped default (rolltui/presets/bindings/default.json), parsed once, with the

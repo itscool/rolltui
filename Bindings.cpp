@@ -74,20 +74,15 @@ const std::vector<ActionInfo>& library_actions() {
       {"stack.close_popup", "close the topmost popup"},
       {"stack.focus_next", "move focus to the next window"},
       {"stack.focus_prev", "move focus to the previous window"},
-      // The library's own tools (rolltui/tools/), which ship with it: the three editors
-      // and the playground. `app.*` is deliberately NOT here — it is the APPLICATION's,
-      // and every application is different, so a layout file declares it (milestone 4).
-      {"editor.undo", "undo the last committed change"},
-      {"editor.redo", "redo"},
-      {"editor.theme", "open the theme editor"},
-      {"editor.layout", "open the layout editor"},
-      {"editor.keys", "open the keys editor"},
-      {"playground.cycle_theme", "cycle the shipped theme presets"},
-      {"playground.reload", "reload the fixture"},
-      {"playground.quit", "quit"},
+      // Nothing follows the WIDGET scopes. `app.*` left this table in Phase 10 m4 (it is
+      // the APPLICATION's, and a layout file declares it); `editor.*` and `playground.*`
+      // followed it in Phase 11 m1 (they are the library's own TOOLS', and whoever mounts
+      // a tool declares them — rolltui/tools/tool_actions.hpp). Adding a scope here means
+      // claiming EVERY host performs it.
   };
   return t;
 }
+
 
 std::string_view scope_of(std::string_view action) {
   const std::size_t dot = action.find('.');
@@ -228,7 +223,8 @@ void Bindings::add_action(std::string_view action, std::string_view description)
 }
 
 // AUTHORITATIVE over every non-library scope, not merely additive (Phase 10 m6). The
-// actions a screen emits are exactly what its layout declares, so a name the previous
+// actions a screen emits are exactly what its layout declares plus what its host's
+// mounted TOOLS bring (Phase 11 m1), so a name the previous
 // layout declared and this one does not is UNDECLARED again: its chord row survives
 // untouched (a bindings file is global and the user's — Bindings.hpp's kept-and-inert
 // rule), but action_for() stops answering with it and help stops listing it. Merely
@@ -236,13 +232,36 @@ void Bindings::add_action(std::string_view action, std::string_view description)
 // because of a layout you are no longer running, which is the implicit resolution this
 // phase exists to remove. Clearing and re-adding also lets a hot-reloaded file change
 // a description. The library's own scopes are closed and are never touched.
-void Bindings::declare(const std::vector<ActionDecl>& declared) {
+void Bindings::declare(const std::vector<ActionDecl>& declared, const std::vector<ToolAction>& tools) {
+  // The suggestions FIRST, and this order is the whole reason the two are one call: a
+  // declaration creates an empty row for its action (add_action), so a suggestion made
+  // afterwards would see that row and decline every time — a tool whose keys are all
+  // silently unbound, which is exactly what the first cut of this did.
+  suggest(tools);
   for (std::size_t i = actions_.size(); i-- > 0;)
     if (!library_scope(scope_of(actions_[i]))) {
       actions_.erase(actions_.begin() + static_cast<std::ptrdiff_t>(i));
       descriptions_.erase(descriptions_.begin() + static_cast<std::ptrdiff_t>(i));
     }
   for (const ActionDecl& d : declared) add_action(d.name, d.description);
+  for (const ToolAction& t : tools) add_action(t.name, t.description);
+}
+
+// A mounted tool's own defaults, filling GAPS only — see declare() in the header for the
+// three ways a suggestion is declined, all of which leave the action present and unbound
+// rather than absent or quietly sharing another action's chord.
+void Bindings::suggest(const std::vector<ToolAction>& tools) {
+  for (const ToolAction& t : tools) {
+    bool row = false;
+    for (const auto& [a, c] : table_) row |= a == t.name;
+    if (row) continue;
+    const std::optional<KeyEvent> k = parse_chord(t.chord);
+    bool taken = false;
+    if (k)
+      for (const auto& [a, chords] : table_)
+        if (scope_of(a) == scope_of(t.name) && std::find(chords.begin(), chords.end(), *k) != chords.end()) taken = true;
+    table_.emplace_back(std::string(t.name), k && !taken ? std::vector<KeyEvent>{*k} : std::vector<KeyEvent>{});
+  }
 }
 
 std::vector<std::string> Bindings::undeclared() const {
@@ -442,9 +461,18 @@ const Bindings& default_bindings() {
     // keys" — and a chord in the file for an app action the layout does not declare is
     // a build mistake, not a user's, so say so and stop rather than run half of one.
     // (Read straight out of the layout's own file; see shipped_default_actions.)
+    //
+    // Phase 11 m1 gave this abort a second job, which is why it is worth more than the
+    // three lines it costs: the shipped file belongs to EVERY host, so it may bind the
+    // library's widgets and the shipped screen's own actions and NOTHING ELSE. A row
+    // for `playground.quit` here would be a key every host that never mounts the
+    // playground advertises and cannot press — the defect m1 removed, re-created in
+    // file form. A mounted tool's chords come from the tool (Bindings::suggest), so a
+    // tool row in this file now stops the build instead of shipping.
     d->declare(shipped_default_actions());
     if (const std::vector<std::string> dead = d->undeclared(); !dead.empty()) {
-      std::fprintf(stderr, "rolltui: the shipped default bindings bind '%s', which no shipped layout declares\n", dead.front().c_str());
+      std::fprintf(stderr, "rolltui: the shipped default bindings bind '%s', which no shipped layout declares (a mounted tool's chords belong to the tool)\n",
+                   dead.front().c_str());
       std::abort();
     }
     return *d;

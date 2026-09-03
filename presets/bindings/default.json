@@ -60,14 +60,6 @@
     "app.menu": ["f2"],
     "app.details": ["f3"],
     "app.palette": ["ctrl+p"],
-    "app.repaint": ["ctrl+l"],
-    "editor.undo": ["ctrl+z"],
-    "editor.redo": ["ctrl+y"],
-    "editor.theme": ["f4"],
-    "editor.layout": ["f6"],
-    "editor.keys": ["f7"],
-    "playground.cycle_theme": ["f3"],
-    "playground.reload": ["f5"],
-    "playground.quit": ["ctrl+q"]
+    "app.repaint": ["ctrl+l"]
   }
 }

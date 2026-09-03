@@ -88,8 +88,10 @@
 // choices whose options are runtime facts (the theme and layout presets it can see) and
 // acts on the ids; a user may edit or shadow the file with no rebuild.
 //
-// KEYS ARE DATA (milestone 17): every key below is the shipped default of an action in
-// rolltui/presets/bindings/default.json — the playground looks its own keys up in the
+// KEYS ARE DATA (milestone 17): every key below is the default of an action — the app.*
+// ones from rolltui/presets/bindings/default.json, and since Phase 11 m1 the editor.* and
+// playground.* ones from the tools this binary MOUNTS (tools/tool_actions.hpp), because a
+// tool's keys are not every host's. The playground looks its own keys up in the
 // Bindings working copy (app.*, editor.*, playground.* scopes), hands the same table to
 // every widget, and renders the help popup and the status-bar hints from it, so a
 // rebinding shows everywhere at once. F7 opens the KEYS EDITOR (tools/keys_editor.hpp:
@@ -155,6 +157,7 @@
 #include "keys_editor.hpp"
 #include "layout_editor.hpp"
 #include "theme_editor.hpp"
+#include "tool_actions.hpp"
 
 using namespace rolltui;
 using rolltui::tools::KeysEditor;
@@ -497,7 +500,13 @@ struct App {
   void toggle_keys_editor() {
     if (editor_mode == EditorMode::Keys) { close_editor(); return; }
     close_editor();
-    keditor.load(bstore->working());
+    // The LIVE table, not the store's working copy: an action is editable here only if
+    // something declared it, and the store's copy is raw rows with no declarations at
+    // all. Before Phase 11 m1 that left the editor's `app` scope empty — five keys a
+    // layout declares and nobody could rebind — and would have taken `editor` and
+    // `playground` with it the moment they stopped being library actions. What this
+    // hands over is what the studio is actually running.
+    keditor.load(bindings);
     std::vector<std::string> names, shipped;
     for (const PresetInfo& p : bstore->list()) names.push_back(p.name);
     for (std::string_view n : BindingsPresets::shipped_names()) shipped.push_back(std::string(n));
@@ -816,9 +825,22 @@ struct App {
     declare_actions();
   }
   // The `app.*` actions are the LAYOUT's (Phase 10 m4): whatever the loaded file
-  // declares, however it was loaded. `editor.*` and `playground.*` are the library's own
-  // tools' and are in library_actions() — this binary IS one of those tools.
-  void declare_actions() { bindings.declare(effective_layout().actions); }
+  // declares, however it was loaded. `editor.*` and `playground.*` are the TOOLS' this
+  // binary mounts (Phase 11 m1): they left library_actions(), so the host that mounts a
+  // tool is what declares its actions — one authoritative declare() for both, then the
+  // tools' own suggested chords into whatever the bindings file left unsaid.
+  void declare_actions() { bindings.declare(effective_layout().actions, mounted_tools()); }
+  // The tools this binary MOUNTS: the three editors, and its own three keys. A host that
+  // mounted only the theme editor would list only that one — which is the point of the
+  // milestone, and why this list is here rather than in the library.
+  static const std::vector<ToolAction>& mounted_tools() {
+    static const std::vector<ToolAction> all = [] {
+      std::vector<ToolAction> out = tools::editor_actions();
+      for (const ToolAction& a : tools::playground_actions()) out.push_back(a);
+      return out;
+    }();
+    return all;
+  }
   const Layout& effective_layout() const { return stacked_fallback ? *builtin_layout("stacked") : layout; }
   Rect layout_area() const { return {0, 0, w, h > 1 ? h - 1 : h}; }
   void resize(int nw, int nh) {
@@ -1216,11 +1238,15 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   return out;
 }
 
+// handle() returns false only to QUIT (Ctrl-C, or the playground.quit action), so a
+// script stops there exactly as the interactive loop does. That is also the only way a
+// `--frame` run can show whether a quit key landed: the keys after it do not happen, so
+// `--keys "CtrlQ F1"` renders the frame WITHOUT the help popup that `--keys "F1"` opens.
 void run_steps(App& app, const std::vector<Step>& steps) {
   for (const Step& s : steps) {
     app.clock_ms = s.ms;
     if (s.tick) app.tick();
-    else app.handle(s.ev);
+    else if (!app.handle(s.ev)) return;
   }
 }
 

@@ -7,7 +7,10 @@
 // off a conflicting action and says so; to_json round-trips; help_lines renders the
 // live table. Phase 10 m4: the app scope leaves the library's table — a layout
 // declares it, a file's chords for an undeclared action are kept and inert, and
-// declaring makes them live.
+// declaring makes them live. Phase 11 m1: the library's own TOOLS' scopes leave it
+// too — one declare() takes the layout's actions and the mounted tool's, a tool's
+// suggested chord fills a gap and never overrides, and a Phase 10 file naming
+// playground.quit still loads clean and keeps its row.
 //
 #include <fstream>
 #include <string>
@@ -83,9 +86,9 @@ int main() {
     bool any_app = false;
     for (const ActionInfo& a : library_actions()) any_app |= scope_of(a.name) == "app";
     check(!any_app, "library_actions() declares no app.* action — the layout does (m4)");
-    check(library_scope("input") && library_scope("menu") && library_scope("stack") && library_scope("editor") && library_scope("playground") &&
-              !library_scope("app") && !library_scope("mine"),
-          "library_scope: the widget and tool scopes are the library's; app and a host's own are not");
+    check(library_scope("input") && library_scope("transcript") && library_scope("menu") && library_scope("edit") && library_scope("stack") &&
+              !library_scope("app") && !library_scope("editor") && !library_scope("playground") && !library_scope("mine"),
+          "library_scope: the WIDGET scopes are the library's; app, the tools' and a host's own are not (Phase 11 m1)");
 
     // A file's chords for an undeclared action are KEPT and inert, never dropped: a
     // bindings file is global and a user's, while the actions are the screen's.
@@ -120,7 +123,7 @@ int main() {
     check(!b->has("app.help") && b->action_for(key(Key::F1), "app").empty() && b->chords_for("app.help").size() == 2 &&
               b->has("app.zoom") && help_lines(*b, "app").size() == 1,
           "a layout that stops declaring an action makes it inert again — its chords kept, nothing emitting it");
-    check(b->has("input.submit") && b->has("playground.quit") && b->has("editor.theme"),
+    check(b->has("input.submit") && b->has("menu.activate") && b->has("stack.close_popup"),
           "…and the library's own closed scopes are untouched by any declaration");
     b->declare({{"app.help", "open help"}});  // put the block's screen back for what follows
 
@@ -138,6 +141,84 @@ int main() {
     check(d2.actions().size() == library_actions().size() + shipped_default_actions().size(),
           "…exactly those and the library's, nothing else");
     check(d2.undeclared().empty(), "…and the shipped bindings bind nothing the shipped layouts do not declare");
+  }
+  // ---- Phase 11 m1: a TOOL's scope is not the library's ----------------------------
+  // library_actions() closes over the WIDGET scopes only. `editor.*` and `playground.*`
+  // are the library's own tools' — one application's, not every host's — so whoever
+  // MOUNTS a tool declares them, and a host that mounts none advertises none.
+  {
+    bool tool_scope = false;
+    std::string named;
+    for (const ActionInfo& a : library_actions())
+      if (const std::string_view s = scope_of(a.name); s == "editor" || s == "playground" || s == "app") { tool_scope = true; named = a.name; }
+    check(!tool_scope, "library_actions() declares no tool action: a scope is closed because the library DEFINES it, not because it SHIPS the tool [" + named + "]");
+    // The same rule for the file that ships beside it: it belongs to every host, so a
+    // `playground.quit` row in it would be a key every host advertises and cannot press.
+    // (default_bindings() aborts on this; asserted here so the failure has a name.)
+    BindingsLoadReport srep;
+    std::optional<Bindings> shipped = Bindings::from_json(default_bindings_json(), srep);
+    std::string stray;
+    for (const std::string& a : shipped->undeclared())
+      if (scope_of(a) != "app") stray += " " + a;
+    check(shipped && stray.empty(), "the shipped bindings file binds the library's widgets and the shipped screen's app.* and nothing else —" + (stray.empty() ? " none" : stray));
+
+    // A PHASE 10 BINDINGS FILE still loads clean and keeps its rows. This is the mercy
+    // the whole split depends on, and which side of the table a scope sits on is what
+    // decides it: a typo in a LIBRARY scope is an unknown action, while `playground.quit`
+    // — now in nobody's closed set — is kept, inert, until something declares it.
+    const char* phase10 = R"({"name":"p10","bindings":{"input.submit":["enter"],"app.help":["f1"],
+        "editor.undo":["ctrl+z"],"playground.quit":["ctrl+q"],"playground.reload":["f5"]}})";
+    BindingsLoadReport prep;
+    std::optional<Bindings> p = Bindings::from_json(phase10, prep);
+    check(p && prep.clean(), "a Phase 10 bindings file binding playground.quit loads CLEAN [" + prep.summary() + "]");
+    check(p->chords_for("playground.quit").size() == 1 && !p->has("playground.quit") && p->action_for(ch('q', true), "playground").empty(),
+          "…its row is kept and inert: nothing has mounted the playground, so nothing emits it");
+    BindingsLoadReport rt;
+    std::optional<Bindings> back = Bindings::from_json(p->to_json("p10"), rt);
+    check(back && rt.clean() && *back == *p, "…and it survives the round trip, so `bindings save` never loses another program's keys");
+
+    // MOUNTING the tool: one authoritative declare() takes the layout's actions and the
+    // tool's, and the tool's suggested chord fills only a GAP.
+    const std::vector<ToolAction> tool = {{"playground.quit", "quit", "ctrl+q"},
+                                          {"playground.reload", "reload the fixture", "f5"},
+                                          {"playground.cycle_theme", "cycle the shipped theme presets", "f3"}};
+    p->declare({{"app.help", "open help"}}, tool);
+    check(p->has("playground.quit") && p->action_for(ch('q', true), "playground") == "playground.quit" && p->has("app.help"),
+          "declaring the layout's actions and the mounted tool's in ONE call makes both live");
+    check(p->chords_for("playground.cycle_theme").size() == 1 && p->action_for(key(Key::F3), "playground") == "playground.cycle_theme",
+          "…an action the file never named gets the tool's suggested chord (the gap it is for)");
+    check(p->chords_for("playground.quit").size() == 1 && p->chords_for("playground.reload").size() == 1,
+          "…and one it did named keeps exactly the file's row: a suggestion never overrides");
+    // The order trap this rule was first got wrong on: a declaration creates an empty row
+    // for its action, so a suggestion made AFTER one would decline every time and every
+    // tool key would be silently unbound. One call, one order.
+    Bindings fresh;
+    fresh.declare({}, tool);
+    check(fresh.action_for(ch('q', true), "playground") == "playground.quit" && fresh.action_for(key(Key::F5), "playground") == "playground.reload",
+          "a mounted tool's keys work on a table that had never heard of it");
+
+    // The three ways a suggestion is DECLINED, all leaving the action declared-and-unbound
+    // rather than absent or sharing a chord.
+    Bindings unbound;
+    BindingsLoadReport urep;
+    unbound = *Bindings::from_json(R"({"name":"u","bindings":{"playground.quit":[],"playground.reload":["ctrl+q"]}})", urep);
+    unbound.declare({}, tool);
+    check(unbound.has("playground.quit") && unbound.chords_for("playground.quit").empty(),
+          "an EMPTY row wins too — a file (or a user) said 'unbound', and a suggestion must not bring the key back");
+    check(unbound.action_for(ch('q', true), "playground") == "playground.reload", "…and the chord the file moved stays where the file put it");
+    Bindings clash;
+    clash.declare({}, {{"mine.one", "one", "f9"}, {"mine.two", "two", "f9"}, {"mine.three", "three", "not+a+chord"}});
+    check(clash.action_for(key(Key::F9), "mine") == "mine.one" && clash.has("mine.two") && clash.chords_for("mine.two").empty(),
+          "a suggestion whose chord already serves the scope is declined: the action is declared UNBOUND, not a second holder of one chord");
+    check(clash.has("mine.three") && clash.chords_for("mine.three").empty(), "…and an unparseable chord is the same: visible as (unbound), never missing");
+    // Authoritative still: the tools survive a screen change because they are passed
+    // every time; the last screen's app actions do not.
+    p->declare({{"app.zoom", "zoom in"}}, tool);
+    check(!p->has("app.help") && p->has("app.zoom") && p->action_for(ch('q', true), "playground") == "playground.quit",
+          "a new screen replaces the layout's actions and keeps the mounted tool's");
+    p->declare({{"app.zoom", "zoom in"}}, {});
+    check(!p->has("playground.quit") && p->chords_for("playground.quit").size() == 1,
+          "…and UNmounting the tool makes its actions inert again, chords kept: nothing else can advertise them");
   }
   // ---- the loader's report ----
   {

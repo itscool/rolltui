@@ -37,6 +37,7 @@
 #include "rolltui/ThemeAnalysis.hpp"
 #include "rolltui/ThemeGen.hpp"
 #include "rolltui/Undo.hpp"
+#include "tool_actions.hpp"
 
 namespace rolltui::tools {
 
@@ -84,7 +85,7 @@ class ThemeEditor {
 
   // Events already routed to the editor's window. Ctrl-Z / Ctrl-Y are handled here.
   Outcome handle(const Event& e, const Bindings& nav);  // `nav`: the host's bindings (menu + editor scopes)
-  Outcome handle(const Event& e) { return handle(e, default_bindings()); }
+  Outcome handle(const Event& e) { return handle(e, editor_bindings()); }  // tool_actions.hpp: the shipped table with the editors mounted
   bool undo();
   bool redo();
   std::size_t undo_depth() const { return undo_.undo_depth(); }
