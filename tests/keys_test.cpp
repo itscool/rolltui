@@ -43,7 +43,12 @@ int main() {
   table(std::string("\x00", 1), "Ctrl+ ");
   table("\x1f", "Ctrl+_");
   table("\r", "Enter");
-  table("\n", "Enter");
+  // LF is Ctrl-J, not Enter (Phase 12 m3). Terminal always runs raw — cfmakeraw clears
+  // ICRNL and INLCR — so Enter is CR and the only thing that sends LF is ctrl+j. While
+  // both were Enter, `ctrl+j` was a chord that parsed, bound, saved, rendered in the
+  // help popup and never fired; the Phase 10 files-only fixture binds exactly that
+  // chord, so the defect was live and advertised in a golden frame.
+  table("\n", "Ctrl+j");
   table("\t", "Tab");
   table("\x7f", "Backspace");
   table("\x08", "Backspace");
@@ -74,6 +79,34 @@ int main() {
   table("\x1b\xE4\xB8\xAD", "Alt+\xE4\xB8\xAD");
   table("\x1b\r", "Alt+Enter");
   table("\x1b\x01", "Ctrl+Alt+a");
+  // ESC + an UPPERCASE letter is alt+shift+<letter>: the one multi-modifier chord the
+  // legacy encoding carries (kitty's spec names shift+alt as one of exactly two).
+  // Canonical chords are lowercase with a shift flag, so the decoder folds it that way.
+  table("\x1b" "B", "Alt+Shift+b");
+  table("\x1b\x1b[Z", "Escape | Shift+Tab");  // not a letter: ESC still starts a sequence
+
+  // ---- the two ENHANCED forms (Phase 12 m3) ----
+  // kitty: CSI unicode-key-code ; modifiers u, the code ALWAYS the unshifted key, the
+  // modifiers 1 + (shift 1 | alt 2 | ctrl 4).  [sw.kovidgoyal.net/kitty/keyboard-protocol]
+  table("\x1b[112;6u", "Ctrl+Shift+p");   // the chord the whole milestone is named for
+  table("\x1b[97;6u", "Ctrl+Shift+a");    // the spec's own example: 97, never 65
+  table("\x1b[13;5u", "Ctrl+Enter");
+  table("\x1b[13;2u", "Shift+Enter");     // "your terminal can't tell Shift+Enter from Enter"
+  table("\x1b[9;5u", "Ctrl+Tab");
+  table("\x1b[127;5u", "Ctrl+Backspace");
+  table("\x1b[27u", "Escape");            // the disambiguate flag's whole point
+  table("\x1b[91;5u", "Ctrl+[");          // legacy sends 0x1B here, which is Escape
+  table("\x1b[47;5u", "Ctrl+/");          // legacy has no control code for it at all
+  table("\x1b[97:65;6:1u", "Ctrl+Shift+a");  // sub-parameters: shifted key, event type — ignored
+  table("\x1b[57399;1u", "Unknown(\x1b[57399;1u)");  // kitty's private-use keypad range
+  // xterm modifyOtherKeys: CSI 27 ; modifier ; keycode ~, the keycode UNSHIFTED.
+  // [invisible-island.net/xterm/modified-keys.html — its own examples are \e[27;5;9~
+  //  control-TAB, \e[27;5;44~ control-comma, \e[27;5;47~ control-slash]
+  table("\x1b[27;5;9~", "Ctrl+Tab");
+  table("\x1b[27;5;44~", "Ctrl+,");
+  table("\x1b[27;5;47~", "Ctrl+/");
+  table("\x1b[27;5;112~", "Ctrl+p");
+  table("\x1b[27;7;112~", "Ctrl+Alt+p");
   table("\x1b", "Escape", true);
   table("\x1b\x1b", "Escape | Escape", true);
   table("\x1b[", "Escape | [", true);
