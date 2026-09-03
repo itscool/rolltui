@@ -203,7 +203,19 @@ class Windows {
   // document to point at and the sample must outlive the call that supplied it.
   void bind_sample_document(std::string name, std::string markdown);
   void bind_rows(std::string name, RowsFn rows);
-  void bind_submit(std::string name, SubmitFn submit);
+  // What Enter MEANS for this input, which is the HOST's to say and not the widget's.
+  // A PROMPT sends a line and starts a new one — the text was a message, and it is now
+  // gone and in the history. A FIND BAR (or a filter, or a rename field) keeps its text,
+  // because the text is a standing QUERY: clearing it would erase the very thing the
+  // Enter was about, and put nothing in a history that has no use for it. Until Phase 12
+  // m4 every input got the prompt's behaviour, which made the find bar clear itself on
+  // its own "next match" key — correct-looking code, silently wrong.
+  enum class OnSubmit { SendAndClear, Keep };
+  void bind_submit(std::string name, SubmitFn submit, OnSubmit on_submit = OnSubmit::SendAndClear);
+  OnSubmit on_submit_for(const std::string& name) const {
+    auto it = on_submit_.find(name);
+    return it == on_submit_.end() ? OnSubmit::SendAndClear : it->second;
+  }
   // An input's one-line note, drawn beside the prompt when it fits on the first row
   // and on a row of its own otherwise (roll's "working…" hint). Optional.
   void bind_note(std::string name, TextFn note);
@@ -302,6 +314,7 @@ class Windows {
   std::map<std::string, Document> owned_documents_;  // bind_sample_document's
   std::map<std::string, RowsFn> rows_;
   std::map<std::string, SubmitFn> submits_;
+  std::map<std::string, OnSubmit> on_submit_;
   std::map<std::string, TextFn> notes_;
   std::map<std::string, std::string> host_menus_;  // add_menu: name → the file's text
   std::map<std::string, Factory> factories_;       // register_kind: kind name → how to build one

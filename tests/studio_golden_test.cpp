@@ -141,6 +141,16 @@ int main(int argc, char** argv) {
       {"demo.80x24.popup", "--frame 80x24 --theme default-dark --keys \"F1\""},
       {"demo.120x40.popup", "--frame 120x40 --theme default-dark --keys \"F1\""},
       {"demo.80x24.popup-closed", "--frame 80x24 --theme default-dark --keys \"F1 Escape\""},
+      // milestone 12.4 — find. The bar is an ordinary `input:` window in an ordinary
+      // popup, so these frames say three things a golden can say: the bar is drawn and
+      // focused, the view SCROLLED to a match that was off screen, and the status line
+      // carries the count. What a golden cannot say is the HIGHLIGHT (these frames are
+      // plain text) — that is asserted on cell roles in transcript_test, the same split
+      // milestone 2 made for the syntax highlighter.
+      {"demo.80x24.find", "--frame 80x24 --theme default-dark --keys \"CtrlF Type:wrap\""},
+      {"demo.80x24.find-next", "--frame 80x24 --theme default-dark --keys \"CtrlF Type:wrap Enter Enter\""},
+      {"demo.100x24.find-none", "--frame 100x24 --theme default-dark --keys \"CtrlF Type:zzzznope\""},
+      {"demo.80x24.find-closed", "--frame 80x24 --theme default-dark --keys \"CtrlF Type:wrap CtrlF\""},
       {"demo.80x24.file", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json'"},
       {"demo.80x24.file-popup", "--frame 80x24 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-left.json' --keys \"F1\""},
       // milestone 9 (the transcript widget), on the tools fixture
@@ -260,12 +270,21 @@ int main(int argc, char** argv) {
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
   std::string le_widget, le_actions, le_new;
   std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
+  std::string find_open, find_next, find_none, find_closed;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
     std::string cmd = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' " + c.args;
-    if (std::string(c.name).find("editor") != std::string::npos || std::string(c.name).rfind("keys.", 0) == 0) cmd += presets;  // every editor and bindings case
+    // THE SCRATCH PRESET DIRECTORY GOES TO EVERY CASE, not just the editor ones.
+    // Until Phase 12 m4 it went only to the editor and bindings cases, so every other
+    // golden ran against WHATEVER PRESET DIRECTORY THE DEVELOPER HAPPENED TO HAVE — and
+    // passed only because that working copy happened to equal the shipped default. The
+    // moment a shipped layout changed, the status line read "default (modified)" on this
+    // machine and nowhere else: a golden whose value depends on the machine running it,
+    // which is the same class of defect as the gate's shared log file. Found by m4
+    // adding a popup to the shipped layouts.
+    cmd += presets;
     std::string out = run(cmd, rc);
     check(rc == 0 && !out.empty(), std::string(c.name) + ": studio ran (rc " + std::to_string(rc) + ", " +
                                        std::to_string(out.size()) + " bytes)");
@@ -340,6 +359,10 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "layout-editor.120x40.new") le_new = out;
     if (std::string(c.name) == "layout-editor.120x40.drag-fixed-before") le_fixed_before = out;
     if (std::string(c.name) == "layout-editor.120x40.drag-fixed-after") le_fixed_after = out;
+    if (std::string(c.name) == "demo.80x24.find") find_open = out;
+    if (std::string(c.name) == "demo.80x24.find-next") find_next = out;
+    if (std::string(c.name) == "demo.100x24.find-none") find_none = out;
+    if (std::string(c.name) == "demo.80x24.find-closed") find_closed = out;
     if (std::string(c.name) == "keys.120x40.help-default") kh_default = out;
     if (std::string(c.name) == "keys.120x40.help-vim") kh_vim = out;
     if (std::string(c.name) == "keys.80x24.input-default") ki_default = out;
@@ -515,6 +538,31 @@ int main(int argc, char** argv) {
       check(ok && wc.find("\"preset\": \"mine\"") != std::string::npos, "the working copy written by the save-as records preset 'mine' — and nothing wrote it before that (the earlier frames' edits did not persist)");
     }
     // ---- milestone 17: bindings as data, asserted beyond the bytes ----
+    // ---- find (milestone 12.4) — what the golden alone does not say -----------------
+    // The bar is a POPUP with an `input:` window, not a mode: the studio pushes a layout
+    // popup and pipes its text in, which is why "find" shows up as the focused window id
+    // like any other and nothing here knows about a find mode.
+    check(find_open.find("\xE2\x95\xAD find ") != std::string::npos && find_open.find("focus:find") != std::string::npos,
+          "Ctrl-F opens the find popup and focuses its input");
+    check(find_open.find("find 2/4") != std::string::npos,
+          "…and the match count and position are VISIBLE, rendered by the host from the widget's numbers");
+    check(find_open.find("> wrap") != std::string::npos, "…the query is the bar's own text, typed into an ordinary input");
+    // The view MOVED to a match that was not on screen — the milestone's "scrolled to".
+    check(!bottom.empty() && find_open != bottom && find_open.find("line 149/191") != std::string::npos,
+          "…and the transcript scrolled to the match (line 149, where the unsearched view sits at the bottom)");
+    check(find_next.find("find 4/4") != std::string::npos,
+          "Enter in the find bar is next-match, twice: 2/4 → 4/4 (its Submit, no routing rule of its own)");
+    // Enter must NOT clear the bar: a find bar's text is a standing query, not a message
+    // (Widgets.hpp's OnSubmit). Until m4 every input got the prompt's send-and-clear, so
+    // the bar erased its own query on its own next-match key.
+    check(find_next.find("> wrap") != std::string::npos,
+          "…and the query SURVIVES its own Enter — the text is a standing query, not a message");
+    // 100 cells wide because at 80 the count falls off the end of the status line, and a
+    // golden that proves a number by cropping it proves nothing.
+    check(row(find_none, 23).find("find 0/0") != std::string::npos && find_none.find("focus:find") != std::string::npos,
+          "a query with no matches says 0/0 and stays put rather than reporting nothing at all [" + row(find_none, 23) + "]");
+    check(find_closed.find("\xE2\x95\xAD find ") == std::string::npos && row(find_closed, 23).find("find ") == std::string::npos,
+          "closing the bar clears the query, so highlights never outlive the bar invisibly");
     check(kh_default.find("Ctrl-Left, Alt-Left") != std::string::npos && kh_default.find("move one word left") != std::string::npos,
           "the default help popup (scrolled a page) is rendered from the table: word motions on Ctrl/Alt-arrows");
     check(kh_vim.find("Alt-B") != std::string::npos && kh_vim.find("Alt-F") != std::string::npos, "with vim-ish.json the help popup shows Alt-B / Alt-F: it is rendered from the LIVE table");

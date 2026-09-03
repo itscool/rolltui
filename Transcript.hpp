@@ -55,6 +55,41 @@
 //   text is wholly inside the selection and never carry text into the copy. A folded
 //   entry contributes its summary.
 //
+//   FIND (Phase 12 milestone 4) — a query, a match list, and one current match. Where
+//   the query is TYPED is not here: it is an `input:` window a layout places, because
+//   where a find bar sits is a layout file's business and a mode of this widget would be
+//   a second input implementation. The host pipes that input's text in through
+//   set_query() and renders match_count()/current_match_number() wherever it likes; this
+//   widget owns finding, revealing and highlighting. The rules:
+//
+//     Matches are in LOGICAL text — the same (entry, byte offset) space as the
+//     selection — so a match that wraps across two rows highlights on both, for free:
+//     every cell already carries the source offset of its grapheme, and a highlight is
+//     just a range test on it. Nothing in find knows what a row is.
+//
+//     A FOLDED entry is searched UNFOLDED. Its drawn logical text is only its summary,
+//     so searching what is on screen would silently miss every match inside a folded
+//     block — the counted total would depend on which blocks happened to be open. So
+//     the search runs over each entry's text as if unfolded (cached per id + version +
+//     width alongside the layout cache), and revealing a match in a folded entry
+//     UNFOLDS it. That is why the count is stable while you fold and unfold.
+//
+//     ASCII-case-insensitive, byte-exact otherwise, non-overlapping, left to right.
+//     Stated rather than inferred: there is no Unicode case folding in this library, and
+//     a search that folded only some scripts would be a rule nobody could predict. A
+//     match may begin inside a grapheme cluster (a combining mark); the cell test then
+//     highlights that whole grapheme, which is the only thing a cell grid can do.
+//
+//     set_query() NEVER scrolls by itself and an empty query clears without moving the
+//     view. A non-empty query makes current the first match at or after the top line, and
+//     asks for it to be revealed; find_next()/find_prev() step and wrap. Revealing
+//     happens in the next layout() — it may have to unfold, which changes the line
+//     count — so a caller that wants to see the result calls layout() first, exactly as
+//     it does for every other state change here.
+//
+//     A selection WINS over both find roles where they overlap: it is the user's most
+//     recent direct act, and "what did I just select" is the question it answers.
+//
 //   Hyperlinks — a span with an href puts its cells under that URL (Screen.hpp emits
 //   OSC 8); the URL comes from the parsed document, never from the text.
 //
@@ -126,6 +161,15 @@ struct Selection {
   bool range_in(std::size_t entry, std::size_t len, std::size_t& begin, std::size_t& end) const;
 };
 
+// One find hit, in the same logical space as TextPos: `length` bytes of `entry`'s
+// unfolded text starting at `offset`.
+struct FindMatch {
+  std::size_t entry = 0;
+  std::size_t offset = 0;
+  std::size_t length = 0;
+  bool operator==(const FindMatch&) const = default;
+};
+
 struct TranscriptStats {
   long layout_us = 0;              // the last layout() call
   std::size_t entries_relaid = 0;  // cache misses in the last layout()
@@ -169,6 +213,20 @@ class Transcript {
   // Toggles the first visible summary line from the top of the viewport; false if none.
   bool toggle_fold_nearest_top(const Document& doc);
 
+  // ---- find (see FIND above) ----
+  // The query; "" clears. Never scrolls: the reveal it asks for happens in layout().
+  // Returns whether it CHANGED, so a host can skip the re-layout when it did not.
+  bool set_query(std::string_view q);
+  const std::string& query() const { return query_; }
+  const std::vector<FindMatch>& matches() const { return matches_; }
+  std::size_t match_count() const { return matches_.size(); }
+  // The current match's 1-BASED position, for "3/17"; 0 when there is none. One-based
+  // because it is a display number, and the only caller is a host printing it.
+  std::size_t current_match_number() const { return current_ ? *current_ + 1 : 0; }
+  const FindMatch* current_match() const { return current_ && *current_ < matches_.size() ? &matches_[*current_] : nullptr; }
+  bool find_next();  // wraps; false when there is nothing to find
+  bool find_prev();
+
   // ---- selection ----
   const Selection& selection() const { return sel_; }
   void clear_selection() { sel_ = {}; }
@@ -209,6 +267,17 @@ class Transcript {
   };
 
   static EntryLayout lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded);
+  // The per-frame build of layouts_/starts_/total_, extracted so a reveal that has to
+  // unfold can re-run it in the same layout() call rather than leaving one frame drawn
+  // against line numbers that no longer exist.
+  void build(const Document& doc, int width);
+  // The entry's logical text AS IF UNFOLDED — what find searches. Equal to the drawn
+  // layout's text for everything except a folded entry, whose drawn text is its summary.
+  const std::string& searchable_text(const DocEntry& e, std::size_t entry, int width);
+  void recompute_matches(const Document& doc, int width);
+  // The line within the entry's layout holding `offset`, or the last line.
+  std::size_t line_of_offset(std::size_t entry, std::size_t offset) const;
+  void reveal_current(const Document& doc, int width);
   std::size_t block_len(std::size_t entry) const;
   std::size_t max_top() const;
   void set_top(std::size_t top);
@@ -228,6 +297,18 @@ class Transcript {
   ScrollAnchor scroll_;
   Selection sel_;
   std::unordered_map<std::string, bool> fold_override_;
+  // Find state. `find_text_` is the unfolded-text cache, keyed like the layout cache
+  // minus `folded` — the whole point is that it does not vary with folding.
+  std::string query_;
+  std::vector<FindMatch> matches_;
+  std::optional<std::size_t> current_;
+  bool find_dirty_ = false;   // the query changed: recompute in the next layout()
+  bool reveal_ = false;       // …and scroll to (and unfold) the current match
+  struct FindText {
+    CacheKey key;
+    std::string text;
+  };
+  std::unordered_map<std::string, FindText> find_text_;
   struct Drag {
     bool active = false, outside = false;
     int x = 0, y = 0;

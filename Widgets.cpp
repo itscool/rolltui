@@ -245,8 +245,11 @@ class InputWidget : public WidgetBase {
     const InputAction a = ed.handle(e, binds(), env().now_ms);
     if (a != InputAction::Submit) return a;
     std::string text = ed.text();
-    ed.push_history(text);
-    ed.clear();
+    // A prompt sends and starts fresh; a find bar keeps its standing query (Widgets.hpp).
+    if (w_->on_submit_for(content.source) == Windows::OnSubmit::SendAndClear) {
+      ed.push_history(text);
+      ed.clear();
+    }
     if (const Windows::SubmitFn* fn = submit_fn(content.source); fn && *fn) (*fn)(text);
     return a;
   }
@@ -543,7 +546,10 @@ void Windows::bind_sample_document(std::string name, std::string markdown) {
   documents_[std::move(name)] = &d;
 }
 void Windows::bind_rows(std::string name, RowsFn rows) { rows_[std::move(name)] = std::move(rows); }
-void Windows::bind_submit(std::string name, SubmitFn submit) { submits_[std::move(name)] = std::move(submit); }
+void Windows::bind_submit(std::string name, SubmitFn submit, OnSubmit on_submit) {
+  on_submit_[name] = on_submit;
+  submits_[std::move(name)] = std::move(submit);
+}
 void Windows::bind_note(std::string name, TextFn note) { notes_[std::move(name)] = std::move(note); }
 
 // ONE call registers both halves — the name with the layout vocabulary and the factory

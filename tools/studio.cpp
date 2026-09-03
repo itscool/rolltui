@@ -307,6 +307,11 @@ struct App {
     windows.bind_document("session", &doc);
     windows.bind_rows("status", [this] { return status_rows(); });
     windows.bind_submit("prompt", [this](const std::string& text) { append_prompt(text); });
+    // The find bar's Enter is "next match" — the universal find-bar convention, and it
+    // needs no routing rule: the popup's input is focused, so its Submit arrives here.
+    // sync_find() first, because the matches must exist before stepping through them.
+    windows.bind_submit("find", [this](const std::string&) { sync_find(); transcript().find_next(); },
+                        Windows::OnSubmit::Keep);
     // The studio's three composites are REGISTERED KINDS since Phase 11 m3, not
     // draw callbacks bound by name: `editor` is a kind this binary adds to the layout
     // vocabulary, its widget receives its own events, and nothing below dispatches by
@@ -952,6 +957,32 @@ struct App {
     if (const Layer* p = effective_layout().popup("help")) stack.push(*p);
   }
 
+  // The find bar (Phase 12 m4). It is an ordinary `input:` window in an ordinary popup —
+  // the studio does not implement a find MODE, it opens a layout's popup and pipes that
+  // input's text to the transcript. Closing it clears the query, so the highlights go
+  // with the bar rather than outliving it invisibly.
+  // Find-as-you-type: the bar's text IS the query. Called before drawing AND before any
+  // key that acts on matches, because the matches have to exist before you can step
+  // through them — `--keys` replays a whole sequence with no frame between the keys, so
+  // a query piped only at draw time left "Enter" (next match) acting on an empty list.
+  // A live terminal hid that behind a frame per keystroke, which is what makes the
+  // golden harness worth having.
+  void sync_find() {
+    if (!stack.has_popup("find")) return;
+    if (transcript().set_query(windows.input("find").text())) ensure_layout();
+  }
+
+  void toggle_find() {
+    if (stack.has_popup("find")) {
+      while (stack.depth() > 1 && stack.layers().back().id != "find") stack.pop();
+      stack.pop();
+      windows.input("find").clear();
+      transcript().set_query("");
+      return;
+    }
+    if (const Layer* p = effective_layout().popup("find")) { stack.push(*p); stack.focus("find"); }
+  }
+
   // ---- the sources the studio binds (rolltui/Widgets.hpp) ----
   // `rows:status`: the studio's own facts. The widget draws them (one row per
   // fact, or one line when the window is a single row) — this says only what they are.
@@ -992,6 +1023,7 @@ struct App {
     sync_look();
     ensure_layout();  // the input window's size follows its text (found by the paste golden: a lone
                       // event left the size one event behind)
+    sync_find();
     Frame f(w, h, theme.style(Role::background));
     const Rect area = layout_area();
     stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, theme); draw_selection(rn, fr); }, ambiguous);
@@ -1003,6 +1035,11 @@ struct App {
                            (transcript().scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
       if (with_timing) status += "  " + std::to_string(last_frame_us) + " us";
+      // The match count and position (m4's "visible"): the widget owns finding, a host
+      // owns saying so — the same split as every other number on this line.
+      if (!transcript().query().empty())
+        status += "  find " + std::to_string(transcript().current_match_number()) + "/" +
+                  std::to_string(transcript().match_count());
       if (copied_any) status += "  copied " + std::to_string(copied.size()) + "B";
       if (stacked_fallback) status += "  [stacked: below " + std::to_string(layout.min_width) + "x" + std::to_string(layout.min_height) + "]";
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
@@ -1046,6 +1083,7 @@ struct App {
       if (app == "app.help" && !(k->key == Key::Char && !k->ctrl && !k->alt && !editor().text().empty())) { toggle_help(); return true; }
       if (app == "app.menu") { open_menu(false); return true; }
       if (app == "app.palette") { open_menu(true); return true; }
+      if (app == "app.find") { toggle_find(); return true; }
       if (app == "app.repaint") return true;  // the loop repaints
     }
     ensure_layout();
@@ -1141,6 +1179,8 @@ struct App {
       else if (a == "transcript.top") transcript().scroll_to_top();
       else if (a == "transcript.bottom") transcript().scroll_to_bottom();
       else if (a == "transcript.fold") transcript().toggle_fold_nearest_top(doc);
+      else if (a == "transcript.find_next") { sync_find(); transcript().find_next(); }
+      else if (a == "transcript.find_prev") { sync_find(); transcript().find_prev(); }
       else if (a == "transcript.copy") transcript().copy_selection();
     } else if (const MouseEvent* m = std::get_if<MouseEvent>(&ev);
                m && (m->kind == MouseEvent::Kind::WheelUp || m->kind == MouseEvent::Kind::WheelDown)) {

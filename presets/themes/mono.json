@@ -222,6 +222,17 @@
         "fg": "none",
         "bg": "none",
         "underline": true
+      },
+      "find_match": {
+        "fg": "none",
+        "bg": "none",
+        "underline": true
+      },
+      "find_current": {
+        "fg": "none",
+        "bg": "none",
+        "bold": true,
+        "reverse": true
       }
     }
   },

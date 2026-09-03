@@ -430,5 +430,175 @@ int main() {
     check(tr.text_area().x == 1 && tr.text_area().w == 1, "an inset of 1 on a 3-wide area leaves one column");
   }
 
+  // ---- FIND (Phase 12 m4) ------------------------------------------------------------
+  // Matches live in LOGICAL text, so every assertion below is on the model except the
+  // two that are about what a cell got painted — which is the only place the wrap
+  // behaviour can actually be read.
+  {
+    const Color match_bg = theme.style(Role::find_match).bg;
+    const Color current_bg = theme.style(Role::find_current).bg;
+    // The rows a find highlight touched, and which kind. Reading the frame rather than
+    // the model is the point here: "highlights on both rows" is a claim about cells.
+    auto find_rows = [&](const Frame& f, Color bg) {
+      std::vector<int> rows;
+      for (int y = 0; y < f.height(); ++y)
+        for (int x = 0; x < f.width(); ++x)
+          if (f.at(x, y).style.bg == bg) { rows.push_back(y); break; }
+      return rows;
+    };
+
+    Document doc;
+    doc.entries.push_back(user("u1", "find the needle"));
+    doc.entries.push_back(md("a1", "A needle in a paragraph, and another needle after it."));
+    doc.entries.push_back(tool("t1", "read_file haystack.txt", "one\nthe needle is in here\nthree"));
+    doc.entries.push_back(verbatim("n1", "no match on this line"));
+
+    Transcript tr;
+    tr.layout(doc, {0, 0, 40, 8}, opt);
+    check(tr.match_count() == 0 && tr.current_match_number() == 0 && tr.query().empty(),
+          "no query: no matches, no current, nothing to render");
+
+    // (a) A FOLDED entry is searched UNFOLDED, so the count does not depend on which
+    // blocks happen to be open — the whole reason searchable_text exists.
+    check(tr.is_folded(doc.entries[2]), "the tool entry starts folded");
+    tr.set_query("needle");
+    tr.layout(doc, {0, 0, 40, 8}, opt);
+    check(tr.match_count() == 4,
+          "four matches: one in the prompt, two in the answer, and ONE INSIDE THE FOLDED BLOCK (" +
+              std::to_string(tr.match_count()) + ")");
+    const std::size_t folded_hits = [&] {
+      std::size_t n = 0;
+      for (const FindMatch& m : tr.matches()) if (m.entry == 2) ++n;
+      return n;
+    }();
+    check(folded_hits == 1, "…and it is attributed to the folded entry, not to its summary");
+
+    // (b) Revealing a match inside a folded block UNFOLDS it.
+    // BOUNDED by the match count on purpose. Written unbounded first, it HUNG under this
+    // milestone's own negative control (which removes the folded-block match, so the
+    // cycle never reaches entry 2) — and a test that hangs cannot tell you what it found,
+    // exactly as CLAUDE.md says of one that crashes. The bound makes the control fail
+    // with a named assertion instead.
+    for (std::size_t step = 0; step <= tr.match_count() && tr.current_match() && tr.current_match()->entry != 2; ++step) {
+      tr.find_next();
+      tr.layout(doc, {0, 0, 40, 8}, opt);
+    }
+    check(tr.current_match() && tr.current_match()->entry == 2, "stepped to the match inside the folded block");
+    check(!tr.is_folded(doc.entries[2]), "…and revealing it UNFOLDED the block");
+    {
+      Frame f(40, 8);
+      tr.draw(f, theme);
+      check(!find_rows(f, current_bg).empty(), "…the current match is on screen and painted in find_current");
+    }
+
+    // (c) The count and the position are readable, and stepping wraps.
+    tr.set_query("needle");  // same query: a no-op, current match kept
+    const std::size_t at = tr.current_match_number();
+    check(at >= 1 && at <= 4, "the current match has a 1-based position for a host to print (" + std::to_string(at) + "/4)");
+    for (std::size_t i = 0; i < 4; ++i) { tr.find_next(); tr.layout(doc, {0, 0, 40, 8}, opt); }
+    check(tr.current_match_number() == at, "four find_next on four matches wraps exactly back to where it started");
+    tr.find_prev();
+    tr.layout(doc, {0, 0, 40, 8}, opt);
+    check(tr.current_match_number() == (at == 1 ? 4 : at - 1), "find_prev steps back and wraps the other way");
+
+    // (c2) The OTHER matches paint too, in find_match and not in find_current — the two
+    // roles are what make "which of the four am I on" answerable, so both must be on
+    // screen at once for the claim to mean anything.
+    {
+      Document two;
+      two.entries.push_back(verbatim("p", "needle one\nneedle two"));
+      Transcript trm;
+      trm.layout(two, {0, 0, 20, 4}, opt);
+      trm.set_query("needle");
+      trm.layout(two, {0, 0, 20, 4}, opt);
+      Frame f(20, 4);
+      trm.draw(f, theme);
+      const std::vector<int> cur = find_rows(f, current_bg);
+      const std::vector<int> oth = find_rows(f, match_bg);
+      check(trm.match_count() == 2 && cur.size() == 1 && oth.size() == 1 && cur[0] != oth[0],
+            "with two matches in view, exactly one row carries find_current and the other find_match (" +
+                std::to_string(cur.size()) + "/" + std::to_string(oth.size()) + ")");
+    }
+
+    // (d) ASCII-case-insensitive, and non-overlapping.
+    tr.set_query("NEEDLE");
+    tr.layout(doc, {0, 0, 40, 8}, opt);
+    check(tr.match_count() == 4, "the search is ASCII-case-insensitive (Transcript.hpp states it rather than inferring it)");
+    Document aaa;
+    aaa.entries.push_back(verbatim("r", "aaaa"));
+    Transcript tr2;
+    tr2.layout(aaa, {0, 0, 20, 4}, opt);
+    tr2.set_query("aa");
+    tr2.layout(aaa, {0, 0, 20, 4}, opt);
+    check(tr2.match_count() == 2, "matches do not overlap: 'aa' in 'aaaa' is two, not three");
+
+    // (e) A match that WRAPS across two rows highlights on both — the property that
+    // comes free from matching logical text and testing each cell's source offset.
+    Document wrapped;
+    wrapped.entries.push_back(verbatim("w", "zz aaaaaaaaaaaaaaaa zz"));
+    Transcript tr3;
+    tr3.layout(wrapped, {0, 0, 8, 6}, opt);
+    tr3.set_query("aaaaaaaaaaaa");  // 12 a's: cannot fit on one 8-cell row
+    tr3.layout(wrapped, {0, 0, 8, 6}, opt);
+    check(tr3.match_count() == 1, "one match, longer than the row is wide");
+    {
+      Frame f(8, 6);
+      tr3.draw(f, theme);
+      const std::vector<int> rows = find_rows(f, current_bg);
+      check(rows.size() >= 2, "…and it is highlighted on BOTH rows it wrapped onto (" + std::to_string(rows.size()) + ")");
+    }
+
+    // (f) An empty query clears without moving the view.
+    Document many;
+    for (int i = 0; i < 12; ++i) many.entries.push_back(verbatim(("e" + std::to_string(i)).c_str(), "needle " + std::to_string(i)));
+    Transcript tr4;
+    tr4.layout(many, {0, 0, 20, 4}, opt);
+    tr4.scroll_to_top();
+    tr4.scroll_by(6);
+    tr4.layout(many, {0, 0, 20, 4}, opt);
+    const std::size_t before = tr4.top_line();
+    tr4.set_query("");
+    tr4.layout(many, {0, 0, 20, 4}, opt);
+    check(tr4.top_line() == before && tr4.match_count() == 0 && tr4.current_match_number() == 0,
+          "an empty query clears the matches and does NOT move the view (" + std::to_string(tr4.top_line()) + " vs " +
+              std::to_string(before) + ")");
+    // …while a real query does move it, so the check above is about EMPTY and not about
+    // find never scrolling (the negative control for it).
+    tr4.set_query("needle 11");
+    tr4.layout(many, {0, 0, 20, 4}, opt);
+    check(tr4.top_line() != before && tr4.match_count() == 1, "a query with a match further down does scroll to it");
+
+    // (g) The selection wins where they overlap (Transcript.hpp's stated precedence).
+    Document one;
+    one.entries.push_back(verbatim("s", "needle"));
+    Transcript tr5;
+    tr5.layout(one, {0, 0, 20, 3}, opt);
+    tr5.set_query("needle");
+    tr5.layout(one, {0, 0, 20, 3}, opt);
+    {
+      Frame f(20, 3);
+      tr5.draw(f, theme);
+      check(!find_rows(f, current_bg).empty(), "the match paints before anything is selected");
+    }
+    tr5.select({0, 0, 1}, {0, 5, 1});
+    {
+      Frame f(20, 3);
+      tr5.draw(f, theme);
+      check(f.at(0, 0).style.bg == theme.style(Role::selection).bg,
+            "…and a selection over it wins: the user's most recent direct act is what the cell says");
+    }
+
+    // (h) The standing degenerate-size rule, extended to find.
+    Transcript tr6;
+    tr6.set_query("needle");
+    tr6.layout(one, {0, 0, 0, 0}, opt);
+    Frame f0(1, 1);
+    tr6.draw(f0, theme);
+    tr6.find_next();
+    tr6.layout(one, {0, 0, 1, 1}, opt);
+    tr6.draw(f0, theme);
+    check(tr6.match_count() == 1, "a 0- and a 1-cell area still find, still draw, still step");
+  }
+
   return report("rolltui transcript_test");
 }

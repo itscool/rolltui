@@ -5,9 +5,9 @@
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ app.details                                  ▸ │
 │ │ grapheme clusters, display width │             │ Unicode conforman│ app.palette                                  ▸ │
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ app.repaint                                  ▸ │
-│ │                                  │             │ block tree is the│ app.zoom                                     ▸ │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ add an action (name):                          │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
+│ │                                  │             │ block tree is the│ app.find                                     ▸ │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ app.zoom                                     ▸ │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ add an action (name):                          │
 │ │ mouse mode)                      │             │                  │                                                │
 │ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
 │ │                                  │             │ Event, table-test│                                                │

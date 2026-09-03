@@ -110,6 +110,9 @@ Generated generate(std::uint64_t seed, Ruleset ruleset, double chaos, const GenO
   const Color warning = okl(dark ? 0.80 : 0.46, chroma, wrap_hue(85 + jitter(30))), error = okl(dark ? 0.66 : 0.40, chroma + 0.03, wrap_hue(25 + jitter(20)));
   const Color green = okl(dark ? 0.84 : 0.40, chroma, wrap_hue(145 + jitter(20))), cyan = okl(dark ? 0.80 : 0.42, chroma, wrap_hue(200 + jitter(20)));
   const Color code_bg = okl(dark ? ground_L + 0.03 : ground_L - 0.03, ground_chroma, base_hue), sel = okl(dark ? 0.35 : 0.85, 0.05, acc[0]);
+  // The find wash sits at the SELECTION's lightness on the third accent's hue, so a
+  // match and a selection read as two different highlights rather than one repeated.
+  const Color find_wash = okl(dark ? 0.35 : 0.85, 0.06, acc[2]);
 
   Theme t;
   char name[96];
@@ -161,6 +164,13 @@ Generated generate(std::uint64_t seed, Ruleset ruleset, double chaos, const GenO
   set(Role::menu_selected, S(bg, a[0], true));
   set(Role::menu_breadcrumb, S(muted, panel));
   set(Role::menu_shortcut, S(a[2], panel));
+  // Find (Phase 12 m4), by the same rule the built-ins state: every match is normal text
+  // on a dim wash of the accent, the current one is INVERTED on that accent and bold.
+  // The inversion is not decoration — Style.hpp's must-differ check reads `fg` only, so a
+  // pair distinguished by background alone would measure as identical and this generator
+  // would emit a theme that fails its own promise.
+  set(Role::find_match, S(fg, find_wash));
+  set(Role::find_current, S(bg, a[2], true));
 
   // ---- the repair loop: fix until the promised badges hold, or give up honestly ----
   Generated out;

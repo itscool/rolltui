@@ -5,7 +5,8 @@
     "app.menu": "open the settings and commands menu",
     "app.details": "open the session details",
     "app.palette": "open the command palette",
-    "app.repaint": "repaint the screen"
+    "app.repaint": "repaint the screen",
+    "app.find": "find in the transcript"
   },
   "root": { "row": [
     { "column": [
@@ -14,6 +15,10 @@
     { "id": "status", "content": "rows:status", "size": 32, "border": "single", "title": "status",
       "background": "panel_background" } ] },
   "popups": [
+    { "id": "find", "x": "50%", "y": 0, "w": "60%", "h": 3, "anchor": "top",
+      "min_w": 24, "max_w": 72,
+      "root": { "id": "find", "content": "input:find", "border": "rounded", "title": "find", "focusable": true,
+                "background": "panel_background" } },
     { "id": "help", "x": "50%", "y": "50%", "w": "60%", "h": 12, "anchor": "center",
       "min_w": 24, "max_w": 72, "modal": true,
       "root": { "content": "help", "border": "rounded", "title": "help", "focusable": true,

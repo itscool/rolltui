@@ -459,6 +459,27 @@
           "dark": "#1b1e24",
           "light": "#eff0f2"
         }
+      },
+      "find_match": {
+        "fg": {
+          "dark": "#d8dce2",
+          "light": "#22262c"
+        },
+        "bg": {
+          "dark": "#4a3e1c",
+          "light": "#f7e4a8"
+        }
+      },
+      "find_current": {
+        "fg": {
+          "dark": "#14161a",
+          "light": "#fafaf8"
+        },
+        "bg": {
+          "dark": "#cba63a",
+          "light": "#5e4b0c"
+        },
+        "bold": true
       }
     }
   },

@@ -14,21 +14,21 @@
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ #c06a64                                        │
 │ │ colour downgrade                 │             │ tested           │ #1e2228                                        │
 │ │ Wrap engine                      │ build       │ single header ove│ #2e4460                                        │
-│ │                                  │             │ header           │ #22262c                                        │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ #fafaf8                                        │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│ #5f6670                                        │
-│ │                                  │             │ Rect is a pure fu│ #eff0f2                                        │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│ #c8ccd2                                        │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ #2d4e78                                        │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ #507b51                                        │
-│ │ placements + content slots)      │             │ parser; hot-reloa│ #5e4b0c                                        │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ #401459                                        │
-│ │ → styled wrapped lines)          │             │                  │ #007a8a                                        │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │ #4f1a18                                        │
-│ │ loader, built-ins)               │             │                  │ #f0f1f3                                        │
-│ └──────────────────────────────────┴─────────────┴──────────────────│ #ccdff5                                        │
-│                                                                     │                                                │
-│ Here is the function you asked for:                                 │                                                │
+│ │                                  │             │ header           │ #4a3e1c                                        │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ #22262c                                        │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ #fafaf8                                        │
+│ │                                  │             │ Rect is a pure fu│ #5f6670                                        │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ #eff0f2                                        │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ #c8ccd2                                        │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ #2d4e78                                        │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ #507b51                                        │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ #5e4b0c                                        │
+│ │ → styled wrapped lines)          │             │                  │ #401459                                        │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │ #007a8a                                        │
+│ │ loader, built-ins)               │             │                  │ #4f1a18                                        │
+│ └──────────────────────────────────┴─────────────┴──────────────────│ #f0f1f3                                        │
+│                                                                     │ #ccdff5                                        │
+│ Here is the function you asked for:                                 │ #f7e4a8                                        │
 │                                                                     │                                                │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│ md_heading  fg #cba63a  bg #14161a  bold       │
 │ │ int add(int a, int b) {                                           │  Aa  the quick brown fox â sample in this role │

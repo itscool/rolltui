@@ -55,6 +55,8 @@ const std::vector<ActionInfo>& library_actions() {
       {"transcript.bottom", "scroll to the bottom"},
       {"transcript.line_up", "scroll a line up"},
       {"transcript.line_down", "scroll a line down"},
+      {"transcript.find_next", "go to the next match"},
+      {"transcript.find_prev", "go to the previous match"},
       {"transcript.fold", "toggle the first folded block in view"},
       {"transcript.copy", "copy the selection again"},
       {"transcript.clear_selection", "clear the selection"},

@@ -35,6 +35,21 @@ bool Selection::range_in(std::size_t entry, std::size_t len, std::size_t& begin,
 
 namespace {
 
+// A highlight applied over a base style: a colour only where the highlight names one,
+// attributes OR'd in. ONE function, so the selection and the two find highlights cannot
+// drift apart in how they combine with the text's own role — which is exactly what
+// happened the first time this was written twice.
+Style overlay_style(Style base, const Style& over) {
+  if (over.fg.kind != Color::Kind::None) base.fg = over.fg;
+  if (over.bg.kind != Color::Kind::None) base.bg = over.bg;
+  base.bold |= over.bold;
+  base.italic |= over.italic;
+  base.underline |= over.underline;
+  base.dim |= over.dim;
+  base.reverse |= over.reverse;
+  return base;
+}
+
 // Visits every drawable grapheme of a line: the span, the grapheme's index within the
 // span (its Span::sources index), its bytes and its width. Width-0 clusters are
 // skipped exactly as Frame::put_text skips them, so cell positions agree.
@@ -174,31 +189,21 @@ std::size_t Transcript::lines_below() const {
   return total_ > shown_end ? total_ - shown_end : 0;
 }
 
-void Transcript::layout(const Document& doc, Rect area, const TranscriptOptions& opt) {
-  const auto t0 = std::chrono::steady_clock::now();
-  area_ = area;
-  opt_ = opt;
-  text_area_ = area;
-  if (opt.inset > 0 && area.w >= 2 * opt.inset + 1) {
-    text_area_.x += opt.inset;
-    text_area_.w -= 2 * opt.inset;
-  }
-  const int width = std::max(text_area_.w, 1);
+void Transcript::build(const Document& doc, int width) {
   const std::size_t n = doc.entries.size();
   layouts_.assign(n, nullptr);
   starts_.assign(n, 0);
-  stats_.entries_relaid = 0;
   for (auto& [id, c] : cache_) c.seen = false;
   std::size_t g = 0;
   for (std::size_t i = 0; i < n; ++i) {
     const DocEntry& e = doc.entries[i];
     const bool folded = e.foldable && is_folded(e);
-    const CacheKey key{e.version, width, opt.ambiguous_wide, opt.tab_width, folded};
+    const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, folded};
     auto it = cache_.find(e.id);
     if (it == cache_.end() || !(it->second.key == key)) {
       Cached c;
       c.key = key;
-      c.layout = lay_out(e, width, opt, folded);
+      c.layout = lay_out(e, width, opt_, folded);
       it = cache_.insert_or_assign(e.id, std::move(c)).first;
       ++stats_.entries_relaid;
     }
@@ -225,10 +230,172 @@ void Transcript::layout(const Document& doc, Rect area, const TranscriptOptions&
     scroll_.line = std::min(scroll_.line, len > 0 ? len - 1 : 0);
     set_top(starts_[scroll_.entry] + scroll_.line);
   }
+}
+
+void Transcript::layout(const Document& doc, Rect area, const TranscriptOptions& opt) {
+  const auto t0 = std::chrono::steady_clock::now();
+  area_ = area;
+  opt_ = opt;
+  text_area_ = area;
+  if (opt.inset > 0 && area.w >= 2 * opt.inset + 1) {
+    text_area_.x += opt.inset;
+    text_area_.w -= 2 * opt.inset;
+  }
+  const int width = std::max(text_area_.w, 1);
+  stats_.entries_relaid = 0;
+  build(doc, width);
+  // A relaid entry means text moved under the match list — a streaming answer, a
+  // re-wrap, a fold toggle — so offsets recorded against the old text are stale. Cheap
+  // to notice here; expensive to debug as a highlight drawn over the wrong bytes.
+  if (!query_.empty() && stats_.entries_relaid > 0) find_dirty_ = true;
+  // Find runs AFTER the build (it needs the layouts to place a match on a line) and can
+  // change the layout by unfolding, which is why reveal_current re-runs build().
+  if (find_dirty_) {
+    recompute_matches(doc, width);
+    find_dirty_ = false;
+  }
+  if (reveal_) {
+    reveal_current(doc, width);
+    reveal_ = false;
+  }
   stats_.total_lines = total_;
   stats_.cache_size = cache_.size();
   stats_.layout_us = static_cast<long>(
       std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+}
+
+// ---- find (see FIND in Transcript.hpp) -------------------------------------------
+
+namespace {
+
+// ASCII-case-insensitive, non-overlapping, left to right. Stated in the header rather
+// than inferred: this library has no Unicode case folding, and folding only the scripts
+// we happen to have tables for would be a rule nobody could predict.
+char lower_ascii(char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; }
+
+bool matches_at(const std::string& hay, std::size_t at, const std::string& needle) {
+  if (at + needle.size() > hay.size()) return false;
+  for (std::size_t k = 0; k < needle.size(); ++k)
+    if (lower_ascii(hay[at + k]) != lower_ascii(needle[k])) return false;
+  return true;
+}
+
+}  // namespace
+
+bool Transcript::set_query(std::string_view q) {
+  if (query_ == q) return false;
+  query_.assign(q);
+  matches_.clear();
+  current_.reset();
+  find_dirty_ = true;
+  // An empty query clears and NEVER moves the view — the one movement rule the
+  // milestone names, because a find bar you just emptied must not throw you somewhere.
+  reveal_ = !query_.empty();
+  return true;
+}
+
+const std::string& Transcript::searchable_text(const DocEntry& e, std::size_t entry, int width) {
+  // For everything but a FOLDED entry the drawn layout's text already is the unfolded
+  // logical text, so the common case costs nothing.
+  if (!(e.foldable && is_folded(e))) return layouts_[entry]->text;
+  const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, /*folded=*/false};
+  auto it = find_text_.find(e.id);
+  if (it == find_text_.end() || !(it->second.key == key)) {
+    FindText ft;
+    ft.key = key;
+    ft.text = lay_out(e, width, opt_, /*folded=*/false).text;
+    it = find_text_.insert_or_assign(e.id, std::move(ft)).first;
+  }
+  return it->second.text;
+}
+
+void Transcript::recompute_matches(const Document& doc, int width) {
+  // Where the user WAS, so a recompute forced by a streaming answer does not silently
+  // move them back to the first match while they are stepping through.
+  const std::optional<FindMatch> was = current_match() ? std::optional<FindMatch>(*current_match()) : std::nullopt;
+  matches_.clear();
+  current_.reset();
+  if (query_.empty()) return;
+  for (std::size_t i = 0; i < doc.entries.size(); ++i) {
+    const std::string& hay = searchable_text(doc.entries[i], i, width);
+    std::size_t at = 0;
+    while (at + query_.size() <= hay.size()) {
+      if (matches_at(hay, at, query_)) {
+        matches_.push_back({i, at, query_.size()});
+        at += std::max<std::size_t>(query_.size(), 1);
+      } else {
+        ++at;
+      }
+    }
+  }
+  if (matches_.empty()) return;
+  if (was) {
+    for (std::size_t k = 0; k < matches_.size(); ++k)
+      if (matches_[k] == *was) { current_ = k; return; }
+  }
+  // The first match at or after the top of the view, so typing into a find bar moves
+  // forward from where you are rather than jumping to the top of the document.
+  const std::size_t top = top_line();
+  std::size_t pick = 0;
+  for (std::size_t k = 0; k < matches_.size(); ++k) {
+    if (matches_[k].entry < starts_.size() && starts_[matches_[k].entry] + block_len(matches_[k].entry) > top) { pick = k; break; }
+  }
+  current_ = pick;
+}
+
+std::size_t Transcript::line_of_offset(std::size_t entry, std::size_t offset) const {
+  const EntryLayout* L = layout_of(entry);
+  if (!L || L->lines.empty()) return 0;
+  std::size_t best = 0;
+  for (std::size_t i = 0; i < L->lines.size(); ++i) {
+    bool any = false;
+    std::size_t lo = 0, hi = 0;
+    for_each_cell(L->lines[i], opt_.ambiguous_wide, [&](const Span& sp, std::size_t k, std::string_view gt, int) {
+      const std::uint32_t src = source_of(sp, k);
+      if (src == kNoSource) return;
+      if (!any) { lo = src; hi = src + gt.size(); any = true; }
+      else { lo = std::min<std::size_t>(lo, src); hi = std::max<std::size_t>(hi, src + gt.size()); }
+    });
+    if (!any) continue;
+    if (offset < hi) return i;
+    if (lo <= offset) best = i;
+  }
+  return best;
+}
+
+void Transcript::reveal_current(const Document& doc, int width) {
+  const FindMatch* m = current_match();
+  if (!m || m->entry >= doc.entries.size()) return;
+  // A match inside a folded block: unfold it, then re-run the build, because every line
+  // number below the entry has just moved.
+  const DocEntry& e = doc.entries[m->entry];
+  if (e.foldable && is_folded(e)) {
+    set_folded(e.id, false);
+    build(doc, width);
+  }
+  const std::size_t line = line_of_offset(m->entry, m->offset);
+  const std::size_t gapn = m->entry > 0 ? static_cast<std::size_t>(std::max(opt_.gap, 0)) : 0;
+  const std::size_t g = starts_[m->entry] + gapn + line;
+  const std::size_t h = static_cast<std::size_t>(std::max(area_.h, 1));
+  const std::size_t top = top_line();
+  // Minimal movement: already in view, nothing moves. Deterministic, and it keeps a
+  // find_next() within one screen from repainting the whole transcript.
+  if (g < top) set_top(g);
+  else if (g >= top + h) set_top(g - h + 1);
+}
+
+bool Transcript::find_next() {
+  if (matches_.empty()) return false;
+  current_ = current_ ? (*current_ + 1) % matches_.size() : 0;
+  reveal_ = true;
+  return true;
+}
+
+bool Transcript::find_prev() {
+  if (matches_.empty()) return false;
+  current_ = current_ && *current_ > 0 ? *current_ - 1 : matches_.size() - 1;
+  reveal_ = true;
+  return true;
 }
 
 Transcript::RowRef Transcript::row_at(std::size_t global) const {
@@ -256,17 +423,15 @@ void Transcript::draw(Frame& frame, const Theme& theme) const {
   const bool amb = opt_.ambiguous_wide;
   const Style& sel_style = theme.style(Role::selection);
   auto styled = [&](Role role, bool selected) {
-    Style s = theme.style(role);
-    if (!selected) return s;
-    if (sel_style.fg.kind != Color::Kind::None) s.fg = sel_style.fg;
-    if (sel_style.bg.kind != Color::Kind::None) s.bg = sel_style.bg;
-    s.bold |= sel_style.bold;
-    s.italic |= sel_style.italic;
-    s.underline |= sel_style.underline;
-    s.dim |= sel_style.dim;
-    s.reverse |= sel_style.reverse;
-    return s;
+    const Style s = theme.style(role);
+    return selected ? overlay_style(s, sel_style) : s;
   };
+  // A find highlight is the SAME range test the selection uses, on the same per-cell
+  // source offsets — which is why a match that wraps lights up on both rows without
+  // anything here knowing what a row is.
+  const Style& match_style = theme.style(Role::find_match);
+  const Style& current_style = theme.style(Role::find_current);
+  const FindMatch* cur = current_match();
   const std::size_t top = top_line();
   const int right = text_area_.x + text_area_.w;
   for (int row = 0; row < area_.h; ++row) {
@@ -294,14 +459,36 @@ void Transcript::draw(Frame& frame, const Theme& theme) const {
       });
       fully = has_text ? (lo >= sb && hi <= se) : (sb == 0 && se >= len);
     }
+    // This entry's matches only. matches_ is sorted by (entry, offset), so this is a
+    // binary search rather than a scan of every match for every cell — the difference
+    // between a find on a long transcript costing nothing and costing the frame.
+    const FindMatch* mb = matches_.data();
+    const FindMatch* me = mb;
+    if (!matches_.empty()) {
+      auto by_entry = [](const FindMatch& m, std::size_t e) { return m.entry < e; };
+      auto entry_by = [](std::size_t e, const FindMatch& m) { return e < m.entry; };
+      mb = std::lower_bound(matches_.begin(), matches_.end(), r.entry, by_entry).base();
+      me = std::upper_bound(matches_.begin(), matches_.end(), r.entry, entry_by).base();
+    }
     int x = text_area_.x;
     bool stop = false;
     for_each_cell(line, amb, [&](const Span& sp, std::size_t k, std::string_view gt, int w) {
       if (stop || x + w > right) { stop = true; return; }
       const std::uint32_t src = source_of(sp, k);
       const bool selected = fully || (in_sel && src != kNoSource && src >= sb && src < se);
+      Style st = styled(sp.role, selected);
+      // The selection WINS where they overlap (Transcript.hpp's FIND): it is the user's
+      // most recent direct act. Otherwise the current match beats the other matches.
+      if (!selected && src != kNoSource) {
+        for (const FindMatch* m = mb; m != me; ++m) {
+          if (src >= m->offset && src < m->offset + m->length) {
+            st = overlay_style(st, (cur && *m == *cur) ? current_style : match_style);
+            break;
+          }
+        }
+      }
       const std::uint32_t link = sp.href.empty() ? 0 : frame.link_id(sp.href);
-      x += frame.put(x, y, gt, w, styled(sp.role, selected), link);
+      x += frame.put(x, y, gt, w, st, link);
     });
   }
   const std::size_t below = lines_below();
@@ -571,6 +758,8 @@ bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_m
     if (action == "transcript.bottom") { scroll_to_bottom(); return true; }
     if (action == "transcript.line_up") { scroll_by(-1); return true; }
     if (action == "transcript.line_down") { scroll_by(1); return true; }
+    if (action == "transcript.find_next") return find_next();
+    if (action == "transcript.find_prev") return find_prev();
     if (action == "transcript.fold") return toggle_fold_nearest_top(doc);
     if (action == "transcript.copy") return copy_selection();
     if (action == "transcript.clear_selection" && sel_.active) { clear_selection(); return true; }

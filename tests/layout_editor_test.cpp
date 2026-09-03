@@ -371,8 +371,8 @@ int main() {
           "…and the rest are the base layer's FOCUSABLE windows [" + ed.committed().base.focus + "]");
     // The skeleton itself, as a value: nothing carried, whatever was open.
     const Layout before = ed.current();
-    check(before.popups.size() == 4 && before.actions.size() == 5 && before.min_width == 72,
-          "the screen it is created FROM has four popups, five actions and a threshold");
+    check(before.popups.size() == 5 && before.actions.size() == 6 && before.min_width == 72,
+          "the screen it is created FROM has five popups, six actions and a threshold");
     act(ed, "new layout");
     type(ed, "kiosk");
     o = ed.handle(key(Key::Enter));

@@ -37,6 +37,8 @@
     "transcript.bottom": ["end", "ctrl+end"],
     "transcript.line_up": ["up"],
     "transcript.line_down": ["down"],
+    "transcript.find_next": ["ctrl+g"],
+    "transcript.find_prev": ["alt+g"],
     "transcript.fold": ["ctrl+o"],
     "transcript.copy": ["alt+c"],
     "transcript.clear_selection": ["escape"],
@@ -62,6 +64,7 @@
     "app.menu": ["f2"],
     "app.details": ["f3"],
     "app.palette": ["ctrl+p"],
-    "app.repaint": ["ctrl+l"]
+    "app.repaint": ["ctrl+l"],
+    "app.find": ["ctrl+f"]
   }
 }

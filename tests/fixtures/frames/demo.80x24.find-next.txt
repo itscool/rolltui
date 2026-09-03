@@ -1,0 +1,24 @@
+┌ transcript ───╭ find ────────────────────────────────────────╮───────────────┐
+│ │ per axis),  │ > wrap                                       │t-dark         │
+│ │ focus       ╰──────────────────────────────────────────────╯t              │
+│ │              │             │ pure         │ │ layout  default              │
+│ │              │             │ function     │ │ size    80x24                │
+│ │ Menu widget  │ build       │ single       │ │ line    157/191              │
+│ │ (hierarchica │             │ header each; │ │ follow  no                   │
+│ │ l,           │             │ the widget   │ │ depth   truecolor            │
+│ │ filterable)  │             │ set is       │ │ focus   find                 │
+│ │ + list/text  │             │ deliberately │ │                              │
+│ │ widgets      │             │ this small   │ │                              │
+│ │ Layout files │ build       │ reuses the   │ │                              │
+│ │ (JSON:       │             │ theme        │ │                              │
+│ │ windows +    │             │ loader's     │ │                              │
+│ │ placements + │             │ hand parser; │ │                              │
+│ │ content      │             │ hot-reloaded │ │                              │
+│ │ slots)       │             │              │ │                              │
+│ │ Markdown     │ build       │ single       │ │                              │
+│ │ block        │             │ header over  │ │                              │
+│ │ renderer     │             │ md4c▼ 16 more  │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 157/191  truecolor  focus:find  find 4/4

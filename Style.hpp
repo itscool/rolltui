@@ -30,6 +30,8 @@ enum class Role : std::uint8_t {
   // chrome
   input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
   menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
+  // find (Phase 12 m4): every match, and the one the view is on
+  find_match, find_current,
   count_
 };
 
@@ -47,7 +49,20 @@ inline constexpr RolePair kMustDiffer[] = {
     {Role::accent_1, Role::accent_2},       {Role::accent_1, Role::accent_3}, {Role::accent_1, Role::accent_4},
     {Role::accent_2, Role::accent_3},       {Role::accent_2, Role::accent_4}, {Role::accent_3, Role::accent_4},
     {Role::menu_item, Role::menu_selected}, {Role::input_text, Role::input_placeholder},
+    // Phase 12 m4. "Which of the 17 matches am I on" is unanswerable if these two look
+    // alike, so it is a must-differ pair like any other. Deliberately NOT paired with
+    // `selection`: a match and a selection legitimately overlap, and the reader's
+    // question there is "what did I select", which the selection winning answers.
+    {Role::find_match, Role::find_current},
 };
+// A LIMIT OF THIS CHECK, found while adding the pair above and stated here because the
+// next background-carried distinction will meet it too (m5's scrollbar thumb, m6's
+// effect states): the comparison below is on `fg` ONLY. Two roles that differ solely in
+// `bg` — which is the natural way to draw a highlight — measure as identical and would
+// fail `distinct` while looking perfectly clear on screen. That is why `find_current` is
+// specified as INVERTED (dark text on the accent) rather than as the same text on a
+// stronger tint: the distinction is carried where the check can see it. A theme author
+// who ignores that gets told, which is the point.
 inline constexpr std::size_t kMustDifferCount = sizeof(kMustDiffer) / sizeof(kMustDiffer[0]);
 
 inline constexpr std::array<std::string_view, kRoleCount> kRoleNames = {
@@ -60,6 +75,7 @@ inline constexpr std::array<std::string_view, kRoleCount> kRoleNames = {
     "diff_added", "diff_removed", "diff_context",
     "input_text", "input_cursor", "input_placeholder", "scroll_marker", "selection",
     "overlay", "menu_item", "menu_selected", "menu_breadcrumb", "menu_shortcut",
+    "find_match", "find_current",
 };
 
 inline constexpr std::string_view role_name(Role r) {

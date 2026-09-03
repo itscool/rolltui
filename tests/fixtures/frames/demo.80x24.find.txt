@@ -1,0 +1,24 @@
+┌ transcript ───╭ find ────────────────────────────────────────╮───────────────┐
+│ │ Wrap engine │ > wrap                                       │t-dark         │
+│ │             ╰──────────────────────────────────────────────╯t              │
+│ │              │             │ the Unicode  │ │ layout  default              │
+│ │              │             │ header       │ │ size    80x24                │
+│ │ Windows,     │ build       │ single       │ │ line    149/191              │
+│ │ layers,      │             │ header;      │ │ follow  no                   │
+│ │ placement    │             │ resolve(Plac │ │ depth   truecolor            │
+│ │ (Dim abs/rel │             │ ement,       │ │ focus   find                 │
+│ │ per axis),   │             │ parent) →    │ │                              │
+│ │ focus        │             │ Rect is a    │ │                              │
+│ │              │             │ pure         │ │                              │
+│ │              │             │ function     │ │                              │
+│ │ Menu widget  │ build       │ single       │ │                              │
+│ │ (hierarchica │             │ header each; │ │                              │
+│ │ l,           │             │ the widget   │ │                              │
+│ │ filterable)  │             │ set is       │ │                              │
+│ │ + list/text  │             │ deliberately │ │                              │
+│ │ widgets      │             │ this small   │ │                              │
+│ │ Layout files │ build       │ reus▼ 24 more  │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 149/191  truecolor  focus:find  find 2/4

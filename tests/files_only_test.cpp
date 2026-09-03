@@ -145,15 +145,19 @@ int main(int argc, char** argv) {
       // so 6 of content, and PageDown moves exactly one viewport. The assertion below needs
       // the "app:" header, its one action row and the following "editor:" header all in
       // view at once, so the scroll offset has to land in a FOUR-line window — and a whole
-      // number of pages does not always fall inside it. Six pages (offset 36) plus two
-      // lines (38) puts "app:" on the fourth visible row. **Any milestone that grows
+      // number of pages does not always fall inside it. Six pages (offset 36) plus FOUR
+      // lines (40) puts "app:" on the fourth visible row. **Any milestone that grows
       // `library_actions()` moves the app scope further down this table and this number
-      // must be recomputed** (plan/phase-12.md's ordering note); Phase 12 m1 added two
-      // `input` rows and turned a bare `PageDown ×6` — which had landed exactly on the
-      // window by luck — into a case that scrolled past it and returned -1.
+      // must be recomputed** (plan/phase-12.md's ordering note). It has now happened
+      // twice, both times exactly as that note predicted: m1 added two `input` rows and
+      // turned a bare `PageDown ×6` — which had landed on the window by luck — into a
+      // case that scrolled past it and returned -1; m4 added two `transcript` rows, which
+      // sit ABOVE the app scope, taking the two extra lines to four. The recipe, so the
+      // next one is arithmetic and not archaeology: count the rows your milestone adds
+      // BEFORE the "app:" header and add that many `Down`s.
       {"files-only.80x24.app-scope",
        "--frame 80x24 --layout kettle --bindings kettle --keys \"Tab PageDown PageDown PageDown PageDown PageDown "
-       "PageDown Down Down\""},
+       "PageDown Down Down Down Down\""},
       // The SAME screen reached by switching layouts at runtime (F2 › Layout › kettle),
       // which is the only path that can accumulate declarations: the app scope must still
       // be this layout's one action and not also the five the layout we started on
@@ -161,7 +165,7 @@ int main(int argc, char** argv) {
       // above cannot tell an authoritative declare() from an additive one — this one can.
       {"files-only.80x24.switched",
        "--frame 80x24 --layout default --bindings kettle --keys \"F2 Type:lay Enter Type:kettle Enter Escape Tab "
-       "PageDown PageDown PageDown PageDown PageDown PageDown Down Down\""},
+       "PageDown PageDown PageDown PageDown PageDown PageDown Down Down Down Down\""},
       // The VERIFY rung: a layout declaring nothing. The menu item's action is reported
       // by name in the status line and its shortcut is gone.
       {"files-only.100x14.silent", "--frame 100x14 --layout kettle-silent --bindings kettle"},
