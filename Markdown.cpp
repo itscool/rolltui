@@ -364,6 +364,8 @@ struct Ctx {
   int tab_width;
   std::string* logical = nullptr;  // the document's logical text
   const char* terminator = "\n";   // what ends a block's logical line ("\t" inside a table row)
+  const Highlighter* highlight = nullptr;       // nullptr: no highlighter registered
+  HighlightReport* highlight_report = nullptr;  // where a clamped/dropped span is named
 
   std::vector<Span> take_prefix() {
     if (!first_used) { first_used = true; return prefix_first; }
@@ -492,10 +494,81 @@ std::vector<std::string> split_lines(const std::string& code) {
   return v;
 }
 
+// The first whitespace-delimited word of a fence's info string ("cpp" from
+// "cpp title=x.cpp") — the language tag a highlighter is called with. CommonMark
+// permits attributes after the language; the box label (rendered as-is, unchanged)
+// keeps the whole string, only the highlighter's tag is narrowed.
+std::string_view first_word(std::string_view s) {
+  std::size_t i = 0;
+  while (i < s.size() && s[i] != ' ' && s[i] != '\t') ++i;
+  return s.substr(0, i);
+}
+
+// One clamped, non-overlapping, in-line highlight range, in the byte-offset space of
+// the code line the highlighter was given (WrapGrapheme::source_offset matches it).
+struct HighlightRun {
+  std::size_t begin, end;
+  Role role;
+};
+
+// Turns a highlighter's raw spans for ONE code line into a run list that is safe to
+// paint: sorted by start (stable, so ties keep the highlighter's own order), every
+// span forced forward and inside [0, line_len), later spans losing ground to earlier
+// ones on overlap. Every span the input needed correcting or dropping — never merely
+// "produced a run" — is named in `report`, by language and 1-based line number, the
+// way LayoutLoadReport/WindowsReport name a bad value: nothing here is silent, a
+// span that is fully dropped is reported exactly like one that is only trimmed.
+std::vector<HighlightRun> clamp_highlight_spans(std::vector<HighlightSpan> spans, std::size_t line_len,
+                                                 std::string_view lang, int line_no, HighlightReport& report) {
+  std::stable_sort(spans.begin(), spans.end(),
+                    [](const HighlightSpan& a, const HighlightSpan& b) { return a.begin < b.begin; });
+  const std::string loc = "\"" + std::string(lang) + "\" line " + std::to_string(line_no) + ": ";
+  auto range = [](std::size_t b, std::size_t e) { return "[" + std::to_string(b) + "," + std::to_string(e) + ")"; };
+  std::vector<HighlightRun> out;
+  std::size_t cursor = 0;
+  for (const HighlightSpan& s : spans) {
+    if (s.end <= s.begin) {
+      report.clamped.push_back(loc + "span " + range(s.begin, s.end) + " runs backwards or is empty — dropped");
+      continue;
+    }
+    if (s.begin >= line_len) {
+      report.clamped.push_back(loc + "span " + range(s.begin, s.end) + " starts past the line's " +
+                                std::to_string(line_len) + " bytes — dropped");
+      continue;
+    }
+    std::size_t b = s.begin;
+    std::size_t e = s.end;
+    std::vector<std::string> why;
+    if (e > line_len) { e = line_len; why.push_back("exceeds the line's " + std::to_string(line_len) + " bytes"); }
+    if (b < cursor) { b = cursor; why.push_back("overlaps an earlier span"); }
+    if (b >= e) {
+      report.clamped.push_back(loc + "span " + range(s.begin, s.end) +
+                                " entirely overlapped by an earlier span — dropped");
+      continue;
+    }
+    if (!why.empty()) {
+      std::string joined;
+      for (std::size_t i = 0; i < why.size(); ++i) { if (i) joined += " and "; joined += why[i]; }
+      report.clamped.push_back(loc + "span " + range(s.begin, s.end) + " " + joined + " — clamped to " + range(b, e));
+    }
+    out.push_back({b, e, s.role});
+    cursor = e;
+  }
+  return out;
+}
+
+Role highlight_role_at(const std::vector<HighlightRun>& runs, std::size_t offset) {
+  for (const HighlightRun& r : runs)
+    if (r.begin <= offset && offset < r.end) return r.role;
+  return Role::md_code_block;
+}
+
 void render_code(const std::string& code, const std::string& label, Ctx& ctx,
-                 std::vector<StyledLine>& out) {
+                 std::vector<StyledLine>& out, bool highlightable = false) {
   const bool boxed = ctx.width >= 8;
   const int inner = boxed ? ctx.width - 4 : ctx.width;
+  const std::string_view lang = highlightable ? first_word(label) : std::string_view{};
+  const bool highlighting = highlightable && ctx.highlight != nullptr;
   WrapOptions wo;
   wo.ambiguous_wide = ctx.ambiguous;
   wo.tab_width = ctx.tab_width;
@@ -518,18 +591,34 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
     out.push_back(std::move(l));
   };
   if (boxed) hrule("\xE2\x94\x8C", "\xE2\x94\x90", label);  // ┌ ┐
+  int line_no = 1;
   for (const std::string& raw : split_lines(code)) {
     std::vector<Line> lines = wrap(raw, inner, wo);
     std::size_t base = ctx.logical->size();
     *ctx.logical += raw;
     ctx.end_logical_line();
+    // Unregistered highlighter (the default) or a non-highlightable block (HTML):
+    // `runs` stays empty and every grapheme below takes exactly the pre-seam path —
+    // this is the control markdown_test.cpp asserts byte-identical.
+    std::vector<HighlightRun> runs;
+    if (highlighting)
+      runs = clamp_highlight_spans((*ctx.highlight)(lang, raw), raw.size(), lang, line_no, *ctx.highlight_report);
+    ++line_no;
     for (const Line& ln : lines) {
       StyledLine sl = start_line(ctx, first);
       first = false;
       if (boxed) push_span(sl, "\xE2\x94\x82 ", Role::md_code_label, ctx.ambiguous);  // │
-      std::vector<std::uint32_t> src;
-      for (const WrapGrapheme& g : ln.graphemes) src.push_back(static_cast<std::uint32_t>(base + g.source_offset));
-      push_span(sl, ln.text, Role::md_code_block, ctx.ambiguous, std::move(src));
+      if (runs.empty()) {
+        std::vector<std::uint32_t> src;
+        for (const WrapGrapheme& g : ln.graphemes) src.push_back(static_cast<std::uint32_t>(base + g.source_offset));
+        push_span(sl, ln.text, Role::md_code_block, ctx.ambiguous, std::move(src));
+      } else {
+        for (const WrapGrapheme& g : ln.graphemes) {
+          Role r = highlight_role_at(runs, g.source_offset);
+          push_span(sl, ln.text.substr(g.offset, g.length), r, ctx.ambiguous,
+                    {static_cast<std::uint32_t>(base + g.source_offset)});
+        }
+      }
       int pad = inner - ln.width;
       if (pad > 0) push_span(sl, spaces(pad), Role::md_code_block, ctx.ambiguous);
       if (boxed) push_span(sl, " \xE2\x94\x82", Role::md_code_label, ctx.ambiguous);
@@ -563,10 +652,12 @@ void render_block(const Block& b, Ctx& ctx, std::vector<StyledLine>& out) {
       break;
     }
     case K::Code:
-      render_code(b.code, b.info, ctx, out);
+      render_code(b.code, b.info, ctx, out, /*highlightable=*/true);
       break;
     case K::Html:
-      render_code(b.code, "html", ctx, out);
+      // Never highlighted: an HTML block is opaque code by design (Markdown.hpp),
+      // and it carries no language tag to highlight it by.
+      render_code(b.code, "html", ctx, out, /*highlightable=*/false);
       break;
     case K::Rule: {
       StyledLine l = start_line(ctx, true);
@@ -726,6 +817,8 @@ void render_table(const Block& t, Ctx& ctx, std::vector<StyledLine>& out) {
 Rendered render_text(const Document& doc, const RenderOptions& opt) {
   Rendered r;
   Ctx ctx{std::max(opt.width, 1), {}, {}, false, opt.base, opt.ambiguous_wide, opt.tab_width, &r.text, "\n"};
+  ctx.highlight = opt.highlight ? &opt.highlight : nullptr;
+  ctx.highlight_report = &r.highlight_report;
   render_blocks(doc.blocks, ctx, r.lines, false);
   if (!r.text.empty() && r.text.back() == '\n') r.text.pop_back();
   return r;

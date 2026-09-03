@@ -148,6 +148,35 @@ bool has_role(const std::vector<StyledLine>& v, Role r, const std::string& text)
   return false;
 }
 
+// A two-language ("cpp", "python") toy highlighter — the seam's PROOF, not a shipped
+// highlighter (Markdown.hpp: "the library ships no highlighter"; a real one is
+// deliberately out of scope, plan/phase-12.md m2's "Deliberately NOT in this phase").
+// It returns byte-range SPANS only, never text and never a painter: the renderer
+// alone decides how those bytes wrap and land in the cell grid. `calls`, when given,
+// counts every invocation, so a test can assert exactly when the renderer does — and
+// does not — call it.
+Highlighter toy_highlighter(int* calls = nullptr) {
+  return [calls](std::string_view lang, std::string_view line) -> std::vector<HighlightSpan> {
+    if (calls) ++*calls;
+    std::vector<HighlightSpan> spans;
+    auto mark_all = [&](std::string_view word, Role role) {
+      std::size_t pos = 0;
+      while ((pos = line.find(word, pos)) != std::string_view::npos) {
+        spans.push_back({pos, pos + word.size(), role});
+        pos += word.size();
+      }
+    };
+    if (lang == "cpp") {
+      mark_all("int", Role::accent_1);
+      mark_all("return", Role::accent_1);
+    } else if (lang == "python") {
+      mark_all("def", Role::accent_2);
+      mark_all("return", Role::accent_2);
+    }
+    return spans;
+  };
+}
+
 }  // namespace
 
 int main() {
@@ -212,6 +241,87 @@ int main() {
     check(L.size() == 6 && L[2].rfind("\xE2\x94\x8C python", 0) == 0 && L[5].rfind("\xE2\x94\x94", 0) == 0,
           "an unterminated fence renders as a code block to the end");
     check(has_role(v, Role::md_code_block, "return 1"), "its last line is code");
+  }
+  // ---- highlighter seam (plan/phase-12.md m2) -------------------------------------
+  {
+    int calls = 0;
+    RenderOptions ro{.width = 30};
+    ro.highlight = toy_highlighter(&calls);
+    auto v = render("```cpp\nint x = 1;\n```\n", ro);
+    auto L = lines_of(v);
+    check(calls == 1, "highlighter called exactly once for the block's one line (" + std::to_string(calls) + ")");
+    check(has_role(v, Role::accent_1, "int"), "a registered highlighter colours 'int' with its returned role");
+    check(has_role(v, Role::md_code_block, " x = 1;"), "bytes outside a span keep the base code role");
+    check(L[1] == "\xE2\x94\x82 int x = 1;                 \xE2\x94\x82",
+          "a highlighter changes ROLES only — wrapping and padding are exactly as before: [" + L[1] + "]");
+  }
+  {
+    // A different fence language reaches the same callback and picks a different
+    // keyword set: the seam threads the fence's own info string through, it is not a
+    // fixed language.
+    int calls = 0;
+    RenderOptions ro{.width = 40};
+    ro.highlight = toy_highlighter(&calls);
+    auto v = render("```python\ndef f():\n    return 1\n```\n", ro);
+    check(calls == 2, "called once per code line (" + std::to_string(calls) + ")");
+    check(has_role(v, Role::accent_2, "def") && has_role(v, Role::accent_2, "return"),
+          "python keywords take the highlighter's role");
+    check(!has_role(v, Role::accent_1, "def"), "the cpp keyword set is not applied to a python block");
+  }
+  {
+    // An HTML block carries no language tag (Markdown.hpp: "never for an HTML
+    // block" — it is always opaque code, never interpreted).
+    int calls = 0;
+    RenderOptions ro{.width = 30};
+    ro.highlight = toy_highlighter(&calls);
+    render("<div>\n<b>raw</b>\n</div>\n", ro);
+    check(calls == 0, "an HTML block is never handed to the highlighter");
+  }
+  {
+    // The control: RenderOptions::highlight left UNSET. This is the seam's whole
+    // mechanism for "the callback is never called for a line no theme role could
+    // distinguish (a mono theme asks for no spans)" (plan/phase-12.md m2) — the
+    // renderer cannot itself see a Theme (Markdown.hpp/Theme.hpp: roles are emitted,
+    // never colours), so the guarantee it can make and this asserts is: nothing is
+    // called when nothing is registered. A host under a mono theme asks for no spans
+    // simply by not registering a highlighter, exactly as here.
+    RenderOptions ro{.width = 30};  // .highlight default-constructed: unset
+    Rendered r = render_text("```cpp\nint x = 1;\n```\n", ro);
+    check(r.highlight_report.clean(), "an unregistered highlighter leaves the report clean");
+    check(has_role(r.lines, Role::md_code_block, "int x = 1;"),
+          "unregistered: the code line keeps exactly its pre-seam role");
+    // This IS the "no highlighter leaves every existing markdown golden
+    // byte-identical" control: every exact-string assertion elsewhere in this file
+    // (e.g. the fenced-code and unterminated-fence cases above) runs with
+    // RenderOptions::highlight left at this same default and must keep passing
+    // unchanged — verified against a captured pre-seam dump of every fixture at
+    // every tested width (JOURNAL.md).
+  }
+  {
+    // ---- clamping: overlap, backwards, and past-the-line spans are corrected AND
+    // NAMED, never silently dropped (CLAUDE.md: a control that reports zero has been
+    // wrong before — an empty report must mean nothing needed clamping, not that
+    // clamping was skipped).
+    RenderOptions ro{.width = 30};
+    ro.highlight = [](std::string_view, std::string_view line) -> std::vector<HighlightSpan> {
+      std::vector<HighlightSpan> spans;
+      spans.push_back({0, 3, Role::accent_1});                              // "int" — well-formed
+      spans.push_back({1, 5, Role::accent_2});                              // overlaps the first
+      spans.push_back({5, 2, Role::accent_3});                              // runs backwards
+      spans.push_back({line.size() - 2, line.size() + 50, Role::accent_4});  // exceeds the line
+      return spans;
+    };
+    Rendered r = render_text("```cpp\nint x = 1;\n```\n", ro);  // the line is "int x = 1;", 10 bytes
+    check(!r.highlight_report.clean(), "malformed spans are reported, not dropped silently");
+    check(r.highlight_report.clamped.size() == 3,
+          "each malformed span gets its own named entry (" + std::to_string(r.highlight_report.clamped.size()) + ")");
+    std::string all;
+    for (const std::string& m : r.highlight_report.clamped) all += m + "\n";
+    check(all.find("runs backwards") != std::string::npos, "the backwards span is named: [" + all + "]");
+    check(all.find("overlaps an earlier span") != std::string::npos, "the overlapping span is named: [" + all + "]");
+    check(all.find("exceeds the line") != std::string::npos, "the past-the-line span is named: [" + all + "]");
+    check(has_role(r.lines, Role::accent_1, "int"),
+          "the one well-formed span still renders despite its malformed neighbours");
   }
   {
     auto v = render("<div>\n<b>raw</b>\n</div>\n", RenderOptions{.width = 30});
