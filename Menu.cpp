@@ -4,8 +4,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
+#include <utility>
 
 #include "rolltui/Json.hpp"
 #include "rolltui/Layout.hpp"
@@ -369,11 +371,12 @@ MenuItem item_from_json(const Value& v, const std::string& where, MenuLoadReport
   std::vector<std::pair<std::string, const Value*>> spec_keys;
   for (const auto& [k, x] : v.obj) {
     const std::string at = where + "." + k;
-    if (k == "id" || k == "label" || k == "shortcut" || k == "value") {
+    if (k == "id" || k == "label" || k == "shortcut" || k == "value" || k == "action") {
       if (!x.is_string()) { rep.bad_values.push_back(at + ": expected a string"); continue; }
       if (k == "id") it.id = x.str;
       else if (k == "label") it.label = x.str;
       else if (k == "shortcut") it.shortcut = x.str;
+      else if (k == "action") it.action_name = x.str;
       else it.value = x.str;
     } else if (k == "kind") {
       auto kd = x.is_string() ? kind_from_name(x.str) : std::nullopt;
@@ -396,6 +399,12 @@ MenuItem item_from_json(const Value& v, const std::string& where, MenuLoadReport
     }
   }
   if (!kind_given) it.kind = v.has("items") ? MenuItem::Kind::Submenu : MenuItem::Kind::Action;
+  // An action's shortcut is the bindings' to say (Menu.hpp): a file that also spells one
+  // out is stating the same fact twice, and the second copy is what goes stale.
+  if (!it.action_name.empty() && !it.shortcut.empty()) {
+    rep.bad_values.push_back(where + ".shortcut: an item with an \"action\" takes its shortcut from the bindings (ignored)");
+    it.shortcut.clear();
+  }
   for (const auto& [k, xp] : spec_keys) {
     const Value& x = *xp;
     const std::string at = where + "." + k;
@@ -437,7 +446,10 @@ Value item_to_json(const MenuItem& it) {
   const bool implied = (it.kind == MenuItem::Kind::Submenu && !it.children.empty()) ||
                        (it.kind == MenuItem::Kind::Action && it.children.empty());
   if (!implied) o.set("kind", Value::string(kind_name(it.kind)));
-  if (!it.shortcut.empty()) o.set("shortcut", Value::string(it.shortcut));
+  if (!it.action_name.empty()) o.set("action", Value::string(it.action_name));
+  // An action's shortcut is derived and is never written back (apply_shortcuts fills it
+  // from the live chords), so a round trip cannot bake one moment's keys into a file.
+  if (it.action_name.empty() && !it.shortcut.empty()) o.set("shortcut", Value::string(it.shortcut));
   if (!it.enabled) o.set("enabled", Value::boolean(false));
   if (it.checked) o.set("checked", Value::boolean(true));
   if (!it.value.empty()) o.set("value", Value::string(it.value));
@@ -491,6 +503,26 @@ std::optional<MenuItem> menu_from_json(std::string_view json_text, MenuLoadRepor
 }
 
 std::string menu_to_json(const MenuItem& root) { return json::dump(item_to_json(root), 2) + "\n"; }
+
+// The shipped menu files, embedded by cmake/embed_presets.cmake from
+// rolltui/presets/menus/ — the same machinery as the shipped presets, so a menu that
+// ships is a real file in the source tree and not a string in a .cpp (Phase 10 m3).
+namespace embedded {
+extern const std::pair<std::string_view, std::string_view> kMenus[];
+extern const std::size_t kMenuCount;
+}  // namespace embedded
+
+std::string_view shipped_menu(std::string_view name) {
+  for (std::size_t i = 0; i < embedded::kMenuCount; ++i)
+    if (embedded::kMenus[i].first == name) return embedded::kMenus[i].second;
+  return {};
+}
+
+std::vector<std::string_view> shipped_menu_names() {
+  std::vector<std::string_view> out;
+  for (std::size_t i = 0; i < embedded::kMenuCount; ++i) out.push_back(embedded::kMenus[i].first);
+  return out;
+}
 
 // ---- the widget ----------------------------------------------------------------------
 
@@ -580,6 +612,25 @@ std::vector<std::string> Menu::unknown_validators() const {
   }
   return out;
 }
+
+namespace {
+void collect_item_actions(const MenuItem& it, std::vector<std::pair<std::string, std::string>>& out) {
+  if (!it.action_name.empty()) out.emplace_back(it.id, it.action_name);
+  for (const MenuItem& c : it.children) collect_item_actions(c, out);
+}
+void fill_shortcuts(MenuItem& it, const Bindings& b) {
+  if (!it.action_name.empty()) it.shortcut = b.chords_text(it.action_name);
+  for (MenuItem& c : it.children) fill_shortcuts(c, b);
+}
+}  // namespace
+
+std::vector<std::pair<std::string, std::string>> Menu::item_actions() const {
+  std::vector<std::pair<std::string, std::string>> out;
+  collect_item_actions(root_, out);
+  return out;
+}
+
+void Menu::apply_shortcuts(const Bindings& b) { fill_shortcuts(root_, b); }
 
 MenuItem* Menu::by_path(const std::vector<std::size_t>& p) {
   MenuItem* it = &root_;

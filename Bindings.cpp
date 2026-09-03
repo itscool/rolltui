@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdio>
 
+#include "rolltui/Layout.hpp"  // shipped_default_actions() — the app scope the shipped screen declares
 #include "rolltui/Unicode.hpp"
 
 namespace rolltui {
@@ -73,11 +74,9 @@ const std::vector<ActionInfo>& library_actions() {
       {"stack.close_popup", "close the topmost popup"},
       {"stack.focus_next", "move focus to the next window"},
       {"stack.focus_prev", "move focus to the previous window"},
-      {"app.help", "open help"},
-      {"app.menu", "open the settings and commands menu"},
-      {"app.details", "open the session details"},
-      {"app.palette", "open the command palette"},
-      {"app.repaint", "repaint the screen"},
+      // The library's own tools (rolltui/tools/), which ship with it: the three editors
+      // and the playground. `app.*` is deliberately NOT here — it is the APPLICATION's,
+      // and every application is different, so a layout file declares it (milestone 4).
       {"editor.undo", "undo the last committed change"},
       {"editor.redo", "redo"},
       {"editor.theme", "open the theme editor"},
@@ -93,6 +92,12 @@ const std::vector<ActionInfo>& library_actions() {
 std::string_view scope_of(std::string_view action) {
   const std::size_t dot = action.find('.');
   return dot == std::string_view::npos ? action : action.substr(0, dot);
+}
+
+bool library_scope(std::string_view scope) {
+  for (const ActionInfo& a : library_actions())
+    if (scope_of(a.name) == scope) return true;
+  return false;
 }
 
 // ---- chords ---------------------------------------------------------------------------
@@ -214,7 +219,23 @@ void Bindings::add_action(std::string_view action, std::string_view description)
   if (has(action)) return;
   actions_.emplace_back(action);
   descriptions_.emplace_back(description);
+  // A row may already exist with chords in it — a bindings file loaded before the layout
+  // declared this action kept them (Bindings.hpp). Declaring is what makes them live;
+  // it must never throw them away.
+  for (const auto& [a, c] : table_)
+    if (a == action) return;
   table_.emplace_back(std::string(action), std::vector<KeyEvent>{});
+}
+
+void Bindings::declare(const std::vector<ActionDecl>& declared) {
+  for (const ActionDecl& d : declared) add_action(d.name, d.description);
+}
+
+std::vector<std::string> Bindings::undeclared() const {
+  std::vector<std::string> out;
+  for (const auto& [a, chords] : table_)
+    if (!chords.empty() && !has(a)) out.push_back(a);
+  return out;
 }
 
 std::string_view Bindings::description(std::string_view action) const {
@@ -252,6 +273,7 @@ std::string_view Bindings::action_for(const KeyEvent& key, std::string_view scop
   const KeyEvent k = normalise(key);
   for (const auto& [a, chords] : table_) {
     if (scope_of(a) != scope) continue;
+    if (!has(a)) continue;  // an undeclared row: kept, written back, never emitted
     for (const KeyEvent& c : chords)
       if (c == k) return a;
   }
@@ -325,7 +347,16 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
     if (k != "name" && k != "bindings" && k != "preset") report.unknown_keys.push_back(k);
   Bindings b;
   for (const auto& [action, chords] : map.obj) {
-    if (!b.has(action)) { report.unknown_actions.push_back(action); continue; }
+    if (!b.has(action)) {
+      // A library scope is closed, so a name it does not define is a typo and is said
+      // so. Any other scope belongs to a layout that this file knows nothing about: the
+      // row is kept, inert, until something declares it (Bindings.hpp).
+      if (library_scope(scope_of(action)) || scope_of(action) == action) {
+        report.unknown_actions.push_back(action);
+        continue;
+      }
+      b.table_.emplace_back(action, std::vector<KeyEvent>{});
+    }
     if (!chords.is_array()) { report.bad_values.push_back(action + ": expected an array of chords"); continue; }
     for (const json::Value& c : chords.arr) {
       if (!c.is_string()) { report.bad_values.push_back(action + ": a chord must be a string"); continue; }
@@ -337,7 +368,13 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
         continue;
       }
       // A conflict within the scope: report it; the FIRST binding in the file wins.
-      const std::string_view other = b.action_for(*k, scope_of(action));
+      // Searched over the rows themselves, not through action_for, so two UNDECLARED
+      // actions of one scope conflict here rather than silently once declared.
+      std::string_view other;
+      for (const auto& [a, cs] : b.table_) {
+        if (scope_of(a) != scope_of(action)) continue;
+        if (std::find(cs.begin(), cs.end(), *k) != cs.end()) { other = a; break; }
+      }
       if (!other.empty() && other != action) {
         report.conflicts.push_back("'" + c.str + "' bound to both " + std::string(other) + " and " + action + " (" + std::string(other) + " kept)");
         continue;
@@ -384,6 +421,16 @@ const Bindings& default_bindings() {
     std::optional<Bindings> d = Bindings::from_json(default_bindings_json(), rep);
     if (!d || !rep.clean()) {
       std::fprintf(stderr, "rolltui: the shipped default bindings are broken: %s\n", rep.summary().c_str());
+      std::abort();
+    }
+    // The shipped default LAYOUT declares the app scope (milestone 4). The two files
+    // ship together, so this is the library's one complete "default screen + default
+    // keys" — and a chord in the file for an app action the layout does not declare is
+    // a build mistake, not a user's, so say so and stop rather than run half of one.
+    // (Read straight out of the layout's own file; see shipped_default_actions.)
+    d->declare(shipped_default_actions());
+    if (const std::vector<std::string> dead = d->undeclared(); !dead.empty()) {
+      std::fprintf(stderr, "rolltui: the shipped default bindings bind '%s', which no shipped layout declares\n", dead.front().c_str());
       std::abort();
     }
     return *d;

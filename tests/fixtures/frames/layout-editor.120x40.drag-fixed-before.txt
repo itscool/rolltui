@@ -1,15 +1,15 @@
 ┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor ─────────────────────────────────┐
-│ theme   default-da│ │ component                             │ decisi│ layout editor • status                         │
-│ keys    default   │ ├───────────────────────────────────────┼───────│ Select the next node                       Tab │
-│ layout  panel-left│ │ Unicode tables (line-break class,     │ genera│ Select the previous node             Shift-Tab │
-│ size    120x40    │ │ East-Asian width, grapheme property,  │       │ Split into a row (side by side)                │
-│ line    69/103    │ │ Extended_Pictographic, InCB)          │       │ Split into a column (stacked)                  │
-│ follow  yes       │ │ UAX #14 line breaking, UAX #29        │ build │ Swap with the previous sibling                 │
-│ depth   truecolor │ │ grapheme clusters, display width      │       │ Swap with the next sibling                     │
-│ focus   editor    │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
-│                   │ │                                       │       │ Border                                single ▸ │
+│ theme   default-  │ │ component                             │ decisi│ layout editor • status                         │
+│         dark      │ ├───────────────────────────────────────┼───────│ Select the next node                       Tab │
+│ keys    default   │ │ Unicode tables (line-break class,     │ genera│ Select the previous node             Shift-Tab │
+│ layout  panel-left│ │ East-Asian width, grapheme property,  │       │ Split into a row (side by side)                │
+│ size    120x40    │ │ Extended_Pictographic, InCB)          │       │ Split into a column (stacked)                  │
+│ line    69/103    │ │ UAX #14 line breaking, UAX #29        │ build │ Swap with the previous sibling                 │
+│ follow  yes       │ │ grapheme clusters, display width      │       │ Swap with the next sibling                     │
+│ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
+│ focus   editor    │ │                                       │       │ Border                                single ▸ │
 │                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Title: status                                  │
-│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Content slot                          status ▸ │
+│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Content slot                     rows:status ▸ │
 │                   │ │ mode)                                 │       │ Size (Alt+arrows nudge): 21                    │
 │                   │ │ Key + mouse decoding                  │ build │ [ ] Focusable                                  │
 │                   │ │                                       │       │ Delete this node                               │
@@ -32,7 +32,7 @@
 │                   │                                                 │                                                │
 │                   │ ┌ cpp ──────────────────────────────────────────│                                                │
 │                   │ │ int add(int a, int b) {                       │                                                │
-│                   │ │   return a + b;                               │ selected: status  slot status  size 21  border │
+│                   │ │   return a + b;                               │ selected: status  size 21  border single  rows │
 │                   │ └───────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
 │                   ├─────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
 │                   │ > type here                                     │                                                │

@@ -5,12 +5,15 @@
 // several widgets; a conflict inside a scope is reported and the first binding wins;
 // the Enter rule refuses a file that moves Enter and restores it; bind() moves a chord
 // off a conflicting action and says so; to_json round-trips; help_lines renders the
-// live table.
+// live table. Phase 10 m4: the app scope leaves the library's table — a layout
+// declares it, a file's chords for an undeclared action are kept and inert, and
+// declaring makes them live.
 //
 #include <fstream>
 #include <string>
 
 #include "rolltui/Bindings.hpp"
+#include "rolltui/Layout.hpp"  // m4: shipped_default_actions()
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -74,6 +77,54 @@ int main() {
     check(b.action_for(with_raw, "input") == "input.kill_word_backward", "lookup ignores raw bytes");
     check(b.chords_text("input.kill_word_backward") == "Ctrl-W, Alt-Backspace", "chords_text joins the display forms [" + b.chords_text("input.kill_word_backward") + "]");
     check(scope_of("input.submit") == "input" && scope_of("app.help") == "app", "scope_of");
+  }
+  // ---- Phase 10 m4: the app scope is a LAYOUT's, not the library's ----
+  {
+    bool any_app = false;
+    for (const ActionInfo& a : library_actions()) any_app |= scope_of(a.name) == "app";
+    check(!any_app, "library_actions() declares no app.* action — the layout does (m4)");
+    check(library_scope("input") && library_scope("menu") && library_scope("stack") && library_scope("editor") && library_scope("playground") &&
+              !library_scope("app") && !library_scope("mine"),
+          "library_scope: the widget and tool scopes are the library's; app and a host's own are not");
+
+    // A file's chords for an undeclared action are KEPT and inert, never dropped: a
+    // bindings file is global and a user's, while the actions are the screen's.
+    BindingsLoadReport rep;
+    std::optional<Bindings> b = Bindings::from_json(R"({"name":"x","bindings":{"app.help":["f1","?"],"other.thing":["f9"],"input.sumbit":["f8"]}})", rep);
+    check(b && rep.unknown_actions == std::vector<std::string>{"input.sumbit"},
+          "a typo in a LIBRARY scope is an unknown action; a name in any other scope is not");
+    check(b && !b->has("app.help") && b->action_for(key(Key::F1), "app").empty() && b->chords_for("app.help").size() == 2,
+          "an undeclared action keeps its chords and never answers a key");
+    check(b && b->undeclared() == std::vector<std::string>{"app.help", "other.thing"}, "undeclared() names them, in table order");
+    BindingsLoadReport rep2;
+    std::optional<Bindings> round = Bindings::from_json(b->to_json("x"), rep2);
+    check(round && round->chords_for("app.help").size() == 2 && *round == *b,
+          "…and they survive the round trip, so a file written on one screen keeps its keys on another");
+
+    b->declare({{"app.help", "open help"}});
+    check(b->has("app.help") && b->action_for(key(Key::F1), "app") == "app.help" && b->chords_for("app.help").size() == 2 &&
+              b->description("app.help") == "open help",
+          "declaring the action makes the kept chords live, with its description");
+    check(b->undeclared() == std::vector<std::string>{"other.thing"}, "…and only the still-undeclared ones remain");
+    b->declare({{"app.help", "SOMETHING ELSE"}});
+    check(b->description("app.help") == "open help", "declaring a known action twice is a no-op (the first wins)");
+    check(help_lines(*b, "app").size() == 1 && help_lines(*b, "app")[0].find("F1, ?") == 0,
+          "help renders an action known only because a layout declared it [" + (help_lines(*b, "app").empty() ? "" : help_lines(*b, "app")[0]) + "]");
+
+    // Two UNDECLARED actions of one scope still conflict at load — the check runs over
+    // the rows, not through action_for, which skips them.
+    BindingsLoadReport rep3;
+    std::optional<Bindings> c2 = Bindings::from_json(R"({"name":"c","bindings":{"app.one":["f9"],"app.two":["f9"]}})", rep3);
+    check(c2 && rep3.conflicts.size() == 1 && rep3.conflicts[0].find("'f9' bound to both app.one and app.two") == 0,
+          "a chord bound twice in one undeclared scope is still a conflict");
+
+    // default_bindings() is the shipped bindings over the shipped default LAYOUT.
+    const Bindings& d2 = default_bindings();
+    check(d2.has("app.help") && d2.description("app.menu") == "open the settings and commands menu",
+          "default_bindings() carries the shipped default layout's declared actions");
+    check(d2.actions().size() == library_actions().size() + shipped_default_actions().size(),
+          "…exactly those and the library's, nothing else");
+    check(d2.undeclared().empty(), "…and the shipped bindings bind nothing the shipped layouts do not declare");
   }
   // ---- the loader's report ----
   {

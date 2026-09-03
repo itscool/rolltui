@@ -32,7 +32,7 @@
 │           │   md_strikethrough     5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
 │ ┌ cpp ────│   diff_added           13.47:1  APCA -86  high  (#adeeae on #14161a)                         │           │
 │ │ int add(│   diff_removed         4.73:1  APCA -35  readable  (#c06a64 on #14161a)                      │he transcr │
-│ │   return│   diff_context         5.41:1  APCA -40  readable  (#858d99 on #14161a) ▼ 18  (Up/Down, Esc) │sc cancels │
+│ │   return│   diff_context         5.41:1  APCA -40  readable  (#858d99 on #14161a)           ▼ 18 more  │sc cancels │
 │ └─────────╰──────────────────────────────────────────────────────────────────────────────────────────────╯· redo 0 · │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │

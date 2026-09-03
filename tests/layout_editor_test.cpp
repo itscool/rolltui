@@ -45,7 +45,7 @@ int main() {
     check(ed.selected() == "input", "Shift-Tab goes back");
     ed.select("transcript");
     check(ed.selected() == "transcript" && ed.menu().find("root")->label.find("transcript") != std::string::npos, "select(id) and the breadcrumb names the node");
-    check(ed.menu().find("border")->value == "single" && ed.menu().find("content")->value == "transcript" && ed.menu().find("size")->value == "fill",
+    check(ed.menu().find("border")->value == "single" && ed.menu().find("content")->value == "transcript:session" && ed.menu().find("size")->value == "fill",
           "the menu shows the selected node's border, content and size");
   }
   // ---- split into a row ----
@@ -55,7 +55,7 @@ int main() {
     const Node* t2 = LayoutEditor::find_node(ed.current().base.root, "transcript-2");
     std::size_t idx = 0;
     const Node* parent = LayoutEditor::parent_of(const_cast<Node&>(ed.current().base.root), "transcript", &idx);
-    check(t && t2 && parent && parent->kind == Node::Kind::Row && parent->children.size() == 2 && t2->content == "transcript" && idx == 0,
+    check(t && t2 && parent && parent->kind == Node::Kind::Row && parent->children.size() == 2 && t2->content == "transcript:session" && idx == 0,
           "the transcript became a row of [transcript, transcript-2], the copy with the same slot");
     check(ed.undo_depth() == 1 && ed.selected() == "transcript", "…as one commit, with the original selected");
     LayoutLoadReport rep;

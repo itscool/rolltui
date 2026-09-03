@@ -215,6 +215,10 @@ std::optional<Layout> LayoutDomain::parse(const json::Value& v, PresetLoadReport
   body.obj.erase(std::remove_if(body.obj.begin(), body.obj.end(), [](const auto& kv) { return kv.first == "preset"; }), body.obj.end());
   std::optional<Layout> l = load_layout(body, report.layout);
   if (!l) { report.error = report.layout.error; return std::nullopt; }
+  // A Phase 9 layout's slot names were rewritten to kind[:source] (Layout.hpp): say so
+  // once, the way the theme→layout migration does. The file itself is rewritten by the
+  // next autosave, so this is said until the user's own copy is in the new form.
+  for (const std::string& m : report.layout.migrated) report.notes.push_back("layout: content " + m);
   return l;
 }
 

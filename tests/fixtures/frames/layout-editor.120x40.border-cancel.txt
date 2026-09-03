@@ -9,7 +9,7 @@
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [x] Visible                                    │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Border                                single ▸ │
 │ │ mouse mode)                      │             │                  │ Title: transcript                              │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ Content slot                      transcript ▸ │
+│ │ Key + mouse decoding             │ build       │ single header, pu│ Content slot              transcript:session ▸ │
 │ │                                  │             │ Event, table-test│ Size (Alt+arrows nudge): fill                  │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ [x] Focusable                                  │
 │ │ colour downgrade                 │             │ tested           │ Delete this node                               │
@@ -32,7 +32,7 @@
 │                                                                     │                                                │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
 │ │ int add(int a, int b) {                                           │                                                │
-│ │   return a + b;                                                   │ selected: transcript  slot transcript  size fi │
+│ │   return a + b;                                                   │ selected: transcript  size fill  border single │
 │ └───────────────────────────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
 ├─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0   │
 │ > type here                                                         │                                                │

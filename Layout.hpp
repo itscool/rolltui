@@ -81,6 +81,7 @@
 // the same loader, so the format is exercised every run):
 //   {
 //     "name": "default", "min_width": 60, "min_height": 10, "focus": "input",
+//     "actions": { "app.help": "open help", "app.menu": "open the menu" },
 //     "root": { "row": [
 //       { "column": [
 //         { "id": "transcript", "content": "transcript", "border": "single",
@@ -105,6 +106,53 @@
 // bottom-right), clamp, min_w, min_h, max_w, max_h, modal, focus, root. Unknown
 // keys are reported, not ignored; a duplicate id is a bad value — the theme loader's
 // standard.
+//
+// CONTENT is `kind[:source]` (Phase 10 milestone 2) — a WIDGET KIND from the closed
+// table below, and the name of the thing it shows, which the host binds
+// (rolltui/Widgets.hpp). Before m2 a content string was a SLOT NAME each host
+// resolved in an if-chain, so a layout file could rearrange the windows a host had
+// coded and could not introduce a fourth thing; now the layout says what a window
+// IS. The table is closed on purpose: an unknown kind is a reported bad value drawn
+// as an error panel, never a blank window that looks like a layout mistake.
+//
+//   transcript:<document>  a Document the host bound by that name
+//   input:<target>         the line editor; a submitted line goes to that target
+//   menu:<name>            the menu in menus/<name>.json — the user's directory, then
+//                          the host's own embedded menus, then the library's shipped
+//                          ones (Widgets.hpp has the order). The host binds what the
+//                          ids MEAN, never the tree.
+//   rows:<source>          label/value rows the host supplies (the status panel,
+//                          generalised)
+//   text:<literal>         the literal text after the colon (may be empty)
+//   file:<path>            the file's text (relative paths resolve against the
+//                          preset directory)
+//   help                   the key list, rendered from the LIVE bindings; takes no
+//                          source
+//   custom:<name>          a composite the host draws itself, bound by name — the
+//                          stated escape hatch for a window the seven kinds above
+//                          cannot express (roll's approval modal, the playground's
+//                          editors). Its failure is reported by name like any other.
+//
+// Phase 9's bare slot names ("transcript", "status", "input", …) are MIGRATED once by
+// the loader into their kind[:source] form and said so in the report's `migrated`;
+// they are not a second spelling that keeps working (a fallback here is exactly the
+// implicit resolution order this milestone removes).
+//
+// ACTIONS ARE DECLARED HERE (Phase 10 milestone 4). `"actions"` is an object of action
+// name → what it does: the actions THIS SCREEN emits, which a host looks up by key
+// (Bindings.hpp's `app` scope above all). The layout DECLARES them; a bindings file
+// SUPPLIES their chords; a menu item may name one. That is what makes "F2 opens the
+// menu" a fact of roll's screen rather than of the library, and what lets `help` list
+// an action no host has ever compiled in. Rules, each a named bad value:
+//   - the name is "<scope>.<verb>", both parts non-empty
+//   - the scope is not one of the library's own (Bindings.hpp: library_scope) — those
+//     are closed, and a layout may not add to or shadow them
+//   - no duplicates; the description is a string
+// A file with NO "actions" key at all is a file written before they existed, so the
+// loader gives it the SHIPPED DEFAULT's actions and says so in `migrated` — a Phase 9
+// layout must not silently lose every app key. An explicit `"actions": {}` is a
+// deliberate "none" and is left empty: present-but-empty and absent are different
+// answers, which is the only reason the fill-in is safe.
 //
 #include <cstdint>
 #include <functional>
@@ -165,11 +213,40 @@ struct SplitSize {
   constexpr bool operator==(const SplitSize&) const = default;
 };
 
+// ---- content: the widget kind and its source -----------------------------------------
+// The closed table in the header comment. `Custom` is the host's own composite, named
+// like any other source, so its failures are reported the same way.
+enum class WidgetKind : std::uint8_t { Transcript, Input, Menu, Rows, Text, File, Help, Custom };
+
+struct Content {
+  WidgetKind kind = WidgetKind::Text;
+  std::string source;  // the part after the first ':' — a bound name, a literal, a path
+  bool operator==(const Content&) const = default;
+};
+
+std::string_view widget_kind_name(WidgetKind k);
+std::optional<WidgetKind> widget_kind_from_name(std::string_view name);
+
+// Whether a kind takes a source: every kind does except `help` (Forbidden), and
+// `text`'s literal may be empty (Optional).
+enum class SourceRule : std::uint8_t { Required, Optional, Forbidden };
+SourceRule source_rule(WidgetKind k);
+
+// Parses "kind[:source]". nullopt — with `why` set to the reason, which is what a
+// report and the error panel say — when the kind is not in the table, a required
+// source is missing, or `help` was given one.
+std::optional<Content> parse_content(std::string_view text, std::string* why = nullptr);
+std::string content_to_string(const Content& c);
+
+// Phase 9's bare slot names, mapped ONCE by the loader (see the header comment).
+// nullopt when `legacy` is not one of them.
+std::optional<std::string> migrated_content(std::string_view legacy);
+
 struct Node {
   enum class Kind : std::uint8_t { Window, Row, Column };
   Kind kind = Kind::Window;
   std::string id;             // defaults to `content` for windows; optional on splits
-  std::string content;        // windows: the slot the host fills ("transcript", "menu:settings", ...)
+  std::string content;        // windows: "kind[:source]" — the widget and what it shows
   Border border = Border::None;
   std::string title;
   bool focusable = false;
@@ -180,6 +257,9 @@ struct Node {
 
   bool is_window() const { return kind == Kind::Window; }
   static Node window(std::string content, SplitSize size = {});
+  // A window whose id is not its content — which is every window a host looks up by
+  // name now that the content says the widget kind ("input" holding "input:prompt").
+  static Node window_id(std::string id, std::string content, SplitSize size = {});
   static Node row(std::vector<Node> children, SplitSize size = {});
   static Node column(std::vector<Node> children, SplitSize size = {});
   bool operator==(const Node&) const = default;
@@ -197,6 +277,9 @@ struct Layer {
 struct Layout {
   std::string name;
   int min_width = 0, min_height = 0;  // the smallest screen it is designed for; a host may switch below it
+  // The actions this screen emits, in file order (the order `help` lists them in). A
+  // host hands them to its table with Bindings::declare().
+  std::vector<ActionDecl> actions;
   Layer base;
   std::vector<Layer> popups;          // declared placements the host pushes by id
   const Layer* popup(std::string_view id) const;
@@ -212,10 +295,21 @@ Rect inner_rect(Rect outer, Border b);
 const Layout* builtin_layout(std::string_view name);
 std::vector<std::string_view> builtin_layout_names();
 
+// The actions the shipped "default" layout declares, read straight out of that file's
+// "actions" object rather than through load_layout — which is what makes it safe for
+// load_layout itself to use them for a file that declares none (no recursion), and for
+// default_bindings() to declare them (Bindings.hpp).
+const std::vector<ActionDecl>& shipped_default_actions();
+
 struct LayoutLoadReport {
   std::string error;                      // non-empty: the file was unusable
   std::vector<std::string> unknown_keys;  // "root.row[1].colour", ...
   std::vector<std::string> bad_values;    // "popups[0].w: '50' is not a dim ..."
+  // Phase 9 contents rewritten to their kind[:source] form: "root.column[0].content:
+  // 'transcript' → 'transcript:session'", and a file with no "actions" key given the
+  // shipped default's. Not a problem — the layout loaded, and the next save writes the
+  // new form — so `clean()` ignores it; a host says it once.
+  std::vector<std::string> migrated;
   bool clean() const { return error.empty() && unknown_keys.empty() && bad_values.empty(); }
 };
 

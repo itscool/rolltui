@@ -4,6 +4,8 @@
 // the degenerate-size rule (0 or 1 cells in either dimension draws nothing outside
 // the area and never crashes).
 //
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -242,6 +244,62 @@ int main() {
     check(kinds && kinds->children[0].kind == MenuItem::Kind::Toggle && kinds->children[0].checked && kinds->children[1].kind == MenuItem::Kind::Choice &&
               kinds->children[1].value == "x" && rep.bad_values.size() == 1 && rep.bad_values[0].find("items[2].kind") == 0,
           "kinds load; an unknown kind is a bad value naming its path [" + (rep.bad_values.empty() ? "" : rep.bad_values[0]) + "]");
+  }
+  // ---- the shipped menu files (Phase 10 m3) ----
+  // The same standard the built-in layouts are held to: what SHIPS must load clean, and
+  // it is embedded from a real file, so nothing here is checking a string in a .cpp.
+  {
+    const std::vector<std::string_view> names = shipped_menu_names();
+    std::ifstream in(std::string(ROLLTUI_MENUS_DIR) + "/main.json", std::ios::binary);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    check(!names.empty() && !ss.str().empty() && shipped_menu("main") == ss.str(),
+          "the shipped menus ARE the files in rolltui/presets/menus, embedded byte for byte (" + std::to_string(names.size()) + ")");
+    for (std::string_view n : names) {
+      MenuLoadReport rep;
+      std::optional<MenuItem> m = menu_from_json(shipped_menu(n), rep);
+      check(m && rep.clean(), "shipped menu '" + std::string(n) + "' loads clean" +
+                                  (rep.clean() ? "" : ": " + (!rep.error.empty() ? rep.error : rep.bad_values.empty() ? rep.unknown_keys[0] : rep.bad_values[0])));
+    }
+    MenuLoadReport rep;
+    std::optional<MenuItem> main = menu_from_json(shipped_menu("main"), rep);
+    Menu m(main.value_or(MenuItem::submenu("root", "root", {})));
+    check(main && m.find("theme") && m.find("layout") && m.find("depth"),
+          "menus/main.json is the settings menu over the three preset domains");
+    check(shipped_menu("no-such-menu").empty(), "an unshipped name is empty, never a wrong menu");
+  }
+  // ---- m4: an item may NAME a bindings action --------------------------------------
+  {
+    MenuLoadReport rep;
+    std::optional<MenuItem> root = menu_from_json(
+        R"({"id":"r","items":[{"id":"a","label":"A","action":"app.help"},{"id":"b","label":"B","action":"app.menu","shortcut":"F9"},
+            {"id":"c","label":"C","shortcut":"F5"}]})", rep);
+    auto id_at = [&](std::size_t i) { return root && i < root->children.size() ? root->children[i].action_name : std::string("(missing)"); };
+    check(root && id_at(0) == "app.help" && id_at(2).empty(), "\"action\" is read; an item without one has none");
+    check(rep.bad_values.size() == 1 && rep.bad_values[0].find(".shortcut: an item with an \"action\" takes its shortcut from the bindings") != std::string::npos &&
+              root && root->children[1].shortcut.empty(),
+          "…and spelling a shortcut out beside it is a bad value, dropped [" + (rep.bad_values.empty() ? "" : rep.bad_values[0]) + "]");
+
+    Menu m(*root);
+    check(m.item_actions() == (std::vector<std::pair<std::string, std::string>>{{"a", "app.help"}, {"b", "app.menu"}}),
+          "item_actions lists every item that names one, by item id");
+    m.apply_shortcuts(default_bindings());
+    auto sc = [&](const char* id) { const MenuItem* it = m.find(id); return it ? it->shortcut : std::string("(missing)"); };
+    check(sc("a") == "F1, ?" && sc("b") == "F2" && sc("c") == "F5",
+          "apply_shortcuts fills them from the LIVE chords and leaves a plain shortcut alone [" + sc("a") + "]");
+    Bindings rebound = default_bindings();
+    rebound.clear("app.help");
+    rebound.bind("app.help", *parse_chord("f8"));
+    m.apply_shortcuts(rebound);
+    check(sc("a") == "F8", "…and it is idempotent, so a rebinding shows immediately [" + sc("a") + "]");
+
+    // A derived shortcut is never written back: a round trip must not bake one moment's
+    // keys into the file (the whole reason the item names the action instead).
+    MenuLoadReport rr;
+    std::optional<MenuItem> back = menu_from_json(menu_to_json(m.root()), rr);
+    check(back && rr.clean() && back->children[0].action_name == "app.help" && back->children[0].shortcut.empty() &&
+              back->children[2].shortcut == "F5",
+          "menu_to_json writes the action, never the chords it happened to have");
   }
   // ---- typed inputs (milestone 18): prefix validity at the keystroke, validity at the commit ----
   {

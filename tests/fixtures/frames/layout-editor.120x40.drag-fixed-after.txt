@@ -9,7 +9,7 @@
 │ │ , filterable) │             │ widget set is │ │ focus   editor    │ [x] Visible                                    │
 │ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
 │ │ widgets       │             │ this small    │ │                   │ Title: status                                  │
-│ │ Layout files  │ build       │ reuses the    │ │                   │ Content slot                          status ▸ │
+│ │ Layout files  │ build       │ reuses the    │ │                   │ Content slot                     rows:status ▸ │
 │ │ (JSON:        │             │ theme         │ │                   │ Size (Alt+arrows nudge): 70                    │
 │ │ windows +     │             │ loader's hand │ │                   │ [ ] Focusable                                  │
 │ │ placements +  │             │ parser; hot-  │ │                   │ Delete this node                               │
@@ -32,7 +32,7 @@
 │                                                 │                   │                                                │
 │ ┌ cpp ────────────────────────────────────────┐ │                   │                                                │
 │ │ int add(int a, int b) {                     │ │                   │                                                │
-│ │   return a + b;                             │ │                   │ selected: status  slot status  size 70  border │
+│ │   return a + b;                             │ │                   │ selected: status  size 70  border single  rows │
 │ └─────────────────────────────────────────────┘ │                   │ Tab next node · click selects · drag an edge r │
 ├─────────────────────────────────────────────────│                   │ loaded wide-right · undo 1 · redo 0            │
 │ > type here                                     │                   │                                                │

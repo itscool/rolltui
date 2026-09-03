@@ -87,6 +87,10 @@ class LayoutEditor {
   bool dragging() const { return drag_.has_value(); }
 
   std::string status_line() const;
+  // What the selected node IS, in words: "selected: input  size 3  border single
+  // input:prompt". The editor composes it because it is the one place that reads a
+  // window's content — every other host resolves it through rolltui::Windows.
+  std::string selection_line() const;
 
   // Tree helpers, exposed for the tests and the host's hit-testing.
   static Node* find_node(Node& root, std::string_view id);

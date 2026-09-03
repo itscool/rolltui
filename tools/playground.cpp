@@ -72,14 +72,21 @@
 // entry is a FOLDABLE verbatim block whose summary is the marker's text (folded to
 // start with).
 //
-// Slots the playground fills (a layout names them in "content"): transcript, status
-// (the playground's own facts as label/value rows, or one line when the slot is a
-// single row), input (a real rolltui::Input — the window grows with the text up to
-// half its parent's height and scrolls past that; Enter appends the text to the
-// transcript as a user entry and keeps it in history), help (the key list),
-// text:<literal> (the literal, so a layout file
-// can put a label on screen). Any other slot draws "(no content for slot 'x')" —
-// visible, never silent.
+// WIDGETS BY KIND, SOURCES BY NAME (Phase 10 m2): a window's "content" is
+// `kind[:source]` from the library's table (rolltui/Layout.hpp), and rolltui::Windows
+// instantiates the widget and draws it — the playground only BINDS what is its own,
+// by name: the fixture document as `session` (transcript:session), its facts as
+// `status` (rows:status), the prompt as `prompt` (input:prompt), and its three
+// composites (custom:editor, custom:confirm, custom:report). `help`, `text:<literal>`
+// and `file:<path>` need no binding at all, so a layout file can put a label, a document
+// or the key list on screen with no code here. A window naming something unbound draws
+// the reason and says it in the status line; the playground never asks what a slot means.
+//
+// The settings menu is a FILE (Phase 10 m3): `menu:main` in the layout resolves to
+// <presets>/menus/main.json if the user has one, else to the library's shipped
+// rolltui/presets/menus/main.json — which IS this menu. The playground only fills the
+// choices whose options are runtime facts (the theme and layout presets it can see) and
+// acts on the ids; a user may edit or shadow the file with no rebuild.
 //
 // KEYS ARE DATA (milestone 17): every key below is the shipped default of an action in
 // rolltui/presets/bindings/default.json — the playground looks its own keys up in the
@@ -142,6 +149,7 @@
 #include "rolltui/ThemeGen.hpp"
 #include "rolltui/Theme.hpp"
 #include "rolltui/Transcript.hpp"
+#include "rolltui/Widgets.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui/Wrap.hpp"
 #include "keys_editor.hpp"
@@ -212,19 +220,6 @@ Document parse_fixture(const std::string& text) {
   return doc;
 }
 
-// The help popup's text, RENDERED from the live bindings (milestone 17): it cannot
-// lie about a rebinding. One line per action of the scopes the playground uses.
-std::string help_text(const Bindings& b) {
-  std::string out;
-  for (const char* scope : {"input", "transcript", "app", "editor", "playground", "stack"}) {
-    out += std::string(scope) + ":\n";
-    for (const std::string& line : help_lines(b, scope)) out += "  " + line + "\n";
-  }
-  out += "mouse: drag selects (auto-scrolls past an edge); release copies; double-click a word; triple-click a line;\n"
-         "click a folded block's summary to toggle it; in the layout editor a click selects, a drag on a seam resizes";
-  return out;
-}
-
 struct App {
   std::string fixture_path, theme_arg, layout_arg;
   std::optional<ThemeMode> mode_flag;   // --mode; else the working copy's mode
@@ -265,13 +260,19 @@ struct App {
   std::string confirm_text;
   std::function<void()> confirm_action;
   std::string report_text_;  // the Check popup's text
-  int report_top = 0;
-  int help_top = 0;          // the help popup scrolls (its text is longer than any popup)
+  int report_top = 0;        // the Check report is a custom window: the playground scrolls it
+  int report_lines = 0;      // its wrapped length, from the last draw
   std::string hint;
+  std::string window_note;   // a window that cannot draw (an unbound source, a bad kind)
+  bool show_timing = false;  // the frame-time row/field (interactive only)
   WindowStack stack;
-  Transcript transcript;
-  Input editor;
-  Menu menu;
+  // Every window's widget comes from its content (rolltui/Widgets.hpp): the playground
+  // binds the fixture document, its status rows, the prompt and its own composites by
+  // name, and never asks what a slot means.
+  Windows windows;
+  Transcript& transcript() { return windows.transcript("session"); }
+  Input& editor() { return windows.input("prompt"); }
+  Menu& menu() { return windows.menu("main"); }  // menus/main.json (Phase 10 m3)
   int submitted = 0;        // entries the input added to the document
   std::string copied;       // the last copy (the playground has no clipboard)
   bool copied_any = false;
@@ -280,43 +281,54 @@ struct App {
   std::size_t shipped_theme_index = 0;
 
   App() {
-    transcript.on_copy = [this](const std::string& s) { copied = s; copied_any = true; };
-    editor.on_copy = transcript.on_copy;
+    transcript().on_copy = [this](const std::string& s) { copied = s; copied_any = true; };
+    editor().on_copy = transcript().on_copy;
     InputOptions o;
     o.placeholder = "type here";
-    editor.set_options(o);
-    build_menu();
+    editor().set_options(o);
+    bind_windows();
   }
 
-  // The settings menu: choices over the built-ins, a toggle, three actions. Ids are
-  // bound below in menu_event() — the structure knows nothing of what they do.
-  void build_menu() {
+  // The sources a layout may name (Widgets.hpp). Everything a window can show in the
+  // playground is here, by name, once — a layout file that says `rows:status` or
+  // `text:hello` needs no code at all, and one that names something unbound draws the
+  // reason instead of nothing.
+  void bind_windows() {
+    // `file:` windows resolve a relative path against the preset directory (set once
+    // the store exists, below).
+    windows.bind_document("session", &doc);
+    windows.bind_rows("status", [this] { return status_rows(); });
+    windows.bind_submit("prompt", [this](const std::string& text) { append_prompt(text); });
+    windows.bind_custom("editor", [this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_editor(rn, f); });
+    windows.bind_custom("confirm", [this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_confirm(rn, f); });
+    windows.bind_custom("report", [this](const ResolvedNode& rn, Frame& f, const Theme& th) {
+      report_lines = draw_scrolled_text(rn, f, th, report_text_, report_top, ambiguous);
+    });
+    windows.set_help("", {"input", "transcript", "app", "editor", "playground", "stack"},
+                     "mouse: drag selects (auto-scrolls past an edge); release copies; double-click a word; triple-click a line;\n"
+                     "click a folded block's summary to toggle it; in the layout editor a click selects, a drag on a seam resizes");
+  }
+
+  // The menu's STRUCTURE is menus/main.json; what is left here is the part a file
+  // cannot hold — the options that are runtime facts (which presets exist) and the
+  // current values. Ids are bound below in menu_event(); the file knows nothing of what
+  // they do.
+  void refresh_menu() {
     std::vector<MenuItem> themes, layouts;
     if (store) for (const PresetInfo& p : store->list()) themes.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
     if (lstore) for (const PresetInfo& p : lstore->list()) layouts.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
-    std::vector<MenuItem> depths;
-    for (const char* d : {"truecolor", "256", "16", "mono"}) depths.push_back(MenuItem::action(d, d));
-    menu.set_root(MenuItem::submenu(
-        "root", "settings",
-        {MenuItem::choice("theme", "Theme", themes, store ? store->label() : ""),
-         MenuItem::choice("layout", "Layout", layouts, lstore ? lstore->label() : layout.name),
-         MenuItem::choice("depth", "Colour depth", depths, std::string(color_depth_name(depth))),
-         MenuItem::toggle("ambiguous", "Ambiguous width = 2", ambiguous),
-         MenuItem::submenu("commands", "Commands",
-                           {MenuItem::action("editor", "Theme editor", "F4"), MenuItem::action("layout_editor", "Layout editor", "F6"),
-                            MenuItem::action("keys_editor", "Keys editor", "F7"),
-                            MenuItem::action("reload", "Reload the fixture", "F5"),
-                            MenuItem::action("help", "Help", "F1"), MenuItem::action("quit", "Quit", "Ctrl-Q")})}));
+    menu().set_options("theme", themes);
+    menu().set_options("layout", layouts);
+    menu().set_value("theme", store ? store->label() : "");
+    menu().set_value("layout", lstore ? lstore->label() : layout.name);
+    menu().set_value("depth", std::string(color_depth_name(depth)));
+    menu().set_checked("ambiguous", ambiguous);
   }
   void open_menu(bool palette) {
     if (stack.has_popup("menu")) { close_popup("menu"); return; }
-    build_menu();  // presets and layout files may have changed
-    menu.set_value("theme", store ? store->label() : "");
-    menu.set_value("layout", lstore ? lstore->label() : layout.name);
-    menu.set_value("depth", std::string(color_depth_name(depth)));
-    menu.set_checked("ambiguous", ambiguous);
-    menu.reset();
-    menu.set_palette(palette);
+    refresh_menu();  // presets and layout files may have changed
+    menu().reset();
+    menu().set_palette(palette);
     if (const Layer* p = effective_layout().popup("menu")) stack.push(*p);
   }
   void close_popup(const std::string& id) {
@@ -406,8 +418,8 @@ struct App {
     }
     theme = editor_mode == EditorMode::Theme ? teditor.current() : resolved;
     if (editor_mode == EditorMode::Layout && !(layout == leditor.current())) { layout = leditor.current(); apply_layout(); }
-    if (bstore && bstore->version() != bstore_seen) { bstore_seen = bstore->version(); bindings = bstore->working(); }
-    if (editor_mode == EditorMode::Keys) bindings = keditor.current();
+    if (bstore && bstore->version() != bstore_seen) { bstore_seen = bstore->version(); bindings = bstore->working(); declare_actions(); }
+    if (editor_mode == EditorMode::Keys) { bindings = keditor.current(); declare_actions(); }
   }
   bool load_bindings_arg() {
     if (bindings_arg.empty()) return true;
@@ -423,7 +435,7 @@ struct App {
     l.id = "editor";
     l.placement = {Dim::rel(1), Dim::abs(0), Dim::abs(50), Dim::rel(1), Anchor::TopRight, true, Dim::abs(24), Dim::abs(6), {}, {}};
     l.modal = false;
-    Node n = Node::window("editor");
+    Node n = Node::window_id("editor", "custom:editor");
     n.border = Border::Single;
     n.title = title;
     n.focusable = true;
@@ -437,7 +449,7 @@ struct App {
     l.id = "report";
     l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.8), Dim::rel(0.85), Anchor::Center, true, Dim::abs(30), Dim::abs(5), {}, {}};
     l.modal = true;
-    Node n = Node::window("report");
+    Node n = Node::window_id("report", "custom:report");
     n.border = Border::Rounded;
     n.title = "report";
     n.focusable = true;
@@ -450,7 +462,7 @@ struct App {
     l.id = "confirm";
     l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(5), Anchor::Center, true, Dim::abs(20), {}, Dim::abs(70), {}};
     l.modal = true;
-    Node n = Node::window("confirm");
+    Node n = Node::window_id("confirm", "custom:confirm");
     n.border = Border::Rounded;
     n.title = "confirm";
     n.focusable = true;
@@ -536,7 +548,7 @@ struct App {
     }
   }
   void draw_keys_editor(const ResolvedNode& rn, Frame& f) {
-    Rect r = text_area(rn);
+    Rect r = content_rect(rn);
     if (r.w <= 0 || r.h <= 0) return;
     const int box = std::min(3, r.h);
     Rect m = r;
@@ -559,7 +571,7 @@ struct App {
     std::vector<std::string> names;
     for (const PresetInfo& p : lstore->list()) names.push_back(p.name);  // shipped first, then the user's
     leditor.set_layouts(names);
-    leditor.set_slots({"transcript", "status", "input", "help", "text:pane"});
+    leditor.set_slots({"transcript:session", "rows:status", "input:prompt", "help", "text:pane"});  // m5: a kind picker + a source field
     editor_open = true;
     editor_mode = EditorMode::Layout;
     stack.push(editor_popup("layout editor"));
@@ -707,46 +719,20 @@ struct App {
         break;
     }
   }
-  // A scrolled text popup (the Check report, help): wrapped lines from `top`, a ▼ marker
-  // for what is below.
-  void draw_scrolled_text(const ResolvedNode& rn, Frame& f, const std::string& text, int top) {
-    const Rect r = text_area(rn);
-    if (r.w <= 0 || r.h <= 0) return;
-    WrapOptions wo;
-    wo.ambiguous_wide = ambiguous;
-    const std::vector<Line> lines = wrap(text, r.w, wo);
-    int y = r.y;
-    for (std::size_t i = static_cast<std::size_t>(std::max(top, 0)); i < lines.size() && y < r.y + r.h; ++i)
-      f.put_text(r.x + lines[i].indent, y++, lines[i].text, theme.style(Role::text), std::max(r.w - lines[i].indent, 0), ambiguous);
-    if (static_cast<int>(lines.size()) > r.h) {
-      const std::string more = "\xE2\x96\xBC " + std::to_string(std::max(static_cast<int>(lines.size()) - top - r.h, 0)) + "  (Up/Down, Esc)";
-      f.put_text(r.x + std::max(r.w - unicode::display_width(more), 0), r.y + r.h - 1, more, theme.style(Role::scroll_marker), r.w, ambiguous);
-    }
+  // The Check report popup is a `custom:` window — the playground's own text, drawn
+  // and scrolled by the library's shared helpers (rolltui/Widgets.hpp), which is what
+  // every scrolling text window in the library uses.
+  void report_key(const KeyEvent& k) {
+    scroll_by_action(k, bindings, popup_rows("report"), report_lines, report_top);
   }
-  void draw_report(const ResolvedNode& rn, Frame& f) { draw_scrolled_text(rn, f, report_text_, report_top); }
-  // Scrolling keys for a text popup, by the transcript scope's actions (the same keys
-  // scroll the transcript); `page` is the popup's height.
-  void scroll_key(const KeyEvent& k, int& top, const std::string& text, int page) {
-    const std::string_view a = bindings.action_for(k, "transcript");
-    if (a == "transcript.line_up") top = std::max(0, top - 1);
-    else if (a == "transcript.line_down") top += 1;
-    else if (a == "transcript.page_up") top = std::max(0, top - std::max(page, 1));
-    else if (a == "transcript.page_down") top += std::max(page, 1);
-    else if (a == "transcript.top") top = 0;
-    else if (a == "transcript.bottom") top = 1 << 20;
-    WrapOptions wo;
-    const int total = static_cast<int>(wrap(text, 60, wo).size());
-    top = std::clamp(top, 0, std::max(total - std::max(page, 1), 0));
-  }
-  int popup_rows(const char* id) {
+  int popup_rows(const char* window) {
     for (const ResolvedNode& rn : stack.resolve(layout_area()))
-      if (rn.node->is_window() && rn.node->content == id) return rn.inner.h;
+      if (rn.node->is_window() && rn.node->id == window) return rn.inner.h;
     return 10;
   }
-  void report_key(const KeyEvent& k) { scroll_key(k, report_top, report_text_, popup_rows("report")); }
   // The editor's sample box: the focused role's fields, a sample in its style, swatches.
   void draw_layout_editor(const ResolvedNode& rn, Frame& f) {
-    Rect r = text_area(rn);
+    Rect r = content_rect(rn);
     if (r.w <= 0 || r.h <= 0) return;
     const int box = std::min(4, r.h);
     Rect m = r;
@@ -758,11 +744,8 @@ struct App {
     if (m.h > 0) leditor.menu().draw(f, theme, rn.focused);
     int y = r.y + m.h;
     const Style label = theme.style(Role::label), value = theme.style(Role::value);
-    if (const Node* n = leditor.selected_node()) {
-      std::string line = "selected: " + n->id + (n->is_window() ? "  slot " + n->content : n->kind == Node::Kind::Row ? "  (row)" : "  (column)") +
-                         "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) + (n->visible ? "" : "  hidden");
-      if (y < r.y + r.h) f.put_text(r.x, y++, line, label, r.w, ambiguous);
-    }
+    if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h)
+      f.put_text(r.x, y++, line, label, r.w, ambiguous);
     if (y < r.y + r.h) f.put_text(r.x, y++, "Tab next node \xC2\xB7 click selects \xC2\xB7 drag an edge resizes \xC2\xB7 Alt+arrows nudge", value, r.w, ambiguous);
     if (y < r.y + r.h) f.put_text(r.x, y++, leditor.status_line(), value, r.w, ambiguous);
     if (y < r.y + r.h && !hint.empty()) f.put_text(r.x, y++, hint, theme.style(Role::warning), r.w, ambiguous);
@@ -770,7 +753,7 @@ struct App {
   void draw_editor(const ResolvedNode& rn, Frame& f) {
     if (editor_mode == EditorMode::Layout) { draw_layout_editor(rn, f); return; }
     if (editor_mode == EditorMode::Keys) { draw_keys_editor(rn, f); return; }
-    Rect r = text_area(rn);
+    Rect r = content_rect(rn);
     if (r.w <= 0 || r.h <= 0) return;
     const int box = std::min(6, r.h);
     Rect m = r;
@@ -812,7 +795,7 @@ struct App {
     if (y < r.y + r.h) f.put_text(r.x, y++, hint.empty() ? teditor.badges_line() : hint, hint.empty() ? label : theme.style(Role::warning), r.w, ambiguous);
   }
   void draw_confirm(const ResolvedNode& rn, Frame& f) {
-    const Rect r = text_area(rn);
+    const Rect r = content_rect(rn);
     WrapOptions wo;
     int y = r.y;
     for (const Line& l : wrap(confirm_text, std::max(r.w, 1), wo)) {
@@ -829,7 +812,12 @@ struct App {
     stacked_fallback = want_fallback;
     const Layer& base = want_fallback ? builtin_layout("stacked")->base : layout.base;
     stack.set_base(base);
+    declare_actions();
   }
+  // The `app.*` actions are the LAYOUT's (Phase 10 m4): whatever the loaded file
+  // declares, however it was loaded. `editor.*` and `playground.*` are the library's own
+  // tools' and are in library_actions() — this binary IS one of those tools.
+  void declare_actions() { bindings.declare(effective_layout().actions); }
   const Layout& effective_layout() const { return stacked_fallback ? *builtin_layout("stacked") : layout; }
   Rect layout_area() const { return {0, 0, w, h > 1 ? h - 1 : h}; }
   void resize(int nw, int nh) {
@@ -844,168 +832,87 @@ struct App {
     doc = parse_fixture(text);
     return true;
   }
-  // Text slots keep one column clear on each side of a bordered window — a widget
-  // choice (the transcript owns its inset; Layout.hpp: a border is the only spacing).
-  static Rect text_area(const ResolvedNode& rn) {
-    Rect r = rn.inner;
-    if (rn.node->border != Border::None && r.w >= 3) { r.x += 1; r.w -= 2; }
-    return r;
-  }
   TranscriptOptions transcript_options(const ResolvedNode& rn) const {
     TranscriptOptions o;
     o.ambiguous_wide = ambiguous;
     o.inset = rn.node->border != Border::None ? 1 : 0;
     return o;
   }
-  // Sizes the input window from its text (it grows with it, to half its parent's
-  // height — the user's rule; past that the editor scrolls), then lays the transcript
-  // and the input out for the current size so an event can be hit-tested against the
-  // same geometry the frame will draw (the caches make this free). The input's width
-  // does not depend on its height, so one resolve gives the width, the size is set,
-  // and the second resolve is final.
+  // The frame's terminal facts and clock, then: instantiate each window's widget from
+  // its content, let the widgets that size their window do so (the input grows with
+  // its text), and lay them all out — so an event is hit-tested against exactly the
+  // geometry the frame will draw. rolltui::Windows does all three; what used to be
+  // here was the same walk with the slot names written into it.
   void ensure_layout() {
-    InputOptions o = editor.options();
-    o.ambiguous_wide = ambiguous;
-    if (!(o == editor.options())) editor.set_options(o);
-    const std::vector<ResolvedNode> nodes = stack.resolve(layout_area());
-    for (const ResolvedNode& rn : nodes)
-      if (rn.node->is_window() && rn.node->content == "input") {
-        o.inset = rn.node->border != Border::None ? 1 : 0;  // the widget owns the breathing room, as the transcript does
-        if (!(o == editor.options())) editor.set_options(o);
-        int parent_h = layout_area().h;  // the smallest split holding the input, else the screen
-        for (const ResolvedNode& p : nodes)
-          if (!p.node->is_window() && p.layer == rn.layer && p.inner.contains(rn.outer.x, rn.outer.y) && p.inner.h <= parent_h)
-            parent_h = p.inner.h;
-        if (Node* nd = stack.find("input")) {
-          const int border = nd->border != Border::None ? 2 : 0;
-          const int rows = std::clamp(editor.rows_for(rn.inner.w), 1, std::max(1, parent_h / 2 - border));
-          nd->size = SplitSize::fixed(Dim::abs(rows + border));
-        }
-        break;
-      }
-    for (const ResolvedNode& rn : stack.resolve(layout_area())) {
-      if (!rn.node->is_window()) continue;
-      if (rn.node->content == "transcript") transcript.layout(doc, rn.inner, transcript_options(rn));
-      else if (rn.node->content == "input") editor.layout(rn.inner);
-    }
+    WidgetEnv env;
+    env.ambiguous_wide = ambiguous;
+    env.bindings = &bindings;
+    env.now_ms = clock_ms;
+    windows.set_env(env);
+    const WindowsReport rep = windows.prepare(stack, layout_area());
+    window_note = rep.clean() ? "" : rep.summary();
   }
   void toggle_help() {
     if (stack.has_popup("help")) { while (stack.depth() > 1 && stack.layers().back().id != "help") stack.pop(); stack.pop(); return; }
-    help_top = 0;
     if (const Layer* p = effective_layout().popup("help")) stack.push(*p);
   }
 
-  // ---- slot renderers ----
-  void draw_status(const ResolvedNode& rn, Frame& f, bool with_timing) {
-    const Rect r = rn.inner;
-    struct Row { std::string label, value; };
-    const std::size_t total = transcript.total_lines();
+  // ---- the sources the playground binds (rolltui/Widgets.hpp) ----
+  // `rows:status`: the playground's own facts. The widget draws them (one row per
+  // fact, or one line when the window is a single row) — this says only what they are.
+  std::vector<Row> status_rows() {
+    const std::size_t total = transcript().total_lines();
     std::vector<Row> rows = {
         {"theme", store ? store->label() : theme.name},
         {"keys", bstore ? bstore->label() : "default"},
         {"layout", effective_layout().name + (stacked_fallback ? " (fallback)" : "")},
         {"size", std::to_string(w) + "x" + std::to_string(h)},
-        {"line", std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total)},
-        {"follow", transcript.scroll().follow ? "yes" : "no"},
+        {"line", std::to_string(total == 0 ? 0 : transcript().top_line() + 1) + "/" + std::to_string(total)},
+        {"follow", transcript().scroll().follow ? "yes" : "no"},
         {"depth", std::string(color_depth_name(depth))},
         {"focus", stack.focused() ? stack.focused()->id : "-"},
     };
-    if (with_timing) rows.push_back({"frame", std::to_string(last_frame_us) + " us"});
+    if (show_timing) rows.push_back({"frame", std::to_string(last_frame_us) + " us"});
     if (copied_any) rows.push_back({"copied", std::to_string(copied.size()) + " bytes"});
-    const Style label = theme.style(Role::label), value = theme.style(Role::value);
-    if (r.h == 1) {  // a strip: everything on one line
-      std::string s;
-      for (const Row& row : rows) s += (s.empty() ? "" : "  ") + row.label + " " + row.value;
-      f.put_text(r.x + 1, r.y, s, value, r.w - 1, ambiguous);
-      return;
-    }
-    for (std::size_t i = 0; i < rows.size() && static_cast<int>(i) < r.h; ++i) {
-      int y = r.y + static_cast<int>(i);
-      int used = f.put_text(r.x + 1, y, rows[i].label, label, std::max(r.w - 1, 0), ambiguous);
-      f.put_text(r.x + 1 + 8, y, rows[i].value, value, std::max(r.w - 9 - (used > 8 ? used - 8 : 0), 0), ambiguous);
-    }
+    return rows;
   }
-  void draw_input(const ResolvedNode& rn, Frame& f) {
-    editor.layout(rn.inner);
-    editor.draw(f, theme, rn.focused);
-  }
-  // Enter: the text becomes a user entry at the end of the document (so the
-  // playground exercises a growing transcript too) and goes into the history.
-  void submit_input() {
-    std::string text = editor.text();
-    editor.push_history(text);
-    editor.clear();
+  // `input:prompt`: a submitted line becomes a user entry at the end of the document,
+  // so the playground exercises a growing transcript too. (The history is the
+  // widget's; this is only what the line MEANS here.)
+  void append_prompt(const std::string& text) {
     if (text.empty()) return;
     DocEntry e;
     e.id = "input" + std::to_string(submitted++);
-    e.text = std::move(text);
+    e.text = text;
     e.markdown = false;
     e.prefix = "> ";
     e.prefix_role = Role::prompt;
     doc.entries.push_back(std::move(e));
   }
-  void draw_text(const ResolvedNode& rn, Frame& f, std::string_view text, Role role) {
-    const Rect r = text_area(rn);
-    WrapOptions wo;
-    wo.ambiguous_wide = ambiguous;
-    int y = r.y;
-    for (const Line& l : wrap(text, r.w, wo)) {
-      if (y >= r.y + r.h) break;
-      f.put_text(r.x + l.indent, y++, l.text, theme.style(role), std::max(r.w - l.indent, 0), ambiguous);
-    }
-  }
-  void draw_slot(const ResolvedNode& rn, Frame& f, bool with_timing) {
-    const std::string& c = rn.node->content;
-    if (c == "transcript") {
-      transcript.layout(doc, rn.inner, transcript_options(rn));
-      transcript.draw(f, theme);
-    } else if (c == "status") {
-      draw_status(rn, f, with_timing);
-    } else if (c == "input") {
-      draw_input(rn, f);
-    } else if (c == "help") {
-      draw_scrolled_text(rn, f, help_text(bindings), help_top);
-    } else if (c == "menu") {
-      MenuOptions mo;
-      mo.ambiguous_wide = ambiguous;
-      mo.inset = rn.node->border != Border::None ? 1 : 0;
-      menu.set_options(mo);
-      menu.layout(rn.inner);
-      menu.draw(f, theme, rn.focused);
-    } else if (c == "editor") {
-      draw_editor(rn, f);
-    } else if (c == "confirm") {
-      draw_confirm(rn, f);
-    } else if (c == "report") {
-      draw_report(rn, f);
-    } else if (c.rfind("text:", 0) == 0) {
-      draw_text(rn, f, std::string_view(c).substr(5), Role::text);
-    } else {
-      draw_text(rn, f, "(no content for slot '" + c + "')", Role::text_muted);
-    }
-  }
 
   // The frame: the layout above a one-line status bar of the playground's own.
   Frame render(bool with_timing) {
     auto t0 = std::chrono::steady_clock::now();
+    show_timing = with_timing;
     sync_look();
     ensure_layout();  // the input window's size follows its text (found by the paste golden: a lone
                       // event left the size one event behind)
     Frame f(w, h, theme.style(Role::background));
     const Rect area = layout_area();
-    stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { draw_slot(rn, fr, with_timing); draw_selection(rn, fr); }, ambiguous);
+    stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, theme); draw_selection(rn, fr); }, ambiguous);
     if (h > 1) {
       f.fill({0, h - 1, w, 1}, theme.style(Role::panel_background));
-      const std::size_t total = transcript.total_lines();
+      const std::size_t total = transcript().total_lines();
       std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "") + "  " + effective_layout().name + (lstore && lstore->modified() ? " (modified)" : "") + "  " + std::to_string(w) + "x" + std::to_string(h) +
-                           "  line " + std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total) +
-                           (transcript.scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
+                           "  line " + std::to_string(total == 0 ? 0 : transcript().top_line() + 1) + "/" + std::to_string(total) +
+                           (transcript().scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
       if (with_timing) status += "  " + std::to_string(last_frame_us) + " us";
       if (copied_any) status += "  copied " + std::to_string(copied.size()) + "B";
       if (stacked_fallback) status += "  [stacked: below " + std::to_string(layout.min_width) + "x" + std::to_string(layout.min_height) + "]";
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
+      if (!window_note.empty()) status += "  [" + window_note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
       // The hints come from the live table too.
       auto hk = [&](const char* action) { const std::vector<KeyEvent>& c = bindings.chords_for(action); return c.empty() ? std::string("-") : chord_display(c[0]); };
@@ -1041,7 +948,7 @@ struct App {
       if (ed == "editor.theme") { toggle_editor(); return true; }
       if (ed == "editor.layout") { toggle_layout_editor(); return true; }
       if (ed == "editor.keys") { toggle_keys_editor(); return true; }
-      if (app == "app.help" && !(k->key == Key::Char && !k->ctrl && !k->alt && !editor.text().empty())) { toggle_help(); return true; }
+      if (app == "app.help" && !(k->key == Key::Char && !k->ctrl && !k->alt && !editor().text().empty())) { toggle_help(); return true; }
       if (app == "app.menu") { open_menu(false); return true; }
       if (app == "app.palette") { open_menu(true); return true; }
       if (app == "app.repaint") return true;  // the loop repaints
@@ -1054,7 +961,7 @@ struct App {
         else editor_outcome(teditor.handle(*p, bindings));
         return true;
       }
-      editor.handle(*p, bindings, clock_ms);
+      windows.input_event("prompt", *p);  // a paste goes to the prompt whatever has focus
       return true;
     }
     // Escape belongs to the editor while it has focus (it cancels the focused change or
@@ -1103,47 +1010,47 @@ struct App {
     if (r.kind == Route::Kind::ClosedPopup && r.window == "editor") { editor_open = false; editor_mode = EditorMode::None; store_seen = 0; bstore_seen = 0; sync_look(); return true; }
     if (r.kind == Route::Kind::ClosedPopup && r.window == "confirm") { confirm_action = nullptr; return true; }
     if (r.kind != Route::Kind::Deliver) return true;
-    if (r.window == "menu") return menu_event(menu.handle(ev, bindings));
-    if (r.window == "editor") {
+    // The event goes to the window's WIDGET, by kind — never by a window name, so a
+    // layout file may call its windows anything (Phase 10 m2). A `custom:` window is
+    // the playground's own, dispatched by the name it bound.
+    if (Menu* m = windows.menu_at(r.window)) return menu_event(m->handle(ev, bindings));
+    const std::string own = windows.custom_at(r.window);
+    if (own == "editor") {
       hint.clear();
       if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev, bindings));
       else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(ev, bindings));
       else editor_outcome(teditor.handle(ev, bindings));
       return true;
     }
-    if (r.window == "report") {
+    if (own == "report") {
       if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) report_key(*k);
       return true;
     }
-    if (r.window == "help") {
-      if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) scroll_key(*k, help_top, help_text(bindings), popup_rows("help"));
-      return true;
-    }
-    if (r.window == "confirm") {
+    if (own == "confirm") {
       if (const KeyEvent* k = std::get_if<KeyEvent>(&ev); k && k->key == Key::Char && !k->ctrl && !k->alt) {
         if (k->ch == 'y' || k->ch == 'Y') { close_popup("confirm"); if (confirm_action) confirm_action(); confirm_action = nullptr; }
         else if (k->ch == 'n' || k->ch == 'N') { close_popup("confirm"); confirm_action = nullptr; }
       }
       return true;
     }
-    const bool to_transcript = r.window == "transcript";
-    const bool to_input = r.window == "input";
-    if (to_transcript) {
-      if (transcript.handle(ev, doc, clock_ms, bindings)) return true;
+    const std::optional<Content> c = windows.content_at(r.window);
+    if (c && c->kind == WidgetKind::Transcript) {
+      if (windows.handle(r.window, ev)) return true;
       if (!std::holds_alternative<KeyEvent>(ev)) return true;
-      // typing while the transcript has focus still types (falls through to the input)
-    } else if (!to_input) {
-      return true;
+      // typing while the transcript has focus still types (falls through to the prompt)
+      return input_event("prompt", ev);
     }
-    return input_event(ev);
+    if (c && c->kind == WidgetKind::Input) return input_event(c->source, ev);
+    windows.handle(r.window, ev);  // help / text / file scroll themselves; rows take nothing
+    return true;
   }
   // An event for the input: the editor first; what it Ignores is the transcript's
   // (plan: typing never touches the offset; PgUp/PgDn, Ctrl-Home/End, Home/End on an
   // empty buffer, Ctrl-O, Alt-C without a selection and the wheel act on it from
   // wherever focus is). Returns false to quit (Ctrl-D on an empty buffer).
-  bool input_event(const Event& ev) {
-    switch (editor.handle(ev, bindings, clock_ms)) {
-      case InputAction::Submit: submit_input(); return true;
+  bool input_event(std::string_view target, const Event& ev) {
+    switch (windows.input_event(target, ev)) {  // Submit has already reached append_prompt
+      case InputAction::Submit: return true;
       case InputAction::Eof: return false;
       case InputAction::Handled: return true;
       case InputAction::Ignored: break;
@@ -1151,21 +1058,21 @@ struct App {
     // What the input Ignored is offered to the transcript (its own scope of the table).
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
       const std::string_view a = bindings.action_for(*k, "transcript");
-      if (a == "transcript.page_up") transcript.scroll_page(-1);
-      else if (a == "transcript.page_down") transcript.scroll_page(1);
-      else if (a == "transcript.top") transcript.scroll_to_top();
-      else if (a == "transcript.bottom") transcript.scroll_to_bottom();
-      else if (a == "transcript.fold") transcript.toggle_fold_nearest_top(doc);
-      else if (a == "transcript.copy") transcript.copy_selection();
+      if (a == "transcript.page_up") transcript().scroll_page(-1);
+      else if (a == "transcript.page_down") transcript().scroll_page(1);
+      else if (a == "transcript.top") transcript().scroll_to_top();
+      else if (a == "transcript.bottom") transcript().scroll_to_bottom();
+      else if (a == "transcript.fold") transcript().toggle_fold_nearest_top(doc);
+      else if (a == "transcript.copy") transcript().copy_selection();
     } else if (const MouseEvent* m = std::get_if<MouseEvent>(&ev);
                m && (m->kind == MouseEvent::Kind::WheelUp || m->kind == MouseEvent::Kind::WheelDown)) {
-      transcript.handle(ev, doc, clock_ms, bindings);
+      transcript().handle(ev, doc, clock_ms, bindings);
     }
     return true;
   }
   void tick() {
     ensure_layout();
-    transcript.tick();
+    transcript().tick();
   }
 };
 
@@ -1428,6 +1335,7 @@ int main(int argc, char** argv) {
   app.lstore = std::make_shared<LayoutPresets>(LayoutPresets::Options{presets_dir, true, shipped_dir + "/layouts"});
   app.bstore = std::make_shared<BindingsPresets>(BindingsPresets::Options{presets_dir, true, shipped_dir + "/bindings"});
   app.persist = frame_spec.empty();
+  app.windows.set_dir(presets_dir);  // a layout's `file:` paths are relative to the preset directory
   {
     const MigrationReport mig = migrate_theme_layout(presets_dir);  // Phase 10 m1, once
     for (const std::string& n : mig.notes) std::fprintf(stderr, "rolltui: %s\n", n.c_str());
@@ -1436,12 +1344,15 @@ int main(int argc, char** argv) {
     if (!start.error.empty()) app.theme_note = start.error;
     const PresetLoadReport lstart = app.lstore->start();
     if (!lstart.error.empty()) app.layout_note = lstart.error;
+    // A Phase 9 layout's contents rewritten to kind[:source] (Phase 10 m2) is a note,
+    // not a problem — said once, on stderr, so it never moves a golden frame.
+    for (const std::string& n : lstart.notes) std::fprintf(stderr, "rolltui: %s\n", n.c_str());
     const PresetLoadReport bstart = app.bstore->start();
     if (!bstart.error.empty()) app.hint = bstart.error;
   }
   app.load_theme_arg();
   app.load_bindings_arg();
-  app.build_menu();
+  app.refresh_menu();
 
   if (!frame_spec.empty()) {
     int w, h;
@@ -1490,7 +1401,7 @@ int main(int argc, char** argv) {
     term.write(render_diff(have_prev ? &prev : nullptr, f, app.depth));
     prev = std::move(f);
     have_prev = true;
-    const bool ticking = app.transcript.wants_tick();
+    const bool ticking = app.transcript().wants_tick();
     for (const Event& e : term.poll(ticking ? 50 : 250)) {
       app.clock_ms = now_ms();
       if (const ResizeEvent* r = std::get_if<ResizeEvent>(&e)) {

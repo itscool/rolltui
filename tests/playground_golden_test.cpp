@@ -49,6 +49,7 @@
 #include <string>
 #include <vector>
 
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Json.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui_test.hpp"
@@ -185,6 +186,9 @@ int main(int argc, char** argv) {
       {"menu.80x24.left", "--frame 80x24 --theme default-dark --keys \"F2 Enter Left\""},
       {"menu.80x24.escape", "--frame 80x24 --theme default-dark --keys \"F2 Escape\""},
       {"menu.80x24.toggle", "--frame 80x24 --theme default-dark --keys \"F2 Down Down Down Enter\""},
+      // m4: the Commands level, whose shortcuts are the LIVE chords of the actions its
+      // items name — nothing in the menu file spells a key out.
+      {"menu.80x24.commands", "--frame 80x24 --theme default-dark --keys \"F2 Type:comm Enter\""},
       {"menu.80x24.palette", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:mono\""},
       {"menu.80x24.palette-choose", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:stacked Enter\""},
       {"menu.120x40.open", "--frame 120x40 --theme default-dark --keys \"F2\""},
@@ -238,6 +242,7 @@ int main(int argc, char** argv) {
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
+  std::string menu_commands;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
@@ -296,6 +301,7 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "menu.80x24.left") menu_left = out;
     if (std::string(c.name) == "menu.80x24.escape") menu_escape = out;
     if (std::string(c.name) == "menu.80x24.toggle") menu_toggle = out;
+    if (std::string(c.name) == "menu.80x24.commands") menu_commands = out;
     if (std::string(c.name) == "menu.80x24.palette") menu_palette = out;
     if (std::string(c.name) == "menu.80x24.palette-choose") menu_palette_choose = out;
     if (std::string(c.name) == "menu.120x40.open") menu_big = out;
@@ -453,6 +459,12 @@ int main(int argc, char** argv) {
     check(!menu_left.empty() && menu_left == menu_open, "Enter then Left gives back exactly the opened frame");
     check(!menu_escape.empty() && menu_escape == bottom, "F2 then Escape gives back exactly the frame without the menu");
     check(menu_toggle.find("[x] Ambiguous width") != std::string::npos, "Enter on the toggle shows [x]");
+    // m4: the shipped menu file names ACTIONS, never keys — so these columns are the
+    // live table's, and "F1, ?" (two chords) is what app.help actually has.
+    check(menu_commands.find("Theme editor") != std::string::npos && menu_commands.find("F4") != std::string::npos &&
+              menu_commands.find("Help") != std::string::npos && menu_commands.find("F1, ?") != std::string::npos &&
+              menu_commands.find("Ctrl-Q") != std::string::npos,
+          "the Commands level shows each item's LIVE chords, from the action it names");
     check(menu_palette.find("Theme \xE2\x80\xBA mono") != std::string::npos && menu_palette.find("Layout") == std::string::npos,
           "Ctrl-P opens the palette: rows are paths, and \"mono\" filters to the one theme option");
     check(menu_palette_choose.find("stacked") != std::string::npos && menu_palette_choose.find("\xE2\x95\xAD menu ") != std::string::npos &&
@@ -569,6 +581,83 @@ int main(int argc, char** argv) {
       std::ofstream(scratch + "/lying.json", std::ios::binary) << rolltui::json::dump(lying, 2);
       const std::string liar = run(bin + " --check '" + scratch + "/lying.json'" + presets, rc);
       check(rc != 0 && liar.find("CLAIM FAILED: mono") != std::string::npos, "a file claiming a badge it does not have fails --check with the claim named");
+    }
+    // ---- Phase 10 m3: a menu is a FILE, and a dropped one opens with NO REBUILD ----
+    // The milestone's Done-when, end to end through the real binary: two files nobody
+    // compiled — a layout naming `menu:extra` and the menu it names — put on screen by
+    // a playground that has never heard the name 'extra'. Then the same name in the
+    // user's own menus/main.json, which shadows the shipped settings menu the F2 popup
+    // shows: what ships is a default, not a fixture.
+    {
+      int rc = 0;
+      const std::string p = scratch + "/p5";
+      std::filesystem::create_directories(p + "/menus");
+      std::ofstream(p + "/menus/extra.json", std::ios::binary) << R"({"id":"root","label":"dropped","items":[
+        {"id":"one","label":"a dropped item"},{"id":"two","label":"another one"}]})";
+      std::ofstream(scratch + "/dropped-layout.json", std::ios::binary) << R"({"name":"dropped","root":{"column":[
+        {"id":"tx","content":"transcript:session"},
+        {"id":"m","content":"menu:extra","size":6,"border":"single","title":"dropped menu"},
+        {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})";
+      const std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                              "/session/demo.md' --frame 80x24 --theme default-dark --presets '" + p + "' --layout '" + scratch +
+                              "/dropped-layout.json'";
+      const std::string out = run(cmd, rc);
+      check(rc == 0 && out.find("a dropped item") != std::string::npos && out.find("another one") != std::string::npos &&
+                out.find("dropped menu") != std::string::npos,
+            "a dropped menus/extra.json named by a dropped layout file opens with no rebuild and no host code");
+      // The same rung under the name the shipped layouts already use: F2 shows the
+      // user's menu instead of the library's, again with nothing rebuilt.
+      std::ofstream(p + "/menus/main.json", std::ios::binary) << R"({"id":"root","label":"mine","items":[{"id":"x","label":"my own item"}]})";
+      const std::string f2 = run(std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                                     "/session/demo.md' --frame 80x24 --theme default-dark --presets '" + p + "' --keys \"F2\"",
+                                 rc);
+      check(rc == 0 && f2.find("my own item") != std::string::npos && f2.find("Ambiguous width") == std::string::npos,
+            "…and a user's menus/main.json shadows the shipped settings menu in the F2 popup");
+    }
+    // ---- Phase 10 m4: the LAYOUT declares the actions, end to end -------------------
+    // The milestone's Done-when through the real binary: an action nothing has compiled
+    // in — declared by a dropped layout file, given a chord by a dropped bindings file,
+    // named by a dropped menu file — appears in the help popup with its live key and in
+    // the menu with the same key, and a menu id naming an action nobody declared is
+    // reported instead of sitting there dead.
+    {
+      int rc = 0;
+      const std::string p = scratch + "/p6";
+      std::filesystem::create_directories(p + "/menus");
+      std::filesystem::create_directories(p + "/bindings");
+      std::ofstream(p + "/menus/decl.json", std::ios::binary) << R"({"id":"root","label":"declared","items":[
+        {"id":"z","label":"Zoom the transcript","action":"app.zoom"},
+        {"id":"n","label":"Nothing declares this","action":"app.nowhere"}]})";
+      // The shipped default bindings PLUS one chord for the new action. A bindings file
+      // is the whole domain, so it names both — and neither the library nor the
+      // playground has ever heard of app.zoom.
+      {
+        rolltui::BindingsLoadReport br;
+        std::optional<rolltui::Bindings> b = rolltui::Bindings::from_json(rolltui::default_bindings_json(), br);
+        b->declare({{"app.zoom", "zoom the transcript"}});
+        b->bind("app.zoom", *rolltui::parse_chord("ctrl+g"));
+        std::ofstream(p + "/bindings/decl.json", std::ios::binary) << rolltui::json::dump(b->to_json("decl"), 2);
+      }
+      std::ofstream(scratch + "/declared-layout.json", std::ios::binary) << R"({"name":"declared",
+        "actions":{"app.help":"open help","app.zoom":"zoom the transcript"},
+        "popups":[{"id":"help","x":0,"y":0,"w":"100%","h":"100%","modal":true,
+                   "root":{"content":"help","border":"single","title":"help","focusable":true}}],
+        "root":{"column":[
+          {"id":"m","content":"menu:decl","size":5,"border":"single","title":"declared menu"},
+          {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})";
+      // Wide and tall on purpose: the playground says a load report on its status line
+      // and the help popup lists six scopes, so both answers have to fit on screen.
+      const std::string base = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                               "/session/demo.md' --theme default-dark --presets '" + p + "' --bindings decl --layout '" + scratch +
+                               "/declared-layout.json'";
+      const std::string menu_out = run(base + " --frame 400x10", rc);
+      check(rc == 0 && menu_out.find("Zoom the transcript") != std::string::npos && menu_out.find("Ctrl-G") != std::string::npos,
+            "a menu item's shortcut is the chord the bindings file gave the action the LAYOUT declared");
+      check(menu_out.find("item 'n' names the action 'app.nowhere', which no layout declares") != std::string::npos,
+            "…and an item naming an action nobody declared is reported by name, not left dead");
+      const std::string help_out = run(base + " --frame 100x90 --keys \"F1\"", rc);
+      check(rc == 0 && help_out.find("Ctrl-G      zoom the transcript") != std::string::npos,
+            "…and `help` RENDERS an action that exists only because a layout file declared it, with its chord");
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +

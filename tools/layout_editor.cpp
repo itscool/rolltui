@@ -282,6 +282,16 @@ std::string LayoutEditor::status_line() const {
   return s;
 }
 
+std::string LayoutEditor::selection_line() const {
+  const Node* n = selected_node();
+  if (!n) return {};
+  // Size and border come first: a content is kind[:source] (Phase 10 m2) and can be
+  // long, and it is the one field the menu above always shows in full.
+  return "selected: " + n->id + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
+         (n->visible ? "" : "  hidden") +
+         (n->is_window() ? "  " + n->content : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
+}
+
 // ---- events ---------------------------------------------------------------------------
 
 LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) {

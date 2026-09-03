@@ -2,7 +2,7 @@
   "name": "wide-right", "min_width": 60, "min_height": 8, "focus": "input",
   "root": { "row": [
     { "column": [
-      { "content": "transcript", "border": "single", "title": "transcript", "focusable": true },
-      { "content": "input", "size": 3, "border": "single", "focusable": true } ] },
-    { "content": "status", "size": 55, "border": "single", "title": "status", "background": "panel_background" } ] }
+      { "id": "transcript", "content": "transcript:session", "border": "single", "title": "transcript", "focusable": true },
+      { "id": "input", "content": "input:prompt", "size": 3, "border": "single", "focusable": true } ] },
+    { "id": "status", "content": "rows:status", "size": 55, "border": "single", "title": "status", "background": "panel_background" } ] }
 }

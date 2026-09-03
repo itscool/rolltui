@@ -66,6 +66,97 @@ Rect resolve(const Placement& p, Rect parent) {
   return {parent.x + x, parent.y + y, w, h};
 }
 
+// ---- content: the widget kind and its source ----------------------------------------------
+
+namespace {
+
+struct KindRow {
+  WidgetKind kind;
+  const char* name;
+  SourceRule rule;
+  const char* source_is;  // what the source names, for a report
+};
+
+// THE TABLE (Layout.hpp's header comment is its documentation). One definition site:
+// the names, the source rule and what a source means all come from here.
+constexpr KindRow kKinds[] = {
+    {WidgetKind::Transcript, "transcript", SourceRule::Required, "a document the host binds"},
+    {WidgetKind::Input, "input", SourceRule::Required, "the target a submitted line goes to"},
+    {WidgetKind::Menu, "menu", SourceRule::Required, "a menu the host binds"},
+    {WidgetKind::Rows, "rows", SourceRule::Required, "a row source the host binds"},
+    {WidgetKind::Text, "text", SourceRule::Optional, "the literal text"},
+    {WidgetKind::File, "file", SourceRule::Required, "a path"},
+    {WidgetKind::Help, "help", SourceRule::Forbidden, ""},
+    {WidgetKind::Custom, "custom", SourceRule::Required, "a widget the host binds"},
+};
+
+// Phase 9's slot names → the m2 contents. A closed, one-way table: the loader rewrites
+// and reports, so the next save is in the new form and this table stops being reached.
+constexpr std::pair<const char*, const char*> kLegacy[] = {
+    {"transcript", "transcript:session"}, {"input", "input:prompt"}, {"status", "rows:status"},
+    {"menu", "menu:main"},                {"approval", "custom:approval"}, {"details", "custom:details"},
+    {"editor", "custom:editor"},          {"confirm", "custom:confirm"},   {"report", "custom:report"},
+};
+
+const KindRow& row_of(WidgetKind k) {
+  for (const KindRow& r : kKinds)
+    if (r.kind == k) return r;
+  return kKinds[0];  // unreachable: every enumerator is in the table
+}
+
+}  // namespace
+
+std::string_view widget_kind_name(WidgetKind k) { return row_of(k).name; }
+
+std::optional<WidgetKind> widget_kind_from_name(std::string_view name) {
+  for (const KindRow& r : kKinds)
+    if (name == r.name) return r.kind;
+  return std::nullopt;
+}
+
+SourceRule source_rule(WidgetKind k) { return row_of(k).rule; }
+
+std::optional<Content> parse_content(std::string_view text, std::string* why) {
+  auto fail = [&](std::string reason) -> std::optional<Content> {
+    if (why) *why = std::move(reason);
+    return std::nullopt;
+  };
+  const std::size_t colon = text.find(':');
+  const std::string_view name = text.substr(0, colon);
+  std::optional<WidgetKind> kind = widget_kind_from_name(name);
+  if (!kind) {
+    std::string known;
+    for (const KindRow& r : kKinds) known += (known.empty() ? "" : " | ") + std::string(r.name);
+    if (std::optional<std::string> m = migrated_content(text))
+      return fail("'" + std::string(name) + "' is a Phase 9 slot name, not a widget kind; write '" + *m + "'");
+    return fail("'" + std::string(name) + "' is not a widget kind (" + known + ")");
+  }
+  Content c;
+  c.kind = *kind;
+  if (colon != std::string_view::npos) c.source = std::string(text.substr(colon + 1));
+  const KindRow& r = row_of(c.kind);
+  if (r.rule == SourceRule::Forbidden && colon != std::string_view::npos)
+    return fail("'" + std::string(r.name) + "' takes no source; write '" + std::string(r.name) + "'");
+  if (r.rule == SourceRule::Required && c.source.empty()) {
+    if (std::optional<std::string> m = migrated_content(text))  // a Phase 9 slot name that is also a kind name
+      return fail("'" + std::string(text) + "' is a Phase 9 slot name, not a content; write '" + *m + "'");
+    return fail("'" + std::string(r.name) + "' needs a source (" + r.source_is + "): write '" + std::string(r.name) + ":<name>'");
+  }
+  return c;
+}
+
+std::string content_to_string(const Content& c) {
+  std::string s(widget_kind_name(c.kind));
+  if (source_rule(c.kind) != SourceRule::Forbidden) s += ":" + c.source;
+  return s;
+}
+
+std::optional<std::string> migrated_content(std::string_view legacy) {
+  for (const auto& [from, to] : kLegacy)
+    if (legacy == from) return std::string(to);
+  return std::nullopt;
+}
+
 // ---- tree basics -------------------------------------------------------------------------
 
 Node Node::window(std::string content, SplitSize size) {
@@ -74,6 +165,11 @@ Node Node::window(std::string content, SplitSize size) {
   n.id = content;
   n.content = std::move(content);
   n.size = size;
+  return n;
+}
+Node Node::window_id(std::string id, std::string content, SplitSize size) {
+  Node n = window(std::move(content), size);
+  n.id = std::move(id);
   return n;
 }
 Node Node::row(std::vector<Node> children, SplitSize size) {
@@ -298,6 +394,17 @@ Node node_from_json(const Value& v, const std::string& where, LayoutLoadReport& 
       rep.unknown_keys.push_back(at);
     }
   }
+  // Content is kind[:source] (Layout.hpp). A Phase 9 slot name is rewritten once and
+  // said so; anything else the table does not know is a bad value that names the fix.
+  if (n.is_window()) {
+    if (std::optional<std::string> to = migrated_content(n.content)) {
+      rep.migrated.push_back(where + ".content: '" + n.content + "' \xE2\x86\x92 '" + *to + "'");
+      if (n.id.empty()) n.id = n.content;  // the id it had before the rewrite, so lookups keep working
+      n.content = *to;
+    }
+    std::string why;
+    if (!parse_content(n.content, &why)) rep.bad_values.push_back(where + ".content: " + why);
+  }
   if (n.is_window() && n.id.empty()) n.id = n.content;
   return n;
 }
@@ -408,6 +515,7 @@ std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
   if (!root.has("root")) { report.error = "layout file has no \"root\" node"; return std::nullopt; }
   Layout out;
   Value base = Value::object();
+  bool have_actions = false;
   for (const auto& [k, v] : root.obj) {
     if (k == "name") { if (!v.is_string()) report.bad_values.push_back("name: expected a string"); else out.name = v.str; }
     else if (k == "min_width" || k == "min_height") {
@@ -415,6 +523,23 @@ std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
       else (k == "min_width" ? out.min_width : out.min_height) = static_cast<int>(v.num);
     } else if (k == "root" || k == "focus") {
       base.set(k, v);
+    } else if (k == "actions") {
+      have_actions = true;
+      if (!v.is_object()) { report.bad_values.push_back("actions: expected an object of action name \xE2\x86\x92 description"); continue; }
+      for (const auto& [name, desc] : v.obj) {
+        const std::string at = "actions." + name;
+        const std::string_view scope = scope_of(name);
+        if (scope == name || scope.empty() || name.size() <= scope.size() + 1)
+          report.bad_values.push_back(at + ": an action is \"<scope>.<verb>\", both parts non-empty");
+        else if (library_scope(scope))
+          report.bad_values.push_back(at + ": the '" + std::string(scope) + "' scope is the library's and cannot be declared");
+        else if (std::find_if(out.actions.begin(), out.actions.end(), [&](const ActionDecl& d) { return d.name == name; }) != out.actions.end())
+          report.bad_values.push_back(at + ": declared twice");
+        else if (!desc.is_string())
+          report.bad_values.push_back(at + ": expected a description string");
+        else
+          out.actions.push_back({name, desc.str});
+      }
     } else if (k == "popups") {
       if (!v.is_array()) { report.bad_values.push_back("popups: expected an array"); continue; }
       for (std::size_t i = 0; i < v.arr.size(); ++i) {
@@ -429,6 +554,18 @@ std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
     }
   }
   out.base = layer_from_json(base, "", false, report);
+  // A file written before actions existed (Phase 9, and every layout a user has saved
+  // since) declares none — and would silently lose every app key. It is given the
+  // shipped default's, named in `migrated` the way a Phase 9 content string is; the next
+  // save writes them into the file. An explicit `"actions": {}` means none and is kept.
+  if (!have_actions) {
+    out.actions = shipped_default_actions();
+    if (!out.actions.empty()) {
+      std::string names;
+      for (const ActionDecl& d : out.actions) names += (names.empty() ? "" : ", ") + d.name;
+      report.migrated.push_back("actions: none declared; the shipped default's were added (" + names + ")");
+    }
+  }
   // The base's report paths begin with "." because its keys sit at the top level.
   for (std::vector<std::string>* list : {&report.unknown_keys, &report.bad_values})
     for (std::string& s : *list)
@@ -441,6 +578,14 @@ Value layout_to_json_value(const Layout& layout) {
   o.set("name", Value::string(layout.name));
   if (layout.min_width) o.set("min_width", Value::number(layout.min_width));
   if (layout.min_height) o.set("min_height", Value::number(layout.min_height));
+  // Always written, even when empty: an absent "actions" key means "a file from before
+  // they existed" and is filled in by the loader, so a layout that deliberately declares
+  // none has to be able to say so (see load_layout).
+  {
+    Value acts = Value::object();
+    for (const ActionDecl& d : layout.actions) acts.set(d.name, Value::string(d.description));
+    o.set("actions", std::move(acts));
+  }
   Value base = layer_to_json(layout.base, false);
   for (auto& [k, v] : base.obj) o.set(k, std::move(v));
   if (!layout.popups.empty()) {
@@ -490,6 +635,24 @@ std::string_view builtin_json(std::string_view name) {
 }
 
 }  // namespace
+
+// Read straight out of the shipped "default" file's "actions" object — NEVER through
+// load_layout, which asks for these when a file declares none and would recurse into
+// itself. One definition site is still the file; this is a direct read of one key of it.
+const std::vector<ActionDecl>& shipped_default_actions() {
+  static const std::vector<ActionDecl> decls = [] {
+    std::vector<ActionDecl> out;
+    std::string err;
+    const Value v = json::parse(builtin_json("default"), err);
+    if (!err.empty() || !v.is_object()) return out;
+    const Value& acts = v.get("actions");
+    if (!acts.is_object()) return out;
+    for (const auto& [name, desc] : acts.obj)
+      if (desc.is_string()) out.push_back({name, desc.str});
+    return out;
+  }();
+  return decls;
+}
 
 const Layout* builtin_layout(std::string_view name) {
   static std::vector<std::pair<std::string, Layout>> cache = [] {

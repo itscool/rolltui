@@ -15,12 +15,33 @@
 // end pageup pagedown insert delete f1..f12, or a single character. parse_chord and
 // chord_to_string round-trip; a KeyEvent's `raw` is never part of a chord.
 //
-// SCOPES: an action's name is "<scope>.<verb>" — input, transcript, menu, edit (a menu
-// field being edited: commit, cancel, step; the caret keys are the input scope's), stack,
-// app, editor, playground. The same chord may serve different scopes (Up moves the caret in
-// the input, the selection in a menu, the view in the transcript); a chord bound to two
-// actions of ONE scope is a CONFLICT and the loader reports it. Lookup is by scope:
-// action_for(event, "input") answers with an input.* action or "".
+// SCOPES: an action's name is "<scope>.<verb>". The same chord may serve different
+// scopes (Up moves the caret in the input, the selection in a menu, the view in the
+// transcript); a chord bound to two actions of ONE scope is a CONFLICT and the loader
+// reports it. Lookup is by scope: action_for(event, "input") answers with an input.*
+// action or "".
+//
+// WHO OWNS A SCOPE (Phase 10 milestone 4). The library's own are CLOSED and listed in
+// library_actions(): `input`, `transcript`, `menu`, `edit` (a menu field being edited:
+// commit, cancel, step; the caret keys are the input scope's), `stack` — the scopes the
+// library's widgets and window stack look up — plus `editor` and `playground`, the
+// actions of the library's own TOOLS (rolltui/tools/: the three editors and the
+// playground, which ship with the library the way its widgets do). Nothing may add to
+// one of those scopes.
+//
+// EVERY OTHER SCOPE IS DECLARED BY A LAYOUT (`app` above all): a layout file lists the
+// actions its screen emits with what they do (Layout.hpp's "actions"), and a host adds
+// them to its table with declare() before looking a key up. That is the split the phase
+// exists for — the layout DECLARES an action, the bindings SUPPLY its keys — and it is
+// why "open the settings menu" is roll's fact rather than the library's.
+//
+// A CHORD FOR AN UNDECLARED ACTION IS KEPT AND DOES NOTHING. A bindings file is global
+// and the user's; the actions are the screen's. So a file written while one layout was
+// loaded must not lose its keys under another: the row survives load, save and the
+// working copy's round trip, action_for() never answers with it (nothing can emit it),
+// and declaring the action later makes it live. The one exception is a name in a
+// LIBRARY scope that the library does not define ("input.sumbit"): that scope is closed,
+// so the loader reports it as an unknown action instead of keeping a dead row.
 //
 // THE ONE RULE THAT CANNOT BE REBOUND (the plan's standing rule, "Enter is always
 // submit"): `enter` must be a chord of input.submit and of no other input.* action; a
@@ -48,11 +69,22 @@ struct ActionInfo {
   std::string_view name;         // "input.submit"
   std::string_view description;  // "send the line"
 };
-// Every action the library's widgets and a typical host act on, with what it does — the
-// help popup is rendered from this list and the live chords. A host may add its own
-// scope's actions (Bindings::add_action) before loading a file.
+// One action a LAYOUT declares (Layout.hpp), with owned strings because it comes from a
+// file that may be reloaded under the table using it.
+struct ActionDecl {
+  std::string name;         // "app.help"
+  std::string description;  // "open help"
+  bool operator==(const ActionDecl&) const = default;
+};
+// Every action the library's own widgets, window stack and tools act on, with what it
+// does — the closed set (see WHO OWNS A SCOPE above). Everything else reaches a table
+// through Bindings::declare().
 const std::vector<ActionInfo>& library_actions();
 std::string_view scope_of(std::string_view action);  // "input" of "input.submit"
+// Whether `scope` is one of the library's closed scopes. A layout that declares into one
+// is a reported bad value, and a bindings file naming an action that does not exist in
+// one is an unknown action rather than a kept-but-dead row.
+bool library_scope(std::string_view scope);
 
 std::optional<KeyEvent> parse_chord(std::string_view text);
 std::string chord_to_string(const KeyEvent& k);   // "ctrl+shift+left"; "" for an Unknown key
@@ -82,6 +114,16 @@ class Bindings {
   std::string chords_text(std::string_view action) const;  // "Ctrl-W, Alt-Backspace" for help
   bool has(std::string_view action) const;
   const std::vector<std::string>& actions() const { return actions_; }  // known actions, in table order
+  // The actions this table has CHORDS for but nothing has declared — a bindings file's
+  // rows for another screen's actions. They are kept and written back; they never match
+  // a key. Named for a host that wants to say so; not a problem by itself.
+  std::vector<std::string> undeclared() const;
+
+  // ---- declarations (a layout's; Layout.hpp) ----
+  // Adds each action with its description, unless the table already knows it. Idempotent
+  // and cheap, so a host may call it every frame; call it after replacing the table from
+  // a preset store and after the layout changes.
+  void declare(const std::vector<ActionDecl>& declared);
 
   // ---- edits (an editor's; the loader uses them too) ----
   void add_action(std::string_view action, std::string_view description);  // a host's own; no-op when known
@@ -98,7 +140,9 @@ class Bindings {
   //   { "name": "default", "bindings": { "input.submit": ["enter"], "input.newline": ["alt+enter"], ... } }
   // An action absent from the file keeps NO chords (a file is the whole domain — rule
   // 1 of the preset system); the loader reports what it could not use and keeps the
-  // rest. load() starts from an empty table.
+  // rest. load() starts from an empty table. A name outside the library's scopes is
+  // kept as an UNDECLARED row (see the header comment) — the layout, not this file,
+  // says which actions exist.
   static std::optional<Bindings> from_json(const json::Value& v, BindingsLoadReport& report);
   static std::optional<Bindings> from_json(std::string_view text, BindingsLoadReport& report);
   json::Value to_json(std::string_view name) const;
@@ -110,9 +154,12 @@ class Bindings {
   std::vector<KeyEvent>& chords_mut(std::string_view action);
 };
 
-// The shipped default (rolltui/presets/bindings/default.json), parsed once. Every
-// widget's compiled-in behaviour before this milestone is exactly this table — the
-// widget tests drive the widgets through it.
+// The shipped default (rolltui/presets/bindings/default.json), parsed once, with the
+// SHIPPED DEFAULT LAYOUT's actions declared into it — the two files ship together and
+// are the library's one complete "default screen plus default keys", so a mismatch
+// between them is a build error and aborts here (the shipped-preset standard). Every
+// widget's compiled-in behaviour before milestone 17 is exactly this table — the widget
+// tests drive the widgets through it.
 const Bindings& default_bindings();
 std::string_view default_bindings_json();
 

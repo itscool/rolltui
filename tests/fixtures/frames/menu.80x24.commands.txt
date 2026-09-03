@@ -1,0 +1,24 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
+│ │ block        │             │ header over  │ │ keys    default              │
+│ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
+│ │ (blocks →    │             │              │ │ size    80x24                │
+│ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
+│ │ wrapped      │  │ settings › Commands                  │s                  │
+│ │ lines)       │  │ Theme editor                      F4 │uecolor            │
+│ │ Theme (roles │ b│ Layout editor                     F6 │nu                 │
+│ │ → styles,    │  │ Keys editor                       F7 │                   │
+│ │ JSON loader, │  │ Reload the fixture                F5 │                   │
+│ │ built-ins)   │  │ Help                           F1, ? │                   │
+│ └──────────────┴──│ Quit                          Ctrl-Q │                   │
+│                   │                                      │                   │
+│ Here is the functi│                                      │                   │
+│                   │                                      │                   │
+│ ┌ cpp ────────────│                                      │                   │
+│ │ int add(int a, i╰──────────────────────────────────────╯                   │
+│ │   return a + b;                           │ │                              │
+│ └───────────────────────────────────────────┘ │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 173/191  follow  truecolor  focus:menu

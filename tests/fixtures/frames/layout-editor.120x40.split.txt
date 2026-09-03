@@ -9,7 +9,7 @@
 │ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ [x] Visible                                    │
 │ │ files      │            │ theme       │ │ │ files      │          │ Border                                single ▸ │
 │ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Title: transcript                              │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Content slot                      transcript ▸ │
+│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Content slot              transcript:session ▸ │
 │ │ placements │            │ parser;     │ │ │ placements │          │ Size (Alt+arrows nudge): fill                  │
 │ │ + content  │            │ hot-        │ │ │ + content  │          │ [x] Focusable                                  │
 │ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Delete this node                               │
@@ -32,7 +32,7 @@
 │                                           │                         │                                                │
 │ ┌ cpp ──────────────────────────────────┐ │ ┌ cpp ──────────────────│                                                │
 │ │ int add(int a, int b) {               │ │ │ int add(int a, int b) │                                                │
-│ │   return a + b;                       │ │ │   return a + b;       │ selected: transcript  slot transcript  size fi │
+│ │   return a + b;                       │ │ │   return a + b;       │ selected: transcript  size fill  border single │
 │ └───────────────────────────────────────┘ │ └───────────────────────│ Tab next node · click selects · drag an edge r │
 ├───────────────────────────────────────────┴─────────────────────────│ split transcript side by side · undo 1 · redo  │
 │ > type here                                                         │                                                │

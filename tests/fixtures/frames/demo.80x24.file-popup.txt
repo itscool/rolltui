@@ -7,7 +7,7 @@
 │ follow  yes                  ││ │ styles, ┃   Backspace               erase  ┃
 │ depth   truecolor            ││ │ JSON    ┃ before the caret (or the         ┃
 │ focus   help                 ││ │ loader, ┃ selection)                       ┃
-│                              ││ │ built-in┃   Delete   ▼ 114  (Up/Down, Esc) ┃
+│                              ││ │ built-in┃   Delete             ▼ 114 more  ┃
 │                              ││ └─────────┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 │                              ││                                              │
 │                              ││ Here is the function you asked for:          │

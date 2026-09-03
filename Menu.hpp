@@ -143,7 +143,15 @@ struct MenuItem {
   Kind kind = Kind::Action;
   std::string id;                  // the action id the host binds; an option's value id
   std::string label;
-  std::string shortcut;            // display only ("F1"); the host decides what keys do
+  // The BINDINGS action (Bindings.hpp) this item does the same thing as — the item's
+  // `id` stays the host's own name for it, and this says "and a key can do this too"
+  // (Phase 10 m4). Two consequences, both the point of having it: the shortcut is
+  // rendered from the LIVE chords instead of a string in the file that a rebinding
+  // makes a lie, and an action no layout declares is a reported bad value rather than
+  // a menu entry nothing will ever answer. (`action_name`, not `action`, because
+  // MenuItem::action is the factory for an Action-kind item.)
+  std::string action_name;
+  std::string shortcut;            // display only ("F1"); with `action` set it is the live chords
   bool enabled = true;
   bool checked = false;            // Toggle
   std::string value;               // Choice: the current option id; Input: the COMMITTED text
@@ -182,14 +190,25 @@ struct MenuLoadReport {
 };
 
 // File format (menus/<name>.json): an item is {"id", "label", "kind": action |
-// submenu | toggle | choice | input, "shortcut", "enabled", "checked", "value",
-// "items": [...]} — "kind" defaults to submenu when "items" is present, else action.
-// An input also takes "type" (text | int | float | color | size | dim | name), "min",
-// "max", "step", "precision", "max_len", "min_len", "optional", "validator", "hint".
-// The root is one submenu item whose label heads the breadcrumb. Unknown keys are
-// reported, not ignored; a duplicate id is a bad value (the layout loader's standard).
+// submenu | toggle | choice | input, "action", "shortcut", "enabled", "checked",
+// "value", "items": [...]} — "kind" defaults to submenu when "items" is present, else
+// action. An input also takes "type" (text | int | float | color | size | dim | name),
+// "min", "max", "step", "precision", "max_len", "min_len", "optional", "validator",
+// "hint". "action" and "shortcut" together is a BAD VALUE: an action's shortcut is the
+// bindings' to say, and a second spelling of it in the file is the lie this key exists
+// to remove. The root is one submenu item whose label heads the breadcrumb. Unknown keys
+// are reported, not ignored; a duplicate id is a bad value (the layout loader's standard).
 std::optional<MenuItem> menu_from_json(std::string_view json_text, MenuLoadReport& report);
 std::string menu_to_json(const MenuItem& root);
+
+// The menu files that SHIP with the library (rolltui/presets/menus/*.json), embedded at
+// build time like the shipped theme, layout and bindings presets (Phase 10 m3). A menu
+// is NOT a preset domain — it has no working copy and nothing edits it at runtime; it is
+// a file a layout names (`menu:<name>`, Layout.hpp) and these are the last rung of the
+// three the library looks in (rolltui/Widgets.hpp has the order). `main` is the settings
+// menu over the three domains, which is what a rolltui host gets for free.
+std::string_view shipped_menu(std::string_view name);  // "" when there is no such file
+std::vector<std::string_view> shipped_menu_names();
 
 class Menu {
  public:
@@ -211,6 +230,13 @@ class Menu {
   void set_validator(std::string_view name, Validator v);
   // Validator names the tree refers to that have not been registered (a host's check).
   std::vector<std::string> unknown_validators() const;
+  // Every item that names an `action`, as (item id, action name) — for a host checking
+  // them against the declared table.
+  std::vector<std::pair<std::string, std::string>> item_actions() const;
+  // Rewrites every action-naming item's `shortcut` from the LIVE chords. Idempotent;
+  // the menu widget calls it each frame, so a rebinding shows in the menu immediately
+  // and no file can disagree with the keyboard.
+  void apply_shortcuts(const Bindings& b);
 
   // ---- navigation state ----
   void reset();  // the top level, no filter, the first item selected, palette off
