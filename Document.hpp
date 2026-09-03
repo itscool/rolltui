@@ -4,7 +4,7 @@
 // renders. Deliberately roll-agnostic (plan/phase-9.md, "Its own document model, not
 // roll's"): an ordered list of entries, each a piece of text with a role and an
 // optional prefix, rendered as markdown or verbatim. roll's SessionView → Document
-// mapping is the adapter's job (milestone 9); a playground can build one from a
+// mapping is the adapter's job (milestone 9); a studio can build one from a
 // fixture file; a GUI could render the same thing without cells.
 //
 // `version` is bumped by whoever mutates an entry — its text (a streaming answer) or

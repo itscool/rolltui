@@ -54,12 +54,15 @@ inline const Bindings& editor_bindings() {
   return b;
 }
 
-// The `playground` scope: the playground binary's own three.
-inline const std::vector<ToolAction>& playground_actions() {
+// The `studio` scope: the studio binary's own three. These were renamed along with the
+// binary in Phase 11 m2, and a bindings file written before that is rewritten once by
+// the loader — Bindings.cpp's migration table is where the old names are written down,
+// deliberately the only place left that carries them, so an old Ctrl-Q still quits.
+inline const std::vector<ToolAction>& studio_actions() {
   static const std::vector<ToolAction> t = {
-      {"playground.cycle_theme", "cycle the shipped theme presets", "f3"},
-      {"playground.reload", "reload the fixture", "f5"},
-      {"playground.quit", "quit", "ctrl+q"},
+      {"studio.cycle_theme", "cycle the shipped theme presets", "f3"},
+      {"studio.reload", "reload the fixture", "f5"},
+      {"studio.quit", "quit", "ctrl+q"},
   };
   return t;
 }

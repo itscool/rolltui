@@ -3,7 +3,7 @@
 // that exists only as files runs in a host that has never heard of it.
 //
 // Everything the screen is lives in rolltui/tests/fixtures/screen/, which this test
-// copies into a scratch preset directory before running the REAL rolltui-playground
+// copies into a scratch preset directory before running the REAL rolltui-studio
 // binary against it:
 //
 //   layouts/kettle.json    the design — a text: window, a file: window, a menu: window
@@ -55,8 +55,8 @@
 
 using namespace rolltui_test;
 
-#ifndef ROLLTUI_PLAYGROUND_BIN
-#error "ROLLTUI_PLAYGROUND_BIN must name the playground binary"
+#ifndef ROLLTUI_STUDIO_BIN
+#error "ROLLTUI_STUDIO_BIN must name the studio binary"
 #endif
 #ifndef ROLLTUI_FIXTURE_DIR
 #error "ROLLTUI_FIXTURE_DIR must point at rolltui/tests/fixtures"
@@ -90,7 +90,7 @@ std::string read_file(const std::string& path, bool& ok) {
 
 bool has(const std::string& haystack, const std::string& needle) { return haystack.find(needle) != std::string::npos; }
 
-// The playground's own status bar is the frame's last row.
+// The studio's own status bar is the frame's last row.
 std::string status_line(const std::string& frame) {
   std::vector<std::string> rows;
   std::istringstream in(frame);
@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
   // and expected; keep it out of the frames and out of ctest's output.
   const std::string err = " 2>>'" + scratch + "/stderr.txt'";
   auto play = [&](const std::string& args) {
-    return std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + fixture + "' --theme default-dark --presets '" + presets +
+    return std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' --theme default-dark --presets '" + presets +
            "' " + args + err;
   };
 
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
   for (const Case& c : cases) {
     int rc = 0;
     const std::string out = run(play(c.args), rc);
-    check(rc == 0 && !out.empty(), std::string(c.name) + ": the playground ran (rc " + std::to_string(rc) + ", " +
+    check(rc == 0 && !out.empty(), std::string(c.name) + ": the studio ran (rc " + std::to_string(rc) + ", " +
                                        std::to_string(out.size()) + " bytes)");
     // Every row fits the frame, in cells — the same guard the golden harness applies.
     const int w = std::atoi(std::strstr(c.args, "--frame ") + 8);
@@ -311,7 +311,7 @@ int main(int argc, char** argv) {
   // ---- THE control: no host or library source knows this screen -----------------------
   // One token covers the layout name, the menu name, the document, the four window ids
   // and the action, so a single grep answers "did any code have to change for this?".
-  // Everything the playground binary is compiled from is scanned: the library and its
+  // Everything the studio binary is compiled from is scanned: the library and its
   // tools. (Tests, fixtures, vendored code and the generated Unicode tables are not
   // compiled into a host's screen and are excluded by directory.)
   {
@@ -336,7 +336,7 @@ int main(int argc, char** argv) {
         if (line.find("kettle") != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln) + ":" + line);
       }
     }
-    check(scanned.size() >= 30, "scanned every source the playground binary is built from (" +
+    check(scanned.size() >= 30, "scanned every source the studio binary is built from (" +
                                     std::to_string(scanned.size()) + " files)");
     check(hits.empty(), "no source of the library or its hosts names this screen — it is files all the way down" +
                             (hits.empty() ? "" : ": " + hits.front()));

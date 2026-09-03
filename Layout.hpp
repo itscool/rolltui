@@ -130,7 +130,7 @@
 //                          source
 //   custom:<name>          a composite the host draws itself, bound by name — the
 //                          stated escape hatch for a window the seven kinds above
-//                          cannot express (roll's approval modal, the playground's
+//                          cannot express (roll's approval modal, the studio's
 //                          editors). Its failure is reported by name like any other.
 //
 // Phase 9's bare slot names ("transcript", "status", "input", …) are MIGRATED once by

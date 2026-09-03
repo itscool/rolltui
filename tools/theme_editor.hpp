@@ -1,7 +1,7 @@
 #pragma once
 //
 // rolltui/tools/theme_editor.hpp — the theme editor (plan/phase-9.md, milestone 14,
-// formerly 11b): the editor's MODEL, with no terminal in it, so the playground hosts
+// formerly 11b): the editor's MODEL, with no terminal in it, so the studio hosts
 // it and a test drives it. It is a rolltui::Menu over the theme — Roles › <role> › fg
 // › <palette entry> is three levels of the same navigation the settings menu uses —
 // plus the recovery model the user set: every change applies LIVE to the preview as

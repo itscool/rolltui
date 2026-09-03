@@ -1,12 +1,12 @@
 //
-// playground_golden_test.cpp — golden frames through the playground's `--frame WxH`
+// studio_golden_test.cpp — golden frames through the studio's `--frame WxH`
 // mode (plan/phase-9.md VERIFY: "golden frames at 80×24, 120×40 and 40×12"). Runs
-// the REAL rolltui-playground binary on the demo session fixture and compares its
+// the REAL rolltui-studio binary on the demo session fixture and compares its
 // stdout byte-for-byte with rolltui/tests/fixtures/frames/<case>.txt.
 //
-// Re-recording is a deliberate human act — `rolltui-playground-golden-test --record`
+// Re-recording is a deliberate human act — `rolltui-studio-golden-test --record`
 // — never something ctest does; look at the new frames before committing them (the
-// playground's `--frame-sgr` shows the same frame in colour).
+// studio's `--frame-sgr` shows the same frame in colour).
 //
 // Also asserts what a golden cannot: every row of every frame fits the width in
 // cells, the scrolled frame differs from the unscrolled one, and (milestone 8)
@@ -37,7 +37,7 @@
 // prompt copies its text with no line break; a double-click copies one word; a
 // triple-click copies a whole paragraph; a drag held past the bottom edge auto-scrolls
 // over two ticks and copies across entries; ▼ marker placement. The copied text
-// follows the frame in the playground's output, so the golden holds both.
+// follows the frame in the studio's output, so the golden holds both.
 //
 #include <unistd.h>
 
@@ -56,8 +56,8 @@
 
 using namespace rolltui_test;
 
-#ifndef ROLLTUI_PLAYGROUND_BIN
-#error "ROLLTUI_PLAYGROUND_BIN must name the playground binary"
+#ifndef ROLLTUI_STUDIO_BIN
+#error "ROLLTUI_STUDIO_BIN must name the studio binary"
 #endif
 #ifndef ROLLTUI_FIXTURE_DIR
 #error "ROLLTUI_FIXTURE_DIR must point at rolltui/tests/fixtures"
@@ -257,10 +257,10 @@ int main(int argc, char** argv) {
   for (const Case& c : cases) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
-    std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + fixture + "' " + c.args;
+    std::string cmd = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' " + c.args;
     if (std::string(c.name).find("editor") != std::string::npos || std::string(c.name).rfind("keys.", 0) == 0) cmd += presets;  // every editor and bindings case
     std::string out = run(cmd, rc);
-    check(rc == 0 && !out.empty(), std::string(c.name) + ": playground ran (rc " + std::to_string(rc) + ", " +
+    check(rc == 0 && !out.empty(), std::string(c.name) + ": studio ran (rc " + std::to_string(rc) + ", " +
                                        std::to_string(out.size()) + " bytes)");
     // Every row fits the width, in cells.
     int w = std::atoi(std::strstr(c.args, "--frame ") + 8);
@@ -377,7 +377,7 @@ int main(int argc, char** argv) {
           "p opens the help popup (rounded ╭ help title, focus:help)");
     check(!popup_closed.empty() && popup_closed == bottom, "p then Escape gives back exactly the frame without the popup");
     // The popup re-places itself: at 120x40 its top edge sits on a different row than
-    // at 80x24. The layout area is the screen minus the playground's one-line status
+    // at 80x24. The layout area is the screen minus the studio's one-line status
     // bar (80x23 / 120x39), so the centred 12-high popup starts at floor(23/2)-6 = 5
     // and floor(39/2)-6 = 13 — the same arithmetic the table test does on a full
     // 80x24 (row 6).
@@ -397,7 +397,7 @@ int main(int argc, char** argv) {
     check(unfold_click.find("void stop_heartbeat") != std::string::npos && unfold_click.find("\xE2\x96\xBE read_file") != std::string::npos,
           "a click on the summary line unfolds the block (▾ and its first body line appear)");
     // Ctrl-O moves no focus and the click does, so compare the frames minus the rows
-    // that name the focus (the status panel's row and the playground's status line).
+    // that name the focus (the status panel's row and the studio's status line).
     auto without_focus = [](const std::string& s) {
       std::istringstream in(s);
       std::string row, out;
@@ -496,7 +496,7 @@ int main(int argc, char** argv) {
           "save-as writes themes/mine.json under the scratch presets directory (a manual save writes even under --frame)");
     {
       int rc = 0;
-      const std::string relaunch = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 80x24 --presets '" +
+      const std::string relaunch = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 80x24 --presets '" +
                                    scratch + "/p2' --theme '" + scratch + "/p/themes/mine.json' --dump-role md_heading";
       const std::string again = run(relaunch, rc);
       check(rc == 0 && role_part(again) == "md_heading fg=#cba63a bg=#14161a bold", "a relaunch with --theme <that file> shows the saved heading colour [" + role_part(again) + "]");
@@ -550,7 +550,7 @@ int main(int argc, char** argv) {
           "title 'chat' and save-as 'two' write layouts/two.json under the scratch presets directory");
     {
       int rc = 0;
-      const std::string relaunch = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 120x40 --presets '" +
+      const std::string relaunch = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 120x40 --presets '" +
                                    scratch + "/p4' --layout '" + scratch + "/p/layouts/two.json'";
       const std::string again = run(relaunch, rc);
       check(rc == 0 && again.find("\xE2\x94\x8C chat ") != std::string::npos && again.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && again.find("[layout editor]") == std::string::npos,
@@ -580,7 +580,7 @@ int main(int argc, char** argv) {
     check(ed_fixes.find("nothing to fix") != std::string::npos, "the shipped default has nothing to fix");
     {
       int rc = 0;
-      const std::string bin = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "'";
+      const std::string bin = std::string("'") + ROLLTUI_STUDIO_BIN + "'";
       for (const char* name : {"default", "default-dark", "default-light", "mono"}) {
         const std::string out = run(bin + " --check " + name + presets, rc);
         check(rc == 0 && out.find("badges:") != std::string::npos, std::string("--check ") + name + " runs, prints badges, exit 0");
@@ -611,7 +611,7 @@ int main(int argc, char** argv) {
     // ---- Phase 10 m3: a menu is a FILE, and a dropped one opens with NO REBUILD ----
     // The milestone's Done-when, end to end through the real binary: two files nobody
     // compiled — a layout naming `menu:extra` and the menu it names — put on screen by
-    // a playground that has never heard the name 'extra'. Then the same name in the
+    // a studio that has never heard the name 'extra'. Then the same name in the
     // user's own menus/main.json, which shadows the shipped settings menu the F2 popup
     // shows: what ships is a default, not a fixture.
     {
@@ -624,7 +624,7 @@ int main(int argc, char** argv) {
         {"id":"tx","content":"transcript:session"},
         {"id":"m","content":"menu:extra","size":6,"border":"single","title":"dropped menu"},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})";
-      const std::string cmd = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+      const std::string cmd = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
                               "/session/demo.md' --frame 80x24 --theme default-dark --presets '" + p + "' --layout '" + scratch +
                               "/dropped-layout.json'";
       const std::string out = run(cmd, rc);
@@ -634,7 +634,7 @@ int main(int argc, char** argv) {
       // The same rung under the name the shipped layouts already use: F2 shows the
       // user's menu instead of the library's, again with nothing rebuilt.
       std::ofstream(p + "/menus/main.json", std::ios::binary) << R"({"id":"root","label":"mine","items":[{"id":"x","label":"my own item"}]})";
-      const std::string f2 = run(std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+      const std::string f2 = run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
                                      "/session/demo.md' --frame 80x24 --theme default-dark --presets '" + p + "' --keys \"F2\"",
                                  rc);
       check(rc == 0 && f2.find("my own item") != std::string::npos && f2.find("Ambiguous width") == std::string::npos,
@@ -656,7 +656,7 @@ int main(int argc, char** argv) {
         {"id":"n","label":"Nothing declares this","action":"app.nowhere"}]})";
       // The shipped default bindings PLUS one chord for the new action. A bindings file
       // is the whole domain, so it names both — and neither the library nor the
-      // playground has ever heard of app.zoom.
+      // studio has ever heard of app.zoom.
       {
         rolltui::BindingsLoadReport br;
         std::optional<rolltui::Bindings> b = rolltui::Bindings::from_json(rolltui::default_bindings_json(), br);
@@ -671,9 +671,9 @@ int main(int argc, char** argv) {
         "root":{"column":[
           {"id":"m","content":"menu:decl","size":5,"border":"single","title":"declared menu"},
           {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})";
-      // Wide and tall on purpose: the playground says a load report on its status line
+      // Wide and tall on purpose: the studio says a load report on its status line
       // and the help popup lists six scopes, so both answers have to fit on screen.
-      const std::string base = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+      const std::string base = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
                                "/session/demo.md' --theme default-dark --presets '" + p + "' --bindings decl --layout '" + scratch +
                                "/declared-layout.json'";
       const std::string menu_out = run(base + " --frame 400x10", rc);
@@ -695,7 +695,7 @@ int main(int argc, char** argv) {
     {
       int rc = 0;
       const std::string p = scratch + "/p11";
-      const std::string bin = std::string("'") + ROLLTUI_PLAYGROUND_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md'";
+      const std::string bin = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md'";
       const std::string base = bin + " --frame 80x24 --theme default-dark --presets '" + p + "'";
       const std::string help = run(base + " --keys \"F1\"", rc);
       const std::string quit = run(base + " --keys \"CtrlQ F1\"", rc);
@@ -706,12 +706,12 @@ int main(int argc, char** argv) {
         check(run(base + " --keys \"" + keys + "\"", rc).find(want) != std::string::npos,
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
       check(run(base + " --keys \"F3 F3\"", rc).find("default-light") != std::string::npos,
-            "F3 still cycles the shipped themes (playground.cycle_theme), two presses on from default-dark");
+            "F3 still cycles the shipped themes (studio.cycle_theme), two presses on from default-dark");
       // The keys editor lists what the studio declares — and `app`, empty since Phase 10
       // m4 because the editor was handed the store's undeclared working copy, is in it.
       const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
-      check(scopes.find("editor") != std::string::npos && scopes.find("playground") != std::string::npos && scopes.find("app") != std::string::npos,
-            "the keys editor lists the app, editor and playground scopes");
+      check(scopes.find("editor") != std::string::npos && scopes.find("studio") != std::string::npos && scopes.find("app") != std::string::npos,
+            "the keys editor lists the app, editor and studio scopes");
       const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Enter\"", rc);
       check(app_scope.find("Actions by scope \xE2\x80\xBA app") != std::string::npos && app_scope.find("help  F1, ?") != std::string::npos,
             "…and the app scope is REBINDABLE at last: the editor now edits the live table, not the store's undeclared copy");
@@ -723,13 +723,92 @@ int main(int argc, char** argv) {
       const std::string old_quit = run(base + p10 + " --keys \"CtrlQ F1\"", rc);
       const std::string old_none = run(base + p10, rc);
       check(rc == 0 && old_quit == old_none && old_none.find("bindings:") == std::string::npos,
-            "a Phase 10 bindings file binding playground.quit loads with no complaint and its Ctrl-Q still quits");
+            "a pre-phase bindings file loads with no complaint and its Ctrl-Q still quits");
       check(run(base + p10 + " --keys \"F7\"", rc).find("[keys editor]") != std::string::npos, "…and its F7 still opens the keys editor");
+      // ---- Phase 11 m2: THAT file says `playground.quit`, and this is why it works ----
+      // The milestone's Done-when. The quit above is not by itself proof of the
+      // migration: with the old row merely kept-and-inert, suggest() would still fill the
+      // gap left by a `studio.quit` the file never mentions, and Ctrl-Q would quit for
+      // the wrong reason. Two things make it proof — the rewrite is NAMED, and the
+      // control below closes that gap.
+      const std::string said = run(base + p10 + " 2>&1 >/dev/null", rc);
+      check(said.find("bindings: action 'playground.quit' \xE2\x86\x92 'studio.quit'") != std::string::npos,
+            "the loader NAMES the rename in `migrated`, old name and new, on stderr where it cannot move a frame");
+      // The control: the same old row, plus an EMPTY studio.quit that a suggestion may
+      // never override. Ctrl-Q here quits ONLY because the old row was migrated onto it.
+      {
+        const std::string dir = scratch + "/p11m2";
+        std::filesystem::create_directories(dir + "/bindings");
+        rolltui::BindingsLoadReport br;
+        std::optional<rolltui::Bindings> b = rolltui::Bindings::from_json(rolltui::default_bindings_json(), br);
+        rolltui::json::Value v = b->to_json("renamed");
+        rolltui::json::Value map = v.get("bindings");
+        map.set("studio.quit", rolltui::json::Value::array());
+        rolltui::json::Value q = rolltui::json::Value::array();
+        q.arr.push_back(rolltui::json::Value::string("ctrl+q"));
+        map.set("playground.quit", q);
+        v.set("bindings", map);
+        std::ofstream(dir + "/bindings/renamed.json", std::ios::binary) << rolltui::json::dump(v, 2);
+        // …and the same file with the old row taken out: the gap stays closed, so this
+        // one must NOT quit. The pair is what makes the assertion above mean something.
+        map.obj.erase(std::remove_if(map.obj.begin(), map.obj.end(), [](const auto& kv) { return kv.first == "playground.quit"; }),
+                      map.obj.end());
+        v.set("bindings", map);
+        std::ofstream(dir + "/bindings/nomig.json", std::ios::binary) << rolltui::json::dump(v, 2);
+        const std::string mb = bin + " --frame 80x24 --theme default-dark --presets '" + dir + "'";
+        const std::string mig_help = run(mb + " --bindings renamed --keys \"F1\"", rc);
+        const std::string mig_quit = run(mb + " --bindings renamed --keys \"CtrlQ F1\"", rc);
+        const std::string no_help = run(mb + " --bindings nomig --keys \"F1\"", rc);
+        const std::string no_quit = run(mb + " --bindings nomig --keys \"CtrlQ F1\"", rc);
+        check(mig_quit != mig_help && mig_help.find("focus:help") != std::string::npos,
+              "a migrated playground.quit quits even where an EMPTY studio.quit row blocks the tool's suggestion");
+        check(no_quit == no_help && no_help.find("focus:help") != std::string::npos,
+              "…and without that old row the very same file leaves Ctrl-Q unbound — the quit above IS the migration");
+      }
+    }
+    // ---- Phase 11 m2's other half: THE MIGRATION TABLE IS THE ONLY PLACE LEFT --------
+    // "No source outside the migration table says playground." The word is the whole
+    // assertion: one grep answers whether the rename actually happened or whether it was
+    // done in the places a reader would look and left in the places they would not. Every
+    // source either binary is built from is scanned — the library, its tools, roll's own
+    // — plus the shipped preset FILES, which are compiled into the binary as bytes and
+    // are exactly where an action name would survive unnoticed (menus/main.json named two).
+    {
+      namespace fs = std::filesystem;
+      const std::string root = std::string(ROLLTUI_SOURCE_DIR) + "/..";
+      std::vector<std::string> scanned, hits;
+      for (const fs::directory_entry& e : fs::recursive_directory_iterator(root)) {
+        const std::string rel = fs::relative(e.path(), root).string();
+        if (rel.rfind("build", 0) == 0 || rel.rfind(".git", 0) == 0 || rel.rfind("plan/", 0) == 0 ||
+            rel.rfind("journal/", 0) == 0 || rel.rfind("artifacts/", 0) == 0 || rel.rfind("rolltui/tests/", 0) == 0 ||
+            rel.rfind("tests/", 0) == 0 || rel.rfind("rolltui/third_party/", 0) == 0 || rel.rfind("rolltui/ucd/", 0) == 0)
+          continue;
+        const std::string ext = e.path().extension().string();
+        const bool preset = rel.rfind("rolltui/presets/", 0) == 0 && ext == ".json";
+        if (!preset && ext != ".cpp" && ext != ".hpp" && ext != ".h" && e.path().filename() != "CMakeLists.txt") continue;
+        scanned.push_back(rel);
+        std::ifstream in(e.path(), std::ios::binary);
+        std::string line;
+        int ln = 0;
+        while (std::getline(in, line)) {
+          ++ln;
+          if (line.find("playground") != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln));
+        }
+      }
+      check(scanned.size() >= 60, "scanned every source and shipped preset both binaries are built from (" +
+                                      std::to_string(scanned.size()) + " files)");
+      // Not "no hits" — "no hits anywhere else". The table must still be there, or this
+      // control would pass most loudly on the build that deleted the migration.
+      std::vector<std::string> stray;
+      int table = 0;
+      for (const std::string& h : hits) (h.rfind("rolltui/Bindings.cpp:", 0) == 0 ? ++table : (stray.push_back(h), 0));
+      check(table >= 3, "the migration table is still in rolltui/Bindings.cpp, all three renamed actions (" + std::to_string(table) + " lines)");
+      check(stray.empty(), "…and it is the ONLY place any source still says it" + (stray.empty() ? "" : ": " + stray.front()));
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +
               std::to_string(row_of(menu_open, "\xE2\x95\xAD menu ")) + ", " + std::to_string(row_of(menu_big, "\xE2\x95\xAD menu ")) + ")");
   }
   std::filesystem::remove_all(scratch);
-  return report("rolltui playground_golden_test");
+  return report("rolltui studio_golden_test");
 }

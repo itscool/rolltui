@@ -28,8 +28,8 @@
 // window stack look up, and nothing else. Nothing may add to one of those scopes.
 //
 // A WIDGET's scope is universal, which is what makes it closed: every host that draws an
-// input has input.*. A TOOL's is not. `editor.*` and `playground.*` belong to the ONE
-// application that mounts the library's editors and its playground, and until Phase 11
+// input has input.*. A TOOL's is not. `editor.*` and `studio.*` belong to the ONE
+// application that mounts the library's editors and its studio, and until Phase 11
 // m1 they sat in this table beside the widget scopes — so EVERY host declared eight
 // actions it could not perform, roll advertised Ctrl-Q / F4 / F6 / F7 and five more that
 // did nothing, and `roll bindings save` wrote another program's keys into the user's own
@@ -76,6 +76,17 @@
 // app.help while the input is empty). Stated so no file can make typing a letter do
 // something else in the input.
 //
+// AN ACTION THAT WAS RENAMED IS MIGRATED BY THE LOADER, ONCE, AND SAID SO (Phase 11 m2,
+// the shape of the layout loader's migrated_content). A bindings file is the user's, and
+// renaming the studio binary renamed its three actions out from under every file already
+// written. The old row would otherwise be kept-and-inert — the mercy rule above doing
+// exactly the wrong thing, because the row LOOKS like another screen's when it is really
+// this one's under its old name, and a person's Ctrl-Q would quietly stop quitting. So
+// from_json() rewrites the name through migrated_action() before anything else reads it,
+// and names the rewrite in `report.migrated`; the next save writes the new name.
+// The old names themselves live in ONE table, in Bindings.cpp, deliberately the only
+// place in any source that still carries them — asserted by a grep control.
+//
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -99,12 +110,12 @@ struct ActionDecl {
   std::string description;  // "open help"
   bool operator==(const ActionDecl&) const = default;
 };
-// One action of a TOOL a host MOUNTS — the library's own three editors and its
-// playground (rolltui/tools/tool_actions.hpp), or a host's own — with the chord the tool
+// One action of a TOOL a host MOUNTS — the library's own three editors and its studio
+// (rolltui/tools/tool_actions.hpp), or a host's own — with the chord the tool
 // suggests for it. A tool states its keys here because no bindings file can: see A TOOL
 // ALSO BRINGS THE CHORDS IT SUGGESTS above.
 struct ToolAction {
-  std::string_view name;         // "playground.quit"
+  std::string_view name;         // "studio.quit"
   std::string_view description;  // "quit"
   std::string_view chord;        // "ctrl+q" — a suggestion, never an override
 };
@@ -117,6 +128,11 @@ std::string_view scope_of(std::string_view action);  // "input" of "input.submit
 // is a reported bad value, and a bindings file naming an action that does not exist in
 // one is an unknown action rather than a kept-but-dead row.
 bool library_scope(std::string_view scope);
+// The new name of an action this library used to call something else, or nullopt. The
+// loader rewrites through this and says so; see AN ACTION THAT WAS RENAMED above. One
+// table, checked by name, never by scope prefix — a rename is a fact about three
+// specific actions, not a rule about a word.
+std::optional<std::string> migrated_action(std::string_view legacy);
 
 std::optional<KeyEvent> parse_chord(std::string_view text);
 std::string chord_to_string(const KeyEvent& k);   // "ctrl+shift+left"; "" for an Unknown key
@@ -129,6 +145,11 @@ struct BindingsLoadReport {
   std::vector<std::string> conflicts;       // "'up' bound to both input.up and input.history_prev"
   std::vector<std::string> bad_values;      // the Enter rule, a non-array, ...
   std::vector<std::string> unknown_keys;
+  // Rows whose action was RENAMED and has been rewritten: "'<old>' → 'studio.quit'", so
+  // a reader sees both names. Not a problem — the file loaded, every chord in it is live, and the
+  // next save writes the new name — so `clean()` ignores it and a host says it once, the
+  // way LayoutLoadReport::migrated is said.
+  std::vector<std::string> migrated;
   bool clean() const {
     return error.empty() && unknown_actions.empty() && bad_chords.empty() && conflicts.empty() && bad_values.empty() && unknown_keys.empty();
   }

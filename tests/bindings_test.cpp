@@ -9,8 +9,10 @@
 // declares it, a file's chords for an undeclared action are kept and inert, and
 // declaring makes them live. Phase 11 m1: the library's own TOOLS' scopes leave it
 // too — one declare() takes the layout's actions and the mounted tool's, a tool's
-// suggested chord fills a gap and never overrides, and a Phase 10 file naming
-// playground.quit still loads clean and keeps its row.
+// suggested chord fills a gap and never overrides, and a file naming an
+// unmounted tool's action still loads clean and keeps its row.
+// Phase 11 m2: the studio rename — a bindings file written before it has its
+// playground.* rows rewritten once, named in `migrated`, with no chord lost.
 //
 #include <fstream>
 #include <string>
@@ -87,7 +89,7 @@ int main() {
     for (const ActionInfo& a : library_actions()) any_app |= scope_of(a.name) == "app";
     check(!any_app, "library_actions() declares no app.* action — the layout does (m4)");
     check(library_scope("input") && library_scope("transcript") && library_scope("menu") && library_scope("edit") && library_scope("stack") &&
-              !library_scope("app") && !library_scope("editor") && !library_scope("playground") && !library_scope("mine"),
+              !library_scope("app") && !library_scope("editor") && !library_scope("studio") && !library_scope("mine"),
           "library_scope: the WIDGET scopes are the library's; app, the tools' and a host's own are not (Phase 11 m1)");
 
     // A file's chords for an undeclared action are KEPT and inert, never dropped: a
@@ -143,17 +145,17 @@ int main() {
     check(d2.undeclared().empty(), "…and the shipped bindings bind nothing the shipped layouts do not declare");
   }
   // ---- Phase 11 m1: a TOOL's scope is not the library's ----------------------------
-  // library_actions() closes over the WIDGET scopes only. `editor.*` and `playground.*`
+  // library_actions() closes over the WIDGET scopes only. `editor.*` and `studio.*`
   // are the library's own tools' — one application's, not every host's — so whoever
   // MOUNTS a tool declares them, and a host that mounts none advertises none.
   {
     bool tool_scope = false;
     std::string named;
     for (const ActionInfo& a : library_actions())
-      if (const std::string_view s = scope_of(a.name); s == "editor" || s == "playground" || s == "app") { tool_scope = true; named = a.name; }
+      if (const std::string_view s = scope_of(a.name); s == "editor" || s == "studio" || s == "app") { tool_scope = true; named = a.name; }
     check(!tool_scope, "library_actions() declares no tool action: a scope is closed because the library DEFINES it, not because it SHIPS the tool [" + named + "]");
     // The same rule for the file that ships beside it: it belongs to every host, so a
-    // `playground.quit` row in it would be a key every host advertises and cannot press.
+    // `studio.quit` row in it would be a key every host advertises and cannot press.
     // (default_bindings() aborts on this; asserted here so the failure has a name.)
     BindingsLoadReport srep;
     std::optional<Bindings> shipped = Bindings::from_json(default_bindings_json(), srep);
@@ -164,48 +166,48 @@ int main() {
 
     // A PHASE 10 BINDINGS FILE still loads clean and keeps its rows. This is the mercy
     // the whole split depends on, and which side of the table a scope sits on is what
-    // decides it: a typo in a LIBRARY scope is an unknown action, while `playground.quit`
+    // decides it: a typo in a LIBRARY scope is an unknown action, while `studio.quit`
     // — now in nobody's closed set — is kept, inert, until something declares it.
     const char* phase10 = R"({"name":"p10","bindings":{"input.submit":["enter"],"app.help":["f1"],
-        "editor.undo":["ctrl+z"],"playground.quit":["ctrl+q"],"playground.reload":["f5"]}})";
+        "editor.undo":["ctrl+z"],"studio.quit":["ctrl+q"],"studio.reload":["f5"]}})";
     BindingsLoadReport prep;
     std::optional<Bindings> p = Bindings::from_json(phase10, prep);
-    check(p && prep.clean(), "a Phase 10 bindings file binding playground.quit loads CLEAN [" + prep.summary() + "]");
-    check(p->chords_for("playground.quit").size() == 1 && !p->has("playground.quit") && p->action_for(ch('q', true), "playground").empty(),
-          "…its row is kept and inert: nothing has mounted the playground, so nothing emits it");
+    check(p && prep.clean(), "a bindings file binding the unmounted studio.quit loads CLEAN [" + prep.summary() + "]");
+    check(p->chords_for("studio.quit").size() == 1 && !p->has("studio.quit") && p->action_for(ch('q', true), "studio").empty(),
+          "…its row is kept and inert: nothing has mounted the studio, so nothing emits it");
     BindingsLoadReport rt;
     std::optional<Bindings> back = Bindings::from_json(p->to_json("p10"), rt);
     check(back && rt.clean() && *back == *p, "…and it survives the round trip, so `bindings save` never loses another program's keys");
 
     // MOUNTING the tool: one authoritative declare() takes the layout's actions and the
     // tool's, and the tool's suggested chord fills only a GAP.
-    const std::vector<ToolAction> tool = {{"playground.quit", "quit", "ctrl+q"},
-                                          {"playground.reload", "reload the fixture", "f5"},
-                                          {"playground.cycle_theme", "cycle the shipped theme presets", "f3"}};
+    const std::vector<ToolAction> tool = {{"studio.quit", "quit", "ctrl+q"},
+                                          {"studio.reload", "reload the fixture", "f5"},
+                                          {"studio.cycle_theme", "cycle the shipped theme presets", "f3"}};
     p->declare({{"app.help", "open help"}}, tool);
-    check(p->has("playground.quit") && p->action_for(ch('q', true), "playground") == "playground.quit" && p->has("app.help"),
+    check(p->has("studio.quit") && p->action_for(ch('q', true), "studio") == "studio.quit" && p->has("app.help"),
           "declaring the layout's actions and the mounted tool's in ONE call makes both live");
-    check(p->chords_for("playground.cycle_theme").size() == 1 && p->action_for(key(Key::F3), "playground") == "playground.cycle_theme",
+    check(p->chords_for("studio.cycle_theme").size() == 1 && p->action_for(key(Key::F3), "studio") == "studio.cycle_theme",
           "…an action the file never named gets the tool's suggested chord (the gap it is for)");
-    check(p->chords_for("playground.quit").size() == 1 && p->chords_for("playground.reload").size() == 1,
+    check(p->chords_for("studio.quit").size() == 1 && p->chords_for("studio.reload").size() == 1,
           "…and one it did named keeps exactly the file's row: a suggestion never overrides");
     // The order trap this rule was first got wrong on: a declaration creates an empty row
     // for its action, so a suggestion made AFTER one would decline every time and every
     // tool key would be silently unbound. One call, one order.
     Bindings fresh;
     fresh.declare({}, tool);
-    check(fresh.action_for(ch('q', true), "playground") == "playground.quit" && fresh.action_for(key(Key::F5), "playground") == "playground.reload",
+    check(fresh.action_for(ch('q', true), "studio") == "studio.quit" && fresh.action_for(key(Key::F5), "studio") == "studio.reload",
           "a mounted tool's keys work on a table that had never heard of it");
 
     // The three ways a suggestion is DECLINED, all leaving the action declared-and-unbound
     // rather than absent or sharing a chord.
     Bindings unbound;
     BindingsLoadReport urep;
-    unbound = *Bindings::from_json(R"({"name":"u","bindings":{"playground.quit":[],"playground.reload":["ctrl+q"]}})", urep);
+    unbound = *Bindings::from_json(R"({"name":"u","bindings":{"studio.quit":[],"studio.reload":["ctrl+q"]}})", urep);
     unbound.declare({}, tool);
-    check(unbound.has("playground.quit") && unbound.chords_for("playground.quit").empty(),
+    check(unbound.has("studio.quit") && unbound.chords_for("studio.quit").empty(),
           "an EMPTY row wins too — a file (or a user) said 'unbound', and a suggestion must not bring the key back");
-    check(unbound.action_for(ch('q', true), "playground") == "playground.reload", "…and the chord the file moved stays where the file put it");
+    check(unbound.action_for(ch('q', true), "studio") == "studio.reload", "…and the chord the file moved stays where the file put it");
     Bindings clash;
     clash.declare({}, {{"mine.one", "one", "f9"}, {"mine.two", "two", "f9"}, {"mine.three", "three", "not+a+chord"}});
     check(clash.action_for(key(Key::F9), "mine") == "mine.one" && clash.has("mine.two") && clash.chords_for("mine.two").empty(),
@@ -214,11 +216,57 @@ int main() {
     // Authoritative still: the tools survive a screen change because they are passed
     // every time; the last screen's app actions do not.
     p->declare({{"app.zoom", "zoom in"}}, tool);
-    check(!p->has("app.help") && p->has("app.zoom") && p->action_for(ch('q', true), "playground") == "playground.quit",
+    check(!p->has("app.help") && p->has("app.zoom") && p->action_for(ch('q', true), "studio") == "studio.quit",
           "a new screen replaces the layout's actions and keeps the mounted tool's");
     p->declare({{"app.zoom", "zoom in"}}, {});
-    check(!p->has("playground.quit") && p->chords_for("playground.quit").size() == 1,
+    check(!p->has("studio.quit") && p->chords_for("studio.quit").size() == 1,
           "…and UNmounting the tool makes its actions inert again, chords kept: nothing else can advertise them");
+  }
+  // ---- Phase 11 m2: an action this library RENAMED is migrated by the loader --------
+  // The rename `rolltui-playground` → `rolltui-studio` took three action names with it,
+  // out from under every bindings file already written. m1's kept-and-inert mercy is
+  // exactly the wrong answer here — the row is not another screen's, it is THIS one's
+  // under its old name — so the loader rewrites it once and says so.
+  {
+    check(migrated_action("playground.quit") == "studio.quit" && migrated_action("playground.reload") == "studio.reload" &&
+              migrated_action("playground.cycle_theme") == "studio.cycle_theme",
+          "the migration table maps all three renamed actions");
+    check(!migrated_action("studio.quit") && !migrated_action("playground.zoom") && !migrated_action("app.help"),
+          "…by NAME, never by scope prefix: a new name is not re-migrated, and a name the table does not carry is left alone");
+
+    const char* pre = R"({"name":"pre","bindings":{"input.submit":["enter"],"app.help":["f1"],
+        "editor.undo":["ctrl+z"],"playground.quit":["ctrl+q"],"playground.reload":["f5"],"playground.cycle_theme":["f3"]}})";
+    BindingsLoadReport mrep;
+    std::optional<Bindings> m = Bindings::from_json(pre, mrep);
+    check(m && mrep.clean(), "a bindings file written before the rename loads CLEAN [" + mrep.summary() + "]");
+    check(mrep.migrated.size() == 3 && mrep.migrated[0] == "'playground.quit' \xE2\x86\x92 'studio.quit'",
+          "…and every rewrite is NAMED in the report, old name and new [" + (mrep.migrated.empty() ? "" : mrep.migrated[0]) + "]");
+    check(m->chords_for("studio.quit").size() == 1 && m->chords_for("playground.quit").empty(),
+          "…the chord moved to the new name and nothing is left behind under the old one");
+    m->declare({{"app.help", "open help"}}, {{"studio.quit", "quit", "ctrl+q"}});
+    check(m->action_for(ch('q', true), "studio") == "studio.quit",
+          "…so a pre-rename Ctrl-Q still quits the studio, which is the whole point of the rung");
+    BindingsLoadReport rt2;
+    std::optional<Bindings> written = Bindings::from_json(m->to_json("pre"), rt2);
+    check(written && rt2.migrated.empty() && written->chords_for("studio.quit").size() == 1,
+          "…and the next save writes the NEW name: migrated once, not on every load");
+
+    // THE CONTROL for this rung, and it is needed: without the migration a pre-rename
+    // Ctrl-Q would still quit — for the wrong reason, because suggest() would fill the
+    // gap left by a `studio.quit` the file never mentions. An EMPTY studio.quit row
+    // closes that gap (a suggestion never overrides one), so this file quits ONLY if
+    // the old row was really migrated onto it.
+    BindingsLoadReport crep;
+    std::optional<Bindings> c =
+        Bindings::from_json(R"({"name":"c","bindings":{"input.submit":["enter"],"studio.quit":[],"playground.quit":["ctrl+q"]}})", crep);
+    c->declare({}, {{"studio.quit", "quit", "ctrl+q"}});
+    check(c && crep.clean() && c->chords_for("studio.quit").size() == 1 && c->action_for(ch('q', true), "studio") == "studio.quit",
+          "a migrated name landing on a row the file already wrote MERGES into it: one row, the chord live");
+    BindingsLoadReport nrep;
+    std::optional<Bindings> n = Bindings::from_json(R"({"name":"n","bindings":{"studio.quit":[]}})", nrep);
+    n->declare({}, {{"studio.quit", "quit", "ctrl+q"}});
+    check(n->action_for(ch('q', true), "studio").empty(),
+          "…and the same file WITHOUT the old row leaves Ctrl-Q unbound — so the assertion above is the migration, not the tool's suggestion");
   }
   // ---- the loader's report ----
   {

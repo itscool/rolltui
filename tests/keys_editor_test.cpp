@@ -117,7 +117,7 @@ int main() {
   {
     Bindings b;
     std::vector<ToolAction> both = editor_actions();
-    for (const ToolAction& t : playground_actions()) both.push_back(t);
+    for (const ToolAction& t : studio_actions()) both.push_back(t);
     b.declare({}, both);
     std::string dead;
     for (const ToolAction& t : both) {

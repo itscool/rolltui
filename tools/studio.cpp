@@ -1,13 +1,13 @@
 //
-// playground.cpp — the rolltui playground (plan/phase-9.md, requirement 12): renders
+// studio.cpp — the rolltui studio (plan/phase-9.md, requirement 12): renders
 // a fixture transcript in a theme and a layout, so trying a layout or theme idea and
 // asserting it are the same command.
 //
-//   rolltui-playground FIXTURE.md [options]
+//   rolltui-studio FIXTURE.md [options]
 //     --presets DIR            the preset store's directory (rolltui/Presets.hpp):
 //                              the Theme working copy, user presets, layout files.
 //                              Default $ROLL_CONFIG_DIR/rolltui, else ~/.config/roll/
-//                              rolltui — the playground is a rolltui host like roll,
+//                              rolltui — the studio is a rolltui host like roll,
 //                              and a runtime change it makes autosaves there
 //     --shipped DIR            the shipped presets ROOT (themes/ and bindings/ under
 //                              it) that "write a shipped preset" writes into — the
@@ -74,25 +74,25 @@
 //
 // WIDGETS BY KIND, SOURCES BY NAME (Phase 10 m2): a window's "content" is
 // `kind[:source]` from the library's table (rolltui/Layout.hpp), and rolltui::Windows
-// instantiates the widget and draws it — the playground only BINDS what is its own,
+// instantiates the widget and draws it — the studio only BINDS what is its own,
 // by name: the fixture document as `session` (transcript:session), its facts as
 // `status` (rows:status), the prompt as `prompt` (input:prompt), and its three
 // composites (custom:editor, custom:confirm, custom:report). `help`, `text:<literal>`
 // and `file:<path>` need no binding at all, so a layout file can put a label, a document
 // or the key list on screen with no code here. A window naming something unbound draws
-// the reason and says it in the status line; the playground never asks what a slot means.
+// the reason and says it in the status line; the studio never asks what a slot means.
 //
 // The settings menu is a FILE (Phase 10 m3): `menu:main` in the layout resolves to
 // <presets>/menus/main.json if the user has one, else to the library's shipped
-// rolltui/presets/menus/main.json — which IS this menu. The playground only fills the
+// rolltui/presets/menus/main.json — which IS this menu. The studio only fills the
 // choices whose options are runtime facts (the theme and layout presets it can see) and
 // acts on the ids; a user may edit or shadow the file with no rebuild.
 //
 // KEYS ARE DATA (milestone 17): every key below is the default of an action — the app.*
 // ones from rolltui/presets/bindings/default.json, and since Phase 11 m1 the editor.* and
-// playground.* ones from the tools this binary MOUNTS (tools/tool_actions.hpp), because a
-// tool's keys are not every host's. The playground looks its own keys up in the
-// Bindings working copy (app.*, editor.*, playground.* scopes), hands the same table to
+// studio.* ones from the tools this binary MOUNTS (tools/tool_actions.hpp), because a
+// tool's keys are not every host's. The studio looks its own keys up in the
+// Bindings working copy (app.*, editor.*, studio.* scopes), hands the same table to
 // every widget, and renders the help popup and the status-bar hints from it, so a
 // rebinding shows everywhere at once. F7 opens the KEYS EDITOR (tools/keys_editor.hpp:
 // scope › action › add / remove / clear a chord; the next key pressed is the chord; a
@@ -117,11 +117,11 @@
 // and the wheel always scroll the transcript; Home/End scroll it only while the input
 // is empty (otherwise they move the caret); Up/Down scroll only while the transcript
 // has focus. Mouse: click and drag select (auto-scrolling past an edge), double-click
-// a word, triple-click a line, release copies (the playground shows the byte count —
+// a word, triple-click a line, release copies (the studio shows the byte count —
 // it has no clipboard of its own), Alt-C copies again, a click on a folded block's
 // summary line unfolds it, Ctrl-O toggles the first fold in view; the same selection
 // gestures work inside the input. Every event goes through WindowStack::route, so
-// what the playground does is what a host would do. The status line shows theme,
+// what the studio does is what a host would do. The status line shows theme,
 // layout, size, scroll position, focus and the last frame's render time
 // (instrumented from the first line — a slow frame is a number, not a feeling).
 //
@@ -263,13 +263,13 @@ struct App {
   std::string confirm_text;
   std::function<void()> confirm_action;
   std::string report_text_;  // the Check popup's text
-  int report_top = 0;        // the Check report is a custom window: the playground scrolls it
+  int report_top = 0;        // the Check report is a custom window: the studio scrolls it
   int report_lines = 0;      // its wrapped length, from the last draw
   std::string hint;
   std::string window_note;   // a window that cannot draw (an unbound source, a bad kind)
   bool show_timing = false;  // the frame-time row/field (interactive only)
   WindowStack stack;
-  // Every window's widget comes from its content (rolltui/Widgets.hpp): the playground
+  // Every window's widget comes from its content (rolltui/Widgets.hpp): the studio
   // binds the fixture document, its status rows, the prompt and its own composites by
   // name, and never asks what a slot means.
   Windows windows;
@@ -277,7 +277,7 @@ struct App {
   Input& editor() { return windows.input("prompt"); }
   Menu& menu() { return windows.menu("main"); }  // menus/main.json (Phase 10 m3)
   int submitted = 0;        // entries the input added to the document
-  std::string copied;       // the last copy (the playground has no clipboard)
+  std::string copied;       // the last copy (the studio has no clipboard)
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   long last_frame_us = 0;
@@ -293,7 +293,7 @@ struct App {
   }
 
   // The sources a layout may name (Widgets.hpp). Everything a window can show in the
-  // playground is here, by name, once — a layout file that says `rows:status` or
+  // studio is here, by name, once — a layout file that says `rows:status` or
   // `text:hello` needs no code at all, and one that names something unbound draws the
   // reason instead of nothing.
   void bind_windows() {
@@ -307,7 +307,7 @@ struct App {
     windows.bind_custom("report", [this](const ResolvedNode& rn, Frame& f, const Theme& th) {
       report_lines = draw_scrolled_text(rn, f, th, report_text_, report_top, ambiguous);
     });
-    windows.set_help("", {"input", "transcript", "app", "editor", "playground", "stack"},
+    windows.set_help("", {"input", "transcript", "app", "editor", "studio", "stack"},
                      "mouse: drag selects (auto-scrolls past an edge); release copies; double-click a word; triple-click a line;\n"
                      "click a folded block's summary to toggle it; in the layout editor a click selects, a drag on a seam resizes");
   }
@@ -428,8 +428,16 @@ struct App {
     if (bindings_arg.empty()) return true;
     PresetLoadReport rep;
     if (!bstore->load(bindings_arg, rep, /*persist=*/false)) { hint = rep.error; return false; }
+    say_migrations(rep);
     if (!rep.clean()) hint = "bindings: " + rep.summary();
     return true;
+  }
+  // A renamed action rewritten by the loader (Phase 11 m2). Said on stderr rather than
+  // in the status line, for the same reason the layout loader's contents are: it is not
+  // a problem, the file still works, and a golden frame must not move because a user's
+  // key file is one phase old.
+  static void say_migrations(const PresetLoadReport& rep) {
+    for (const std::string& m : rep.bindings.migrated) std::fprintf(stderr, "rolltui: bindings: action %s\n", m.c_str());
   }
 
   // ---- the theme editor (milestone 14) ----
@@ -504,7 +512,7 @@ struct App {
     // something declared it, and the store's copy is raw rows with no declarations at
     // all. Before Phase 11 m1 that left the editor's `app` scope empty — five keys a
     // layout declares and nobody could rebind — and would have taken `editor` and
-    // `playground` with it the moment they stopped being library actions. What this
+    // `studio` with it the moment they stopped being library actions. What this
     // hands over is what the studio is actually running.
     keditor.load(bindings);
     std::vector<std::string> names, shipped;
@@ -729,7 +737,7 @@ struct App {
         break;
     }
   }
-  // The Check report popup is a `custom:` window — the playground's own text, drawn
+  // The Check report popup is a `custom:` window — the studio's own text, drawn
   // and scrolled by the library's shared helpers (rolltui/Widgets.hpp), which is what
   // every scrolling text window in the library uses.
   void report_key(const KeyEvent& k) {
@@ -825,7 +833,7 @@ struct App {
     declare_actions();
   }
   // The `app.*` actions are the LAYOUT's (Phase 10 m4): whatever the loaded file
-  // declares, however it was loaded. `editor.*` and `playground.*` are the TOOLS' this
+  // declares, however it was loaded. `editor.*` and `studio.*` are the TOOLS' this
   // binary mounts (Phase 11 m1): they left library_actions(), so the host that mounts a
   // tool is what declares its actions — one authoritative declare() for both, then the
   // tools' own suggested chords into whatever the bindings file left unsaid.
@@ -836,7 +844,7 @@ struct App {
   static const std::vector<ToolAction>& mounted_tools() {
     static const std::vector<ToolAction> all = [] {
       std::vector<ToolAction> out = tools::editor_actions();
-      for (const ToolAction& a : tools::playground_actions()) out.push_back(a);
+      for (const ToolAction& a : tools::studio_actions()) out.push_back(a);
       return out;
     }();
     return all;
@@ -880,8 +888,8 @@ struct App {
     if (const Layer* p = effective_layout().popup("help")) stack.push(*p);
   }
 
-  // ---- the sources the playground binds (rolltui/Widgets.hpp) ----
-  // `rows:status`: the playground's own facts. The widget draws them (one row per
+  // ---- the sources the studio binds (rolltui/Widgets.hpp) ----
+  // `rows:status`: the studio's own facts. The widget draws them (one row per
   // fact, or one line when the window is a single row) — this says only what they are.
   std::vector<Row> status_rows() {
     const std::size_t total = transcript().total_lines();
@@ -900,7 +908,7 @@ struct App {
     return rows;
   }
   // `input:prompt`: a submitted line becomes a user entry at the end of the document,
-  // so the playground exercises a growing transcript too. (The history is the
+  // so the studio exercises a growing transcript too. (The history is the
   // widget's; this is only what the line MEANS here.)
   void append_prompt(const std::string& text) {
     if (text.empty()) return;
@@ -913,7 +921,7 @@ struct App {
     doc.entries.push_back(std::move(e));
   }
 
-  // The frame: the layout above a one-line status bar of the playground's own.
+  // The frame: the layout above a one-line status bar of the studio's own.
   Frame render(bool with_timing) {
     auto t0 = std::chrono::steady_clock::now();
     show_timing = with_timing;
@@ -956,9 +964,9 @@ struct App {
       if (k->key == Key::Char && k->ctrl && !k->alt && k->ch == 'c') return false;  // Ctrl-C is the host's, not an action
       // The keys editor is capturing: every key is the chord, nothing else acts.
       if (editor_mode == EditorMode::Keys && keditor.capturing()) { keys_outcome(keditor.handle(ev, bindings)); return true; }
-      const std::string_view pg = bindings.action_for(*k, "playground"), app = bindings.action_for(*k, "app"), ed = bindings.action_for(*k, "editor");
-      if (pg == "playground.quit") return false;
-      if (pg == "playground.cycle_theme") {
+      const std::string_view st = bindings.action_for(*k, "studio"), app = bindings.action_for(*k, "app"), ed = bindings.action_for(*k, "editor");
+      if (st == "studio.quit") return false;
+      if (st == "studio.cycle_theme") {
         std::vector<std::string_view> names = ThemePresets::shipped_names();
         shipped_theme_index = (shipped_theme_index + 1) % names.size();
         PresetLoadReport rep;
@@ -967,7 +975,7 @@ struct App {
         if (editor_mode == EditorMode::Theme) { ThemeLoadReport tr; teditor.load(store->working(), tr); }
         return true;
       }
-      if (pg == "playground.reload") { load_fixture(); return true; }
+      if (st == "studio.reload") { load_fixture(); return true; }
       if (ed == "editor.theme") { toggle_editor(); return true; }
       if (ed == "editor.layout") { toggle_layout_editor(); return true; }
       if (ed == "editor.keys") { toggle_keys_editor(); return true; }
@@ -1035,7 +1043,7 @@ struct App {
     if (r.kind != Route::Kind::Deliver) return true;
     // The event goes to the window's WIDGET, by kind — never by a window name, so a
     // layout file may call its windows anything (Phase 10 m2). A `custom:` window is
-    // the playground's own, dispatched by the name it bound.
+    // the studio's own, dispatched by the name it bound.
     if (Menu* m = windows.menu_at(r.window)) return menu_event(m->handle(ev, bindings));
     const std::string own = windows.custom_at(r.window);
     if (own == "editor") {
@@ -1238,7 +1246,7 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   return out;
 }
 
-// handle() returns false only to QUIT (Ctrl-C, or the playground.quit action), so a
+// handle() returns false only to QUIT (Ctrl-C, or the studio.quit action), so a
 // script stops there exactly as the interactive loop does. That is also the only way a
 // `--frame` run can show whether a quit key landed: the keys after it do not happen, so
 // `--keys "CtrlQ F1"` renders the frame WITHOUT the help popup that `--keys "F1"` opens.
@@ -1257,8 +1265,8 @@ void print_frame_plain(const Frame& f) {
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-playground --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
-               "       rolltui-playground FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
+               "usage: rolltui-studio --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
+               "       rolltui-studio FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
                "       [--dump-role ROLE] [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
@@ -1356,7 +1364,7 @@ int main(int argc, char** argv) {
   }
   if (app.fixture_path.empty()) return usage();
   if (!app.load_fixture()) { std::fprintf(stderr, "cannot read %s\n", app.fixture_path.c_str()); return 1; }
-  // The preset store: the playground is a rolltui host, with the editor's privilege
+  // The preset store: the studio is a rolltui host, with the editor's privilege
   // (it writes what ships). Under --frame nothing autosaves.
   app.store = std::make_shared<ThemePresets>(ThemePresets::Options{presets_dir, true, shipped_dir + "/themes"});
   app.lstore = std::make_shared<LayoutPresets>(LayoutPresets::Options{presets_dir, true, shipped_dir + "/layouts"});
@@ -1376,6 +1384,7 @@ int main(int argc, char** argv) {
     for (const std::string& n : lstart.notes) std::fprintf(stderr, "rolltui: %s\n", n.c_str());
     const PresetLoadReport bstart = app.bstore->start();
     if (!bstart.error.empty()) app.hint = bstart.error;
+    App::say_migrations(bstart);  // a renamed action in the user's own working copy, rewritten once
   }
   app.load_theme_arg();
   app.load_bindings_arg();

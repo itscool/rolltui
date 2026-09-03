@@ -286,6 +286,11 @@ std::optional<Bindings> BindingsDomain::parse(const json::Value& v, PresetLoadRe
   for (const auto& [k, x] : v.obj)
     if (k != "name" && k != "bindings" && k != "preset") report.unknown_keys.push_back(k);
   report.bindings.unknown_keys.clear();  // reported once, above
+  // An action this library renamed, rewritten once by the loader (Phase 11 m2): say so
+  // in words, exactly as the Layout domain says a rewritten content. Not a problem — the
+  // file loaded and every chord in it is live — so it is a note, and the next autosave
+  // writes the new name.
+  for (const std::string& m : report.bindings.migrated) report.notes.push_back("bindings: action " + m);
   return b;
 }
 

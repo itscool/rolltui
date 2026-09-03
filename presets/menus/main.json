@@ -9,7 +9,7 @@
       { "id": "editor", "label": "Theme editor", "action": "editor.theme" },
       { "id": "layout_editor", "label": "Layout editor", "action": "editor.layout" },
       { "id": "keys_editor", "label": "Keys editor", "action": "editor.keys" },
-      { "id": "reload", "label": "Reload the fixture", "action": "playground.reload" },
+      { "id": "reload", "label": "Reload the fixture", "action": "studio.reload" },
       { "id": "help", "label": "Help", "action": "app.help" },
-      { "id": "quit", "label": "Quit", "action": "playground.quit" } ] } ]
+      { "id": "quit", "label": "Quit", "action": "studio.quit" } ] } ]
 }

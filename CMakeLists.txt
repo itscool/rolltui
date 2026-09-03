@@ -164,17 +164,17 @@ add_rolltui_test(rolltui-bindings-test tests/bindings_test.cpp)
 # files equal to the built-ins, the four-rung precedence table, OSC 11 parsing.
 add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 
-# Milestone 7: the playground — renders a fixture transcript in a theme; `--frame WxH`
+# Milestone 7: the studio (Phase 11 m2 renamed it; plan/phase-11.md) — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the
 # screenshot tool. Interactive mode hot-reloads a theme file on mtime change.
 # Milestones 14-17 grow it into the library's own editor: the theme editor (tools/
 # theme_editor.*), the layout editor, the keys editor. ROLLTUI_SHIPPED_DIR is where the
 # editor's "write a shipped preset" privilege writes — the source tree, for the next
 # build — unless --shipped says otherwise.
-add_executable(rolltui-playground tools/playground.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp)
-target_link_libraries(rolltui-playground PRIVATE rolltui)
-target_compile_options(rolltui-playground PRIVATE -Wall -Wextra)
-target_compile_definitions(rolltui-playground PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
+add_executable(rolltui-studio tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp)
+target_link_libraries(rolltui-studio PRIVATE rolltui)
+target_compile_options(rolltui-studio PRIVATE -Wall -Wextra)
+target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
 
 # Milestone 14: the theme editor's model — every role reachable, live preview, commit,
 # cancel, undo/redo, the palette, the written-back pair object — driven without a
@@ -196,18 +196,18 @@ add_rolltui_test(rolltui-keys-editor-test tests/keys_editor_test.cpp)
 target_sources(rolltui-keys-editor-test PRIVATE tools/keys_editor.cpp)
 target_include_directories(rolltui-keys-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
-add_rolltui_test(rolltui-playground-golden-test tests/playground_golden_test.cpp)
-target_compile_definitions(rolltui-playground-golden-test PRIVATE
-  ROLLTUI_PLAYGROUND_BIN="$<TARGET_FILE:rolltui-playground>")
-add_dependencies(rolltui-playground-golden-test rolltui-playground)
+add_rolltui_test(rolltui-studio-golden-test tests/studio_golden_test.cpp)
+target_compile_definitions(rolltui-studio-golden-test PRIVATE
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
+add_dependencies(rolltui-studio-golden-test rolltui-studio)
 
 # Phase 10 milestone 6 — THE PHASE'S PROOF: a screen that exists only as files (a
 # layout, a menu, a bindings file and a document under tests/fixtures/screen) copied
-# into a scratch preset directory and run by the real playground, which has never heard
+# into a scratch preset directory and run by the real studio, which has never heard
 # of it. Its controls are what carry the weight: no source names the screen, the chord
 # comes only from the bindings file, an undeclared action shows no shortcut, and a file
 # written after the build opens in it.
 add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE
-  ROLLTUI_PLAYGROUND_BIN="$<TARGET_FILE:rolltui-playground>")
-add_dependencies(rolltui-files-only-test rolltui-playground)
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
+add_dependencies(rolltui-files-only-test rolltui-studio)

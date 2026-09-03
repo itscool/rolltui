@@ -6,7 +6,7 @@
 namespace rolltui::tools {
 
 namespace {
-const char* kScopes[] = {"input", "transcript", "menu", "edit", "stack", "app", "editor", "playground"};
+const char* kScopes[] = {"input", "transcript", "menu", "edit", "stack", "app", "editor", "studio"};
 }
 
 KeysEditor::KeysEditor() : current_(default_bindings()) {

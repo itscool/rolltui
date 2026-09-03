@@ -75,7 +75,7 @@ const std::vector<ActionInfo>& library_actions() {
       {"stack.focus_next", "move focus to the next window"},
       {"stack.focus_prev", "move focus to the previous window"},
       // Nothing follows the WIDGET scopes. `app.*` left this table in Phase 10 m4 (it is
-      // the APPLICATION's, and a layout file declares it); `editor.*` and `playground.*`
+      // the APPLICATION's, and a layout file declares it); `editor.*` and the studio's
       // followed it in Phase 11 m1 (they are the library's own TOOLS', and whoever mounts
       // a tool declares them — rolltui/tools/tool_actions.hpp). Adding a scope here means
       // claiming EVERY host performs it.
@@ -93,6 +93,28 @@ bool library_scope(std::string_view scope) {
   for (const ActionInfo& a : library_actions())
     if (scope_of(a.name) == scope) return true;
   return false;
+}
+
+// ---- renamed actions ------------------------------------------------------------------
+//
+// THE MIGRATION TABLE. Phase 11 m2 renamed `rolltui-playground` to `rolltui-studio`, and
+// with it the three actions the tool declares. This is the one place in any source the
+// old name survives — everything else that used to say it now says "studio", and a test
+// greps for exactly that.
+//
+// It is a table of NAMES, not a rule about the word "playground": a bindings file is the
+// user's, and a scope-prefix rewrite would also rename an action belonging to some other
+// host's own tool that happens to share the prefix. Three rows, checked by name.
+constexpr std::pair<const char*, const char*> kLegacyActions[] = {
+    {"playground.cycle_theme", "studio.cycle_theme"},
+    {"playground.reload", "studio.reload"},
+    {"playground.quit", "studio.quit"},
+};
+
+std::optional<std::string> migrated_action(std::string_view legacy) {
+  for (const auto& [from, to] : kLegacyActions)
+    if (legacy == from) return std::string(to);
+  return std::nullopt;
 }
 
 // ---- chords ---------------------------------------------------------------------------
@@ -379,7 +401,16 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
   for (const auto& [k, x] : v.obj)
     if (k != "name" && k != "bindings" && k != "preset") report.unknown_keys.push_back(k);
   Bindings b;
-  for (const auto& [action, chords] : map.obj) {
+  for (const auto& [key, chords] : map.obj) {
+    // A RENAMED action is rewritten once, here, before anything else reads the name —
+    // and it has to be before, because the kept-and-inert rule two lines down would
+    // otherwise file `playground.quit` as some other screen's row and Ctrl-Q would
+    // quietly stop quitting. Said in `migrated`, never a problem (Bindings.hpp).
+    std::string action = key;
+    if (std::optional<std::string> to = migrated_action(action)) {
+      report.migrated.push_back("'" + action + "' \xE2\x86\x92 '" + *to + "'");
+      action = *to;
+    }
     if (!b.has(action)) {
       // A library scope is closed, so a name it does not define is a typo and is said
       // so. Any other scope belongs to a layout that this file knows nothing about: the
@@ -388,7 +419,14 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
         report.unknown_actions.push_back(action);
         continue;
       }
-      b.table_.emplace_back(action, std::vector<KeyEvent>{});
+      // Only if there is no row yet. A JSON object cannot repeat a key, but a MIGRATED
+      // name can land on one the file already wrote ("studio.quit": [] beside a
+      // "playground.quit"), and two rows for one action would leave chords_mut() filling
+      // the first while lookup answered from whichever came first — the chords the user
+      // can see and the chords that fire, in two different places.
+      bool row = false;
+      for (const auto& [a, c] : b.table_) row |= a == action;
+      if (!row) b.table_.emplace_back(action, std::vector<KeyEvent>{});
     }
     if (!chords.is_array()) { report.bad_values.push_back(action + ": expected an array of chords"); continue; }
     for (const json::Value& c : chords.arr) {
@@ -465,8 +503,8 @@ const Bindings& default_bindings() {
     // Phase 11 m1 gave this abort a second job, which is why it is worth more than the
     // three lines it costs: the shipped file belongs to EVERY host, so it may bind the
     // library's widgets and the shipped screen's own actions and NOTHING ELSE. A row
-    // for `playground.quit` here would be a key every host that never mounts the
-    // playground advertises and cannot press — the defect m1 removed, re-created in
+    // for `studio.quit` here would be a key every host that never mounts the studio
+    // advertises and cannot press — the defect m1 removed, re-created in
     // file form. A mounted tool's chords come from the tool (Bindings::suggest), so a
     // tool row in this file now stops the build instead of shipping.
     d->declare(shipped_default_actions());
