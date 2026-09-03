@@ -65,6 +65,7 @@ add_library(rolltui STATIC
   Unicode.cpp
   Wrap.cpp
   Markdown.cpp
+  Diff.cpp
   Json.cpp
   Theme.cpp
   Screen.cpp

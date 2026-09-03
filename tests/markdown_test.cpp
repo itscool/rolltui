@@ -19,6 +19,7 @@
 
 #include <dirent.h>
 
+#include "rolltui/Diff.hpp"
 #include "rolltui/Markdown.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui/third_party/md4c/md4c.h"
@@ -426,5 +427,57 @@ int main() {
               d.blocks[2].kind == Block::Kind::Code && d.blocks[2].code == "c\n",
           "block tree shape");
   }
+  // ---- the diff colouriser (plan/phase-12.md m5b) ----------------------------------
+  // It is a Highlighter, so it rides m2's seam rather than being a second mechanism —
+  // which is the cheapest rung and also the test of whether that seam was placed right.
+  {
+    auto role_of = [](std::string_view lang, std::string_view line) {
+      const std::vector<HighlightSpan> sp = diff_spans(lang, line);
+      return sp.empty() ? Role::count_ : sp[0].role;
+    };
+    check(role_of("diff", "+added") == Role::diff_added, "'+' is an added line");
+    check(role_of("diff", "-gone") == Role::diff_removed, "'-' is a removed line");
+    check(role_of("diff", " same") == Role::diff_context, "a leading space is context");
+    check(role_of("diff", "") == Role::diff_context, "an empty line is context, not a change");
+    check(role_of("diff", "@@ -1,4 +1,6 @@") == Role::accent_1, "a hunk header is a position, not a change");
+    // The ORDER these are tested in is the bug they prevent: "+++ b/x" starts with '+'
+    // and is not an added line, so the header test must come first. This looks right in
+    // every screenshot that happens to start at a hunk.
+    check(role_of("diff", "+++ b/file.txt") == Role::text_muted, "'+++' is a file header, NOT an added line");
+    check(role_of("diff", "--- a/file.txt") == Role::text_muted, "'---' is a file header, NOT a removed line");
+    check(role_of("diff", "\\ No newline at end of file") == Role::diff_context,
+          "the no-newline note is context: colouring it as a change would lie about the file");
+    // THE CONTROL, and the milestone's whole point: content is never sniffed. A block
+    // whose CONTENT looks exactly like a diff renders plain under a bare fence.
+    check(diff_spans("", "+added").empty() && diff_spans("python", "-x = 1").empty(),
+          "a bare fence and another language get NO spans, whatever the content looks like");
+    check(diff_spans("patch", "+x").size() == 1 && diff_spans("udiff", "+x").size() == 1,
+          "'patch' and 'udiff' are the same claim as 'diff'");
+    // A span covers the WHOLE line, marker included: a half-coloured line reads as a bug,
+    // and the marker is doing separate work as the non-colour signal.
+    const std::vector<HighlightSpan> sp = diff_spans("diff", "+abc");
+    check(sp.size() == 1 && sp[0].begin == 0 && sp[0].end == 4, "the span covers the whole line, marker included");
+
+    // Through the renderer, on the cells: the roles land, and the +/- prefixes SURVIVE —
+    // which is what makes a diff readable with colour switched off (the Done-when).
+    RenderOptions ro;
+    ro.width = 40;
+    ro.highlight = [](std::string_view lang, std::string_view line) { return diff_spans(lang, line); };
+    const Rendered r = render_text("```diff\n@@ -1,2 +1,2 @@\n-old line\n+new line\n context\n```\n", ro);
+    check(r.highlight_report.clean(), "the colouriser never produces a span the renderer has to clamp");
+    bool has_added = false, has_removed = false, has_hunk = false, marks_kept = false;
+    std::string all;
+    for (const StyledLine& l : r.lines)
+      for (const Span& x : l.spans) {
+        all += x.text;
+        if (x.role == Role::diff_added) has_added = true;
+        if (x.role == Role::diff_removed) has_removed = true;
+        if (x.role == Role::accent_1) has_hunk = true;
+      }
+    marks_kept = all.find("-old line") != std::string::npos && all.find("+new line") != std::string::npos;
+    check(has_added && has_removed && has_hunk, "a ```diff fence colours through the diff roles");
+    check(marks_kept, "…and the +/- prefixes are NEVER stripped: the signal a mono or CVD reader still has");
+  }
+
   return report("rolltui markdown_test");
 }
