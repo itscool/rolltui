@@ -128,10 +128,25 @@
 //                          preset directory)
 //   help                   the key list, rendered from the LIVE bindings; takes no
 //                          source
-//   custom:<name>          a composite the host draws itself, bound by name — the
-//                          stated escape hatch for a window the seven kinds above
-//                          cannot express (roll's approval modal, the studio's
-//                          editors). Its failure is reported by name like any other.
+//
+// A HOST MAY REGISTER A KIND, and the library then builds it like any other (Phase 11
+// milestone 3). `custom:<name>` is GONE — it took a draw function and nothing else, so a
+// host's own widget could never receive an event and the host had to route by window id
+// (`custom_at`) — which is the wrong shape for any app whose interaction IS that window.
+// A registered kind is a FACTORY (Widgets.hpp's `Windows::register_kind`), so
+// `canvas:main` behaves exactly like `input:prompt`: created on demand, owned by
+// `Windows`, keyed by content, and handed every event the stack routes to its window.
+// There is ONE mechanism, not two ways to say "a window this host draws itself".
+//
+// THE RESOLUTION ORDER, stated so nothing resolves by fallback (the same shape as the
+// menu's three rungs and Phase 11 m1's scope split):
+//   1. THE LIBRARY'S TABLE, always first and never shadowed. A host that registers a
+//      library kind is REFUSED by name, and lookup would not reach it even if it were
+//      not — two independent guards, because this is the one place a host could quietly
+//      replace the library's own input widget.
+//   2. THE HOST'S REGISTERED KINDS, explicit and enumerable (`widget_kind_names()`).
+//   3. NEITHER: a named bad value, with the window drawn as an error panel — exactly as
+//      an unknown kind has been since Phase 10 m2.
 //
 // Phase 9's bare slot names ("transcript", "status", "input", …) are MIGRATED once by
 // the loader into their kind[:source] form and said so in the report's `migrated`;
@@ -214,23 +229,47 @@ struct SplitSize {
 };
 
 // ---- content: the widget kind and its source -----------------------------------------
-// The closed table in the header comment. `Custom` is the host's own composite, named
-// like any other source, so its failures are reported the same way.
-enum class WidgetKind : std::uint8_t { Transcript, Input, Menu, Rows, Text, File, Help, Custom };
+// The library's table is the closed rung 1 of the header comment's resolution order.
+// `Registered` is not a kind a layout can name — it is what `Content::kind` says when
+// one spelling of a kind for every purpose that is not the library's own switch.
+enum class WidgetKind : std::uint8_t { Transcript, Input, Menu, Rows, Text, File, Help, Registered };
 
 struct Content {
   WidgetKind kind = WidgetKind::Text;
   std::string source;  // the part after the first ':' — a bound name, a literal, a path
+  // The host's kind name, and ONLY when `kind` is Registered — empty for every library
+  // kind, whose name is a function of the enum. There is still one spelling of a kind:
+  // `content_kind_name(c)` is it, and this field is where that function gets its answer
+  // in the one case the enum cannot carry. Deliberately LAST so that the two-field
+  // `Content{WidgetKind::Rows, "status"}` that every call site already writes keeps
+  // meaning what it says — a middle field would have silently made "status" the KIND.
+  std::string registered_name;
   bool operator==(const Content&) const = default;
 };
 
-std::string_view widget_kind_name(WidgetKind k);
+std::string_view widget_kind_name(WidgetKind k);  // library kinds only; "" for Registered
+// THE one spelling of a content's kind, library or host's.
+std::string_view content_kind_name(const Content& c);
 std::optional<WidgetKind> widget_kind_from_name(std::string_view name);
 
-// Whether a kind takes a source: every kind does except `help` (Forbidden), and
-// `text`'s literal may be empty (Optional).
+// Whether a kind takes a source: every library kind does except `help` (Forbidden), and
+// `text`'s literal may be empty (Optional). A registered kind states its own.
 enum class SourceRule : std::uint8_t { Required, Optional, Forbidden };
 SourceRule source_rule(WidgetKind k);
+SourceRule content_source_rule(const Content& c);  // the one accessor, registered kinds included
+
+// ---- rung 2: the kinds a HOST registers ------------------------------------------------
+// Registration goes through `Windows::register_kind` (Widgets.hpp), which registers the
+// NAME here and the FACTORY there — one call, so a name can never exist without something
+// to build it. Refused, with `why` set, when the name is one of the library's (rung 1 is
+// never shadowed), when it is empty or contains a ':', or when it is already registered
+// with a different rule.
+bool register_widget_kind(std::string name, SourceRule rule, std::string source_is, std::string* why = nullptr);
+void clear_registered_widget_kinds();  // tests, and a host tearing down
+// Every kind name a layout may use right now, in RESOLUTION ORDER: the library's, then
+// the registered ones. What the design editor's kind picker offers (Phase 11 m4), and
+// what a parse error lists.
+std::vector<std::string> widget_kind_names();
 // What a kind's source NAMES, in words ("a document the host binds", "a path"): the
 // parenthetical in the parse error, and the design editor's hint for the source field.
 std::string_view source_describes(WidgetKind k);
@@ -238,10 +277,19 @@ std::string_view source_describes(WidgetKind k);
 // than listing the kinds a second time.
 const std::vector<WidgetKind>& widget_kinds();
 
+// Why a content string did not parse. `UnknownKind` is separated from the rest because
+// it is the one failure a LAYOUT FILE cannot be judged on: rung 2 is the host's, and a
+// file is loaded before a host has necessarily registered anything (the library's own
+// shipped `default` layout names roll's `approval`, and `builtin_layout()` parses it the
+// first time anyone asks). So the loader records every other problem as a bad value and
+// leaves this one alone; `Windows` — which is where the registry actually lives — reports
+// it by name and draws the error panel, exactly as it already does for a source no host
+// bound. WHETHER A KIND EXISTS IS A HOST FACT, and it is answered where host facts are.
+enum class ContentProblem : std::uint8_t { None, UnknownKind, MissingSource, ForbiddenSource };
 // Parses "kind[:source]". nullopt — with `why` set to the reason, which is what a
-// report and the error panel say — when the kind is not in the table, a required
-// source is missing, or `help` was given one.
-std::optional<Content> parse_content(std::string_view text, std::string* why = nullptr);
+// report and the error panel say, and `what` to which kind of problem it was — when the
+// kind is in neither rung, a required source is missing, or `help` was given one.
+std::optional<Content> parse_content(std::string_view text, std::string* why = nullptr, ContentProblem* what = nullptr);
 std::string content_to_string(const Content& c);
 
 // Phase 9's bare slot names, mapped ONCE by the loader (see the header comment).

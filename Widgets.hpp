@@ -25,7 +25,7 @@
 //   because the host has a prompt, not because a layout drew one this frame.
 //
 //   The library owns layout / draw / scroll; the HOST owns meaning. A host binds a
-//   document, a row source, a submit target, a custom draw — by name, before or after
+//   document, a row source, a submit target — by name, before or after
 //   the layout mentions it (bindings are resolved per frame, so binding order is not a
 //   rule anyone has to remember). What a menu item DOES, what a submitted line means,
 //   what the rows say: still the host's.
@@ -87,7 +87,7 @@ struct WidgetEnv {
 
 class Windows;
 
-// ---- what a window draws with (shared with a host's own `custom:` composites) --------
+// ---- what a window draws with (shared with a host's own registered kinds) -----------
 
 // The rect a widget draws in: the window's inner rect, less one column on each side
 // when it is bordered — the widget owns the breathing room inside the frame, since a
@@ -142,6 +142,34 @@ class Widget {
   virtual bool handle(const Event& /*e*/) { return false; }
 };
 
+// A Widget over two callbacks, for a host whose own window genuinely has no state of its
+// own — roll's approval modal and the studio's editor pane keep theirs beside the thing
+// they are a view of. It is a WIDGET the library happens to ship, exactly like
+// TextWidget: a host still registers a KIND and still gets a factory, so there is one
+// mechanism and not two.
+//
+// **It is not `bind_custom` under another name**, and the difference is the whole of
+// Phase 11 m3: that took a draw function, so a host's window could never receive an
+// event and the host had to route by window id. This receives events like any widget, is
+// owned by `Windows`, and is keyed by content. A widget with data of its own (a canvas's
+// pixels) writes a real class instead — `Widget` is the entire interface either way, and
+// nothing here is a shortcut past it.
+class CallbackWidget : public Widget {
+ public:
+  using DrawFn = std::function<void(const ResolvedNode&, Frame&, const Theme&)>;
+  using HandleFn = std::function<bool(const Event&)>;
+  CallbackWidget(DrawFn draw, HandleFn handle) : draw_(std::move(draw)), handle_(std::move(handle)) {}
+  void layout(const ResolvedNode&) override {}
+  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
+    if (draw_) draw_(rn, f, theme);
+  }
+  bool handle(const Event& e) override { return handle_ && handle_(e); }
+
+ private:
+  DrawFn draw_;
+  HandleFn handle_;
+};
+
 struct WindowsReport {
   // "window 'panel' (content 'rows:nope'): nothing is bound to 'nope'". Everything a
   // window says is wrong, whether or not it stopped the widget drawing (Widget::notes).
@@ -161,7 +189,12 @@ class Windows {
   using RowsFn = std::function<std::vector<Row>()>;
   using SubmitFn = std::function<void(const std::string&)>;
   using TextFn = std::function<std::string()>;
-  using DrawFn = std::function<void(const ResolvedNode&, Frame&, const Theme&)>;
+  // A host's own widget kind: a FACTORY, not an instance (Phase 11 m3). What comes back
+  // is owned by this Windows, created on demand, keyed by content and never destroyed —
+  // so `canvas:left` and `canvas:right` are two canvases for exactly the reason two
+  // windows on `transcript:session` are one transcript, and a layout hot-reload keeps
+  // the pixels for the reason it keeps the half-typed line.
+  using Factory = std::function<std::unique_ptr<Widget>()>;
 
   // ---- what a host binds (by source name; rebinding replaces) ----
   void bind_document(std::string name, const Document* doc);
@@ -170,7 +203,23 @@ class Windows {
   // An input's one-line note, drawn beside the prompt when it fits on the first row
   // and on a row of its own otherwise (roll's "working…" hint). Optional.
   void bind_note(std::string name, TextFn note);
-  void bind_custom(std::string name, DrawFn draw);
+
+  // ---- what a host REGISTERS (by kind name; Phase 11 m3) ----
+  // One call registers the NAME with the layout vocabulary (Layout.hpp's
+  // `register_widget_kind`, rung 2) and the FACTORY here, so a name can never exist
+  // with nothing to build it. `rule` says whether the kind takes a source —
+  // `canvas:main` (Required) versus roll's `approval` (Forbidden) — and `source_is`
+  // is what a parse error and the design editor call it.
+  //
+  // Refused, and `why` says which, when the name is one of the LIBRARY's: rung 1 is
+  // never shadowed. The library's kinds and a host's are not peers, and this is the one
+  // place a host could otherwise quietly replace the input widget for its whole process.
+  bool register_kind(std::string name, Factory factory, SourceRule rule = SourceRule::Required,
+                     std::string source_is = "the host's own", std::string* why = nullptr);
+  // The registered instance for `<kind>:<source>`, or nullptr — the pattern that already
+  // exists for transcript(source) / input(source) / menu(source). A host reaches its own
+  // widget through this and never through a window id.
+  Widget* registered(std::string_view kind, std::string_view source = "");
   // A menu FILE the host carries in its own binary — the middle rung of the three in
   // the header comment. Called once at startup with each of the host's embedded menus;
   // a user's <dir>/menus/<name>.json of the same name wins over it.
@@ -232,9 +281,6 @@ class Windows {
   Transcript* transcript_at(std::string_view window) const;
   Input* input_at(std::string_view window) const;
   Menu* menu_at(std::string_view window) const;
-  // The bound name of a `custom:` window, "" when it is not one — a host switches on
-  // this to drive its own composites.
-  std::string custom_at(std::string_view window) const;
 
  private:
   friend class WidgetBase;
@@ -249,7 +295,7 @@ class Windows {
   std::map<std::string, SubmitFn> submits_;
   std::map<std::string, TextFn> notes_;
   std::map<std::string, std::string> host_menus_;  // add_menu: name → the file's text
-  std::map<std::string, DrawFn> customs_;
+  std::map<std::string, Factory> factories_;       // register_kind: kind name → how to build one
   std::map<std::string, std::unique_ptr<Widget>> by_content_;
   std::map<std::string, Widget*, std::less<>> by_window_;
 };

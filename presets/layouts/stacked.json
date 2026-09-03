@@ -18,7 +18,7 @@
                 "background": "panel_background" } },
     { "id": "approval", "x": "50%", "y": "100%", "w": "70%", "h": 5, "anchor": "bottom",
       "min_w": 44, "max_w": 96, "modal": true,
-      "root": { "id": "approval", "content": "custom:approval", "border": "rounded", "title": "approval", "focusable": true,
+      "root": { "id": "approval", "content": "approval", "border": "rounded", "title": "approval", "focusable": true,
                 "background": "panel_background" } },
     { "id": "menu", "x": "50%", "y": "50%", "w": "50%", "h": "60%", "anchor": "center",
       "min_w": 30, "max_w": 80, "min_h": 5, "modal": true,
@@ -26,6 +26,6 @@
                 "background": "panel_background" } },
     { "id": "details", "x": "100%", "y": 0, "w": "45%", "h": "100%", "anchor": "top-right",
       "min_w": 40, "max_w": 100, "modal": true,
-      "root": { "id": "details", "content": "custom:details", "border": "rounded", "title": "session", "focusable": true,
+      "root": { "id": "details", "content": "details", "border": "rounded", "title": "session", "focusable": true,
                 "background": "panel_background" } } ]
 }

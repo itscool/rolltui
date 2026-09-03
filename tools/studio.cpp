@@ -77,7 +77,7 @@
 // instantiates the widget and draws it — the studio only BINDS what is its own,
 // by name: the fixture document as `session` (transcript:session), its facts as
 // `status` (rows:status), the prompt as `prompt` (input:prompt), and its three
-// composites (custom:editor, custom:confirm, custom:report). `help`, `text:<literal>`
+// composites, registered as the kinds `editor`, `confirm` and `report`. `help`, `text:<literal>`
 // and `file:<path>` need no binding at all, so a layout file can put a label, a document
 // or the key list on screen with no code here. A window naming something unbound draws
 // the reason and says it in the status line; the studio never asks what a slot means.
@@ -263,7 +263,7 @@ struct App {
   std::string confirm_text;
   std::function<void()> confirm_action;
   std::string report_text_;  // the Check popup's text
-  int report_top = 0;        // the Check report is a custom window: the studio scrolls it
+  int report_top = 0;        // the Check report is a registered kind: the studio scrolls it
   int report_lines = 0;      // its wrapped length, from the last draw
   std::string hint;
   std::string window_note;   // a window that cannot draw (an unbound source, a bad kind)
@@ -302,11 +302,41 @@ struct App {
     windows.bind_document("session", &doc);
     windows.bind_rows("status", [this] { return status_rows(); });
     windows.bind_submit("prompt", [this](const std::string& text) { append_prompt(text); });
-    windows.bind_custom("editor", [this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_editor(rn, f); });
-    windows.bind_custom("confirm", [this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_confirm(rn, f); });
-    windows.bind_custom("report", [this](const ResolvedNode& rn, Frame& f, const Theme& th) {
-      report_lines = draw_scrolled_text(rn, f, th, report_text_, report_top, ambiguous);
-    });
+    // The studio's three composites are REGISTERED KINDS since Phase 11 m3, not
+    // draw callbacks bound by name: `editor` is a kind this binary adds to the layout
+    // vocabulary, its widget receives its own events, and nothing below dispatches by
+    // window name. Each takes no source.
+    windows.register_kind("editor", [this] {
+      return std::make_unique<CallbackWidget>([this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_editor(rn, f); },
+                                         [this](const Event& e) {
+                                           hint.clear();
+                                           if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(e, bindings));
+                                           else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(e, bindings));
+                                           else editor_outcome(teditor.handle(e, bindings));
+                                           return true;
+                                         });
+    }, SourceRule::Forbidden, "");
+    windows.register_kind("confirm", [this] {
+      return std::make_unique<CallbackWidget>([this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_confirm(rn, f); },
+                                         [this](const Event& e) {
+                                           const KeyEvent* k = std::get_if<KeyEvent>(&e);
+                                           if (k && k->key == Key::Char && !k->ctrl && !k->alt) {
+                                             if (k->ch == 'y' || k->ch == 'Y') { close_popup("confirm"); if (confirm_action) confirm_action(); confirm_action = nullptr; }
+                                             else if (k->ch == 'n' || k->ch == 'N') { close_popup("confirm"); confirm_action = nullptr; }
+                                           }
+                                           return true;
+                                         });
+    }, SourceRule::Forbidden, "");
+    windows.register_kind("report", [this] {
+      return std::make_unique<CallbackWidget>(
+          [this](const ResolvedNode& rn, Frame& f, const Theme& th) {
+            report_lines = draw_scrolled_text(rn, f, th, report_text_, report_top, ambiguous);
+          },
+          [this](const Event& e) {
+            if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) report_key(*k);
+            return true;
+          });
+    }, SourceRule::Forbidden, "");
     windows.set_help("", {"input", "transcript", "app", "editor", "studio", "stack"},
                      "mouse: drag selects (auto-scrolls past an edge); release copies; double-click a word; triple-click a line;\n"
                      "click a folded block's summary to toggle it; in the layout editor a click selects, a drag on a seam resizes");
@@ -446,7 +476,7 @@ struct App {
     l.id = "editor";
     l.placement = {Dim::rel(1), Dim::abs(0), Dim::abs(50), Dim::rel(1), Anchor::TopRight, true, Dim::abs(24), Dim::abs(6), {}, {}};
     l.modal = false;
-    Node n = Node::window_id("editor", "custom:editor");
+    Node n = Node::window_id("editor", "editor");
     n.border = Border::Single;
     n.title = title;
     n.focusable = true;
@@ -460,7 +490,7 @@ struct App {
     l.id = "report";
     l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.8), Dim::rel(0.85), Anchor::Center, true, Dim::abs(30), Dim::abs(5), {}, {}};
     l.modal = true;
-    Node n = Node::window_id("report", "custom:report");
+    Node n = Node::window_id("report", "report");
     n.border = Border::Rounded;
     n.title = "report";
     n.focusable = true;
@@ -473,7 +503,7 @@ struct App {
     l.id = "confirm";
     l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(5), Anchor::Center, true, Dim::abs(20), {}, Dim::abs(70), {}};
     l.modal = true;
-    Node n = Node::window_id("confirm", "custom:confirm");
+    Node n = Node::window_id("confirm", "confirm");
     n.border = Border::Rounded;
     n.title = "confirm";
     n.focusable = true;
@@ -588,7 +618,7 @@ struct App {
     std::vector<std::string> names;
     for (const PresetInfo& p : lstore->list()) names.push_back(p.name);  // shipped first, then the user's
     leditor.set_layouts(names);
-    leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "custom:editor"});
+    leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
     leditor.set_menus(windows.menu_names());
     editor_open = true;
     editor_mode = EditorMode::Layout;
@@ -737,7 +767,7 @@ struct App {
         break;
     }
   }
-  // The Check report popup is a `custom:` window — the studio's own text, drawn
+  // The Check report popup is a REGISTERED kind — the studio's own text, drawn
   // and scrolled by the library's shared helpers (rolltui/Widgets.hpp), which is what
   // every scrolling text window in the library uses.
   void report_key(const KeyEvent& k) {
@@ -1042,29 +1072,12 @@ struct App {
     if (r.kind == Route::Kind::ClosedPopup && r.window == "confirm") { confirm_action = nullptr; return true; }
     if (r.kind != Route::Kind::Deliver) return true;
     // The event goes to the window's WIDGET, by kind — never by a window name, so a
-    // layout file may call its windows anything (Phase 10 m2). A `custom:` window is
-    // the studio's own, dispatched by the name it bound.
+    // layout file may call its windows anything (Phase 10 m2). Since Phase 11 m3 that
+    // holds for the studio's OWN three as well: they are registered kinds, so they take
+    // their events through the same Windows::handle as every built-in.
     if (Menu* m = windows.menu_at(r.window)) return menu_event(m->handle(ev, bindings));
-    const std::string own = windows.custom_at(r.window);
-    if (own == "editor") {
-      hint.clear();
-      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev, bindings));
-      else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(ev, bindings));
-      else editor_outcome(teditor.handle(ev, bindings));
-      return true;
-    }
-    if (own == "report") {
-      if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) report_key(*k);
-      return true;
-    }
-    if (own == "confirm") {
-      if (const KeyEvent* k = std::get_if<KeyEvent>(&ev); k && k->key == Key::Char && !k->ctrl && !k->alt) {
-        if (k->ch == 'y' || k->ch == 'Y') { close_popup("confirm"); if (confirm_action) confirm_action(); confirm_action = nullptr; }
-        else if (k->ch == 'n' || k->ch == 'N') { close_popup("confirm"); confirm_action = nullptr; }
-      }
-      return true;
-    }
     const std::optional<Content> c = windows.content_at(r.window);
+    if (c && c->kind == WidgetKind::Registered) { windows.handle(r.window, ev); return true; }
     if (c && c->kind == WidgetKind::Transcript) {
       if (windows.handle(r.window, ev)) return true;
       if (!std::holds_alternative<KeyEvent>(ev)) return true;

@@ -513,7 +513,7 @@ int main() {
   {
     // Every kind is in the table under its own name, and nothing else is.
     for (WidgetKind k : {WidgetKind::Transcript, WidgetKind::Input, WidgetKind::Menu, WidgetKind::Rows, WidgetKind::Text,
-                         WidgetKind::File, WidgetKind::Help, WidgetKind::Custom})
+                         WidgetKind::File, WidgetKind::Help})
       check(widget_kind_from_name(widget_kind_name(k)) == k, "kind '" + std::string(widget_kind_name(k)) + "' round-trips");
     check(!widget_kind_from_name("dialog") && !widget_kind_from_name("") && !widget_kind_from_name("Transcript"),
           "an unknown kind name is not in the table (and it is case-sensitive)");
@@ -529,7 +529,7 @@ int main() {
                           Case{"text:", WidgetKind::Text, ""},
                           Case{"file:/tmp/x.md", WidgetKind::File, "/tmp/x.md"},
                           Case{"help", WidgetKind::Help, ""},
-                          Case{"custom:approval", WidgetKind::Custom, "approval"},
+
                           Case{"text:a:b", WidgetKind::Text, "a:b"}}) {
       std::string why;
       const std::optional<Content> got = parse_content(c.text, &why);
@@ -544,7 +544,6 @@ int main() {
     struct Bad { const char* text; const char* names; };
     for (const Bad& b : {Bad{"dialog:x", "'dialog' is not a widget kind"},
                          Bad{"rows", "'rows' needs a source"},
-                         Bad{"custom", "'custom' needs a source"},
                          Bad{"help:keys", "'help' takes no source"},
                          Bad{"", "'' is not a widget kind"}}) {
       std::string why;
@@ -560,11 +559,18 @@ int main() {
   {
     // The Phase 9 slot names, migrated once by the loader.
     check(migrated_content("transcript") == "transcript:session" && migrated_content("status") == "rows:status" &&
-              migrated_content("input") == "input:prompt" && migrated_content("menu") == "menu:main" &&
-              migrated_content("approval") == "custom:approval" && migrated_content("details") == "custom:details" &&
-              migrated_content("editor") == "custom:editor" && migrated_content("confirm") == "custom:confirm" &&
-              migrated_content("report") == "custom:report",
-          "every Phase 9 slot name has one migration");
+              migrated_content("input") == "input:prompt" && migrated_content("menu") == "menu:main",
+          "every Phase 9 slot name that still needs one has a migration");
+    // Phase 11 m3: `custom:X` became the registered kind `X`. The five composites'
+    // PHASE 9 spelling is now valid again — `approval` is a kind name — so their old
+    // rows are gone from the table rather than pointing at a spelling that no longer
+    // parses, and migrating a valid name would be a rewrite loop.
+    check(migrated_content("custom:approval") == "approval" && migrated_content("custom:details") == "details" &&
+              migrated_content("custom:editor") == "editor" && migrated_content("custom:confirm") == "confirm" &&
+              migrated_content("custom:report") == "report",
+          "every Phase 10 `custom:` content migrates to the registered kind of the same name");
+    check(!migrated_content("approval") && !migrated_content("details") && !migrated_content("report"),
+          "…and the Phase 9 spelling of those five is NOT migrated: it is the m3 name already");
     check(!migrated_content("help") && !migrated_content("transcript:session") && !migrated_content("banana"),
           "help never moved, an m2 content is not re-migrated, and an unknown name has no migration");
 
@@ -585,10 +591,19 @@ int main() {
 
     LayoutLoadReport rep2;
     const std::optional<Layout> l2 = load_layout(R"({"name":"bad","root":{"column":[{"content":"dialog:x"},{"content":"help:keys"}]}})", rep2);
-    check(l2 && !rep2.clean() && rep2.bad_values.size() == 2 &&
-              rep2.bad_values[0].find("root.column[0].content: 'dialog' is not a widget kind") != std::string::npos &&
-              rep2.bad_values[1].find("root.column[1].content: 'help' takes no source") != std::string::npos,
-          "an unknown kind and a forbidden source are bad values named by PATH, and the layout still loads");
+    // Phase 11 m3 moved ONE of these. A forbidden source is a fact about the string and
+    // is still the loader's to name; an UNKNOWN KIND is not, because rung 2 of the
+    // vocabulary belongs to a host that may not have registered yet — the library's own
+    // shipped `default` layout names roll's `approval`, so judging it here would abort
+    // the build. Windows reports it instead, where the registry actually is (below).
+    check(l2 && !rep2.clean() && rep2.bad_values.size() == 1 &&
+              rep2.bad_values[0].find("root.column[1].content: 'help' takes no source") != std::string::npos,
+          "a forbidden source is a bad value named by PATH, and the layout still loads");
+    std::string dwhy;
+    ContentProblem dwhat = ContentProblem::None;
+    check(!parse_content("dialog:x", &dwhy, &dwhat) && dwhat == ContentProblem::UnknownKind &&
+              dwhy.find("'dialog' is not a widget kind") != std::string::npos,
+          "…and the unknown kind is still parse_content's named refusal, tagged so the loader can leave it to the host");
   }
   {
     // ---- m4: the layout DECLARES the actions its screen emits ---------------------
@@ -654,7 +669,7 @@ int main() {
         {"id":"doc","content":"file:note.md","size":1},
         {"id":"keys","content":"help","size":1},
         {"id":"m","content":"menu:main","size":1},
-        {"id":"own","content":"custom:mine","size":1},
+        {"id":"own","content":"mine:one","size":1},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})", lr);
     check(lay && lr.clean(), "the every-kind layout loads clean");
 
@@ -663,15 +678,20 @@ int main() {
     e.id = "e0";
     e.text = "hello transcript";
     doc.entries.push_back(e);
-    int drew_custom = 0;
+    int drew_own = 0;
     Windows windows;
     windows.set_dir(dir);
     windows.bind_document("session", &doc);
     windows.bind_rows("status", [] { return std::vector<Row>{{"label", "value"}}; });
     windows.bind_submit("prompt", [](const std::string&) {});
-    windows.bind_custom("mine", [&](const ResolvedNode& rn, Frame& f, const Theme& th) {
-      ++drew_custom;
-      f.put_text(rn.inner.x, rn.inner.y, "custom!", th.style(Role::text), rn.inner.w);
+    // Phase 11 m3: a kind this test registers, built by the library like any other.
+    windows.register_kind("mine", [&] {
+      return std::make_unique<CallbackWidget>(
+          [&](const ResolvedNode& rn, Frame& f, const Theme& th) {
+            ++drew_own;
+            f.put_text(rn.inner.x, rn.inner.y, "mine!", th.style(Role::text), rn.inner.w);
+          },
+          nullptr);
     });
     windows.set_help("", {"transcript"}, "");
 
@@ -700,15 +720,15 @@ int main() {
           "help: the live bindings, scrolling (the scope heading and the marker) [" + row(by_id(v, "keys")->inner.y) + "]");
     check(row(by_id(v, "m")->inner.y).find("an action") != std::string::npos,
           "menu: the menu FILE's items [" + row(by_id(v, "m")->inner.y) + "]");
-    check(drew_custom == 1 && row(by_id(v, "own")->inner.y) == "custom!", "custom: the host's own draw, once");
+    check(drew_own == 1 && row(by_id(v, "own")->inner.y) == "mine!", "a REGISTERED kind draws, once (Phase 11 m3)");
     check(row(by_id(v, "prompt")->inner.y).find(">") == 0, "input: the line editor's prompt [" + row(by_id(v, "prompt")->inner.y) + "]");
 
     // The typed accessors a host routes with.
     check(windows.transcript_at("tx") == &windows.transcript("session") && windows.input_at("prompt") == &windows.input("prompt") &&
-              windows.menu_at("m") == &windows.menu("main") && windows.custom_at("own") == "mine",
-          "a window's widget is reachable by window id, typed by kind");
-    check(!windows.transcript_at("prompt") && !windows.input_at("tx") && !windows.menu_at("own") && windows.custom_at("m").empty(),
-          "…and never as the wrong kind");
+              windows.menu_at("m") == &windows.menu("main") && windows.at("own") == windows.registered("mine", "one"),
+          "a window's widget is reachable by window id, typed by kind — a registered one through registered(), the same shape as transcript(source)");
+    check(!windows.transcript_at("prompt") && !windows.input_at("tx") && !windows.menu_at("own") && !windows.registered("nope"),
+          "…and never as the wrong kind, and an unregistered name is nullptr rather than an empty instance");
     check(windows.content_at("panel") == Content{WidgetKind::Rows, "status"} && !windows.content_at("nope"),
           "content_at names what a window holds");
 
@@ -733,12 +753,12 @@ int main() {
     std::optional<Layout> lay = load_layout(R"({"name":"unbound","root":{"column":[
         {"id":"a","content":"transcript:nope","size":1},
         {"id":"b","content":"rows:nope","size":1},
-        {"id":"c","content":"custom:nope","size":1},
+        {"id":"c","content":"nope:x","size":1},
         {"id":"d","content":"input:nope","size":1},
         {"id":"e","content":"menu:nope","size":1},
         {"id":"f","content":"file:/nope/nothing.md","size":1},
         {"id":"g","content":"dialog:x","size":1}]}})", lr);
-    check(lay && lr.bad_values.size() == 1, "the unknown kind is the loader's bad value; the unbound sources are not (a layout does not know a host's bindings)");
+    check(lay && lr.clean(), "no bad value from the LOADER: an unbound source and an unknown kind are both host facts (Phase 11 m3)");
     WindowStack s(*lay);
     const Rect box{0, 0, 60, 7};
     const WindowsReport rep = windows.prepare(s, box);
@@ -750,7 +770,7 @@ int main() {
     }();
     for (const char* named : {"window 'a' (content 'transcript:nope'): nothing is bound to 'nope'",
                               "window 'b' (content 'rows:nope'): nothing is bound to 'nope'",
-                              "window 'c' (content 'custom:nope'): nothing is bound to 'nope'",
+                              "'nope' is not a widget kind",
                               "window 'd' (content 'input:nope'): nothing is bound to 'nope'",
                               "window 'e' (content 'menu:nope'): no menu file 'nope'",
                               "cannot read '/nope/nothing.md'", "'dialog' is not a widget kind"})
@@ -1032,6 +1052,119 @@ int main() {
     check(unexpected.empty(), "no rolltui tool resolves a content itself; the only reads are the layout editor's (" +
                                   std::to_string(hits.size()) + " reads, " + std::to_string(unexpected.size()) + " unexpected)" +
                                   (unexpected.empty() ? "" : ": " + unexpected.front()));
+  }
+
+
+  // ---- 9. a HOST REGISTERS A KIND (Phase 11 m3) --------------------------------------
+  // The milestone's Done-when, driven through the real Windows. The whole claim is that
+  // a host writes ONE CLASS and ONE REGISTRATION and the library then treats its widget
+  // exactly like a built-in — so this test writes a real Widget (a two-cell "canvas"
+  // that records the drags it is given and asks for a size), never a draw callback.
+  std::printf("-- registered kinds: a host's own widget, built by the library\n");
+  {
+    struct Canvas : Widget {
+      std::vector<std::string> got;   // "press 3,4", "drag -5,99", "release 1,1"
+      bool broken = false;
+      int want_rows = 0;
+      std::string problem() const override { return broken ? "the canvas is broken" : std::string(); }
+      std::optional<int> desired_outer(int, int, int) const override {
+        return want_rows > 0 ? std::optional<int>(want_rows) : std::nullopt;
+      }
+      void layout(const ResolvedNode&) override {}
+      void draw(const ResolvedNode& rn, Frame& f, const Theme& th) override {
+        f.put_text(rn.inner.x, rn.inner.y, "canvas " + content.source, th.style(Role::text), rn.inner.w);
+      }
+      bool handle(const Event& e) override {
+        const MouseEvent* m = std::get_if<MouseEvent>(&e);
+        if (!m) return false;
+        const char* k = m->kind == MouseEvent::Kind::Press ? "press" : m->kind == MouseEvent::Kind::Drag ? "drag" : "release";
+        got.push_back(std::string(k) + " " + std::to_string(m->x) + "," + std::to_string(m->y));
+        return true;
+      }
+    };
+    clear_registered_widget_kinds();
+    Windows windows;
+    int built = 0;
+    std::string why;
+    check(windows.register_kind("canvas", [&] { ++built; return std::make_unique<Canvas>(); }, SourceRule::Required,
+                                "a drawing surface", &why),
+          "a host registers a kind with one call [" + why + "]");
+
+    // Rung 1 is never shadowed — guard one, the refusal, by name.
+    why.clear();
+    check(!windows.register_kind("input", [] { return std::make_unique<Canvas>(); }, SourceRule::Required, "", &why) &&
+              why.find("'input' is one of the library's own kinds") != std::string::npos,
+          "registering a LIBRARY kind is refused, by name [" + why + "]");
+    // …and guard two, independently: even after that attempt, `input:prompt` is still the
+    // library's input. This is the assertion the milestone's control breaks.
+    check(parse_content("input:prompt")->kind == WidgetKind::Input,
+          "…and `input` still resolves at rung 1: the library's table is searched FIRST, whatever a host tried to register");
+    check(widget_kind_names().back() == "canvas" && widget_kind_names().size() == widget_kinds().size() + 1,
+          "the registered kind is enumerable, after the library's, in resolution order");
+
+    LayoutLoadReport lr;
+    const std::optional<Layout> lay = load_layout(R"({"name":"paint","root":{"column":[
+        {"id":"a","content":"canvas:main","size":3,"focusable":true},
+        {"id":"b","content":"canvas:main","size":3},
+        {"id":"c","content":"canvas:other","size":3},
+        {"id":"d","content":"nosuch:x","size":1}]}})", lr);
+    check(lay && lr.clean(), "a layout naming a registered kind loads clean [" + (lr.bad_values.empty() ? std::string() : lr.bad_values[0]) + "]");
+    WindowStack st(*lay);
+    const Rect box{0, 0, 30, 10};
+    const WindowsReport rep = windows.prepare(st, box);
+    check(built == 2, "two windows on ONE content share ONE instance; a second content is a second (" + std::to_string(built) + " built)");
+    check(windows.at("a") == windows.at("b") && windows.at("a") != windows.at("c"), "…and that is what the two windows hold");
+    check(windows.registered("canvas", "main") == windows.at("a"), "registered(kind, source) reaches it, like transcript(source)");
+    // An unregistered kind is still the Phase 10 m2 answer: named in the report, error
+    // panel drawn — never a blank window.
+    check(rep.bad_values.size() == 1 && rep.bad_values[0].find("window 'd'") != std::string::npos &&
+              rep.bad_values[0].find("'nosuch' is not a widget kind") != std::string::npos,
+          "an UNregistered kind is a named bad value on the window [" + rep.summary() + "]");
+
+    // Press / drag / release, including a drag far outside the window and off the screen:
+    // the stack captures for the pressed window, so a registered kind gets drag-to-paint
+    // with edge handling for free.
+    Canvas* c = static_cast<Canvas*>(windows.at("a"));
+    MouseEvent m;
+    m.kind = MouseEvent::Kind::Press;
+    m.x = 1; m.y = 1;
+    Route r = st.route(m, box);
+    check(r.kind == Route::Kind::Deliver && r.window == "a" && windows.handle(r.window, m), "a press reaches the registered widget");
+    MouseEvent d = m;
+    d.kind = MouseEvent::Kind::Drag;
+    d.x = -5; d.y = 99;
+    r = st.route(d, box);
+    check(r.window == "a" && windows.handle(r.window, d), "…and a drag past its own edge, off the screen, still does");
+    MouseEvent up = d;
+    up.kind = MouseEvent::Kind::Release;
+    r = st.route(up, box);
+    check(r.window == "a" && windows.handle(r.window, up) && st.captured().empty(), "…and the release, which ends the capture");
+    check(c->got == std::vector<std::string>{"press 1,1", "drag -5,99", "release -5,99"},
+          "the widget saw all three, in order, with the coordinates it was given");
+
+    // It sizes itself, and it reports its own problem — both through the same paths a
+    // built-in uses (the input is the only built-in that asks for a size).
+    c->want_rows = 5;
+    windows.prepare(st, box);
+    const std::vector<ResolvedNode> v = st.resolve(box);
+    check(by_id(v, "a")->outer.h == 5, "a registered kind SIZES its window, like the input (" + std::to_string(by_id(v, "a")->outer.h) + ")");
+    c->broken = true;
+    const WindowsReport pr = windows.prepare(st, box);
+    check(pr.bad_values.size() == 3 && pr.summary().find("the canvas is broken") != std::string::npos,
+          "…and its own problem() is reported like any built-in's — once per WINDOW showing it, plus the unregistered one [" +
+              pr.summary() + "]");
+    c->broken = false;
+
+    // A layout RELOAD keeps the instance, for the reason it keeps a half-typed line: the
+    // widget belongs to its content, not to the window that happened to show it.
+    LayoutLoadReport lr2;
+    const std::optional<Layout> other = load_layout(R"({"name":"paint2","root":{"column":[
+        {"id":"z","content":"canvas:main","size":3,"focusable":true}]}})", lr2);
+    WindowStack st2(*other);
+    const int before = built;
+    windows.prepare(st2, box);
+    check(built == before && windows.at("z") == c, "a layout reload keeps the pixels: same instance under a new window id");
+    clear_registered_widget_kinds();
   }
 
   return report("rolltui layout_test");

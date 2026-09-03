@@ -142,10 +142,6 @@ class WidgetBase : public Widget {
     auto it = w_->host_menus_.find(name);
     return it == w_->host_menus_.end() ? nullptr : &it->second;
   }
-  const Windows::DrawFn* custom_fn(const std::string& name) const {
-    auto it = w_->customs_.find(name);
-    return it == w_->customs_.end() ? nullptr : &it->second;
-  }
   const std::string& dir() const { return w_->dir_; }
   std::string unbound() const { return "nothing is bound to '" + content.source + "'"; }
 
@@ -517,17 +513,6 @@ class HelpWidget : public ScrollTextWidget {
   std::string text() const override { return w_->help_text(); }
 };
 
-// custom:<name> — the host's own composite, bound by name.
-class CustomWidget : public WidgetBase {
- public:
-  using WidgetBase::WidgetBase;
-  std::string problem() const override { return custom_fn(content.source) ? std::string() : unbound(); }
-  void layout(const ResolvedNode&) override {}
-  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    if (const Windows::DrawFn* fn = custom_fn(content.source); fn && *fn) (*fn)(rn, f, theme);
-  }
-};
-
 }  // namespace
 
 // ---- Windows -------------------------------------------------------------------------
@@ -539,7 +524,29 @@ void Windows::bind_document(std::string name, const Document* doc) { documents_[
 void Windows::bind_rows(std::string name, RowsFn rows) { rows_[std::move(name)] = std::move(rows); }
 void Windows::bind_submit(std::string name, SubmitFn submit) { submits_[std::move(name)] = std::move(submit); }
 void Windows::bind_note(std::string name, TextFn note) { notes_[std::move(name)] = std::move(note); }
-void Windows::bind_custom(std::string name, DrawFn draw) { customs_[std::move(name)] = std::move(draw); }
+
+// ONE call registers both halves — the name with the layout vocabulary and the factory
+// here — so the vocabulary can never name a kind nothing can build. Rung 1 refuses a
+// library name inside register_widget_kind(), which is why the factory is only stored
+// after it says yes.
+bool Windows::register_kind(std::string name, Factory factory, SourceRule rule, std::string source_is, std::string* why) {
+  if (!factory) {
+    if (why) *why = "a widget kind needs a factory";
+    return false;
+  }
+  if (!register_widget_kind(name, rule, std::move(source_is), why)) return false;
+  factories_[std::move(name)] = std::move(factory);
+  return true;
+}
+
+Widget* Windows::registered(std::string_view kind, std::string_view source) {
+  Content c;
+  c.kind = WidgetKind::Registered;
+  c.registered_name = std::string(kind);
+  c.source = std::string(source);
+  if (factories_.find(c.registered_name) == factories_.end()) return nullptr;
+  return widget_for(content_to_string(c));
+}
 void Windows::add_menu(std::string name, std::string json_text) { host_menus_[std::move(name)] = std::move(json_text); }
 void Windows::set_dir(std::string dir) { dir_ = std::move(dir); }
 
@@ -571,7 +578,18 @@ Widget* Windows::widget_for(const std::string& content) {
       case WidgetKind::Text: w = std::make_unique<TextWidget>(*this); break;
       case WidgetKind::File: w = std::make_unique<FileWidget>(*this); break;
       case WidgetKind::Help: w = std::make_unique<HelpWidget>(*this); break;
-      case WidgetKind::Custom: w = std::make_unique<CustomWidget>(*this); break;
+      case WidgetKind::Registered: {
+        // Rung 2. The name resolved in the layout vocabulary, so a factory for it exists
+        // unless a host cleared the registry behind this Windows' back — which is a named
+        // error panel like any other, never a null widget or a blank window.
+        auto it = factories_.find(c->registered_name);
+        if (it == factories_.end())
+          w = std::make_unique<ErrorWidget>(*this, "kind '" + c->registered_name + "' is registered but this host has no factory for it");
+        else
+          w = it->second();
+        if (!w) w = std::make_unique<ErrorWidget>(*this, "kind '" + c->registered_name + "' built nothing");
+        break;
+      }
     }
     w->content = *c;
   }
@@ -723,12 +741,6 @@ Menu* Windows::menu_at(std::string_view window) const {
   Widget* w = at(window);
   if (!w || w->content.kind != WidgetKind::Menu) return nullptr;
   return &static_cast<MenuWidget*>(w)->menu();
-}
-
-std::string Windows::custom_at(std::string_view window) const {
-  Widget* w = at(window);
-  if (!w || w->content.kind != WidgetKind::Custom) return {};
-  return w->content.source;
 }
 
 }  // namespace rolltui

@@ -87,26 +87,65 @@ constexpr KindRow kKinds[] = {
     {WidgetKind::Text, "text", SourceRule::Optional, "the literal text"},
     {WidgetKind::File, "file", SourceRule::Required, "a path"},
     {WidgetKind::Help, "help", SourceRule::Forbidden, ""},
-    {WidgetKind::Custom, "custom", SourceRule::Required, "a widget the host binds"},
+    // `custom` left this table in Phase 11 m3: a host's own window is a REGISTERED KIND
+    // now (rung 2), so there is one mechanism instead of a kind that meant "ask the host".
 };
 
-// Phase 9's slot names → the m2 contents. A closed, one-way table: the loader rewrites
-// and reports, so the next save is in the new form and this table stops being reached.
+// Phase 9's slot names and Phase 10's `custom:` contents → their m3 form. A closed,
+// one-way table: the loader rewrites and reports, so the next save is in the new form
+// and this table stops being reached.
+//
+// The five composites are the interesting rows, and they are why this table is a MAP
+// rather than a rule. Phase 9 called roll's approval modal `approval`; Phase 10 m2 made
+// it `custom:approval`; Phase 11 m3 makes it `approval` again — the same name, now a
+// registered KIND rather than a bare slot. So the Phase 9 rows for those five are simply
+// gone (their old spelling is valid again, and migrating a valid name would be a
+// rewrite loop), and the Phase 10 spelling is what migrates.
 constexpr std::pair<const char*, const char*> kLegacy[] = {
-    {"transcript", "transcript:session"}, {"input", "input:prompt"}, {"status", "rows:status"},
-    {"menu", "menu:main"},                {"approval", "custom:approval"}, {"details", "custom:details"},
-    {"editor", "custom:editor"},          {"confirm", "custom:confirm"},   {"report", "custom:report"},
+    {"transcript", "transcript:session"},  {"input", "input:prompt"},        {"status", "rows:status"},
+    {"menu", "menu:main"},                 {"custom:approval", "approval"},  {"custom:details", "details"},
+    {"custom:editor", "editor"},           {"custom:confirm", "confirm"},    {"custom:report", "report"},
 };
+
+const KindRow* row_of_or_null(WidgetKind k) {
+  for (const KindRow& r : kKinds)
+    if (r.kind == k) return &r;
+  return nullptr;  // WidgetKind::Registered, which is not in the library's table by design
+}
 
 const KindRow& row_of(WidgetKind k) {
-  for (const KindRow& r : kKinds)
-    if (r.kind == k) return r;
-  return kKinds[0];  // unreachable: every enumerator is in the table
+  const KindRow* r = row_of_or_null(k);
+  return r ? *r : kKinds[0];
+}
+
+// RUNG 2. Registered by name, never constexpr, and searched only after kKinds — see
+// Layout.hpp's stated resolution order. Process-wide because a kind is a program's
+// vocabulary, not one screen's: a host registers once at startup and every `Windows` in
+// the process parses the same layout files the same way.
+struct HostKind {
+  std::string name;
+  SourceRule rule;
+  std::string source_is;
+};
+std::vector<HostKind>& host_kinds() {
+  static std::vector<HostKind> v;
+  return v;
+}
+const HostKind* host_kind(std::string_view name) {
+  for (const HostKind& h : host_kinds())
+    if (h.name == name) return &h;
+  return nullptr;
 }
 
 }  // namespace
 
-std::string_view widget_kind_name(WidgetKind k) { return row_of(k).name; }
+std::string_view widget_kind_name(WidgetKind k) {
+  const KindRow* r = row_of_or_null(k);
+  return r ? std::string_view(r->name) : std::string_view();
+}
+std::string_view content_kind_name(const Content& c) {
+  return c.kind == WidgetKind::Registered ? std::string_view(c.registered_name) : widget_kind_name(c.kind);
+}
 
 std::optional<WidgetKind> widget_kind_from_name(std::string_view name) {
   for (const KindRow& r : kKinds)
@@ -115,7 +154,41 @@ std::optional<WidgetKind> widget_kind_from_name(std::string_view name) {
 }
 
 SourceRule source_rule(WidgetKind k) { return row_of(k).rule; }
+SourceRule content_source_rule(const Content& c) {
+  if (c.kind != WidgetKind::Registered) return source_rule(c.kind);
+  const HostKind* h = host_kind(c.registered_name);
+  return h ? h->rule : SourceRule::Required;
+}
 std::string_view source_describes(WidgetKind k) { return row_of(k).source_is; }
+
+// Rung 1 is checked FIRST and the refusal says so by name: the library's own kinds may
+// never be shadowed, and this is one of the two independent guards (the other is that
+// parse_content searches kKinds before host_kinds, so a shadowing row could not be
+// reached even if one existed).
+bool register_widget_kind(std::string name, SourceRule rule, std::string source_is, std::string* why) {
+  auto fail = [&](std::string reason) {
+    if (why) *why = std::move(reason);
+    return false;
+  };
+  if (name.empty()) return fail("a widget kind needs a name");
+  if (name.find(':') != std::string::npos) return fail("'" + name + "' is not a kind name: a ':' separates the kind from its source");
+  if (widget_kind_from_name(name)) return fail("'" + name + "' is one of the library's own kinds and cannot be registered over");
+  if (const HostKind* h = host_kind(name)) {
+    if (h->rule == rule) return true;  // the same registration twice: idempotent, not an error
+    return fail("'" + name + "' is already registered with a different source rule");
+  }
+  host_kinds().push_back({std::move(name), rule, std::move(source_is)});
+  return true;
+}
+
+void clear_registered_widget_kinds() { host_kinds().clear(); }
+
+std::vector<std::string> widget_kind_names() {
+  std::vector<std::string> out;
+  for (const KindRow& r : kKinds) out.emplace_back(r.name);
+  for (const HostKind& h : host_kinds()) out.push_back(h.name);
+  return out;
+}
 
 const std::vector<WidgetKind>& widget_kinds() {
   static const std::vector<WidgetKind> all = [] {
@@ -126,38 +199,54 @@ const std::vector<WidgetKind>& widget_kinds() {
   return all;
 }
 
-std::optional<Content> parse_content(std::string_view text, std::string* why) {
-  auto fail = [&](std::string reason) -> std::optional<Content> {
+std::optional<Content> parse_content(std::string_view text, std::string* why, ContentProblem* what) {
+  if (what) *what = ContentProblem::None;
+  auto fail = [&](ContentProblem kind, std::string reason) -> std::optional<Content> {
     if (why) *why = std::move(reason);
+    if (what) *what = kind;
     return std::nullopt;
   };
   const std::size_t colon = text.find(':');
   const std::string_view name = text.substr(0, colon);
-  std::optional<WidgetKind> kind = widget_kind_from_name(name);
-  if (!kind) {
-    std::string known;
-    for (const KindRow& r : kKinds) known += (known.empty() ? "" : " | ") + std::string(r.name);
-    if (std::optional<std::string> m = migrated_content(text))
-      return fail("'" + std::string(name) + "' is a Phase 9 slot name, not a widget kind; write '" + *m + "'");
-    return fail("'" + std::string(name) + "' is not a widget kind (" + known + ")");
-  }
   Content c;
-  c.kind = *kind;
+  SourceRule rule;
+  std::string source_is;
+  // THE RESOLUTION ORDER (Layout.hpp). Rung 1 is the library's closed table and is
+  // searched first, unconditionally — that is the guard that survives even if a
+  // shadowing registration somehow existed. Rung 2 is what the host registered. Rung 3
+  // is this failing with a named reason.
+  if (std::optional<WidgetKind> kind = widget_kind_from_name(name)) {
+    const KindRow& r = row_of(*kind);
+    c.kind = *kind;
+    rule = r.rule;
+    source_is = r.source_is;
+  } else if (const HostKind* h = host_kind(name)) {
+    c.kind = WidgetKind::Registered;
+    rule = h->rule;
+    source_is = h->source_is;
+  } else {
+    std::string known;
+    for (const std::string& n : widget_kind_names()) known += (known.empty() ? "" : " | ") + n;
+    if (std::optional<std::string> m = migrated_content(text))
+      return fail(ContentProblem::UnknownKind, "'" + std::string(text) + "' is an older spelling, not a widget kind; write '" + *m + "'");
+    return fail(ContentProblem::UnknownKind, "'" + std::string(name) + "' is not a widget kind (" + known + ")");
+  }
+  if (c.kind == WidgetKind::Registered) c.registered_name = std::string(name);
+  const std::string kname(name);
   if (colon != std::string_view::npos) c.source = std::string(text.substr(colon + 1));
-  const KindRow& r = row_of(c.kind);
-  if (r.rule == SourceRule::Forbidden && colon != std::string_view::npos)
-    return fail("'" + std::string(r.name) + "' takes no source; write '" + std::string(r.name) + "'");
-  if (r.rule == SourceRule::Required && c.source.empty()) {
-    if (std::optional<std::string> m = migrated_content(text))  // a Phase 9 slot name that is also a kind name
-      return fail("'" + std::string(text) + "' is a Phase 9 slot name, not a content; write '" + *m + "'");
-    return fail("'" + std::string(r.name) + "' needs a source (" + r.source_is + "): write '" + std::string(r.name) + ":<name>'");
+  if (rule == SourceRule::Forbidden && colon != std::string_view::npos)
+    return fail(ContentProblem::ForbiddenSource, "'" + kname + "' takes no source; write '" + kname + "'");
+  if (rule == SourceRule::Required && c.source.empty()) {
+    if (std::optional<std::string> m = migrated_content(text))  // an older name that is also a kind name
+      return fail(ContentProblem::MissingSource, "'" + std::string(text) + "' is an older spelling, not a content; write '" + *m + "'");
+    return fail(ContentProblem::MissingSource, "'" + kname + "' needs a source (" + source_is + "): write '" + kname + ":<name>'");
   }
   return c;
 }
 
 std::string content_to_string(const Content& c) {
-  std::string s(widget_kind_name(c.kind));
-  if (source_rule(c.kind) != SourceRule::Forbidden) s += ":" + c.source;
+  std::string s(content_kind_name(c));
+  if (content_source_rule(c) != SourceRule::Forbidden) s += ":" + c.source;
   return s;
 }
 
@@ -413,7 +502,14 @@ Node node_from_json(const Value& v, const std::string& where, LayoutLoadReport& 
       n.content = *to;
     }
     std::string why;
-    if (!parse_content(n.content, &why)) rep.bad_values.push_back(where + ".content: " + why);
+    ContentProblem what = ContentProblem::None;
+    // An UNKNOWN KIND is deliberately NOT a bad value here — see ContentProblem in
+    // Layout.hpp. The vocabulary's second rung belongs to the host, and this loader runs
+    // before a host has necessarily registered anything; Windows reports it, by name,
+    // with the error panel drawn. Every other problem is a fact about the STRING and is
+    // the loader's to name.
+    if (!parse_content(n.content, &why, &what) && what != ContentProblem::UnknownKind)
+      rep.bad_values.push_back(where + ".content: " + why);
   }
   if (n.is_window() && n.id.empty()) n.id = n.content;
   return n;
