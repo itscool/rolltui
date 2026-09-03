@@ -28,8 +28,16 @@
 //     warning; silently dropping columns is the wrong display that looks fine.
 //   - Inline styles survive wrapping: the paragraph is wrapped as one string and each
 //     drawn grapheme takes the role of the run its source offset came from.
-//   - No syntax highlighting (plan/phase-9.md nice-to-have 9); a code block gets the
-//     md_code_block role and its info string as a label.
+//   - No syntax highlighting SHIPPED (plan/phase-12.md m2 — this is the SEAM, not a
+//     highlighter): a code block gets the md_code_block role and its info string as a
+//     label unless a host registers RenderOptions::highlight. Unregistered (the
+//     default), every code line renders through the exact pre-seam code path, byte for
+//     byte — the control in markdown_test.cpp.
+//   - A highlighter returns SPANS (byte range in one code line -> Role), never a
+//     painter and never text: the renderer stays in sole control of wrapping and the
+//     cell grid. A span that overlaps a prior one, runs backwards, or exceeds the
+//     line is clamped (or, if nothing of it survives, dropped) and named in
+//     Rendered::highlight_report — never silently.
 //
 // LOGICAL TEXT (milestone 9, for selection): render_text() also returns the document's
 // logical text — what the rendered lines would be at infinite width — and every drawn
@@ -48,6 +56,7 @@
 // The trailing "\n" of the last block is trimmed.
 //
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -132,16 +141,54 @@ struct StyledLine {
   int width = 0;
 };
 
+// ---- syntax highlighting seam (plan/phase-12.md m2) ---------------------------------
+//
+// A code block's line renders in one role by default (md_code_block). A host that
+// wants colour INSIDE the block registers RenderOptions::highlight: given the fence's
+// language tag and one verbatim line of the block, it returns the byte ranges of that
+// line that should take a different role. It returns DATA, never a painter — the
+// renderer alone decides how those bytes wrap and land in the cell grid, so a
+// highlighter that lies about its ranges is clamped, never able to corrupt a frame.
+// The library ships no highlighter (plan/phase-12.md, "Deliberately NOT in this
+// phase"): RenderOptions::highlight is unset by default, and an unset highlighter is
+// never invoked — this is the whole mechanism by which a host that has decided its
+// theme cannot show spans (a mono theme, most directly) asks for none: it simply does
+// not register one.
+struct HighlightSpan {
+  std::size_t begin = 0;  // byte offset into the LINE passed to the callback
+  std::size_t end = 0;    // exclusive
+  Role role = Role::md_code_block;
+};
+
+// lang: the fence's info string, first whitespace-delimited word only ("cpp" from
+// "cpp title=x.cpp"), or empty for an indented code block or a fence with no info
+// string. line: one verbatim line of the code block's text, no trailing '\n'. Called
+// once per line of every Code block (fenced or indented); never for an HTML block
+// (Markdown.hpp: HTML always renders as opaque code, never interpreted, so there is no
+// language to highlight it by).
+using Highlighter = std::function<std::vector<HighlightSpan>(std::string_view lang, std::string_view line)>;
+
+// What the renderer did with a highlighter's spans beyond drawing the well-formed
+// ones: one entry per span it had to clamp or drop, naming the language, the line, the
+// offending span and the correction — never silent, the way LayoutLoadReport and
+// WindowsReport name their bad values.
+struct HighlightReport {
+  std::vector<std::string> clamped;
+  bool clean() const { return clamped.empty(); }
+};
+
 struct RenderOptions {
   int width = 80;
   bool ambiguous_wide = false;
   int tab_width = 8;
   Role base = Role::text;
+  Highlighter highlight;  // unset by default — see the seam comment above
 };
 
 struct Rendered {
   std::vector<StyledLine> lines;
   std::string text;  // the logical text every Span::sources offset indexes
+  HighlightReport highlight_report;
 };
 
 Rendered render_text(const Document& doc, const RenderOptions& opt = {});
