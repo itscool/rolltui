@@ -32,6 +32,56 @@ Rect content_rect(const ResolvedNode& rn) {
   return r;
 }
 
+// ---- the scrollbar's geometry (Widgets.hpp) -----------------------------------------
+
+bool scroll_thumb(const Widget::ScrollExtent& e, int track, ScrollThumb& out) {
+  // No bar when there is nothing to scroll, or nowhere to draw one. Both are answers,
+  // not edge cases: a bar on a document that fits is a lie about there being more.
+  if (track <= 0 || e.total == 0 || e.visible == 0 || e.total <= e.visible) return false;
+  const double frac = static_cast<double>(e.visible) / static_cast<double>(e.total);
+  int len = static_cast<int>(frac * track + 0.5);
+  if (len < 1) len = 1;          // always visible: a 1-cell thumb still says where you are
+  if (len > track) len = track;
+  const std::size_t max_first = e.total - e.visible;
+  const std::size_t first = e.first > max_first ? max_first : e.first;
+  const int span = track - len;  // the cells the thumb can travel
+  int off = span <= 0 ? 0 : static_cast<int>(static_cast<double>(first) / static_cast<double>(max_first) * span + 0.5);
+  if (off < 0) off = 0;
+  if (off > span) off = span;
+  // THE GUARANTEE: the thumb touches an end IF AND ONLY IF the view is at that end.
+  // Snapping the ends is not enough on its own — with 90 positions and 9 travel cells,
+  // line 89 also rounds onto the last cell, so "the thumb is at the bottom" would stop
+  // meaning "you are at the bottom" and a reader could not tell one line short of the
+  // end from the end. So the end cells are RESERVED for the ends and everything between
+  // is squeezed into what is left. Below a 2-cell span there is nothing to reserve, and
+  // the honest answer is the ends alone.
+  if (span >= 2) {
+    if (first == 0) off = 0;
+    else if (first == max_first) off = span;
+    else off = std::clamp(off, 1, span - 1);
+  } else {
+    off = (first == max_first) ? span : 0;
+  }
+  out.offset = off;
+  out.length = len;
+  return true;
+}
+
+std::size_t scroll_first_for_cell(const Widget::ScrollExtent& e, int track, int cell) {
+  if (e.total <= e.visible || track <= 0) return 0;
+  const std::size_t max_first = e.total - e.visible;
+  ScrollThumb t;
+  const int len = scroll_thumb(e, track, t) ? t.length : 1;
+  const int span = track - len;
+  if (span <= 0) return cell <= 0 ? 0 : max_first;
+  int c = cell;
+  if (c < 0) c = 0;
+  if (c > span) c = span;
+  const double f = static_cast<double>(c) / static_cast<double>(span) * static_cast<double>(max_first) + 0.5;
+  const std::size_t first = static_cast<std::size_t>(f);
+  return first > max_first ? max_first : first;
+}
+
 int draw_scrolled_text(const ResolvedNode& rn, Frame& f, const Theme& theme, std::string_view text, int top,
                        bool ambiguous_wide) {
   const Rect r = content_rect(rn);
@@ -45,8 +95,8 @@ int draw_scrolled_text(const ResolvedNode& rn, Frame& f, const Theme& theme, std
     f.put_text(r.x + lines[i].indent, y++, lines[i].text, theme.style(Role::text), std::max(r.w - lines[i].indent, 0),
                ambiguous_wide);
   const int below = total - std::max(top, 0) - r.h;
-  if (below > 0) {
-    const std::string marker = "\xE2\x96\xBC " + std::to_string(below) + " more ";
+  const std::string marker = scroll_marker_text(below > 0 ? static_cast<std::size_t>(below) : 0, r.w, ambiguous_wide);
+  if (!marker.empty()) {
     const int mw = unicode::display_width(marker, ambiguous_wide);
     f.put_text(r.x + std::max(r.w - mw, 0), r.y + r.h - 1, marker, theme.style(Role::scroll_marker), mw, ambiguous_wide);
   }
@@ -192,6 +242,19 @@ class TranscriptWidget : public WidgetBase {
     const Document* d = document(content.source);
     return d && t.handle(e, *d, env().now_ms, binds());
   }
+  // The window never learns that this position is really an ANCHOR (entry, line within
+  // it): it asks in lines and commands in lines, and the widget converts. That is the
+  // whole reason the window is forbidden to store the number — a re-wrap changes the
+  // total and the meaning of the offset at the same instant.
+  std::optional<ScrollExtent> scroll_extent(Axis axis) const override {
+    if (axis != Axis::Vertical) return std::nullopt;
+    return ScrollExtent{t.top_line(), static_cast<std::size_t>(std::max(t.viewport_height(), 0)), t.total_lines()};
+  }
+  bool scroll_to(Axis axis, std::size_t first) override {
+    if (axis != Axis::Vertical) return false;
+    t.scroll_by(static_cast<long>(first) - static_cast<long>(t.top_line()));
+    return true;
+  }
 
  private:
   TranscriptOptions options(const ResolvedNode& rn) const {
@@ -322,6 +385,12 @@ class MenuWidget : public WidgetBase {
         out.push_back("menu file (" + origin_ + "): item '" + id + "' names the action '" + action +
                       "', which no layout declares");
     return out;
+  }
+  // Reports only — see Menu.hpp. There is deliberately no scroll_to override.
+  std::optional<ScrollExtent> scroll_extent(Axis axis) const override {
+    if (axis != Axis::Vertical) return std::nullopt;
+    refresh();
+    return ScrollExtent{m_.scroll_first(), m_.scroll_visible(), m_.scroll_total()};
   }
   void layout(const ResolvedNode& rn) override {
     refresh();
@@ -461,6 +530,18 @@ class ScrollTextWidget : public WidgetBase {
   bool handle(const Event& e) override {
     const KeyEvent* k = std::get_if<KeyEvent>(&e);
     return k && scroll_by_action(*k, binds(), area_.h, total_, top_);
+  }
+  // Reports AND accepts: a wrapped-text view's position really is a line number, so
+  // there is nothing richer for the window to lose by driving it.
+  std::optional<ScrollExtent> scroll_extent(Axis axis) const override {
+    if (axis != Axis::Vertical) return std::nullopt;
+    return ScrollExtent{static_cast<std::size_t>(std::max(top_, 0)), static_cast<std::size_t>(std::max(area_.h, 0)),
+                        static_cast<std::size_t>(std::max(total_, 0))};
+  }
+  bool scroll_to(Axis axis, std::size_t first) override {
+    if (axis != Axis::Vertical) return false;
+    top_ = std::clamp(static_cast<int>(first), 0, std::max(total_ - std::max(area_.h, 1), 0));
+    return true;
   }
 
  private:
@@ -699,11 +780,80 @@ void Windows::draw(const ResolvedNode& rn, Frame& f, const Theme& theme) {
     return;
   }
   w->draw(rn, f, theme);
+  draw_scrollbar(rn, *w, f, theme);
+}
+
+// The bar lives in the window's RIGHT BORDER COLUMN, which is why the window draws it
+// and not the widget: a widget is handed a content rect and knows nothing about whether
+// it has a border. A window WITHOUT a border has no track and gets no bar — the `▼ N
+// more` marker is the signal there (Phase 12 m5: both are kept, and they answer
+// different questions — the marker is the non-graphical one).
+void Windows::draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const Theme& theme) {
+  tracks_.erase(rn.node->id);
+  if (rn.node->border == Border::None) return;
+  const std::optional<Widget::ScrollExtent> e = w.scroll_extent(Widget::Axis::Vertical);
+  if (!e) return;
+  const int track = rn.outer.h - 2;  // between the corners
+  const int x = rn.outer.x + rn.outer.w - 1;
+  if (track <= 0 || rn.outer.w < 2) return;
+  ScrollThumb t;
+  if (!scroll_thumb(*e, track, t)) return;
+  tracks_[rn.node->id] = Track{x, rn.outer.y + 1, track};
+  Style s = theme.style(Role::scrollbar);
+  const Style ground = theme.style(rn.node->background);
+  if (s.bg.kind == Color::Kind::None) s.bg = ground.bg;
+  for (int i = 0; i < t.length; ++i) {
+    const int y = rn.outer.y + 1 + t.offset + i;
+    if (y >= rn.outer.y + rn.outer.h - 1) break;
+    f.put(x, y, "\xE2\x96\x88", 1, s);  // █ — a full block, so it reads as a thumb in mono too
+  }
 }
 
 bool Windows::handle(std::string_view window, const Event& e) {
   Widget* w = at(window);
-  return w && w->problem().empty() && w->handle(e);
+  if (!w || !w->problem().empty()) return false;
+  if (handle_scrollbar(window, *w, e)) return true;
+  return w->handle(e);
+}
+
+// A press in the track column drives the widget — but ONLY a widget that accepted
+// scroll_to(). One that merely reports (a menu, whose scroll is derived from its
+// selection) gets an accurate bar that is not a handle, which is the whole reason
+// Widget's scroll capability is two optional halves.
+bool Windows::handle_scrollbar(std::string_view window, Widget& w, const Event& e) {
+  const MouseEvent* m = std::get_if<MouseEvent>(&e);
+  if (!m) return false;
+  const std::string id(window);
+  if (m->kind == MouseEvent::Kind::Release) {
+    if (bar_drag_ != id) return false;
+    bar_drag_.clear();
+    return true;
+  }
+  auto it = tracks_.find(id);
+  if (it == tracks_.end()) return false;
+  const Track& tr = it->second;
+  const std::optional<Widget::ScrollExtent> e2 = w.scroll_extent(Widget::Axis::Vertical);
+  if (!e2) return false;
+  ScrollThumb th;
+  if (!scroll_thumb(*e2, tr.h, th)) return false;
+  if (m->kind == MouseEvent::Kind::Press) {
+    if (m->button != 1 || m->x != tr.x || m->y < tr.y || m->y >= tr.y + tr.h) return false;
+    const int cell = m->y - tr.y;
+    // On the thumb: grab it where it was taken, so it does not jump under the pointer.
+    // In the trough: jump so the thumb's START lands there, which is the one rule that
+    // makes a click and the drag that may follow it agree.
+    bar_grab_ = (cell >= th.offset && cell < th.offset + th.length) ? cell - th.offset : 0;
+    if (!w.scroll_to(Widget::Axis::Vertical, scroll_first_for_cell(*e2, tr.h, cell - bar_grab_))) return false;
+    bar_drag_ = id;
+    return true;
+  }
+  if (m->kind == MouseEvent::Kind::Drag) {
+    if (bar_drag_ != id) return false;
+    // The pointer may be anywhere by now (the press captured it), so only its ROW counts.
+    w.scroll_to(Widget::Axis::Vertical, scroll_first_for_cell(*e2, tr.h, m->y - tr.y - bar_grab_));
+    return true;
+  }
+  return false;
 }
 
 InputAction Windows::input_event(std::string_view source, const Event& e) {

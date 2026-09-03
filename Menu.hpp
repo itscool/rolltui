@@ -249,6 +249,13 @@ class Menu {
   // The current level's children passing the filter (indices into level().children),
   // or in palette mode indices into the flattened list (flat()).
   std::vector<std::size_t> visible() const;
+  // ---- what a scrollbar may ask, and nothing it could use to MOVE the list ----
+  // A menu's scroll is DERIVED from its selection, so it REPORTS and declines to be
+  // driven (Widgets.hpp's two optional halves): a draggable thumb here would move the
+  // view away from the selected row, which is not a thing anyone asked for.
+  std::size_t scroll_first() const { return static_cast<std::size_t>(top_ < 0 ? 0 : top_); }
+  std::size_t scroll_visible() const { const int r = item_rows(); return static_cast<std::size_t>(r < 0 ? 0 : r); }
+  std::size_t scroll_total() const { return visible().size(); }
   const std::string& filter() const { return filter_; }
   std::string breadcrumb() const;  // "settings › theme"
   bool editing() const { return editing_; }
@@ -280,6 +287,7 @@ class Menu {
  private:
   MenuItem& level_mut();
   const MenuItem* item_at(std::size_t vis_index) const;  // the item behind visible()[i]
+
   MenuItem* item_at_mut(std::size_t vis_index);
   MenuItem* by_path(const std::vector<std::size_t>& p);
   const MenuItem* by_path(const std::vector<std::size_t>& p) const;

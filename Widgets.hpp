@@ -140,7 +140,51 @@ class Widget {
   // True when the event was consumed. Only the kinds whose whole interaction is
   // scrolling implement this; a host drives an input or a menu itself.
   virtual bool handle(const Event& /*e*/) { return false; }
+
+  // ---- SCROLL, as a capability a widget OPTS INTO (Phase 12 m5) --------------------
+  // The window draws the bar and reads the mouse on it; the WIDGET remains the sole
+  // owner of its position. That split is forced, not stylistic: the transcript keeps
+  // its position as an ANCHOR (entry, line-within-entry) so a re-wrap shows the same
+  // entry at the top, and a `{first, visible, total}` cached in the window would go
+  // stale exactly when a re-wrap changes the total AND the offset's meaning at once,
+  // with nothing to check it. So the window ASKS and COMMANDS; it never stores.
+  //
+  // TWO OPTIONAL HALVES, because they are genuinely different capabilities:
+  //   scroll_extent()  REPORTS  → the window may draw a bar
+  //   scroll_to(first) ACCEPTS  → the bar may be dragged and its trough clicked
+  // A menu's scroll is DERIVED from its selection, so dragging its thumb would move the
+  // view away from the selected row: it reports and declines to be commanded, and gets
+  // an accurate bar that is not a handle. Collapsing the halves would force every
+  // widget into a behaviour only some of them want.
+  //
+  // Declared PER AXIS from the start even though only Vertical is implemented — a wide
+  // table or code block will want the horizontal one, and a vertical-only assumption is
+  // one enum parameter to avoid now and a rewrite to retrofit.
+  enum class Axis : std::uint8_t { Vertical, Horizontal };
+  struct ScrollExtent {
+    std::size_t first = 0;    // the first visible line
+    std::size_t visible = 0;  // how many lines the viewport shows
+    std::size_t total = 0;    // how many there are
+  };
+  virtual std::optional<ScrollExtent> scroll_extent(Axis /*axis*/) const { return std::nullopt; }
+  // False when this widget reports but will not be driven. Anything that returns true
+  // must clamp: the window passes what the pointer implies, not what is valid.
+  virtual bool scroll_to(Axis /*axis*/, std::size_t /*first*/) { return false; }
 };
+
+// ---- the bar's geometry, as a pure function -----------------------------------------
+// Where the thumb sits and how long it is, in the track's own cells. Separate from every
+// widget and every window so it can be a table test — including the degenerate sizes
+// this project insists on (a 0- or 1-cell track, an empty document, a viewport larger
+// than the content). Returns false when no bar should be drawn at all.
+struct ScrollThumb {
+  int offset = 0;  // cells from the track's start
+  int length = 0;  // cells, always >= 1 when drawn
+};
+bool scroll_thumb(const Widget::ScrollExtent& e, int track, ScrollThumb& out);
+// The inverse, for a click or a drag: the `first` line that puts the thumb's START at
+// `cell` of the track. Clamped to a valid first line.
+std::size_t scroll_first_for_cell(const Widget::ScrollExtent& e, int track, int cell);
 
 // A Widget over two callbacks, for a host whose own window genuinely has no state of its
 // own — roll's approval modal and the studio's editor pane keep theirs beside the thing
@@ -305,6 +349,10 @@ class Windows {
  private:
   friend class WidgetBase;
   Widget* widget_for(const std::string& content);
+  // The scrollbar is the WINDOW's, not the widget's: it lives in the border column,
+  // which a widget never sees (Phase 12 m5).
+  void draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const Theme& theme);
+  bool handle_scrollbar(std::string_view window, Widget& w, const Event& e);
 
   WidgetEnv env_;
   std::string dir_;
@@ -315,6 +363,17 @@ class Windows {
   std::map<std::string, RowsFn> rows_;
   std::map<std::string, SubmitFn> submits_;
   std::map<std::string, OnSubmit> on_submit_;
+  // Where each window's scrollbar track WAS on the last frame, so handle() — which is
+  // given a window id and no geometry — can tell a press on the thumb from a press on
+  // the text. Written by draw(), read by handle(): the frame is always drawn before the
+  // events that follow it, so this is a memo of the last frame, never a second source of
+  // truth about where anything is.
+  struct Track {
+    int x = 0, y = 0, h = 0;
+  };
+  std::map<std::string, Track> tracks_;
+  std::string bar_drag_;  // the window whose thumb is being dragged, "" for none
+  int bar_grab_ = 0;      // cells from the thumb's start to where it was grabbed
   std::map<std::string, TextFn> notes_;
   std::map<std::string, std::string> host_menus_;  // add_menu: name → the file's text
   std::map<std::string, Factory> factories_;       // register_kind: kind name → how to build one

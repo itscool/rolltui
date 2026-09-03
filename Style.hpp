@@ -32,6 +32,8 @@ enum class Role : std::uint8_t {
   menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
   // find (Phase 12 m4): every match, and the one the view is on
   find_match, find_current,
+  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
+  scrollbar,
   count_
 };
 
@@ -75,7 +77,7 @@ inline constexpr std::array<std::string_view, kRoleCount> kRoleNames = {
     "diff_added", "diff_removed", "diff_context",
     "input_text", "input_cursor", "input_placeholder", "scroll_marker", "selection",
     "overlay", "menu_item", "menu_selected", "menu_breadcrumb", "menu_shortcut",
-    "find_match", "find_current",
+    "find_match", "find_current", "scrollbar",
 };
 
 inline constexpr std::string_view role_name(Role r) {

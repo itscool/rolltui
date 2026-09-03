@@ -161,6 +161,17 @@ struct Selection {
   bool range_in(std::size_t entry, std::size_t len, std::size_t& begin, std::size_t& end) const;
 };
 
+// The "▼ N more" marker's text for a given width — ONE definition, used by the
+// transcript and by draw_scrolled_text, so the two cannot drift.
+//
+// It SHORTENS rather than eating the line (Phase 12 m5). The marker writes over CONTENT
+// cells, and at 20 cells wide the full form took most of the row ("│   Ent▼ 187 more │").
+// Shortening is only safe because the scrollbar now carries the proportion: the two are
+// KEPT TOGETHER on purpose — the bar is the positional signal and the marker is the
+// NON-GRAPHICAL one, which is the first thing a mono theme, a low colour depth or a
+// borderless window still has. Returns "" when there is nothing below or no room at all.
+std::string scroll_marker_text(std::size_t below, int max_width, bool ambiguous_wide);
+
 // One find hit, in the same logical space as TextPos: `length` bytes of `entry`'s
 // unfolded text starting at `offset`.
 struct FindMatch {

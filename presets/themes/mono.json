@@ -233,6 +233,11 @@
         "bg": "none",
         "bold": true,
         "reverse": true
+      },
+      "scrollbar": {
+        "fg": "none",
+        "bg": "none",
+        "bold": true
       }
     }
   },

@@ -1182,5 +1182,153 @@ int main() {
     clear_registered_widget_kinds();
   }
 
+  // ---- the scrollbar's geometry (Phase 12 m5) ----------------------------------------
+  // A pure function of (first, visible, total) and the track — a TABLE, because the
+  // milestone's Done-when asks for one and because every interesting case here is a
+  // boundary: the degenerate sizes this project insists on, and the two ends, where
+  // rounding must not be allowed to answer "am I at the bottom?".
+  {
+    struct Case {
+      const char* name;
+      Widget::ScrollExtent e;
+      int track;
+      bool drawn;
+      int offset, length;
+    };
+    const Case cases[] = {
+        // nothing to scroll → NO BAR. A bar on a document that fits is a lie.
+        {"content fits exactly", {0, 10, 10}, 8, false, 0, 0},
+        {"content shorter than the viewport", {0, 10, 3}, 8, false, 0, 0},
+        {"an empty document", {0, 10, 0}, 8, false, 0, 0},
+        {"a zero-height viewport", {0, 0, 100}, 8, false, 0, 0},
+        {"a zero-cell track", {0, 10, 100}, 0, false, 0, 0},
+        {"a negative track", {0, 10, 100}, -3, false, 0, 0},
+        // the ends TOUCH the ends, whatever the arithmetic rounds to
+        {"at the top", {0, 10, 100}, 10, true, 0, 1},
+        {"at the bottom", {90, 10, 100}, 10, true, 9, 1},
+        {"one line from the bottom is NOT the bottom", {89, 10, 100}, 10, true, 8, 1},
+        {"one line from the top is NOT the top", {1, 10, 100}, 10, true, 1, 1},
+        // proportion
+        {"half the document visible", {0, 50, 100}, 10, true, 0, 5},
+        {"half, scrolled to the end", {50, 50, 100}, 10, true, 5, 5},
+        {"half, scrolled halfway", {25, 50, 100}, 10, true, 3, 5},
+        // a 1-cell track and a 1-cell thumb still say something
+        {"a 1-cell track", {50, 10, 100}, 1, true, 0, 1},
+        {"a huge document keeps a 1-cell thumb", {0, 1, 100000}, 20, true, 0, 1},
+        // a `first` past the end is CLAMPED, not trusted — the window passes what the
+        // pointer implies, and the pointer can be anywhere
+        {"first past the end clamps to the bottom", {999, 10, 100}, 10, true, 9, 1},
+    };
+    for (const Case& c : cases) {
+      ScrollThumb t{-1, -1};
+      const bool drawn = scroll_thumb(c.e, c.track, t);
+      const bool ok = drawn == c.drawn && (!drawn || (t.offset == c.offset && t.length == c.length));
+      check(ok, std::string("thumb: ") + c.name + " → " + (drawn ? std::to_string(t.offset) + "+" + std::to_string(t.length) : "no bar"));
+      if (drawn) check(t.offset >= 0 && t.length >= 1 && t.offset + t.length <= c.track,
+                       std::string("thumb: ") + c.name + " stays inside the track");
+    }
+    // The inverse round-trips at both ends, which is what makes a drag land where the
+    // pointer is rather than one cell off.
+    const Widget::ScrollExtent e{0, 10, 100};
+    check(scroll_first_for_cell(e, 10, 0) == 0, "cell 0 of the track is the first line");
+    check(scroll_first_for_cell(e, 10, 9) == 90, "the last cell is the last scroll position");
+    check(scroll_first_for_cell(e, 10, -5) == 0 && scroll_first_for_cell(e, 10, 99) == 90,
+          "a cell outside the track clamps rather than running off either end");
+    check(scroll_first_for_cell({0, 10, 10}, 10, 5) == 0, "…and a document that fits has one position: 0");
+
+    // ---- the bar END TO END: the window draws it and drives the widget ----------------
+    // The point of the milestone as the user re-scoped it: a widget OPTS IN, the window
+    // owns the bar, and a widget that only REPORTS gets a bar that is not a handle.
+    {
+      Document doc;
+      for (int i = 0; i < 200; ++i) {
+        DocEntry e;
+        e.id = "b" + std::to_string(i);
+        e.text = "line " + std::to_string(i);
+        e.markdown = false;
+        doc.entries.push_back(e);
+      }
+      Windows windows;
+      windows.bind_document("session", &doc);
+      LayoutLoadReport lr;
+      const std::optional<Layout> lay = load_layout(
+          R"({"name":"bar","min_width":0,"min_height":0,"actions":{},"root":{"column":[
+             {"id":"t","content":"transcript:session","border":"single","focusable":true}]}})", lr);
+      check(lay && lr.clean(), "a one-window layout for the bar");
+      WindowStack s(*lay);
+      const Rect box{0, 0, 40, 12};
+      windows.prepare(s, box);
+      const Theme& th = *builtin_theme("default-dark");
+      Frame f(40, 12);
+      for (const ResolvedNode& rn : s.resolve(box)) windows.draw(rn, f, th);
+      Transcript& tr = windows.transcript("session");
+      tr.scroll_to_top();
+      windows.prepare(s, box);
+      for (const ResolvedNode& rn : s.resolve(box)) windows.draw(rn, f, th);
+      check(tr.top_line() == 0, "at the top");
+      // The thumb is IN the right border column, which the widget never sees.
+      const int track_x = 39;
+      bool thumb_drawn = false;
+      for (int y = 1; y < 11; ++y) if (f.at(track_x, y).text == "\xE2\x96\x88") thumb_drawn = true;
+      check(thumb_drawn, "the window drew a thumb in its right border column");
+      // A press near the BOTTOM of the track scrolls the transcript — the window
+      // commanding a widget that accepted scroll_to().
+      MouseEvent m;
+      m.kind = MouseEvent::Kind::Press;
+      m.button = 1;
+      m.x = track_x;
+      m.y = 10;
+      // Consumed by the WINDOW, not the text: the transcript would also return true for a
+      // press (it starts a drag-select), so "handled" alone proves nothing — what
+      // discriminates is that no selection began. Found by the negative control, which
+      // passed this line while the bar was inert.
+      check(windows.handle("t", m), "a press on the track is handled");
+      check(!tr.selection().active, "…by the WINDOW: no drag-selection started, which is what a press on the text would do");
+      windows.prepare(s, box);
+      check(tr.top_line() > 0, "…and it moved the transcript (" + std::to_string(tr.top_line()) + ")");
+      const std::size_t after_press = tr.top_line();
+      // A drag back up keeps driving it: the press captured the pointer.
+      m.kind = MouseEvent::Kind::Drag;
+      m.y = 1;
+      check(windows.handle("t", m), "a drag on the thumb keeps being consumed");
+      windows.prepare(s, box);
+      check(tr.top_line() < after_press, "…and dragging up scrolls up");
+      m.kind = MouseEvent::Kind::Release;
+      check(windows.handle("t", m), "the release ends the drag");
+      // A press one column INSIDE the track is the text's, not the bar's.
+      m.kind = MouseEvent::Kind::Press;
+      m.x = track_x - 1;
+      m.y = 5;
+      const std::size_t before_text = tr.top_line();
+      windows.handle("t", m);
+      windows.prepare(s, box);
+      check(tr.top_line() == before_text, "a press one column inside the track does not scroll: the bar owns ONE column");
+    }
+    // THE property, over a sweep rather than the two cases above — and stated with the
+    // limit the sweep itself found: it holds WHEN THERE IS ROOM TO SAY. A thumb with
+    // fewer than two cells of travel fills the track and touches both ends at once, and
+    // no arithmetic fixes that: with one spare cell there is nowhere to put "nearly the
+    // bottom". Writing the property without the guard would have been a claim the
+    // geometry cannot keep, which is worse than the weaker true one.
+    bool ends_exact = true, degenerate_seen = false;
+    std::string first_bad;
+    for (std::size_t total = 12; total <= 400; total += 7)
+      for (int track = 3; track <= 24; ++track)
+        for (std::size_t first = 0; first + 10 <= total; ++first) {
+          ScrollThumb t;
+          if (!scroll_thumb({first, 10, total}, track, t)) continue;
+          if (track - t.length < 2) { degenerate_seen = true; continue; }
+          const bool at_top = first == 0, at_bottom = first == total - 10;
+          if ((t.offset == 0) != at_top || (t.offset + t.length == track) != at_bottom) {
+            ends_exact = false;
+            if (first_bad.empty())
+              first_bad = " (first " + std::to_string(first) + "/" + std::to_string(total) + " on " +
+                          std::to_string(track) + " cells → " + std::to_string(t.offset) + "+" + std::to_string(t.length) + ")";
+          }
+        }
+    check(ends_exact, "wherever the thumb has 2+ cells of travel: it touches an end IF AND ONLY IF the view is at that end" + first_bad);
+    check(degenerate_seen, "…and the sweep did reach the too-short case the guard excludes, so the guard is not hiding an empty set");
+  }
+
   return report("rolltui layout_test");
 }

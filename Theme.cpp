@@ -92,6 +92,9 @@ Theme make_default_dark() {
   // invisible to it).
   set(Role::find_match, S(fg, find_bg));
   set(Role::find_current, S(bg, yellow, true));
+  // The thumb rides in the border column, so it is the border's brighter twin —
+  // legible against the track without becoming a second accent.
+  set(Role::scrollbar, S(muted, bg));
   return t;
 }
 
@@ -157,6 +160,7 @@ Theme make_default_light() {
   // palette's yellow.
   set(Role::find_match, S(fg, find_bg));
   set(Role::find_current, S(bg, yellow, true));
+  set(Role::scrollbar, S(muted, bg));
   return t;
 }
 
@@ -213,6 +217,9 @@ Theme make_mono() {
   // one — the same "inverted means here" this theme already uses for menu_selected.
   set(Role::find_match, S(n, n, false, false, true));
   set(Role::find_current, S(n, n, true, false, false, false, true));
+  // With no colour, the thumb is the glyph's job (a solid block against the border
+  // line); bold is what separates it from the track.
+  set(Role::scrollbar, S(n, n, true));
   return t;
 }
 

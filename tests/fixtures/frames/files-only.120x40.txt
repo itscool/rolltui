@@ -30,7 +30,7 @@
 │                                                                                     │                                │
 │                                                                                     │                                │
 ├ the live key table ─────────────────────────────────────────────────────────────────┴────────────────────────────────┤
-│ input:                                                                                                               │
+│ input:                                                                                                               █
 │   Enter                   send the line (always Enter)                                                               │
 │   Alt-Enter               insert a newline                                                                           │
 │   Backspace               erase before the caret (or the selection)                                                  │

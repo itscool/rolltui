@@ -480,6 +480,16 @@
           "light": "#5e4b0c"
         },
         "bold": true
+      },
+      "scrollbar": {
+        "fg": {
+          "dark": "#858d99",
+          "light": "#5f6670"
+        },
+        "bg": {
+          "dark": "#14161a",
+          "light": "#fafaf8"
+        }
       }
     }
   },

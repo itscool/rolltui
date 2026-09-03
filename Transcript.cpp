@@ -89,6 +89,17 @@ std::string spaces(int n) { return std::string(static_cast<std::size_t>(std::max
 
 }  // namespace
 
+std::string scroll_marker_text(std::size_t below, int max_width, bool ambiguous_wide) {
+  if (below == 0 || max_width <= 0) return {};
+  const std::string full = "\xE2\x96\xBC " + std::to_string(below) + " more ";
+  // The full form only when it costs at most HALF the width; then the count alone; then
+  // the arrow, which still says "there is more" and costs one cell.
+  if (unicode::display_width(full, ambiguous_wide) * 2 <= max_width) return full;
+  const std::string small = "\xE2\x96\xBC" + std::to_string(below);
+  if (unicode::display_width(small, ambiguous_wide) <= max_width) return small;
+  return max_width >= 1 ? "\xE2\x96\xBC" : "";
+}
+
 // ---- layout ----------------------------------------------------------------------
 
 EntryLayout Transcript::lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded) {
@@ -491,10 +502,9 @@ void Transcript::draw(Frame& frame, const Theme& theme) const {
       x += frame.put(x, y, gt, w, st, link);
     });
   }
-  const std::size_t below = lines_below();
-  if (below > 0 && text_area_.w >= 8 && area_.h > 0) {
-    std::string marker = "\xE2\x96\xBC " + std::to_string(below) + " more ";  // ▼
-    int mw = unicode::display_width(marker, amb);
+  const std::string marker = area_.h > 0 ? scroll_marker_text(lines_below(), text_area_.w, amb) : std::string();
+  if (!marker.empty()) {
+    const int mw = unicode::display_width(marker, amb);
     frame.put_text(right - mw, area_.y + area_.h - 1, marker, theme.style(Role::scroll_marker), mw, amb);
   }
 }
@@ -615,6 +625,23 @@ bool Transcript::copy_selection() {
 }
 
 void Transcript::begin_drag(int x, int y, bool shift, std::uint64_t now_ms, const Document& doc) {
+  // A click on the "▼ N more" marker scrolls to the bottom and re-engages follow. Until
+  // Phase 12 m5 it was painted and nothing more, so clicking it started a drag-SELECT —
+  // a control-shaped thing doing something unrelated, which is the same defect one rung
+  // down from a scrollbar you cannot grab. Checked before the fold summary because it
+  // sits on the last row, over whatever is there.
+  {
+    const std::string marker = scroll_marker_text(lines_below(), text_area_.w, opt_.ambiguous_wide);
+    if (!marker.empty() && area_.h > 0 && y == area_.y + area_.h - 1) {
+      const int mw = unicode::display_width(marker, opt_.ambiguous_wide);
+      const int right = text_area_.x + text_area_.w;
+      if (x >= right - mw && x < right) {
+        scroll_to_bottom();
+        click_ = {};
+        return;
+      }
+    }
+  }
   std::optional<TextPos> pos = hit(x, y);
   if (!pos) return;
   // A click on a summary line toggles the fold and selects nothing.

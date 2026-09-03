@@ -13,7 +13,7 @@
 │ │                                  │             │ Event, table-tested              │ │                              │
 │ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
 │ │ colour downgrade    │   Right                   move one grapheme right                    │                       │
-│ │ Wrap engine         │   Ctrl-Left, Alt-Left     move one word left                         │                       │
+│ │ Wrap engine         │   Ctrl-Left, Alt-Left     move one word left                         █                       │
 │ │                     │   Ctrl-Right, Alt-Right   move one word right                        │                       │
 │ │ Windows, layers, pla│   Home                    start of the line (scrolls when empty)     │                       │
 │ │ abs/rel per axis), f│   End                     end of the line (scrolls when empty)       │                       │

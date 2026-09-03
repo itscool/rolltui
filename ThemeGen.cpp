@@ -171,6 +171,7 @@ Generated generate(std::uint64_t seed, Ruleset ruleset, double chaos, const GenO
   // would emit a theme that fails its own promise.
   set(Role::find_match, S(fg, find_wash));
   set(Role::find_current, S(bg, a[2], true));
+  set(Role::scrollbar, S(muted, bg));
 
   // ---- the repair loop: fix until the promised badges hold, or give up honestly ----
   Generated out;

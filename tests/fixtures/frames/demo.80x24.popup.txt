@@ -4,7 +4,7 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled      ╭ help ────────────────────────────────────────╮1              │
-│ │ wrapped     │ input:                                       │               │
+│ │ wrapped     │ input:                                       █               │
 │ │ lines)      │   Enter                   send the line      │lor            │
 │ │ Theme (roles│ (always Enter)                               │               │
 │ │ → styles,   │   Alt-Enter               insert a newline   │               │

@@ -14,7 +14,7 @@
 │ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
 │ │ colour downgrade    │   Right         move one grapheme right                              │                       │
 │ │ Wrap engine         │   Alt-B         move one word left                                   │                       │
-│ │                     │   Alt-F         move one word right                                  │                       │
+│ │                     │   Alt-F         move one word right                                  █                       │
 │ │ Windows, layers, pla│   Home, Ctrl-A  start of the line (scrolls when empty)               │                       │
 │ │ abs/rel per axis), f│   End, Ctrl-E   end of the line (scrolls when empty)                 │                       │
 │ │                     │   Up            up a row, or the previous history entry              │                       │

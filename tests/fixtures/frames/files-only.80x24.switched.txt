@@ -18,7 +18,7 @@
 │   Alt-C            copy the selection again                                  │
 │   Escape           clear the selection                                       │
 │ app:                                                                         │
-│   Ctrl-J      put the kettle on                                              │
+│   Ctrl-J      put the kettle on                                              █
 │ editor:                                                           ▼ 17 more  │
 └──────────────────────────────────────────────────────────────────────────────┘
  default-dark  kettle  80x24  line 173/191  follow  truecolor  focus:kettle_keys

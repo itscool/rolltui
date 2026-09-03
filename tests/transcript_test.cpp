@@ -430,6 +430,42 @@ int main() {
     check(tr.text_area().x == 1 && tr.text_area().w == 1, "an inset of 1 on a 3-wide area leaves one column");
   }
 
+  // ---- the "▼ N more" marker (Phase 12 m5) -------------------------------------------
+  // KEPT alongside the scrollbar, not replaced by it (the user, 2026-09-03): the marker
+  // is the NON-GRAPHICAL signal and the bar is the positional one. What the bar buys is
+  // permission for the marker to get cheaper when narrow.
+  {
+    check(scroll_marker_text(0, 40, false).empty(), "nothing below → no marker at all");
+    check(scroll_marker_text(57, 78, false) == "\xE2\x96\xBC 57 more ", "with room, the full form");
+    check(scroll_marker_text(198, 18, false) == "\xE2\x96\xBC" "198",
+          "at 18 cells the full form would eat the row, so the count alone [" + scroll_marker_text(198, 18, false) + "]");
+    check(scroll_marker_text(198, 3, false) == "\xE2\x96\xBC", "and at 3 cells the arrow alone still says there is more");
+    check(scroll_marker_text(198, 0, false).empty(), "at 0 cells, nothing (the standing degenerate-size rule)");
+    // Never wider than it was given — the property that stops it writing outside the area.
+    bool fits = true;
+    for (std::size_t below = 1; below < 5000; below += 7)
+      for (int w = 1; w <= 40; ++w)
+        if (unicode::display_width(scroll_marker_text(below, w, false), false) > w) fits = false;
+    check(fits, "over every (below, width): the marker never exceeds the width it was given");
+
+    // A click on it scrolls to the bottom and re-engages follow. Until m5 this started a
+    // drag-SELECT: a control-shaped thing doing something unrelated.
+    Document doc;
+    for (int i = 0; i < 40; ++i) doc.entries.push_back(verbatim(("m" + std::to_string(i)).c_str(), "line " + std::to_string(i)));
+    Transcript tr;
+    tr.layout(doc, {0, 0, 40, 6}, opt);
+    tr.scroll_to_top();
+    tr.layout(doc, {0, 0, 40, 6}, opt);
+    check(tr.top_line() == 0 && !tr.scroll().follow, "scrolled to the top, not following");
+    const std::string marker = scroll_marker_text(tr.lines_below(), 40, false);
+    check(!marker.empty(), "…and the marker is showing (" + marker + ")");
+    const int mw = static_cast<int>(unicode::display_width(marker, false));
+    tr.handle(mouse(MouseEvent::Kind::Press, 40 - mw, 5), doc, 1000);
+    tr.layout(doc, {0, 0, 40, 6}, opt);
+    check(tr.scroll().follow && tr.lines_below() == 0, "a click on the marker scrolls to the bottom and re-engages follow");
+    check(!tr.selection().active, "…and selects nothing — it is a control, not text");
+  }
+
   // ---- FIND (Phase 12 m4) ------------------------------------------------------------
   // Matches live in LOGICAL text, so every assertion below is on the model except the
   // two that are about what a cell got painted — which is the only place the wrap
