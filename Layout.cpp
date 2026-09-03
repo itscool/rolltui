@@ -86,7 +86,10 @@ constexpr KindRow kKinds[] = {
     {WidgetKind::Rows, "rows", SourceRule::Required, "a row source the host binds"},
     {WidgetKind::Text, "text", SourceRule::Optional, "the literal text"},
     {WidgetKind::File, "file", SourceRule::Required, "a path"},
-    {WidgetKind::Help, "help", SourceRule::Forbidden, ""},
+    // Phase 11 m5b: `help` takes an OPTIONAL scope. Bare `help` is every scope the host
+    // set, `help:app` is that one — so which keys a window lists is the LAYOUT's, which
+    // was the last content a host still decided on its own (`Windows::set_help`).
+    {WidgetKind::Help, "help", SourceRule::Optional, "one key scope, or every one when empty"},
     // `custom` left this table in Phase 11 m3: a host's own window is a REGISTERED KIND
     // now (rung 2), so there is one mechanism instead of a kind that meant "ask the host".
 };
@@ -160,6 +163,11 @@ SourceRule content_source_rule(const Content& c) {
   return h ? h->rule : SourceRule::Required;
 }
 std::string_view source_describes(WidgetKind k) { return row_of(k).source_is; }
+std::string content_source_describes(const Content& c) {
+  if (c.kind != WidgetKind::Registered) return std::string(source_describes(c.kind));
+  const HostKind* h = host_kind(c.registered_name);
+  return h ? h->source_is : std::string();
+}
 
 // Rung 1 is checked FIRST and the refusal says so by name: the library's own kinds may
 // never be shadowed, and this is one of the two independent guards (the other is that
@@ -244,9 +252,31 @@ std::optional<Content> parse_content(std::string_view text, std::string* why, Co
   return c;
 }
 
+// The same two rungs as parse_content, in the same order, with the source carried
+// through unjudged — see Layout.hpp for why a design tool needs that and a loader does not.
+std::optional<Content> content_for_kind(std::string_view kind_name, std::string source) {
+  Content c;
+  c.source = std::move(source);
+  if (std::optional<WidgetKind> k = widget_kind_from_name(kind_name)) {
+    c.kind = *k;
+    return c;
+  }
+  if (host_kind(kind_name)) {
+    c.kind = WidgetKind::Registered;
+    c.registered_name = std::string(kind_name);
+    return c;
+  }
+  return std::nullopt;
+}
+
 std::string content_to_string(const Content& c) {
   std::string s(content_kind_name(c));
-  if (content_source_rule(c) != SourceRule::Forbidden) s += ":" + c.source;
+  // An OPTIONAL source that is empty writes no colon at all: `help` and `text` are then
+  // spelled the way every file already spells them, and both forms parse to the same
+  // Content, so this is one spelling rather than two. A REQUIRED source that is empty
+  // keeps its colon — `transcript:` is a window saying out loud that it needs a name.
+  const SourceRule rule = content_source_rule(c);
+  if (rule == SourceRule::Required || (rule == SourceRule::Optional && !c.source.empty())) s += ":" + c.source;
   return s;
 }
 

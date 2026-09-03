@@ -529,6 +529,9 @@ int main() {
                           Case{"text:", WidgetKind::Text, ""},
                           Case{"file:/tmp/x.md", WidgetKind::File, "/tmp/x.md"},
                           Case{"help", WidgetKind::Help, ""},
+                          // Phase 11 m5b: `help` takes an OPTIONAL scope, so which keys a
+                          // window lists is the layout's and not only the host's.
+                          Case{"help:app", WidgetKind::Help, "app"},
 
                           Case{"text:a:b", WidgetKind::Text, "a:b"}}) {
       std::string why;
@@ -537,14 +540,22 @@ int main() {
             std::string("'") + c.text + "' parses as " + std::string(widget_kind_name(c.kind)) + " + '" + c.source + "'" +
                 (got ? "" : " (" + why + ")"));
     }
-    check(content_to_string({WidgetKind::Rows, "status"}) == "rows:status" && content_to_string({WidgetKind::Help, ""}) == "help",
-          "content_to_string is the inverse (and never writes help a source)");
+    check(content_to_string({WidgetKind::Rows, "status"}) == "rows:status" && content_to_string({WidgetKind::Help, ""}) == "help" &&
+              content_to_string({WidgetKind::Help, "app"}) == "help:app" && content_to_string({WidgetKind::Text, ""}) == "text",
+          "content_to_string is the inverse, and an OPTIONAL source that is empty writes no colon — one spelling, not two");
+    check(content_to_string({WidgetKind::Rows, ""}) == "rows:",
+          "…while a REQUIRED source that is empty keeps its colon: the window says out loud that it needs a name");
 
     // Every way it can be wrong SAYS SO, by name.
+    // A FORBIDDEN source is now only a registered kind's rule to state — no library kind
+    // forbids one since m5b gave `help` an optional scope — so the case is tested through
+    // one, registered and cleared right here so nothing after it inherits the vocabulary.
+    std::string kind_why;
+    check(register_widget_kind("modal", SourceRule::Forbidden, "", &kind_why), "a host kind that takes no source registers [" + kind_why + "]");
     struct Bad { const char* text; const char* names; };
     for (const Bad& b : {Bad{"dialog:x", "'dialog' is not a widget kind"},
                          Bad{"rows", "'rows' needs a source"},
-                         Bad{"help:keys", "'help' takes no source"},
+                         Bad{"modal:x", "'modal' takes no source"},
                          Bad{"", "'' is not a widget kind"}}) {
       std::string why;
       const bool bad = !parse_content(b.text, &why);
@@ -555,6 +566,7 @@ int main() {
           "a bare Phase 9 slot name that is also a kind name says what to write instead: " + why);
     check(!parse_content("status", &why) && why.find("rows:status") != std::string::npos,
           "…and one that is not: " + why);
+    clear_registered_widget_kinds();
   }
   {
     // The Phase 9 slot names, migrated once by the loader.
@@ -590,15 +602,18 @@ int main() {
     check(l->base.focus == "input" && l->base.root.children[1].id == "input", "…so the layout's own focus id still names a window");
 
     LayoutLoadReport rep2;
-    const std::optional<Layout> l2 = load_layout(R"({"name":"bad","root":{"column":[{"content":"dialog:x"},{"content":"help:keys"}]}})", rep2);
+    std::string modal_why;
+    register_widget_kind("modal", SourceRule::Forbidden, "", &modal_why);  // see the parse block above
+    const std::optional<Layout> l2 = load_layout(R"({"name":"bad","root":{"column":[{"content":"dialog:x"},{"content":"modal:x"}]}})", rep2);
     // Phase 11 m3 moved ONE of these. A forbidden source is a fact about the string and
     // is still the loader's to name; an UNKNOWN KIND is not, because rung 2 of the
     // vocabulary belongs to a host that may not have registered yet — the library's own
     // shipped `default` layout names roll's `approval`, so judging it here would abort
     // the build. Windows reports it instead, where the registry actually is (below).
     check(l2 && !rep2.clean() && rep2.bad_values.size() == 1 &&
-              rep2.bad_values[0].find("root.column[1].content: 'help' takes no source") != std::string::npos,
+              rep2.bad_values[0].find("root.column[1].content: 'modal' takes no source") != std::string::npos,
           "a forbidden source is a bad value named by PATH, and the layout still loads");
+    clear_registered_widget_kinds();
     std::string dwhy;
     ContentProblem dwhat = ContentProblem::None;
     check(!parse_content("dialog:x", &dwhy, &dwhat) && dwhat == ContentProblem::UnknownKind &&

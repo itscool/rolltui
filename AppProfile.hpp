@@ -24,6 +24,10 @@
 //     way to resolve `menu:main` as roll is to be handed roll's.
 //   - actions: what the app's screens declare, so a menu item naming one shows its key
 //     rather than being reported as undeclared.
+//   - help: the app's key SCOPES, with its lead and note lines. Added with Phase 11 m5b,
+//     which made `help:<scope>` a thing a layout may write: without this the studio would
+//     preview roll's help window listing the STUDIO's scopes, which is finding 2 again in
+//     the one window the profile did not reach.
 //   - min sizes: the app's defaults, which a NEW layout starts from (milestone 5) — the
 //     one place inheriting is right, and it is right because it is inherited from the
 //     TARGET rather than from whatever screen happened to be open.
@@ -79,6 +83,16 @@ struct AppProfile {
     std::string json;  // the file's text, verbatim
     bool operator==(const MenuFile&) const = default;
   };
+  // What a `help` window in this app lists (Phase 11 m5b). `scopes` is also what a
+  // `help:<scope>` window is judged against, so a scope the app does not have previews as
+  // the same named problem it would be in the app itself.
+  struct Help {
+    std::string lead, note;
+    std::vector<std::string> scopes;
+    bool operator==(const Help&) const = default;
+  };
+  Help help;
+
   std::vector<Document> documents;
   std::vector<RowSource> rows;
   std::vector<std::string> submits;  // input targets

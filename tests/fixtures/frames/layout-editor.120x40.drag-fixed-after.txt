@@ -17,15 +17,15 @@
 │ │ slots)        │             │               │ │                   │ Delete this node                               │
 │ │ Markdown      │ build       │ single header │ │                   │ Popups                                       ▸ │
 │ │ block         │             │ over md4c +   │ │                   │ Actions this screen emits                    ▸ │
-│ │ renderer      │             │ wrap          │ │                   │ Undo                                    Ctrl-Z │
-│ │ (blocks →     │             │               │ │                   │ Redo                                    Ctrl-Y │
-│ │ styled        │             │               │ │                   │ Load layout                                  ▸ │
-│ │ wrapped       │             │               │ │                   │ Save layout file as (layouts/<name>.json):     │
-│ │ lines)        │             │               │ │                   │ Reset to the loaded layout…                    │
-│ │ Theme (roles  │ build       │ single header │ │                   │                                                │
-│ │ → styles,     │             │               │ │                   │                                                │
-│ │ JSON loader,  │             │               │ │                   │                                                │
-│ │ built-ins)    │             │               │ │                   │                                                │
+│ │ renderer      │             │ wrap          │ │                   │ Minimum width this screen needs: 60            │
+│ │ (blocks →     │             │               │ │                   │ Minimum height this screen needs: 8            │
+│ │ styled        │             │               │ │                   │ Focused window                         input ▸ │
+│ │ wrapped       │             │               │ │                   │ Undo                                    Ctrl-Z │
+│ │ lines)        │             │               │ │                   │ Redo                                    Ctrl-Y │
+│ │ Theme (roles  │ build       │ single header │ │                   │ New layout, from an empty screen (name):       │
+│ │ → styles,     │             │               │ │                   │ Load layout                                  ▸ │
+│ │ JSON loader,  │             │               │ │                   │ Save layout file as (layouts/<name>.json):     │
+│ │ built-ins)    │             │               │ │                   │ Reset to the loaded layout…                    │
 │ └───────────────┴─────────────┴───────────────┘ │                   │                                                │
 │                                                 │                   │                                                │
 │ Here is the function you asked for:             │                   │                                                │

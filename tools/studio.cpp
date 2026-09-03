@@ -628,7 +628,23 @@ struct App {
     // the studio's own, exactly as before.
     leditor.set_sources(profile ? profile_contents(*profile)
                                 : std::vector<std::string>{"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
+    // …and so are the offered KINDS. Under a profile they are the library's plus the
+    // TARGET's registered ones — never the studio's own `editor`/`confirm`/`report`,
+    // which the app being authored for cannot build. That distinction is why this is not
+    // simply `widget_kind_names()`: the registry is process-wide, so it holds both hosts'
+    // kinds at once, and offering all of them would be Phase 11's finding 1 one level up
+    // (a tool advertising what the target cannot do).
+    std::vector<std::string> kinds;
+    for (WidgetKind k : widget_kinds()) kinds.emplace_back(widget_kind_name(k));
+    if (profile)
+      for (const AppProfile::Kind& k : profile->kinds) kinds.push_back(k.name);
+    else
+      for (const char* own : {"editor", "confirm", "report"}) kinds.emplace_back(own);
+    leditor.set_kinds(std::move(kinds));
     leditor.set_menus(windows.menu_names());
+    // The only thing a NEW layout inherits (Phase 11 m5): the TARGET's thresholds, which
+    // are a fact about the app being designed for — never the open screen's.
+    leditor.set_default_min(profile ? profile->min_width : 0, profile ? profile->min_height : 0);
     editor_open = true;
     editor_mode = EditorMode::Layout;
     stack.push(editor_popup("layout editor"));

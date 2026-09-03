@@ -257,6 +257,11 @@ std::optional<WidgetKind> widget_kind_from_name(std::string_view name);
 enum class SourceRule : std::uint8_t { Required, Optional, Forbidden };
 SourceRule source_rule(WidgetKind k);
 SourceRule content_source_rule(const Content& c);  // the one accessor, registered kinds included
+// What a content's source NAMES, in words — the one accessor, registered kinds included
+// (a registered kind's words are the ones its host gave `register_kind`). BY VALUE, not a
+// view, because a registered kind's text lives in the registry and a later registration
+// may move it; `source_describes(WidgetKind)` stays a view because its text is constexpr.
+std::string content_source_describes(const Content& c);
 
 // ---- rung 2: the kinds a HOST registers ------------------------------------------------
 // Registration goes through `Windows::register_kind` (Widgets.hpp), which registers the
@@ -291,6 +296,13 @@ enum class ContentProblem : std::uint8_t { None, UnknownKind, MissingSource, For
 // kind is in neither rung, a required source is missing, or `help` was given one.
 std::optional<Content> parse_content(std::string_view text, std::string* why = nullptr, ContentProblem* what = nullptr);
 std::string content_to_string(const Content& c);
+// A content built from a kind NAME and a source, resolved through the same two rungs as
+// `parse_content` but WITHOUT judging the source. That difference is the whole reason it
+// exists: a DESIGN TOOL has to be able to hold — and repair — a window whose source is
+// missing or forbidden, which `parse_content` correctly refuses to return at all. nullopt
+// only when the name is in neither rung. It is also the one place that knows to fill
+// `registered_name`, so a tool never assembles a `Content` field by field.
+std::optional<Content> content_for_kind(std::string_view kind_name, std::string source = {});
 
 // Phase 9's bare slot names, mapped ONCE by the loader (see the header comment).
 // nullopt when `legacy` is not one of them.

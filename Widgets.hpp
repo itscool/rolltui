@@ -234,7 +234,11 @@ class Windows {
   // What a `help` window renders, from the LIVE bindings: an optional leading line,
   // the scopes to list in order, an optional trailing note.
   void set_help(std::string lead, std::vector<std::string> scopes, std::string note);
-  std::string help_text() const;  // the same text, for a host's own `//help`
+  // The scopes an app HAS. Which of them a `help` window lists is the layout's (Phase 11
+  // m5b: `help:app`), so a window can be judged against this rather than drawing empty.
+  const std::vector<std::string>& help_scopes() const { return help_scopes_; }
+  // Every scope the host set, or just one (`help:<scope>`). Also a host's own `//help`.
+  std::string help_text(std::string_view scope = {}) const;
 
   // ---- the frame ----
   void set_env(WidgetEnv env);

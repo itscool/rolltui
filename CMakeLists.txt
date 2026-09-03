@@ -185,6 +185,16 @@ target_link_libraries(rolltui-studio PRIVATE rolltui)
 target_compile_options(rolltui-studio PRIVATE -Wall -Wextra)
 target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
 
+# Phase 11 m6: THE THIRD HOST — a text-mode painting app with no transcript and no
+# input, whose whole interaction is one registered widget kind. It is the phase's proof
+# target: the studio authors its screen from its PROFILE alone, and this binary runs the
+# file. `--frame WxH` prints one frame (the studio's convention); `--stroke X,Y-X,Y`
+# synthesises a press, the drags between and a release, so a canvas can be shown to
+# receive them with no terminal.
+add_executable(rolltui-paint tools/paint.cpp)
+target_link_libraries(rolltui-paint PRIVATE rolltui)
+target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
+
 # Milestone 14: the theme editor's model — every role reachable, live preview, commit,
 # cancel, undo/redo, the palette, the written-back pair object — driven without a
 # terminal.
@@ -216,6 +226,17 @@ add_dependencies(rolltui-studio-golden-test rolltui-studio)
 # of it. Its controls are what carry the weight: no source names the screen, the chord
 # comes only from the bindings file, an undeclared action shows no shortcut, and a file
 # written after the build opens in it.
+# Phase 11 milestone 6 — THE PHASE'S PROOF, one level up from the files-only test: the
+# studio, driven through its own design editor by keystrokes and knowing the target only
+# from `rolltui-paint --profile`, authors a three-window screen for an app it is not,
+# saves it, and a second process renders it. Its controls are the pair: drop --app and the
+# identical keystrokes build nothing, and no source names the authored screen.
+add_rolltui_test(rolltui-authored-screen-test tests/authored_screen_test.cpp)
+target_compile_definitions(rolltui-authored-screen-test PRIVATE
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>"
+  ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint>")
+add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
+
 add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")

@@ -51,6 +51,7 @@
 
 #include "rolltui/Bindings.hpp"
 #include "rolltui/Json.hpp"
+#include "rolltui/Layout.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui_test.hpp"
 
@@ -230,6 +231,12 @@ int main(int argc, char** argv) {
       // through the kind picker alone — and DRAWN in the same frame.
       {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter\""},
       {"layout-editor.120x40.actions", "--frame 120x40 --theme default-dark --keys \"F6 Type:actions Enter End Enter Type:app.zoom Enter Escape Type:save Enter Type:three Enter Escape Type:actions Enter\""},
+      // Phase 11 m5: CREATING a layout, not inheriting one. Started from the shipped
+      // `default` — five actions, four popups, min 60x8 — so what the skeleton does NOT
+      // carry is visible in the same frame that shows what it does.
+      // The SAVE is deliberately not in this case: the written file is asserted below in
+      // its own run, and a golden that names a scratch path is a golden about the machine.
+      {"layout-editor.120x40.new", "--frame 120x40 --theme default-dark --keys \"F6 Type:new_layout Enter Type:kiosk Enter\""},
       {"layout-editor.120x40.drag-fixed-before", "--frame 120x40 --theme default-dark --layout panel-left --keys \"F6 Click 31,10 Drag 20,10 Release\""},
       {"layout-editor.120x40.drag-fixed-after", "--frame 120x40 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-right.json' --keys \"F6 Click 65,10 Drag 50,10 Release\""},
       // milestone 17 (bindings as data): a vim-ish file, the help rendered from it, the
@@ -251,7 +258,7 @@ int main(int argc, char** argv) {
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
-  std::string le_widget, le_actions;
+  std::string le_widget, le_actions, le_new;
   std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
   bool tiny_failed = false;
   for (const Case& c : cases) {
@@ -330,6 +337,7 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "layout-editor.120x40.save") le_save = out;
     if (std::string(c.name) == "layout-editor.120x40.add-widget") le_widget = out;
     if (std::string(c.name) == "layout-editor.120x40.actions") le_actions = out;
+    if (std::string(c.name) == "layout-editor.120x40.new") le_new = out;
     if (std::string(c.name) == "layout-editor.120x40.drag-fixed-before") le_fixed_before = out;
     if (std::string(c.name) == "layout-editor.120x40.drag-fixed-after") le_fixed_after = out;
     if (std::string(c.name) == "keys.120x40.help-default") kh_default = out;
@@ -573,6 +581,63 @@ int main(int argc, char** argv) {
       const std::string saved = read_file(scratch + "/p/layouts/three.json", ok);
       check(ok && saved.find("\"app.zoom\"") != std::string::npos && saved.find("\"app.help\"") != std::string::npos,
             "…and saving writes it into the layout file's \"actions\", beside the ones it was loaded with");
+    }
+    // ---- Phase 11 m5: creating a layout, not inheriting one ----
+    // The Done-when is asserted against the WRITTEN FILE, not the frame, because the file
+    // is the artifact the target app reads — and because the measurement that scoped this
+    // milestone was about a file: stripping `no-panel` to one window and saving it as
+    // `myapp` produced roll's five `app.*` actions, four popups pointing at roll's own
+    // composites, and `no-panel`'s min sizes, none of them the author's.
+    check(le_new.find("new layout 'kiosk'") != std::string::npos && le_new.find("one window, no popups") != std::string::npos &&
+              le_new.find("layout editor \xE2\x80\xA2 main") != std::string::npos && le_new.find("\xE2\x94\x8C transcript") == std::string::npos,
+          "New layout replaces the whole screen with the skeleton — the transcript window of the layout it was created from is gone");
+    {
+      // The same thing again with a save, in its own preset directory: the file is the
+      // assertion, and keeping it out of the golden keeps a scratch path out of the frame.
+      std::filesystem::create_directories(scratch + "/p6");
+      int rc = 0;
+      run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+              "/session/demo.md' --frame 100x28 --theme default-dark --presets '" + scratch +
+              "/p6' --keys \"F6 Type:new_layout Enter Type:kiosk Enter Type:save Enter Type:kiosk Enter\" 2>/dev/null",
+          rc);
+      bool ok = false;
+      const std::string saved = read_file(scratch + "/p6/layouts/kiosk.json", ok);
+      check(rc == 0 && ok, "the save-as wrote layouts/kiosk.json");
+      check(ok && saved.find("\"actions\": {}") != std::string::npos,
+            "the file declares NO actions — explicitly, since an ABSENT \"actions\" key would make the loader fill in the shipped default's five");
+      check(ok && saved.find("\"popups\"") == std::string::npos && saved.find("\"min_width\"") == std::string::npos &&
+                saved.find("\"min_height\"") == std::string::npos,
+            "…no popups, and no size threshold: the layout it was created FROM had four popups and min 60x8");
+      check(ok && saved.find("\"app.help\"") == std::string::npos && saved.find("approval") == std::string::npos &&
+                saved.find("transcript") == std::string::npos,
+            "…and not one name from the screen that was open — it is a skeleton, not a stripped copy");
+      check(ok && saved.find("\"content\": \"text:\"") != std::string::npos && saved.find("\"focus\": \"main\"") != std::string::npos,
+            "what it DOES have is one window naming nothing a host must have bound, and the focus on it");
+      // It is a layout, not just a file: the loader takes it back clean.
+      rolltui::LayoutLoadReport rep;
+      const std::optional<rolltui::Layout> back = rolltui::load_layout(saved, rep);
+      check(back && rep.clean() && rep.migrated.empty() && back->actions.empty() && back->popups.empty(),
+            "…and it loads clean with nothing migrated in — a fill-in would have shown up here as five actions [" + rep.error + "]");
+    }
+    {
+      // THE ONE PLACE INHERITING IS RIGHT, and it inherits from the TARGET: a profile's
+      // min sizes are a fact about the app being designed for. Written here by hand rather
+      // than generated, because the library has no host to ask — that is the whole point
+      // of the format.
+      std::filesystem::create_directories(scratch + "/p7");
+      std::ofstream(scratch + "/app.json", std::ios::binary)
+          << R"({"app":"kiosk-app","min_width":40,"min_height":12,"actions":{},"kinds":[],"sources":{},"menus":[]})";
+      int rc = 0;
+      run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+              "/session/demo.md' --frame 100x28 --theme default-dark --presets '" + scratch + "/p7' --app '" + scratch +
+              "/app.json' --keys \"F6 Type:new_layout Enter Type:kiosk Enter Type:save Enter Type:kiosk Enter\" 2>/dev/null",
+          rc);
+      bool ok = false;
+      const std::string saved = read_file(scratch + "/p7/layouts/kiosk.json", ok);
+      check(rc == 0 && ok && saved.find("\"min_width\": 40") != std::string::npos && saved.find("\"min_height\": 12") != std::string::npos,
+            "under --app a new layout starts at the APP's thresholds — the one thing it inherits, and from the target");
+      check(ok && saved.find("\"actions\": {}") != std::string::npos && saved.find("\"popups\"") == std::string::npos,
+            "…and nothing else came with them");
     }
     // ---- milestone 15: --check, --generate, the Check popup ----
     check(ed_check.find("\xE2\x95\xAD report ") != std::string::npos && ed_check.find("badges: dark") != std::string::npos && ed_check.find("roles (fg on bg") != std::string::npos,

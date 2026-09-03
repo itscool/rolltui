@@ -47,6 +47,9 @@ std::string LayoutEditor::unique_id(const std::string& base) const {
 // ---- construction ---------------------------------------------------------------------
 
 LayoutEditor::LayoutEditor() {
+  // The library's own table until a host says otherwise: a tool that has been told
+  // nothing about a target app can only honestly offer the kinds every host has.
+  for (WidgetKind k : widget_kinds()) kinds_.emplace_back(widget_kind_name(k));
   current_ = *builtin_layout("default");
   undo_.reset(current_);
   select_next();
@@ -68,12 +71,41 @@ void LayoutEditor::set_sources(std::vector<std::string> contents) {
   sync_content_fields();
 }
 
+void LayoutEditor::set_kinds(std::vector<std::string> names) {
+  kinds_ = std::move(names);
+  std::vector<MenuItem> opts;
+  for (const std::string& n : kinds_) opts.push_back(MenuItem::action(n, n));
+  menu_.set_options("kind", std::move(opts));
+  sync_content_fields();
+}
+
 void LayoutEditor::set_menus(std::vector<std::string> names) {
   menus_ = std::move(names);
   std::vector<MenuItem> opts;
   for (const std::string& n : menus_) opts.push_back(MenuItem::action(n, n));
   menu_.set_options("menu_file", std::move(opts));
   sync_content_fields();
+}
+
+void LayoutEditor::set_default_min(int width, int height) {
+  default_min_w_ = std::max(0, width);
+  default_min_h_ = std::max(0, height);
+}
+
+// The whole of "not inheriting one" is here, and it is deliberately a value rather than a
+// series of edits to the open layout: there is nothing to forget to clear.
+Layout LayoutEditor::skeleton(std::string name) const {
+  Layout l;
+  l.name = std::move(name);
+  l.min_width = default_min_w_;   // the TARGET's — see the header. Everything else is empty.
+  l.min_height = default_min_h_;
+  Node w = Node::window("text:");  // the one kind that names nothing a host must have bound
+  w.id = "main";
+  w.border = Border::Single;
+  w.focusable = true;
+  l.base.root = std::move(w);
+  l.base.focus = "main";
+  return l;
 }
 
 void LayoutEditor::set_layouts(std::vector<std::string> names) {
@@ -124,15 +156,19 @@ void LayoutEditor::rebuild_menu() {
   std::vector<MenuItem> borders, anchors, kinds, menus, loads;
   for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
-  for (WidgetKind k : widget_kinds()) kinds.push_back(MenuItem::action(std::string(widget_kind_name(k)), std::string(widget_kind_name(k))));
+  for (const std::string& n : kinds_) kinds.push_back(MenuItem::action(n, n));
   for (const std::string& n : menus_) menus.push_back(MenuItem::action(n, n));
   for (const std::string& n : layouts_) loads.push_back(MenuItem::action(n, n));
-  InputSpec dim, size, name, text;
+  InputSpec dim, size, name, text, threshold;
   dim.type = InputType::Dim;
   size.type = InputType::Size;
   name.type = InputType::Name;
   text.type = InputType::Text;
   text.optional = true;  // a window may have no title
+  threshold.type = InputType::Int;
+  threshold.min = 0;
+  threshold.max = 500;
+  threshold.hint = "0 = this screen states none";
   std::vector<MenuItem> popups;
   for (const Layer& p : current_.popups) {
     popups.push_back(MenuItem::submenu("popup." + p.id, p.id,
@@ -153,7 +189,11 @@ void LayoutEditor::rebuild_menu() {
        MenuItem::toggle("focusable", "Focusable", false), MenuItem::action("delete", "Delete this node"),
        MenuItem::submenu("popups", "Popups", std::move(popups)),
        MenuItem::submenu("actions", "Actions this screen emits", action_items()),
+       MenuItem::input("min_width", "Minimum width this screen needs", threshold),
+       MenuItem::input("min_height", "Minimum height this screen needs", threshold),
+       MenuItem::choice("focus", "Focused window", {}, ""),
        MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
+       MenuItem::input("new", "New layout, from an empty screen (name)", name),
        MenuItem::choice("load", "Load layout", std::move(loads), ""), MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name),
        MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6")});
   menu_.set_root(std::move(root));
@@ -166,7 +206,10 @@ LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) {
   const std::size_t colon = n->content.find(':');
   p.kind_text = n->content.substr(0, colon);
   if (colon != std::string::npos) p.source = n->content.substr(colon + 1);
-  p.kind = widget_kind_from_name(p.kind_text);
+  // Through the registry's own two rungs, and deliberately not through parse_content: a
+  // window whose source is missing or forbidden is exactly what this editor exists to
+  // repair, and it cannot repair what it refuses to hold (Layout.hpp, content_for_kind).
+  p.content = content_for_kind(p.kind_text, p.source);
   return p;
 }
 
@@ -178,12 +221,30 @@ std::string LayoutEditor::base_source() const {
   return parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_)).source;
 }
 
-// A kind and a source in, `kind[:source]` out — through content_to_string, so the one
-// rule about which kinds carry a colon lives in Layout.cpp and not here as well.
-void LayoutEditor::set_content(WidgetKind kind, const std::string& source) {
+// The source a change of kind CARRIES OVER, which is the source as it stood before the
+// preview began — with one named exception. Every kind's source is a BOUND NAME (a
+// document, a row source, a path, a literal) except `help`, whose source is a key SCOPE,
+// so carrying one into `help` produces a window that draws nothing and reports itself.
+// There is no Forbidden case to handle here: `content_to_string` already drops a source a
+// kind may not have, so that rule lives in Layout.cpp once.
+std::string LayoutEditor::carried_source(std::string_view kind_name) const {
+  return kind_name == widget_kind_name(WidgetKind::Help) ? std::string() : base_source();
+}
+
+// A kind NAME and a source in, `kind[:source]` out — through content_to_string, so the
+// one rule about which kinds carry a colon lives in Layout.cpp and not here as well.
+// A name in neither rung of the registry writes nothing and says so: the picker offers
+// what a target can build, and a kind that does not exist is not one of them.
+bool LayoutEditor::set_content(const std::string& kind_name, const std::string& source) {
   Node* n = sel_node();
-  if (!n || !n->is_window()) return;
-  n->content = content_to_string({kind, source});
+  if (!n || !n->is_window()) return false;
+  const std::optional<Content> c = content_for_kind(kind_name, source);
+  if (!c) {
+    status_ = "'" + kind_name + "' is not a widget kind this app can build";
+    return false;
+  }
+  n->content = content_to_string(*c);
+  return true;
 }
 
 // Which field owns the source, and what it accepts, are functions of the kind (the
@@ -193,27 +254,46 @@ void LayoutEditor::sync_content_fields() {
   const Node* n = selected_node();
   const bool window = n && n->is_window();
   const ContentParts p = content_parts();
-  const std::optional<WidgetKind> k = p.kind;
+  const bool is_menu = p.content && p.content->kind == WidgetKind::Menu;
   menu_.set_value("kind", p.kind_text);
   menu_.set_value("source", p.source);
-  menu_.set_value("menu_file", k == WidgetKind::Menu ? p.source : std::string());
+  menu_.set_value("menu_file", is_menu ? p.source : std::string());
   menu_.set_enabled("kind", window);
-  menu_.set_enabled("menu_file", window && k == WidgetKind::Menu);
-  const bool source_field = window && k && *k != WidgetKind::Menu && source_rule(*k) != SourceRule::Forbidden;
+  menu_.set_enabled("menu_file", window && is_menu);
+  // The rule is the KIND's, whichever rung it came from — a registered kind that takes no
+  // source disables the field exactly as `help` does, because its host said so.
+  const SourceRule rule = p.content ? content_source_rule(*p.content) : SourceRule::Required;
+  const bool source_field = window && p.content && !is_menu && rule != SourceRule::Forbidden;
   menu_.set_enabled("source", source_field);
   if (MenuItem* it = menu_.find("source"); it && source_field) {
     // A path is not a Name; a literal is anything and may be empty.
-    it->spec.type = (*k == WidgetKind::Text || *k == WidgetKind::File) ? InputType::Text : InputType::Name;
-    it->spec.optional = source_rule(*k) == SourceRule::Optional;
+    const WidgetKind k = p.content->kind;
+    it->spec.type = (k == WidgetKind::Text || k == WidgetKind::File) ? InputType::Text : InputType::Name;
+    it->spec.optional = rule == SourceRule::Optional;
     it->spec.hint.clear();
     for (const std::string& c : sources_)
-      if (std::optional<Content> oc = parse_content(c); oc && oc->kind == *k && !oc->source.empty())
+      if (std::optional<Content> oc = parse_content(c); oc && content_kind_name(*oc) == p.kind_text && !oc->source.empty())
         it->spec.hint += (it->spec.hint.empty() ? "" : " | ") + oc->source;
-    if (it->spec.hint.empty()) it->spec.hint = std::string(source_describes(*k));
+    if (it->spec.hint.empty()) it->spec.hint = content_source_describes(*p.content);
   }
 }
 
 void LayoutEditor::sync_values() {
+  // The three LAYOUT-WIDE fields first, because they are true whether or not a node is
+  // selected — and because the focus choice's options are the tree's, which every split,
+  // delete and rename changes. Rebuilding them here is what keeps a stale window id from
+  // sitting in the list after the window is gone.
+  menu_.set_value("min_width", std::to_string(current_.min_width));
+  menu_.set_value("min_height", std::to_string(current_.min_height));
+  {
+    std::vector<MenuItem> focusable;
+    focusable.push_back(MenuItem::action("", "(none \xE2\x80\x94 the first focusable window in tree order)"));
+    for (const std::string& id : ids_in_order(current_.base.root))
+      if (const Node* w = find_node(current_.base.root, id); w && w->is_window() && w->focusable)
+        focusable.push_back(MenuItem::action(id, id));
+    menu_.set_options("focus", std::move(focusable));
+    menu_.set_value("focus", current_.base.focus);
+  }
   const Node* n = selected_node();
   if (!n) return;
   menu_.set_checked("visible", n->visible);
@@ -464,16 +544,19 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
       return commit_current();
     }
     if (ev.id == "kind") {
-      if (std::optional<WidgetKind> k = widget_kind_from_name(ev.value)) {
-        const std::string src = base_source();
-        begin_preview();
-        set_content(*k, source_rule(*k) == SourceRule::Forbidden ? std::string() : src);
-      }
+      begin_preview();
+      if (!set_content(ev.value, carried_source(ev.value))) cancel_preview();
       return commit_current();
     }
     if (ev.id == "menu_file") {
       begin_preview();
-      set_content(WidgetKind::Menu, ev.value);
+      set_content("menu", ev.value);
+      return commit_current();
+    }
+    if (ev.id == "focus") {
+      begin_preview();
+      current_.base.focus = ev.value;  // "" is a real answer: the first focusable in tree order
+      status_ = ev.value.empty() ? "the first focusable window in tree order takes focus" : "focus starts on " + ev.value;
       return commit_current();
     }
     if (ev.id == "load") return {O::LoadLayout, ev.value};
@@ -486,12 +569,29 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
   }
   if (ev.kind == K::Input) {
     if (ev.id == "save") return {O::SaveAs, ev.value};
+    if (ev.id == "new") {
+      if (ev.value.empty()) { status_ = "a layout needs a name"; return {O::Changed, {}}; }
+      replace(skeleton(ev.value));
+      status_ = "new layout '" + ev.value + "' \xE2\x80\x94 one window, no popups, no actions" +
+                (current_.min_width || current_.min_height
+                     ? "; min " + std::to_string(current_.min_width) + "x" + std::to_string(current_.min_height) + " from the app"
+                     : "; no size threshold");
+      return {O::Committed, {}};
+    }
+    if (ev.id == "min_width" || ev.id == "min_height") {
+      // The Int spec already refused anything that is not a number in range, so a commit
+      // here is a number: the only question left is which of the two it is.
+      int& target = ev.id == "min_width" ? current_.min_width : current_.min_height;
+      begin_preview();
+      target = std::atoi(ev.value.c_str());
+      return commit_current();
+    }
     if (ev.id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = ev.value; return commit_current(); }
     if (ev.id == "source") {
       const ContentParts p = content_parts();
-      if (!p.kind) { status_ = "'" + p.kind_text + "' is not a widget kind \xE2\x80\x94 set the kind first"; return {O::Changed, {}}; }
+      if (!p.content) { status_ = "'" + p.kind_text + "' is not a widget kind \xE2\x80\x94 set the kind first"; return {O::Changed, {}}; }
       begin_preview();
-      set_content(*p.kind, ev.value);
+      set_content(p.kind_text, ev.value);
       return commit_current();
     }
     if (ev.id == "action.add") {
@@ -571,25 +671,23 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
     if (auto b = border_from_name(sel->id)) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
   }
   if (sel && !menu_.editing() && level == "kind") {
-    if (std::optional<WidgetKind> k = widget_kind_from_name(sel->id)) {
-      const std::string src = base_source();
-      begin_preview();
-      set_content(*k, source_rule(*k) == SourceRule::Forbidden ? std::string() : src);
-      return {O::Changed, {}};
-    }
+    begin_preview();
+    if (!set_content(sel->id, carried_source(sel->id))) cancel_preview();
+    return {O::Changed, {}};
   }
   if (sel && !menu_.editing() && level == "menu_file") {
     begin_preview();
-    set_content(WidgetKind::Menu, sel->id);
+    set_content("menu", sel->id);
     return {O::Changed, {}};
   }
   if (menu_.editing() && sel) {
     // The editing text, never the item's value: that is the committed one.
     if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = menu_.editing_text(); return {O::Changed, {}}; }
     if (sel->id == "source") {
-      if (const std::optional<WidgetKind> k = parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_)).kind) {
+      const ContentParts p = parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_));
+      if (p.content) {
         begin_preview();
-        set_content(*k, menu_.editing_text());
+        set_content(p.kind_text, menu_.editing_text());
       }
       return {O::Changed, {}};
     }

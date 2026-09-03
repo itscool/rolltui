@@ -56,7 +56,8 @@ std::optional<AppProfile> load_app_profile(const json::Value& v, AppProfileRepor
   p.min_height = int_or(v.get("min_height"), 0);
 
   for (const auto& [k, x] : v.obj)
-    if (k != "app" && k != "min_width" && k != "min_height" && k != "actions" && k != "kinds" && k != "sources" && k != "menus")
+    if (k != "app" && k != "min_width" && k != "min_height" && k != "actions" && k != "kinds" && k != "sources" &&
+        k != "menus" && k != "help")
       report.unknown_keys.push_back(k);
 
   // actions: name → description, the same shape a layout's "actions" has.
@@ -109,6 +110,17 @@ std::optional<AppProfile> load_app_profile(const json::Value& v, AppProfileRepor
       if (n.is_string()) p.notes.emplace_back(n.str);
   } else if (!s.is_null()) {
     report.bad_values.push_back("sources: expected an object");
+  }
+
+  if (const json::Value& h = v.get("help"); h.is_object()) {
+    for (const auto& [k, x] : h.obj)
+      if (k != "lead" && k != "note" && k != "scopes") report.unknown_keys.push_back("help." + k);
+    p.help.lead = std::string(h.get("lead").as_string());
+    p.help.note = std::string(h.get("note").as_string());
+    for (const json::Value& s : h.get("scopes").arr)
+      if (s.is_string()) p.help.scopes.emplace_back(s.str);
+  } else if (!h.is_null()) {
+    report.bad_values.push_back("help: expected an object");
   }
 
   if (const json::Value& ms = v.get("menus"); ms.is_array()) {
@@ -176,6 +188,13 @@ json::Value app_profile_to_json(const AppProfile& p) {
   for (const std::string& s : p.notes) notes.arr.push_back(json::Value::string(s));
   sources.set("notes", std::move(notes));
   root.set("sources", std::move(sources));
+  json::Value help = json::Value::object();
+  help.set("lead", json::Value::string(p.help.lead));
+  help.set("note", json::Value::string(p.help.note));
+  json::Value scopes = json::Value::array();
+  for (const std::string& s : p.help.scopes) scopes.arr.push_back(json::Value::string(s));
+  help.set("scopes", std::move(scopes));
+  root.set("help", std::move(help));
   json::Value menus = json::Value::array();
   for (const AppProfile::MenuFile& m : p.menus) {
     json::Value o = json::Value::object();
@@ -194,6 +213,7 @@ std::vector<std::string> profile_contents(const AppProfile& p) {
   for (const AppProfile::RowSource& r : p.rows) out.push_back("rows:" + r.name);
   for (const AppProfile::MenuFile& m : p.menus) out.push_back("menu:" + m.name);
   out.emplace_back("help");
+  for (const std::string& s : p.help.scopes) out.push_back("help:" + s);
   for (const AppProfile::Kind& k : p.kinds)
     out.push_back(k.rule == SourceRule::Forbidden ? k.name : k.name + ":");
   return out;
@@ -233,6 +253,10 @@ void mount_app_profile(Windows& windows, const AppProfile& p) {
   for (const std::string& s : p.submits) windows.bind_submit(s, [](const std::string&) {});
   for (const std::string& s : p.notes) windows.bind_note(s, [] { return std::string(); });
   for (const AppProfile::MenuFile& m : p.menus) windows.add_menu(m.name, m.json);
+  // The app's help, not the tool's — including the scope LIST, which is what a
+  // `help:<scope>` window is judged against (Phase 11 m5b). A profile that names none
+  // leaves the tool's own, which is the honest answer for an app that published nothing.
+  if (!p.help.scopes.empty()) windows.set_help(p.help.lead, p.help.scopes, p.help.note);
 }
 
 }  // namespace rolltui

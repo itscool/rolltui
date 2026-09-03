@@ -17,15 +17,15 @@
 │                   │ │ downgrade                             │       │ Delete this node                               │
 │                   │ │ Wrap engine                           │ build │ Popups                                       ▸ │
 │                   │ │ Windows, layers, placement (Dim abs/  │ build │ Actions this screen emits                    ▸ │
-│                   │ │ rel per axis), focus                  │       │ Undo                                    Ctrl-Z │
-│                   │ │ Menu widget (hierarchical,            │ build │ Redo                                    Ctrl-Y │
-│                   │ │ filterable) + list/text widgets       │       │ Load layout                                  ▸ │
-│                   │ │ Layout files (JSON: windows +         │ build │ Save layout file as (layouts/<name>.json):     │
-│                   │ │ placements + content slots)           │       │ Reset to the loaded layout…                    │
-│                   │ │ Markdown block renderer (blocks →     │ build │                                                │
-│                   │ │ styled wrapped lines)                 │       │                                                │
-│                   │ │ Theme (roles → styles, JSON loader,   │ build │                                                │
-│                   │ │ built-ins)                            │       │                                                │
+│                   │ │ rel per axis), focus                  │       │ Minimum width this screen needs: 60            │
+│                   │ │ Menu widget (hierarchical,            │ build │ Minimum height this screen needs: 8            │
+│                   │ │ filterable) + list/text widgets       │       │ Focused window                         input ▸ │
+│                   │ │ Layout files (JSON: windows +         │ build │ Undo                                    Ctrl-Z │
+│                   │ │ placements + content slots)           │       │ Redo                                    Ctrl-Y │
+│                   │ │ Markdown block renderer (blocks →     │ build │ New layout, from an empty screen (name):       │
+│                   │ │ styled wrapped lines)                 │       │ Load layout                                  ▸ │
+│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Save layout file as (layouts/<name>.json):     │
+│                   │ │ built-ins)                            │       │ Reset to the loaded layout…                    │
 │                   │ └───────────────────────────────────────┴───────│                                                │
 │                   │                                                 │                                                │
 │                   │ Here is the function you asked for:             │                                                │

@@ -21,7 +21,10 @@
 //   hide / show                    a hidden node takes no space (Layout.hpp)
 //   border                         choice: none | single | rounded | double | heavy (live)
 //   title                          input (live as typed)
-//   widget kind                    choice over Layout.hpp's CLOSED table (live)
+//   widget kind                    choice over the kinds THE TARGET can build (live) —
+//                                 the library's closed table by default, and under an app
+//                                 profile the library's PLUS that app's registered ones
+//                                 (Phase 11 m4: set_kinds)
 //   source                         input, TYPED BY THE KIND (below)
 //   menu file                      choice over the menu files that resolve (below)
 //   size                           input: fill | fill N | N% | N cells (live as typed);
@@ -31,28 +34,53 @@
 //   delete                         removes the node; a split left with one child collapses
 //   popups                         a level per popup: x, y, w, h (dims), anchor (choice),
 //                                 modal (toggle), remove; and "add a popup" (input: id)
+//   minimum width / height        input, Int — the smallest screen this SCREEN is designed
+//                                 for (0 = it states none)
+//   focused window                choice over the base layer's focusable windows, plus
+//                                 "(none)" for "the first in tree order"
 //   actions                        a level per declared action (description, remove) and
 //                                 "add an action" — the app-scope actions this SCREEN
 //                                 emits (Layout.hpp); a host re-declares them into its
 //                                 bindings table when the layout changes, so a key and a
 //                                 help line exist for an action added here in the next
 //                                 frame
-//   load layout / save layout as / reset to loaded / undo / redo
+//   new layout / load layout / save layout as / reset to loaded / undo / redo
+//
+// CREATING A LAYOUT IS NOT INHERITING ONE (Phase 11 m5). "New layout" replaces the whole
+// layout with a STATED MINIMAL SKELETON — one bordered `text:` window (the one kind that
+// names nothing a host must have bound), no popups, no actions, and no thresholds — never
+// the open screen with its parts stripped out. The measurement that scoped this: stripping
+// `no-panel` down to one window and saving it as `myapp` produced a file carrying roll's
+// five `app.*` actions, four popups pointing at roll's own composites, and `no-panel`'s
+// min sizes — none of which the author chose, and all of which the target app then reads.
+// THE ONE THING A NEW LAYOUT DOES INHERIT is the TARGET's min sizes (set_default_min,
+// which the host fills from an app profile), because those are a fact about the app being
+// designed for rather than about whatever screen happened to be open.
 //
 // CONTENT IS TWO FIELDS, AND EXACTLY ONE WRITES THE SOURCE (Phase 10 m5). A window's
-// content is `kind[:source]`, so the editor shows the kind as a choice over the closed
-// table and the source beside it. Which field owns the source is a stated function of
+// content is `kind[:source]`, so the editor shows the kind as a choice over the offered
+// kinds and the source beside it. Which field owns the source is a stated function of
 // the kind, never a guess — the other is drawn disabled, so a screen never offers two
 // ways to say one thing:
 //   menu                        the MENU FILE choice owns it (the names that actually
 //                               resolve, from the host: Windows::menu_names())
-//   help                        neither: a source is forbidden, and changing the kind
-//                               to `help` DROPS the source rather than making the
-//                               content unparseable
+//   help                        the SOURCE input, Name, OPTIONAL — one key scope, or
+//                               every scope the app has when empty (Phase 11 m5b). It is
+//                               still the one kind that DROPS a source carried over from
+//                               another kind, and now for a stated reason rather than
+//                               because the source was forbidden: every other kind's
+//                               source is a bound NAME, and a scope is not one, so
+//                               carrying one in makes a window that draws nothing
 //   text                        the SOURCE input, Text, optional (a literal may be empty)
 //   file                        the SOURCE input, Text (a path)
-//   transcript, input, rows, custom
-//                               the SOURCE input, Name (a bound name)
+//   transcript, input, rows     the SOURCE input, Name (a bound name)
+//   a REGISTERED kind           the SOURCE input, Name, obeying the rule ITS HOST gave it
+//                               — so roll's `approval` (Forbidden) disables the field
+//                               exactly as `help` does, while a `canvas:main` names a
+//                               source and is hinted with the profile's own words. The
+//                               editor asks the REGISTRY rather than a table of its own
+//                               (Phase 11 m4): which kinds exist is a fact about the
+//                               target app, and the tool is not the app.
 // Changing the kind KEEPS the source verbatim (the `help` rule above is the one
 // exception): a kind that requires a source and has none is left saying so — the window
 // draws its error panel and the status line names it — rather than the editor inventing
@@ -91,8 +119,19 @@ class LayoutEditor {
   // beside the source field for the selected kind. A hint, not a menu: a source the
   // host has not bound is still typeable, and reports itself in the window.
   void set_sources(std::vector<std::string> contents);
+  // The kinds the TARGET can build (Phase 11 m4): the library's closed table by default,
+  // and under an app profile the library's plus that app's registered ones. A name here
+  // that is in neither rung of the registry is refused when chosen, by name — the picker
+  // is a list of what exists, never a way to invent a kind.
+  void set_kinds(std::vector<std::string> names);
   void set_menus(std::vector<std::string> names);      // the Menu file choice's options (Windows::menu_names())
   void set_layouts(std::vector<std::string> names);    // the Load choice's options
+  // The TARGET's min sizes — the only thing "New layout" inherits, and only because they
+  // describe the app being designed for. 0/0 (the default) means the app states none.
+  void set_default_min(int width, int height);
+  // The minimal skeleton "New layout" starts from, exposed so a test can assert what it
+  // is rather than what it renders as.
+  Layout skeleton(std::string name) const;
 
   const Layout& current() const { return current_; }   // committed + any live change
   const Layout& committed() const { return undo_.current(); }
@@ -132,10 +171,12 @@ class LayoutEditor {
   static std::vector<std::string> ids_in_order(const Node& root);  // every node id, tree order
 
   // The selected window's content split at the first ':' — WITHOUT requiring it to
-  // parse, so a content typed by hand into a file can be shown and repaired here. `kind`
-  // is nullopt when the text before the colon is not in the table.
+  // parse, so a content typed by hand into a file can be shown and repaired here.
+  // `content` is nullopt when the text before the colon names no kind in either rung of
+  // the registry; when it is set, `content->kind` is the library kind or `Registered`,
+  // and `content_source_rule(*content)` is that kind's rule whichever it is.
   struct ContentParts {
-    std::optional<WidgetKind> kind;
+    std::optional<Content> content;
     std::string kind_text, source;
   };
   ContentParts content_parts() const;
@@ -143,12 +184,16 @@ class LayoutEditor {
  private:
   static ContentParts parts_of(const Node* n);
   std::string base_source() const;  // the source before the live preview began
+  std::string carried_source(std::string_view kind_name) const;  // …and whether that kind takes it
   enum class Op { SplitRow, SplitColumn, SwapPrev, SwapNext, ToggleVisible, Delete, ToggleFocusable };
   bool apply_op(Op op);
   void rebuild_menu();
   void sync_values();
   void sync_content_fields();  // the kind/source/menu-file values, specs and enabled-ness
-  void set_content(WidgetKind kind, const std::string& source);  // writes kind[:source] into the selected window
+  // Writes kind[:source] into the selected window. By NAME, because a registered kind's
+  // name is the only thing that identifies it — `WidgetKind::Registered` names them all.
+  // A name in neither rung writes nothing and is reported.
+  bool set_content(const std::string& kind_name, const std::string& source);
   void begin_preview();
   void cancel_preview();
   Outcome commit_current();
@@ -162,8 +207,10 @@ class LayoutEditor {
   std::optional<Layout> preview_;
   std::string sel_;
   std::vector<std::string> sources_;   // the host's offered kind[:source] contents
+  std::vector<std::string> kinds_;     // the kinds the target can build (library's by default)
   std::vector<std::string> menus_;     // the menu files that resolve
   std::vector<std::string> layouts_;
+  int default_min_w_ = 0, default_min_h_ = 0;  // the target app's, for a NEW layout only
   std::optional<std::string> drag_;
   std::string status_;
 };

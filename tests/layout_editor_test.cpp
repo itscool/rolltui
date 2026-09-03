@@ -345,5 +345,125 @@ int main() {
     ed.handle(key(Key::Escape));
     ed.handle(key(Key::Escape));
   }
+  // ---- Phase 11 m5: creating a layout, not inheriting one ----
+  // The three fields the editor could not reach (min_width, min_height, the layer's
+  // focus), and the skeleton. The layout in `ed` at this point is the shipped default,
+  // split about and carrying an extra action — which is exactly the state the milestone's
+  // measurement was taken from, so it is the right thing to create a new layout out of.
+  {
+    ed.load(*builtin_layout("default"));
+    check(value_of(ed, "min_width") == "60" && value_of(ed, "min_height") == "8" && value_of(ed, "focus") == "input",
+          "the layout-wide fields show the loaded screen's thresholds and focus [" + value_of(ed, "focus") + "]");
+    act(ed, "minimum width");
+    for (int i = 0; i < 4; ++i) ed.handle(key(Key::Backspace));
+    type(ed, "72");
+    LayoutEditor::Outcome o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && ed.committed().min_width == 72, "the minimum width commits");
+    act(ed, "focused window");
+    ed.handle(key(Key::Home));
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && ed.committed().base.focus.empty() && ed.status_line().find("first focusable") != std::string::npos,
+          "the focus choice's first option is \"(none)\", and it is a real answer, not an empty one [" + ed.status_line() + "]");
+    act(ed, "focused window");
+    ed.handle(key(Key::End));
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && ed.committed().base.focus == "input",
+          "…and the rest are the base layer's FOCUSABLE windows [" + ed.committed().base.focus + "]");
+    // The skeleton itself, as a value: nothing carried, whatever was open.
+    const Layout before = ed.current();
+    check(before.popups.size() == 4 && before.actions.size() == 5 && before.min_width == 72,
+          "the screen it is created FROM has four popups, five actions and a threshold");
+    act(ed, "new layout");
+    type(ed, "kiosk");
+    o = ed.handle(key(Key::Enter));
+    const Layout& made = ed.current();
+    check(o.kind == O::Committed && made.name == "kiosk" && made.popups.empty() && made.actions.empty() && made.min_width == 0 &&
+              made.min_height == 0,
+          "New layout carries no popup, no action and no threshold out of it");
+    check(made.base.root.is_window() && made.base.root.id == "main" && made.base.root.content == "text:" &&
+              made.base.focus == "main" && ed.selected() == "main",
+          "…one window naming nothing a host must have bound, focused, and selected [" + made.base.root.content + "]");
+    check(ed.undo() && ed.current() == before, "…and it is one commit: Ctrl-Z is the screen that was open");
+    ed.redo();
+    // The one inheritance, and it is the TARGET's.
+    ed.set_default_min(40, 12);
+    act(ed, "new layout");
+    type(ed, "kiosk2");
+    ed.handle(key(Key::Enter));
+    check(ed.current().min_width == 40 && ed.current().min_height == 12 && ed.current().popups.empty(),
+          "under a profile the thresholds come from the APP — the one place inheriting is right");
+    check(ed.skeleton("x").min_width == 40 && ed.skeleton("x").actions.empty(), "…and the skeleton says so as a value");
+    ed.set_default_min(0, 0);
+  }
+  // ---- Phase 11 m4: the picker offers what the TARGET can build ----
+  // The kinds are no longer the library's table read straight out of Layout.hpp — they
+  // are what the host offers, which under an app profile is the library's PLUS that app's
+  // registered ones. Last in the file on purpose: it registers process-wide kinds, and
+  // clears them again at the end so nothing after it inherits another app's vocabulary.
+  {
+    clear_registered_widget_kinds();
+    std::string why;
+    check(register_widget_kind("canvas", SourceRule::Required, "a surface this app paints", &why) &&
+              register_widget_kind("approval", SourceRule::Forbidden, "", &why),
+          "the target app registers two kinds: one that names a source and one that takes none [" + why + "]");
+    LayoutEditor te;
+    te.load(*builtin_layout("default"));
+    te.select("transcript");
+    auto options = [](const LayoutEditor& e) {
+      const MenuItem* it = e.menu().find("kind");
+      std::string s;
+      if (!it) return std::string("(no item 'kind')");
+      for (const MenuItem& o : it->children) s += (s.empty() ? "" : " ") + o.id;
+      return s;
+    };
+    check(options(te) == "transcript input menu rows text file help",
+          "told nothing about a target, the picker is the library's own table [" + options(te) + "]");
+    // What the studio does under --app: the library's, then the profile's.
+    te.set_kinds({"transcript", "input", "menu", "rows", "text", "file", "help", "canvas", "approval"});
+    te.set_sources({"transcript:session", "canvas:main"});
+    check(options(te).find("canvas approval") != std::string::npos,
+          "under a profile the app's own kinds are offered after the library's [" + options(te) + "]");
+    // Choosing one writes a content the LOADER accepts — the registered name, not
+    // "registered", which is what a Content field assembled by hand would have said.
+    act(te, "widget kind");
+    type(te, "canvas");
+    LayoutEditor::Outcome o = te.handle(key(Key::Enter));
+    check(o.kind == O::Committed && content_of(te, "transcript") == "canvas:session",
+          "a registered kind commits like any other, keeping the source [" + content_of(te, "transcript") + "]");
+    check(enabled_of(te, "source") && te.menu().find("source") && te.menu().find("source")->spec.type == InputType::Name &&
+              te.menu().find("source")->spec.hint == "main",
+          "…its source field obeys the rule ITS HOST gave it, hinted from the profile's own contents [" +
+              (te.menu().find("source") ? te.menu().find("source")->spec.hint : std::string("(none)")) + "]");
+    // A registered kind that takes no source disables the field exactly as `help` does,
+    // and DROPS the source rather than writing a content the loader would refuse.
+    act(te, "widget kind");
+    type(te, "approval");
+    o = te.handle(key(Key::Enter));
+    check(o.kind == O::Committed && content_of(te, "transcript") == "approval" && !enabled_of(te, "source"),
+          "a registered kind whose source is forbidden drops it, like `help` [" + content_of(te, "transcript") + "]");
+    LayoutLoadReport rep;
+    std::optional<Layout> back = load_layout(layout_to_json(te.current()), rep);
+    check(back && rep.clean() && *back == te.current(), "the layout the picker wrote round-trips through the loader clean");
+    // The hint for a kind the profile gave no sample content for is the app's OWN words.
+    te.set_sources({});
+    act(te, "widget kind");
+    type(te, "canvas");
+    te.handle(key(Key::Enter));
+    check(te.menu().find("source") && te.menu().find("source")->spec.hint == "a surface this app paints",
+          "…and with no sample content the hint is what the app said its source names");
+    // The picker is a list of what EXISTS, never a way to invent a kind. A profile
+    // naming a kind its binary does not actually register is the drift this whole file
+    // format exists to remove one level down, so it is refused by name rather than
+    // written into a layout that would draw an error panel in the real app.
+    te.set_kinds({"transcript", "canvas", "sundial"});
+    const std::string before_bogus = content_of(te, "transcript");
+    act(te, "widget kind");
+    type(te, "sundial");
+    o = te.handle(key(Key::Enter));
+    check(content_of(te, "transcript") == before_bogus &&
+              te.status_line().find("not a widget kind this app can build") != std::string::npos,
+          "a kind in neither rung is refused by name and writes nothing [" + te.status_line() + "]");
+    clear_registered_widget_kinds();
+  }
   return report("rolltui layout_editor_test");
 }

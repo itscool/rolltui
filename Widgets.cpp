@@ -506,11 +506,23 @@ class FileWidget : public ScrollTextWidget {
 };
 
 // help — the key list, rendered from the LIVE bindings, so it cannot lie about a
-// rebinding. Which scopes, and any lead/note lines, are the host's (set_help).
+// rebinding. The lead and note lines are the host's (set_help), and so is the SET of
+// scopes an app has — but WHICH of them a window lists is the LAYOUT's since Phase 11
+// m5b: `help` is all of them, `help:app` is that one. A scope the host does not have is
+// a named problem and an error panel, like every other unbound source; it is not an
+// empty window, which is what silently ignoring it would produce.
 class HelpWidget : public ScrollTextWidget {
  public:
   using ScrollTextWidget::ScrollTextWidget;
-  std::string text() const override { return w_->help_text(); }
+  std::string problem() const override {
+    if (content.source.empty()) return {};
+    const std::vector<std::string>& all = w_->help_scopes();
+    if (std::find(all.begin(), all.end(), content.source) != all.end()) return {};
+    std::string known;
+    for (const std::string& s : all) known += (known.empty() ? "" : " | ") + s;
+    return "'" + content.source + "' is not one of this app's key scopes (" + known + ")";
+  }
+  std::string text() const override { return w_->help_text(content.source); }
 };
 
 }  // namespace
@@ -565,7 +577,12 @@ void Windows::set_help(std::string lead, std::vector<std::string> scopes, std::s
   help_note_ = std::move(note);
 }
 
-std::string Windows::help_text() const { return help_document(bindings(), help_lead_, help_scopes_, help_note_); }
+// One scope, or every one the host set. The lead and the note belong to the whole list,
+// so a single-scope window shows neither — it is a column of keys, not a help page.
+std::string Windows::help_text(std::string_view scope) const {
+  if (scope.empty()) return help_document(bindings(), help_lead_, help_scopes_, help_note_);
+  return help_document(bindings(), "", {std::string(scope)}, "");
+}
 
 void Windows::set_env(WidgetEnv env) { env_ = env; }
 const Bindings& Windows::bindings() const { return env_.bindings ? *env_.bindings : default_bindings(); }

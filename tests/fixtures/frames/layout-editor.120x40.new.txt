@@ -1,0 +1,40 @@
+┌─────────────────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+│                                                                     │ layout editor • main                           │
+│                                                                     │ Select the next node                       Tab │
+│                                                                     │ Select the previous node             Shift-Tab │
+│                                                                     │ Split into a row (side by side)                │
+│                                                                     │ Split into a column (stacked)                  │
+│                                                                     │ Swap with the previous sibling                 │
+│                                                                     │ Swap with the next sibling                     │
+│                                                                     │ [x] Visible                                    │
+│                                                                     │ Border                                single ▸ │
+│                                                                     │ Title:                                         │
+│                                                                     │ Widget kind                             text ▸ │
+│                                                                     │ Source:                                        │
+│                                                                     │ Menu file                                    ▸ │
+│                                                                     │ Size (Alt+arrows nudge): fill                  │
+│                                                                     │ [x] Focusable                                  │
+│                                                                     │ Delete this node                               │
+│                                                                     │ Popups                                       ▸ │
+│                                                                     │ Actions this screen emits                    ▸ │
+│                                                                     │ Minimum width this screen needs: 0             │
+│                                                                     │ Minimum height this screen needs: 0            │
+│                                                                     │ Focused window                          main ▸ │
+│                                                                     │ Undo                                    Ctrl-Z │
+│                                                                     │ Redo                                    Ctrl-Y │
+│                                                                     │ New layout, from an empty screen (name):       │
+│                                                                     │ Load layout                                  ▸ │
+│                                                                     │ Save layout file as (layouts/<name>.json):     │
+│                                                                     │ Reset to the loaded layout…                    │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │ selected: main  size fill  border single  text │
+│                                                                     │ Tab next node · click selects · drag an edge r │
+│                                                                     │ new layout 'kiosk' — one window, no popups, no │
+│                                                                     │                                                │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark [layout editor]  kiosk (modified)  120x40  line 75/109  follow  truecolor  focus:editor
