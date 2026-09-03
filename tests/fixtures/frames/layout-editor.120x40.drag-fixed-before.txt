@@ -37,4 +37,4 @@
 │                   ├─────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
 │                   │ > type here                                     │                                                │
 └───────────────────┴─────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark (modified) [layout editor]  panel-left  120x40  line 69/103  follow  truecolor  focus:editor
+ default-dark [layout editor]  panel-left (modified)  120x40  line 69/103  follow  truecolor  focus:editor

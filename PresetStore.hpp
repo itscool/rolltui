@@ -5,7 +5,7 @@
 //
 //   struct D {
 //     using Value = ...;                                   // the whole domain, one unit
-//     static constexpr std::string_view kind;              // "theme" | "bindings" (messages)
+//     static constexpr std::string_view kind;              // "theme" | "layout" | "bindings" (messages)
 //     static constexpr std::string_view working_file;      // "theme.working.json"
 //     static constexpr std::string_view subdir;            // "themes" (user presets)
 //     static std::size_t shipped_count();                  // the embedded table
@@ -45,7 +45,7 @@ struct PresetLoadReport {
   std::vector<std::string> unknown_keys;
   std::vector<std::string> bad_values;
   ThemeLoadReport colours;                // the colours part's own report (Theme domain)
-  LayoutLoadReport layout;                // the layout part's own report (Theme domain)
+  LayoutLoadReport layout;                // the Layout domain's own report
   BindingsLoadReport bindings;            // the Bindings domain's own report
   std::vector<std::string> notes;         // what happened, in words ("no working copy; started from default")
   bool clean() const {

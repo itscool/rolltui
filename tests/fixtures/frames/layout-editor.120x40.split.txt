@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────┴─────────────────────────│ split transcript side by side · undo 1 · redo  │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark (modified) [layout editor]  default  120x40  line 181/215  follow  truecolor  focus:editor
+ default-dark [layout editor]  default (modified)  120x40  line 181/215  follow  truecolor  focus:editor

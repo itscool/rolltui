@@ -237,12 +237,14 @@ struct App {
   // The look comes from the preset store's Theme working copy (rolltui/Presets.hpp),
   // exactly as in roll; the editor, when open, previews its own current theme.
   std::shared_ptr<ThemePresets> store;
+  std::shared_ptr<LayoutPresets> lstore;    // the Layout working copy (Phase 10 m1)
   std::shared_ptr<BindingsPresets> bstore;  // the Bindings working copy (milestone 17)
   Bindings bindings = default_bindings();   // what this frame runs on
   std::uint64_t bstore_seen = 0;
   std::string bindings_arg;
   bool persist = true;                  // false under --frame: the working copy is never written
   std::uint64_t store_seen = 0;
+  std::uint64_t lstore_seen = 0;
   Theme resolved;                       // the working copy's colours at `mode`
   Theme theme;                          // what this frame draws with (resolved, or the editor's preview)
   std::string theme_note;
@@ -291,14 +293,13 @@ struct App {
   void build_menu() {
     std::vector<MenuItem> themes, layouts;
     if (store) for (const PresetInfo& p : store->list()) themes.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
-    for (std::string_view n : builtin_layout_names()) layouts.push_back(MenuItem::action(std::string(n), std::string(n)));
-    if (store) for (const std::string& n : store->layout_files()) layouts.push_back(MenuItem::action(n, n + "  (file)"));
+    if (lstore) for (const PresetInfo& p : lstore->list()) layouts.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
     std::vector<MenuItem> depths;
     for (const char* d : {"truecolor", "256", "16", "mono"}) depths.push_back(MenuItem::action(d, d));
     menu.set_root(MenuItem::submenu(
         "root", "settings",
         {MenuItem::choice("theme", "Theme", themes, store ? store->label() : ""),
-         MenuItem::choice("layout", "Layout", layouts, layout.name),
+         MenuItem::choice("layout", "Layout", layouts, lstore ? lstore->label() : layout.name),
          MenuItem::choice("depth", "Colour depth", depths, std::string(color_depth_name(depth))),
          MenuItem::toggle("ambiguous", "Ambiguous width = 2", ambiguous),
          MenuItem::submenu("commands", "Commands",
@@ -311,7 +312,7 @@ struct App {
     if (stack.has_popup("menu")) { close_popup("menu"); return; }
     build_menu();  // presets and layout files may have changed
     menu.set_value("theme", store ? store->label() : "");
-    menu.set_value("layout", layout.name);
+    menu.set_value("layout", lstore ? lstore->label() : layout.name);
     menu.set_value("depth", std::string(color_depth_name(depth)));
     menu.set_checked("ambiguous", ambiguous);
     menu.reset();
@@ -330,7 +331,7 @@ struct App {
       case K::Closed: close_popup("menu"); return true;
       case K::Choose:
         if (ev.id == "theme") { theme_arg.clear(); PresetLoadReport rep; if (!store->load(ev.value, rep, persist)) hint = rep.error; else hint = rep.summary(); }
-        else if (ev.id == "layout") { layout_arg.clear(); LayoutLoadReport rep; if (auto l = store->find_layout(ev.value, rep)) store->set_layout(*l, persist); else hint = rep.error; }
+        else if (ev.id == "layout") { layout_arg.clear(); PresetLoadReport rep; if (!lstore->load(ev.value, rep, persist)) hint = rep.error; else hint = rep.summary(); }
         else if (ev.id == "depth") depth = detect_color_depth(nullptr, nullptr, ev.value.c_str());
         return true;
       case K::Toggle:
@@ -367,15 +368,13 @@ struct App {
   }
   bool load_layout_arg() {
     if (!layout_arg.empty()) {
-      LayoutLoadReport rep;
+      PresetLoadReport rep;
       layout_mtime = mtime_of(layout_arg);
-      std::optional<Layout> l = store->find_layout(layout_arg, rep);
-      if (!l) layout_note = rep.error;
+      if (!lstore->load(layout_arg, rep, /*persist=*/false)) layout_note = rep.error;
       else {
-        store->set_layout(*l, /*persist=*/false);
         layout_note.clear();
-        if (!rep.unknown_keys.empty()) layout_note += "unknown: " + rep.unknown_keys[0] + "; ";
-        if (!rep.bad_values.empty()) layout_note += "bad: " + rep.bad_values[0] + "; ";
+        if (!rep.layout.unknown_keys.empty()) layout_note += "unknown: " + rep.layout.unknown_keys[0] + "; ";
+        if (!rep.layout.bad_values.empty()) layout_note += "bad: " + rep.layout.bad_values[0] + "; ";
       }
     }
     sync_look();
@@ -383,7 +382,7 @@ struct App {
     return layout_note.empty();
   }
   void maybe_reload_layout() {
-    if (layout_arg.empty() || builtin_layout(layout_arg)) return;
+    if (layout_arg.empty() || LayoutPresets::is_shipped(layout_arg)) return;
     if (layout_arg.find('/') == std::string::npos && layout_arg.find(".json") == std::string::npos) return;
     long m = mtime_of(layout_arg);
     if (m != layout_mtime) load_layout_arg();
@@ -399,7 +398,11 @@ struct App {
       std::optional<Theme> t = resolve_colours(working, mode, rep);
       resolved = t ? *t : *builtin_theme("default-dark");
       if (!t) theme_note = "colours unusable: " + rep.error;
-      if (!(layout == working.layout)) { layout = working.layout; apply_layout(); }
+    }
+    if (lstore && lstore->version() != lstore_seen) {
+      lstore_seen = lstore->version();
+      const Layout working_layout = lstore->working();
+      if (!(layout == working_layout)) { layout = working_layout; apply_layout(); }
     }
     theme = editor_mode == EditorMode::Theme ? teditor.current() : resolved;
     if (editor_mode == EditorMode::Layout && !(layout == leditor.current())) { layout = leditor.current(); apply_layout(); }
@@ -552,10 +555,9 @@ struct App {
   void toggle_layout_editor() {
     if (editor_mode == EditorMode::Layout) { close_editor(); return; }
     close_editor();
-    leditor.load(store->working().layout);
+    leditor.load(lstore->working());
     std::vector<std::string> names;
-    for (std::string_view n : builtin_layout_names()) names.push_back(std::string(n));
-    for (const std::string& n : store->layout_files()) names.push_back(n);
+    for (const PresetInfo& p : lstore->list()) names.push_back(p.name);  // shipped first, then the user's
     leditor.set_layouts(names);
     leditor.set_slots({"transcript", "status", "input", "help", "text:pane"});
     editor_open = true;
@@ -568,7 +570,7 @@ struct App {
     switch (o.kind) {
       case K::None: case K::Changed: break;
       case K::Committed:
-        store->set_layout(leditor.committed(), persist);
+        lstore->set_working(leditor.committed(), persist);
         break;
       case K::SaveAs: {
         if (o.value.empty()) { hint = "a layout file needs a name"; break; }
@@ -582,20 +584,19 @@ struct App {
         out << layout_to_json(l) << "\n";
         hint = "saved layout file " + path;
         std::vector<std::string> names;
-        for (std::string_view n : builtin_layout_names()) names.push_back(std::string(n));
-        for (const std::string& n : store->layout_files()) names.push_back(n);
+        for (const PresetInfo& p : lstore->list()) names.push_back(p.name);
         leditor.set_layouts(names);
         break;
       }
       case K::LoadLayout: {
-        LayoutLoadReport rep;
-        if (std::optional<Layout> l = store->find_layout(o.value, rep)) { leditor.replace(*l); store->set_layout(*l, persist); hint = "loaded layout " + l->name; }
-        else hint = rep.error;
+        PresetLoadReport rep;
+        if (!lstore->load(o.value, rep, persist)) hint = rep.error;
+        else { leditor.replace(lstore->working()); hint = "loaded layout " + lstore->label(); }
         break;
       }
       case K::ResetLoaded:
-        ask("Reset the layout to the working copy's '" + store->working().layout.name + "'? (y/n)", [this] {
-          leditor.replace(store->working().layout);
+        ask("Reset the layout to the working copy's '" + lstore->label() + "'? (y/n)", [this] {
+          leditor.replace(lstore->working());
           hint = "reset (undoable)";
         });
         break;
@@ -996,7 +997,7 @@ struct App {
     if (h > 1) {
       f.fill({0, h - 1, w, 1}, theme.style(Role::panel_background));
       const std::size_t total = transcript.total_lines();
-      std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "") + "  " + effective_layout().name + "  " + std::to_string(w) + "x" + std::to_string(h) +
+      std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "") + "  " + effective_layout().name + (lstore && lstore->modified() ? " (modified)" : "") + "  " + std::to_string(w) + "x" + std::to_string(h) +
                            "  line " + std::to_string(total == 0 ? 0 : transcript.top_line() + 1) + "/" + std::to_string(total) +
                            (transcript.scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
@@ -1424,11 +1425,17 @@ int main(int argc, char** argv) {
   // The preset store: the playground is a rolltui host, with the editor's privilege
   // (it writes what ships). Under --frame nothing autosaves.
   app.store = std::make_shared<ThemePresets>(ThemePresets::Options{presets_dir, true, shipped_dir + "/themes"});
+  app.lstore = std::make_shared<LayoutPresets>(LayoutPresets::Options{presets_dir, true, shipped_dir + "/layouts"});
   app.bstore = std::make_shared<BindingsPresets>(BindingsPresets::Options{presets_dir, true, shipped_dir + "/bindings"});
   app.persist = frame_spec.empty();
   {
+    const MigrationReport mig = migrate_theme_layout(presets_dir);  // Phase 10 m1, once
+    for (const std::string& n : mig.notes) std::fprintf(stderr, "rolltui: %s\n", n.c_str());
+    if (!mig.error.empty()) std::fprintf(stderr, "rolltui: %s\n", mig.error.c_str());
     const PresetLoadReport start = app.store->start();
     if (!start.error.empty()) app.theme_note = start.error;
+    const PresetLoadReport lstart = app.lstore->start();
+    if (!lstart.error.empty()) app.layout_note = lstart.error;
     const PresetLoadReport bstart = app.bstore->start();
     if (!bstart.error.empty()) app.hint = bstart.error;
   }

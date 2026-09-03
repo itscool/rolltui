@@ -1,9 +1,13 @@
 //
-// presets_test.cpp — the preset system (milestone 11 / 11e) on the Theme domain: the
-// five rules in Presets.hpp, the shipped files against the built-in themes and layout,
-// the four-rung precedence table (every combination of present/absent rungs), the
-// file format's report, layout-file discovery, and the OSC 11 reply parser with the
-// light/dark rule. Runs in a scratch directory under $TMPDIR it creates and removes.
+// presets_test.cpp — the preset system (milestone 11 / 11e, Phase 10 m1) on all three
+// domains: the five rules in Presets.hpp, the shipped files against the built-in themes
+// and layouts, the four-rung precedence table (every combination of present/absent
+// rungs), the file format's report, and the OSC 11 reply parser with the light/dark
+// rule. Phase 10 m1 adds the Layout domain and the once-only migration that carries a
+// Phase 9 theme.working.json's layout part across — the section named THE MIGRATION
+// below, whose control (a build that does not copy the part) must fail before the code
+// exists, because losing it would be silent.
+// Runs in a scratch directory under $TMPDIR it creates and removes.
 //
 #include <unistd.h>
 
@@ -24,6 +28,9 @@ namespace fs = std::filesystem;
 
 #ifndef ROLLTUI_PRESETS_DIR
 #error "ROLLTUI_PRESETS_DIR must point at rolltui/presets/themes"
+#endif
+#ifndef ROLLTUI_LAYOUTS_DIR
+#error "ROLLTUI_LAYOUTS_DIR must point at rolltui/presets/layouts"
 #endif
 
 namespace {
@@ -70,7 +77,7 @@ int main() {
     const ThemePreset* m = ThemePresets::shipped("mono");
     std::optional<Theme> mono = resolve_colours(*m, ThemeMode::Dark, rep);
     check(mono && rep.clean() && mono->styles == builtin_theme("mono")->styles, "shipped 'mono' is the built-in mono");
-    check(d->layout == *builtin_layout("default") && d->mode == "auto" && d->depth == "auto", "shipped 'default' carries the default layout, mode auto, depth auto");
+    check(d->mode == "auto" && d->depth == "auto", "shipped 'default' is mode auto, depth auto");
     check(ThemePresets::shipped("default-dark")->mode == "dark" && ThemePresets::shipped("default-light")->mode == "light",
           "'default-dark' / 'default-light' are the same colours pinned to a mode");
     // theme_pair_to_json_value round-trips both variants exactly (the shipped file was
@@ -93,16 +100,17 @@ int main() {
   // ---- an edit autosaves and changes the label by comparison (rules 2, 4) ----
   {
     const std::uint64_t v0 = store.version();
-    store.set_layout(*builtin_layout("stacked"));
-    check(store.version() > v0 && store.label() == "default (modified)" && store.modified(), "a layout change bumps the version and the label reads 'default (modified)'");
+    store.set_depth("16");
+    check(store.version() > v0 && store.label() == "default (modified)" && store.modified(), "a depth change bumps the version and the label reads 'default (modified)'");
     check(fs::exists(store.working_path()), "…and autosaved " + store.working_path());
     std::string err;
     json::Value v = json::parse(read_file(store.working_path()), err);
-    check(err.empty() && v.get("preset").as_string() == "default" && v.get("layout").get("name").as_string() == "stacked",
+    check(err.empty() && v.get("preset").as_string() == "default" && v.get("depth").as_string() == "16" && v.has("colours"),
           "the working file records its origin preset and the whole domain");
+    check(!v.has("layout"), "…and NOT a layout: the Theme domain is colours + mode + depth (Phase 10 m1)");
     check(fs::directory_iterator(dir) != fs::directory_iterator() && !fs::exists(store.working_path() + ".tmp." + std::to_string(::getpid())), "no temp file is left behind (written by rename)");
-    store.set_layout(*builtin_layout("default"));
-    check(store.label() == "default" && !store.modified(), "putting the layout back makes it 'default' again — identity is by comparison, not a dirty flag");
+    store.set_depth("auto");
+    check(store.label() == "default" && !store.modified(), "putting the depth back makes it 'default' again — identity is by comparison, not a dirty flag");
     store.set_mode("light");
     check(store.label() == "default (modified)", "a mode change is a modification");
   }
@@ -172,33 +180,27 @@ int main() {
     ThemePresets s({bad, false, ""});
     PresetLoadReport rep = s.start();
     check(!rep.error.empty() && rep.error.find("unreadable") != std::string::npos && s.label() == "default", "an unparseable working copy: error named, default served");
-    write_file(fs::path(bad) / "theme.working.json", R"({"mode":"sideways","depth":"auto","colours":{"roles":{"text":{"fg":"none"}}},"layout":{"root":{"content":"transcript"}},"extra":1})");
+    write_file(fs::path(bad) / "theme.working.json", R"({"mode":"sideways","depth":"256","colours":{"roles":{"text":{"fg":"none"}}},"extra":1})");
     ThemePresets s4({bad, false, ""});
     rep = s4.start();
     check(rep.error.empty() && rep.bad_values.size() == 1 && rep.bad_values[0].find("mode") == 0 && rep.unknown_keys.size() == 1 && rep.unknown_keys[0] == "extra" &&
               rep.colours.missing_roles.size() == kRoleCount - 1,
           "a loadable working copy with problems loads and reports each: bad mode, unknown key, missing roles [" + rep.summary() + "]");
-    check(s4.working().mode == "auto" && s4.working().layout.base.root.content == "transcript", "the bad value keeps its default; the good parts load");
+    check(s4.working().mode == "auto" && s4.working().depth == "256", "the bad value keeps its default; the good parts load");
   }
-  // ---- colours-only theme files and layout files ----
+  // ---- colours-only theme files ----
   {
     const std::string d2 = (world / "files").string();
     ThemePresets s({d2, false, ""});
     s.start();
+    s.set_depth("mono");
     write_file(fs::path(d2) / "colours.json", theme_to_json(*builtin_theme("mono")));
     PresetLoadReport rep;
     check(s.load((fs::path(d2) / "colours.json").string(), rep) && !rep.notes.empty() && rep.notes.back().find("colours-only") != std::string::npos,
           "a colours-only theme file loads into the colours part with a note");
     ThemeLoadReport tr;
-    check(resolve_colours(s.working(), ThemeMode::Dark, tr)->styles == builtin_theme("mono")->styles && s.working().layout == *builtin_layout("default") && s.label() == "default (modified)",
-          "…the look is mono, the layout kept, and the label says modified against 'default'");
-    write_file(fs::path(d2) / "layouts" / "two.json", layout_to_json(*builtin_layout("no-panel")));
-    check(s.layout_files() == std::vector<std::string>{"two"}, "layout files in <dir>/layouts are discovered by name");
-    LayoutLoadReport lr;
-    std::optional<Layout> l = s.find_layout("two", lr);
-    check(l && lr.clean() && l->name == "no-panel", "find_layout resolves a layouts/ name");
-    check(s.find_layout("stacked", lr) && s.find_layout("stacked", lr)->name == "stacked", "…and a built-in name");
-    check(!s.find_layout("nothing", lr) && lr.error.find("no layout 'nothing'") == 0, "…and names the failure otherwise");
+    check(resolve_colours(s.working(), ThemeMode::Dark, tr)->styles == builtin_theme("mono")->styles && s.working().depth == "mono" && s.label() == "default (modified)",
+          "…the look is mono, mode and depth kept, and the label says modified against 'default'");
     // A user preset saved under a shipped name's file is never listed as a user preset.
     write_file(fs::path(d2) / "themes" / "default.json", "{}");
     bool dup = false;
@@ -213,10 +215,14 @@ int main() {
     check(back && rep.clean() && *back == *d, "theme_preset_to_json / theme_preset_from_json round-trips the whole domain");
     json::Value no_colours = json::Value::object();
     check(!theme_preset_from_json(no_colours, rep) && rep.error.find("colours") != std::string::npos, "a preset without colours is unusable");
-    json::Value nl = theme_preset_to_json(*d, "x");
-    nl.obj.erase(std::remove_if(nl.obj.begin(), nl.obj.end(), [](auto& kv) { return kv.first == "layout"; }), nl.obj.end());
-    back = theme_preset_from_json(nl, rep);
-    check(back && back->layout == *builtin_layout("default") && !rep.notes.empty(), "a preset without a layout part gets the default layout and a note");
+    check(!theme_preset_to_json(*d, "x").has("layout"), "a written theme preset carries no layout (Phase 10 m1)");
+    // A Phase 9 preset file: its layout part is IGNORED, by name, and the file is still
+    // clean — the part was valid, it just is not the Theme's any more.
+    json::Value old = theme_preset_to_json(*d, "x");
+    old.set("layout", layout_to_json_value(*builtin_layout("stacked")));
+    back = theme_preset_from_json(old, rep);
+    check(back && *back == *d && rep.clean() && rep.notes.size() == 1 && rep.notes[0].find("\"layout\": ignored") == 0,
+          "a Phase 9 preset file loads its colours and reports the layout part as ignored, by name [" + (rep.notes.empty() ? rep.summary() : rep.notes[0]) + "]");
   }
   // ---- precedence: flag > env > working > builtin, all 8 present/absent combinations ----
   {
@@ -229,17 +235,129 @@ int main() {
     }
     check(all, "the first non-empty rung wins in every one of the 8 combinations, and the answer names its rung");
     check(rung_name(Rung::Flag) == "flag" && rung_name(Rung::Builtin) == "built-in default", "rung names");
-    check(theme_setting("theme") && theme_setting("layout") && theme_setting("theme_mode") && theme_setting("color_depth") && !theme_setting("frontend"),
-          "the table holds exactly the Theme domain's four settings (frontend is a host's)");
-    check(theme_setting("theme")->builtin == "default" && theme_setting("theme_mode")->builtin == "auto" && theme_setting("color_depth")->builtin == "auto",
-          "built-in defaults: default / auto / auto");
+    check(setting("theme") && setting("layout") && setting("theme_mode") && setting("color_depth") && setting("bindings") && !setting("frontend"),
+          "one table holds all five settings across the three domains (frontend is a host's)");
+    check(setting("theme")->domain == Domain::Theme && setting("layout")->domain == Domain::Layout && setting("bindings")->domain == Domain::Bindings &&
+              setting("theme_mode")->domain == Domain::Theme && domain_name(Domain::Layout) == "layout",
+          "…each row names its own domain (Phase 10 m1: 'layout' is no longer a Theme row)");
+    check(setting("theme")->builtin == "default" && setting("layout")->builtin == "default" && setting("theme_mode")->builtin == "auto" &&
+              setting("color_depth")->builtin == "auto",
+          "built-in defaults: default / default / auto / auto");
     PresetLoadReport lrep;
     store.load("default", lrep);  // (the store from above)
-    store.set_layout(*builtin_layout("panel-left"));
     store.set_mode("dark");
-    check(working_value(store, "theme") == "default" && working_value(store, "layout") == "panel-left" && working_value(store, "theme_mode") == "dark" &&
-              working_value(store, "color_depth") == "auto",
-          "working_value reads each setting from the working copy");
+    check(working_value(store, "theme") == "default" && working_value(store, "theme_mode") == "dark" && working_value(store, "color_depth") == "auto" &&
+              working_value(store, "layout").empty(),
+          "working_value reads each of the Theme domain's settings, and none of another domain's");
+  }
+  // ---- the Layout domain (Phase 10 m1): the same five rules on the third domain ----
+  {
+    const std::string ldir = (world / "layouts").string();
+    LayoutPresets ls({ldir, false, ""});
+    PresetLoadReport rep = ls.start();
+    check(rep.clean() && ls.label() == "default" && ls.working() == *builtin_layout("default"),
+          "a fresh directory starts from the shipped default layout (rule 5), label 'default'");
+    // The shipped presets ARE the built-ins: one definition site, asserted anyway.
+    std::vector<std::string_view> names = LayoutPresets::shipped_names();
+    check(names.size() == 4 && names[0] == "default", "four shipped layouts, 'default' first");
+    bool all_builtin = true;
+    for (std::string_view n : names) {
+      const std::string on_disk = read_file(fs::path(ROLLTUI_LAYOUTS_DIR) / (std::string(n) + ".json"));
+      if (on_disk.empty() || on_disk != LayoutPresets::shipped_json(n)) { all_builtin = false; check(false, "shipped layout '" + std::string(n) + "' does not embed its file verbatim"); }
+      if (!builtin_layout(n) || !(*LayoutPresets::shipped(n) == *builtin_layout(n))) { all_builtin = false; check(false, "shipped layout '" + std::string(n) + "' differs from builtin_layout()"); }
+    }
+    check(all_builtin, "every shipped layout embeds rolltui/presets/layouts/<name>.json verbatim AND is builtin_layout(name) — one definition site");
+    // Rule 2: one working copy, autosaved; rule 4: the label by comparison.
+    Layout wide = *builtin_layout("default");
+    wide.base.root.children[1].size = SplitSize::fixed(Dim::abs(48));  // a wider status panel
+    ls.set_working(wide);
+    check(ls.label() == "default (modified)" && fs::exists(ls.working_path()) && ls.working_path() == ldir + "/layout.working.json",
+          "an edit autosaves layout.working.json and reads 'default (modified)'");
+    LayoutPresets again({ldir, false, ""});
+    rep = again.start();
+    check(rep.clean() && again.working() == wide && again.label() == "default (modified)",
+          "a restart loads the autosaved working copy exactly, with its label [" + rep.summary() + "]");
+    // Rules 3 and 5.
+    std::string err;
+    check(ls.save_as("default", false, err) == SaveResult::RefusedShipped, "save-as over a shipped layout name is refused (rule 5)");
+    check(ls.save_as("wide", false, err) == SaveResult::Saved && ls.label() == "wide" && fs::exists(ls.preset_path("wide")), "save-as 'wide' saves and becomes the origin");
+    check(ls.load("stacked", rep) && ls.working() == *builtin_layout("stacked") && ls.label() == "stacked", "load copies a shipped layout back whole (rule 1)");
+    check(ls.load("wide", rep) && ls.working() == wide, "…and the user preset back");
+    // A file dropped into <dir>/layouts is a preset: the Phase 9 discovery, by the
+    // domain's own mechanics now.
+    write_file(fs::path(ldir) / "layouts" / "two.json", layout_to_json(*builtin_layout("no-panel")));
+    bool has_two = false;
+    for (const PresetInfo& p : ls.list()) if (p.name == "two" && !p.shipped) has_two = true;
+    check(has_two, "a layout file dropped into <dir>/layouts is listed as a preset by name");
+    std::optional<Layout> l = ls.get("two", rep);
+    check(l && rep.clean() && l->name == "no-panel", "…and loads (its own \"name\" and the file name may differ)");
+    check(ls.get((fs::path(ldir) / "layouts" / "two.json").string(), rep).has_value(), "…and resolves by path too");
+    check(!ls.get("nothing", rep) && rep.error.find("no layout preset 'nothing'") == 0, "an unknown name is a named error [" + rep.error + "]");
+    check(!ls.load("nothing", rep) && ls.label() == "wide", "…and leaves the working copy alone");
+    // A layout file's own problems are reported through the layout sub-report.
+    write_file(fs::path(ldir) / "layouts" / "odd.json", R"({"name":"odd","colour":"blue","root":{"content":"transcript","border":"triple"}})");
+    check(ls.load("odd", rep) && !rep.clean() && rep.layout.unknown_keys.size() == 1 && rep.layout.unknown_keys[0] == "colour" && rep.layout.bad_values.size() == 1 &&
+              ls.working().base.root.border == Border::None,
+          "a layout with an unknown key and a bad value loads, reports both, and keeps the default [" + rep.summary() + "]");
+    check(working_value(ls, "layout") == "odd" && working_value(ls, "theme").empty(), "working_value on the Layout store is its origin, and nothing else's");
+  }
+  // ---- THE MIGRATION (Phase 10 m1): the layout leaves the Theme domain, once ----
+  // The failure guarded here is silent: a Phase 9 install keeps the user's layout inside
+  // theme.working.json, and a Theme domain that no longer parses the part would drop it
+  // on the very first autosave with nothing said and nothing to see. The control for
+  // this section is a build whose migrate_theme_layout() does not copy the part: the
+  // three checks named "THE LAYOUT SURVIVED", "…and it is the EDITED one" and "the theme
+  // file no longer carries a layout" must fail there.
+  {
+    const std::string m = (world / "migrate").string();
+    // A Phase 9 working copy: the shipped 'mono' colours plus an EDITED layout — a
+    // panel-left with a 20-cell status window, which is no shipped layout, so "the
+    // layout survived" cannot pass by landing on a default.
+    Layout edited = *builtin_layout("panel-left");
+    edited.base.root.children[0].size = SplitSize::fixed(Dim::abs(20));
+    json::Value phase9 = theme_preset_to_json(*ThemePresets::shipped("mono"), "mono");
+    phase9.set("preset", json::Value::string("mono"));
+    phase9.set("layout", layout_to_json_value(edited));
+    write_file(fs::path(m) / "theme.working.json", json::dump(phase9, 2) + "\n");
+
+    MigrationReport mr = migrate_theme_layout(m);
+    check(mr.error.empty() && mr.moved && mr.rewrote_theme && mr.layout_name == "panel-left" && !mr.notes.empty(),
+          "a theme working copy carrying a layout: the part is moved out and the theme file rewritten, and it says so [" +
+              (mr.notes.empty() ? mr.error : mr.notes[0]) + "]");
+    LayoutPresets ls({m, false, ""});
+    PresetLoadReport lrep = ls.start();
+    check(lrep.clean() && ls.origin() == "panel-left" && ls.modified(), "THE LAYOUT SURVIVED: a layout working copy exists, labelled 'panel-left (modified)' [" + lrep.summary() + "]");
+    check(ls.working() == edited, "…and it is the EDITED one, window for window, not a shipped layout that merely looks plausible");
+    ThemePresets ts({m, false, ""});
+    PresetLoadReport trep = ts.start();
+    check(trep.clean() && ts.origin() == "mono" && ts.working() == *ThemePresets::shipped("mono"),
+          "…and the theme working copy is otherwise untouched: still 'mono', unmodified [" + trep.summary() + "]");
+    std::string perr;
+    check(!json::parse(read_file(fs::path(m) / "theme.working.json"), perr).has("layout") && perr.empty(),
+          "the theme file no longer carries a layout — so nothing reports it ignored, run after run");
+    MigrationReport twice = migrate_theme_layout(m);
+    check(!twice.moved && !twice.rewrote_theme && twice.notes.empty() && twice.error.empty(), "running it again has nothing to do");
+    // The other direction: a layout working copy ALREADY exists. The stale part must
+    // never overwrite it — this is the once-only half of the rule.
+    const std::string m2 = (world / "migrate2").string();
+    write_file(fs::path(m2) / "theme.working.json", json::dump(phase9, 2) + "\n");
+    LayoutPresets mine({m2, false, ""});
+    mine.load("stacked", lrep);  // the user has since chosen their own
+    MigrationReport mr2 = migrate_theme_layout(m2);
+    check(!mr2.moved && mr2.rewrote_theme && mr2.notes.size() == 1 && mr2.notes[0].find("already exists") != std::string::npos,
+          "an existing layout working copy is NOT overwritten; the stale part is dropped and the reason said [" + (mr2.notes.empty() ? "" : mr2.notes[0]) + "]");
+    LayoutPresets mine2({m2, false, ""});
+    mine2.start();
+    check(mine2.working() == *builtin_layout("stacked") && mine2.label() == "stacked", "…and the user's own layout is still theirs");
+    // A fresh Phase 10 install, and a theme working copy whose layout part is junk.
+    check(!migrate_theme_layout((world / "nothing-here").string()).moved, "a fresh install has nothing to migrate and says nothing");
+    const std::string m3 = (world / "migrate3").string();
+    json::Value junk = phase9;
+    junk.set("layout", json::Value::string("not a layout"));
+    write_file(fs::path(m3) / "theme.working.json", json::dump(junk, 2) + "\n");
+    MigrationReport mr3 = migrate_theme_layout(m3);
+    check(!mr3.error.empty() && !mr3.moved && !mr3.rewrote_theme && fs::exists(fs::path(m3) / "theme.working.json") && !fs::exists(fs::path(m3) / "layout.working.json"),
+          "an unusable layout part is an error and NOTHING is changed — the user still has the bytes [" + mr3.error + "]");
   }
   // ---- the Bindings domain (milestone 17): the same five rules on the second domain ----
   {
@@ -268,14 +386,18 @@ int main() {
               rep.bindings.bad_chords.size() == 1 && bs.working().action_for(*parse_chord("enter"), "input") == "input.submit",
           "a file binding Enter elsewhere loads with Enter refused by name and restored on submit [" + rep.summary() + "]");
     check(!bs.load("nothing", rep) && rep.error.find("no bindings preset 'nothing'") == 0, "an unknown bindings preset is a named error");
-    check(working_value(bs, "bindings") == "bad" && bindings_setting("bindings") && bindings_setting("bindings")->builtin == "default" && !bindings_setting("theme"),
+    check(working_value(bs, "bindings") == "bad" && setting("bindings")->domain == Domain::Bindings && setting("bindings")->builtin == "default",
           "the Bindings domain's one setting: 'bindings', built-in 'default'");
-    // Both domains in one directory, two working files, neither touching the other.
+    // All three domains in one directory, three working files, none touching another.
     ThemePresets ts({bdir, false, ""});
     ts.start();
     ts.set_mode("light");
-    check(fs::exists(fs::path(bdir) / "theme.working.json") && fs::exists(fs::path(bdir) / "bindings.working.json") && bs.label() == "bad" && ts.label() == "default (modified)",
-          "a session is Theme X + Bindings Y: two working copies side by side, each with its own label");
+    LayoutPresets ls({bdir, false, ""});
+    ls.start();
+    ls.load("no-panel", rep);
+    check(fs::exists(fs::path(bdir) / "theme.working.json") && fs::exists(fs::path(bdir) / "layout.working.json") && fs::exists(fs::path(bdir) / "bindings.working.json") &&
+              bs.label() == "bad" && ts.label() == "default (modified)" && ls.label() == "no-panel",
+          "a session is Theme X + Layout Y + Bindings Z: three working copies side by side, each with its own label");
   }
 
   // ---- OSC 11 ----

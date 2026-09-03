@@ -19,6 +19,6 @@ Here is the function│                                      │
 │ int add(int a, int b) {                                                      │
 │   return a + b;                                                              │
 └──────────────────────────────────────────────────────────────────────────────┘
- theme default-dark (modified)  keys default  layout stacked  size 80x24  line 9
+ theme default-dark  keys default  layout stacked  size 80x24  line 93/113  foll
 > type here
- default-dark (modified)  stacked  80x24  line 93/113  follow  truecolor  focus:
+ default-dark  stacked  80x24  line 93/113  follow  truecolor  focus:menu

@@ -37,4 +37,4 @@
 ├─────────────────────────────────────────────────│                   │ loaded wide-right · undo 1 · redo 0            │
 │ > type here                                     │                   │                                                │
 └─────────────────────────────────────────────────└───────────────────└────────────────────────────────────────────────┘
- default-dark (modified) [layout editor]  wide-right  120x40  line 146/180  follow  truecolor  focus:editor
+ default-dark [layout editor]  wide-right (modified)  120x40  line 146/180  follow  truecolor  focus:editor

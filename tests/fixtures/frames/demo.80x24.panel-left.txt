@@ -1,5 +1,5 @@
 ┌ status ──────────────────────┬ transcript ───────────────────────────────────┐
-│ theme   default-dark (modifie│ │ Markdown     │ build       │ single       │ │
+│ theme   default-dark         │ │ Markdown     │ build       │ single       │ │
 │ keys    default              │ │ block        │             │ header over  │ │
 │ layout  panel-left           │ │ renderer     │             │ md4c + wrap  │ │
 │ size    80x24                │ │ (blocks →    │             │              │ │
@@ -21,4 +21,4 @@
 │                              ├───────────────────────────────────────────────┤
 │                              │ > type here                                   │
 └──────────────────────────────┴───────────────────────────────────────────────┘
- default-dark (modified)  panel-left  80x24  line 173/191  follow  truecolor  fo
+ default-dark  panel-left  80x24  line 173/191  follow  truecolor  focus:input

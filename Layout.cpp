@@ -455,84 +455,38 @@ std::string layout_to_json(const Layout& layout) { return json::dump(layout_to_j
 
 // ---- built-ins -----------------------------------------------------------------------------
 
+// The built-ins ARE the Layout domain's shipped presets (Phase 10 m1): real files under
+// rolltui/presets/layouts/, embedded by cmake/embed_presets.cmake into the table below
+// and parsed here. ONE definition site — before m1 the same four layouts existed twice,
+// once as a string here and (as the plan wanted them) once as a file. Presets.cpp reads
+// the same table for LayoutDomain::shipped_at, so a shipped preset and its built-in
+// cannot drift; presets_test asserts they are equal anyway, because "cannot" has been
+// wrong before.
+namespace embedded {
+extern const std::pair<std::string_view, std::string_view> kLayoutPresets[];
+extern const std::size_t kLayoutPresetCount;
+}  // namespace embedded
+
 namespace {
 
-// The help popup every built-in declares: mixed absolute and relative dimensions,
-// centred, modal — the placement primitive exercised by real use (plan: Done-when h).
-constexpr const char* kHelpPopup = R"(
-    { "id": "help", "x": "50%", "y": "50%", "w": "60%", "h": 12, "anchor": "center",
-      "min_w": 24, "max_w": 72, "modal": true,
-      "root": { "content": "help", "border": "rounded", "title": "help", "focusable": true,
-                "background": "panel_background" } })";
-
-// The approval modal every built-in declares (milestone 10): a strip across the
-// bottom of the screen, over the input window, so the transcript — where the preview
-// being approved is — stays in view. A host without approvals never pushes it.
-constexpr const char* kApprovalPopup = R"(
-    { "id": "approval", "x": "50%", "y": "100%", "w": "70%", "h": 5, "anchor": "bottom",
-      "min_w": 44, "max_w": 96, "modal": true,
-      "root": { "content": "approval", "border": "rounded", "title": "approval", "focusable": true,
-                "background": "panel_background" } })";
-
-// The settings menu every built-in declares (milestone 11): centred, modal, sized by
-// the screen so the menu widget scrolls inside it rather than the popup growing.
-constexpr const char* kMenuPopup = R"(
-    { "id": "menu", "x": "50%", "y": "50%", "w": "50%", "h": "60%", "anchor": "center",
-      "min_w": 30, "max_w": 80, "min_h": 5, "modal": true,
-      "root": { "content": "menu", "border": "rounded", "title": "menu", "focusable": true,
-                "background": "panel_background" } })";
-
-// The session-details popup (milestone 11): over the status panel's side of the
-// screen, full height, so a long report is read without leaving the transcript.
-constexpr const char* kDetailsPopup = R"(
-    { "id": "details", "x": "100%", "y": 0, "w": "45%", "h": "100%", "anchor": "top-right",
-      "min_w": 40, "max_w": 100, "modal": true,
-      "root": { "content": "details", "border": "rounded", "title": "session", "focusable": true,
-                "background": "panel_background" } })";
-
-std::string builtin_json(std::string_view name) {
-  const std::string help = std::string(kHelpPopup) + ",\n" + kApprovalPopup + ",\n" + kMenuPopup + ",\n" + kDetailsPopup;
-  if (name == "default")
-    return R"({
-  "name": "default", "min_width": 60, "min_height": 8, "focus": "input",
-  "root": { "row": [
-    { "column": [
-      { "content": "transcript", "border": "single", "title": "transcript", "focusable": true },
-      { "content": "input", "size": 3, "border": "single", "focusable": true } ] },
-    { "content": "status", "size": 32, "border": "single", "title": "status",
-      "background": "panel_background" } ] },
-  "popups": [)" + help + " ]\n}\n";
-  if (name == "panel-left")
-    return R"({
-  "name": "panel-left", "min_width": 60, "min_height": 8, "focus": "input",
-  "root": { "row": [
-    { "content": "status", "size": 32, "border": "single", "title": "status",
-      "background": "panel_background" },
-    { "column": [
-      { "content": "transcript", "border": "single", "title": "transcript", "focusable": true },
-      { "content": "input", "size": 3, "border": "single", "focusable": true } ] } ] },
-  "popups": [)" + help + " ]\n}\n";
-  if (name == "no-panel")
-    return R"({
-  "name": "no-panel", "min_width": 20, "min_height": 6, "focus": "input",
-  "root": { "column": [
-    { "content": "transcript", "border": "single", "title": "transcript", "focusable": true },
-    { "content": "input", "size": 3, "border": "single", "focusable": true } ] },
-  "popups": [)" + help + " ]\n}\n";
-  if (name == "stacked")
-    return R"({
-  "name": "stacked", "min_width": 0, "min_height": 0, "focus": "input",
-  "root": { "column": [
-    { "content": "transcript", "focusable": true },
-    { "content": "status", "size": 1, "background": "panel_background" },
-    { "content": "input", "size": 1, "focusable": true } ] },
-  "popups": [)" + help + " ]\n}\n";
-  return "";
+// Shipped order, the preset system's rule (PresetStore::shipped_names): "default"
+// first — it is what a fresh install runs — then the table's own (alphabetical) order.
+const std::vector<std::string_view>& builtin_names() {
+  static const std::vector<std::string_view> names = [] {
+    std::vector<std::string_view> out;
+    for (std::size_t i = 0; i < embedded::kLayoutPresetCount; ++i)
+      if (embedded::kLayoutPresets[i].first == "default") out.push_back(embedded::kLayoutPresets[i].first);
+    for (std::size_t i = 0; i < embedded::kLayoutPresetCount; ++i)
+      if (embedded::kLayoutPresets[i].first != "default") out.push_back(embedded::kLayoutPresets[i].first);
+    return out;
+  }();
+  return names;
 }
 
-const std::vector<std::string_view>& builtin_names() {
-  static const std::vector<std::string_view> names = {"default", "panel-left", "no-panel", "stacked"};
-  return names;
+std::string_view builtin_json(std::string_view name) {
+  for (std::size_t i = 0; i < embedded::kLayoutPresetCount; ++i)
+    if (embedded::kLayoutPresets[i].first == name) return embedded::kLayoutPresets[i].second;
+  return "";
 }
 
 }  // namespace
