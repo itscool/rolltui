@@ -200,3 +200,14 @@ add_rolltui_test(rolltui-playground-golden-test tests/playground_golden_test.cpp
 target_compile_definitions(rolltui-playground-golden-test PRIVATE
   ROLLTUI_PLAYGROUND_BIN="$<TARGET_FILE:rolltui-playground>")
 add_dependencies(rolltui-playground-golden-test rolltui-playground)
+
+# Phase 10 milestone 6 — THE PHASE'S PROOF: a screen that exists only as files (a
+# layout, a menu, a bindings file and a document under tests/fixtures/screen) copied
+# into a scratch preset directory and run by the real playground, which has never heard
+# of it. Its controls are what carry the weight: no source names the screen, the chord
+# comes only from the bindings file, an undeclared action shows no shortcut, and a file
+# written after the build opens in it.
+add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
+target_compile_definitions(rolltui-files-only-test PRIVATE
+  ROLLTUI_PLAYGROUND_BIN="$<TARGET_FILE:rolltui-playground>")
+add_dependencies(rolltui-files-only-test rolltui-playground)

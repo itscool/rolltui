@@ -227,7 +227,21 @@ void Bindings::add_action(std::string_view action, std::string_view description)
   table_.emplace_back(std::string(action), std::vector<KeyEvent>{});
 }
 
+// AUTHORITATIVE over every non-library scope, not merely additive (Phase 10 m6). The
+// actions a screen emits are exactly what its layout declares, so a name the previous
+// layout declared and this one does not is UNDECLARED again: its chord row survives
+// untouched (a bindings file is global and the user's — Bindings.hpp's kept-and-inert
+// rule), but action_for() stops answering with it and help stops listing it. Merely
+// adding leaves the last screen's keys live under the next one — a key that works
+// because of a layout you are no longer running, which is the implicit resolution this
+// phase exists to remove. Clearing and re-adding also lets a hot-reloaded file change
+// a description. The library's own scopes are closed and are never touched.
 void Bindings::declare(const std::vector<ActionDecl>& declared) {
+  for (std::size_t i = actions_.size(); i-- > 0;)
+    if (!library_scope(scope_of(actions_[i]))) {
+      actions_.erase(actions_.begin() + static_cast<std::ptrdiff_t>(i));
+      descriptions_.erase(descriptions_.begin() + static_cast<std::ptrdiff_t>(i));
+    }
   for (const ActionDecl& d : declared) add_action(d.name, d.description);
 }
 

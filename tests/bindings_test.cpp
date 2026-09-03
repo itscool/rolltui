@@ -107,9 +107,22 @@ int main() {
           "declaring the action makes the kept chords live, with its description");
     check(b->undeclared() == std::vector<std::string>{"other.thing"}, "…and only the still-undeclared ones remain");
     b->declare({{"app.help", "SOMETHING ELSE"}});
-    check(b->description("app.help") == "open help", "declaring a known action twice is a no-op (the first wins)");
+    check(b->description("app.help") == "SOMETHING ELSE",
+          "re-declaring updates the description — a hot-reloaded layout file may change what an action does");
+    b->declare({{"app.help", "open help"}});
     check(help_lines(*b, "app").size() == 1 && help_lines(*b, "app")[0].find("F1, ?") == 0,
           "help renders an action known only because a layout declared it [" + (help_lines(*b, "app").empty() ? "" : help_lines(*b, "app")[0]) + "]");
+
+    // m6: declare() is AUTHORITATIVE, not additive — the actions of the screen you are on,
+    // not of every screen you have been on. Found by the files-only proof: a runtime layout
+    // switch left the previous layout's five app actions live under a layout declaring one.
+    b->declare({{"app.zoom", "zoom in"}});
+    check(!b->has("app.help") && b->action_for(key(Key::F1), "app").empty() && b->chords_for("app.help").size() == 2 &&
+              b->has("app.zoom") && help_lines(*b, "app").size() == 1,
+          "a layout that stops declaring an action makes it inert again — its chords kept, nothing emitting it");
+    check(b->has("input.submit") && b->has("playground.quit") && b->has("editor.theme"),
+          "…and the library's own closed scopes are untouched by any declaration");
+    b->declare({{"app.help", "open help"}});  // put the block's screen back for what follows
 
     // Two UNDECLARED actions of one scope still conflict at load — the check runs over
     // the rows, not through action_for, which skips them.

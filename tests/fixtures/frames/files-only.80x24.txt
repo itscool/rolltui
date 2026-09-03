@@ -1,0 +1,24 @@
+  a screen with no code behind it — four files, no rebuild
+┌ docs/kettle.md ─────────────────────────────┬ menus/kettle.json ─────────────┐
+│ A screen that exists only as files.         │ commands                       │
+│                                             │ Put the kettle on       Ctrl-J │
+│ Nothing in the host binary knows this       │ About this screen            ▸ │
+│ screen. No source file names these window   │                                │
+│ ids, this menu, this action or this         │                                │
+│ document, and no host was rebuilt to show   │                                │
+│ it. Four files in a preset directory are    │                                │
+│ the whole application.                      │                                │
+│                                             │                                │
+│ layouts/kettle.json is the design: three    │                                │
+│ windows, and the one action this screen     │                                │
+│ emits (app.kettle).                         │                                │
+│                                  ▼ 22 more  │                                │
+├ the live key table ─────────────────────────┴────────────────────────────────┤
+│ input:                                                                       │
+│   Enter                   send the line (always Enter)                       │
+│   Alt-Enter               insert a newline                                   │
+│   Backspace               erase before the caret (or the selection)          │
+│   Delete                  erase after the caret (or the selection)           │
+│   Ctrl-W, Alt-Backspace   kill the word before the caret          ▼ 53 more  │
+└──────────────────────────────────────────────────────────────────────────────┘
+ default-dark  kettle  80x24  line 0/0  follow  truecolor  focus:kettle_menu

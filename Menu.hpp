@@ -235,7 +235,9 @@ class Menu {
   std::vector<std::pair<std::string, std::string>> item_actions() const;
   // Rewrites every action-naming item's `shortcut` from the LIVE chords. Idempotent;
   // the menu widget calls it each frame, so a rebinding shows in the menu immediately
-  // and no file can disagree with the keyboard.
+  // and no file can disagree with the keyboard. An action no layout declares is inert
+  // (Bindings.hpp), so it shows NO shortcut however many chords the table keeps for it:
+  // a key that cannot fire must not be advertised.
   void apply_shortcuts(const Bindings& b);
 
   // ---- navigation state ----

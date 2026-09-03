@@ -1,0 +1,16 @@
+{
+  "name": "kettle", "min_width": 0, "min_height": 0, "focus": "kettle_menu",
+  "actions": {
+    "app.kettle": "put the kettle on"
+  },
+  "root": { "column": [
+    { "id": "kettle_banner", "content": "text:  a screen with no code behind it — four files, no rebuild",
+      "size": 1, "background": "panel_background" },
+    { "row": [
+      { "id": "kettle_doc", "content": "file:docs/kettle.md", "border": "single",
+        "title": "docs/kettle.md", "focusable": true },
+      { "id": "kettle_menu", "content": "menu:kettle", "size": 34, "border": "single",
+        "title": "menus/kettle.json", "focusable": true } ] },
+    { "id": "kettle_keys", "content": "help", "size": 8, "border": "single",
+      "title": "the live key table", "focusable": true } ] }
+}

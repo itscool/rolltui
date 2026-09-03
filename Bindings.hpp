@@ -39,9 +39,12 @@
 // and the user's; the actions are the screen's. So a file written while one layout was
 // loaded must not lose its keys under another: the row survives load, save and the
 // working copy's round trip, action_for() never answers with it (nothing can emit it),
-// and declaring the action later makes it live. The one exception is a name in a
-// LIBRARY scope that the library does not define ("input.sumbit"): that scope is closed,
-// so the loader reports it as an unknown action instead of keeping a dead row.
+// and declaring the action later makes it live — while UNdeclaring it (loading a layout
+// that does not list it; declare() is authoritative) makes it inert again without
+// touching its chords. Inert must also mean invisible: a menu item naming such an action
+// shows no shortcut, or the menu promises a key that cannot fire. The one exception is a
+// name in a LIBRARY scope that the library does not define ("input.sumbit"): that scope
+// is closed, so the loader reports it as an unknown action instead of keeping a dead row.
 //
 // THE ONE RULE THAT CANNOT BE REBOUND (the plan's standing rule, "Enter is always
 // submit"): `enter` must be a chord of input.submit and of no other input.* action; a
@@ -120,9 +123,14 @@ class Bindings {
   std::vector<std::string> undeclared() const;
 
   // ---- declarations (a layout's; Layout.hpp) ----
-  // Adds each action with its description, unless the table already knows it. Idempotent
-  // and cheap, so a host may call it every frame; call it after replacing the table from
-  // a preset store and after the layout changes.
+  // The non-library actions this table knows become EXACTLY `declared`, with their
+  // descriptions: what is new is added, what the previous layout declared and this one
+  // does not is undeclared again (its chords are kept — see the kept-and-inert rule
+  // above — but nothing can emit it). Authoritative rather than additive because the
+  // layout is what says which actions a screen has; merely adding leaves the last
+  // screen's keys live under the next one. The library's own scopes are never touched.
+  // Idempotent and cheap, so a host may call it every frame; call it after replacing the
+  // table from a preset store and after the layout changes.
   void declare(const std::vector<ActionDecl>& declared);
 
   // ---- edits (an editor's; the loader uses them too) ----

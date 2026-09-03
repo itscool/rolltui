@@ -1,0 +1,12 @@
+{
+  "name": "kettle-silent", "min_width": 0, "min_height": 0, "focus": "kettle_menu",
+  "actions": {},
+  "root": { "column": [
+    { "id": "kettle_banner", "content": "text:  the same screen, declaring no actions at all",
+      "size": 1, "background": "panel_background" },
+    { "row": [
+      { "id": "kettle_doc", "content": "file:docs/kettle.md", "border": "single",
+        "title": "docs/kettle.md", "focusable": true },
+      { "id": "kettle_menu", "content": "menu:kettle", "size": 34, "border": "single",
+        "title": "menus/kettle.json", "focusable": true } ] } ] }
+}

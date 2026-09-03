@@ -624,7 +624,12 @@ void collect_item_actions(const MenuItem& it, std::vector<std::pair<std::string,
   for (const MenuItem& c : it.children) collect_item_actions(c, out);
 }
 void fill_shortcuts(MenuItem& it, const Bindings& b) {
-  if (!it.action_name.empty()) it.shortcut = b.chords_text(it.action_name);
+  // An action no layout declares is INERT — the table keeps its chords but nothing can
+  // emit it (Bindings.hpp) — so it has no shortcut to show. Printing its chords anyway
+  // promises a key that cannot fire, which is exactly the lie apply_shortcuts exists to
+  // remove; found by Phase 10 m6's proof screen, whose menu offered Ctrl-J for an action
+  // its layout had stopped declaring.
+  if (!it.action_name.empty()) it.shortcut = b.has(it.action_name) ? b.chords_text(it.action_name) : std::string();
   for (MenuItem& c : it.children) fill_shortcuts(c, b);
 }
 }  // namespace

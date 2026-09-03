@@ -1,0 +1,9 @@
+{
+  "id": "root", "label": "commands", "items": [
+    { "id": "boil", "label": "Put the kettle on", "action": "app.kettle" },
+    { "id": "about", "label": "About this screen", "items": [
+      { "id": "layout", "label": "layouts/kettle.json" },
+      { "id": "menu", "label": "menus/kettle.json" },
+      { "id": "keys", "label": "bindings/kettle.json" },
+      { "id": "doc", "label": "docs/kettle.md" } ] } ]
+}

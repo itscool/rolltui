@@ -899,7 +899,9 @@ int main() {
           "a menu item naming an UNDECLARED action is a bad value, by item and action [" + rep.summary() + "]");
     check(windows.menu("extra").find("d") != nullptr, "…and the item that names a DECLARED action is not reported");
 
-    binds.declare({{"app.zoom", "zoom in"}});
+    // declare() is the whole screen's list (m6), so app.details has to be named again
+    // here or it stops being declared — which the very next assertion relies on.
+    binds.declare({{"app.details", "open the session details"}, {"app.zoom", "zoom in"}});
     rep = windows.prepare(s, box);
     check(rep.clean(), "…and declaring the action clears it [" + rep.summary() + "]");
     // The point of naming the action: the shortcut is the LIVE chords, so a rebinding
@@ -913,6 +915,15 @@ int main() {
     binds.bind("app.details", *parse_chord("f9"));
     windows.prepare(s, box);
     check(shortcut_of("d") == "F3, F9", "…and follows a rebinding immediately [" + shortcut_of("d") + "]");
+    // m6: an action the CURRENT layout no longer declares is inert, so its item shows no
+    // shortcut at all — the table still keeps its two chords. A menu that advertised them
+    // would promise a key that cannot fire (found by the files-only proof screen).
+    binds.declare({{"app.zoom", "zoom in"}});
+    rep = windows.prepare(s, box);
+    check(binds.chords_for("app.details").size() == 2 && binds.action_for(*parse_chord("f3"), "app").empty() &&
+              shortcut_of("d").empty() && !rep.clean(),
+          "an UNdeclared action keeps its chords, emits nothing, shows no shortcut and is reported again [" +
+              shortcut_of("d") + "]");
   }
   {
     // ---- m4, the Done-when: `help` renders an action declared ONLY in a layout file.
