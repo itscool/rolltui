@@ -9,19 +9,19 @@
 │ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ [x] Visible                                    │
 │ │ files      │            │ theme       │ │ │ files      │          │ Border                                single ▸ │
 │ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Title: transcript                              │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Content slot              transcript:session ▸ │
-│ │ placements │            │ parser;     │ │ │ placements │          │ Size (Alt+arrows nudge): fill                  │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ [x] Focusable                                  │
-│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Delete this node                               │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Popups                                       ▸ │
-│ │ block      │            │ header over │ │ │ block      │          │ Undo                                    Ctrl-Z │
-│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │ Redo                                    Ctrl-Y │
-│ │ (blocks →  │            │             │ │ │ (blocks →  │          │ Load layout                                  ▸ │
-│ │ styled     │            │             │ │ │ styled     │          │ Save layout file as (layouts/<name>.json):     │
-│ │ wrapped    │            │             │ │ │ wrapped    │          │ Reset to the loaded layout…                    │
-│ │ lines)     │            │             │ │ │ lines)     │          │                                                │
-│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │                                                │
-│ │ (roles →   │            │ header      │ │ │ (roles →   │          │                                                │
+│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Widget kind                       transcript ▸ │
+│ │ placements │            │ parser;     │ │ │ placements │          │ Source: session                                │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ Menu file                                    ▸ │
+│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Size (Alt+arrows nudge): fill                  │
+│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ [x] Focusable                                  │
+│ │ block      │            │ header over │ │ │ block      │          │ Delete this node                               │
+│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │ Popups                                       ▸ │
+│ │ (blocks →  │            │             │ │ │ (blocks →  │          │ Actions this screen emits                    ▸ │
+│ │ styled     │            │             │ │ │ styled     │          │ Undo                                    Ctrl-Z │
+│ │ wrapped    │            │             │ │ │ wrapped    │          │ Redo                                    Ctrl-Y │
+│ │ lines)     │            │             │ │ │ lines)     │          │ Load layout                                  ▸ │
+│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ Save layout file as (layouts/<name>.json):     │
+│ │ (roles →   │            │ header      │ │ │ (roles →   │          │ Reset to the loaded layout…                    │
 │ │ styles,    │            │             │ │ │ styles,    │          │                                                │
 │ │ JSON       │            │             │ │ │ JSON       │          │                                                │
 │ │ loader,    │            │             │ │ │ loader,    │          │                                                │

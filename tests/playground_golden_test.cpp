@@ -225,6 +225,11 @@ int main(int argc, char** argv) {
       // the seam rule: the FIXED side takes the new size — the status before the seam
       // (panel-left) and the status after it (a fixture with a 55-wide right panel), both
       // seams left of the editor's popup
+      // Phase 10 m5 (the design editor). `add-widget` is the milestone's Done-when: a
+      // window that did not exist, holding a widget of a kind this layout never had,
+      // through the kind picker alone — and DRAWN in the same frame.
+      {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter\""},
+      {"layout-editor.120x40.actions", "--frame 120x40 --theme default-dark --keys \"F6 Type:actions Enter End Enter Type:app.zoom Enter Escape Type:save Enter Type:three Enter Escape Type:actions Enter\""},
       {"layout-editor.120x40.drag-fixed-before", "--frame 120x40 --theme default-dark --layout panel-left --keys \"F6 Click 31,10 Drag 20,10 Release\""},
       {"layout-editor.120x40.drag-fixed-after", "--frame 120x40 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-right.json' --keys \"F6 Click 65,10 Drag 50,10 Release\""},
       // milestone 17 (bindings as data): a vim-ish file, the help rendered from it, the
@@ -246,6 +251,7 @@ int main(int argc, char** argv) {
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
+  std::string le_widget, le_actions;
   std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
   bool tiny_failed = false;
   for (const Case& c : cases) {
@@ -322,6 +328,8 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "layout-editor.120x40.drag") le_drag = out;
     if (std::string(c.name) == "layout-editor.120x40.click") le_click = out;
     if (std::string(c.name) == "layout-editor.120x40.save") le_save = out;
+    if (std::string(c.name) == "layout-editor.120x40.add-widget") le_widget = out;
+    if (std::string(c.name) == "layout-editor.120x40.actions") le_actions = out;
     if (std::string(c.name) == "layout-editor.120x40.drag-fixed-before") le_fixed_before = out;
     if (std::string(c.name) == "layout-editor.120x40.drag-fixed-after") le_fixed_after = out;
     if (std::string(c.name) == "keys.120x40.help-default") kh_default = out;
@@ -547,6 +555,24 @@ int main(int argc, char** argv) {
       const std::string again = run(relaunch, rc);
       check(rc == 0 && again.find("\xE2\x94\x8C chat ") != std::string::npos && again.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && again.find("[layout editor]") == std::string::npos,
             "a relaunch with --layout <that file> shows the two panes ('chat' and 'transcript-2') with no editor open (Done-when of m16)");
+    }
+    // ---- Phase 10 m5: the design editor ----
+    // The Done-when, end to end through the real binary: a window that did not exist,
+    // holding a widget of a kind this layout never had, DRAWN in the same frame — and
+    // the kind picker is the only thing that put it there. "Ctrl-W, Alt-Backspace" is
+    // a chord pair only a `help` widget renders (from the LIVE bindings), so finding it
+    // in the second pane is the widget itself, not a title the editor wrote — and it
+    // survives the pane being narrow enough to wrap the descriptions.
+    check(le_widget.find("\xE2\x94\x8C transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
+              le_widget.find("help \xE2\x96\xB8") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
+          "a `help` widget added by the kind picker alone draws in the next frame, with the Source field emptied and disabled");
+    check(le_actions.find("app.zoom") != std::string::npos && le_actions.find("add an action (name)") != std::string::npos,
+          "the Actions level lists the shipped layout's declarations and the one just added");
+    {
+      bool ok = false;
+      const std::string saved = read_file(scratch + "/p/layouts/three.json", ok);
+      check(ok && saved.find("\"app.zoom\"") != std::string::npos && saved.find("\"app.help\"") != std::string::npos,
+            "…and saving writes it into the layout file's \"actions\", beside the ones it was loaded with");
     }
     // ---- milestone 15: --check, --generate, the Check popup ----
     check(ed_check.find("\xE2\x95\xAD report ") != std::string::npos && ed_check.find("badges: dark") != std::string::npos && ed_check.find("roles (fg on bg") != std::string::npos,

@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <variant>
@@ -677,6 +678,22 @@ Menu& Windows::menu(std::string_view source) {
 
 std::string Windows::menu_origin(std::string_view source) {
   return static_cast<MenuWidget*>(widget_for("menu:" + std::string(source)))->origin();
+}
+
+std::vector<std::string> Windows::menu_names() const {
+  std::vector<std::string> out;
+  auto add = [&out](std::string name) {
+    if (std::find(out.begin(), out.end(), name) == out.end()) out.push_back(std::move(name));
+  };
+  if (!dir_.empty()) {
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(dir_ + "/menus", ec))
+      if (e.path().extension() == ".json") add(e.path().stem().string());
+  }
+  for (const auto& [name, _] : host_menus_) add(name);
+  for (std::string_view name : shipped_menu_names()) add(std::string(name));
+  std::sort(out.begin(), out.end());
+  return out;
 }
 
 Widget* Windows::at(std::string_view window) const {

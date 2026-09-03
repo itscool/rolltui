@@ -6,6 +6,15 @@
 // anchor, remove), the seam drag, undo/redo, save/load outcomes, and the produced
 // layout round-tripping through the loader clean.
 //
+// Phase 10 m5 — THE DESIGN EDITOR: the widget-kind picker over Layout.hpp's closed
+// table, the source field typed by the kind, the menu-file choice, and the actions
+// level. The property to hold on to is that EXACTLY ONE of Source / Menu file is
+// enabled for any kind, so the editor never offers two ways to say one thing.
+//
+// Every menu lookup goes through value_of / enabled_of, which NAME a missing item
+// instead of dereferencing a null (CLAUDE.md: a control that crashes reports nothing —
+// this file segfaulted on `find("content")->value` the moment that item was renamed).
+//
 #include <string>
 
 #include "layout_editor.hpp"
@@ -28,6 +37,19 @@ void act(LayoutEditor& ed, const std::string& filter) {
   type(ed, filter);
   ed.handle(key(Key::Enter));
 }
+// A missing item is a NAMED answer, never a null deref: this file crashed on one.
+std::string value_of(const LayoutEditor& ed, const char* id) {
+  const MenuItem* it = ed.menu().find(id);
+  return it ? it->value : "(no item '" + std::string(id) + "')";
+}
+bool enabled_of(const LayoutEditor& ed, const char* id) {
+  const MenuItem* it = ed.menu().find(id);
+  return it && it->enabled;
+}
+std::string content_of(const LayoutEditor& ed, const char* node) {
+  const Node* n = LayoutEditor::find_node(ed.current().base.root, node);
+  return n ? n->content : "(no node '" + std::string(node) + "')";
+}
 }  // namespace
 
 int main() {
@@ -45,8 +67,8 @@ int main() {
     check(ed.selected() == "input", "Shift-Tab goes back");
     ed.select("transcript");
     check(ed.selected() == "transcript" && ed.menu().find("root")->label.find("transcript") != std::string::npos, "select(id) and the breadcrumb names the node");
-    check(ed.menu().find("border")->value == "single" && ed.menu().find("content")->value == "transcript:session" && ed.menu().find("size")->value == "fill",
-          "the menu shows the selected node's border, content and size");
+    check(value_of(ed, "border") == "single" && value_of(ed, "kind") == "transcript" && value_of(ed, "source") == "session" && value_of(ed, "size") == "fill",
+          "the menu shows the selected node's border, kind, source and size");
   }
   // ---- split into a row ----
   {
@@ -197,6 +219,131 @@ int main() {
     ed.handle(key(Key::Escape));
     o = ed.handle(key(Key::Escape));
     check(o.kind == O::Closed, "Escape at the top asks the host to close");
+  }
+  // ---- m5: the kind picker, the source field, the menu-file choice ----
+  {
+    ed.load(*builtin_layout("default"));  // a fresh baseline: the blocks above left it split about
+    ed.set_menus({"main", "extra"});
+    ed.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane"});
+    ed.select("transcript");
+    check(enabled_of(ed, "source") && !enabled_of(ed, "menu_file"),
+          "on a transcript the Source field is the one that owns the source, the Menu file choice is off");
+    check(ed.menu().find("source") && ed.menu().find("source")->spec.type == InputType::Name && ed.menu().find("source")->spec.hint == "session",
+          "…typed Name, hinted with the contents the host offers for that kind");
+    // The kind choice, previewed and committed.
+    act(ed, "widget kind");
+    check(ed.menu().level().id == "kind" && ed.menu().selected_item() && ed.menu().selected_item()->id == "transcript", "the Widget kind choice opens on the current kind");
+    for (int i = 0; i < 3; ++i) ed.handle(key(Key::Down));  // transcript → input → menu → rows
+    check(ed.previewing() && content_of(ed, "transcript") == "rows:session", "moving down the kind list previews the new kind and KEEPS the source [" + content_of(ed, "transcript") + "]");
+    ed.handle(key(Key::Down));
+    ed.handle(key(Key::Down));
+    ed.handle(key(Key::Down));  // rows → text → file → help
+    check(content_of(ed, "transcript") == "help", "…and `help`, which takes no source, drops it");
+    ed.handle(key(Key::Up));
+    check(content_of(ed, "transcript") == "file:session", "…stepping back off `help` restores the source from before the preview, not from the previewed content");
+    ed.handle(key(Key::Escape));
+    check(!ed.previewing() && content_of(ed, "transcript") == "transcript:session", "Escape puts the whole content back");
+    // Commit `menu`, and the two source fields swap places.
+    act(ed, "widget kind");
+    for (int i = 0; i < 2; ++i) ed.handle(key(Key::Down));
+    LayoutEditor::Outcome o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && content_of(ed, "transcript") == "menu:session", "Enter commits the menu kind, source kept");
+    check(!enabled_of(ed, "source") && enabled_of(ed, "menu_file"),
+          "on a `menu` the Menu file choice owns the source and the Source input is off \xE2\x80\x94 exactly one of the two, always");
+    check(ed.selection_line().find("selected: transcript") != std::string::npos, "the selection line names the node");
+    act(ed, "menu file");
+    ed.handle(key(Key::End));
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && content_of(ed, "transcript") == "menu:extra", "the Menu file choice writes the source [" + content_of(ed, "transcript") + "]");
+    // Back to a transcript, and the source typed by hand.
+    act(ed, "widget kind");
+    ed.handle(key(Key::Home));
+    ed.handle(key(Key::Enter));
+    act(ed, "source");
+    for (int i = 0; i < 8; ++i) ed.handle(key(Key::Backspace));
+    type(ed, "scratch");
+    check(ed.previewing() && content_of(ed, "transcript") == "transcript:scratch", "typing a source previews it live");
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && content_of(ed, "transcript") == "transcript:scratch", "Enter commits the typed source");
+    act(ed, "source");
+    type(ed, "/");
+    check(ed.menu().editing() && ed.menu().editing_text() == "scratch" && ed.status_line().find("refused") != std::string::npos,
+          "a '/' is refused in a Name source at the keystroke, the text kept [" + ed.status_line() + "]");
+    ed.handle(key(Key::Escape));
+    // A `file:` source is a path, so the same key is accepted there.
+    act(ed, "widget kind");
+    ed.handle(key(Key::Home));
+    for (int i = 0; i < 5; ++i) ed.handle(key(Key::Down));  // file
+    ed.handle(key(Key::Enter));
+    check(ed.menu().find("source") && ed.menu().find("source")->spec.type == InputType::Text, "a `file` source is Text, not Name: a path has slashes in it");
+    act(ed, "source");
+    ed.handle(key(Key::End));  // an edit opens with the whole value selected; End appends instead
+    type(ed, "/x");
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && content_of(ed, "transcript") == "file:scratch/x", "…so a path commits [" + content_of(ed, "transcript") + "]");
+    // An empty source on a kind that requires one is left saying so, not invented.
+    act(ed, "source");
+    for (int i = 0; i < 12; ++i) ed.handle(key(Key::Backspace));
+    o = ed.handle(key(Key::Enter));
+    check(ed.menu().editing() && ed.status_line().find("a value is needed") != std::string::npos,
+          "an empty source for a kind that requires one is refused with the reason [" + ed.status_line() + "]");
+    ed.handle(key(Key::Escape));
+    // Put it back where the rest of the test expects it.
+    act(ed, "widget kind");
+    ed.handle(key(Key::Home));
+    ed.handle(key(Key::Enter));
+    act(ed, "source");
+    for (int i = 0; i < 12; ++i) ed.handle(key(Key::Backspace));
+    type(ed, "session");
+    ed.handle(key(Key::Enter));
+    check(content_of(ed, "transcript") == "transcript:session", "…and back to transcript:session for the rest of the test");
+    LayoutLoadReport rep;
+    std::optional<Layout> back = load_layout(layout_to_json(ed.current()), rep);
+    check(back && rep.clean() && *back == ed.current(), "every content the kind picker wrote round-trips through the loader clean");
+  }
+  // ---- m5: the actions level ----
+  {
+    const std::size_t before = ed.current().actions.size();
+    act(ed, "actions this screen");
+    ed.handle(key(Key::End));  // add an action
+    ed.handle(key(Key::Enter));
+    type(ed, "app.zoom");
+    LayoutEditor::Outcome o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && ed.current().actions.size() == before + 1 && ed.current().actions.back() == ActionDecl{"app.zoom", ""},
+          "adding an action declares it with no description invented for it");
+    check(ed.menu().find("action.app.zoom.desc") != nullptr, "…and the level grows a submenu for it, keyed by the dotted name");
+    // The loader's own rules, in the editor, refusing by the same words.
+    ed.handle(key(Key::End));
+    ed.handle(key(Key::Enter));
+    type(ed, "input.zoom");
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Changed && ed.current().actions.size() == before + 1 && ed.status_line().find("the library's and cannot be declared") != std::string::npos,
+          "a library scope is refused with the loader's own words [" + ed.status_line() + "]");
+    ed.handle(key(Key::End));
+    ed.handle(key(Key::Enter));
+    type(ed, "zoom");
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Changed && ed.status_line().find("<scope>.<verb>") != std::string::npos, "a name with no scope is refused [" + ed.status_line() + "]");
+    ed.handle(key(Key::End));
+    ed.handle(key(Key::Enter));
+    type(ed, "app.zoom");
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Changed && ed.status_line().find("already declared") != std::string::npos, "a duplicate is refused [" + ed.status_line() + "]");
+    // The description, and the removal.
+    ed.handle(key(Key::Escape));
+    act(ed, "actions this screen");
+    type(ed, "app.zoom");
+    ed.handle(key(Key::Enter));
+    ed.handle(key(Key::Enter));  // "what it does"
+    type(ed, "zoom the transcript");
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && ed.current().actions.back().description == "zoom the transcript", "the description commits");
+    ed.handle(key(Key::End));    // remove this action
+    o = ed.handle(key(Key::Enter));
+    check(o.kind == O::Committed && ed.current().actions.size() == before && ed.status_line().find("kept and inert") != std::string::npos,
+          "remove drops the declaration and says what happens to a chord for it [" + ed.status_line() + "]");
+    ed.handle(key(Key::Escape));
+    ed.handle(key(Key::Escape));
   }
   return report("rolltui layout_editor_test");
 }

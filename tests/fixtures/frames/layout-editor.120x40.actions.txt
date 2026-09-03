@@ -1,0 +1,40 @@
+┌ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+│ │ class, East-Asian width,         │             │ +, not Python) → │ layout editor • transcript › Actions this scre │
+│ │ grapheme property,               │             │ unicode_tables.hp│ app.help                                     ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ app.menu                                     ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ app.details                                  ▸ │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ app.palette                                  ▸ │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ app.repaint                                  ▸ │
+│ │                                  │             │ block tree is the│ app.zoom                                     ▸ │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ add an action (name):                          │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
+│ │ mouse mode)                      │             │                  │                                                │
+│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
+│ │                                  │             │ Event, table-test│                                                │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
+│ │ colour downgrade                 │             │ tested           │                                                │
+│ │ Wrap engine                      │ build       │ single header ove│                                                │
+│ │                                  │             │ header           │                                                │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
+│ │                                  │             │ Rect is a pure fu│                                                │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
+│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
+│ │ → styled wrapped lines)          │             │                  │                                                │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
+│ │ loader, built-ins)               │             │                  │                                                │
+│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
+│                                                                     │                                                │
+│ Here is the function you asked for:                                 │                                                │
+│                                                                     │                                                │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
+│ │ int add(int a, int b) {                                           │                                                │
+│ │   return a + b;                                                   │ selected: transcript  size fill  border single │
+│ └───────────────────────────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+├─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 1 · redo 0   │
+│ > type here                                                         │                                                │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark [layout editor]  default (modified)  120x40  line 75/109  follow  truecolor  focus:editor

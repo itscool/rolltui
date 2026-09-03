@@ -1,0 +1,40 @@
+┌ transcript ───────────────────────────────┌ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
+│ │ widget     │            │ header      │ │ input:                  │ layout editor • transcript-2                   │
+│ │ (hierarchi │            │ each; the   │ │   Enter                 │ Select the next node                       Tab │
+│ │ cal,       │            │ widget set  │ │ (always Enter)          │ Select the previous node             Shift-Tab │
+│ │ filterable │            │ is          │ │   Alt-Enter             │ Split into a row (side by side)                │
+│ │ ) + list/  │            │ deliberatel │ │ newline                 │ Split into a column (stacked)                  │
+│ │ text       │            │ y this      │ │   Backspace             │ Swap with the previous sibling                 │
+│ │ widgets    │            │ small       │ │ the caret (or the select│ Swap with the next sibling                     │
+│ │ Layout     │ build      │ reuses the  │ │   Delete                │ [x] Visible                                    │
+│ │ files      │            │ theme       │ │ caret (or the selection)│ Border                                single ▸ │
+│ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ Title: transcript-2                            │
+│ │ windows +  │            │ hand        │ │ before the caret        │ Widget kind                             help ▸ │
+│ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ Source:                                        │
+│ │ + content  │            │ hot-        │ │ after the caret         │ Menu file                                    ▸ │
+│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Size (Alt+arrows nudge): fill                  │
+│ │ Markdown   │ build      │ single      │ │ start of the line       │ [x] Focusable                                  │
+│ │ block      │            │ header over │ │   Ctrl-K                │ Delete this node                               │
+│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Popups                                       ▸ │
+│ │ (blocks →  │            │             │ │   Left                  │ Actions this screen emits                    ▸ │
+│ │ styled     │            │             │ │ grapheme left           │ Undo                                    Ctrl-Z │
+│ │ wrapped    │            │             │ │   Right                 │ Redo                                    Ctrl-Y │
+│ │ lines)     │            │             │ │ grapheme right          │ Load layout                                  ▸ │
+│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Save layout file as (layouts/<name>.json):     │
+│ │ (roles →   │            │ header      │ │ left                    │ Reset to the loaded layout…                    │
+│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │                                                │
+│ │ JSON       │            │             │ │ right                   │                                                │
+│ │ loader,    │            │             │ │   Home                  │                                                │
+│ │ built-ins) │            │             │ │ line (scrolls when empty│                                                │
+│ └────────────┴────────────┴─────────────┘ │   End                   │                                                │
+│                                           │ (scrolls when empty)    │                                                │
+│ Here is the function you asked for:       │   Up                    │                                                │
+│                                           │ the previous history ent│                                                │
+│ ┌ cpp ──────────────────────────────────┐ │   Down                  │                                                │
+│ │ int add(int a, int b) {               │ │ the next history entry  │                                                │
+│ │   return a + b;                       │ │   Shift-Left            │ selected: transcript-2  size fill  border sing │
+│ └───────────────────────────────────────┘ │ selection one grapheme l│ Tab next node · click selects · drag an edge r │
+├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
+│ > type here                                                         │                                                │
+└─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default-dark [layout editor]  default (modified)  120x40  line 181/215  follow  truecolor  focus:editor

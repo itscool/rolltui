@@ -319,6 +319,8 @@ int main() {
     txt.validator = "even";
     InputSpec opt = spec(InputType::Int, 0, 9);
     opt.optional = true;
+    InputSpec otxt = spec(InputType::Text);
+    otxt.optional = true;
     MenuItem typed = MenuItem::submenu(
         "root", "typed",
         {MenuItem::input("pct", "Percent", spec(InputType::Int, 0, 100), "50"),        // 0
@@ -331,7 +333,9 @@ int main() {
          MenuItem::input("dm", "Dim", spec(InputType::Dim), "1"),                      // 7
          MenuItem::input("nm", "Name", spec(InputType::Name), "abc"),                  // 8
          MenuItem::input("txt", "Text", txt, "ok"),                                    // 9
-         MenuItem::input("opt", "Optional", opt, "")});                                // 10
+         MenuItem::input("opt", "Optional", opt, ""),                                  // 10
+         MenuItem::input("otxt", "Optional text", otxt, "hi"),                         // 11
+         MenuItem::input("rtxt", "Required text", spec(InputType::Text), "hi")});       // 12
     Menu m(typed);
     auto open = [&](int index) {
       m.reset();
@@ -378,6 +382,11 @@ int main() {
         {9, "abcd", "abc", false, "", "text: max_len 3 refuses the fourth; commit refused — no validator 'even' registered"},
         {9, "a", "a", false, "", "text: min_len 2 refuses the commit"},
         {10, "", "", true, "", "optional int: empty commits as empty"},
+        // Text honours `optional` like every other type. It did not until Phase 10 m5,
+        // where a `file:` source is a Text field that must not commit empty; min_len is
+        // a LENGTH rule and was never the emptiness rule.
+        {12, "", "", false, "", "text: empty is refused when the spec is not optional and there is no min_len"},
+        {11, "", "", true, "", "optional text: empty commits as empty"},
     };
     for (const Row& r : rows) {
       open(r.item);

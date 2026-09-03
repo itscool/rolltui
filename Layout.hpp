@@ -231,6 +231,12 @@ std::optional<WidgetKind> widget_kind_from_name(std::string_view name);
 // `text`'s literal may be empty (Optional).
 enum class SourceRule : std::uint8_t { Required, Optional, Forbidden };
 SourceRule source_rule(WidgetKind k);
+// What a kind's source NAMES, in words ("a document the host binds", "a path"): the
+// parenthetical in the parse error, and the design editor's hint for the source field.
+std::string_view source_describes(WidgetKind k);
+// Every kind, in table order — the design editor's kind picker reads the table rather
+// than listing the kinds a second time.
+const std::vector<WidgetKind>& widget_kinds();
 
 // Parses "kind[:source]". nullopt — with `why` set to the reason, which is what a
 // report and the error panel say — when the kind is not in the table, a required
@@ -294,6 +300,11 @@ Rect inner_rect(Rect outer, Border b);
 // fallback). Every one declares a "help" popup. Unknown name → nullptr.
 const Layout* builtin_layout(std::string_view name);
 std::vector<std::string_view> builtin_layout_names();
+
+// Why `name` cannot be declared as an action ("" when it can): the three rules above,
+// as ONE function, so the loader and the design editor refuse exactly the same names
+// with exactly the same words. Duplicates are the caller's to check — it holds the list.
+std::string action_decl_problem(std::string_view name);
 
 // The actions the shipped "default" layout declares, read straight out of that file's
 // "actions" object rather than through load_layout — which is what makes it safe for

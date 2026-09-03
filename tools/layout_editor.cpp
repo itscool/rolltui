@@ -63,11 +63,17 @@ void LayoutEditor::load(const Layout& layout) {
   status_ = "loaded " + layout.name;
 }
 
-void LayoutEditor::set_slots(std::vector<std::string> slots) {
-  slots_ = std::move(slots);
+void LayoutEditor::set_sources(std::vector<std::string> contents) {
+  sources_ = std::move(contents);
+  sync_content_fields();
+}
+
+void LayoutEditor::set_menus(std::vector<std::string> names) {
+  menus_ = std::move(names);
   std::vector<MenuItem> opts;
-  for (const std::string& s : slots_) opts.push_back(MenuItem::action(s, s));
-  menu_.set_options("content", std::move(opts));
+  for (const std::string& n : menus_) opts.push_back(MenuItem::action(n, n));
+  menu_.set_options("menu_file", std::move(opts));
+  sync_content_fields();
 }
 
 void LayoutEditor::set_layouts(std::vector<std::string> names) {
@@ -98,11 +104,28 @@ void LayoutEditor::select_next(bool backwards) {
 
 // ---- the menu -------------------------------------------------------------------------
 
+// The Actions level: one submenu per declared action (its description, and remove),
+// plus the "add" input. Rebuilt whenever the list changes, like the popups level.
+std::vector<MenuItem> LayoutEditor::action_items() const {
+  InputSpec desc, name;
+  desc.type = InputType::Text;
+  name.type = InputType::Name;  // "<scope>.<verb>": dots are Name characters
+  name.hint = "app.<verb> (not a library scope)";
+  std::vector<MenuItem> items;
+  for (const ActionDecl& d : current_.actions)
+    items.push_back(MenuItem::submenu("action." + d.name, d.name,
+                                      {MenuItem::input("action." + d.name + ".desc", "what it does", desc, d.description),
+                                       MenuItem::action("action." + d.name + ".remove", "remove this action")}));
+  items.push_back(MenuItem::input("action.add", "add an action (name)", name));
+  return items;
+}
+
 void LayoutEditor::rebuild_menu() {
-  std::vector<MenuItem> borders, anchors, slots, loads;
+  std::vector<MenuItem> borders, anchors, kinds, menus, loads;
   for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
-  for (const std::string& s : slots_) slots.push_back(MenuItem::action(s, s));
+  for (WidgetKind k : widget_kinds()) kinds.push_back(MenuItem::action(std::string(widget_kind_name(k)), std::string(widget_kind_name(k))));
+  for (const std::string& n : menus_) menus.push_back(MenuItem::action(n, n));
   for (const std::string& n : layouts_) loads.push_back(MenuItem::action(n, n));
   InputSpec dim, size, name, text;
   dim.type = InputType::Dim;
@@ -125,14 +148,69 @@ void LayoutEditor::rebuild_menu() {
        MenuItem::action("split_row", "Split into a row (side by side)"), MenuItem::action("split_column", "Split into a column (stacked)"),
        MenuItem::action("swap_prev", "Swap with the previous sibling"), MenuItem::action("swap_next", "Swap with the next sibling"),
        MenuItem::toggle("visible", "Visible", true), MenuItem::choice("border", "Border", borders, "single"), MenuItem::input("title", "Title", text),
-       MenuItem::choice("content", "Content slot", slots, "transcript"), MenuItem::input("size", "Size (Alt+arrows nudge)", size),
+       MenuItem::choice("kind", "Widget kind", std::move(kinds), "transcript"), MenuItem::input("source", "Source", text),
+       MenuItem::choice("menu_file", "Menu file", std::move(menus), ""), MenuItem::input("size", "Size (Alt+arrows nudge)", size),
        MenuItem::toggle("focusable", "Focusable", false), MenuItem::action("delete", "Delete this node"),
        MenuItem::submenu("popups", "Popups", std::move(popups)),
+       MenuItem::submenu("actions", "Actions this screen emits", action_items()),
        MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
        MenuItem::choice("load", "Load layout", std::move(loads), ""), MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name),
        MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6")});
   menu_.set_root(std::move(root));
   sync_values();
+}
+
+LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) {
+  ContentParts p;
+  if (!n || !n->is_window()) return p;
+  const std::size_t colon = n->content.find(':');
+  p.kind_text = n->content.substr(0, colon);
+  if (colon != std::string::npos) p.source = n->content.substr(colon + 1);
+  p.kind = widget_kind_from_name(p.kind_text);
+  return p;
+}
+
+LayoutEditor::ContentParts LayoutEditor::content_parts() const { return parts_of(selected_node()); }
+
+// The source as it stood BEFORE the live preview began. Stepping down the kind list
+// past `help` (which takes no source) would otherwise drop it for every kind after it.
+std::string LayoutEditor::base_source() const {
+  return parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_)).source;
+}
+
+// A kind and a source in, `kind[:source]` out — through content_to_string, so the one
+// rule about which kinds carry a colon lives in Layout.cpp and not here as well.
+void LayoutEditor::set_content(WidgetKind kind, const std::string& source) {
+  Node* n = sel_node();
+  if (!n || !n->is_window()) return;
+  n->content = content_to_string({kind, source});
+}
+
+// Which field owns the source, and what it accepts, are functions of the kind (the
+// header comment's table). Disabled is drawn muted, so exactly one of Source / Menu
+// file is offered at a time and neither is a second spelling of the other.
+void LayoutEditor::sync_content_fields() {
+  const Node* n = selected_node();
+  const bool window = n && n->is_window();
+  const ContentParts p = content_parts();
+  const std::optional<WidgetKind> k = p.kind;
+  menu_.set_value("kind", p.kind_text);
+  menu_.set_value("source", p.source);
+  menu_.set_value("menu_file", k == WidgetKind::Menu ? p.source : std::string());
+  menu_.set_enabled("kind", window);
+  menu_.set_enabled("menu_file", window && k == WidgetKind::Menu);
+  const bool source_field = window && k && *k != WidgetKind::Menu && source_rule(*k) != SourceRule::Forbidden;
+  menu_.set_enabled("source", source_field);
+  if (MenuItem* it = menu_.find("source"); it && source_field) {
+    // A path is not a Name; a literal is anything and may be empty.
+    it->spec.type = (*k == WidgetKind::Text || *k == WidgetKind::File) ? InputType::Text : InputType::Name;
+    it->spec.optional = source_rule(*k) == SourceRule::Optional;
+    it->spec.hint.clear();
+    for (const std::string& c : sources_)
+      if (std::optional<Content> oc = parse_content(c); oc && oc->kind == *k && !oc->source.empty())
+        it->spec.hint += (it->spec.hint.empty() ? "" : " | ") + oc->source;
+    if (it->spec.hint.empty()) it->spec.hint = std::string(source_describes(*k));
+  }
 }
 
 void LayoutEditor::sync_values() {
@@ -141,11 +219,10 @@ void LayoutEditor::sync_values() {
   menu_.set_checked("visible", n->visible);
   menu_.set_value("border", std::string(border_name(n->border)));
   menu_.set_value("title", n->title);
-  menu_.set_value("content", n->content);
   menu_.set_value("size", split_size_to_string(n->size));
   menu_.set_checked("focusable", n->focusable);
-  menu_.set_enabled("content", n->is_window());
   menu_.set_enabled("focusable", n->is_window());
+  sync_content_fields();
   if (MenuItem* root = menu_.find("root")) root->label = "layout editor \xE2\x80\xA2 " + sel_ + (n->is_window() ? "" : n->kind == Node::Kind::Row ? " (row)" : " (column)");
 }
 
@@ -287,9 +364,14 @@ std::string LayoutEditor::selection_line() const {
   if (!n) return {};
   // Size and border come first: a content is kind[:source] (Phase 10 m2) and can be
   // long, and it is the one field the menu above always shows in full.
-  return "selected: " + n->id + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
-         (n->visible ? "" : "  hidden") +
-         (n->is_window() ? "  " + n->content : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
+  std::string s = "selected: " + n->id + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
+                  (n->visible ? "" : "  hidden") +
+                  (n->is_window() ? "  " + n->content : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
+  // A content that does not parse is said HERE as well as in the window's error panel:
+  // the editor is where it gets repaired, so the reason belongs beside the fields.
+  if (n->is_window())
+    if (std::string why; !parse_content(n->content, &why)) s += " \xE2\x80\x94 " + why;
+  return s;
 }
 
 // ---- events ---------------------------------------------------------------------------
@@ -349,6 +431,18 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
       rebuild_menu();
       return o;
     }
+    // "action.<name>.remove" — the name itself holds dots, so it is the id with the
+    // fixed prefix and the fixed suffix taken off, never a split on a dot.
+    if (ev.id.rfind("action.", 0) == 0 && ev.id.size() > 14 && ev.id.substr(ev.id.size() - 7) == ".remove") {
+      const std::string name = ev.id.substr(7, ev.id.size() - 14);
+      begin_preview();
+      current_.actions.erase(std::remove_if(current_.actions.begin(), current_.actions.end(), [&](const ActionDecl& d) { return d.name == name; }),
+                             current_.actions.end());
+      status_ = "removed action " + name + " (a chord for it is kept and inert)";
+      Outcome o = commit_current();
+      menu_.set_options("actions", action_items());
+      return o;
+    }
     return {O::None, {}};
   }
   if (ev.kind == K::Toggle) {
@@ -369,9 +463,17 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
       if (auto b = border_from_name(ev.value)) { begin_preview(); if (Node* n = sel_node()) n->border = *b; }
       return commit_current();
     }
-    if (ev.id == "content") {
+    if (ev.id == "kind") {
+      if (std::optional<WidgetKind> k = widget_kind_from_name(ev.value)) {
+        const std::string src = base_source();
+        begin_preview();
+        set_content(*k, source_rule(*k) == SourceRule::Forbidden ? std::string() : src);
+      }
+      return commit_current();
+    }
+    if (ev.id == "menu_file") {
       begin_preview();
-      if (Node* n = sel_node()) n->content = ev.value;
+      set_content(WidgetKind::Menu, ev.value);
       return commit_current();
     }
     if (ev.id == "load") return {O::LoadLayout, ev.value};
@@ -385,6 +487,34 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
   if (ev.kind == K::Input) {
     if (ev.id == "save") return {O::SaveAs, ev.value};
     if (ev.id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = ev.value; return commit_current(); }
+    if (ev.id == "source") {
+      const ContentParts p = content_parts();
+      if (!p.kind) { status_ = "'" + p.kind_text + "' is not a widget kind \xE2\x80\x94 set the kind first"; return {O::Changed, {}}; }
+      begin_preview();
+      set_content(*p.kind, ev.value);
+      return commit_current();
+    }
+    if (ev.id == "action.add") {
+      const std::string name = ev.value;
+      const std::string why = name.empty() ? "an action needs a name" : action_decl_problem(name);
+      if (!why.empty()) { status_ = name.empty() ? why : "'" + name + "': " + why; return {O::Changed, {}}; }
+      if (std::find_if(current_.actions.begin(), current_.actions.end(), [&](const ActionDecl& d) { return d.name == name; }) != current_.actions.end()) {
+        status_ = "'" + name + "' is already declared";
+        return {O::Changed, {}};
+      }
+      begin_preview();
+      current_.actions.push_back({name, {}});  // the description is the next field, not a placeholder invented here
+      status_ = "declared " + name + " \xE2\x80\x94 say what it does, then bind a key to it";
+      Outcome o = commit_current();
+      menu_.set_options("actions", action_items());
+      return o;
+    }
+    if (ev.id.rfind("action.", 0) == 0 && ev.id.size() > 12 && ev.id.substr(ev.id.size() - 5) == ".desc") {
+      const std::string name = ev.id.substr(7, ev.id.size() - 12);
+      for (ActionDecl& d : current_.actions)
+        if (d.name == name) { begin_preview(); d.description = ev.value; return commit_current(); }
+      return {O::None, {}};
+    }
     if (ev.id == "size") {
       if (std::optional<SplitSize> s = parse_size_text(ev.value)) { begin_preview(); if (Node* n = sel_node()) n->size = *s; return commit_current(); }
       cancel_preview();
@@ -440,14 +570,29 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
   if (sel && !menu_.editing() && level == "border") {
     if (auto b = border_from_name(sel->id)) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
   }
-  if (sel && !menu_.editing() && level == "content") {
+  if (sel && !menu_.editing() && level == "kind") {
+    if (std::optional<WidgetKind> k = widget_kind_from_name(sel->id)) {
+      const std::string src = base_source();
+      begin_preview();
+      set_content(*k, source_rule(*k) == SourceRule::Forbidden ? std::string() : src);
+      return {O::Changed, {}};
+    }
+  }
+  if (sel && !menu_.editing() && level == "menu_file") {
     begin_preview();
-    if (Node* n = sel_node()) n->content = sel->id;
+    set_content(WidgetKind::Menu, sel->id);
     return {O::Changed, {}};
   }
   if (menu_.editing() && sel) {
     // The editing text, never the item's value: that is the committed one.
     if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = menu_.editing_text(); return {O::Changed, {}}; }
+    if (sel->id == "source") {
+      if (const std::optional<WidgetKind> k = parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_)).kind) {
+        begin_preview();
+        set_content(*k, menu_.editing_text());
+      }
+      return {O::Changed, {}};
+    }
     if (sel->id == "size") {
       begin_preview();
       if (std::optional<SplitSize> s = parse_size_text(menu_.editing_text())) { if (Node* n = sel_node()) n->size = *s; }

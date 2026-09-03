@@ -9,19 +9,19 @@
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [x] Visible                                    │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Border                                single ▸ │
 │ │ mouse mode)                      │             │                  │ Title:                                         │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ Content slot                    input:prompt ▸ │
-│ │                                  │             │ Event, table-test│ Size (Alt+arrows nudge): 3                     │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ [x] Focusable                                  │
-│ │ colour downgrade                 │             │ tested           │ Delete this node                               │
-│ │ Wrap engine                      │ build       │ single header ove│ Popups                                       ▸ │
-│ │                                  │             │ header           │ Undo                                    Ctrl-Z │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ Redo                                    Ctrl-Y │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│ Load layout                                  ▸ │
-│ │                                  │             │ Rect is a pure fu│ Save layout file as (layouts/<name>.json):     │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│ Reset to the loaded layout…                    │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
-│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
+│ │ Key + mouse decoding             │ build       │ single header, pu│ Widget kind                            input ▸ │
+│ │                                  │             │ Event, table-test│ Source: prompt                                 │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Menu file                                    ▸ │
+│ │ colour downgrade                 │             │ tested           │ Size (Alt+arrows nudge): 3                     │
+│ │ Wrap engine                      │ build       │ single header ove│ [x] Focusable                                  │
+│ │                                  │             │ header           │ Delete this node                               │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ Popups                                       ▸ │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ Actions this screen emits                    ▸ │
+│ │                                  │             │ Rect is a pure fu│ Undo                                    Ctrl-Z │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ Redo                                    Ctrl-Y │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ Load layout                                  ▸ │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ Save layout file as (layouts/<name>.json):     │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ Reset to the loaded layout…                    │
 │ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
 │ │ → styled wrapped lines)          │             │                  │                                                │
 │ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │

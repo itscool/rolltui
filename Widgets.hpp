@@ -217,6 +217,11 @@ class Windows {
   // Which rung answered for `menus/<source>.json`: the file's path, "the host's", "a
   // shipped menu", or "" when nothing did.
   std::string menu_origin(std::string_view source);
+  // Every menu name a `menu:` window could resolve right now — the union of the three
+  // rungs (the preset directory's menus/*.json, the host's own, the library's shipped),
+  // deduplicated and sorted. What the design editor offers as the menu-file choice; a
+  // name is offered because a rung has it, never because a host listed it.
+  std::vector<std::string> menu_names() const;
   // The extra rows an input window must have whatever its text says (roll holds the
   // input as tall as the modal placed over it).
   void set_input_min_outer(std::string_view source, int rows);

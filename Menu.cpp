@@ -291,6 +291,11 @@ InputCheck check_text(const InputSpec& spec, std::string_view text) {
   const std::size_t len = unicode::graphemes(text).size();
   if (spec.max_len && len > spec.max_len) { c.reason = "at most " + std::to_string(spec.max_len) + " characters"; return c; }
   c.prefix_ok = true;
+  // The same empty rule as every other type (the header's "Empty commits as "" only
+  // when the spec says `optional`"). Text was the one type that did not honour it —
+  // found in Phase 10 m5, where a `file:` source is a Text field that must not be
+  // empty and committed as one. min_len is a length rule, never the emptiness rule.
+  if (text.empty()) { c.valid = spec.optional; c.reason = spec.optional ? "" : "a value is needed"; return c; }
   if (spec.min_len && len < spec.min_len) { c.reason = "at least " + std::to_string(spec.min_len) + " characters"; return c; }
   c.valid = true;
   c.canonical = std::string(text);

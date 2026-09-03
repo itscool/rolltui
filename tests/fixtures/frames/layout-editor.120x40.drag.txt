@@ -9,19 +9,19 @@
 │ │ rer   │        │ wrap   │ │ │ abs/rel per       │             │ , │ [x] Visible                                    │
 │ │ (bloc │        │        │ │ │ axis), focus      │             │ is│ Border                                single ▸ │
 │ │ ks →  │        │        │ │ │                   │             │ fu│ Title: transcript                              │
-│ │ style │        │        │ │ │ Menu widget       │ build       │ si│ Content slot              transcript:session ▸ │
-│ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ Size (Alt+arrows nudge): 31                    │
-│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ [x] Focusable                                  │
-│ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Delete this node                               │
-│ │ lines │        │        │ │ │                   │             │ sm│ Popups                                       ▸ │
-│ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Undo                                    Ctrl-Z │
-│ │ Theme │ build  │ single │ │ │ (JSON: windows +  │             │ lo│ Redo                                    Ctrl-Y │
-│ │ (role │        │ header │ │ │ placements +      │             │ pa│ Load layout                                  ▸ │
-│ │ s →   │        │        │ │ │ content slots)    │             │ re│ Save layout file as (layouts/<name>.json):     │
-│ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Reset to the loaded layout…                    │
-│ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│                                                │
-│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │                                                │
-│ │ loade │        │        │ │ │ lines)            │             │   │                                                │
+│ │ style │        │        │ │ │ Menu widget       │ build       │ si│ Widget kind                       transcript ▸ │
+│ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ Source: session                                │
+│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ Menu file                                    ▸ │
+│ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Size (Alt+arrows nudge): 31                    │
+│ │ lines │        │        │ │ │                   │             │ sm│ [x] Focusable                                  │
+│ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Delete this node                               │
+│ │ Theme │ build  │ single │ │ │ (JSON: windows +  │             │ lo│ Popups                                       ▸ │
+│ │ (role │        │ header │ │ │ placements +      │             │ pa│ Actions this screen emits                    ▸ │
+│ │ s →   │        │        │ │ │ content slots)    │             │ re│ Undo                                    Ctrl-Z │
+│ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Redo                                    Ctrl-Y │
+│ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│ Load layout                                  ▸ │
+│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │ Save layout file as (layouts/<name>.json):     │
+│ │ loade │        │        │ │ │ lines)            │             │   │ Reset to the loaded layout…                    │
 │ │ r,    │        │        │ │ │ Theme (roles →    │ build       │ si│                                                │
 │ │ built │        │        │ │ │ styles, JSON      │             │   │                                                │
 │ │ -ins) │        │        │ │ │ loader, built-    │             │   │                                                │

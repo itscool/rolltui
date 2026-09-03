@@ -571,7 +571,8 @@ struct App {
     std::vector<std::string> names;
     for (const PresetInfo& p : lstore->list()) names.push_back(p.name);  // shipped first, then the user's
     leditor.set_layouts(names);
-    leditor.set_slots({"transcript:session", "rows:status", "input:prompt", "help", "text:pane"});  // m5: a kind picker + a source field
+    leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "custom:editor"});
+    leditor.set_menus(windows.menu_names());
     editor_open = true;
     editor_mode = EditorMode::Layout;
     stack.push(editor_popup("layout editor"));

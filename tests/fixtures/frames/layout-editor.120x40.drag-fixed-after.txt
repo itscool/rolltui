@@ -9,19 +9,19 @@
 │ │ , filterable) │             │ widget set is │ │ focus   editor    │ [x] Visible                                    │
 │ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
 │ │ widgets       │             │ this small    │ │                   │ Title: status                                  │
-│ │ Layout files  │ build       │ reuses the    │ │                   │ Content slot                     rows:status ▸ │
-│ │ (JSON:        │             │ theme         │ │                   │ Size (Alt+arrows nudge): 70                    │
-│ │ windows +     │             │ loader's hand │ │                   │ [ ] Focusable                                  │
-│ │ placements +  │             │ parser; hot-  │ │                   │ Delete this node                               │
-│ │ content       │             │ reloaded      │ │                   │ Popups                                       ▸ │
-│ │ slots)        │             │               │ │                   │ Undo                                    Ctrl-Z │
-│ │ Markdown      │ build       │ single header │ │                   │ Redo                                    Ctrl-Y │
-│ │ block         │             │ over md4c +   │ │                   │ Load layout                                  ▸ │
-│ │ renderer      │             │ wrap          │ │                   │ Save layout file as (layouts/<name>.json):     │
-│ │ (blocks →     │             │               │ │                   │ Reset to the loaded layout…                    │
-│ │ styled        │             │               │ │                   │                                                │
-│ │ wrapped       │             │               │ │                   │                                                │
-│ │ lines)        │             │               │ │                   │                                                │
+│ │ Layout files  │ build       │ reuses the    │ │                   │ Widget kind                             rows ▸ │
+│ │ (JSON:        │             │ theme         │ │                   │ Source: status                                 │
+│ │ windows +     │             │ loader's hand │ │                   │ Menu file                                    ▸ │
+│ │ placements +  │             │ parser; hot-  │ │                   │ Size (Alt+arrows nudge): 70                    │
+│ │ content       │             │ reloaded      │ │                   │ [ ] Focusable                                  │
+│ │ slots)        │             │               │ │                   │ Delete this node                               │
+│ │ Markdown      │ build       │ single header │ │                   │ Popups                                       ▸ │
+│ │ block         │             │ over md4c +   │ │                   │ Actions this screen emits                    ▸ │
+│ │ renderer      │             │ wrap          │ │                   │ Undo                                    Ctrl-Z │
+│ │ (blocks →     │             │               │ │                   │ Redo                                    Ctrl-Y │
+│ │ styled        │             │               │ │                   │ Load layout                                  ▸ │
+│ │ wrapped       │             │               │ │                   │ Save layout file as (layouts/<name>.json):     │
+│ │ lines)        │             │               │ │                   │ Reset to the loaded layout…                    │
 │ │ Theme (roles  │ build       │ single header │ │                   │                                                │
 │ │ → styles,     │             │               │ │                   │                                                │
 │ │ JSON loader,  │             │               │ │                   │                                                │

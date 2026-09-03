@@ -9,19 +9,19 @@
 │ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
 │ focus   editor    │ │                                       │       │ Border                                single ▸ │
 │                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Title: status                                  │
-│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Content slot                     rows:status ▸ │
-│                   │ │ mode)                                 │       │ Size (Alt+arrows nudge): 21                    │
-│                   │ │ Key + mouse decoding                  │ build │ [ ] Focusable                                  │
-│                   │ │                                       │       │ Delete this node                               │
-│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Popups                                       ▸ │
-│                   │ │ downgrade                             │       │ Undo                                    Ctrl-Z │
-│                   │ │ Wrap engine                           │ build │ Redo                                    Ctrl-Y │
-│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Load layout                                  ▸ │
-│                   │ │ rel per axis), focus                  │       │ Save layout file as (layouts/<name>.json):     │
-│                   │ │ Menu widget (hierarchical,            │ build │ Reset to the loaded layout…                    │
-│                   │ │ filterable) + list/text widgets       │       │                                                │
-│                   │ │ Layout files (JSON: windows +         │ build │                                                │
-│                   │ │ placements + content slots)           │       │                                                │
+│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Widget kind                             rows ▸ │
+│                   │ │ mode)                                 │       │ Source: status                                 │
+│                   │ │ Key + mouse decoding                  │ build │ Menu file                                    ▸ │
+│                   │ │                                       │       │ Size (Alt+arrows nudge): 21                    │
+│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ [ ] Focusable                                  │
+│                   │ │ downgrade                             │       │ Delete this node                               │
+│                   │ │ Wrap engine                           │ build │ Popups                                       ▸ │
+│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Actions this screen emits                    ▸ │
+│                   │ │ rel per axis), focus                  │       │ Undo                                    Ctrl-Z │
+│                   │ │ Menu widget (hierarchical,            │ build │ Redo                                    Ctrl-Y │
+│                   │ │ filterable) + list/text widgets       │       │ Load layout                                  ▸ │
+│                   │ │ Layout files (JSON: windows +         │ build │ Save layout file as (layouts/<name>.json):     │
+│                   │ │ placements + content slots)           │       │ Reset to the loaded layout…                    │
 │                   │ │ Markdown block renderer (blocks →     │ build │                                                │
 │                   │ │ styled wrapped lines)                 │       │                                                │
 │                   │ │ Theme (roles → styles, JSON loader,   │ build │                                                │

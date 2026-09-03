@@ -829,6 +829,16 @@ int main() {
     { std::ofstream(dir + "/menus/extra.json") << R"({"id":"root","label":"dropped","items":[{"id":"d","label":"dropped item"}]})"; }
     rep = windows.prepare(s, box);
     check(rep.clean(), "a menu file dropped in after the fact resolves with no rebuild [" + rep.summary() + "]");
+    // Phase 10 m5: what the design editor offers as the menu-file choice is the UNION
+    // of the three rungs, deduplicated and sorted — a name is offered because a rung
+    // has it, never because a host listed it. 'extra' and 'main' are the user's here;
+    // 'main' is also the host's and the shipped one, and appears once.
+    {
+      const std::vector<std::string> names = windows.menu_names();
+      std::string joined;
+      for (const std::string& n : names) joined += (joined.empty() ? "" : ",") + n;
+      check(joined == "extra,main", "menu_names() is the three rungs' union, deduplicated and sorted [" + joined + "]");
+    }
     Frame f(44, 8, dark.style(Role::background));
     s.compose(f, box, dark, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, dark); });
     const std::string screen = [&] {

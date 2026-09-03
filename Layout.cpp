@@ -82,7 +82,7 @@ struct KindRow {
 constexpr KindRow kKinds[] = {
     {WidgetKind::Transcript, "transcript", SourceRule::Required, "a document the host binds"},
     {WidgetKind::Input, "input", SourceRule::Required, "the target a submitted line goes to"},
-    {WidgetKind::Menu, "menu", SourceRule::Required, "a menu the host binds"},
+    {WidgetKind::Menu, "menu", SourceRule::Required, "a menu file"},
     {WidgetKind::Rows, "rows", SourceRule::Required, "a row source the host binds"},
     {WidgetKind::Text, "text", SourceRule::Optional, "the literal text"},
     {WidgetKind::File, "file", SourceRule::Required, "a path"},
@@ -115,6 +115,16 @@ std::optional<WidgetKind> widget_kind_from_name(std::string_view name) {
 }
 
 SourceRule source_rule(WidgetKind k) { return row_of(k).rule; }
+std::string_view source_describes(WidgetKind k) { return row_of(k).source_is; }
+
+const std::vector<WidgetKind>& widget_kinds() {
+  static const std::vector<WidgetKind> all = [] {
+    std::vector<WidgetKind> v;
+    for (const KindRow& r : kKinds) v.push_back(r.kind);
+    return v;
+  }();
+  return all;
+}
 
 std::optional<Content> parse_content(std::string_view text, std::string* why) {
   auto fail = [&](std::string reason) -> std::optional<Content> {
@@ -503,6 +513,15 @@ Value layer_to_json(const Layer& l, bool is_popup) {
 
 }  // namespace
 
+std::string action_decl_problem(std::string_view name) {
+  const std::string_view scope = scope_of(name);
+  if (scope == name || scope.empty() || name.size() <= scope.size() + 1)
+    return "an action is \"<scope>.<verb>\", both parts non-empty";
+  if (library_scope(scope))
+    return "the '" + std::string(scope) + "' scope is the library's and cannot be declared";
+  return {};
+}
+
 std::optional<Layout> load_layout(std::string_view json_text, LayoutLoadReport& report) {
   std::string err;
   Value root = json::parse(json_text, err);
@@ -528,11 +547,8 @@ std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
       if (!v.is_object()) { report.bad_values.push_back("actions: expected an object of action name \xE2\x86\x92 description"); continue; }
       for (const auto& [name, desc] : v.obj) {
         const std::string at = "actions." + name;
-        const std::string_view scope = scope_of(name);
-        if (scope == name || scope.empty() || name.size() <= scope.size() + 1)
-          report.bad_values.push_back(at + ": an action is \"<scope>.<verb>\", both parts non-empty");
-        else if (library_scope(scope))
-          report.bad_values.push_back(at + ": the '" + std::string(scope) + "' scope is the library's and cannot be declared");
+        if (const std::string why = action_decl_problem(name); !why.empty())
+          report.bad_values.push_back(at + ": " + why);
         else if (std::find_if(out.actions.begin(), out.actions.end(), [&](const ActionDecl& d) { return d.name == name; }) != out.actions.end())
           report.bad_values.push_back(at + ": declared twice");
         else if (!desc.is_string())

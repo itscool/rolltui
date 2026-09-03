@@ -16,12 +16,14 @@
 // OPERATIONS on the selected node (the menu's top level; ids the host never binds —
 // the editor applies them itself and reports Committed):
 //   split into a row / a column   the node becomes [node, a copy of it] in a Row/Column
-//                                 (the copy is "<id>-2" with the same content slot)
+//                                 (the copy is "<id>-2" with the same content)
 //   swap with the previous / next sibling
 //   hide / show                    a hidden node takes no space (Layout.hpp)
 //   border                         choice: none | single | rounded | double | heavy (live)
 //   title                          input (live as typed)
-//   content slot                   choice over the host's slots (live)
+//   widget kind                    choice over Layout.hpp's CLOSED table (live)
+//   source                         input, TYPED BY THE KIND (below)
+//   menu file                      choice over the menu files that resolve (below)
 //   size                           input: fill | fill N | N% | N cells (live as typed);
 //                                 Alt+arrows nudge the size by one cell (a fill becomes
 //                                 its current extent first), each nudge a commit
@@ -29,7 +31,33 @@
 //   delete                         removes the node; a split left with one child collapses
 //   popups                         a level per popup: x, y, w, h (dims), anchor (choice),
 //                                 modal (toggle), remove; and "add a popup" (input: id)
+//   actions                        a level per declared action (description, remove) and
+//                                 "add an action" — the app-scope actions this SCREEN
+//                                 emits (Layout.hpp); a host re-declares them into its
+//                                 bindings table when the layout changes, so a key and a
+//                                 help line exist for an action added here in the next
+//                                 frame
 //   load layout / save layout as / reset to loaded / undo / redo
+//
+// CONTENT IS TWO FIELDS, AND EXACTLY ONE WRITES THE SOURCE (Phase 10 m5). A window's
+// content is `kind[:source]`, so the editor shows the kind as a choice over the closed
+// table and the source beside it. Which field owns the source is a stated function of
+// the kind, never a guess — the other is drawn disabled, so a screen never offers two
+// ways to say one thing:
+//   menu                        the MENU FILE choice owns it (the names that actually
+//                               resolve, from the host: Windows::menu_names())
+//   help                        neither: a source is forbidden, and changing the kind
+//                               to `help` DROPS the source rather than making the
+//                               content unparseable
+//   text                        the SOURCE input, Text, optional (a literal may be empty)
+//   file                        the SOURCE input, Text (a path)
+//   transcript, input, rows, custom
+//                               the SOURCE input, Name (a bound name)
+// Changing the kind KEEPS the source verbatim (the `help` rule above is the one
+// exception): a kind that requires a source and has none is left saying so — the window
+// draws its error panel and the status line names it — rather than the editor inventing
+// a name that happens to bind. The host's own offered contents (set_sources) are the
+// source field's HINT, never a substitute for what is typed.
 // DRAGGING A SHARED EDGE (the host maps the pointer to a seam and calls begin_drag /
 // drag_to / end_drag): the child before the seam takes an absolute size equal to the
 // pointer's distance from its start; the release commits once.
@@ -58,7 +86,11 @@ class LayoutEditor {
 
   LayoutEditor();
   void load(const Layout& layout);                      // the baseline; undo restarts; selection: the first window
-  void set_slots(std::vector<std::string> slots);      // the host's content slots, for the Content choice
+  // The contents the host OFFERS ("transcript:session", "rows:status", …) — the hint
+  // beside the source field for the selected kind. A hint, not a menu: a source the
+  // host has not bound is still typeable, and reports itself in the window.
+  void set_sources(std::vector<std::string> contents);
+  void set_menus(std::vector<std::string> names);      // the Menu file choice's options (Windows::menu_names())
   void set_layouts(std::vector<std::string> names);    // the Load choice's options
 
   const Layout& current() const { return current_; }   // committed + any live change
@@ -98,23 +130,38 @@ class LayoutEditor {
   static Node* parent_of(Node& root, std::string_view id, std::size_t* index = nullptr);
   static std::vector<std::string> ids_in_order(const Node& root);  // every node id, tree order
 
+  // The selected window's content split at the first ':' — WITHOUT requiring it to
+  // parse, so a content typed by hand into a file can be shown and repaired here. `kind`
+  // is nullopt when the text before the colon is not in the table.
+  struct ContentParts {
+    std::optional<WidgetKind> kind;
+    std::string kind_text, source;
+  };
+  ContentParts content_parts() const;
+
  private:
+  static ContentParts parts_of(const Node* n);
+  std::string base_source() const;  // the source before the live preview began
   enum class Op { SplitRow, SplitColumn, SwapPrev, SwapNext, ToggleVisible, Delete, ToggleFocusable };
   bool apply_op(Op op);
   void rebuild_menu();
   void sync_values();
+  void sync_content_fields();  // the kind/source/menu-file values, specs and enabled-ness
+  void set_content(WidgetKind kind, const std::string& source);  // writes kind[:source] into the selected window
   void begin_preview();
   void cancel_preview();
   Outcome commit_current();
   Node* sel_node();
   std::string unique_id(const std::string& base) const;
+  std::vector<MenuItem> action_items() const;
 
   Menu menu_;
   Layout current_;
   UndoStack<Layout> undo_;
   std::optional<Layout> preview_;
   std::string sel_;
-  std::vector<std::string> slots_{"transcript", "status", "input", "help"};
+  std::vector<std::string> sources_;   // the host's offered kind[:source] contents
+  std::vector<std::string> menus_;     // the menu files that resolve
   std::vector<std::string> layouts_;
   std::optional<std::string> drag_;
   std::string status_;
