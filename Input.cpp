@@ -29,6 +29,10 @@ bool is_space_at(const std::string& s, std::size_t pos) {
   return pos < s.size() && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\n');
 }
 
+// How long an open "ordinary editing" group stays open with no further edit before the
+// next one is treated as a fresh group instead of a continuation (Input.hpp's UNDO).
+constexpr std::uint64_t kUndoGroupTimeoutMs = 700;
+
 }  // namespace
 
 // ---- content -------------------------------------------------------------------------
@@ -81,6 +85,13 @@ void Input::set_text(std::string t) {
   std::string s = sanitise(t);
   const std::size_t n = s.size();
   retext(std::move(s), n);
+  // A bulk replace (a host's own, or history_prev()/history_next() recalling an
+  // entry) is a fresh document, not an edit: it resets the WHOLE undo stack to the new
+  // text as the baseline (Undo.hpp's "a load, a reset"), discarding any open group
+  // rather than committing it. This is the one rule that keeps the history mechanism
+  // and the undo mechanism from ever reading or writing each other's state.
+  undo_.reset(snapshot());
+  undo_pending_ = false;
 }
 
 void Input::clear() {
@@ -90,6 +101,7 @@ void Input::clear() {
 }
 
 void Input::place(std::size_t pos, bool extend) {
+  close_group();  // a caret/selection move with no text change closes any open group
   pos = snap(pos);
   if (extend) {
     if (!sel_.active) sel_.anchor = caret_;
@@ -113,6 +125,7 @@ std::string Input::selected_text() const {
 
 void Input::select_all() {
   if (text_.empty()) return;
+  close_group();  // a selection move with no text change closes any open group
   sel_ = {0, text_.size(), true};
   caret_ = text_.size();
   goal_col_.reset();
@@ -134,7 +147,7 @@ void Input::erase_range(std::size_t b, std::size_t e) {
   goal_col_.reset();
 }
 
-void Input::insert(std::string_view utf8) {
+void Input::raw_insert(std::string_view utf8) {
   std::string s = sanitise(utf8);
   if (opt_.single_line) s.erase(std::remove(s.begin(), s.end(), '\n'), s.end());
   erase_selection();
@@ -144,6 +157,13 @@ void Input::insert(std::string_view utf8) {
   sel_ = {};
   retext(std::move(t), caret_ + s.size());
   goal_col_.reset();
+}
+
+void Input::insert(std::string_view utf8) {
+  const InputSnapshot pre = snapshot();
+  const bool replace = !sel_.empty();  // typing over a selection is a selection-replace
+  raw_insert(utf8);
+  note_edit(replace ? EditKind::Atomic : EditKind::Ordinary, pre);
 }
 
 bool Input::erase_selection() {
@@ -156,15 +176,19 @@ bool Input::erase_selection() {
 }
 
 void Input::erase_backward() {
-  if (erase_selection()) return;
+  const InputSnapshot pre = snapshot();
+  if (erase_selection()) { note_edit(EditKind::Atomic, pre); return; }  // a selection-replace
   if (caret_ == 0) return;
   erase_range(prev_boundary(caret_), caret_);
+  note_edit(EditKind::Ordinary, pre);
 }
 
 void Input::erase_forward() {
-  if (erase_selection()) return;
+  const InputSnapshot pre = snapshot();
+  if (erase_selection()) { note_edit(EditKind::Atomic, pre); return; }  // a selection-replace
   if (caret_ >= text_.size()) return;
   erase_range(caret_, next_boundary(caret_));
+  note_edit(EditKind::Ordinary, pre);
 }
 
 std::size_t Input::word_left_of(std::size_t pos) const {
@@ -184,23 +208,88 @@ std::size_t Input::word_right_of(std::size_t pos) const {
 }
 
 void Input::kill_word_backward() {
-  if (erase_selection()) return;
-  erase_range(word_left_of(caret_), caret_);
+  const InputSnapshot pre = snapshot();
+  if (!erase_selection()) erase_range(word_left_of(caret_), caret_);
+  note_edit(EditKind::Atomic, pre);
 }
 
 void Input::kill_word_forward() {
-  if (erase_selection()) return;
-  erase_range(caret_, word_right_of(caret_));
+  const InputSnapshot pre = snapshot();
+  if (!erase_selection()) erase_range(caret_, word_right_of(caret_));
+  note_edit(EditKind::Atomic, pre);
 }
 
 void Input::kill_to_line_start() {
+  const InputSnapshot pre = snapshot();
   sel_ = {};
   erase_range(line_start(caret_), caret_);
+  note_edit(EditKind::Atomic, pre);
 }
 
 void Input::kill_to_line_end() {
+  const InputSnapshot pre = snapshot();
   sel_ = {};
   erase_range(caret_, line_end(caret_));
+  note_edit(EditKind::Atomic, pre);
+}
+
+// ---- undo (see UNDO in Input.hpp) -----------------------------------------------------
+
+void Input::apply_snapshot(const InputSnapshot& s) {
+  goal_col_.reset();
+  sel_ = s.sel;
+  retext(s.text, s.caret);  // re-snaps caret and, if active, the selection's ends
+}
+
+void Input::close_group() {
+  if (!undo_pending_) return;
+  undo_.commit(snapshot());
+  undo_pending_ = false;
+}
+
+// Called after every mutating primitive with the snapshot taken just before it ran.
+// `kind` is Ordinary for a run of plain typing/backspacing that may still be merging,
+// Atomic for a kill, a paste or a selection-replace — always its own single-op group.
+void Input::note_edit(EditKind kind, const InputSnapshot& pre) {
+  const InputSnapshot post = snapshot();
+  if (post == pre) return;  // nothing actually changed: not an edit worth recording
+  const std::uint64_t elapsed = now_ms_ >= undo_last_ms_ ? now_ms_ - undo_last_ms_ : kUndoGroupTimeoutMs + 1;
+  const bool continues = kind == EditKind::Ordinary && undo_pending_ && elapsed <= kUndoGroupTimeoutMs;
+  if (!continues) {
+    // An open ordinary-editing group closes as a REAL step (undo will stop here).
+    if (undo_pending_) {
+      undo_.commit(pre);
+    } else if (undo_.current() != pre) {
+      // No group was open, yet the live state still drifted from the last checkpoint —
+      // one or more caret/selection moves happened since (set_caret, select_all, a
+      // mouse press/drag). Per the rule, a move is never its own undo step, so this
+      // does not commit a new one; it folds the drift into the existing checkpoint so
+      // that undoing THIS edit restores the caret/selection exactly as the move left
+      // them, not a stale position from before it.
+      undo_.replace_current(pre);
+    }
+  }
+  if (kind == EditKind::Atomic) {
+    undo_.commit(post);
+    undo_pending_ = false;
+  } else {
+    undo_pending_ = true;
+    undo_last_ms_ = now_ms_;
+  }
+}
+
+bool Input::undo() {
+  close_group();  // folds any in-progress typing into one step first
+  if (!undo_.undo()) return false;
+  apply_snapshot(undo_.current());
+  return true;
+}
+
+bool Input::redo() {
+  close_group();  // typing since the undo already abandoned any redo branch
+  if (!undo_.redo()) return false;
+  apply_snapshot(undo_.current());
+  return true;
 }
 
 void Input::move_left(bool extend) {
@@ -450,8 +539,11 @@ void Input::unit_around(std::size_t off, bool word, std::size_t& b, std::size_t&
 }
 
 InputAction Input::handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms) {
+  now_ms_ = now_ms;
   if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
-    insert(p->text);
+    const InputSnapshot pre = snapshot();
+    raw_insert(p->text);
+    note_edit(EditKind::Atomic, pre);  // a paste is its own group, never merged (see UNDO)
     return InputAction::Handled;
   }
   if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) return handle_mouse(*m, now_ms);
@@ -474,7 +566,7 @@ InputAction Input::handle_key(const KeyEvent& k, const Bindings& b) {
   // The table, once: an action name to what it does.
   enum class Cmd { Submit, Newline, Backspace, Delete, KillWordBack, KillWordFwd, KillLineStart, KillLineEnd, Left, Right, WordLeft, WordRight,
                    LineStart, LineEnd, Up, Down, SelLeft, SelRight, SelWordLeft, SelWordRight, SelLineStart, SelLineEnd, SelUp, SelDown,
-                   SelectAll, ClearSel, Copy, Eof };
+                   SelectAll, ClearSel, Copy, Eof, Undo, Redo };
   static const std::pair<std::string_view, Cmd> cmds[] = {
       {"input.submit", Cmd::Submit}, {"input.newline", Cmd::Newline}, {"input.backspace", Cmd::Backspace}, {"input.delete", Cmd::Delete},
       {"input.kill_word_backward", Cmd::KillWordBack}, {"input.kill_word_forward", Cmd::KillWordFwd}, {"input.kill_to_line_start", Cmd::KillLineStart},
@@ -483,7 +575,7 @@ InputAction Input::handle_key(const KeyEvent& k, const Bindings& b) {
       {"input.down", Cmd::Down}, {"input.select_left", Cmd::SelLeft}, {"input.select_right", Cmd::SelRight}, {"input.select_word_left", Cmd::SelWordLeft},
       {"input.select_word_right", Cmd::SelWordRight}, {"input.select_line_start", Cmd::SelLineStart}, {"input.select_line_end", Cmd::SelLineEnd},
       {"input.select_up", Cmd::SelUp}, {"input.select_down", Cmd::SelDown}, {"input.select_all", Cmd::SelectAll}, {"input.clear_selection", Cmd::ClearSel},
-      {"input.copy", Cmd::Copy}, {"input.eof", Cmd::Eof}};
+      {"input.copy", Cmd::Copy}, {"input.eof", Cmd::Eof}, {"input.undo", Cmd::Undo}, {"input.redo", Cmd::Redo}};
   std::optional<Cmd> cmd;
   for (const auto& [name, c] : cmds)
     if (name == action) { cmd = c; break; }
@@ -517,6 +609,8 @@ InputAction Input::handle_key(const KeyEvent& k, const Bindings& b) {
     case Cmd::ClearSel: if (sel_.empty()) return A::Ignored; clear_selection(); return A::Handled;
     case Cmd::Copy: if (sel_.empty()) return A::Ignored; if (on_copy) on_copy(selected_text()); return A::Handled;
     case Cmd::Eof: if (text_.empty()) return A::Eof; erase_forward(); return A::Handled;
+    case Cmd::Undo: return undo() ? A::Handled : A::Ignored;
+    case Cmd::Redo: return redo() ? A::Handled : A::Ignored;
   }
   return A::Ignored;
 }
@@ -530,6 +624,7 @@ InputAction Input::handle_mouse(const MouseEvent& m, std::uint64_t now_ms) {
       const std::optional<Hit> h = hit(m.x, m.y);
       if (!h) return A::Ignored;
       goal_col_.reset();
+      close_group();  // a press only moves the caret/selection: closes any open group
       if (m.shift) {  // extend from the anchor (or the caret), the pointer's glyph included
         const std::size_t anchor = sel_.active ? sel_.anchor : caret_;
         place(h->begin >= anchor ? h->end : h->begin, true);
@@ -579,6 +674,7 @@ InputAction Input::handle_mouse(const MouseEvent& m, std::uint64_t now_ms) {
 }
 
 void Input::drag_to(int x, int y) {
+  close_group();  // a drag only moves the selection: closes any open group
   drag_.x = x;
   drag_.y = y;
   const std::optional<Hit> h = hit(x, y);

@@ -50,6 +50,21 @@ InputAction type(Input& in, std::string_view s) {
 
 std::string sel_of(const Input& in) { return in.selected_text(); }
 
+// A repeated in.undo() call, recording in.text() after each successful call until
+// undo() returns false (the bottom of the stack). The sequence of texts IS the group
+// boundary the widget actually drew — this is what makes the grouping rule below a
+// table driven through the widget rather than a description of intent.
+std::vector<std::string> undo_trace(Input& in) {
+  std::vector<std::string> trace;
+  while (in.undo()) trace.push_back(in.text());
+  return trace;
+}
+std::string joined(const std::vector<std::string>& v) {
+  std::string s = "[";
+  for (std::size_t i = 0; i < v.size(); ++i) { if (i) s += "|"; s += v[i]; }
+  return s + "]";
+}
+
 Input fresh(int width = 80, int height = 1) {
   Input in;
   in.layout({0, 0, width, height});
@@ -490,6 +505,128 @@ void test_frame() {
         "a one-row window after a full row shows the caret's (empty) row — the host grows the window instead");
 }
 
+// Phase 12 m1: undo/redo. The grouping rule, stated in Input.hpp, as a table driven
+// through the widget: each row performs a sequence of edits on a fresh Input, then
+// walks undo() to the bottom recording the text after every step. The sequence of
+// texts is a direct read of where the widget drew a group boundary.
+void test_undo_redo_grouping_rule() {
+  struct Case { const char* name; void (*steps)(Input&); std::vector<std::string> trace; };
+  static const Case cases[] = {
+      {"a run of ordinary insertions is one group",
+       [](Input& in) { type(in, "abc"); },
+       {""}},
+      {"a plain Backspace with no selection is ORDINARY too: it merges into the same run, not a boundary of its own",
+       [](Input& in) { type(in, "abcx"); in.erase_backward(); },
+       {""}},
+      {"a timeout closes the group even between two edits that would otherwise merge",
+       [](Input& in) { in.handle(chr('a'), 1000); in.handle(chr('b'), 6000); },
+       {"a", ""}},
+      {"well inside the timeout, the run still merges",
+       [](Input& in) { in.handle(chr('a'), 1000); in.handle(chr('b'), 1200); },
+       {""}},
+      {"a caret move closes the group; the move itself is never its own undo step",
+       [](Input& in) { type(in, "ab"); in.move_left(false); type(in, "c"); },
+       {"ab", ""}},
+      {"a kill (kill_word_backward) is its own atomic group, merging with neither side",
+       [](Input& in) { type(in, "one two"); in.kill_word_backward(); type(in, "X"); },
+       {"one ", "one two", ""}},
+      {"a paste is its own atomic group, merging with neither side",
+       [](Input& in) { type(in, "ab"); in.handle(PasteEvent{"XY"}); type(in, "c"); },
+       {"abXY", "ab", ""}},
+      {"typing over a selection (a selection-replace) is atomic, merging with neither side",
+       [](Input& in) { type(in, "hello world"); in.set_caret(6); in.move_word_right(true); type(in, "X"); type(in, "Y"); },
+       {"hello X", "hello world", ""}},
+      {"erasing an active selection (Backspace on a selection) is also a selection-replace: atomic",
+       [](Input& in) { type(in, "hello world"); in.set_caret(6); in.move_word_right(true); in.erase_backward(); type(in, "Y"); },
+       {"hello ", "hello world", ""}},
+  };
+  for (const Case& c : cases) {
+    Input in = fresh();
+    c.steps(in);
+    const std::vector<std::string> trace = undo_trace(in);
+    check(trace == c.trace, std::string(c.name) + " " + joined(trace));
+  }
+}
+
+void test_undo_redo_restores_caret_and_selection_exactly() {
+  // A caret move away from a group is never its own undo step, but it is not amnesia
+  // either: the position it leaves behind is exactly what the NEXT edit's undo
+  // restores — not a stale caret from before the move (see UNDO's "where the move DID
+  // change something" clause; this is what UndoStack::replace_current is for).
+  Input in = fresh();
+  type(in, "ab");
+  in.move_left(false);  // caret now 1, not part of any group
+  type(in, "c");         // "acb", caret 2
+  check(in.text() == "acb" && in.caret() == 2, "setup: acb, caret after the inserted c");
+  check(in.undo() && in.text() == "ab" && in.caret() == 1 && in.selection().empty(),
+        "undo restores the caret to EXACTLY where it was before the edit (1, where the arrow key had moved it) — not the earlier, stale position (2) from before that move");
+  check(in.redo() && in.text() == "acb" && in.caret() == 2 && in.selection().empty(), "redo restores the \"c\" insertion byte-for-byte");
+  check(in.undo() && in.text() == "ab" && in.caret() == 1, "undo again reaches the same precise pre-edit state");
+  check(in.undo() && in.text().empty() && in.caret() == 0, "and once more reaches the empty baseline");
+  check(!in.undo() && in.text().empty(), "undo below the bottom of the stack is a no-op, not an empty line");
+
+  // The selection is restored exactly too, not just the text and the caret.
+  Input sel = fresh();
+  type(sel, "hello world");
+  sel.set_caret(6);
+  sel.move_word_right(true);  // selects "world": anchor 6, head 11
+  type(sel, "X");
+  type(sel, "Y");
+  check(sel.text() == "hello XY", "setup: hello XY");
+  check(sel.undo() && sel.text() == "hello X" && sel.caret() == 7 && sel.selection().empty(), "undo the Y");
+  check(sel.undo() && sel.text() == "hello world" && sel.caret() == 11 && sel.selection().active && sel.selection().begin() == 6 && sel.selection().end() == 11,
+        "undo the selection-replace restores the SELECTION too, byte-for-byte (\"world\" selected again)");
+  check(sel.redo() && sel.text() == "hello X" && sel.caret() == 7 && sel.selection().empty(), "redo replays the replace exactly");
+  check(sel.redo() && sel.text() == "hello XY" && sel.caret() == 8 && sel.selection().empty(), "redo replays the Y");
+  check(!sel.redo(), "nothing left to redo");
+}
+
+void test_undo_redo_new_edit_drops_the_redo_branch() {
+  Input in = fresh();
+  type(in, "abc");
+  check(in.undo() && in.text().empty(), "undo removes the typed run");
+  check(in.can_redo(), "a redo branch is available");
+  type(in, "x");  // a fresh edit after an undo
+  check(in.text() == "x", "typing after an undo replaces the draft");
+  check(!in.can_redo() && !in.redo(), "the new edit drops the old redo branch, same as UndoStack::commit()");
+}
+
+void test_undo_redo_and_history_never_touch_each_other() {
+  Input in = fresh();
+  in.push_history("one");
+  in.push_history("two");
+  type(in, "draft");
+  in.handle(key(Key::Up));  // recalls "two" (history_prev, built on set_text())
+  check(in.text() == "two", "history recall");
+  check(!in.can_undo(), "set_text() (which history recall uses) resets the WHOLE undo stack to a fresh baseline: nothing to undo yet");
+  type(in, "X");
+  const std::size_t cursor_before = in.history_cursor();
+  const std::vector<std::string> hist_before = in.history();
+  check(in.undo() && in.text() == "two", "undo reverts the typed X");
+  check(in.history_cursor() == cursor_before && in.history() == hist_before, "undo never touches the history mechanism (Phase 9 m10, untouched by Phase 12 m1)");
+  check(!in.undo() && in.text() == "two", "undo cannot reach past the history recall: set_text() is a fresh baseline, not an undoable edit");
+  check(in.redo() && in.text() == "twoX", "redo restores it");
+  check(in.history_cursor() == cursor_before && in.history() == hist_before, "redo never touches the history mechanism either");
+}
+
+void test_undo_group_closes_on_select_all_and_mouse() {
+  // select_all() and a mouse press change only the caret/selection, and both close an
+  // open group exactly like a keyboard caret move — not just the move_*/set_caret family.
+  Input a = fresh();
+  type(a, "ab");
+  a.select_all();
+  type(a, "c");  // replaces the selection: atomic
+  const std::vector<std::string> ta = undo_trace(a);
+  check(ta == std::vector<std::string>{"ab", ""}, "select_all() closes the group " + joined(ta));
+
+  Input m = fresh(20, 1);
+  type(m, "hello!");                                       // one merged group
+  m.handle(mouse(MouseEvent::Kind::Press, 100, 0), 1000);   // a plain click: caret/selection only
+  type(m, "?");                                              // starts a fresh group
+  const std::vector<std::string> tm = undo_trace(m);
+  check(tm == std::vector<std::string>{"hello!", ""}, "a mouse press closes the group too " + joined(tm));
+}
+
 void test_degenerate_sizes() {
   // A window can shrink to 1 or 0 cells in either dimension (the user, 2026-09-01):
   // every operation still works, nothing is written outside the area, and the text is
@@ -524,6 +661,14 @@ void test_degenerate_sizes() {
     in.set_caret(0);
     in.layout(a);
     check(in.top_row() == 0, name + ": the scroll follows the caret back to the top");
+    // Undo/redo survive a degenerate area too (the user, 2026-09-01's rule, extended
+    // to Phase 12 m1): nothing crashes, and redo restores the paste byte-for-byte.
+    const std::string full = in.text();
+    check(in.can_undo(), name + ": there is something to undo after editing a degenerate area");
+    check(in.undo() && in.text() != full, name + ": undo runs without crashing in a degenerate area");
+    in.layout(a);
+    check(in.redo() && in.text() == full, name + ": redo restores it byte-for-byte, even at this size");
+    in.layout(a);
   }
   Input w1;
   w1.layout({0, 0, 1, 3});
@@ -547,6 +692,11 @@ int main() {
   test_scroll_keeps_the_caret_visible();
   test_mouse();
   test_frame();
+  test_undo_redo_grouping_rule();
+  test_undo_redo_restores_caret_and_selection_exactly();
+  test_undo_redo_new_edit_drops_the_redo_branch();
+  test_undo_redo_and_history_never_touch_each_other();
+  test_undo_group_closes_on_select_all_and_mouse();
   test_degenerate_sizes();
   return rolltui_test::report("rolltui input_test");
 }

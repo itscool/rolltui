@@ -68,6 +68,39 @@
 //                            other buttons are Ignored
 // Ctrl+C is not here: what it means (clear the line, cancel a turn, exit) is the
 // host's. So is Ctrl+L. Tab is the WindowStack's (stack.focus_next).
+//   input.undo / input.redo   Ctrl+Z / Ctrl+Y — see UNDO below.
+//
+// UNDO (Phase 12 m1). One `UndoStack<InputSnapshot>` (Undo.hpp) of whole {text, caret,
+// selection} snapshots — cheap, and there is no inverse edit to get wrong, only a value
+// to put back. The GROUPING RULE, stated once so it can be asserted rather than tuned
+// by feel:
+//   - ORDINARY EDITING — insert() with no active selection (typing, Alt+Enter's
+//     newline) and erase_backward()/erase_forward() with no active selection
+//     (Backspace/Delete of one grapheme) — MERGES into whatever ordinary-editing group
+//     is already open: neither is in the closing list below, so a typo fixed with a
+//     Backspace two keys later is still one undo, not three.
+//   - FOUR THINGS CLOSE THE GROUP, and are never themselves merged with a neighbour or
+//     with each other: a KILL (kill_word_backward/forward, kill_to_line_start/end), a
+//     PASTE (bracketed paste), a SELECTION-REPLACE (any edit that first consumes an
+//     active selection — typing over a selection, Backspace/Delete/kill on one), and a
+//     CARET/SELECTION MOVE with no text change (set_caret, the move_*/select_* family,
+//     select_all, a mouse press/drag) — the move itself is never a separate undo step,
+//     only a boundary: nothing recorded if it changed nothing. Where the move DID
+//     change something (a Shift+move's selection, or a second move right after a group
+//     already closed) and the group it closed had nothing open, that state is folded
+//     into the EXISTING checkpoint (UndoStack::replace_current, no new step) rather
+//     than lost — so undoing the edit that follows a bare move restores the caret and
+//     selection exactly as the move left them, not a stale position from before it.
+//   - TIMEOUT: two edits that would otherwise merge close the group anyway once more
+//     than the internal coalescing window has passed between them, judged from the
+//     `now_ms` given to handle() — a caller that never passes a clock never times out,
+//     so grouping then rests on kind and boundaries alone.
+// undo()/redo() restore the text, the caret and the selection byte-for-byte; undo()
+// below the bottom of the stack is a no-op (the value already there is kept, never
+// emptied). set_text() — and so clear() and history_prev()/history_next(), both built
+// on it — resets the WHOLE undo stack to the new text as a fresh baseline (Undo.hpp's
+// own "a load, a reset: nothing to undo or redo"): the history mechanism (a different
+// one, milestone 10) and the undo mechanism never read or write each other's state.
 //
 // The goal column and the scroll row are memos of the caret's recent history, never
 // inputs to what the text is; everything drawn is a function of (text, caret,
@@ -85,6 +118,7 @@
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/Undo.hpp"
 #include "rolltui/Unicode.hpp"
 
 namespace rolltui {
@@ -151,6 +185,12 @@ class Input {
   std::size_t word_left_of(std::size_t pos) const;
   std::size_t word_right_of(std::size_t pos) const;
 
+  // ---- undo/redo (see UNDO above) ----
+  bool undo();  // false (no-op) at the bottom of the stack
+  bool redo();  // false when there is nothing to redo
+  bool can_undo() const { return undo_pending_ || undo_.can_undo(); }
+  bool can_redo() const { return !undo_pending_ && undo_.can_redo(); }
+
   // ---- history ----
   void push_history(std::string entry);  // skips an empty entry and a repeat of the newest
   const std::vector<std::string>& history() const { return hist_; }
@@ -206,6 +246,20 @@ class Input {
   InputAction handle_key(const KeyEvent& k, const Bindings& b);
   InputAction handle_mouse(const MouseEvent& m, std::uint64_t now_ms);
   void drag_to(int x, int y);
+  void raw_insert(std::string_view utf8);  // the mechanics of insert(), no undo bookkeeping
+
+  // ---- undo (see UNDO above) ----
+  struct InputSnapshot {
+    std::string text;
+    std::size_t caret = 0;
+    InputSelection sel;
+    bool operator==(const InputSnapshot&) const = default;
+  };
+  enum class EditKind { Ordinary, Atomic };
+  InputSnapshot snapshot() const { return {text_, caret_, sel_}; }
+  void apply_snapshot(const InputSnapshot& s);
+  void close_group();                                     // folds an open group into one commit; a pure boundary
+  void note_edit(EditKind kind, const InputSnapshot& pre); // called after every mutating primitive
 
   std::string text_;
   std::vector<unicode::Grapheme> g_;
@@ -214,6 +268,11 @@ class Input {
   std::optional<int> goal_col_;
   InputOptions opt_;
   int prompt_w_ = 2;
+
+  UndoStack<InputSnapshot> undo_{InputSnapshot{}};
+  bool undo_pending_ = false;         // an open, uncommitted "ordinary editing" group
+  std::uint64_t undo_last_ms_ = 0;    // the last grouped edit's now_ms, for the timeout
+  std::uint64_t now_ms_ = 0;          // the current call's clock, set by handle()
 
   std::vector<std::string> hist_;
   std::size_t hist_pos_ = 0;

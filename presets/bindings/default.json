@@ -29,6 +29,8 @@
     "input.clear_selection": ["escape"],
     "input.copy": ["alt+c"],
     "input.eof": ["ctrl+d"],
+    "input.undo": ["ctrl+z"],
+    "input.redo": ["ctrl+y"],
     "transcript.page_up": ["pageup"],
     "transcript.page_down": ["pagedown"],
     "transcript.top": ["home", "ctrl+home"],

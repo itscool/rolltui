@@ -36,6 +36,15 @@ class UndoStack {
     if (history_.size() > limit_) history_.erase(history_.begin());
     at_ = history_.size() - 1;
   }
+  // Overwrites the CURRENT value in place: no new step, the redo branch untouched. For
+  // state that rides along with the current position but must never become its own
+  // undo step (Input.hpp: a caret/selection move closes a group without being one
+  // itself, yet the position it leaves behind has to be what the NEXT real edit's
+  // "before" snapshot restores to — not a stale one from before the move).
+  void replace_current(T value) {
+    if (history_.empty()) { history_.push_back(std::move(value)); at_ = 0; return; }
+    history_[at_] = std::move(value);
+  }
   bool undo() { if (at_ == 0) return false; --at_; return true; }
   bool redo() { if (at_ + 1 >= history_.size()) return false; ++at_; return true; }
   bool can_undo() const { return at_ > 0; }

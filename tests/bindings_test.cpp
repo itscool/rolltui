@@ -79,6 +79,7 @@ int main() {
           "Up serves three scopes");
     check(b.action_for(ch('w', true), "input") == "input.kill_word_backward" && b.action_for(key(Key::Backspace, false, true), "input") == "input.kill_word_backward", "two chords, one action");
     check(b.action_for(key(Key::Left, true, false, true), "input") == "input.select_word_left" && b.action_for(key(Key::Left, false, true, true), "input") == "input.select_word_left", "ctrl+shift+left and alt+shift+left both extend by a word");
+    check(b.action_for(ch('z', true), "input") == "input.undo" && b.action_for(ch('y', true), "input") == "input.redo", "Ctrl+Z undoes, Ctrl+Y redoes (Phase 12 m1)");
     check(b.action_for(ch(U'?'), "app") == "app.help" && b.action_for(key(Key::F1), "app") == "app.help" && b.action_for(ch(U'?'), "input").empty(), "'?' is app.help and is not an input action (typing it inserts)");
     KeyEvent with_raw = ch('w', true);
     with_raw.raw = "\x17";

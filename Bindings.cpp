@@ -47,6 +47,8 @@ const std::vector<ActionInfo>& library_actions() {
       {"input.clear_selection", "clear the selection"},
       {"input.copy", "copy the selection"},
       {"input.eof", "end of input on an empty line, else delete"},
+      {"input.undo", "undo the last group of edits"},
+      {"input.redo", "redo"},
       {"transcript.page_up", "scroll a page up"},
       {"transcript.page_down", "scroll a page down"},
       {"transcript.top", "scroll to the top"},

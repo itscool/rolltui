@@ -19,6 +19,6 @@
 │   Alt-Enter               insert a newline                                   │
 │   Backspace               erase before the caret (or the selection)          │
 │   Delete                  erase after the caret (or the selection)           │
-│   Ctrl-W, Alt-Backspace   kill the word before the caret          ▼ 53 more  │
+│   Ctrl-W, Alt-Backspace   kill the word before the caret          ▼ 55 more  │
 └──────────────────────────────────────────────────────────────────────────────┘
  default-dark  kettle  80x24  line 0/0  follow  truecolor  focus:kettle_menu
