@@ -79,6 +79,7 @@ add_library(rolltui STATIC
   ThemeAnalysis.cpp
   ThemeGen.cpp
   Bindings.cpp
+  AppProfile.cpp              # Phase 11 m4: what a layout may name inside one app
   ${ROLLTUI_EMBEDDED_PRESETS}
   ${ROLLTUI_EMBEDDED_LAYOUTS}
   ${ROLLTUI_EMBEDDED_MENUS}
