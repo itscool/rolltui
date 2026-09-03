@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
 
 #include "rolltui/Theme.hpp"  // parse_osc11_reply
@@ -113,6 +114,7 @@ void Terminal::enter() {
   g_out_fd.store(out_);
   g_wake_fd.store(wake_[1]);
   write(enter_);
+  negotiate_keyboard();  // ask the terminal what it can deliver, before anything is typed
   if (opts_.handle_signals && !g_handlers_installed.exchange(true)) {
     for (int sig : {SIGINT, SIGTERM, SIGHUP, SIGQUIT}) signal(sig, on_fatal_signal);
   }
@@ -150,6 +152,91 @@ void Terminal::wake() {
   char c = 'k';
   ssize_t r = ::write(wake_[1], &c, 1);  // non-blocking; a full pipe already wakes
   (void)r;
+}
+
+namespace {
+
+// One CSI sequence starting at `pos`, or 0 if the bytes there are not a complete one.
+std::size_t csi_span(const std::string& s, std::size_t pos) {
+  if (pos + 1 >= s.size() || s[pos] != '\x1b' || s[pos + 1] != '[') return 0;
+  std::size_t i = pos + 2;
+  while (i < s.size() && static_cast<unsigned char>(s[i]) >= 0x30 && static_cast<unsigned char>(s[i]) <= 0x3F) ++i;
+  while (i < s.size() && static_cast<unsigned char>(s[i]) >= 0x20 && static_cast<unsigned char>(s[i]) <= 0x2F) ++i;
+  if (i >= s.size()) return 0;
+  return (static_cast<unsigned char>(s[i]) >= 0x40 && static_cast<unsigned char>(s[i]) <= 0x7E) ? i + 1 - pos : 0;
+}
+
+}  // namespace
+
+KeyProtocol Terminal::negotiate_keyboard(int timeout_ms) {
+  protocol_ = KeyProtocol::Legacy;  // the conservative answer, and the one every failure keeps
+  if (const char* forced = std::getenv("ROLLTUI_KEY_PROTOCOL")) {
+    if (const std::optional<KeyProtocol> p = parse_key_protocol(forced)) protocol_ = *p;
+  } else if (tty_) {
+    write("\x1b[?u"     // kitty: which enhancement flags are set?
+          "\x1b[?4m"    // xterm XTQUERYMODIFIERS: what is modifyOtherKeys?
+          "\x1b[c");    // Primary DA: the terminator every terminal answers
+    std::string buf;
+    bool saw_da = false;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (!saw_da) {
+      const auto left =
+          std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count();
+      if (left <= 0) break;
+      pollfd one{in_, POLLIN, 0};
+      const int n = ::poll(&one, 1, static_cast<int>(left));
+      if (n < 0) { if (errno == EINTR) continue; break; }
+      if (n == 0) break;
+      char b[512];
+      const ssize_t k = ::read(in_, b, sizeof b);
+      if (k <= 0) break;
+      buf.append(b, static_cast<std::size_t>(k));
+      saw_da = false;
+      for (std::size_t i = 0; i + 2 < buf.size(); ++i)
+        if (const std::size_t len = csi_span(buf, i); len && buf[i + 2] == '?' && buf[i + len - 1] == 'c') saw_da = true;
+    }
+    // Split the replies we asked for from everything else, which is somebody typing.
+    std::string rest;
+    for (std::size_t i = 0; i < buf.size();) {
+      const std::size_t len = csi_span(buf, i);
+      if (!len) { rest.push_back(buf[i]); ++i; continue; }
+      const std::string_view seq(buf.data() + i, len);
+      const char final = seq.back();
+      const char lead = len > 2 ? seq[2] : '\0';
+      if (final == 'u' && lead == '?') protocol_ = KeyProtocol::Kitty;                  // CSI ? flags u
+      else if (final == 'm' && lead == '>') protocol_ = KeyProtocol::ModifyOtherKeys;   // CSI > 4 ; value m
+      else if (final != 'c' || lead != '?') rest.append(seq);                           // not a reply: input
+      i += len;
+    }
+    if (!rest.empty()) {
+      const std::vector<Event> ev = decoder_.feed(rest);
+      queued_.insert(queued_.end(), ev.begin(), ev.end());
+    }
+  }
+  // Turn on what was found, and make sure every exit path turns it back off. The pop is
+  // APPENDED to leave_ rather than prepended so the bytes already copied into the
+  // signal handler's fixed buffer keep their offsets: a fatal signal landing between the
+  // memcpy and the length store then still writes a complete, valid, shorter sequence.
+  // Only ever onto a real terminal: with ROLLTUI_KEY_PROTOCOL set there may be no tty at
+  // all, and writing mode bytes down a pipe would land them in somebody's captured frame.
+  if (tty_ && protocol_ == KeyProtocol::Kitty) {
+    write("\x1b[>1u");        // push the disambiguate flag
+    leave_ += "\x1b[<1u";     // pop it
+  } else if (tty_ && protocol_ == KeyProtocol::ModifyOtherKeys) {
+    // Mode 1, not 2: "encode only keys with modifiers that produce non-standard
+    // results", which is exactly what encode_key models. Mode 2 also escapes keys that
+    // would produce a printable character, and its shift handling is the part xterm's
+    // own documentation declines to pin down.
+    write("\x1b[>4;1m");
+    leave_ += "\x1b[>4m";     // no value: back to the terminal's initial state
+  }
+  if (entered_) {
+    const std::size_t n = leave_.size() < sizeof g_leave ? leave_.size() : sizeof g_leave;
+    std::memcpy(g_leave, leave_.data(), n);
+    g_leave_len.store(n);
+  }
+  set_active_key_protocol(protocol_);
+  return protocol_;
 }
 
 std::optional<Color> Terminal::query_background(int timeout_ms) {

@@ -64,6 +64,33 @@ class Terminal {
   // Writes every byte (loops on partial writes and EINTR).
   void write(std::string_view bytes);
 
+  // WHICH KEYBOARD PROTOCOL THIS TERMINAL SPEAKS (Phase 12 m3), asked of the terminal
+  // rather than assumed of its name. enter() calls it once, so a host gets it for free;
+  // a host that swaps terminals under one process calls it again.
+  //
+  // The exchange, and it is the terminal's answer in both directions:
+  //   →  CSI ? u        kitty: "which enhancement flags are set?"
+  //   →  CSI ? 4 m      xterm (XTQUERYMODIFIERS): "what is modifyOtherKeys?"
+  //   →  CSI c          Primary DA — every terminal answers this one, which is what
+  //                     makes a NEGATIVE answer definitive instead of a timeout guess.
+  // A kitty-capable terminal replies `CSI ? flags u` and an xterm-capable one
+  // `CSI > 4 ; value m`, both BEFORE the DA reply; a terminal that speaks neither sends
+  // only the DA. Whatever else arrived is somebody typing and is kept for the next
+  // poll(), exactly as query_background does — nothing is lost.
+  //
+  // The answer degrades to Legacy on every uncertainty: a pipe, no reply, a reply we do
+  // not recognise, a timeout. That direction is deliberate — a wrong Legacy answer
+  // refuses a chord that would have worked and says so out loud, while a wrong Kitty
+  // answer accepts one that silently never fires, which is the defect this whole
+  // milestone is about. ROLLTUI_KEY_PROTOCOL=legacy|modifyOtherKeys|kitty overrides the
+  // query, for a terminal that lies in either direction.
+  //
+  // Enabling is part of asking: kitty gets `CSI > 1 u` pushed (popped by `CSI < 1 u` on
+  // the way out), modifyOtherKeys gets `CSI > 4 ; 2 m` (reset by `CSI > 4 m`), and both
+  // pops join leave_ so every exit path — including a fatal signal — undoes them.
+  KeyProtocol negotiate_keyboard(int timeout_ms = 80);
+  KeyProtocol key_protocol() const { return protocol_; }
+
   // Asks the terminal for its background colour (OSC 11, milestone 11's light/dark
   // auto-detect) and waits up to timeout_ms for the reply. Bytes that arrive and are
   // not the reply (a user already typing) are kept and delivered by the next poll();
@@ -91,6 +118,7 @@ class Terminal {
   KeyDecoder decoder_;
   std::vector<Event> queued_;  // decoded during a query; handed out by the next poll()
   int wake_[2] = {-1, -1};  // self-pipe: SIGWINCH handler writes, poll() reads
+  KeyProtocol protocol_ = KeyProtocol::Legacy;  // until the terminal says otherwise
   TerminalOptions opts_;
   struct Saved;
   Saved* saved_ = nullptr;

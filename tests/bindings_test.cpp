@@ -13,6 +13,9 @@
 // unmounted tool's action still loads clean and keeps its row.
 // Phase 11 m2: the studio rename — a bindings file written before it has its
 // playground.* rows rewritten once, named in `migrated`, with no chord lost.
+// Phase 12 m3: a chord this terminal cannot deliver is refused BY NAME and its row kept
+// anyway — the loader's half of it; the deliverability model itself is measured against
+// the encodings in deliverability_test.
 //
 #include <fstream>
 #include <string>
@@ -267,6 +270,50 @@ int main() {
     n->declare({}, {{"studio.quit", "quit", "ctrl+q"}});
     check(n->action_for(ch('q', true), "studio").empty(),
           "…and the same file WITHOUT the old row leaves Ctrl-Q unbound — so the assertion above is the migration, not the tool's suggestion");
+  }
+  // ---- Phase 12 m3: a chord this terminal cannot deliver is REFUSED, not bound to
+  // silence. The MODEL (which chord, under which protocol, and why) is measured against
+  // the encodings in deliverability_test; what belongs here is the LOADER's contract —
+  // that the refusal is a named problem of its own kind, that the row survives it, and
+  // that the two mercy rungs above are not quietly re-implemented as refusals.
+  {
+    set_active_key_protocol(KeyProtocol::Legacy);  // no Terminal here, so say it rather than inherit it
+    BindingsLoadReport rep;
+    std::optional<Bindings> b = Bindings::from_json(
+        R"({"name":"x","bindings":{"input.submit":["enter"],"app.palette":["ctrl+shift+p","ctrl+p"],"app.help":["f1"]}})",
+        rep, KeyProtocol::Legacy);
+    check(b && rep.undeliverable.size() == 1 && rep.bad_chords.empty() && rep.conflicts.empty(),
+          "an undeliverable chord is its OWN kind of problem: it parses, it conflicts with nothing, it cannot arrive");
+    check(b && !rep.clean() && rep.summary().find("undeliverable: app.palette: 'ctrl+shift+p'") != std::string::npos,
+          "…it makes the file unclean and the summary says which action and which chord [" + rep.summary() + "]");
+    check(b && b->chords_for("app.palette").size() == 2,
+          "…and BOTH chords are kept: the file is the user's, and the terminal it was written on is not this one");
+    b->declare({{"app.palette", "the palette"}});
+    check(b->action_for(ch(U'p', true), "app") == "app.palette" && b->chords_text("app.palette") == "Ctrl-P",
+          "…so the deliverable chord still works and the help shows only it [" + b->chords_text("app.palette") + "]");
+
+    // The shipped file, against the WEAKEST protocol — the same check default_bindings()
+    // aborts on, asserted here so the failure has a name and not only an exit status
+    // (Phase 11 m1's tool-row abort, same shape).
+    BindingsLoadReport srep;
+    std::optional<Bindings> shipped = Bindings::from_json(default_bindings_json(), srep, KeyProtocol::Legacy);
+    std::string named;
+    for (const std::string& u : srep.undeliverable) named += " " + u;
+    check(shipped && srep.undeliverable.empty(),
+          "the shipped bindings file is deliverable on every terminal, not just this one —" +
+              (named.empty() ? std::string(" none") : named));
+
+    // Neither mercy rung may become an undeliverability refusal by accident: another
+    // screen's action is kept (m1) and a renamed one is rewritten (m2), both under a
+    // protocol that refuses one of the chords in the same file.
+    BindingsLoadReport mrep;
+    std::optional<Bindings> m = Bindings::from_json(
+        R"({"name":"m","bindings":{"input.submit":["enter"],"other.thing":["f9"],"playground.quit":["ctrl+q"],
+            "app.zoom":["ctrl+shift+z"]}})",
+        mrep, KeyProtocol::Legacy);
+    check(m && mrep.undeliverable.size() == 1 && mrep.migrated.size() == 1 && m->chords_for("studio.quit").size() == 1 &&
+              m->chords_for("other.thing").size() == 1 && m->chords_for("app.zoom").size() == 1,
+          "kept-and-inert and the rename migration are untouched by deliverability — all three rows survive");
   }
   // ---- the loader's report ----
   {

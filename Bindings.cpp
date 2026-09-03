@@ -318,19 +318,30 @@ const std::vector<KeyEvent>& Bindings::chords_for(std::string_view action) const
   return none;
 }
 
+// The help form skips what this terminal cannot deliver: a shortcut a menu or a help
+// popup prints is a promise that the key works, and Phase 10 m6's rule ("inert also
+// means invisible") applies to a chord the terminal cannot carry exactly as it does to
+// an action nothing declares.
 std::string Bindings::chords_text(std::string_view action) const {
+  const KeyProtocol p = active_key_protocol();
   std::string s;
-  for (const KeyEvent& k : chords_for(action)) s += (s.empty() ? "" : ", ") + chord_display(k);
+  for (const KeyEvent& k : chords_for(action))
+    if (deliverable(k, p)) s += (s.empty() ? "" : ", ") + chord_display(k);
   return s;
 }
 
 std::string_view Bindings::action_for(const KeyEvent& key, std::string_view scope) const {
   const KeyEvent k = normalise(key);
+  const KeyProtocol p = active_key_protocol();
   for (const auto& [a, chords] : table_) {
     if (scope_of(a) != scope) continue;
     if (!has(a)) continue;  // an undeclared row: kept, written back, never emitted
     for (const KeyEvent& c : chords)
-      if (c == k) return a;
+      // A chord this terminal cannot deliver is kept and inert for the same reason: the
+      // row survives save, and nothing can emit it, so it must not claim a key. (In
+      // practice the guard is belt and braces — the loader already reported it and no
+      // such event can arrive — but bind() and an editor reach the table too.)
+      if (c == k && deliverable(c, p)) return a;
   }
   return "";
 }
@@ -380,20 +391,29 @@ std::string BindingsLoadReport::summary() const {
   for (const std::string& x : bad_values) add("bad: " + x);
   for (const std::string& x : conflicts) add("conflict: " + x);
   for (const std::string& x : bad_chords) add("chord: " + x);
+  for (const std::string& x : undeliverable) add("undeliverable: " + x);
   for (const std::string& x : unknown_actions) add("unknown action: " + x);
   for (const std::string& x : unknown_keys) add("unknown: " + x);
   return s;
 }
 
 std::optional<Bindings> Bindings::from_json(std::string_view text, BindingsLoadReport& report) {
+  return from_json(text, report, active_key_protocol());
+}
+
+std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadReport& report) {
+  return from_json(v, report, active_key_protocol());
+}
+
+std::optional<Bindings> Bindings::from_json(std::string_view text, BindingsLoadReport& report, KeyProtocol deliver) {
   report = BindingsLoadReport{};
   std::string err;
   json::Value v = json::parse(text, err);
   if (!err.empty()) { report.error = err; return std::nullopt; }
-  return from_json(v, report);
+  return from_json(v, report, deliver);
 }
 
-std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadReport& report) {
+std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadReport& report, KeyProtocol deliver) {
   report = BindingsLoadReport{};
   if (!v.is_object()) { report.error = "a bindings file must be a JSON object"; return std::nullopt; }
   const json::Value& map = v.get("bindings");
@@ -433,6 +453,14 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
       if (!c.is_string()) { report.bad_values.push_back(action + ": a chord must be a string"); continue; }
       const std::optional<KeyEvent> k = parse_chord(c.str);
       if (!k) { report.bad_chords.push_back(action + ": '" + c.str + "' is not a chord"); continue; }
+      // A chord this terminal cannot deliver: named, with the reason and what to turn on
+      // — and then KEPT anyway (no `continue`). The refusal is about what can fire, not
+      // about what the user is allowed to have written: the row round-trips through save,
+      // so the same file loads clean the day the terminal negotiates kitty, and
+      // action_for()/chords_text() are what make it inert and invisible until then.
+      if (!deliverable(*k, deliver))
+        report.undeliverable.push_back(action + ": '" + chord_to_string(*k) + "' cannot be delivered by this terminal; " +
+                                       undeliverable_reason(*k, deliver));
       const bool is_enter = k->key == Key::Enter && !k->ctrl && !k->alt && !k->shift;
       if (is_enter && scope_of(action) == "input" && action != "input.submit") {
         report.bad_values.push_back(action + ": 'enter' is always input.submit and cannot be bound here (refused)");
@@ -489,7 +517,14 @@ std::string_view default_bindings_json() {
 const Bindings& default_bindings() {
   static const Bindings b = [] {
     BindingsLoadReport rep;
-    std::optional<Bindings> d = Bindings::from_json(default_bindings_json(), rep);
+    // AGAINST LEGACY, EXPLICITLY, and not against whatever this terminal turned out to
+    // be (Phase 12 m3). The shipped file belongs to every host on every terminal, so it
+    // must be deliverable under the WEAKEST model — proved here, once, for every build,
+    // exactly as the tool-row abort below is. A chord that only works on kitty is a fine
+    // thing for a user's own file and a build mistake in this one; checking it against
+    // the active protocol would let a kitty terminal ship a file a plain xterm cannot
+    // press, which is the same defect one level up.
+    std::optional<Bindings> d = Bindings::from_json(default_bindings_json(), rep, KeyProtocol::Legacy);
     if (!d || !rep.clean()) {
       std::fprintf(stderr, "rolltui: the shipped default bindings are broken: %s\n", rep.summary().c_str());
       std::abort();

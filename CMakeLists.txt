@@ -132,6 +132,14 @@ add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
 
+# Phase 12 m3: DELIVERABILITY — a chord a terminal cannot deliver is refused, not bound
+# to silence. The table is measured against the ENCODINGS (encode_key fed to the real
+# KeyDecoder over ~1000 chords × 3 protocols), the loader's refusal is named, the same
+# file loads clean under kitty, and the protocol is negotiated on a real pty pair by a
+# forked terminal that answers — or does not.
+add_rolltui_test(rolltui-deliverability-test tests/deliverability_test.cpp)
+set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
+
 # Milestone 8: placement (the resolve table + tiling properties), the split tree, the
 # layout loader and the four built-ins, border joining, the stack's focus routing.
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)

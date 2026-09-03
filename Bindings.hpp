@@ -66,6 +66,30 @@
 // name in a LIBRARY scope that the library does not define ("input.sumbit"): that scope
 // is closed, so the loader reports it as an unknown action instead of keeping a dead row.
 //
+// A CHORD THIS TERMINAL CANNOT DELIVER IS REFUSED BY NAME, NEVER BOUND TO SILENCE
+// (Phase 12 m3). `ctrl+shift+p` parses, binds, saves and renders in the help popup, and
+// on an ordinary terminal the bytes that arrive are byte-identical to `ctrl+p`, so it
+// never fires — correct in every observable way except that it does nothing. So the
+// loader asks Keys.hpp's deliverability model, whose answer is a property of the PAIR
+// (chord, protocol) and never of the chord alone, and reports the refusal the way it
+// reports a bad chord: "app.palette: 'ctrl+shift+p' cannot be delivered by this
+// terminal; it needs the kitty keyboard protocol". There is no blacklist: the SAME FILE
+// loads clean on a terminal that negotiates kitty, because the answer is the terminal's.
+//
+// THE ROW IS STILL KEPT, exactly as an undeclared action's is, and for the same reason —
+// a bindings file is global and the user's, and today's terminal is not tomorrow's. A
+// refused chord round-trips through save so a person who moves to kitty gets it back;
+// what changes is that action_for() never answers with it and chords_text() never
+// advertises it, so the help popup and the menus show no shortcut rather than one that
+// cannot fire. That is the kept-and-inert rule below, applied to a chord instead of an
+// action, and the two compose: an undeclared action's undeliverable chord is kept twice
+// over and still emits nothing.
+//
+// THE SHIPPED FILE IS HELD TO A HIGHER BAR: it belongs to every host on every terminal,
+// so it must be deliverable under the LEGACY model — the weakest one — and
+// default_bindings() aborts the build if it is not, the way it already aborts on a tool
+// row (Phase 11 m1). A user's file is reported; the library's own is a build mistake.
+//
 // THE ONE RULE THAT CANNOT BE REBOUND (the plan's standing rule, "Enter is always
 // submit"): `enter` must be a chord of input.submit and of no other input.* action; a
 // file that tries is a reported bad value and the default binding is kept. Ctrl-C is
@@ -142,6 +166,11 @@ struct BindingsLoadReport {
   std::string error;                        // unusable
   std::vector<std::string> unknown_actions; // named in the file, not known
   std::vector<std::string> bad_chords;      // "input.left: 'ctrl+meta+x' is not a chord"
+  // Chords this terminal cannot deliver: "app.palette: 'ctrl+shift+p' cannot be
+  // delivered by this terminal; it needs the kitty keyboard protocol". A problem (it is
+  // in clean()) because the person who wrote it expected a key to work — but the row is
+  // KEPT and written back, so moving to a terminal that can deliver it needs no edit.
+  std::vector<std::string> undeliverable;
   std::vector<std::string> conflicts;       // "'up' bound to both input.up and input.history_prev"
   std::vector<std::string> bad_values;      // the Enter rule, a non-array, ...
   std::vector<std::string> unknown_keys;
@@ -151,7 +180,8 @@ struct BindingsLoadReport {
   // way LayoutLoadReport::migrated is said.
   std::vector<std::string> migrated;
   bool clean() const {
-    return error.empty() && unknown_actions.empty() && bad_chords.empty() && conflicts.empty() && bad_values.empty() && unknown_keys.empty();
+    return error.empty() && unknown_actions.empty() && bad_chords.empty() && conflicts.empty() && bad_values.empty() &&
+           unknown_keys.empty() && undeliverable.empty();
   }
   std::string summary() const;
 };
@@ -162,8 +192,15 @@ class Bindings {
 
   // ---- lookup ----
   // The action of `scope` bound to this key, or "" when none. `k.raw` is ignored.
+  // A chord the ACTIVE protocol cannot deliver never answers — it is kept in the table
+  // and written back, but nothing can emit it, so it must not claim a key either.
   std::string_view action_for(const KeyEvent& k, std::string_view scope) const;
+  // Every chord in the row, deliverable or not: this is what to_json writes and what an
+  // editor shows, and losing a chord because today's terminal is poor would be worse
+  // than showing one that is currently inert.
   const std::vector<KeyEvent>& chords_for(std::string_view action) const;
+  // …and this is the HELP form, so it lists only the chords that can actually fire on
+  // the active protocol ("inert also means invisible"). Empty renders as "(unbound)".
   std::string chords_text(std::string_view action) const;  // "Ctrl-W, Alt-Backspace" for help
   bool has(std::string_view action) const;
   const std::vector<std::string>& actions() const { return actions_; }  // known actions, in table order
@@ -214,6 +251,15 @@ class Bindings {
   // rest. load() starts from an empty table. A name outside the library's scopes is
   // kept as an UNDECLARED row (see the header comment) — the layout, not this file,
   // says which actions exist.
+  //
+  // `deliver` is the protocol every chord in the file is checked against — an EXPLICIT
+  // input, because deliverability is a property of the pair and a file that is fine on
+  // one terminal is not on another. The two-argument forms mean "whatever this terminal
+  // turned out to be" (Keys.hpp's active_key_protocol()); they are separate overloads
+  // rather than a default argument so that naming a protocol and declining to name one
+  // cannot read alike at a call site.
+  static std::optional<Bindings> from_json(const json::Value& v, BindingsLoadReport& report, KeyProtocol deliver);
+  static std::optional<Bindings> from_json(std::string_view text, BindingsLoadReport& report, KeyProtocol deliver);
   static std::optional<Bindings> from_json(const json::Value& v, BindingsLoadReport& report);
   static std::optional<Bindings> from_json(std::string_view text, BindingsLoadReport& report);
   json::Value to_json(std::string_view name) const;
