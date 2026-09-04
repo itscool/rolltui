@@ -19,6 +19,7 @@
 #include "rolltui/unicode_tables.h"
 
 #include <cstring>
+#include <memory>
 #include <initializer_list>
 #include <span>
 #include <string>
@@ -26,8 +27,47 @@
 #include <vector>
 
 namespace {
-
 using namespace rolltui::unicode;
+}  // namespace
+
+// One line-break unit. At file scope so the caller's handle can hold the vector of them,
+// which is what the C side does; it was local to the function until Phase 14 m5.
+struct Unit {
+  LineBreak cls;
+  bool east_asian;    // ea ∈ {F, W, H} — $EastAsian in LB19a / LB30
+  bool pi, pf;        // gc of a QU base
+  bool dotted;        // U+25CC, the [◌] of LB28a
+  bool pict_cn;       // Extended_Pictographic ∧ Cn, for LB30b
+  bool ends_zwj;      // last code point is U+200D, for LB8a
+  std::size_t first;  // index of the base in cps
+};
+
+// The caller's working memory — the same handle the C side takes, and the reason six
+// `thread_local` buffers left this file. A vector per ROLE, so a function that calls another
+// (graphemes → boundaries, display_width → graphemes) cannot alias its own caller's scratch.
+// It is this side's OWN struct, so the vectors stay TYPED and every rule below reads exactly
+// as it did before the port.
+struct RolltuiUnicodeScratch {
+  std::vector<RolltuiDecodedChar> dc;
+  std::vector<char32_t> cps;
+  std::vector<unsigned char> bounds;
+  std::vector<GraphemeBreak> gb;
+  std::vector<IndicConjunctBreak> incb;
+  std::vector<unsigned char> pict;
+  std::vector<WordBreak> wb;
+  std::vector<unsigned char> wpict;
+  std::vector<RolltuiUnicodeGrapheme> gr;
+  std::vector<Unit> units;
+};
+
+extern "C" RolltuiUnicodeScratch* rolltui_u_scratch_new(void) {
+  return std::make_unique<RolltuiUnicodeScratch>().release();
+}
+extern "C" void rolltui_u_scratch_free(RolltuiUnicodeScratch* s) {
+  const std::unique_ptr<RolltuiUnicodeScratch> owned(s);
+}
+
+namespace {
 // The typed enum stays, defined FROM the boundary's constants, so the two hundred lines of
 // UAX #14 rules below read exactly as they did before the port. `Unicode.hpp` declares the
 // caller's copy of the same three values and asserts them against the same constants.
@@ -172,24 +212,24 @@ int cluster_width(std::span<const char32_t> cps, bool ambiguous_wide) {
 
 // ---- UAX #29 -----------------------------------------------------------------------
 
-void grapheme_boundaries_impl(std::span<const char32_t> cps, unsigned char* b) {
+void grapheme_boundaries_impl(RolltuiUnicodeScratch* sc, std::span<const char32_t> cps, unsigned char* b) {
   const std::size_t n = cps.size();
   std::memset(b, 0, n + 1);
   b[0] = 1;
   b[n] = 1;
   if (n < 2) return;
-  // Three more per-call vectors on the same hot path; reused for the same reason and with
-  // the same nesting guarantee as the caller's (Phase 13 m3).
-  thread_local std::vector<GraphemeBreak> g;
-  thread_local std::vector<IndicConjunctBreak> incb;
-  thread_local std::vector<bool> pict;
+  // The three per-call intermediates live on the CALLER'S HANDLE now (Phase 14 m5). They were
+  // `thread_local` from Phase 13 m3 — reused for the right reason, with a lifetime nobody owned.
+  std::vector<GraphemeBreak>& g = sc->gb;
+  std::vector<IndicConjunctBreak>& incb = sc->incb;
+  std::vector<unsigned char>& pict = sc->pict;
   g.assign(n, GraphemeBreak{});
   incb.assign(n, IndicConjunctBreak{});
-  pict.assign(n, false);
+  pict.assign(n, 0);
   for (std::size_t i = 0; i < n; ++i) {
     g[i] = grapheme_break(cps[i]);
     incb[i] = indic_conjunct_break(cps[i]);
-    pict[i] = is_extended_pictographic(cps[i]);
+    pict[i] = is_extended_pictographic(cps[i]) ? 1u : 0u;
   }
   using GB = GraphemeBreak;
   using IC = IndicConjunctBreak;
@@ -247,16 +287,16 @@ void grapheme_boundaries_impl(std::span<const char32_t> cps, unsigned char* b) {
 // widths. That is deliberate — the conformance suites (rolltui-grapheme-break-test,
 // rolltui-width-test) are what say this is still correct, and they can only say it about
 // a change that did not move the algorithm.
-std::size_t graphemes_impl(std::string_view utf8, bool ambiguous_wide, Grapheme* out) {
-  thread_local std::vector<DecodedChar> dc;
-  thread_local std::vector<char32_t> cps;
-  thread_local std::vector<unsigned char> b;
+std::size_t graphemes_impl(RolltuiUnicodeScratch* sc, std::string_view utf8, bool ambiguous_wide, Grapheme* out) {
+  std::vector<DecodedChar>& dc = sc->dc;
+  std::vector<char32_t>& cps = sc->cps;
+  std::vector<unsigned char>& b = sc->bounds;
   decode_utf8_into(utf8, dc);
   cps.clear();
   cps.reserve(dc.size());
   for (const DecodedChar& d : dc) cps.push_back(d.cp);
   b.resize(cps.size() + 1);
-  grapheme_boundaries_impl(cps, b.data());
+  grapheme_boundaries_impl(sc, cps, b.data());
   std::size_t n = 0, start = 0;
   for (std::size_t i = 1; i <= cps.size(); ++i) {
     if (!b[i]) continue;
@@ -269,10 +309,10 @@ std::size_t graphemes_impl(std::string_view utf8, bool ambiguous_wide, Grapheme*
   return n;
 }
 
-int display_width(std::string_view utf8, bool ambiguous_wide) {
-  thread_local std::vector<Grapheme> g;
+int display_width(RolltuiUnicodeScratch* sc, std::string_view utf8, bool ambiguous_wide) {
+  std::vector<Grapheme>& g = sc->gr;
   g.resize(utf8.size());  // there can be no more clusters than bytes
-  const std::size_t n = graphemes_impl(utf8, ambiguous_wide, g.data());
+  const std::size_t n = graphemes_impl(sc, utf8, ambiguous_wide, g.data());
   int w = 0;
   for (std::size_t i = 0; i < n; ++i) w += g[i].width;
   return w;
@@ -280,18 +320,20 @@ int display_width(std::string_view utf8, bool ambiguous_wide) {
 
 // ---- UAX #29: words ----------------------------------------------------------------
 
-void word_boundaries_impl(std::span<const char32_t> cps, unsigned char* b) {
+void word_boundaries_impl(RolltuiUnicodeScratch* sc, std::span<const char32_t> cps, unsigned char* b) {
   using WB = WordBreak;
   const std::size_t n = cps.size();
   std::memset(b, 0, n + 1);
   b[0] = 1;   // WB1
   b[n] = 1;   // WB2
   if (n < 2) return;
-  std::vector<WB> w(n);
-  std::vector<bool> pict(n);
+  std::vector<WB>& w = sc->wb;
+  std::vector<unsigned char>& pict = sc->wpict;
+  w.assign(n, WB{});
+  pict.assign(n, 0);
   for (std::size_t i = 0; i < n; ++i) {
     w[i] = word_break(cps[i]);
-    pict[i] = is_extended_pictographic(cps[i]);
+    pict[i] = is_extended_pictographic(cps[i]) ? 1u : 0u;
   }
   auto ignorable = [](WB c) { return c == WB::Extend || c == WB::Format || c == WB::ZWJ; };
   auto newline = [](WB c) { return c == WB::Newline || c == WB::CR || c == WB::LF; };
@@ -359,17 +401,20 @@ void word_boundaries_impl(std::span<const char32_t> cps, unsigned char* b) {
   }
 }
 
-void word_range_impl(std::string_view utf8, std::size_t offset, std::size_t* out_begin, std::size_t* out_end) {
-  std::vector<DecodedChar> dc;
+void word_range_impl(RolltuiUnicodeScratch* sc, std::string_view utf8, std::size_t offset,
+                     std::size_t* out_begin, std::size_t* out_end) {
+  std::vector<DecodedChar>& dc = sc->dc;
   decode_utf8_into(utf8, dc);
   if (offset >= utf8.size() || dc.empty()) {
     *out_begin = *out_end = utf8.size();
     return;
   }
-  std::vector<char32_t> cps(dc.size());
+  std::vector<char32_t>& cps = sc->cps;
+  cps.resize(dc.size());
   for (std::size_t i = 0; i < dc.size(); ++i) cps[i] = dc[i].cp;
-  std::vector<unsigned char> b(cps.size() + 1);
-  word_boundaries_impl(cps, b.data());
+  std::vector<unsigned char>& b = sc->bounds;
+  b.resize(cps.size() + 1);
+  word_boundaries_impl(sc, cps, b.data());
   std::size_t k = 0;  // the code point containing `offset`
   while (k + 1 < dc.size() && dc[k + 1].offset <= offset) ++k;
   std::size_t start = k, end = k + 1;
@@ -431,7 +476,7 @@ std::string strip_escape_sequences(std::string_view s) {
 
 // ---- UAX #14 -----------------------------------------------------------------------
 
-void line_break_opportunities_impl(std::span<const char32_t> cps, unsigned char* out) {
+void line_break_opportunities_impl(RolltuiUnicodeScratch* sc, std::span<const char32_t> cps, unsigned char* out) {
   using LB = LineBreak;
   using EA = EastAsianWidth;
   using GC = GeneralCategory;
@@ -446,15 +491,6 @@ void line_break_opportunities_impl(std::span<const char32_t> cps, unsigned char*
   // its base's class and the properties later rules read (East Asian width, Pi/Pf
   // for quotation marks, the dotted circle, Extended_Pictographic ∧ Cn). Positions
   // inside a unit are never breaks; every rule below runs between units.
-  struct Unit {
-    LB cls;
-    bool east_asian;   // ea ∈ {F, W, H} — $EastAsian in LB19a / LB30
-    bool pi, pf;       // gc of a QU base
-    bool dotted;       // U+25CC, the [◌] of LB28a
-    bool pict_cn;      // Extended_Pictographic ∧ Cn, for LB30b
-    bool ends_zwj;     // last code point is U+200D, for LB8a
-    std::size_t first; // index of the base in cps
-  };
   auto resolved = [&](char32_t cp) -> LB {
     LB c = line_break_class(cp);
     switch (c) {
@@ -471,9 +507,9 @@ void line_break_opportunities_impl(std::span<const char32_t> cps, unsigned char*
     return c == LB::BK || c == LB::CR || c == LB::LF || c == LB::NL || c == LB::SP ||
            c == LB::ZW;
   };
-  // m5b: the last per-call vector on the layout/draw path. `reserve(n)` on a fresh vector
-  // allocates every time; reused, it allocates once ever.
-  static thread_local std::vector<Unit> u;
+  // Phase 13 m5b made this a reused buffer; Phase 14 m5 moved it onto the caller's handle, so
+  // the reuse has an owner instead of a thread-local lifetime nobody holds.
+  std::vector<Unit>& u = sc->units;
   u.clear();
   u.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
@@ -766,26 +802,31 @@ extern "C" int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide
 extern "C" int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous_wide) {
   return cluster_width(std::span<const char32_t>(cps, n), ambiguous_wide != 0);
 }
-extern "C" int rolltui_u_display_width(const char* utf8, size_t len, int ambiguous_wide) {
-  return display_width(std::string_view(utf8, len), ambiguous_wide != 0);
+extern "C" int rolltui_u_display_width(RolltuiUnicodeScratch* sc, const char* utf8, size_t len,
+                                       int ambiguous_wide) {
+  return display_width(sc, std::string_view(utf8, len), ambiguous_wide != 0);
 }
 
-extern "C" void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out) {
-  grapheme_boundaries_impl(std::span<const char32_t>(cps, n), out);
+extern "C" void rolltui_u_grapheme_boundaries(RolltuiUnicodeScratch* sc, const RolltuiCodepoint* cps, size_t n,
+                                              unsigned char* out) {
+  grapheme_boundaries_impl(sc, std::span<const char32_t>(cps, n), out);
 }
-extern "C" void rolltui_u_word_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out) {
-  word_boundaries_impl(std::span<const char32_t>(cps, n), out);
+extern "C" void rolltui_u_word_boundaries(RolltuiUnicodeScratch* sc, const RolltuiCodepoint* cps, size_t n,
+                                          unsigned char* out) {
+  word_boundaries_impl(sc, std::span<const char32_t>(cps, n), out);
 }
-extern "C" size_t rolltui_u_graphemes(const char* utf8, size_t len, int ambiguous_wide,
-                                      RolltuiUnicodeGrapheme* out) {
-  return graphemes_impl(std::string_view(utf8, len), ambiguous_wide != 0, out);
+extern "C" size_t rolltui_u_graphemes(RolltuiUnicodeScratch* sc, const char* utf8, size_t len,
+                                      int ambiguous_wide, RolltuiUnicodeGrapheme* out) {
+  return graphemes_impl(sc, std::string_view(utf8, len), ambiguous_wide != 0, out);
 }
-extern "C" void rolltui_u_word_range(const char* utf8, size_t len, size_t offset, size_t* begin, size_t* end) {
-  word_range_impl(std::string_view(utf8, len), offset, begin, end);
+extern "C" void rolltui_u_word_range(RolltuiUnicodeScratch* sc, const char* utf8, size_t len, size_t offset,
+                                     size_t* begin, size_t* end) {
+  word_range_impl(sc, std::string_view(utf8, len), offset, begin, end);
 }
 
-extern "C" void rolltui_u_line_break_opportunities(const RolltuiCodepoint* cps, size_t n, unsigned char* out) {
-  line_break_opportunities_impl(std::span<const char32_t>(cps, n), out);
+extern "C" void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* sc, const RolltuiCodepoint* cps,
+                                                   size_t n, unsigned char* out) {
+  line_break_opportunities_impl(sc, std::span<const char32_t>(cps, n), out);
 }
 
 extern "C" size_t rolltui_u_strip_escape_sequences(const char* s, size_t len, char* out) {

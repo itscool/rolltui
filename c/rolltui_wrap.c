@@ -64,6 +64,15 @@ struct RolltuiWrapLines {
   size_t bounds_cap;
   Cluster* clusters;
   size_t cluster_count, cluster_cap;
+  /* The Unicode algorithms' working memory, owned here for the same reason everything else in
+   * this handle is: a wrap is the only thing that asks for it, so a caller that keeps one
+   * handle keeps one of these, and no hidden per-thread state exists anywhere in the chain.
+   *
+   * CREATED LAZILY, and the budget is why: eagerly it cost one allocation per handle, and
+   * `wrap()` mints a fresh handle per call to hand the lines over — a resize frame went up by
+   * exactly 281, the number of `wrap()` calls in it. A handed-over result is READ, never
+   * wrapped into, so it never needs this. */
+  RolltuiUnicodeScratch* uni;
 };
 
 /* ---- lifetime ------------------------------------------------------------------------- */
@@ -87,6 +96,7 @@ void rolltui_wrap_free(RolltuiWrapLines* w) {
   rolltui_mem_free(w->brk);
   rolltui_mem_free(w->bounds);
   rolltui_mem_free(w->clusters);
+  rolltui_u_scratch_free(w->uni);
   rolltui_mem_free(w);
 }
 
@@ -226,8 +236,9 @@ void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, 
   n = rolltui_u_decode_utf8(utf8, len, w->cps, w->coff, w->clen);
   w->brk = rolltui_grow(w->brk, &w->brk_cap, n + 1, sizeof *w->brk);
   w->bounds = rolltui_grow(w->bounds, &w->bounds_cap, n + 1, sizeof *w->bounds);
-  rolltui_u_line_break_opportunities(w->cps, n, w->brk);
-  rolltui_u_grapheme_boundaries(w->cps, n, w->bounds);
+  if (!w->uni) w->uni = rolltui_u_scratch_new(); /* this handle is being used as an engine */
+  rolltui_u_line_break_opportunities(w->uni, w->cps, n, w->brk);
+  rolltui_u_grapheme_boundaries(w->uni, w->cps, n, w->bounds);
 
   /* One entry per grapheme cluster, in source order. */
   w->cluster_count = 0;
@@ -354,7 +365,7 @@ RolltuiWrapLines* rolltui_wrap_clone(const RolltuiWrapLines* src) {
   block = (unsigned char*)rolltui_pack_alloc(&pk);
   w = (RolltuiWrapLines*)block;
 
-  memset(w, 0, sizeof *w); /* the scratch stays NULL: a clone is read, never wrapped into */
+  memset(w, 0, sizeof *w); /* the buffers stay NULL: a clone is read, never wrapped into */
   w->packed = 1;
   w->lines = (Rec*)(void*)(block + off_lines);
   w->gs = (RolltuiWrapGrapheme*)(void*)(block + off_gs);

@@ -11,6 +11,27 @@
 #include "rolltui/Unicode.hpp"
 
 namespace rolltui::unicode {
+namespace {
+
+// ONE HANDLE PER THREAD, and no caller outside this file ever sees it. The six algorithms
+// that need working memory take it (rolltui/c/rolltui_unicode.h); it grows to a high-water
+// mark over the first few calls and never allocates again. C++ owns the lifetime the way it
+// owns every other one here — a `thread_local` with a destructor — so there is nothing for a
+// host to initialise and nothing left to clean up at thread exit.
+struct ScratchOwner {
+  RolltuiUnicodeScratch* p = rolltui_u_scratch_new();
+  ScratchOwner() = default;
+  ScratchOwner(const ScratchOwner&) = delete;
+  ScratchOwner& operator=(const ScratchOwner&) = delete;
+  ~ScratchOwner() { rolltui_u_scratch_free(p); }
+};
+
+RolltuiUnicodeScratch* scratch() {
+  static thread_local ScratchOwner owner;
+  return owner.p;
+}
+
+}  // namespace
 
 // ---- UTF-8 -------------------------------------------------------------------------
 
@@ -47,7 +68,7 @@ int cluster_width(std::span<const char32_t> cps, bool ambiguous_wide) {
 }
 
 int display_width(std::string_view utf8, bool ambiguous_wide) {
-  return rolltui_u_display_width(utf8.data(), utf8.size(), ambiguous_wide);
+  return rolltui_u_display_width(scratch(), utf8.data(), utf8.size(), ambiguous_wide);
 }
 
 // ---- UAX #29 -----------------------------------------------------------------------
@@ -57,19 +78,19 @@ int display_width(std::string_view utf8, bool ambiguous_wide) {
 // `graphemes_into`, which fills its caller's array with no staging at all.
 std::vector<bool> grapheme_boundaries(std::span<const char32_t> cps) {
   std::vector<unsigned char> bytes(cps.size() + 1);
-  rolltui_u_grapheme_boundaries(cps.data(), cps.size(), bytes.data());
+  rolltui_u_grapheme_boundaries(scratch(), cps.data(), cps.size(), bytes.data());
   return std::vector<bool>(bytes.begin(), bytes.end());
 }
 
 std::vector<bool> word_boundaries(std::span<const char32_t> cps) {
   std::vector<unsigned char> bytes(cps.size() + 1);
-  rolltui_u_word_boundaries(cps.data(), cps.size(), bytes.data());
+  rolltui_u_word_boundaries(scratch(), cps.data(), cps.size(), bytes.data());
   return std::vector<bool>(bytes.begin(), bytes.end());
 }
 
 void graphemes_into(std::string_view utf8, bool ambiguous_wide, std::vector<Grapheme>& out) {
   out.resize(utf8.size());  // there can be no more clusters than bytes
-  const std::size_t n = rolltui_u_graphemes(utf8.data(), utf8.size(), ambiguous_wide, out.data());
+  const std::size_t n = rolltui_u_graphemes(scratch(), utf8.data(), utf8.size(), ambiguous_wide, out.data());
   out.resize(n);            // capacity kept: a reused buffer never reallocates
 }
 
@@ -81,7 +102,7 @@ std::vector<Grapheme> graphemes(std::string_view utf8, bool ambiguous_wide) {
 
 ByteRange word_range(std::string_view utf8, std::size_t offset) {
   ByteRange r;
-  rolltui_u_word_range(utf8.data(), utf8.size(), offset, &r.begin, &r.end);
+  rolltui_u_word_range(scratch(), utf8.data(), utf8.size(), offset, &r.begin, &r.end);
   return r;
 }
 
@@ -101,7 +122,8 @@ std::vector<Break> line_break_opportunities(std::span<const char32_t> cps) {
   // `Break` is a one-byte enum with the boundary's three values, asserted in Unicode.hpp,
   // so the array IS the byte array the boundary fills. No staging and no conversion.
   static_assert(sizeof(Break) == 1, "Break must be one byte for the boundary to fill this directly");
-  rolltui_u_line_break_opportunities(cps.data(), cps.size(), reinterpret_cast<unsigned char*>(out.data()));
+  rolltui_u_line_break_opportunities(scratch(), cps.data(), cps.size(),
+                                     reinterpret_cast<unsigned char*>(out.data()));
   return out;
 }
 

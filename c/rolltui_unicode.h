@@ -20,6 +20,10 @@
  *      output length here has a bound the caller can compute WITHOUT asking first — a decode
  *      yields at most one scalar per byte, a boundary array is n + 1, a strip only ever
  *      shrinks — so no function here needs a measure-then-fill round trip, and none allocates.
+ *      **That applies to WORKING memory too, through `RolltuiUnicodeScratch` below**, which is
+ *      the same rule the rest of this port already follows: a `RolltuiFrame` and a
+ *      `RolltuiWrapLines` are handles the caller owns that carry the reusable buffers, and
+ *      these functions were the odd ones out for having nowhere to keep theirs.
  *   2. **ONE DEFINITION** (m2): `RolltuiDecodedChar` and `RolltuiUnicodeGrapheme` are the C++
  *      `unicode::DecodedChar` and `unicode::Grapheme`, aliased rather than converted.
  *   3. **A CODE POINT IS `RolltuiCodepoint`** (m3): `char32_t` to C++, `unsigned int` to C,
@@ -63,6 +67,25 @@ typedef struct RolltuiUnicodeGrapheme {
 #define ROLLTUI_BREAK_ALLOWED 1
 #define ROLLTUI_BREAK_MANDATORY 2
 
+/* ---- working memory ---------------------------------------------------------------------- */
+/* THE GROWING BUFFERS THESE ALGORITHMS NEED, owned by the caller and reused across calls.
+ *
+ * The six functions marked below need somewhere to decode into, mark boundaries in, and build
+ * line-break units in. There were three ways to give them that and only one is simple:
+ *   - hidden per-thread buffers (what the C++ has, twenty-five of them across the library) —
+ *     invisible state with a lifetime nobody owns;
+ *   - allocate per call — an allocation on the draw path, which Phase 13 spent itself removing;
+ *   - **hand them a buffer, which is what every other handle in this port already does.**
+ * One handle per thread, made once and reused forever, is all a host needs: after the first
+ * few calls it never grows again, so the draw path allocates NOTHING and there is no spill
+ * case, no stack-size question and nothing retained that an exit would have to clean up.
+ *
+ * It holds one buffer per ROLE rather than one shared pool, so a function that calls another
+ * (graphemes → boundaries, display_width → graphemes) cannot alias its own scratch. */
+typedef struct RolltuiUnicodeScratch RolltuiUnicodeScratch;
+RolltuiUnicodeScratch* rolltui_u_scratch_new(void);
+void rolltui_u_scratch_free(RolltuiUnicodeScratch* s);
+
 /* ---- property lookups ------------------------------------------------------------------ */
 /* Each returns the property's value byte, which is one of the `ROLLTUI_<PROPERTY>_*` constants
  * in the generated `rolltui/unicode_tables.h`. These are the whole of the Unicode property
@@ -95,25 +118,30 @@ size_t rolltui_u_append_utf8(RolltuiCodepoint cp, char* out);
 /* ---- widths ---------------------------------------------------------------------------- */
 int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide);
 int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous_wide);
-int rolltui_u_display_width(const char* utf8, size_t len, int ambiguous_wide);
+int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide);
 
 /* ---- UAX #29 --------------------------------------------------------------------------- */
 /* `out` holds n + 1 entries: out[i] is 1 when a boundary lies before cps[i], out[n] is the end
  * of text. For a non-empty input out[0] and out[n] are 1; for empty input the single entry
  * is 1. */
-void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
-void rolltui_u_word_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
+void rolltui_u_grapheme_boundaries(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
+                                   unsigned char* out);
+void rolltui_u_word_boundaries(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
+                               unsigned char* out);
 /* Clusters of a UTF-8 string with their byte spans and cell widths. `out` must hold at least
  * `len` entries — there can be no more clusters than bytes. Returns the count. */
-size_t rolltui_u_graphemes(const char* utf8, size_t len, int ambiguous_wide, RolltuiUnicodeGrapheme* out);
+size_t rolltui_u_graphemes(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide,
+                           RolltuiUnicodeGrapheme* out);
 /* The word containing byte `offset`, as a byte range; an offset past the end gives
  * {len, len}. */
-void rolltui_u_word_range(const char* utf8, size_t len, size_t offset, size_t* begin, size_t* end);
+void rolltui_u_word_range(RolltuiUnicodeScratch* s, const char* utf8, size_t len, size_t offset,
+                          size_t* begin, size_t* end);
 
 /* ---- UAX #14 --------------------------------------------------------------------------- */
 /* `out` holds n + 1 entries of ROLLTUI_BREAK_*: out[i] is the opportunity before cps[i] and
  * out[n] is end of text, always Mandatory (LB3); out[0] is always Prohibited (LB2). */
-void rolltui_u_line_break_opportunities(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
+void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
+                                        unsigned char* out);
 
 /* ---- sanitising ------------------------------------------------------------------------ */
 /* Removes terminal control sequences from text that will be RENDERED. `out` must hold at least

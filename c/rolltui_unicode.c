@@ -9,15 +9,18 @@
  * the suites can only say a translation is faithful if the translation did not also
  * reorganise the rules.
  *
- * SCRATCH IS INLINE WITH A STATED SPILL (rolltui_alloc.h strategy 1), and that is the one
- * design decision this file had to make that the C++ did not. The C++ side hangs its working
- * buffers on `thread_local` vectors that grow once and are reused forever; this file has no
- * handle to hang anything off — these are pure functions — and `rolltui_wrap.h`'s rule that
- * the C carries no global or thread-local state is worth keeping, not least because m6's
- * sanitizer configuration would otherwise have a per-thread leak to argue about. So each
- * function that needs working memory takes ONE `Scratch`: a 16 KB stack buffer carved into
- * the arrays it needs, spilling to the heap for text longer than about 700 code points.
- * A drawn line and a wrapped paragraph both sit comfortably inside it.
+ * WORKING MEMORY IS THE CALLER'S, through `RolltuiUnicodeScratch` — the same handle the rest
+ * of this port already uses for a Frame and for wrapped lines. It holds one GROWING BUFFER per
+ * role; a host makes one per thread and reuses it forever, so after the first few calls
+ * nothing here allocates at all.
+ *
+ * **THE FIRST VERSION OF THIS FILE DID SOMETHING MORE COMPLICATED AND WORSE**, and it is worth
+ * saying why so nobody reinvents it: a 16 KB stack buffer per call, carved into the arrays that
+ * call needed, spilling to the heap past ~700 code points. It worked, and it was three
+ * mechanisms (stack, carve, spill) where one sufficed — chosen because these functions were the
+ * only ones on the boundary with nowhere to keep a buffer, so adding a parameter felt like
+ * noise. It was not noise; it was the missing handle. The pattern was already written down as
+ * CLAUDE.md's third strategy, CALLER-FILLED, and this port had used it twice already.
  */
 #include "rolltui/c/rolltui_unicode.h"
 
@@ -26,48 +29,55 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/unicode_tables.h"
 
-/* ---- scratch: inline, with a spill ---------------------------------------------------- */
+/* ---- the caller's working memory --------------------------------------------------------- */
 
-#define ROLLTUI_U_SCRATCH_BYTES 16384
+typedef struct Unit Unit; /* the line-break unit, defined with the UAX #14 rules below */
 
-typedef union {
-  long double ld;
-  void* p;
-  long long ll;
-} MaxAlign;
+/* ONE BUFFER PER ROLE, not one pool: `graphemes` calls `grapheme_boundaries` and
+ * `display_width` calls `graphemes`, so a shared region would have a function aliasing its own
+ * caller's scratch. Separate roles make that impossible rather than merely forbidden. Each
+ * grows through the closed set's amortised strategy (rolltui_alloc.h) and never shrinks, so a
+ * handle that has drawn a few frames never allocates again. */
+struct RolltuiUnicodeScratch {
+  RolltuiCodepoint* cps;
+  size_t cps_cap;
+  size_t* offs;
+  size_t offs_cap;
+  size_t* lens;
+  size_t lens_cap;
+  unsigned char* bounds;
+  size_t bounds_cap;
+  unsigned char *gb, *incb, *pict; /* grapheme_boundaries */
+  size_t gb_cap, incb_cap, pict_cap;
+  unsigned char *wb, *wpict; /* word_boundaries */
+  size_t wb_cap, wpict_cap;
+  Unit* units; /* line_break_opportunities */
+  size_t units_cap;
+  RolltuiUnicodeGrapheme* gr; /* display_width */
+  size_t gr_cap;
+};
 
-typedef struct {
-  unsigned char* base;
-  size_t used;
-  void* spill; /* non-NULL when the inline buffer was not big enough */
-  MaxAlign inline_bytes[ROLLTUI_U_SCRATCH_BYTES / sizeof(MaxAlign)];
-} Scratch;
-
-/* Decides inline-vs-heap ONCE, from the total the caller is about to carve. Deciding per
- * array would let one long array spill while its neighbours did not, which is two lifetimes
- * to get right instead of one. */
-static void scratch_begin(Scratch* s, size_t total) {
-  s->used = 0;
-  if (total <= sizeof s->inline_bytes) {
-    s->spill = NULL;
-    s->base = (unsigned char*)s->inline_bytes;
-    return;
-  }
-  s->spill = rolltui_mem_alloc(total);
-  s->base = (unsigned char*)s->spill;
+RolltuiUnicodeScratch* rolltui_u_scratch_new(void) {
+  RolltuiUnicodeScratch* s = (RolltuiUnicodeScratch*)rolltui_mem_alloc(sizeof(RolltuiUnicodeScratch));
+  memset(s, 0, sizeof *s);
+  return s;
 }
 
-static void* scratch_take(Scratch* s, size_t bytes) {
-  unsigned char* p = s->base + s->used;
-  s->used += (bytes + 15u) / 16u * 16u; /* every slice aligned for any type */
-  return p;
+void rolltui_u_scratch_free(RolltuiUnicodeScratch* s) {
+  if (!s) return;
+  rolltui_mem_free(s->cps);
+  rolltui_mem_free(s->offs);
+  rolltui_mem_free(s->lens);
+  rolltui_mem_free(s->bounds);
+  rolltui_mem_free(s->gb);
+  rolltui_mem_free(s->incb);
+  rolltui_mem_free(s->pict);
+  rolltui_mem_free(s->wb);
+  rolltui_mem_free(s->wpict);
+  rolltui_mem_free(s->units);
+  rolltui_mem_free(s->gr);
+  rolltui_mem_free(s);
 }
-
-static void scratch_end(Scratch* s) { rolltui_mem_free(s->spill); }
-
-/* The bytes `scratch_take` will actually consume for `n` elements of `elem`. Callers add
- * these up to size the one `scratch_begin`. */
-static size_t scratch_slice(size_t n, size_t elem) { return (n * elem + 15u) / 16u * 16u; }
 
 /* ---- property lookups ------------------------------------------------------------------ */
 
@@ -264,8 +274,8 @@ int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous
 
 /* ---- UAX #29: grapheme clusters ---------------------------------------------------------- */
 
-void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* b) {
-  Scratch sc;
+void rolltui_u_grapheme_boundaries(RolltuiUnicodeScratch* sc, const RolltuiCodepoint* cps, size_t n,
+                                   unsigned char* b) {
   unsigned char *g, *incb, *pict;
   size_t i;
   memset(b, 0, n + 1);
@@ -273,10 +283,9 @@ void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsign
   b[n] = 1;
   if (n < 2) return;
 
-  scratch_begin(&sc, 3 * scratch_slice(n, 1));
-  g = scratch_take(&sc, n);
-  incb = scratch_take(&sc, n);
-  pict = scratch_take(&sc, n);
+  g = sc->gb = rolltui_grow(sc->gb, &sc->gb_cap, n, 1);
+  incb = sc->incb = rolltui_grow(sc->incb, &sc->incb_cap, n, 1);
+  pict = sc->pict = rolltui_grow(sc->pict, &sc->pict_cap, n, 1);
   for (i = 0; i < n; ++i) {
     g[i] = gb_class(cps[i]);
     incb[i] = incb_class(cps[i]);
@@ -337,26 +346,23 @@ void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsign
     }
     b[i] = (unsigned char)brk;
   }
-  scratch_end(&sc);
 }
 
-size_t rolltui_u_graphemes(const char* utf8, size_t len, int ambiguous_wide, RolltuiUnicodeGrapheme* out) {
-  Scratch sc;
+size_t rolltui_u_graphemes(RolltuiUnicodeScratch* sc, const char* utf8, size_t len, int ambiguous_wide,
+                           RolltuiUnicodeGrapheme* out) {
   RolltuiCodepoint* cps;
   size_t *offs, *lens;
   unsigned char* b;
   size_t n, i, start = 0, count = 0;
   if (len == 0) return 0;
 
-  scratch_begin(&sc, scratch_slice(len, sizeof(RolltuiCodepoint)) + 2 * scratch_slice(len, sizeof(size_t)) +
-                         scratch_slice(len + 1, 1));
-  cps = scratch_take(&sc, len * sizeof(RolltuiCodepoint));
-  offs = scratch_take(&sc, len * sizeof(size_t));
-  lens = scratch_take(&sc, len * sizeof(size_t));
-  b = scratch_take(&sc, len + 1);
+  cps = sc->cps = rolltui_grow(sc->cps, &sc->cps_cap, len, sizeof *sc->cps);
+  offs = sc->offs = rolltui_grow(sc->offs, &sc->offs_cap, len, sizeof *sc->offs);
+  lens = sc->lens = rolltui_grow(sc->lens, &sc->lens_cap, len, sizeof *sc->lens);
+  b = sc->bounds = rolltui_grow(sc->bounds, &sc->bounds_cap, len + 1, 1);
 
   n = rolltui_u_decode_utf8(utf8, len, cps, offs, lens);
-  rolltui_u_grapheme_boundaries(cps, n, b);
+  rolltui_u_grapheme_boundaries(sc, cps, n, b);
   for (i = 1; i <= n; ++i) {
     if (!b[i]) continue;
     out[count].offset = offs[start];
@@ -365,21 +371,17 @@ size_t rolltui_u_graphemes(const char* utf8, size_t len, int ambiguous_wide, Rol
     ++count;
     start = i;
   }
-  scratch_end(&sc);
   return count;
 }
 
-int rolltui_u_display_width(const char* utf8, size_t len, int ambiguous_wide) {
-  Scratch sc;
+int rolltui_u_display_width(RolltuiUnicodeScratch* sc, const char* utf8, size_t len, int ambiguous_wide) {
   RolltuiUnicodeGrapheme* g;
   size_t n, i;
   int w = 0;
   if (len == 0) return 0;
-  scratch_begin(&sc, scratch_slice(len, sizeof(RolltuiUnicodeGrapheme)));
-  g = scratch_take(&sc, len * sizeof(RolltuiUnicodeGrapheme));
-  n = rolltui_u_graphemes(utf8, len, ambiguous_wide, g);
+  g = sc->gr = rolltui_grow(sc->gr, &sc->gr_cap, len, sizeof *sc->gr);
+  n = rolltui_u_graphemes(sc, utf8, len, ambiguous_wide, g);
   for (i = 0; i < n; ++i) w += g[i].width;
-  scratch_end(&sc);
   return w;
 }
 
@@ -415,8 +417,8 @@ static size_t wb_next_of(const unsigned char* w, size_t n, size_t i) {
   return i < n ? i : WB_NONE;
 }
 
-void rolltui_u_word_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* b) {
-  Scratch sc;
+void rolltui_u_word_boundaries(RolltuiUnicodeScratch* sc, const RolltuiCodepoint* cps, size_t n,
+                               unsigned char* b) {
   unsigned char *w, *pict;
   size_t i;
   memset(b, 0, n + 1);
@@ -424,9 +426,8 @@ void rolltui_u_word_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned c
   b[n] = 1; /* WB2 */
   if (n < 2) return;
 
-  scratch_begin(&sc, 2 * scratch_slice(n, 1));
-  w = scratch_take(&sc, n);
-  pict = scratch_take(&sc, n);
+  w = sc->wb = rolltui_grow(sc->wb, &sc->wb_cap, n, 1);
+  pict = sc->wpict = rolltui_grow(sc->wpict, &sc->wpict_cap, n, 1);
   for (i = 0; i < n; ++i) {
     w[i] = wb_class(cps[i]);
     pict[i] = (unsigned char)is_pict(cps[i]);
@@ -490,11 +491,10 @@ void rolltui_u_word_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned c
     }
     b[i] = (unsigned char)brk;
   }
-  scratch_end(&sc);
 }
 
-void rolltui_u_word_range(const char* utf8, size_t len, size_t offset, size_t* out_begin, size_t* out_end) {
-  Scratch sc;
+void rolltui_u_word_range(RolltuiUnicodeScratch* sc, const char* utf8, size_t len, size_t offset,
+                          size_t* out_begin, size_t* out_end) {
   RolltuiCodepoint* cps;
   size_t *offs, *lens;
   unsigned char* b;
@@ -503,19 +503,16 @@ void rolltui_u_word_range(const char* utf8, size_t len, size_t offset, size_t* o
     *out_begin = *out_end = len;
     return;
   }
-  scratch_begin(&sc, scratch_slice(len, sizeof(RolltuiCodepoint)) + 2 * scratch_slice(len, sizeof(size_t)) +
-                         scratch_slice(len + 1, 1));
-  cps = scratch_take(&sc, len * sizeof(RolltuiCodepoint));
-  offs = scratch_take(&sc, len * sizeof(size_t));
-  lens = scratch_take(&sc, len * sizeof(size_t));
-  b = scratch_take(&sc, len + 1);
+  cps = sc->cps = rolltui_grow(sc->cps, &sc->cps_cap, len, sizeof *sc->cps);
+  offs = sc->offs = rolltui_grow(sc->offs, &sc->offs_cap, len, sizeof *sc->offs);
+  lens = sc->lens = rolltui_grow(sc->lens, &sc->lens_cap, len, sizeof *sc->lens);
+  b = sc->bounds = rolltui_grow(sc->bounds, &sc->bounds_cap, len + 1, 1);
   n = rolltui_u_decode_utf8(utf8, len, cps, offs, lens);
   if (n == 0) {
-    scratch_end(&sc);
     *out_begin = *out_end = len;
     return;
   }
-  rolltui_u_word_boundaries(cps, n, b);
+  rolltui_u_word_boundaries(sc, cps, n, b);
   while (k + 1 < n && offs[k + 1] <= offset) ++k; /* the code point containing `offset` */
   start = k;
   end = k + 1;
@@ -523,7 +520,6 @@ void rolltui_u_word_range(const char* utf8, size_t len, size_t offset, size_t* o
   while (end < n && !b[end]) ++end;
   *out_begin = offs[start];
   *out_end = offs[end - 1] + lens[end - 1];
-  scratch_end(&sc);
 }
 
 /* ---- sanitising --------------------------------------------------------------------------- */
@@ -593,7 +589,7 @@ size_t rolltui_u_strip_escape_sequences(const char* text, size_t len, char* out)
  * rules read (East Asian width, Pi/Pf for quotation marks, the dotted circle,
  * Extended_Pictographic AND Cn). Positions inside a unit are never breaks; every rule below
  * runs between units. */
-typedef struct {
+struct Unit {
   unsigned char cls;
   unsigned char east_asian; /* ea in {F, W, H} — $EastAsian in LB19a / LB30 */
   unsigned char pi, pf;     /* gc of a QU base */
@@ -601,7 +597,7 @@ typedef struct {
   unsigned char pict_cn;    /* Extended_Pictographic AND Cn, for LB30b */
   unsigned char ends_zwj;   /* last code point is U+200D, for LB8a */
   size_t first;             /* index of the base in cps */
-} Unit;
+};
 
 static unsigned char lb_resolved(RolltuiCodepoint cp) {
   unsigned char c = lb_class(cp);
@@ -819,8 +815,8 @@ static unsigned char lb_decide(const Unit* u, size_t m, size_t k) {
   return ROLLTUI_BREAK_ALLOWED;
 }
 
-void rolltui_u_line_break_opportunities(const RolltuiCodepoint* cps, size_t n, unsigned char* out) {
-  Scratch sc;
+void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* sc, const RolltuiCodepoint* cps, size_t n,
+                                        unsigned char* out) {
   Unit* u;
   size_t m = 0, i, k;
 
@@ -828,8 +824,7 @@ void rolltui_u_line_break_opportunities(const RolltuiCodepoint* cps, size_t n, u
   out[n] = ROLLTUI_BREAK_MANDATORY;
   if (n == 0) return;
 
-  scratch_begin(&sc, scratch_slice(n, sizeof(Unit)));
-  u = scratch_take(&sc, n * sizeof(Unit));
+  u = sc->units = rolltui_grow(sc->units, &sc->units_cap, n, sizeof *sc->units);
   for (i = 0; i < n; ++i) {
     unsigned char c = lb_resolved(cps[i]);
     int joiner = (c == ROLLTUI_LINEBREAK_CM || c == ROLLTUI_LINEBREAK_ZWJ);
@@ -860,5 +855,4 @@ void rolltui_u_line_break_opportunities(const RolltuiCodepoint* cps, size_t n, u
    * itself, because its class AL is attachable — "SP CM CM" is one AL. */
   for (k = 1; k < m; ++k) out[u[k].first] = lb_decide(u, m, k);
   /* LB3: eot is a mandatory break, LB2: sot never is — both set at construction. */
-  scratch_end(&sc);
 }

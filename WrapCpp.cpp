@@ -63,6 +63,19 @@ struct RolltuiWrapLines {
   std::vector<std::size_t> coff, clen;
   std::vector<unsigned char> brk, bounds;
   std::vector<Cluster> clusters;
+  // The Unicode algorithms' working memory, owned here for the same reason everything else in
+  // this handle is: a wrap is the only thing that asks for it, so a caller that keeps one
+  // handle keeps one of these, and nothing holds hidden per-thread state for it.
+  //
+  // **MADE LAZY BY THE BUDGET, which is what the budget is for.** Creating it eagerly cost one
+  // allocation per handle, and `wrap()` mints a fresh handle per call to hand the lines over —
+  // so a resize frame went up by exactly 281, the number of `wrap()` calls in it. A handed-over
+  // result is READ, never wrapped into, so it never needs this at all.
+  RolltuiUnicodeScratch* uni = nullptr;
+  RolltuiWrapLines() = default;
+  RolltuiWrapLines(const RolltuiWrapLines&) = delete;
+  RolltuiWrapLines& operator=(const RolltuiWrapLines&) = delete;
+  ~RolltuiWrapLines() { rolltui_u_scratch_free(uni); }
 };
 
 // ---- lifetime ----------------------------------------------------------------------------
@@ -95,8 +108,9 @@ extern "C" void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, 
   const std::size_t n = rolltui_u_decode_utf8(utf8, len, w->cps.data(), w->coff.data(), w->clen.data());
   w->brk.resize(n + 1);
   w->bounds.resize(n + 1);
-  rolltui_u_line_break_opportunities(w->cps.data(), n, w->brk.data());
-  rolltui_u_grapheme_boundaries(w->cps.data(), n, w->bounds.data());
+  if (!w->uni) w->uni = rolltui_u_scratch_new();  // this handle is being used as an engine
+  rolltui_u_line_break_opportunities(w->uni, w->cps.data(), n, w->brk.data());
+  rolltui_u_grapheme_boundaries(w->uni, w->cps.data(), n, w->bounds.data());
 
   // One entry per grapheme cluster, in source order.
   w->clusters.clear();
