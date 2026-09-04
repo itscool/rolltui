@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <fstream>
 #include <map>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -157,8 +158,9 @@ bool has_role(const std::vector<StyledLine>& v, Role r, const std::string& text)
 // counts every invocation, so a test can assert exactly when the renderer does — and
 // does not — call it.
 Highlighter toy_highlighter(int* calls = nullptr) {
-  return [calls](std::string_view lang, std::string_view line) -> std::vector<HighlightSpan> {
+  return [calls](std::string_view lang, std::span<const std::string> block, std::size_t index) -> std::vector<HighlightSpan> {
     if (calls) ++*calls;
+    const std::string_view line = block[index];
     std::vector<HighlightSpan> spans;
     auto mark_all = [&](std::string_view word, Role role) {
       std::size_t pos = 0;
@@ -304,7 +306,8 @@ int main() {
     // wrong before — an empty report must mean nothing needed clamping, not that
     // clamping was skipped).
     RenderOptions ro{.width = 30};
-    ro.highlight = [](std::string_view, std::string_view line) -> std::vector<HighlightSpan> {
+    ro.highlight = [](std::string_view, std::span<const std::string> block, std::size_t index) -> std::vector<HighlightSpan> {
+      const std::string_view line = block[index];
       std::vector<HighlightSpan> spans;
       spans.push_back({0, 3, Role::accent_1});                              // "int" — well-formed
       spans.push_back({1, 5, Role::accent_2});                              // overlaps the first
@@ -427,12 +430,151 @@ int main() {
               d.blocks[2].kind == Block::Kind::Code && d.blocks[2].code == "c\n",
           "block tree shape");
   }
-  // ---- the diff colouriser (plan/phase-12.md m5b) ----------------------------------
+  // ---- long code blocks: fold and cap (plan/phase-12.md m5b) ------------------------
+  // THE BYTE-IDENTICAL CONTROL for this feature is the 100-odd assertions above: every
+  // one of them renders with RenderOptions{} — no thresholds — and every one still
+  // passes. What is asserted here is that the OFF state is off by construction, not by
+  // the numbers happening to line up.
+  {
+    const std::string doc = "before\n\n```cpp\na\nb\nc\nd\ne\n```\n\nafter\n";
+    auto text_of = [](const Rendered& r) { return plain_text(r.lines); };
+    {
+      const Rendered r = render_text(doc, RenderOptions{.width = 40});
+      check(r.code_blocks.size() == 1 && !r.code_blocks[0].foldable && !r.code_blocks[0].folded &&
+                r.code_blocks[0].hidden == 0 && r.code_blocks[0].header_line == kNoLine &&
+                r.code_blocks[0].marker_line == kNoLine,
+            "no thresholds: the block is reported but nothing folds, caps or gains a row");
+      check(r.code_blocks[0].lines == 5 && r.code_blocks[0].bytes == 10 && r.code_blocks[0].lang == "cpp",
+            "…and it is reported with its language, line count and byte size");
+      check(r.text.substr(r.code_blocks[0].text_begin, r.code_blocks[0].text_end - r.code_blocks[0].text_begin) ==
+                "a\nb\nc\nd\ne\n",
+            "text_begin/text_end bracket exactly the block's own lines in the logical text");
+    }
+    {
+      RenderOptions ro{.width = 40};
+      ro.code_fold.fold_over_lines = 3;
+      const Rendered r = render_text(doc, ro);
+      const std::string drawn = text_of(r);
+      check(r.code_blocks.size() == 1 && r.code_blocks[0].folded && r.code_blocks[0].foldable,
+            "a block over the threshold arrives FOLDED");
+      check(drawn.find("\xE2\x96\xB8 cpp \xC2\xB7 5 lines \xC2\xB7 10 B") != std::string::npos,
+            "…as one header row naming its language, line count and size [" + drawn + "]");
+      check(drawn.find("\nb\n") == std::string::npos && drawn.find("\xE2\x94\x8C") == std::string::npos,
+            "…with no body and no box");
+      // THE RULE THE WHOLE DESIGN RESTS ON (Markdown.hpp): a fold hides LINES, never
+      // TEXT. If this ever fails, every offset after a folded block moves when it opens
+      // and a find highlight lands on the wrong bytes.
+      check(r.text.find("a\nb\nc\nd\ne") != std::string::npos,
+            "…and EVERY BYTE of the block is still in the logical text");
+      check(r.code_blocks[0].header_line != kNoLine &&
+                r.lines[r.code_blocks[0].header_line].spans.size() >= 2,
+            "the header row is reported by line number, which is what a click routes by");
+    }
+    {
+      RenderOptions ro{.width = 40};
+      ro.code_fold.fold_over_lines = 10;
+      const Rendered r = render_text(doc, ro);
+      check(!r.code_blocks[0].foldable && text_of(r) == text_of(render_text(doc, RenderOptions{.width = 40})),
+            "a block UNDER the threshold renders exactly as it does with no threshold at all");
+    }
+    {
+      RenderOptions ro{.width = 40};
+      ro.code_fold.cap_lines = 3;
+      const Rendered r = render_text(doc, ro);
+      const std::string drawn = text_of(r);
+      check(!r.code_blocks[0].folded && r.code_blocks[0].hidden == 2 && r.code_blocks[0].marker_line != kNoLine,
+            "an unfolded block over the CAP draws its first lines and marks the rest");
+      check(drawn.find("\xE2\x96\xBC 2 more") != std::string::npos && drawn.find("\nd\n") == std::string::npos,
+            "…with the same '▼ N more' marker the transcript uses [" + drawn + "]");
+      check(r.text.find("a\nb\nc\nd\ne") != std::string::npos, "…and the capped lines are still in the text");
+    }
+    {
+      // The two overrides, in both directions, which is what a user's toggle is.
+      RenderOptions ro{.width = 40};
+      ro.code_fold.fold_over_lines = 3;
+      ro.code_fold.cap_lines = 3;
+      ro.code_fold.states = {{0, /*folded=*/false, /*uncapped=*/false}};
+      const Rendered open = render_text(doc, ro);
+      check(!open.code_blocks[0].folded && open.code_blocks[0].foldable && open.code_blocks[0].hidden == 2 &&
+                plain_text(open.lines).find("\xE2\x96\xBE cpp") != std::string::npos,
+            "opening an over-threshold block shows it with a ▾ header, still CAPPED");
+      ro.code_fold.states = {{0, false, /*uncapped=*/true}};
+      const Rendered full = render_text(doc, ro);
+      const std::string full_drawn = plain_text(full.lines);
+      check(full.code_blocks[0].hidden == 0 && full.code_blocks[0].marker_line == kNoLine &&
+                full_drawn.find("d ") != std::string::npos && full_drawn.find("e ") != std::string::npos,
+            "…and lifting the cap on it shows every line, with no marker row left [" + full_drawn + "]");
+      ro.code_fold.fold_over_lines = 0;
+      ro.code_fold.cap_lines = 0;
+      ro.code_fold.states = {{0, /*folded=*/true, false}};
+      const Rendered shut = render_text(doc, ro);
+      check(shut.code_blocks[0].folded && shut.code_blocks[0].foldable,
+            "a block the threshold would NOT fold still folds when a state says so — and keeps its header");
+    }
+    {
+      // A block's index is a DOCUMENT fact: a table that falls back to code because it
+      // is too narrow must not take a number, or a fold toggle would move to another
+      // block when the window is resized.
+      const std::string with_table = "| a | b |\n|---|---|\n| 1 | 2 |\n\n```\nx\n```\n";
+      RenderOptions ro{.width = 8};
+      ro.code_fold.fold_over_lines = 1;
+      const Rendered narrow = render_text(with_table, ro);
+      check(narrow.code_blocks.size() == 1 && narrow.code_blocks[0].index == 0,
+            "the too-narrow table's fallback code box is NOT numbered; the real block keeps index 0");
+      ro.width = 40;
+      const Rendered wide = render_text(with_table, ro);
+      check(wide.code_blocks.size() == 1 && wide.code_blocks[0].index == 0,
+            "…so the same block has the same index at a width where the table fits");
+    }
+    {
+      // Nested and numbered in document order, from the same counter as a top-level one.
+      RenderOptions ro{.width = 40};
+      ro.code_fold.fold_over_lines = 1;
+      const Rendered r = render_text("```\ntop\nalso\n```\n\n- item\n\n  ```\n  in\n  list\n  ```\n", ro);
+      check(r.code_blocks.size() == 2 && r.code_blocks[0].index == 0 && r.code_blocks[1].index == 1,
+            "a code block inside a list item numbers from the same counter as a top-level one");
+      check(r.code_blocks[1].header_line > r.code_blocks[0].header_line,
+            "…and its header row is below, so the line numbers are the document's, not each block's");
+    }
+    {
+      // The standing degenerate-size rule: 1 and 0 cells, with folding on.
+      for (int w : {0, 1, 2, 5}) {
+        RenderOptions ro{.width = w};
+        ro.code_fold.fold_over_lines = 2;
+        ro.code_fold.cap_lines = 2;
+        const Rendered r = render_text(doc, ro);
+        check(!r.code_blocks.empty(), "folding survives width " + std::to_string(w));
+        ro.code_fold.states = {{0, false, false}};
+        const Rendered open = render_text(doc, ro);
+        check(!open.lines.empty(), "…and so does capping at width " + std::to_string(w));
+      }
+    }
+    {
+      // An HTML block is opaque code and folds like one; it is never highlighted.
+      RenderOptions ro{.width = 40};
+      ro.code_fold.fold_over_lines = 2;
+      const Rendered r = render_text("<div>\n<p>a</p>\n<p>b</p>\n</div>\n", ro);
+      check(r.code_blocks.size() == 1 && r.code_blocks[0].folded && r.code_blocks[0].lang == "html",
+            "an HTML block folds too, and names itself html");
+    }
+    {
+      check(code_block_summary("", 1, 5) == "code \xC2\xB7 1 line \xC2\xB7 5 B",
+            "a bare fence has no language to name, so the summary calls it code, and 1 line is singular");
+      check(code_block_summary("diff", 42, 1229).find("1.2 kB") != std::string::npos,
+            "…and a size over 1024 reads in kB [" + code_block_summary("diff", 42, 1229) + "]");
+    }
+  }
+  // ---- the diff colouriser (plan/phase-12.md m5, word level in m5b) ----------------
   // It is a Highlighter, so it rides m2's seam rather than being a second mechanism —
   // which is the cheapest rung and also the test of whether that seam was placed right.
   {
-    auto role_of = [](std::string_view lang, std::string_view line) {
-      const std::vector<HighlightSpan> sp = diff_spans(lang, line);
+    // A single line, with no neighbours: the line level, unchanged from m5.
+    auto one = [](std::string_view lang, std::string_view line) {
+      const std::vector<std::string> block{std::string(line)};
+      return diff_spans(lang, block, 0);
+    };
+    auto role_of = [&](std::string_view lang, std::string_view line) {
+      const std::vector<HighlightSpan> sp = one(lang, line);
       return sp.empty() ? Role::count_ : sp[0].role;
     };
     check(role_of("diff", "+added") == Role::diff_added, "'+' is an added line");
@@ -449,34 +591,95 @@ int main() {
           "the no-newline note is context: colouring it as a change would lie about the file");
     // THE CONTROL, and the milestone's whole point: content is never sniffed. A block
     // whose CONTENT looks exactly like a diff renders plain under a bare fence.
-    check(diff_spans("", "+added").empty() && diff_spans("python", "-x = 1").empty(),
+    check(one("", "+added").empty() && one("python", "-x = 1").empty(),
           "a bare fence and another language get NO spans, whatever the content looks like");
-    check(diff_spans("patch", "+x").size() == 1 && diff_spans("udiff", "+x").size() == 1,
+    check(one("patch", "+x").size() == 1 && one("udiff", "+x").size() == 1,
           "'patch' and 'udiff' are the same claim as 'diff'");
     // A span covers the WHOLE line, marker included: a half-coloured line reads as a bug,
     // and the marker is doing separate work as the non-colour signal.
-    const std::vector<HighlightSpan> sp = diff_spans("diff", "+abc");
+    const std::vector<HighlightSpan> sp = one("diff", "+abc");
     check(sp.size() == 1 && sp[0].begin == 0 && sp[0].end == 4, "the span covers the whole line, marker included");
+    check(diff_spans("diff", std::vector<std::string>{}, 0).empty(), "an index past the block asks for nothing");
+
+    // ---- word level (m5b): the PAIRING rule, then the REFINEMENT rule --------------
+    // Every case here is stated in Diff.hpp; the point of the table is that the rules
+    // are asserted rather than tuned until a screenshot looked right.
+    auto spans_of = [](std::vector<std::string> block, std::size_t i) { return diff_spans("diff", block, i); };
+    auto word_range_of = [&](std::vector<std::string> block, std::size_t i, std::size_t& b, std::size_t& e) {
+      for (const HighlightSpan& x : spans_of(std::move(block), i))
+        if (x.role == Role::diff_added_word || x.role == Role::diff_removed_word) { b = x.begin; e = x.end; return true; }
+      return false;
+    };
+    {
+      const std::vector<std::string> pair{"-int foo = 1;", "+int bar = 1;"};
+      std::size_t b = 0, e = 0;
+      check(word_range_of(pair, 0, b, e) && std::string_view(pair[0]).substr(b, e - b) == "foo",
+            "the removed side's changed word is marked, and it is exactly the word");
+      check(word_range_of(pair, 1, b, e) && std::string_view(pair[1]).substr(b, e - b) == "bar",
+            "…and so is the added side's: BOTH halves of a pair, never only the '+'");
+      const std::vector<HighlightSpan> three = spans_of(pair, 0);
+      check(three.size() == 3 && three[0].begin == 0 && three[0].role == Role::diff_removed &&
+                three[1].role == Role::diff_removed_word && three[2].end == pair[0].size() &&
+                three[2].role == Role::diff_removed,
+            "three NON-OVERLAPPING spans, line/word/line, so the renderer never has to clamp");
+    }
+    {
+      std::size_t b = 0, e = 0;
+      check(!word_range_of({"-wholly different", "+nothing alike here"}, 0, b, e),
+            "nothing common at either end: no word span, because the line role already said it all");
+      check(!word_range_of({"-a b c", "+a b c d", "+extra"}, 0, b, e),
+            "2 additions against 1 removal is NOT a pair: unequal runs get the line level only");
+      check(!word_range_of({"-a b c", " context", "+a b d"}, 0, b, e),
+            "a context line between them breaks the run: the addition must IMMEDIATELY follow");
+      check(word_range_of({"-a b c", "+a b c d"}, 1, b, e), "a pure insertion marks the added side…");
+      check(!word_range_of({"-a b c", "+a b c d"}, 0, b, e),
+            "…and NOT the removed side, whose middle is empty — nothing of its own changed");
+    }
+    {
+      // Two removals then two additions: paired by INDEX, i with i. The second pair's
+      // change is what proves it is not always comparing against the first line.
+      const std::vector<std::string> block{"-one alpha end", "-two beta end", "+one gamma end", "+two delta end"};
+      std::size_t b = 0, e = 0;
+      check(word_range_of(block, 0, b, e) && std::string_view(block[0]).substr(b, e - b) == "alpha",
+            "a run of 2 against 2 pairs line 0 with line 2");
+      check(word_range_of(block, 1, b, e) && std::string_view(block[1]).substr(b, e - b) == "beta",
+            "…and line 1 with line 3, by index");
+      check(word_range_of(block, 3, b, e) && std::string_view(block[3]).substr(b, e - b) == "delta",
+            "…which is symmetric: the last addition pairs back to the last removal");
+    }
 
     // Through the renderer, on the cells: the roles land, and the +/- prefixes SURVIVE —
     // which is what makes a diff readable with colour switched off (the Done-when).
     RenderOptions ro;
     ro.width = 40;
-    ro.highlight = [](std::string_view lang, std::string_view line) { return diff_spans(lang, line); };
+    ro.highlight = diff_spans;
     const Rendered r = render_text("```diff\n@@ -1,2 +1,2 @@\n-old line\n+new line\n context\n```\n", ro);
     check(r.highlight_report.clean(), "the colouriser never produces a span the renderer has to clamp");
     bool has_added = false, has_removed = false, has_hunk = false, marks_kept = false;
-    std::string all;
+    bool has_added_word = false, has_removed_word = false;
+    std::string all, added_word, removed_word;
     for (const StyledLine& l : r.lines)
       for (const Span& x : l.spans) {
         all += x.text;
         if (x.role == Role::diff_added) has_added = true;
         if (x.role == Role::diff_removed) has_removed = true;
         if (x.role == Role::accent_1) has_hunk = true;
+        if (x.role == Role::diff_added_word) { has_added_word = true; added_word += x.text; }
+        if (x.role == Role::diff_removed_word) { has_removed_word = true; removed_word += x.text; }
       }
     marks_kept = all.find("-old line") != std::string::npos && all.find("+new line") != std::string::npos;
     check(has_added && has_removed && has_hunk, "a ```diff fence colours through the diff roles");
     check(marks_kept, "…and the +/- prefixes are NEVER stripped: the signal a mono or CVD reader still has");
+    check(has_added_word && has_removed_word && removed_word == "old" && added_word == "new",
+          "the word roles reach the CELLS, on both sides [-" + removed_word + " +" + added_word + "]");
+    // The control for the control: the SAME content under a bare fence has no diff role
+    // anywhere on any cell. This is the milestone's Done-when, at the renderer.
+    const Rendered plain = render_text("```\n@@ -1,2 +1,2 @@\n-old line\n+new line\n context\n```\n", ro);
+    bool any_diff_role = false;
+    for (const StyledLine& l : plain.lines)
+      for (const Span& x : l.spans)
+        if (x.role != Role::md_code_block && x.role != Role::md_code_label) any_diff_role = true;
+    check(!any_diff_role, "a bare fence over content that looks EXACTLY like a diff renders plain");
   }
 
   return report("rolltui markdown_test");

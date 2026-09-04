@@ -4,6 +4,7 @@
 #include "rolltui/Markdown.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 
 #include "rolltui/Unicode.hpp"
@@ -366,6 +367,13 @@ struct Ctx {
   const char* terminator = "\n";   // what ends a block's logical line ("\t" inside a table row)
   const Highlighter* highlight = nullptr;       // nullptr: no highlighter registered
   HighlightReport* highlight_report = nullptr;  // where a clamped/dropped span is named
+  // m5b. These three are POINTERS because Ctx::child() copies: a nested code block (in a
+  // list item, in a quote) must number itself from the same counter and report into the
+  // same list as a top-level one, or a fold toggle would address a different block
+  // depending on how deep the block happened to sit.
+  const CodeFoldOptions* code_fold = nullptr;
+  std::vector<CodeBlockInfo>* code_blocks = nullptr;
+  std::size_t* code_index = nullptr;
 
   std::vector<Span> take_prefix() {
     if (!first_used) { first_used = true; return prefix_first; }
@@ -563,21 +571,48 @@ Role highlight_role_at(const std::vector<HighlightRun>& runs, std::size_t offset
   return Role::md_code_block;
 }
 
+// Decides one numbered block's fold/cap state from the options and any override. Split
+// out so the RULE reads as a rule: a threshold, then a state that may reverse it.
+void decide_fold(const CodeFoldOptions* cf, std::size_t lines, CodeBlockInfo& info, std::size_t& cap) {
+  cap = 0;
+  if (!cf) return;
+  const bool over = cf->fold_over_lines > 0 && lines > static_cast<std::size_t>(cf->fold_over_lines);
+  bool folded = over;
+  bool uncapped = false;
+  for (const CodeFoldState& s : cf->states)
+    if (s.index == info.index) { folded = s.folded; uncapped = s.uncapped; break; }
+  info.folded = folded;
+  // Foldable when the threshold says so OR a state folded it: either way it needs a
+  // header row, because a folded block with nothing to click cannot be reopened.
+  info.foldable = over || folded;
+  if (!folded && !uncapped && cf->cap_lines > 0 && lines > static_cast<std::size_t>(cf->cap_lines))
+    cap = static_cast<std::size_t>(cf->cap_lines);
+}
+
+// `fold_index` < 0 means this block is NOT numbered and can never fold: the only such
+// block is the pipe-table source a too-narrow table falls back to, which exists because
+// of the WIDTH and so must not be able to own a user's fold toggle (Markdown.hpp).
 void render_code(const std::string& code, const std::string& label, Ctx& ctx,
-                 std::vector<StyledLine>& out, bool highlightable = false) {
+                 std::vector<StyledLine>& out, bool highlightable = false, long fold_index = -1) {
   const bool boxed = ctx.width >= 8;
   const int inner = boxed ? ctx.width - 4 : ctx.width;
   const std::string_view lang = highlightable ? first_word(label) : std::string_view{};
   const bool highlighting = highlightable && ctx.highlight != nullptr;
+  const std::vector<std::string> src = split_lines(code);
   WrapOptions wo;
   wo.ambiguous_wide = ctx.ambiguous;
   wo.tab_width = ctx.tab_width;
   bool first = true;
-  auto hrule = [&](const char* left, const char* right, const std::string& lab) {
+  // A chrome row that still carries the block's own marker when it is the block's first.
+  auto chrome_row = [&]() {
     std::size_t before = ctx.logical->size();
     StyledLine l = start_line(ctx, first);
     if (first) finish_chrome_first_line(ctx, before);
     first = false;
+    return l;
+  };
+  auto hrule = [&](const char* left, const char* right, const std::string& lab) {
+    StyledLine l = chrome_row();
     std::string s = left;
     int used = 1;
     if (!lab.empty()) {
@@ -590,28 +625,66 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
     push_span(l, s, Role::md_code_label, ctx.ambiguous);
     out.push_back(std::move(l));
   };
-  if (boxed) hrule("\xE2\x94\x8C", "\xE2\x94\x90", label);  // ┌ ┐
-  int line_no = 1;
-  for (const std::string& raw : split_lines(code)) {
-    std::vector<Line> lines = wrap(raw, inner, wo);
-    std::size_t base = ctx.logical->size();
+
+  const bool numbered = fold_index >= 0 && ctx.code_blocks != nullptr;
+  CodeBlockInfo info;
+  std::size_t cap = 0;
+  if (numbered) {
+    info.index = static_cast<std::size_t>(fold_index);
+    info.lang = std::string(first_word(label));
+    info.lines = src.size();
+    info.bytes = code.size();
+    decide_fold(ctx.code_fold, src.size(), info, cap);
+  }
+  // The header row IS the language label when there is one, so the box rule below drops
+  // its own — one place names the block, and it does not move when the block opens.
+  if (info.foldable) {
+    info.header_line = out.size();
+    StyledLine l = chrome_row();
+    push_span(l, info.folded ? "\xE2\x96\xB8 " : "\xE2\x96\xBE ", Role::text_muted, ctx.ambiguous);  // ▸ ▾
+    push_span(l, code_block_summary(info.lang, info.lines, info.bytes), Role::md_code_label, ctx.ambiguous);
+    out.push_back(std::move(l));
+  }
+  // FOLDED AND CAPPED BLOCKS STILL CONTRIBUTE EVERY BYTE (Markdown.hpp): what is hidden
+  // is lines, never text, so an offset into this document does not move when a block
+  // opens or closes and a find highlight cannot land on the wrong bytes.
+  auto emit_text = [&](const std::string& raw) {
+    const std::size_t base = ctx.logical->size();
     *ctx.logical += raw;
     ctx.end_logical_line();
+    return base;
+  };
+  if (info.folded) {  // only ever set for a numbered block, so code_blocks is non-null
+    info.text_begin = ctx.logical->size();
+    for (const std::string& raw : src) emit_text(raw);
+    info.text_end = ctx.logical->size();
+    info.hidden = src.size();
+    if (numbered) ctx.code_blocks->push_back(std::move(info));
+    return;
+  }
+
+  if (boxed) hrule("\xE2\x94\x8C", "\xE2\x94\x90", info.foldable ? std::string() : label);  // ┌ ┐
+  info.text_begin = ctx.logical->size();
+  for (std::size_t i = 0; i < src.size(); ++i) {
+    const std::string& raw = src[i];
+    const std::size_t base = emit_text(raw);
+    if (cap > 0 && i >= cap) continue;  // hidden by the cap: text above, no lines drawn
+    std::vector<Line> lines = wrap(raw, inner, wo);
     // Unregistered highlighter (the default) or a non-highlightable block (HTML):
     // `runs` stays empty and every grapheme below takes exactly the pre-seam path —
     // this is the control markdown_test.cpp asserts byte-identical.
     std::vector<HighlightRun> runs;
     if (highlighting)
-      runs = clamp_highlight_spans((*ctx.highlight)(lang, raw), raw.size(), lang, line_no, *ctx.highlight_report);
-    ++line_no;
+      runs = clamp_highlight_spans((*ctx.highlight)(lang, src, i), raw.size(), lang, static_cast<int>(i) + 1,
+                                   *ctx.highlight_report);
     for (const Line& ln : lines) {
       StyledLine sl = start_line(ctx, first);
       first = false;
       if (boxed) push_span(sl, "\xE2\x94\x82 ", Role::md_code_label, ctx.ambiguous);  // │
       if (runs.empty()) {
-        std::vector<std::uint32_t> src;
-        for (const WrapGrapheme& g : ln.graphemes) src.push_back(static_cast<std::uint32_t>(base + g.source_offset));
-        push_span(sl, ln.text, Role::md_code_block, ctx.ambiguous, std::move(src));
+        std::vector<std::uint32_t> srcs;
+        for (const WrapGrapheme& g : ln.graphemes) srcs.push_back(static_cast<std::uint32_t>(base + g.source_offset));
+        push_span(sl, ln.text, Role::md_code_block, ctx.ambiguous, std::move(srcs));
       } else {
         for (const WrapGrapheme& g : ln.graphemes) {
           Role r = highlight_role_at(runs, g.source_offset);
@@ -625,7 +698,25 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
       out.push_back(std::move(sl));
     }
   }
+  info.text_end = ctx.logical->size();
+  if (cap > 0 && src.size() > cap) {
+    info.hidden = src.size() - cap;
+    // The SAME marker the transcript and draw_scrolled_text use (Marker.hpp), so the
+    // three cannot say "there is more below" three different ways.
+    const std::string marker = scroll_marker_text(info.hidden, inner, ctx.ambiguous);
+    if (!marker.empty()) {
+      info.marker_line = out.size();
+      StyledLine sl = chrome_row();
+      if (boxed) push_span(sl, "\xE2\x94\x82 ", Role::md_code_label, ctx.ambiguous);
+      const int pad = inner - unicode::display_width(marker, ctx.ambiguous);
+      if (pad > 0) push_span(sl, spaces(pad), Role::md_code_block, ctx.ambiguous);
+      push_span(sl, marker, Role::scroll_marker, ctx.ambiguous);
+      if (boxed) push_span(sl, " \xE2\x94\x82", Role::md_code_label, ctx.ambiguous);
+      out.push_back(std::move(sl));
+    }
+  }
   if (boxed) hrule("\xE2\x94\x94", "\xE2\x94\x98", "");  // └ ┘
+  if (numbered) ctx.code_blocks->push_back(std::move(info));
 }
 
 std::string runs_plain(const std::vector<Run>& runs) {
@@ -636,6 +727,13 @@ std::string runs_plain(const std::vector<Run>& runs) {
 
 void render_table(const Block& t, Ctx& ctx, std::vector<StyledLine>& out);
 void render_blocks(const std::vector<Block>& blocks, Ctx& ctx, std::vector<StyledLine>& out, bool tight);
+
+// The next code-block number, or -1 when nobody is counting (render() with no options
+// that need it). Counting here — at the BLOCK, not inside render_code — is what keeps
+// the table fallback out of the sequence.
+long next_code_index(Ctx& ctx) {
+  return ctx.code_index ? static_cast<long>((*ctx.code_index)++) : -1;
+}
 
 void render_block(const Block& b, Ctx& ctx, std::vector<StyledLine>& out) {
   using K = Block::Kind;
@@ -652,12 +750,13 @@ void render_block(const Block& b, Ctx& ctx, std::vector<StyledLine>& out) {
       break;
     }
     case K::Code:
-      render_code(b.code, b.info, ctx, out, /*highlightable=*/true);
+      render_code(b.code, b.info, ctx, out, /*highlightable=*/true, next_code_index(ctx));
       break;
     case K::Html:
       // Never highlighted: an HTML block is opaque code by design (Markdown.hpp),
-      // and it carries no language tag to highlight it by.
-      render_code(b.code, "html", ctx, out, /*highlightable=*/false);
+      // and it carries no language tag to highlight it by. It IS numbered, because it is
+      // a block of the document and folds like one.
+      render_code(b.code, "html", ctx, out, /*highlightable=*/false, next_code_index(ctx));
       break;
     case K::Rule: {
       StyledLine l = start_line(ctx, true);
@@ -819,6 +918,10 @@ Rendered render_text(const Document& doc, const RenderOptions& opt) {
   Ctx ctx{std::max(opt.width, 1), {}, {}, false, opt.base, opt.ambiguous_wide, opt.tab_width, &r.text, "\n"};
   ctx.highlight = opt.highlight ? &opt.highlight : nullptr;
   ctx.highlight_report = &r.highlight_report;
+  std::size_t code_index = 0;
+  ctx.code_fold = &opt.code_fold;
+  ctx.code_blocks = &r.code_blocks;
+  ctx.code_index = &code_index;
   render_blocks(doc.blocks, ctx, r.lines, false);
   if (!r.text.empty() && r.text.back() == '\n') r.text.pop_back();
   return r;
@@ -834,6 +937,23 @@ std::vector<StyledLine> render(const Document& doc, const RenderOptions& opt) {
 
 std::vector<StyledLine> render(std::string_view source, const RenderOptions& opt) {
   return render(parse(source), opt);
+}
+
+std::string code_block_summary(std::string_view lang, std::size_t lines, std::size_t bytes) {
+  std::string s = lang.empty() ? std::string("code") : std::string(lang);
+  s += " \xC2\xB7 " + std::to_string(lines) + (lines == 1 ? " line" : " lines");  // ·
+  s += " \xC2\xB7 ";
+  char buf[32];
+  if (bytes < 1024) {
+    s += std::to_string(bytes) + " B";
+  } else if (bytes < 1024 * 1024) {
+    std::snprintf(buf, sizeof buf, "%.1f kB", static_cast<double>(bytes) / 1024.0);
+    s += buf;
+  } else {
+    std::snprintf(buf, sizeof buf, "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    s += buf;
+  }
+  return s;
 }
 
 std::string plain_text(const std::vector<StyledLine>& lines) {

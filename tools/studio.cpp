@@ -42,6 +42,9 @@
 //                              golden harness's way to see a colour
 //     --depth truecolor|256|16|mono   colour depth (default: detect from the env)
 //     --ambiguous-wide         East Asian ambiguous width = 2
+//     --code-fold FOLD,CAP     milestone 5b: fold a code block over FOLD lines to one
+//                              summary row, and cap an open one at CAP (0 disables
+//                              either). Defaults to this host's own 30,100.
 //     --frame WxH              render exactly one frame at that size to stdout as
 //                              plain text (one row per line, trailing spaces trimmed)
 //                              and exit — the golden-frame harness and screenshot tool.
@@ -139,6 +142,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "rolltui/Diff.hpp"
 #include "rolltui/Document.hpp"
 #include "rolltui/Input.hpp"
 #include "rolltui/Keys.hpp"
@@ -231,6 +235,9 @@ struct App {
   ThemeMode detected_mode = ThemeMode::Dark;  // OSC 11's answer (interactive), dark otherwise
   ColorDepth depth = ColorDepth::TrueColor;
   bool ambiguous = false;
+  // Phase 12 m5b: this host's own thresholds for a long code block, overridable with
+  // --code-fold so a golden can exercise the cap without a hundred-line fixture.
+  int code_fold_over = 30, code_cap = 100;
   int w = 80, h = 24;  // the screen
   Document doc;
   // The look comes from the preset store's Theme working copy (rolltui/Presets.hpp),
@@ -347,6 +354,10 @@ struct App {
             return true;
           });
     }, SourceRule::Forbidden, "");
+    // Diff colouring (Phase 12 m5b): this host DECLARING that a ```diff fence in its
+    // documents means a diff — never a sniff of what a block holds. The two fold
+    // thresholds go in after the flags are parsed (--code-fold), below.
+    windows.set_highlighter(diff_spans);
     windows.set_help("", {"input", "transcript", "app", "editor", "studio", "stack"},
                      "mouse: drag selects (auto-scrolls past an edge); release copies; double-click a word; triple-click a line;\n"
                      "click a folded block's summary to toggle it; in the layout editor a click selects, a drag on a seam resizes");
@@ -1409,6 +1420,12 @@ int main(int argc, char** argv) {
       std::string d = next();
       app.depth = detect_color_depth(nullptr, nullptr, d.c_str());
     } else if (a == "--ambiguous-wide") app.ambiguous = true;
+    else if (a == "--code-fold") {  // "FOLD,CAP" — the two thresholds, so a golden can
+      const std::string v = next();  // exercise them on a small fixture rather than on
+      const std::size_t comma = v.find(',');  // a hundred-line one
+      app.code_fold_over = std::atoi(v.substr(0, comma).c_str());
+      app.code_cap = comma == std::string::npos ? 0 : std::atoi(v.substr(comma + 1).c_str());
+    }
     else if (a == "--frame") frame_spec = next();
     else if (a == "--frame-sgr") { frame_spec = next(); frame_sgr = true; }
     else if (a == "--keys") keys_spec = next();
@@ -1460,6 +1477,9 @@ int main(int argc, char** argv) {
   app.bstore = std::make_shared<BindingsPresets>(BindingsPresets::Options{presets_dir, true, shipped_dir + "/bindings"});
   app.persist = frame_spec.empty();
   app.windows.set_dir(presets_dir);  // a layout's `file:` paths are relative to the preset directory
+  // AFTER the flags: this is the one Windows setting --code-fold can change, and
+  // bind_windows() runs in App's constructor, before argv has been looked at.
+  app.windows.set_code_fold(app.code_fold_over, app.code_cap);
   // --app: preview AS the target app (Phase 11 m4). Mounted BEFORE the studio binds its
   // own sources, so a name the profile supplies wins: the point of the flag is that
   // `rows:status` shows roll's local/cloud/tokens rather than the studio's theme and

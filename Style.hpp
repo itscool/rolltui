@@ -25,8 +25,8 @@ enum class Role : std::uint8_t {
   md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
   md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
   md_rule, md_strikethrough,
-  // diffs
-  diff_added, diff_removed, diff_context,
+  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
+  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
   // chrome
   input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
   menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
@@ -56,6 +56,13 @@ inline constexpr RolePair kMustDiffer[] = {
     // `selection`: a match and a selection legitimately overlap, and the reader's
     // question there is "what did I select", which the selection winning answers.
     {Role::find_match, Role::find_current},
+    // Phase 12 m5b's `diff_added_word`/`diff_removed_word` are deliberately NOT here,
+    // and saying so is the point (a new role must state what it may not be confused
+    // with, or say nothing EXPLICITLY). They are an EMPHASIS on a line that already
+    // carries its own must-differ role and its own `+`/`-` marker: a reader who cannot
+    // tell the word run from the rest of its line still knows the line changed and which
+    // way. Pairing them here would demand four mutually-distinguishable fg colours under
+    // three CVD simulations to buy a distinction nothing depends on.
 };
 // A LIMIT OF THIS CHECK, found while adding the pair above and stated here because the
 // next background-carried distinction will meet it too (m5's scrollbar thumb, m6's
@@ -74,7 +81,7 @@ inline constexpr std::array<std::string_view, kRoleCount> kRoleNames = {
     "md_heading", "md_emphasis", "md_strong", "md_code_inline", "md_code_block",
     "md_code_label", "md_link", "md_link_url", "md_quote", "md_list_marker",
     "md_table_border", "md_table_header", "md_rule", "md_strikethrough",
-    "diff_added", "diff_removed", "diff_context",
+    "diff_added", "diff_removed", "diff_context", "diff_added_word", "diff_removed_word",
     "input_text", "input_cursor", "input_placeholder", "scroll_marker", "selection",
     "overlay", "menu_item", "menu_selected", "menu_breadcrumb", "menu_shortcut",
     "find_match", "find_current", "scrollbar",

@@ -227,16 +227,27 @@ class TranscriptWidget : public WidgetBase {
  public:
   using WidgetBase::WidgetBase;
   Transcript t;
+  std::uint64_t highlighter_seen_ = 0;
 
   std::string problem() const override { return document(content.source) ? std::string() : unbound(); }
   void layout(const ResolvedNode& rn) override {
+    sync_highlighter();
     if (const Document* d = document(content.source)) t.layout(*d, rn.inner, options(rn));
   }
   void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
     const Document* d = document(content.source);
     if (!d) return;
+    sync_highlighter();
     t.layout(*d, rn.inner, options(rn));
     t.draw(f, theme);
+  }
+  // set_highlight() bumps the transcript's own cache epoch, so handing it over on every
+  // frame would re-lay the whole transcript on every frame. Track the HOST's epoch
+  // instead: this picks up a highlighter set at any time, and picks it up once.
+  void sync_highlighter() {
+    if (highlighter_seen_ == w_->highlighter_epoch()) return;
+    highlighter_seen_ = w_->highlighter_epoch();
+    t.set_highlight(w_->highlighter());
   }
   bool handle(const Event& e) override {
     const Document* d = document(content.source);
@@ -261,6 +272,8 @@ class TranscriptWidget : public WidgetBase {
     TranscriptOptions o;
     o.ambiguous_wide = amb();
     o.inset = rn.node->border != Border::None ? 1 : 0;
+    o.code_fold_over_lines = w_->code_fold_over_lines();
+    o.code_cap_lines = w_->code_cap_lines();
     return o;
   }
 };
@@ -632,6 +645,16 @@ void Windows::bind_submit(std::string name, SubmitFn submit, OnSubmit on_submit)
   submits_[std::move(name)] = std::move(submit);
 }
 void Windows::bind_note(std::string name, TextFn note) { notes_[std::move(name)] = std::move(note); }
+
+void Windows::set_highlighter(markdown::Highlighter h) {
+  highlighter_ = std::move(h);
+  ++highlighter_epoch_;
+}
+
+void Windows::set_code_fold(int fold_over_lines, int cap_lines) {
+  code_fold_over_lines_ = fold_over_lines;
+  code_cap_lines_ = cap_lines;
+}
 
 // ONE call registers both halves — the name with the layout vocabulary and the factory
 // here — so the vocabulary can never name a kind nothing can build. Rung 1 refuses a

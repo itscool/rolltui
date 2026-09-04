@@ -38,6 +38,9 @@
 //     cell grid. A span that overlaps a prior one, runs backwards, or exceeds the
 //     line is clamped (or, if nothing of it survives, dropped) and named in
 //     Rendered::highlight_report — never silently.
+//   - A LONG code block folds to one summary line, and an unfolded one that is still
+//     long is capped with the "▼ N more" marker (milestone 5b). Both hide LINES and
+//     never TEXT: see CodeFoldOptions.
 //
 // LOGICAL TEXT (milestone 9, for selection): render_text() also returns the document's
 // logical text — what the rendered lines would be at infinite width — and every drawn
@@ -57,10 +60,12 @@
 //
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Marker.hpp"
 #include "rolltui/Style.hpp"
 
 namespace rolltui::markdown {
@@ -162,11 +167,28 @@ struct HighlightSpan {
 
 // lang: the fence's info string, first whitespace-delimited word only ("cpp" from
 // "cpp title=x.cpp"), or empty for an indented code block or a fence with no info
-// string. line: one verbatim line of the code block's text, no trailing '\n'. Called
-// once per line of every Code block (fenced or indented); never for an HTML block
-// (Markdown.hpp: HTML always renders as opaque code, never interpreted, so there is no
-// language to highlight it by).
-using Highlighter = std::function<std::vector<HighlightSpan>(std::string_view lang, std::string_view line)>;
+// string. lines: the block's verbatim lines, no trailing '\n' on any of them. index:
+// which of them this call is about; the spans returned are byte offsets into
+// lines[index] and nothing else. Called once per line of every Code block (fenced or
+// indented); never for an HTML block (Markdown.hpp: HTML always renders as opaque code,
+// never interpreted, so there is no language to highlight it by).
+//
+// WIDENED IN MILESTONE 5b, FROM `(lang, line)`, and the reason is worth keeping. m2
+// made this contract deliberately minimal — one line, no context — and m5 immediately
+// found the floor: word-level colouring inside a changed diff PAIR needs the line's
+// NEIGHBOURS, and the only thing a one-line callback could reach (by remembering the
+// previous line in its own state) is the `+` side, which colours one half of a pair and
+// reads as a rendering bug. The third option — leave word-level out — was declined
+// because the same wall is directly ahead for any real syntax highlighter: a string
+// literal or a block comment that spans lines cannot be classified from the line alone.
+// The block is already in the renderer's hand, so passing it costs nothing; what it
+// buys is that a highlighter can be a pure function of the WHOLE block, which is still
+// data-in/data-out and still clamped. What did NOT widen: the return type. A
+// highlighter answers about lines[index] only, so the renderer keeps one line's spans
+// to clamp against one line's length, and a highlighter that lies still cannot corrupt
+// a frame.
+using Highlighter =
+    std::function<std::vector<HighlightSpan>(std::string_view lang, std::span<const std::string> lines, std::size_t index)>;
 
 // What the renderer did with a highlighter's spans beyond drawing the well-formed
 // ones: one entry per span it had to clamp or drop, naming the language, the line, the
@@ -177,18 +199,79 @@ struct HighlightReport {
   bool clean() const { return clamped.empty(); }
 };
 
+// ---- long code blocks: fold and cap (plan/phase-12.md m5b) ---------------------------
+//
+// A model's answer routinely carries a 400-line block. Two thresholds, both off by
+// default so nothing changes for a host that does not ask:
+//
+//   fold_over_lines  a block with MORE lines than this arrives FOLDED: one header line,
+//                    "▸ diff · 42 lines · 1.2 kB", and no body.
+//   cap_lines        an UNFOLDED block longer than this draws its first cap_lines and
+//                    then one "▼ N more" row — the marker from Marker.hpp, so the
+//                    transcript's and a block's say the same thing the same way.
+//
+// THE ONE RULE THAT MAKES THIS SAFE: **both hide LINES, never TEXT.** A folded or capped
+// block still contributes every byte of its code to Rendered::text, and its header and
+// marker rows are chrome (kNoSource). So the logical text — what a selection copies and
+// what a find searches — is INDEPENDENT of fold state, and a match's offset cannot shift
+// under it when a block opens or closes. The alternative (the folded block contributing
+// its summary instead) shifts every offset after it in the entry, which is a highlight
+// silently drawn over the wrong bytes: exactly the failure this project keeps finding.
+// It costs one thing, stated rather than discovered: revealing a match inside a folded
+// block has to OPEN it, which is what CodeBlockInfo::text_begin/end are for.
+//
+// Which block is which: `index` counts Code and Html blocks in document order, from 0.
+// It is a property of the DOCUMENT, never of the render — a table too wide to fit is
+// rendered as code but is NOT numbered, precisely because that would make a block's
+// identity depend on the width and a user's fold toggle move to another block on resize.
+struct CodeFoldState {
+  std::size_t index = 0;
+  bool folded = false;    // overrides fold_over_lines, in both directions
+  bool uncapped = false;  // this block ignores cap_lines
+};
+
+struct CodeFoldOptions {
+  int fold_over_lines = 0;  // 0: no block ever arrives folded
+  int cap_lines = 0;        // 0: an unfolded block is never capped
+  std::vector<CodeFoldState> states;  // the host's per-block overrides
+  bool empty() const { return fold_over_lines <= 0 && cap_lines <= 0 && states.empty(); }
+};
+
+inline constexpr std::size_t kNoLine = static_cast<std::size_t>(-1);
+
+// What the renderer did with one numbered code block — enough for a host to hit-test a
+// click and to find the block holding a byte offset, without re-parsing anything.
+struct CodeBlockInfo {
+  std::size_t index = 0;
+  std::string lang;        // the fence's first word; "" for a bare fence or indented block
+  std::size_t lines = 0;   // the block's own line count
+  std::size_t bytes = 0;
+  bool foldable = false;   // over the threshold (or explicitly folded): it has a header row
+  bool folded = false;
+  std::size_t hidden = 0;  // lines the cap hides; 0 when not capped
+  std::size_t header_line = kNoLine;  // index into Rendered::lines — the fold's click target
+  std::size_t marker_line = kNoLine;  // …and the cap's
+  std::size_t text_begin = 0, text_end = 0;  // the block's byte range in Rendered::text
+};
+
+// "diff · 42 lines · 1.2 kB" — the header's text, without its ▸/▾ marker. A bare fence
+// has no language to name, so it is called "code".
+std::string code_block_summary(std::string_view lang, std::size_t lines, std::size_t bytes);
+
 struct RenderOptions {
   int width = 80;
   bool ambiguous_wide = false;
   int tab_width = 8;
   Role base = Role::text;
   Highlighter highlight;  // unset by default — see the seam comment above
+  CodeFoldOptions code_fold;  // off by default — see above
 };
 
 struct Rendered {
   std::vector<StyledLine> lines;
   std::string text;  // the logical text every Span::sources offset indexes
   HighlightReport highlight_report;
+  std::vector<CodeBlockInfo> code_blocks;  // one per numbered code block, in order
 };
 
 Rendered render_text(const Document& doc, const RenderOptions& opt = {});

@@ -264,6 +264,25 @@ class Windows {
   // and on a row of its own otherwise (roll's "working…" hint). Optional.
   void bind_note(std::string name, TextFn note);
 
+  // ---- what a transcript does with a long code block, and how it colours one -------
+  // Both are HOST facts, and both are off until a host says otherwise (Phase 12 m5b).
+  //
+  // The highlighter is the m2 seam: the library ships no highlighter, and an unset one
+  // is never invoked, so registering `rolltui::diff_spans` is a HOST declaring that its
+  // documents' ```diff fences mean a diff. Nothing here ever sniffs a block's content.
+  //
+  // The thresholds are the fold and the cap (Markdown.hpp). A host picks them because
+  // they are a judgement about ITS transcript's shape, not a library constant.
+  void set_highlighter(markdown::Highlighter h);
+  void set_code_fold(int fold_over_lines, int cap_lines);
+  const markdown::Highlighter& highlighter() const { return highlighter_; }
+  // Bumped by set_highlighter, so a transcript can pick up a LATER one instead of
+  // silently keeping the first — set-once is a host convention, not a guarantee, and a
+  // second call quietly ignored is the shape of bug this project keeps finding.
+  std::uint64_t highlighter_epoch() const { return highlighter_epoch_; }
+  int code_fold_over_lines() const { return code_fold_over_lines_; }
+  int code_cap_lines() const { return code_cap_lines_; }
+
   // ---- what a host REGISTERS (by kind name; Phase 11 m3) ----
   // One call registers the NAME with the layout vocabulary (Layout.hpp's
   // `register_widget_kind`, rung 2) and the FACTORY here, so a name can never exist
@@ -375,6 +394,9 @@ class Windows {
   std::string bar_drag_;  // the window whose thumb is being dragged, "" for none
   int bar_grab_ = 0;      // cells from the thumb's start to where it was grabbed
   std::map<std::string, TextFn> notes_;
+  markdown::Highlighter highlighter_;
+  std::uint64_t highlighter_epoch_ = 0;
+  int code_fold_over_lines_ = 0, code_cap_lines_ = 0;
   std::map<std::string, std::string> host_menus_;  // add_menu: name → the file's text
   std::map<std::string, Factory> factories_;       // register_kind: kind name → how to build one
   std::map<std::string, std::unique_ptr<Widget>> by_content_;

@@ -356,6 +356,28 @@
           "light": "#fafaf8"
         }
       },
+      "diff_added_word": {
+        "fg": {
+          "dark": "#adeeae",
+          "light": "#507b51"
+        },
+        "bg": {
+          "dark": "#14161a",
+          "light": "#fafaf8"
+        },
+        "bold": true
+      },
+      "diff_removed_word": {
+        "fg": {
+          "dark": "#c06a64",
+          "light": "#4f1a18"
+        },
+        "bg": {
+          "dark": "#14161a",
+          "light": "#fafaf8"
+        },
+        "bold": true
+      },
       "input_text": {
         "fg": {
           "dark": "#d8dce2",

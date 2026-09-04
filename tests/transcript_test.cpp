@@ -636,5 +636,88 @@ int main() {
     check(tr6.match_count() == 1, "a 0- and a 1-cell area still find, still draw, still step");
   }
 
+  // ---- long code blocks: folded, capped, clicked, and searched (Phase 12 m5b) -------
+  // The mechanism is the RENDERER's (Markdown.hpp); what is asserted here is the part
+  // this widget owns — the toggles kept by id, the two click targets, and the property
+  // the whole design was chosen for: the find count does not move when a block folds.
+  {
+    std::string block = "```diff\n";
+    for (int i = 1; i <= 12; ++i) block += (i % 2 ? "-old " : "+new ") + std::string("needle") + std::to_string(i) + "\n";
+    block += "```\n";
+    Document doc;
+    doc.entries.push_back(md("c1", "before the block\n\n" + block + "\nafter the block\n"));
+    TranscriptOptions fold = opt;
+    fold.code_fold_over_lines = 4;
+    fold.code_cap_lines = 6;
+
+    Transcript tr;
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    const EntryLayout* L = tr.layout_of(0);
+    check(L && L->code_blocks.size() == 1 && L->code_blocks[0].folded,
+          "a 12-line block over the threshold arrives folded in the transcript");
+    const std::size_t folded_total = tr.total_lines();
+    const std::size_t header = L->code_blocks[0].header_line;
+    check(header != markdown::kNoLine, "…and reports the row a click has to land on");
+    Frame f(40, 24);
+    tr.draw(f, theme);
+    check(row_text(f, static_cast<int>(header)).find("\xE2\x96\xB8 diff \xC2\xB7 12 lines") != std::string::npos,
+          "…which draws the summary, naming the language and the line count [" + row_text(f, static_cast<int>(header)) + "]");
+
+    // Click 1: the header row toggles the fold, over its WHOLE row (x is anywhere).
+    tr.handle(mouse(MouseEvent::Kind::Press, 30, static_cast<int>(header)), doc, 1000);
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    const EntryLayout* open = tr.layout_of(0);
+    check(!open->code_blocks[0].folded && tr.total_lines() > folded_total,
+          "a click anywhere on the header row unfolds it");
+    check(open->code_blocks[0].hidden == 6 && open->code_blocks[0].marker_line != markdown::kNoLine,
+          "…and the opened block is still CAPPED, with 6 of its 12 lines behind the marker");
+    check(tr.selection().empty(), "…and it selected nothing: a control does its own job, not a drag");
+
+    // Click 2: the "▼ N more" row lifts the cap for THAT block — the same reasoning that
+    // made the transcript's own marker clickable in m5, one rung down.
+    const std::size_t marker = open->code_blocks[0].marker_line;
+    tr.handle(mouse(MouseEvent::Kind::Press, 5, static_cast<int>(marker)), doc, 2000);
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    check(tr.layout_of(0)->code_blocks[0].hidden == 0, "a click on the block's ▼ marker shows the rest of it");
+
+    // Ctrl-O takes the nearest fold from the top, whether it is an entry's or a block's.
+    tr.set_code_folded("c1", 0, true);
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    check(tr.layout_of(0)->code_blocks[0].folded, "set_code_folded shuts it again");
+    tr.handle(ctrl('o'), doc, 3000);
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    check(!tr.layout_of(0)->code_blocks[0].folded, "transcript.fold (Ctrl-O) toggles a code block too — no new action for it");
+
+    // THE PROPERTY THE DESIGN EXISTS FOR. A fold hides lines and never text, so the
+    // match count is the same open and shut. If this ever fails, a folded block has
+    // started shifting the offsets after it and a highlight is landing on wrong bytes.
+    tr.set_query("needle");
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    const std::size_t open_matches = tr.match_count();
+    check(open_matches == 12, "12 matches with the block open (" + std::to_string(open_matches) + ")");
+    tr.set_code_folded("c1", 0, true);
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    check(tr.match_count() == open_matches, "…and exactly the same count with it FOLDED, which is the whole rule");
+    // …and revealing one of them has to OPEN the block, because the text was there but
+    // the line was not. The query is set while the block is shut, so the reveal is the
+    // only thing that could have opened it.
+    check(tr.layout_of(0)->code_blocks[0].folded, "the block is shut when the query is typed");
+    tr.set_query("needle7");
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    check(tr.match_count() == 1 && !tr.layout_of(0)->code_blocks[0].folded,
+          "revealing a match inside a folded block unfolds it");
+
+    // A selection over the entry copies the block's real code, not its summary: the
+    // logical text never lost it.
+    tr.set_query("");
+    tr.set_code_folded("c1", 0, true);
+    tr.set_code_uncapped("c1", 0, false);
+    tr.layout(doc, {0, 0, 40, 24}, fold);
+    const std::string& text = tr.layout_of(0)->text;
+    tr.select({0, 0, 0}, {0, text.size(), 0});
+    check(tr.selected_text().find("needle7") != std::string::npos,
+          "a selection over a folded block copies the CODE, because the fold never touched the text");
+  }
+
   return report("rolltui transcript_test");
 }

@@ -173,6 +173,18 @@
         "bg": "none",
         "dim": true
       },
+      "diff_added_word": {
+        "fg": "none",
+        "bg": "none",
+        "bold": true,
+        "underline": true
+      },
+      "diff_removed_word": {
+        "fg": "none",
+        "bg": "none",
+        "underline": true,
+        "dim": true
+      },
       "input_text": {
         "fg": "none",
         "bg": "none"

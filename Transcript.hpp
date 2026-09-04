@@ -33,6 +33,21 @@
 //   clear_selection; the shipped default is PgUp/PgDn, Home/End (and Ctrl+Home/End),
 //   Up/Down, Ctrl-O, Alt-C, Escape.
 //
+//   LONG CODE BLOCKS fold too, one rung down and by a different mechanism (Phase 12
+//   m5b, the rules in Markdown.hpp): the renderer folds a block over
+//   TranscriptOptions::code_fold_over_lines to one "▸ diff · 42 lines · 1.2 kB" row and
+//   caps an open one over code_cap_lines with the "▼ N more" marker. This widget keeps
+//   those toggles the way it keeps entry folds — by id, over the renderer's threshold —
+//   with the block addressed by its index in the entry. The header row toggles the fold
+//   and the marker row lifts the cap, each over its WHOLE row: those rows carry nothing
+//   else, so there is no arithmetic to get wrong at a degenerate width, and neither is
+//   inert chrome that merely looks like a control.
+//     Because a folded code block hides LINES and never TEXT (Markdown.hpp), the find
+//     rule below needs NO second cache for it: the drawn logical text already contains
+//     every byte, so the match count cannot move when a block opens or closes. What
+//     that costs is one thing, and it is paid in reveal_current: a match inside a
+//     folded or capped block has to OPEN the block before it can be scrolled to.
+//
 //   Folding — a foldable entry (Document.hpp) draws a summary line, "▸ summary (N
 //   lines)" folded or "▾ summary" plus its body unfolded. A click on the summary line
 //   toggles it; transcript.fold (Ctrl-O) toggles the first visible fold from the top.
@@ -110,6 +125,7 @@
 #include "rolltui/Document.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/Markdown.hpp"
+#include "rolltui/Marker.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
 
@@ -121,6 +137,8 @@ struct TranscriptOptions {
   int gap = 1;                 // blank lines between entries
   int inset = 0;               // columns kept clear on each side of the area
   int wheel_lines = 3;         // lines per wheel tick
+  int code_fold_over_lines = 0;  // m5b; 0 disables, as in markdown::CodeFoldOptions
+  int code_cap_lines = 0;
   std::uint64_t multi_click_ms = 400;  // two presses within this (and one cell) are a double-click
   bool operator==(const TranscriptOptions&) const = default;
 };
@@ -131,6 +149,9 @@ struct EntryLayout {
   std::string text;                          // logical text; a folded entry's is its summary
   bool folded = false;
   std::size_t hidden_lines = 0;              // body lines a fold hides
+  // m5b: the entry's code blocks, with header_line/marker_line already shifted onto
+  // THIS layout's line numbering (the entry's own summary row moves everything by one).
+  std::vector<markdown::CodeBlockInfo> code_blocks;
 };
 
 struct ScrollAnchor {
@@ -160,17 +181,6 @@ struct Selection {
   // the pointer in both directions.
   bool range_in(std::size_t entry, std::size_t len, std::size_t& begin, std::size_t& end) const;
 };
-
-// The "▼ N more" marker's text for a given width — ONE definition, used by the
-// transcript and by draw_scrolled_text, so the two cannot drift.
-//
-// It SHORTENS rather than eating the line (Phase 12 m5). The marker writes over CONTENT
-// cells, and at 20 cells wide the full form took most of the row ("│   Ent▼ 187 more │").
-// Shortening is only safe because the scrollbar now carries the proportion: the two are
-// KEPT TOGETHER on purpose — the bar is the positional signal and the marker is the
-// NON-GRAPHICAL one, which is the first thing a mono theme, a low colour depth or a
-// borderless window still has. Returns "" when there is nothing below or no room at all.
-std::string scroll_marker_text(std::size_t below, int max_width, bool ambiguous_wide);
 
 // One find hit, in the same logical space as TextPos: `length` bytes of `entry`'s
 // unfolded text starting at `offset`.
@@ -221,8 +231,18 @@ class Transcript {
   bool is_folded(const DocEntry& e) const;
   void set_folded(std::string_view id, bool folded) { fold_override_[std::string(id)] = folded; }
   void toggle_fold(const DocEntry& e) { set_folded(e.id, !is_folded(e)); }
-  // Toggles the first visible summary line from the top of the viewport; false if none.
+  // Toggles the first visible summary line from the top of the viewport — an entry's or
+  // a code block's, whichever comes first; false if there is none.
   bool toggle_fold_nearest_top(const Document& doc);
+
+  // ---- code-block folding (m5b) ----
+  // `block` is the block's index within the entry (Markdown.hpp: a document fact, not a
+  // width-dependent one). Both are host-callable, and both are what a click does.
+  void set_code_folded(std::string_view id, std::size_t block, bool folded);
+  void set_code_uncapped(std::string_view id, std::size_t block, bool uncapped);
+  // The highlighter the entries' markdown renders through; unset (the default) means the
+  // renderer is never asked, which is m2's whole opt-in. Changing it re-lays everything.
+  void set_highlight(markdown::Highlighter h);
 
   // ---- find (see FIND above) ----
   // The query; "" clears. Never scrolls: the reveal it asks for happens in layout().
@@ -263,6 +283,11 @@ class Transcript {
     bool ambiguous = false;
     int tab = 8;
     bool folded = false;
+    // m5b. The code epoch is per ENTRY (a toggle re-lays only its own entry); the
+    // highlight epoch is global (a new highlighter re-lays everything). Both are in the
+    // key rather than in an event, so the frame stays a pure function of state.
+    std::uint64_t code_epoch = 0;
+    std::uint64_t highlight_epoch = 0;
     bool operator==(const CacheKey&) const = default;
   };
   struct Cached {
@@ -277,7 +302,11 @@ class Transcript {
     bool beyond = false;   // past the last line
   };
 
-  static EntryLayout lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded);
+  EntryLayout lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded) const;
+  markdown::CodeFoldOptions code_fold_for(const std::string& id, const TranscriptOptions& opt) const;
+  // The code block of `entry` holding `offset`, when that block is hiding it; nullptr
+  // when the offset is on a drawn line. Reveal's one job beyond scrolling.
+  const markdown::CodeBlockInfo* hiding_block(std::size_t entry, std::size_t offset) const;
   // The per-frame build of layouts_/starts_/total_, extracted so a reveal that has to
   // unfold can re-run it in the same layout() call rather than leaving one frame drawn
   // against line numbers that no longer exist.
@@ -308,6 +337,13 @@ class Transcript {
   ScrollAnchor scroll_;
   Selection sel_;
   std::unordered_map<std::string, bool> fold_override_;
+  struct CodeFolds {
+    std::uint64_t epoch = 0;
+    std::vector<markdown::CodeFoldState> states;
+  };
+  std::unordered_map<std::string, CodeFolds> code_folds_;
+  markdown::Highlighter highlight_;
+  std::uint64_t highlight_epoch_ = 0;
   // Find state. `find_text_` is the unfolded-text cache, keyed like the layout cache
   // minus `folded` — the whole point is that it does not vary with folding.
   std::string query_;

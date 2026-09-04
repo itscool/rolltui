@@ -1,7 +1,7 @@
 #pragma once
 //
 // rolltui/Diff.hpp — colouring a unified diff, as a Markdown Highlighter (plan/
-// phase-12.md, milestone 5b).
+// phase-12.md, milestones 5 and 5b).
 //
 // WHY THIS IS IN THE LIBRARY when milestone 2 says the library ships no highlighter.
 // The thing m2 excluded is a SYNTAX highlighter: a language grammar, an ecosystem
@@ -16,21 +16,51 @@
 // gets no spans and renders plain. A "this looks like a diff" heuristic would paint a
 // Python file's leading `-` lines red the first day someone pasted one, which is this
 // project's exact recurring failure — a wrong branch taken with full confidence and
-// nothing for a check to fail against. A host that KNOWS its output is a diff (roll's
-// own `edit_file` preview) says so by emitting a ```diff fence.
+// nothing for a check to fail against. A host that KNOWS its output is a diff says so by
+// emitting a ```diff fence. What that means TODAY: roll and the studio both register
+// this function, so a MODEL's ```diff fence colours; roll's own `edit_file` approval
+// preview does NOT go through here yet — it is a verbatim entry sharing one renderer
+// with the plain frontend byte for byte, so putting it under a fence is a change to that
+// shared renderer, not to this file. Named rather than implied, because "roll's edit
+// preview is coloured" is exactly the kind of thing a reader would otherwise assume.
 //
 // THE `+`/`-` PREFIX IS THE NON-COLOUR SIGNAL and is never stripped, which is what
 // answers `kMustDiffer` for a reader in mono, at 16 colours, or with a colour-vision
 // deficiency — the same reasoning that keeps the `▼ N more` marker beside the scrollbar
 // in milestone 5a.
 //
-// WHAT IT DOES NOT DO YET: word-level colouring inside a changed line PAIR. That needs a
-// line's NEIGHBOURS, and m2's Highlighter contract is `(lang, line)` — one line, no
-// context, deliberately minimal. Colouring only the `+` side (the one a stateful
-// callback could reach by remembering the previous line) would be asymmetric, and
-// widening the contract is a decision about m2's seam rather than a detail of this
-// function. Stated here and in plan/phase-12.md rather than half-built.
+// ---- WORD LEVEL (milestone 5b) ------------------------------------------------------
 //
+// m5 built the line level and stopped, because refining a CHANGED PAIR needs a line's
+// neighbours and m2's Highlighter was `(lang, line)`. m5b widened that contract to
+// `(lang, lines, index)` — see Markdown.hpp for why, and for what deliberately did NOT
+// widen — and this is what exercises it. The rules, all stated rather than tuned:
+//
+//   PAIRING. A maximal run of k removed lines IMMEDIATELY followed by a run of k added
+//   lines pairs line i with line i. Runs of unequal length are NOT paired and get line
+//   colouring only. There is no similarity score and no best-match search: a pairing
+//   nobody can predict from the text is worse than none, and an unpaired hunk still
+//   reads correctly — it just reads at the line level, which is where m5 left it.
+//
+//   REFINEMENT. Both sides are tokenised on UAX #29 word boundaries (the same
+//   segmentation double-click uses) and the common LEADING and TRAILING token runs are
+//   removed; what is left in the middle takes the `_word` role. When nothing is common
+//   at either end the whole line changed, so no word span is emitted — the line role
+//   already says everything, and marking the entire line twice is noise.
+//
+//   BOTH SIDES, ALWAYS — never only the `+`. Colouring one half of a pair reads as a
+//   rendering bug, and it was the one option m5's plan entry ruled out by name. The one
+//   asymmetry that IS legitimate: when one side's middle is empty (a pure insertion or
+//   deletion, where the removed line is a prefix of the added one) that side has no
+//   changed run of its OWN to mark. It is not a rendering choice; nothing changed there.
+//
+//   The spans are emitted non-overlapping — line role, word role, line role — because
+//   the renderer resolves overlaps by dropping the later span AND reporting it. A
+//   highlighter that needed clamping to look right would be a highlighter that is wrong.
+//
+#include <cstddef>
+#include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -50,6 +80,10 @@ bool is_diff_language(std::string_view lang);
 //   ' ' or empty  diff_context
 // A `\ No newline at end of file` line is context: it says something about the line
 // above, and colouring it as a change would be a lie about the file.
-std::vector<markdown::HighlightSpan> diff_spans(std::string_view lang, std::string_view line);
+//
+// A changed line that PAIRS with its neighbour (see above) is split into three spans so
+// its changed word run can take diff_added_word / diff_removed_word.
+std::vector<markdown::HighlightSpan> diff_spans(std::string_view lang, std::span<const std::string> lines,
+                                                std::size_t index);
 
 }  // namespace rolltui

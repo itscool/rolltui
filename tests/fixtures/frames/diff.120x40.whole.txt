@@ -1,0 +1,40 @@
+┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
+│ # Two blocks that look identical, and are not                                         │ theme   default-dark         │
+│                                                                                       │ keys    default              │
+│ The first is under a ```diff fence, so it colours through the diff roles. The second  │ layout  default              │
+│ is under a bare fence and holds the SAME SHAPE of text, so it must render plain —     │ size    120x40               │
+│ content is never sniffed (rolltui/Diff.hpp).                                          │ line    1/25                 │
+│                                                                                       │ follow  yes                  │
+│ ▸ diff · 13 lines · 420 B                                                             │ depth   truecolor            │
+│                                                                                       │ focus   input                │
+│ A bare fence over the same shape of text:                                             │                              │
+│                                                                                       │                              │
+│ ┌───────────────────────────────────────────────────────────────────────────────────┐ │                              │
+│ │ --- a/notes/shopping.txt                                                          │ │                              │
+│ │ +++ b/notes/shopping.txt                                                          │ │                              │
+│ │ @@ -1,3 +1,3 @@                                                                   │ │                              │
+│ │  bread                                                                            │ │                              │
+│ │ -milk                                                                             │ │                              │
+│ │ +oat milk                                                                         │ │                              │
+│ └───────────────────────────────────────────────────────────────────────────────────┘ │                              │
+│                                                                                       │                              │
+│ Short enough to stay open, and a pair whose changed words are the only difference:    │                              │
+│                                                                                       │                              │
+│ ┌ diff ─────────────────────────────────────────────────────────────────────────────┐ │                              │
+│ │ -const int cap = 100;                                                             │ │                              │
+│ │ +const int cap = 200;                                                             │ │                              │
+│ └───────────────────────────────────────────────────────────────────────────────────┘ │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+│                                                                                       │                              │
+├───────────────────────────────────────────────────────────────────────────────────────┤                              │
+│ > type here                                                                           │                              │
+└───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  120x40  line 1/25  follow  truecolor  focus:input

@@ -89,20 +89,18 @@ std::string spaces(int n) { return std::string(static_cast<std::size_t>(std::max
 
 }  // namespace
 
-std::string scroll_marker_text(std::size_t below, int max_width, bool ambiguous_wide) {
-  if (below == 0 || max_width <= 0) return {};
-  const std::string full = "\xE2\x96\xBC " + std::to_string(below) + " more ";
-  // The full form only when it costs at most HALF the width; then the count alone; then
-  // the arrow, which still says "there is more" and costs one cell.
-  if (unicode::display_width(full, ambiguous_wide) * 2 <= max_width) return full;
-  const std::string small = "\xE2\x96\xBC" + std::to_string(below);
-  if (unicode::display_width(small, ambiguous_wide) <= max_width) return small;
-  return max_width >= 1 ? "\xE2\x96\xBC" : "";
-}
-
 // ---- layout ----------------------------------------------------------------------
 
-EntryLayout Transcript::lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded) {
+markdown::CodeFoldOptions Transcript::code_fold_for(const std::string& id, const TranscriptOptions& opt) const {
+  markdown::CodeFoldOptions cf;
+  cf.fold_over_lines = opt.code_fold_over_lines;
+  cf.cap_lines = opt.code_cap_lines;
+  auto it = code_folds_.find(id);
+  if (it != code_folds_.end()) cf.states = it->second.states;
+  return cf;
+}
+
+EntryLayout Transcript::lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded) const {
   EntryLayout L;
   L.folded = folded && e.foldable;
   const bool amb = opt.ambiguous_wide;
@@ -116,9 +114,12 @@ EntryLayout Transcript::lay_out(const DocEntry& e, int width, const TranscriptOp
     ro.ambiguous_wide = amb;
     ro.tab_width = opt.tab_width;
     ro.base = e.role;
+    ro.highlight = highlight_;
+    ro.code_fold = code_fold_for(e.id, opt);
     markdown::Rendered r = markdown::render_text(e.text, ro);
     body = std::move(r.lines);
     L.text = std::move(r.text);
+    L.code_blocks = std::move(r.code_blocks);
   } else {
     WrapOptions wo;
     wo.ambiguous_wide = amb;
@@ -150,6 +151,15 @@ EntryLayout Transcript::lay_out(const DocEntry& e, int width, const TranscriptOp
     L.lines.push_back(std::move(sl));
   };
 
+  // The entry's own summary row (below) pushes every body line down by one, so the
+  // block rows have to move with it — a click routes by LINE NUMBER, and an off-by-one
+  // here is a header row that toggles nothing.
+  auto shift_blocks = [&](std::size_t by) {
+    for (markdown::CodeBlockInfo& b : L.code_blocks) {
+      if (b.header_line != markdown::kNoLine) b.header_line += by;
+      if (b.marker_line != markdown::kNoLine) b.marker_line += by;
+    }
+  };
   if (e.foldable) {
     StyledLine s;
     with_prefix(s, true);
@@ -161,8 +171,10 @@ EntryLayout Transcript::lay_out(const DocEntry& e, int width, const TranscriptOp
     if (L.folded) {
       L.hidden_lines = body.size();
       L.text = e.summary;
+      L.code_blocks.clear();  // nothing of the body is drawn, so nothing of it is clickable
       return L;
     }
+    shift_blocks(1);
     for (const StyledLine& b : body) add_body(b, false);
   } else {
     for (std::size_t k = 0; k < body.size(); ++k) add_body(body[k], k == 0);
@@ -209,7 +221,9 @@ void Transcript::build(const Document& doc, int width) {
   for (std::size_t i = 0; i < n; ++i) {
     const DocEntry& e = doc.entries[i];
     const bool folded = e.foldable && is_folded(e);
-    const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, folded};
+    std::uint64_t code_epoch = 0;
+    if (auto cf = code_folds_.find(e.id); cf != code_folds_.end()) code_epoch = cf->second.epoch;
+    const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, folded, code_epoch, highlight_epoch_};
     auto it = cache_.find(e.id);
     if (it == cache_.end() || !(it->second.key == key)) {
       Cached c;
@@ -308,8 +322,13 @@ bool Transcript::set_query(std::string_view q) {
 const std::string& Transcript::searchable_text(const DocEntry& e, std::size_t entry, int width) {
   // For everything but a FOLDED entry the drawn layout's text already is the unfolded
   // logical text, so the common case costs nothing.
+  // A code fold does NOT need a variant here: it hides lines and never text
+  // (Markdown.hpp), so the drawn layout's text already holds every byte of every block.
   if (!(e.foldable && is_folded(e))) return layouts_[entry]->text;
-  const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, /*folded=*/false};
+  std::uint64_t code_epoch = 0;
+  if (auto cf = code_folds_.find(e.id); cf != code_folds_.end()) code_epoch = cf->second.epoch;
+  const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, /*folded=*/false, code_epoch,
+                     highlight_epoch_};
   auto it = find_text_.find(e.id);
   if (it == find_text_.end() || !(it->second.key == key)) {
     FindText ft;
@@ -382,6 +401,14 @@ void Transcript::reveal_current(const Document& doc, int width) {
   const DocEntry& e = doc.entries[m->entry];
   if (e.foldable && is_folded(e)) {
     set_folded(e.id, false);
+    build(doc, width);
+  }
+  // …and the same one rung down: a match inside a folded or capped CODE BLOCK has no
+  // drawn line to scroll to, so open the block and rebuild. This is the price of the
+  // rule that makes the count stable — the text was always there, the lines were not.
+  if (const markdown::CodeBlockInfo* b = hiding_block(m->entry, m->offset)) {
+    set_code_folded(e.id, b->index, false);
+    set_code_uncapped(e.id, b->index, true);
     build(doc, width);
   }
   const std::size_t line = line_of_offset(m->entry, m->offset);
@@ -536,16 +563,80 @@ bool Transcript::is_folded(const DocEntry& e) const {
   return it != fold_override_.end() ? it->second : e.folded;
 }
 
+// THE FIRST TOGGLE OF A BLOCK MUST BUMP THE EPOCH EVEN WHEN THE VALUE "MATCHES".
+// A block that is folded by the THRESHOLD has no state row, so a default-constructed
+// row reads folded=false — and an early return comparing against it left the row added,
+// the block unfolded and the layout cache never invalidated: correct state, stale frame.
+// Written out per field rather than through a shared helper so the create-and-bump case
+// is visible at both call sites; opening a block does NOT lift its cap (the milestone's
+// stated behaviour: an opened block is still capped, and the marker is what lifts it).
+void Transcript::set_code_folded(std::string_view id, std::size_t block, bool folded) {
+  CodeFolds& f = code_folds_[std::string(id)];
+  for (markdown::CodeFoldState& s : f.states) {
+    if (s.index != block) continue;
+    if (s.folded == folded) return;
+    s.folded = folded;
+    ++f.epoch;
+    return;
+  }
+  f.states.push_back({block, folded, false});
+  ++f.epoch;
+}
+
+void Transcript::set_code_uncapped(std::string_view id, std::size_t block, bool uncapped) {
+  CodeFolds& f = code_folds_[std::string(id)];
+  for (markdown::CodeFoldState& s : f.states) {
+    if (s.index != block) continue;
+    if (s.uncapped == uncapped) return;
+    s.uncapped = uncapped;
+    ++f.epoch;
+    return;
+  }
+  f.states.push_back({block, false, uncapped});
+  ++f.epoch;
+}
+
+void Transcript::set_highlight(markdown::Highlighter h) {
+  highlight_ = std::move(h);
+  ++highlight_epoch_;
+}
+
+const markdown::CodeBlockInfo* Transcript::hiding_block(std::size_t entry, std::size_t offset) const {
+  const EntryLayout* L = layout_of(entry);
+  if (!L) return nullptr;
+  for (const markdown::CodeBlockInfo& b : L->code_blocks) {
+    if (offset < b.text_begin || offset >= b.text_end) continue;
+    if (b.folded) return &b;
+    if (b.hidden == 0) return nullptr;
+    // Capped: the first (lines - hidden) lines are drawn. Which line the offset is on is
+    // a count of newlines from the block's start — the block's text is its lines, each
+    // terminated, so this is exact rather than a search through the drawn spans.
+    std::size_t line = 0;
+    for (std::size_t i = b.text_begin; i < offset && i < L->text.size(); ++i)
+      if (L->text[i] == '\n') ++line;
+    return line >= b.lines - b.hidden ? &b : nullptr;
+  }
+  return nullptr;
+}
+
 bool Transcript::toggle_fold_nearest_top(const Document& doc) {
   const std::size_t top = top_line();
   for (int row = 0; row < area_.h; ++row) {
     const std::size_t g = top + static_cast<std::size_t>(row);
     if (g >= total_) break;
     const RowRef r = row_at(g);
-    if (r.gap || r.beyond || r.line != 0 || r.entry >= doc.entries.size()) continue;
-    if (!doc.entries[r.entry].foldable) continue;
-    toggle_fold(doc.entries[r.entry]);
-    return true;
+    if (r.gap || r.beyond || r.entry >= doc.entries.size()) continue;
+    // An entry's summary row is line 0; a code block's header row is anywhere. Whichever
+    // is nearer the top wins, which is what "the first visible fold" has always meant.
+    if (r.line == 0 && doc.entries[r.entry].foldable) {
+      toggle_fold(doc.entries[r.entry]);
+      return true;
+    }
+    for (const markdown::CodeBlockInfo& b : layouts_[r.entry]->code_blocks) {
+      if (b.header_line != r.line) continue;
+      set_code_folded(doc.entries[r.entry].id, b.index, !b.folded);
+      return true;
+    }
   }
   return false;
 }
@@ -644,14 +735,31 @@ void Transcript::begin_drag(int x, int y, bool shift, std::uint64_t now_ms, cons
   }
   std::optional<TextPos> pos = hit(x, y);
   if (!pos) return;
-  // A click on a summary line toggles the fold and selects nothing.
+  // A click on a summary line toggles the fold and selects nothing. A code block's own
+  // header and "▼ N more" rows do the same one rung down (m5b) — over the WHOLE row,
+  // because those rows carry nothing else and an x range is one more thing to get wrong
+  // at a degenerate width.
   {
     const int row = std::clamp(y - area_.y, 0, std::max(area_.h - 1, 0));
     const RowRef r = row_at(top_line() + static_cast<std::size_t>(row));
-    if (!r.gap && !r.beyond && r.line == 0 && r.entry < doc.entries.size() && doc.entries[r.entry].foldable) {
-      toggle_fold(doc.entries[r.entry]);
-      click_ = {};
-      return;
+    if (!r.gap && !r.beyond && r.entry < doc.entries.size()) {
+      if (r.line == 0 && doc.entries[r.entry].foldable) {
+        toggle_fold(doc.entries[r.entry]);
+        click_ = {};
+        return;
+      }
+      for (const markdown::CodeBlockInfo& b : layouts_[r.entry]->code_blocks) {
+        if (b.header_line == r.line) {
+          set_code_folded(doc.entries[r.entry].id, b.index, !b.folded);
+          click_ = {};
+          return;
+        }
+        if (b.marker_line == r.line) {  // the cap's marker: show the rest of THIS block
+          set_code_uncapped(doc.entries[r.entry].id, b.index, true);
+          click_ = {};
+          return;
+        }
+      }
     }
   }
   if (shift) {

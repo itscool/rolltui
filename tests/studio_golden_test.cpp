@@ -165,6 +165,15 @@ int main(int argc, char** argv) {
       // Ctrl-O unfolds the first block; the second block's summary then sits on row 29
       // and a click unfolds it (Ctrl-O again would re-fold the first, still nearest).
       {"tools.120x40.unfold-all", "--frame 120x40 --theme default-dark --keys \"Home CtrlO Click 5,29\"", "tools.md"},
+      // Phase 12 m5b on a third fixture (long_diff.md): a long ```diff block folded to
+      // one summary row, opened by a click on that row (still CAPPED at 10 of its 13
+      // lines, with the "▼ N more" marker INSIDE the box), and uncapped by a click on
+      // the marker row. --code-fold sets the two thresholds so the fixture can stay
+      // small; the shipped ones are the studio's own 30,100.
+      {"diff.80x24.folded", "--frame 80x24 --theme default-dark --code-fold 6,10 --keys \"Home\"", "long_diff.md"},
+      {"diff.100x30.open", "--frame 100x30 --theme default-dark --code-fold 6,10 --keys \"Home Click 5,8\"", "long_diff.md"},
+      {"diff.100x30.uncapped", "--frame 100x30 --theme default-dark --code-fold 6,10 --keys \"Home Click 5,8 Click 30,20\"", "long_diff.md"},
+      {"diff.120x40.whole", "--frame 120x40 --theme default-dark --code-fold 6,10", "long_diff.md"},
       // milestone 10 (the input widget) on the demo fixture; the input's inner row is
       // 21 at 80x24 and, with the bordered window's inset, its text starts at x=4
       {"input.80x24.typed", "--frame 80x24 --theme default-dark --keys \"Type:hello_world\""},
@@ -687,6 +696,43 @@ int main(int argc, char** argv) {
       check(ok && saved.find("\"actions\": {}") != std::string::npos && saved.find("\"popups\"") == std::string::npos,
             "…and nothing else came with them");
     }
+    // ---- Phase 12 m5b: the FENCE decides, and a golden frame cannot show that -------
+    // The frames above prove the FOLD (a summary row, a capped body, a marker). They
+    // cannot prove the COLOURING, because a golden is text. --frame-sgr can: the same
+    // shape of text under a ```diff fence and under a bare one, in one document, and
+    // the roles that reach the cells have to differ. This is the milestone's control.
+    {
+      int rc = 0;
+      const std::string sgr =
+          run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                  "/session/long_diff.md' --frame-sgr 120x40 --theme default-dark --code-fold 6,10 --presets '" +
+                  scratch + "/p8' 2>/dev/null",
+              rc);
+      // default-dark's diff_added is #adeeae and diff_removed is #c06a64 (Theme.cpp).
+      const std::string added = "\x1b[0;38;2;173;238;174";
+      const std::string removed = "\x1b[0;38;2;192;106;100";
+      const std::string plain_code = "\x1b[0;38;2;216;220;226";  // md_code_block
+      const std::size_t coloured = sgr.find(removed + ";48;2;20;22;26m-const int cap = ");
+      check(rc == 0 && coloured != std::string::npos, "a ```diff fence colours its '-' line through diff_removed");
+      check(sgr.find(added + ";48;2;20;22;26m+const int cap = ") != std::string::npos,
+            "…and its '+' line through diff_added");
+      // THE CONTROL. The bare fence's lines are the same shape — "-milk", "+oat milk",
+      // "@@ -1,3 +1,3 @@" — and every one of them is md_code_block, like any other code.
+      for (const char* line : {"-milk", "+oat milk", " bread", "@@ -1,3 +1,3 @@"}) {
+        const std::string at = plain_code + ";48;2;30;34;40m" + line;
+        check(sgr.find(at) != std::string::npos,
+              std::string("a bare fence renders \"") + line + "\" as plain code, whatever it looks like");
+        check(sgr.find(added + ";48;2;20;22;26m" + line) == std::string::npos &&
+                  sgr.find(removed + ";48;2;20;22;26m" + line) == std::string::npos,
+              std::string("…and NOWHERE in the frame does \"") + line + "\" carry a diff role");
+      }
+      // Word level (m5b): the changed run of a 1:1 pair is the SAME colour with bold —
+      // an emphasis on its line, which is why it is not a must-differ pair (Style.hpp).
+      check(sgr.find("\x1b[0;1;38;2;192;106;100;48;2;20;22;26m100") != std::string::npos &&
+                sgr.find("\x1b[0;1;38;2;173;238;174;48;2;20;22;26m200") != std::string::npos,
+            "the changed WORD of a paired line takes the _word role on BOTH sides, bold on the line's own colour");
+    }
+
     // ---- milestone 15: --check, --generate, the Check popup ----
     check(ed_check.find("\xE2\x95\xAD report ") != std::string::npos && ed_check.find("badges: dark") != std::string::npos && ed_check.find("roles (fg on bg") != std::string::npos,
           "Check opens the report popup with the badges and the per-role numbers");

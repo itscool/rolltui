@@ -154,6 +154,12 @@ Generated generate(std::uint64_t seed, Ruleset ruleset, double chaos, const GenO
   set(Role::diff_added, S(green, bg));
   set(Role::diff_removed, S(error, bg));
   set(Role::diff_context, S(muted, bg));
+  // m5b: the word run inside a changed pair is an EMPHASIS on its line, so it takes the
+  // line's own colour and spends its distinction on bold. A generator that invented a
+  // fourth and fifth hue here would be spending the palette on a distinction nothing
+  // depends on — see the note beside kMustDiffer in Style.hpp.
+  set(Role::diff_added_word, S(green, bg, true));
+  set(Role::diff_removed_word, S(error, bg, true));
   set(Role::input_text, S(fg, bg));
   set(Role::input_cursor, S(bg, fg));
   set(Role::input_placeholder, S(muted, bg, false, true));

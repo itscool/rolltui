@@ -75,6 +75,10 @@ Theme make_default_dark() {
   set(Role::diff_added, S(green, bg));
   set(Role::diff_removed, S(red, bg));
   set(Role::diff_context, S(muted, bg));
+  // m5b: the word run inside a changed PAIR. Same hue as its line — an emphasis, not a
+  // second signal — so it costs no colour budget and cannot break a must-differ pair.
+  set(Role::diff_added_word, S(green, bg, true));
+  set(Role::diff_removed_word, S(red, bg, true));
   set(Role::input_text, S(fg, bg));
   set(Role::input_cursor, S(bg, fg));
   set(Role::input_placeholder, S(muted, bg, false, true));
@@ -145,6 +149,10 @@ Theme make_default_light() {
   set(Role::diff_added, S(green, bg));
   set(Role::diff_removed, S(red, bg));
   set(Role::diff_context, S(muted, bg));
+  // m5b: the word run inside a changed PAIR. Same hue as its line — an emphasis, not a
+  // second signal — so it costs no colour budget and cannot break a must-differ pair.
+  set(Role::diff_added_word, S(green, bg, true));
+  set(Role::diff_removed_word, S(red, bg, true));
   set(Role::input_text, S(fg, bg));
   set(Role::input_cursor, S(bg, fg));
   set(Role::scroll_marker, S(bg, yellow, true));
@@ -204,6 +212,10 @@ Theme make_mono() {
   set(Role::diff_added, S(n, n, true));
   set(Role::diff_removed, S(n, n, false, false, false, true));
   set(Role::diff_context, S(n, n, false, false, false, true));
+  // m5b, with no colour to spend: underline is the only attribute left, so it carries
+  // the word run on top of whatever its line already uses.
+  set(Role::diff_added_word, S(n, n, true, false, true));
+  set(Role::diff_removed_word, S(n, n, false, false, true, true));
   set(Role::input_cursor, S(n, n, false, false, false, false, true));
   set(Role::input_placeholder, S(n, n, false, false, false, true));
   set(Role::scroll_marker, S(n, n, true, false, false, false, true));
