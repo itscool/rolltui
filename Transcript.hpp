@@ -117,6 +117,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -144,14 +145,30 @@ struct TranscriptOptions {
 };
 
 // One entry's cached layout.
+//
+// PHASE 15 m4 — IT OWNS ONE STORE AND EVERYTHING IS A VIEW INTO IT. The markdown render
+// puts the entry's BODY lines at the front of `store`; this layout's own drawn lines —
+// the body behind the entry's prefix, with the fold summary above them — are appended
+// after them and reference the body's spans by index, so a body line is put behind a
+// prefix without copying one byte of it. `body` is where the drawn ones begin.
+//
+// That is the m1 finding fixed: `void append(StyledLine&, Span s)` took the span BY VALUE
+// at the one call site Phase 13 did not reach, and its copy constructor allocated a string
+// and a vector per span — 2,283 allocations a resize frame between the copy and the vector
+// it was pushed into. A span owns nothing now, so the copy is a descriptor.
 struct EntryLayout {
-  std::vector<markdown::StyledLine> lines;  // as drawn: the summary line first when foldable
-  std::string text;                          // logical text; a folded entry's is its summary
+  markdown::Rendered store;      // OWNED: the body lines, this layout's lines, and the text
+  std::size_t body = 0;          // index in `store` where THIS layout's drawn lines begin
   bool folded = false;
-  std::size_t hidden_lines = 0;              // body lines a fold hides
-  // m5b: the entry's code blocks, with header_line/marker_line already shifted onto
-  // THIS layout's line numbering (the entry's own summary row moves everything by one).
-  std::vector<markdown::CodeBlockInfo> code_blocks;
+  std::size_t hidden_lines = 0;  // body lines a fold hides
+
+  // As drawn: the summary line first when foldable.
+  std::span<const markdown::StyledLine> lines() const { return store.lines().subspan(body); }
+  // Logical text; a folded entry's is its summary.
+  std::string_view text() const { return store.text(); }
+  // The entry's code blocks, with header_line/marker_line already shifted onto THIS
+  // layout's line numbering (the entry's own summary row moves everything by one).
+  std::span<const markdown::CodeBlockInfo> code_blocks() const { return store.code_blocks(); }
 };
 
 struct ScrollAnchor {
@@ -302,7 +319,13 @@ class Transcript {
     bool beyond = false;   // past the last line
   };
 
-  EntryLayout lay_out(const DocEntry& e, int width, const TranscriptOptions& opt, bool folded) const;
+  // FILLS a layout the caller owns (CLAUDE.md's third strategy), because the caller is the
+  // cache and the whole point is that a re-laid entry reuses the storage it already had.
+  void lay_out(EntryLayout& into, const DocEntry& e, int width, const TranscriptOptions& opt, bool folded);
+  // The entry's PARSED tree, cached by (id, version) and NOT by width. m1 measured 1,243
+  // allocations a resize frame — 12.1% — re-parsing forty unchanged strings into an
+  // identical tree because `CacheKey` carries `width` and `parse()` does not depend on it.
+  const markdown::Document& parsed(const DocEntry& e);
   markdown::CodeFoldOptions code_fold_for(const std::string& id, const TranscriptOptions& opt) const;
   // The code block of `entry` holding `offset`, when that block is hiding it; nullptr
   // when the offset is on a drawn line. Reveal's one job beyond scrolling.
@@ -313,7 +336,7 @@ class Transcript {
   void build(const Document& doc, int width);
   // The entry's logical text AS IF UNFOLDED — what find searches. Equal to the drawn
   // layout's text for everything except a folded entry, whose drawn text is its summary.
-  const std::string& searchable_text(const DocEntry& e, std::size_t entry, int width);
+  std::string_view searchable_text(const DocEntry& e, std::size_t entry, int width);
   void recompute_matches(const Document& doc, int width);
   // The line within the entry's layout holding `offset`, or the last line.
   std::size_t line_of_offset(std::size_t entry, std::size_t offset) const;
@@ -326,7 +349,7 @@ class Transcript {
   void begin_drag(int x, int y, bool shift, std::uint64_t now_ms, const Document& doc);
   void drag_to(int x, int y);
   void end_drag();
-  static void unit_around(const std::string& text, std::size_t off, bool word, std::size_t& b, std::size_t& en);
+  static void unit_around(std::string_view text, std::size_t off, bool word, std::size_t& b, std::size_t& en);
 
   // Phase 12 m6: what each entry SAYS about motion this frame — copied from the document
   // in build(), never cached, because it changes the marks and not the lines.
@@ -336,6 +359,16 @@ class Transcript {
     std::uint64_t since_ms = 0;
   };
 
+  // The parse cache, keyed on version alone — see `parsed()`. Swept with `cache_`.
+  struct Parsed {
+    std::uint64_t version = 0;
+    markdown::Document doc;
+    bool seen = false;
+  };
+  std::unordered_map<std::string, Parsed> parse_;
+  std::string pad_;                 // a run of spaces, grown to the widest prefix ever seen
+  std::string scratch_;             // one string under construction (the fold's " (N lines)")
+  EntryLayout unfolded_;            // where a folded entry is laid out again, for find
   std::unordered_map<std::string, Cached> cache_;
   std::vector<const EntryLayout*> layouts_;  // per entry, this frame
   std::vector<EntryState> states_;           // per entry, this frame

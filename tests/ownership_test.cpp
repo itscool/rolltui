@@ -230,7 +230,36 @@ int main() {
         // OWNED C handle, the same sanctioned shape `Frame::Handle` already uses, and a
         // `unique_ptr`'s deleter rather than a member. It borrows nothing.
         {"Effects.hpp", 3},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 1},
-        {"Layout.hpp", 8},       {"Markdown.hpp", 0},      {"Marker.hpp", 0},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
+        // Markdown.hpp 0 → 10, RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the census
+        // recording the milestone's whole shape change: a `Span` used to OWN a
+        // `std::string` and two vectors, so the header needed no pointer to say so. Every
+        // line, span and byte lives in the caller's store now, and the parsed document is a
+        // handle too. The ten are what that costs a reader:
+        //   - `RolltuiMdLines* p` in `Rendered::Handle` — the deleter of the OWNED store, a
+        //     `unique_ptr`'s deleter rather than a member, the same sanctioned shape
+        //     `Frame::Handle`, `KeyDecoder::Handle` and `EffectMap::Handle` already use.
+        //   - `RolltuiMdLines* store()` and `const RolltuiMdLines* store() const` — a BORROW
+        //     of the store this object owns, for the one caller that builds lines of its own
+        //     behind the rendered ones (the transcript's prefix). Never stored.
+        //   - `const RolltuiMdLine* p` in `lines()` and `const RolltuiMdCodeBlock* p` in
+        //     `code_blocks()` — the arrays those two `std::span`s are made of, BORROWED from
+        //     the store and valid until the next render into it.
+        //   - `const char* p` in `clamped()` — the same, for one report string.
+        //   - `char* out` on `code_block_summary` — the CALLER'S buffer, filled and not
+        //     returned, which is why that function stopped handing back a `std::string`.
+        //   - `RolltuiMdDoc* p` in `Document::Handle` — the third of these deleters, for the
+        //     OWNED parse tree, which became a handle when the block tree left this header.
+        //   - `const RolltuiMdDoc* handle() const` — a BORROW of the tree this object owns,
+        //     for `Rendered::render` and nothing else. Never stored.
+        //   - `const char* p` in `Document::block_code` — a BORROW of one Code block's
+        //     verbatim text, valid until the document is parsed into again.
+        // Marker.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m4. The one pointer is
+        // `char* out` on `scroll_marker_text_into` — the CALLER'S buffer. The marker's rule
+        // moved to `rolltui/c/rolltui_marker.h` (its third caller became C, and the note on
+        // it has always said the rule must have exactly one definition), and this header is
+        // the C++ spelling over it: the `std::string` form for the callers that want one,
+        // and the buffer form for a draw path that must not build one per frame.
+        {"Layout.hpp", 8},       {"Markdown.hpp", 10},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -343,7 +372,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 87, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 98, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

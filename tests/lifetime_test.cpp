@@ -101,7 +101,7 @@ void use_the_ported_modules(const char* when) {
   check(rep.marks_drawn == 1 && rep.clean(),
         std::string("…and an effect is APPLIED, so its scratch is populated too — ") + when);
   check(effect_tick_ms(f, theme).has_value(), std::string("…and the frame asks for a wakeup — ") + when);
-  const std::vector<std::string> block = {"-one two three", "+one TWO three"};
+  const std::vector<std::string_view> block = {"-one two three", "+one TWO three"};
   check(diff_spans("diff", block, 1).size() == 3,
         std::string("…and a diff line is coloured, which is the other new handle — ") + when);
 

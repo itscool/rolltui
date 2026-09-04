@@ -12,7 +12,7 @@
 #include <cstddef>
 #include <string>
 
-#include "rolltui/Unicode.hpp"
+#include "rolltui/c/rolltui_marker.h"
 
 namespace rolltui {
 
@@ -22,15 +22,18 @@ namespace rolltui {
 // KEPT TOGETHER on purpose — the bar is the positional signal and the marker is the
 // NON-GRAPHICAL one, which is the first thing a mono theme, a low colour depth or a
 // borderless window still has. Returns "" when there is nothing below or no room at all.
+// PHASE 15 m4 — THE RULE MOVED TO `rolltui/c/rolltui_marker.h` AND THIS IS THE SPELLING.
+// The header note above said the rule has three callers and must have one definition; m4
+// made one of the three C, so a C definition was the only way to keep that true. Nothing
+// about the rule changed — see that file.
 inline std::string scroll_marker_text(std::size_t below, int max_width, bool ambiguous_wide) {
-  if (below == 0 || max_width <= 0) return {};
-  const std::string full = "\xE2\x96\xBC " + std::to_string(below) + " more ";
-  // The full form only when it costs at most HALF the width; then the count alone; then
-  // the arrow, which still says "there is more" and costs one cell.
-  if (unicode::display_width(full, ambiguous_wide) * 2 <= max_width) return full;
-  const std::string small = "\xE2\x96\xBC" + std::to_string(below);
-  if (unicode::display_width(small, ambiguous_wide) <= max_width) return small;
-  return max_width >= 1 ? "\xE2\x96\xBC" : "";
+  char buf[ROLLTUI_MARKER_MAX];
+  return std::string(buf, rolltui_scroll_marker_text(below, max_width, ambiguous_wide ? 1 : 0, buf, sizeof buf));
+}
+// The same, into a caller's buffer, for a draw path that must not build a string per frame.
+inline std::size_t scroll_marker_text_into(std::size_t below, int max_width, bool ambiguous_wide, char* out,
+                                           std::size_t cap) {
+  return rolltui_scroll_marker_text(below, max_width, ambiguous_wide ? 1 : 0, out, cap);
 }
 
 }  // namespace rolltui

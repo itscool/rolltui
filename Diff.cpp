@@ -30,9 +30,9 @@ constexpr RolltuiDiffRoles kRoles = {
 };
 
 // The block, read on demand: a BORROW of one line, never a copy and never an index. The
-// block is the caller's `std::span<const std::string>` and outlives the call.
+// block is the caller's `std::span<const std::string_view>` and outlives the call.
 const char* line_at(const void* block, std::size_t i, std::size_t* len) {
-  const std::string& s = (*static_cast<const std::span<const std::string>*>(block))[i];
+  const std::string_view s = (*static_cast<const std::span<const std::string_view>*>(block))[i];
   *len = s.size();
   return s.data();
 }
@@ -46,7 +46,7 @@ RolltuiDiffScratch* scratch() {
 
 bool is_diff_language(std::string_view lang) { return rolltui_diff_is_language(lang.data(), lang.size()) != 0; }
 
-std::vector<markdown::HighlightSpan> diff_spans(std::string_view lang, std::span<const std::string> lines,
+std::vector<markdown::HighlightSpan> diff_spans(std::string_view lang, std::span<const std::string_view> lines,
                                                 std::size_t index) {
   // The bound is known WITHOUT asking: a line takes its whole role, or splits into
   // line / word / line. So the buffer is a fixed array and there is no measure-then-fill

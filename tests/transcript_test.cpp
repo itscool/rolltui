@@ -207,7 +207,7 @@ int main() {
     Transcript tr;
     tr.layout(doc, {0, 0, 30, 8}, opt);
     const EntryLayout* L = tr.layout_of(1);
-    check(L && L->folded && L->lines.size() == 1 && L->hidden_lines == 3 && L->text == "read_file X",
+    check(L && L->folded && L->lines().size() == 1 && L->hidden_lines == 3 && L->text() == "read_file X",
           "a foldable entry starts folded: one summary line, three hidden, its text is the summary");
     Frame f(30, 8);
     tr.draw(f, theme);
@@ -216,14 +216,14 @@ int main() {
     tr.handle(mouse(MouseEvent::Kind::Release, 5, 2), doc, 1000);
     tr.layout(doc, {0, 0, 30, 8}, opt);
     L = tr.layout_of(1);
-    check(L && !L->folded && L->lines.size() == 4 && L->text == "a\nb\nc", "a click on the summary line unfolds: summary + 3 body lines, text is the body");
+    check(L && !L->folded && L->lines().size() == 4 && L->text() == "a\nb\nc", "a click on the summary line unfolds: summary + 3 body lines, text is the body");
     check(!tr.selection().active, "the click selected nothing");
     f = Frame(30, 8);
     tr.draw(f, theme);
     check(row_text(f, 2) == "\xE2\x96\xBE read_file X" && row_text(f, 3) == "a", "unfolded: ▾ summary then the body");
     check(tr.handle(ctrl('o'), doc, 2000), "Ctrl-O finds the first fold in view");
     tr.layout(doc, {0, 0, 30, 8}, opt);
-    check(tr.is_folded(doc.entries[1]) && tr.layout_of(1)->lines.size() == 1, "and toggles it back");
+    check(tr.is_folded(doc.entries[1]) && tr.layout_of(1)->lines().size() == 1, "and toggles it back");
     tr.scroll_to_top();
     tr.layout(doc, {0, 0, 30, 1}, opt);  // a one-row viewport showing only the prompt
     check(!tr.handle(ctrl('o'), doc, 3000), "Ctrl-O with no summary line in view does nothing");
@@ -653,10 +653,10 @@ int main() {
     Transcript tr;
     tr.layout(doc, {0, 0, 40, 24}, fold);
     const EntryLayout* L = tr.layout_of(0);
-    check(L && L->code_blocks.size() == 1 && L->code_blocks[0].folded,
+    check(L && L->code_blocks().size() == 1 && L->code_blocks()[0].folded,
           "a 12-line block over the threshold arrives folded in the transcript");
     const std::size_t folded_total = tr.total_lines();
-    const std::size_t header = L->code_blocks[0].header_line;
+    const std::size_t header = L->code_blocks()[0].header_line;
     check(header != markdown::kNoLine, "…and reports the row a click has to land on");
     Frame f(40, 24);
     tr.draw(f, theme);
@@ -667,26 +667,26 @@ int main() {
     tr.handle(mouse(MouseEvent::Kind::Press, 30, static_cast<int>(header)), doc, 1000);
     tr.layout(doc, {0, 0, 40, 24}, fold);
     const EntryLayout* open = tr.layout_of(0);
-    check(!open->code_blocks[0].folded && tr.total_lines() > folded_total,
+    check(!open->code_blocks()[0].folded && tr.total_lines() > folded_total,
           "a click anywhere on the header row unfolds it");
-    check(open->code_blocks[0].hidden == 6 && open->code_blocks[0].marker_line != markdown::kNoLine,
+    check(open->code_blocks()[0].hidden == 6 && open->code_blocks()[0].marker_line != markdown::kNoLine,
           "…and the opened block is still CAPPED, with 6 of its 12 lines behind the marker");
     check(tr.selection().empty(), "…and it selected nothing: a control does its own job, not a drag");
 
     // Click 2: the "▼ N more" row lifts the cap for THAT block — the same reasoning that
     // made the transcript's own marker clickable in m5, one rung down.
-    const std::size_t marker = open->code_blocks[0].marker_line;
+    const std::size_t marker = open->code_blocks()[0].marker_line;
     tr.handle(mouse(MouseEvent::Kind::Press, 5, static_cast<int>(marker)), doc, 2000);
     tr.layout(doc, {0, 0, 40, 24}, fold);
-    check(tr.layout_of(0)->code_blocks[0].hidden == 0, "a click on the block's ▼ marker shows the rest of it");
+    check(tr.layout_of(0)->code_blocks()[0].hidden == 0, "a click on the block's ▼ marker shows the rest of it");
 
     // Ctrl-O takes the nearest fold from the top, whether it is an entry's or a block's.
     tr.set_code_folded("c1", 0, true);
     tr.layout(doc, {0, 0, 40, 24}, fold);
-    check(tr.layout_of(0)->code_blocks[0].folded, "set_code_folded shuts it again");
+    check(tr.layout_of(0)->code_blocks()[0].folded, "set_code_folded shuts it again");
     tr.handle(ctrl('o'), doc, 3000);
     tr.layout(doc, {0, 0, 40, 24}, fold);
-    check(!tr.layout_of(0)->code_blocks[0].folded, "transcript.fold (Ctrl-O) toggles a code block too — no new action for it");
+    check(!tr.layout_of(0)->code_blocks()[0].folded, "transcript.fold (Ctrl-O) toggles a code block too — no new action for it");
 
     // THE PROPERTY THE DESIGN EXISTS FOR. A fold hides lines and never text, so the
     // match count is the same open and shut. If this ever fails, a folded block has
@@ -701,10 +701,10 @@ int main() {
     // …and revealing one of them has to OPEN the block, because the text was there but
     // the line was not. The query is set while the block is shut, so the reveal is the
     // only thing that could have opened it.
-    check(tr.layout_of(0)->code_blocks[0].folded, "the block is shut when the query is typed");
+    check(tr.layout_of(0)->code_blocks()[0].folded, "the block is shut when the query is typed");
     tr.set_query("needle7");
     tr.layout(doc, {0, 0, 40, 24}, fold);
-    check(tr.match_count() == 1 && !tr.layout_of(0)->code_blocks[0].folded,
+    check(tr.match_count() == 1 && !tr.layout_of(0)->code_blocks()[0].folded,
           "revealing a match inside a folded block unfolds it");
 
     // A selection over the entry copies the block's real code, not its summary: the
@@ -713,7 +713,7 @@ int main() {
     tr.set_code_folded("c1", 0, true);
     tr.set_code_uncapped("c1", 0, false);
     tr.layout(doc, {0, 0, 40, 24}, fold);
-    const std::string& text = tr.layout_of(0)->text;
+    const std::string_view text = tr.layout_of(0)->text();
     tr.select({0, 0, 0}, {0, text.size(), 0});
     check(tr.selected_text().find("needle7") != std::string::npos,
           "a selection over a folded block copies the CODE, because the fold never touched the text");

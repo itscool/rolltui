@@ -6,8 +6,7 @@
 // that file sees an MD_ type.
 //
 //   Document parse(std::string_view source)
-//   std::vector<StyledLine> render(const Document&, const RenderOptions&)
-//   std::vector<StyledLine> render(std::string_view source, const RenderOptions&)
+//   Rendered r; r.render(doc | source, RenderOptions{})   — the caller owns the storage
 //
 // Blocks: heading (level), paragraph, fenced/indented code (info string kept), list
 // (ordered/unordered/task, nested, tight/loose), blockquote, table, thematic break,
@@ -37,12 +36,12 @@
 //     painter and never text: the renderer stays in sole control of wrapping and the
 //     cell grid. A span that overlaps a prior one, runs backwards, or exceeds the
 //     line is clamped (or, if nothing of it survives, dropped) and named in
-//     Rendered::highlight_report — never silently.
+//     Rendered::clamped() — never silently.
 //   - A LONG code block folds to one summary line, and an unfolded one that is still
 //     long is capped with the "▼ N more" marker (milestone 5b). Both hide LINES and
 //     never TEXT: see CodeFoldOptions.
 //
-// LOGICAL TEXT (milestone 9, for selection): render_text() also returns the document's
+// LOGICAL TEXT (milestone 9, for selection): Rendered::text() is the document's
 // logical text — what the rendered lines would be at infinite width — and every drawn
 // grapheme records the byte offset it came from in that text (or kNoSource for chrome:
 // borders, rules, continuation-line indentation, the blank lines between blocks). A
@@ -60,6 +59,7 @@
 //
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -67,53 +67,66 @@
 
 #include "rolltui/Marker.hpp"
 #include "rolltui/Style.hpp"
+#include "rolltui/c/rolltui_markdown.h"
+#include "rolltui/c/rolltui_md_lines.h"
 
 namespace rolltui::markdown {
 
-// ---- the block tree ----------------------------------------------------------------
+// ---- the parsed document -------------------------------------------------------------
+//
+// PHASE 15 m4 — THE BLOCK TREE LEFT THIS HEADER, and that is the port's one real
+// SIMPLIFICATION rather than a cost. `Run`, `Block`, `Align` and the inline-style bits sat
+// here for four phases and NOTHING outside the renderer ever read one; the two
+// implementations now shape the tree the way their language wants (a nested
+// `std::vector<Block>` with raw pointers into it on one side, index arrays with a
+// first-child/next-sibling list on the other), and what a caller can ask is what the one
+// test that cared was really asserting: what the top-level blocks ARE.
 
-enum InlineStyle : unsigned {
-  kPlain = 0,
-  kEmphasis = 1u << 0,
-  kStrong = 1u << 1,
-  kCode = 1u << 2,
-  kLink = 1u << 3,
-  kStrike = 1u << 4,
-  kLinkUrl = 1u << 5,  // the "(url)" the renderer appends after a link's text
-  kUnderline = 1u << 6,
+enum class BlockKind : std::uint8_t { Paragraph, Heading, Code, Html, Quote, List, Item, Table, Rule };
+
+// A parsed document — an OWNED handle. Move-only: two owners of one tree is a lifetime
+// question, and every lifetime in this library is structural.
+//
+// **PARSE INTO THE SAME OBJECT** when you parse repeatedly. A `Document` that is parsed
+// into reuses every buffer it already had, which is what makes the transcript's parse
+// cache — keyed on (id, version) and NOT on width — cost nothing after the first frame.
+class Document {
+ public:
+  Document() = default;
+  Document(Document&&) noexcept = default;
+  Document& operator=(Document&&) noexcept = default;
+  Document(const Document&) = delete;
+  Document& operator=(const Document&) = delete;
+
+  // OWNED, through a unique_ptr with a deleter that calls the C free — one owner, and no
+  // hand-rolled `delete` anywhere. Made on FIRST USE, so a default-constructed Document
+  // holds nothing and costs nothing.
+  struct Handle {
+    void operator()(RolltuiMdDoc* p) const { rolltui_md_doc_free(p); }
+  };
+
+  void parse(std::string_view source);
+
+  std::size_t block_count() const { return doc_ ? rolltui_md_doc_block_count(doc_.get()) : 0; }
+  BlockKind block_kind(std::size_t i) const {
+    return static_cast<BlockKind>(rolltui_md_doc_block_kind(doc_.get(), i));
+  }
+  // A Code or Html block's verbatim text; empty for every other kind. A BORROW, valid
+  // until this document is parsed into again.
+  std::string_view block_code(std::size_t i) const {
+    std::size_t n = 0;
+    const char* p = rolltui_md_doc_block_code(doc_.get(), i, &n);
+    return {p, n};
+  }
+
+  const RolltuiMdDoc* handle() const { return doc_.get(); }
+
+ private:
+  std::unique_ptr<RolltuiMdDoc, Handle> doc_;
 };
 
-struct Run {
-  std::string text;
-  unsigned style = kPlain;
-  std::string href;  // for kLink runs
-};
-
-enum class Align : std::uint8_t { Default, Left, Center, Right };
-
-struct Block {
-  enum class Kind : std::uint8_t { Paragraph, Heading, Code, Html, Quote, List, Item, Table, Rule };
-  Kind kind = Kind::Paragraph;
-  std::vector<Run> inlines;  // Paragraph, Heading
-  int level = 0;             // Heading: 1-6
-  std::string code;          // Code / Html: verbatim, '\n'-separated lines
-  std::string info;          // Code: the fence's info string ("cpp")
-  bool ordered = false;      // List
-  unsigned start = 1;        // List (ordered)
-  bool tight = true;         // List
-  bool task = false;         // Item
-  bool checked = false;      // Item
-  std::vector<Block> children;  // Quote, List (Items), Item (blocks)
-  // Table
-  std::vector<Align> aligns;
-  unsigned head_rows = 0;
-  std::vector<std::vector<std::vector<Run>>> rows;  // rows × cells × runs
-  bool implicit = false;  // a Paragraph the parser synthesised for bare text in a container
-};
-
-struct Document {
-  std::vector<Block> blocks;
-};
+// A fresh Document holding this source. The handle moves; nothing is copied.
+Document parse(std::string_view source);
 
 // Decodes "&amp;", "&#65;", "&#x42;" and the handful of named entities model output
 // actually uses. An unknown named entity is returned verbatim (never dropped).
@@ -123,28 +136,30 @@ std::string decode_entity(std::string_view entity);
 // callbacks under identical parsing and compare them with what was rendered.
 unsigned parser_flags();
 
-Document parse(std::string_view source);
-
 // ---- rendering ---------------------------------------------------------------------
+//
+// PHASE 15 m4 — A SPAN OWNS NOTHING, AND THE RENDER IS A HANDLE THE CALLER REUSES.
+// `Span` and `StyledLine` ARE the C structs (`rolltui/c/rolltui_md_lines.h`, one
+// definition, the rule Phase 14 fixed), and every string and array in them is a BORROW
+// into the `Rendered` that produced them, valid until it is rendered into again or
+// destroyed — the window `Line`, `Frame::glyph` and `Scratch` already state.
+//
+// WHAT A CALLER CAN SEE, both forced by the store rather than chosen:
+//   - `s.text()`, `s.href()` and `s.sources()` are views, not members. A caller that
+//     wants to keep the bytes says so.
+//   - `render_text` fills a `Rendered` the CALLER owns rather than returning containers.
+//     A `Rendered` that is rendered into repeatedly grows to a high-water mark and never
+//     allocates again, which is what makes a re-laid transcript entry free.
+//
+// WHY (m1's measurement, and it is the whole reason this shape changed): a resize frame
+// spent **4,128 allocations in `push_span`** and **2,283 more copying one span into
+// another line**, every frame, for bytes that had not changed. Nobody decided a span
+// should own its text; `std::string` is what you type.
 
-inline constexpr std::uint32_t kNoSource = 0xFFFFFFFFu;
+using Span = RolltuiMdSpan;
+using StyledLine = RolltuiMdLine;
 
-struct Span {
-  std::string text;
-  int width = 0;
-  Role role = Role::text;
-  std::string href;                    // non-empty: hyperlink target for these cells (OSC 8)
-  // One entry per grapheme cluster of `text` (as unicode::graphemes clusters it): the
-  // byte offset of that grapheme in Rendered::text, or kNoSource for chrome. A span's
-  // graphemes need not be contiguous in the logical text (a tab is eight spaces that
-  // all point at the tab). Spans merge only when role and href both match.
-  std::vector<std::uint32_t> sources;
-};
-
-struct StyledLine {
-  std::vector<Span> spans;
-  int width = 0;
-};
+inline constexpr std::uint32_t kNoSource = ROLLTUI_MD_NO_SOURCE;
 
 // ---- syntax highlighting seam (plan/phase-12.md m2) ---------------------------------
 //
@@ -187,17 +202,14 @@ struct HighlightSpan {
 // highlighter answers about lines[index] only, so the renderer keeps one line's spans
 // to clamp against one line's length, and a highlighter that lies still cannot corrupt
 // a frame.
-using Highlighter =
-    std::function<std::vector<HighlightSpan>(std::string_view lang, std::span<const std::string> lines, std::size_t index)>;
-
-// What the renderer did with a highlighter's spans beyond drawing the well-formed
-// ones: one entry per span it had to clamp or drop, naming the language, the line, the
-// offending span and the correction — never silent, the way LayoutLoadReport and
-// WindowsReport name their bad values.
-struct HighlightReport {
-  std::vector<std::string> clamped;
-  bool clean() const { return clamped.empty(); }
-};
+// PHASE 15 m4 — `lines` IS A SPAN OF VIEWS, and the port forced it: nothing crosses the
+// boundary as a `std::string`, so the C hands over (pointer, length) pairs, and materialising
+// a `std::string` per line to satisfy the old signature would have been an allocation per
+// highlighted line for the sake of a type. Every highlighter reads its lines and copies none
+// of them, so the views cost nothing and say so.
+using Highlighter = std::function<std::vector<HighlightSpan>(std::string_view lang,
+                                                             std::span<const std::string_view> lines,
+                                                             std::size_t index)>;
 
 // ---- long code blocks: fold and cap (plan/phase-12.md m5b) ---------------------------
 //
@@ -211,7 +223,7 @@ struct HighlightReport {
 //                    transcript's and a block's say the same thing the same way.
 //
 // THE ONE RULE THAT MAKES THIS SAFE: **both hide LINES, never TEXT.** A folded or capped
-// block still contributes every byte of its code to Rendered::text, and its header and
+// block still contributes every byte of its code to Rendered::text(), and its header and
 // marker rows are chrome (kNoSource). So the logical text — what a selection copies and
 // what a find searches — is INDEPENDENT of fold state, and a match's offset cannot shift
 // under it when a block opens or closes. The alternative (the folded block contributing
@@ -237,26 +249,20 @@ struct CodeFoldOptions {
   bool empty() const { return fold_over_lines <= 0 && cap_lines <= 0 && states.empty(); }
 };
 
-inline constexpr std::size_t kNoLine = static_cast<std::size_t>(-1);
+inline constexpr std::size_t kNoLine = ROLLTUI_MD_NO_LINE;
 
 // What the renderer did with one numbered code block — enough for a host to hit-test a
 // click and to find the block holding a byte offset, without re-parsing anything.
-struct CodeBlockInfo {
-  std::size_t index = 0;
-  std::string lang;        // the fence's first word; "" for a bare fence or indented block
-  std::size_t lines = 0;   // the block's own line count
-  std::size_t bytes = 0;
-  bool foldable = false;   // over the threshold (or explicitly folded): it has a header row
-  bool folded = false;
-  std::size_t hidden = 0;  // lines the cap hides; 0 when not capped
-  std::size_t header_line = kNoLine;  // index into Rendered::lines — the fold's click target
-  std::size_t marker_line = kNoLine;  // …and the cap's
-  std::size_t text_begin = 0, text_end = 0;  // the block's byte range in Rendered::text
-};
+// `lang` is a BORROW like every other string here (`b.lang()`).
+using CodeBlockInfo = RolltuiMdCodeBlock;
 
 // "diff · 42 lines · 1.2 kB" — the header's text, without its ▸/▾ marker. A bare fence
-// has no language to name, so it is called "code".
-std::string code_block_summary(std::string_view lang, std::size_t lines, std::size_t bytes);
+// has no language to name, so it is called "code". FILLS A CALLER'S BUFFER and returns the
+// bytes written (`kSummaryMax` is enough for any of it): this is a per-frame path when a
+// document holds foldable blocks, so it may not hand back a `std::string`.
+inline constexpr std::size_t kSummaryMax = ROLLTUI_MD_SUMMARY_MAX;
+std::size_t code_block_summary(std::string_view lang, std::size_t lines, std::size_t bytes, char* out,
+                               std::size_t cap);
 
 struct RenderOptions {
   int width = 80;
@@ -267,20 +273,90 @@ struct RenderOptions {
   CodeFoldOptions code_fold;  // off by default — see above
 };
 
-struct Rendered {
-  std::vector<StyledLine> lines;
-  std::string text;  // the logical text every Span::sources offset indexes
-  HighlightReport highlight_report;
-  std::vector<CodeBlockInfo> code_blocks;  // one per numbered code block, in order
+// WHAT A RENDER PRODUCED, and the storage it produced it in. OWNED (CLAUDE.md's fourth
+// strategy) through one handle; move-only, because two owners of one span pool is a
+// lifetime question and every lifetime in this library is structural.
+//
+// **RE-RENDER INTO THE SAME OBJECT.** `render()` resets and refills every buffer, so an
+// entry that is re-laid at a new width reuses the bytes, the spans, the sources and the
+// logical text it already had. That is the milestone: the store is what turned m1's
+// 6,411 span allocations into pool growth that stops.
+class Rendered {
+ public:
+  Rendered() = default;
+  Rendered(Rendered&&) noexcept = default;
+  Rendered& operator=(Rendered&&) noexcept = default;
+  Rendered(const Rendered&) = delete;
+  Rendered& operator=(const Rendered&) = delete;
+
+  // OWNED, through a unique_ptr with a deleter that calls the C free — one owner, and no
+  // hand-rolled `delete` anywhere. Made on FIRST USE, so a default-constructed Rendered
+  // (a member of a cache entry, a Scratch's fresh T) holds nothing and costs nothing.
+  struct Handle {
+    void operator()(RolltuiMdLines* p) const { rolltui_md_lines_free(p); }
+  };
+
+  void render(const Document& doc, const RenderOptions& opt = {});
+  void render(std::string_view source, const RenderOptions& opt = {});
+
+  std::span<const StyledLine> lines() const {
+    const RolltuiMdLine* p = store_ ? rolltui_md_lines_all(store_.get()) : nullptr;
+    return {p, p ? rolltui_md_lines_count(store_.get()) : 0};
+  }
+  std::size_t line_count() const { return store_ ? rolltui_md_lines_count(store_.get()) : 0; }
+  const StyledLine& line(std::size_t i) const { return *rolltui_md_lines_line(store_.get(), i); }
+  // The document's logical text — what every Span::sources() offset indexes.
+  std::string_view text() const {
+    return store_ ? std::string_view(rolltui_md_lines_text(store_.get()), rolltui_md_lines_text_size(store_.get()))
+                  : std::string_view{};
+  }
+  std::span<const CodeBlockInfo> code_blocks() const {
+    const RolltuiMdCodeBlock* p = store_ ? rolltui_md_lines_code_blocks(store_.get()) : nullptr;
+    return {p, p ? rolltui_md_lines_code_block_count(store_.get()) : 0};
+  }
+  // Every highlight span the renderer had to clamp or drop, named by language and line —
+  // never silent, the way LayoutLoadReport and WindowsReport name their bad values.
+  std::size_t clamped_count() const { return store_ ? rolltui_md_lines_clamped_count(store_.get()) : 0; }
+  std::string_view clamped(std::size_t i) const {
+    const char* p = nullptr;
+    std::size_t n = 0;
+    rolltui_md_lines_clamped_at(store_.get(), i, &p, &n);
+    return {p, n};
+  }
+  bool highlight_clean() const { return clamped_count() == 0; }
+
+  // The store, for a caller that BUILDS lines of its own behind the rendered ones —
+  // the transcript putting an entry's prefix in front of every body line without
+  // copying a byte (`rolltui_md_lines_span_ref`). Nothing else needs it.
+  RolltuiMdLines* store() {
+    if (!store_) store_.reset(rolltui_md_lines_new());
+    return store_.get();
+  }
+  const RolltuiMdLines* store() const { return store_.get(); }
+
+ private:
+  std::unique_ptr<RolltuiMdLines, Handle> store_;
+  // The syntax-highlighting seam's own working memory: a block's lines as views, and the
+  // spans a highlighter hands back. Members rather than locals in `render()`, which runs
+  // per entry per frame — a local vector would allocate on every block it highlighted.
+  std::vector<std::string_view> hl_lines_;
+  std::vector<HighlightSpan> hl_spans_;
 };
 
+// A fresh `Rendered` holding this document at this width. The handle moves; nothing is
+// copied. A caller that renders repeatedly (the transcript's layout cache) keeps its own
+// `Rendered` and calls `render()` on it instead, which is what makes the second render
+// free.
 Rendered render_text(const Document& doc, const RenderOptions& opt = {});
 Rendered render_text(std::string_view source, const RenderOptions& opt = {});
-std::vector<StyledLine> render(const Document& doc, const RenderOptions& opt = {});
-std::vector<StyledLine> render(std::string_view source, const RenderOptions& opt = {});
 
-// The drawn text of the rendered lines, '\n'-joined — what a copy of the whole entry
-// would yield, and what the never-drops-text test compares.
-std::string plain_text(const std::vector<StyledLine>& lines);
+// The drawn text of `lines`, '\n'-joined — what a copy of the whole entry would yield,
+// and what the never-drops-text test compares. `plain_text_into` fills a caller's string
+// (cleared first); the two returning forms are for callers that are not on a frame path —
+// today that is the test suite, and the rule (CLAUDE.md) is about per-frame APIs.
+void plain_text_into(std::span<const StyledLine> lines, std::string& out);
+std::string plain_text(std::span<const StyledLine> lines);
+std::string plain_text(const StyledLine& line);
 
 }  // namespace rolltui::markdown
+

@@ -59,6 +59,7 @@
 
 #include "rolltui/Document.hpp"
 #include "rolltui/Layout.hpp"
+#include "rolltui/Markdown.hpp"
 #include "rolltui/Memory.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
@@ -378,10 +379,41 @@ int main() {
   // The OFF numbers moved too (289 -> 286, 11180 -> 10941) and that is m3's own doing: the
   // soft-break cut used to build a tail `std::vector` and a tail `std::string` per wrapped
   // line, and the shared-buffer data model the port forced deleted both (rolltui/WrapCpp.cpp).
+  // RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the largest single move the budget
+  // has ever recorded:
+  //
+  //             steady   streaming     resize      streaming KB   resize KB   resize us
+  //   C++ (OFF)      0    286 →  37   10941 → 122      39 → 9    1383 → 134   6150 → 3358
+  //   C   (ON)       0    267 →  13   10297 →  82      39 → 7    1368 → 127
+  //
+  // **A RESIZE FRAME IS 122 ALLOCATIONS, DOWN FROM 10,941 — 98.9%** — and a SECOND resize to
+  // the same width is **2**, measured in both configurations. Three things did it, all of
+  // them the same finding (`plan/phase-15.md` m4, `rolltui/c/rolltui_md_lines.h`):
+  //   - a SPAN OWNS NOTHING. It was a `std::string` and two vectors per span; it is an
+  //     offset and a length into pools the caller's store owns. That was m1's 4,128.
+  //   - a span COPIED into another line is a descriptor, or not copied at all: the
+  //     transcript puts a body line behind its prefix by REFERENCING the body's spans.
+  //     That was m1's 2,283.
+  //   - a document is PARSED once per (id, version) and not once per width. That was m1's
+  //     1,243, and it is the one the port only surfaced rather than forced.
+  //
+  // WHAT THE 122 ARE, and they are a different KIND of number from the 10,941: since a
+  // second resize to the same width costs 2, all but two of them are buffers reaching a
+  // high-water mark they never leave — GROWING, AMORTISED, by name, and something the old
+  // 10,941 could never become. 80 are `rolltui::mem` growing the stores' pools; 40 are each
+  // entry's own wrap engine growing its line array, because a NARROWER width makes more
+  // lines than that entry had ever needed before.
+  //
+  // **THE C IS 40 CHEAPER ON A RESIZE AND 24 CHEAPER ON A STREAMING FRAME, and both gaps
+  // have one cause: what a re-parse costs when the storage is pooled.** The C++ block tree
+  // is `std::vector<Block>` holding `std::string`s, so re-parsing the streaming entry
+  // reconstructs owning containers; the C's is index arrays over one byte pool, so it
+  // refills buffers it already had. Neither is a better algorithm — it is the same design in
+  // two languages, and only one of them has a default that allocates.
 #ifdef ROLLTUI_C_BUILD
-  constexpr long kStreaming = 267, kResize = 10297;
+  constexpr long kStreaming = 13, kResize = 82;
 #else
-  constexpr long kStreaming = 286, kResize = 10941;
+  constexpr long kStreaming = 37, kResize = 122;
 #endif
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
@@ -516,16 +548,41 @@ int main() {
       // the same rule would be TOTAL since every allocation is an explicit call. By this
       // point in the test a 40-entry scene has been painted several times and is still held,
       // so the gauge is being asked about a real workload rather than a toy:
+      //
+      // RE-AIMED 2026-09-04 by Phase 15 m4, and the reason is a finding rather than a
+      // relaxation. This used to assert `live_bytes == 0` with ROLLTUI_C=OFF, because every
+      // byte of a painted scene was in a `std::string` or a `std::vector`. The span store is
+      // C in BOTH configurations now (it is DATA both implementations fill, not an algorithm
+      // the flag chooses — `rolltui/c/rolltui_md_lines.h`), so the C++ build routes real
+      // occupancy through the entry point too.
+      //
+      // **The LIMIT it existed to assert has not gone away; its SUBJECT moved**, and the
+      // assertion moved with it rather than being deleted. The markdown PARSE TREE is the
+      // sharpest subject it has ever had, because the flag decides what the tree IS:
+      // `std::vector<Block>` holding `std::string`s with ROLLTUI_C=OFF, index arrays over
+      // one byte pool with it ON. So the SAME parse is INVISIBLE to the gauge in one
+      // configuration and VISIBLE in the other — the partial-in-C++/total-in-C claim,
+      // measured on one line instead of described.
+      check(base.live_bytes > 100000, "the gauge reports REAL occupancy for the painted scene [" +
+                                          std::to_string(base.live_bytes) + " B]");
+      {
+        const mem::Stats before_parse = mem::stats();
+        markdown::Document parsed = markdown::parse(
+            "# A heading\n\nA paragraph with *emphasis* and a [link](https://example.com/some/path).\n\n"
+            "- one\n- two\n- three\n\n```cpp\nint x = 1;\nint y = 2;\n```\n\n> a quote\n");
+        const mem::Stats after_parse = mem::stats();
+        const long long delta =
+            static_cast<long long>(after_parse.live_bytes) - static_cast<long long>(before_parse.live_bytes);
+        check(parsed.block_count() > 0, "…the control's own subject exists: the parse produced blocks");
 #ifdef ROLLTUI_C_BUILD
-      check(base.live_bytes > 100000,
-            "ROLLTUI_C=ON: the gauge reports REAL occupancy for the painted scene [" +
-                std::to_string(base.live_bytes) + " B] — in C the entry point is TOTAL");
+        check(delta > 0, "ROLLTUI_C=ON: the gauge SEES the whole parse tree [" + std::to_string(delta) +
+                             " B] — in C every allocation is an explicit call, so the entry point is TOTAL");
 #else
-      check(base.live_bytes == 0,
-            "ROLLTUI_C=OFF: the gauge reports ZERO for the same scene [" + std::to_string(base.live_bytes) +
-                " B] — every byte of it is in a std:: container, which cannot route through this entry "
-                "point. THE LIMIT IS ASSERTED, not just documented");
+        check(delta == 0, "ROLLTUI_C=OFF: the gauge CANNOT see the same parse tree [" + std::to_string(delta) +
+                              " B of it] — it is std::vector all the way down. THE LIMIT IS ASSERTED, not just "
+                              "documented");
 #endif
+      }
     }
     // THE HONEST LIMIT, asserted rather than only documented: std::string and std::vector
     // do NOT route through this in C++, so these figures cover the library's own explicit

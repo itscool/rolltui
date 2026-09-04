@@ -91,7 +91,7 @@ bool is_diff_language(std::string_view lang);
 //
 // A changed line that PAIRS with its neighbour (see above) is split into three spans so
 // its changed word run can take diff_added_word / diff_removed_word.
-std::vector<markdown::HighlightSpan> diff_spans(std::string_view lang, std::span<const std::string> lines,
+std::vector<markdown::HighlightSpan> diff_spans(std::string_view lang, std::span<const std::string_view> lines,
                                                 std::size_t index);
 
 }  // namespace rolltui
