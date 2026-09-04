@@ -1,16 +1,25 @@
 {
   "name": "kettle", "min_width": 0, "min_height": 0, "focus": "kettle_menu",
   "actions": {
-    "app.kettle": "put the kettle on"
+    "app.kettle": "put the kettle on",
+    "app.find": "find in the transcript"
   },
   "root": { "column": [
-    { "id": "kettle_banner", "content": "text:  a screen with no code behind it — four files, no rebuild",
+    { "id": "kettle_banner", "content": "text:  a screen with no code behind it — six files, no rebuild",
       "size": 1, "background": "panel_background" },
     { "row": [
-      { "id": "kettle_doc", "content": "file:docs/kettle.md", "border": "single",
-        "title": "docs/kettle.md", "focusable": true },
+      { "column": [
+        { "id": "kettle_talk", "content": "transcript:session", "size": "fill 2", "border": "single",
+          "title": "the transcript", "focusable": true },
+        { "id": "kettle_doc", "content": "file:docs/kettle.md", "border": "single",
+          "title": "docs/kettle.md", "focusable": true } ] },
       { "id": "kettle_menu", "content": "menu:kettle", "size": 34, "border": "single",
         "title": "menus/kettle.json", "focusable": true } ] },
     { "id": "kettle_keys", "content": "help", "size": 8, "border": "single",
-      "title": "the live key table", "focusable": true } ] }
+      "title": "the live key table", "focusable": true } ] },
+  "popups": [
+    { "id": "find", "x": "50%", "y": 0, "w": "60%", "h": 3, "anchor": "top",
+      "min_w": 24, "max_w": 72,
+      "root": { "id": "find", "content": "input:find", "border": "rounded", "title": "find",
+                "focusable": true, "background": "panel_background" } } ]
 }

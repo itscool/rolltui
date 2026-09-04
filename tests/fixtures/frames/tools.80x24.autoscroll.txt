@@ -5,19 +5,19 @@
 │ Without the drain a poll() blocked on the     │ size    80x24                │
 │ state lock could resume after release()       │ line    9/27                 │
 │ decided it was the last client, re-register   │ follow  yes                  │
-│ itself and respawn the server release just    │ depth   truecolor            │
-│ killed — a permanent orphan. The rule is      │ focus   transcript           │
-│ recorded in CLAUDE.md (https://example.com/   │ copied  743 bytes            │
-│ roll/CLAUDE.md#hard-constraints) under hard   │                              │
-│ constraints.                                  │                              │
-│                                               │                              │
-│ 1. cancel the timer                           │                              │
-│ 2. drain the queue                            │                              │
-│ 3. release the source                         │                              │
-│                                               │                              │
-│ ▸ run_tests build_only (134 ms) (2 lines)     │                              │
-│                                               │                              │
-│ > thanks                                      │                              │
+│ itself and respawn the server release just    █ depth   truecolor            │
+│ killed — a permanent orphan. The rule is      █ focus   transcript           │
+│ recorded in CLAUDE.md (https://example.com/   █ copied  743 bytes            │
+│ roll/CLAUDE.md#hard-constraints) under hard   █                              │
+│ constraints.                                  █                              │
+│                                               █                              │
+│ 1. cancel the timer                           █                              │
+│ 2. drain the queue                            █                              │
+│ 3. release the source                         █                              │
+│                                               █                              │
+│ ▸ run_tests build_only (134 ms) (2 lines)     █                              │
+│                                               █                              │
+│ > thanks                                      █                              │
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘

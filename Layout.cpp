@@ -1033,6 +1033,14 @@ void compose_layer(Frame& frame, const std::vector<ResolvedNode>& nodes, const T
                    const SlotRenderer& render, bool ambiguous_wide) {
   std::vector<std::uint8_t> map(static_cast<std::size_t>(frame.width() * frame.height()), 0);
   std::vector<std::uint8_t> before(map.size(), 0);
+  // TWO PASSES: every node's ground and border first, then every window's CONTENT
+  // (Phase 12 m7). One pass was correct while a slot only ever drew inside `rn.inner`,
+  // which excludes its own border — but m5's scrollbar deliberately draws into the
+  // window's right BORDER column, and two adjacent bordered siblings SHARE that column.
+  // In one pass the next sibling's border was then drawn over the thumb, so a transcript
+  // with a panel to its right had a scrollbar that was computed, positioned, hit-tested
+  // and INVISIBLE — including in roll's own shipped `default` layout, which is where m7
+  // found it. Nothing else moves: a slot's own content never reaches a shared column.
   for (const ResolvedNode& rn : nodes) {
     const Node& n = *rn.node;
     const bool draws = n.is_window() || n.border != Border::None;
@@ -1052,8 +1060,10 @@ void compose_layer(Frame& frame, const std::vector<ResolvedNode>& nodes, const T
     Style title = theme.style(Role::title);
     title.bg = ground.bg;
     draw_border_impl(frame, rn.outer, n.border, line, n.title, title, ambiguous_wide, &map, &before);
-    if (n.is_window() && !rn.inner.empty() && render) render(rn, frame);
   }
+  if (!render) return;
+  for (const ResolvedNode& rn : nodes)
+    if (rn.node->is_window() && !rn.inner.empty()) render(rn, frame);
 }
 
 // ---- the stack -------------------------------------------------------------------------------

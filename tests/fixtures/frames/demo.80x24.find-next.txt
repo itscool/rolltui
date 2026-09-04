@@ -14,8 +14,8 @@
 │ │ windows +    │             │ loader's     │ │                              │
 │ │ placements + │             │ hand parser; │ │                              │
 │ │ content      │             │ hot-reloaded │ │                              │
-│ │ slots)       │             │              │ │                              │
-│ │ Markdown     │ build       │ single       │ │                              │
+│ │ slots)       │             │              │ █                              │
+│ │ Markdown     │ build       │ single       │ █                              │
 │ │ block        │             │ header over  │ │                              │
 │ │ renderer     │             │ md4c▼ 16 more  │                              │
 ├───────────────────────────────────────────────┤                              │

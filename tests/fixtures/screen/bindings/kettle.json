@@ -57,6 +57,7 @@
     "stack.focus_next": ["tab"],
     "stack.focus_prev": ["shift+tab"],
     "app.kettle": ["ctrl+j"],
+    "app.find": ["ctrl+t"],
     "app.help": ["f1", "?"],
     "app.menu": ["f2"],
     "app.details": ["f3"],

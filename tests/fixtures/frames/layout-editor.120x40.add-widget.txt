@@ -1,4 +1,4 @@
-┌ transcript ───────────────────────────────┌ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
+┌ transcript ───────────────────────────────┬ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
 │ │ widget     │            │ header      │ │ input:                  │ layout editor • transcript-2                   │
 │ │ (hierarchi │            │ each; the   │ │   Enter                 │ Select the next node                       Tab │
 │ │ cal,       │            │ widget set  │ │ (always Enter)          │ Select the previous node             Shift-Tab │
@@ -28,12 +28,12 @@
 │ │ built-ins) │            │             │ │ line (scrolls when empty│ Reset to the loaded layout…                    │
 │ └────────────┴────────────┴─────────────┘ │   End                   │                                                │
 │                                           │ (scrolls when empty)    │                                                │
-│ Here is the function you asked for:       │   Up                    │                                                │
-│                                           │ the previous history ent│                                                │
-│ ┌ cpp ──────────────────────────────────┐ │   Down                  │                                                │
-│ │ int add(int a, int b) {               │ │ the next history entry  │                                                │
-│ │   return a + b;                       │ │   Shift-Left            │ selected: transcript-2  size fill  border sing │
-│ └───────────────────────────────────────┘ │ selection one grapheme l│ Tab next node · click selects · drag an edge r │
+│ Here is the function you asked for:       █   Up                    │                                                │
+│                                           █ the previous history ent│                                                │
+│ ┌ cpp ──────────────────────────────────┐ █   Down                  │                                                │
+│ │ int add(int a, int b) {               │ █ the next history entry  │                                                │
+│ │   return a + b;                       │ █   Shift-Left            │ selected: transcript-2  size fill  border sing │
+│ └───────────────────────────────────────┘ █ selection one grapheme l│ Tab next node · click selects · drag an edge r │
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

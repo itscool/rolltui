@@ -1,6 +1,6 @@
-  a screen with no code behind it — six files, no rebuild
-┌ the transcript ─────────────────────────────────────────────────────────────────────┬ menus/kettle.json ─────────────┐
-│ │ -  int target = 80;                                                             │ │ commands                       │
+  a screen with no code ╭ find ────────────────────────────────────────────────────────────────╮
+┌ the transcript ───────│ > target                                                             │ttle.json ─────────────┐
+│ │ -  int target = 80; ╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ +  int target = 100;                                                            │ │ Put the kettle on       Ctrl-J │
 │ │    while (probe() < target) {                                                   │ │ About this screen            ▸ │
 │ │      wait_ms(200);                                                              │ │                                │
@@ -37,4 +37,4 @@
 │   Delete                  erase after the caret (or the selection)                                                   │
 │   Ctrl-W, Alt-Backspace   kill the word before the caret                                                  ▼ 56 more  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- default-dark  kettle  120x40  line 13/31  follow  truecolor  focus:kettle_menu
+ default-dark  kettle  120x40  line 13/31  follow  truecolor  focus:find  find 2/4

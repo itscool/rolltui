@@ -830,10 +830,17 @@ void Windows::draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const 
   Style s = theme.style(Role::scrollbar);
   const Style ground = theme.style(rn.node->background);
   if (s.bg.kind == Color::Kind::None) s.bg = ground.bg;
+  // █ (U+2588) is East Asian AMBIGUOUS, exactly like the box-drawing set the border is
+  // made of — so it follows the same rule the border already has (Layout.hpp): with
+  // `ambiguous_wide` the thumb is ASCII. Drawing the block anyway put a glyph a
+  // wide-ambiguous terminal renders in TWO cells into a one-cell border column, which
+  // shifts the whole row. Found by Phase 12 m7, and only findable once the thumb stopped
+  // being overwritten by the neighbour's border.
+  const char* thumb = env_.ambiguous_wide ? "#" : "\xE2\x96\x88";
   for (int i = 0; i < t.length; ++i) {
     const int y = rn.outer.y + 1 + t.offset + i;
     if (y >= rn.outer.y + rn.outer.h - 1) break;
-    f.put(x, y, "\xE2\x96\x88", 1, s);  // █ — a full block, so it reads as a thumb in mono too
+    f.put(x, y, thumb, 1, s);
   }
 }
 

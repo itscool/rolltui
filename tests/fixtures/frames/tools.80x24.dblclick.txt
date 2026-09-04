@@ -1,17 +1,17 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > read the manager header and tell me what    │ theme   default-dark         │
-│   stop_heartbeat does                         │ keys    default              │
-│                                               │ layout  default              │
-│ ▸ read_file include/ResilientModelManager.hpp │ size    80x24                │
-│                                               │ line    1/27                 │
-│ stop_heartbeat cancels the heartbeat timer    │ follow  no                   │
-│ and drains its queue: the dispatch_sync after │ depth   truecolor            │
-│ the cancel is what makes shutdown race-free,  │ focus   transcript           │
-│ because dispatch_source_cancel does not wait  │ copied  3 bytes              │
-│ for a handler that is already running.        │                              │
-│                                               │                              │
-│ Without the drain a poll() blocked on the     │                              │
-│ state lock could resume after release()       │                              │
+│ > read the manager header and tell me what    █ theme   default-dark         │
+│   stop_heartbeat does                         █ keys    default              │
+│                                               █ layout  default              │
+│ ▸ read_file include/ResilientModelManager.hpp █ size    80x24                │
+│                                               █ line    1/27                 │
+│ stop_heartbeat cancels the heartbeat timer    █ follow  no                   │
+│ and drains its queue: the dispatch_sync after █ depth   truecolor            │
+│ the cancel is what makes shutdown race-free,  █ focus   transcript           │
+│ because dispatch_source_cancel does not wait  █ copied  3 bytes              │
+│ for a handler that is already running.        █                              │
+│                                               █                              │
+│ Without the drain a poll() blocked on the     █                              │
+│ state lock could resume after release()       █                              │
 │ decided it was the last client, re-register   │                              │
 │ itself and respawn the server release just    │                              │
 │ killed — a permanent orphan. The rule is      │                              │

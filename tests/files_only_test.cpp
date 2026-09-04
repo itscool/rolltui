@@ -6,12 +6,38 @@
 // copies into a scratch preset directory before running the REAL rolltui-studio
 // binary against it:
 //
-//   layouts/kettle.json    the design — a text: window, a file: window, a menu: window
-//                          and a help window, plus the ONE action the screen emits
+//   layouts/kettle.json    the design — a transcript:, a text:, a file:, a menu: and a
+//                          help window, a find popup, and the TWO actions it emits
 //   menus/kettle.json      the menu that window shows; its first row NAMES app.kettle
-//   bindings/kettle.json   the keys — it is the only thing that gives app.kettle a chord
+//   bindings/kettle.json   the keys — it is the only thing that gives app.kettle and
+//                          app.find their chords
 //   docs/kettle.md         the document the file: window reads
+//   docs/kettle-session.md the document the transcript: window reads, and the studio's
+//                          fixture argument — a marked span, a ```diff fence, and more
+//                          lines than the window has rows
 //   layouts/kettle-silent.json   the same screen declaring NO actions, for the VERIFY rung
+//
+// PHASE 12 m7 EXTENDED THE SCREEN rather than adding a second one, because the claim is
+// about composition: the four capabilities Phase 12 built have to reach a screen through
+// FILES, and the cheapest way to be wrong about that is to demonstrate each one in a
+// host that was written for it. So the same six files now also carry
+//
+//   a MARKED SPAN      docs/kettle-session.md's `<!-- state: waiting -->` entry, which
+//                      the theme turns into a spinner (m6)
+//   a HIGHLIGHTED      the same document's ```diff fence, coloured by the highlighter
+//   CODE BLOCK         the host registered — asserted on the SGR bytes, since colour is
+//                      the whole point and a text frame cannot show it (m2, m5b)
+//   a SCROLLBAR        the transcript window is smaller than its document, so it reports
+//                      a scroll extent and the window draws a thumb (m5)
+//   FIND               Ctrl-F, from the bindings file, opening the find popup the LAYOUT
+//                      file declares — not a mode any host implements (m4)
+//
+// None of that needed a line of host code, which is the milestone. Two things it DID need
+// were defects m5 had shipped and nothing had caught, both found here and both fixed:
+// a window whose right border is shared with a bordered neighbour had its thumb drawn and
+// then overwritten by that neighbour's border (so roll's own shipped `default` layout had
+// an invisible scrollbar), and the thumb glyph █ is East Asian AMBIGUOUS, so on a
+// wide-ambiguous terminal it overflowed the one-cell border column.
 //
 // Nothing here is a new capability: m2 put widgets behind kinds, m3 made menus files,
 // m4 gave layouts their actions and m5 the editor. This milestone is the claim that the
@@ -104,7 +130,6 @@ std::string status_line(const std::string& frame) {
 int main(int argc, char** argv) {
   const bool record = (argc > 1 && std::strcmp(argv[1], "--record") == 0);
   const std::string frames = std::string(ROLLTUI_FIXTURE_DIR) + "/frames/";
-  const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md";
 
   // ---- the scratch preset directory: the screen's four files and nothing else --------
   const char* tmp = std::getenv("TMPDIR");
@@ -116,12 +141,18 @@ int main(int argc, char** argv) {
   fs::copy(std::string(ROLLTUI_FIXTURE_DIR) + "/screen", presets, fs::copy_options::recursive, ec);
   check(!ec, "copied the screen's files into a scratch preset directory (" + presets + ")");
   check(fs::exists(presets + "/layouts/kettle.json") && fs::exists(presets + "/menus/kettle.json") &&
-            fs::exists(presets + "/bindings/kettle.json") && fs::exists(presets + "/docs/kettle.md"),
-        "…all four of them: a layout, a menu, a bindings file and a document");
+            fs::exists(presets + "/bindings/kettle.json") && fs::exists(presets + "/docs/kettle.md") &&
+            fs::exists(presets + "/docs/kettle-session.md") && fs::exists(presets + "/layouts/kettle-silent.json"),
+        "…all six of them: two layouts, a menu, a bindings file and two documents");
 
   // The startup trace ("no working copy; started from the shipped 'default'") is stderr
   // and expected; keep it out of the frames and out of ctest's output.
   const std::string err = " 2>>'" + scratch + "/stderr.txt'";
+  // THE DOCUMENT IS ONE OF THE SCREEN'S FILES. The studio's fixture argument is how a
+  // host says "this is the transcript's document", so pointing it at the screen's own
+  // docs/kettle-session.md is what makes the transcript window part of the same six files
+  // as everything else — rather than the screen borrowing the library's demo fixture.
+  const std::string fixture = presets + "/docs/kettle-session.md";
   auto play = [&](const std::string& args) {
     return std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' --theme default-dark --presets '" + presets +
            "' " + args + err;
@@ -154,10 +185,13 @@ int main(int argc, char** argv) {
       // case that scrolled past it and returned -1; m4 added two `transcript` rows, which
       // sit ABOVE the app scope, taking the two extra lines to four. The recipe, so the
       // next one is arithmetic and not archaeology: count the rows your milestone adds
-      // BEFORE the "app:" header and add that many `Down`s.
+      // BEFORE the "app:" header and add that many `Down`s. m7 is the third time and the
+      // first for a different reason: it added no row ABOVE "app:" but one INSIDE the
+      // scope (app.find), so "editor:" sits one lower and the four-line window has to
+      // start one line higher — five Downs, not four.
       {"files-only.80x24.app-scope",
        "--frame 80x24 --layout kettle --bindings kettle --keys \"Tab PageDown PageDown PageDown PageDown PageDown "
-       "PageDown Down Down Down Down\""},
+       "PageDown Down Down Down Down Down\""},
       // The SAME screen reached by switching layouts at runtime (F2 › Layout › kettle),
       // which is the only path that can accumulate declarations: the app scope must still
       // be this layout's one action and not also the five the layout we started on
@@ -165,17 +199,26 @@ int main(int argc, char** argv) {
       // above cannot tell an authoritative declare() from an additive one — this one can.
       {"files-only.80x24.switched",
        "--frame 80x24 --layout default --bindings kettle --keys \"F2 Type:lay Enter Type:kettle Enter Escape Tab "
-       "PageDown PageDown PageDown PageDown PageDown PageDown Down Down Down Down\""},
+       "PageDown PageDown PageDown PageDown PageDown PageDown Down Down Down Down Down\""},
       // The VERIFY rung: a layout declaring nothing. The menu item's action is reported
       // by name in the status line and its shortcut is gone.
       {"files-only.100x14.silent", "--frame 100x14 --layout kettle-silent --bindings kettle"},
       // The standing rule (the user, 2026-09-01): every view shrinks to 1 or 0 cells in
       // either dimension and stays graceful — with the menu driven.
+      // Phase 12 m7: the four capabilities, on the same screen and from the same files.
+      // `--tick 240` fixes the effect clock so the marked span records deterministically;
+      // Tab Tab reaches the transcript from the menu the layout focuses, and Home puts
+      // the marked entry and the diff block in view together.
+      {"files-only.120x40.capabilities", "--frame 120x40 --layout kettle --bindings kettle --tick 240 --keys \"Tab Tab Home\""},
+      // Ctrl-T is the bindings file's — deliberately a chord NO shipped default binds,
+      // so the control below discriminates; the popup it opens is the layout file's; the
+      // count is the widget's and the status line is the host's. No find MODE anywhere.
+      {"files-only.120x40.find", "--frame 120x40 --layout kettle --bindings kettle --tick 240 --keys \"CtrlT Type:target\""},
       {"files-only.20x6", "--frame 20x6 --layout kettle --bindings kettle --keys \"Down Enter\""},
       {"files-only.1x1", "--frame 1x1 --layout kettle --bindings kettle --keys \"Down Enter Tab\""},
   };
 
-  std::string screen, menu_open, app_scope, switched, silent;
+  std::string screen, menu_open, app_scope, switched, silent, caps, found;
   for (const Case& c : cases) {
     int rc = 0;
     const std::string out = run(play(c.args), rc);
@@ -226,6 +269,8 @@ int main(int argc, char** argv) {
     if (n == "files-only.80x24.app-scope") app_scope = out;
     if (n == "files-only.80x24.switched") switched = out;
     if (n == "files-only.100x14.silent") silent = out;
+    if (n == "files-only.120x40.capabilities") caps = out;
+    if (n == "files-only.120x40.find") found = out;
   }
 
   // ---- what the golden alone does not say --------------------------------------------
@@ -262,20 +307,23 @@ int main(int argc, char** argv) {
       for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
         if (at_app < 0 && has(rows[i], "app:")) { at_app = i; continue; }
         if (at_app >= 0 && has(rows[i], "editor:")) {
-          if (i == at_app + 2) action_row = rows[at_app + 1];
+          if (i > at_app + 1) action_row = rows[at_app + 1];
           return i - at_app - 1;
         }
       }
       return -1;
     };
     std::string action_row;
-    check(app_scope_size(app_scope, action_row) == 1 && has(action_row, "put the kettle on"),
-          "the app scope is one action long — this layout's, and no other layout's [" + action_row + "]");
+    // TWO since m7 (app.kettle and app.find), and the number is the point: it is exactly
+    // what THIS layout file declares. `app_scope_size` reports the rows between the "app:"
+    // header and the next one, and `action_row` is the first of them.
+    check(app_scope_size(app_scope, action_row) == 2 && has(action_row, "put the kettle on"),
+          "the app scope is two actions long — this layout's, and no other layout's [" + action_row + "]");
     // The discriminating one: reached by SWITCHING layouts at runtime, where an additive
     // declare() would leave the previous screen's five app actions live beneath this one.
     std::string switched_row;
-    check(app_scope_size(switched, switched_row) == 1 && has(switched_row, "put the kettle on"),
-          "…and still one action after switching to this layout at runtime, not six [" +
+    check(app_scope_size(switched, switched_row) == 2 && has(switched_row, "put the kettle on"),
+          "…and still two after switching to this layout at runtime, not eight [" +
               std::to_string(app_scope_size(switched, switched_row)) + "]");
     check(has(status_line(switched), " kettle ") && !has(switched, "open the settings and commands menu"),
           "…the screen we switched away from left no action of its own behind");
@@ -286,12 +334,100 @@ int main(int argc, char** argv) {
           "Down + Enter descends a level of a menu that is only a file");
   }
 
+  // ---- PHASE 12 m7: the four capabilities, each reached through a file ----------------
+  // The screen's files say `waiting`, ```diff, a window smaller than its document, and
+  // app.find. No host source says any of it — which the grep control at the bottom is
+  // what actually establishes; these assertions establish that it WORKED.
+  {
+    // (1) A MARKED SPAN. docs/kettle-session.md's entry is the still "· waiting …" the
+    // document itself wrote; the shipped theme is what turns the "·" into a braille frame.
+    const std::size_t at = caps.find(" waiting for the kettle to boil");
+    check(at != std::string::npos, "the marked entry is on screen");
+    check(at >= 3 && static_cast<unsigned char>(caps[at - 3]) == 0xE2 && static_cast<unsigned char>(caps[at - 2]) == 0xA0,
+          "a MARKED SPAN: the theme's braille spinner replaced the still '·' the document wrote");
+    check(!has(caps, "\xC2\xB7 waiting"), "…so the still frame is gone while it spins");
+
+    // (2) A HIGHLIGHTED CODE BLOCK. The fence — not the content — is what says `diff`, and
+    // the block's label proves the renderer read it as one.
+    check(has(caps, "\xE2\x94\x8C diff ") && has(caps, "-  int target = 80;") && has(caps, "+  int target = 100;"),
+          "a HIGHLIGHTED CODE BLOCK: the ```diff fence names the block and its pair is drawn");
+
+    // (3) A SCROLLBAR. The transcript is smaller than its document, so it reports an
+    // extent and the WINDOW draws a thumb in its right border column — which is the
+    // column it SHARES with the menu beside it, the case that was silently overwritten
+    // until m7 found it. Asserting the thumb on the marked entry's own row is what ties
+    // it to this window rather than to some other one on the screen.
+    std::vector<std::string> rows;
+    {
+      std::istringstream in(caps);
+      std::string r;
+      while (std::getline(in, r)) rows.push_back(r);
+    }
+    std::string marked_row;
+    for (const std::string& r : rows)
+      if (has(r, "waiting for the kettle to boil")) marked_row = r;
+    check(has(marked_row, "\xE2\x96\x88") && has(marked_row, "commands"),
+          "a SCROLLBAR: the thumb is in the transcript's right border column — the one it SHARES with the menu [" +
+              marked_row.substr(0, 40) + " … ]");
+
+    // (4) FIND. Ctrl-F is the bindings file's, the popup is the layout file's, the count
+    // is the widget's. There is no find mode in any host.
+    check(has(found, "\xE2\x95\xAD find ") && has(found, "focus:find"),
+          "FIND: Ctrl-T opened the popup THIS LAYOUT FILE declares, and focused its input");
+    check(has(found, "> target") && has(status_line(found), "find 2/4"),
+          "…the query is the bar's own text and the count is visible [" + status_line(found) + "]");
+  }
+
+  // ---- control: a theme that maps nothing leaves the document's own still frame -------
+  // The same six files, one theme swapped. This is the degrade rung as a control: if the
+  // spinner above came from anything but the theme, this would still spin.
+  {
+    int rc = 0;
+    const std::string out = run(play(std::string("--frame 120x40 --layout kettle --bindings kettle --tick 240 --keys "
+                                                 "\"Tab Tab Home\" --theme '") +
+                                    ROLLTUI_FIXTURE_DIR + "/themes/still.json'"),
+                                rc);
+    check(rc == 0 && has(out, "\xC2\xB7 waiting for the kettle to boil"),
+          "under a theme that maps no effects the SAME document shows the still '·' it wrote");
+  }
+
+  // ---- control: the block's COLOUR, which a text frame cannot carry -------------------
+  // The one capability whose whole point is invisible in `frame_to_text`. `--dump-role`
+  // says what the theme resolved the role to and `--frame-sgr` is the frame with its
+  // escape sequences, so the assertion is that THOSE BYTES are in THAT frame — not that
+  // a renderer test passed somewhere else.
+  {
+    auto sgr_fg = [&](const char* role, std::string& why) {
+      int rc = 0;
+      const std::string out = run(play(std::string("--frame-sgr 120x40 --depth truecolor --layout kettle --bindings kettle "
+                                                   "--tick 240 --keys \"Tab Tab Home\" --dump-role ") +
+                                       role),
+                                  rc);
+      const std::size_t at = out.find(std::string(role) + " fg=#");
+      if (rc != 0 || at == std::string::npos) { why = "could not read the role"; return false; }
+      const std::string hex = out.substr(at + std::strlen(role) + 5, 6);
+      const long v = std::strtol(hex.c_str(), nullptr, 16);
+      const std::string want = "38;2;" + std::to_string((v >> 16) & 0xff) + ";" + std::to_string((v >> 8) & 0xff) + ";" +
+                               std::to_string(v & 0xff);
+      why = std::string(role) + " #" + hex + " → " + want;
+      return out.find(want) != std::string::npos;
+    };
+    std::string why_a, why_r;
+    const bool added = sgr_fg("diff_added", why_a), removed = sgr_fg("diff_removed", why_r);
+    check(added && removed, "the diff roles are in the frame's SGR bytes, so the block is actually COLOURED [" + why_a +
+                                " | " + why_r + "]");
+  }
+
   // ---- control: the bindings FILE is what supplies the chord --------------------------
   {
     int rc = 0;
     const std::string out = run(play("--frame 80x24 --layout kettle"), rc);  // no --bindings
     check(rc == 0 && has(out, "Put the kettle on") && !has(out, "Ctrl-J"),
           "without bindings/kettle.json the same row shows NO chord — the file is what bound it");
+    int rc2 = 0;
+    const std::string nofind = run(play("--frame 120x40 --layout kettle --keys \"CtrlT Type:target\""), rc2);
+    check(rc2 == 0 && !has(nofind, "\xE2\x95\xAD find ") && !has(status_line(nofind), "find "),
+          "…and Ctrl-T opens nothing: the find chord came from that file too, not from the host");
   }
 
   // ---- control: a layout that declares nothing (VERIFY) -------------------------------

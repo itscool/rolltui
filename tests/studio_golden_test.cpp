@@ -694,7 +694,10 @@ int main(int argc, char** argv) {
     // a chord pair only a `help` widget renders (from the LIVE bindings), so finding it
     // in the second pane is the widget itself, not a title the editor wrote — and it
     // survives the pane being narrow enough to wrap the descriptions.
-    check(le_widget.find("\xE2\x94\x8C transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
+    // The seam is `┬` and not `┌` since m7: the layout editor's selection outline used to
+    // redraw the selected window's border UNJOINED and win, which broke the join it sits
+    // on. This assertion was pinned to that broken glyph.
+    check(le_widget.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
               le_widget.find("help \xE2\x96\xB8") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
           "a `help` widget added by the kind picker alone draws in the next frame, with the Source field emptied and disabled");
     check(le_actions.find("app.zoom") != std::string::npos && le_actions.find("add an action (name)") != std::string::npos,

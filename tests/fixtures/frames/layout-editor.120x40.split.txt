@@ -28,12 +28,12 @@
 │ │ built-ins) │            │             │ │ │ built-ins) │          │ Reset to the loaded layout…                    │
 │ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│                                                │
 │                                           │                         │                                                │
-│ Here is the function you asked for:       │ Here is the function you│                                                │
-│                                           │                         │                                                │
-│ ┌ cpp ──────────────────────────────────┐ │ ┌ cpp ──────────────────│                                                │
-│ │ int add(int a, int b) {               │ │ │ int add(int a, int b) │                                                │
-│ │   return a + b;                       │ │ │   return a + b;       │ selected: transcript  size fill  border single │
-│ └───────────────────────────────────────┘ │ └───────────────────────│ Tab next node · click selects · drag an edge r │
+│ Here is the function you asked for:       █ Here is the function you│                                                │
+│                                           █                         │                                                │
+│ ┌ cpp ──────────────────────────────────┐ █ ┌ cpp ──────────────────│                                                │
+│ │ int add(int a, int b) {               │ █ │ int add(int a, int b) │                                                │
+│ │   return a + b;                       │ █ │   return a + b;       │ selected: transcript  size fill  border single │
+│ └───────────────────────────────────────┘ █ └───────────────────────│ Tab next node · click selects · drag an edge r │
 ├───────────────────────────────────────────┴─────────────────────────│ split transcript side by side · undo 1 · redo  │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

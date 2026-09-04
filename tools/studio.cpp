@@ -779,10 +779,27 @@ struct App {
   // The layout editor's selection, drawn from the slot callback (after the window's own
   // border, before the popups above it compose — a highlight drawn after composition
   // would paint over the editor's popup). A split node shows only in the breadcrumb.
+  // The selected window's outline. It RECOLOURS the border ring rather than redrawing it
+  // (Phase 12 m7): redrawing used the non-joining draw_border, so at a seam two bordered
+  // siblings share, the outline replaced the joined glyph with an unjoined corner — a
+  // `├` becoming a `└` in the middle of a continuous edge. That was invisible only
+  // because the neighbour's border happened to be drawn afterwards and won; the moment
+  // content stopped being overwritten by a later sibling's chrome (the scrollbar fix in
+  // compose_layer) it stopped being hidden. A highlight's whole difference from the
+  // border it highlights is its COLOUR, so tinting is both the smaller act and the
+  // correct one — the box-drawing stays exactly as the compositor joined it.
   void draw_selection(const ResolvedNode& rn, Frame& f) {
     if (editor_mode != EditorMode::Layout || rn.layer != 0 || rn.node->id != leditor.selected()) return;
-    if (rn.node->border != Border::None) draw_border(f, rn.outer, rn.node->border, theme.style(Role::border_active), rn.node->title, theme.style(Role::title), ambiguous);
-    else f.tint(rn.outer.intersect(layout_area()), theme.style(Role::selection));
+    if (rn.node->border == Border::None) {
+      f.tint(rn.outer.intersect(layout_area()), theme.style(Role::selection));
+      return;
+    }
+    Style hl;
+    hl.fg = theme.style(Role::border_active).fg;  // fg only: the window keeps its own ground
+    const Rect o = rn.outer;
+    for (const Rect& edge : {Rect{o.x, o.y, o.w, 1}, Rect{o.x, o.y + o.h - 1, o.w, 1},
+                             Rect{o.x, o.y, 1, o.h}, Rect{o.x + o.w - 1, o.y, 1, o.h}})
+      f.tint(edge.intersect(layout_area()), hl);
   }
   void ask(std::string text, std::function<void()> action) {
     confirm_text = std::move(text);

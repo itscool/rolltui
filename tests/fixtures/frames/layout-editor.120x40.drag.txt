@@ -30,10 +30,10 @@
 │ Here is the function you    │                                       │                                                │
 │ asked for:                  │ Here is the function you asked for:   │                                                │
 │                             │                                       │                                                │
-│ ┌ cpp ────────────────────┐ │ ┌ cpp ────────────────────────────────│                                                │
-│ │ int add(int a, int b) { │ │ │ int add(int a, int b) {             │                                                │
-│ │   return a + b;         │ │ │   return a + b;                     │ selected: transcript  size 31  border single   │
-│ └─────────────────────────┘ │ └─────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+│ ┌ cpp ────────────────────┐ █ ┌ cpp ────────────────────────────────│                                                │
+│ │ int add(int a, int b) { │ █ │ int add(int a, int b) {             │                                                │
+│ │   return a + b;         │ █ │   return a + b;                     │ selected: transcript  size 31  border single   │
+│ └─────────────────────────┘ █ └─────────────────────────────────────│ Tab next node · click selects · drag an edge r │
 ├─────────────────────────────┴───────────────────────────────────────│ split transcript side by side · undo 2 · redo  │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

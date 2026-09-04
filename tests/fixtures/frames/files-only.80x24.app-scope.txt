@@ -1,24 +1,24 @@
-  a screen with no code behind it — four files, no rebuild
-┌ docs/kettle.md ─────────────────────────────┬ menus/kettle.json ─────────────┐
-│ A screen that exists only as files.         │ commands                       │
+  a screen with no code behind it — six files, no rebuild
+┌ the transcript ─────────────────────────────┬ menus/kettle.json ─────────────┐
+│ in its right border column                  │ commands                       │
 │                                             │ Put the kettle on       Ctrl-J │
-│ Nothing in the host binary knows this       │ About this screen            ▸ │
-│ screen. No source file names these window   │                                │
-│ ids, this menu, this action or this         │                                │
-│ document, and no host was rebuilt to show   │                                │
-│ it. Four files in a preset directory are    │                                │
-│ the whole application.                      │                                │
+│ A screen is a set of files. This document   │ About this screen            ▸ │
+│ is one of them, and everything on it — the  │                                │
+│ marked span above, the coloured block, the  │                                │
+│ thumb in the border and the find bar —      │                                │
+│ arrived because a file said so, not because █                                │
+│ a host was rebuilt to allow it.             █                                │
+├ docs/kettle.md ─────────────────────────────┤                                │
+│ A screen that exists only as files.         █                                │
 │                                             │                                │
-│ layouts/kettle.json is the design: three    │                                │
-│ windows, and the one action this screen     │                                │
-│ emits (app.kettle).                         │                                │
-│                                  ▼ 22 more  │                                │
+│ Nothing in the host binary knows this       │                                │
+│ screen. No source file names thes▼ 52 more  │                                │
 ├ the live key table ─────────────────────────┴────────────────────────────────┤
-│   Ctrl-O           toggle the first folded block in view                     │
 │   Alt-C            copy the selection again                                  │
 │   Escape           clear the selection                                       │
 │ app:                                                                         │
-│   Ctrl-J      put the kettle on                                              █
+│   Ctrl-J      put the kettle on                                              │
+│   Ctrl-T      find in the transcript                                         █
 │ editor:                                                           ▼ 17 more  │
 └──────────────────────────────────────────────────────────────────────────────┘
- default-dark  kettle  80x24  line 0/0  follow  truecolor  focus:kettle_keys
+ default-dark  kettle  80x24  line 34/41  follow  truecolor  focus:kettle_keys

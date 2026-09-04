@@ -1,4 +1,4 @@
-┌ transcript ─────────────────────────────────────┌ status ───────────┌ layout editor ─────────────────────────────────┐
+┌ transcript ─────────────────────────────────────┬ status ───────────┌ layout editor ─────────────────────────────────┐
 │ │ layers,       │             │ header;       │ │ theme   default-da│ layout editor • status                         │
 │ │ placement     │             │ resolve(Place │ │ keys    default   │ Select the next node                       Tab │
 │ │ (Dim abs/rel  │             │ ment, parent) │ │ layout  wide-right│ Select the previous node             Shift-Tab │
@@ -27,14 +27,14 @@
 │ │ JSON loader,  │             │               │ │                   │ Save layout file as (layouts/<name>.json):     │
 │ │ built-ins)    │             │               │ │                   │ Reset to the loaded layout…                    │
 │ └───────────────┴─────────────┴───────────────┘ │                   │                                                │
-│                                                 │                   │                                                │
-│ Here is the function you asked for:             │                   │                                                │
-│                                                 │                   │                                                │
-│ ┌ cpp ────────────────────────────────────────┐ │                   │                                                │
-│ │ int add(int a, int b) {                     │ │                   │                                                │
-│ │   return a + b;                             │ │                   │ selected: status  size 70  border single  rows │
-│ └─────────────────────────────────────────────┘ │                   │ Tab next node · click selects · drag an edge r │
-├─────────────────────────────────────────────────│                   │ loaded wide-right · undo 1 · redo 0            │
+│                                                 █                   │                                                │
+│ Here is the function you asked for:             █                   │                                                │
+│                                                 █                   │                                                │
+│ ┌ cpp ────────────────────────────────────────┐ █                   │                                                │
+│ │ int add(int a, int b) {                     │ █                   │                                                │
+│ │   return a + b;                             │ █                   │ selected: status  size 70  border single  rows │
+│ └─────────────────────────────────────────────┘ █                   │ Tab next node · click selects · drag an edge r │
+├─────────────────────────────────────────────────┤                   │ loaded wide-right · undo 1 · redo 0            │
 │ > type here                                     │                   │                                                │
-└─────────────────────────────────────────────────└───────────────────└────────────────────────────────────────────────┘
+└─────────────────────────────────────────────────┴───────────────────└────────────────────────────────────────────────┘
  default-dark [layout editor]  wide-right (modified)  120x40  line 146/180  follow  truecolor  focus:editor
