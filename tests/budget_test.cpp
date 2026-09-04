@@ -302,7 +302,12 @@ int main() {
   // `grapheme_boundaries`, on a path that runs for every string drawn and every span of
   // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
   // suites untouched and still green — took 887 to 448 on its own.
-  constexpr long kSteady = 144, kStreaming = 815, kResize = 24944, kSteadyKB = 248;
+  constexpr long kSteady = 144, kStreaming = 815, kResize = 24944, kSteadyKB = 173;
+  // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
+  // and that was the prediction stated before the change was written: taking `std::string`
+  // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were
+  // SSO and never reached the heap. The budget said exactly that by failing on bytes alone
+  // and passing all three allocation assertions with +0.
   {
     auto [lo, hi] = band(kSteady, 0.02);
     check(in_range(steady.allocs, lo, hi), "steady-state 120x40 is on budget [" + fmt(steady) + "; " + delta(steady.allocs, kSteady) +

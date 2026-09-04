@@ -452,14 +452,14 @@ void test_frame() {
   in.layout({0, 0, 12, 1});
   Frame f(12, 1);
   in.draw(f, th, true);
-  check(f.at(0, 0).text == ">" && f.at(2, 0).text == "t" && f.at(2, 0).style == th.style(Role::input_placeholder),
+  check(f.glyph(0, 0) == ">" && f.glyph(2, 0) == "t" && f.at(2, 0).style == th.style(Role::input_placeholder),
         "empty: the prompt, then the placeholder in its role");
   check(f.cursor().visible && f.cursor().x == 2 && f.cursor().y == 0, "the cursor sits after the prompt");
   in.set_text("hi");
   in.layout({0, 0, 12, 1});
   Frame g(12, 1);
   in.draw(g, th, true);
-  check(g.at(2, 0).text == "h" && g.at(3, 0).text == "i" && g.at(4, 0).text == " " && g.at(2, 0).style == th.style(Role::input_text),
+  check(g.glyph(2, 0) == "h" && g.glyph(3, 0) == "i" && g.glyph(4, 0) == " " && g.at(2, 0).style == th.style(Role::input_text),
         "the text is drawn after the prompt in input_text; the placeholder is gone");
   check(g.cursor().visible && g.cursor().x == 4, "the cursor is after the text");
   Frame u(12, 1);
@@ -476,7 +476,7 @@ void test_frame() {
   nl.layout({0, 0, 12, 2});
   Frame n(12, 2);
   nl.draw(n, th, true);
-  check(n.at(3, 0).style == th.style(Role::selection) && n.at(3, 0).text == " " && n.at(2, 1).text == "b",
+  check(n.at(3, 0).style == th.style(Role::selection) && n.glyph(3, 0) == " " && n.glyph(2, 1) == "b",
         "a selected newline shows as one highlighted cell; the next line starts at the indent");
   // Inset and a scrolled view.
   Input sc = fresh(10, 1);
@@ -487,21 +487,21 @@ void test_frame() {
   sc.layout({0, 0, 10, 1});
   Frame v(10, 1);
   sc.draw(v, th, true);
-  check(sc.rows() == 3 && sc.top_row() == 2 && v.at(3, 0).text == "m" && v.at(0, 0).text == " " && v.at(1, 0).text == " ",
+  check(sc.rows() == 3 && sc.top_row() == 2 && v.glyph(3, 0) == "m" && v.glyph(0, 0) == " " && v.glyph(1, 0) == " ",
         "with inset 1 and one row the last row is shown one cell in, under the hanging indent (the prompt lives on row 0 only)");
   Input wide = fresh(6, 2);
   wide.set_text("ab\xE6\xBC\xA2");
   wide.layout({0, 0, 6, 2});
   Frame w(6, 2);
   wide.draw(w, th, true);
-  check(w.at(4, 0).text == "\xE6\xBC\xA2" && w.at(5, 0).continuation, "a 2-cell glyph is drawn whole at the row's end");
+  check(w.glyph(4, 0) == "\xE6\xBC\xA2" && w.at(5, 0).continuation, "a 2-cell glyph is drawn whole at the row's end");
   check(wide.rows() == 2 && w.cursor().x == 2 && w.cursor().y == 1, "and, the row being full, the caret is on the next row");
   Input one = fresh(6, 1);
   one.set_text("ab\xE6\xBC\xA2");
   one.layout({0, 0, 6, 1});
   Frame o1(6, 1);
   one.draw(o1, th, true);
-  check(one.top_row() == 1 && o1.at(0, 0).text == " " && o1.cursor().x == 2,
+  check(one.top_row() == 1 && o1.glyph(0, 0) == " " && o1.cursor().x == 2,
         "a one-row window after a full row shows the caret's (empty) row — the host grows the window instead");
 }
 
@@ -654,7 +654,7 @@ void test_degenerate_sizes() {
     bool outside = false;
     for (int y = 0; y < 8; ++y)
       for (int x = 0; x < 8; ++x)
-        if (f.at(x, y).text != " " && !a.contains(x, y)) outside = true;
+        if (f.glyph(x, y) != " " && !a.contains(x, y)) outside = true;
     check(!outside, name + ": nothing is drawn outside the area");
     check(!f.cursor().visible || a.contains(f.cursor().x, f.cursor().y) || (a.w == 0 && f.cursor().x == a.x) || (a.h == 0 && f.cursor().y == a.y),
           name + ": the cursor is inside the area or on its collapsed edge");

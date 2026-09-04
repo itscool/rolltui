@@ -2,6 +2,7 @@
 #include "rolltui/Screen.hpp"
 
 #include <algorithm>
+#include <cstring>
 
 #include "rolltui/Unicode.hpp"
 
@@ -24,7 +25,8 @@ void Frame::clear(const Style& fill) {
   Cell c;
   c.style = fill;
   std::fill(cells_.begin(), cells_.end(), c);
-  marks_.clear();  // a mark names cells that have just been erased
+  marks_.clear();        // a mark names cells that have just been erased
+  long_glyphs_.clear();  // …and so does every spilled glyph: nothing refers to them now
 }
 
 void Frame::set_style(int x, int y, const Style& style) {
@@ -36,6 +38,36 @@ void Frame::mark(int x, int y, int cells, EffectState state, std::uint64_t since
   if (cells <= 0 || state == EffectState::None) return;
   if (y < 0 || y >= h_ || x >= w_) return;
   marks_.push_back({x, y, cells, state, since_ms, fraction});
+}
+
+// Writes a cluster into a cell, inline when it fits and into the frame's spill table when
+// it does not. The unused inline bytes are ZEROED, so `Cell::operator==` (which the frame
+// diff leans on) compares cells and not the garbage behind a shorter glyph.
+void Frame::set_glyph(Cell& c, std::string_view g) {
+  std::memset(c.bytes, 0, sizeof c.bytes);
+  if (g.size() <= Cell::kInlineGlyph) {
+    std::memcpy(c.bytes, g.data(), g.size());
+    c.len = static_cast<std::uint8_t>(g.size());
+    return;
+  }
+  // THE NAMED EXCEPTION (Phase 13's phase Done-when): a cluster longer than ten bytes
+  // allocates, once, into a table this frame owns. A family ZWJ emoji is the real case.
+  long_glyphs_.emplace_back(g);
+  const std::uint32_t idx = static_cast<std::uint32_t>(long_glyphs_.size() - 1);
+  std::memcpy(c.bytes, &idx, sizeof idx);
+  c.len = Cell::kSpilled;
+}
+
+std::string_view Frame::glyph_of(const Cell& c) const {
+  if (!c.spilled()) return c.inline_bytes();
+  std::uint32_t idx = 0;
+  std::memcpy(&idx, c.bytes, sizeof idx);
+  return idx < long_glyphs_.size() ? std::string_view(long_glyphs_[idx]) : std::string_view();
+}
+
+std::string_view Frame::glyph(int x, int y) const {
+  if (x < 0 || y < 0 || x >= w_ || y >= h_) return {};
+  return glyph_of(at(x, y));
 }
 
 std::uint32_t Frame::link_id(std::string_view url) {
@@ -58,7 +90,7 @@ int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& 
   // continuation cell survives.
   auto blank = [&](int cx) {
     Cell& c = mut(cx, y);
-    c.text = " ";
+    set_glyph(c, " ");
     c.width = 1;
     c.continuation = false;
     c.link = 0;
@@ -67,7 +99,7 @@ int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& 
   if (mut(x, y).width == 2 && x + 1 < w_) blank(x + 1);
   if (cells == 2 && x + 1 >= w_) {  // would straddle the right edge
     Cell& c = mut(x, y);
-    c.text = " ";
+    set_glyph(c, " ");
     c.width = 1;
     c.continuation = false;
     c.style = style;
@@ -77,14 +109,14 @@ int Frame::put(int x, int y, std::string_view grapheme, int cells, const Style& 
   if (cells == 2) {
     if (mut(x + 1, y).width == 2 && x + 2 < w_) blank(x + 2);
     Cell& r = mut(x + 1, y);
-    r.text.clear();
+    set_glyph(r, {});
     r.width = 0;
     r.continuation = true;
     r.style = style;
     r.link = link;
   }
   Cell& c = mut(x, y);
-  c.text = std::string(grapheme);
+  set_glyph(c, grapheme);
   c.width = static_cast<std::uint8_t>(cells);
   c.continuation = false;
   c.style = style;
@@ -159,7 +191,7 @@ void emit_run(std::string& out, const Frame& f, int y, int x0, int x1, ColorDept
       out += sgr(c.style, depth);
       current = &c.style;
     }
-    out += c.text;
+    out += f.glyph_of(c);
   }
   if (link != 0) out += "\x1b]8;;\x1b\\";
 }
@@ -169,7 +201,10 @@ void emit_run(std::string& out, const Frame& f, int y, int x0, int x1, ColorDept
 bool same(const Frame& a, const Frame& b, int x, int y) {
   const Cell& p = a.at(x, y);
   const Cell& q = b.at(x, y);
-  return p.text == q.text && p.width == q.width && p.continuation == q.continuation &&
+  // Glyphs and links are both compared BY VALUE across the two frames, never by their
+  // per-frame index: a spill index and a link id mean nothing outside the frame that
+  // minted them (Screen.hpp).
+  return a.glyph_of(p) == b.glyph_of(q) && p.width == q.width && p.continuation == q.continuation &&
          p.style == q.style && a.link(p.link) == b.link(q.link);
 }
 
@@ -195,7 +230,7 @@ std::string frame_to_text(const Frame& f) {
     std::string row;
     for (int x = 0; x < f.width(); ++x) {
       const Cell& c = f.at(x, y);
-      if (!c.continuation) row += c.text;
+      if (!c.continuation) row += f.glyph_of(c);
     }
     const std::size_t end = row.find_last_not_of(' ');
     out += (end == std::string::npos) ? "" : row.substr(0, end + 1);

@@ -37,7 +37,7 @@ MenuItem sample() {
 std::string row(const Frame& f, int y) {
   std::string s;
   for (int x = 0; x < f.width(); ++x)
-    if (!f.at(x, y).continuation) s += f.at(x, y).text;
+    if (!f.at(x, y).continuation) s += f.glyph(x, y);
   while (!s.empty() && s.back() == ' ') s.pop_back();
   return s;
 }
@@ -182,7 +182,7 @@ int main() {
     m.draw(g, theme, true);
     check(row(g, 3).rfind("Nothing here", 0) == 0 && row(g, 1).rfind("Save as", 0) == 0,
           "with three item rows and the last selected, the view scrolls to show it [" + row(g, 1) + " | " + row(g, 3) + "]");
-    check(g.at(29, 1).text == "\xE2\x96\xB2", "a ▲ marker says items are hidden above");
+    check(g.glyph(29, 1) == "\xE2\x96\xB2", "a ▲ marker says items are hidden above");
     m.handle(key(Key::PageUp));
     check(m.selected() == 2, "PageUp moves by the item rows (5 → 2)");
     m.handle(key(Key::PageUp));
@@ -496,7 +496,7 @@ int main() {
       m.draw(f, theme, true);
       for (int y = 0; y < 10; ++y)
         for (int x = 0; x < 10; ++x)
-          if (!a.contains(x, y) && !(f.at(x, y).text == " " && f.at(x, y).style == fill)) ok = false;
+          if (!a.contains(x, y) && !(f.glyph(x, y) == " " && f.at(x, y).style == fill)) ok = false;
       m.reset();
     }
     check(ok, "0x0, 1x1, 0x5, 5x0, 1x6, 40x1 and an offset 2x2 area: nothing drawn outside, no crash");

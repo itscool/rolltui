@@ -72,7 +72,7 @@ const ResolvedNode* by_id(const std::vector<ResolvedNode>& v, std::string_view i
   return nullptr;
 }
 
-std::string cell(const Frame& f, int x, int y) { return f.at(x, y).text; }
+std::string cell(const Frame& f, int x, int y) { return std::string(f.glyph(x, y)); }
 
 Node win(const char* content, SplitSize size = {}, Border b = Border::Single, bool focusable = false) {
   Node n = Node::window(content, size);
@@ -719,7 +719,7 @@ int main() {
     s.compose(f, box, dark, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, dark); });
     auto row = [&](int y) {
       std::string out;
-      for (int x = 0; x < 40; ++x) out += f.at(x, y).text;
+      for (int x = 0; x < 40; ++x) out += f.glyph(x, y);
       while (!out.empty() && out.back() == ' ') out.pop_back();
       return out;
     };
@@ -796,7 +796,7 @@ int main() {
     int drawn = 0;
     for (int y = 0; y < 7; ++y) {
       std::string out;
-      for (int x = 0; x < 60; ++x) out += f.at(x, y).text;
+      for (int x = 0; x < 60; ++x) out += f.glyph(x, y);
       if (out.find("[") != std::string::npos && out.find("nothing is bound") == std::string::npos &&
           out.find("cannot read") == std::string::npos && out.find("not a widget kind") == std::string::npos &&
           out.find("no menu file") == std::string::npos)
@@ -879,7 +879,7 @@ int main() {
     const std::string screen = [&] {
       std::string out;
       for (int y = 0; y < 8; ++y)
-        for (int x = 0; x < 44; ++x) out += f.at(x, y).text;
+        for (int x = 0; x < 44; ++x) out += f.glyph(x, y);
       return out;
     }();
     check(screen.find("dropped item") != std::string::npos && screen.find("user item") != std::string::npos,
@@ -985,7 +985,7 @@ int main() {
     s.compose(f, box, dark, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, dark); });
     std::string screen;
     for (int y = 0; y < 4; ++y)
-      for (int x = 0; x < 46; ++x) screen += f.at(x, y).text;
+      for (int x = 0; x < 46; ++x) screen += f.glyph(x, y);
     check(screen.find("Ctrl-G") != std::string::npos && screen.find("zoom the transcript") != std::string::npos,
           "help RENDERS an action that exists only because a layout file declared it [" + screen.substr(0, 46) + "]");
   }
@@ -1269,7 +1269,7 @@ int main() {
       // The thumb is IN the right border column, which the widget never sees.
       const int track_x = 39;
       bool thumb_drawn = false;
-      for (int y = 1; y < 11; ++y) if (f.at(track_x, y).text == "\xE2\x96\x88") thumb_drawn = true;
+      for (int y = 1; y < 11; ++y) if (f.glyph(track_x, y) == "\xE2\x96\x88") thumb_drawn = true;
       check(thumb_drawn, "the window drew a thumb in its right border column");
       // A press near the BOTTOM of the track scrolls the transcript — the window
       // commanding a widget that accepted scroll_to().

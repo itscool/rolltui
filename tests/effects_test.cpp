@@ -78,7 +78,7 @@ std::vector<CellShot> shoot(const Frame& f) {
   for (int y = 0; y < f.height(); ++y)
     for (int x = 0; x < f.width(); ++x) {
       const Cell& c = f.at(x, y);
-      out.push_back({c.text, c.width, c.continuation, c.style, c.link});
+      out.push_back({std::string(f.glyph_of(c)), c.width, c.continuation, c.style, c.link});
     }
   return out;
 }
@@ -239,13 +239,13 @@ int main() {
     f.mark(2, 1, 1, EffectState::Waiting, 0);     // started at 0
     f.mark(6, 1, 1, EffectState::Waiting, 1000);  // started later: a different frame of the cycle
     apply_effects(f, theme, 1160);
-    check(f.at(2, 1).text != f.at(6, 1).text,
+    check(f.glyph(2, 1) != f.glyph(6, 1),
           "two spans of one state with different start times are at different points of the cycle");
     Frame g = make_frame(20, 3, theme);
     g.mark(2, 1, 1, EffectState::Waiting);
     g.mark(6, 1, 1, EffectState::Waiting);
     apply_effects(g, theme, 1160);
-    check(g.at(2, 1).text == g.at(6, 1).text, "…and two with no start time of their own move together off the shared clock");
+    check(g.glyph(2, 1) == g.glyph(6, 1), "…and two with no start time of their own move together off the shared clock");
   }
 
   // ---- STACKING: glyph from one kind, colour from another ---------------------------
@@ -264,8 +264,8 @@ int main() {
     Frame f = make_frame(20, 3, theme);
     f.mark(2, 1, 4, EffectState::Waiting);
     apply_effects(f, theme, 0);
-    check(f.at(2, 1).text == "x" && f.at(2, 1).style == theme.style(Role::error), "a stacked pair gives the glyph from one and the style from the other");
-    check(f.at(3, 1).style == theme.style(Role::error) && f.at(3, 1).text != "x", "…and the kind that answers for one cell does not answer for the rest");
+    check(f.glyph(2, 1) == "x" && f.at(2, 1).style == theme.style(Role::error), "a stacked pair gives the glyph from one and the style from the other");
+    check(f.at(3, 1).style == theme.style(Role::error) && f.glyph(3, 1) != "x", "…and the kind that answers for one cell does not answer for the rest");
   }
 
   // ---- a theme that maps nothing is a STILL UI (the degrade rung) --------------------

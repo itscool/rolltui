@@ -50,12 +50,34 @@ struct Rect {
   bool operator==(const Rect&) const = default;
 };
 
+// A cell's grapheme lives INLINE (Phase 13 m4). It used to be a `std::string`, which made
+// `Cell` 48 bytes and constructed-and-destructed one string per cell per frame — 4,800 of
+// them on a 120x40 grid, for a cluster that is 1-4 bytes almost always. Those strings were
+// SSO and never reached the heap, so this is a BYTES and cache-locality change and NOT an
+// allocation-count one; the grid goes from 230 KB to 153 KB.
+//
+// A GRAPHEME CLUSTER HAS NO MAXIMUM LENGTH, so the long case is handled rather than
+// assumed away: ten bytes covers ASCII, accented Latin, CJK, an emoji with a variation
+// selector, a flag and an emoji with a skin-tone modifier, and anything longer — a family
+// ZWJ sequence is 25+ bytes, and a user can paste one — SPILLS into a table the Frame
+// owns, with its index kept where the bytes would have been. That is exactly the shape the
+// `link` field already has, which is why it is the shape used: one mechanism, twice.
+// Spilling is the phase's "an allocation may happen, but it has a NAME" case.
 struct Cell {
-  std::string text = " ";     // one grapheme cluster; "" on a continuation cell
+  static constexpr std::uint8_t kInlineGlyph = 10;
+  static constexpr std::uint8_t kSpilled = 0xFF;  // `len`: the bytes are in the frame's table
+
+  std::uint32_t link = 0;     // 0: none; else an id from Frame::link_id (per frame)
+  Style style;
+  char bytes[kInlineGlyph] = {' '};  // the cluster, or its spill index when len == kSpilled
+  std::uint8_t len = 1;       // bytes in `bytes`; 0 on a continuation cell; kSpilled when spilled
   std::uint8_t width = 1;     // 1 or 2; 0 on a continuation cell
   bool continuation = false;  // the right half of a 2-cell glyph
-  Style style;
-  std::uint32_t link = 0;     // 0: none; else an id from Frame::link_id (per frame)
+
+  bool spilled() const { return len == kSpilled; }
+  // The inline bytes. Empty for a continuation cell, and NOT the answer for a spilled
+  // cell — `Frame::glyph()` is the one accessor that is right in both cases.
+  std::string_view inline_bytes() const { return {bytes, spilled() ? 0u : static_cast<unsigned>(len)}; }
   bool operator==(const Cell&) const = default;
 };
 
@@ -86,6 +108,11 @@ class Frame {
   // last line of defence).
   int put_text(int x, int y, std::string_view utf8, const Style& style, int max_cells,
                bool ambiguous_wide = false, std::uint32_t link = 0);
+  // THE ONE ACCESSOR for a cell's grapheme, right for an inline cell and a spilled one
+  // alike (see Cell above). Reading `at(x, y).bytes` directly is correct only until
+  // somebody pastes a family emoji, which is why the bytes are not called `text`.
+  std::string_view glyph(int x, int y) const;
+  std::string_view glyph_of(const Cell& c) const;
   // Interns a hyperlink target for this frame; the same URL gets the same id. 0 for
   // an empty URL.
   std::uint32_t link_id(std::string_view url);
@@ -113,10 +140,12 @@ class Frame {
 
  private:
   Cell& mut(int x, int y) { return cells_[static_cast<std::size_t>(y * w_ + x)]; }
+  void set_glyph(Cell& c, std::string_view g);
   int w_ = 0, h_ = 0;
   std::vector<Cell> cells_;
   Cursor cursor_;
-  std::vector<std::string> links_;  // links_[id - 1]
+  std::vector<std::string> links_;        // links_[id - 1]
+  std::vector<std::string> long_glyphs_;  // m4: clusters too long to sit in a Cell
   std::vector<Mark> marks_;
 };
 

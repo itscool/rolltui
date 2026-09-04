@@ -68,7 +68,7 @@ KeyEvent alt(char c) { KeyEvent e; e.key = Key::Char; e.ch = static_cast<char32_
 std::string row_text(const Frame& f, int y) {
   std::string s;
   for (int x = 0; x < f.width(); ++x)
-    if (!f.at(x, y).continuation) s += f.at(x, y).text;
+    if (!f.at(x, y).continuation) s += f.glyph(x, y);
   std::size_t end = s.find_last_not_of(' ');
   return end == std::string::npos ? "" : s.substr(0, end + 1);
 }
