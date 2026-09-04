@@ -64,3 +64,11 @@ void free(void* p) {
 }
 
 }  // namespace rolltui::mem
+
+// The C face of the same entry point (Phase 14). The ported modules are C and cannot see a
+// namespace, so these three are what CLAUDE.md's "every allocation goes through the
+// library's entry point" means on that side — and there it is TOTAL, because every
+// allocation in C is an explicit call.
+extern "C" void* rolltui_mem_alloc(std::size_t bytes) { return rolltui::mem::alloc(bytes); }
+extern "C" void* rolltui_mem_realloc(void* p, std::size_t bytes) { return rolltui::mem::realloc(p, bytes); }
+extern "C" void rolltui_mem_free(void* p) { rolltui::mem::free(p); }

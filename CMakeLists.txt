@@ -30,7 +30,10 @@
 # stop being immediate within a week.
 option(ROLLTUI_C "Build the library's ported slice in C rather than C++ (Phase 14)" OFF)
 if(ROLLTUI_C)
-  set(ROLLTUI_SLICE c/rolltui_geom.c)
+  # m2 IN PROGRESS: rolltui_screen.c is compiled (so it is syntax- and warning-checked)
+  # but nothing calls it yet — `rolltui::Frame` still holds its own storage. Wiring it is
+  # the rest of m2; see plan/phase-14.md for the two hazards found while designing it.
+  set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
   set(ROLLTUI_SLICE GeomCpp.cpp)
