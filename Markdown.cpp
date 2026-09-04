@@ -1,6 +1,8 @@
 // rolltui/Markdown.cpp — md4c → block tree → styled wrapped lines. Contract in
 // Markdown.hpp. md4c (rolltui/third_party/md4c, MIT, pinned in its README) is included
 // here and nowhere else.
+#include <span>
+
 #include "rolltui/Markdown.hpp"
 
 #include <algorithm>
@@ -325,33 +327,53 @@ Role role_for(unsigned style, Role base) {
 // Appends text to a line as a span. `sources` has one offset per grapheme cluster of
 // `text` (chrome when empty: every grapheme kNoSource). Adjacent spans merge only when
 // role and href both match, so a link's cells stay one span.
-void push_span(StyledLine& line, std::string text, Role role, bool ambiguous,
-               std::vector<std::uint32_t> sources = {}, const std::string& href = "") {
+// Phase 13 m5b: `text` and `sources` are VIEWS. They were taken BY VALUE — a string and a
+// vector copied into the parameters on every one of the twenty-five call sites, for every
+// span of every line — which is the per-frame-API rule (CLAUDE.md) one level down, at
+// layout time. The MERGE case now copies nothing at all, and the new-span case allocates
+// exactly what it keeps.
+void push_span(StyledLine& line, std::string_view text, Role role, bool ambiguous,
+               std::span<const std::uint32_t> sources = {}, std::string_view href = "") {
   if (text.empty()) return;
   int w = 0;
   std::size_t clusters = 0;
   static thread_local Scratch<std::vector<unicode::Grapheme>> scratch("markdown span clusters");
-  auto gs = scratch.lock();
-  unicode::graphemes_into(text, ambiguous, *gs);
-  for (const unicode::Grapheme& g : *gs) { w += g.width; ++clusters; }
-  if (sources.size() != clusters) sources.assign(clusters, kNoSource);
+  {
+    auto gs = scratch.lock();
+    unicode::graphemes_into(text, ambiguous, *gs);
+    for (const unicode::Grapheme& g : *gs) { w += g.width; ++clusters; }
+  }
+  // A caller with no per-cluster offsets means chrome: every grapheme is kNoSource, and
+  // that is generated rather than passed, so nobody builds a vector to describe an absence.
+  const bool have = sources.size() == clusters;
   if (!line.spans.empty() && line.spans.back().role == role && line.spans.back().href == href) {
     Span& s = line.spans.back();
-    s.text += text;
+    s.text.append(text);
     s.width += w;
-    s.sources.insert(s.sources.end(), sources.begin(), sources.end());
+    if (have) s.sources.insert(s.sources.end(), sources.begin(), sources.end());
+    else s.sources.insert(s.sources.end(), clusters, kNoSource);
   } else {
-    line.spans.push_back({std::move(text), w, role, href, std::move(sources)});
+    Span s;
+    s.text.assign(text);
+    s.width = w;
+    s.role = role;
+    s.href.assign(href);
+    if (have) s.sources.assign(sources.begin(), sources.end());
+    else s.sources.assign(clusters, kNoSource);
+    line.spans.push_back(std::move(s));
   }
   line.width += w;
 }
 
 // Consecutive logical offsets for `text` appended to the logical text at `base`.
-std::vector<std::uint32_t> sources_for(const std::string& text, std::size_t base, bool ambiguous) {
-  std::vector<std::uint32_t> s;
-  for (const unicode::Grapheme& g : unicode::graphemes(text, ambiguous))
-    s.push_back(static_cast<std::uint32_t>(base + g.offset));
-  return s;
+// m5b: fills a caller's buffer. Every caller feeds the result straight into `push_span`
+// and drops it, so a hoisted buffer in the caller is reused for every span of every line.
+void sources_for(std::string_view text, std::size_t base, bool ambiguous, std::vector<std::uint32_t>& out) {
+  out.clear();
+  static thread_local Scratch<std::vector<unicode::Grapheme>> scratch("sources_for clusters");
+  auto gs = scratch.lock();
+  unicode::graphemes_into(text, ambiguous, *gs);
+  for (const unicode::Grapheme& g : *gs) out.push_back(static_cast<std::uint32_t>(base + g.offset));
 }
 
 std::string spaces(int n) { return std::string(static_cast<std::size_t>(n > 0 ? n : 0), ' '); }
@@ -406,7 +428,12 @@ StyledLine start_line(Ctx& ctx, bool first_of_block = false) {
     if (first_of_block) {
       std::size_t base = ctx.logical->size();
       *ctx.logical += s.text;
-      push_span(l, s.text, s.role, ctx.ambiguous, sources_for(s.text, base, ctx.ambiguous));
+      {
+        static thread_local Scratch<std::vector<std::uint32_t>> sc("verbatim sources");
+        auto src = sc.lock();
+        sources_for(s.text, base, ctx.ambiguous, *src);
+        push_span(l, s.text, s.role, ctx.ambiguous, *src);
+      }
     } else {
       push_span(l, s.text, s.role, ctx.ambiguous);
     }
@@ -437,7 +464,12 @@ void blank_line(std::vector<StyledLine>& out, Ctx& ctx) {
       s.text.resize(keep + 1);
       s.width -= dropped;
       l.width -= dropped;
-      s.sources.assign(unicode::graphemes(s.text, ctx.ambiguous).size(), kNoSource);
+      {  // m5b: the counting form, not the allocating one
+        static thread_local Scratch<std::vector<unicode::Grapheme>> sc("trim clusters");
+        auto g = sc.lock();
+        unicode::graphemes_into(s.text, ctx.ambiguous, *g);
+        s.sources.assign(g->size(), kNoSource);
+      }
     }
     break;
   }
@@ -483,8 +515,11 @@ void layout_runs(const std::vector<Run>& runs, Ctx& ctx, std::vector<StyledLine>
     if (ln.indent > 0) push_span(sl, spaces(ln.indent), ctx.base, ctx.ambiguous);
     for (const WrapGrapheme& g : ln.graphemes) {
       const RunAt* r = run_at(g.source_offset);
-      push_span(sl, ln.text.substr(g.offset, g.length), r ? r->role : ctx.base, ctx.ambiguous,
-                {static_cast<std::uint32_t>(base + g.source_offset)}, (r && r->href) ? *r->href : kNoHref);
+      // m5b: a VIEW of the line's bytes, not a substr() temporary — this ran once per
+      // GRAPHEME, so it was a string construction per drawn cluster.
+      const std::uint32_t one = static_cast<std::uint32_t>(base + g.source_offset);
+      push_span(sl, std::string_view(ln.text).substr(g.offset, g.length), r ? r->role : ctx.base, ctx.ambiguous,
+                std::span<const std::uint32_t>(&one, 1), (r && r->href) ? *r->href : kNoHref);
     }
     out.push_back(std::move(sl));
   }
@@ -692,8 +727,9 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
       } else {
         for (const WrapGrapheme& g : ln.graphemes) {
           Role r = highlight_role_at(runs, g.source_offset);
-          push_span(sl, ln.text.substr(g.offset, g.length), r, ctx.ambiguous,
-                    {static_cast<std::uint32_t>(base + g.source_offset)});
+          const std::uint32_t one = static_cast<std::uint32_t>(base + g.source_offset);
+          push_span(sl, std::string_view(ln.text).substr(g.offset, g.length), r, ctx.ambiguous,
+                    std::span<const std::uint32_t>(&one, 1));
         }
       }
       int pad = inner - ln.width;

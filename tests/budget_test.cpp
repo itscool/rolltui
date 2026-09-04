@@ -306,12 +306,12 @@ int main() {
   // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
   // suites untouched and still green — took 887 to 448 on its own.
   // RE-RECORDED 2026-09-03 at the end of m5b. Phase 13 end to end:
-  //   steady   887 →   6   streaming 2772 → 559   resize 70272 → 20436   steady KB 455 → 0
+  //   steady   887 →   6   streaming 2772 → 303   resize 70272 → 11467   steady KB 455 → 0
   // A steady frame is SIX allocations, all in widget draws: four in the `rows:` window and
   // one in the transcript's. `prepare`, `resolve`, the frame reset and `compose` with no
   // slot renderer are all EXACTLY ZERO. The target is 0 and this is not it; the six are
   // itemised in plan/phase-13.md m5b.
-  constexpr long kSteady = 6, kStreaming = 559, kResize = 20436, kSteadyKB = 0;
+  constexpr long kSteady = 6, kStreaming = 303, kResize = 11467, kSteadyKB = 0;
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were
