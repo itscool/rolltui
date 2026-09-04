@@ -487,6 +487,46 @@ int main() {
     check(mem::alloc(0) == nullptr, "a zero-byte request is a nullptr, not a one-byte block");
     mem::free(nullptr);  // must be a no-op
     check(mem::stats().frees == after.frees, "…and freeing nullptr counts nothing");
+    // ---- MEMORY USAGE, QUERYABLE AT RUNTIME (Phase 14 m4) -----------------------------
+    // `bytes_requested` is cumulative and answers "how much did we churn"; it CANNOT answer
+    // "how much are we holding", which is the question a status pane asks. These three
+    // assertions are what keep the two from being confused — and what keep `live_bytes` from
+    // being a gauge stuck at zero, which would look exactly like a library that allocates
+    // nothing.
+    {
+      const mem::Stats base = mem::stats();
+      void* big = mem::alloc(64 * 1024);
+      const mem::Stats held = mem::stats();
+      check(held.live_bytes >= base.live_bytes + 64 * 1024,
+            "live_bytes RISES by at least what was asked for [" + std::to_string(base.live_bytes) + " → " +
+                std::to_string(held.live_bytes) + "]");
+      check(held.peak_bytes >= held.live_bytes, "…and peak_bytes is never below what is live right now");
+      mem::free(big);
+      const mem::Stats after_free = mem::stats();
+      check(after_free.live_bytes == base.live_bytes,
+            "…and FALLS back exactly on free, which is what makes it a gauge and not a counter");
+      check(after_free.peak_bytes >= held.live_bytes, "…while peak_bytes REMEMBERS the high-water mark");
+      check(after_free.bytes_requested > base.bytes_requested,
+            "…and bytes_requested only ever goes up: it is churn, not occupancy");
+
+      // WHAT THE GAUGE CAN HONESTLY SEE, and it differs by configuration — which makes this
+      // the sharpest measurement Phase 14 has of its own central claim. CLAUDE.md says the
+      // library's entry point covers only its OWN explicit allocations in C++, because
+      // `std::string` and `std::vector` go through the global `operator new`, and that in C
+      // the same rule would be TOTAL since every allocation is an explicit call. By this
+      // point in the test a 40-entry scene has been painted several times and is still held,
+      // so the gauge is being asked about a real workload rather than a toy:
+#ifdef ROLLTUI_C_BUILD
+      check(base.live_bytes > 100000,
+            "ROLLTUI_C=ON: the gauge reports REAL occupancy for the painted scene [" +
+                std::to_string(base.live_bytes) + " B] — in C the entry point is TOTAL");
+#else
+      check(base.live_bytes == 0,
+            "ROLLTUI_C=OFF: the gauge reports ZERO for the same scene [" + std::to_string(base.live_bytes) +
+                " B] — every byte of it is in a std:: container, which cannot route through this entry "
+                "point. THE LIMIT IS ASSERTED, not just documented");
+#endif
+    }
     // THE HONEST LIMIT, asserted rather than only documented: std::string and std::vector
     // do NOT route through this in C++, so these figures cover the library's own explicit
     // allocations and no more. A test that pretended otherwise would be the exact

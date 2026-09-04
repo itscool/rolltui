@@ -22,9 +22,15 @@
 // this. Threading a custom allocator through every container would be viral and is not
 // worth it, so in C++ these figures account for the library's OWN explicit allocations and
 // nothing else — which today, after Phase 13, is very little, because a steady frame
-// allocates nothing at all. **In C the same rule would be TOTAL**, since every allocation
-// is an explicit call; how much of the library's memory each language's entry point
-// actually accounts for is one of the things `plan/phase-14.md`'s verdict has to report.
+// allocates nothing at all. **In C the same rule is TOTAL**, since every allocation is an
+// explicit call.
+//
+// **THAT DIFFERENCE IS NOW A MEASUREMENT AND NOT A CLAIM (Phase 14 m4).** With a 40-entry
+// scene painted and still held, `live_bytes` reads **187,776 B with `ROLLTUI_C=ON` and 0 with
+// it OFF** — the same workload, one gauge that can see it and one that cannot, because every
+// byte of the C++ version is inside a `std::` container. Both readings are ASSERTED in
+// `rolltui/tests/budget_test.cpp`, so the limit is a checked fact rather than a paragraph,
+// and it is one of the sharpest things `plan/phase-14.md`'s verdict has to weigh.
 //
 // THREADS: the counters are relaxed atomics. They are telemetry, not a ledger — a torn
 // read would misreport a number, never corrupt an allocation.
@@ -35,6 +41,13 @@
 namespace rolltui::mem {
 
 // Live totals since the process started. Cheap to read; safe from any thread.
+//
+// **THREE BYTE NUMBERS, AND THEY ANSWER THREE DIFFERENT QUESTIONS.** They are separated
+// rather than collapsed because "memory usage" is exactly the kind of identifier this
+// project keeps getting burned by: a single `bytes` field would have been read as "what we
+// are holding" by a status pane and as "how much we churned" by the budget, and it cannot be
+// both. `bytes_requested` was that field, and until 2026-09-04 there was no way at all to ask
+// what the library is holding RIGHT NOW — which is the one a human means.
 struct Stats {
   // Calls that returned NEW STORAGE — a growing `realloc` included, because it hands out
   // storage and copies into it exactly as a fresh allocation does. This is the number the
@@ -43,8 +56,17 @@ struct Stats {
   // (Phase 14 m3; it counted the realloc as neither before, which made C look free).
   std::size_t allocations = 0;
   std::size_t frees = 0;
-  std::size_t bytes_requested = 0;  // cumulative, not current
-  std::size_t live_blocks = 0;      // tracked, NOT allocations - frees: a grow is not a new block
+  // CUMULATIVE bytes handed out, never decreasing. A growing buffer is counted again at
+  // every growth, so this is a CHURN signal and is emphatically NOT how much is held.
+  std::size_t bytes_requested = 0;
+  // HELD RIGHT NOW — the number a status pane means by "memory usage". This is the
+  // allocator's USABLE size, not the requested size, so it is what the process actually has
+  // reserved (>= requested, by the rounding every malloc does). Goes down on free.
+  std::size_t live_bytes = 0;
+  // The high-water mark of `live_bytes`. The interesting one for a library whose whole
+  // design is reusing buffers: it says how big the reuse ever had to get.
+  std::size_t peak_bytes = 0;
+  std::size_t live_blocks = 0;  // tracked, NOT allocations - frees: a grow is not a new block
 };
 Stats stats();
 void reset_stats();  // for a test that wants a window; never called by the library

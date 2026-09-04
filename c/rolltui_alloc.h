@@ -60,6 +60,22 @@ void* rolltui_mem_alloc(size_t bytes);
 void* rolltui_mem_realloc(void* p, size_t bytes);
 void rolltui_mem_free(void* p);
 
+/* MEMORY USAGE, QUERYABLE AT RUNTIME — the same snapshot `rolltui::mem::stats()` returns, in
+ * the shape this boundary uses everywhere: out-params, any of which may be NULL, so a caller
+ * asks for exactly the numbers it means to show. Phase 13's requirement was that these be
+ * readable at RUNTIME and not only inside a test binary — one pipeline, two consumers, the
+ * human-facing pane and the router's own adaptation reading the same records.
+ *
+ * The three byte numbers answer three different questions and are deliberately not collapsed:
+ *   bytes_requested  CUMULATIVE and never decreasing — a growing buffer is counted again at
+ *                    every growth. A churn signal, NOT how much is held.
+ *   live_bytes       HELD RIGHT NOW, as the allocator's usable size. This is the one a status
+ *                    pane means by "memory usage".
+ *   peak_bytes       the high-water mark of live_bytes — for a library built on reusing
+ *                    buffers, how big the reuse ever had to get. */
+void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_requested,
+                       size_t* live_bytes, size_t* peak_bytes, size_t* live_blocks);
+
 /* ---- 2. GROWING, AMORTISED ------------------------------------------------------------ */
 /* Ensures `p` holds at least `need` elements of `elem` bytes, doubling from a small floor.
  * Returns the buffer, which the caller assigns back. `*cap` is in ELEMENTS and is updated.
