@@ -140,6 +140,46 @@ int main() {
                             (hits.empty() ? "" : " — " + hits.front()));
   }
 
+  // ---- THE C SIDE'S CLOSED SET: growth has exactly one home --------------------------
+  // Phase 14 m4. CLAUDE.md's rule is that every allocation is a CHOICE from a closed set and
+  // never an invention, and that in C the rule can be TOTAL because every allocation is an
+  // explicit call. We had the entry point (`rolltui_mem_*`) and not the set, and by the end
+  // of m3 the two ported C files had invented the same growing buffer EIGHT times with two
+  // different policies — Phase 13's finding reproduced exactly, one language over.
+  //
+  // `rolltui_mem_realloc` is how growth is spelled, so the rule is one line: only
+  // `rolltui_alloc.c` may call it. `alloc` and `free` stay available everywhere, because a
+  // handle and its release are not a strategy anyone can get subtly wrong. **The point is not
+  // that growth is hard — it is that eight sites is eight places to have a different policy,
+  // and two of them did.**
+  {
+    const std::regex growth(R"(\brolltui_mem_realloc\s*\()");
+    std::vector<std::string> hits;
+    int scanned = 0;
+    for (const fs::directory_entry& e : fs::directory_iterator(std::string(ROLLTUI_SOURCE_DIR) + "/c")) {
+      const std::string name = e.path().filename().string();
+      const std::string ext = e.path().extension().string();
+      if (ext != ".c" && ext != ".h") continue;
+      if (name == "rolltui_alloc.c" || name == "rolltui_alloc.h") continue;  // the one home
+      ++scanned;
+      std::istringstream in(read_file(e.path().string()));
+      std::string line;
+      int ln = 0;
+      while (std::getline(in, line)) {
+        ++ln;
+        if (is_comment(line)) continue;
+        if (std::regex_search(line, growth)) hits.push_back(name + ":" + std::to_string(ln) + ":" + line);
+      }
+    }
+    check(scanned >= 5, "scanned the library's C sources (" + std::to_string(scanned) + " files)");
+    check(hits.empty(), "GROWTH HAS ONE HOME: no C file outside rolltui_alloc.c grows a buffer itself" +
+                            (hits.empty() ? "" : " — " + hits.front()));
+    // CONTROL: the scanner finds the pattern when it is there. An absence check that has
+    // stopped matching is indistinguishable from an absence — the same rule as the two above.
+    check(std::regex_search(std::string("  f->cells = rolltui_mem_realloc(f->cells, n * 2);"), growth),
+          "…and the pattern matches a planted growth call, so the control is live");
+  }
+
   // ---- BORROWED: the census ----------------------------------------------------------
   // Every raw pointer in a public header is a BORROW, and this is the tripwire that keeps
   // it that way: the count per header is RECORDED, so adding one fails until an author

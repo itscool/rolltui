@@ -18,10 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* rolltui::mem, as C. Declared here rather than included, so this file needs no C++ header. */
-extern void* rolltui_mem_alloc(size_t bytes);
-extern void* rolltui_mem_realloc(void* p, size_t bytes);
-extern void rolltui_mem_free(void* p);
+#include "rolltui/c/rolltui_alloc.h"
 
 /* ---- an owned byte string that reuses its buffer ---------------------------------- */
 typedef struct {
@@ -30,10 +27,9 @@ typedef struct {
 } Str;
 
 static void str_assign(Str* s, const char* data, size_t n) {
-  if (n > s->cap) {
-    s->p = (char*)rolltui_mem_realloc(s->p, n);
-    s->cap = n;
-  }
+  /* EXACT (strategy 3): a link URL or a spilled cluster is ASSIGNED whole, never appended
+   * to, so there is nothing to amortise and doubling would only waste bytes. */
+  s->p = rolltui_fit(s->p, &s->cap, n, 1);
   if (n) memcpy(s->p, data, n);
   s->len = n;
 }
@@ -93,12 +89,9 @@ static void set_glyph(RolltuiFrame* f, RolltuiCell* c, const char* g, size_t n) 
     c->len = (unsigned char)n;
     return;
   }
-  if (f->glyph_count == f->glyph_cap) {
-    size_t cap = f->glyph_cap ? f->glyph_cap * 2 : 4;
-    f->glyphs = (Str*)rolltui_mem_realloc(f->glyphs, cap * sizeof(Str));
-    memset(f->glyphs + f->glyph_cap, 0, (cap - f->glyph_cap) * sizeof(Str));
-    f->glyph_cap = cap;
-  }
+  /* AMORTISED AND ZEROED (strategy 2): appended to one spill at a time, and a slot holds an
+   * owned pointer that must start NULL or `str_assign` would realloc garbage. */
+  f->glyphs = rolltui_grow_zeroed(f->glyphs, &f->glyph_cap, f->glyph_count + 1, sizeof *f->glyphs);
   str_assign(&f->glyphs[f->glyph_count], g, n);
   {
     unsigned int idx = (unsigned int)f->glyph_count++;
@@ -134,10 +127,9 @@ void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill) {
   f->w = w > 0 ? w : 0;
   f->h = h > 0 ? h : 0;
   n = (size_t)f->w * (size_t)f->h;
-  if (n > f->cell_cap) {
-    f->cells = (RolltuiCell*)rolltui_mem_realloc(f->cells, n * sizeof(RolltuiCell));
-    f->cell_cap = n;
-  }
+  /* EXACT (strategy 3): a reset knows w * h, and this is the biggest buffer in the library —
+   * doubling would make a 120x40 grid reserve 8,192 cells for the 4,800 it needs. */
+  f->cells = rolltui_fit(f->cells, &f->cell_cap, n, sizeof *f->cells);
   cell_init(&proto, fill);
   for (i = 0; i < n; ++i) f->cells[i] = proto;
   /* The tables keep their bytes; only the COUNT is reset (Phase 13 m5b). */
@@ -170,12 +162,7 @@ RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src) {
     (void)id;
   }
   for (i = 0; i < src->glyph_count; ++i) {
-    if (f->glyph_count == f->glyph_cap) {
-      size_t cap = f->glyph_cap ? f->glyph_cap * 2 : 4;
-      f->glyphs = (Str*)rolltui_mem_realloc(f->glyphs, cap * sizeof(Str));
-      memset(f->glyphs + f->glyph_cap, 0, (cap - f->glyph_cap) * sizeof(Str));
-      f->glyph_cap = cap;
-    }
+    f->glyphs = rolltui_grow_zeroed(f->glyphs, &f->glyph_cap, f->glyph_count + 1, sizeof *f->glyphs);
     str_assign(&f->glyphs[f->glyph_count++], src->glyphs[i].p, src->glyphs[i].len);
   }
   for (i = 0; i < src->mark_count; ++i) {
@@ -292,12 +279,7 @@ unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_
   if (url_len == 0) return 0;
   for (i = 0; i < f->link_count; ++i)
     if (f->links[i].len == url_len && memcmp(f->links[i].p, url, url_len) == 0) return (unsigned int)(i + 1);
-  if (f->link_count == f->link_cap) {
-    size_t cap = f->link_cap ? f->link_cap * 2 : 4;
-    f->links = (Str*)rolltui_mem_realloc(f->links, cap * sizeof(Str));
-    memset(f->links + f->link_cap, 0, (cap - f->link_cap) * sizeof(Str));
-    f->link_cap = cap;
-  }
+  f->links = rolltui_grow_zeroed(f->links, &f->link_cap, f->link_count + 1, sizeof *f->links);
   str_assign(&f->links[f->link_count], url, url_len);
   return (unsigned int)++f->link_count;
 }
@@ -319,11 +301,9 @@ void rolltui_frame_mark(RolltuiFrame* f, int x, int y, int cells, int state,
   Mark* m;
   if (cells <= 0 || state == 0) return; /* EffectState::None is 0 */
   if (y < 0 || y >= f->h || x >= f->w) return;
-  if (f->mark_count == f->mark_cap) {
-    size_t cap = f->mark_cap ? f->mark_cap * 2 : 8;
-    f->marks = (Mark*)rolltui_mem_realloc(f->marks, cap * sizeof(Mark));
-    f->mark_cap = cap;
-  }
+  /* AMORTISED (strategy 2), not zeroed: a Mark is plain scalars, every one of which is
+   * written below before anything reads it. */
+  f->marks = rolltui_grow(f->marks, &f->mark_cap, f->mark_count + 1, sizeof *f->marks);
   m = &f->marks[f->mark_count++];
   m->x = x;
   m->y = y;

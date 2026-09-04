@@ -20,12 +20,8 @@
 
 #include <string.h>
 
+#include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
-
-/* rolltui::mem, as C. Declared here rather than included, so this file needs no C++ header. */
-extern void* rolltui_mem_alloc(size_t bytes);
-extern void* rolltui_mem_realloc(void* p, size_t bytes);
-extern void rolltui_mem_free(void* p);
 
 /* Where one line's slice of the two shared buffers is. Owns nothing. */
 typedef struct {
@@ -54,27 +50,21 @@ struct RolltuiWrapLines {
   unsigned char packed;
 
   /* Scratch, reused across every wrap into this handle. */
+  /* One cap each rather than one shared between three: a cap per buffer is what the closed
+   * set's `rolltui_grow` takes, and paying two extra size_t beats hand-writing the growth. */
   RolltuiCodepoint* cps;
+  size_t cps_cap;
   size_t* coff;
+  size_t coff_cap;
   size_t* clen;
-  size_t char_cap; /* the three above share it: they are always sized together */
+  size_t clen_cap;
   unsigned char* brk;
+  size_t brk_cap;
   unsigned char* bounds;
-  size_t flag_cap; /* likewise these two */
+  size_t bounds_cap;
   Cluster* clusters;
   size_t cluster_count, cluster_cap;
 };
-
-/* Grows a buffer to hold `need` elements, doubling, and never shrinks. `rolltui_mem_realloc`
- * takes NULL, so a first use and a growth are the same call. */
-static void* reserve(void* p, size_t* cap, size_t need, size_t elem) {
-  size_t c;
-  if (need <= *cap) return p;
-  c = *cap ? *cap : 16;
-  while (c < need) c *= 2;
-  *cap = c;
-  return rolltui_mem_realloc(p, c * elem);
-}
 
 /* ---- lifetime ------------------------------------------------------------------------- */
 
@@ -149,7 +139,7 @@ static void emit(State* s, size_t head, size_t keep, unsigned char hard) {
     if (k < head) head_width += cur_at(s, k)->width;
     else dropped_width += cur_at(s, k)->width;
   }
-  w->lines = reserve(w->lines, &w->line_cap, w->line_count + 1, sizeof *w->lines);
+  w->lines = rolltui_grow(w->lines, &w->line_cap, w->line_count + 1, sizeof *w->lines);
   r = &w->lines[w->line_count++];
   r->text_off = s->committed_text;
   r->text_len = head_bytes;
@@ -185,14 +175,14 @@ static void emit_all(State* s, unsigned char hard) { emit(s, cur_count(s), cur_c
 static void append(State* s, const char* bytes, size_t nb, size_t source_offset, int gw, unsigned char space) {
   RolltuiWrapLines* w = s->w;
   RolltuiWrapGrapheme* g;
-  w->gs = reserve(w->gs, &w->gs_cap, w->gs_len + 1, sizeof *w->gs);
+  w->gs = rolltui_grow(w->gs, &w->gs_cap, w->gs_len + 1, sizeof *w->gs);
   g = &w->gs[w->gs_len++];
   g->offset = w->text_len - s->committed_text; /* the text append below has not happened yet */
   g->length = nb;
   g->source_offset = source_offset;
   g->width = gw;
   g->space = space;
-  w->text = reserve(w->text, &w->text_cap, w->text_len + nb, 1);
+  w->text = rolltui_grow(w->text, &w->text_cap, w->text_len + nb, 1);
   memcpy(w->text + w->text_len, bytes, nb);
   w->text_len += nb;
   s->cur_width += gw;
@@ -230,22 +220,12 @@ void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, 
   /* Decode straight into three parallel arrays. The seam narrowed what the engine asks for
    * (rolltui_unicode.h): there is no array of structs and therefore no copy loop to get a
    * contiguous code-point array back out of one. */
-  if (len > w->char_cap) {
-    size_t c = w->char_cap ? w->char_cap : 16;
-    while (c < len) c *= 2;
-    w->cps = (RolltuiCodepoint*)rolltui_mem_realloc(w->cps, c * sizeof *w->cps);
-    w->coff = (size_t*)rolltui_mem_realloc(w->coff, c * sizeof *w->coff);
-    w->clen = (size_t*)rolltui_mem_realloc(w->clen, c * sizeof *w->clen);
-    w->char_cap = c;
-  }
+  w->cps = rolltui_grow(w->cps, &w->cps_cap, len, sizeof *w->cps);
+  w->coff = rolltui_grow(w->coff, &w->coff_cap, len, sizeof *w->coff);
+  w->clen = rolltui_grow(w->clen, &w->clen_cap, len, sizeof *w->clen);
   n = rolltui_u_decode_utf8(utf8, len, w->cps, w->coff, w->clen);
-  if (n + 1 > w->flag_cap) {
-    size_t c = w->flag_cap ? w->flag_cap : 16;
-    while (c < n + 1) c *= 2;
-    w->brk = (unsigned char*)rolltui_mem_realloc(w->brk, c);
-    w->bounds = (unsigned char*)rolltui_mem_realloc(w->bounds, c);
-    w->flag_cap = c;
-  }
+  w->brk = rolltui_grow(w->brk, &w->brk_cap, n + 1, sizeof *w->brk);
+  w->bounds = rolltui_grow(w->bounds, &w->bounds_cap, n + 1, sizeof *w->bounds);
   rolltui_u_line_break_opportunities(w->cps, n, w->brk);
   rolltui_u_grapheme_boundaries(w->cps, n, w->bounds);
 
@@ -256,7 +236,7 @@ void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, 
     Cluster* c;
     RolltuiCodepoint c0;
     if (!w->bounds[i + 1]) continue;
-    w->clusters = reserve(w->clusters, &w->cluster_cap, w->cluster_count + 1, sizeof *w->clusters);
+    w->clusters = rolltui_grow(w->clusters, &w->cluster_cap, w->cluster_count + 1, sizeof *w->clusters);
     c = &w->clusters[w->cluster_count++];
     c0 = w->cps[start];
     c->byte0 = w->coff[start];
@@ -355,26 +335,24 @@ void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, 
   if (s.pending || !s.any_emitted) emit_all(&s, 1);
 }
 
-/* ONE ALLOCATION FOR THE WHOLE RESULT: the handle and its three arrays, carved out of a
- * single block. See the header for why this is the shape and not four separate blocks.
- *
- * The offsets are all multiples of eight by construction rather than by rounding, and the
- * assertions below are what say so — the struct is pointers and size_t, both array elements
- * contain a size_t, and the bytes go LAST because they are the only thing that needs no
- * alignment at all. */
-_Static_assert(sizeof(RolltuiWrapLines) % 8 == 0, "the handle must end on an 8-byte boundary");
-_Static_assert(sizeof(Rec) % 8 == 0, "a line record must be a multiple of 8 for the next array to be aligned");
-_Static_assert(_Alignof(Rec) <= 8 && _Alignof(RolltuiWrapGrapheme) <= 8, "8-byte carving is not enough alignment");
-
+/* ONE ALLOCATION FOR THE WHOLE RESULT — strategy 4, PACKED (rolltui_alloc.h). See the header
+ * for why this is the shape and not four separate blocks. The three `_Static_assert`s that
+ * used to prove the offsets aligned are gone with it: `rolltui_pack_add` aligns every section
+ * for any type, so alignment stopped being this file's problem. */
 RolltuiWrapLines* rolltui_wrap_clone(const RolltuiWrapLines* src) {
-  const size_t off_lines = sizeof(RolltuiWrapLines);
-  const size_t off_gs = off_lines + src->line_count * sizeof(Rec);
-  const size_t off_text = off_gs + src->gs_len * sizeof(RolltuiWrapGrapheme);
+  RolltuiPack pk;
+  size_t off_lines, off_gs, off_text;
+  unsigned char* block;
+  RolltuiWrapLines* w;
+
+  rolltui_pack_begin(&pk, sizeof(RolltuiWrapLines));
+  off_lines = rolltui_pack_add(&pk, src->line_count, sizeof(Rec));
+  off_gs = rolltui_pack_add(&pk, src->gs_len, sizeof(RolltuiWrapGrapheme));
   /* At least one byte for the text, so an empty line's borrowed pointer is inside the block
    * rather than one past its end. */
-  const size_t total = off_text + (src->text_len ? src->text_len : 1);
-  unsigned char* block = (unsigned char*)rolltui_mem_alloc(total);
-  RolltuiWrapLines* w = (RolltuiWrapLines*)block;
+  off_text = rolltui_pack_add(&pk, src->text_len ? src->text_len : 1, 1);
+  block = (unsigned char*)rolltui_pack_alloc(&pk);
+  w = (RolltuiWrapLines*)block;
 
   memset(w, 0, sizeof *w); /* the scratch stays NULL: a clone is read, never wrapped into */
   w->packed = 1;
