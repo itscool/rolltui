@@ -10,12 +10,17 @@
  *
  * THE BOUNDARY'S RULES, decided here and applying to everything after:
  *
- *   1. **THE C SIDE HAS ITS OWN PODs.** `RolltuiStyle` is not `rolltui::Style` reinterpreted
- *      — it is a separate type, and the C++ wrapper converts. That costs a few bytes of copy
- *      per call and buys the thing worth having: no layout assumption anywhere, and the C++
- *      types keep their methods and their `operator==` without a single call site changing.
- *      A reinterpret_cast between "layout-compatible" types is precisely the silent wrong
- *      answer this project keeps finding.
+ *   1. **ONE DEFINITION. The C++ types ARE these structs.** `rolltui::Style` is a `using`
+ *      alias for `RolltuiStyle`, and the methods C++ wants live in `#ifdef __cplusplus`
+ *      blocks inside the struct — the standard dual-language shape.
+ *      **The first draft of this file said the opposite** (two types, converted at the
+ *      seam) on the grounds that a `reinterpret_cast` between "layout-compatible" types is
+ *      a silent wrong answer. That is true, and the conclusion did not follow: the fix for
+ *      a bad cast is not a hand-written CONVERSION, it is having nothing to convert. Two
+ *      definitions of the same data plus a conversion function is a second place to be
+ *      wrong — swap `index` and `r`, forget `dim`, and you get a plausible frame and no
+ *      error — which is the same failure with more code. **One definition removes the
+ *      cast, the conversion, the drift and the per-access copy at once.**
  *   2. **THE FRAME IS AN OPAQUE HANDLE.** Created, cloned, freed. The C++ `Frame` holds one
  *      and does the RAII; C callers do it by hand, which is the trade the experiment is
  *      here to price.
