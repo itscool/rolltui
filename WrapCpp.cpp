@@ -248,13 +248,22 @@ extern "C" void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, 
   if (pending || !any_emitted) emit_all(true);
 }
 
-extern "C" void rolltui_wrap_copy(RolltuiWrapLines* dst, const RolltuiWrapLines* src) {
-  // Three assigns, whatever the line count: the buffers keep their capacity and the lines
-  // carry offsets rather than storage, so a result that is handed over costs three
-  // allocations the first time and none after.
-  dst->text.assign(src->text);
-  dst->gs.assign(src->gs.begin(), src->gs.end());
-  dst->lines.assign(src->lines.begin(), src->lines.end());
+// THE ONE PLACE THE TWO IMPLEMENTATIONS ARE NOT THE SAME DESIGN, and it is not for want of
+// trying. The C carves the handle and all three arrays out of ONE allocation, because their
+// sizes are known the moment a result exists; three `std::` containers structurally cannot —
+// each owns its own block by definition, and the only way to match it here is to stop being
+// three containers, which is C code written in C++ and answers a question nobody asked (m2's
+// rule for `ScreenCpp.cpp`). So this stays idiomatic and costs one allocation per container
+// that is not empty or short enough to sit inline, plus the handle. **That asymmetry is the
+// finding, and it points the other way from the one m3 first wrote down:** the interesting
+// thing is not that C lacks the small-string optimisation, it is that C can put the whole
+// result in one block and a container-based C++ cannot.
+extern "C" RolltuiWrapLines* rolltui_wrap_clone(const RolltuiWrapLines* src) {
+  std::unique_ptr<RolltuiWrapLines> w = std::make_unique<RolltuiWrapLines>();
+  w->text = src->text;    // the scratch is deliberately not copied: a clone is read, not
+  w->gs = src->gs;        // wrapped into, and carrying the decode buffers would be so much
+  w->lines = src->lines;  // dead weight per handed-over result
+  return w.release();
 }
 
 // ---- reading the lines ---------------------------------------------------------------------

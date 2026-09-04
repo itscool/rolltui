@@ -351,29 +351,35 @@ int main() {
   // itemised in plan/phase-13.md m5b.
   // RE-RECORDED 2026-09-04 by Phase 14 m3, and this is the FIRST TIME THE TWO
   // CONFIGURATIONS NEED TWO NUMBERS. m1 and m2 were identical either way and the journal
-  // said so; the wrap engine is not, by a difference that is measured, deterministic and
-  // fully accounted for:
+  // said so; the wrap engine is not:
   //
-  //             steady   streaming   resize    steady KB
-  //   C++ (OFF)      0         286    10941            0
-  //   C   (ON)       0         291    11140            0
+  //             steady   streaming   resize    steady KB   resize KB
+  //   C++ (OFF)      0         286    10941            0        1381
+  //   C   (ON)       0         267    10297            0        1368
   //
-  // **THE WHOLE GAP IS THE SMALL-STRING OPTIMISATION, and that is a measurement rather than
-  // a story.** `wrap()` hands over a result by copying three buffers into a fresh handle:
-  // the bytes, the clusters and one record per line. In C that is always three allocations
-  // plus the handle; in C++ the `std::string` holds a short total INLINE and costs nothing.
-  // A probe run on the resize frame counted **281 `wrap()` results, 200 of them with a
-  // total text of 1..22 bytes** — libc++'s inline capacity — and the C configuration's wrap
-  // cost exactly 281 x 4 = 1,124 allocations against C++'s 924 (= 281 handles + 81 strings
-  // + 281 + 281). On a WARM resize the difference is exactly 200, the count of short
-  // results; on the first one it is 199, one C++ container growing to a new high-water mark
-  // at the new width. No other difference between the two implementations was found.
+  // **THE C IS CHEAPER, AND THE FIRST VERSION OF THIS COMMENT SAID THE OPPOSITE.** It is
+  // worth keeping the wrong version's reasoning, because the mistake is the instructive
+  // part. The first cut had C at 291/11140 against C++'s 286/10941, and explained the gap
+  // as the small-string optimisation: `wrap()` hands over a result by copying three buffers
+  // into a fresh handle, which is four allocations in C, while a `std::string` holds a short
+  // total inline. That explanation was CORRECT and COMPLETE as far as it went — a probe
+  // counted **281 `wrap()` results in the resize frame, 200 with a total text of 1..22
+  // bytes**, libc++'s inline capacity, and the C's wrap cost exactly 281 x 4 = 1,124
+  // allocations against C++'s 924; on a warm resize the difference was exactly 200.
+  //
+  // **What was wrong was the conclusion drawn from it: "C cannot do this" instead of "the C
+  // is not written well enough yet".** A handed-over result is immutable and all three of
+  // its sizes are known the moment it exists, so the handle and its three arrays are ONE
+  // allocation with the arrays carved out — which is what `rolltui_wrap_clone` now does.
+  // 1,124 became 281, and the number that had been 200 worse than C++ became 643 better.
+  // Three `std::` containers cannot follow: each owns its own block by definition. So the
+  // real finding points the other way from the first one — see rolltui/c/rolltui_wrap.h.
   //
   // The OFF numbers moved too (289 -> 286, 11180 -> 10941) and that is m3's own doing: the
   // soft-break cut used to build a tail `std::vector` and a tail `std::string` per wrapped
   // line, and the shared-buffer data model the port forced deleted both (rolltui/WrapCpp.cpp).
 #ifdef ROLLTUI_C_BUILD
-  constexpr long kStreaming = 291, kResize = 11140;
+  constexpr long kStreaming = 267, kResize = 10297;
 #else
   constexpr long kStreaming = 286, kResize = 10941;
 #endif

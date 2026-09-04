@@ -106,9 +106,10 @@ class WrapLines {
   void wrap(std::string_view utf8, int width, const WrapOptions& opt = {}) {
     rolltui_wrap(w_.get(), utf8.data(), utf8.size(), width, opt);
   }
-  // Replaces these lines with copies of another's, reusing this object's buffers. Neither
-  // object's wrap scratch is touched: this is how a lent result becomes an owned one.
-  void assign(const WrapLines& o) { rolltui_wrap_copy(w_.get(), o.w_.get()); }
+  // A new WrapLines holding a copy of these lines and no wrap scratch — how a LENT result
+  // becomes an OWNED one, and what `wrap()` hands back. The implementation is free to make
+  // it one allocation for the whole thing, and the C one does.
+  WrapLines clone() const { return WrapLines(rolltui_wrap_clone(w_.get())); }
   // Drops the lines and keeps every buffer. This is what `Scratch` calls on acquire and
   // on release, which is why a lender's second window costs nothing.
   void clear() { rolltui_wrap_reset(w_.get()); }
@@ -154,6 +155,9 @@ class WrapLines {
   iterator end() const { return iterator(this, size()); }
 
  private:
+  // Takes ownership of a handle the boundary just minted (see `clone`).
+  explicit WrapLines(RolltuiWrapLines* owned) : w_(owned) {}
+
   std::unique_ptr<RolltuiWrapLines, Handle> w_;
 };
 

@@ -273,5 +273,21 @@ int main() {
     }
   }
 
+  // ---- A HANDED-OVER RESULT, WRAPPED INTO AGAIN --------------------------------------
+  // The C implementation carves a clone's three buffers out of the handle's OWN block (one
+  // allocation for the whole result), so this is the one path where a handle must let go of
+  // interior storage and start over on the heap. **Nothing in the library does it** — `wrap()`
+  // hands clones out to be read — which is precisely why it is asserted here: an ownership
+  // branch in C that no test reaches is the failure mode this phase exists to guard against.
+  {
+    WrapLines w = wrap("alpha beta gamma", 6);
+    check(texts(w) == std::vector<std::string>({"alpha", "beta", "gamma"}), "a handed-over result reads correctly");
+    w.wrap("one two three four", 8);
+    check(texts(w) == texts(wrap("one two three four", 8)),
+          "…and wrapping INTO it gives what a fresh wrap gives: " + show(texts(w)));
+    w.wrap("x", 1);
+    check(texts(w) == std::vector<std::string>({"x"}), "…and again, so the handle really did change hands cleanly");
+  }
+
   return report("rolltui wrap_test");
 }

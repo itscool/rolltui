@@ -187,7 +187,12 @@ int main() {
         //   - `const WrapLines* w` / `w_` in the iterator (one declaration each, the
         //     parameter and the member) — a BORROW of the container being iterated, which
         //     by construction outlives the iterator.
-        {"Wrap.hpp", 5},
+        //   - `RolltuiWrapLines* owned` in the private constructor — the one pointer here
+        //     whose name is the whole point: it TAKES OWNERSHIP of a handle the boundary
+        //     just minted, and hands it straight to the `unique_ptr`. It is private so that
+        //     the only way to get one is `clone()`, which is the only place a raw handle
+        //     ever exists as a value in this header.
+        {"Wrap.hpp", 6},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -220,7 +225,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 54, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 55, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

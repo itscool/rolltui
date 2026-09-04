@@ -17,9 +17,7 @@ WrapLines wrap(std::string_view utf8, int width, const WrapOptions& opt) {
   static thread_local Scratch<WrapLines> scratch("wrap build");
   auto built = scratch.lock();
   built->wrap(utf8, width, opt);
-  WrapLines out;
-  out.assign(*built);  // the LINES only; the warm decode and break buffers stay behind
-  return out;
+  return built->clone();  // the LINES only; the warm decode and break buffers stay behind
 }
 
 Scratch<WrapLines>::Lock wrap_borrow(std::string_view utf8, int width, const WrapOptions& opt) {

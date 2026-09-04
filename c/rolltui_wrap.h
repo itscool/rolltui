@@ -32,13 +32,14 @@
  *      from m1 anyway. The C++ side turns the out-params into a `Line` of `string_view` +
  *      `span` in one place, which is the same conversion `Mark` and `Cursor` already get.
  *
- * WHY `rolltui_wrap_copy` EXISTS, since an entry point nothing needs is a thing m2 deleted:
+ * WHY `rolltui_wrap_clone` EXISTS, since an entry point nothing needs is a thing m2 deleted:
  * `wrap()` — the form whose lines must OUTLIVE the call — needs a handle of its own, and a
  * fresh handle's scratch is cold. Wrapping straight into it would pay for the decode and
  * break buffers on every call, which is roughly eight allocations a call that the lend path
- * does not pay. So `wrap()` runs the engine once in a warm handle and copies the LINES out;
- * the copy touches no scratch. That is the one function on this boundary that exists for a
- * cost reason rather than a semantic one, and it is said out loud here rather than discovered.
+ * does not pay. So `wrap()` runs the engine once in a warm handle and clones the LINES out;
+ * the clone carries no scratch at all. That is the one function on this boundary that exists
+ * for a cost reason rather than a semantic one, and it is said out loud here rather than
+ * discovered.
  */
 #include <stddef.h>
 
@@ -89,9 +90,24 @@ void rolltui_wrap_reset(RolltuiWrapLines* w);
  * empty line. The rules are Wrap.hpp's. */
 void rolltui_wrap(RolltuiWrapLines* w, const char* utf8, size_t len, int width, RolltuiWrapOptions opt);
 
-/* Replaces `dst`'s lines with copies of `src`'s live ones, reusing `dst`'s buffers. Neither
- * handle's scratch is touched or shared. */
-void rolltui_wrap_copy(RolltuiWrapLines* dst, const RolltuiWrapLines* src);
+/* A NEW handle holding a copy of `src`'s lines and nothing else — no scratch, because a
+ * handed-over result is never wrapped into again in practice. This is what `wrap()` returns.
+ *
+ * **THE C IMPLEMENTATION DOES THIS IN ONE ALLOCATION**, and that is a deliberate answer to a
+ * measurement rather than an optimisation for its own sake. The first cut of this boundary
+ * copied into four separate blocks — the handle, the bytes, the clusters, the line records —
+ * and cost 200 allocations a resize frame more than the C++ side, whose `std::string` holds
+ * a short total inline. It was written up as "C has no small-string optimisation", which is
+ * true and was the wrong conclusion: **the sizes of all three buffers are known at the moment
+ * a result exists, so the whole thing is one block with the arrays carved out of it.** C++'s
+ * containers cannot do that — each owns its own allocation by definition — so what looked
+ * like a language deficit is the opposite once the C is written to C's strengths.
+ *
+ * The consequence a caller can see, stated because it is the price: a cloned handle's three
+ * buffers are INTERIOR to its own block. Wrapping into one (legal, and nothing does) drops
+ * them and starts over on the heap, abandoning that space until the handle is freed. Reading
+ * and resetting are unaffected. */
+RolltuiWrapLines* rolltui_wrap_clone(const RolltuiWrapLines* src);
 
 /* ---- reading the lines ----------------------------------------------------------------- */
 size_t rolltui_wrap_line_count(const RolltuiWrapLines* w);
