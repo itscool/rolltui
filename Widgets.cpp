@@ -683,7 +683,8 @@ void Windows::bind_sample_document(std::string name, std::string markdown) {
   e.id = "sample";
   e.text = std::move(markdown);
   Document& d = owned_documents_[name];
-  d.entries.assign(1, std::move(e));
+  d.entries.clear();
+  d.entries.push_back(std::move(e));
   documents_[std::move(name)] = &d;
 }
 void Windows::bind_rows(std::string name, RowsFn rows) { rows_[std::move(name)] = std::move(rows); }

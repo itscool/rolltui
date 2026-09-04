@@ -410,8 +410,21 @@ int main() {
   // reconstructs owning containers; the C's is index arrays over one byte pool, so it
   // refills buffers it already had. Neither is a better algorithm — it is the same design in
   // two languages, and only one of them has a default that allocates.
+  //
+  // **C RE-RECORDED 2026-09-04 by Phase 15 m5e: streaming 13 → 6 and resize 82 → 80**, and
+  // the number went DOWN, which this test fails on as loudly as an increase — the floor is
+  // there so that a collapse has to be explained rather than enjoyed. The cause is the
+  // transcript itself, which is the last module of the layer to port: with `ROLLTUI_C=ON`
+  // every per-frame working buffer it needs is a `rolltui_grow` array on the handle that
+  // reaches a high-water mark and stays — the cluster array the cell walk decodes into, the
+  // plain wrap's per-grapheme source offsets, the match list, and the three per-entry arrays
+  // `build` fills. The C++ implementation re-creates several of those per call (a
+  // `std::vector<RolltuiMdFoldState>` per relaid entry, a `std::string` per unfolded-text
+  // cache fill, a `Scratch` per `for_each_cell` instantiation). Same design, two languages,
+  // and only one of them has a default that allocates. The C++ numbers did not move at all,
+  // which is the control: `TranscriptCpp.cpp` IS the code that was there.
 #ifdef ROLLTUI_C_BUILD
-  constexpr long kStreaming = 13, kResize = 82;
+  constexpr long kStreaming = 6, kResize = 80;
 #else
   constexpr long kStreaming = 37, kResize = 122;
 #endif

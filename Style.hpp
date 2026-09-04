@@ -49,12 +49,14 @@ enum class Role : std::uint8_t {
 
 inline constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
 
-// THE TWO ROLE ORDINALS THAT CROSS A C BOUNDARY, checked here rather than trusted (Phase 15
+// THE THREE ROLE ORDINALS THAT CROSS A C BOUNDARY, checked here rather than trusted (Phase 15
 // m5). A layout node's `background` and an input's `prompt_role` are struct fields with
 // DEFAULTS, which is the one case the "a renderer is handed the byte" rule cannot cover —
 // there is no call at which to hand one in. `rolltui/c/rolltui_style.h` carries the ordinals
-// and states why; these two assertions are what tie them to the names, so the day either
+// and states why; these assertions are what tie them to the names, so the day either
 // enum moves the build stops instead of drawing in the wrong colour.
+static_assert(static_cast<unsigned char>(Role::text) == ROLLTUI_ROLE_DEFAULT_TEXT,
+              "the C side's default entry role must be Role::text");
 static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
               "the C side's default node background must be Role::background");
 static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,

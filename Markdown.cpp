@@ -12,13 +12,11 @@
 
 namespace rolltui::markdown {
 
-namespace {
-
 // THE STYLING VOCABULARY, HANDED IN. `rolltui/Style.hpp` is the one place these names
 // exist; a renderer is told which byte to tag its output with, exactly as `Diff.cpp` tells
 // the diff colouriser (Phase 15 m2's rule, and the reason neither implementation names a
 // role).
-constexpr RolltuiMdRoles kRoles = {
+constexpr RolltuiMdRoles kRolesForC = {
     /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
     /*heading=*/static_cast<unsigned char>(Role::md_heading),
     /*emphasis=*/static_cast<unsigned char>(Role::md_emphasis),
@@ -38,6 +36,8 @@ constexpr RolltuiMdRoles kRoles = {
 };
 static_assert(static_cast<unsigned char>(Role::count_) < ROLLTUI_MD_NO_ROLE,
               "the no-override sentinel must not be able to collide with a real Role");
+
+namespace {
 
 // What the boundary carries instead of a `std::function`: the host's callable, plus the two
 // buffers the translation needs. Both belong to the `Rendered` doing the render, so a
@@ -59,6 +59,8 @@ void call_highlighter(void* ctx, const char* lang, std::size_t lang_n, const Rol
 }
 
 }  // namespace
+
+const RolltuiMdRoles* md_roles() { return rolltui_md_roles(); }
 
 // ---- the document ---------------------------------------------------------------------
 
@@ -97,7 +99,7 @@ void Rendered::render(const Document& doc, const RenderOptions& opt) {
   o.ambiguous_wide = opt.ambiguous_wide ? 1 : 0;
   o.tab_width = opt.tab_width;
   o.base = static_cast<unsigned char>(opt.base);
-  o.roles = kRoles;
+  o.roles = kRolesForC;
   o.fold_over_lines = opt.code_fold.fold_over_lines;
   o.cap_lines = opt.code_fold.cap_lines;
   // The overrides cross as a BORROW for the duration of the call, the same shape as every
@@ -151,3 +153,6 @@ void plain_text_into(std::span<const StyledLine> lines, std::string& out) {
 }
 
 }  // namespace rolltui::markdown
+
+// Outside the namespace: the C spelling, which is what `c/rolltui_transcript.c` calls.
+extern "C" const RolltuiMdRoles* rolltui_md_roles(void) { return &rolltui::markdown::kRolesForC; }

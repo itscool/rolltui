@@ -1,954 +1,189 @@
-// rolltui/Transcript.cpp — see Transcript.hpp for the rules.
+// rolltui/Transcript.cpp — the SHIM over `rolltui/c/rolltui_transcript.h`: the RAII, the
+// styling vocabulary, the eleven action names, and the translation of two `std::function`s
+// into function pointers. The two implementations live in `TranscriptCpp.cpp` and
+// `c/rolltui_transcript.c`, and `-DROLLTUI_C` picks which one links (Phase 15 m5e).
+//
+// Nothing here decides anything. It exists so the C boundary never has to know what a `Role`
+// is called, what an action is called, or what a `std::function` is.
 #include "rolltui/Transcript.hpp"
 
-#include <algorithm>
-#include <chrono>
-
-#include "rolltui/Scratch.hpp"
-#include "rolltui/Unicode.hpp"
-#include "rolltui/Wrap.hpp"
+#include "rolltui/Scratch.hpp"  // rolltui::ThreadHandle
 
 namespace rolltui {
 
-using markdown::kNoSource;
-using markdown::Span;
-using markdown::StyledLine;
-
-// ---- selection model -------------------------------------------------------------
-
-// Entry, then offset, then length — so of two positions at the same offset the one
-// that covers a grapheme is `last()`, and range_in includes it.
-bool operator<(const TextPos& a, const TextPos& b) {
-  if (a.entry != b.entry) return a.entry < b.entry;
-  if (a.offset != b.offset) return a.offset < b.offset;
-  return a.length < b.length;
-}
-
-bool Selection::range_in(std::size_t entry, std::size_t len, std::size_t& begin, std::size_t& end) const {
-  if (!active) return false;
-  const TextPos f = first(), l = last();
-  if (entry < f.entry || entry > l.entry) return false;
-  begin = (entry == f.entry) ? std::min(f.offset, len) : 0;
-  end = (entry == l.entry) ? std::min(l.offset + l.length, len) : len;
-  if (end < begin) end = begin;
-  return true;
-}
-
 namespace {
 
-// A highlight applied over a base style: a colour only where the highlight names one,
-// attributes OR'd in. ONE function, so the selection and the two find highlights cannot
-// drift apart in how they combine with the text's own role — which is exactly what
-// happened the first time this was written twice.
-Style overlay_style(Style base, const Style& over) {
-  if (over.fg.kind != Color::Kind::None) base.fg = over.fg;
-  if (over.bg.kind != Color::Kind::None) base.bg = over.bg;
-  base.bold |= over.bold;
-  base.italic |= over.italic;
-  base.underline |= over.underline;
-  base.dim |= over.dim;
-  base.reverse |= over.reverse;
-  return base;
+// THE FIVE ROLES A DRAW NEEDS, handed in. `rolltui/Style.hpp` is the one place these names
+// exist; every other role a line is drawn in travels on the SPAN, which the markdown renderer
+// already tagged (Phase 15 m2's rule).
+constexpr RolltuiTranscriptRoles kRoles = {
+    /*background=*/static_cast<unsigned char>(Role::background),
+    /*selection=*/static_cast<unsigned char>(Role::selection),
+    /*find_match=*/static_cast<unsigned char>(Role::find_match),
+    /*find_current=*/static_cast<unsigned char>(Role::find_current),
+    /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
+    /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
+};
+
+// THE ELEVEN ACTION NAMES. `library_actions()` in Bindings.cpp is where the vocabulary lives;
+// the C knows the RULES and none of the words.
+constexpr RolltuiTranscriptActions kActions = {
+    "transcript.line_up",   "transcript.line_down",  "transcript.page_up",
+    "transcript.page_down", "transcript.top",        "transcript.bottom",
+    "transcript.find_next", "transcript.find_prev",  "transcript.fold",
+    "transcript.copy",      "transcript.clear_selection",
+};
+
+// What crosses instead of a `std::function`: the host's callable behind a `void*`.
+void call_copy(void* ctx, const char* text, std::size_t len) {
+  Transcript& t = *static_cast<Transcript*>(ctx);
+  if (t.on_copy) t.on_copy(std::string(text, len));
 }
 
-// Visits every drawable grapheme of a line: the span, the grapheme's index within the
-// span (its Span::sources index), its bytes and its width. Width-0 clusters are
-// skipped exactly as Frame::put_text skips them, so cell positions agree.
-template <typename F>
-void for_each_cell(const StyledLine& line, bool ambiguous, F&& f) {
-  // Phase 13 m3: one reused buffer per instantiation. This runs once per SPAN of every
-  // drawn row, twice per row in draw() — the second heaviest caller of `graphemes()` after
-  // put_text. Being a template is what makes it safe without thought: each lambda type
-  // gets its own buffer, and no call site's lambda calls back into for_each_cell.
-  static thread_local Scratch<std::vector<unicode::Grapheme>> scratch("for_each_cell clusters");
-  auto gs = scratch.lock();
-  for (const Span& sp : line.spans()) {
-    std::size_t k = 0;
-    unicode::graphemes_into(sp.text(), ambiguous, *gs);
-    for (const unicode::Grapheme& g : *gs) {
-      if (g.width > 0) f(sp, k, sp.text().substr(g.offset, g.length), g.width);
-      ++k;
-    }
-  }
+RolltuiDrawScratch* draw_scratch() {
+  static thread_local ThreadHandle<RolltuiDrawScratch, rolltui_draw_scratch_new, rolltui_draw_scratch_free> h;
+  return h.get();
 }
 
-std::uint32_t source_of(const Span& sp, std::size_t k) {
-  const std::span<const std::uint32_t> src = sp.sources();
-  if (src.empty()) return kNoSource;
-  return src[std::min(k, src.size() - 1)];
-}
-
-// A chrome span of the open line: no source offsets and no href, so every one of its
-// clusters is kNoSource — generated by the store rather than passed, which is what
-// `chrome()` used to build a whole `std::vector` to say.
-std::string_view spaces(std::string& pad, int n) {
-  const std::size_t need = static_cast<std::size_t>(std::max(n, 0));
-  if (pad.size() < need) pad.resize(need, ' ');
-  return std::string_view(pad).substr(0, need);
-}
-
-void chrome(RolltuiMdLines* S, std::string_view text, Role role, bool ambiguous) {
-  rolltui_md_lines_span(S, text.data(), text.size(), static_cast<unsigned char>(role), ambiguous, nullptr, 0,
-                        nullptr, 0);
-}
-
+// The highlighting trampoline, and the two buffers the translation needs. Both belong to the
+// `Transcript`, so a highlighted block costs no allocation after the first — the same shape
+// `Markdown.cpp` uses one level down, because it is the same seam.
 }  // namespace
 
-// ---- layout ----------------------------------------------------------------------
+// The highlighting trampoline's context, and the two buffers the translation needs. All three
+// belong to the `Transcript`, so a highlighted block costs no allocation after the first — the
+// same shape `Markdown.cpp` uses one level down, because it is the same seam.
+struct TranscriptHighlightCtx {
+  const markdown::Highlighter* fn;
+  std::vector<std::string_view>* lines;
+  std::vector<markdown::HighlightSpan>* spans;
+};
 
-markdown::CodeFoldOptions Transcript::code_fold_for(const std::string& id, const TranscriptOptions& opt) const {
-  markdown::CodeFoldOptions cf;
-  cf.fold_over_lines = opt.code_fold_over_lines;
-  cf.cap_lines = opt.code_cap_lines;
-  auto it = code_folds_.find(id);
-  if (it != code_folds_.end()) cf.states = it->second.states;
-  return cf;
+namespace {
+void call_highlighter(void* ctx, const char* lang, std::size_t lang_n, const RolltuiMdCodeLine* lines,
+                      std::size_t line_count, std::size_t index, RolltuiMdSpanSink emit, void* sink) {
+  TranscriptHighlightCtx& h = *static_cast<TranscriptHighlightCtx*>(ctx);
+  h.lines->resize(line_count);
+  for (std::size_t i = 0; i < line_count; ++i) (*h.lines)[i] = std::string_view(lines[i].p, lines[i].n);
+  *h.spans = (*h.fn)(std::string_view(lang, lang_n), std::span<const std::string_view>(*h.lines), index);
+  for (const markdown::HighlightSpan& s : *h.spans)
+    emit(sink, s.begin, s.end, static_cast<unsigned char>(s.role));
 }
+}  // namespace
 
-const markdown::Document& Transcript::parsed(const DocEntry& e) {
-  // KEYED ON VERSION AND NOT ON WIDTH, which is the whole finding. `parse()` is a pure
-  // function of the entry's text, and the layout cache's key carries `width` — so a resize
-  // re-parsed forty unchanged strings into an identical tree and threw it away, 1,243
-  // allocations a frame (m1, 12.1%). The port only SURFACED this: C has no opinion about
-  // cache keys. It is fixed here anyway rather than left as a 12% cost the port walked past.
-  auto it = parse_.find(e.id);
-  if (it == parse_.end() || it->second.version != e.version) {
-    Parsed p;
-    p.version = e.version;
-    p.doc = markdown::parse(e.text);
-    it = parse_.insert_or_assign(e.id, std::move(p)).first;
-  }
-  it->second.seen = true;
-  return it->second.doc;
+Transcript::Transcript() {
+  rolltui_transcript_set_copy(t_.get(), call_copy, this);
+  rolltui_transcript_set_roles(t_.get(), &kRoles);
 }
-
-void Transcript::lay_out(EntryLayout& L, const DocEntry& e, int width, const TranscriptOptions& opt, bool folded) {
-  RolltuiMdLines* S = L.store.store();
-  L.folded = folded && e.foldable;
-  L.hidden_lines = 0;
-  const bool amb = opt.ambiguous_wide;
-  const int prefix_w = unicode::display_width(e.prefix, amb);
-  const int inner = std::max(width - prefix_w, 1);
-
-  // The BODY, laid out into the front of the store. Everything below appends after it and
-  // references its spans; nothing copies a byte of it.
-  if (e.markdown) {
-    markdown::RenderOptions ro;
-    ro.width = inner;
-    ro.ambiguous_wide = amb;
-    ro.tab_width = opt.tab_width;
-    ro.base = e.role;
-    ro.highlight = highlight_;
-    ro.code_fold = code_fold_for(e.id, opt);
-    L.store.render(parsed(e), ro);
-  } else {
-    rolltui_md_lines_reset(S);
-    rolltui_md_lines_text_set(S, e.text.data(), e.text.size());
-    WrapOptions wo;
-    wo.ambiguous_wide = amb;
-    wo.tab_width = opt.tab_width;
-    // LENT: the one wrap engine this widget reuses for every plain entry of every frame.
-    static thread_local Scratch<WrapLines> wrapper("transcript plain wrap");
-    auto lines = wrapper.lock();
-    lines->wrap(e.text, inner, wo);
-    static thread_local Scratch<std::vector<std::uint32_t>> sources("transcript plain sources");
-    for (const Line& l : *lines) {
-      rolltui_md_lines_open(S);
-      if (l.indent > 0) chrome(S, spaces(pad_, l.indent), e.role, amb);
-      auto srcs = sources.lock();
-      for (const WrapGrapheme& g : l.graphemes) srcs->push_back(static_cast<std::uint32_t>(g.source_offset));
-      rolltui_md_lines_span(S, l.text.data(), l.text.size(), static_cast<unsigned char>(e.role), amb, srcs->data(),
-                            srcs->size(), nullptr, 0);
-      rolltui_md_lines_close(S);
-    }
-  }
-  std::size_t body = rolltui_md_lines_count(S);
-  if (body == 0) {  // an entry with nothing in it still occupies one line
-    rolltui_md_lines_open(S);
-    rolltui_md_lines_close(S);
-    body = 1;
-  }
-  L.body = body;
-
-  auto with_prefix = [&](bool first) {
-    if (prefix_w <= 0) return;
-    if (first) chrome(S, e.prefix, e.prefix_role, amb);
-    else chrome(S, spaces(pad_, prefix_w), e.role, amb);
-  };
-  auto add_body = [&](std::size_t line, bool first) {
-    rolltui_md_lines_open(S);
-    with_prefix(first);
-    std::size_t f = 0, n = 0;
-    rolltui_md_lines_span_range(S, line, &f, &n);
-    // BY INDEX, never by pointer: `with_prefix` above may have grown the pools, and the
-    // refs below grow the span array under anything the caller took a pointer to.
-    for (std::size_t k = 0; k < n; ++k) rolltui_md_lines_span_ref(S, f + k);
-    rolltui_md_lines_close(S);
-  };
-
-  if (e.foldable) {
-    rolltui_md_lines_open(S);
-    with_prefix(true);
-    chrome(S, L.folded ? "\xE2\x96\xB8 " : "\xE2\x96\xBE ", Role::text_muted, amb);  // ▸ ▾
-    chrome(S, e.summary, e.role, amb);
-    if (L.folded) {
-      scratch_.assign(" (");
-      scratch_ += std::to_string(body);
-      scratch_ += body == 1 ? " line)" : " lines)";
-      chrome(S, scratch_, Role::text_muted, amb);
-    }
-    rolltui_md_lines_close(S);
-    if (L.folded) {
-      L.hidden_lines = body;
-      rolltui_md_lines_text_set(S, e.summary.data(), e.summary.size());
-      rolltui_md_lines_clear_code_blocks(S);  // nothing of the body is drawn, so nothing is clickable
-      rolltui_md_lines_finish(S);
-      return;
-    }
-    // The entry's own summary row pushes every body line down by one, so the block rows
-    // have to move with it — a click routes by LINE NUMBER, and an off-by-one here is a
-    // header row that toggles nothing.
-    rolltui_md_lines_shift_code_blocks(S, 1);
-    for (std::size_t k = 0; k < body; ++k) add_body(k, false);
-  } else {
-    for (std::size_t k = 0; k < body; ++k) add_body(k, k == 0);
-  }
-  rolltui_md_lines_finish(S);
-}
-
-std::size_t Transcript::block_len(std::size_t entry) const {
-  return (entry > 0 ? static_cast<std::size_t>(std::max(opt_.gap, 0)) : 0) + layouts_[entry]->lines().size();
-}
-
-std::size_t Transcript::max_top() const {
-  const std::size_t h = static_cast<std::size_t>(std::max(area_.h, 0));
-  return total_ > h ? total_ - h : 0;
-}
-
-void Transcript::set_top(std::size_t top) {
-  if (starts_.empty()) { scroll_ = {0, 0, true}; return; }
-  top = std::min(top, max_top());
-  auto it = std::upper_bound(starts_.begin(), starts_.end(), top);
-  std::size_t e = static_cast<std::size_t>(it - starts_.begin()) - 1;
-  scroll_.entry = e;
-  scroll_.line = top - starts_[e];
-  scroll_.follow = top >= max_top();
-}
-
-std::size_t Transcript::top_line() const {
-  if (starts_.empty()) return 0;
-  std::size_t e = std::min(scroll_.entry, starts_.size() - 1);
-  return starts_[e] + scroll_.line;
-}
-
-std::size_t Transcript::lines_below() const {
-  const std::size_t shown_end = top_line() + static_cast<std::size_t>(std::max(area_.h, 0));
-  return total_ > shown_end ? total_ - shown_end : 0;
-}
-
-void Transcript::build(const Document& doc, int width) {
-  const std::size_t n = doc.entries.size();
-  layouts_.assign(n, nullptr);
-  starts_.assign(n, 0);
-  // Phase 12 m6. An entry's STATE is copied here, not into the cache key: it changes the
-  // marks draw() emits and never a single line, so a turn going from waiting to streaming
-  // must not re-wrap the transcript.
-  states_.assign(n, EntryState{});
-  for (auto& [id, c] : cache_) c.seen = false;
-  std::size_t g = 0;
-  for (std::size_t i = 0; i < n; ++i) {
-    const DocEntry& e = doc.entries[i];
-    const bool folded = e.foldable && is_folded(e);
-    std::uint64_t code_epoch = 0;
-    if (auto cf = code_folds_.find(e.id); cf != code_folds_.end()) code_epoch = cf->second.epoch;
-    const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, folded, code_epoch, highlight_epoch_};
-    auto it = cache_.find(e.id);
-    if (it == cache_.end() || !(it->second.key == key)) {
-      // The entry is laid out INTO the cache's own EntryLayout, so a re-lay reuses every
-      // buffer it already had: a resize refills the pools instead of rebuilding them.
-      if (it == cache_.end()) it = cache_.try_emplace(e.id).first;
-      it->second.key = key;
-      lay_out(it->second.layout, e, width, opt_, folded);
-      ++stats_.entries_relaid;
-    }
-    it->second.seen = true;
-    states_[i] = {e.state, e.progress, e.state_since_ms};
-    layouts_[i] = &it->second.layout;
-    starts_[i] = g;
-    g += block_len(i);
-  }
-  total_ = g;
-  if (cache_.size() > 2 * n + 32) {
-    for (auto it = cache_.begin(); it != cache_.end();) {
-      if (!it->second.seen) it = cache_.erase(it);
-      else ++it;
-    }
-  }
-  // Reconcile the anchor with the new layout.
-  if (n == 0) {
-    scroll_ = {0, 0, true};
-  } else if (scroll_.follow) {
-    set_top(max_top());
-  } else {
-    scroll_.entry = std::min(scroll_.entry, n - 1);
-    const std::size_t len = block_len(scroll_.entry);
-    scroll_.line = std::min(scroll_.line, len > 0 ? len - 1 : 0);
-    set_top(starts_[scroll_.entry] + scroll_.line);
-  }
-}
+Transcript::~Transcript() = default;
 
 void Transcript::layout(const Document& doc, Rect area, const TranscriptOptions& opt) {
-  const auto t0 = std::chrono::steady_clock::now();
-  area_ = area;
-  opt_ = opt;
-  text_area_ = area;
-  if (opt.inset > 0 && area.w >= 2 * opt.inset + 1) {
-    text_area_.x += opt.inset;
-    text_area_.w -= 2 * opt.inset;
-  }
-  const int width = std::max(text_area_.w, 1);
-  stats_.entries_relaid = 0;
-  build(doc, width);
-  // A relaid entry means text moved under the match list — a streaming answer, a
-  // re-wrap, a fold toggle — so offsets recorded against the old text are stale. Cheap
-  // to notice here; expensive to debug as a highlight drawn over the wrong bytes.
-  if (!query_.empty() && stats_.entries_relaid > 0) find_dirty_ = true;
-  // Find runs AFTER the build (it needs the layouts to place a match on a line) and can
-  // change the layout by unfolding, which is why reveal_current re-runs build().
-  if (find_dirty_) {
-    recompute_matches(doc, width);
-    find_dirty_ = false;
-  }
-  if (reveal_) {
-    reveal_current(doc, width);
-    reveal_ = false;
-  }
-  stats_.total_lines = total_;
-  stats_.cache_size = cache_.size();
-  stats_.layout_us = static_cast<long>(
-      std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+  rolltui_transcript_layout(t_.get(), &doc.entries, area, &opt);
 }
-
-// ---- find (see FIND in Transcript.hpp) -------------------------------------------
-
-namespace {
-
-// ASCII-case-insensitive, non-overlapping, left to right. Stated in the header rather
-// than inferred: this library has no Unicode case folding, and folding only the scripts
-// we happen to have tables for would be a rule nobody could predict.
-char lower_ascii(char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; }
-
-bool matches_at(std::string_view hay, std::size_t at, const std::string& needle) {
-  if (at + needle.size() > hay.size()) return false;
-  for (std::size_t k = 0; k < needle.size(); ++k)
-    if (lower_ascii(hay[at + k]) != lower_ascii(needle[k])) return false;
-  return true;
-}
-
-}  // namespace
-
-bool Transcript::set_query(std::string_view q) {
-  if (query_ == q) return false;
-  query_.assign(q);
-  matches_.clear();
-  current_.reset();
-  find_dirty_ = true;
-  // An empty query clears and NEVER moves the view — the one movement rule the
-  // milestone names, because a find bar you just emptied must not throw you somewhere.
-  reveal_ = !query_.empty();
-  return true;
-}
-
-std::string_view Transcript::searchable_text(const DocEntry& e, std::size_t entry, int width) {
-  // For everything but a FOLDED entry the drawn layout's text already is the unfolded
-  // logical text, so the common case costs nothing.
-  // A code fold does NOT need a variant here: it hides lines and never text
-  // (Markdown.hpp), so the drawn layout's text already holds every byte of every block.
-  if (!(e.foldable && is_folded(e))) return layouts_[entry]->text();
-  std::uint64_t code_epoch = 0;
-  if (auto cf = code_folds_.find(e.id); cf != code_folds_.end()) code_epoch = cf->second.epoch;
-  const CacheKey key{e.version, width, opt_.ambiguous_wide, opt_.tab_width, /*folded=*/false, code_epoch,
-                     highlight_epoch_};
-  auto it = find_text_.find(e.id);
-  if (it == find_text_.end() || !(it->second.key == key)) {
-    FindText ft;
-    ft.key = key;
-    lay_out(unfolded_, e, width, opt_, /*folded=*/false);
-    ft.text.assign(unfolded_.text());
-    it = find_text_.insert_or_assign(e.id, std::move(ft)).first;
-  }
-  return it->second.text;
-}
-
-void Transcript::recompute_matches(const Document& doc, int width) {
-  // Where the user WAS, so a recompute forced by a streaming answer does not silently
-  // move them back to the first match while they are stepping through.
-  const std::optional<FindMatch> was = current_match() ? std::optional<FindMatch>(*current_match()) : std::nullopt;
-  matches_.clear();
-  current_.reset();
-  if (query_.empty()) return;
-  for (std::size_t i = 0; i < doc.entries.size(); ++i) {
-    const std::string_view hay = searchable_text(doc.entries[i], i, width);
-    std::size_t at = 0;
-    while (at + query_.size() <= hay.size()) {
-      if (matches_at(hay, at, query_)) {
-        matches_.push_back({i, at, query_.size()});
-        at += std::max<std::size_t>(query_.size(), 1);
-      } else {
-        ++at;
-      }
-    }
-  }
-  if (matches_.empty()) return;
-  if (was) {
-    for (std::size_t k = 0; k < matches_.size(); ++k)
-      if (matches_[k] == *was) { current_ = k; return; }
-  }
-  // The first match at or after the top of the view, so typing into a find bar moves
-  // forward from where you are rather than jumping to the top of the document.
-  const std::size_t top = top_line();
-  std::size_t pick = 0;
-  for (std::size_t k = 0; k < matches_.size(); ++k) {
-    if (matches_[k].entry < starts_.size() && starts_[matches_[k].entry] + block_len(matches_[k].entry) > top) { pick = k; break; }
-  }
-  current_ = pick;
-}
-
-std::size_t Transcript::line_of_offset(std::size_t entry, std::size_t offset) const {
-  const EntryLayout* L = layout_of(entry);
-  if (!L || L->lines().empty()) return 0;
-  std::size_t best = 0;
-  for (std::size_t i = 0; i < L->lines().size(); ++i) {
-    bool any = false;
-    std::size_t lo = 0, hi = 0;
-    for_each_cell(L->lines()[i], opt_.ambiguous_wide, [&](const Span& sp, std::size_t k, std::string_view gt, int) {
-      const std::uint32_t src = source_of(sp, k);
-      if (src == kNoSource) return;
-      if (!any) { lo = src; hi = src + gt.size(); any = true; }
-      else { lo = std::min<std::size_t>(lo, src); hi = std::max<std::size_t>(hi, src + gt.size()); }
-    });
-    if (!any) continue;
-    if (offset < hi) return i;
-    if (lo <= offset) best = i;
-  }
-  return best;
-}
-
-void Transcript::reveal_current(const Document& doc, int width) {
-  const FindMatch* m = current_match();
-  if (!m || m->entry >= doc.entries.size()) return;
-  // A match inside a folded block: unfold it, then re-run the build, because every line
-  // number below the entry has just moved.
-  const DocEntry& e = doc.entries[m->entry];
-  if (e.foldable && is_folded(e)) {
-    set_folded(e.id, false);
-    build(doc, width);
-  }
-  // …and the same one rung down: a match inside a folded or capped CODE BLOCK has no
-  // drawn line to scroll to, so open the block and rebuild. This is the price of the
-  // rule that makes the count stable — the text was always there, the lines were not.
-  if (const markdown::CodeBlockInfo* b = hiding_block(m->entry, m->offset)) {
-    set_code_folded(e.id, b->index, false);
-    set_code_uncapped(e.id, b->index, true);
-    build(doc, width);
-  }
-  const std::size_t line = line_of_offset(m->entry, m->offset);
-  const std::size_t gapn = m->entry > 0 ? static_cast<std::size_t>(std::max(opt_.gap, 0)) : 0;
-  const std::size_t g = starts_[m->entry] + gapn + line;
-  const std::size_t h = static_cast<std::size_t>(std::max(area_.h, 1));
-  const std::size_t top = top_line();
-  // Minimal movement: already in view, nothing moves. Deterministic, and it keeps a
-  // find_next() within one screen from repainting the whole transcript.
-  if (g < top) set_top(g);
-  else if (g >= top + h) set_top(g - h + 1);
-}
-
-bool Transcript::find_next() {
-  if (matches_.empty()) return false;
-  current_ = current_ ? (*current_ + 1) % matches_.size() : 0;
-  reveal_ = true;
-  return true;
-}
-
-bool Transcript::find_prev() {
-  if (matches_.empty()) return false;
-  current_ = current_ && *current_ > 0 ? *current_ - 1 : matches_.size() - 1;
-  reveal_ = true;
-  return true;
-}
-
-Transcript::RowRef Transcript::row_at(std::size_t global) const {
-  RowRef r;
-  if (starts_.empty() || global >= total_) { r.beyond = true; r.entry = starts_.empty() ? 0 : starts_.size() - 1; return r; }
-  auto it = std::upper_bound(starts_.begin(), starts_.end(), global);
-  r.entry = static_cast<std::size_t>(it - starts_.begin()) - 1;
-  const std::size_t local = global - starts_[r.entry];
-  const std::size_t gapn = r.entry > 0 ? static_cast<std::size_t>(std::max(opt_.gap, 0)) : 0;
-  if (local < gapn) { r.gap = true; return r; }
-  r.line = local - gapn;
-  return r;
-}
-
-const EntryLayout* Transcript::layout_of(std::size_t entry) const {
-  return entry < layouts_.size() ? layouts_[entry] : nullptr;
-}
-
-// ---- drawing ---------------------------------------------------------------------
 
 void Transcript::draw(Frame& frame, const Theme& theme) const {
-  const Rect area = area_.intersect(frame.bounds());
-  if (area.empty()) return;
-  frame.fill(area, theme.style(Role::background));
-  const bool amb = opt_.ambiguous_wide;
-  const Style& sel_style = theme.style(Role::selection);
-  auto styled = [&](Role role, bool selected) {
-    const Style s = theme.style(role);
-    return selected ? overlay_style(s, sel_style) : s;
-  };
-  // A find highlight is the SAME range test the selection uses, on the same per-cell
-  // source offsets — which is why a match that wraps lights up on both rows without
-  // anything here knowing what a row is.
-  const Style& match_style = theme.style(Role::find_match);
-  const Style& current_style = theme.style(Role::find_current);
-  const FindMatch* cur = current_match();
-  const std::size_t top = top_line();
-  const int right = text_area_.x + text_area_.w;
-  for (int row = 0; row < area_.h; ++row) {
-    const std::size_t g = top + static_cast<std::size_t>(row);
-    if (g >= total_) break;
-    const RowRef r = row_at(g);
-    if (r.gap || r.beyond) continue;
-    const int y = area_.y + row;
-    if (y < 0 || y >= frame.height()) continue;
-    const StyledLine& line = layouts_[r.entry]->lines()[r.line];
-    // Selection state of this line: the byte range within the entry, and whether the
-    // line's text lies wholly inside it (then its chrome highlights too).
-    std::size_t sb = 0, se = 0;
-    const std::size_t len = layouts_[r.entry]->text().size();
-    const bool in_sel = sel_.range_in(r.entry, len, sb, se);
-    bool fully = false;
-    if (in_sel) {
-      bool has_text = false;
-      std::size_t lo = 0, hi = 0;
-      for_each_cell(line, amb, [&](const Span& sp, std::size_t k, std::string_view gt, int) {
-        std::uint32_t src = source_of(sp, k);
-        if (src == kNoSource) return;
-        if (!has_text) { lo = src; hi = src + gt.size(); has_text = true; }
-        else { lo = std::min<std::size_t>(lo, src); hi = std::max<std::size_t>(hi, src + gt.size()); }
-      });
-      fully = has_text ? (lo >= sb && hi <= se) : (sb == 0 && se >= len);
-    }
-    // This entry's matches only. matches_ is sorted by (entry, offset), so this is a
-    // binary search rather than a scan of every match for every cell — the difference
-    // between a find on a long transcript costing nothing and costing the frame.
-    const FindMatch* mb = matches_.data();
-    const FindMatch* me = mb;
-    if (!matches_.empty()) {
-      auto by_entry = [](const FindMatch& m, std::size_t e) { return m.entry < e; };
-      auto entry_by = [](std::size_t e, const FindMatch& m) { return e < m.entry; };
-      mb = std::lower_bound(matches_.begin(), matches_.end(), r.entry, by_entry).base();
-      me = std::upper_bound(matches_.begin(), matches_.end(), r.entry, entry_by).base();
-    }
-    int x = text_area_.x;
-    const int row_start = x;
-    bool stop = false;
-    for_each_cell(line, amb, [&](const Span& sp, std::size_t k, std::string_view gt, int w) {
-      if (stop || x + w > right) { stop = true; return; }
-      const std::uint32_t src = source_of(sp, k);
-      const bool selected = fully || (in_sel && src != kNoSource && src >= sb && src < se);
-      Style st = styled(static_cast<Role>(sp.role), selected);
-      // The selection WINS where they overlap (Transcript.hpp's FIND): it is the user's
-      // most recent direct act. Otherwise the current match beats the other matches.
-      if (!selected && src != kNoSource) {
-        for (const FindMatch* m = mb; m != me; ++m) {
-          if (src >= m->offset && src < m->offset + m->length) {
-            st = overlay_style(st, (cur && *m == *cur) ? current_style : match_style);
-            break;
-          }
-        }
-      }
-      const std::uint32_t link = sp.href_n == 0 ? 0 : frame.link_id(sp.href());
-      x += frame.put(x, y, gt, w, st, link);
-    });
-    // Phase 12 m6: this widget's ENTIRE contribution to motion. It marks the cells it just
-    // drew with the entry's state and stops — no glyph, no colour, no clock of its own.
-    // One mark per DRAWN ROW, so a state on a wrapped entry animates along each row rather
-    // than across a rectangle that has no text in half of it.
-    const EntryState& es = states_[r.entry];
-    if (es.state != EffectState::None && x > row_start) frame.mark(row_start, y, x - row_start, es.state, es.since_ms, es.progress);
+  rolltui_transcript_draw(t_.get(), frame.handle(), draw_scratch(), theme.styles.data());
+}
+
+bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings) {
+  RolltuiEvent ev{};
+  std::string_view paste;
+  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_KEY;
+    ev.key = chord_of(*k);
+  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_MOUSE;
+    ev.mouse = *m;
+  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_PASTE;
+    paste = p->text;
+    ev.text = paste.data();
+    ev.text_len = paste.size();
+  } else {
+    return false;
   }
-  const std::string marker = area_.h > 0 ? scroll_marker_text(lines_below(), text_area_.w, amb) : std::string();
-  if (!marker.empty()) {
-    const int mw = unicode::display_width(marker, amb);
-    frame.put_text(right - mw, area_.y + area_.h - 1, marker, theme.style(Role::scroll_marker), mw, amb);
-  }
+  return rolltui_transcript_handle(t_.get(), &ev, &doc.entries, now_ms, bindings.handle(), &kActions) != 0;
 }
 
-// ---- scrolling -------------------------------------------------------------------
-
-void Transcript::scroll_by(long lines) {
-  long t = static_cast<long>(top_line()) + lines;
-  if (t < 0) t = 0;
-  set_top(static_cast<std::size_t>(t));
-}
-
-void Transcript::scroll_page(int direction) {
-  const long page = std::max(area_.h - 1, 1);
-  scroll_by(direction < 0 ? -page : page);
-}
-
-void Transcript::scroll_to_top() { set_top(0); }
-
-void Transcript::scroll_to_bottom() {
-  set_top(max_top());
-  scroll_.follow = true;
-}
-
-// ---- folding ---------------------------------------------------------------------
-
-bool Transcript::is_folded(const DocEntry& e) const {
-  auto it = fold_override_.find(e.id);
-  return it != fold_override_.end() ? it->second : e.folded;
-}
-
-// THE FIRST TOGGLE OF A BLOCK MUST BUMP THE EPOCH EVEN WHEN THE VALUE "MATCHES".
-// A block that is folded by the THRESHOLD has no state row, so a default-constructed
-// row reads folded=false — and an early return comparing against it left the row added,
-// the block unfolded and the layout cache never invalidated: correct state, stale frame.
-// Written out per field rather than through a shared helper so the create-and-bump case
-// is visible at both call sites; opening a block does NOT lift its cap (the milestone's
-// stated behaviour: an opened block is still capped, and the marker is what lifts it).
-void Transcript::set_code_folded(std::string_view id, std::size_t block, bool folded) {
-  CodeFolds& f = code_folds_[std::string(id)];
-  for (markdown::CodeFoldState& s : f.states) {
-    if (s.index != block) continue;
-    if (s.folded == folded) return;
-    s.folded = folded;
-    ++f.epoch;
-    return;
-  }
-  f.states.push_back({block, folded, false});
-  ++f.epoch;
-}
-
-void Transcript::set_code_uncapped(std::string_view id, std::size_t block, bool uncapped) {
-  CodeFolds& f = code_folds_[std::string(id)];
-  for (markdown::CodeFoldState& s : f.states) {
-    if (s.index != block) continue;
-    if (s.uncapped == uncapped) return;
-    s.uncapped = uncapped;
-    ++f.epoch;
-    return;
-  }
-  f.states.push_back({block, false, uncapped});
-  ++f.epoch;
+bool Transcript::toggle_fold_nearest_top(const Document& doc) {
+  return rolltui_transcript_toggle_fold_nearest_top(t_.get(), &doc.entries) != 0;
 }
 
 void Transcript::set_highlight(markdown::Highlighter h) {
   highlight_ = std::move(h);
-  ++highlight_epoch_;
+  // The context is a member of THIS object, so it outlives every render the boundary makes
+  // with it; unset is the seam's opt-in, and NULL means the renderer is never asked.
+  if (highlight_) {
+    // One context per transcript, allocated once and kept — the trampoline needs a stable
+    // address, and a per-render one would be an allocation per entry per frame.
+    hl_ctx_ = std::make_unique<TranscriptHighlightCtx>(
+        TranscriptHighlightCtx{&highlight_, &hl_lines_, &hl_spans_});
+    rolltui_transcript_set_highlight(t_.get(), call_highlighter, hl_ctx_.get());
+  } else {
+    rolltui_transcript_set_highlight(t_.get(), nullptr, nullptr);
+  }
 }
 
-const markdown::CodeBlockInfo* Transcript::hiding_block(std::size_t entry, std::size_t offset) const {
-  const EntryLayout* L = layout_of(entry);
-  if (!L) return nullptr;
-  for (const markdown::CodeBlockInfo& b : L->code_blocks()) {
-    if (offset < b.text_begin || offset >= b.text_end) continue;
-    if (b.folded) return &b;
-    if (b.hidden == 0) return nullptr;
-    // Capped: the first (lines - hidden) lines are drawn. Which line the offset is on is
-    // a count of newlines from the block's start — the block's text is its lines, each
-    // terminated, so this is exact rather than a search through the drawn spans.
-    std::size_t line = 0;
-    const std::string_view ltext = L->text();
-    for (std::size_t i = b.text_begin; i < offset && i < ltext.size(); ++i)
-      if (ltext[i] == '\n') ++line;
-    return line >= b.lines - b.hidden ? &b : nullptr;
-  }
-  return nullptr;
+ScrollAnchor Transcript::scroll() const {
+  ScrollAnchor a;
+  rolltui_transcript_scroll(t_.get(), &a);
+  return a;
 }
 
-bool Transcript::toggle_fold_nearest_top(const Document& doc) {
-  const std::size_t top = top_line();
-  for (int row = 0; row < area_.h; ++row) {
-    const std::size_t g = top + static_cast<std::size_t>(row);
-    if (g >= total_) break;
-    const RowRef r = row_at(g);
-    if (r.gap || r.beyond || r.entry >= doc.entries.size()) continue;
-    // An entry's summary row is line 0; a code block's header row is anywhere. Whichever
-    // is nearer the top wins, which is what "the first visible fold" has always meant.
-    if (r.line == 0 && doc.entries[r.entry].foldable) {
-      toggle_fold(doc.entries[r.entry]);
-      return true;
-    }
-    for (const markdown::CodeBlockInfo& b : layouts_[r.entry]->code_blocks()) {
-      if (b.header_line != r.line) continue;
-      set_code_folded(doc.entries[r.entry].id, b.index, !b.folded);
-      return true;
-    }
-  }
-  return false;
+std::string_view Transcript::query() const {
+  std::size_t n = 0;
+  const char* p = rolltui_transcript_query(t_.get(), &n);
+  return std::string_view(p, n);
 }
 
-// ---- selection -------------------------------------------------------------------
+FindMatch Transcript::match_at(std::size_t i) const {
+  FindMatch m;
+  rolltui_transcript_match_at(t_.get(), i, &m);
+  return m;
+}
 
-std::optional<TextPos> Transcript::hit_row(const RowRef& r, int x) const {
-  const StyledLine& line = layouts_[r.entry]->lines()[r.line];
-  const bool amb = opt_.ambiguous_wide;
-  std::optional<TextPos> at, before, after, last;
-  int cx = text_area_.x;
-  for_each_cell(line, amb, [&](const Span& sp, std::size_t k, std::string_view gt, int w) {
-    const std::uint32_t src = source_of(sp, k);
-    const bool contains = x >= cx && x < cx + w;
-    if (src != kNoSource) {
-      TextPos p{r.entry, src, gt.size()};
-      last = p;
-      if (contains) at = p;
-      else if (cx + w <= x) before = TextPos{r.entry, src + gt.size(), 0};
-      else if (!after) after = TextPos{r.entry, src, 0};
-    }
-    cx += w;
-  });
-  if (at) return at;
-  if (x >= cx) {          // past the end of the line: the last grapheme, inclusive
-    if (last) return last;
-  } else {                // on chrome or before the first cell: the nearest text
-    if (before) return before;
-    if (after) return after;
-  }
-  // A line with no text at all (a summary line, a box rule): the end of the nearest
-  // text above it in the same entry, else the entry's start.
-  for (std::size_t li = r.line; li-- > 0;) {
-    std::optional<TextPos> found;
-    for_each_cell(layouts_[r.entry]->lines()[li], amb, [&](const Span& sp, std::size_t k, std::string_view gt, int) {
-      const std::uint32_t src = source_of(sp, k);
-      if (src != kNoSource) found = TextPos{r.entry, src + gt.size(), 0};
-    });
-    if (found) return found;
-  }
-  return TextPos{r.entry, 0, 0};
+std::optional<FindMatch> Transcript::current_match() const {
+  FindMatch m;
+  if (!rolltui_transcript_current_match(t_.get(), &m)) return std::nullopt;
+  return m;
+}
+
+Selection Transcript::selection() const {
+  Selection s;
+  rolltui_transcript_selection(t_.get(), &s);
+  return s;
 }
 
 std::optional<TextPos> Transcript::hit(int x, int y) const {
-  if (layouts_.empty() || y < area_.y) return std::nullopt;
-  int row = y - area_.y;
-  if (row >= area_.h) row = std::max(area_.h - 1, 0);
-  const std::size_t g = top_line() + static_cast<std::size_t>(row);
-  const RowRef r = row_at(g);
-  const std::size_t n = layouts_.size();
-  if (r.beyond) return TextPos{n - 1, layouts_[n - 1]->text().size(), 0};
-  if (r.gap) {
-    if (r.entry > 0) return TextPos{r.entry - 1, layouts_[r.entry - 1]->text().size(), 0};
-    return TextPos{0, 0, 0};
-  }
-  return hit_row(r, x);
+  TextPos p;
+  if (!rolltui_transcript_hit(t_.get(), x, y, &p)) return std::nullopt;
+  return p;
 }
 
 std::string Transcript::selected_text() const {
-  if (!sel_.active || layouts_.empty()) return {};
-  const TextPos f = sel_.first(), l = sel_.last();
-  std::string out;
-  for (std::size_t e = f.entry; e <= l.entry && e < layouts_.size(); ++e) {
-    const std::string_view text = layouts_[e]->text();
-    std::size_t b = 0, en = 0;
-    if (!sel_.range_in(e, text.size(), b, en)) continue;
-    if (e > f.entry) out += '\n';
-    out.append(text, b, en - b);
-  }
-  return out;
+  Str s;
+  rolltui_transcript_selected_text(t_.get(), &s);
+  return s.str();
 }
 
-bool Transcript::copy_selection() {
-  if (!sel_.active) return false;
-  if (on_copy) on_copy(selected_text());
-  return true;
+bool Transcript::copy_selection() { return rolltui_transcript_copy_selection(t_.get()) != 0; }
+
+TranscriptStats Transcript::stats() const {
+  TranscriptStats s;
+  rolltui_transcript_stats(t_.get(), &s);
+  return s;
 }
 
-void Transcript::begin_drag(int x, int y, bool shift, std::uint64_t now_ms, const Document& doc) {
-  // A click on the "▼ N more" marker scrolls to the bottom and re-engages follow. Until
-  // Phase 12 m5 it was painted and nothing more, so clicking it started a drag-SELECT —
-  // a control-shaped thing doing something unrelated, which is the same defect one rung
-  // down from a scrollbar you cannot grab. Checked before the fold summary because it
-  // sits on the last row, over whatever is there.
-  {
-    const std::string marker = scroll_marker_text(lines_below(), text_area_.w, opt_.ambiguous_wide);
-    if (!marker.empty() && area_.h > 0 && y == area_.y + area_.h - 1) {
-      const int mw = unicode::display_width(marker, opt_.ambiguous_wide);
-      const int right = text_area_.x + text_area_.w;
-      if (x >= right - mw && x < right) {
-        scroll_to_bottom();
-        click_ = {};
-        return;
-      }
-    }
-  }
-  std::optional<TextPos> pos = hit(x, y);
-  if (!pos) return;
-  // A click on a summary line toggles the fold and selects nothing. A code block's own
-  // header and "▼ N more" rows do the same one rung down (m5b) — over the WHOLE row,
-  // because those rows carry nothing else and an x range is one more thing to get wrong
-  // at a degenerate width.
-  {
-    const int row = std::clamp(y - area_.y, 0, std::max(area_.h - 1, 0));
-    const RowRef r = row_at(top_line() + static_cast<std::size_t>(row));
-    if (!r.gap && !r.beyond && r.entry < doc.entries.size()) {
-      if (r.line == 0 && doc.entries[r.entry].foldable) {
-        toggle_fold(doc.entries[r.entry]);
-        click_ = {};
-        return;
-      }
-      for (const markdown::CodeBlockInfo& b : layouts_[r.entry]->code_blocks()) {
-        if (b.header_line == r.line) {
-          set_code_folded(doc.entries[r.entry].id, b.index, !b.folded);
-          click_ = {};
-          return;
-        }
-        if (b.marker_line == r.line) {  // the cap's marker: show the rest of THIS block
-          set_code_uncapped(doc.entries[r.entry].id, b.index, true);
-          click_ = {};
-          return;
-        }
-      }
-    }
-  }
-  if (shift) {
-    if (!sel_.active) sel_.anchor = *pos;
-    sel_.head = *pos;
-    sel_.active = true;
-  } else {
-    const bool paired = click_.count > 0 && now_ms >= click_.at_ms && now_ms - click_.at_ms <= opt_.multi_click_ms &&
-                        std::abs(x - click_.x) <= 1 && y == click_.y;
-    click_.count = paired ? click_.count + 1 : 1;
-    if (click_.count > 3) click_.count = 1;
-    click_.at_ms = now_ms;
-    click_.x = x;
-    click_.y = y;
-    if (click_.count >= 2) {
-      const std::string_view text = layouts_[pos->entry]->text();
-      const std::size_t off = std::min(pos->offset, text.size());
-      std::size_t b, en;
-      unit_around(text, off, click_.count == 2, b, en);
-      drag_.origin_entry = pos->entry;
-      drag_.origin_begin = b;
-      drag_.origin_end = en;
-      sel_ = {{pos->entry, b, 0}, {pos->entry, en, 0}, true};
-    } else {
-      sel_ = {*pos, *pos, true};
-    }
-  }
-  drag_.active = true;
-  drag_.outside = false;
-  drag_.x = x;
-  drag_.y = y;
+Rect Transcript::area() const {
+  Rect r;
+  rolltui_transcript_area(t_.get(), &r);
+  return r;
 }
 
-// The word (UAX #29) or logical line containing byte `off` of `text`.
-void Transcript::unit_around(std::string_view text, std::size_t off, bool word, std::size_t& b, std::size_t& en) {
-  if (word) {
-    unicode::ByteRange w = unicode::word_range(text, off);
-    b = w.begin;
-    en = w.end;
-    return;
-  }
-  std::size_t nl = off == 0 ? std::string_view::npos : text.rfind('\n', off - 1);
-  b = (nl == std::string_view::npos) ? 0 : nl + 1;
-  en = text.find('\n', off);
-  if (en == std::string_view::npos) en = text.size();
-}
-
-void Transcript::drag_to(int x, int y) {
-  if (!drag_.active) return;
-  drag_.x = x;
-  drag_.y = y;
-  int row = y - area_.y;
-  drag_.outside = row < 0 || row >= area_.h;
-  row = std::clamp(row, 0, std::max(area_.h - 1, 0));
-  std::optional<TextPos> pos = hit(x, area_.y + row);
-  if (!pos) return;
-  sel_.active = true;
-  // After a double/triple click the selection grows by whole words/lines while the
-  // pointer stays in the same entry; elsewhere it grows by graphemes from the unit.
-  if (click_.count >= 2 && pos->entry == drag_.origin_entry) {
-    const std::string_view text = layouts_[pos->entry]->text();
-    std::size_t b, en;
-    unit_around(text, std::min(pos->offset, text.size()), click_.count == 2, b, en);
-    if (pos->offset < drag_.origin_begin) {
-      sel_.anchor = {pos->entry, drag_.origin_end, 0};
-      sel_.head = {pos->entry, b, 0};
-    } else {
-      sel_.anchor = {pos->entry, drag_.origin_begin, 0};
-      sel_.head = {pos->entry, en, 0};
-    }
-    return;
-  }
-  if (click_.count >= 2) {
-    const TextPos origin_first{drag_.origin_entry, drag_.origin_begin, 0};
-    sel_.anchor = (*pos < origin_first) ? TextPos{drag_.origin_entry, drag_.origin_end, 0} : origin_first;
-  }
-  sel_.head = *pos;
-}
-
-void Transcript::tick() {
-  if (!wants_tick()) return;
-  int dist = drag_.y < area_.y ? area_.y - drag_.y : drag_.y - (area_.y + area_.h - 1);
-  dist = std::clamp(dist, 1, std::max(area_.h, 1));
-  scroll_by(drag_.y < area_.y ? -dist : dist);
-  const int row = drag_.y < area_.y ? 0 : std::max(area_.h - 1, 0);
-  if (std::optional<TextPos> pos = hit(drag_.x, area_.y + row)) sel_.head = *pos;
-}
-
-void Transcript::end_drag() {
-  if (!drag_.active) return;
-  drag_.active = false;
-  drag_.outside = false;
-  if (sel_.active && sel_.anchor == sel_.head && click_.count <= 1) {
-    sel_ = {};  // a plain click (or a Shift+click with nothing to extend) selects nothing
-    return;
-  }
-  copy_selection();
-}
-
-bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings) {
-  if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
-    using K = MouseEvent::Kind;
-    switch (m->kind) {
-      case K::WheelUp: scroll_by(-static_cast<long>(opt_.wheel_lines)); return true;
-      case K::WheelDown: scroll_by(static_cast<long>(opt_.wheel_lines)); return true;
-      case K::WheelLeft: case K::WheelRight: return false;
-      case K::Press:
-        if (m->button != 1) return false;
-        begin_drag(m->x, m->y, m->shift, now_ms, doc);
-        return true;
-      case K::Drag:
-        if (!drag_.active) return false;
-        drag_to(m->x, m->y);
-        return true;
-      case K::Release:
-        if (!drag_.active) return false;
-        // A release where the pointer already is changes nothing (so a double-click's
-        // word is not narrowed to the cell under the button).
-        if (m->x != drag_.x || m->y != drag_.y) drag_to(m->x, m->y);
-        end_drag();
-        return true;
-      case K::Move: return false;
-    }
-    return false;
-  }
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    const std::string_view action = bindings.action_for(*k, "transcript");
-    if (action == "transcript.page_up") { scroll_page(-1); return true; }
-    if (action == "transcript.page_down") { scroll_page(1); return true; }
-    if (action == "transcript.top") { scroll_to_top(); return true; }
-    if (action == "transcript.bottom") { scroll_to_bottom(); return true; }
-    if (action == "transcript.line_up") { scroll_by(-1); return true; }
-    if (action == "transcript.line_down") { scroll_by(1); return true; }
-    if (action == "transcript.find_next") return find_next();
-    if (action == "transcript.find_prev") return find_prev();
-    if (action == "transcript.fold") return toggle_fold_nearest_top(doc);
-    if (action == "transcript.copy") return copy_selection();
-    if (action == "transcript.clear_selection" && sel_.active) { clear_selection(); return true; }
-  }
-  return false;
+Rect Transcript::text_area() const {
+  Rect r;
+  rolltui_transcript_text_area(t_.get(), &r);
+  return r;
 }
 
 }  // namespace rolltui

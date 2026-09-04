@@ -37,28 +37,21 @@
 
 #include "rolltui/Effects.hpp"
 #include "rolltui/Style.hpp"
+#include "rolltui/c/rolltui_document.h"
 
 namespace rolltui {
 
-struct DocEntry {
-  std::string id;          // stable identity across frames
-  std::uint64_t version = 0;
-  std::string text;        // markdown source, or verbatim text
-  bool markdown = true;    // false: rendered as plain wrapped lines
-  Role role = Role::text;  // base role for the entry's text
-  std::string prefix;      // drawn before the first line (e.g. "> " for a prompt), in `prefix_role`
-  Role prefix_role = Role::prompt;
-  bool foldable = false;
-  std::string summary;     // the one-line summary a foldable entry shows
-  bool folded = true;      // initial fold state of a foldable entry
-  // Motion (see above). None — the default — is a still entry under every theme.
-  EffectState state = EffectState::None;
-  double progress = 0;     // EffectState::Progress: 0..1
-  std::uint64_t state_since_ms = 0;  // when it entered `state`; 0 → the shared clock's phase
-};
+// PHASE 15 m5e: `DocEntry` and the entry list ARE the C structs (one definition), because the
+// transcript that walks them is behind a C boundary and a HOST fills them — two shapes of an
+// entry would be two things a host could disagree with. Nothing a host writes changed:
+// `e.text = "..."`, `e.role = Role::warning` and `doc.entries.push_back(std::move(e))` all
+// still say what they said. What the port made explicit is that the entries are individually
+// allocated and their addresses are STABLE, where `std::vector<DocEntry>` moved every entry's
+// four string bookkeepings on each growth and invalidated every pointer anyone held.
+using DocEntry = RolltuiDocEntry;
 
 struct Document {
-  std::vector<DocEntry> entries;
+  RolltuiDocument entries;
 };
 
 }  // namespace rolltui

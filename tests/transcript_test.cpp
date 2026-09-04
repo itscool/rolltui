@@ -504,7 +504,9 @@ int main() {
               std::to_string(tr.match_count()) + ")");
     const std::size_t folded_hits = [&] {
       std::size_t n = 0;
-      for (const FindMatch& m : tr.matches()) if (m.entry == 2) ++n;
+      // PHASE 15 m5e: the matches are counted and indexed — nothing on the C side can hand
+      // back a `std::vector<FindMatch>` without building one per call.
+      for (std::size_t k = 0; k < tr.match_count(); ++k) if (tr.match_at(k).entry == 2) ++n;
       return n;
     }();
     check(folded_hits == 1, "…and it is attributed to the folded entry, not to its summary");

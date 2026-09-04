@@ -115,6 +115,12 @@ typedef struct RolltuiMdRoles {
   unsigned char rule, scroll_marker;
 } RolltuiMdRoles;
 
+/* THE STYLING VOCABULARY AS THIS BOUNDARY CARRIES IT, defined in the shim (`Markdown.cpp`)
+ * and readable from C — the TRANSCRIPT renders entries through `rolltui_md_render` directly
+ * (Phase 15 m5e), so it needs the same sixteen bytes this file is otherwise handed. One table
+ * in the library, borrowed by pointer, never copied a second time. */
+const RolltuiMdRoles* rolltui_md_roles(void);
+
 /* The sentinel a table cell's "no override" uses. Not a Role and never emitted: 255 cannot
  * collide with an enum that has fifty-odd values, and saying so here is cheaper than
  * teaching this file what `Role::count_` happens to be today. */

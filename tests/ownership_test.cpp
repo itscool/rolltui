@@ -290,7 +290,11 @@ int main() {
         // its const overload, a BORROW of the stack this object owns. `Windows` syncs,
         // autosizes and lays out against it from behind its own C boundary, so the two
         // modules meet at the handle instead of at a `std::vector<Layer>&`.
-        {"Layout.hpp", 10},      {"Markdown.hpp", 10},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
+        // Markdown.hpp 10 → 11 (Phase 15 m5e): `const RolltuiMdRoles* md_roles()` — a BORROW
+        // of the styling vocabulary as the boundary carries it, exposed because the
+        // TRANSCRIPT renders entries through `rolltui_md_render` directly. One table of those
+        // bytes in the library, handed over by pointer rather than copied a second time.
+        {"Layout.hpp", 10},      {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -344,7 +348,12 @@ int main() {
         // `RolltuiWindows* handle()`, a BORROW for the shim's own factories. The ten that
         // were already here are unchanged; what left the header is four `std::map`s, one of
         // which owned every widget in the program.
-        {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 12},
+        // Transcript.hpp 3 → 2, RE-RECORDED 2026-09-04 by Phase 15 m5e, and this is the
+        // census catching a REMOVAL alongside an addition. What LEFT were the accessors
+        // returning into the widget's own `std::vector`s and `unordered_map`s; what is here
+        // is `RolltuiTranscript* p` in `Transcript::Handle` (the deleter of the OWNED widget)
+        // and `const EntryLayout* layout_of()`, a BORROW valid until the next layout().
+        {"Transcript.hpp", 2},   {"Undo.hpp", 0},          {"Widgets.hpp", 12},
         // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
         // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
         // pointer was `const Range* table` on `lookup()`, the binary search the inline

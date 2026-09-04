@@ -72,6 +72,11 @@
 
 namespace rolltui::markdown {
 
+// THE STYLING VOCABULARY AS THE BOUNDARY CARRIES IT, exposed because the TRANSCRIPT renders
+// entries through `rolltui_md_render` directly (Phase 15 m5e). One table of these bytes in
+// the library, and the transcript is handed a POINTER to it rather than a second copy.
+const RolltuiMdRoles* md_roles();
+
 // ---- the parsed document -------------------------------------------------------------
 //
 // PHASE 15 m4 — THE BLOCK TREE LEFT THIS HEADER, and that is the port's one real

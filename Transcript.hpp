@@ -115,6 +115,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <span>
@@ -129,94 +130,39 @@
 #include "rolltui/Marker.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_transcript.h"
 
 namespace rolltui {
 
-struct TranscriptOptions {
-  bool ambiguous_wide = false;
-  int tab_width = 8;
-  int gap = 1;                 // blank lines between entries
-  int inset = 0;               // columns kept clear on each side of the area
-  int wheel_lines = 3;         // lines per wheel tick
-  int code_fold_over_lines = 0;  // m5b; 0 disables, as in markdown::CodeFoldOptions
-  int code_cap_lines = 0;
-  std::uint64_t multi_click_ms = 400;  // two presses within this (and one cell) are a double-click
-  bool operator==(const TranscriptOptions&) const = default;
-};
+// PHASE 15 m5e: the whole widget — the layout cache, find, selection, folding, the drag and
+// the draw — is behind `rolltui/c/rolltui_transcript.h`, in one of two implementations chosen
+// by `-DROLLTUI_C` (`TranscriptCpp.cpp` or `c/rolltui_transcript.c`). `TranscriptOptions`,
+// `EntryLayout`, `ScrollAnchor`, `TextPos`, `Selection`, `FindMatch` and `TranscriptStats` ARE
+// the C structs (one definition). Two things a caller can see, both forced by the handle:
+// `query()` and `selected_text()` hand back a `std::string_view` / a fresh `std::string` where
+// they used to hand back a `const std::string&`, and `matches()` is `match_count()` +
+// `match_at(i)` — nothing on the C side can return a `std::vector` without building one.
+using TranscriptOptions = RolltuiTranscriptOptions;
+using EntryLayout = RolltuiEntryLayout;
+using ScrollAnchor = RolltuiScrollAnchor;
+using TextPos = RolltuiTextPos;
+using Selection = RolltuiSelection;
+using FindMatch = RolltuiFindMatch;
+using TranscriptStats = RolltuiTranscriptStats;
 
-// One entry's cached layout.
-//
-// PHASE 15 m4 — IT OWNS ONE STORE AND EVERYTHING IS A VIEW INTO IT. The markdown render
-// puts the entry's BODY lines at the front of `store`; this layout's own drawn lines —
-// the body behind the entry's prefix, with the fold summary above them — are appended
-// after them and reference the body's spans by index, so a body line is put behind a
-// prefix without copying one byte of it. `body` is where the drawn ones begin.
-//
-// That is the m1 finding fixed: `void append(StyledLine&, Span s)` took the span BY VALUE
-// at the one call site Phase 13 did not reach, and its copy constructor allocated a string
-// and a vector per span — 2,283 allocations a resize frame between the copy and the vector
-// it was pushed into. A span owns nothing now, so the copy is a descriptor.
-struct EntryLayout {
-  markdown::Rendered store;      // OWNED: the body lines, this layout's lines, and the text
-  std::size_t body = 0;          // index in `store` where THIS layout's drawn lines begin
-  bool folded = false;
-  std::size_t hidden_lines = 0;  // body lines a fold hides
-
-  // As drawn: the summary line first when foldable.
-  std::span<const markdown::StyledLine> lines() const { return store.lines().subspan(body); }
-  // Logical text; a folded entry's is its summary.
-  std::string_view text() const { return store.text(); }
-  // The entry's code blocks, with header_line/marker_line already shifted onto THIS
-  // layout's line numbering (the entry's own summary row moves everything by one).
-  std::span<const markdown::CodeBlockInfo> code_blocks() const { return store.code_blocks(); }
-};
-
-struct ScrollAnchor {
-  std::size_t entry = 0;  // index into Document::entries
-  std::size_t line = 0;   // line within that entry's block (gap lines first)
-  bool follow = true;
-};
-
-// A position in the logical text: the grapheme starting at `offset` of `entry`'s text,
-// `length` bytes long (0 at the end of the text or for a boundary position).
-struct TextPos {
-  std::size_t entry = 0;
-  std::size_t offset = 0;
-  std::size_t length = 0;
-  bool operator==(const TextPos&) const = default;
-};
-bool operator<(const TextPos& a, const TextPos& b);
-
-struct Selection {
-  TextPos anchor, head;
-  bool active = false;
-  bool empty() const { return !active; }
-  TextPos first() const { return head < anchor ? head : anchor; }
-  TextPos last() const { return head < anchor ? anchor : head; }
-  // The selected byte range within `entry`'s text of length `len`: [begin, end).
-  // Includes the grapheme at `last()` (its length), so a drag covers the cell under
-  // the pointer in both directions.
-  bool range_in(std::size_t entry, std::size_t len, std::size_t& begin, std::size_t& end) const;
-};
-
-// One find hit, in the same logical space as TextPos: `length` bytes of `entry`'s
-// unfolded text starting at `offset`.
-struct FindMatch {
-  std::size_t entry = 0;
-  std::size_t offset = 0;
-  std::size_t length = 0;
-  bool operator==(const FindMatch&) const = default;
-};
-
-struct TranscriptStats {
-  long layout_us = 0;              // the last layout() call
-  std::size_t entries_relaid = 0;  // cache misses in the last layout()
-  std::size_t total_lines = 0;
-  std::size_t cache_size = 0;
-};
+inline bool operator<(const TextPos& a, const TextPos& b) { return rolltui_text_pos_less(&a, &b) != 0; }
 
 class Transcript {
  public:
+  // OWNED, through a `unique_ptr` with a deleter that calls the C free.
+  struct Handle {
+    void operator()(RolltuiTranscript* p) const { rolltui_transcript_free(p); }
+  };
+  Transcript();
+  ~Transcript();
+  Transcript(const Transcript&) = delete;
+  Transcript& operator=(const Transcript&) = delete;
+
   std::function<void(const std::string&)> on_copy;  // the host's clipboard
 
   // ---- per frame ----
@@ -227,58 +173,65 @@ class Transcript {
   // `now_ms` is any monotonic millisecond clock, used only to pair clicks. Returns
   // true when the event was consumed.
   bool handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings);
-  bool handle(const Event& e, const Document& doc, std::uint64_t now_ms) { return handle(e, doc, now_ms, default_bindings()); }
+  bool handle(const Event& e, const Document& doc, std::uint64_t now_ms) {
+    return handle(e, doc, now_ms, default_bindings());
+  }
   // True while a drag holds the pointer outside the area: call tick() at a steady
   // rate (≈50 ms) and re-layout/draw after each.
-  bool wants_tick() const { return drag_.active && drag_.outside; }
-  void tick();
+  bool wants_tick() const { return rolltui_transcript_wants_tick(t_.get()) != 0; }
+  void tick() { rolltui_transcript_tick(t_.get()); }
 
   // ---- scrolling ----
-  void scroll_by(long lines);      // < 0 up; clamps; follow = at bottom
-  void scroll_page(int direction); // ±1, by viewport height − 1
-  void scroll_to_top();
-  void scroll_to_bottom();
-  const ScrollAnchor& scroll() const { return scroll_; }
-  std::size_t total_lines() const { return total_; }
-  std::size_t top_line() const;    // the anchor as a global line index
-  std::size_t lines_below() const; // hidden below the viewport (the marker's N)
-  int viewport_height() const { return area_.h; }
+  void scroll_by(long lines) { rolltui_transcript_scroll_by(t_.get(), lines); }
+  void scroll_page(int direction) { rolltui_transcript_scroll_page(t_.get(), direction); }
+  void scroll_to_top() { rolltui_transcript_scroll_to_top(t_.get()); }
+  void scroll_to_bottom() { rolltui_transcript_scroll_to_bottom(t_.get()); }
+  ScrollAnchor scroll() const;
+  std::size_t total_lines() const { return rolltui_transcript_total_lines(t_.get()); }
+  std::size_t top_line() const { return rolltui_transcript_top_line(t_.get()); }
+  std::size_t lines_below() const { return rolltui_transcript_lines_below(t_.get()); }
+  int viewport_height() const { return rolltui_transcript_viewport_height(t_.get()); }
 
   // ---- folding ----
-  bool is_folded(const DocEntry& e) const;
-  void set_folded(std::string_view id, bool folded) { fold_override_[std::string(id)] = folded; }
-  void toggle_fold(const DocEntry& e) { set_folded(e.id, !is_folded(e)); }
+  bool is_folded(const DocEntry& e) const { return rolltui_transcript_is_folded(t_.get(), &e) != 0; }
+  void set_folded(std::string_view id, bool folded) {
+    rolltui_transcript_set_folded(t_.get(), id.data(), id.size(), folded);
+  }
+  void toggle_fold(const DocEntry& e) { set_folded(e.id.view(), !is_folded(e)); }
   // Toggles the first visible summary line from the top of the viewport — an entry's or
   // a code block's, whichever comes first; false if there is none.
   bool toggle_fold_nearest_top(const Document& doc);
 
   // ---- code-block folding (m5b) ----
-  // `block` is the block's index within the entry (Markdown.hpp: a document fact, not a
-  // width-dependent one). Both are host-callable, and both are what a click does.
-  void set_code_folded(std::string_view id, std::size_t block, bool folded);
-  void set_code_uncapped(std::string_view id, std::size_t block, bool uncapped);
+  void set_code_folded(std::string_view id, std::size_t block, bool folded) {
+    rolltui_transcript_set_code_folded(t_.get(), id.data(), id.size(), block, folded);
+  }
+  void set_code_uncapped(std::string_view id, std::size_t block, bool uncapped) {
+    rolltui_transcript_set_code_uncapped(t_.get(), id.data(), id.size(), block, uncapped);
+  }
   // The highlighter the entries' markdown renders through; unset (the default) means the
   // renderer is never asked, which is m2's whole opt-in. Changing it re-lays everything.
   void set_highlight(markdown::Highlighter h);
 
   // ---- find (see FIND above) ----
-  // The query; "" clears. Never scrolls: the reveal it asks for happens in layout().
-  // Returns whether it CHANGED, so a host can skip the re-layout when it did not.
-  bool set_query(std::string_view q);
-  const std::string& query() const { return query_; }
-  const std::vector<FindMatch>& matches() const { return matches_; }
-  std::size_t match_count() const { return matches_.size(); }
-  // The current match's 1-BASED position, for "3/17"; 0 when there is none. One-based
-  // because it is a display number, and the only caller is a host printing it.
-  std::size_t current_match_number() const { return current_ ? *current_ + 1 : 0; }
-  const FindMatch* current_match() const { return current_ && *current_ < matches_.size() ? &matches_[*current_] : nullptr; }
-  bool find_next();  // wraps; false when there is nothing to find
-  bool find_prev();
+  bool set_query(std::string_view q) {
+    return rolltui_transcript_set_query(t_.get(), q.data(), q.size()) != 0;
+  }
+  std::string_view query() const;
+  std::size_t match_count() const { return rolltui_transcript_match_count(t_.get()); }
+  // ONE MATCH AT A TIME, never the whole list: nothing on the C side can hand back a
+  // `std::vector<FindMatch>` without building one per call (Phase 15 m5e).
+  FindMatch match_at(std::size_t i) const;
+  // The current match's 1-BASED position, for "3/17"; 0 when there is none.
+  std::size_t current_match_number() const { return rolltui_transcript_current_match_number(t_.get()); }
+  std::optional<FindMatch> current_match() const;
+  bool find_next() { return rolltui_transcript_find_next(t_.get()) != 0; }
+  bool find_prev() { return rolltui_transcript_find_prev(t_.get()) != 0; }
 
   // ---- selection ----
-  const Selection& selection() const { return sel_; }
-  void clear_selection() { sel_ = {}; }
-  void select(TextPos anchor, TextPos head) { sel_ = {anchor, head, true}; }
+  Selection selection() const;
+  void clear_selection() { rolltui_transcript_clear_selection(t_.get()); }
+  void select(TextPos anchor, TextPos head) { rolltui_transcript_select(t_.get(), anchor, head); }
   // The logical position under screen cell (x, y): the grapheme there, the nearest
   // text on that row when the cell is chrome or past the line's end, the end of the
   // previous entry on a gap row, the end of the last entry below the text. nullopt
@@ -288,126 +241,21 @@ class Transcript {
   bool copy_selection();  // fires on_copy; false when nothing is selected
 
   // ---- introspection ----
-  const TranscriptStats& stats() const { return stats_; }
-  const EntryLayout* layout_of(std::size_t entry) const;
-  Rect area() const { return area_; }
-  Rect text_area() const { return text_area_; }
+  TranscriptStats stats() const;
+  const EntryLayout* layout_of(std::size_t entry) const {
+    return rolltui_transcript_layout_of(t_.get(), entry);
+  }
+  Rect area() const;
+  Rect text_area() const;
 
  private:
-  struct CacheKey {
-    std::uint64_t version = 0;
-    int width = 0;
-    bool ambiguous = false;
-    int tab = 8;
-    bool folded = false;
-    // m5b. The code epoch is per ENTRY (a toggle re-lays only its own entry); the
-    // highlight epoch is global (a new highlighter re-lays everything). Both are in the
-    // key rather than in an event, so the frame stays a pure function of state.
-    std::uint64_t code_epoch = 0;
-    std::uint64_t highlight_epoch = 0;
-    bool operator==(const CacheKey&) const = default;
-  };
-  struct Cached {
-    CacheKey key;
-    EntryLayout layout;
-    bool seen = false;
-  };
-  struct RowRef {
-    std::size_t entry = 0;
-    std::size_t line = 0;  // index into EntryLayout::lines
-    bool gap = false;
-    bool beyond = false;   // past the last line
-  };
-
-  // FILLS a layout the caller owns (CLAUDE.md's third strategy), because the caller is the
-  // cache and the whole point is that a re-laid entry reuses the storage it already had.
-  void lay_out(EntryLayout& into, const DocEntry& e, int width, const TranscriptOptions& opt, bool folded);
-  // The entry's PARSED tree, cached by (id, version) and NOT by width. m1 measured 1,243
-  // allocations a resize frame — 12.1% — re-parsing forty unchanged strings into an
-  // identical tree because `CacheKey` carries `width` and `parse()` does not depend on it.
-  const markdown::Document& parsed(const DocEntry& e);
-  markdown::CodeFoldOptions code_fold_for(const std::string& id, const TranscriptOptions& opt) const;
-  // The code block of `entry` holding `offset`, when that block is hiding it; nullptr
-  // when the offset is on a drawn line. Reveal's one job beyond scrolling.
-  const markdown::CodeBlockInfo* hiding_block(std::size_t entry, std::size_t offset) const;
-  // The per-frame build of layouts_/starts_/total_, extracted so a reveal that has to
-  // unfold can re-run it in the same layout() call rather than leaving one frame drawn
-  // against line numbers that no longer exist.
-  void build(const Document& doc, int width);
-  // The entry's logical text AS IF UNFOLDED — what find searches. Equal to the drawn
-  // layout's text for everything except a folded entry, whose drawn text is its summary.
-  std::string_view searchable_text(const DocEntry& e, std::size_t entry, int width);
-  void recompute_matches(const Document& doc, int width);
-  // The line within the entry's layout holding `offset`, or the last line.
-  std::size_t line_of_offset(std::size_t entry, std::size_t offset) const;
-  void reveal_current(const Document& doc, int width);
-  std::size_t block_len(std::size_t entry) const;
-  std::size_t max_top() const;
-  void set_top(std::size_t top);
-  RowRef row_at(std::size_t global) const;
-  std::optional<TextPos> hit_row(const RowRef& r, int x) const;
-  void begin_drag(int x, int y, bool shift, std::uint64_t now_ms, const Document& doc);
-  void drag_to(int x, int y);
-  void end_drag();
-  static void unit_around(std::string_view text, std::size_t off, bool word, std::size_t& b, std::size_t& en);
-
-  // Phase 12 m6: what each entry SAYS about motion this frame — copied from the document
-  // in build(), never cached, because it changes the marks and not the lines.
-  struct EntryState {
-    EffectState state = EffectState::None;
-    double progress = 0;
-    std::uint64_t since_ms = 0;
-  };
-
-  // The parse cache, keyed on version alone — see `parsed()`. Swept with `cache_`.
-  struct Parsed {
-    std::uint64_t version = 0;
-    markdown::Document doc;
-    bool seen = false;
-  };
-  std::unordered_map<std::string, Parsed> parse_;
-  std::string pad_;                 // a run of spaces, grown to the widest prefix ever seen
-  std::string scratch_;             // one string under construction (the fold's " (N lines)")
-  EntryLayout unfolded_;            // where a folded entry is laid out again, for find
-  std::unordered_map<std::string, Cached> cache_;
-  std::vector<const EntryLayout*> layouts_;  // per entry, this frame
-  std::vector<EntryState> states_;           // per entry, this frame
-  std::vector<std::size_t> starts_;          // global line index of each entry's block
-  std::size_t total_ = 0;
-  Rect area_, text_area_;
-  TranscriptOptions opt_;
-  ScrollAnchor scroll_;
-  Selection sel_;
-  std::unordered_map<std::string, bool> fold_override_;
-  struct CodeFolds {
-    std::uint64_t epoch = 0;
-    std::vector<markdown::CodeFoldState> states;
-  };
-  std::unordered_map<std::string, CodeFolds> code_folds_;
+  std::unique_ptr<RolltuiTranscript, Handle> t_{rolltui_transcript_new()};
+  // The host's highlighter stays HERE, where its callable is, and the boundary is handed the
+  // trampoline — the same trade the menu's validators make (Phase 15 m5c).
   markdown::Highlighter highlight_;
-  std::uint64_t highlight_epoch_ = 0;
-  // Find state. `find_text_` is the unfolded-text cache, keyed like the layout cache
-  // minus `folded` — the whole point is that it does not vary with folding.
-  std::string query_;
-  std::vector<FindMatch> matches_;
-  std::optional<std::size_t> current_;
-  bool find_dirty_ = false;   // the query changed: recompute in the next layout()
-  bool reveal_ = false;       // …and scroll to (and unfold) the current match
-  struct FindText {
-    CacheKey key;
-    std::string text;
-  };
-  std::unordered_map<std::string, FindText> find_text_;
-  struct Drag {
-    bool active = false, outside = false;
-    int x = 0, y = 0;
-    std::size_t origin_entry = 0, origin_begin = 0, origin_end = 0;  // the double/triple-clicked unit
-  } drag_;
-  struct Click {
-    std::uint64_t at_ms = 0;
-    int x = -1, y = -1, count = 0;
-  } click_;
-  TranscriptStats stats_;
+  std::vector<std::string_view> hl_lines_;
+  std::vector<markdown::HighlightSpan> hl_spans_;
+  std::unique_ptr<struct TranscriptHighlightCtx> hl_ctx_;  // OWNED: the trampoline needs a stable address
 };
 
 }  // namespace rolltui

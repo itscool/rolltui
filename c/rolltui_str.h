@@ -75,6 +75,13 @@ typedef struct RolltuiStr {
   RolltuiStr& operator=(const std::string& s) { return *this = std::string_view(s); }
 
   void assign(std::string_view s);
+  // APPEND, which a streaming entry does every token. `rolltui_str_append` grows exactly, so
+  // a long stream reallocs per token — the same policy `std::string` hides behind doubling.
+  // The transcript's own text is the markdown store's, not this; an entry's is written by a
+  // host, and the honest answer for a host is the strategy it can see.
+  RolltuiStr& operator+=(std::string_view s);
+  RolltuiStr& operator+=(const char* s) { return *this += (s ? std::string_view(s) : std::string_view()); }
+  RolltuiStr& operator+=(char c) { return *this += std::string_view(&c, 1); }
   std::string_view view() const { return std::string_view(p ? p : "", n); }
   operator std::string_view() const { return view(); }  // NOLINT(google-explicit-constructor)
   const char* c_str() const { return p ? p : ""; }
@@ -170,6 +177,10 @@ inline std::string operator+(const RolltuiStr& a, const char* b) {
 
 inline RolltuiStr::~RolltuiStr() { rolltui_str_free(this); }
 inline void RolltuiStr::assign(std::string_view s) { rolltui_str_set(this, s.data(), s.size()); }
+inline RolltuiStr& RolltuiStr::operator+=(std::string_view s) {
+  rolltui_str_append(this, s.data(), s.size());
+  return *this;
+}
 inline void RolltuiStr::clear() { rolltui_str_clear(this); }
 inline RolltuiStr& RolltuiStr::operator=(RolltuiStr&& o) noexcept {
   if (this != &o) rolltui_str_move(this, &o);

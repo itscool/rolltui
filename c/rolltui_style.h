@@ -50,6 +50,7 @@ extern "C" {
  * So the ORDINAL crosses and the NAME does not, and `rolltui/Style.hpp` static_asserts each
  * one against the enum. Two lines, one home, and a compiler error the day they drift — which
  * is what makes this an exception with a floor rather than a hole in the rule. */
+#define ROLLTUI_ROLE_DEFAULT_TEXT 0       /* Role::text */
 #define ROLLTUI_ROLE_DEFAULT_BACKGROUND 2 /* Role::background */
 #define ROLLTUI_ROLE_DEFAULT_PROMPT 13    /* Role::prompt */
 
