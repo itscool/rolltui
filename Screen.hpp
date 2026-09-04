@@ -147,7 +147,21 @@ class Frame {
   void mark(int x, int y, int cells, EffectState state, std::uint64_t since_ms = 0, double fraction = 0);
   const std::vector<Mark>& marks() const { return marks_; }
 
-  bool operator==(const Frame&) const = default;
+  // EQUALITY IS ABOUT WHAT THE FRAME SHOWS, not about what it is holding on to. The link
+  // and spill tables keep their strings past a `reset` so the next frame can assign into
+  // them (m5b), and a defaulted `==` compared that retained capacity — so a reset frame
+  // stopped equalling a fresh one, which is the ghosting control's exact question and the
+  // wrong answer to it. Only the LIVE entries are compared.
+  bool operator==(const Frame& o) const {
+    if (w_ != o.w_ || h_ != o.h_ || cursor_ != o.cursor_) return false;
+    if (cells_ != o.cells_ || marks_ != o.marks_) return false;
+    if (link_count_ != o.link_count_ || long_glyph_count_ != o.long_glyph_count_) return false;
+    for (std::size_t i = 0; i < link_count_; ++i)
+      if (links_[i] != o.links_[i]) return false;
+    for (std::size_t i = 0; i < long_glyph_count_; ++i)
+      if (long_glyphs_[i] != o.long_glyphs_[i]) return false;
+    return true;
+  }
 
  private:
   Cell& mut(int x, int y) { return cells_[static_cast<std::size_t>(y * w_ + x)]; }
@@ -155,8 +169,14 @@ class Frame {
   int w_ = 0, h_ = 0;
   std::vector<Cell> cells_;
   Cursor cursor_;
+  // m5b: both tables keep a COUNT rather than being cleared. `clear()` would destroy every
+  // string in them and free its buffer — the same trap `WrapLines` documents — so a frame
+  // holding one long URL paid for it again on every repaint. The live entries are the first
+  // `n`; the rest keep their storage for the next frame to assign into.
   std::vector<std::string> links_;        // links_[id - 1]
+  std::size_t link_count_ = 0;
   std::vector<std::string> long_glyphs_;  // m4: clusters too long to sit in a Cell
+  std::size_t long_glyph_count_ = 0;
   std::vector<Mark> marks_;
 };
 

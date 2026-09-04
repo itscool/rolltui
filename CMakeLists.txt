@@ -75,6 +75,7 @@ add_library(rolltui STATIC
   Diff.cpp
   Json.cpp
   Theme.cpp
+  Memory.cpp                  # Phase 13: the library's ONE entry point for memory
   Effects.cpp                 # Phase 12 m6: motion is the theme's, a state is the widget's
   Screen.cpp
   Keys.cpp

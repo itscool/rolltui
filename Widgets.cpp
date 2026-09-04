@@ -857,7 +857,12 @@ void Windows::draw(const ResolvedNode& rn, Frame& f, const Theme& theme) {
 // more` marker is the signal there (Phase 12 m5: both are kept, and they answer
 // different questions — the marker is the non-graphical one).
 void Windows::draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const Theme& theme) {
-  tracks_.erase(rn.node->id);
+  // m5b: the entry is ZEROED, not erased. `erase` + `operator[]` destroys a map node and
+  // allocates a new one EVERY FRAME for every window with a scrollbar — the third instance
+  // of the same trap (clear/erase throws away exactly the storage being reused). `h == 0`
+  // is what "no track this frame" means now.
+  Track& slot = tracks_[rn.node->id];
+  slot = Track{};
   if (rn.node->border == Border::None) return;
   const std::optional<Widget::ScrollExtent> e = w.scroll_extent(Widget::Axis::Vertical);
   if (!e) return;
@@ -866,7 +871,7 @@ void Windows::draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const 
   if (track <= 0 || rn.outer.w < 2) return;
   ScrollThumb t;
   if (!scroll_thumb(*e, track, t)) return;
-  tracks_[rn.node->id] = Track{x, rn.outer.y + 1, track};
+  slot = Track{x, rn.outer.y + 1, track};
   Style s = theme.style(Role::scrollbar);
   const Style ground = theme.style(rn.node->background);
   if (s.bg.kind == Color::Kind::None) s.bg = ground.bg;
@@ -905,7 +910,7 @@ bool Windows::handle_scrollbar(std::string_view window, Widget& w, const Event& 
     return true;
   }
   auto it = tracks_.find(id);
-  if (it == tracks_.end()) return false;
+  if (it == tracks_.end() || it->second.h <= 0) return false;  // h == 0: no track drawn
   const Track& tr = it->second;
   const std::optional<Widget::ScrollExtent> e2 = w.scroll_extent(Widget::Axis::Vertical);
   if (!e2) return false;

@@ -28,8 +28,8 @@ void Frame::reset(int w, int h, const Style& fill) {
   Cell c;
   c.style = fill;
   cells_.assign(static_cast<std::size_t>(w_ * h_), c);  // keeps capacity, resets every field
-  links_.clear();
-  long_glyphs_.clear();
+  link_count_ = 0;         // the strings stay; the next frame assigns into them
+  long_glyph_count_ = 0;
   marks_.clear();
   cursor_ = Cursor{};
 }
@@ -38,8 +38,8 @@ void Frame::clear(const Style& fill) {
   Cell c;
   c.style = fill;
   std::fill(cells_.begin(), cells_.end(), c);
-  marks_.clear();        // a mark names cells that have just been erased
-  long_glyphs_.clear();  // …and so does every spilled glyph: nothing refers to them now
+  marks_.clear();          // a mark names cells that have just been erased
+  long_glyph_count_ = 0;   // …and so does every spilled glyph: nothing refers to them now
 }
 
 void Frame::set_style(int x, int y, const Style& style) {
@@ -65,8 +65,9 @@ void Frame::set_glyph(Cell& c, std::string_view g) {
   }
   // THE NAMED EXCEPTION (Phase 13's phase Done-when): a cluster longer than ten bytes
   // allocates, once, into a table this frame owns. A family ZWJ emoji is the real case.
-  long_glyphs_.emplace_back(g);
-  const std::uint32_t idx = static_cast<std::uint32_t>(long_glyphs_.size() - 1);
+  if (long_glyph_count_ == long_glyphs_.size()) long_glyphs_.emplace_back();
+  long_glyphs_[long_glyph_count_].assign(g);
+  const std::uint32_t idx = static_cast<std::uint32_t>(long_glyph_count_++);
   std::memcpy(c.bytes, &idx, sizeof idx);
   c.len = Cell::kSpilled;
 }
@@ -75,7 +76,7 @@ std::string_view Frame::glyph_of(const Cell& c) const {
   if (!c.spilled()) return c.inline_bytes();
   std::uint32_t idx = 0;
   std::memcpy(&idx, c.bytes, sizeof idx);
-  return idx < long_glyphs_.size() ? std::string_view(long_glyphs_[idx]) : std::string_view();
+  return idx < long_glyph_count_ ? std::string_view(long_glyphs_[idx]) : std::string_view();
 }
 
 std::string_view Frame::glyph(int x, int y) const {
@@ -85,14 +86,15 @@ std::string_view Frame::glyph(int x, int y) const {
 
 std::uint32_t Frame::link_id(std::string_view url) {
   if (url.empty()) return 0;
-  for (std::size_t i = 0; i < links_.size(); ++i)
+  for (std::size_t i = 0; i < link_count_; ++i)
     if (links_[i] == url) return static_cast<std::uint32_t>(i + 1);
-  links_.emplace_back(url);
-  return static_cast<std::uint32_t>(links_.size());
+  if (link_count_ == links_.size()) links_.emplace_back();
+  links_[link_count_].assign(url);  // reuses the buffer a past frame left here
+  return static_cast<std::uint32_t>(++link_count_);
 }
 
 std::string_view Frame::link(std::uint32_t id) const {
-  if (id == 0 || id > links_.size()) return {};
+  if (id == 0 || id > link_count_) return {};
   return links_[id - 1];
 }
 

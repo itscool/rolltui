@@ -424,7 +424,10 @@ void line_break_opportunities_into(std::span<const char32_t> cps, std::vector<Br
     return c == LB::BK || c == LB::CR || c == LB::LF || c == LB::NL || c == LB::SP ||
            c == LB::ZW;
   };
-  std::vector<Unit> u;
+  // m5b: the last per-call vector on the layout/draw path. `reserve(n)` on a fresh vector
+  // allocates every time; reused, it allocates once ever.
+  static thread_local std::vector<Unit> u;
+  u.clear();
   u.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
     LB c = resolved(cps[i]);

@@ -1,3 +1,15 @@
+  // RE-RECORDED 2026-09-03 at the close of m5b. Phase 13 end to end:
+  //   steady   887 →   0   streaming 2772 → 289   resize 70272 → 11180   steady KB 455 → 0
+  //
+  // **A STEADY FRAME ALLOCATES NOTHING, and that is asserted as `== 0` rather than as a
+  // band.** This is the phase's target and the reason for it is the instrument, not the
+  // speed: at `6 ± 3` a reading of 7 is an argument about head-room; at 0, any allocation
+  // at all is a signal with a cause. There is no floor left for the next accidental one to
+  // hide under.
+  //
+  // The other two frames keep bands, because they are ALLOWED to allocate — they are the
+  // phase's named exceptions (a re-lay builds the layout cache, which must outlive the
+  // frame). What is asserted about them is that they do not GROW.
 //
 // budget_test.cpp — Phase 13 m1: THE BUDGET, IN ctest, BEFORE ANYTHING IS OPTIMISED.
 //
@@ -47,6 +59,7 @@
 
 #include "rolltui/Document.hpp"
 #include "rolltui/Layout.hpp"
+#include "rolltui/Memory.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
 #include "rolltui/Widgets.hpp"
@@ -311,23 +324,16 @@ int main() {
   // one in the transcript's. `prepare`, `resolve`, the frame reset and `compose` with no
   // slot renderer are all EXACTLY ZERO. The target is 0 and this is not it; the six are
   // itemised in plan/phase-13.md m5b.
-  constexpr long kSteady = 6, kStreaming = 303, kResize = 11467, kSteadyKB = 0;
+  constexpr long kStreaming = 289, kResize = 11180;
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were
   // SSO and never reached the heap. The budget said exactly that by failing on bytes alone
   // and passing all three allocation assertions with +0.
-  {
-    auto [lo, hi] = band(kSteady, 0.02);
-    check(in_range(steady.allocs, lo, hi), "steady-state 120x40 is on budget [" + fmt(steady) + "; " + delta(steady.allocs, kSteady) +
-                                               ", band " + std::to_string(lo) + "-" + std::to_string(hi) + ", measured 2026-09-03]");
-  }
-  {
-    auto [lo, hi] = band(kSteadyKB, 0.05);
-    const long kb = static_cast<long>(steady.bytes / 1024);
-    check(in_range(kb, lo, hi), "…and its bytes [" + std::to_string(kb) + " KB; " + delta(kb, kSteadyKB) + " KB, band " +
-                                    std::to_string(lo) + "-" + std::to_string(hi) + "]");
-  }
+  // THE PHASE'S TARGET, and it is an equality: no band, no head-room, no floor.
+  check(steady.allocs == 0, "A STEADY FRAME ALLOCATES NOTHING [" + fmt(steady) + "]");
+  check(steady.bytes == 0, "…and takes no bytes: nothing is constructed either [" + std::to_string(steady.bytes) + " B]");
+
   {
     auto [lo, hi] = band(kStreaming, 0.02);
     check(in_range(streaming.allocs, lo, hi), "a streaming frame re-lays ONE entry [" + fmt(streaming) + "; " +
@@ -389,7 +395,42 @@ int main() {
           "THE COUNTER IS ARMED ON THE DRAW PATH: a widget wasting " + std::to_string(kWasted) +
               " allocations moves the frame's number by at least that [" + std::to_string(before.allocs) + " → " +
               std::to_string(after.allocs) + "]");
-    check(before.allocs > 0, "…and the un-wasteful measurement is not the zero a dead counter reports");
+    // This used to assert `before.allocs > 0`, on the reasoning that two zero readings
+    // would be what a DEAD counter reports. m5b made that assumption stale: the
+    // un-wasteful frame is now legitimately zero, which is the phase's whole target. The
+    // armed-ness is carried by the DELTA above and by the exact-accounting check at the top
+    // of this file, both of which are unaffected — so what is asserted here is the half
+    // that still means something.
+    check(after.allocs > 0 && before.allocs == 0,
+          "…and the un-wasteful frame is zero while the wasteful one is not: the counter reads a REAL difference [" +
+              std::to_string(before.allocs) + " → " + std::to_string(after.allocs) + "]");
+  }
+
+  // ---- the library's own entry point, and what it can honestly claim ----------------
+  // Phase 13's runtime half: the numbers above come from replacing the global operator new,
+  // which only a TEST can do. `rolltui::mem` is the same counting in the LIBRARY, readable
+  // by a host at runtime — one pipeline, two consumers.
+  {
+    const mem::Stats before = mem::stats();
+    void* a = mem::alloc(128);
+    void* b = mem::realloc(a, 256);
+    mem::free(b);
+    const mem::Stats after = mem::stats();
+    check(after.allocations == before.allocations + 1 && after.frees == before.frees + 1,
+          "rolltui::mem counts one allocation and one free for alloc→realloc→free (a realloc that GREW is not a new block)");
+    check(after.bytes_requested == before.bytes_requested + 128 + 256, "…and accumulates the bytes requested");
+    check(mem::alloc(0) == nullptr, "a zero-byte request is a nullptr, not a one-byte block");
+    mem::free(nullptr);  // must be a no-op
+    check(mem::stats().frees == after.frees, "…and freeing nullptr counts nothing");
+    // THE HONEST LIMIT, asserted rather than only documented: std::string and std::vector
+    // do NOT route through this in C++, so these figures cover the library's own explicit
+    // allocations and no more. A test that pretended otherwise would be the exact
+    // "instrument that under-reports while looking healthy" failure this file exists for.
+    const mem::Stats s0 = mem::stats();
+    { std::vector<int> v(1000, 7); (void)v; }
+    check(mem::stats().allocations == s0.allocations,
+          "a std::vector allocates WITHOUT touching rolltui::mem — in C++ this entry point is partial by "
+          "construction, and Phase 14's verdict is what reports how partial");
   }
 
   return report("rolltui budget_test");
