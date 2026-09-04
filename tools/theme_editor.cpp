@@ -10,7 +10,9 @@ namespace {
 
 const char* kAttrs[] = {"bold", "italic", "underline", "dim", "reverse"};
 
-bool& attr_of(Style& s, std::string_view name) {
+// `unsigned char&` and not `bool&` since Phase 14 m2: a Style's attribute bits are the C
+// struct's bytes now (rolltui/c/rolltui_style.h says why they are not `_Bool`).
+unsigned char& attr_of(Style& s, std::string_view name) {
   if (name == "bold") return s.bold;
   if (name == "italic") return s.italic;
   if (name == "underline") return s.underline;

@@ -216,7 +216,12 @@ EffectReport apply_effects(Frame& f, const Theme& theme, std::uint64_t now_ms, b
   // call and NOT AT ALL when nothing is marked, which is the state roll is in almost
   // always (Phase 13's "never be blind", applied to the path this milestone added).
   std::vector<const EffectFn*> resolved;
-  for (const Mark& m : f.marks()) {
+  // AN INDEX LOOP, not a range-for (Phase 14 m2): a Frame is an opaque handle and cannot
+  // lend `const std::vector<Mark>&` without materialising a vector — an allocation per
+  // call, on a path Phase 13 took to zero. `mark_at` hands back a Mark by value, which is
+  // 32 bytes and copies nothing that owns.
+  for (std::size_t i_mark = 0, n_marks = f.mark_count(); i_mark < n_marks; ++i_mark) {
+    const Mark m = f.mark_at(i_mark);
     if (m.cells <= 0 || m.state == EffectState::None) continue;
     if (m.y < 0 || m.y >= f.height()) continue;
     const std::vector<EffectSpec>& specs = theme.effects.for_state(m.state);
@@ -232,7 +237,7 @@ EffectReport apply_effects(Frame& f, const Theme& theme, std::uint64_t now_ms, b
     for (int i = 0; i < m.cells; ++i) {
       const int x = m.x + i;
       if (x < 0 || x >= f.width()) continue;
-      const Cell& cell = f.at(x, m.y);
+      const Cell cell = f.at(x, m.y);  // BY VALUE: the handle lends no reference into itself
       // Property 2, at its two edges: a continuation cell belongs to the glyph before it,
       // and a 2-cell glyph whose second half is outside the span is skipped WHOLE.
       if (cell.continuation) continue;
@@ -291,7 +296,8 @@ EffectReport apply_effects(Frame& f, const Theme& theme, std::uint64_t now_ms, b
 
 std::optional<int> effect_tick_ms(const Frame& f, const Theme& theme) {
   std::optional<int> best;
-  for (const Mark& m : f.marks()) {
+  for (std::size_t i = 0, n = f.mark_count(); i < n; ++i) {
+    const Mark m = f.mark_at(i);
     if (m.cells <= 0 || m.state == EffectState::None) continue;
     for (const EffectSpec& s : theme.effects.for_state(m.state)) {
       if (s.period_ms <= 0) continue;              // a still effect asks for no wakeup

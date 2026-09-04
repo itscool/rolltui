@@ -11,9 +11,18 @@
 // once at load; a role that exists here but nowhere else is a bug the compiler can
 // name (kRoleNames is sized by count).
 //
+// PHASE 14 m2: `Color` and `Style` ARE the C structs. They are defined once, in
+// `rolltui/c/rolltui_style.h`, and compiled by both languages — see that file for why one
+// definition beats two plus a conversion function. Nothing about how they are USED changed:
+// `Color::Kind::Rgb`, `Color::rgb(r, g, b)`, `Style{}` and `s.bold` all read as before. The
+// one difference a caller can see is that the attribute bits are `unsigned char` rather
+// than `bool`, so a braced init that wants a `bool` needs `!= 0`.
+//
 #include <array>
 #include <cstdint>
 #include <string_view>
+
+#include "rolltui/c/rolltui_style.h"
 
 namespace rolltui {
 
@@ -98,39 +107,10 @@ inline constexpr Role role_from_name(std::string_view name) {
   return Role::count_;
 }
 
-struct Color {
-  enum class Kind : std::uint8_t { None, Indexed, Rgb };
-  Kind kind = Kind::None;
-  std::uint8_t index = 0;        // Indexed: 0-255
-  std::uint8_t r = 0, g = 0, b = 0;  // Rgb
-
-  static constexpr Color none() { return {}; }
-  static constexpr Color indexed(std::uint8_t i) {
-    Color c;
-    c.kind = Kind::Indexed;
-    c.index = i;
-    return c;
-  }
-  static constexpr Color rgb(std::uint8_t r, std::uint8_t g, std::uint8_t b) {
-    Color c;
-    c.kind = Kind::Rgb;
-    c.r = r;
-    c.g = g;
-    c.b = b;
-    return c;
-  }
-  constexpr bool operator==(const Color&) const = default;
-};
-
-struct Style {
-  Color fg;
-  Color bg;
-  bool bold = false;
-  bool italic = false;
-  bool underline = false;
-  bool dim = false;
-  bool reverse = false;
-  constexpr bool operator==(const Style&) const = default;
-};
+// ONE DEFINITION, in rolltui/c/rolltui_style.h, compiled by both languages. `Color::Kind`,
+// `Color::none/indexed/rgb` and both `operator==`s live inside those structs under
+// `#ifdef __cplusplus`, so everything a caller writes is unchanged.
+using Color = RolltuiStyleColor;
+using Style = RolltuiStyle;
 
 }  // namespace rolltui

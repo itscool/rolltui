@@ -77,8 +77,8 @@ std::vector<CellShot> shoot(const Frame& f) {
   std::vector<CellShot> out;
   for (int y = 0; y < f.height(); ++y)
     for (int x = 0; x < f.width(); ++x) {
-      const Cell& c = f.at(x, y);
-      out.push_back({std::string(f.glyph_of(c)), c.width, c.continuation, c.style, c.link});
+      const Cell c = f.at(x, y);  // BY VALUE (Phase 14 m2): the frame lends no reference
+      out.push_back({std::string(f.glyph(x, y)), c.width, c.continuation != 0, c.style, c.link});
     }
   return out;
 }

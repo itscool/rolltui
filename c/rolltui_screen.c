@@ -48,6 +48,9 @@ typedef struct {
   unsigned long long since_ms;
   double fraction;
 } Mark;
+/* Same reason as RolltuiCell's assertion in the header: `rolltui_frame_equal` compares marks
+ * with memcmp, which is only right while every byte of the struct is a byte somebody wrote. */
+_Static_assert(sizeof(Mark) == 16 + 8 + 8, "Mark has padding; memcmp equality would compare bytes nobody wrote");
 
 struct RolltuiFrame {
   int w, h;
@@ -190,11 +193,12 @@ RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src) {
 int rolltui_frame_width(const RolltuiFrame* f) { return f->w; }
 int rolltui_frame_height(const RolltuiFrame* f) { return f->h; }
 
-RolltuiCell rolltui_frame_cell(const RolltuiFrame* f, int x, int y) {
-  RolltuiCell empty;
-  if (in_bounds(f, x, y)) return *at_const(f, x, y);
-  memset(&empty, 0, sizeof empty);
-  return empty;
+void rolltui_frame_cell(const RolltuiFrame* f, int x, int y, RolltuiCell* out) {
+  if (in_bounds(f, x, y)) {
+    *out = *at_const(f, x, y);
+    return;
+  }
+  memset(out, 0, sizeof *out);
 }
 
 void rolltui_frame_set_style(RolltuiFrame* f, int x, int y, RolltuiStyle s) {
@@ -341,8 +345,6 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
   *since_ms = m->since_ms;
   *fraction = m->fraction;
 }
-
-void rolltui_frame_clear_marks(RolltuiFrame* f) { f->mark_count = 0; }
 
 /* ---- cursor --------------------------------------------------------------------------- */
 

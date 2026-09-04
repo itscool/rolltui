@@ -186,7 +186,7 @@ int main() {
     used.reset(8, 2, fill);
     const Frame fresh(8, 2, fill);
     check(used == fresh, "a RESET frame equals a freshly constructed one — every field, not the ones that looked like they mattered");
-    check(used.marks().empty() && used.link(1).empty() && used.cursor() == Cursor{},
+    check(used.mark_count() == 0 && used.link(1).empty() && used.cursor() == Cursor{},
           "…including the marks, the link table and the cursor, all of which named cells that are gone");
     check(used.glyph(0, 1) == " " && !used.at(0, 1).spilled(), "…and the spilled glyph, so the table cannot grow across a session");
 

@@ -30,13 +30,13 @@
 # stop being immediate within a week.
 option(ROLLTUI_C "Build the library's ported slice in C rather than C++ (Phase 14)" OFF)
 if(ROLLTUI_C)
-  # m2 IN PROGRESS: rolltui_screen.c is compiled (so it is syntax- and warning-checked)
-  # but nothing calls it yet — `rolltui::Frame` still holds its own storage. Wiring it is
-  # the rest of m2; see plan/phase-14.md for the two hazards found while designing it.
+  # m2 WIRED 2026-09-04: `rolltui::Frame` is an opaque handle and its storage is whichever
+  # of these two files linked. The module cannot be half-ported — one Frame, one
+  # implementation — so this line is the whole of the switch for it.
   set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
-  set(ROLLTUI_SLICE GeomCpp.cpp)
+  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)

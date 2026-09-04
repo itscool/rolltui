@@ -31,7 +31,21 @@
 //     byte at all. Terminals without OSC 8 ignore it (plan/phase-9.md: links are
 //     emitted by the renderer from a PARSED URL, never passed through from text).
 //
+// PHASE 14 m2 — THE FRAME IS A HANDLE. Its storage lives behind
+// `rolltui/c/rolltui_screen.h`, in one of two implementations chosen by `-DROLLTUI_C`
+// (`ScreenCpp.cpp` or `c/rolltui_screen.c`), and the class below is the RAII plus the
+// loops that are built out of the primitives — `put_text`, `fill`, `tint` and the three
+// renderers, none of which needs to know which side answered. `Cell` and `Style` ARE the C
+// structs (one definition; see rolltui_style.h), so nothing is converted at the seam.
+//
+// TWO THINGS A CALLER CAN SEE, both forced by the handle rather than chosen:
+//   - `at()` returns a Cell BY VALUE. A view from `Cell::inline_bytes()` therefore dies
+//     with the copy; `glyph(x, y)` borrows from the FRAME and is the accessor to use.
+//   - the marks are `mark_count()` + `mark_at(i)`, not a `const std::vector<Mark>&`, which
+//     nothing on the C side can supply without allocating a vector per call.
+//
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -39,6 +53,7 @@
 #include "rolltui/Effects.hpp"
 #include "rolltui/Style.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_screen.h"
 
 namespace rolltui {
 
@@ -56,30 +71,9 @@ struct Rect {
 // SSO and never reached the heap, so this is a BYTES and cache-locality change and NOT an
 // allocation-count one; the grid goes from 230 KB to 153 KB.
 //
-// A GRAPHEME CLUSTER HAS NO MAXIMUM LENGTH, so the long case is handled rather than
-// assumed away: ten bytes covers ASCII, accented Latin, CJK, an emoji with a variation
-// selector, a flag and an emoji with a skin-tone modifier, and anything longer — a family
-// ZWJ sequence is 25+ bytes, and a user can paste one — SPILLS into a table the Frame
-// owns, with its index kept where the bytes would have been. That is exactly the shape the
-// `link` field already has, which is why it is the shape used: one mechanism, twice.
-// Spilling is the phase's "an allocation may happen, but it has a NAME" case.
-struct Cell {
-  static constexpr std::uint8_t kInlineGlyph = 10;
-  static constexpr std::uint8_t kSpilled = 0xFF;  // `len`: the bytes are in the frame's table
-
-  std::uint32_t link = 0;     // 0: none; else an id from Frame::link_id (per frame)
-  Style style;
-  char bytes[kInlineGlyph] = {' '};  // the cluster, or its spill index when len == kSpilled
-  std::uint8_t len = 1;       // bytes in `bytes`; 0 on a continuation cell; kSpilled when spilled
-  std::uint8_t width = 1;     // 1 or 2; 0 on a continuation cell
-  bool continuation = false;  // the right half of a 2-cell glyph
-
-  bool spilled() const { return len == kSpilled; }
-  // The inline bytes. Empty for a continuation cell, and NOT the answer for a spilled
-  // cell — `Frame::glyph()` is the one accessor that is right in both cases.
-  std::string_view inline_bytes() const { return {bytes, spilled() ? 0u : static_cast<unsigned>(len)}; }
-  bool operator==(const Cell&) const = default;
-};
+// ONE DEFINITION (Phase 14 m2): the struct, the spill rule and the two accessors are in
+// `rolltui/c/rolltui_screen.h`, compiled by both languages.
+using Cell = RolltuiCell;
 
 struct Cursor {
   int x = 0, y = 0;
@@ -89,15 +83,36 @@ struct Cursor {
 
 class Frame {
  public:
-  Frame() = default;
-  Frame(int w, int h, const Style& fill = {});
+  // OWNED (CLAUDE.md's fourth strategy), through a `unique_ptr` with a deleter that calls
+  // the C free — one owner, structural lifetime, and no hand-rolled `delete` anywhere. A
+  // default-constructed Frame is a valid 0x0 one, which is what the hosts' `Frame prev;`
+  // wants; a MOVED-FROM one is valid only to destroy or assign to, the ordinary contract.
+  struct Handle {
+    void operator()(RolltuiFrame* p) const { rolltui_frame_free(p); }
+  };
 
-  int width() const { return w_; }
-  int height() const { return h_; }
-  Rect bounds() const { return {0, 0, w_, h_}; }
-  const Cell& at(int x, int y) const { return cells_[static_cast<std::size_t>(y * w_ + x)]; }
+  Frame() : f_(rolltui_frame_new(0, 0, Style{})) {}
+  Frame(int w, int h, const Style& fill = {}) : f_(rolltui_frame_new(w, h, fill)) {}
+  Frame(const Frame& o) : f_(rolltui_frame_clone(o.f_.get())) {}
+  Frame& operator=(const Frame& o) {
+    if (this != &o) f_.reset(rolltui_frame_clone(o.f_.get()));
+    return *this;
+  }
+  Frame(Frame&&) noexcept = default;
+  Frame& operator=(Frame&&) noexcept = default;
 
-  void clear(const Style& fill);
+  int width() const { return rolltui_frame_width(f_.get()); }
+  int height() const { return rolltui_frame_height(f_.get()); }
+  Rect bounds() const { return {0, 0, width(), height()}; }
+  // BY VALUE: an opaque handle cannot lend a reference into itself and stay opaque. A view
+  // from the returned Cell's `inline_bytes()` dies with it — use `glyph(x, y)`.
+  Cell at(int x, int y) const {
+    Cell c;
+    rolltui_frame_cell(f_.get(), x, y, &c);
+    return c;
+  }
+
+  void clear(const Style& fill) { rolltui_frame_clear(f_.get(), fill); }
   // REUSES this frame's storage for the next paint (Phase 13 m5), instead of constructing
   // a new one and throwing 153 KB away every repaint. It is EXACTLY equivalent to
   // `Frame(w, h, fill)` — asserted, because the failure mode of a hand-written reset is
@@ -108,11 +123,12 @@ class Frame {
   // A SIZE CHANGE is safe here and is NOT safe to diff against: `render_diff` already
   // repaints in full when the dimensions differ, which is what keeps rule 3 (a resize
   // invalidates the baseline) a property of the code rather than of the caller.
-  void reset(int w, int h, const Style& fill);
+  void reset(int w, int h, const Style& fill) { rolltui_frame_reset(f_.get(), w, h, fill); }
   // Puts one grapheme of `cells` (1 or 2) at (x, y), clipping to the frame and the
   // right edge; returns the cells it occupied (0 when clipped away).
-  int put(int x, int y, std::string_view grapheme, int cells, const Style& style,
-          std::uint32_t link = 0);
+  int put(int x, int y, std::string_view grapheme, int cells, const Style& style, std::uint32_t link = 0) {
+    return rolltui_frame_put(f_.get(), x, y, grapheme.data(), grapheme.size(), cells, style, link);
+  }
   // Puts a UTF-8 string left to right from (x, y), at most `max_cells` cells and never
   // past the frame's right edge; returns the cells used. Control characters and
   // width-0 clusters are skipped (the wrap engine already stripped them; this is the
@@ -122,62 +138,65 @@ class Frame {
   // THE ONE ACCESSOR for a cell's grapheme, right for an inline cell and a spilled one
   // alike (see Cell above). Reading `at(x, y).bytes` directly is correct only until
   // somebody pastes a family emoji, which is why the bytes are not called `text`.
-  std::string_view glyph(int x, int y) const;
-  std::string_view glyph_of(const Cell& c) const;
+  // A BORROW from the frame, valid until that cell is written again.
+  std::string_view glyph(int x, int y) const {
+    std::size_t n = 0;
+    const char* p = rolltui_frame_glyph(f_.get(), x, y, &n);
+    return std::string_view(p, n);
+  }
   // Interns a hyperlink target for this frame; the same URL gets the same id. 0 for
   // an empty URL.
-  std::uint32_t link_id(std::string_view url);
-  // The URL behind an id ("" for 0 or an unknown id).
-  std::string_view link(std::uint32_t id) const;
+  std::uint32_t link_id(std::string_view url) { return rolltui_frame_link_id(f_.get(), url.data(), url.size()); }
+  // The URL behind an id ("" for 0 or an unknown id). A borrow, valid until the next reset.
+  std::string_view link(std::uint32_t id) const {
+    std::size_t n = 0;
+    const char* p = rolltui_frame_link(f_.get(), id, &n);
+    return std::string_view(p, n);
+  }
   void fill(Rect r, const Style& style, std::string_view grapheme = " ");
   // Applies `style`'s set colours (fg/bg that are not None) and its attribute bits to
   // every cell in r, leaving the glyphs — a modal's overlay (Layout.hpp).
   void tint(Rect r, const Style& style);
   // Replaces one cell's style whole, leaving its glyph — what an effect does when it
   // recolours without redrawing (Effects.hpp). Out of bounds is a no-op.
-  void set_style(int x, int y, const Style& style);
-  void set_cursor(int x, int y, bool visible) { cursor_ = {x, y, visible}; }
-  const Cursor& cursor() const { return cursor_; }
+  void set_style(int x, int y, const Style& style) { rolltui_frame_set_style(f_.get(), x, y, style); }
+  void set_cursor(int x, int y, bool visible) { rolltui_frame_set_cursor(f_.get(), x, y, visible); }
+  Cursor cursor() const {
+    int x = 0, y = 0, visible = 0;
+    rolltui_frame_cursor(f_.get(), &x, &y, &visible);
+    return {x, y, visible != 0};
+  }
 
   // ---- MARKS: what a widget says instead of animating (Effects.hpp) -------------------
   // `cells` cells from (x, y) on one row are in `state`. That is the whole of a widget's
   // vocabulary for motion: it never names a glyph, a colour or a period, and the theme
   // may map the state to nothing at all. A mark with no state or no cells is not
   // recorded, so "is anything marked" and "does anything move" stay the same question.
-  void mark(int x, int y, int cells, EffectState state, std::uint64_t since_ms = 0, double fraction = 0);
-  const std::vector<Mark>& marks() const { return marks_; }
+  void mark(int x, int y, int cells, EffectState state, std::uint64_t since_ms = 0, double fraction = 0) {
+    rolltui_frame_mark(f_.get(), x, y, cells, static_cast<int>(state), since_ms, fraction);
+  }
+  // COUNT + INDEX, not a `const std::vector<Mark>&`: the handle cannot lend a vector it
+  // does not keep, and materialising one would be an allocation per call on a path Phase 13
+  // took to zero. `EffectState` crosses as its underlying int and is never interpreted over
+  // there, which keeps the effects vocabulary in Effects.hpp alone.
+  std::size_t mark_count() const { return rolltui_frame_mark_count(f_.get()); }
+  Mark mark_at(std::size_t i) const {
+    int x = 0, y = 0, cells = 0, state = 0;
+    unsigned long long since_ms = 0;
+    double fraction = 0;
+    rolltui_frame_mark_at(f_.get(), i, &x, &y, &cells, &state, &since_ms, &fraction);
+    return {x, y, cells, static_cast<EffectState>(state), since_ms, fraction};
+  }
 
   // EQUALITY IS ABOUT WHAT THE FRAME SHOWS, not about what it is holding on to. The link
   // and spill tables keep their strings past a `reset` so the next frame can assign into
   // them (m5b), and a defaulted `==` compared that retained capacity — so a reset frame
   // stopped equalling a fresh one, which is the ghosting control's exact question and the
   // wrong answer to it. Only the LIVE entries are compared.
-  bool operator==(const Frame& o) const {
-    if (w_ != o.w_ || h_ != o.h_ || cursor_ != o.cursor_) return false;
-    if (cells_ != o.cells_ || marks_ != o.marks_) return false;
-    if (link_count_ != o.link_count_ || long_glyph_count_ != o.long_glyph_count_) return false;
-    for (std::size_t i = 0; i < link_count_; ++i)
-      if (links_[i] != o.links_[i]) return false;
-    for (std::size_t i = 0; i < long_glyph_count_; ++i)
-      if (long_glyphs_[i] != o.long_glyphs_[i]) return false;
-    return true;
-  }
+  bool operator==(const Frame& o) const { return rolltui_frame_equal(f_.get(), o.f_.get()) != 0; }
 
  private:
-  Cell& mut(int x, int y) { return cells_[static_cast<std::size_t>(y * w_ + x)]; }
-  void set_glyph(Cell& c, std::string_view g);
-  int w_ = 0, h_ = 0;
-  std::vector<Cell> cells_;
-  Cursor cursor_;
-  // m5b: both tables keep a COUNT rather than being cleared. `clear()` would destroy every
-  // string in them and free its buffer — the same trap `WrapLines` documents — so a frame
-  // holding one long URL paid for it again on every repaint. The live entries are the first
-  // `n`; the rest keep their storage for the next frame to assign into.
-  std::vector<std::string> links_;        // links_[id - 1]
-  std::size_t link_count_ = 0;
-  std::vector<std::string> long_glyphs_;  // m4: clusters too long to sit in a Cell
-  std::size_t long_glyph_count_ = 0;
-  std::vector<Mark> marks_;
+  std::unique_ptr<RolltuiFrame, Handle> f_;
 };
 
 // The frame as plain text: one line per row, continuation cells skipped, trailing

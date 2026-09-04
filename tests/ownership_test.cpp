@@ -161,7 +161,15 @@ int main() {
         {"AppProfile.hpp", 0},   {"Bindings.hpp", 1},      {"Diff.hpp", 0},        {"Document.hpp", 0},
         {"Effects.hpp", 2},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 0},
         {"Layout.hpp", 8},       {"Markdown.hpp", 0},      {"Marker.hpp", 0},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
-        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 4},     {"Screen.hpp", 1},
+        // Screen.hpp 1 → 4, RE-RECORDED 2026-09-04 by Phase 14 m2, which is what this row
+        // is FOR: the number moved, so somebody had to say what each new pointer is.
+        //   - `RolltuiFrame* p` in `Frame::Handle` — the deleter of the frame's OWNED
+        //     handle. The only one here that is not a borrow, and it is a `unique_ptr`'s
+        //     deleter rather than a member, which is the sanctioned shape for OWNED.
+        //   - `const char* p` twice, in `glyph()` and `link()` — BORROWS from the frame,
+        //     turned into a `string_view` in the same expression and never stored. The
+        //     window is stated at the C header: valid until that cell is written again.
+        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 4},     {"Screen.hpp", 4},
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Unicode.hpp", 1},     {"Widgets.hpp", 10},
@@ -198,7 +206,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 48, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 51, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

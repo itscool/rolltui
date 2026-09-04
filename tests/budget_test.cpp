@@ -125,17 +125,29 @@ struct Cost {
 
 // Runs `fn` with the counter armed. Nothing outside `fn` is counted, so building the
 // scene never lands in a frame's number.
+//
+// TWO SOURCES, ADDED TOGETHER, AND THE SECOND IS PHASE 14's DOING. The replacement
+// `operator new` above sees every C++ container; it does NOT see `rolltui::mem`, which is a
+// `malloc` wrapper. That was harmless while every allocation in a frame was a container's —
+// and it became a HOLE IN THE INSTRUMENT the moment `-DROLLTUI_C=ON` put the Frame's cells,
+// links and spilled glyphs behind `rolltui_mem_alloc`. A budget that reports zero because it
+// cannot see the allocator is exactly the failure this file's header is built around, aimed
+// at its own counter, so `mem::stats()` is read across the same window and the deltas are
+// summed. Under `ROLLTUI_C=OFF` nothing on the frame path calls `rolltui::mem`, so the
+// second term is 0 and every recorded number below means what it did before.
 template <typename F>
 Cost measure(F&& fn) {
   const auto t0 = std::chrono::steady_clock::now();
   g_allocs = 0;
   g_bytes = 0;
+  const mem::Stats m0 = mem::stats();
   g_on = true;
   fn();
   g_on = false;
+  const mem::Stats m1 = mem::stats();
   Cost c;
-  c.allocs = g_allocs;
-  c.bytes = g_bytes;
+  c.allocs = g_allocs + static_cast<long>(m1.allocations - m0.allocations);
+  c.bytes = g_bytes + static_cast<long long>(m1.bytes_requested - m0.bytes_requested);
   c.micros = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
   return c;
 }
@@ -238,6 +250,19 @@ int main() {
     check(c.bytes > 0, "…and it accumulates bytes (" + std::to_string(c.bytes) + ")");
     const Cost quiet = measure([] {});
     check(quiet.allocs == 0, "…and an empty body measures zero, so the count is the body's and not the harness's");
+    // THE SECOND HALF OF THE COUNTER, PROVED ARMED FOR THE SAME REASON THE FIRST IS. With
+    // `-DROLLTUI_C=ON` the Frame's cells, link table and spilled glyphs come from
+    // `rolltui::mem`, which the replacement `operator new` cannot see. If this term were
+    // dead, a steady frame would read zero for the wrong reason — and would keep reading it
+    // however much the C allocated. It runs in BOTH configurations, so the day the addition
+    // is dropped the test fails whichever way the flag is set.
+    const Cost owned = measure([] {
+      void* p = mem::alloc(4096);
+      mem::free(p);
+    });
+    check(owned.allocs == 1 && owned.bytes >= 4096,
+          "…and the counter sees rolltui::mem too, which operator new cannot [" + std::to_string(owned.allocs) +
+              " allocs / " + std::to_string(owned.bytes) + " B]");
   }
 
   // ---- the baseline ------------------------------------------------------------------
