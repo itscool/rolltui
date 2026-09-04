@@ -118,8 +118,11 @@
 #include <utility>
 #include <vector>
 
+#include <memory>
+
 #include "rolltui/Json.hpp"
 #include "rolltui/Keys.hpp"
+#include "rolltui/c/rolltui_bindings.h"
 
 namespace rolltui {
 
@@ -186,9 +189,33 @@ struct BindingsLoadReport {
   std::string summary() const;
 };
 
+// PHASE 15 m3 — THE CHORD SPELLING AND THE TABLE ARE BEHIND A C BOUNDARY
+// (`rolltui/c/rolltui_bindings.h`), in one of two implementations chosen by `-DROLLTUI_C`.
+// What stays on this side is what the boundary deliberately does not carry: the ACTION
+// vocabulary (`library_actions()`, `migrated_action()`), the scope policy `declare()`
+// enforces, and the JSON. Two shapes a caller can see changed, both because the table's
+// storage moved:
+//   - `chords_for()` and `actions()` hand back a COPY rather than a reference into storage
+//     that is no longer C++'s to lend. Neither is on a per-frame path — an editor, the help
+//     popup and the loader are the callers — and the one that IS, `chords_text()`, reads the
+//     table through count-plus-index and allocates only the string it returns.
+//   - the Enter rule's SUBJECT is handed to the table once at construction. The rule is the
+//     module's and lives in the C; the name "input.submit" is the vocabulary and stays here.
 class Bindings {
  public:
+  // OWNED, through a `unique_ptr` with a deleter that calls the C free — the same shape
+  // `Frame`, `KeyDecoder` and `EffectMap` use.
+  struct Handle {
+    void operator()(RolltuiBindings* p) const { rolltui_bindings_free(p); }
+  };
   Bindings();  // empty: nothing bound (use default_bindings() for the shipped table)
+  Bindings(const Bindings& o) : b_(rolltui_bindings_clone(o.b_.get())) {}
+  Bindings& operator=(const Bindings& o) {
+    if (this != &o) b_.reset(rolltui_bindings_clone(o.b_.get()));
+    return *this;
+  }
+  Bindings(Bindings&&) = default;
+  Bindings& operator=(Bindings&&) = default;
 
   // ---- lookup ----
   // The action of `scope` bound to this key, or "" when none. `k.raw` is ignored.
@@ -198,12 +225,12 @@ class Bindings {
   // Every chord in the row, deliverable or not: this is what to_json writes and what an
   // editor shows, and losing a chord because today's terminal is poor would be worse
   // than showing one that is currently inert.
-  const std::vector<KeyEvent>& chords_for(std::string_view action) const;
+  std::vector<KeyEvent> chords_for(std::string_view action) const;
   // …and this is the HELP form, so it lists only the chords that can actually fire on
   // the active protocol ("inert also means invisible"). Empty renders as "(unbound)".
   std::string chords_text(std::string_view action) const;  // "Ctrl-W, Alt-Backspace" for help
   bool has(std::string_view action) const;
-  const std::vector<std::string>& actions() const { return actions_; }  // known actions, in table order
+  std::vector<std::string> actions() const;  // known actions, in table order
   // The actions this table has CHORDS for but nothing has declared — a bindings file's
   // rows for another screen's actions. They are kept and written back; they never match
   // a key. Named for a host that wants to say so; not a problem by itself.
@@ -242,7 +269,7 @@ class Bindings {
   bool bind(std::string_view action, const KeyEvent& chord, std::string* moved_from = nullptr);
   bool unbind(std::string_view action, const KeyEvent& chord);
   void clear(std::string_view action);
-  bool operator==(const Bindings& o) const { return table_ == o.table_; }
+  bool operator==(const Bindings& o) const { return rolltui_bindings_equal(b_.get(), o.b_.get()) != 0; }
 
   // ---- file format ----
   //   { "name": "default", "bindings": { "input.submit": ["enter"], "input.newline": ["alt+enter"], ... } }
@@ -265,10 +292,11 @@ class Bindings {
   json::Value to_json(std::string_view name) const;
 
  private:
-  std::vector<std::string> actions_;
-  std::vector<std::string> descriptions_;
-  std::vector<std::pair<std::string, std::vector<KeyEvent>>> table_;  // action → chords, table order
-  std::vector<KeyEvent>& chords_mut(std::string_view action);
+  friend std::optional<Bindings> from_json_impl(const json::Value&, BindingsLoadReport&, KeyProtocol);
+  // Which row of `scope` already holds this chord, or "". Over the ROWS and not through
+  // action_for(), so an UNDECLARED row counts — see the .cpp.
+  std::string_view holder(const KeyEvent& chord, std::string_view scope) const;
+  std::unique_ptr<RolltuiBindings, Handle> b_;
   void suggest(const std::vector<ToolAction>& tools);  // declare()'s gap-filling half
 };
 

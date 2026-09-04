@@ -21,12 +21,29 @@
 // layer below the terminal. The Phase 10 files-only fixture binds exactly that chord and
 // its golden frame advertises "Ctrl-J", which is how it was found.
 //
+// PHASE 15 m3 — THE DECODER AND THE DELIVERABILITY MODEL ARE BEHIND A C BOUNDARY
+// (`rolltui/c/rolltui_keys.h`), in one of two implementations chosen by `-DROLLTUI_C`
+// (`KeysCpp.cpp` or `c/rolltui_keys.c`). This header is the vocabulary, the C++ event
+// model and the shape every widget already writes against; nothing a caller does changed.
+// Two things one level down are worth knowing:
+//   - `MouseEvent` IS the C struct (Phase 14 m2's one-definition rule), so its `ctrl` /
+//     `alt` / `shift` are `unsigned char` rather than `bool` — the same trade
+//     `rolltui_style.h` records for a Style's attribute bits, and for the same reason.
+//   - `KeyEvent` is NOT, and the reason is a finding rather than an exception: `raw` is a
+//     `std::string` on a type that is otherwise a chord, it takes part in the defaulted
+//     `operator==`, and every comparison site had to remember to clear it first. The
+//     boundary carries the CHORD and the bytes travel in the event envelope, so the
+//     `.clear()` that `Bindings::action_for` used to do is now what the conversion IS.
+//     See `rolltui/c/rolltui_keys.h` for the whole of it.
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
+
+#include "rolltui/c/rolltui_keys.h"
 
 namespace rolltui {
 
@@ -34,6 +51,13 @@ enum class Key : std::uint8_t {
   Char, Enter, Tab, Backspace, Escape, Up, Down, Left, Right, Home, End, PageUp, PageDown,
   Insert, Delete, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, Unknown
 };
+// The two spellings of the key vocabulary, pinned to each other by the compiler rather
+// than by a comment: a key added to one and not the other stops the build instead of
+// mis-indexing a table at the seam.
+static_assert(static_cast<int>(Key::Char) == ROLLTUI_KEY_CHAR && static_cast<int>(Key::F1) == ROLLTUI_KEY_F1 &&
+                  static_cast<int>(Key::F12) == ROLLTUI_KEY_F12 &&
+                  static_cast<int>(Key::Unknown) == ROLLTUI_KEY_UNKNOWN && ROLLTUI_KEY_UNKNOWN + 1 == ROLLTUI_KEY_COUNT,
+              "rolltui::Key and the C key constants must be the same vocabulary in the same order");
 
 struct KeyEvent {
   Key key = Key::Char;
@@ -43,21 +67,16 @@ struct KeyEvent {
   bool operator==(const KeyEvent&) const = default;
 };
 
-struct MouseEvent {
-  // WheelLeft/WheelRight are xterm's buttons 6/7 (SGR codes 66/67): a trackpad's
-  // sideways ticks. They are their own kinds so a host cannot mistake them for
-  // vertical scrolling — the terminal has already split the gesture into per-axis
-  // ticks, so there are no deltas to apply a dead zone to; a host that does not
-  // scroll sideways simply ignores them. (Found 2026-09-01: both decoded as
-  // WheelDown, so a sideways drag scrolled down and a gesture starting sideways at
-  // the top jumped the wrong way.)
-  enum class Kind : std::uint8_t { Press, Release, Drag, Move, WheelUp, WheelDown, WheelLeft, WheelRight };
-  Kind kind = Kind::Press;
-  int x = 0, y = 0;     // 0-based cells
-  int button = 0;       // 1 left, 2 middle, 3 right; 0 for motion/wheel
-  bool ctrl = false, alt = false, shift = false;
-  bool operator==(const MouseEvent&) const = default;
-};
+// WheelLeft/WheelRight are xterm's buttons 6/7 (SGR codes 66/67): a trackpad's sideways
+// ticks. They are their own kinds so a host cannot mistake them for vertical scrolling —
+// the terminal has already split the gesture into per-axis ticks, so there are no deltas
+// to apply a dead zone to; a host that does not scroll sideways simply ignores them.
+// (Found 2026-09-01: both decoded as WheelDown, so a sideways drag scrolled down and a
+// gesture starting sideways at the top jumped the wrong way.)
+//
+// ONE DEFINITION: this is `RolltuiMouseEvent` (rolltui/c/rolltui_keys.h), not a copy of
+// it, so the decoder writes exactly the bytes a widget reads.
+using MouseEvent = RolltuiMouseEvent;
 
 struct PasteEvent {
   std::string text;
@@ -73,22 +92,35 @@ using Event = std::variant<KeyEvent, MouseEvent, PasteEvent, ResizeEvent>;
 
 class KeyDecoder {
  public:
+  // OWNED (CLAUDE.md's fourth strategy), through a `unique_ptr` with a deleter that calls
+  // the C free — one owner, structural lifetime, no hand-rolled `delete`. The same shape
+  // `Frame` uses for its handle. A decoder is not copied: it holds the bytes that have
+  // arrived and not yet been decoded, and two of those would be two half-read terminals.
+  struct Handle {
+    void operator()(RolltuiKeyDecoder* p) const { rolltui_key_decoder_free(p); }
+  };
+  KeyDecoder() : d_(rolltui_key_decoder_new()) {}
+
   // Consumes as much of `bytes` as forms complete events; the rest waits.
   std::vector<Event> feed(std::string_view bytes);
   // Resolves whatever is pending: a lone ESC becomes Escape; an incomplete sequence
   // becomes Escape followed by its remaining bytes decoded as text.
   std::vector<Event> flush();
-  bool pending() const { return !buf_.empty(); }
-  bool in_paste() const { return in_paste_; }
+  bool pending() const { return rolltui_key_decoder_pending(d_.get()) != 0; }
+  bool in_paste() const { return rolltui_key_decoder_in_paste(d_.get()) != 0; }
 
  private:
-  std::string buf_;
-  bool in_paste_ = false;
-  std::string paste_;
+  std::unique_ptr<RolltuiKeyDecoder, Handle> d_;
 };
 
 // Debug/text form of an event ("Ctrl+c", "Up", "Mouse Press 1 @3,4", …).
 std::string to_string(const Event& e);
+
+// THE CHORD A KeyEvent IS, and back. `raw` is DROPPED by the first and empty in the second,
+// which is what makes "a KeyEvent's raw bytes are never part of a chord" structural instead
+// of a `.clear()` every comparison site has to remember (rolltui/c/rolltui_keys.h).
+RolltuiChord chord_of(const KeyEvent& k);
+KeyEvent key_event_of(const RolltuiChord& c);
 
 // ---- DELIVERABILITY (Phase 12 m3) ---------------------------------------------------
 //

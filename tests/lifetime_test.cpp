@@ -30,8 +30,10 @@
 #include "rolltui/Diff.hpp"
 #include "rolltui/Document.hpp"
 #include "rolltui/Effects.hpp"
+#include "rolltui/Bindings.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Lifetime.hpp"
+#include "rolltui/Presets.hpp"
 #include "rolltui/Memory.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
@@ -102,6 +104,21 @@ void use_the_ported_modules(const char* when) {
   const std::vector<std::string> block = {"-one two three", "+one TWO three"};
   check(diff_spans("diff", block, 1).size() == 3,
         std::string("…and a diff line is coloured, which is the other new handle — ") + when);
+
+  // PHASE 15 m3: THE THREE RETAINERS THE PORT ADDED, all touched here for the reason the
+  // registry above is — a zero over something nobody ever filled is this repo's oldest
+  // failure, and each of these holds C memory now where it used to hold `std::vector`s the
+  // gauge could not see.
+  //   - the BUILT-IN THEMES: three `Theme`s, each owning a C effect map;
+  //   - the SHIPPED PRESETS of all three domains, parsed once per domain into a cache the
+  //     descriptor owns (the Bindings one owns a C table per preset);
+  //   - the DEFAULT BINDINGS, which is one more of those tables plus the shipped layout's
+  //     declarations.
+  check(builtin_theme("mono") != nullptr, std::string("…and the built-in themes are built — ") + when);
+  check(!default_bindings().actions().empty(), std::string("…and the shipped default bindings parsed — ") + when);
+  check(ThemePresets::shipped("default") != nullptr && LayoutPresets::shipped("default") != nullptr &&
+            BindingsPresets::shipped("default") != nullptr,
+        std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 }
 
 }  // namespace

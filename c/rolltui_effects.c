@@ -138,16 +138,14 @@ static void set_glyph(RolltuiEffectOut* out, const char* g, size_t len) {
 static void glyph_cycle(RolltuiEffectScratch* sc, const RolltuiEffectSpec* s, const RolltuiEffectCell* in,
                         RolltuiEffectOut* out, int at_end) {
   if (s->frame_count == 0) return;
-  size_t first_len = 0;
-  const char* first = s->frame(s->owner, 0, &first_len);
-  const int w = frame_width(sc, first, first_len, in->ambiguous_wide);
+  const RolltuiEffectFrame first = s->frames[0];
+  const int w = frame_width(sc, first.bytes, first.len, in->ambiguous_wide);
   if (w <= 0 || w > in->length) return;
   const int start = at_end ? in->length - w : 0;
   if (in->index < start || in->index >= start + w) return;
-  size_t flen = 0;
-  const char* frame = s->frame(s->owner, (size_t)step_index(s, in->elapsed_ms, (int)s->frame_count), &flen);
+  const RolltuiEffectFrame frame = s->frames[step_index(s, in->elapsed_ms, (int)s->frame_count)];
   const char* g = NULL;
-  const size_t glen = frame_cell(sc, frame, flen, in->index - start, in->ambiguous_wide, &g);
+  const size_t glen = frame_cell(sc, frame.bytes, frame.len, in->index - start, in->ambiguous_wide, &g);
   if (glen == 0) return;
   set_glyph(out, g, glen);
 }
@@ -363,6 +361,217 @@ static void call_kind(RolltuiEffectScratch* sc, const Resolved* r, const Rolltui
     r->fn(r->ctx, spec, styles, host, in, out);
 }
 
+/* ---- what a THEME carries, owned in C ---------------------------------------------------- */
+/* THE m2 SEAM, CLOSED (rolltui_effects.h). A map owns every byte of every spec it holds: the
+ * kind name, each frame, and the role list. Each of those is its OWN allocation, so growing
+ * one does not move the others and a spec's pointers stay put — the array of specs itself is
+ * the one thing that moves, which is exactly the window `rolltui_effect_map_at` states.
+ *
+ * PER-STATE ARRAYS rather than one flat array with ranges: a theme file names its states in
+ * whatever order it likes, and an insert into the middle of a flat array is a whole rewrite
+ * for nothing. Three parallel arrays sized `states`, allocated once. */
+typedef struct {
+  char* kind;
+  size_t kind_len;
+  RolltuiEffectFrame* frames; /* each `bytes` is its own allocation, freed one by one */
+  size_t frame_count, frames_cap;
+  unsigned char* roles; /* NULL while the spec has none of its own: `spec.roles` then
+                         * points at the map's `fallback` and `role_count` is 1 */
+  size_t role_count, roles_cap;
+} SpecStore;
+
+struct RolltuiEffectMap {
+  size_t states;
+  unsigned char fallback; /* the role a spec with none of its own picks */
+  RolltuiEffectSpec** view;
+  SpecStore** store;
+  size_t* count;
+  size_t* cap;
+};
+
+RolltuiEffectMap* rolltui_effect_map_new(size_t states, unsigned char fallback_role) {
+  RolltuiEffectMap* m = (RolltuiEffectMap*)rolltui_mem_alloc(sizeof(RolltuiEffectMap));
+  memset(m, 0, sizeof *m);
+  m->states = states;
+  m->fallback = fallback_role;
+  if (states == 0) return m;
+  /* GROWING, EXACT (rolltui_alloc.h strategy 3): the state count is known and never
+   * changes, so these four are sized once and never resized. */
+  m->view = (RolltuiEffectSpec**)rolltui_mem_alloc(states * sizeof *m->view);
+  m->store = (SpecStore**)rolltui_mem_alloc(states * sizeof *m->store);
+  m->count = (size_t*)rolltui_mem_alloc(states * sizeof *m->count);
+  m->cap = (size_t*)rolltui_mem_alloc(states * sizeof *m->cap);
+  memset(m->view, 0, states * sizeof *m->view);
+  memset(m->store, 0, states * sizeof *m->store);
+  memset(m->count, 0, states * sizeof *m->count);
+  memset(m->cap, 0, states * sizeof *m->cap);
+  return m;
+}
+
+static void spec_release(SpecStore* st) {
+  size_t j;
+  rolltui_mem_free(st->kind);
+  for (j = 0; j < st->frame_count; ++j) rolltui_mem_free((void*)st->frames[j].bytes);
+  rolltui_mem_free(st->frames);
+  rolltui_mem_free(st->roles);
+  memset(st, 0, sizeof *st);
+}
+
+void rolltui_effect_map_clear(RolltuiEffectMap* m) {
+  size_t s, i;
+  if (!m) return;
+  for (s = 0; s < m->states; ++s) {
+    for (i = 0; i < m->count[s]; ++i) spec_release(&m->store[s][i]);
+    m->count[s] = 0;
+  }
+}
+
+void rolltui_effect_map_free(RolltuiEffectMap* m) {
+  size_t s;
+  if (!m) return;
+  rolltui_effect_map_clear(m);
+  for (s = 0; s < m->states; ++s) {
+    rolltui_mem_free(m->view[s]);
+    rolltui_mem_free(m->store[s]);
+  }
+  rolltui_mem_free(m->view);
+  rolltui_mem_free(m->store);
+  rolltui_mem_free(m->count);
+  rolltui_mem_free(m->cap);
+  rolltui_mem_free(m);
+}
+
+size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state) {
+  return (m && state < m->states) ? m->count[state] : 0;
+}
+
+const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i) {
+  if (!m || state >= m->states || i >= m->count[state]) return NULL;
+  return &m->view[state][i];
+}
+
+int rolltui_effect_map_empty(const RolltuiEffectMap* m) {
+  size_t s;
+  if (!m) return 1;
+  for (s = 0; s < m->states; ++s)
+    if (m->count[s] != 0) return 0;
+  return 1;
+}
+
+/* The view is rebuilt from the store after any change, because both may have moved. One
+ * place, called from all three mutators, so a pointer can never be stale by omission. */
+static void refresh_views(RolltuiEffectMap* m, size_t state) {
+  size_t i;
+  for (i = 0; i < m->count[state]; ++i) {
+    const SpecStore* st = &m->store[state][i];
+    RolltuiEffectSpec* v = &m->view[state][i];
+    v->kind = st->kind;
+    v->kind_len = st->kind_len;
+    v->roles = st->roles ? st->roles : &m->fallback;
+    v->role_count = st->roles ? st->role_count : 1;
+    v->own_role_count = st->role_count;
+    v->frames = st->frames;
+    v->frame_count = st->frame_count;
+  }
+}
+
+size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
+                              int width, int steps, int backward) {
+  size_t i;
+  SpecStore* st;
+  RolltuiEffectSpec* v;
+  if (!m || state >= m->states) return 0;
+  i = m->count[state];
+  /* GROWING, AMORTISED (strategy 2), and the two arrays grow together because a spec is
+   * one thing stored in two: what it OWNS, and the borrows a reader is handed. */
+  {
+    size_t cap_store = m->cap[state], cap_view = m->cap[state];
+    m->store[state] = (SpecStore*)rolltui_grow_zeroed(m->store[state], &cap_store, i + 1, sizeof **m->store);
+    m->view[state] = (RolltuiEffectSpec*)rolltui_grow_zeroed(m->view[state], &cap_view, i + 1, sizeof **m->view);
+    m->cap[state] = cap_store < cap_view ? cap_store : cap_view;
+  }
+  st = &m->store[state][i];
+  memset(st, 0, sizeof *st);
+  st->kind_len = kind_len;
+  st->kind = (char*)rolltui_mem_alloc(kind_len == 0 ? 1 : kind_len);
+  if (kind_len) memcpy(st->kind, kind, kind_len);
+  v = &m->view[state][i];
+  memset(v, 0, sizeof *v);
+  v->period_ms = period_ms;
+  v->width = width;
+  v->steps = steps;
+  v->backward = (unsigned char)(backward != 0);
+  m->count[state] = i + 1;
+  refresh_views(m, state);
+  return i;
+}
+
+void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len) {
+  SpecStore* st;
+  char* copy;
+  if (!m || state >= m->states || i >= m->count[state]) return;
+  st = &m->store[state][i];
+  st->frames = (RolltuiEffectFrame*)rolltui_grow(st->frames, &st->frames_cap, st->frame_count + 1, sizeof *st->frames);
+  copy = (char*)rolltui_mem_alloc(len == 0 ? 1 : len);
+  if (len) memcpy(copy, bytes, len);
+  st->frames[st->frame_count].bytes = copy;
+  st->frames[st->frame_count].len = len;
+  ++st->frame_count;
+  refresh_views(m, state);
+}
+
+void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role) {
+  SpecStore* st;
+  if (!m || state >= m->states || i >= m->count[state]) return;
+  st = &m->store[state][i];
+  st->roles = (unsigned char*)rolltui_grow(st->roles, &st->roles_cap, st->role_count + 1, sizeof *st->roles);
+  st->roles[st->role_count++] = role;
+  refresh_views(m, state);
+}
+
+RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m) {
+  RolltuiEffectMap* out;
+  size_t s, i, j;
+  if (!m) return NULL;
+  out = rolltui_effect_map_new(m->states, m->fallback);
+  for (s = 0; s < m->states; ++s)
+    for (i = 0; i < m->count[s]; ++i) {
+      const SpecStore* st = &m->store[s][i];
+      const RolltuiEffectSpec* v = &m->view[s][i];
+      const size_t k = rolltui_effect_map_add(out, s, st->kind, st->kind_len, v->period_ms, v->width, v->steps,
+                                              v->backward);
+      for (j = 0; j < st->frame_count; ++j)
+        rolltui_effect_map_add_frame(out, s, k, st->frames[j].bytes, st->frames[j].len);
+      for (j = 0; j < st->role_count; ++j) rolltui_effect_map_add_role(out, s, k, st->roles[j]);
+    }
+  return out;
+}
+
+int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b) {
+  size_t s, i, j;
+  if (a == b) return 1;
+  if (!a || !b || a->states != b->states) return 0;
+  for (s = 0; s < a->states; ++s) {
+    if (a->count[s] != b->count[s]) return 0;
+    for (i = 0; i < a->count[s]; ++i) {
+      const SpecStore* x = &a->store[s][i];
+      const SpecStore* y = &b->store[s][i];
+      const RolltuiEffectSpec* vx = &a->view[s][i];
+      const RolltuiEffectSpec* vy = &b->view[s][i];
+      if (!name_eq(x->kind, x->kind_len, y->kind, y->kind_len)) return 0;
+      if (vx->period_ms != vy->period_ms || vx->width != vy->width || vx->steps != vy->steps ||
+          vx->backward != vy->backward)
+        return 0;
+      if (x->frame_count != y->frame_count || x->role_count != y->role_count) return 0;
+      for (j = 0; j < x->frame_count; ++j)
+        if (!name_eq(x->frames[j].bytes, x->frames[j].len, y->frames[j].bytes, y->frames[j].len)) return 0;
+      for (j = 0; j < x->role_count; ++j)
+        if (x->roles[j] != y->roles[j]) return 0;
+    }
+  }
+  return 1;
+}
+
 /* ---- the pure parts -------------------------------------------------------------------------- */
 
 int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
@@ -381,8 +590,8 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
 /* ---- applying, and the tick -------------------------------------------------------------------- */
 
 void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const RolltuiStyle* styles, const void* host,
-                           RolltuiEffectSpec* specs, const size_t* state_first, const size_t* state_count,
-                           size_t states, unsigned long long now_ms, int ambiguous_wide, RolltuiEffectReport* rep) {
+                           const RolltuiEffectMap* map, unsigned long long now_ms, int ambiguous_wide,
+                           RolltuiEffectReport* rep, RolltuiEffectUnknownFn on_unknown, void* unknown_ctx) {
   rep->marks_drawn = 0;
   rep->cells_touched = 0;
   rep->glyphs_refused = 0;
@@ -395,8 +604,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
     rolltui_frame_mark_at(f, im, &mx, &my, &cells, &state, &since, &fraction);
     if (cells <= 0 || state <= 0) continue; /* state 0 is None, and is never recorded anyway */
     if (my < 0 || my >= fh) continue;
-    if ((size_t)state >= states) continue;
-    const size_t first = state_first[state], n_specs = state_count[state];
+    const size_t n_specs = rolltui_effect_map_count(map, (size_t)state);
     if (n_specs == 0) continue;
     /* Each spec's kind is resolved ONCE PER MARK, not once per cell: the lookup is
      * loop-invariant, it is a string compare against the closed table, and for a HOST kind
@@ -404,8 +612,8 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
     sc->res = rolltui_grow(sc->res, &sc->res_cap, n_specs, sizeof *sc->res);
     pthread_mutex_lock(&g_mu);
     for (size_t k = 0; k < n_specs; ++k) {
-      RolltuiEffectSpec* s = &specs[first + k];
-      if (!resolve(s->kind, s->kind_len, &sc->res[k])) s->unresolved = 1; /* named once per mark */
+      const RolltuiEffectSpec* s = rolltui_effect_map_at(map, (size_t)state, k);
+      if (!resolve(s->kind, s->kind_len, &sc->res[k]) && on_unknown) on_unknown(unknown_ctx, s->kind, s->kind_len);
     }
     pthread_mutex_unlock(&g_mu);
     int any = 0;
@@ -436,7 +644,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
         one.has_glyph = 0;
         one.has_style = 0;
         one.glyph_len = 0;
-        call_kind(sc, &sc->res[k], &specs[first + k], styles, host, &in, &one);
+        call_kind(sc, &sc->res[k], rolltui_effect_map_at(map, (size_t)state, k), styles, host, &in, &one);
         /* Stacking: the glyph comes from whichever kind last set one, the style likewise,
          * and a later kind sees the earlier one's style as its base — so "glyph from one,
          * colour from another" is the ordinary case rather than a special one. */
@@ -476,8 +684,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
   }
 }
 
-int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectSpec* specs, const size_t* state_first,
-                            const size_t* state_count, size_t states) {
+int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectMap* map) {
   int best = 0;
   const size_t marks = rolltui_frame_mark_count(f);
   for (size_t im = 0; im < marks; ++im) {
@@ -485,10 +692,10 @@ int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectSpec* spec
     unsigned long long since = 0;
     double fraction = 0;
     rolltui_frame_mark_at(f, im, &mx, &my, &cells, &state, &since, &fraction);
-    if (cells <= 0 || state <= 0 || (size_t)state >= states) continue;
-    const size_t first = state_first[state], n_specs = state_count[state];
+    if (cells <= 0 || state <= 0) continue;
+    const size_t n_specs = rolltui_effect_map_count(map, (size_t)state);
     for (size_t k = 0; k < n_specs; ++k) {
-      const RolltuiEffectSpec* s = &specs[first + k];
+      const RolltuiEffectSpec* s = rolltui_effect_map_at(map, (size_t)state, k);
       if (s->period_ms <= 0) continue;                                    /* a still effect asks for no wakeup */
       if (!rolltui_effect_kind_resolves(s->kind, s->kind_len)) continue;  /* nor one that cannot draw */
       int steps = rolltui_effect_steps(s, cells);

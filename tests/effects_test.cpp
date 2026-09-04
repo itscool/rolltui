@@ -34,32 +34,35 @@ using namespace rolltui_test;
 
 namespace {
 
-// A theme mapping ONE state to one spec, so a kind can be exercised on its own.
-Theme theme_with(EffectState state, EffectSpec spec) {
+// A theme mapping ONE state to one spec, so a kind can be exercised on its own. A spec is
+// BUILT INTO the map since Phase 15 m3 (the theme owns its specs in C), so these helpers
+// take what a spec is made of rather than a spec.
+Theme theme_with(EffectState state, std::string_view kind, int period_ms = 800,
+                 std::vector<std::string> frames = {}, std::vector<Role> roles = {}, int width = 0) {
   Theme t = *builtin_theme("default-dark");
-  t.effects = EffectMap{};
-  t.effects.for_state(state).push_back(std::move(spec));
+  t.effects.clear();
+  const std::size_t i = t.effects.add(state, kind, period_ms, width);
+  for (const std::string& f : frames) t.effects.add_frame(state, i, f);
+  for (Role r : roles) t.effects.add_role(state, i, r);
   return t;
 }
 
-// Every kind, with a spec that gives it what it needs — the sweep's table. A kind with
+// Every kind, with a theme that gives it what it needs — the sweep's table. A kind with
 // no frames or no roles is a legitimate theme file (and must not crash), but it would
 // also do nothing, which is not what the properties need to be tested against.
 struct KindCase {
   std::string kind;
-  EffectSpec spec;
+  Theme theme;
 };
 
 std::vector<KindCase> kind_cases() {
   std::vector<KindCase> out;
   for (const std::string& name : effect_kind_names()) {
-    EffectSpec s;
-    s.kind = name;
-    s.period_ms = 400;
-    s.roles = {Role::accent_1, Role::accent_2, Role::error};
-    s.frames = {"a", "b", "c"};  // one cell each: what a well-formed theme file carries
-    if (name == "wide-liar") s.frames = {"\xE4\xBD\xA0"};  // 2 cells — refused, never written
-    out.push_back({name, std::move(s)});
+    // one cell each: what a well-formed theme file carries
+    std::vector<std::string> frames = {"a", "b", "c"};
+    if (name == "wide-liar") frames = {"\xE4\xBD\xA0"};  // 2 cells — refused, never written
+    out.push_back({name, theme_with(EffectState::Waiting, name, 400, frames,
+                                    {Role::accent_1, Role::accent_2, Role::error})});
   }
   return out;
 }
@@ -104,7 +107,7 @@ int main() {
           "state names round-trip");
     check(effect_state_from_name("nope") == EffectState::count_, "an unknown state name is count_, not a silent 'none'");
     EffectMap empty;
-    check(empty.empty() && empty.for_state(EffectState::Waiting).empty(), "a theme that maps nothing is empty by construction");
+    check(empty.empty() && empty.count(EffectState::Waiting) == 0, "a theme that maps nothing is empty by construction");
   }
 
   // ---- the two rungs ---------------------------------------------------------------
@@ -129,7 +132,7 @@ int main() {
                                [](const EffectSpec& s, const Theme& th, const EffectCell& in, EffectOut& out) {
                                  if ((in.index + static_cast<int>(in.elapsed_ms / 100)) % 2) return;
                                  out.has_style = true;
-                                 out.style = th.style(s.roles.empty() ? Role::accent_1 : s.roles[0]);
+                                 out.style = th.style(static_cast<Role>(s.role(0)));  // never empty: the map substitutes its fallback
                                  out.set_glyph("#");
                                },
                                &why),
@@ -162,7 +165,7 @@ int main() {
       for (const Span& sp : spans) {
         for (std::uint64_t tick : {0ull, 137ull, 400ull, 999ull}) {
           for (double frac : {0.0, 0.37, 1.0}) {
-            const Theme theme = theme_with(EffectState::Waiting, kc.spec);
+            const Theme& theme = kc.theme;
             Frame f = make_frame(20, 3, theme);
             const std::vector<CellShot> before = shoot(f);
             f.mark(sp.x, sp.y, sp.cells, EffectState::Waiting, 0, frac);
@@ -204,9 +207,7 @@ int main() {
 
   // ---- the lying kind changes no glyph at all --------------------------------------
   {
-    EffectSpec s;
-    s.kind = "wide-liar";
-    const Theme theme = theme_with(EffectState::Waiting, s);
+    const Theme theme = theme_with(EffectState::Waiting, "wide-liar");
     Frame f = make_frame(20, 3, theme);
     const std::string before = frame_to_text(f);
     f.mark(2, 1, 8, EffectState::Waiting);
@@ -249,16 +250,12 @@ int main() {
   // ---- STACKING: glyph from one kind, colour from another ---------------------------
   {
     Theme theme = *builtin_theme("default-dark");
-    theme.effects = EffectMap{};
-    EffectSpec spin;
-    spin.kind = "spinner";
-    spin.frames = {"x", "y"};
-    spin.period_ms = 400;
-    EffectSpec tint;
-    tint.kind = "pulse";
-    tint.roles = {Role::error};
-    tint.period_ms = 0;
-    theme.effects.for_state(EffectState::Waiting) = {spin, tint};
+    theme.effects.clear();
+    const std::size_t spin = theme.effects.add(EffectState::Waiting, "spinner", 400);
+    theme.effects.add_frame(EffectState::Waiting, spin, "x");
+    theme.effects.add_frame(EffectState::Waiting, spin, "y");
+    const std::size_t tint = theme.effects.add(EffectState::Waiting, "pulse", 0);
+    theme.effects.add_role(EffectState::Waiting, tint, Role::error);
     Frame f = make_frame(20, 3, theme);
     f.mark(2, 1, 4, EffectState::Waiting);
     apply_effects(f, theme, 0);
@@ -302,11 +299,8 @@ int main() {
     check(rep.marks_drawn == 1 && rep.cells_touched == 4, "…while still drawing: 0.5 of an 8-cell span is 4 cells");
     // A mark whose state the theme maps to nothing that RESOLVES: named, never silent.
     Theme t2 = dark;
-    t2.effects = EffectMap{};
-    EffectSpec ghost;
-    ghost.kind = "confetti";
-    ghost.period_ms = 100;
-    t2.effects.for_state(EffectState::Flash).push_back(ghost);
+    t2.effects.clear();
+    t2.effects.add(EffectState::Flash, "confetti", 100);
     Frame g = make_frame(20, 3, t2);
     g.mark(2, 1, 4, EffectState::Flash);
     const EffectReport grep = apply_effects(g, t2, 0);
@@ -330,12 +324,14 @@ int main() {
     ThemeLoadReport rep;
     std::optional<Theme> t = load_theme(text, ThemeMode::Dark, rep);
     check(t.has_value(), "a theme file with effects loads");
-    check(t->effects.for_state(EffectState::Waiting).size() == 1 && t->effects.for_state(EffectState::Streaming).size() == 2,
+    check(t->effects.count(EffectState::Waiting) == 1 && t->effects.count(EffectState::Streaming) == 2,
           "one spec or an array of them, and an array STACKS");
-    check(t->effects.for_state(EffectState::Waiting)[0].frames.size() == 2 && t->effects.for_state(EffectState::Waiting)[0].period_ms == 200,
+    check(t->effects.at(EffectState::Waiting, 0).frame_count == 2 && t->effects.at(EffectState::Waiting, 0).period_ms == 200,
           "the spec's fields are read");
-    check(t->effects.for_state(EffectState::Streaming)[0].roles == std::vector<Role>{Role::accent_1}, "\"role\" and \"roles\" are the same field");
-    check(t->effects.for_state(EffectState::Progress)[0].backward && t->effects.for_state(EffectState::Progress)[0].period_ms == 0,
+    check(t->effects.at(EffectState::Streaming, 0).own_role_count == 1 &&
+              t->effects.at(EffectState::Streaming, 0).roles[0] == static_cast<unsigned char>(Role::accent_1),
+          "\"role\" and \"roles\" are the same field");
+    check(t->effects.at(EffectState::Progress, 0).backward && t->effects.at(EffectState::Progress, 0).period_ms == 0,
           "a still effect is written as period_ms 0, not as a missing key");
     auto has = [](const std::vector<std::string>& v, const char* needle) {
       for (const std::string& s : v)
@@ -368,7 +364,7 @@ int main() {
     check(d && l && d->effects == builtin_theme("default-dark")->effects && d->effects == l->effects,
           "a dark/light PAIR file carries one effects object for both variants");
     Theme still = *builtin_theme("default-dark");
-    still.effects = EffectMap{};
+    still.effects.clear();
     std::string err;
     check(!json::parse(theme_to_json(still), err).has("effects") && err.empty(),
           "a theme with no motion writes no \"effects\" key: absent and empty are the same answer here");
@@ -383,17 +379,21 @@ int main() {
     check(!(dark.effects == mono.effects), "…and the mono theme tells the same four states a different way");
     for (const Theme* t : {&dark, &light, &mono})
       for (std::size_t i = 1; i < kEffectStateCount; ++i) {
-        const std::vector<EffectSpec>& specs = t->effects.for_state(static_cast<EffectState>(i));
-        check_quiet(!specs.empty(), t->name + " maps " + std::string(effect_state_name(static_cast<EffectState>(i))));
-        for (const EffectSpec& s : specs) {
-          check_quiet(effect_kind_resolves(s.kind), t->name + ": kind '" + s.kind + "' resolves");
-          if (s.frames.empty()) continue;
-          const int w = unicode::display_width(s.frames[0]);
-          for (const std::string& fr : s.frames) {
-            check_quiet(unicode::display_width(fr) == w, t->name + ": every frame of '" + s.kind + "' is " + std::to_string(w) + " cells");
+        const EffectState state = static_cast<EffectState>(i);
+        const std::size_t n = t->effects.count(state);
+        check_quiet(n != 0, t->name + " maps " + std::string(effect_state_name(state)));
+        for (std::size_t k = 0; k < n; ++k) {
+          const EffectSpec& s = t->effects.at(state, k);
+          const std::string kind(s.kind_view());
+          check_quiet(effect_kind_resolves(kind), t->name + ": kind '" + kind + "' resolves");
+          if (s.frame_count == 0) continue;
+          const int w = unicode::display_width(s.frame(0));
+          for (std::size_t fi = 0; fi < s.frame_count; ++fi) {
+            const std::string_view fr = s.frame(fi);
+            check_quiet(unicode::display_width(fr) == w, t->name + ": every frame of '" + kind + "' is " + std::to_string(w) + " cells");
             // …at BOTH ambiguous-width settings, or the applier would refuse the glyph on
             // a wide-ambiguous terminal and the theme would silently stop moving.
-            check_quiet(unicode::display_width(fr, true) == w, t->name + ": '" + s.kind + "' frame is " + std::to_string(w) + " cells when ambiguous is wide too");
+            check_quiet(unicode::display_width(fr, true) == w, t->name + ": '" + kind + "' frame is " + std::to_string(w) + " cells when ambiguous is wide too");
           }
         }
       }

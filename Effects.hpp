@@ -84,6 +84,7 @@
 //     cap is right here and a spill is right for a `Cell`.
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -118,33 +119,68 @@ struct Mark {
 
 // ---- what a THEME says ------------------------------------------------------------------
 
-struct EffectSpec {
-  std::string kind;                  // a built-in above, or a name a host registered
-  std::vector<std::string> frames;   // glyph kinds: the cycle; every frame the SAME width
-  std::vector<Role> roles;           // the roles a colour kind picks between (never a colour)
-  int period_ms = 800;               // one full cycle; 0 or less: a STILL effect, no tick
-  int width = 0;                     // shimmer: the sweeping window, in cells (0 → a third of the span)
-  int steps = 0;                     // how many distinct pictures a period has (0 → the kind's own)
-  bool backward = false;             // run the cycle the other way
-  bool operator==(const EffectSpec&) const = default;
-};
+// ONE SPEC, AS THE THEME OWNS IT (Phase 15 m3). This is `RolltuiEffectSpec` — the struct the
+// applier reads and a host's kind is handed — not a copy of its type: the m2 boundary lent a
+// C++ `EffectSpec` through a view built in `fill_view`, and closing that seam meant the view
+// BECOMING the definition, which is what its own header said would happen.
+//
+// So a spec is a BORROW of the `EffectMap` that owns it, valid until that map next changes,
+// and it is READ here and WRITTEN through `EffectMap::add` below. `roles` is one byte per
+// entry and `role_count` is never zero — a spec with no roles of its own borrows the map's
+// fallback, which the map was handed once rather than each rung guessing at it.
+using EffectSpec = RolltuiEffectSpec;
 
 // The theme's whole answer: what each state looks like. Empty for a state the theme did
 // not name — a still UI, the degrade rung.
-struct EffectMap {
-  std::vector<EffectSpec> by_state[kEffectStateCount];
-  const std::vector<EffectSpec>& for_state(EffectState s) const {
-    return by_state[static_cast<std::size_t>(s) < kEffectStateCount ? static_cast<std::size_t>(s) : 0];
+//
+// OWNED (CLAUDE.md's fourth strategy), through a `unique_ptr` with a deleter that calls the
+// C free — the same shape `Frame` and `KeyDecoder` use for their handles.
+class EffectMap {
+ public:
+  struct Handle {
+    void operator()(RolltuiEffectMap* p) const { rolltui_effect_map_free(p); }
+  };
+  // THE FALLBACK ROLE IS HANDED OVER ONCE, HERE. It is the only place in the library that
+  // says which role an effect with none of its own picks, and it is on this side because a
+  // role is the styling vocabulary and the C names none of it.
+  EffectMap() : m_(rolltui_effect_map_new(kEffectStateCount, static_cast<unsigned char>(Role::accent_1))) {}
+  EffectMap(const EffectMap& o) : m_(rolltui_effect_map_clone(o.m_.get())) {}
+  EffectMap& operator=(const EffectMap& o) {
+    if (this != &o) m_.reset(rolltui_effect_map_clone(o.m_.get()));
+    return *this;
   }
-  std::vector<EffectSpec>& for_state(EffectState s) {
-    return by_state[static_cast<std::size_t>(s) < kEffectStateCount ? static_cast<std::size_t>(s) : 0];
+  EffectMap(EffectMap&&) = default;
+  EffectMap& operator=(EffectMap&&) = default;
+
+  bool empty() const { return rolltui_effect_map_empty(m_.get()) != 0; }
+  bool operator==(const EffectMap& o) const { return rolltui_effect_map_equal(m_.get(), o.m_.get()) != 0; }
+  void clear() { rolltui_effect_map_clear(m_.get()); }
+
+  std::size_t count(EffectState s) const { return rolltui_effect_map_count(m_.get(), index(s)); }
+  // A BORROW, valid until this map next changes.
+  const EffectSpec& at(EffectState s, std::size_t i) const { return *rolltui_effect_map_at(m_.get(), index(s), i); }
+
+  // A spec is BUILT rather than handed over whole, because its three arrays are
+  // variable-length and building is what keeps them the map's allocations. `add` returns
+  // the new spec's index for the two fillers.
+  std::size_t add(EffectState s, std::string_view kind, int period_ms = 800, int width = 0, int steps = 0,
+                  bool backward = false) {
+    return rolltui_effect_map_add(m_.get(), index(s), kind.data(), kind.size(), period_ms, width, steps, backward);
   }
-  bool empty() const {
-    for (const std::vector<EffectSpec>& v : by_state)
-      if (!v.empty()) return false;
-    return true;
+  void add_frame(EffectState s, std::size_t i, std::string_view frame) {
+    rolltui_effect_map_add_frame(m_.get(), index(s), i, frame.data(), frame.size());
   }
-  bool operator==(const EffectMap&) const = default;
+  void add_role(EffectState s, std::size_t i, Role r) {
+    rolltui_effect_map_add_role(m_.get(), index(s), i, static_cast<unsigned char>(r));
+  }
+
+  const RolltuiEffectMap* handle() const { return m_.get(); }
+
+ private:
+  static std::size_t index(EffectState s) {
+    return static_cast<std::size_t>(s) < kEffectStateCount ? static_cast<std::size_t>(s) : 0;
+  }
+  std::unique_ptr<RolltuiEffectMap, Handle> m_;
 };
 
 // ---- the pure function ------------------------------------------------------------------
@@ -186,6 +222,7 @@ bool is_builtin_effect_kind(std::string_view name);
 // the spinner's frame count, the pulse's role count, a sweep's cell count. `spec.steps`
 // overrides it, which is how a host's own kind says how finely it moves.
 int effect_steps(const EffectSpec& spec, int length);
+
 
 // ---- applying, and the tick -------------------------------------------------------------
 

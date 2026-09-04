@@ -37,11 +37,16 @@ if(ROLLTUI_C)
   # Phase 15 m2 2026-09-04 adds the diff colouriser and the effects engine — the two
   # halves of one measurement: a pure function with almost no ownership, and a registry
   # with a process-wide retainer (plan/phase-15.md m2).
+  # Phase 15 m3 adds the data-and-tables tier: the key decoder and the deliverability
+  # model, the colour engine, the preset store's mechanics and the bindings table.
   set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
-                    c/rolltui_diff.c c/rolltui_effects.c)
+                    c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
+                    c/rolltui_theme.c c/rolltui_bindings.c
+                    c/rolltui_presets.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
-  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp)
+  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp KeysCpp.cpp
+                    ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)

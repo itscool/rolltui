@@ -200,7 +200,13 @@ int main() {
     // re-record is a copy-paste and never arithmetic). Terminal.hpp is 0 because m2 turned
     // its one hand-rolled owner into a `unique_ptr`.
     const Row recorded[] = {
-        {"AppProfile.hpp", 0},   {"Bindings.hpp", 1},      {"Diff.hpp", 0},        {"Document.hpp", 0},
+        // Bindings.hpp 1 → 2, RE-RECORDED 2026-09-04 by Phase 15 m3, when the binding table
+        // became a handle to storage the C owns. The new one is `RolltuiBindings* p` in
+        // `Bindings::Handle` — the deleter of that OWNED handle, a `unique_ptr`'s deleter
+        // rather than a member, the same sanctioned shape `Frame::Handle` uses. The one
+        // that was already here is `std::string* moved_from`, the optional out-parameter on
+        // `bind()`.
+        {"AppProfile.hpp", 0},   {"Bindings.hpp", 2},      {"Diff.hpp", 0},        {"Document.hpp", 0},
         // Effects.hpp 2 → 1, RE-RECORDED 2026-09-04 by Phase 15 m2, and this is the census
         // catching a REMOVAL, which it is meant to do just as loudly as an addition. The
         // pointer was `const EffectFn* effect_kind(std::string_view)`. A resolved kind is a
@@ -208,7 +214,22 @@ int main() {
         // there is nothing to hand back a pointer TO — and every caller only ever asked
         // whether it resolved, which `effect_kind_resolves` answers with a bool. The one
         // left is `std::string* why`, the optional reason-out on `register_effect_kind`.
-        {"Effects.hpp", 1},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 0},
+        //
+        // Effects.hpp 1 → 3, RE-RECORDED 2026-09-04 by Phase 15 m3, when `EffectMap` became
+        // a handle to storage the C owns (the m2 seam closing). Both new ones are that
+        // handle and neither is a borrow:
+        //   - `RolltuiEffectMap* p` in `EffectMap::Handle` — the deleter of the OWNED C
+        //     map, a `unique_ptr`'s deleter rather than a member, the same sanctioned shape
+        //     `Frame::Handle` and `KeyDecoder::Handle` already use.
+        //   - `const RolltuiEffectMap* handle() const` — what `apply_effects` hands the
+        //     applier. A BORROW of the map this object owns, valid for the call and never
+        //     stored; it exists because the applier reads the theme's specs directly now
+        //     instead of being handed views rebuilt from them every frame.
+        // Keys.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m3. The one pointer is
+        // `RolltuiKeyDecoder* p` in `KeyDecoder::Handle` — the deleter of the decoder's
+        // OWNED C handle, the same sanctioned shape `Frame::Handle` already uses, and a
+        // `unique_ptr`'s deleter rather than a member. It borrows nothing.
+        {"Effects.hpp", 3},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 1},
         {"Layout.hpp", 8},       {"Markdown.hpp", 0},      {"Marker.hpp", 0},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
@@ -244,7 +265,18 @@ int main() {
         // Screen.hpp's two are `RolltuiFrame* handle()` and its const overload: a BORROW of
         // the handle the Frame OWNS, so that `Effects.cpp` can hand the frame to an applier
         // written in the other language. Never stored; the window is the Frame's lifetime.
-        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 9},     {"Screen.hpp", 6},
+        {"Presets.hpp", 1},      // PresetStore.hpp 3 → 25, RE-RECORDED 2026-09-04 by Phase 15 m3, and this row is the
+        // milestone's own measurement rather than an accounting chore. The template became
+        // an ADAPTER onto `rolltui/c/rolltui_presets.h`, and a C boundary over a generic
+        // container is nothing BUT pointers: twenty-two of the twenty-five are parameters
+        // of the captureless lambdas that make up one `RolltuiPresetDomain` — `const char*
+        // text` and `void* report` on `parse`, `const void* value` on `clone`/`equal`,
+        // `void* ctx` on every `put` sink. Every one of them BORROWS for the duration of
+        // its call and none is stored; the two that are not parameters are
+        // `RolltuiPresetStore* p` in `Handle` (the OWNED store's deleter) and the
+        // `RolltuiPresetDomain&`-returning accessors' internals. The C++ template got all
+        // of this from `Value` and `PresetLoadReport&` and cost three.
+        {"PresetStore.hpp", 25},   {"Scratch.hpp", 9},     {"Screen.hpp", 6},
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 10},
@@ -311,7 +343,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 61, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 87, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

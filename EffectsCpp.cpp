@@ -72,11 +72,7 @@ int sweep_width(const RolltuiEffectSpec& s, int length) {
   return std::max(1, length / 3);
 }
 
-std::string_view frame_of(const RolltuiEffectSpec& s, std::size_t i) {
-  std::size_t len = 0;
-  const char* p = s.frame(s.owner, i, &len);
-  return std::string_view(p, len);
-}
+std::string_view frame_of(const RolltuiEffectSpec& s, std::size_t i) { return s.frame(i); }
 
 int frame_width(std::string_view frame, bool amb) { return rolltui::unicode::display_width(frame, amb); }
 
@@ -309,6 +305,143 @@ int rolltui_effect_kind_resolves(const char* name, size_t len) {
   return resolve(n, r) ? 1 : 0;
 }
 
+// ---- what a THEME carries, owned in C++ ---------------------------------------------------
+// THE m2 SEAM, CLOSED (rolltui_effects.h). The same map, in the shape this side has for a
+// thing that owns strings and arrays: the store is `std::string`s and `std::vector`s, and
+// the VIEW beside it is the borrows a reader is handed. The two are rebuilt together after
+// every change, in one place, so a pointer can never be stale by omission.
+struct RolltuiEffectMap {
+  struct SpecStore {
+    std::string kind;
+    std::vector<std::string> frames;
+    std::vector<unsigned char> roles;
+  };
+  std::size_t states = 0;
+  unsigned char fallback = 0;
+  std::vector<std::vector<SpecStore>> store;
+  std::vector<std::vector<RolltuiEffectFrame>> frame_views;  // one per (state, spec), flattened per state
+  std::vector<std::vector<RolltuiEffectSpec>> view;
+
+  void refresh(std::size_t s) {
+    // The frame views of every spec of this state, in one array per state, so a spec's
+    // `frames` pointer is stable for as long as the state is not changed.
+    std::size_t total = 0;
+    for (const SpecStore& sp : store[s]) total += sp.frames.size();
+    frame_views[s].assign(total, RolltuiEffectFrame{nullptr, 0});
+    std::size_t at = 0;
+    for (std::size_t i = 0; i < store[s].size(); ++i) {
+      const SpecStore& sp = store[s][i];
+      RolltuiEffectSpec& v = view[s][i];
+      v.kind = sp.kind.data();
+      v.kind_len = sp.kind.size();
+      v.roles = sp.roles.empty() ? &fallback : sp.roles.data();
+      v.role_count = sp.roles.empty() ? 1 : sp.roles.size();
+      v.own_role_count = sp.roles.size();
+      v.frames = frame_views[s].data() + at;
+      v.frame_count = sp.frames.size();
+      for (const std::string& f : sp.frames) frame_views[s][at++] = RolltuiEffectFrame{f.data(), f.size()};
+    }
+  }
+};
+
+RolltuiEffectMap* rolltui_effect_map_new(size_t states, unsigned char fallback_role) {
+  std::unique_ptr<RolltuiEffectMap> m = std::make_unique<RolltuiEffectMap>();
+  m->states = states;
+  m->fallback = fallback_role;
+  m->store.resize(states);
+  m->frame_views.resize(states);
+  m->view.resize(states);
+  return m.release();
+}
+
+void rolltui_effect_map_free(RolltuiEffectMap* m) {
+  const std::unique_ptr<RolltuiEffectMap> owned(m);  // takes it back, and frees it on the way out
+}
+
+void rolltui_effect_map_clear(RolltuiEffectMap* m) {
+  if (!m) return;
+  for (std::size_t s = 0; s < m->states; ++s) {
+    m->store[s].clear();
+    m->view[s].clear();
+    m->frame_views[s].clear();
+  }
+}
+
+size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state) {
+  return (m && state < m->states) ? m->store[state].size() : 0;
+}
+
+const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i) {
+  if (!m || state >= m->states || i >= m->view[state].size()) return nullptr;
+  return &m->view[state][i];
+}
+
+int rolltui_effect_map_empty(const RolltuiEffectMap* m) {
+  if (!m) return 1;
+  for (std::size_t s = 0; s < m->states; ++s)
+    if (!m->store[s].empty()) return 0;
+  return 1;
+}
+
+size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
+                              int width, int steps, int backward) {
+  if (!m || state >= m->states) return 0;
+  m->store[state].push_back(RolltuiEffectMap::SpecStore{std::string(kind, kind_len), {}, {}});
+  RolltuiEffectSpec v{};
+  v.period_ms = period_ms;
+  v.width = width;
+  v.steps = steps;
+  v.backward = static_cast<unsigned char>(backward != 0);
+  m->view[state].push_back(v);
+  m->refresh(state);
+  return m->store[state].size() - 1;
+}
+
+void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len) {
+  if (!m || state >= m->states || i >= m->store[state].size()) return;
+  m->store[state][i].frames.emplace_back(bytes, len);
+  m->refresh(state);
+}
+
+void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role) {
+  if (!m || state >= m->states || i >= m->store[state].size()) return;
+  m->store[state][i].roles.push_back(role);
+  m->refresh(state);
+}
+
+RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m) {
+  if (!m) return nullptr;
+  RolltuiEffectMap* out = rolltui_effect_map_new(m->states, m->fallback);
+  for (std::size_t s = 0; s < m->states; ++s)
+    for (std::size_t i = 0; i < m->store[s].size(); ++i) {
+      const RolltuiEffectMap::SpecStore& sp = m->store[s][i];
+      const RolltuiEffectSpec& v = m->view[s][i];
+      const std::size_t k = rolltui_effect_map_add(out, s, sp.kind.data(), sp.kind.size(), v.period_ms, v.width,
+                                                   v.steps, v.backward);
+      for (const std::string& f : sp.frames) rolltui_effect_map_add_frame(out, s, k, f.data(), f.size());
+      for (unsigned char r : sp.roles) rolltui_effect_map_add_role(out, s, k, r);
+    }
+  return out;
+}
+
+int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b) {
+  if (a == b) return 1;
+  if (!a || !b || a->states != b->states) return 0;
+  for (std::size_t s = 0; s < a->states; ++s) {
+    if (a->store[s].size() != b->store[s].size()) return 0;
+    for (std::size_t i = 0; i < a->store[s].size(); ++i) {
+      const RolltuiEffectMap::SpecStore& x = a->store[s][i];
+      const RolltuiEffectMap::SpecStore& y = b->store[s][i];
+      const RolltuiEffectSpec& vx = a->view[s][i];
+      const RolltuiEffectSpec& vy = b->view[s][i];
+      if (x.kind != y.kind || x.frames != y.frames || x.roles != y.roles) return 0;
+      if (vx.period_ms != vy.period_ms || vx.width != vy.width || vx.steps != vy.steps || vx.backward != vy.backward)
+        return 0;
+    }
+  }
+  return 1;
+}
+
 int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
   if (spec->steps > 0) return spec->steps;
   const int len = std::max(1, length);
@@ -322,8 +455,8 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
 }
 
 void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const RolltuiStyle* styles, const void* host,
-                           RolltuiEffectSpec* specs, const size_t* state_first, const size_t* state_count,
-                           size_t states, unsigned long long now_ms, int ambiguous_wide, RolltuiEffectReport* rep) {
+                           const RolltuiEffectMap* map, unsigned long long now_ms, int ambiguous_wide,
+                           RolltuiEffectReport* rep, RolltuiEffectUnknownFn on_unknown, void* unknown_ctx) {
   *rep = RolltuiEffectReport{0, 0, 0};
   const int fw = rolltui_frame_width(f), fh = rolltui_frame_height(f);
   const std::size_t marks = rolltui_frame_mark_count(f);
@@ -334,8 +467,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
     rolltui_frame_mark_at(f, im, &mx, &my, &cells, &state, &since, &fraction);
     if (cells <= 0 || state <= 0) continue;  // state 0 is None, and is never recorded anyway
     if (my < 0 || my >= fh) continue;
-    if (static_cast<std::size_t>(state) >= states) continue;
-    const std::size_t first = state_first[state], n_specs = state_count[state];
+    const std::size_t n_specs = rolltui_effect_map_count(map, static_cast<std::size_t>(state));
     if (n_specs == 0) continue;
     // Each spec's kind is resolved ONCE PER MARK, not once per cell: the lookup is
     // loop-invariant, it is a string compare against the closed table, and for a HOST kind
@@ -343,8 +475,10 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
     sc->res.resize(n_specs);
     {
       const std::lock_guard<std::mutex> lock(registry_mu());
-      for (std::size_t k = 0; k < n_specs; ++k)
-        if (!resolve(kind_of(specs[first + k]), sc->res[k])) specs[first + k].unresolved = 1;
+      for (std::size_t k = 0; k < n_specs; ++k) {
+        const RolltuiEffectSpec* spec = rolltui_effect_map_at(map, static_cast<std::size_t>(state), k);
+        if (!resolve(kind_of(*spec), sc->res[k]) && on_unknown) on_unknown(unknown_ctx, spec->kind, spec->kind_len);
+      }
     }
     bool any = false;
     const std::uint64_t elapsed = now_ms >= since ? now_ms - since : 0;
@@ -369,7 +503,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
         const Resolved& r = sc->res[k];
         if (r.builtin < 0 && !r.fn) continue;  // unknown: named above, and it draws nothing
         RolltuiEffectOut one;
-        call_kind(*sc, r, specs[first + k], styles, host, in, one);
+        call_kind(*sc, r, *rolltui_effect_map_at(map, static_cast<std::size_t>(state), k), styles, host, in, one);
         // Stacking: the glyph comes from whichever kind last set one, the style likewise,
         // and a later kind sees the earlier one's style as its base — so "glyph from one,
         // colour from another" is the ordinary case rather than a special one.
@@ -414,8 +548,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
   }
 }
 
-int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectSpec* specs, const size_t* state_first,
-                            const size_t* state_count, size_t states) {
+int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectMap* map) {
   int best = 0;
   const std::size_t marks = rolltui_frame_mark_count(f);
   for (std::size_t im = 0; im < marks; ++im) {
@@ -423,10 +556,10 @@ int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectSpec* spec
     unsigned long long since = 0;
     double fraction = 0;
     rolltui_frame_mark_at(f, im, &mx, &my, &cells, &state, &since, &fraction);
-    if (cells <= 0 || state <= 0 || static_cast<std::size_t>(state) >= states) continue;
-    const std::size_t first = state_first[state], n_specs = state_count[state];
+    if (cells <= 0 || state <= 0) continue;
+    const std::size_t n_specs = rolltui_effect_map_count(map, static_cast<std::size_t>(state));
     for (std::size_t k = 0; k < n_specs; ++k) {
-      const RolltuiEffectSpec& s = specs[first + k];
+      const RolltuiEffectSpec& s = *rolltui_effect_map_at(map, static_cast<std::size_t>(state), k);
       if (s.period_ms <= 0) continue;  // a still effect asks for no wakeup
       if (!rolltui_effect_kind_resolves(s.kind, s.kind_len)) continue;  // nor one that cannot draw
       const int steps = std::max(1, rolltui_effect_steps(&s, cells));

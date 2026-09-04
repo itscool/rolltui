@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdio>
 
+#include "rolltui/Lifetime.hpp"
 #include "rolltui/Layout.hpp"  // shipped_default_actions() — the app scope the shipped screen declares
 #include "rolltui/Unicode.hpp"
 
@@ -122,130 +123,60 @@ std::optional<std::string> migrated_action(std::string_view legacy) {
 }
 
 // ---- chords ---------------------------------------------------------------------------
-
-namespace {
-
-struct KeyName { const char* name; Key key; };
-constexpr KeyName kKeyNames[] = {
-    {"enter", Key::Enter}, {"tab", Key::Tab}, {"backspace", Key::Backspace}, {"escape", Key::Escape}, {"esc", Key::Escape},
-    {"up", Key::Up}, {"down", Key::Down}, {"left", Key::Left}, {"right", Key::Right}, {"home", Key::Home}, {"end", Key::End},
-    {"pageup", Key::PageUp}, {"pagedown", Key::PageDown}, {"pgup", Key::PageUp}, {"pgdn", Key::PageDown}, {"insert", Key::Insert},
-    {"delete", Key::Delete}, {"del", Key::Delete}, {"space", Key::Char},
-    {"f1", Key::F1}, {"f2", Key::F2}, {"f3", Key::F3}, {"f4", Key::F4}, {"f5", Key::F5}, {"f6", Key::F6},
-    {"f7", Key::F7}, {"f8", Key::F8}, {"f9", Key::F9}, {"f10", Key::F10}, {"f11", Key::F11}, {"f12", Key::F12},
-};
-
-std::string lower(std::string_view s) {
-  std::string o(s);
-  for (char& c : o) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-  return o;
-}
-
-const char* key_name(Key k) {
-  for (const KeyName& n : kKeyNames)
-    if (n.key == k && std::string_view(n.name) != "esc" && std::string_view(n.name) != "pgup" && std::string_view(n.name) != "pgdn" &&
-        std::string_view(n.name) != "del" && std::string_view(n.name) != "space")
-      return n.name;
-  return nullptr;
-}
-
-KeyEvent normalise(KeyEvent k) {
-  k.raw.clear();
-  return k;
-}
-
-}  // namespace
+//
+// The SPELLING is behind the boundary (`rolltui/c/rolltui_bindings.h`) since Phase 15 m3:
+// it is this module's own file format, which is the thing being ported. What is left here
+// is the C++ shapes — `std::optional<KeyEvent>` and `std::string` — a caller already writes
+// against, and the caller-sized buffer every string on that boundary is written into.
 
 std::optional<KeyEvent> parse_chord(std::string_view text) {
-  KeyEvent k;
-  std::string t = lower(text);
-  // Split on '+', but a trailing "+" alone is the plus character.
-  std::vector<std::string> parts;
-  std::string cur;
-  for (std::size_t i = 0; i < t.size(); ++i) {
-    if (t[i] == '+' && !cur.empty() && i + 1 < t.size()) { parts.push_back(cur); cur.clear(); }
-    else cur.push_back(t[i]);
-  }
-  if (cur.empty()) return std::nullopt;
-  parts.push_back(cur);
-  for (std::size_t i = 0; i + 1 < parts.size(); ++i) {
-    const std::string& m = parts[i];
-    if (m == "ctrl" || m == "control" || m == "c") k.ctrl = true;
-    else if (m == "alt" || m == "meta" || m == "option" || m == "m") k.alt = true;
-    else if (m == "shift" || m == "s") k.shift = true;
-    else return std::nullopt;
-  }
-  const std::string& last = parts.back();
-  for (const KeyName& n : kKeyNames)
-    if (last == n.name) {
-      k.key = n.key;
-      if (last == "space") { k.key = Key::Char; k.ch = U' '; }
-      return normalise(k);
-    }
-  const std::vector<unicode::DecodedChar> d = unicode::decode_utf8(last);
-  if (d.size() != 1 || d[0].cp < 0x20) return std::nullopt;
-  k.key = Key::Char;
-  k.ch = d[0].cp;
-  return normalise(k);
+  RolltuiChord c;
+  if (!rolltui_chord_parse(text.data(), text.size(), &c)) return std::nullopt;
+  return key_event_of(c);
 }
 
 std::string chord_to_string(const KeyEvent& k) {
-  if (k.key == Key::Unknown) return "";
-  std::string s;
-  if (k.ctrl) s += "ctrl+";
-  if (k.alt) s += "alt+";
-  if (k.shift) s += "shift+";
-  if (k.key == Key::Char) {
-    if (k.ch == U' ') s += "space";
-    else unicode::append_utf8(s, k.ch);
-  } else if (const char* n = key_name(k.key)) {
-    s += n;
-  }
-  return s;
+  // CALLER-FILLED, with the bound known WITHOUT asking: three modifiers plus the longest
+  // key name is stated as a constant in the header, so there is no measure-then-fill.
+  char buf[ROLLTUI_CHORD_STRING_MAX];
+  const RolltuiChord c = chord_of(k);
+  return std::string(buf, rolltui_chord_to_string(&c, buf, sizeof buf));
 }
 
 std::string chord_display(const KeyEvent& k) {
-  std::string s = chord_to_string(k);
-  // Capitalise each part, join with '-': "Ctrl-Shift-Left", "Alt-Enter", "F1", "?".
-  std::string out;
-  std::string part;
-  auto flush = [&]() {
-    if (part.empty()) return;
-    if (!out.empty()) out += "-";
-    if (part.size() > 1 || std::isalpha(static_cast<unsigned char>(part[0]))) part[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(part[0])));
-    if (part == "Pageup") part = "PgUp";
-    if (part == "Pagedown") part = "PgDn";
-    out += part;
-    part.clear();
-  };
-  for (char c : s) {
-    if (c == '+' && !part.empty()) flush();
-    else part.push_back(c);
-  }
-  flush();
-  return out;
+  char buf[ROLLTUI_CHORD_STRING_MAX];
+  const RolltuiChord c = chord_of(k);
+  return std::string(buf, rolltui_chord_display(&c, buf, sizeof buf));
 }
 
 // ---- the table ----------------------------------------------------------------------------
+//
+// The STORAGE and every edit are behind the boundary; the SCOPE POLICY is here, because
+// "which scopes are the library's" is a fact about `library_actions()` and the C is told it
+// rather than deciding (rolltui/c/rolltui_bindings.h).
 
-Bindings::Bindings() {
-  for (const ActionInfo& a : library_actions()) {
-    actions_.emplace_back(a.name);
-    descriptions_.emplace_back(a.description);
-    table_.emplace_back(std::string(a.name), std::vector<KeyEvent>{});
-  }
+namespace {
+
+// The predicate `undeclare_others` calls back into. Captureless, so it is a plain function
+// pointer and the registration allocates nothing.
+int is_library_scope(void*, const char* scope, std::size_t len) {
+  return library_scope(std::string_view(scope, len)) ? 1 : 0;
+}
+
+// The Enter rule's SUBJECT — the one name the C is handed, once, so that the rule can live
+// there and the vocabulary here (Bindings.hpp).
+constexpr std::string_view kEnterAction = "input.submit";
+
+}  // namespace
+
+Bindings::Bindings() : b_(rolltui_bindings_new()) {
+  rolltui_bindings_set_enter_rule(b_.get(), kEnterAction.data(), kEnterAction.size());
+  for (const ActionInfo& a : library_actions())
+    rolltui_bindings_add_action(b_.get(), a.name.data(), a.name.size(), a.description.data(), a.description.size());
 }
 
 void Bindings::add_action(std::string_view action, std::string_view description) {
-  if (has(action)) return;
-  actions_.emplace_back(action);
-  descriptions_.emplace_back(description);
-  // A row may already exist with chords in it — a bindings file loaded before the layout
-  // declared this action kept them (Bindings.hpp). Declaring is what makes them live;
-  // it must never throw them away.
-  for (const auto& [a, c] : table_)
-    if (a == action) return;
-  table_.emplace_back(std::string(action), std::vector<KeyEvent>{});
+  rolltui_bindings_add_action(b_.get(), action.data(), action.size(), description.data(), description.size());
 }
 
 // AUTHORITATIVE over every non-library scope, not merely additive (Phase 10 m6). The
@@ -264,11 +195,7 @@ void Bindings::declare(const std::vector<ActionDecl>& declared, const std::vecto
   // afterwards would see that row and decline every time — a tool whose keys are all
   // silently unbound, which is exactly what the first cut of this did.
   suggest(tools);
-  for (std::size_t i = actions_.size(); i-- > 0;)
-    if (!library_scope(scope_of(actions_[i]))) {
-      actions_.erase(actions_.begin() + static_cast<std::ptrdiff_t>(i));
-      descriptions_.erase(descriptions_.begin() + static_cast<std::ptrdiff_t>(i));
-    }
+  rolltui_bindings_undeclare_others(b_.get(), is_library_scope, nullptr);
   for (const ActionDecl& d : declared) add_action(d.name, d.description);
   for (const ToolAction& t : tools) add_action(t.name, t.description);
 }
@@ -278,112 +205,128 @@ void Bindings::declare(const std::vector<ActionDecl>& declared, const std::vecto
 // rather than absent or quietly sharing another action's chord.
 void Bindings::suggest(const std::vector<ToolAction>& tools) {
   for (const ToolAction& t : tools) {
-    bool row = false;
-    for (const auto& [a, c] : table_) row |= a == t.name;
-    if (row) continue;
+    if (rolltui_bindings_has_row(b_.get(), t.name.data(), t.name.size())) continue;
     const std::optional<KeyEvent> k = parse_chord(t.chord);
-    bool taken = false;
-    if (k)
-      for (const auto& [a, chords] : table_)
-        if (scope_of(a) == scope_of(t.name) && std::find(chords.begin(), chords.end(), *k) != chords.end()) taken = true;
-    table_.emplace_back(std::string(t.name), k && !taken ? std::vector<KeyEvent>{*k} : std::vector<KeyEvent>{});
+    const bool taken = k && !holder(*k, scope_of(t.name)).empty();
+    rolltui_bindings_add_row(b_.get(), t.name.data(), t.name.size());
+    if (k && !taken) {
+      const RolltuiChord c = chord_of(*k);
+      rolltui_bindings_add_chord(b_.get(), t.name.data(), t.name.size(), &c);
+    }
   }
+}
+
+// WHICH ROW OF A SCOPE ALREADY HOLDS THIS CHORD, or "". Over the ROWS themselves and not
+// through action_for(), so an UNDECLARED row counts: two undeclared actions of one scope
+// conflict at load rather than silently once something declares them.
+std::string_view Bindings::holder(const KeyEvent& chord, std::string_view scope) const {
+  const RolltuiChord want = chord_of(chord);
+  const std::size_t rows = rolltui_bindings_row_count(b_.get());
+  for (std::size_t i = 0; i < rows; ++i) {
+    std::size_t alen = 0;
+    const char* a = rolltui_bindings_row_at(b_.get(), i, &alen);
+    if (scope_of(std::string_view(a, alen)) != scope) continue;
+    const std::size_t n = rolltui_bindings_chord_count(b_.get(), a, alen);
+    for (std::size_t j = 0; j < n; ++j) {
+      RolltuiChord c;
+      if (rolltui_bindings_chord_at(b_.get(), a, alen, j, &c) && key_event_of(c) == key_event_of(want))
+        return std::string_view(a, alen);
+    }
+  }
+  return {};
 }
 
 std::vector<std::string> Bindings::undeclared() const {
   std::vector<std::string> out;
-  for (const auto& [a, chords] : table_)
-    if (!chords.empty() && !has(a)) out.push_back(a);
+  const std::size_t rows = rolltui_bindings_row_count(b_.get());
+  for (std::size_t i = 0; i < rows; ++i) {
+    std::size_t alen = 0;
+    const char* a = rolltui_bindings_row_at(b_.get(), i, &alen);
+    if (rolltui_bindings_chord_count(b_.get(), a, alen) == 0) continue;
+    if (rolltui_bindings_has(b_.get(), a, alen)) continue;
+    out.emplace_back(a, alen);
+  }
   return out;
 }
 
 std::string_view Bindings::description(std::string_view action) const {
-  for (std::size_t i = 0; i < actions_.size(); ++i)
-    if (actions_[i] == action) return descriptions_[i];
-  return "";
+  std::size_t len = 0;
+  const char* p = rolltui_bindings_description(b_.get(), action.data(), action.size(), &len);
+  return p ? std::string_view(p, len) : std::string_view();
 }
 
 bool Bindings::has(std::string_view action) const {
-  return std::find(actions_.begin(), actions_.end(), action) != actions_.end();
+  return rolltui_bindings_has(b_.get(), action.data(), action.size()) != 0;
 }
 
-std::vector<KeyEvent>& Bindings::chords_mut(std::string_view action) {
-  for (auto& [a, c] : table_)
-    if (a == action) return c;
-  static std::vector<KeyEvent> none;
-  none.clear();
-  return none;
+std::vector<std::string> Bindings::actions() const {
+  std::vector<std::string> out;
+  const std::size_t n = rolltui_bindings_action_count(b_.get());
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    std::size_t len = 0;
+    const char* p = rolltui_bindings_action_at(b_.get(), i, &len);
+    out.emplace_back(p, len);
+  }
+  return out;
 }
 
-const std::vector<KeyEvent>& Bindings::chords_for(std::string_view action) const {
-  for (const auto& [a, c] : table_)
-    if (a == action) return c;
-  static const std::vector<KeyEvent> none;
-  return none;
+std::vector<KeyEvent> Bindings::chords_for(std::string_view action) const {
+  const std::size_t n = rolltui_bindings_chord_count(b_.get(), action.data(), action.size());
+  std::vector<KeyEvent> out;
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord c;
+    if (rolltui_bindings_chord_at(b_.get(), action.data(), action.size(), i, &c)) out.push_back(key_event_of(c));
+  }
+  return out;
 }
 
 // The help form skips what this terminal cannot deliver: a shortcut a menu or a help
 // popup prints is a promise that the key works, and Phase 10 m6's rule ("inert also
 // means invisible") applies to a chord the terminal cannot carry exactly as it does to
 // an action nothing declares.
+//
+// Read through count-plus-index rather than through `chords_for`: this one IS on a draw
+// path (a menu item's shortcut), so it allocates the string it returns and nothing else.
 std::string Bindings::chords_text(std::string_view action) const {
-  const KeyProtocol p = active_key_protocol();
+  const unsigned char p = rolltui_key_active_protocol();
+  const std::size_t n = rolltui_bindings_chord_count(b_.get(), action.data(), action.size());
   std::string s;
-  for (const KeyEvent& k : chords_for(action))
-    if (deliverable(k, p)) s += (s.empty() ? "" : ", ") + chord_display(k);
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord c;
+    if (!rolltui_bindings_chord_at(b_.get(), action.data(), action.size(), i, &c)) continue;
+    if (!rolltui_key_deliverable(&c, p)) continue;
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    const std::size_t len = rolltui_chord_display(&c, buf, sizeof buf);
+    if (!s.empty()) s += ", ";
+    s.append(buf, len);
+  }
   return s;
 }
 
 std::string_view Bindings::action_for(const KeyEvent& key, std::string_view scope) const {
-  const KeyEvent k = normalise(key);
-  const KeyProtocol p = active_key_protocol();
-  for (const auto& [a, chords] : table_) {
-    if (scope_of(a) != scope) continue;
-    if (!has(a)) continue;  // an undeclared row: kept, written back, never emitted
-    for (const KeyEvent& c : chords)
-      // A chord this terminal cannot deliver is kept and inert for the same reason: the
-      // row survives save, and nothing can emit it, so it must not claim a key. (In
-      // practice the guard is belt and braces — the loader already reported it and no
-      // such event can arrive — but bind() and an editor reach the table too.)
-      if (c == k && deliverable(c, p)) return a;
-  }
-  return "";
+  const RolltuiChord k = chord_of(key);
+  std::size_t len = 0;
+  const char* a = rolltui_bindings_action_for(b_.get(), &k, scope.data(), scope.size(), &len);
+  return a ? std::string_view(a, len) : std::string_view();
 }
 
 bool Bindings::bind(std::string_view action, const KeyEvent& chord_in, std::string* moved_from) {
-  if (!has(action)) return false;
-  const KeyEvent chord = normalise(chord_in);
-  const bool is_enter = chord.key == Key::Enter && !chord.ctrl && !chord.alt && !chord.shift;
-  if (is_enter && scope_of(action) == "input" && action != "input.submit") return false;  // the Enter rule
-  const std::string_view scope = scope_of(action);
-  for (auto& [a, chords] : table_) {
-    if (a == action || scope_of(a) != scope) continue;
-    auto it = std::find(chords.begin(), chords.end(), chord);
-    if (it != chords.end()) {
-      if (a == "input.submit" && is_enter) return false;  // never away from submit
-      chords.erase(it);
-      if (moved_from) *moved_from = a;
-    }
-  }
-  std::vector<KeyEvent>& mine = chords_mut(action);
-  if (std::find(mine.begin(), mine.end(), chord) == mine.end()) mine.push_back(chord);
+  const RolltuiChord chord = chord_of(chord_in);
+  const char* moved = nullptr;
+  std::size_t moved_len = 0;
+  if (!rolltui_bindings_bind(b_.get(), action.data(), action.size(), &chord, &moved, &moved_len)) return false;
+  if (moved && moved_from) moved_from->assign(moved, moved_len);
   return true;
 }
 
 bool Bindings::unbind(std::string_view action, const KeyEvent& chord_in) {
-  const KeyEvent chord = normalise(chord_in);
-  if (action == "input.submit" && chord.key == Key::Enter && !chord.ctrl && !chord.alt && !chord.shift) return false;
-  std::vector<KeyEvent>& mine = chords_mut(action);
-  auto it = std::find(mine.begin(), mine.end(), chord);
-  if (it == mine.end()) return false;
-  mine.erase(it);
-  return true;
+  const RolltuiChord chord = chord_of(chord_in);
+  return rolltui_bindings_unbind(b_.get(), action.data(), action.size(), &chord) != 0;
 }
 
-void Bindings::clear(std::string_view action) {
-  if (action == "input.submit") return;
-  chords_mut(action).clear();
-}
+void Bindings::clear(std::string_view action) { rolltui_bindings_clear(b_.get(), action.data(), action.size()); }
 
 // ---- file format ----------------------------------------------------------------------------
 
@@ -448,9 +391,7 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
       // "playground.quit"), and two rows for one action would leave chords_mut() filling
       // the first while lookup answered from whichever came first — the chords the user
       // can see and the chords that fire, in two different places.
-      bool row = false;
-      for (const auto& [a, c] : b.table_) row |= a == action;
-      if (!row) b.table_.emplace_back(action, std::vector<KeyEvent>{});
+      rolltui_bindings_add_row(b.b_.get(), action.data(), action.size());
     }
     if (!chords.is_array()) { report.bad_values.push_back(action + ": expected an array of chords"); continue; }
     for (const json::Value& c : chords.arr) {
@@ -473,26 +414,23 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
       // A conflict within the scope: report it; the FIRST binding in the file wins.
       // Searched over the rows themselves, not through action_for, so two UNDECLARED
       // actions of one scope conflict here rather than silently once declared.
-      std::string_view other;
-      for (const auto& [a, cs] : b.table_) {
-        if (scope_of(a) != scope_of(action)) continue;
-        if (std::find(cs.begin(), cs.end(), *k) != cs.end()) { other = a; break; }
-      }
+      const std::string_view other = b.holder(*k, scope_of(action));
       if (!other.empty() && other != action) {
         report.conflicts.push_back("'" + c.str + "' bound to both " + std::string(other) + " and " + action + " (" + std::string(other) + " kept)");
         continue;
       }
-      std::vector<KeyEvent>& mine = b.chords_mut(action);
-      if (std::find(mine.begin(), mine.end(), *k) == mine.end()) mine.push_back(*k);
+      const RolltuiChord c0 = chord_of(*k);
+      rolltui_bindings_add_chord(b.b_.get(), action.data(), action.size(), &c0);
     }
   }
   // The Enter rule, the other half: input.submit must have Enter.
   KeyEvent enter;
   enter.key = Key::Enter;
-  const std::vector<KeyEvent>& submit = b.chords_for("input.submit");
+  const std::vector<KeyEvent> submit = b.chords_for(kEnterAction);
   if (std::find(submit.begin(), submit.end(), enter) == submit.end()) {
     report.bad_values.push_back("input.submit: 'enter' is always bound to it (restored)");
-    b.chords_mut("input.submit").push_back(enter);
+    const RolltuiChord c0 = chord_of(enter);
+    rolltui_bindings_add_chord(b.b_.get(), kEnterAction.data(), kEnterAction.size(), &c0);
   }
   return b;
 }
@@ -501,10 +439,14 @@ json::Value Bindings::to_json(std::string_view name) const {
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(std::string(name)));
   json::Value map = json::Value::object();
-  for (const auto& [a, chords] : table_) {
+  const std::size_t rows = rolltui_bindings_row_count(b_.get());
+  for (std::size_t i = 0; i < rows; ++i) {
+    std::size_t alen = 0;
+    const char* a = rolltui_bindings_row_at(b_.get(), i, &alen);
     json::Value arr = json::Value::array();
-    for (const KeyEvent& k : chords) arr.arr.push_back(json::Value::string(chord_to_string(k)));
-    map.set(a, std::move(arr));
+    for (const KeyEvent& k : chords_for(std::string_view(a, alen)))
+      arr.arr.push_back(json::Value::string(chord_to_string(k)));
+    map.set(std::string(a, alen), std::move(arr));
   }
   root.set("bindings", std::move(map));
   return root;
@@ -518,8 +460,26 @@ std::string_view default_bindings_json() {
   return "";
 }
 
+// A CACHE WITH A RELEASER, not a `static const Bindings` — changed in Phase 15 m3 for the
+// same reason `builtin_theme_cache()` was: a `Bindings` owns a C table now, which is an
+// explicit allocation through the library's own entry point, so one held for the life of
+// the process is a PROCESS-WIDE RETAINER and `rolltui::shutdown()` promises `live_bytes ==
+// 0`. Before the port the table was `std::vector`s reaching the global `operator new`,
+// which the gauge cannot see, and the promise was quietly weaker.
+//
+// Filled when empty, and the releaser RE-REGISTERED on every rebuild — `shutdown()` clears
+// its own registry as it runs, so a `static bool once` would release this the first time
+// and never again.
+std::optional<Bindings>& default_bindings_cache() {
+  static std::optional<Bindings> cache;
+  return cache;
+}
+
 const Bindings& default_bindings() {
-  static const Bindings b = [] {
+  std::optional<Bindings>& cache = default_bindings_cache();
+  if (cache) return *cache;
+  on_shutdown([] { default_bindings_cache().reset(); });
+  cache = [] {
     BindingsLoadReport rep;
     // AGAINST LEGACY, EXPLICITLY, and not against whatever this terminal turned out to
     // be (Phase 12 m3). The shipped file belongs to every host on every terminal, so it
@@ -554,7 +514,7 @@ const Bindings& default_bindings() {
     }
     return *d;
   }();
-  return b;
+  return *cache;
 }
 
 std::vector<std::string> help_lines(const Bindings& b, std::string_view scope, const std::vector<std::string>& actions) {

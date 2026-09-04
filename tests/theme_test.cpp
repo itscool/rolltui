@@ -6,6 +6,7 @@
 // control: no colour literal exists in the library outside Theme.cpp's built-ins.
 //
 #include <fstream>
+#include <cstring>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -212,24 +213,41 @@ int main() {
     check(color_depth_name(ColorDepth::Ansi256) == "256", "depth names");
   }
 
-  // ---- the grep control: no colour literal outside Theme.cpp ---------------------
+  // ---- the grep control: no colour literal outside the theme's own files ------------
+  //
+  // WIDENED 2026-09-04 (Phase 15 m3), because the port would otherwise have walked the
+  // palette out from under it: `rolltui/c/` was never scanned at all, so a colour moved
+  // into a C file would have left the check green while meaning less. It scans both now,
+  // and the four exempt files are named with what each of them is.
   {
     std::string dir = ROLLTUI_SOURCE_DIR;
     std::vector<std::string> files;
-    if (DIR* d = opendir(dir.c_str())) {
-      while (dirent* e = readdir(d)) {
-        std::string n = e->d_name;
-        if (n.size() > 4 && (n.substr(n.size() - 4) == ".hpp" || n.substr(n.size() - 4) == ".cpp")) files.push_back(n);
+    auto scan = [&](const std::string& sub, const char* ext_a, const char* ext_b) {
+      if (DIR* d = opendir((dir + sub).c_str())) {
+        while (dirent* e = readdir(d)) {
+          std::string n = e->d_name;
+          const std::size_t la = std::strlen(ext_a), lb = std::strlen(ext_b);
+          if ((n.size() > la && n.substr(n.size() - la) == ext_a) || (n.size() > lb && n.substr(n.size() - lb) == ext_b))
+            files.push_back(sub.empty() ? n : sub.substr(1) + "/" + n);
+        }
+        closedir(d);
       }
-      closedir(d);
-    }
-    check(files.size() >= 10, "scanned the library sources (" + std::to_string(files.size()) + " files)");
+    };
+    scan("", ".hpp", ".cpp");
+    scan("/c", ".h", ".c");
+    check(files.size() >= 10, "scanned the library sources, C and C++ (" + std::to_string(files.size()) + " files)");
     // Literal colours: rgb()/indexed() constructors, "#rrggbb" strings, and raw SGR
     // colour parameters (30-37, 40-47, 90-97, 100-107, 38;5, 48;5, 38;2, 48;2).
     std::regex literal(R"(Color::rgb\(|Color::indexed\(|"#[0-9a-fA-F]{6}"|\[(3[0-7]|4[0-7]|9[0-7]|10[0-7]|38;5|48;5|38;2|48;2)(;|m))");
     std::vector<std::string> offenders;
     for (const std::string& f : files) {
-      if (f == "Theme.cpp" || f == "Style.hpp") continue;  // the definitions, and the constructors themselves
+      if (f == "Theme.cpp" || f == "Style.hpp") continue;  // the built-in themes, and the constructors themselves
+      // THE COLOUR ENGINE, in its two implementations (Phase 15 m3): xterm's published
+      // 16-colour palette, which the downgrade measures against, plus the constructors it
+      // builds a reduced colour with. Both are exempt for the reason the two below are —
+      // a reference table and computed colours are not a theme naming one — and BOTH are
+      // named, so deleting either half fails the liveness check under it.
+      if (f == "ThemeCpp.cpp" || f == "c/rolltui_theme.c") continue;
       if (f == "ThemeAnalysis.cpp" || f == "ThemeGen.cpp") continue;  // colour MATHS: they construct colours from numbers they computed, never name one
       std::string src = read_file(dir + "/" + f);
       std::istringstream in(src);
@@ -238,13 +256,21 @@ int main() {
       while (std::getline(in, line)) {
         ++ln;
         std::size_t first = line.find_first_not_of(" \t");
-        if (first != std::string::npos && line.compare(first, 2, "//") == 0) continue;  // a comment is not code
+        if (first != std::string::npos && (line.compare(first, 2, "//") == 0 || line.compare(first, 2, "/*") == 0 ||
+                                           line.compare(first, 1, "*") == 0))
+          continue;  // a comment is not code, in either language's spelling
         if (std::regex_search(line, literal)) offenders.push_back(f + ":" + std::to_string(ln) + ": " + line);
       }
     }
-    check(offenders.empty(), "no colour literal outside Theme.cpp" + (offenders.empty() ? "" : " — " + join(offenders)));
+    check(offenders.empty(), "no colour literal outside the theme's own files" + (offenders.empty() ? "" : " — " + join(offenders)));
     // …and the control can see one: Theme.cpp itself must trip the pattern.
     check(std::regex_search(read_file(dir + "/Theme.cpp"), literal), "the pattern matches Theme.cpp's built-ins (the control is live)");
+    // …and the exemptions are not empty ones. Both halves of the engine must still carry
+    // the palette they are exempt FOR, so a table quietly moved somewhere unscanned fails
+    // here instead of passing everywhere.
+    check(read_file(dir + "/ThemeCpp.cpp").find("kSystem16") != std::string::npos &&
+              read_file(dir + "/c/rolltui_theme.c").find("kSystem16") != std::string::npos,
+          "both implementations of the colour engine still carry the palette they are exempt for");
   }
 
   return report("rolltui theme_test");

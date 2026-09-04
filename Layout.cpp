@@ -825,14 +825,30 @@ std::vector<std::pair<std::string, Layout>> build_builtin_layouts() {
   }
 }
 
-std::vector<std::pair<std::string, Layout>>& builtin_layout_cache() {
+std::vector<std::pair<std::string, Layout>>& layout_cache_storage() {
   static std::vector<std::pair<std::string, Layout>> cache;
-  static const bool once = (on_shutdown([] {
-                              builtin_layout_cache().clear();
-                              builtin_layout_cache().shrink_to_fit();
-                            }),
-                            true);
-  (void)once;
+  return cache;
+}
+
+std::vector<std::pair<std::string, Layout>>& builtin_layout_cache() {
+  // THE RELEASER TOUCHES THE STORAGE, NEVER THIS FUNCTION, and it is RE-REGISTERED ON EVERY
+  // REBUILD. Two defects in one line, both from Phase 14 m6a and both invisible here
+  // because a `std::vector<Layout>` reaches the global `operator new` and the gauge does
+  // not count it; Theme.cpp's identical cache turned each of them into a failing assertion
+  // the moment a theme owned a C effect map.
+  //   - `builtin_layout_cache().clear(); builtin_layout_cache().shrink_to_fit();` — the
+  //     second call finds the cache it just emptied and REBUILDS it, so shutdown ends
+  //     holding what it meant to release.
+  //   - `static const bool once = (on_shutdown(...), true)` registers once per PROCESS,
+  //     while `shutdown()` clears its own registry as it runs — so a second shutdown
+  //     releases nothing. Registering at FILL time is the rule `ThreadHandle` already
+  //     states for a per-thread buffer.
+  std::vector<std::pair<std::string, Layout>>& cache = layout_cache_storage();
+  if (cache.empty())
+    on_shutdown([] {
+      layout_cache_storage().clear();
+      layout_cache_storage().shrink_to_fit();
+    });
   // FILLED WHEN EMPTY, not by a static initializer — because a `static x = f();` runs ONCE
   // and `shutdown()` clearing it would leave `builtin_layout()` answering nullptr forever
   // after. That was a live defect for about ten minutes, and it is exactly what "safe to call

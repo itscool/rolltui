@@ -25,34 +25,38 @@
  *      same bytes the applier does.
  *   3. **NOTHING IS RETURNED BY VALUE** from an `extern "C"` function.
  *
- * ---- WHAT CROSSES AS A BORROW, AND WHY IT IS NOT A SECOND DEFINITION -------------------
+ * ---- THE VIEW BECAME THE DEFINITION, WHICH IS THE m2 SEAM CLOSING --------------------
  *
- * `RolltuiEffectSpec` below is a VIEW of one `rolltui::EffectSpec`, not a copy of its
- * type. The spec is the THEME's data — `std::string kind`, `std::vector<std::string>
- * frames`, `std::vector<Role> roles` — and `Theme` is m3's module, still C++. There were
- * three ways to reach it from here and only one is honest:
- *   - mirror the owning struct in C, which means porting the theme's parser, serialiser
- *     and editor a milestone early, inside the milestone that is supposed to be small;
- *   - copy each spec across per call, which is an allocation per frame on the one path
- *     that redraws continuously;
- *   - **borrow it**, which is what every other reader of another module's storage in this
- *     library already does (`Line`, `Frame::glyph`, `Scratch`).
- * So the view is built in EXACTLY ONE place (`Effects.cpp`'s `fill_view`), the C never
- * copies a byte of it, and the window is one call. **When `Theme` ports in m3 the view
- * becomes the definition and `fill_view` is deleted** — that deletion is the evidence m6
- * should read, not this paragraph.
+ * In m2 `RolltuiEffectSpec` was a VIEW of one `rolltui::EffectSpec`, because the spec was
+ * the THEME's data — `std::string kind`, `std::vector<std::string> frames`,
+ * `std::vector<Role> roles` — and `Theme` had not ported. That header said, in as many
+ * words: **"when `Theme` ports in m3 the view becomes the definition and `fill_view` is
+ * deleted — that deletion is the evidence m6 should read, not this paragraph."**
  *
- * The one field that is not a plain borrow is `frame`, and it is here because a
- * `std::vector<std::string>` has no contiguous (pointer, length) array to lend. One
- * accessor, supplied by the owner, called for the two frames a kind ever wants — the first
- * (to measure) and the current one.
+ * This is that. `RolltuiEffectMap` below OWNS every spec a theme carries, in C, and
+ * `rolltui::EffectMap` is a handle to one. Three things went with the change and none of
+ * them is a rewrite anybody chose — each was a piece of machinery that existed ONLY to
+ * bridge two owners:
+ *   - `fill_view`, the one place a `std::vector<Role>` was reinterpreted as bytes and a
+ *     fallback role substituted (the map is told its fallback once, at construction);
+ *   - `SpecViews`, twelve inline views with a heap spill, rebuilt on every `apply_effects`
+ *     and every `effect_tick_ms` (the map already IS the flat array, so there is nothing
+ *     to build);
+ *   - the `frame` accessor and the `owner` token beside it, which existed because a
+ *     `std::vector<std::string>` has no contiguous (pointer, length) array to lend. A map
+ *     keeps its frames as exactly that array, so a kind indexes it.
  *
- * **ROLES CROSS AS BYTES AND THE C NAMES NONE OF THEM.** `roles` is a borrow of the spec's
- * own `std::vector<Role>`, which is one byte per entry, and `styles` is a borrow of the
- * theme's whole role table; the C indexes one with the other and never learns what a role
- * is called. The empty case is substituted by the owner rather than defaulted here, so
- * `role_count` is never zero and no rung of this file has an opinion about which role is
- * the fallback.
+ * **ROLES STILL CROSS AS BYTES AND THE C STILL NAMES NONE OF THEM.** `roles` is one byte
+ * per entry and `styles` is the theme's whole role table; the C indexes one with the other
+ * and never learns what a role is called. `role_count` is never zero, because the map
+ * substitutes the fallback it was HANDED at construction — so no rung of this file has an
+ * opinion about which role that is.
+ *
+ * **AN UNKNOWN KIND IS REPORTED THROUGH A CALLBACK, not through an OUT field on the spec.**
+ * It used to be `unresolved`, written into the caller's throwaway view. A map is the
+ * theme's own storage and a theme is `const` while it is being drawn with, so the applier
+ * says the name instead of marking it — which also costs nothing at all in the ordinary
+ * case, where every kind resolves and the callback is never reached.
  */
 #include <stddef.h>
 
@@ -117,26 +121,69 @@ typedef struct RolltuiEffectOut {
 #endif
 } RolltuiEffectOut;
 
-/* One theme spec, BORROWED for the duration of one call (see the note above). */
+/* One frame of a glyph cycle: a BORROW of bytes the owning map keeps, valid for as long as
+ * that map is not changed. */
+typedef struct RolltuiEffectFrame {
+  const char* bytes;
+  size_t len;
+} RolltuiEffectFrame;
+
+/* ONE THEME SPEC, owned by the `RolltuiEffectMap` it lives in. Every pointer here borrows
+ * that map's storage and is valid until the map next changes — the same stated window
+ * `rolltui_effect_kind_name` has, and for the same reason. */
 typedef struct RolltuiEffectSpec {
   const char* kind;
   size_t kind_len;
   const unsigned char* roles; /* rolltui::Role values, one byte each */
-  size_t role_count;          /* NEVER zero: the owner substitutes its own fallback */
+  size_t role_count;          /* NEVER zero: the map substitutes the fallback it was handed */
+  /* …and what the spec itself was GIVEN, which is 0 when it named none. The two are
+   * separate because collapsing them would lose a distinction a file can make: a
+   * serialiser must write no "roles" key for a spec that had none, and the substituted
+   * fallback is indistinguishable from a spec that named exactly that one role. The
+   * applier reads `role_count`; anything writing the theme back out reads this. */
+  size_t own_role_count;
+  const RolltuiEffectFrame* frames;
   size_t frame_count;
-  /* The owner's own `EffectSpec`. The C stores it, passes it to a host's kind untouched,
-   * and never dereferences it — the one opaque token on this boundary. */
-  const void* owner;
-  /* Frame `i` of the cycle, as a BORROW valid for the call. */
-  const char* (*frame)(const void* owner, size_t i, size_t* len);
   int period_ms; /* one full cycle; 0 or less: a STILL effect, no tick */
   int width;     /* shimmer: the sweeping window, in cells */
   int steps;     /* how many distinct pictures a period has (0 → the kind's own) */
   unsigned char backward;
-  /* OUT, set by the applier when nothing answers for `kind`. It lives here rather than in
-   * a parallel array so that naming an unknown kind costs the caller no second buffer. */
-  unsigned char unresolved;
+
+#ifdef __cplusplus
+  std::string_view kind_view() const { return std::string_view(kind, kind_len); }
+  std::string_view frame(std::size_t i) const {
+    return i < frame_count ? std::string_view(frames[i].bytes, frames[i].len) : std::string_view();
+  }
+  std::size_t roles_size() const { return role_count; }
+  unsigned char role(std::size_t i) const { return roles[i % role_count]; }
+#endif
 } RolltuiEffectSpec;
+
+/* ---- what a THEME carries, owned in C -------------------------------------------------- */
+/* A map of STATE → the specs that state looks like while it lasts. `states` is the caller's
+ * state vocabulary size — the C indexes with it and never learns a state's name — and
+ * `fallback_role` is the role a spec with none of its own picks, handed over once here so
+ * that no rung of this file has an opinion about it.
+ *
+ * OWNED, LONG-LIVED (CLAUDE.md's strategy 4): one map per `rolltui::Theme`, which frees it. */
+typedef struct RolltuiEffectMap RolltuiEffectMap;
+RolltuiEffectMap* rolltui_effect_map_new(size_t states, unsigned char fallback_role);
+void rolltui_effect_map_free(RolltuiEffectMap* m);
+RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
+void rolltui_effect_map_clear(RolltuiEffectMap* m);
+int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);
+int rolltui_effect_map_empty(const RolltuiEffectMap* m);
+size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state);
+/* A BORROW, valid until the map next changes. NULL for an index past the state's specs. */
+const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i);
+
+/* Appends a spec to `state` and returns its index; the two adders then fill it in. A spec
+ * is built rather than handed over whole because its three arrays are variable-length, and
+ * a builder is what keeps them the MAP's allocations instead of a caller's. */
+size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
+                              int width, int steps, int backward);
+void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len);
+void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role);
 
 typedef struct RolltuiEffectReport {
   int marks_drawn;    /* marks the theme had an effect for */
@@ -195,24 +242,26 @@ void rolltui_effect_scratch_free(RolltuiEffectScratch* s);
 int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
 
 /* ---- applying, and the tick --------------------------------------------------------------- */
-/* THE SPECS ARE A FLAT ARRAY PLUS PER-STATE RANGES: `specs[state_first[s] ..
- * state_first[s] + state_count[s])` is what the theme maps state `s` to, for `states`
- * states. Flat because a mark names its state as an int the frame stored and never
- * interpreted (rolltui_screen.h), so the C indexes these arrays with it and still knows
- * nothing about the state vocabulary — which lives in `Effects.hpp` alone. A state index
- * outside `states` draws nothing.
+
+/* Called once per kind the map names that NOTHING answers for, with its name as a borrow
+ * valid for the call. A host says it out loud; the C never judges a kind (Effects.hpp). */
+typedef void (*RolltuiEffectUnknownFn)(void* ctx, const char* kind, size_t len);
+
+/* A mark names its state as an int the frame stored and never interpreted
+ * (rolltui_screen.h), so the C indexes the map with it and still knows nothing about the
+ * state vocabulary — which lives in `Effects.hpp` alone. A state index outside the map's
+ * own `states` draws nothing.
  *
  * Called by a host AFTER the whole screen has composed and before the frame diff.
- * `now_ms` is any monotonic millisecond clock. `rep` may not be NULL. */
+ * `now_ms` is any monotonic millisecond clock. `rep` may not be NULL; `on_unknown` may. */
 void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* s, const RolltuiStyle* styles, const void* host,
-                           RolltuiEffectSpec* specs, const size_t* state_first, const size_t* state_count,
-                           size_t states, unsigned long long now_ms, int ambiguous_wide, RolltuiEffectReport* rep);
+                           const RolltuiEffectMap* map, unsigned long long now_ms, int ambiguous_wide,
+                           RolltuiEffectReport* rep, RolltuiEffectUnknownFn on_unknown, void* unknown_ctx);
 
 /* The interval at which this frame must be redrawn for its motion, or 0 when nothing is
  * marked, when the theme maps nothing to what is marked, or when nothing mapped MOVES.
  * Clamped to at least 16 ms so a long span cannot ask for a wakeup per millisecond. */
-int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectSpec* specs, const size_t* state_first,
-                            const size_t* state_count, size_t states);
+int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectMap* map);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -8,7 +8,9 @@
 #include <cstdlib>
 
 #include "rolltui/Json.hpp"
+#include "rolltui/Lifetime.hpp"
 #include "rolltui/Unicode.hpp"
+#include "rolltui/c/rolltui_theme.h"
 
 namespace rolltui {
 
@@ -31,11 +33,17 @@ Style S(Color fg, Color bg = Color::none(), bool bold = false, bool italic = fal
 // "effects" object) and every one of these three maps is written into the shipped preset
 // files that carry the same name — the built-in and the file are one look with two
 // definition sites, kept equal by rolltui-presets-test.
-EffectSpec fx(std::string kind, int period_ms) {
-  EffectSpec s;
-  s.kind = std::move(kind);
-  s.period_ms = period_ms;
-  return s;
+// A spec is BUILT INTO the map rather than assembled beside it and moved in (Phase 15 m3:
+// the theme owns its specs in C, so there is no second owner for one to live in first).
+// These two helpers are the whole of the difference at a call site.
+std::size_t fx(EffectMap& m, EffectState state, std::string_view kind, int period_ms, Role role) {
+  const std::size_t i = m.add(state, kind, period_ms);
+  m.add_role(state, i, role);
+  return i;
+}
+
+void frames(EffectMap& m, EffectState state, std::size_t i, std::initializer_list<std::string_view> fs) {
+  for (std::string_view f : fs) m.add_frame(state, i, f);
 }
 
 // For the two colour themes. The `waiting` spinner is BRAILLE (East Asian Neutral, so
@@ -43,25 +51,18 @@ EffectSpec fx(std::string kind, int period_ms) {
 // applier's width guarantee and the theme would silently stop moving).
 EffectMap colour_effects() {
   EffectMap m;
-  EffectSpec spin = fx("spinner", 640);
-  spin.frames = {"\xE2\xA0\x8B", "\xE2\xA0\x99", "\xE2\xA0\xB9", "\xE2\xA0\xB8",
-                 "\xE2\xA0\xBC", "\xE2\xA0\xB4", "\xE2\xA0\xA6", "\xE2\xA0\xA7"};
-  m.for_state(EffectState::Waiting).push_back(std::move(spin));
+  frames(m, EffectState::Waiting, m.add(EffectState::Waiting, "spinner", 640),
+         {"\xE2\xA0\x8B", "\xE2\xA0\x99", "\xE2\xA0\xB9", "\xE2\xA0\xB8",
+          "\xE2\xA0\xBC", "\xE2\xA0\xB4", "\xE2\xA0\xA6", "\xE2\xA0\xA7"});
   // Bytes arriving move ALONG the text, so the sweep does too — and it is the accent, so
   // a reader who cannot see the motion still sees which span is live.
-  EffectSpec sweep = fx("shimmer", 1200);
-  sweep.roles = {Role::accent_1};
-  sweep.width = 6;
-  m.for_state(EffectState::Streaming).push_back(std::move(sweep));
+  const std::size_t sweep = m.add(EffectState::Streaming, "shimmer", 1200, /*width=*/6);
+  m.add_role(EffectState::Streaming, sweep, Role::accent_1);
   // A bar is a picture of a number and asks for NO tick: the number changing is already
   // a redraw (Effects.hpp — this is what "the tick runs only while something moves" is
   // worth in the shipped file, not only in the test).
-  EffectSpec bar = fx("bar", 0);
-  bar.roles = {Role::accent_2};
-  m.for_state(EffectState::Progress).push_back(std::move(bar));
-  EffectSpec flash = fx("blink", 400);
-  flash.roles = {Role::find_current};
-  m.for_state(EffectState::Flash).push_back(std::move(flash));
+  fx(m, EffectState::Progress, "bar", 0, Role::accent_2);
+  fx(m, EffectState::Flash, "blink", 400, Role::find_current);
   return m;
 }
 
@@ -70,18 +71,12 @@ EffectMap colour_effects() {
 // there, and a `streaming` that is a dim/normal breath rather than a colour sweep.
 EffectMap mono_effects() {
   EffectMap m;
-  EffectSpec spin = fx("spinner", 400);
-  spin.frames = {"|", "/", "-", "\\"};
-  m.for_state(EffectState::Waiting).push_back(std::move(spin));
-  EffectSpec breath = fx("pulse", 1200);
-  breath.roles = {Role::text_muted, Role::text};
-  m.for_state(EffectState::Streaming).push_back(std::move(breath));
-  EffectSpec bar = fx("bar", 0);
-  bar.roles = {Role::menu_selected};  // reverse video: the only "filled" this theme has
-  m.for_state(EffectState::Progress).push_back(std::move(bar));
-  EffectSpec flash = fx("blink", 400);
-  flash.roles = {Role::find_current};
-  m.for_state(EffectState::Flash).push_back(std::move(flash));
+  frames(m, EffectState::Waiting, m.add(EffectState::Waiting, "spinner", 400), {"|", "/", "-", "\\"});
+  const std::size_t breath = m.add(EffectState::Streaming, "pulse", 1200);
+  m.add_role(EffectState::Streaming, breath, Role::text_muted);
+  m.add_role(EffectState::Streaming, breath, Role::text);
+  fx(m, EffectState::Progress, "bar", 0, Role::menu_selected);  // reverse video: the only "filled" this theme has
+  fx(m, EffectState::Flash, "blink", 400, Role::find_current);
   return m;
 }
 
@@ -299,16 +294,54 @@ Theme make_mono() {
   return t;
 }
 
-const Theme& dark_theme() { static const Theme t = make_default_dark(); return t; }
-const Theme& light_theme() { static const Theme t = make_default_light(); return t; }
-const Theme& mono_theme() { static const Theme t = make_mono(); return t; }
+// THE BUILT-INS ARE A CACHE, NOT THREE `static const Theme`s — changed in Phase 15 m3, and
+// the reason is a number rather than a preference. A `Theme` now owns a `RolltuiEffectMap`,
+// which is an explicit allocation through the library's own entry point; three function-
+// local statics holding one each are three PROCESS-WIDE RETAINERS, and `rolltui::shutdown()`
+// promises `live_bytes == 0`. Before the port those maps were `std::vector`s reaching the
+// global `operator new`, so the gauge could not see them and the promise was quietly weaker
+// — which is exactly the asymmetry CLAUDE.md records about what C buys.
+//
+// FILLED WHEN EMPTY, not by a static initializer, for the reason `builtin_layout_cache()`
+// states one file over: releasing a cache is only safe if the cache rebuilds.
+// The storage and the FILL are separate on purpose. A releaser written as
+// `builtin_theme_cache().clear(); builtin_theme_cache().shrink_to_fit();` reads fine and is
+// wrong: the second call finds the cache it just emptied and REBUILDS it, so shutdown ends
+// holding exactly what it set out to release. `Layout.cpp`'s builtin-layout cache had that
+// shape from Phase 14 m6a and nobody could see it, because a `std::vector<Layout>` reaches
+// the global `operator new` and the gauge does not count it; a `Theme` owning a C map does,
+// so the port turned an invisible rebuild into a failing assertion. Both are fixed.
+std::vector<std::pair<std::string, Theme>>& theme_cache_storage() {
+  static std::vector<std::pair<std::string, Theme>> cache;
+  return cache;
+}
+
+std::vector<std::pair<std::string, Theme>>& builtin_theme_cache() {
+  std::vector<std::pair<std::string, Theme>>& cache = theme_cache_storage();
+  if (cache.empty()) {
+    // RE-REGISTERED ON EVERY REBUILD, deliberately, and not through a `static bool once`:
+    // `shutdown()` clears its own registry as it runs, so a cache rebuilt afterwards must
+    // say so again or the SECOND shutdown would leave it held. That is the rule
+    // `ThreadHandle` already states for a per-thread buffer and the effect registry for a
+    // process-wide one; a once-only registration is the version of it that passes the
+    // first test and fails the second.
+    on_shutdown([] {
+      theme_cache_storage().clear();
+      theme_cache_storage().shrink_to_fit();
+    });
+    cache.reserve(3);
+    cache.emplace_back("default-dark", make_default_dark());
+    cache.emplace_back("default-light", make_default_light());
+    cache.emplace_back("mono", make_mono());
+  }
+  return cache;
+}
 
 }  // namespace
 
 const Theme* builtin_theme(std::string_view name) {
-  if (name == "default-dark") return &dark_theme();
-  if (name == "default-light") return &light_theme();
-  if (name == "mono") return &mono_theme();
+  for (const auto& [n, t] : builtin_theme_cache())
+    if (n == name) return &t;
   return nullptr;
 }
 
@@ -318,146 +351,44 @@ std::vector<std::string_view> builtin_theme_names() {
 
 // ---- colours -----------------------------------------------------------------------
 
+// THE COLOUR ENGINE IS BEHIND A C BOUNDARY (`rolltui/c/rolltui_theme.h`) since Phase 15 m3,
+// in one of two implementations chosen by `-DROLLTUI_C`. What is left on this side is the
+// two things the boundary deliberately does not carry: the C++ SHAPES a caller already
+// writes against (`std::optional<Color>`, `std::string`), and the DEPTH and MODE NAMES
+// below, which are a vocabulary a config file and a `--color-depth` flag both spell — a
+// vocabulary written down twice is a second thing to drift, the same reasoning that kept
+// `Role` out of `rolltui_diff.h` in m2. The built-in themes above stay here too: they are
+// this library's taste, not its algorithm.
+
 std::optional<Color> parse_color(std::string_view text) {
-  if (text == "none") return Color::none();
-  if (text.size() == 7 && text[0] == '#') {
-    unsigned v = 0;
-    for (std::size_t i = 1; i < 7; ++i) {
-      char c = text[i];
-      unsigned d;
-      if (c >= '0' && c <= '9') d = static_cast<unsigned>(c - '0');
-      else if (c >= 'a' && c <= 'f') d = static_cast<unsigned>(c - 'a' + 10);
-      else if (c >= 'A' && c <= 'F') d = static_cast<unsigned>(c - 'A' + 10);
-      else return std::nullopt;
-      v = (v << 4) | d;
-    }
-    return Color::rgb(static_cast<std::uint8_t>(v >> 16), static_cast<std::uint8_t>((v >> 8) & 0xFF),
-                      static_cast<std::uint8_t>(v & 0xFF));
-  }
-  if (!text.empty() && text.size() <= 3) {
-    unsigned v = 0;
-    for (char c : text) {
-      if (c < '0' || c > '9') return std::nullopt;
-      v = v * 10 + static_cast<unsigned>(c - '0');
-    }
-    if (v > 255) return std::nullopt;
-    return Color::indexed(static_cast<std::uint8_t>(v));
-  }
-  return std::nullopt;
+  Color c;
+  if (!rolltui_color_parse(text.data(), text.size(), &c)) return std::nullopt;
+  return c;
 }
 
 std::string color_to_string(Color c) {
-  switch (c.kind) {
-    case Color::Kind::None: return "none";
-    case Color::Kind::Indexed: return std::to_string(c.index);
-    case Color::Kind::Rgb: {
-      char buf[16];
-      std::snprintf(buf, sizeof buf, "#%02x%02x%02x", c.r, c.g, c.b);
-      return buf;
-    }
-  }
-  return "none";
+  // CALLER-FILLED, with the bound known WITHOUT asking: "#rrggbb" is the longest spelling
+  // there is, so the header states it as a constant and there is no measure-then-fill.
+  char buf[ROLLTUI_COLOR_STRING_MAX];
+  const std::size_t n = rolltui_color_to_string(c, buf, sizeof buf);
+  return std::string(buf, n);
 }
-
-namespace {
-
-// xterm's default 16-colour palette, the reference for the 16-colour downgrade.
-struct Rgb { int r, g, b; };
-constexpr Rgb kSystem16[16] = {
-    {0, 0, 0},       {205, 0, 0},     {0, 205, 0},     {205, 205, 0},
-    {0, 0, 238},     {205, 0, 205},   {0, 205, 205},   {229, 229, 229},
-    {127, 127, 127}, {255, 0, 0},     {0, 255, 0},     {255, 255, 0},
-    {92, 92, 255},   {255, 0, 255},   {0, 255, 255},   {255, 255, 255},
-};
-
-Rgb rgb_of_index(std::uint8_t i) {
-  if (i < 16) return kSystem16[i];
-  if (i < 232) {
-    int v = i - 16;
-    int r = v / 36, g = (v / 6) % 6, b = v % 6;
-    auto lvl = [](int x) { return x == 0 ? 0 : 55 + x * 40; };
-    return {lvl(r), lvl(g), lvl(b)};
-  }
-  int grey = 8 + (i - 232) * 10;
-  return {grey, grey, grey};
-}
-
-int dist2(Rgb a, Rgb b) {
-  int dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
-  return dr * dr + dg * dg + db * db;
-}
-
-std::uint8_t nearest_256(Rgb c) {
-  // Search the cube and the grey ramp (the 16 system colours vary by terminal, so a
-  // truecolor value is never mapped onto them).
-  int best = 1 << 30;
-  std::uint8_t pick = 16;
-  for (int i = 16; i < 256; ++i) {
-    int d = dist2(c, rgb_of_index(static_cast<std::uint8_t>(i)));
-    if (d < best) { best = d; pick = static_cast<std::uint8_t>(i); }
-  }
-  return pick;
-}
-
-std::uint8_t nearest_16(Rgb c) {
-  int best = 1 << 30;
-  std::uint8_t pick = 0;
-  for (int i = 0; i < 16; ++i) {
-    int d = dist2(c, kSystem16[i]);
-    if (d < best) { best = d; pick = static_cast<std::uint8_t>(i); }
-  }
-  return pick;
-}
-
-}  // namespace
 
 Color ansi_index_rgb(std::uint8_t index) {
-  const Rgb c = rgb_of_index(index);
-  return Color::rgb(static_cast<std::uint8_t>(c.r), static_cast<std::uint8_t>(c.g), static_cast<std::uint8_t>(c.b));
+  Color c;
+  rolltui_ansi_index_rgb(index, &c);
+  return c;
 }
 
 Color downgrade(Color c, ColorDepth depth) {
-  if (c.kind == Color::Kind::None) return c;
-  switch (depth) {
-    case ColorDepth::TrueColor: return c;
-    case ColorDepth::Ansi256:
-      if (c.kind == Color::Kind::Rgb) return Color::indexed(nearest_256({c.r, c.g, c.b}));
-      return c;
-    case ColorDepth::Ansi16:
-      if (c.kind == Color::Kind::Rgb) return Color::indexed(nearest_16({c.r, c.g, c.b}));
-      if (c.index >= 16) return Color::indexed(nearest_16(rgb_of_index(c.index)));
-      return c;
-    case ColorDepth::Mono: return Color::none();
-  }
+  rolltui_color_downgrade(&c, static_cast<unsigned char>(depth));
   return c;
 }
 
 std::string sgr(const Style& style, ColorDepth depth) {
-  std::string s = "\x1b[0";
-  if (style.bold) s += ";1";
-  if (style.dim) s += ";2";
-  if (style.italic) s += ";3";
-  if (style.underline) s += ";4";
-  if (style.reverse) s += ";7";
-  auto emit = [&](Color c, bool bg) {
-    c = downgrade(c, depth);
-    switch (c.kind) {
-      case Color::Kind::None: break;
-      case Color::Kind::Indexed:
-        if (c.index < 8) s += ";" + std::to_string((bg ? 40 : 30) + c.index);
-        else if (c.index < 16) s += ";" + std::to_string((bg ? 100 : 90) + c.index - 8);
-        else s += std::string(bg ? ";48;5;" : ";38;5;") + std::to_string(c.index);
-        break;
-      case Color::Kind::Rgb:
-        s += std::string(bg ? ";48;2;" : ";38;2;") + std::to_string(c.r) + ";" + std::to_string(c.g) + ";" +
-             std::to_string(c.b);
-        break;
-    }
-  };
-  emit(style.fg, false);
-  emit(style.bg, true);
-  s += "m";
-  return s;
+  char buf[ROLLTUI_SGR_MAX];
+  const std::size_t n = rolltui_sgr(&style, static_cast<unsigned char>(depth), buf, sizeof buf);
+  return std::string(buf, n);
 }
 
 ColorDepth detect_color_depth(const char* colorterm, const char* term, const char* force) {
@@ -487,48 +418,12 @@ std::string_view color_depth_name(ColorDepth d) {
 // ---- OSC 11 --------------------------------------------------------------------------------
 
 std::optional<Color> parse_osc11_reply(std::string_view reply) {
-  // ESC ] 11 ; rgb:RRRR/GGGG/BBBB (ESC \ | BEL), each channel 1-4 hex digits.
-  const std::size_t at = reply.find("\x1b]11;");
-  if (at == std::string_view::npos) return std::nullopt;
-  std::string_view s = reply.substr(at + 5);
-  std::size_t end = s.find('\x1b');
-  const std::size_t bel = s.find('\a');
-  if (bel != std::string_view::npos && (end == std::string_view::npos || bel < end)) end = bel;
-  if (end != std::string_view::npos) s = s.substr(0, end);
-  if (s.rfind("rgb:", 0) != 0) return std::nullopt;
-  s.remove_prefix(4);
-  std::uint8_t ch[3];
-  for (int i = 0; i < 3; ++i) {
-    const std::size_t slash = s.find('/');
-    std::string_view part = (i < 2) ? s.substr(0, slash) : s;
-    if (i < 2 && slash == std::string_view::npos) return std::nullopt;
-    if (part.empty() || part.size() > 4) return std::nullopt;
-    unsigned v = 0;
-    for (char c : part) {
-      unsigned d;
-      if (c >= '0' && c <= '9') d = static_cast<unsigned>(c - '0');
-      else if (c >= 'a' && c <= 'f') d = static_cast<unsigned>(c - 'a' + 10);
-      else if (c >= 'A' && c <= 'F') d = static_cast<unsigned>(c - 'A' + 10);
-      else return std::nullopt;
-      v = (v << 4) | d;
-    }
-    // Scale to 8 bits from however many digits were given (4 → top byte; 1 → x*17).
-    const unsigned max = (1u << (4 * part.size())) - 1;
-    ch[i] = static_cast<std::uint8_t>((v * 255 + max / 2) / max);
-    if (i < 2) s = s.substr(slash + 1);
-  }
-  return Color::rgb(ch[0], ch[1], ch[2]);
+  Color c;
+  if (!rolltui_parse_osc11_reply(reply.data(), reply.size(), &c)) return std::nullopt;
+  return c;
 }
 
-ThemeMode mode_for_background(Color bg) {
-  if (bg.kind != Color::Kind::Rgb) return ThemeMode::Dark;
-  auto lin = [](std::uint8_t c) {
-    const double x = c / 255.0;
-    return x <= 0.04045 ? x / 12.92 : std::pow((x + 0.055) / 1.055, 2.4);
-  };
-  const double y = 0.2126 * lin(bg.r) + 0.7152 * lin(bg.g) + 0.0722 * lin(bg.b);
-  return y > 0.5 ? ThemeMode::Light : ThemeMode::Dark;
-}
+ThemeMode mode_for_background(Color bg) { return static_cast<ThemeMode>(rolltui_mode_for_background(bg)); }
 
 // ---- the JSON loader ---------------------------------------------------------------
 
@@ -575,12 +470,25 @@ std::optional<Color> resolve_color(const json::Value& v, const json::Value& defs
 // theme file is read long before a host has registered anything (Effects.hpp). Everything
 // that IS the library's — the state names, the role names, the equal-width frame rule — is
 // a named bad value here, at load, where a theme author can see it.
-std::optional<EffectSpec> read_effect(const json::Value& v, const std::string& where, ThemeLoadReport& report) {
+// A DRAFT, and it is the only place in the library an effect's three arrays live outside
+// the map that owns them. A theme file may name "kind" after "frames" — object key order
+// is the file's — so the pieces have to be accumulated before a spec can be added; what
+// this is NOT is a second storage shape for a theme's motion, and it does not outlive the
+// call that fills it.
+struct EffectDraft {
+  std::string kind;
+  std::vector<std::string> frames;
+  std::vector<Role> roles;
+  int period_ms = 800, width = 0, steps = 0;
+  bool backward = false;
+};
+
+std::optional<EffectDraft> read_effect(const json::Value& v, const std::string& where, ThemeLoadReport& report) {
   if (!v.is_object()) {
     report.bad_values.push_back(where + ": expected an effect object");
     return std::nullopt;
   }
-  EffectSpec s;
+  EffectDraft s;
   auto roles_from = [&](const json::Value& x, const std::string& at) {
     auto one = [&](const json::Value& n, const std::string& w) {
       if (!n.is_string()) { report.bad_values.push_back(w + ": expected a role name"); return; }
@@ -638,6 +546,12 @@ std::optional<EffectSpec> read_effect(const json::Value& v, const std::string& w
   return s;
 }
 
+void commit(EffectMap& map, EffectState state, const EffectDraft& d) {
+  const std::size_t i = map.add(state, d.kind, d.period_ms, d.width, d.steps, d.backward);
+  for (const std::string& f : d.frames) map.add_frame(state, i, f);
+  for (Role r : d.roles) map.add_role(state, i, r);
+}
+
 EffectMap read_effects(const json::Value& v, ThemeLoadReport& report) {
   EffectMap map;
   if (v.is_null()) return map;  // no "effects" key: a still UI, and not a problem
@@ -654,9 +568,9 @@ EffectMap read_effects(const json::Value& v, ThemeLoadReport& report) {
     const std::string where = "effects." + k;
     if (x.is_array()) {
       for (std::size_t i = 0; i < x.arr.size(); ++i)
-        if (std::optional<EffectSpec> s = read_effect(x.arr[i], where + "[" + std::to_string(i) + "]", report)) map.for_state(state).push_back(std::move(*s));
-    } else if (std::optional<EffectSpec> s = read_effect(x, where, report)) {
-      map.for_state(state).push_back(std::move(*s));
+        if (std::optional<EffectDraft> s = read_effect(x.arr[i], where + "[" + std::to_string(i) + "]", report)) commit(map, state, *s);
+    } else if (std::optional<EffectDraft> s = read_effect(x, where, report)) {
+      commit(map, state, *s);
     }
   }
   return map;
@@ -664,15 +578,18 @@ EffectMap read_effects(const json::Value& v, ThemeLoadReport& report) {
 
 json::Value effect_to_json(const EffectSpec& s) {
   json::Value o = json::Value::object();
-  o.set("kind", json::Value::string(s.kind));
-  if (!s.frames.empty()) {
-    json::Value frames = json::Value::array();
-    for (const std::string& f : s.frames) frames.arr.push_back(json::Value::string(f));
-    o.set("frames", std::move(frames));
+  o.set("kind", json::Value::string(std::string(s.kind_view())));
+  if (s.frame_count) {
+    json::Value fs = json::Value::array();
+    for (std::size_t i = 0; i < s.frame_count; ++i) fs.arr.push_back(json::Value::string(std::string(s.frame(i))));
+    o.set("frames", std::move(fs));
   }
-  if (!s.roles.empty()) {
+  // `own_role_count`, never `role_count`: a spec that named no role borrows the map's
+  // fallback, and writing that back would put a role in the file nobody wrote.
+  if (s.own_role_count) {
     json::Value roles = json::Value::array();
-    for (Role r : s.roles) roles.arr.push_back(json::Value::string(std::string(role_name(r))));
+    for (std::size_t i = 0; i < s.own_role_count; ++i)
+      roles.arr.push_back(json::Value::string(std::string(role_name(static_cast<Role>(s.roles[i])))));
     o.set("roles", std::move(roles));
   }
   o.set("period_ms", json::Value::number(s.period_ms));
@@ -688,15 +605,16 @@ std::optional<json::Value> effects_to_json(const EffectMap& m) {
   if (m.empty()) return std::nullopt;
   json::Value o = json::Value::object();
   for (std::size_t i = 1; i < kEffectStateCount; ++i) {
-    const std::vector<EffectSpec>& specs = m.for_state(static_cast<EffectState>(i));
-    if (specs.empty()) continue;
-    if (specs.size() == 1) {
-      o.set(effect_state_name(static_cast<EffectState>(i)), effect_to_json(specs[0]));
+    const EffectState state = static_cast<EffectState>(i);
+    const std::size_t n = m.count(state);
+    if (n == 0) continue;
+    if (n == 1) {
+      o.set(effect_state_name(state), effect_to_json(m.at(state, 0)));
       continue;
     }
     json::Value arr = json::Value::array();
-    for (const EffectSpec& s : specs) arr.arr.push_back(effect_to_json(s));
-    o.set(effect_state_name(static_cast<EffectState>(i)), std::move(arr));
+    for (std::size_t k = 0; k < n; ++k) arr.arr.push_back(effect_to_json(m.at(state, k)));
+    o.set(effect_state_name(state), std::move(arr));
   }
   return o;
 }

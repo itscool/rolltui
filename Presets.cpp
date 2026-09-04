@@ -28,61 +28,39 @@ using json::Value;
 
 // ---- files ----------------------------------------------------------------------------
 
+// THE FILE WORK IS BEHIND THE BOUNDARY (`rolltui/c/rolltui_presets.h`) since Phase 15 m3 —
+// it is mechanics, not domain knowledge, and the store needs it in whichever language the
+// store is written in. What is left here is the C++ shapes: a `std::string` out-parameter
+// and a `std::vector<std::string>`, filled through the boundary's one `put` callback.
 namespace preset_files {
 
+namespace {
+void put_string(void* ctx, const char* s, std::size_t len) { static_cast<std::string*>(ctx)->append(s, len); }
+}  // namespace
+
 bool read_file(const std::string& path, std::string& out) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in) return false;
-  std::stringstream ss;
-  ss << in.rdbuf();
-  out = ss.str();
-  return true;
+  out.clear();
+  return rolltui_preset_read_file(path.data(), path.size(), put_string, &out) != 0;
 }
 
-// Write to a sibling temp file, then rename — a reader sees the old complete file or
-// the new complete file, never a mix (the state-file rule from ResilientModelManager).
 bool write_file_atomic(const std::string& path, const std::string& bytes, std::string& error) {
-  std::error_code ec;
-  fs::create_directories(fs::path(path).parent_path(), ec);
-  if (ec) { error = "cannot create " + fs::path(path).parent_path().string() + ": " + ec.message(); return false; }
-  const std::string tmp = path + ".tmp." + std::to_string(::getpid());
-  {
-    std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
-    if (!out) { error = "cannot write " + tmp + ": " + std::strerror(errno); return false; }
-    out << bytes;
-    if (!out) { error = "short write to " + tmp; return false; }
-  }
-  if (std::rename(tmp.c_str(), path.c_str()) != 0) {
-    error = "cannot rename " + tmp + " to " + path + ": " + std::strerror(errno);
-    std::remove(tmp.c_str());
-    return false;
-  }
-  return true;
+  error.clear();
+  return rolltui_preset_write_file_atomic(path.data(), path.size(), bytes.data(), bytes.size(), put_string, &error) != 0;
 }
 
 std::vector<std::string> json_names_in(const std::string& dir) {
   std::vector<std::string> out;
-  std::error_code ec;
-  for (const fs::directory_entry& e : fs::directory_iterator(dir, ec)) {
-    if (!e.is_regular_file(ec)) continue;
-    const fs::path p = e.path();
-    if (p.extension() != ".json") continue;
-    out.push_back(p.stem().string());
-  }
-  std::sort(out.begin(), out.end());
+  rolltui_preset_json_names_in(dir.data(), dir.size(),
+                               [](void* ctx, const char* s, std::size_t len) {
+                                 static_cast<std::vector<std::string>*>(ctx)->emplace_back(s, len);
+                               },
+                               &out);
   return out;
 }
 
-bool looks_like_path(std::string_view s) {
-  return s.find('/') != std::string_view::npos || (s.size() > 5 && s.substr(s.size() - 5) == ".json");
-}
+bool looks_like_path(std::string_view s) { return rolltui_preset_looks_like_path(s.data(), s.size()) != 0; }
 
-bool valid_preset_name(std::string_view name) {
-  if (name.empty() || name.size() > 64 || name[0] == '.') return false;
-  for (char c : name)
-    if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.')) return false;
-  return true;
-}
+bool valid_preset_name(std::string_view name) { return rolltui_preset_valid_name(name.data(), name.size()) != 0; }
 
 }  // namespace preset_files
 
