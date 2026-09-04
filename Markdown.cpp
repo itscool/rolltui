@@ -329,7 +329,9 @@ void push_span(StyledLine& line, std::string text, Role role, bool ambiguous,
   if (text.empty()) return;
   int w = 0;
   std::size_t clusters = 0;
-  for (const unicode::Grapheme& g : unicode::graphemes(text, ambiguous)) { w += g.width; ++clusters; }
+  thread_local std::vector<unicode::Grapheme> gs;  // m3: reused; this is per-span at layout time
+  unicode::graphemes_into(text, ambiguous, gs);
+  for (const unicode::Grapheme& g : gs) { w += g.width; ++clusters; }
   if (sources.size() != clusters) sources.assign(clusters, kNoSource);
   if (!line.spans.empty() && line.spans.back().role == role && line.spans.back().href == href) {
     Span& s = line.spans.back();

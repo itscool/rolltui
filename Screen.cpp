@@ -96,7 +96,13 @@ int Frame::put_text(int x, int y, std::string_view utf8, const Style& style, int
                     bool ambiguous_wide, std::uint32_t link) {
   if (y < 0 || y >= h_) return 0;
   int used = 0;
-  for (const unicode::Grapheme& g : unicode::graphemes(utf8, ambiguous_wide)) {
+  // Phase 13 m3: the cluster list is a REUSED buffer. This is the hottest single caller
+  // of `graphemes()` — every string any widget draws comes through here — and it was
+  // building a fresh vector for each one. Not nested: nothing in the loop below calls
+  // back into put_text.
+  thread_local std::vector<unicode::Grapheme> gs;
+  unicode::graphemes_into(utf8, ambiguous_wide, gs);
+  for (const unicode::Grapheme& g : gs) {
     if (g.width <= 0) continue;
     if (used + g.width > max_cells || x + used >= w_) break;
     if (g.width == 2 && x + used + 1 >= w_) break;  // never a half glyph at the edge

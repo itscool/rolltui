@@ -149,6 +149,11 @@ struct Grapheme {
 // decode to U+FFFD and form clusters of their own (width 1) — a renderer shows the
 // replacement character, never drops the byte.
 std::vector<Grapheme> graphemes(std::string_view utf8, bool ambiguous_wide = false);
+// The same, filling a vector the CALLER owns, so a draw loop can hoist it and reuse its
+// capacity (Phase 13 m3). The intermediates this needs are reused internally either way,
+// so `graphemes()` costs one allocation and this one costs none in a warm loop. Same
+// algorithm, same answers — the conformance suites are what say so.
+void graphemes_into(std::string_view utf8, bool ambiguous_wide, std::vector<Grapheme>& out);
 int display_width(std::string_view utf8, bool ambiguous_wide = false);
 
 // ---- UAX #29: word boundaries ------------------------------------------------------

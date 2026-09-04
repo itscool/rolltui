@@ -55,9 +55,15 @@ Style overlay_style(Style base, const Style& over) {
 // skipped exactly as Frame::put_text skips them, so cell positions agree.
 template <typename F>
 void for_each_cell(const StyledLine& line, bool ambiguous, F&& f) {
+  // Phase 13 m3: one reused buffer per instantiation. This runs once per SPAN of every
+  // drawn row, twice per row in draw() — the second heaviest caller of `graphemes()` after
+  // put_text. Being a template is what makes it safe without thought: each lambda type
+  // gets its own buffer, and no call site's lambda calls back into for_each_cell.
+  thread_local std::vector<unicode::Grapheme> gs;
   for (const Span& sp : line.spans) {
     std::size_t k = 0;
-    for (const unicode::Grapheme& g : unicode::graphemes(sp.text, ambiguous)) {
+    unicode::graphemes_into(sp.text, ambiguous, gs);
+    for (const unicode::Grapheme& g : gs) {
       if (g.width > 0) f(sp, k, std::string_view(sp.text).substr(g.offset, g.length), g.width);
       ++k;
     }
@@ -73,7 +79,9 @@ Span chrome(std::string text, Role role, bool ambiguous) {
   Span s;
   s.role = role;
   std::size_t clusters = 0;
-  for (const unicode::Grapheme& g : unicode::graphemes(text, ambiguous)) { s.width += g.width; ++clusters; }
+  thread_local std::vector<unicode::Grapheme> gs;  // m3: layout-time, so it shows in the streaming and resize budgets
+  unicode::graphemes_into(text, ambiguous, gs);
+  for (const unicode::Grapheme& g : gs) { s.width += g.width; ++clusters; }
   s.sources.assign(clusters, kNoSource);
   s.text = std::move(text);
   return s;

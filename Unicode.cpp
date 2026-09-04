@@ -6,6 +6,10 @@
 
 namespace rolltui::unicode {
 
+// Phase 13 m3: the reused-buffer forms the public wrappers are built on.
+void decode_utf8_into(std::string_view s, std::vector<DecodedChar>& out);
+void grapheme_boundaries_into(std::span<const char32_t> cps, std::vector<bool>& b);
+
 std::uint8_t lookup(const Range* table, std::size_t n, char32_t cp, std::uint8_t def) {
   std::size_t lo = 0, hi = n;
   while (lo < hi) {
@@ -41,15 +45,26 @@ DecodedChar decode_one(std::string_view s, std::size_t pos) {
   return {cp, pos, need + 1, true};
 }
 
-std::vector<DecodedChar> decode_utf8(std::string_view s) {
-  std::vector<DecodedChar> out;
+void decode_utf8_into(std::string_view s, std::vector<DecodedChar>& out) {
+  out.clear();
   out.reserve(s.size());
   for (std::size_t pos = 0; pos < s.size();) {
     DecodedChar d = decode_one(s, pos);
     out.push_back(d);
     pos += d.length;
   }
+}
+
+std::vector<DecodedChar> decode_utf8(std::string_view s) {
+  std::vector<DecodedChar> out;
+  decode_utf8_into(s, out);
   return out;
+}
+
+std::vector<bool> grapheme_boundaries(std::span<const char32_t> cps) {
+  std::vector<bool> b;
+  grapheme_boundaries_into(cps, b);
+  return b;
 }
 
 void append_utf8(std::string& out, char32_t cp) {
@@ -109,15 +124,20 @@ int cluster_width(std::span<const char32_t> cps, bool ambiguous_wide) {
 
 // ---- UAX #29 -----------------------------------------------------------------------
 
-std::vector<bool> grapheme_boundaries(std::span<const char32_t> cps) {
+void grapheme_boundaries_into(std::span<const char32_t> cps, std::vector<bool>& b) {
   const std::size_t n = cps.size();
-  std::vector<bool> b(n + 1, false);
+  b.assign(n + 1, false);
   b[0] = true;
   b[n] = true;
-  if (n < 2) return b;
-  std::vector<GraphemeBreak> g(n);
-  std::vector<IndicConjunctBreak> incb(n);
-  std::vector<bool> pict(n);
+  if (n < 2) return;
+  // Three more per-call vectors on the same hot path; reused for the same reason and with
+  // the same nesting guarantee as the caller's (Phase 13 m3).
+  thread_local std::vector<GraphemeBreak> g;
+  thread_local std::vector<IndicConjunctBreak> incb;
+  thread_local std::vector<bool> pict;
+  g.assign(n, GraphemeBreak{});
+  incb.assign(n, IndicConjunctBreak{});
+  pict.assign(n, false);
   for (std::size_t i = 0; i < n; ++i) {
     g[i] = grapheme_break(cps[i]);
     incb[i] = indic_conjunct_break(cps[i]);
@@ -165,15 +185,30 @@ std::vector<bool> grapheme_boundaries(std::span<const char32_t> cps) {
     }
     b[i] = brk;
   }
-  return b;
 }
 
-std::vector<Grapheme> graphemes(std::string_view utf8, bool ambiguous_wide) {
-  std::vector<DecodedChar> dc = decode_utf8(utf8);
-  std::vector<char32_t> cps(dc.size());
-  for (std::size_t i = 0; i < dc.size(); ++i) cps[i] = dc[i].cp;
-  std::vector<bool> b = grapheme_boundaries(cps);
-  std::vector<Grapheme> out;
+// Phase 13 m3: the three intermediates are REUSED buffers, not fresh vectors. This
+// function is on the draw path — `Frame::put_text` calls it for every string drawn and the
+// transcript for every span of every row — and it was allocating FOUR times per call
+// (decode, codepoints, boundaries, result) for a handful of graphemes. The buffers are
+// thread_local because a Terminal and a renderer may legitimately live on different
+// threads; they are never nested, because nothing between `clear()` and the end of this
+// function calls back into it.
+//
+// The ALGORITHM is untouched: the same decode, the same UAX #29 boundaries, the same
+// widths. That is deliberate — the conformance suites (rolltui-grapheme-break-test,
+// rolltui-width-test) are what say this is still correct, and they can only say it about
+// a change that did not move the algorithm.
+void graphemes_into(std::string_view utf8, bool ambiguous_wide, std::vector<Grapheme>& out) {
+  thread_local std::vector<DecodedChar> dc;
+  thread_local std::vector<char32_t> cps;
+  thread_local std::vector<bool> b;
+  decode_utf8_into(utf8, dc);
+  cps.clear();
+  cps.reserve(dc.size());
+  for (const DecodedChar& d : dc) cps.push_back(d.cp);
+  grapheme_boundaries_into(cps, b);
+  out.clear();
   std::size_t start = 0;
   for (std::size_t i = 1; i <= cps.size(); ++i) {
     if (!b[i]) continue;
@@ -184,12 +219,19 @@ std::vector<Grapheme> graphemes(std::string_view utf8, bool ambiguous_wide) {
                                  ambiguous_wide)});
     start = i;
   }
+}
+
+std::vector<Grapheme> graphemes(std::string_view utf8, bool ambiguous_wide) {
+  std::vector<Grapheme> out;
+  graphemes_into(utf8, ambiguous_wide, out);
   return out;
 }
 
 int display_width(std::string_view utf8, bool ambiguous_wide) {
+  thread_local std::vector<Grapheme> g;
+  graphemes_into(utf8, ambiguous_wide, g);
   int w = 0;
-  for (const Grapheme& g : graphemes(utf8, ambiguous_wide)) w += g.width;
+  for (const Grapheme& x : g) w += x.width;
   return w;
 }
 

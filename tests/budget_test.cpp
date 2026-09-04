@@ -40,6 +40,7 @@
 #include <cstring>
 #include <new>
 #include <chrono>
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -279,12 +280,29 @@ int main() {
   // rule) and re-record. A toolchain change that moved it is a re-record too, but a
   // deliberate one, and the same act either way: look at the number before you write it
   // down.
-  auto band = [](long v, double pct) { return std::pair<long, long>{static_cast<long>(v * (1 - pct)), static_cast<long>(v * (1 + pct) + 1)}; };
+  // ±2% with a floor of ±3, because 2% of 144 is 2 and a band that tight would fail on a
+  // single incidental allocation rather than on a regression worth reading about. The
+  // counts are still bit-identical across runs at the new numbers (checked three times).
+  auto band = [](long v, double pct) {
+    const long slack = std::max<long>(3, static_cast<long>(v * pct));
+    return std::pair<long, long>{v - slack, v + slack};
+  };
   auto delta = [](long got, long want) {
     const long d = got - want;
     return std::string(d >= 0 ? "+" : "") + std::to_string(d) + " vs the recorded " + std::to_string(want);
   };
-  constexpr long kSteady = 887, kStreaming = 2772, kResize = 70272, kSteadyKB = 455;
+  // RE-RECORDED 2026-09-03 by Phase 13 m3, which is the only reason these may move. The
+  // numbers this test was born with, and what m3 did to them:
+  //
+  //   steady 120x40    887 → 144   (-84%)   streaming  2772 →   815   (-71%)
+  //   resize →100x40 70272 → 24944 (-65%)   steady KB   455 →   248   (-45%)
+  //
+  // One change earned most of it: `unicode::graphemes()` was allocating FOUR vectors per
+  // call (decode, codepoints, boundaries, result) plus three more inside
+  // `grapheme_boundaries`, on a path that runs for every string drawn and every span of
+  // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
+  // suites untouched and still green — took 887 to 448 on its own.
+  constexpr long kSteady = 144, kStreaming = 815, kResize = 24944, kSteadyKB = 248;
   {
     auto [lo, hi] = band(kSteady, 0.02);
     check(in_range(steady.allocs, lo, hi), "steady-state 120x40 is on budget [" + fmt(steady) + "; " + delta(steady.allocs, kSteady) +
