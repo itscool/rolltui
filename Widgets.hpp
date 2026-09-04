@@ -267,6 +267,11 @@ class Windows {
   Windows(const Windows&) = delete;
   Windows& operator=(const Windows&) = delete;
 
+  // THESE THREE RETURN BY VALUE AND ARE CALLED ONCE PER FRAME, which is an allocation per
+  // frame for data that usually did not change (CLAUDE.md's per-frame-API rule; Phase 13
+  // m5b changes them to fill a caller-owned buffer). They are left here, named, rather than
+  // quietly carried: the phase's target is a steady frame that allocates NOTHING, and these
+  // are the largest single thing standing between the library and it.
   using RowsFn = std::function<std::vector<Row>()>;
   using SubmitFn = std::function<void(const std::string&)>;
   using TextFn = std::function<std::string()>;
