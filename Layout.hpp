@@ -451,6 +451,10 @@ class WindowStack {
   Route route(const Event& e, Rect screen) { return route(e, screen, default_bindings()); }
   // The window a press captured the pointer for, until its release ("" when none).
   std::string_view captured() const;
+  // The handle, for the one other module that walks this stack from behind its own C
+  // boundary: `Windows` syncs, autosizes and lays out against it (Phase 15 m5).
+  RolltuiWindowStack* handle() { return s_.get(); }
+  const RolltuiWindowStack* handle() const { return s_.get(); }
 
  private:
   std::unique_ptr<RolltuiWindowStack, Handle> s_{rolltui_window_stack_new()};

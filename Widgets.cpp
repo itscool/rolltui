@@ -18,6 +18,54 @@
 
 namespace rolltui {
 
+namespace {
+
+// WHAT THE VTABLE CANNOT CARRY, and why it is a per-call context rather than a slot: a
+// widget draws with a `Frame&` and a `const Theme&`, and a `Theme` is a C++ object owning a C
+// effect map. Handing one across for every widget of every frame would be a view boundary
+// onto a module that has not ported — the trade m2 declined for `EffectSpec`. So `draw`
+// crosses with the frame handle the C needs and the pair travels beside it, set by
+// `Windows::draw` for the length of one call and restored after (a nested draw is real: the
+// error panel is drawn from inside one).
+struct DrawCtx {
+  Frame* frame = nullptr;
+  const Theme* theme = nullptr;
+};
+DrawCtx& draw_ctx() {
+  static thread_local DrawCtx c;
+  return c;
+}
+
+// The two event conversions the adapter needs. A `PasteEvent`'s text is a BORROW for the
+// call, which is the same window the decoder's own envelope states.
+RolltuiEvent c_event_of(const Event& e) {
+  RolltuiEvent ev{};
+  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_KEY;
+    ev.key = chord_of(*k);
+  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_MOUSE;
+    ev.mouse = *m;
+  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_PASTE;
+    ev.text = p->text.data();
+    ev.text_len = p->text.size();
+  }
+  return ev;
+}
+
+// Declared here and defined with the vtable adapter below: `register_kind` needs it and sits
+// above the concrete kinds it wraps.
+RolltuiWidget as_widget(std::unique_ptr<Widget> w);
+
+Event event_of(const RolltuiEvent& e) {
+  if (e.kind == ROLLTUI_EVENT_MOUSE) return e.mouse;
+  if (e.kind == ROLLTUI_EVENT_PASTE) return PasteEvent{std::string(e.text ? e.text : "", e.text_len)};
+  return key_event_of(e.key);
+}
+
+}  // namespace
+
 std::string WindowsReport::summary() const {
   if (bad_values.empty()) return {};
   std::string s = bad_values.front();
@@ -26,62 +74,23 @@ std::string WindowsReport::summary() const {
 }
 
 Rect content_rect(const ResolvedNode& rn) {
-  Rect r = rn.inner;
-  if (rn.node->border != Border::None && r.w >= 3) {
-    r.x += 1;
-    r.w -= 2;
-  }
+  Rect r;
+  rolltui_content_rect(&rn, &r);
   return r;
 }
 
 // ---- the scrollbar's geometry (Widgets.hpp) -----------------------------------------
 
 bool scroll_thumb(const Widget::ScrollExtent& e, int track, ScrollThumb& out) {
-  // No bar when there is nothing to scroll, or nowhere to draw one. Both are answers,
-  // not edge cases: a bar on a document that fits is a lie about there being more.
-  if (track <= 0 || e.total == 0 || e.visible == 0 || e.total <= e.visible) return false;
-  const double frac = static_cast<double>(e.visible) / static_cast<double>(e.total);
-  int len = static_cast<int>(frac * track + 0.5);
-  if (len < 1) len = 1;          // always visible: a 1-cell thumb still says where you are
-  if (len > track) len = track;
-  const std::size_t max_first = e.total - e.visible;
-  const std::size_t first = e.first > max_first ? max_first : e.first;
-  const int span = track - len;  // the cells the thumb can travel
-  int off = span <= 0 ? 0 : static_cast<int>(static_cast<double>(first) / static_cast<double>(max_first) * span + 0.5);
-  if (off < 0) off = 0;
-  if (off > span) off = span;
-  // THE GUARANTEE: the thumb touches an end IF AND ONLY IF the view is at that end.
-  // Snapping the ends is not enough on its own — with 90 positions and 9 travel cells,
-  // line 89 also rounds onto the last cell, so "the thumb is at the bottom" would stop
-  // meaning "you are at the bottom" and a reader could not tell one line short of the
-  // end from the end. So the end cells are RESERVED for the ends and everything between
-  // is squeezed into what is left. Below a 2-cell span there is nothing to reserve, and
-  // the honest answer is the ends alone.
-  if (span >= 2) {
-    if (first == 0) off = 0;
-    else if (first == max_first) off = span;
-    else off = std::clamp(off, 1, span - 1);
-  } else {
-    off = (first == max_first) ? span : 0;
-  }
-  out.offset = off;
-  out.length = len;
+  RolltuiScrollThumb t;
+  if (!rolltui_scroll_thumb(&e, track, &t)) return false;
+  out.offset = t.offset;
+  out.length = t.length;
   return true;
 }
 
 std::size_t scroll_first_for_cell(const Widget::ScrollExtent& e, int track, int cell) {
-  if (e.total <= e.visible || track <= 0) return 0;
-  const std::size_t max_first = e.total - e.visible;
-  ScrollThumb t;
-  const int len = scroll_thumb(e, track, t) ? t.length : 1;
-  const int span = track - len;
-  if (span <= 0) return cell <= 0 ? 0 : max_first;
-  int c = cell;
-  if (c < 0) c = 0;
-  if (c > span) c = span;
-  const double f = static_cast<double>(c) / static_cast<double>(span) * static_cast<double>(max_first) + 0.5;
-  const std::size_t first = static_cast<std::size_t>(f);
-  return first > max_first ? max_first : first;
+  return rolltui_scroll_first_for_cell(&e, track, cell);
 }
 
 int draw_scrolled_text(const ResolvedNode& rn, Frame& f, const Theme& theme, std::string_view text, int top,
@@ -664,7 +673,7 @@ class HelpWidget : public ScrollTextWidget {
 
 // ---- Windows -------------------------------------------------------------------------
 
-Windows::Windows() = default;
+Windows::Windows() { register_builtin_kinds(); }
 Windows::~Windows() = default;
 
 void Windows::bind_document(std::string name, const Document* doc) { documents_[std::move(name)] = doc; }
@@ -704,7 +713,24 @@ bool Windows::register_kind(std::string name, Factory factory, SourceRule rule, 
     return false;
   }
   if (!register_widget_kind(name, rule, std::move(source_is), why)) return false;
-  factories_[std::move(name)] = std::move(factory);
+  factories_[name] = std::move(factory);
+  // …and the boundary's half. One call registers the NAME with the layout vocabulary and the
+  // FACTORY here, and this is where the host's kind joins the library's own seven in the one
+  // table `widget_for` reads (the vtable header's rule 5).
+  rolltui_windows_register_kind(
+      w_.get(), name.data(), name.size(),
+      [](void* c, const char* content, std::size_t n) {
+        Windows& self = *static_cast<Windows*>(c);
+        std::optional<Content> parsed = parse_content(std::string_view(content, n));
+        if (!parsed) return RolltuiWidget{};
+        auto it = self.factories_.find(parsed->registered_name);
+        if (it == self.factories_.end()) return RolltuiWidget{};
+        std::unique_ptr<Widget> w = it->second();
+        if (!w) return RolltuiWidget{};
+        w->content = *parsed;
+        return as_widget(std::move(w));
+      },
+      this);
   return true;
 }
 
@@ -732,114 +758,169 @@ std::string Windows::help_text(std::string_view scope) const {
   return help_document(bindings(), "", {std::string(scope)}, "");
 }
 
-void Windows::set_env(WidgetEnv env) { env_ = env; }
+void Windows::set_env(WidgetEnv env) {
+  env_ = env;
+  // The boundary's half of the environment: the two facts the WINDOW itself draws with (the
+  // scrollbar's ambiguous-width thumb) and the clock. The live bindings table stays here —
+  // it is a C++ object the widgets read, not something the window host asks anything of.
+  const RolltuiWidgetEnv e{static_cast<unsigned char>(env_.ambiguous_wide), env_.now_ms};
+  rolltui_windows_set_env(w_.get(), &e);
+}
 const Bindings& Windows::bindings() const { return env_.bindings ? *env_.bindings : default_bindings(); }
 
 Widget* Windows::widget_for(const std::string& content) {
-  auto it = by_content_.find(content);
-  if (it != by_content_.end()) return it->second.get();
-  std::string why;
-  std::optional<Content> c = parse_content(content, &why);
-  std::unique_ptr<Widget> w;
-  if (!c) {
-    w = std::make_unique<ErrorWidget>(*this, why);
-  } else {
-    switch (c->kind) {
-      case WidgetKind::Transcript: w = std::make_unique<TranscriptWidget>(*this); break;
-      case WidgetKind::Input: w = std::make_unique<InputWidget>(*this); break;
-      case WidgetKind::Menu: w = std::make_unique<MenuWidget>(*this); break;
-      case WidgetKind::Rows: w = std::make_unique<RowsWidget>(*this); break;
-      case WidgetKind::Text: w = std::make_unique<TextWidget>(*this); break;
-      case WidgetKind::File: w = std::make_unique<FileWidget>(*this); break;
-      case WidgetKind::Help: w = std::make_unique<HelpWidget>(*this); break;
-      case WidgetKind::Registered: {
-        // Rung 2. The name resolved in the layout vocabulary, so a factory for it exists
-        // unless a host cleared the registry behind this Windows' back — which is a named
-        // error panel like any other, never a null widget or a blank window.
-        auto it = factories_.find(c->registered_name);
-        if (it == factories_.end())
-          w = std::make_unique<ErrorWidget>(*this, "kind '" + c->registered_name + "' is registered but this host has no factory for it");
-        else
-          w = it->second();
-        if (!w) w = std::make_unique<ErrorWidget>(*this, "kind '" + c->registered_name + "' built nothing");
-        break;
-      }
-    }
-    w->content = *c;
-  }
-  Widget* raw = w.get();
-  by_content_[content] = std::move(w);
-  return raw;
+  RolltuiWidget* w = rolltui_windows_widget_for(w_.get(), content.data(), content.size());
+  return static_cast<Widget*>(w->self);
 }
+
+// ---- THE VTABLE ADAPTER, and the library's own seven kinds registered through it ---------
+//
+// This is the whole of Phase 15 m5's answer for this module: `Widget`'s virtuals ARE the
+// vtable in `rolltui/c/rolltui_widgets.h`, and the library's kinds fill it exactly as a
+// host's registered kind does. There is one adapter table for every widget in the program,
+// because every widget's `self` is a `rolltui::Widget*` — a host reaches the boundary through
+// `register_kind`, never by filling a vtable itself.
 
 namespace {
 
-void each_window(const Node& n, const std::function<void(const Node&)>& fn) {
-  if (n.is_window()) {
-    fn(n);
-    return;
-  }
-  for (const Node& c : n.children) each_window(c, fn);
+// OWNERSHIP CROSSES BACK HERE, and it is spelled with a `unique_ptr` rather than a bare
+// `delete` — the shape `rolltui_frame_free` already uses, and the one the ownership test
+// refuses to let anything else be.
+void vt_destroy(void* self) { const std::unique_ptr<Widget> owned(static_cast<Widget*>(self)); }
+
+void vt_layout(void* self, const RolltuiResolvedNode* rn) { static_cast<Widget*>(self)->layout(*rn); }
+
+void vt_draw(void* self, const RolltuiResolvedNode* rn, RolltuiFrame*) {
+  Widget* w = static_cast<Widget*>(self);
+  DrawCtx& d = draw_ctx();
+  w->draw(*rn, *d.frame, *d.theme);
+}
+
+int vt_problem(void* self, RolltuiStr* out) {
+  const std::string why = static_cast<Widget*>(self)->problem();
+  if (why.empty()) return 0;
+  *out = why;
+  return 1;
+}
+
+int vt_note_at(void* self, std::size_t i, RolltuiStr* out) {
+  const std::vector<std::string> notes = static_cast<Widget*>(self)->notes();
+  if (i >= notes.size()) return 0;
+  *out = notes[i];
+  return 1;
+}
+
+int vt_desired_outer(void* self, int inner_w, int parent_extent, int border, int* out) {
+  const std::optional<int> want = static_cast<Widget*>(self)->desired_outer(inner_w, parent_extent, border);
+  if (!want) return 0;
+  *out = *want;
+  return 1;
+}
+
+int vt_handle(void* self, const RolltuiEvent* e) {
+  const Event ev = event_of(*e);
+  return static_cast<Widget*>(self)->handle(ev) ? 1 : 0;
+}
+
+int vt_scroll_extent(void* self, unsigned char axis, RolltuiScrollExtent* out) {
+  const std::optional<Widget::ScrollExtent> e =
+      static_cast<Widget*>(self)->scroll_extent(static_cast<Widget::Axis>(axis));
+  if (!e) return 0;
+  *out = *e;
+  return 1;
+}
+
+int vt_scroll_to(void* self, unsigned char axis, std::size_t first) {
+  return static_cast<Widget*>(self)->scroll_to(static_cast<Widget::Axis>(axis), first) ? 1 : 0;
+}
+
+constexpr RolltuiWidgetVTable kWidgetVT = {
+    vt_destroy, vt_layout,        vt_draw,          vt_problem,       vt_note_at,
+    vt_desired_outer, vt_handle,  vt_scroll_extent, vt_scroll_to,
+};
+
+RolltuiWidget as_widget(std::unique_ptr<Widget> w) {
+  RolltuiWidget out{};
+  if (!w) return out;
+  out.vt = &kWidgetVT;
+  out.self = w.release();
+  return out;
+}
+
+// One factory body for all seven library kinds: build it, give it its parsed content, wrap
+// it. A content that will not parse comes back empty, and the error factory answers instead
+// — which is the same path a host's unregistered kind takes.
+template <typename W>
+RolltuiWidget make_kind(void* ctx, const char* content, std::size_t n) {
+  Windows& windows = *static_cast<Windows*>(ctx);
+  std::optional<Content> c = parse_content(std::string_view(content, n));
+  if (!c) return RolltuiWidget{};
+  auto w = std::make_unique<W>(windows);
+  w->content = *c;
+  return as_widget(std::move(w));
 }
 
 }  // namespace
 
+// The seven library kinds and the error panel, as factories — registered at construction, so
+// `widget_for` has ONE path and "a transcript window" is built the way roll's approval modal
+// is (the vtable header's rule 5).
+void Windows::register_builtin_kinds() {
+  auto reg = [&](const char* name, RolltuiWidgetFactory f) {
+    rolltui_windows_register_kind(w_.get(), name, std::strlen(name), f, this);
+  };
+  reg("transcript", [](void* c, const char* s, std::size_t n) {
+    return make_kind<TranscriptWidget>(c, s, n);
+  });
+  reg("input", [](void* c, const char* s, std::size_t n) { return make_kind<InputWidget>(c, s, n); });
+  reg("menu", [](void* c, const char* s, std::size_t n) { return make_kind<MenuWidget>(c, s, n); });
+  reg("rows", [](void* c, const char* s, std::size_t n) { return make_kind<RowsWidget>(c, s, n); });
+  reg("text", [](void* c, const char* s, std::size_t n) { return make_kind<TextWidget>(c, s, n); });
+  reg("file", [](void* c, const char* s, std::size_t n) { return make_kind<FileWidget>(c, s, n); });
+  reg("help", [](void* c, const char* s, std::size_t n) { return make_kind<HelpWidget>(c, s, n); });
+  // THE TWO FALLBACKS. `error` is given a CONTENT nothing could build and works out the
+  // reason; `panel` is given a REASON. Two entry points because the argument means two
+  // different things, which is the distinction CLAUDE.md's corollary says to state rather
+  // than let one function guess between.
+  rolltui_windows_set_error_factory(
+      w_.get(),
+      [](void* c, const char* content, std::size_t n) {
+        Windows& self = *static_cast<Windows*>(c);
+        const std::string_view text(content, n);
+        std::string why;
+        if (std::optional<Content> parsed = parse_content(text, &why)) {
+          // It PARSES, so its kind is in one of the two rungs — and nothing built it, which
+          // for a registered kind means this host has no factory. A named panel, never a
+          // blank window (Layout.hpp).
+          why = "kind '" + std::string(content_kind_name(*parsed)) +
+                "' is registered but this host has no factory for it";
+        }
+        return as_widget(std::make_unique<ErrorWidget>(self, why));
+      },
+      this);
+  rolltui_windows_set_panel_factory(
+      w_.get(),
+      [](void* c, const char* why, std::size_t n) {
+        return as_widget(std::make_unique<ErrorWidget>(*static_cast<Windows*>(c), std::string(why, n)));
+      },
+      this);
+}
+
 WindowsReport Windows::sync(const WindowStack& stack) {
+  rolltui_windows_sync(w_.get(), stack.handle());
   WindowsReport rep;
-  // m5b: the map is REBUILT IN PLACE, not cleared. `clear()` destroys every node and the
-  // next frame allocates them again — three a frame, for a window set that almost never
-  // changes. `seen` marks what this pass found; anything unmarked afterwards is gone.
-  for (auto& [id, w] : by_window_) w = nullptr;
-  for (std::size_t li = 0; li < stack.depth(); ++li)
-    each_window(stack.layer(li).root, [&](const Node& n) {
-      Widget* w = widget_for(n.content.str());
-      by_window_[n.id.str()] = w;  // insert_or_assign: an existing node is reused
-      // Phase 13 m5: the "window 'x' (content 'y'): " prefix is built only when there is
-      // something to say. It used to be built for every window of every frame and thrown
-      // away — a heap allocation per window per paint to describe a problem that almost
-      // never exists.
-      std::string p = w->problem();
-      const std::vector<std::string> notes = p.empty() ? w->notes() : std::vector<std::string>{};
-      if (p.empty() && notes.empty()) return;
-      const std::string where = "window '" + n.id + "' (content '" + n.content + "'): ";
-      if (!p.empty()) rep.bad_values.push_back(where + p);
-      for (const std::string& note : notes) rep.bad_values.push_back(where + note);
-    });
-  for (auto it = by_window_.begin(); it != by_window_.end();)
-    it = it->second ? std::next(it) : by_window_.erase(it);
+  for (std::size_t i = 0; i < rolltui_windows_report_count(w_.get()); ++i) {
+    std::size_t n = 0;
+    const char* p = rolltui_windows_report_at(w_.get(), i, &n);
+    rep.bad_values.emplace_back(p, n);
+  }
   return rep;
 }
 
-void Windows::autosize(WindowStack& stack, Rect box) {
-  static thread_local Scratch<std::vector<ResolvedNode>> scratch("autosize nodes");
-  auto nodes = scratch.lock();
-  stack.resolve_into(box, *nodes);
-  for (const ResolvedNode& rn : *nodes) {
-    if (!rn.node->is_window()) continue;
-    Widget* w = at(rn.node->id);
-    if (!w) continue;
-    // The parent split is the INNERMOST one that contains this window — the last in
-    // tree order, since a container precedes its children and siblings never overlap.
-    // It decides the axis (a Row divides width, a Column height) and the extent the
-    // widget sizes itself against; with no split above it, that is the layer's box.
-    const ResolvedNode* parent = nullptr;
-    for (const ResolvedNode& p : *nodes)
-      if (!p.node->is_window() && p.layer == rn.layer && p.inner.contains(rn.outer.x, rn.outer.y)) parent = &p;
-    const bool row = parent && parent->node->kind == Node::Kind::Row;
-    const int extent = !parent ? box.h : row ? parent->inner.w : parent->inner.h;
-    const int border = rn.node->border != Border::None ? 2 : 0;
-    if (std::optional<int> want = w->desired_outer(rn.inner.w, extent, border))
-      if (Node* nd = stack.find(rn.node->id)) nd->size = SplitSize::fixed(Dim::abs(*want));
-  }
-}
+void Windows::autosize(WindowStack& stack, Rect box) { rolltui_windows_autosize(w_.get(), stack.handle(), box); }
 
 void Windows::layout(const WindowStack& stack, Rect box) {
-  static thread_local Scratch<std::vector<ResolvedNode>> scratch("layout nodes");
-  auto nodes = scratch.lock();
-  stack.resolve_into(box, *nodes);
-  for (const ResolvedNode& rn : *nodes)
-    if (rn.node->is_window())
-      if (Widget* w = at(rn.node->id)) w->layout(rn);
+  rolltui_windows_layout(w_.get(), stack.handle(), box);
 }
 
 WindowsReport Windows::prepare(WindowStack& stack, Rect box) {
@@ -849,101 +930,30 @@ WindowsReport Windows::prepare(WindowStack& stack, Rect box) {
   return rep;
 }
 
-void Windows::draw(const ResolvedNode& rn, Frame& f, const Theme& theme) {
-  if (!rn.node->is_window()) return;
-  Widget* w = at(rn.node->id);
-  if (!w) return;
-  if (const std::string why = w->problem(); !why.empty()) {
-    ErrorWidget(*this, why).draw(rn, f, theme);
-    return;
-  }
-  w->draw(rn, f, theme);
-  draw_scrollbar(rn, *w, f, theme);
-}
+// THE TWO ROLES THE WINDOW ITSELF DRAWS WITH (the scrollbar's), handed over as bytes.
+namespace {
+constexpr RolltuiWindowRoles kWindowRoles = {
+    /*scrollbar=*/static_cast<unsigned char>(Role::scrollbar),
+    /*border=*/static_cast<unsigned char>(Role::border),
+    /*border_active=*/static_cast<unsigned char>(Role::border_active),
+};
+}  // namespace
 
-// The bar lives in the window's RIGHT BORDER COLUMN, which is why the window draws it
-// and not the widget: a widget is handed a content rect and knows nothing about whether
-// it has a border. A window WITHOUT a border has no track and gets no bar — the `▼ N
-// more` marker is the signal there (Phase 12 m5: both are kept, and they answer
-// different questions — the marker is the non-graphical one).
-void Windows::draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const Theme& theme) {
-  // m5b: the entry is ZEROED, not erased. `erase` + `operator[]` destroys a map node and
-  // allocates a new one EVERY FRAME for every window with a scrollbar — the third instance
-  // of the same trap (clear/erase throws away exactly the storage being reused). `h == 0`
-  // is what "no track this frame" means now.
-  Track& slot = tracks_[rn.node->id.str()];
-  slot = Track{};
-  if (rn.node->border == Border::None) return;
-  const std::optional<Widget::ScrollExtent> e = w.scroll_extent(Widget::Axis::Vertical);
-  if (!e) return;
-  const int track = rn.outer.h - 2;  // between the corners
-  const int x = rn.outer.x + rn.outer.w - 1;
-  if (track <= 0 || rn.outer.w < 2) return;
-  ScrollThumb t;
-  if (!scroll_thumb(*e, track, t)) return;
-  slot = Track{x, rn.outer.y + 1, track};
-  Style s = theme.style(Role::scrollbar);
-  const Style ground = theme.style(rn.node->background);
-  if (s.bg.kind == Color::Kind::None) s.bg = ground.bg;
-  // █ (U+2588) is East Asian AMBIGUOUS, exactly like the box-drawing set the border is
-  // made of — so it follows the same rule the border already has (Layout.hpp): with
-  // `ambiguous_wide` the thumb is ASCII. Drawing the block anyway put a glyph a
-  // wide-ambiguous terminal renders in TWO cells into a one-cell border column, which
-  // shifts the whole row. Found by Phase 12 m7, and only findable once the thumb stopped
-  // being overwritten by the neighbour's border.
-  const char* thumb = env_.ambiguous_wide ? "#" : "\xE2\x96\x88";
-  for (int i = 0; i < t.length; ++i) {
-    const int y = rn.outer.y + 1 + t.offset + i;
-    if (y >= rn.outer.y + rn.outer.h - 1) break;
-    f.put(x, y, thumb, 1, s);
-  }
+void Windows::draw(const ResolvedNode& rn, Frame& f, const Theme& theme) {
+  // The frame and theme travel in a per-call context rather than through the vtable: a
+  // `Theme` is a C++ object with an owned effect map, and handing one across the boundary
+  // for every widget of every frame would be a view boundary onto a module that has not
+  // ported — exactly the trade m2 declined for `EffectSpec` and wrote down.
+  DrawCtx& d = draw_ctx();
+  DrawCtx saved = d;
+  d = {&f, &theme};
+  rolltui_windows_draw(w_.get(), &rn, f.handle(), theme.styles.data(), &kWindowRoles);
+  d = saved;
 }
 
 bool Windows::handle(std::string_view window, const Event& e) {
-  Widget* w = at(window);
-  if (!w || !w->problem().empty()) return false;
-  if (handle_scrollbar(window, *w, e)) return true;
-  return w->handle(e);
-}
-
-// A press in the track column drives the widget — but ONLY a widget that accepted
-// scroll_to(). One that merely reports (a menu, whose scroll is derived from its
-// selection) gets an accurate bar that is not a handle, which is the whole reason
-// Widget's scroll capability is two optional halves.
-bool Windows::handle_scrollbar(std::string_view window, Widget& w, const Event& e) {
-  const MouseEvent* m = std::get_if<MouseEvent>(&e);
-  if (!m) return false;
-  const std::string id(window);
-  if (m->kind == MouseEvent::Kind::Release) {
-    if (bar_drag_ != id) return false;
-    bar_drag_.clear();
-    return true;
-  }
-  auto it = tracks_.find(id);
-  if (it == tracks_.end() || it->second.h <= 0) return false;  // h == 0: no track drawn
-  const Track& tr = it->second;
-  const std::optional<Widget::ScrollExtent> e2 = w.scroll_extent(Widget::Axis::Vertical);
-  if (!e2) return false;
-  ScrollThumb th;
-  if (!scroll_thumb(*e2, tr.h, th)) return false;
-  if (m->kind == MouseEvent::Kind::Press) {
-    if (m->button != 1 || m->x != tr.x || m->y < tr.y || m->y >= tr.y + tr.h) return false;
-    const int cell = m->y - tr.y;
-    // On the thumb: grab it where it was taken, so it does not jump under the pointer.
-    // In the trough: jump so the thumb's START lands there, which is the one rule that
-    // makes a click and the drag that may follow it agree.
-    bar_grab_ = (cell >= th.offset && cell < th.offset + th.length) ? cell - th.offset : 0;
-    if (!w.scroll_to(Widget::Axis::Vertical, scroll_first_for_cell(*e2, tr.h, cell - bar_grab_))) return false;
-    bar_drag_ = id;
-    return true;
-  }
-  if (m->kind == MouseEvent::Kind::Drag) {
-    if (bar_drag_ != id) return false;
-    // The pointer may be anywhere by now (the press captured it), so only its ROW counts.
-    w.scroll_to(Widget::Axis::Vertical, scroll_first_for_cell(*e2, tr.h, m->y - tr.y - bar_grab_));
-    return true;
-  }
-  return false;
+  const RolltuiEvent ev = c_event_of(e);
+  return rolltui_windows_handle(w_.get(), window.data(), window.size(), &ev) != 0;
 }
 
 InputAction Windows::input_event(std::string_view source, const Event& e) {
@@ -987,8 +997,8 @@ std::vector<std::string> Windows::menu_names() const {
 }
 
 Widget* Windows::at(std::string_view window) const {
-  auto it = by_window_.find(window);
-  return it == by_window_.end() ? nullptr : it->second;
+  RolltuiWidget* w = rolltui_windows_at(w_.get(), window.data(), window.size());
+  return w ? static_cast<Widget*>(w->self) : nullptr;
 }
 
 std::optional<Content> Windows::content_at(std::string_view window) const {

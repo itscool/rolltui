@@ -82,6 +82,7 @@
 #include <vector>
 
 #include "rolltui/Bindings.hpp"
+#include "rolltui/c/rolltui_widgets.h"
 #include "rolltui/Document.hpp"
 #include "rolltui/Input.hpp"
 #include "rolltui/Layout.hpp"
@@ -177,6 +178,14 @@ bool scroll_by_action(const KeyEvent& k, const Bindings& b, int page, int total,
 
 // The one interface. A widget is created by kind, keyed by content, and never sees a
 // window id — everything it needs comes from the ResolvedNode it is drawn into.
+//
+// PHASE 15 m5 — THESE VIRTUALS ARE ONE VTABLE STRUCT AT THE BOUNDARY
+// (`rolltui/c/rolltui_widgets.h`), AND THE RULE FOR ADDING TO THEM IS STATED THERE. Nothing
+// a host writes changed: `Windows` wraps every widget it builds — its own seven kinds and a
+// host's alike — in a `RolltuiWidget` whose `self` is the object below. What changed is that
+// the SET is now enumerable, so a tenth question has to say, in writing and before its first
+// caller exists, what a widget that has never heard of it does. Read that rule before adding
+// a virtual here; a virtual added here without a slot there is invisible to the window.
 class Widget {
  public:
   virtual ~Widget() = default;
@@ -219,12 +228,8 @@ class Widget {
   // Declared PER AXIS from the start even though only Vertical is implemented — a wide
   // table or code block will want the horizontal one, and a vertical-only assumption is
   // one enum parameter to avoid now and a rewrite to retrofit.
-  enum class Axis : std::uint8_t { Vertical, Horizontal };
-  struct ScrollExtent {
-    std::size_t first = 0;    // the first visible line
-    std::size_t visible = 0;  // how many lines the viewport shows
-    std::size_t total = 0;    // how many there are
-  };
+  enum class Axis : std::uint8_t { Vertical = ROLLTUI_AXIS_VERTICAL, Horizontal = ROLLTUI_AXIS_HORIZONTAL };
+  using ScrollExtent = RolltuiScrollExtent;
   virtual std::optional<ScrollExtent> scroll_extent(Axis /*axis*/) const { return std::nullopt; }
   // False when this widget reports but will not be driven. Anything that returns true
   // must clamp: the window passes what the pointer implies, not what is valid.
@@ -286,6 +291,8 @@ class Windows {
  public:
   Windows();
   ~Windows();
+  // The handle, for the shim's own factories and for nothing else.
+  RolltuiWindows* handle() { return w_.get(); }
   Windows(const Windows&) = delete;
   Windows& operator=(const Windows&) = delete;
 
@@ -302,6 +309,10 @@ class Windows {
   // windows on `transcript:session` are one transcript, and a layout hot-reload keeps
   // the pixels for the reason it keeps the half-typed line.
   using Factory = std::function<std::unique_ptr<Widget>()>;
+  // OWNED, through a `unique_ptr` with a deleter that calls the C free.
+  struct Handle {
+    void operator()(RolltuiWindows* p) const { rolltui_windows_free(p); }
+  };
 
   // ---- what a host binds (by source name; rebinding replaces) ----
   void bind_document(std::string name, const Document* doc);
@@ -432,11 +443,9 @@ class Windows {
  private:
   friend class WidgetBase;
   Widget* widget_for(const std::string& content);
-  // The scrollbar is the WINDOW's, not the widget's: it lives in the border column,
-  // which a widget never sees (Phase 12 m5).
-  void draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const Theme& theme);
-  bool handle_scrollbar(std::string_view window, Widget& w, const Event& e);
-
+  // The library's own seven kinds and the error panel, registered through the same call a
+  // host uses (rolltui/c/rolltui_widgets.h's rule 5).
+  void register_builtin_kinds();
   WidgetEnv env_;
   std::string dir_;
   std::string help_lead_, help_note_;
@@ -451,20 +460,18 @@ class Windows {
   // the text. Written by draw(), read by handle(): the frame is always drawn before the
   // events that follow it, so this is a memo of the last frame, never a second source of
   // truth about where anything is.
-  struct Track {
-    int x = 0, y = 0, h = 0;
-  };
-  std::map<std::string, Track> tracks_;
-  std::string bar_drag_;  // the window whose thumb is being dragged, "" for none
-  int bar_grab_ = 0;      // cells from the thumb's start to where it was grabbed
   std::map<std::string, NoteFn> notes_;
   markdown::Highlighter highlighter_;
   std::uint64_t highlighter_epoch_ = 0;
   int code_fold_over_lines_ = 0, code_cap_lines_ = 0;
   std::map<std::string, std::string> host_menus_;  // add_menu: name → the file's text
   std::map<std::string, Factory> factories_;       // register_kind: kind name → how to build one
-  std::map<std::string, std::unique_ptr<Widget>> by_content_;
-  std::map<std::string, Widget*, std::less<>> by_window_;
+  // THE WIDGET TABLE, THE PER-WINDOW ROUTING TABLE, THE KIND REGISTRY AND THE SCROLLBAR'S
+  // TRACKS ARE THE BOUNDARY'S (Phase 15 m5). They were four `std::map`s and two loose
+  // scalars here; the one that mattered was `map<string, unique_ptr<Widget>> by_content_`,
+  // which is this milestone's named lifetime and is now an explicit table that destroys
+  // every widget through the vtable's own `destroy` slot.
+  std::unique_ptr<RolltuiWindows, Handle> w_{rolltui_windows_new()};
 };
 
 }  // namespace rolltui

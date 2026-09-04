@@ -286,7 +286,11 @@ int main() {
         // vector could not promise. The four left are `RolltuiMenu* p` in `Menu::Handle`
         // (the deleter of the OWNED widget) and three `MenuItem*`/`const MenuItem*`
         // borrows — `find()` twice and `selected_item()`.
-        {"Layout.hpp", 8},       {"Markdown.hpp", 10},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
+        // Layout.hpp 8 → 10 (Phase 15 m5, second pass): `RolltuiWindowStack* handle()` and
+        // its const overload, a BORROW of the stack this object owns. `Windows` syncs,
+        // autosizes and lays out against it from behind its own C boundary, so the two
+        // modules meet at the handle instead of at a `std::vector<Layer>&`.
+        {"Layout.hpp", 10},      {"Markdown.hpp", 10},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -335,7 +339,12 @@ int main() {
         {"PresetStore.hpp", 25},   {"Scratch.hpp", 9},     {"Screen.hpp", 6},
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
-        {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 10},
+        // Widgets.hpp 10 → 12 (Phase 15 m5): `RolltuiWindows* p` in `Windows::Handle` — the
+        // deleter of the OWNED widget table, which is this milestone's named lifetime — and
+        // `RolltuiWindows* handle()`, a BORROW for the shim's own factories. The ten that
+        // were already here are unchanged; what left the header is four `std::map`s, one of
+        // which owned every widget in the program.
+        {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 12},
         // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
         // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
         // pointer was `const Range* table` on `lookup()`, the binary search the inline
@@ -399,7 +408,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 100, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 104, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

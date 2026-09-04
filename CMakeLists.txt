@@ -46,12 +46,13 @@ if(ROLLTUI_C)
                     c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
                     c/rolltui_theme.c c/rolltui_bindings.c
                     c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
-                    c/rolltui_input.c c/rolltui_menu.c)
+                    c/rolltui_input.c c/rolltui_menu.c
+                    c/rolltui_widgets.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
   set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp KeysCpp.cpp
                     ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp MarkdownCpp.cpp LayoutCpp.cpp
-                    InputCpp.cpp MenuCpp.cpp)
+                    InputCpp.cpp MenuCpp.cpp WidgetsCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
@@ -123,6 +124,9 @@ add_library(rolltui STATIC
   c/rolltui_menu_tree.c       # Phase 15 m5: THE MENU TREE, the second recursive owning tree,
                               #   also in both configurations and for the same reason.
   MenuTree.cpp                #   …and its C++ half.
+  c/rolltui_map.c             # Phase 15 m5: THE STRING-KEYED TABLE, once — seven
+                              #   `unordered_map<string, T>`s across two modules had it
+                              #   invisibly. Both configurations, like the rest of the data.
   c/rolltui_md_lines.c        # Phase 15 m4: THE SPAN STORE. Also in both configurations,
                               #   and for a second reason stated at its header: it is the
                               #   DATA both implementations of the renderer fill, and two

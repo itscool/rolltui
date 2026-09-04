@@ -1,0 +1,493 @@
+/* rolltui/c/rolltui_widgets.c — the C side of the widget vtable's host. See
+ * rolltui_widgets.h; the rules are rolltui/Widgets.hpp's. */
+#include "rolltui/c/rolltui_widgets.h"
+
+#include <string.h>
+
+#include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_map.h"
+
+static int imax(int a, int b) { return a > b ? a : b; }
+static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+/* ---- the scrollbar's geometry ------------------------------------------------------------- */
+
+int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out) {
+  double frac;
+  int len, span, off;
+  size_t max_first, first;
+  /* No bar when there is nothing to scroll, or nowhere to draw one. Both are answers, not
+   * edge cases: a bar on a document that fits is a lie about there being more. */
+  if (track <= 0 || e->total == 0 || e->visible == 0 || e->total <= e->visible) return 0;
+  frac = (double)e->visible / (double)e->total;
+  len = (int)(frac * track + 0.5);
+  if (len < 1) len = 1; /* always visible: a 1-cell thumb still says where you are */
+  if (len > track) len = track;
+  max_first = e->total - e->visible;
+  first = e->first > max_first ? max_first : e->first;
+  span = track - len;
+  off = span <= 0 ? 0 : (int)((double)first / (double)max_first * span + 0.5);
+  if (off < 0) off = 0;
+  if (off > span) off = span;
+  /* THE GUARANTEE: the thumb touches an end IF AND ONLY IF the view is at that end. The end
+   * cells are RESERVED for the ends and everything between is squeezed into what is left;
+   * below a 2-cell span there is nothing to reserve and the honest answer is the ends alone.
+   * (Widgets.hpp states the whole of it.) */
+  if (span >= 2) {
+    if (first == 0) off = 0;
+    else if (first == max_first) off = span;
+    else off = iclamp(off, 1, span - 1);
+  } else {
+    off = (first == max_first) ? span : 0;
+  }
+  out->offset = off;
+  out->length = len;
+  return 1;
+}
+
+size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, int cell) {
+  size_t max_first, first;
+  RolltuiScrollThumb t;
+  int len, span, c;
+  double f;
+  if (e->total <= e->visible || track <= 0) return 0;
+  max_first = e->total - e->visible;
+  len = rolltui_scroll_thumb(e, track, &t) ? t.length : 1;
+  span = track - len;
+  if (span <= 0) return cell <= 0 ? 0 : max_first;
+  c = cell;
+  if (c < 0) c = 0;
+  if (c > span) c = span;
+  f = (double)c / (double)span * (double)max_first + 0.5;
+  first = (size_t)f;
+  return first > max_first ? max_first : first;
+}
+
+void rolltui_content_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
+  *out = rn->inner;
+  if (rn->node->border != 0 /* Border::None */ && out->w >= 3) {
+    out->x += 1;
+    out->w -= 2;
+  }
+}
+
+/* ---- the host ------------------------------------------------------------------------------- */
+
+/* One registered kind: a name, a factory and the context it was registered with. The
+ * library's own seven are in here beside a host's, which is rule 5 made literal. */
+typedef struct KindRow {
+  RolltuiStr name;
+  RolltuiWidgetFactory factory;
+  void* ctx;
+} KindRow;
+
+/* Where a window's scrollbar track WAS on the last frame, so `handle` — which is given a
+ * window id and no geometry — can tell a press on the thumb from a press on the text. */
+typedef struct Track {
+  int x, y, h;
+} Track;
+
+/* What a window holds, this frame: its widget (BORROWED from `by_content`), its content
+ * string, and its track. One entry per window, rebuilt in place by `sync`. */
+typedef struct WindowSlot {
+  RolltuiWidget* widget;
+  RolltuiStr content;
+  Track track;
+  int live; /* this sync found it */
+} WindowSlot;
+
+struct RolltuiWindows {
+  RolltuiMap by_content; /* content → RolltuiWidget*, OWNED (this table destroys them) */
+  RolltuiMap by_window;  /* window id → WindowSlot*, OWNED */
+  KindRow* kinds;
+  size_t kind_n, kind_cap;
+  RolltuiWidgetFactory error_factory;
+  void* error_ctx;
+  RolltuiWidgetFactory panel_factory;
+  void* panel_ctx;
+  RolltuiWidgetEnv env;
+
+  RolltuiStr* report; /* the bad values `sync` collected; BORROWED out */
+  size_t report_n, report_cap;
+  RolltuiStr scratch; /* the "window 'x' (content 'y'): " prefix, built only when needed */
+
+  RolltuiStr bar_drag; /* the window whose thumb is being dragged, "" for none */
+  int bar_grab;        /* cells from the thumb's start to where it was grabbed */
+
+  RolltuiResolvedNode* nodes; /* the per-frame resolve buffer, reused */
+  size_t node_n, node_cap;
+};
+
+RolltuiWindows* rolltui_windows_new(void) {
+  RolltuiWindows* w = (RolltuiWindows*)rolltui_mem_alloc(sizeof *w);
+  memset(w, 0, sizeof *w);
+  return w;
+}
+
+static void widget_destroy(RolltuiWidget* wd) {
+  if (!wd) return;
+  if (wd->vt && wd->vt->destroy && wd->self) wd->vt->destroy(wd->self);
+  rolltui_mem_free(wd);
+}
+
+void rolltui_windows_free(RolltuiWindows* w) {
+  size_t i;
+  if (!w) return;
+  for (i = 0; i < rolltui_map_count(&w->by_content); ++i)
+    widget_destroy((RolltuiWidget*)rolltui_map_value_at(&w->by_content, i));
+  rolltui_map_release(&w->by_content);
+  for (i = 0; i < rolltui_map_count(&w->by_window); ++i) {
+    WindowSlot* s = (WindowSlot*)rolltui_map_value_at(&w->by_window, i);
+    rolltui_str_free(&s->content);
+    rolltui_mem_free(s);
+  }
+  rolltui_map_release(&w->by_window);
+  for (i = 0; i < w->kind_n; ++i) rolltui_str_free(&w->kinds[i].name);
+  rolltui_mem_free(w->kinds);
+  for (i = 0; i < w->report_cap; ++i) rolltui_str_free(&w->report[i]);
+  rolltui_mem_free(w->report);
+  rolltui_str_free(&w->scratch);
+  rolltui_str_free(&w->bar_drag);
+  rolltui_mem_free(w->nodes);
+  rolltui_mem_free(w);
+}
+
+void rolltui_windows_register_kind(RolltuiWindows* w, const char* name, size_t len,
+                                   RolltuiWidgetFactory factory, void* ctx) {
+  size_t i;
+  for (i = 0; i < w->kind_n; ++i)
+    if (rolltui_str_eq(&w->kinds[i].name, name, len)) {
+      w->kinds[i].factory = factory;
+      w->kinds[i].ctx = ctx;
+      return;
+    }
+  w->kinds = (KindRow*)rolltui_grow_zeroed(w->kinds, &w->kind_cap, w->kind_n + 1, sizeof *w->kinds);
+  rolltui_str_set(&w->kinds[w->kind_n].name, name, len);
+  w->kinds[w->kind_n].factory = factory;
+  w->kinds[w->kind_n].ctx = ctx;
+  ++w->kind_n;
+}
+
+void rolltui_windows_set_error_factory(RolltuiWindows* w, RolltuiWidgetFactory factory, void* ctx) {
+  w->error_factory = factory;
+  w->error_ctx = ctx;
+}
+
+void rolltui_windows_set_panel_factory(RolltuiWindows* w, RolltuiWidgetFactory factory, void* ctx) {
+  w->panel_factory = factory;
+  w->panel_ctx = ctx;
+}
+
+void rolltui_windows_set_env(RolltuiWindows* w, const RolltuiWidgetEnv* env) { w->env = *env; }
+const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w) { return &w->env; }
+
+/* The kind half of a content string, which is everything before the first ':'. */
+static size_t kind_len(const char* content, size_t len) {
+  size_t i;
+  for (i = 0; i < len; ++i)
+    if (content[i] == ':') return i;
+  return len;
+}
+
+RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content, size_t len) {
+  RolltuiWidget* wd = (RolltuiWidget*)rolltui_map_get(&w->by_content, content, len);
+  const size_t kl = kind_len(content, len);
+  RolltuiWidget built;
+  size_t i;
+  if (wd) return wd;
+  memset(&built, 0, sizeof built);
+  for (i = 0; i < w->kind_n; ++i)
+    if (rolltui_str_eq(&w->kinds[i].name, content, kl)) {
+      built = w->kinds[i].factory(w->kinds[i].ctx, content, len);
+      break;
+    }
+  /* NOTHING BUILT IS NOT AN ERROR PATH: the error factory draws the reason, which is
+   * Layout.hpp's "a window is never blank because its content was not understood". */
+  if (!built.vt && w->error_factory) built = w->error_factory(w->error_ctx, content, len);
+  wd = (RolltuiWidget*)rolltui_mem_alloc(sizeof *wd);
+  *wd = built;
+  rolltui_map_put(&w->by_content, content, len, wd);
+  return wd;
+}
+
+static WindowSlot* slot_of(const RolltuiWindows* w, const char* window, size_t len) {
+  return (WindowSlot*)rolltui_map_get(&w->by_window, window, len);
+}
+
+RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, size_t len) {
+  WindowSlot* s = slot_of(w, window, len);
+  return s ? s->widget : NULL;
+}
+
+const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
+                                       size_t* out_len) {
+  WindowSlot* s = slot_of(w, window, len);
+  if (!s) {
+    if (out_len) *out_len = 0;
+    return NULL;
+  }
+  return rolltui_str_get(&s->content, out_len);
+}
+
+/* ---- sync ------------------------------------------------------------------------------------ */
+
+static RolltuiStr* report_add(RolltuiWindows* w) {
+  w->report = (RolltuiStr*)rolltui_grow_zeroed(w->report, &w->report_cap, w->report_n + 1, sizeof *w->report);
+  return &w->report[w->report_n++];
+}
+
+size_t rolltui_windows_report_count(const RolltuiWindows* w) { return w->report_n; }
+
+const char* rolltui_windows_report_at(const RolltuiWindows* w, size_t i, size_t* len) {
+  if (i >= w->report_n) {
+    if (len) *len = 0;
+    return "";
+  }
+  return rolltui_str_get(&w->report[i], len);
+}
+
+static void note_problem(RolltuiWindows* w, const RolltuiLayoutNode* n, const RolltuiStr* what) {
+  RolltuiStr* line = report_add(w);
+  rolltui_str_clear(line);
+  rolltui_str_append(line, "window '", 8);
+  rolltui_str_append_str(line, &n->id);
+  rolltui_str_append(line, "' (content '", 12);
+  rolltui_str_append_str(line, &n->content);
+  rolltui_str_append(line, "'): ", 4);
+  rolltui_str_append_str(line, what);
+}
+
+static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
+  RolltuiWidget* wd;
+  WindowSlot* s;
+  size_t i;
+  if (n->kind != 0 /* Window */) {
+    for (i = 0; i < n->children.n; ++i) sync_node(w, n->children.v[i]);
+    return;
+  }
+  wd = rolltui_windows_widget_for(w, n->content.p, n->content.n);
+  s = slot_of(w, n->id.p, n->id.n);
+  if (!s) {
+    s = (WindowSlot*)rolltui_mem_alloc(sizeof *s);
+    memset(s, 0, sizeof *s);
+    rolltui_map_put(&w->by_window, n->id.p, n->id.n, s);
+  }
+  s->widget = wd;
+  s->live = 1;
+  rolltui_str_set(&s->content, n->content.p, n->content.n);
+  /* THE "window 'x' (content 'y'): " PREFIX IS BUILT ONLY WHEN THERE IS SOMETHING TO SAY.
+   * It used to be built for every window of every frame and thrown away (Phase 13 m5). */
+  if (wd->vt && wd->vt->problem && wd->vt->problem(wd->self, &w->scratch)) {
+    note_problem(w, n, &w->scratch);
+    return;
+  }
+  if (wd->vt && wd->vt->note_at)
+    for (i = 0; wd->vt->note_at(wd->self, i, &w->scratch); ++i) note_problem(w, n, &w->scratch);
+}
+
+void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
+  const size_t depth = rolltui_window_stack_depth(stack);
+  size_t i;
+  w->report_n = 0;
+  /* THE MAP IS REBUILT IN PLACE, not cleared: a `clear()` destroys every node and the next
+   * frame allocates them again, three a frame, for a window set that almost never changes. */
+  for (i = 0; i < rolltui_map_count(&w->by_window); ++i)
+    ((WindowSlot*)rolltui_map_value_at(&w->by_window, i))->live = 0;
+  for (i = 0; i < depth; ++i) sync_node(w, &rolltui_window_stack_layer(stack, i)->root);
+  for (i = rolltui_map_count(&w->by_window); i-- > 0;) {
+    WindowSlot* s = (WindowSlot*)rolltui_map_value_at(&w->by_window, i);
+    if (s->live) continue;
+    rolltui_map_remove_at(&w->by_window, i);
+    rolltui_str_free(&s->content);
+    rolltui_mem_free(s);
+  }
+}
+
+/* ---- the per-frame resolve buffer ---------------------------------------------------------------- */
+
+static void collect(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiWindows* w = (RolltuiWindows*)ctx;
+  w->nodes = (RolltuiResolvedNode*)rolltui_grow(w->nodes, &w->node_cap, w->node_n + 1, sizeof *w->nodes);
+  w->nodes[w->node_n++] = *rn;
+}
+
+static void resolve_into(RolltuiWindows* w, const RolltuiWindowStack* stack, RolltuiRect box) {
+  w->node_n = 0;
+  rolltui_window_stack_resolve(stack, box, collect, w);
+}
+
+void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, RolltuiRect box) {
+  size_t i, j;
+  resolve_into(w, stack, box);
+  for (i = 0; i < w->node_n; ++i) {
+    const RolltuiResolvedNode* rn = &w->nodes[i];
+    RolltuiWidget* wd;
+    const RolltuiResolvedNode* parent = NULL;
+    int row, extent, border, want = 0;
+    if (rn->node->kind != 0) continue;
+    wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
+    if (!wd || !wd->vt || !wd->vt->desired_outer) continue;
+    /* The parent split is the INNERMOST one that contains this window — the last in tree
+     * order, since a container precedes its children and siblings never overlap. */
+    for (j = 0; j < w->node_n; ++j) {
+      const RolltuiResolvedNode* p = &w->nodes[j];
+      if (p->node->kind != 0 && p->layer == rn->layer &&
+          rn->outer.x >= p->inner.x && rn->outer.y >= p->inner.y &&
+          rn->outer.x < p->inner.x + p->inner.w && rn->outer.y < p->inner.y + p->inner.h)
+        parent = p;
+    }
+    row = parent && parent->node->kind == 1 /* Row */;
+    extent = !parent ? box.h : (row ? parent->inner.w : parent->inner.h);
+    border = rn->node->border != 0 ? 2 : 0;
+    if (wd->vt->desired_outer(wd->self, rn->inner.w, extent, border, &want)) {
+      RolltuiLayoutNode* nd = rolltui_window_stack_find(stack, rn->node->id.p, rn->node->id.n);
+      if (nd) {
+        nd->size.fill = 0;
+        nd->size.weight = 1;
+        nd->size.dim.fraction = 0;
+        nd->size.dim.cells = want;
+      }
+    }
+  }
+}
+
+void rolltui_windows_layout(RolltuiWindows* w, const RolltuiWindowStack* stack, RolltuiRect box) {
+  size_t i;
+  resolve_into(w, stack, box);
+  for (i = 0; i < w->node_n; ++i) {
+    const RolltuiResolvedNode* rn = &w->nodes[i];
+    RolltuiWidget* wd;
+    if (rn->node->kind != 0) continue;
+    wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
+    if (wd && wd->vt && wd->vt->layout) wd->vt->layout(wd->self, rn);
+  }
+}
+
+/* ---- drawing ------------------------------------------------------------------------------------- */
+
+/* The bar lives in the window's RIGHT BORDER COLUMN, which is why the WINDOW draws it and not
+ * the widget: a widget is handed a content rect and knows nothing about whether it has a
+ * border. A window without a border has no track and gets no bar. */
+static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiWidget* wd,
+                           RolltuiFrame* f, const RolltuiStyle* styles, const RolltuiWindowRoles* roles) {
+  WindowSlot* s = slot_of(w, rn->node->id.p, rn->node->id.n);
+  RolltuiScrollExtent e;
+  RolltuiScrollThumb t;
+  RolltuiStyle style, ground;
+  int track, x, i;
+  const char* thumb;
+  /* THE TRACK IS ZEROED, NOT ERASED: an erase-and-reinsert destroys a table node and
+   * allocates a new one every frame for every window with a scrollbar. `h == 0` is what "no
+   * track this frame" means. */
+  if (s) {
+    s->track.x = 0;
+    s->track.y = 0;
+    s->track.h = 0;
+  }
+  if (rn->node->border == 0) return;
+  if (!wd->vt || !wd->vt->scroll_extent) return;
+  memset(&e, 0, sizeof e);
+  if (!wd->vt->scroll_extent(wd->self, ROLLTUI_AXIS_VERTICAL, &e)) return;
+  track = rn->outer.h - 2; /* between the corners */
+  x = rn->outer.x + rn->outer.w - 1;
+  if (track <= 0 || rn->outer.w < 2) return;
+  if (!rolltui_scroll_thumb(&e, track, &t)) return;
+  if (s) {
+    s->track.x = x;
+    s->track.y = rn->outer.y + 1;
+    s->track.h = track;
+  }
+  style = styles[roles->scrollbar];
+  ground = styles[rn->node->background];
+  if (style.bg.kind == 0 /* Color::Kind::None */) style.bg = ground.bg;
+  /* █ (U+2588) is East Asian AMBIGUOUS, exactly like the box-drawing set the border is made
+   * of — so it follows the border's rule: with `ambiguous_wide` the thumb is ASCII. */
+  thumb = w->env.ambiguous_wide ? "#" : "\xE2\x96\x88";
+  for (i = 0; i < t.length; ++i) {
+    const int y = rn->outer.y + 1 + t.offset + i;
+    if (y >= rn->outer.y + rn->outer.h - 1) break;
+    rolltui_frame_put(f, x, y, thumb, strlen(thumb), 1, style, 0);
+  }
+}
+
+void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
+                          const RolltuiStyle* styles, const RolltuiWindowRoles* roles) {
+  RolltuiWidget* wd;
+  if (rn->node->kind != 0) return;
+  wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
+  if (!wd || !wd->vt) return;
+  /* A widget that CANNOT draw is replaced by the error panel — the factory's, so there is one
+   * definition of what "this window is wrong" looks like. */
+  if (wd->vt->problem && wd->vt->problem(wd->self, &w->scratch)) {
+    if (w->panel_factory) {
+      RolltuiWidget err = w->panel_factory(w->panel_ctx, w->scratch.p, w->scratch.n);
+      if (err.vt) {
+        if (err.vt->layout) err.vt->layout(err.self, rn);
+        err.vt->draw(err.self, rn, f);
+        if (err.vt->destroy) err.vt->destroy(err.self);
+      }
+    }
+    return;
+  }
+  wd->vt->draw(wd->self, rn, f);
+  draw_scrollbar(w, rn, wd, f, styles, roles);
+}
+
+/* ---- events ---------------------------------------------------------------------------------------- */
+
+/* A press in the track column drives the widget — but ONLY one that accepted `scroll_to`. One
+ * that merely reports gets an accurate bar that is not a handle, which is the whole reason the
+ * scroll capability is two optional slots (rule 4). */
+static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, RolltuiWidget* wd,
+                            const RolltuiEvent* ev) {
+  const RolltuiMouseEvent* m;
+  WindowSlot* s;
+  RolltuiScrollExtent e;
+  RolltuiScrollThumb t;
+  if (ev->kind != ROLLTUI_EVENT_MOUSE) return 0;
+  m = &ev->mouse;
+  if (m->kind == 1 /* Release */) {
+    if (!rolltui_str_eq(&w->bar_drag, window, len)) return 0;
+    rolltui_str_clear(&w->bar_drag);
+    return 1;
+  }
+  s = slot_of(w, window, len);
+  if (!s || s->track.h <= 0) return 0; /* h == 0: no track drawn */
+  if (!wd->vt || !wd->vt->scroll_extent) return 0;
+  memset(&e, 0, sizeof e);
+  if (!wd->vt->scroll_extent(wd->self, ROLLTUI_AXIS_VERTICAL, &e)) return 0;
+  if (!rolltui_scroll_thumb(&e, s->track.h, &t)) return 0;
+  if (m->kind == 0 /* Press */) {
+    int cell;
+    if (m->button != 1 || m->x != s->track.x || m->y < s->track.y || m->y >= s->track.y + s->track.h) return 0;
+    cell = m->y - s->track.y;
+    /* On the thumb: grab it where it was taken, so it does not jump under the pointer. In the
+     * trough: jump so the thumb's START lands there, which is the one rule that makes a click
+     * and the drag that may follow it agree. */
+    w->bar_grab = (cell >= t.offset && cell < t.offset + t.length) ? cell - t.offset : 0;
+    if (!wd->vt->scroll_to) return 0;
+    if (!wd->vt->scroll_to(wd->self, ROLLTUI_AXIS_VERTICAL,
+                           rolltui_scroll_first_for_cell(&e, s->track.h, cell - w->bar_grab)))
+      return 0;
+    rolltui_str_set(&w->bar_drag, window, len);
+    return 1;
+  }
+  if (m->kind == 2 /* Drag */) {
+    if (!rolltui_str_eq(&w->bar_drag, window, len)) return 0;
+    /* The pointer may be anywhere by now (the press captured it), so only its ROW counts. */
+    if (wd->vt->scroll_to)
+      wd->vt->scroll_to(wd->self, ROLLTUI_AXIS_VERTICAL,
+                        rolltui_scroll_first_for_cell(&e, s->track.h, m->y - s->track.y - w->bar_grab));
+    return 1;
+  }
+  return 0;
+}
+
+int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
+  RolltuiWidget* wd = rolltui_windows_at(w, window, len);
+  if (!wd || !wd->vt) return 0;
+  if (wd->vt->problem && wd->vt->problem(wd->self, &w->scratch)) return 0;
+  if (handle_scrollbar(w, window, len, wd, e)) return 1;
+  return wd->vt->handle ? wd->vt->handle(wd->self, e) : 0;
+}
