@@ -697,7 +697,7 @@ int main() {
     Windows windows;
     windows.set_dir(dir);
     windows.bind_document("session", &doc);
-    windows.bind_rows("status", [] { return std::vector<Row>{{"label", "value"}}; });
+    windows.bind_rows("status", [](Rows& out) { out.add("label", "value"); });
     windows.bind_submit("prompt", [](const std::string&) {});
     // Phase 11 m3: a kind this test registers, built by the library like any other.
     windows.register_kind("mine", [&] {
@@ -1017,7 +1017,7 @@ int main() {
     windows.input("prompt").set_text(std::string(30, 'x') + "\n" + std::string(30, 'y') + "\n" + std::string(200, 'z'));
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(10)), "…and never more than half the parent's height");
-    windows.bind_note("prompt", [] { return "working"; });
+    windows.bind_note("prompt", [](Note& out) { out.text = "working"; });
     windows.input("prompt").set_text("hi");
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(1)), "a note that fits beside one row of text adds nothing");

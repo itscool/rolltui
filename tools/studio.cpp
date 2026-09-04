@@ -347,7 +347,7 @@ struct App {
     // `file:` windows resolve a relative path against the preset directory (set once
     // the store exists, below).
     windows.bind_document("session", &doc);
-    windows.bind_rows("status", [this] { return status_rows(); });
+    windows.bind_rows("status", [this](Rows& out) { status_rows(out); });
     windows.bind_submit("prompt", [this](const std::string& text) { append_prompt(text); });
     // The find bar's Enter is "next match" — the universal find-bar convention, and it
     // needs no routing rule: the popup's input is focused, so its Submit arrives here.
@@ -1049,22 +1049,20 @@ struct App {
   // ---- the sources the studio binds (rolltui/Widgets.hpp) ----
   // `rows:status`: the studio's own facts. The widget draws them (one row per
   // fact, or one line when the window is a single row) — this says only what they are.
-  std::vector<Row> status_rows() {
+  void status_rows(Rows& out) {
     const std::size_t total = transcript().total_lines();
-    std::vector<Row> rows = {
-        {"theme", store ? store->label() : theme.name},
-        {"keys", bstore ? bstore->label() : "default"},
-        {"layout", effective_layout().name + (stacked_fallback ? " (fallback)" : "")},
-        {"size", std::to_string(w) + "x" + std::to_string(h)},
-        {"line", std::to_string(total == 0 ? 0 : transcript().top_line() + 1) + "/" + std::to_string(total)},
-        {"follow", transcript().scroll().follow ? "yes" : "no"},
-        {"depth", std::string(color_depth_name(depth))},
-        {"focus", stack.focused() ? stack.focused()->id : "-"},
-    };
-    if (show_timing) rows.push_back({"frame", std::to_string(last_frame_us) + " us"});
-    if (copied_any) rows.push_back({"copied", std::to_string(copied.size()) + " bytes"});
-    return rows;
+    out.add("theme", store ? store->label() : theme.name);
+    out.add("keys", bstore ? bstore->label() : "default");
+    out.add("layout", effective_layout().name + (stacked_fallback ? " (fallback)" : ""));
+    out.add("size", std::to_string(w) + "x" + std::to_string(h));
+    out.add("line", std::to_string(total == 0 ? 0 : transcript().top_line() + 1) + "/" + std::to_string(total));
+    out.add("follow", transcript().scroll().follow ? "yes" : "no");
+    out.add("depth", color_depth_name(depth));
+    out.add("focus", stack.focused() ? stack.focused()->id : "-");
+    if (show_timing) out.add("frame", std::to_string(last_frame_us) + " us");
+    if (copied_any) out.add("copied", std::to_string(copied.size()) + " bytes");
   }
+
   // `input:prompt`: a submitted line becomes a user entry at the end of the document,
   // so the studio exercises a growing transcript too. (The history is the
   // widget's; this is only what the line MEANS here.)

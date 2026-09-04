@@ -156,8 +156,11 @@ struct Scene {
       doc.entries.push_back(std::move(e));
     }
     windows.bind_document("session", &doc);
-    windows.bind_rows("status", [] {
-      return std::vector<Row>{{"theme", "default-dark"}, {"layout", "default"}, {"size", "120x40"}, {"depth", "truecolor"}};
+    windows.bind_rows("status", [](Rows& out) {
+      out.add("theme", "default-dark");
+      out.add("layout", "default");
+      out.add("size", "120x40");
+      out.add("depth", "truecolor");
     });
     windows.bind_submit("prompt", [](const std::string&) {});
     WidgetEnv env;
@@ -302,12 +305,13 @@ int main() {
   // `grapheme_boundaries`, on a path that runs for every string drawn and every span of
   // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
   // suites untouched and still green — took 887 to 448 on its own.
-  // RE-RECORDED 2026-09-03 by m5 (frame reuse + reused node/map buffers). Phase 13 so far:
-  //   steady 887 → 108   streaming 2772 → 779   resize 70272 → 24908   steady KB 455 → 7
-  // The BYTES collapse is frame reuse: a repaint no longer throws away and rebuilds a
-  // 153 KB grid. **The phase's target is a steady frame of ZERO, and 108 is not it** — the
-  // remainder is itemised in plan/phase-13.md m7, which is the milestone that closes it.
-  constexpr long kSteady = 108, kStreaming = 779, kResize = 24908, kSteadyKB = 7;
+  // RE-RECORDED 2026-09-03 by m5b. Phase 13 end to end:
+  //   steady   887 →  43   streaming 2772 → 635   resize 70272 → 22075   steady KB 455 → 4
+  // **The phase's target is a steady frame of ZERO and 43 is not it.** What remains is
+  // itemised in plan/phase-13.md m5b; the single biggest is `wrap()` returning
+  // `std::vector<Line>` BY VALUE, each Line holding a string and a vector — 26 of the 43,
+  // and the bulk of the resize path too.
+  constexpr long kSteady = 43, kStreaming = 635, kResize = 22075, kSteadyKB = 4;
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were

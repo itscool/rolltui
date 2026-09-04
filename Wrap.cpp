@@ -8,16 +8,25 @@
 
 namespace rolltui {
 
+// Phase 13 m5b: the five setup buffers are REUSED. `wrap()` is called for every row of a
+// `rows:` window on every frame AND for every entry that re-lays, so it is both the status
+// panel's whole cost (60 of a steady frame's 77 allocations before this) and the bulk of a
+// resize. Same algorithm, same UAX #14 breaks — the conformance suite is what says so.
+// Not nested: nothing between the first clear and the last use calls back into wrap().
 std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt) {
   using unicode::Break;
   using unicode::DecodedChar;
 
   std::vector<Line> out;
-  std::vector<DecodedChar> chars = unicode::decode_utf8(utf8);
-  std::vector<char32_t> cps(chars.size());
+  thread_local std::vector<DecodedChar> chars;
+  thread_local std::vector<char32_t> cps;
+  unicode::decode_utf8_into(utf8, chars);
+  cps.assign(chars.size(), 0);
   for (std::size_t i = 0; i < cps.size(); ++i) cps[i] = chars[i].cp;
-  std::vector<Break> before = unicode::line_break_opportunities(cps);
-  std::vector<bool> bounds = unicode::grapheme_boundaries(cps);
+  thread_local std::vector<Break> before;
+  thread_local std::vector<bool> bounds;
+  unicode::line_break_opportunities_into(cps, before);
+  unicode::grapheme_boundaries_into(cps, bounds);
 
   // One entry per grapheme cluster, in source order.
   struct G {
@@ -26,7 +35,8 @@ std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt)
     Break brk;                 // opportunity before this cluster
     bool space, tab, newline;
   };
-  std::vector<G> gs;
+  thread_local std::vector<G> gs;
+  gs.clear();
   for (std::size_t i = 0, start = 0; i < cps.size(); ++i) {
     if (!bounds[i + 1]) continue;
     G g;

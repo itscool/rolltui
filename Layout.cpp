@@ -830,20 +830,51 @@ enum class Side { Left, Right, Top, Bottom };
 bool edge_bordered(const Node& n, Side side) {
   if (n.border != Border::None) return true;
   if (n.is_window()) return false;
-  std::vector<const Node*> vis;
+  // Phase 13 m5b: no vector. This only ever needs the FIRST visible child, the LAST, or a
+  // walk over all of them — none of which is a reason to build a list, and this function is
+  // recursive AND called O(children²) from place()'s shared-edge pass.
+  const Node* first = nullptr;
+  const Node* last = nullptr;
   for (const Node& c : n.children)
-    if (c.visible) vis.push_back(&c);
-  if (vis.empty()) return false;
+    if (c.visible) {
+      if (!first) first = &c;
+      last = &c;
+    }
+  if (!first) return false;
   const bool along = (n.kind == Node::Kind::Row) ? (side == Side::Left || side == Side::Right)
                                                  : (side == Side::Top || side == Side::Bottom);
-  if (along) {
-    const Node* edge = (side == Side::Left || side == Side::Top) ? vis.front() : vis.back();
-    return edge_bordered(*edge, side);
-  }
-  for (const Node* c : vis)
-    if (!edge_bordered(*c, side)) return false;
+  if (along) return edge_bordered(*((side == Side::Left || side == Side::Top) ? first : last), side);
+  for (const Node& c : n.children)
+    if (c.visible && !edge_bordered(c, side)) return false;
   return true;
 }
+
+// Phase 13 m5b: the per-container scratch of place(), as ONE inline array instead of three
+// heap vectors. place() RECURSES, so a reused thread_local buffer would alias across
+// depth — an inline array cannot, because each frame of the recursion has its own. A
+// container with more than twelve visible children falls back to the heap, which is the
+// same NAMED EXCEPTION shape `Cell`'s glyph spill uses: the steady case allocates nothing
+// and the unusual case is handled rather than assumed away.
+struct ChildSlot {
+  const Node* node = nullptr;
+  bool shared = false;  // this child shares its facing border edge with the next
+  int size = 0;
+};
+class ChildScratch {
+ public:
+  explicit ChildScratch(std::size_t n) : n_(n) {
+    if (n > kInline) spill_.resize(n);
+  }
+  std::size_t size() const { return n_; }
+  ChildSlot& operator[](std::size_t i) { return n_ > kInline ? spill_[i] : inline_[i]; }
+  const ChildSlot& operator[](std::size_t i) const { return n_ > kInline ? spill_[i] : inline_[i]; }
+
+ private:
+  static constexpr std::size_t kInline = 12;
+  std::size_t n_;
+  ChildSlot inline_[kInline]{};
+  std::vector<ChildSlot> spill_;
+};
 
 void place(const Node& n, Rect box, Rect screen, std::size_t layer, std::vector<ResolvedNode>& out) {
   ResolvedNode rn;
@@ -855,53 +886,57 @@ void place(const Node& n, Rect box, Rect screen, std::size_t layer, std::vector<
   if (n.is_window()) return;
 
   const bool row = n.kind == Node::Kind::Row;
-  std::vector<const Node*> vis;
+  std::size_t visible = 0;
   for (const Node& c : n.children)
-    if (c.visible) vis.push_back(&c);
-  if (vis.empty()) return;
+    if (c.visible) ++visible;
+  if (visible == 0) return;
+  ChildScratch kid(visible);
+  {
+    std::size_t i = 0;
+    for (const Node& c : n.children)
+      if (c.visible) kid[i++].node = &c;
+  }
   const Rect in = inner_rect(box, n.border);  // unclipped: children resolve against the true inner box
   const int extent = row ? in.w : in.h;
 
   // Shared edges between adjacent bordered siblings.
-  std::vector<bool> shared(vis.size(), false);
   int shared_count = 0;
-  for (std::size_t i = 0; i + 1 < vis.size(); ++i) {
-    shared[i] = row ? (edge_bordered(*vis[i], Side::Right) && edge_bordered(*vis[i + 1], Side::Left))
-                    : (edge_bordered(*vis[i], Side::Bottom) && edge_bordered(*vis[i + 1], Side::Top));
-    if (shared[i]) ++shared_count;
+  for (std::size_t i = 0; i + 1 < visible; ++i) {
+    kid[i].shared = row ? (edge_bordered(*kid[i].node, Side::Right) && edge_bordered(*kid[i + 1].node, Side::Left))
+                        : (edge_bordered(*kid[i].node, Side::Bottom) && edge_bordered(*kid[i + 1].node, Side::Top));
+    if (kid[i].shared) ++shared_count;
   }
   const int ext = std::max(extent, 0) + shared_count;
 
   // Fixed children: edges of the cumulative Dim sum.
-  std::vector<int> size(vis.size(), 0);
   Dim cum;
   int prev_edge = 0, fixed_total = 0, weight_total = 0;
-  for (std::size_t i = 0; i < vis.size(); ++i) {
-    if (vis[i]->size.fill) { weight_total += std::max(vis[i]->size.weight, 1); continue; }
-    cum = cum + vis[i]->size.dim;
+  for (std::size_t i = 0; i < visible; ++i) {
+    if (kid[i].node->size.fill) { weight_total += std::max(kid[i].node->size.weight, 1); continue; }
+    cum = cum + kid[i].node->size.dim;
     int edge = resolve_dim(cum, ext);
-    size[i] = std::max(edge - prev_edge, 0);
+    kid[i].size = std::max(edge - prev_edge, 0);
     prev_edge = std::max(edge, prev_edge);
-    fixed_total += size[i];
+    fixed_total += kid[i].size;
   }
   // Fills: cumulative weight edges over the remainder.
   const int remainder = std::max(ext - fixed_total, 0);
   int cum_w = 0, prev_fill_edge = 0;
-  for (std::size_t i = 0; i < vis.size(); ++i) {
-    if (!vis[i]->size.fill) continue;
-    cum_w += std::max(vis[i]->size.weight, 1);
+  for (std::size_t i = 0; i < visible; ++i) {
+    if (!kid[i].node->size.fill) continue;
+    cum_w += std::max(kid[i].node->size.weight, 1);
     int edge = resolve_dim(Dim::rel(static_cast<double>(cum_w) / weight_total), remainder);
-    size[i] = edge - prev_fill_edge;
+    kid[i].size = edge - prev_fill_edge;
     prev_fill_edge = edge;
   }
   // Positions, sharing one cell per shared edge; clip to the extent in order.
   int pos = 0;
-  for (std::size_t i = 0; i < vis.size(); ++i) {
-    if (pos + size[i] > std::max(extent, 0)) size[i] = std::max(std::max(extent, 0) - pos, 0);
-    Rect r = row ? Rect{in.x + pos, in.y, size[i], in.h} : Rect{in.x, in.y + pos, in.w, size[i]};
-    place(*vis[i], r, screen, layer, out);
-    pos += size[i];
-    if (i + 1 < vis.size() && shared[i] && size[i] > 0) pos -= 1;
+  for (std::size_t i = 0; i < visible; ++i) {
+    if (pos + kid[i].size > std::max(extent, 0)) kid[i].size = std::max(std::max(extent, 0) - pos, 0);
+    Rect r = row ? Rect{in.x + pos, in.y, kid[i].size, in.h} : Rect{in.x, in.y + pos, in.w, kid[i].size};
+    place(*kid[i].node, r, screen, layer, out);
+    pos += kid[i].size;
+    if (i + 1 < visible && kid[i].shared && kid[i].size > 0) pos -= 1;
   }
 }
 

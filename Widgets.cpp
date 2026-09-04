@@ -304,7 +304,7 @@ class InputWidget : public WidgetBase {
     const Rect tr = text_rect(r);
     ed.layout(tr);
     ed.draw(f, theme, rn.focused);
-    const Note note = note_info();
+    const Note& note = note_info();
     if (note.text.empty()) return;
     const int nw = unicode::display_width(note.text, amb());
     // Phase 12 m6: the note is DRAWN here and MARKED here, over exactly the cells it took
@@ -337,10 +337,17 @@ class InputWidget : public WidgetBase {
   bool handle(const Event& e) override { return event(e) != InputAction::Ignored; }
 
  private:
-  Note note_info() const {
-    const Windows::NoteFn* fn = note_fn(content.source);
-    return fn && *fn ? (*fn)() : Note{};
+  // m5b: the Note is a MEMBER the host refills, not one it returns. This is called
+  // several times a frame (sizing, then drawing), so a by-value return was several
+  // allocations per frame for a line that rarely changes.
+  const Note& note_info() const {
+    note_.text.clear();
+    note_.state = EffectState::None;
+    note_.since_ms = 0;
+    if (const Windows::NoteFn* fn = note_fn(content.source); fn && *fn) (*fn)(note_);
+    return note_;
   }
+  mutable Note note_;
   // The column just past the text (or past the placeholder while it is empty): where a
   // note may sit on the first row.
   int end_col() const {
@@ -350,7 +357,7 @@ class InputWidget : public WidgetBase {
   // Rows of window text: the text's rows, capped at half the parent, plus one for the
   // note when it does not fit beside a single row.
   int rows_with_note(int width, int text_rows) const {
-    const std::string note = note_info().text;
+    const std::string& note = note_info().text;
     return input_rows(text_rows, end_col(), note.empty() ? 0 : unicode::display_width(note, amb()), width, max_rows_);
   }
   // The note takes a row of its own exactly when the window has more than one: with a
@@ -497,23 +504,36 @@ class RowsWidget : public WidgetBase {
  public:
   using WidgetBase::WidgetBase;
   std::string problem() const override { return rows_fn(content.source) ? std::string() : unbound(); }
+  // m5b: the rows and the one-row line are MEMBERS, so a frame refills storage that is
+  // already there instead of building and destroying it.
+  mutable Rows rows_;
+  mutable std::string line_;
   void layout(const ResolvedNode&) override {}
   void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
     const Windows::RowsFn* fn = rows_fn(content.source);
     if (!fn || !*fn) return;
-    const std::vector<Row> rows = (*fn)();
+    rows_.reset();   // m5b: keeps the storage; the host refills it in place
+    (*fn)(rows_);
+    const Rows& rows = rows_;
     const Rect r = rn.inner;
     const Style label = theme.style(Role::label), value = theme.style(Role::value);
     if (r.h == 1) {
-      std::string s;
-      for (const Row& row : rows) s += (s.empty() ? "" : "  ") + row.label + " " + row.value;
+      line_.clear();  // m5b: a member, so the one-row form reuses its buffer too
+      std::string& s = line_;
+      for (std::size_t i = 0; i < rows.size(); ++i) {
+        if (!s.empty()) s += "  ";
+        s += rows[i].label;
+        s += ' ';
+        s += rows[i].value;
+      }
       f.put_text(r.x + 1, r.y, s, value, std::max(r.w - 1, 0), amb());
       return;
     }
     WrapOptions wo;
     wo.ambiguous_wide = amb();
     int y = r.y;
-    for (const Row& row : rows) {
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+      const Row& row = rows[i];
       if (y >= r.y + r.h) break;
       f.put_text(r.x + 1, y, row.label, label, std::max(r.w - 1, 0), amb());
       std::vector<Line> lines = wrap(row.value, std::max(r.w - 9, 1), wo);

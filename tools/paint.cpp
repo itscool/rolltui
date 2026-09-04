@@ -149,7 +149,7 @@ struct App {
         "canvas", [this] { return std::make_unique<Canvas>("sheet", &brush); }, SourceRule::Required,
         "a sheet the app paints on");
     windows.add_menu("tools", kToolsMenu);
-    windows.bind_rows("brush", [this] { return std::vector<Row>{{"brush", brush}, {"marks", std::to_string(marks())}}; });
+    windows.bind_rows("brush", [this](Rows& out) { out.add("brush", brush); out.add("marks", std::to_string(marks())); });
     windows.set_help("", help_scopes(), "");
     stack.set_base(layout.base);
     bindings.declare(layout.actions, {});  // the SCREEN says what this app can do (Phase 10 m4)

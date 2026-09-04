@@ -9,6 +9,7 @@ namespace rolltui::unicode {
 // Phase 13 m3: the reused-buffer forms the public wrappers are built on.
 void decode_utf8_into(std::string_view s, std::vector<DecodedChar>& out);
 void grapheme_boundaries_into(std::span<const char32_t> cps, std::vector<bool>& b);
+void line_break_opportunities_into(std::span<const char32_t> cps, std::vector<Break>& out);
 
 std::uint8_t lookup(const Range* table, std::size_t n, char32_t cp, std::uint8_t def) {
   std::size_t lo = 0, hi = n;
@@ -383,14 +384,14 @@ std::string strip_escape_sequences(std::string_view s) {
 
 // ---- UAX #14 -----------------------------------------------------------------------
 
-std::vector<Break> line_break_opportunities(std::span<const char32_t> cps) {
+void line_break_opportunities_into(std::span<const char32_t> cps, std::vector<Break>& out) {
   using LB = LineBreak;
   using EA = EastAsianWidth;
   using GC = GeneralCategory;
   const std::size_t n = cps.size();
-  std::vector<Break> out(n + 1, Break::Prohibited);
+  out.assign(n + 1, Break::Prohibited);
   out[n] = Break::Mandatory;
-  if (n == 0) return out;
+  if (n == 0) return;
 
   // LB9/LB10 are applied structurally: the text is first cut into units — a base
   // character with every CM/ZWJ attached to it (LB9), or a lone CM/ZWJ that had no
@@ -642,6 +643,11 @@ std::vector<Break> line_break_opportunities(std::span<const char32_t> cps) {
 
   for (std::size_t k = 1; k < m; ++k) out[u[k].first] = decide(k);
   // LB3: eot is a mandatory break, LB2: sot never is — both set at construction.
+}
+
+std::vector<Break> line_break_opportunities(std::span<const char32_t> cps) {
+  std::vector<Break> out;
+  line_break_opportunities_into(cps, out);
   return out;
 }
 

@@ -246,12 +246,14 @@ void mount_app_profile(Windows& windows, const AppProfile& p) {
     windows.bind_sample_document(d.name, d.sample);
   }
   for (const AppProfile::RowSource& r : p.rows) {
-    std::vector<Row> rows;
-    for (const auto& [label, value] : r.sample) rows.push_back({label, value});
-    windows.bind_rows(r.name, [rows] { return rows; });
+    // m5b: the sample is captured BY VALUE once and refilled into the caller's buffer each
+    // frame, rather than a fresh vector being built per frame from it.
+    windows.bind_rows(r.name, [sample = r.sample](Rows& out) {
+      for (const auto& [label, value] : sample) out.add(label, value);
+    });
   }
   for (const std::string& s : p.submits) windows.bind_submit(s, [](const std::string&) {});
-  for (const std::string& s : p.notes) windows.bind_note(s, [] { return std::string(); });
+  for (const std::string& s : p.notes) windows.bind_note(s, [](Note&) {});
   for (const AppProfile::MenuFile& m : p.menus) windows.add_menu(m.name, m.json);
   // The app's help, not the tool's — including the scope LIST, which is what a
   // `help:<scope>` window is judged against (Phase 11 m5b). A profile that names none

@@ -97,6 +97,28 @@ struct Row {
   std::string label, value;
 };
 
+// WHAT A HOST FILLS instead of returning a fresh vector every frame (Phase 13 m5b, and
+// CLAUDE.md's per-frame-API rule). `reset()` keeps the vector's capacity AND every row's
+// string buffers, so `add()` on a warm frame assigns into storage that already exists and
+// allocates nothing. Returning `std::vector<Row>` by value — which this was until m5b —
+// is one allocation per frame forever, to rebuild rows that usually did not change.
+class Rows {
+ public:
+  void reset() { n_ = 0; }
+  void add(std::string_view label, std::string_view value) {
+    if (n_ == rows_.size()) rows_.emplace_back();
+    rows_[n_].label.assign(label);
+    rows_[n_].value.assign(value);
+    ++n_;
+  }
+  std::size_t size() const { return n_; }
+  const Row& operator[](std::size_t i) const { return rows_[i]; }
+
+ private:
+  std::vector<Row> rows_;
+  std::size_t n_ = 0;  // rows_ keeps its storage past this; only the first n_ are live
+};
+
 // An input's one-line note, and — since Phase 12 m6 — what STATE it is in. A host that
 // has no motion to report returns a bare string and the implicit conversion does the
 // rest; roll's "working…" returns `{text, EffectState::Waiting, when the turn started}`,
@@ -267,15 +289,13 @@ class Windows {
   Windows(const Windows&) = delete;
   Windows& operator=(const Windows&) = delete;
 
-  // THESE THREE RETURN BY VALUE AND ARE CALLED ONCE PER FRAME, which is an allocation per
-  // frame for data that usually did not change (CLAUDE.md's per-frame-API rule; Phase 13
-  // m5b changes them to fill a caller-owned buffer). They are left here, named, rather than
-  // quietly carried: the phase's target is a steady frame that allocates NOTHING, and these
-  // are the largest single thing standing between the library and it.
-  using RowsFn = std::function<std::vector<Row>()>;
+  // FILL-A-CALLER'S-BUFFER, not return-by-value (Phase 13 m5b; the rule is in CLAUDE.md).
+  // Both of these are called once or more per frame, and both used to hand back a freshly
+  // built container — one allocation each, every frame, for data that usually did not
+  // change. `TextFn` was a third and is gone: nothing used it.
+  using RowsFn = std::function<void(Rows&)>;
   using SubmitFn = std::function<void(const std::string&)>;
-  using TextFn = std::function<std::string()>;
-  using NoteFn = std::function<Note()>;
+  using NoteFn = std::function<void(Note&)>;
   // A host's own widget kind: a FACTORY, not an instance (Phase 11 m3). What comes back
   // is owned by this Windows, created on demand, keyed by content and never destroyed —
   // so `canvas:left` and `canvas:right` are two canvases for exactly the reason two

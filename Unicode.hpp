@@ -94,6 +94,8 @@ struct DecodedChar {
 // byte of the input is accounted for exactly once.
 DecodedChar decode_one(std::string_view s, std::size_t pos);
 std::vector<DecodedChar> decode_utf8(std::string_view s);
+// Reused-buffer forms of the three (Phase 13 m3/m5b): same answers, the caller's storage.
+void decode_utf8_into(std::string_view s, std::vector<DecodedChar>& out);
 void append_utf8(std::string& out, char32_t cp);
 
 // ---- width -------------------------------------------------------------------------
@@ -138,6 +140,7 @@ int cluster_width(std::span<const char32_t> cps, bool ambiguous_wide = false);
 // the end of text. For a non-empty input boundaries[0] and boundaries[n] are true
 // (GB1, GB2); for empty input the single entry is true.
 std::vector<bool> grapheme_boundaries(std::span<const char32_t> cps);
+void grapheme_boundaries_into(std::span<const char32_t> cps, std::vector<bool>& out);
 
 struct Grapheme {
   std::size_t offset;  // byte offset of the cluster in the source string
@@ -195,6 +198,7 @@ enum class Break : std::uint8_t { Prohibited, Allowed, Mandatory };
 // Mandatory (LB3); result[0] is always Prohibited (LB2). Untailored: LB1 resolves
 // AI/SG/XX → AL, CJ → NS, SA → CM for Mn/Mc else AL, and CB is left to LB20.
 std::vector<Break> line_break_opportunities(std::span<const char32_t> cps);
+void line_break_opportunities_into(std::span<const char32_t> cps, std::vector<Break>& out);
 
 // Convenience over UTF-8: opportunities indexed by decoded code point, alongside the
 // decode so a caller can map them back to bytes.
