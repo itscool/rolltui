@@ -203,6 +203,11 @@ int main() {
         {"AppProfile.hpp", 0},   {"Bindings.hpp", 1},      {"Diff.hpp", 0},        {"Document.hpp", 0},
         {"Effects.hpp", 2},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 0},
         {"Layout.hpp", 8},       {"Markdown.hpp", 0},      {"Marker.hpp", 0},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
+        // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
+        // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
+        // FUNCTION pointer, which the scanner's pattern does not match and which borrows
+        // nothing — a releaser names a static its own module already owns.
+        {"Lifetime.hpp", 0},
         // Screen.hpp 1 → 4, RE-RECORDED 2026-09-04 by Phase 14 m2, which is what this row
         // is FOR: the number moved, so somebody had to say what each new pointer is.
         //   - `RolltuiFrame* p` in `Frame::Handle` — the deleter of the frame's OWNED
@@ -211,7 +216,14 @@ int main() {
         //   - `const char* p` twice, in `glyph()` and `link()` — BORROWS from the frame,
         //     turned into a `string_view` in the same expression and never stored. The
         //     window is stated at the C header: valid until that cell is written again.
-        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 4},     {"Screen.hpp", 4},
+        // Scratch.hpp 4 → 6, RE-RECORDED 2026-09-04 by Phase 14 m6a. Both new ones are the
+        // per-thread release registration, and neither owns anything:
+        //   - `void (*fn)(void*), void* target` on `detail::on_thread_release` — a releaser
+        //     and the buffer it releases, BORROWED for the life of the thread's registry,
+        //     which is cleared by `release_thread()` before any of them could dangle.
+        //   - `void* p` in the captureless lambda that casts it back to the Scratch — the
+        //     same borrow, one frame later.
+        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 6},     {"Screen.hpp", 4},
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 10},
@@ -240,7 +252,12 @@ int main() {
         //     just minted, and hands it straight to the `unique_ptr`. It is private so that
         //     the only way to get one is `clone()`, which is the only place a raw handle
         //     ever exists as a value in this header.
-        {"Wrap.hpp", 6},
+        //   - 6 → 7, 2026-09-04 (Phase 14 m6a): `RolltuiWrapLines* handle() const`, the
+        //     make-on-first-use accessor. A BORROW of the handle this object owns, handed
+        //     out only inside the class — the handle exists lazily so that a default-
+        //     constructed WrapLines holds nothing, which is what lets `Scratch` release its
+        //     storage to actually zero.
+        {"Wrap.hpp", 7},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -273,7 +290,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 54, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 57, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

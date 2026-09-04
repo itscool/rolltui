@@ -1,6 +1,8 @@
 // rolltui/Layout.cpp — see Layout.hpp.
 #include "rolltui/Layout.hpp"
 
+#include "rolltui/Lifetime.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -133,6 +135,8 @@ struct HostKind {
 };
 std::vector<HostKind>& host_kinds() {
   static std::vector<HostKind> v;
+  static const bool once = (on_shutdown([] { host_kinds().clear(); }), true);  // m6a
+  (void)once;
   return v;
 }
 const HostKind* host_kind(std::string_view name) {
@@ -797,8 +801,12 @@ const std::vector<ActionDecl>& shipped_default_actions() {
   return decls;
 }
 
-const Layout* builtin_layout(std::string_view name) {
-  static std::vector<std::pair<std::string, Layout>> cache = [] {
+// The parsed built-in layouts. The biggest thing the library retains process-wide, and the
+// reason `shutdown()` has real work to do today rather than only in principle: it is embedded
+// JSON turned into Layout objects on first use and kept forever. Releasing it is safe at any
+// moment — the next call rebuilds it (m6a).
+std::vector<std::pair<std::string, Layout>> build_builtin_layouts() {
+  {
     std::vector<std::pair<std::string, Layout>> out;
     for (std::string_view n : builtin_names()) {
       LayoutLoadReport rep;
@@ -814,8 +822,27 @@ const Layout* builtin_layout(std::string_view name) {
       out.emplace_back(std::string(n), std::move(*l));
     }
     return out;
-  }();
-  for (const auto& [n, l] : cache)
+  }
+}
+
+std::vector<std::pair<std::string, Layout>>& builtin_layout_cache() {
+  static std::vector<std::pair<std::string, Layout>> cache;
+  static const bool once = (on_shutdown([] {
+                              builtin_layout_cache().clear();
+                              builtin_layout_cache().shrink_to_fit();
+                            }),
+                            true);
+  (void)once;
+  // FILLED WHEN EMPTY, not by a static initializer — because a `static x = f();` runs ONCE
+  // and `shutdown()` clearing it would leave `builtin_layout()` answering nullptr forever
+  // after. That was a live defect for about ten minutes, and it is exactly what "safe to call
+  // at any time" has to mean: releasing a cache is only safe if the cache rebuilds.
+  if (cache.empty()) cache = build_builtin_layouts();
+  return cache;
+}
+
+const Layout* builtin_layout(std::string_view name) {
+  for (const auto& [n, l] : builtin_layout_cache())
     if (n == name) return &l;
   return nullptr;
 }

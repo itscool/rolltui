@@ -1,6 +1,8 @@
 // rolltui/Effects.cpp — see Effects.hpp.
 #include "rolltui/Effects.hpp"
 
+#include "rolltui/Lifetime.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -125,6 +127,10 @@ constexpr Builtin kBuiltins[] = {
 // a frame per mark, and an ordered map keeps that a compare-and-descend.
 std::map<std::string, EffectFn, std::less<>>& registry() {
   static std::map<std::string, EffectFn, std::less<>> r;
+  // Phase 14 m6a: registered where the retained thing is MADE, not in a central list — a
+  // central list is a second place to forget. A host's kinds re-register on next use.
+  static const bool once = (on_shutdown([] { registry().clear(); }), true);
+  (void)once;
   return r;
 }
 std::mutex& registry_mu() {

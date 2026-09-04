@@ -95,7 +95,13 @@ class WrapLines {
     void operator()(RolltuiWrapLines* p) const { rolltui_wrap_free(p); }
   };
 
-  WrapLines() : w_(rolltui_wrap_new()) {}
+  // THE HANDLE IS MADE ON FIRST USE, not at construction. `Scratch::release_storage()` puts a
+  // default-constructed T back where the buffer was, so a default that ALLOCATES leaves the
+  // scratch holding a fresh handle instead of nothing — which is precisely what
+  // `lifetime_test` caught under `ROLLTUI_C=ON`: two blocks and 384 bytes still live after
+  // `shutdown()`, one per wrap scratch. A default WrapLines now holds nothing and costs
+  // nothing, and the first `wrap()` into it makes the handle.
+  WrapLines() = default;
   WrapLines(WrapLines&&) noexcept = default;
   WrapLines& operator=(WrapLines&&) noexcept = default;
   WrapLines(const WrapLines&) = delete;
@@ -104,17 +110,19 @@ class WrapLines {
   // Wraps into THIS object, reusing everything it already holds. Any Line taken from it
   // before this call is dead afterwards.
   void wrap(std::string_view utf8, int width, const WrapOptions& opt = {}) {
-    rolltui_wrap(w_.get(), utf8.data(), utf8.size(), width, opt);
+    rolltui_wrap(handle(), utf8.data(), utf8.size(), width, opt);
   }
   // A new WrapLines holding a copy of these lines and no wrap scratch — how a LENT result
   // becomes an OWNED one, and what `wrap()` hands back. The implementation is free to make
   // it one allocation for the whole thing, and the C one does.
-  WrapLines clone() const { return WrapLines(rolltui_wrap_clone(w_.get())); }
+  WrapLines clone() const { return WrapLines(rolltui_wrap_clone(handle())); }
   // Drops the lines and keeps every buffer. This is what `Scratch` calls on acquire and
   // on release, which is why a lender's second window costs nothing.
-  void clear() { rolltui_wrap_reset(w_.get()); }
+  void clear() {
+    if (w_) rolltui_wrap_reset(w_.get());  // nothing to reset when nothing was ever wrapped
+  }
 
-  std::size_t size() const { return rolltui_wrap_line_count(w_.get()); }
+  std::size_t size() const { return w_ ? rolltui_wrap_line_count(w_.get()) : 0; }
   bool empty() const { return size() == 0; }
   Line operator[](std::size_t i) const {
     const char* text = nullptr;              // BORROW: the line's bytes, inside the handle
@@ -158,7 +166,14 @@ class WrapLines {
   // Takes ownership of a handle the boundary just minted (see `clone`).
   explicit WrapLines(RolltuiWrapLines* owned) : w_(owned) {}
 
-  std::unique_ptr<RolltuiWrapLines, Handle> w_;
+  // The handle, made on demand. `const` because reading a line from a wrapped result must not
+  // be a mutating operation, and the only thing that changes is storage this object owns.
+  RolltuiWrapLines* handle() const {
+    if (!w_) w_.reset(rolltui_wrap_new());
+    return w_.get();
+  }
+
+  mutable std::unique_ptr<RolltuiWrapLines, Handle> w_;
 };
 
 // THE LINES, HANDED OVER. Use this when they must OUTLIVE the call. It runs the engine in

@@ -100,6 +100,8 @@ add_library(rolltui STATIC
   Theme.cpp
   ${ROLLTUI_SLICE}            # Phase 14: the ported slice — C or C++, chosen by ROLLTUI_C
   Memory.cpp                  # Phase 13: the library's ONE entry point for memory
+  Lifetime.cpp                # Phase 14 m6a: shutdown(), and no init — the release
+                              #   point that makes "did we leak?" answerable
   Effects.cpp                 # Phase 12 m6: motion is the theme's, a state is the widget's
   Screen.cpp
   Keys.cpp
@@ -167,6 +169,12 @@ add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
 # planted-pattern liveness check), no hand-rolled new/delete, and a recorded census of
 # every raw pointer in a public header, so adding one forces its lifetime to be stated.
 add_rolltui_test(rolltui-ownership-test tests/ownership_test.cpp)
+
+# Phase 14 m6a: THE RELEASE POINT, as an assertion — after shutdown() the library holds
+# NOTHING, asserted as a number in both configurations, with a control that proves the gauge
+# can see a retention before it is trusted to report a zero. Until this existed, "did the
+# library leak?" had no answer: by-design retention and a real leak look identical.
+add_rolltui_test(rolltui-lifetime-test tests/lifetime_test.cpp)
 
 # Phase 13 m1: THE BUDGET — allocations, bytes and wall-clock per frame, asserted as a
 # RANGE against numbers recorded from a real render, with the counter proved armed on

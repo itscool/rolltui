@@ -36,6 +36,13 @@
 
 namespace rolltui {
 
+namespace detail {
+// Phase 14 m6a: registers one per-thread buffer with `release_thread()`. Declared here rather
+// than included from Lifetime.hpp so this header stays what it has always been — a template
+// and nothing else.
+void on_thread_release(void (*fn)(void*), void* target);
+}  // namespace detail
+
 // One reusable T, lent through `lock()`. Declare one per buffer, `static thread_local` at
 // the function that owns it, and name it — the name is what an abort prints.
 template <typename T>
@@ -75,6 +82,19 @@ class Scratch {
 
   Lock lock() { return Lock(*this); }
 
+  // RELEASES THE STORAGE, not just its contents — `clear()` keeps the capacity, which is the
+  // whole point of this class, and this is the one place that gives it back. Deliberately NOT
+  // called `release()`: that is the private half of the lock/unlock pair below, and one of
+  // this project's standing rules is that two readings of a name is a place to be wrong.
+  // Called by
+  // `rolltui::release_thread()`; a buffer that is released re-registers itself the next time
+  // it is locked, so the lend keeps working afterwards.
+  void release_storage() {
+    T empty;
+    value_ = std::move(empty);
+    registered_ = false;
+  }
+
  private:
   friend class Lock;
   void acquire() {
@@ -86,6 +106,14 @@ class Scratch {
       std::abort();
     }
     held_ = true;
+    // Registered on first use rather than at construction: these are `static thread_local`, so
+    // construction happens on the thread that first draws, and registering there would be the
+    // same moment — but first-use also covers a buffer whose thread was created before this
+    // mechanism existed, and it costs one branch on a path that is already doing work.
+    if (!registered_) {
+      registered_ = true;
+      detail::on_thread_release([](void* p) { static_cast<Scratch*>(p)->release_storage(); }, this);
+    }
     value_.clear();
   }
   void release() {
@@ -96,6 +124,7 @@ class Scratch {
   T value_;
   const char* name_ = "";
   bool held_ = false;
+  bool registered_ = false;
 };
 
 }  // namespace rolltui

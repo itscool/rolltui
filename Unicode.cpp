@@ -10,6 +10,8 @@
 // stating them at the header was most of the design work.
 #include "rolltui/Unicode.hpp"
 
+#include "rolltui/Scratch.hpp"  // rolltui::detail::on_thread_release
+
 namespace rolltui::unicode {
 namespace {
 
@@ -19,15 +21,33 @@ namespace {
 // owns every other one here — a `thread_local` with a destructor — so there is nothing for a
 // host to initialise and nothing left to clean up at thread exit.
 struct ScratchOwner {
-  RolltuiUnicodeScratch* p = rolltui_u_scratch_new();
+  RolltuiUnicodeScratch* p = nullptr;
   ScratchOwner() = default;
   ScratchOwner(const ScratchOwner&) = delete;
   ScratchOwner& operator=(const ScratchOwner&) = delete;
-  ~ScratchOwner() { rolltui_u_scratch_free(p); }
+  ~ScratchOwner() { rolltui_u_scratch_free(p); }  // free(nullptr) is a no-op
 };
 
+// TWO WAYS OUT, and it needs both. The destructor covers a thread that simply exits; the
+// registration covers `rolltui::release_thread()`, which is what lets a leak check see the
+// number BEFORE the process ends. Whichever runs first nulls the pointer, so the other finds
+// nothing — and the next call rebuilds, which is what keeps `shutdown()` safe mid-session.
+//
+// It needed saying: this was NOT a `Scratch<T>`, so it did not get the registration that class
+// now does automatically, and `lifetime_test` caught it on its first run under `ROLLTUI_C=ON`
+// — 2,496 bytes in 11 blocks that the C++ configuration's gauge could not see at all.
 RolltuiUnicodeScratch* scratch() {
   static thread_local ScratchOwner owner;
+  if (!owner.p) {
+    owner.p = rolltui_u_scratch_new();
+    detail::on_thread_release(
+        [](void* o) {
+          ScratchOwner* s = static_cast<ScratchOwner*>(o);
+          rolltui_u_scratch_free(s->p);
+          s->p = nullptr;
+        },
+        &owner);
+  }
   return owner.p;
 }
 
