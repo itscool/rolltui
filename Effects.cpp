@@ -209,11 +209,24 @@ EffectReport apply_effects(Frame& f, const Theme& theme, std::uint64_t now_ms, b
     if (std::find(rep.unknown_kinds.begin(), rep.unknown_kinds.end(), kind) == rep.unknown_kinds.end())
       rep.unknown_kinds.push_back(kind);
   };
+  // Each spec's kind is resolved ONCE PER MARK, not once per cell. The lookup is
+  // loop-invariant, it is a string compare against the closed table, and for a HOST kind
+  // it takes the registry's mutex — none of which belongs inside a per-cell draw loop.
+  // `resolved` is declared here and cleared per mark so it allocates at most once per
+  // call and NOT AT ALL when nothing is marked, which is the state roll is in almost
+  // always (Phase 13's "never be blind", applied to the path this milestone added).
+  std::vector<const EffectFn*> resolved;
   for (const Mark& m : f.marks()) {
     if (m.cells <= 0 || m.state == EffectState::None) continue;
     if (m.y < 0 || m.y >= f.height()) continue;
     const std::vector<EffectSpec>& specs = theme.effects.for_state(m.state);
     if (specs.empty()) continue;
+    resolved.clear();
+    for (const EffectSpec& s : specs) {
+      const EffectFn* fn = effect_kind(s.kind);
+      if (!fn || !*fn) name_unknown(s.kind);  // named once per mark, not once per cell
+      resolved.push_back(fn && *fn ? fn : nullptr);
+    }
     bool any = false;
     const std::uint64_t elapsed = now_ms >= m.since_ms ? now_ms - m.since_ms : 0;
     for (int i = 0; i < m.cells; ++i) {
@@ -232,12 +245,10 @@ EffectReport apply_effects(Frame& f, const Theme& theme, std::uint64_t now_ms, b
       in.base = cell.style;
       in.ambiguous_wide = ambiguous_wide;
       EffectOut out;
-      for (const EffectSpec& s : specs) {
-        const EffectFn* fn = effect_kind(s.kind);
-        if (!fn || !*fn) {
-          name_unknown(s.kind);
-          continue;
-        }
+      for (std::size_t k = 0; k < specs.size(); ++k) {
+        const EffectFn* fn = resolved[k];
+        if (!fn) continue;  // an unknown kind: already named above, and it draws nothing
+        const EffectSpec& s = specs[k];
         EffectOut one;
         (*fn)(s, theme, in, one);
         // Stacking: the glyph comes from whichever kind last set one, the style likewise,
