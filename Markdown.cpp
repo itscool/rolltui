@@ -494,7 +494,7 @@ void layout_runs(const std::vector<Run>& runs, Ctx& ctx, std::vector<StyledLine>
   wo.tab_width = ctx.tab_width;
   wo.first_indent = first_indent;
   wo.hanging_indent = hanging_indent;
-  std::vector<Line> lines = wrap(text, ctx.width, wo);
+  WrapLines lines = wrap(text, ctx.width, wo);
   static const std::string kNoHref;
   auto run_at = [&](std::size_t off) -> const RunAt* {
     const RunAt* r = nullptr;
@@ -708,7 +708,7 @@ void render_code(const std::string& code, const std::string& label, Ctx& ctx,
     const std::string& raw = src[i];
     const std::size_t base = emit_text(raw);
     if (cap > 0 && i >= cap) continue;  // hidden by the cap: text above, no lines drawn
-    std::vector<Line> lines = wrap(raw, inner, wo);
+    WrapLines lines = wrap(raw, inner, wo);
     // Unregistered highlighter (the default) or a non-highlightable block (HTML):
     // `runs` stays empty and every grapheme below takes exactly the pre-seam path —
     // this is the control markdown_test.cpp asserts byte-identical.

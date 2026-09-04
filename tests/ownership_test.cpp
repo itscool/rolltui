@@ -173,7 +173,21 @@ int main() {
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Unicode.hpp", 1},     {"Widgets.hpp", 10},
-        {"Wrap.hpp", 2},
+        // Wrap.hpp 2 → 5, RE-RECORDED 2026-09-04 by Phase 14 m3, same as Screen.hpp above:
+        // the number moved, so somebody had to say what each new pointer is. The two that
+        // LEFT were `const Line* begin()/end()` — a line is built on read now, so the
+        // iterator is an index rather than a pointer into an array that no longer exists.
+        //   - `RolltuiWrapLines* p` in `WrapLines::Handle` — the deleter of the OWNED
+        //     handle, a `unique_ptr`'s deleter rather than a member, which is the
+        //     sanctioned shape for OWNED and the only non-borrow here.
+        //   - `const char* text` and `const WrapGrapheme* graphemes` in `operator[]` —
+        //     BORROWS out of the handle, turned into a `string_view` and a `span` in the
+        //     same expression and never stored. The window is stated at the C header:
+        //     valid until that handle is wrapped into again, reset or destroyed.
+        //   - `const WrapLines* w` / `w_` in the iterator (one declaration each, the
+        //     parameter and the member) — a BORROW of the container being iterated, which
+        //     by construction outlives the iterator.
+        {"Wrap.hpp", 5},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -206,7 +220,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 51, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 54, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

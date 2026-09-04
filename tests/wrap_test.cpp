@@ -24,9 +24,10 @@ using namespace rolltui_test;
 
 namespace {
 
-std::vector<std::string> texts(const std::vector<Line>& lines) {
+std::vector<std::string> texts(const WrapLines& lines) {
   std::vector<std::string> v;
-  for (const Line& l : lines) v.push_back(l.text);
+  // `Line::text` is a BORROW now (Phase 14 m3), so a caller that wants a string says so.
+  for (const Line& l : lines) v.emplace_back(l.text);
   return v;
 }
 
@@ -62,7 +63,7 @@ struct Rng {  // xorshift64*, seeded: the corpus is reproducible
 // Check the three properties for one input at one width. Returns a failure
 // description or "".
 std::string properties(std::string_view input, int width) {
-  std::vector<Line> lines = wrap(input, width);
+  WrapLines lines = wrap(input, width);
   if (lines.empty()) return "no lines";
   // 1. width
   for (const Line& l : lines) {
@@ -70,7 +71,7 @@ std::string properties(std::string_view input, int width) {
     for (const WrapGrapheme& g : l.graphemes) w += g.width;
     if (w != l.width) return "Line::width disagrees with its graphemes";
     if (width > 0 && l.width + l.indent > width && !(l.graphemes.size() == 1 && l.graphemes[0].width > width))
-      return "line exceeds width " + std::to_string(width) + ": [" + l.text + "]";
+      return "line exceeds width " + std::to_string(width) + ": [" + std::string(l.text) + "]";
     if (width <= 0 && !l.graphemes.empty()) return "width<=0 drew something";
   }
   // 2. every grapheme once, in order, minus dropped spaces; drawn width-0 never
@@ -82,7 +83,7 @@ std::string properties(std::string_view input, int width) {
     }
     std::vector<std::string> drawn;
     for (const Line& l : lines)
-      for (const WrapGrapheme& g : l.graphemes) drawn.push_back(l.text.substr(g.offset, g.length));
+      for (const WrapGrapheme& g : l.graphemes) drawn.emplace_back(l.text.substr(g.offset, g.length));
     // Walk src; each drawn grapheme must match the next src grapheme, where a tab in
     // src matches 1..8 drawn spaces, and src spaces/tabs may be skipped (dropped).
     std::size_t si = 0, di = 0;
@@ -102,13 +103,16 @@ std::string properties(std::string_view input, int width) {
       if (src[si] != " " && src[si] != "\t") return "source grapheme never drawn: [" + src[si] + "]";
     for (std::size_t i = 0; i + 1 < lines.size(); ++i)
       if (!lines[i].hard && !lines[i].graphemes.empty() && lines[i].graphemes.back().space)
-        return "soft-broken line ends in a space: [" + lines[i].text + "]";
+        return "soft-broken line ends in a space: [" + std::string(lines[i].text) + "]";
   }
   // 3. idempotence: every drawn line newline-terminated (a trailing newline makes no
   //    extra line, so this is the exact inverse of the line convention)
   if (width > 0) {
     std::string joined;
-    for (const Line& l : lines) joined += l.text + '\n';
+    for (const Line& l : lines) {
+      joined += l.text;
+      joined += '\n';
+    }
     std::vector<std::string> again = texts(wrap(joined, width));
     if (again != texts(lines)) return "not idempotent: " + show(texts(lines)) + " -> " + show(again);
   }
@@ -172,11 +176,11 @@ int main() {
   expect_lines("hanging indent reduces later lines", "aaaa bbbb cccc", 9, {"aaaa bbbb", "cccc"},
                WrapOptions{.hanging_indent = 4});
   {
-    std::vector<Line> l = wrap("aaaa bbbb cccc", 9, WrapOptions{.first_indent = 1, .hanging_indent = 4});
+    WrapLines l = wrap("aaaa bbbb cccc", 9, WrapOptions{.first_indent = 1, .hanging_indent = 4});
     check(l.size() == 3 && l[0].indent == 1 && l[1].indent == 4 && l[2].indent == 4 &&
               l[0].text == "aaaa" && l[1].text == "bbbb" && l[2].text == "cccc",
           "indents are reported per line and applied to the width");
-    std::vector<Line> m = wrap("abc", 3, WrapOptions{.first_indent = 10});
+    WrapLines m = wrap("abc", 3, WrapOptions{.first_indent = 10});
     check(m.size() == 2 && m[0].indent == 2 && m[0].text == "a", "an indent >= width is clamped to width-1");
   }
   expect_lines("ambiguous width narrow by default", "\xC2\xA1\xC2\xA1" "a", 2, {"\xC2\xA1\xC2\xA1", "a"});
@@ -187,13 +191,13 @@ int main() {
   expect_lines("leading spaces on a continuation come from the source only", "a  b", 2, {"a", "b"});
   expect_lines("many spaces then a word wider than the rest", "a       bbbbb", 6, {"a", "bbbbb"});
   {
-    std::vector<Line> l = wrap("ab\tc", 20);
+    WrapLines l = wrap("ab\tc", 20);
     check(l.size() == 1 && l[0].graphemes.size() == 9 && l[0].graphemes[2].source_offset == 2 &&
               l[0].graphemes[7].source_offset == 2 && l[0].graphemes[8].source_offset == 3,
           "expanded tab spaces record the tab's source offset");
-    std::vector<Line> h = wrap("ab cd", 2);
+    WrapLines h = wrap("ab cd", 2);
     check(h.size() == 2 && !h[0].hard && h[1].hard, "soft break is not hard; end of text is");
-    std::vector<Line> n = wrap("ab\ncd", 10);
+    WrapLines n = wrap("ab\ncd", 10);
     check(n.size() == 2 && n[0].hard && n[1].hard, "newline-ended line is hard");
   }
 
@@ -242,6 +246,32 @@ int main() {
   }
   check(rand_fail == 0, "properties hold over " + std::to_string(cases) + " seeded random cases (" +
                             std::to_string(rand_fail) + " failures)");
+
+  // ---- THE LENT WINDOW (Phase 14 m3's Done-when) -----------------------------------
+  // `wrap_borrow` is the form every draw and layout loop uses and the reason a steady frame
+  // allocates nothing, so the port had to carry it across intact. What needed proving is not
+  // the ANSWER — that is the same engine the whole file above already tests — it is the
+  // WINDOW: the lines belong to the callee, a second window reuses the same storage, and a
+  // borrow held past its window reads EMPTY rather than plausibly stale. It had no test of
+  // its own before m3, which is why it gets one now.
+  {
+    const std::vector<std::string> want = texts(wrap("the quick brown fox jumps", 10));
+    {
+      auto lock = wrap_borrow("the quick brown fox jumps", 10);
+      check(texts(*lock) == want && lock->size() == want.size(),
+            "wrap_borrow lends the same lines wrap() hands over: " + show(texts(*lock)));
+    }
+    {  // a second window, after the first closed: same buffer, different content
+      auto lock = wrap_borrow("a b c", 1);
+      check(texts(*lock) == std::vector<std::string>({"a", "b", "c"}),
+            "…and a second window on the reused buffer answers for its own input");
+    }
+    {  // rolltui/Scratch.hpp: on release the storage is CLEARED, capacity kept
+      const WrapLines* held = nullptr;
+      { auto lock = wrap_borrow("held past its own window", 8); held = &*lock; }
+      check(held->empty(), "…and a borrow read past its window is EMPTY: deterministic garbage, not stale truth");
+    }
+  }
 
   return report("rolltui wrap_test");
 }

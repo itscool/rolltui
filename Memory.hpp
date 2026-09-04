@@ -36,10 +36,15 @@ namespace rolltui::mem {
 
 // Live totals since the process started. Cheap to read; safe from any thread.
 struct Stats {
-  std::size_t allocations = 0;  // calls to alloc/realloc that returned new storage
+  // Calls that returned NEW STORAGE — a growing `realloc` included, because it hands out
+  // storage and copies into it exactly as a fresh allocation does. This is the number the
+  // budget adds to the C++ side's `operator new` count, so it has to mean the same thing in
+  // a module that grows a `realloc`'d buffer as in one that grows a `std::vector`
+  // (Phase 14 m3; it counted the realloc as neither before, which made C look free).
+  std::size_t allocations = 0;
   std::size_t frees = 0;
   std::size_t bytes_requested = 0;  // cumulative, not current
-  std::size_t live_blocks = 0;      // allocations - frees
+  std::size_t live_blocks = 0;      // tracked, NOT allocations - frees: a grow is not a new block
 };
 Stats stats();
 void reset_stats();  // for a test that wants a window; never called by the library

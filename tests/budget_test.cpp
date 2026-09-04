@@ -349,7 +349,34 @@ int main() {
   // one in the transcript's. `prepare`, `resolve`, the frame reset and `compose` with no
   // slot renderer are all EXACTLY ZERO. The target is 0 and this is not it; the six are
   // itemised in plan/phase-13.md m5b.
-  constexpr long kStreaming = 289, kResize = 11180;
+  // RE-RECORDED 2026-09-04 by Phase 14 m3, and this is the FIRST TIME THE TWO
+  // CONFIGURATIONS NEED TWO NUMBERS. m1 and m2 were identical either way and the journal
+  // said so; the wrap engine is not, by a difference that is measured, deterministic and
+  // fully accounted for:
+  //
+  //             steady   streaming   resize    steady KB
+  //   C++ (OFF)      0         286    10941            0
+  //   C   (ON)       0         291    11140            0
+  //
+  // **THE WHOLE GAP IS THE SMALL-STRING OPTIMISATION, and that is a measurement rather than
+  // a story.** `wrap()` hands over a result by copying three buffers into a fresh handle:
+  // the bytes, the clusters and one record per line. In C that is always three allocations
+  // plus the handle; in C++ the `std::string` holds a short total INLINE and costs nothing.
+  // A probe run on the resize frame counted **281 `wrap()` results, 200 of them with a
+  // total text of 1..22 bytes** — libc++'s inline capacity — and the C configuration's wrap
+  // cost exactly 281 x 4 = 1,124 allocations against C++'s 924 (= 281 handles + 81 strings
+  // + 281 + 281). On a WARM resize the difference is exactly 200, the count of short
+  // results; on the first one it is 199, one C++ container growing to a new high-water mark
+  // at the new width. No other difference between the two implementations was found.
+  //
+  // The OFF numbers moved too (289 -> 286, 11180 -> 10941) and that is m3's own doing: the
+  // soft-break cut used to build a tail `std::vector` and a tail `std::string` per wrapped
+  // line, and the shared-buffer data model the port forced deleted both (rolltui/WrapCpp.cpp).
+#ifdef ROLLTUI_C_BUILD
+  constexpr long kStreaming = 291, kResize = 11140;
+#else
+  constexpr long kStreaming = 286, kResize = 10941;
+#endif
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were
@@ -441,8 +468,15 @@ int main() {
     void* b = mem::realloc(a, 256);
     mem::free(b);
     const mem::Stats after = mem::stats();
-    check(after.allocations == before.allocations + 1 && after.frees == before.frees + 1,
-          "rolltui::mem counts one allocation and one free for alloc→realloc→free (a realloc that GREW is not a new block)");
+    // RE-RECORDED by Phase 14 m3, and the change is the point: a GROWING REALLOC counts as
+    // an allocation now, because it hands out new storage and copies into it. It used to
+    // count as neither, which made the C implementation — where every buffer grows through
+    // `realloc` — look free next to a C++ one whose every `std::vector` growth is a counted
+    // `operator new`. `live_blocks` is tracked separately, so it still says one block.
+    check(after.allocations == before.allocations + 2 && after.frees == before.frees + 1,
+          "rolltui::mem counts alloc→realloc→free as two allocations and one free (a grow IS new storage)");
+    check(after.live_blocks == before.live_blocks && mem::stats().live_blocks == before.live_blocks,
+          "…and live_blocks says the grow was not a new BLOCK, which is the other half of the same fact");
     check(after.bytes_requested == before.bytes_requested + 128 + 256, "…and accumulates the bytes requested");
     check(mem::alloc(0) == nullptr, "a zero-byte request is a nullptr, not a one-byte block");
     mem::free(nullptr);  // must be a no-op

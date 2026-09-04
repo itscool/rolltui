@@ -13,17 +13,9 @@
  * API is not its business. The split mirrors `Style.hpp` / `Screen.hpp` exactly, which is
  * the layering that already exists one level up.
  *
- * THE THREE DUAL-LANGUAGE SPELLINGS BELOW, and why each is the way it is:
- *
- *   ROLLTUI_DEFAULT(v)  C has no default member initializers and C++ needs them — `Style s;`
- *                       must be a blank style at every one of its call sites, not garbage.
- *                       The FIELD is declared once and only its initializer varies, so
- *                       there is still nothing to keep in sync.
- *
- *   ROLLTUI_STATIC_ASSERT  the layout is checked BY BOTH COMPILERS, on every include. That
- *                       is what makes "one definition" a fact rather than an intention: if
- *                       the two languages ever disagreed about a size or an offset, the
- *                       build stops instead of producing a plausible frame.
+ * THE DUAL-LANGUAGE SPELLINGS `ROLLTUI_DEFAULT` and `ROLLTUI_STATIC_ASSERT` moved to
+ * `rolltui_abi.h` in m3, when a third header needed them; that file says what each is for.
+ * The one that belongs here is the third:
  *
  *   the attribute bits are `unsigned char` AND NOT `bool`. C's `_Bool` and C++'s `bool` are
  *                       the same byte on every toolchain this will ever see, and that is
@@ -33,14 +25,7 @@
  *                       hidden: `theme_editor.cpp`'s `attr_of` returns `unsigned char&`
  *                       now, and a braced init that used to take a `bool` needs `!= 0`.
  */
-
-#ifdef __cplusplus
-#define ROLLTUI_DEFAULT(v) = v
-#define ROLLTUI_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#else
-#define ROLLTUI_DEFAULT(v)
-#define ROLLTUI_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-#endif
+#include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
 extern "C" {

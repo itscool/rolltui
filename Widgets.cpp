@@ -89,7 +89,7 @@ int draw_scrolled_text(const ResolvedNode& rn, Frame& f, const Theme& theme, std
   const Rect r = content_rect(rn);
   WrapOptions wo;
   wo.ambiguous_wide = ambiguous_wide;
-  const std::vector<Line> lines = wrap(text, std::max(r.w, 1), wo);
+  const WrapLines lines = wrap(text, std::max(r.w, 1), wo);
   const int total = static_cast<int>(lines.size());
   if (r.w <= 0 || r.h <= 0) return total;
   int y = r.y;

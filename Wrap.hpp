@@ -2,7 +2,7 @@
 //
 // rolltui/Wrap.hpp — word wrapping over Unicode.hpp, as a pure function:
 //
-//   std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions&)
+//   WrapLines wrap(std::string_view utf8, int width, const WrapOptions&)
 //
 // A Line is the bytes to draw plus one entry per grapheme cluster with its cell width
 // and the byte offset it came from in the source, so a renderer never re-measures and
@@ -40,67 +40,137 @@
 //     model output before it reaches any renderer (plan/phase-9.md, "Model output is
 //     data, never terminal input").
 //
+// PHASE 14 m3 — THE LINES ARE A HANDLE. The engine lives behind
+// `rolltui/c/rolltui_wrap.h`, in one of two implementations chosen by `-DROLLTUI_C`
+// (`WrapCpp.cpp` or `c/rolltui_wrap.c`), and this header is the RAII plus the reading.
+// `WrapOptions` and `WrapGrapheme` ARE the C structs (one definition, m2's rule); `Line`
+// is a C++ VIEW built from the boundary's out-params in exactly one place, the same
+// conversion `Mark` and `Cursor` already get on the Screen boundary.
+//
+// TWO THINGS A CALLER CAN SEE, both forced by the handle rather than chosen:
+//   - `Line::text` is a `string_view` and `Line::graphemes` a `span`, BORROWED from the
+//     WrapLines that produced them and valid exactly as long as it is not re-wrapped.
+//     A line no longer owns a `std::string`, so a caller that wants one says so.
+//   - `wrap()` returns a `WrapLines`, not a `std::vector<Line>`. It is move-only, and
+//     one handle's worth of storage rather than a string and a vector per line.
+//
 #include <cstddef>
-#include <string>
+#include <memory>
+#include <span>
+#include <string_view>
 
 #include "rolltui/Scratch.hpp"
-#include <string_view>
-#include <vector>
+#include "rolltui/c/rolltui_wrap.h"
 
 namespace rolltui {
 
-struct WrapOptions {
-  bool ambiguous_wide = false;
-  int tab_width = 8;
-  int first_indent = 0;    // cells before the first line
-  int hanging_indent = 0;  // cells before every subsequent line
-};
+// ONE DEFINITION (Phase 14 m3): both are declared in `rolltui/c/rolltui_wrap.h` and
+// compiled by both languages, so there is nothing to convert and nothing to drift.
+using WrapOptions = RolltuiWrapOptions;
+using WrapGrapheme = RolltuiWrapGrapheme;
 
-struct WrapGrapheme {
-  std::size_t offset;         // into Line::text
-  std::size_t length;         // bytes in Line::text
-  std::size_t source_offset;  // byte offset in the wrap() input (a tab's, for its spaces)
-  int width;                  // cells
-  bool space;                 // U+0020 or an expanded tab: droppable at a soft break
-};
-
+// One wrapped line, as BORROWS into the WrapLines that produced it. Valid until that
+// object is wrapped into again, reset, or destroyed — the same window `Scratch` states
+// one level up and `Frame::glyph` states one level down.
 struct Line {
-  std::string text;                     // the bytes to draw, in order
-  std::vector<WrapGrapheme> graphemes;  // one per drawn cluster
-  int width = 0;                        // cells, excluding `indent`
-  int indent = 0;                       // cells the renderer pads before `text`
-  bool hard = false;                    // ended by a mandatory break (or end of text)
+  std::string_view text;                     // the bytes to draw, in order
+  std::span<const WrapGrapheme> graphemes;   // one per drawn cluster
+  int width = 0;                             // cells, excluding `indent`
+  int indent = 0;                            // cells the renderer pads before `text`
+  bool hard = false;                         // ended by a mandatory break (or end of text)
 };
 
-std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt = {});
+// The lines, and the storage they are views into. Move-only: one owner, structural
+// lifetime, no copy that could silently duplicate a frame's worth of buffers.
+//
+// **THIS IS ALSO THE REUSABLE FORM.** A caller that wraps repeatedly should keep one and
+// call `wrap()` on it: every buffer — the lines, their bytes, their graphemes, and the
+// decode and UAX #14/#29 scratch behind them — grows to a high-water mark and is never
+// freed until the object is. That is what makes a steady frame allocate nothing.
+class WrapLines {
+ public:
+  // OWNED (CLAUDE.md's fourth strategy), through a `unique_ptr` with a deleter that calls
+  // the C free — one owner, and no hand-rolled `delete` anywhere.
+  struct Handle {
+    void operator()(RolltuiWrapLines* p) const { rolltui_wrap_free(p); }
+  };
+
+  WrapLines() : w_(rolltui_wrap_new()) {}
+  WrapLines(WrapLines&&) noexcept = default;
+  WrapLines& operator=(WrapLines&&) noexcept = default;
+  WrapLines(const WrapLines&) = delete;
+  WrapLines& operator=(const WrapLines&) = delete;
+
+  // Wraps into THIS object, reusing everything it already holds. Any Line taken from it
+  // before this call is dead afterwards.
+  void wrap(std::string_view utf8, int width, const WrapOptions& opt = {}) {
+    rolltui_wrap(w_.get(), utf8.data(), utf8.size(), width, opt);
+  }
+  // Replaces these lines with copies of another's, reusing this object's buffers. Neither
+  // object's wrap scratch is touched: this is how a lent result becomes an owned one.
+  void assign(const WrapLines& o) { rolltui_wrap_copy(w_.get(), o.w_.get()); }
+  // Drops the lines and keeps every buffer. This is what `Scratch` calls on acquire and
+  // on release, which is why a lender's second window costs nothing.
+  void clear() { rolltui_wrap_reset(w_.get()); }
+
+  std::size_t size() const { return rolltui_wrap_line_count(w_.get()); }
+  bool empty() const { return size() == 0; }
+  Line operator[](std::size_t i) const {
+    const char* text = nullptr;              // BORROW: the line's bytes, inside the handle
+    const WrapGrapheme* graphemes = nullptr; // BORROW: the line's clusters, likewise
+    std::size_t text_len = 0, grapheme_count = 0;
+    int width = 0, indent = 0, hard = 0;
+    rolltui_wrap_line(w_.get(), i, &text, &text_len, &graphemes, &grapheme_count, &width, &indent, &hard);
+    return Line{std::string_view(text, text_len), std::span<const WrapGrapheme>(graphemes, grapheme_count),
+                width, indent, hard != 0};
+  }
+
+  // A `Line` is built on read rather than stored, so this yields BY VALUE — the views
+  // inside it point at the handle and outlive the loop variable, which is what makes
+  // `for (const Line& l : lines)` safe.
+  class iterator {
+   public:
+    using difference_type = std::ptrdiff_t;
+    using value_type = Line;
+    iterator() = default;
+    iterator(const WrapLines* w, std::size_t i) : w_(w), i_(i) {}  // BORROW: the container
+    Line operator*() const { return (*w_)[i_]; }
+    iterator& operator++() {
+      ++i_;
+      return *this;
+    }
+    iterator operator++(int) {
+      iterator t = *this;
+      ++i_;
+      return t;
+    }
+    bool operator==(const iterator& o) const { return i_ == o.i_; }
+
+   private:
+    const WrapLines* w_ = nullptr;  // BORROW: never owns, never outlives the container
+    std::size_t i_ = 0;
+  };
+  iterator begin() const { return iterator(this, 0); }
+  iterator end() const { return iterator(this, size()); }
+
+ private:
+  std::unique_ptr<RolltuiWrapLines, Handle> w_;
+};
+
+// THE LINES, HANDED OVER. Use this when they must OUTLIVE the call. It runs the engine in
+// a warm thread-local handle and copies the lines into the returned one, so the decode and
+// break buffers are paid for once per thread rather than once per call.
+WrapLines wrap(std::string_view utf8, int width, const WrapOptions& opt = {});
 
 // THE SAME LINES, LENT RATHER THAN HANDED OVER (Phase 13 m5b, rolltui/Scratch.hpp). `wrap`
 // runs for every row of a `rows:` window on every frame and for every entry that re-lays,
-// and returning a fresh `vector<Line>` — each `Line` holding a string AND a vector — was
-// 26 of a steady frame's 43 allocations and the bulk of a resize. This keeps the storage
-// with the callee and reuses it: the borrow is valid until the Lock goes out of scope, and
-// a second one while the first is live ABORTS rather than aliasing.
+// and returning a fresh result — each Line holding a string AND a vector — was 26 of a
+// steady frame's 43 allocations and the bulk of a resize. This keeps the storage with the
+// callee and reuses it: the borrow is valid until the Lock goes out of scope, and a second
+// one while the first is live ABORTS rather than aliasing.
 //
 // Use `wrap()` when the lines must outlive the call. Use this in a draw or layout loop,
 // which is every hot caller.
-//
-// **`clear()` IS THE WRONG RESET FOR A CONTAINER OF OWNING ELEMENTS**, and that is why this
-// is its own type rather than a `vector<Line>`: clearing a `vector<Line>` destroys each
-// Line and frees the string and the vector INSIDE it, which is precisely the storage being
-// reused. Found by measurement — lending the outer vector alone took a steady frame from
-// 43 to 39, and reaching into the Lines took it to 25. So the reset here sets a COUNT and
-// keeps every Line intact.
-struct WrapLines {
-  std::vector<Line> lines;  // storage; grows to the high-water mark and never shrinks
-  std::size_t n = 0;        // how many of them are live
-
-  void clear() { n = 0; }   // what Scratch calls: keeps every Line's buffers
-  std::size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  const Line& operator[](std::size_t i) const { return lines[i]; }
-  const Line* begin() const { return lines.data(); }
-  const Line* end() const { return lines.data() + n; }
-};
 Scratch<WrapLines>::Lock wrap_borrow(std::string_view utf8, int width, const WrapOptions& opt = {});
 
 }  // namespace rolltui
