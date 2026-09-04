@@ -63,6 +63,8 @@ RolltuiDrawScratch* draw_scratch() {
 
 }  // namespace
 
+const RolltuiInputActions* input_actions() { return &kActions; }
+
 Input::Input() { rolltui_input_set_copy(in_.get(), call_copy, this); }
 
 Input::Input(Input&& o) noexcept : on_copy(std::move(o.on_copy)), in_(std::move(o.in_)) {

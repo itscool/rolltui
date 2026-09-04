@@ -208,7 +208,7 @@ int main() {
     e2.handle(key(Key::Home));
     type(e2, "fixes");
     e2.handle(key(Key::Enter));  // Fixes level
-    const std::string first = e2.menu().selected_item()->label;
+    const std::string first(e2.menu().selected_item()->label.view());
     o = e2.handle(key(Key::Enter));
     check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.fixes().size() == 1 && e2.undo_depth() == 2,
           "Enter on a proposal applies it as a commit (undoable) and the list shrinks: applied [" + first + "]");

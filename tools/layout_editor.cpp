@@ -274,7 +274,7 @@ void LayoutEditor::sync_content_fields() {
     it->spec.hint.clear();
     for (const std::string& c : sources_)
       if (std::optional<Content> oc = parse_content(c); oc && content_kind_name(*oc) == p.kind_text && !oc->source.empty())
-        it->spec.hint += (it->spec.hint.empty() ? "" : " | ") + oc->source;
+        it->spec.hint = it->spec.hint.str() + (it->spec.hint.empty() ? "" : " | ") + oc->source;
     if (it->spec.hint.empty()) it->spec.hint = content_source_describes(*p.content);
   }
 }
@@ -667,18 +667,18 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
   if (ev.kind == K::Closed) return {O::Closed, {}};
   // ---- live preview while a choice is highlighted or an input is being typed ----
   const MenuItem* sel = menu_.selected_item();
-  const std::string& level = menu_.level().id;
+  const std::string_view level = menu_.level().id.view();
   if (sel && !menu_.editing() && level == "border") {
-    if (auto b = border_from_name(sel->id)) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
+    if (auto b = border_from_name(sel->id.view())) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
   }
   if (sel && !menu_.editing() && level == "kind") {
     begin_preview();
-    if (!set_content(sel->id, carried_source(sel->id))) cancel_preview();
+    if (!set_content(sel->id.str(), carried_source(sel->id.str()))) cancel_preview();
     return {O::Changed, {}};
   }
   if (sel && !menu_.editing() && level == "menu_file") {
     begin_preview();
-    set_content("menu", sel->id);
+    set_content("menu", sel->id.str());
     return {O::Changed, {}};
   }
   if (menu_.editing() && sel) {

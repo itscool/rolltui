@@ -15,11 +15,12 @@ RolltuiLayoutNode* rolltui_node_list_at(const RolltuiNodeList* l, size_t i) {
   return i < l->n ? l->v[i] : NULL;
 }
 
+/* THE MECHANICS ARE `RolltuiPtrVec`'s (rolltui_str.h), not a second copy of them: this list
+ * has that layout by construction and the cast is what says so. Every array in this port
+ * holds pointers to things it owns, so one mechanism with typed faces is the C answer to
+ * what a C++ template would have made one type. */
 void rolltui_node_list_push(RolltuiNodeList* l, RolltuiLayoutNode* n) {
-  /* GROWING, AMORTISED (rolltui_alloc.h strategy 2): a child list is appended to and its
-   * final length is a file's business, not this function's. */
-  l->v = (RolltuiLayoutNode**)rolltui_grow(l->v, &l->cap, l->n + 1, sizeof *l->v);
-  l->v[l->n++] = n;
+  rolltui_ptrvec_push((RolltuiPtrVec*)l, n);
 }
 
 RolltuiLayoutNode* rolltui_node_list_add(RolltuiNodeList* l) {
@@ -29,18 +30,11 @@ RolltuiLayoutNode* rolltui_node_list_add(RolltuiNodeList* l) {
 }
 
 void rolltui_node_list_insert(RolltuiNodeList* l, size_t i, RolltuiLayoutNode* n) {
-  if (i > l->n) i = l->n;
-  l->v = (RolltuiLayoutNode**)rolltui_grow(l->v, &l->cap, l->n + 1, sizeof *l->v);
-  memmove(l->v + i + 1, l->v + i, (l->n - i) * sizeof *l->v);
-  l->v[i] = n;
-  l->n++;
+  rolltui_ptrvec_insert((RolltuiPtrVec*)l, i, n);
 }
 
 void rolltui_node_list_remove(RolltuiNodeList* l, size_t i) {
-  if (i >= l->n) return;
-  rolltui_layout_node_free(l->v[i]);
-  memmove(l->v + i, l->v + i + 1, (l->n - i - 1) * sizeof *l->v);
-  l->n--;
+  rolltui_layout_node_free((RolltuiLayoutNode*)rolltui_ptrvec_take((RolltuiPtrVec*)l, i));
 }
 
 void rolltui_node_list_clear(RolltuiNodeList* l) {
@@ -51,9 +45,7 @@ void rolltui_node_list_clear(RolltuiNodeList* l) {
 
 void rolltui_node_list_release(RolltuiNodeList* l) {
   rolltui_node_list_clear(l);
-  rolltui_mem_free(l->v);
-  l->v = NULL;
-  l->cap = 0;
+  rolltui_ptrvec_free((RolltuiPtrVec*)l);
 }
 
 void rolltui_node_list_copy(RolltuiNodeList* to, const RolltuiNodeList* from) {

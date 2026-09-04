@@ -3,6 +3,8 @@
 #include "rolltui/c/rolltui_layout.h"
 
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -102,6 +104,157 @@ static RolltuiRect rect_intersect(RolltuiRect a, RolltuiRect b) {
 static int rect_empty(RolltuiRect r) { return r.w <= 0 || r.h <= 0; }
 static int rect_contains(RolltuiRect r, int x, int y) {
   return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+
+/* ---- the text forms ------------------------------------------------------------------------ */
+
+static const char* trim_span(const char* s, size_t len, size_t* out_len) {
+  size_t b = 0, e = len;
+  while (b < e && (s[b] == ' ' || s[b] == '\t')) ++b;
+  while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t')) --e;
+  *out_len = e - b;
+  return s + b;
+}
+
+static int parse_int_span(const char* s, size_t len, int* out) {
+  size_t i = 0;
+  int neg = 0;
+  long v = 0;
+  s = trim_span(s, len, &len);
+  if (len == 0) return 0;
+  if (s[0] == '-' || s[0] == '+') {
+    neg = s[0] == '-';
+    i = 1;
+  }
+  if (i >= len) return 0;
+  for (; i < len; ++i) {
+    if (s[i] < '0' || s[i] > '9') return 0;
+    v = v * 10 + (s[i] - '0');
+    if (v > 1000000) return 0;
+  }
+  *out = (int)(neg ? -v : v);
+  return 1;
+}
+
+int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out) {
+  size_t pct = 0, i, num_len, rest_len;
+  const char* num;
+  const char* rest;
+  char buf[64];
+  char* end = NULL;
+  double f;
+  int cells = 0;
+  text = trim_span(text, len, &len);
+  for (i = 0; i < len; ++i)
+    if (text[i] == '%') break;
+  if (i == len) return 0;
+  pct = i;
+  num = trim_span(text, pct, &num_len);
+  if (num_len == 0 || num_len >= sizeof buf) return 0;
+  for (i = 0; i < num_len; ++i)
+    if (!((num[i] >= '0' && num[i] <= '9') || num[i] == '.' || num[i] == '-' || num[i] == '+')) return 0;
+  memcpy(buf, num, num_len);
+  buf[num_len] = '\0';
+  f = strtod(buf, &end);
+  if (end != buf + num_len) return 0;
+  rest = trim_span(text + pct + 1, len - pct - 1, &rest_len);
+  if (rest_len) {
+    int mag;
+    if (rest[0] != '+' && rest[0] != '-') return 0;
+    if (!parse_int_span(rest + 1, rest_len - 1, &mag) || mag < 0) return 0;
+    cells = rest[0] == '-' ? -mag : mag;
+  }
+  out->fraction = f / 100.0;
+  out->cells = cells;
+  return 1;
+}
+
+size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap) {
+  char buf[ROLLTUI_DIM_STRING_MAX];
+  size_t n;
+  double pct = d.fraction * 100.0;
+  if (d.fraction == 0) {
+    n = (size_t)snprintf(buf, sizeof buf, "%d", d.cells);
+  } else if (fabs(pct - floor(pct + 0.5)) < 1e-9) {
+    n = (size_t)snprintf(buf, sizeof buf, "%d%%", (int)floor(pct + 0.5));
+  } else {
+    n = (size_t)snprintf(buf, sizeof buf, "%g%%", pct);
+  }
+  if (d.fraction != 0 && d.cells > 0) n += (size_t)snprintf(buf + n, sizeof buf - n, " + %d", d.cells);
+  else if (d.fraction != 0 && d.cells < 0) n += (size_t)snprintf(buf + n, sizeof buf - n, " - %d", -d.cells);
+  if (n >= cap) n = cap ? cap - 1 : 0;
+  if (cap) {
+    memcpy(out, buf, n);
+    out[n] = '\0';
+  }
+  return n;
+}
+
+int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSize* out) {
+  RolltuiDim d;
+  text = trim_span(text, len, &len);
+  if (len == 4 && memcmp(text, "fill", 4) == 0) {
+    out->fill = 1;
+    out->weight = 1;
+    out->dim.fraction = 0;
+    out->dim.cells = 0;
+    return 1;
+  }
+  if (len > 4 && memcmp(text, "fill", 4) == 0) {
+    int w;
+    if (parse_int_span(text + 4, len - 4, &w) && w >= 1) {
+      out->fill = 1;
+      out->weight = w;
+      out->dim.fraction = 0;
+      out->dim.cells = 0;
+      return 1;
+    }
+    return 0;
+  }
+  if (rolltui_parse_dim(text, len, &d)) {
+    out->fill = 0;
+    out->weight = 1;
+    out->dim = d;
+    return 1;
+  }
+  return 0;
+}
+
+int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out) {
+  size_t i;
+  if (rolltui_parse_split_size(text, len, out)) return 1;
+  if (len == 0 || len > 9) return 0;
+  for (i = 0; i < len; ++i)
+    if (text[i] < '0' || text[i] > '9') return 0;
+  out->fill = 0;
+  out->weight = 1;
+  out->dim.fraction = 0;
+  out->dim.cells = 0;
+  for (i = 0; i < len; ++i) out->dim.cells = out->dim.cells * 10 + (text[i] - '0');
+  return 1;
+}
+
+size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap) {
+  if (!s.fill) return rolltui_dim_to_string(s.dim, out, cap);
+  if (s.weight == 1) {
+    const size_t n = 4 < cap ? 4 : (cap ? cap - 1 : 0);
+    if (cap) {
+      memcpy(out, "fill", n);
+      out[n] = '\0';
+    }
+    return n;
+  }
+  {
+    char buf[ROLLTUI_DIM_STRING_MAX];
+    size_t n = (size_t)snprintf(buf, sizeof buf, "fill %d", s.weight);
+    if (n >= cap) n = cap ? cap - 1 : 0;
+    if (cap) {
+      memcpy(out, buf, n);
+      out[n] = '\0';
+    }
+    return n;
+  }
 }
 
 /* ---- the split ------------------------------------------------------------------------------- */

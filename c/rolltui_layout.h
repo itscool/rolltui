@@ -73,6 +73,23 @@ void rolltui_placement_resolve(const RolltuiPlacement* p, RolltuiRect parent, Ro
 /* The inner rect once the border is taken off (a None border takes nothing). */
 void rolltui_inner_rect(RolltuiRect outer, unsigned char border, RolltuiRect* out);
 
+/* ---- the text forms ---------------------------------------------------------------------------- */
+/* "50%" | "100% - 32" | "25%+2" — NOT a bare "32". 1 on success.
+ *
+ * THESE CROSSED BECAUSE THE MENU NEEDED THEM (Phase 15 m5): a `size` or `dim` field checks a
+ * keystroke as a prefix of a valid value and then canonicalises it, so the C menu widget has
+ * to be able to parse and print a Dim. They are pure text, and putting them anywhere but
+ * beside the type would have been a second definition of what a dim looks like. */
+int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out);
+/* "32" | "50%" | "100% - 32", into a caller's buffer. */
+#define ROLLTUI_DIM_STRING_MAX 64
+size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap);
+/* "fill" | "fill 2" | a dim string. */
+int rolltui_parse_split_size(const char* text, size_t len, RolltuiSplitSize* out);
+/* The same, plus a bare integer as cells — a size as TYPED. */
+int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out);
+size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap);
+
 /* ---- the split ----------------------------------------------------------------------------- */
 
 /* Called once per node, in TREE ORDER (a container precedes its children). The caller

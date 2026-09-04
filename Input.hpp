@@ -140,6 +140,11 @@ namespace rolltui {
 using InputOptions = RolltuiInputOptions;
 using InputSelection = RolltuiInputSelection;
 
+// THE THIRTY ACTION NAMES this widget's table is keyed by, exposed because a MENU embeds an
+// editor and forwards every key it does not claim to it (Phase 15 m5). One table of these
+// names in the library, and the menu boundary is handed a POINTER to it rather than a copy.
+const RolltuiInputActions* input_actions();
+
 enum class InputAction : unsigned char {
   Ignored = ROLLTUI_INPUT_IGNORED,
   Handled = ROLLTUI_INPUT_HANDLED,
@@ -250,6 +255,10 @@ class Input {
   int rows() const { return rolltui_input_rows(in_.get()); }
   int top_row() const { return rolltui_input_top_row(in_.get()); }
   Rect area() const;
+  // The handle, for the one other widget that EMBEDS an editor: a menu's typed field is a
+  // single-line `Input` this object owns and the C menu borrows (Phase 15 m5). One owner.
+  RolltuiInput* handle() { return in_.get(); }
+  const RolltuiInput* handle() const { return in_.get(); }
 
  private:
   std::unique_ptr<RolltuiInput, Handle> in_{rolltui_input_new()};

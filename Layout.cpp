@@ -260,65 +260,36 @@ std::optional<Border> border_from_name(std::string_view name) {
   return std::nullopt;
 }
 
+// THE TEXT FORMS ARE THE BOUNDARY'S (Phase 15 m5), because the MENU needed them: a `size`
+// or `dim` field checks a keystroke as a prefix of a valid value and canonicalises it, so
+// the C menu widget has to parse and print a Dim too. These five are the C++ spelling over
+// `rolltui/c/rolltui_layout.h`, and there is still one definition of what a dim looks like.
 std::optional<Dim> parse_dim(std::string_view text) {
-  text = trim(text);
-  std::size_t pct = text.find('%');
-  if (pct == std::string_view::npos) return std::nullopt;
-  std::string_view num = trim(text.substr(0, pct));
-  if (num.empty()) return std::nullopt;
-  // The percentage: an integer or a decimal, optionally signed.
-  char* end = nullptr;
-  std::string tmp(num);
-  double f = std::strtod(tmp.c_str(), &end);
-  if (end != tmp.c_str() + tmp.size()) return std::nullopt;
-  for (char c : tmp)
-    if (!(std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == '-' || c == '+')) return std::nullopt;
-  std::string_view rest = trim(text.substr(pct + 1));
-  int cells = 0;
-  if (!rest.empty()) {
-    if (rest[0] != '+' && rest[0] != '-') return std::nullopt;
-    int mag;
-    if (!parse_int(rest.substr(1), mag) || mag < 0) return std::nullopt;
-    cells = rest[0] == '-' ? -mag : mag;
-  }
-  return Dim::rel(f / 100.0, cells);
+  Dim d;
+  if (!rolltui_parse_dim(text.data(), text.size(), &d)) return std::nullopt;
+  return d;
 }
 
 std::string dim_to_string(Dim d) {
-  if (d.fraction == 0) return std::to_string(d.cells);
-  char buf[64];
-  double pct = d.fraction * 100.0;
-  if (std::fabs(pct - std::round(pct)) < 1e-9) std::snprintf(buf, sizeof buf, "%d%%", static_cast<int>(std::round(pct)));
-  else std::snprintf(buf, sizeof buf, "%g%%", pct);
-  std::string s = buf;
-  if (d.cells > 0) s += " + " + std::to_string(d.cells);
-  else if (d.cells < 0) s += " - " + std::to_string(-d.cells);
-  return s;
+  char buf[ROLLTUI_DIM_STRING_MAX];
+  return std::string(buf, rolltui_dim_to_string(d, buf, sizeof buf));
 }
 
 std::optional<SplitSize> parse_split_size(std::string_view text) {
-  text = trim(text);
-  if (text == "fill") return SplitSize::filling(1);
-  if (text.rfind("fill", 0) == 0) {
-    int w;
-    if (parse_int(text.substr(4), w) && w >= 1) return SplitSize::filling(w);
-    return std::nullopt;
-  }
-  if (auto d = parse_dim(text)) return SplitSize::fixed(*d);
-  return std::nullopt;
+  SplitSize s;
+  if (!rolltui_parse_split_size(text.data(), text.size(), &s)) return std::nullopt;
+  return s;
 }
 
 std::optional<SplitSize> parse_size_text(std::string_view text) {
-  if (std::optional<SplitSize> s = parse_split_size(text)) return s;
-  if (text.empty() || text.size() > 9) return std::nullopt;
-  for (char c : text)
-    if (c < '0' || c > '9') return std::nullopt;
-  return SplitSize::fixed(Dim::abs(std::atoi(std::string(text).c_str())));
+  SplitSize s;
+  if (!rolltui_parse_size_text(text.data(), text.size(), &s)) return std::nullopt;
+  return s;
 }
 
 std::string split_size_to_string(SplitSize s) {
-  if (s.fill) return s.weight == 1 ? "fill" : "fill " + std::to_string(s.weight);
-  return dim_to_string(s.dim);
+  char buf[ROLLTUI_DIM_STRING_MAX];
+  return std::string(buf, rolltui_split_size_to_string(s, buf, sizeof buf));
 }
 
 // ---- the loader ----------------------------------------------------------------------------

@@ -40,7 +40,7 @@ void act(LayoutEditor& ed, const std::string& filter) {
 // A missing item is a NAMED answer, never a null deref: this file crashed on one.
 std::string value_of(const LayoutEditor& ed, const char* id) {
   const MenuItem* it = ed.menu().find(id);
-  return it ? it->value : "(no item '" + std::string(id) + "')";
+  return it ? it->value.str() : "(no item '" + std::string(id) + "')";
 }
 bool enabled_of(const LayoutEditor& ed, const char* id) {
   const MenuItem* it = ed.menu().find(id);

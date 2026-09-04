@@ -17,6 +17,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -397,6 +400,124 @@ extern "C" void rolltui_inner_rect(RolltuiRect outer, unsigned char border, Roll
 extern "C" void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen,
                                      std::size_t layer, RolltuiResolvedSink emit, void* ctx) {
   if (root->visible) place(*root, box, screen, layer, emit, ctx);
+}
+
+
+// ---- the text forms ---------------------------------------------------------------------------
+
+namespace {
+
+std::string_view trim(std::string_view s) {
+  while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.remove_prefix(1);
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.remove_suffix(1);
+  return s;
+}
+
+bool parse_int(std::string_view s, int& out) {
+  s = trim(s);
+  if (s.empty()) return false;
+  std::size_t i = 0;
+  bool neg = false;
+  if (s[i] == '-' || s[i] == '+') {
+    neg = s[i] == '-';
+    ++i;
+  }
+  if (i >= s.size()) return false;
+  long v = 0;
+  for (; i < s.size(); ++i) {
+    if (s[i] < '0' || s[i] > '9') return false;
+    v = v * 10 + (s[i] - '0');
+    if (v > 1000000) return false;
+  }
+  out = static_cast<int>(neg ? -v : v);
+  return true;
+}
+
+std::size_t fill_out(std::string_view s, char* out, std::size_t cap) {
+  std::size_t n = std::min(s.size(), cap ? cap - 1 : 0);
+  if (cap) {
+    std::memcpy(out, s.data(), n);
+    out[n] = '\0';
+  }
+  return n;
+}
+
+}  // namespace
+
+extern "C" int rolltui_parse_dim(const char* text, std::size_t len, RolltuiDim* out) {
+  std::string_view t = trim(view(text, len));
+  const std::size_t pct = t.find('%');
+  if (pct == std::string_view::npos) return 0;
+  const std::string_view num = trim(t.substr(0, pct));
+  if (num.empty()) return 0;
+  // The percentage: an integer or a decimal, optionally signed.
+  const std::string tmp(num);
+  char* end = nullptr;
+  const double f = std::strtod(tmp.c_str(), &end);
+  if (end != tmp.c_str() + tmp.size()) return 0;
+  for (char c : tmp)
+    if (!(std::isdigit(static_cast<unsigned char>(c)) || c == '.' || c == '-' || c == '+')) return 0;
+  const std::string_view rest = trim(t.substr(pct + 1));
+  int cells = 0;
+  if (!rest.empty()) {
+    if (rest[0] != '+' && rest[0] != '-') return 0;
+    int mag = 0;
+    if (!parse_int(rest.substr(1), mag) || mag < 0) return 0;
+    cells = rest[0] == '-' ? -mag : mag;
+  }
+  *out = RolltuiDim::rel(f / 100.0, cells);
+  return 1;
+}
+
+extern "C" std::size_t rolltui_dim_to_string(RolltuiDim d, char* out, std::size_t cap) {
+  if (d.fraction == 0) return fill_out(std::to_string(d.cells), out, cap);
+  char buf[64];
+  const double pct = d.fraction * 100.0;
+  if (std::fabs(pct - std::round(pct)) < 1e-9)
+    std::snprintf(buf, sizeof buf, "%d%%", static_cast<int>(std::round(pct)));
+  else
+    std::snprintf(buf, sizeof buf, "%g%%", pct);
+  std::string s = buf;
+  if (d.cells > 0) s += " + " + std::to_string(d.cells);
+  else if (d.cells < 0) s += " - " + std::to_string(-d.cells);
+  return fill_out(s, out, cap);
+}
+
+extern "C" int rolltui_parse_split_size(const char* text, std::size_t len, RolltuiSplitSize* out) {
+  const std::string_view t = trim(view(text, len));
+  if (t == "fill") {
+    *out = RolltuiSplitSize::filling(1);
+    return 1;
+  }
+  if (t.rfind("fill", 0) == 0) {
+    int w = 0;
+    if (parse_int(t.substr(4), w) && w >= 1) {
+      *out = RolltuiSplitSize::filling(w);
+      return 1;
+    }
+    return 0;
+  }
+  RolltuiDim d;
+  if (rolltui_parse_dim(t.data(), t.size(), &d)) {
+    *out = RolltuiSplitSize::fixed(d);
+    return 1;
+  }
+  return 0;
+}
+
+extern "C" int rolltui_parse_size_text(const char* text, std::size_t len, RolltuiSplitSize* out) {
+  if (rolltui_parse_split_size(text, len, out)) return 1;
+  const std::string_view t = view(text, len);
+  if (t.empty() || t.size() > 9) return 0;
+  for (char c : t)
+    if (c < '0' || c > '9') return 0;
+  *out = RolltuiSplitSize::fixed(RolltuiDim::abs(std::atoi(std::string(t).c_str())));
+  return 1;
+}
+
+extern "C" std::size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, std::size_t cap) {
+  if (!s.fill) return rolltui_dim_to_string(s.dim, out, cap);
+  return fill_out(s.weight == 1 ? std::string("fill") : "fill " + std::to_string(s.weight), out, cap);
 }
 
 // ---- drawing ---------------------------------------------------------------------------------

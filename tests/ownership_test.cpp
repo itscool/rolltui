@@ -242,7 +242,13 @@ int main() {
         // other change is not a pointer at all: `text()` and `editing_text()` hand back a
         // `std::string_view` where they used to hand back a `const std::string&`, which is
         // the borrow the boundary forces and states its window for.
-        {"Effects.hpp", 3},      {"Input.hpp", 1},         {"Json.hpp", 0},        {"Keys.hpp", 1},
+        // Input.hpp 1 → 4 (Phase 15 m5, second pass): the three new ones all BORROW and none
+        // owns. `RolltuiInput* handle()` and its const overload hand the editor's OWNED
+        // handle to the one other widget that embeds one — a menu's typed field — so there
+        // is one owner and not two; `const RolltuiInputActions* input_actions()` is a BORROW
+        // of the thirty action names, so the menu boundary is handed a pointer to the
+        // library's one table rather than a copy of it.
+        {"Effects.hpp", 3},      {"Input.hpp", 4},         {"Json.hpp", 0},        {"Keys.hpp", 1},
         // Markdown.hpp 0 → 10, RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the census
         // recording the milestone's whole shape change: a `Span` used to OWN a
         // `std::string` and two vectors, so the header needed no pointer to say so. Every
@@ -272,7 +278,15 @@ int main() {
         // it has always said the rule must have exactly one definition), and this header is
         // the C++ spelling over it: the `std::string` form for the callers that want one,
         // and the buffer form for a draw path that must not build one per frame.
-        {"Layout.hpp", 8},       {"Markdown.hpp", 10},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
+        // Menu.hpp 7 → 4, RE-RECORDED 2026-09-04 by Phase 15 m5, and this is the census
+        // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
+        // three that LEFT were `const MenuItem*` and `MenuItem*` accessors returning into a
+        // `std::vector<MenuItem>` the widget owned; the tree is a C tree now and those same
+        // accessors hand back a node whose address is STABLE, which is the property the
+        // vector could not promise. The four left are `RolltuiMenu* p` in `Menu::Handle`
+        // (the deleter of the OWNED widget) and three `MenuItem*`/`const MenuItem*`
+        // borrows — `find()` twice and `selected_item()`.
+        {"Layout.hpp", 8},       {"Markdown.hpp", 10},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows

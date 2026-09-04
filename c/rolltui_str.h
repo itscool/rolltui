@@ -83,6 +83,13 @@ typedef struct RolltuiStr {
   bool empty() const { return n == 0; }
   void clear();  // keeps the buffer — the reuse this type exists for
   std::string str() const { return std::string(view()); }
+  // The three read-only `string_view` operations callers actually reach for. They return
+  // VIEWS, never new strings — which is the borrow this type is for, said once here rather
+  // than spelled out at twenty call sites.
+  static constexpr std::size_t npos = std::string_view::npos;
+  std::size_t find(std::string_view s, std::size_t pos = 0) const { return view().find(s, pos); }
+  std::size_t find(char c, std::size_t pos = 0) const { return view().find(c, pos); }
+  std::string_view substr(std::size_t pos, std::size_t count = npos) const { return view().substr(pos, count); }
   bool operator==(std::string_view o) const { return view() == o; }
   bool operator==(const char* o) const { return view() == (o ? std::string_view(o) : std::string_view()); }
   bool operator==(const RolltuiStr& o) const { return view() == o.view(); }

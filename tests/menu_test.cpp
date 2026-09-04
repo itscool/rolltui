@@ -213,9 +213,9 @@ int main() {
     Menu m(sample());
     m.set_palette(true);
     const std::vector<std::size_t> vis = m.visible();
-    check(m.flat().size() == 9 && vis.size() == 9, "the palette flattens every actionable leaf (3 theme options, 2 layouts, toggle, input, quit, disabled) = 9 [" +
-                                                    std::to_string(m.flat().size()) + "]");
-    check(m.flat()[1].label == "Theme \xE2\x80\xBA mono" && m.flat()[4].label == "Layout \xE2\x80\xBA stacked", "rows are labelled with their path");
+    check(m.flat_count() == 9 && vis.size() == 9, "the palette flattens every actionable leaf (3 theme options, 2 layouts, toggle, input, quit, disabled) = 9 [" +
+                                                    std::to_string(m.flat_count()) + "]");
+    check(m.flat_label(1) == "Theme \xE2\x80\xBA mono" && m.flat_label(4) == "Layout \xE2\x80\xBA stacked", "rows are labelled with their path");
     for (char c : std::string("mono")) m.handle(ch(c));
     check(m.visible().size() == 1, "the filter matches the whole path");
     MenuEvent ev = m.handle(key(Key::Enter));

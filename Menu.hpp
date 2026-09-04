@@ -98,6 +98,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -108,25 +109,23 @@
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_menu.h"
 
 namespace rolltui {
 
-enum class InputType : std::uint8_t { Text, Int, Float, Color, Size, Dim, Name };
+// PHASE 15 m5: the widget and the typed-field rules are behind `rolltui/c/rolltui_menu.h`, in
+// one of two implementations chosen by `-DROLLTUI_C`; the TREE is `c/rolltui_menu_tree.h` and
+// is C in both. `InputType`, `InputSpec`, `MenuItem` and `MenuOptions` ARE those types (one
+// definition), so a host still writes `MenuItem::toggle(...)` and `it.children.push_back(...)`.
+// What a caller can see that is new: text out of the widget is a BORROW with a stated window,
+// and the flattened palette list is `flat_count()` + `flat_label(i)` rather than a vector
+// nothing on the C side could hand back without building one per call.
+using InputSpec = RolltuiInputSpec;
+using MenuItem = RolltuiMenuItem;
+using MenuOptions = RolltuiMenuOptions;
+
 std::string_view input_type_name(InputType t);
 std::optional<InputType> input_type_from_name(std::string_view name);
-
-struct InputSpec {
-  InputType type = InputType::Text;
-  double min = -1e15, max = 1e15;  // Int / Float, inclusive
-  double step = 1;                 // Up / Down while editing a number
-  int precision = -1;              // Float: most digits after the point; -1 = any
-  std::size_t max_len = 0;         // Text: 0 = no cap; Name: the type's own 64
-  std::size_t min_len = 0;         // Text: checked at commit
-  bool optional = false;           // empty commits as "" instead of being refused
-  std::string validator;           // Text: a host-registered check by name, at commit
-  std::string hint;                // shown beside the field; input_hint(spec) when empty
-  bool operator==(const InputSpec&) const = default;
-};
 
 struct InputCheck {
   bool prefix_ok = false;   // the text could still become a valid value
@@ -136,50 +135,22 @@ struct InputCheck {
 };
 // Pure: the type's own rules (a Text validator is the host's; see Menu::set_validator).
 InputCheck check_input(const InputSpec& spec, std::string_view text);
-std::string input_hint(const InputSpec& spec);  // "1..100", "0.0..1.0 (2 digits)", "#rrggbb | 0-255 | none", ...
-
-struct MenuItem {
-  enum class Kind : std::uint8_t { Action, Submenu, Toggle, Choice, Input };
-  Kind kind = Kind::Action;
-  std::string id;                  // the action id the host binds; an option's value id
-  std::string label;
-  // The BINDINGS action (Bindings.hpp) this item does the same thing as — the item's
-  // `id` stays the host's own name for it, and this says "and a key can do this too"
-  // (Phase 10 m4). Two consequences, both the point of having it: the shortcut is
-  // rendered from the LIVE chords instead of a string in the file that a rebinding
-  // makes a lie, and an action no layout declares is a reported bad value rather than
-  // a menu entry nothing will ever answer. (`action_name`, not `action`, because
-  // MenuItem::action is the factory for an Action-kind item.)
-  std::string action_name;
-  std::string shortcut;            // display only ("F1"); with `action` set it is the live chords
-  bool enabled = true;
-  bool checked = false;            // Toggle
-  std::string value;               // Choice: the current option id; Input: the COMMITTED text
-  InputSpec spec;                  // Input: the type and its constraints
-  std::vector<MenuItem> children;  // Submenu: items; Choice: options
-  bool operator==(const MenuItem&) const = default;
-
-  static MenuItem action(std::string id, std::string label, std::string shortcut = {});
-  static MenuItem submenu(std::string id, std::string label, std::vector<MenuItem> children);
-  static MenuItem toggle(std::string id, std::string label, bool checked);
-  static MenuItem choice(std::string id, std::string label, std::vector<MenuItem> options, std::string value);
-  static MenuItem input(std::string id, std::string label, std::string value = {});
-  static MenuItem input(std::string id, std::string label, InputSpec spec, std::string value = {});
-};
+std::string input_hint(const InputSpec& spec);  // "1..100", "0.0..1.0 (2 digits)", …
 
 struct MenuEvent {
-  enum class Kind : std::uint8_t { None, Activate, Toggle, Choose, Input, Closed };
+  enum class Kind : std::uint8_t {
+    None = ROLLTUI_MENU_EVENT_NONE,
+    Activate = ROLLTUI_MENU_EVENT_ACTIVATE,
+    Toggle = ROLLTUI_MENU_EVENT_TOGGLE,
+    Choose = ROLLTUI_MENU_EVENT_CHOOSE,
+    Input = ROLLTUI_MENU_EVENT_INPUT,
+    Closed = ROLLTUI_MENU_EVENT_CLOSED,
+  };
   Kind kind = Kind::None;
   std::string id;       // the acted-on item (Choose: the Choice item)
   std::string value;    // Choose: the option id; Input: the committed (canonical) text
   bool checked = false; // Toggle: the new state
   bool operator==(const MenuEvent&) const = default;
-};
-
-struct MenuOptions {
-  bool ambiguous_wide = false;
-  int inset = 0;  // columns kept clear on each side of the area
-  bool operator==(const MenuOptions&) const = default;
 };
 
 struct MenuLoadReport {
@@ -205,8 +176,7 @@ std::string menu_to_json(const MenuItem& root);
 // build time like the shipped theme, layout and bindings presets (Phase 10 m3). A menu
 // is NOT a preset domain — it has no working copy and nothing edits it at runtime; it is
 // a file a layout names (`menu:<name>`, Layout.hpp) and these are the last rung of the
-// three the library looks in (rolltui/Widgets.hpp has the order). `main` is the settings
-// menu over the three domains, which is what a rolltui host gets for free.
+// three the library looks in (rolltui/Widgets.hpp has the order).
 std::string_view shipped_menu(std::string_view name);  // "" when there is no such file
 std::vector<std::string_view> shipped_menu_names();
 
@@ -214,19 +184,25 @@ class Menu {
  public:
   // A Text field's host validator: the reason the text is refused, or nullopt when fine.
   using Validator = std::function<std::optional<std::string>(std::string_view)>;
+  // OWNED, through a `unique_ptr` with a deleter that calls the C free.
+  struct Handle {
+    void operator()(RolltuiMenu* p) const { rolltui_menu_free(p); }
+  };
 
   Menu();
   explicit Menu(MenuItem root);
+  Menu(const Menu&) = delete;
+  Menu& operator=(const Menu&) = delete;
 
   // ---- the tree ----
   void set_root(MenuItem root);  // also resets navigation
-  const MenuItem& root() const { return root_; }
+  const MenuItem& root() const { return *rolltui_menu_root(m_.get()); }
   MenuItem* find(std::string_view id);  // depth-first, any level; nullptr when absent
   const MenuItem* find(std::string_view id) const;
   bool set_value(std::string_view id, std::string value);
   bool set_checked(std::string_view id, bool checked);
   bool set_enabled(std::string_view id, bool enabled);
-  bool set_options(std::string_view id, std::vector<MenuItem> options);  // a Choice's options / a Submenu's items
+  bool set_options(std::string_view id, std::vector<MenuItem> options);  // a Choice's / a Submenu's
   void set_validator(std::string_view name, Validator v);
   // Validator names the tree refers to that have not been registered (a host's check).
   std::vector<std::string> unknown_validators() const;
@@ -236,92 +212,58 @@ class Menu {
   // Rewrites every action-naming item's `shortcut` from the LIVE chords. Idempotent;
   // the menu widget calls it each frame, so a rebinding shows in the menu immediately
   // and no file can disagree with the keyboard. An action no layout declares is inert
-  // (Bindings.hpp), so it shows NO shortcut however many chords the table keeps for it:
-  // a key that cannot fire must not be advertised.
+  // (Bindings.hpp), so it shows NO shortcut however many chords the table keeps for it.
   void apply_shortcuts(const Bindings& b);
 
   // ---- navigation state ----
   void reset();  // the top level, no filter, the first item selected, palette off
-  const std::vector<std::size_t>& path() const { return path_; }  // indices from the root down
-  const MenuItem& level() const;         // the item whose children are shown
-  std::size_t selected() const { return sel_; }  // index into visible()
-  const MenuItem* selected_item() const;         // nullptr when nothing is visible
+  // A BORROW of the index path from the root down, valid until the menu next navigates.
+  std::vector<std::size_t> path() const;
+  const MenuItem& level() const { return *rolltui_menu_level(m_.get()); }
+  std::size_t selected() const { return rolltui_menu_selected(m_.get()); }
+  const MenuItem* selected_item() const { return rolltui_menu_selected_item(m_.get()); }
   // The current level's children passing the filter (indices into level().children),
-  // or in palette mode indices into the flattened list (flat()).
+  // or in palette mode indices into the flattened list.
   std::vector<std::size_t> visible() const;
   // ---- what a scrollbar may ask, and nothing it could use to MOVE the list ----
   // A menu's scroll is DERIVED from its selection, so it REPORTS and declines to be
-  // driven (Widgets.hpp's two optional halves): a draggable thumb here would move the
-  // view away from the selected row, which is not a thing anyone asked for.
-  std::size_t scroll_first() const { return static_cast<std::size_t>(top_ < 0 ? 0 : top_); }
-  std::size_t scroll_visible() const { const int r = item_rows(); return static_cast<std::size_t>(r < 0 ? 0 : r); }
-  std::size_t scroll_total() const { return visible().size(); }
-  const std::string& filter() const { return filter_; }
+  // driven (Widgets.hpp's two optional halves).
+  std::size_t scroll_first() const { return static_cast<std::size_t>(rolltui_menu_scroll_first(m_.get())); }
+  std::size_t scroll_visible() const { return static_cast<std::size_t>(rolltui_menu_scroll_visible(m_.get())); }
+  std::size_t scroll_total() const;
+  std::string_view filter() const;
   std::string breadcrumb() const;  // "settings › theme"
-  bool editing() const { return editing_; }
+  bool editing() const { return rolltui_menu_editing(m_.get()) != 0; }
   // A BORROW of the editor's buffer (Phase 15 m5), valid until the text next changes.
-  std::string_view editing_text() const { return edit_.text(); }  // what is typed (the item's value is the committed one)
-  const std::string& edit_reason() const { return edit_reason_; }    // a refused key's or an invalid text's reason
+  std::string_view editing_text() const { return edit_.text(); }
+  std::string_view edit_reason() const;  // a refused key's or an invalid text's reason
   const Input& editor() const { return edit_; }
-  void set_palette(bool on);
-  bool palette() const { return palette_; }
-  struct FlatEntry {
-    std::vector<std::size_t> path;  // to the leaf (a Choice option's path ends at the option)
-    std::string label;              // "settings › theme › mono"
-  };
-  const std::vector<FlatEntry>& flat() const { return flat_; }
+  void set_palette(bool on) { rolltui_menu_set_palette(m_.get(), on); }
+  bool palette() const { return rolltui_menu_palette(m_.get()) != 0; }
+  // The flattened palette list, counted and indexed rather than handed over whole.
+  std::size_t flat_count() const { return rolltui_menu_flat_count(m_.get()); }
+  std::string_view flat_label(std::size_t i) const;
 
   // ---- events (already routed to this window by the host) ----
   MenuEvent handle(const Event& e, const Bindings& bindings);
   MenuEvent handle(const Event& e) { return handle(e, default_bindings()); }
 
   // ---- layout + drawing ----
-  void set_options(const MenuOptions& o) { opt_ = o; }
-  const MenuOptions& options() const { return opt_; }
-  void layout(Rect area);
+  void set_options(const MenuOptions& o) { rolltui_menu_set_options_struct(m_.get(), &o); }
+  const MenuOptions& options() const { return *rolltui_menu_options(m_.get()); }
+  void layout(Rect area) { rolltui_menu_layout(m_.get(), area); }
   void draw(Frame& f, const Theme& theme, bool focused) const;
   // Rows the whole level needs: the breadcrumb plus every visible item (≥ 1), for a
   // host sizing a popup.
-  int rows_for() const;
-  Rect area() const { return area_; }
+  int rows_for() const { return rolltui_menu_rows_for(m_.get()); }
+  Rect area() const;
 
  private:
-  MenuItem& level_mut();
-  const MenuItem* item_at(std::size_t vis_index) const;  // the item behind visible()[i]
-
-  MenuItem* item_at_mut(std::size_t vis_index);
-  MenuItem* by_path(const std::vector<std::size_t>& p);
-  const MenuItem* by_path(const std::vector<std::size_t>& p) const;
-  void rebuild_flat();
-  void clamp_selection();
-  MenuEvent act(std::size_t vis_index);
-  MenuEvent handle_key(const KeyEvent& k, const Bindings& b);
-  MenuEvent handle_edit(const Event& e, const Bindings& b);
-  MenuEvent handle_mouse(const MouseEvent& m);
-  void begin_edit(MenuItem& it);
-  bool try_insert(std::string_view text);  // prefix-checked insertion into the field
-  void step(int direction);
-  void refresh_reason();
-  void descend(std::size_t child);
-  bool ascend();
-  int item_rows() const;  // rows available to items in the current area
-  void ensure_visible();
-  std::string row_text(const MenuItem& it, bool in_palette, std::size_t vis_index) const;
-
-  MenuItem root_;
-  std::vector<std::size_t> path_;
-  std::size_t sel_ = 0;
-  std::string filter_;
-  bool editing_ = false;
-  Input edit_;  // the field being edited (single-line)
-  Str probe_;   // the reused buffer `try_insert` judges a keystroke in (Phase 15 m5)
-  std::string edit_reason_;
-  bool palette_ = false;
-  std::vector<FlatEntry> flat_;
+  // The editor is OWNED here and BORROWED by the C widget — one owner, and `editor()`
+  // still hands back the object a host already reads.
+  Input edit_;
+  std::unique_ptr<RolltuiMenu, Handle> m_{rolltui_menu_new(edit_.handle())};
   std::vector<std::pair<std::string, Validator>> validators_;
-  MenuOptions opt_;
-  Rect area_;
-  int top_ = 0;  // first visible item row's index into visible()
 };
 
 }  // namespace rolltui

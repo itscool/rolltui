@@ -68,7 +68,7 @@ int main() {
   // ---- remove, clear ----
   go(ed, key(Key::End));            // clear every chord
   go(ed, key(Key::Up));             // remove Alt-D (the last remove item)
-  const std::string label = ed.menu().selected_item()->label;
+  const std::string label(ed.menu().selected_item()->label.view());
   o = go(ed, key(Key::Enter));
   check(label == "remove Alt-D" && o.kind == O::Committed && ed.current().action_for(ch('d', false, true), "input").empty(), "remove takes a chord off [" + label + "]");
   go(ed, key(Key::End));

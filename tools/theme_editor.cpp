@@ -283,7 +283,7 @@ std::optional<Role> ThemeEditor::focused_role() const {
 std::optional<Color> ThemeEditor::highlighted_color() const {
   const MenuItem* it = menu_.selected_item();
   if (!it) return std::nullopt;
-  if (menu_.editing() && it->id.size() > 7 && it->id.substr(it->id.size() - 7) == ".custom") return parse_color(menu_.editing_text());
+  if (menu_.editing() && it->id.size() > 7 && it->id.view().substr(it->id.size() - 7) == ".custom") return parse_color(menu_.editing_text());
   if (const std::optional<Field> f = field_of(menu_.level().id); f && (f->name == "fg" || f->name == "bg")) return parse_color(it->id);
   return std::nullopt;
 }
