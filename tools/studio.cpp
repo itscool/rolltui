@@ -421,7 +421,7 @@ struct App {
     if (const Layer* p = effective_layout().popup("menu")) stack.push(*p);
   }
   void close_popup(const std::string& id) {
-    while (stack.depth() > 1 && stack.layers().back().id != id) stack.pop();
+    while (stack.depth() > 1 && !(stack.top().id == id)) stack.pop();
     if (stack.depth() > 1) stack.pop();
   }
   // Returns false to quit.
@@ -769,7 +769,7 @@ struct App {
                                      : (y == edge || y == edge + 1) && x >= c.outer.x && x < c.outer.x + c.outer.w;
           if (!on) continue;
           const bool size_after = child.size.fill && !next.size.fill;
-          return Seam{size_after ? next.id : child.id, size_after, horizontal};
+          return Seam{(size_after ? next.id : child.id).str(), size_after, horizontal};
         }
       }
     }
@@ -1016,7 +1016,7 @@ struct App {
     window_note = rep.clean() ? "" : rep.summary();
   }
   void toggle_help() {
-    if (stack.has_popup("help")) { while (stack.depth() > 1 && stack.layers().back().id != "help") stack.pop(); stack.pop(); return; }
+    if (stack.has_popup("help")) { while (stack.depth() > 1 && !(stack.top().id == "help")) stack.pop(); stack.pop(); return; }
     if (const Layer* p = effective_layout().popup("help")) stack.push(*p);
   }
 
@@ -1037,7 +1037,7 @@ struct App {
 
   void toggle_find() {
     if (stack.has_popup("find")) {
-      while (stack.depth() > 1 && stack.layers().back().id != "find") stack.pop();
+      while (stack.depth() > 1 && !(stack.top().id == "find")) stack.pop();
       stack.pop();
       windows.input("find").clear();
       transcript().set_query("");

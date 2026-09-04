@@ -8,14 +8,6 @@
 
 namespace rolltui {
 
-// Phase 14 m1: through the seam. Whichever implementation is linked answers this, and the
-// whole suite is the oracle for both.
-Rect Rect::intersect(const Rect& o) const {
-  int r[4];
-  rolltui_rect_intersect(x, y, w, h, o.x, o.y, o.w, o.h, r);
-  return {r[0], r[1], r[2], r[3]};
-}
-
 int Frame::put_text(int x, int y, std::string_view utf8, const Style& style, int max_cells,
                     bool ambiguous_wide, std::uint32_t link) {
   const int w = width();

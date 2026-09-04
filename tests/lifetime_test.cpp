@@ -119,6 +119,17 @@ void use_the_ported_modules(const char* when) {
   check(ThemePresets::shipped("default") != nullptr && LayoutPresets::shipped("default") != nullptr &&
             BindingsPresets::shipped("default") != nullptr,
         std::string("…and every domain's shipped presets are parsed and cached — ") + when);
+
+  // PHASE 15 m5: THE HOST WIDGET-KIND REGISTRY, which is the layout port's process-wide
+  // retainer and the same shape m2's effect registry is — a table slot plus a COPY of the
+  // name and of what its source is called. Registered here for the reason every line above
+  // it is: a zero over a registry nobody ever filled is the failure this whole file exists
+  // to make impossible.
+  check(register_widget_kind("lifetime-probe-kind", SourceRule::Optional, "a probe", &why),
+        std::string("…and a host WIDGET kind registers, so the layout registry holds something — ") + when +
+            " [" + why + "]");
+  check(parse_content("lifetime-probe-kind:x").has_value(),
+        std::string("…and a content resolves through it, so rung 2 is really reached — ") + when);
 }
 
 }  // namespace
@@ -173,6 +184,18 @@ int main() {
   // accessor was a one-shot static initializer, which is exactly what `builtin_layout` was
   // for about ten minutes.
   check(builtin_layout("default") != nullptr, "…and the caches REBUILD, so the library still works after it");
+  // …and THE SECOND REGISTRATION IS THE PROOF THE FIRST WAS RELEASED, not merely
+  // unaccounted (m2's shape): a name still live in the registry with a different source rule
+  // is refused, so this succeeding means the table really was handed back.
+  {
+    std::string why;
+    check(register_widget_kind("lifetime-probe-kind", SourceRule::Required, "a probe", &why),
+          "…and the widget-kind registry took the same name with a DIFFERENT rule, which is only "
+          "possible because shutdown() really released it [" + why + "]");
+    // …and put it back the way it was found, so the pass below registers into an empty
+    // registry rather than into this proof's leftovers.
+    clear_registered_widget_kinds();
+  }
   paint_something();
   check(true, "…including painting a whole frame again");
   // REGISTERING THE SAME NAME AGAIN IS THE PROOF THE REGISTRY WAS REALLY EMPTIED: a second

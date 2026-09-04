@@ -27,7 +27,7 @@ Node* LayoutEditor::parent_of(Node& root, std::string_view id, std::size_t* inde
 std::vector<std::string> LayoutEditor::ids_in_order(const Node& root) {
   std::vector<std::string> out;
   auto walk = [&](auto& self, const Node& n) -> void {
-    if (!n.id.empty()) out.push_back(n.id);
+    if (!n.id.empty()) out.emplace_back(n.id.view());
     for (const Node& c : n.children) self(self, c);
   };
   walk(walk, root);
@@ -171,7 +171,7 @@ void LayoutEditor::rebuild_menu() {
   threshold.hint = "0 = this screen states none";
   std::vector<MenuItem> popups;
   for (const Layer& p : current_.popups) {
-    popups.push_back(MenuItem::submenu("popup." + p.id, p.id,
+    popups.push_back(MenuItem::submenu("popup." + p.id, p.id.str(),
                                        {MenuItem::input("popup." + p.id + ".x", "x", dim, dim_to_string(p.placement.x)), MenuItem::input("popup." + p.id + ".y", "y", dim, dim_to_string(p.placement.y)),
                                         MenuItem::input("popup." + p.id + ".w", "w", dim, dim_to_string(p.placement.w)), MenuItem::input("popup." + p.id + ".h", "h", dim, dim_to_string(p.placement.h)),
                                         MenuItem::choice("popup." + p.id + ".anchor", "anchor", anchors, std::string(anchor_name(p.placement.anchor))),
@@ -203,9 +203,10 @@ void LayoutEditor::rebuild_menu() {
 LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) {
   ContentParts p;
   if (!n || !n->is_window()) return p;
-  const std::size_t colon = n->content.find(':');
-  p.kind_text = n->content.substr(0, colon);
-  if (colon != std::string::npos) p.source = n->content.substr(colon + 1);
+  const std::string_view content = n->content.view();
+  const std::size_t colon = content.find(':');
+  p.kind_text = content.substr(0, colon);
+  if (colon != std::string_view::npos) p.source = content.substr(colon + 1);
   // Through the registry's own two rungs, and deliberately not through parse_content: a
   // window whose source is missing or forbidden is exactly what this editor exists to
   // repair, and it cannot repair what it refuses to hold (Layout.hpp, content_for_kind).
@@ -292,13 +293,13 @@ void LayoutEditor::sync_values() {
       if (const Node* w = find_node(current_.base.root, id); w && w->is_window() && w->focusable)
         focusable.push_back(MenuItem::action(id, id));
     menu_.set_options("focus", std::move(focusable));
-    menu_.set_value("focus", current_.base.focus);
+    menu_.set_value("focus", current_.base.focus.str());
   }
   const Node* n = selected_node();
   if (!n) return;
   menu_.set_checked("visible", n->visible);
   menu_.set_value("border", std::string(border_name(n->border)));
-  menu_.set_value("title", n->title);
+  menu_.set_value("title", n->title.str());
   menu_.set_value("size", split_size_to_string(n->size));
   menu_.set_checked("focusable", n->focusable);
   menu_.set_enabled("focusable", n->is_window());
@@ -364,7 +365,7 @@ bool LayoutEditor::apply_op(Op op) {
     case Op::SplitRow:
     case Op::SplitColumn: {
       Node copy = *n;
-      copy.id = unique_id(n->id);
+      copy.id = unique_id(n->id.str());
       copy.size = SplitSize::filling();
       if (!copy.title.empty()) copy.title = copy.id;  // so the two panes read apart
       Node first = *n;

@@ -39,14 +39,17 @@ if(ROLLTUI_C)
   # with a process-wide retainer (plan/phase-15.md m2).
   # Phase 15 m3 adds the data-and-tables tier: the key decoder and the deliverability
   # model, the colour engine, the preset store's mechanics and the bindings table.
+  # Phase 15 m5 adds the widget and registration layer: placement, composition and the
+  # window stack. The TREE it walks is C in both configurations (c/rolltui_layout_tree.c),
+  # like the span store — the flag chooses the algorithm, never the shape of a node.
   set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
                     c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
                     c/rolltui_theme.c c/rolltui_bindings.c
-                    c/rolltui_presets.c c/rolltui_markdown.c)
+                    c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
   set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp KeysCpp.cpp
-                    ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp MarkdownCpp.cpp)
+                    ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp MarkdownCpp.cpp LayoutCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
@@ -104,6 +107,17 @@ add_library(rolltui STATIC
                               #   links is one only that build can find a defect in.
   c/rolltui_marker.c          # Phase 15 m4: the "▼ N more" marker, whose one definition
                               #   now has a C caller. Both configurations, same reason.
+  c/rolltui_str.c             # Phase 15 m5: THE OWNED STRING AND THE OWNED ARRAY. Both
+                              #   configurations: it is the storage two recursive trees and
+                              #   the widget map are built out of, and one definition of "who
+                              #   owns these bytes" is the whole point of the milestone.
+  c/rolltui_frame_ops.c       # Phase 15 m5: put_text / fill / tint. They were methods on the
+                              #   C++ `Frame` in Screen.cpp, which is fine while only C++
+                              #   draws and impossible once the widgets are C.
+  c/rolltui_layout_tree.c     # Phase 15 m5: THE SPLIT TREE, as data. Both configurations,
+                              #   for the span store's reason — the flag chooses the
+                              #   placement ALGORITHM, never the shape of a node.
+  LayoutTree.cpp              #   …and its five special members, which are callers of it.
   c/rolltui_md_lines.c        # Phase 15 m4: THE SPAN STORE. Also in both configurations,
                               #   and for a second reason stated at its header: it is the
                               #   DATA both implementations of the renderer fill, and two

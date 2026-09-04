@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_style.h"
 
 namespace rolltui {
@@ -47,6 +48,16 @@ enum class Role : std::uint8_t {
 };
 
 inline constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
+
+// THE ONE ROLE ORDINAL THAT CROSSES A C BOUNDARY, checked here rather than trusted (Phase 15
+// m5). A layout node's `background` defaults to `Role::background`, and the C has to be able
+// to say that in a language with no `Role` — so `rolltui/c/rolltui_layout_tree.h` carries the
+// ORDINAL and this assertion ties it to the name. Naming the ordinal in one file and the role
+// in another is what keeps the styling vocabulary in exactly one place (the m2 rule at
+// `rolltui_diff.h`: a renderer is handed the byte it should tag with and never names a role);
+// asserting it here is what stops the two drifting.
+static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
+              "the C side's default node background must be Role::background");
 
 // MUST-DIFFER pairs (milestone 15): roles a reader must be able to tell apart at a
 // glance, checked by ThemeAnalysis under normal vision and under the three

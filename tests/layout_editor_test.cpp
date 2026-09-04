@@ -48,7 +48,7 @@ bool enabled_of(const LayoutEditor& ed, const char* id) {
 }
 std::string content_of(const LayoutEditor& ed, const char* node) {
   const Node* n = LayoutEditor::find_node(ed.current().base.root, node);
-  return n ? n->content : "(no node '" + std::string(node) + "')";
+  return n ? n->content.str() : "(no node '" + std::string(node) + "')";
 }
 }  // namespace
 

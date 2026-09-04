@@ -171,6 +171,7 @@
 //
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -182,51 +183,39 @@
 #include "rolltui/Screen.hpp"
 #include "rolltui/Style.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_layout.h"
 
 namespace rolltui {
 
-// ---- placement (popups) --------------------------------------------------------------
-
-struct Dim {
-  double fraction = 0;  // of the parent's extent on this axis
-  int cells = 0;        // added after the fraction is floored
-  static constexpr Dim abs(int cells) { return {0, cells}; }
-  static constexpr Dim rel(double fraction, int cells = 0) { return {fraction, cells}; }
-  constexpr Dim operator+(const Dim& o) const { return {fraction + o.fraction, cells + o.cells}; }
-  constexpr bool operator==(const Dim&) const = default;
-};
+// PHASE 15 m5: the tree, the placement and the stack are behind `rolltui/c/rolltui_layout.h`.
+// `Dim`, `Placement`, `SplitSize`, `Node`, `Layer` and `ResolvedNode` ARE the C structs (one
+// definition, methods under `#ifdef __cplusplus`), so a layout file's tree has one shape in
+// both languages; `Border` and `Anchor` are declared there too. Nothing about how they are
+// USED changed, except the two places the C++ was hiding a lifetime and the port made it say
+// so: `Node::children` is an array of OWNED nodes whose addresses are stable, and
+// `WindowStack` no longer hands out a `std::vector<Layer>&` that a push could reallocate
+// under a caller.
+using Dim = RolltuiDim;
+using Placement = RolltuiPlacement;
+using SplitSize = RolltuiSplitSize;
+using Node = RolltuiLayoutNode;
+using Layer = RolltuiLayer;
+using ResolvedNode = RolltuiResolvedNode;
 
 // floor(fraction * extent + 1e-6) + cells.
-int resolve_dim(Dim d, int extent);
-
-enum class Anchor : std::uint8_t {
-  TopLeft, Top, TopRight, Left, Center, Right, BottomLeft, Bottom, BottomRight
-};
-
-struct Placement {
-  Dim x = Dim::abs(0), y = Dim::abs(0), w = Dim::rel(1), h = Dim::rel(1);
-  Anchor anchor = Anchor::TopLeft;
-  bool clamp = true;
-  std::optional<Dim> min_w, min_h, max_w, max_h;
-  bool operator==(const Placement&) const = default;
-};
-
+inline int resolve_dim(Dim d, int extent) { return rolltui_resolve_dim(d, extent); }
 // The rule in the header comment; absolute coordinates (parent.x/y added).
-Rect resolve(const Placement& p, Rect parent);
-
-// ---- the split tree ------------------------------------------------------------------
-
-enum class Border : std::uint8_t { None, Single, Rounded, Double, Heavy };
-
-// How much of the parent split's axis a node takes.
-struct SplitSize {
-  bool fill = true;   // a share of the remainder, by `weight`
-  int weight = 1;
-  Dim dim;            // when !fill
-  static constexpr SplitSize fixed(Dim d) { return {false, 1, d}; }
-  static constexpr SplitSize filling(int weight = 1) { return {true, weight, {}}; }
-  constexpr bool operator==(const SplitSize&) const = default;
-};
+inline Rect resolve(const Placement& p, Rect parent) {
+  Rect r;
+  rolltui_placement_resolve(&p, parent, &r);
+  return r;
+}
+// The inner rect once the border is taken off (a None border takes nothing).
+inline Rect inner_rect(Rect outer, Border b) {
+  Rect r;
+  rolltui_inner_rect(outer, static_cast<unsigned char>(b), &r);
+  return r;
+}
 
 // ---- content: the widget kind and its source -----------------------------------------
 // The library's table is the closed rung 1 of the header comment's resolution order.
@@ -254,7 +243,11 @@ std::optional<WidgetKind> widget_kind_from_name(std::string_view name);
 
 // Whether a kind takes a source: every library kind does except `help` (Forbidden), and
 // `text`'s literal may be empty (Optional). A registered kind states its own.
-enum class SourceRule : std::uint8_t { Required, Optional, Forbidden };
+enum class SourceRule : std::uint8_t {
+  Required = ROLLTUI_SOURCE_REQUIRED,
+  Optional = ROLLTUI_SOURCE_OPTIONAL,
+  Forbidden = ROLLTUI_SOURCE_FORBIDDEN,
+};
 SourceRule source_rule(WidgetKind k);
 SourceRule content_source_rule(const Content& c);  // the one accessor, registered kinds included
 // What a content's source NAMES, in words — the one accessor, registered kinds included
@@ -308,38 +301,6 @@ std::optional<Content> content_for_kind(std::string_view kind_name, std::string 
 // nullopt when `legacy` is not one of them.
 std::optional<std::string> migrated_content(std::string_view legacy);
 
-struct Node {
-  enum class Kind : std::uint8_t { Window, Row, Column };
-  Kind kind = Kind::Window;
-  std::string id;             // defaults to `content` for windows; optional on splits
-  std::string content;        // windows: "kind[:source]" — the widget and what it shows
-  Border border = Border::None;
-  std::string title;
-  bool focusable = false;
-  bool visible = true;        // hidden: takes no space in its split, draws nothing
-  Role background = Role::background;
-  SplitSize size;
-  std::vector<Node> children; // Row / Column
-
-  bool is_window() const { return kind == Kind::Window; }
-  static Node window(std::string content, SplitSize size = {});
-  // A window whose id is not its content — which is every window a host looks up by
-  // name now that the content says the widget kind ("input" holding "input:prompt").
-  static Node window_id(std::string id, std::string content, SplitSize size = {});
-  static Node row(std::vector<Node> children, SplitSize size = {});
-  static Node column(std::vector<Node> children, SplitSize size = {});
-  bool operator==(const Node&) const = default;
-};
-
-struct Layer {
-  std::string id;             // a popup's name in the layout file; "" for the base
-  Placement placement;        // where on the screen; the base fills it
-  Node root;
-  bool modal = false;
-  std::string focus;          // the focused window id; "" → first focusable in tree order
-  bool operator==(const Layer&) const = default;
-};
-
 struct Layout {
   std::string name;
   int min_width = 0, min_height = 0;  // the smallest screen it is designed for; a host may switch below it
@@ -351,9 +312,6 @@ struct Layout {
   const Layer* popup(std::string_view id) const;
   bool operator==(const Layout&) const = default;
 };
-
-// The inner rect once the border is taken off (a None border takes nothing).
-Rect inner_rect(Rect outer, Border b);
 
 // Built-ins, compiled in as layout JSON and parsed once: "default" (panel right),
 // "panel-left", "no-panel", "stacked" (the bottom-strip look, the narrow-terminal
@@ -409,14 +367,6 @@ std::optional<Border> border_from_name(std::string_view name);
 
 // ---- composition -----------------------------------------------------------------------
 
-struct ResolvedNode {
-  const Node* node = nullptr;
-  Rect outer;   // the node's box before clipping to the frame
-  Rect inner;   // outer minus the border, clipped to the screen — what a split divides / a slot draws in
-  bool focused = false;
-  std::size_t layer = 0;
-};
-
 // Lays out one tree inside `box` (a layer's resolved placement), in tree order
 // (a container precedes its children). Hidden nodes are omitted.
 std::vector<ResolvedNode> resolve_tree(const Node& root, Rect box, Rect screen, std::size_t layer = 0);
@@ -439,7 +389,12 @@ void compose_layer(Frame& frame, const std::vector<ResolvedNode>& nodes, const T
 // ---- the stack -------------------------------------------------------------------------
 
 struct Route {
-  enum class Kind { Deliver, ClosedPopup, FocusMoved, Dropped };
+  enum class Kind {
+    Deliver = ROLLTUI_ROUTE_DELIVER,
+    ClosedPopup = ROLLTUI_ROUTE_CLOSED_POPUP,
+    FocusMoved = ROLLTUI_ROUTE_FOCUS_MOVED,
+    Dropped = ROLLTUI_ROUTE_DROPPED,
+  };
   Kind kind = Kind::Dropped;
   std::string window;  // Deliver: the target; FocusMoved: the newly focused; ClosedPopup: the closed layer's id
   bool operator==(const Route&) const = default;
@@ -447,20 +402,32 @@ struct Route {
 
 class WindowStack {
  public:
-  WindowStack() = default;
+  // OWNED, through a `unique_ptr` with a deleter that calls the C free — the same shape
+  // `Frame`, `KeyDecoder`, `EffectMap` and `Bindings` use.
+  struct Handle {
+    void operator()(RolltuiWindowStack* p) const { rolltui_window_stack_free(p); }
+  };
+  WindowStack();
   explicit WindowStack(const Layout& layout);  // the base layer; popups are pushed by the host
 
   // Replaces the base layer (a hot-reloaded layout file). Popup layers stay; the
   // base's focus id is kept when a window with that id still exists.
   void set_base(const Layer& base);
-  const Layer& base() const { return layers_.front(); }
-  Layer& base() { return layers_.front(); }
+  const Layer& base() const { return *rolltui_window_stack_base(s_.get()); }
+  Layer& base() { return *rolltui_window_stack_base(s_.get()); }
 
+  // BY MOVE, and the signature says so (Phase 15 m5). It used to be `push(Layer popup)` —
+  // by value — so opening a popup deep-copied its whole tree twice on the way in, once
+  // into the parameter and once into the vector. Nobody decided that; the signature did.
   void push(Layer popup);
   bool pop();                 // closes the topmost popup; false when only the base remains
   bool has_popup(std::string_view id) const;
-  std::size_t depth() const { return layers_.size(); }
-  const std::vector<Layer>& layers() const { return layers_; }
+  std::size_t depth() const { return rolltui_window_stack_depth(s_.get()); }
+  // ONE LAYER AT A TIME, never the whole array: a `const std::vector<Layer>&` is a
+  // reference into storage the next `push` may reallocate, which the C++ was handing out
+  // and nothing was checking.
+  const Layer& layer(std::size_t i) const { return *rolltui_window_stack_layer(s_.get(), i); }
+  const Layer& top() const { return layer(depth() - 1); }
 
   Node* find(std::string_view id);  // any layer, any node; nullptr when absent
   const Node* find(std::string_view id) const;
@@ -474,7 +441,7 @@ class WindowStack {
                bool ambiguous_wide = false) const;
 
   const Node* focused() const;
-  std::size_t focus_layer() const;  // index into layers()
+  std::size_t focus_layer() const;  // index into the layers
   void focus(std::string_view id);  // no-op unless id names a focusable visible window in the focus layer
   void cycle_focus(bool backwards = false);
 
@@ -483,11 +450,10 @@ class WindowStack {
   Route route(const Event& e, Rect screen, const Bindings& bindings);
   Route route(const Event& e, Rect screen) { return route(e, screen, default_bindings()); }
   // The window a press captured the pointer for, until its release ("" when none).
-  const std::string& captured() const { return captured_; }
+  std::string_view captured() const;
 
  private:
-  std::vector<Layer> layers_{Layer{}};
-  std::string captured_;
+  std::unique_ptr<RolltuiWindowStack, Handle> s_{rolltui_window_stack_new()};
 };
 
 }  // namespace rolltui

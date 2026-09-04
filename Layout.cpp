@@ -1,4 +1,14 @@
-// rolltui/Layout.cpp — see Layout.hpp.
+// rolltui/Layout.cpp — the SHIM over `rolltui/c/rolltui_layout.h`: the RAII, the JSON
+// loader, the built-ins, the styling vocabulary and the translation of one `std::function`
+// into a function pointer. The two implementations live in `LayoutCpp.cpp` and
+// `c/rolltui_layout.c`, and `-DROLLTUI_C` picks which one links (Phase 15 m5).
+//
+// WHAT STAYS HERE AND WHY, since it is most of the file: the LOADER and the BUILT-INS.
+// That is the split m3 made for `Theme` — only the colour engine crossed, and the JSON
+// loader never moved — for the same reason: `json::Value` is a C++ tree with no business at
+// a C boundary, and the ENGLISH in a report is a vocabulary that would otherwise exist
+// twice. The C decides which rung resolved a widget kind and what rule its source follows;
+// the sentences are composed here.
 #include "rolltui/Layout.hpp"
 
 #include "rolltui/Lifetime.hpp"
@@ -14,199 +24,110 @@
 
 namespace rolltui {
 
-// ---- placement ---------------------------------------------------------------------------
-
-int resolve_dim(Dim d, int extent) {
-  return static_cast<int>(std::floor(d.fraction * extent + 1e-6)) + d.cells;
-}
-
-namespace {
-
-enum class Align { Start, Center, End };
-
-Align align_h(Anchor a) {
-  switch (a) {
-    case Anchor::TopLeft: case Anchor::Left: case Anchor::BottomLeft: return Align::Start;
-    case Anchor::Top: case Anchor::Center: case Anchor::Bottom: return Align::Center;
-    default: return Align::End;
-  }
-}
-Align align_v(Anchor a) {
-  switch (a) {
-    case Anchor::TopLeft: case Anchor::Top: case Anchor::TopRight: return Align::Start;
-    case Anchor::Left: case Anchor::Center: case Anchor::Right: return Align::Center;
-    default: return Align::End;
-  }
-}
-
-// One axis of resolve(): returns {start, size} relative to the parent.
-std::pair<int, int> resolve_axis(Dim pos, Dim size, Align align, const std::optional<Dim>& min,
-                                 const std::optional<Dim>& max, bool clamp, int extent) {
-  int start, len;
-  if (align == Align::Start) {
-    start = resolve_dim(pos, extent);
-    len = resolve_dim(pos + size, extent) - start;
-  } else {
-    len = resolve_dim(size, extent);
-    int point = resolve_dim(pos, extent);
-    start = (align == Align::Center) ? point - len / 2 : point - len;
-  }
-  if (len < 0) len = 0;
-  if (max) len = std::min(len, std::max(resolve_dim(*max, extent), 0));
-  if (min) len = std::max(len, resolve_dim(*min, extent));
-  if (clamp) {
-    len = std::min(len, std::max(extent, 0));
-    start = std::clamp(start, 0, std::max(extent - len, 0));
-  }
-  return {start, len};
-}
-
-}  // namespace
-
-Rect resolve(const Placement& p, Rect parent) {
-  auto [x, w] = resolve_axis(p.x, p.w, align_h(p.anchor), p.min_w, p.max_w, p.clamp, parent.w);
-  auto [y, h] = resolve_axis(p.y, p.h, align_v(p.anchor), p.min_h, p.max_h, p.clamp, parent.h);
-  return {parent.x + x, parent.y + y, w, h};
-}
-
 // ---- content: the widget kind and its source ----------------------------------------------
+// Rung 1 and rung 2 both live in the C (`rolltui_layout.h`); what a Content IS, and every
+// sentence about one, lives here.
 
 namespace {
 
-struct KindRow {
-  WidgetKind kind;
-  const char* name;
-  SourceRule rule;
-  const char* source_is;  // what the source names, for a report
-};
-
-// THE TABLE (Layout.hpp's header comment is its documentation). One definition site:
-// the names, the source rule and what a source means all come from here.
-constexpr KindRow kKinds[] = {
-    {WidgetKind::Transcript, "transcript", SourceRule::Required, "a document the host binds"},
-    {WidgetKind::Input, "input", SourceRule::Required, "the target a submitted line goes to"},
-    {WidgetKind::Menu, "menu", SourceRule::Required, "a menu file"},
-    {WidgetKind::Rows, "rows", SourceRule::Required, "a row source the host binds"},
-    {WidgetKind::Text, "text", SourceRule::Optional, "the literal text"},
-    {WidgetKind::File, "file", SourceRule::Required, "a path"},
-    // Phase 11 m5b: `help` takes an OPTIONAL scope. Bare `help` is every scope the host
-    // set, `help:app` is that one — so which keys a window lists is the LAYOUT's, which
-    // was the last content a host still decided on its own (`Windows::set_help`).
-    {WidgetKind::Help, "help", SourceRule::Optional, "one key scope, or every one when empty"},
-    // `custom` left this table in Phase 11 m3: a host's own window is a REGISTERED KIND
-    // now (rung 2), so there is one mechanism instead of a kind that meant "ask the host".
-};
-
-// Phase 9's slot names and Phase 10's `custom:` contents → their m3 form. A closed,
-// one-way table: the loader rewrites and reports, so the next save is in the new form
-// and this table stops being reached.
-//
-// The five composites are the interesting rows, and they are why this table is a MAP
-// rather than a rule. Phase 9 called roll's approval modal `approval`; Phase 10 m2 made
-// it `custom:approval`; Phase 11 m3 makes it `approval` again — the same name, now a
-// registered KIND rather than a bare slot. So the Phase 9 rows for those five are simply
-// gone (their old spelling is valid again, and migrating a valid name would be a
-// rewrite loop), and the Phase 10 spelling is what migrates.
-constexpr std::pair<const char*, const char*> kLegacy[] = {
-    {"transcript", "transcript:session"},  {"input", "input:prompt"},        {"status", "rows:status"},
-    {"menu", "menu:main"},                 {"custom:approval", "approval"},  {"custom:details", "details"},
-    {"custom:editor", "editor"},           {"custom:confirm", "confirm"},    {"custom:report", "report"},
-};
-
-const KindRow* row_of_or_null(WidgetKind k) {
-  for (const KindRow& r : kKinds)
-    if (r.kind == k) return &r;
-  return nullptr;  // WidgetKind::Registered, which is not in the library's table by design
+std::string_view kind_name_at(std::size_t i) {
+  std::size_t n = 0;
+  const char* p = rolltui_widget_kind_library_name(i, &n);
+  return std::string_view(p, n);
 }
 
-const KindRow& row_of(WidgetKind k) {
-  const KindRow* r = row_of_or_null(k);
-  return r ? *r : kKinds[0];
-}
-
-// RUNG 2. Registered by name, never constexpr, and searched only after kKinds — see
-// Layout.hpp's stated resolution order. Process-wide because a kind is a program's
-// vocabulary, not one screen's: a host registers once at startup and every `Windows` in
-// the process parses the same layout files the same way.
-struct HostKind {
-  std::string name;
-  SourceRule rule;
-  std::string source_is;
-};
-std::vector<HostKind>& host_kinds() {
-  static std::vector<HostKind> v;
-  static const bool once = (on_shutdown([] { host_kinds().clear(); }), true);  // m6a
-  (void)once;
-  return v;
-}
-const HostKind* host_kind(std::string_view name) {
-  for (const HostKind& h : host_kinds())
-    if (h.name == name) return &h;
-  return nullptr;
-}
+// The one place the enum and the C table are tied together, and it is CHECKED rather than
+// assumed: the table's order IS `WidgetKind`'s, and `Registered` is the one value with no
+// row by design.
+constexpr std::size_t kLibraryKindCount = static_cast<std::size_t>(WidgetKind::Registered);
 
 }  // namespace
 
 std::string_view widget_kind_name(WidgetKind k) {
-  const KindRow* r = row_of_or_null(k);
-  return r ? std::string_view(r->name) : std::string_view();
+  const std::size_t i = static_cast<std::size_t>(k);
+  return i < kLibraryKindCount ? kind_name_at(i) : std::string_view();
 }
+
 std::string_view content_kind_name(const Content& c) {
   return c.kind == WidgetKind::Registered ? std::string_view(c.registered_name) : widget_kind_name(c.kind);
 }
 
 std::optional<WidgetKind> widget_kind_from_name(std::string_view name) {
-  for (const KindRow& r : kKinds)
-    if (name == r.name) return r.kind;
+  unsigned char ordinal = 0;
+  if (rolltui_widget_kind_resolve(name.data(), name.size(), &ordinal, nullptr, nullptr, nullptr) ==
+      ROLLTUI_KIND_LIBRARY)
+    return static_cast<WidgetKind>(ordinal);
   return std::nullopt;
 }
 
-SourceRule source_rule(WidgetKind k) { return row_of(k).rule; }
+SourceRule source_rule(WidgetKind k) {
+  const std::size_t i = static_cast<std::size_t>(k);
+  return static_cast<SourceRule>(rolltui_widget_kind_library_rule(i < kLibraryKindCount ? i : 0));
+}
+
 SourceRule content_source_rule(const Content& c) {
   if (c.kind != WidgetKind::Registered) return source_rule(c.kind);
-  const HostKind* h = host_kind(c.registered_name);
-  return h ? h->rule : SourceRule::Required;
+  unsigned char rule = ROLLTUI_SOURCE_REQUIRED;
+  rolltui_widget_kind_resolve(c.registered_name.data(), c.registered_name.size(), nullptr, &rule, nullptr,
+                              nullptr);
+  return static_cast<SourceRule>(rule);
 }
-std::string_view source_describes(WidgetKind k) { return row_of(k).source_is; }
+
+std::string_view source_describes(WidgetKind k) {
+  std::size_t n = 0;
+  const std::size_t i = static_cast<std::size_t>(k);
+  const char* p = rolltui_widget_kind_library_source_is(i < kLibraryKindCount ? i : 0, &n);
+  return std::string_view(p, n);
+}
+
 std::string content_source_describes(const Content& c) {
   if (c.kind != WidgetKind::Registered) return std::string(source_describes(c.kind));
-  const HostKind* h = host_kind(c.registered_name);
-  return h ? h->source_is : std::string();
+  const char* p = nullptr;
+  std::size_t n = 0;
+  if (rolltui_widget_kind_resolve(c.registered_name.data(), c.registered_name.size(), nullptr, nullptr, &p, &n) ==
+      ROLLTUI_KIND_HOST)
+    return std::string(p, n);
+  return {};
 }
 
 // Rung 1 is checked FIRST and the refusal says so by name: the library's own kinds may
 // never be shadowed, and this is one of the two independent guards (the other is that
-// parse_content searches kKinds before host_kinds, so a shadowing row could not be
-// reached even if one existed).
+// the C searches its table before the host's, so a shadowing row could not be reached
+// even if one existed).
 bool register_widget_kind(std::string name, SourceRule rule, std::string source_is, std::string* why) {
-  auto fail = [&](std::string reason) {
-    if (why) *why = std::move(reason);
-    return false;
-  };
-  if (name.empty()) return fail("a widget kind needs a name");
-  if (name.find(':') != std::string::npos) return fail("'" + name + "' is not a kind name: a ':' separates the kind from its source");
-  if (widget_kind_from_name(name)) return fail("'" + name + "' is one of the library's own kinds and cannot be registered over");
-  if (const HostKind* h = host_kind(name)) {
-    if (h->rule == rule) return true;  // the same registration twice: idempotent, not an error
-    return fail("'" + name + "' is already registered with a different source rule");
-  }
-  host_kinds().push_back({std::move(name), rule, std::move(source_is)});
-  return true;
+  const int verdict = rolltui_widget_kind_register(name.data(), name.size(), static_cast<unsigned char>(rule),
+                                                   source_is.data(), source_is.size());
+  if (verdict == ROLLTUI_REGISTER_OK) return true;
+  if (why) switch (verdict) {
+      case ROLLTUI_REGISTER_EMPTY: *why = "a widget kind needs a name"; break;
+      case ROLLTUI_REGISTER_HAS_COLON:
+        *why = "'" + name + "' is not a kind name: a ':' separates the kind from its source";
+        break;
+      case ROLLTUI_REGISTER_IS_LIBRARY:
+        *why = "'" + name + "' is one of the library's own kinds and cannot be registered over";
+        break;
+      default: *why = "'" + name + "' is already registered with a different source rule"; break;
+    }
+  return false;
 }
 
-void clear_registered_widget_kinds() { host_kinds().clear(); }
+void clear_registered_widget_kinds() { rolltui_widget_kind_clear(); }
 
 std::vector<std::string> widget_kind_names() {
   std::vector<std::string> out;
-  for (const KindRow& r : kKinds) out.emplace_back(r.name);
-  for (const HostKind& h : host_kinds()) out.push_back(h.name);
+  for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) out.emplace_back(kind_name_at(i));
+  for (std::size_t i = 0; i < rolltui_widget_kind_host_count(); ++i) {
+    std::size_t n = 0;
+    const char* p = rolltui_widget_kind_host_name(i, &n);
+    out.emplace_back(p, n);
+  }
   return out;
 }
 
 const std::vector<WidgetKind>& widget_kinds() {
   static const std::vector<WidgetKind> all = [] {
     std::vector<WidgetKind> v;
-    for (const KindRow& r : kKinds) v.push_back(r.kind);
+    for (std::size_t i = 0; i < kLibraryKindCount; ++i) v.push_back(static_cast<WidgetKind>(i));
     return v;
   }();
   return all;
@@ -222,21 +143,18 @@ std::optional<Content> parse_content(std::string_view text, std::string* why, Co
   const std::size_t colon = text.find(':');
   const std::string_view name = text.substr(0, colon);
   Content c;
-  SourceRule rule;
-  std::string source_is;
-  // THE RESOLUTION ORDER (Layout.hpp). Rung 1 is the library's closed table and is
-  // searched first, unconditionally — that is the guard that survives even if a
-  // shadowing registration somehow existed. Rung 2 is what the host registered. Rung 3
-  // is this failing with a named reason.
-  if (std::optional<WidgetKind> kind = widget_kind_from_name(name)) {
-    const KindRow& r = row_of(*kind);
-    c.kind = *kind;
-    rule = r.rule;
-    source_is = r.source_is;
-  } else if (const HostKind* h = host_kind(name)) {
+  unsigned char ordinal = 0, rule = ROLLTUI_SOURCE_REQUIRED;
+  const char* describes = "";
+  std::size_t describes_n = 0;
+  // THE RESOLUTION ORDER (Layout.hpp) is the C's; rung 3 is this failing with a named
+  // reason, which is the half that has to be in a language with sentences.
+  const int rung =
+      rolltui_widget_kind_resolve(name.data(), name.size(), &ordinal, &rule, &describes, &describes_n);
+  if (rung == ROLLTUI_KIND_LIBRARY) {
+    c.kind = static_cast<WidgetKind>(ordinal);
+  } else if (rung == ROLLTUI_KIND_HOST) {
     c.kind = WidgetKind::Registered;
-    rule = h->rule;
-    source_is = h->source_is;
+    c.registered_name = std::string(name);
   } else {
     std::string known;
     for (const std::string& n : widget_kind_names()) known += (known.empty() ? "" : " | ") + n;
@@ -244,15 +162,15 @@ std::optional<Content> parse_content(std::string_view text, std::string* why, Co
       return fail(ContentProblem::UnknownKind, "'" + std::string(text) + "' is an older spelling, not a widget kind; write '" + *m + "'");
     return fail(ContentProblem::UnknownKind, "'" + std::string(name) + "' is not a widget kind (" + known + ")");
   }
-  if (c.kind == WidgetKind::Registered) c.registered_name = std::string(name);
   const std::string kname(name);
   if (colon != std::string_view::npos) c.source = std::string(text.substr(colon + 1));
-  if (rule == SourceRule::Forbidden && colon != std::string_view::npos)
+  if (rule == ROLLTUI_SOURCE_FORBIDDEN && colon != std::string_view::npos)
     return fail(ContentProblem::ForbiddenSource, "'" + kname + "' takes no source; write '" + kname + "'");
-  if (rule == SourceRule::Required && c.source.empty()) {
+  if (rule == ROLLTUI_SOURCE_REQUIRED && c.source.empty()) {
     if (std::optional<std::string> m = migrated_content(text))  // an older name that is also a kind name
       return fail(ContentProblem::MissingSource, "'" + std::string(text) + "' is an older spelling, not a content; write '" + *m + "'");
-    return fail(ContentProblem::MissingSource, "'" + kname + "' needs a source (" + source_is + "): write '" + kname + ":<name>'");
+    return fail(ContentProblem::MissingSource,
+                "'" + kname + "' needs a source (" + std::string(describes, describes_n) + "): write '" + kname + ":<name>'");
   }
   return c;
 }
@@ -262,16 +180,15 @@ std::optional<Content> parse_content(std::string_view text, std::string* why, Co
 std::optional<Content> content_for_kind(std::string_view kind_name, std::string source) {
   Content c;
   c.source = std::move(source);
-  if (std::optional<WidgetKind> k = widget_kind_from_name(kind_name)) {
-    c.kind = *k;
-    return c;
+  unsigned char ordinal = 0;
+  switch (rolltui_widget_kind_resolve(kind_name.data(), kind_name.size(), &ordinal, nullptr, nullptr, nullptr)) {
+    case ROLLTUI_KIND_LIBRARY: c.kind = static_cast<WidgetKind>(ordinal); return c;
+    case ROLLTUI_KIND_HOST:
+      c.kind = WidgetKind::Registered;
+      c.registered_name = std::string(kind_name);
+      return c;
+    default: return std::nullopt;
   }
-  if (host_kind(kind_name)) {
-    c.kind = WidgetKind::Registered;
-    c.registered_name = std::string(kind_name);
-    return c;
-  }
-  return std::nullopt;
 }
 
 std::string content_to_string(const Content& c) {
@@ -286,53 +203,17 @@ std::string content_to_string(const Content& c) {
 }
 
 std::optional<std::string> migrated_content(std::string_view legacy) {
-  for (const auto& [from, to] : kLegacy)
-    if (legacy == from) return std::string(to);
+  std::size_t n = 0;
+  if (const char* to = rolltui_migrated_content(legacy.data(), legacy.size(), &n)) return std::string(to, n);
   return std::nullopt;
 }
 
 // ---- tree basics -------------------------------------------------------------------------
 
-Node Node::window(std::string content, SplitSize size) {
-  Node n;
-  n.kind = Kind::Window;
-  n.id = content;
-  n.content = std::move(content);
-  n.size = size;
-  return n;
-}
-Node Node::window_id(std::string id, std::string content, SplitSize size) {
-  Node n = window(std::move(content), size);
-  n.id = std::move(id);
-  return n;
-}
-Node Node::row(std::vector<Node> children, SplitSize size) {
-  Node n;
-  n.kind = Kind::Row;
-  n.children = std::move(children);
-  n.size = size;
-  return n;
-}
-Node Node::column(std::vector<Node> children, SplitSize size) {
-  Node n;
-  n.kind = Kind::Column;
-  n.children = std::move(children);
-  n.size = size;
-  return n;
-}
-
 const Layer* Layout::popup(std::string_view id) const {
   for (const Layer& l : popups)
     if (l.id == id) return &l;
   return nullptr;
-}
-
-Rect inner_rect(Rect outer, Border b) {
-  if (b == Border::None) return outer;
-  Rect r{outer.x + 1, outer.y + 1, outer.w - 2, outer.h - 2};
-  if (r.w < 0) r.w = 0;
-  if (r.h < 0) r.h = 0;
-  return r;
 }
 
 // ---- names and text forms ----------------------------------------------------------------
@@ -469,11 +350,20 @@ bool bool_from_json(const Value& v, const std::string& where, LayoutLoadReport& 
   out = v.b;
   return true;
 }
+// The same for the flags that cross the boundary as BYTES. One overload rather than a cast
+// at each of the four call sites, because a cast at a call site is where a `visible` that
+// should have been `focusable` hides.
+bool bool_from_json(const Value& v, const std::string& where, LayoutLoadReport& rep, unsigned char& out) {
+  bool b = out != 0;
+  if (!bool_from_json(v, where, rep, b)) return false;
+  out = static_cast<unsigned char>(b);
+  return true;
+}
 
 void collect_ids(const Node& n, std::vector<std::string>& seen, const std::string& where, LayoutLoadReport& rep) {
   if (!n.id.empty()) {
-    if (std::find(seen.begin(), seen.end(), n.id) != seen.end()) rep.bad_values.push_back(where + ".id: duplicate id '" + n.id + "'");
-    else seen.push_back(n.id);
+    if (std::find(seen.begin(), seen.end(), n.id.view()) != seen.end()) rep.bad_values.push_back(where + ".id: duplicate id '" + n.id + "'");
+    else seen.emplace_back(n.id.view());
   }
   for (std::size_t i = 0; i < n.children.size(); ++i)
     collect_ids(n.children[i], seen, where + (n.kind == Node::Kind::Row ? ".row[" : ".column[") + std::to_string(i) + "]", rep);
@@ -586,7 +476,7 @@ Layer layer_from_json(const Value& v, const std::string& where, bool is_popup, L
   if (!have_root) rep.bad_values.push_back(where + ": no \"root\" node");
   std::vector<std::string> ids;
   collect_ids(l.root, ids, where + ".root", rep);
-  if (!l.focus.empty() && std::find(ids.begin(), ids.end(), l.focus) == ids.end())
+  if (!l.focus.empty() && std::find(ids.begin(), ids.end(), l.focus.view()) == ids.end())
     rep.bad_values.push_back(where + ".focus: no window with id '" + l.focus + "'");
   return l;
 }
@@ -599,13 +489,13 @@ Value dim_to_json(Dim d) {
 Value node_to_json(const Node& n) {
   Value o = Value::object();
   if (n.is_window()) {
-    if (n.id != n.content) o.set("id", Value::string(n.id));
-    o.set("content", Value::string(n.content));
+    if (!(n.id == n.content)) o.set("id", Value::string(n.id.str()));
+    o.set("content", Value::string(n.content.str()));
   } else if (!n.id.empty()) {
-    o.set("id", Value::string(n.id));
+    o.set("id", Value::string(n.id.str()));
   }
   if (n.border != Border::None) o.set("border", Value::string(std::string(border_name(n.border))));
-  if (!n.title.empty()) o.set("title", Value::string(n.title));
+  if (!n.title.empty()) o.set("title", Value::string(n.title.str()));
   if (n.focusable) o.set("focusable", Value::boolean(true));
   if (!n.visible) o.set("visible", Value::boolean(false));
   if (n.background != Role::background) o.set("background", Value::string(std::string(role_name(n.background))));
@@ -624,7 +514,7 @@ Value node_to_json(const Node& n) {
 Value layer_to_json(const Layer& l, bool is_popup) {
   Value o = Value::object();
   if (is_popup) {
-    o.set("id", Value::string(l.id));
+    o.set("id", Value::string(l.id.str()));
     o.set("x", dim_to_json(l.placement.x));
     o.set("y", dim_to_json(l.placement.y));
     o.set("w", dim_to_json(l.placement.w));
@@ -637,7 +527,7 @@ Value layer_to_json(const Layer& l, bool is_popup) {
     if (l.placement.max_h) o.set("max_h", dim_to_json(*l.placement.max_h));
     if (l.modal) o.set("modal", Value::boolean(true));
   }
-  if (!l.focus.empty()) o.set("focus", Value::string(l.focus));
+  if (!l.focus.empty()) o.set("focus", Value::string(l.focus.str()));
   o.set("root", node_to_json(l.root));
   return o;
 }
@@ -693,7 +583,7 @@ std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
         const std::string where = "popups[" + std::to_string(i) + "]";
         Layer p = layer_from_json(v.arr[i], where, true, report);
         if (p.id.empty()) report.bad_values.push_back(where + ": a popup needs an \"id\"");
-        else if (out.popup(p.id)) report.bad_values.push_back(where + ".id: duplicate popup id '" + p.id + "'");
+        else if (out.popup(p.id.view())) report.bad_values.push_back(where + ".id: duplicate popup id '" + p.id + "'");
         out.popups.push_back(std::move(p));
       }
     } else {
@@ -865,123 +755,49 @@ const Layout* builtin_layout(std::string_view name) {
 
 std::vector<std::string_view> builtin_layout_names() { return builtin_names(); }
 
-// ---- the split -----------------------------------------------------------------------------
+
+// ---- the split, the drawing and the stack: over the boundary ---------------------------------
 
 namespace {
 
-enum class Side { Left, Right, Top, Bottom };
-
-bool edge_bordered(const Node& n, Side side) {
-  if (n.border != Border::None) return true;
-  if (n.is_window()) return false;
-  // Phase 13 m5b: no vector. This only ever needs the FIRST visible child, the LAST, or a
-  // walk over all of them — none of which is a reason to build a list, and this function is
-  // recursive AND called O(children²) from place()'s shared-edge pass.
-  const Node* first = nullptr;
-  const Node* last = nullptr;
-  for (const Node& c : n.children)
-    if (c.visible) {
-      if (!first) first = &c;
-      last = &c;
-    }
-  if (!first) return false;
-  const bool along = (n.kind == Node::Kind::Row) ? (side == Side::Left || side == Side::Right)
-                                                 : (side == Side::Top || side == Side::Bottom);
-  if (along) return edge_bordered(*((side == Side::Left || side == Side::Top) ? first : last), side);
-  for (const Node& c : n.children)
-    if (c.visible && !edge_bordered(c, side)) return false;
-  return true;
+// THE DRAW SCRATCH, owned per thread by the shim (rolltui/c/rolltui_frame_ops.h). One owner,
+// named, released at thread exit and at `release_thread()` — `ThreadHandle` is the shape
+// Phase 15 m2 extracted after `Unicode.cpp` hand-wrote it once.
+RolltuiDrawScratch* draw_scratch() {
+  static thread_local ThreadHandle<RolltuiDrawScratch, rolltui_draw_scratch_new, rolltui_draw_scratch_free> h;
+  return h.get();
 }
 
-// Phase 13 m5b: the per-container scratch of place(), as ONE inline array instead of three
-// heap vectors. place() RECURSES, so a reused thread_local buffer would alias across
-// depth — an inline array cannot, because each frame of the recursion has its own. A
-// container with more than twelve visible children falls back to the heap, which is the
-// same NAMED EXCEPTION shape `Cell`'s glyph spill uses: the steady case allocates nothing
-// and the unusual case is handled rather than assumed away.
-struct ChildSlot {
-  const Node* node = nullptr;
-  bool shared = false;  // this child shares its facing border edge with the next
-  int size = 0;
-};
-class ChildScratch {
- public:
-  explicit ChildScratch(std::size_t n) : n_(n) {
-    if (n > kInline) spill_.resize(n);
-  }
-  std::size_t size() const { return n_; }
-  ChildSlot& operator[](std::size_t i) { return n_ > kInline ? spill_[i] : inline_[i]; }
-  const ChildSlot& operator[](std::size_t i) const { return n_ > kInline ? spill_[i] : inline_[i]; }
+// …and the compose scratch, the same way. Two handles rather than one, because they are two
+// ROLES: the arm maps are a frame's worth of bytes and the cluster array is a string's.
+RolltuiComposeScratch* compose_scratch() {
+  static thread_local ThreadHandle<RolltuiComposeScratch, rolltui_compose_scratch_new,
+                                   rolltui_compose_scratch_free>
+      h;
+  return h.get();
+}
 
- private:
-  static constexpr std::size_t kInline = 12;
-  std::size_t n_;
-  ChildSlot inline_[kInline]{};
-  std::vector<ChildSlot> spill_;
+// THE THREE ROLES A COMPOSE NEEDS, handed over as bytes. `rolltui/Style.hpp` is the one place
+// these names exist; the C is told which byte to draw with, exactly as the markdown renderer
+// and the diff colouriser are (Phase 15 m2's rule).
+constexpr RolltuiLayoutRoles kRoles = {
+    /*border=*/static_cast<unsigned char>(Role::border),
+    /*border_active=*/static_cast<unsigned char>(Role::border_active),
+    /*title=*/static_cast<unsigned char>(Role::title),
+    /*overlay=*/static_cast<unsigned char>(Role::overlay),
 };
 
-void place(const Node& n, Rect box, Rect screen, std::size_t layer, std::vector<ResolvedNode>& out) {
-  ResolvedNode rn;
-  rn.node = &n;
-  rn.outer = box;
-  rn.inner = inner_rect(box, n.border).intersect(screen);
-  rn.layer = layer;
-  out.push_back(rn);
-  if (n.is_window()) return;
+// THE THREE STACK ACTIONS, likewise: the C knows the RULES and none of the words.
+constexpr RolltuiStackActions kStackActions = {"stack.close_popup", "stack.focus_next", "stack.focus_prev"};
 
-  const bool row = n.kind == Node::Kind::Row;
-  std::size_t visible = 0;
-  for (const Node& c : n.children)
-    if (c.visible) ++visible;
-  if (visible == 0) return;
-  ChildScratch kid(visible);
-  {
-    std::size_t i = 0;
-    for (const Node& c : n.children)
-      if (c.visible) kid[i++].node = &c;
-  }
-  const Rect in = inner_rect(box, n.border);  // unclipped: children resolve against the true inner box
-  const int extent = row ? in.w : in.h;
+void push_node(void* ctx, const RolltuiResolvedNode* rn) {
+  static_cast<std::vector<ResolvedNode>*>(ctx)->push_back(*rn);
+}
 
-  // Shared edges between adjacent bordered siblings.
-  int shared_count = 0;
-  for (std::size_t i = 0; i + 1 < visible; ++i) {
-    kid[i].shared = row ? (edge_bordered(*kid[i].node, Side::Right) && edge_bordered(*kid[i + 1].node, Side::Left))
-                        : (edge_bordered(*kid[i].node, Side::Bottom) && edge_bordered(*kid[i + 1].node, Side::Top));
-    if (kid[i].shared) ++shared_count;
-  }
-  const int ext = std::max(extent, 0) + shared_count;
-
-  // Fixed children: edges of the cumulative Dim sum.
-  Dim cum;
-  int prev_edge = 0, fixed_total = 0, weight_total = 0;
-  for (std::size_t i = 0; i < visible; ++i) {
-    if (kid[i].node->size.fill) { weight_total += std::max(kid[i].node->size.weight, 1); continue; }
-    cum = cum + kid[i].node->size.dim;
-    int edge = resolve_dim(cum, ext);
-    kid[i].size = std::max(edge - prev_edge, 0);
-    prev_edge = std::max(edge, prev_edge);
-    fixed_total += kid[i].size;
-  }
-  // Fills: cumulative weight edges over the remainder.
-  const int remainder = std::max(ext - fixed_total, 0);
-  int cum_w = 0, prev_fill_edge = 0;
-  for (std::size_t i = 0; i < visible; ++i) {
-    if (!kid[i].node->size.fill) continue;
-    cum_w += std::max(kid[i].node->size.weight, 1);
-    int edge = resolve_dim(Dim::rel(static_cast<double>(cum_w) / weight_total), remainder);
-    kid[i].size = edge - prev_fill_edge;
-    prev_fill_edge = edge;
-  }
-  // Positions, sharing one cell per shared edge; clip to the extent in order.
-  int pos = 0;
-  for (std::size_t i = 0; i < visible; ++i) {
-    if (pos + kid[i].size > std::max(extent, 0)) kid[i].size = std::max(std::max(extent, 0) - pos, 0);
-    Rect r = row ? Rect{in.x + pos, in.y, kid[i].size, in.h} : Rect{in.x, in.y + pos, in.w, kid[i].size};
-    place(*kid[i].node, r, screen, layer, out);
-    pos += kid[i].size;
-    if (i + 1 < visible && kid[i].shared && kid[i].size > 0) pos -= 1;
-  }
+// What crosses instead of a `std::function`: the host's callable behind a `void*`.
+void call_slot(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame*) {
+  auto* p = static_cast<std::pair<const SlotRenderer*, Frame*>*>(ctx);
+  (*p->first)(*rn, *p->second);
 }
 
 }  // namespace
@@ -989,7 +805,7 @@ void place(const Node& n, Rect box, Rect screen, std::size_t layer, std::vector<
 void resolve_tree_into(const Node& root, Rect box, Rect screen, std::size_t layer,
                        std::vector<ResolvedNode>& out) {
   out.clear();
-  if (root.visible) place(root, box, screen, layer, out);
+  rolltui_resolve_tree(&root, box, screen, layer, push_node, &out);
 }
 
 std::vector<ResolvedNode> resolve_tree(const Node& root, Rect box, Rect screen, std::size_t layer) {
@@ -998,285 +814,52 @@ std::vector<ResolvedNode> resolve_tree(const Node& root, Rect box, Rect screen, 
   return out;
 }
 
-// ---- drawing --------------------------------------------------------------------------------
-
-namespace {
-
-// Box-drawing arms: U D L R.
-constexpr std::uint8_t U = 1, D = 2, L = 4, R = 8;
-
-// Light glyph for an arm mask (index = mask); "" for 0.
-constexpr const char* kLight[16] = {
-    "",       "╵", "╷", "│",  // -, U, D, UD
-    "╴", "┘", "┐", "┤",  // L, UL, DL, UDL
-    "╶", "└", "┌", "├",  // R, UR, DR, UDR
-    "─", "┴", "┬", "┼",  // LR, ULR, DLR, UDLR
-};
-
-// Box-drawing glyphs are East Asian AMBIGUOUS width (U+2500-257F): a terminal that
-// renders ambiguous characters wide draws every border two cells wide and the whole
-// frame garbles. So under ambiguous_wide every border set falls back to ASCII
-// (+ - |), the way vim's `ambiwidth=double` does — one cell everywhere, guaranteed.
-std::string glyph_for(Border b, std::uint8_t mask, bool ascii) {
-  if (mask == 0) return "";
-  if (ascii) {
-    if (mask == (L | R) || mask == L || mask == R) return "-";
-    if (mask == (U | D) || mask == U || mask == D) return "|";
-    return "+";
-  }
-  if (b == Border::Rounded) {
-    switch (mask) {
-      case D | R: return "╭";
-      case D | L: return "╮";
-      case U | R: return "╰";
-      case U | L: return "╯";
-      default: break;
-    }
-  }
-  if (b == Border::Double) {
-    switch (mask) {
-      case L | R: return "═";
-      case U | D: return "║";
-      case D | R: return "╔";
-      case D | L: return "╗";
-      case U | R: return "╚";
-      case U | L: return "╝";
-      default: return kLight[mask];  // a joined double border is not modelled; light junctions
-    }
-  }
-  if (b == Border::Heavy) {
-    switch (mask) {
-      case L | R: return "━";
-      case U | D: return "┃";
-      case D | R: return "┏";
-      case D | L: return "┓";
-      case U | R: return "┗";
-      case U | L: return "┛";
-      default: return kLight[mask];
-    }
-  }
-  return kLight[mask];
-}
-
-bool joins(Border b) { return b == Border::Single || b == Border::Rounded; }
-
-// The arm mask this window's own border wants at ring cell (x, y) of `outer`.
-std::uint8_t own_mask(Rect o, int x, int y) {
-  const bool left = x == o.x, right = x == o.x + o.w - 1, top = y == o.y, bottom = y == o.y + o.h - 1;
-  if (o.w == 1 && o.h == 1) return 0;
-  if (o.w == 1) return (top ? 0 : U) | (bottom ? 0 : D);
-  if (o.h == 1) return (left ? 0 : L) | (right ? 0 : R);
-  if (top && left) return D | R;
-  if (top && right) return D | L;
-  if (bottom && left) return U | R;
-  if (bottom && right) return U | L;
-  if (top || bottom) return L | R;
-  return U | D;
-}
-
-// Draws the border of `outer` clipped to the frame; `map` (W×H arm masks, or null)
-// is the layer's join map: the previous masks on the ring are OR'd in and the result
-// written back.
-void draw_border_impl(Frame& frame, Rect outer, Border b, const Style& line, std::string_view title,
-                      const Style& title_style, bool ambiguous_wide, std::vector<std::uint8_t>* map,
-                      const std::vector<std::uint8_t>* ring_before) {
-  if (b == Border::None || outer.w <= 0 || outer.h <= 0) return;
-  const Rect clip = outer.intersect(frame.bounds());
-  if (clip.empty()) return;
-  auto map_at = [&](int x, int y) -> std::uint8_t& { return (*map)[static_cast<std::size_t>(y * frame.width() + x)]; };
-  for (int y = clip.y; y < clip.y + clip.h; ++y) {
-    for (int x = clip.x; x < clip.x + clip.w; ++x) {
-      const bool ring = x == outer.x || x == outer.x + outer.w - 1 || y == outer.y || y == outer.y + outer.h - 1;
-      if (!ring) continue;
-      std::uint8_t m = own_mask(outer, x, y);
-      if (map && ring_before && joins(b)) m |= (*ring_before)[static_cast<std::size_t>(y * frame.width() + x)];
-      std::string g = glyph_for(b, m, ambiguous_wide);
-      if (g.empty()) g = " ";
-      frame.put(x, y, g, 1, line);
-      if (map) map_at(x, y) = joins(b) ? m : 0;
-    }
-  }
-  // Title on the top edge, inside the corners.
-  if (!title.empty() && outer.w >= 5 && outer.y >= 0 && outer.y < frame.height()) {
-    std::string t = " " + std::string(title) + " ";
-    int avail = outer.w - 2;
-    int used = frame.put_text(outer.x + 1, outer.y, t, title_style, avail, ambiguous_wide);
-    if (map)
-      for (int x = outer.x + 1; x < outer.x + 1 + used && x < frame.width(); ++x)
-        if (x >= 0) map_at(x, outer.y) = 0;
-  }
-}
-
-}  // namespace
-
 void draw_border(Frame& frame, Rect outer, Border b, const Style& line, std::string_view title,
                  const Style& title_style, bool ambiguous_wide) {
-  draw_border_impl(frame, outer, b, line, title, title_style, ambiguous_wide, nullptr, nullptr);
+  rolltui_draw_border(frame.handle(), draw_scratch(), outer, static_cast<unsigned char>(b), line, title.data(),
+                      title.size(), title_style, ambiguous_wide);
 }
 
 void compose_layer(Frame& frame, const std::vector<ResolvedNode>& nodes, const Theme& theme,
                    const SlotRenderer& render, bool ambiguous_wide) {
-  // m5: two full-screen byte maps, once per layer per frame. Reused.
-  thread_local std::vector<std::uint8_t> map, before;
-  map.assign(static_cast<std::size_t>(frame.width() * frame.height()), 0);
-  before.assign(map.size(), 0);
-  // TWO PASSES: every node's ground and border first, then every window's CONTENT
-  // (Phase 12 m7). One pass was correct while a slot only ever drew inside `rn.inner`,
-  // which excludes its own border — but m5's scrollbar deliberately draws into the
-  // window's right BORDER column, and two adjacent bordered siblings SHARE that column.
-  // In one pass the next sibling's border was then drawn over the thumb, so a transcript
-  // with a panel to its right had a scrollbar that was computed, positioned, hit-tested
-  // and INVISIBLE — including in roll's own shipped `default` layout, which is where m7
-  // found it. Nothing else moves: a slot's own content never reaches a shared column.
-  for (const ResolvedNode& rn : nodes) {
-    const Node& n = *rn.node;
-    const bool draws = n.is_window() || n.border != Border::None;
-    if (!draws) continue;
-    const Style ground = theme.style(n.background);
-    // Remember the join map under this window's ring, then clear the outer rect.
-    const Rect clip = rn.outer.intersect(frame.bounds());
-    for (int y = clip.y; y < clip.y + clip.h; ++y)
-      for (int x = clip.x; x < clip.x + clip.w; ++x) {
-        std::size_t i = static_cast<std::size_t>(y * frame.width() + x);
-        before[i] = map[i];
-        map[i] = 0;
-      }
-    frame.fill(rn.outer, ground);
-    Style line = theme.style(rn.focused ? Role::border_active : Role::border);
-    line.bg = ground.bg;
-    Style title = theme.style(Role::title);
-    title.bg = ground.bg;
-    draw_border_impl(frame, rn.outer, n.border, line, n.title, title, ambiguous_wide, &map, &before);
-  }
-  if (!render) return;
-  for (const ResolvedNode& rn : nodes)
-    if (rn.node->is_window() && !rn.inner.empty()) render(rn, frame);
+  std::pair<const SlotRenderer*, Frame*> ctx{&render, &frame};
+  rolltui_compose_layer(frame.handle(), nodes.data(), nodes.size(), theme.styles.data(), &kRoles,
+                        render ? call_slot : nullptr, &ctx, ambiguous_wide, compose_scratch());
 }
 
 // ---- the stack -------------------------------------------------------------------------------
 
-namespace {
+WindowStack::WindowStack() = default;
 
-const Node* find_in(const Node& n, std::string_view id) {
-  if (n.id == id && !id.empty()) return &n;
-  for (const Node& c : n.children)
-    if (const Node* f = find_in(c, id)) return f;
-  return nullptr;
-}
-Node* find_in(Node& n, std::string_view id) { return const_cast<Node*>(find_in(static_cast<const Node&>(n), id)); }
+WindowStack::WindowStack(const Layout& layout) { set_base(layout.base); }
 
-void focusables(const Node& n, std::vector<const Node*>& out) {
-  if (!n.visible) return;
-  if (n.is_window()) { if (n.focusable) out.push_back(&n); return; }
-  for (const Node& c : n.children) focusables(c, out);
-}
+void WindowStack::set_base(const Layer& base) { rolltui_window_stack_set_base(s_.get(), &base); }
 
-// m5b: no vector. This runs once per layer per `resolve_into`, which is three times a
-// frame, and it only ever needs the FIRST focusable or the one matching a name — neither
-// of which is a reason to build a list. `focus_layer()` calls it for every layer on top of
-// that, so it was the last per-frame allocation in the layout pass.
-const Node* first_focusable(const Node& n) {
-  if (!n.visible) return nullptr;
-  if (n.is_window()) return n.focusable ? &n : nullptr;
-  for (const Node& c : n.children)
-    if (const Node* f = first_focusable(c)) return f;
-  return nullptr;
-}
-const Node* focusable_named(const Node& n, std::string_view id) {
-  if (!n.visible) return nullptr;
-  if (n.is_window()) return (n.focusable && n.id == id) ? &n : nullptr;
-  for (const Node& c : n.children)
-    if (const Node* f = focusable_named(c, id)) return f;
-  return nullptr;
-}
+void WindowStack::push(Layer popup) { rolltui_window_stack_push(s_.get(), &popup); }
 
-const Node* layer_focused(const Layer& l) {
-  if (!l.focus.empty())
-    if (const Node* named = focusable_named(l.root, l.focus)) return named;
-  return first_focusable(l.root);
-}
-
-}  // namespace
-
-WindowStack::WindowStack(const Layout& layout) : layers_{layout.base} {}
-
-void WindowStack::set_base(const Layer& base) {
-  std::string keep = layers_.front().focus;
-  layers_.front() = base;
-  if (base.focus.empty() && !keep.empty() && find_in(layers_.front().root, keep)) layers_.front().focus = keep;
-}
-
-void WindowStack::push(Layer popup) { layers_.push_back(std::move(popup)); }
-
-bool WindowStack::pop() {
-  if (layers_.size() <= 1) return false;
-  layers_.pop_back();
-  return true;
-}
+bool WindowStack::pop() { return rolltui_window_stack_pop(s_.get()) != 0; }
 
 bool WindowStack::has_popup(std::string_view id) const {
-  for (std::size_t i = 1; i < layers_.size(); ++i)
-    if (layers_[i].id == id) return true;
-  return false;
+  return rolltui_window_stack_has_popup(s_.get(), id.data(), id.size()) != 0;
 }
 
-Node* WindowStack::find(std::string_view id) {
-  for (Layer& l : layers_)
-    if (Node* n = find_in(l.root, id)) return n;
-  return nullptr;
-}
+Node* WindowStack::find(std::string_view id) { return rolltui_window_stack_find(s_.get(), id.data(), id.size()); }
+
 const Node* WindowStack::find(std::string_view id) const {
-  for (const Layer& l : layers_)
-    if (const Node* n = find_in(l.root, id)) return n;
-  return nullptr;
+  return rolltui_window_stack_find(s_.get(), id.data(), id.size());
 }
 
-std::size_t WindowStack::focus_layer() const {
-  const std::size_t top = layers_.size() - 1;
-  if (layers_[top].modal) return top;
-  for (std::size_t i = layers_.size(); i-- > 0;)
-    if (layer_focused(layers_[i])) return i;
-  return top;
-}
+std::size_t WindowStack::focus_layer() const { return rolltui_window_stack_focus_layer(s_.get()); }
 
-const Node* WindowStack::focused() const { return layer_focused(layers_[focus_layer()]); }
+const Node* WindowStack::focused() const { return rolltui_window_stack_focused(s_.get()); }
 
-void WindowStack::focus(std::string_view id) {
-  Layer& l = layers_[focus_layer()];
-  std::vector<const Node*> f;
-  focusables(l.root, f);
-  for (const Node* n : f)
-    if (n->id == id) { l.focus = std::string(id); return; }
-}
+void WindowStack::focus(std::string_view id) { rolltui_window_stack_focus(s_.get(), id.data(), id.size()); }
 
-void WindowStack::cycle_focus(bool backwards) {
-  Layer& l = layers_[focus_layer()];
-  std::vector<const Node*> f;
-  focusables(l.root, f);
-  if (f.empty()) return;
-  const Node* cur = layer_focused(l);
-  std::size_t i = 0;
-  for (; i < f.size(); ++i)
-    if (f[i] == cur) break;
-  if (i >= f.size()) i = 0;
-  i = backwards ? (i + f.size() - 1) % f.size() : (i + 1) % f.size();
-  l.focus = f[i]->id;
-}
+void WindowStack::cycle_focus(bool backwards) { rolltui_window_stack_cycle_focus(s_.get(), backwards); }
 
 void WindowStack::resolve_into(Rect screen, std::vector<ResolvedNode>& out) const {
   out.clear();
-  const Node* fnode = focused();
-  static thread_local Scratch<std::vector<ResolvedNode>> s_layer("resolve layer nodes");
-  auto layer_l = s_layer.lock();
-  std::vector<ResolvedNode>& layer = *layer_l;
-  for (std::size_t i = 0; i < layers_.size(); ++i) {
-    Rect box = rolltui::resolve(layers_[i].placement, screen);
-    resolve_tree_into(layers_[i].root, box, screen, i, layer);
-    for (ResolvedNode& rn : layer) {
-      rn.focused = (rn.node == fnode);
-      out.push_back(rn);
-    }
-  }
+  rolltui_window_stack_resolve(s_.get(), screen, push_node, &out);
 }
 
 std::vector<ResolvedNode> WindowStack::resolve(Rect screen) const {
@@ -1287,68 +870,32 @@ std::vector<ResolvedNode> WindowStack::resolve(Rect screen) const {
 
 void WindowStack::compose(Frame& frame, Rect screen, const Theme& theme, const SlotRenderer& render,
                           bool ambiguous_wide) const {
-  // Phase 13 m5: both node vectors are REUSED buffers. This runs once per frame and was
-  // building one vector for the whole tree plus one MORE per layer, copying the nodes into
-  // it — for a steady frame that is a handful of allocations that exist only to partition
-  // a list by an integer already on each element.
-  static thread_local Scratch<std::vector<ResolvedNode>> s_all("compose nodes"), s_mine("compose layer nodes");
-  auto all_l = s_all.lock();
-  auto mine_l = s_mine.lock();
-  std::vector<ResolvedNode>& all = *all_l;
-  std::vector<ResolvedNode>& mine = *mine_l;
-  resolve_into(screen, all);
-  for (std::size_t i = 0; i < layers_.size(); ++i) {
-    if (layers_[i].modal) frame.tint(screen, theme.style(Role::overlay));
-    mine.clear();
-    for (const ResolvedNode& rn : all)
-      if (rn.layer == i) mine.push_back(rn);
-    compose_layer(frame, mine, theme, render, ambiguous_wide);
-  }
+  std::pair<const SlotRenderer*, Frame*> ctx{&render, &frame};
+  rolltui_window_stack_compose(s_.get(), frame.handle(), screen, theme.styles.data(), &kRoles,
+                               render ? call_slot : nullptr, &ctx, ambiguous_wide, compose_scratch());
 }
 
 Route WindowStack::route(const Event& e, Rect screen, const Bindings& bindings) {
-  if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
-    // A captured pointer: drags and the release go to the pressed window, wherever
-    // the pointer is now (the window may even have gone: then the capture just ends).
-    if (!captured_.empty() && (m->kind == MouseEvent::Kind::Drag || m->kind == MouseEvent::Kind::Release)) {
-      std::string target = captured_;
-      if (m->kind == MouseEvent::Kind::Release) captured_.clear();
-      if (find(target)) return {Route::Kind::Deliver, target};
-      return {Route::Kind::Dropped, {}};
-    }
-    std::vector<ResolvedNode> all = resolve(screen);
-    const std::size_t top = layers_.size() - 1;
-    for (std::size_t k = all.size(); k-- > 0;) {
-      const ResolvedNode& rn = all[k];
-      if (!rn.node->is_window() || !rn.outer.intersect(screen).contains(m->x, m->y)) continue;
-      if (layers_[top].modal && rn.layer != top) return {Route::Kind::Dropped, {}};
-      if (m->kind == MouseEvent::Kind::Press) {
-        if (rn.node->focusable && rn.layer == focus_layer()) focus(rn.node->id);
-        captured_ = rn.node->id;
-      }
-      return {Route::Kind::Deliver, rn.node->id};
-    }
-    return {Route::Kind::Dropped, {}};
-  }
+  RolltuiEvent ev{};
   if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    const std::string_view action = bindings.action_for(*k, "stack");
-    if (action == "stack.close_popup" && layers_.size() > 1) {
-      std::string id = layers_.back().id;
-      pop();
-      return {Route::Kind::ClosedPopup, id};
-    }
-    if (action == "stack.focus_next" || action == "stack.focus_prev") {
-      std::vector<const Node*> f;
-      focusables(layers_[focus_layer()].root, f);
-      if (f.size() > 1) {
-        cycle_focus(action == "stack.focus_prev");
-        return {Route::Kind::FocusMoved, focused()->id};
-      }
-    }
+    ev.kind = ROLLTUI_EVENT_KEY;
+    ev.key = chord_of(*k);
+  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_MOUSE;
+    ev.mouse = *m;
+  } else {
+    ev.kind = ROLLTUI_EVENT_PASTE;
   }
-  const Node* f = focused();
-  if (!f) return {Route::Kind::Dropped, {}};
-  return {Route::Kind::Deliver, f->id};
+  Str window;
+  const unsigned char kind =
+      rolltui_window_stack_route(s_.get(), &ev, screen, bindings.handle(), &kStackActions, &window);
+  return {static_cast<Route::Kind>(kind), window.str()};
+}
+
+std::string_view WindowStack::captured() const {
+  std::size_t n = 0;
+  const char* p = rolltui_window_stack_captured(s_.get(), &n);
+  return std::string_view(p, n);
 }
 
 }  // namespace rolltui

@@ -297,6 +297,11 @@ class Bindings {
   // action_for(), so an UNDECLARED row counts — see the .cpp.
   std::string_view holder(const KeyEvent& chord, std::string_view scope) const;
   std::unique_ptr<RolltuiBindings, Handle> b_;
+
+ public:
+  // The handle, for the one other module that has to ask this table a question from behind
+  // its own C boundary: `WindowStack::route` looks up the `stack` scope (Phase 15 m5).
+  const RolltuiBindings* handle() const { return b_.get(); }
   void suggest(const std::vector<ToolAction>& tools);  // declare()'s gap-filling half
 };
 

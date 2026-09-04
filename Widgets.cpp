@@ -780,10 +780,10 @@ WindowsReport Windows::sync(const WindowStack& stack) {
   // next frame allocates them again — three a frame, for a window set that almost never
   // changes. `seen` marks what this pass found; anything unmarked afterwards is gone.
   for (auto& [id, w] : by_window_) w = nullptr;
-  for (const Layer& l : stack.layers())
-    each_window(l.root, [&](const Node& n) {
-      Widget* w = widget_for(n.content);
-      by_window_[n.id] = w;  // insert_or_assign: an existing node is reused
+  for (std::size_t li = 0; li < stack.depth(); ++li)
+    each_window(stack.layer(li).root, [&](const Node& n) {
+      Widget* w = widget_for(n.content.str());
+      by_window_[n.id.str()] = w;  // insert_or_assign: an existing node is reused
       // Phase 13 m5: the "window 'x' (content 'y'): " prefix is built only when there is
       // something to say. It used to be built for every window of every frame and thrown
       // away — a heap allocation per window per paint to describe a problem that almost
@@ -861,7 +861,7 @@ void Windows::draw_scrollbar(const ResolvedNode& rn, Widget& w, Frame& f, const 
   // allocates a new one EVERY FRAME for every window with a scrollbar — the third instance
   // of the same trap (clear/erase throws away exactly the storage being reused). `h == 0`
   // is what "no track this frame" means now.
-  Track& slot = tracks_[rn.node->id];
+  Track& slot = tracks_[rn.node->id.str()];
   slot = Track{};
   if (rn.node->border == Border::None) return;
   const std::optional<Widget::ScrollExtent> e = w.scroll_extent(Widget::Axis::Vertical);

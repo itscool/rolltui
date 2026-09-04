@@ -53,17 +53,15 @@
 #include "rolltui/Effects.hpp"
 #include "rolltui/Style.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_screen.h"
 
 namespace rolltui {
 
-struct Rect {
-  int x = 0, y = 0, w = 0, h = 0;
-  bool contains(int px, int py) const { return px >= x && py >= y && px < x + w && py < y + h; }
-  Rect intersect(const Rect& o) const;
-  bool empty() const { return w <= 0 || h <= 0; }
-  bool operator==(const Rect&) const = default;
-};
+// ONE DEFINITION (Phase 15 m5), for the reason `Cell` and `Style` already are: the C side
+// of the layout HOLDS rectangles now — a resolved node is an outer and an inner box — so
+// the struct is `rolltui/c/rolltui_geom.h`'s and both languages compile it.
+using Rect = RolltuiRect;
 
 // A cell's grapheme lives INLINE (Phase 13 m4). It used to be a `std::string`, which made
 // `Cell` 48 bytes and constructed-and-destructed one string per cell per frame — 4,800 of

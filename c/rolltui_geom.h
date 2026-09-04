@@ -20,6 +20,8 @@
  */
 #include <stddef.h>
 
+#include "rolltui/c/rolltui_abi.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -35,6 +37,28 @@ const char* rolltui_impl_name(void);
 void rolltui_rect_intersect(int ax, int ay, int aw, int ah,
                             int bx, int by, int bw, int bh,
                             int out[4]);
+
+/* ---- a rectangle, defined ONCE and compiled by both languages (Phase 15 m5) ------------ */
+/* `rolltui::Rect` IS this struct. It moved here the moment the C had to HOLD one rather
+ * than take four ints: a layout node's outer and inner boxes are the split's whole output,
+ * and passing them as sixteen loose integers would have been the "layout-compatible by
+ * fiat" this project keeps being burned by. The four ints in / four out below stay, because
+ * they are what the C++ side's `intersect` is implemented in terms of and what the flag
+ * still chooses between. */
+typedef struct RolltuiRect {
+  int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0), w ROLLTUI_DEFAULT(0), h ROLLTUI_DEFAULT(0);
+#ifdef __cplusplus
+  bool contains(int px, int py) const { return px >= x && py >= y && px < x + w && py < y + h; }
+  RolltuiRect intersect(const RolltuiRect& o) const {  /* still through the seam */
+    int r[4];
+    rolltui_rect_intersect(x, y, w, h, o.x, o.y, o.w, o.h, r);
+    return RolltuiRect{r[0], r[1], r[2], r[3]};
+  }
+  bool empty() const { return w <= 0 || h <= 0; }
+  bool operator==(const RolltuiRect&) const = default;
+#endif
+} RolltuiRect;
+ROLLTUI_STATIC_ASSERT(sizeof(RolltuiRect) == 16, "a Rect must be four ints in both languages");
 
 #ifdef __cplusplus
 }  /* extern "C" */

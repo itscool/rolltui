@@ -206,7 +206,13 @@ int main() {
         // rather than a member, the same sanctioned shape `Frame::Handle` uses. The one
         // that was already here is `std::string* moved_from`, the optional out-parameter on
         // `bind()`.
-        {"AppProfile.hpp", 0},   {"Bindings.hpp", 2},      {"Diff.hpp", 0},        {"Document.hpp", 0},
+        // Bindings.hpp 2 → 3, RE-RECORDED 2026-09-04 by Phase 15 m5. The new one is
+        // `const RolltuiBindings* handle() const` — a BORROW of the table this object owns,
+        // handed to `rolltui_window_stack_route` for the length of one call and never
+        // stored. It exists because the stack's Escape/Tab rules are behind the C boundary
+        // now and have to ask the live table what the `stack` scope binds; the words those
+        // three actions are called stay in `Layout.cpp` and are handed over with them.
+        {"AppProfile.hpp", 0},   {"Bindings.hpp", 3},      {"Diff.hpp", 0},        {"Document.hpp", 0},
         // Effects.hpp 2 → 1, RE-RECORDED 2026-09-04 by Phase 15 m2, and this is the census
         // catching a REMOVAL, which it is meant to do just as loudly as an addition. The
         // pointer was `const EffectFn* effect_kind(std::string_view)`. A resolved kind is a
@@ -372,7 +378,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 98, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 99, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");
