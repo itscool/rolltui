@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 
+#include "rolltui/Scratch.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui/Wrap.hpp"
 
@@ -59,11 +60,12 @@ void for_each_cell(const StyledLine& line, bool ambiguous, F&& f) {
   // drawn row, twice per row in draw() — the second heaviest caller of `graphemes()` after
   // put_text. Being a template is what makes it safe without thought: each lambda type
   // gets its own buffer, and no call site's lambda calls back into for_each_cell.
-  thread_local std::vector<unicode::Grapheme> gs;
+  static thread_local Scratch<std::vector<unicode::Grapheme>> scratch("for_each_cell clusters");
+  auto gs = scratch.lock();
   for (const Span& sp : line.spans) {
     std::size_t k = 0;
-    unicode::graphemes_into(sp.text, ambiguous, gs);
-    for (const unicode::Grapheme& g : gs) {
+    unicode::graphemes_into(sp.text, ambiguous, *gs);
+    for (const unicode::Grapheme& g : *gs) {
       if (g.width > 0) f(sp, k, std::string_view(sp.text).substr(g.offset, g.length), g.width);
       ++k;
     }

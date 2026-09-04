@@ -288,7 +288,7 @@ int main() {
   // counts are still bit-identical across runs at the new numbers (checked three times).
   auto band = [](long v, double pct) {
     const long slack = std::max<long>(3, static_cast<long>(v * pct));
-    return std::pair<long, long>{v - slack, v + slack};
+    return std::pair<long, long>{std::max<long>(0, v - slack), v + slack};
   };
   auto delta = [](long got, long want) {
     const long d = got - want;
@@ -305,13 +305,13 @@ int main() {
   // `grapheme_boundaries`, on a path that runs for every string drawn and every span of
   // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
   // suites untouched and still green — took 887 to 448 on its own.
-  // RE-RECORDED 2026-09-03 by m5b. Phase 13 end to end:
-  //   steady   887 →  43   streaming 2772 → 635   resize 70272 → 22075   steady KB 455 → 4
-  // **The phase's target is a steady frame of ZERO and 43 is not it.** What remains is
-  // itemised in plan/phase-13.md m5b; the single biggest is `wrap()` returning
-  // `std::vector<Line>` BY VALUE, each Line holding a string and a vector — 26 of the 43,
-  // and the bulk of the resize path too.
-  constexpr long kSteady = 43, kStreaming = 635, kResize = 22075, kSteadyKB = 4;
+  // RE-RECORDED 2026-09-03 at the end of m5b. Phase 13 end to end:
+  //   steady   887 →   6   streaming 2772 → 559   resize 70272 → 20436   steady KB 455 → 0
+  // A steady frame is SIX allocations, all in widget draws: four in the `rows:` window and
+  // one in the transcript's. `prepare`, `resolve`, the frame reset and `compose` with no
+  // slot renderer are all EXACTLY ZERO. The target is 0 and this is not it; the six are
+  // itemised in plan/phase-13.md m5b.
+  constexpr long kSteady = 6, kStreaming = 559, kResize = 20436, kSteadyKB = 0;
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were

@@ -3,6 +3,8 @@
 // factory (widget_for), never a chain of names in an application.
 #include "rolltui/Widgets.hpp"
 
+#include "rolltui/Scratch.hpp"
+
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -536,8 +538,9 @@ class RowsWidget : public WidgetBase {
       const Row& row = rows[i];
       if (y >= r.y + r.h) break;
       f.put_text(r.x + 1, y, row.label, label, std::max(r.w - 1, 0), amb());
-      std::vector<Line> lines = wrap(row.value, std::max(r.w - 9, 1), wo);
-      if (lines.empty()) lines.push_back({});
+      auto borrowed = wrap_borrow(row.value, std::max(r.w - 9, 1), wo);  // m5b: lent, not built
+      const WrapLines& lines = *borrowed;
+      if (lines.empty()) { ++y; continue; }  // an empty value still takes its row
       for (const Line& l : lines) {
         if (y >= r.y + r.h) break;
         f.put_text(r.x + 9, y, l.text, value, std::max(r.w - 9, 0), amb());
@@ -773,11 +776,14 @@ void each_window(const Node& n, const std::function<void(const Node&)>& fn) {
 
 WindowsReport Windows::sync(const WindowStack& stack) {
   WindowsReport rep;
-  by_window_.clear();
+  // m5b: the map is REBUILT IN PLACE, not cleared. `clear()` destroys every node and the
+  // next frame allocates them again — three a frame, for a window set that almost never
+  // changes. `seen` marks what this pass found; anything unmarked afterwards is gone.
+  for (auto& [id, w] : by_window_) w = nullptr;
   for (const Layer& l : stack.layers())
     each_window(l.root, [&](const Node& n) {
       Widget* w = widget_for(n.content);
-      by_window_[n.id] = w;
+      by_window_[n.id] = w;  // insert_or_assign: an existing node is reused
       // Phase 13 m5: the "window 'x' (content 'y'): " prefix is built only when there is
       // something to say. It used to be built for every window of every frame and thrown
       // away — a heap allocation per window per paint to describe a problem that almost
@@ -789,13 +795,16 @@ WindowsReport Windows::sync(const WindowStack& stack) {
       if (!p.empty()) rep.bad_values.push_back(where + p);
       for (const std::string& note : notes) rep.bad_values.push_back(where + note);
     });
+  for (auto it = by_window_.begin(); it != by_window_.end();)
+    it = it->second ? std::next(it) : by_window_.erase(it);
   return rep;
 }
 
 void Windows::autosize(WindowStack& stack, Rect box) {
-  thread_local std::vector<ResolvedNode> nodes;  // m5: once per frame, reused
-  stack.resolve_into(box, nodes);
-  for (const ResolvedNode& rn : nodes) {
+  static thread_local Scratch<std::vector<ResolvedNode>> scratch("autosize nodes");
+  auto nodes = scratch.lock();
+  stack.resolve_into(box, *nodes);
+  for (const ResolvedNode& rn : *nodes) {
     if (!rn.node->is_window()) continue;
     Widget* w = at(rn.node->id);
     if (!w) continue;
@@ -804,7 +813,7 @@ void Windows::autosize(WindowStack& stack, Rect box) {
     // It decides the axis (a Row divides width, a Column height) and the extent the
     // widget sizes itself against; with no split above it, that is the layer's box.
     const ResolvedNode* parent = nullptr;
-    for (const ResolvedNode& p : nodes)
+    for (const ResolvedNode& p : *nodes)
       if (!p.node->is_window() && p.layer == rn.layer && p.inner.contains(rn.outer.x, rn.outer.y)) parent = &p;
     const bool row = parent && parent->node->kind == Node::Kind::Row;
     const int extent = !parent ? box.h : row ? parent->inner.w : parent->inner.h;
@@ -815,9 +824,10 @@ void Windows::autosize(WindowStack& stack, Rect box) {
 }
 
 void Windows::layout(const WindowStack& stack, Rect box) {
-  thread_local std::vector<ResolvedNode> nodes;  // m5: once per frame, reused
-  stack.resolve_into(box, nodes);
-  for (const ResolvedNode& rn : nodes)
+  static thread_local Scratch<std::vector<ResolvedNode>> scratch("layout nodes");
+  auto nodes = scratch.lock();
+  stack.resolve_into(box, *nodes);
+  for (const ResolvedNode& rn : *nodes)
     if (rn.node->is_window())
       if (Widget* w = at(rn.node->id)) w->layout(rn);
 }

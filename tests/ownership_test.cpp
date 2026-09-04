@@ -161,10 +161,11 @@ int main() {
         {"AppProfile.hpp", 0},   {"Bindings.hpp", 1},      {"Diff.hpp", 0},        {"Document.hpp", 0},
         {"Effects.hpp", 2},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 0},
         {"Layout.hpp", 8},       {"Markdown.hpp", 0},      {"Marker.hpp", 0},      {"Menu.hpp", 7},
-        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Screen.hpp", 1},      {"Style.hpp", 0},
+        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 4},     {"Screen.hpp", 1},
+        {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Unicode.hpp", 1},     {"Widgets.hpp", 10},
-        {"Wrap.hpp", 0},
+        {"Wrap.hpp", 2},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -197,7 +198,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 39, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 45, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

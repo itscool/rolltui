@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "rolltui/Scratch.hpp"
 #include "rolltui/Unicode.hpp"
 
 namespace rolltui {
@@ -144,9 +145,10 @@ int Frame::put_text(int x, int y, std::string_view utf8, const Style& style, int
   // of `graphemes()` — every string any widget draws comes through here — and it was
   // building a fresh vector for each one. Not nested: nothing in the loop below calls
   // back into put_text.
-  thread_local std::vector<unicode::Grapheme> gs;
-  unicode::graphemes_into(utf8, ambiguous_wide, gs);
-  for (const unicode::Grapheme& g : gs) {
+  static thread_local Scratch<std::vector<unicode::Grapheme>> scratch("put_text clusters");
+  auto gs = scratch.lock();  // m5b: the window is CHECKED, where m3 only claimed it
+  unicode::graphemes_into(utf8, ambiguous_wide, *gs);
+  for (const unicode::Grapheme& g : *gs) {
     if (g.width <= 0) continue;
     if (used + g.width > max_cells || x + used >= w_) break;
     if (g.width == 2 && x + used + 1 >= w_) break;  // never a half glyph at the edge

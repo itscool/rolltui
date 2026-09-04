@@ -42,6 +42,8 @@
 //
 #include <cstddef>
 #include <string>
+
+#include "rolltui/Scratch.hpp"
 #include <string_view>
 #include <vector>
 
@@ -71,5 +73,34 @@ struct Line {
 };
 
 std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt = {});
+
+// THE SAME LINES, LENT RATHER THAN HANDED OVER (Phase 13 m5b, rolltui/Scratch.hpp). `wrap`
+// runs for every row of a `rows:` window on every frame and for every entry that re-lays,
+// and returning a fresh `vector<Line>` — each `Line` holding a string AND a vector — was
+// 26 of a steady frame's 43 allocations and the bulk of a resize. This keeps the storage
+// with the callee and reuses it: the borrow is valid until the Lock goes out of scope, and
+// a second one while the first is live ABORTS rather than aliasing.
+//
+// Use `wrap()` when the lines must outlive the call. Use this in a draw or layout loop,
+// which is every hot caller.
+//
+// **`clear()` IS THE WRONG RESET FOR A CONTAINER OF OWNING ELEMENTS**, and that is why this
+// is its own type rather than a `vector<Line>`: clearing a `vector<Line>` destroys each
+// Line and frees the string and the vector INSIDE it, which is precisely the storage being
+// reused. Found by measurement — lending the outer vector alone took a steady frame from
+// 43 to 39, and reaching into the Lines took it to 25. So the reset here sets a COUNT and
+// keeps every Line intact.
+struct WrapLines {
+  std::vector<Line> lines;  // storage; grows to the high-water mark and never shrinks
+  std::size_t n = 0;        // how many of them are live
+
+  void clear() { n = 0; }   // what Scratch calls: keeps every Line's buffers
+  std::size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  const Line& operator[](std::size_t i) const { return lines[i]; }
+  const Line* begin() const { return lines.data(); }
+  const Line* end() const { return lines.data() + n; }
+};
+Scratch<WrapLines>::Lock wrap_borrow(std::string_view utf8, int width, const WrapOptions& opt = {});
 
 }  // namespace rolltui

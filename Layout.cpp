@@ -7,6 +7,7 @@
 #include <cstdlib>
 
 #include "rolltui/Json.hpp"
+#include "rolltui/Scratch.hpp"
 #include "rolltui/Unicode.hpp"
 
 namespace rolltui {
@@ -1127,14 +1128,29 @@ void focusables(const Node& n, std::vector<const Node*>& out) {
   for (const Node& c : n.children) focusables(c, out);
 }
 
+// m5b: no vector. This runs once per layer per `resolve_into`, which is three times a
+// frame, and it only ever needs the FIRST focusable or the one matching a name — neither
+// of which is a reason to build a list. `focus_layer()` calls it for every layer on top of
+// that, so it was the last per-frame allocation in the layout pass.
+const Node* first_focusable(const Node& n) {
+  if (!n.visible) return nullptr;
+  if (n.is_window()) return n.focusable ? &n : nullptr;
+  for (const Node& c : n.children)
+    if (const Node* f = first_focusable(c)) return f;
+  return nullptr;
+}
+const Node* focusable_named(const Node& n, std::string_view id) {
+  if (!n.visible) return nullptr;
+  if (n.is_window()) return (n.focusable && n.id == id) ? &n : nullptr;
+  for (const Node& c : n.children)
+    if (const Node* f = focusable_named(c, id)) return f;
+  return nullptr;
+}
+
 const Node* layer_focused(const Layer& l) {
-  std::vector<const Node*> f;
-  focusables(l.root, f);
-  if (f.empty()) return nullptr;
   if (!l.focus.empty())
-    for (const Node* n : f)
-      if (n->id == l.focus) return n;
-  return f.front();
+    if (const Node* named = focusable_named(l.root, l.focus)) return named;
+  return first_focusable(l.root);
 }
 
 }  // namespace
@@ -1207,7 +1223,9 @@ void WindowStack::cycle_focus(bool backwards) {
 void WindowStack::resolve_into(Rect screen, std::vector<ResolvedNode>& out) const {
   out.clear();
   const Node* fnode = focused();
-  thread_local std::vector<ResolvedNode> layer;
+  static thread_local Scratch<std::vector<ResolvedNode>> s_layer("resolve layer nodes");
+  auto layer_l = s_layer.lock();
+  std::vector<ResolvedNode>& layer = *layer_l;
   for (std::size_t i = 0; i < layers_.size(); ++i) {
     Rect box = rolltui::resolve(layers_[i].placement, screen);
     resolve_tree_into(layers_[i].root, box, screen, i, layer);
@@ -1230,7 +1248,11 @@ void WindowStack::compose(Frame& frame, Rect screen, const Theme& theme, const S
   // building one vector for the whole tree plus one MORE per layer, copying the nodes into
   // it — for a steady frame that is a handful of allocations that exist only to partition
   // a list by an integer already on each element.
-  thread_local std::vector<ResolvedNode> all, mine;
+  static thread_local Scratch<std::vector<ResolvedNode>> s_all("compose nodes"), s_mine("compose layer nodes");
+  auto all_l = s_all.lock();
+  auto mine_l = s_mine.lock();
+  std::vector<ResolvedNode>& all = *all_l;
+  std::vector<ResolvedNode>& mine = *mine_l;
   resolve_into(screen, all);
   for (std::size_t i = 0; i < layers_.size(); ++i) {
     if (layers_[i].modal) frame.tint(screen, theme.style(Role::overlay));

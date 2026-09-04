@@ -2,6 +2,8 @@
 // named case in rolltui/tests/wrap_test.cpp, plus the three properties over a corpus.
 #include "rolltui/Wrap.hpp"
 
+#include "rolltui/Scratch.hpp"
+
 #include <span>
 
 #include "rolltui/Unicode.hpp"
@@ -13,11 +15,38 @@ namespace rolltui {
 // panel's whole cost (60 of a steady frame's 77 allocations before this) and the bulk of a
 // resize. Same algorithm, same UAX #14 breaks — the conformance suite is what says so.
 // Not nested: nothing between the first clear and the last use calls back into wrap().
+namespace {
+// The one implementation; `wrap()` copies its result out, `wrap_borrow()` lends it.
+void wrap_into(std::string_view utf8, int width, const WrapOptions& opt, WrapLines& out);
+}  // namespace
+
 std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt) {
+  WrapLines w;
+  wrap_into(utf8, width, opt, w);
+  // MOVE, do not copy: `w` is local and dies here, and copying would allocate a string and
+  // a vector per Line. Caught by the budget — the first version copied and put 756
+  // allocations back onto the resize frame, which is the one path that calls this in bulk.
+  std::vector<Line> out;
+  out.reserve(w.n);
+  for (std::size_t i = 0; i < w.n; ++i) out.push_back(std::move(w.lines[i]));
+  return out;
+}
+
+Scratch<WrapLines>::Lock wrap_borrow(std::string_view utf8, int width, const WrapOptions& opt) {
+  static thread_local Scratch<WrapLines> scratch("wrap lines");
+  auto lock = scratch.lock();
+  wrap_into(utf8, width, opt, *lock);
+  return lock;
+}
+
+namespace {
+void wrap_into(std::string_view utf8, int width, const WrapOptions& opt, WrapLines& w) {
+  std::vector<Line>& out = w.lines;
   using unicode::Break;
   using unicode::DecodedChar;
 
-  std::vector<Line> out;
+  // NOT out.clear(): that would destroy each Line's string and vector. The emit loop
+  // assigns into the entries already there and trims the surplus at the end.
   thread_local std::vector<DecodedChar> chars;
   thread_local std::vector<char32_t> cps;
   unicode::decode_utf8_into(utf8, chars);
@@ -62,8 +91,18 @@ std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt)
     return ind;
   };
 
-  Line cur;
+  // m5b: `cur` is a reused buffer too, and lines are ASSIGNED into `out`'s existing
+  // entries rather than pushed. `out.clear()` would DESTROY each Line — freeing the string
+  // and the grapheme vector inside it — which is why lending the outer vector alone bought
+  // almost nothing (43 → 39). The reuse has to reach the Line's own storage.
+  static thread_local Line cur;
+  cur.text.clear();
+  cur.graphemes.clear();
+  cur.width = 0;
+  cur.hard = false;
   cur.indent = indent_for(true);
+  std::size_t n_out = 0;
+  w.n = 0;
   int avail = nothing ? 0 : width - cur.indent;
   bool any_emitted = false;
   bool pending = false;   // content seen since the last emitted line (even at width 0)
@@ -71,8 +110,17 @@ std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt)
   std::size_t last_opportunity = 0;  // grapheme index in cur where a soft break may go
   auto emit = [&](bool hard) {
     cur.hard = hard;
-    out.push_back(std::move(cur));
-    cur = Line{};
+    if (n_out == out.size()) out.emplace_back();
+    Line& dst = out[n_out++];
+    dst.text.assign(cur.text);                                          // keeps dst's buffer
+    dst.graphemes.assign(cur.graphemes.begin(), cur.graphemes.end());   // keeps dst's capacity
+    dst.width = cur.width;
+    dst.indent = cur.indent;
+    dst.hard = cur.hard;
+    cur.text.clear();
+    cur.graphemes.clear();
+    cur.width = 0;
+    cur.hard = false;
     cur.indent = indent_for(false);
     avail = nothing ? 0 : width - cur.indent;
     any_emitted = true;
@@ -162,7 +210,11 @@ std::vector<Line> wrap(std::string_view utf8, int width, const WrapOptions& opt)
   // End of text: the unterminated last segment is a line if it has content, or if it
   // is the whole (empty) text. A trailing newline has already emitted its line.
   if (pending || !any_emitted) emit(true);
-  return out;
+  // NOT out.resize(n_out): shrinking destroys the surplus Lines and frees their buffers,
+  // so a caller wrapping rows of DIFFERENT lengths would thrash — which is exactly what the
+  // status panel does, four rows a frame. The count is what says how many are live.
+  w.n = n_out;
 }
+}  // namespace
 
 }  // namespace rolltui
