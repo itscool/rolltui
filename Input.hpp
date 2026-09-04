@@ -109,6 +109,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -118,181 +119,140 @@
 #include "rolltui/Keys.hpp"
 #include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
-#include "rolltui/Undo.hpp"
 #include "rolltui/Unicode.hpp"
+#include "rolltui/c/rolltui_input.h"
 
 namespace rolltui {
 
-struct InputOptions {
-  bool ambiguous_wide = false;
-  int tab_width = 4;
-  int inset = 0;                   // columns kept clear on each side of the area
-  std::string prompt = "> ";       // drawn before the first row, in prompt_role
-  Role prompt_role = Role::prompt;
-  std::string placeholder;         // drawn after the prompt while the text is empty
-  std::uint64_t multi_click_ms = 400;
-  std::size_t history_limit = 1000;
-  bool single_line = false;        // a newline (typed, pasted, or input.newline) is dropped — a menu field
-  bool operator==(const InputOptions&) const = default;
-};
+// PHASE 15 m5: the whole state machine is behind `rolltui/c/rolltui_input.h`, in one of two
+// implementations chosen by `-DROLLTUI_C` (`InputCpp.cpp` or `c/rolltui_input.c`). This
+// header is the C++ shape every host already writes against; `InputOptions` and
+// `InputSelection` ARE the C structs (one definition), and the class below is RAII plus the
+// two translations a C boundary cannot do for itself — a `std::function` clipboard into a
+// function pointer, and the thirty action NAMES the widget's table is keyed by.
+//
+// TWO THINGS A CALLER CAN SEE, both forced by the handle rather than chosen:
+//   - `text()` returns a `std::string_view`, not a `const std::string&`: the bytes live in
+//     the C's buffer and the window is stated (until the text next changes).
+//   - `history()` is `history_count()` + `history_at(i)`, for the same reason `Frame`'s
+//     marks are — nothing on the C side can hand back a `std::vector<std::string>` without
+//     building one per call.
+using InputOptions = RolltuiInputOptions;
+using InputSelection = RolltuiInputSelection;
 
-enum class InputAction { Ignored, Handled, Submit, Eof };
-
-struct InputSelection {
-  std::size_t anchor = 0, head = 0;
-  bool active = false;
-  std::size_t begin() const { return anchor < head ? anchor : head; }
-  std::size_t end() const { return anchor < head ? head : anchor; }
-  bool empty() const { return !active || anchor == head; }
-  bool operator==(const InputSelection&) const = default;
+enum class InputAction : unsigned char {
+  Ignored = ROLLTUI_INPUT_IGNORED,
+  Handled = ROLLTUI_INPUT_HANDLED,
+  Submit = ROLLTUI_INPUT_SUBMIT,
+  Eof = ROLLTUI_INPUT_EOF,
 };
 
 class Input {
  public:
+  // OWNED, through a `unique_ptr` with a deleter that calls the C free — the same shape
+  // `Frame`, `Bindings`, `KeyDecoder` and `WindowStack` use.
+  struct Handle {
+    void operator()(RolltuiInput* p) const { rolltui_input_free(p); }
+  };
+  Input();
+  Input(const Input&) = delete;
+  Input& operator=(const Input&) = delete;
+  // MOVABLE, and the two are written out rather than defaulted for one reason: the C holds
+  // a `void*` back to THIS object for the clipboard trampoline, so a move has to re-point
+  // it. A defaulted move would leave the moved-from address in the handle and copy through
+  // a dead object — the kind of thing an opaque handle makes possible and a `std::function`
+  // member hid.
+  Input(Input&& o) noexcept;
+  Input& operator=(Input&& o) noexcept;
+
   std::function<void(const std::string&)> on_copy;  // the host's clipboard
 
   // ---- content ----
-  const std::string& text() const { return text_; }
-  void set_text(std::string t);   // sanitised; caret at the end; selection cleared
-  void clear();                    // text, caret, selection and the history cursor (entries kept)
-  std::size_t caret() const { return caret_; }
+  // A BORROW of the C's buffer, valid until the text next changes.
+  std::string_view text() const;
+  void set_text(std::string_view t);  // sanitised; caret at the end; selection cleared
+  void clear();                       // text, caret, selection and the history cursor (entries kept)
+  std::size_t caret() const { return rolltui_input_caret(in_.get()); }
   // Moves the caret to the boundary at or after `byte`; `extend` grows the selection
   // from the old caret (or the existing anchor) instead of clearing it.
-  void set_caret(std::size_t byte, bool extend = false);
-  const InputSelection& selection() const { return sel_; }
+  void set_caret(std::size_t byte, bool extend = false) { rolltui_input_set_caret(in_.get(), byte, extend); }
+  InputSelection selection() const;
   std::string selected_text() const;
-  void select_all();
-  void clear_selection() { sel_ = {}; }
+  void select_all() { rolltui_input_select_all(in_.get()); }
+  void clear_selection() { rolltui_input_clear_selection(in_.get()); }
 
   // ---- editing primitives (what the keys call; a host may call them too) ----
-  void insert(std::string_view utf8);  // replaces the selection; sanitised
-  bool erase_selection();               // false when there is none
-  void erase_backward();
-  void erase_forward();
-  void kill_word_backward();
-  void kill_word_forward();
-  void kill_to_line_start();
-  void kill_to_line_end();
-  void move_left(bool extend = false);
-  void move_right(bool extend = false);
-  void move_word_left(bool extend = false);
-  void move_word_right(bool extend = false);
-  void move_line_start(bool extend = false);
-  void move_line_end(bool extend = false);
-  bool move_up(bool extend = false);    // false when the caret is on the first row
-  bool move_down(bool extend = false);  // false when the caret is on the last row
+  void insert(std::string_view utf8) { rolltui_input_insert(in_.get(), utf8.data(), utf8.size()); }
+  // What `insert` WOULD produce, into a buffer the caller owns and reuses — for a caller
+  // that has to judge a keystroke before letting it land (the menu's typed fields). It
+  // replaced `Input probe = edit_;`, which copied the whole editor per keystroke.
+  void preview_insert(std::string_view utf8, Str& out) const {
+    rolltui_input_preview_insert(in_.get(), utf8.data(), utf8.size(), &out);
+  }
+  bool erase_selection() { return rolltui_input_erase_selection(in_.get()) != 0; }
+  void erase_backward() { rolltui_input_erase_backward(in_.get()); }
+  void erase_forward() { rolltui_input_erase_forward(in_.get()); }
+  void kill_word_backward() { rolltui_input_kill_word_backward(in_.get()); }
+  void kill_word_forward() { rolltui_input_kill_word_forward(in_.get()); }
+  void kill_to_line_start() { rolltui_input_kill_to_line_start(in_.get()); }
+  void kill_to_line_end() { rolltui_input_kill_to_line_end(in_.get()); }
+  void move_left(bool extend = false) { rolltui_input_move_left(in_.get(), extend); }
+  void move_right(bool extend = false) { rolltui_input_move_right(in_.get(), extend); }
+  void move_word_left(bool extend = false) { rolltui_input_move_word_left(in_.get(), extend); }
+  void move_word_right(bool extend = false) { rolltui_input_move_word_right(in_.get(), extend); }
+  void move_line_start(bool extend = false) { rolltui_input_move_line_start(in_.get(), extend); }
+  void move_line_end(bool extend = false) { rolltui_input_move_line_end(in_.get(), extend); }
+  bool move_up(bool extend = false) { return rolltui_input_move_up(in_.get(), extend) != 0; }
+  bool move_down(bool extend = false) { return rolltui_input_move_down(in_.get(), extend) != 0; }
   // Word boundaries as the motions see them (exposed for the tests).
-  std::size_t word_left_of(std::size_t pos) const;
-  std::size_t word_right_of(std::size_t pos) const;
+  std::size_t word_left_of(std::size_t pos) const { return rolltui_input_word_left_of(in_.get(), pos); }
+  std::size_t word_right_of(std::size_t pos) const { return rolltui_input_word_right_of(in_.get(), pos); }
 
   // ---- undo/redo (see UNDO above) ----
-  bool undo();  // false (no-op) at the bottom of the stack
-  bool redo();  // false when there is nothing to redo
-  bool can_undo() const { return undo_pending_ || undo_.can_undo(); }
-  bool can_redo() const { return !undo_pending_ && undo_.can_redo(); }
+  bool undo() { return rolltui_input_undo(in_.get()) != 0; }  // false (no-op) at the bottom
+  bool redo() { return rolltui_input_redo(in_.get()) != 0; }
+  bool can_undo() const { return rolltui_input_can_undo(in_.get()) != 0; }
+  bool can_redo() const { return rolltui_input_can_redo(in_.get()) != 0; }
 
   // ---- history ----
-  void push_history(std::string entry);  // skips an empty entry and a repeat of the newest
-  const std::vector<std::string>& history() const { return hist_; }
-  std::size_t history_cursor() const { return hist_pos_; }  // history().size() = the draft
-  bool history_prev();
-  bool history_next();
+  void push_history(std::string_view entry);  // skips an empty entry and a repeat of the newest
+  std::size_t history_count() const { return rolltui_input_history_count(in_.get()); }
+  std::string_view history_at(std::size_t i) const;
+  std::size_t history_cursor() const { return rolltui_input_history_cursor(in_.get()); }  // count = the draft
+  bool history_prev() { return rolltui_input_history_prev(in_.get()) != 0; }
+  bool history_next() { return rolltui_input_history_next(in_.get()) != 0; }
 
   // ---- events (already routed to this window by the host) ----
   InputAction handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms = 0);
   InputAction handle(const Event& e, std::uint64_t now_ms = 0) { return handle(e, default_bindings(), now_ms); }
 
   // ---- layout + drawing ----
-  void set_options(const InputOptions& o);
-  const InputOptions& options() const { return opt_; }
+  void set_options(const InputOptions& o) { rolltui_input_set_options(in_.get(), &o); }
+  const InputOptions& options() const { return *rolltui_input_options(in_.get()); }
   // Rows the whole text needs at this window width (≥ 1), for a host that grows the
   // window with the text.
-  int rows_for(int width) const;
-  void layout(Rect area);  // wraps at the area's width, keeps the caret's row in view
+  int rows_for(int width) const { return rolltui_input_rows_for(in_.get(), width); }
+  void layout(Rect area) { rolltui_input_layout(in_.get(), area); }  // keeps the caret's row in view
   void draw(Frame& f, const Theme& theme, bool focused) const;
-  struct CellPos { int row = 0, col = 0; };
+  struct CellPos {
+    int row = 0, col = 0;
+  };
   // Where a position is drawn: a text row (before scrolling) and a column from the
   // area's left edge (the prompt / indent included).
   CellPos cell_of(std::size_t offset) const;
   // The grapheme under a screen cell as [begin, end) (begin == end at a row's end, at
   // the end of the text, or on a newline); rows are clamped to the text, so a pointer
   // dragged off the area still resolves. nullopt only before any layout().
-  struct Hit { std::size_t begin = 0, end = 0; };
+  struct Hit {
+    std::size_t begin = 0, end = 0;
+  };
   std::optional<Hit> hit(int x, int y) const;
-  int rows() const;
-  int top_row() const { return top_; }
-  Rect area() const { return area_; }
+  int rows() const { return rolltui_input_rows(in_.get()); }
+  int top_row() const { return rolltui_input_top_row(in_.get()); }
+  Rect area() const;
 
  private:
-  struct Cell { int row = 0, col = 0, width = 0; };
-  struct Flow {
-    std::vector<Cell> cells;             // one per grapheme
-    std::vector<std::size_t> row_end;    // per row: the position at its end
-    int end_row = 0, end_col = 0;        // where the caret sits at the end of the text
-    int rows = 1;
-  };
-  Flow flow(int width) const;
-  void ensure() const;
-  void retext(std::string t, std::size_t caret);
-  std::size_t snap(std::size_t pos) const;
-  std::size_t prev_boundary(std::size_t pos) const;
-  std::size_t next_boundary(std::size_t pos) const;
-  std::size_t line_start(std::size_t pos) const;
-  std::size_t line_end(std::size_t pos) const;
-  std::size_t pos_at(int row, int col) const;
-  void place(std::size_t pos, bool extend);
-  void erase_range(std::size_t b, std::size_t e);
-  void unit_around(std::size_t off, bool word, std::size_t& b, std::size_t& e) const;
-  InputAction handle_key(const KeyEvent& k, const Bindings& b);
-  InputAction handle_mouse(const MouseEvent& m, std::uint64_t now_ms);
-  void drag_to(int x, int y);
-  void raw_insert(std::string_view utf8);  // the mechanics of insert(), no undo bookkeeping
-
-  // ---- undo (see UNDO above) ----
-  struct InputSnapshot {
-    std::string text;
-    std::size_t caret = 0;
-    InputSelection sel;
-    bool operator==(const InputSnapshot&) const = default;
-  };
-  enum class EditKind { Ordinary, Atomic };
-  InputSnapshot snapshot() const { return {text_, caret_, sel_}; }
-  void apply_snapshot(const InputSnapshot& s);
-  void close_group();                                     // folds an open group into one commit; a pure boundary
-  void note_edit(EditKind kind, const InputSnapshot& pre); // called after every mutating primitive
-
-  std::string text_;
-  std::vector<unicode::Grapheme> g_;
-  std::size_t caret_ = 0;
-  InputSelection sel_;
-  std::optional<int> goal_col_;
-  InputOptions opt_;
-  int prompt_w_ = 2;
-
-  UndoStack<InputSnapshot> undo_{InputSnapshot{}};
-  bool undo_pending_ = false;         // an open, uncommitted "ordinary editing" group
-  std::uint64_t undo_last_ms_ = 0;    // the last grouped edit's now_ms, for the timeout
-  std::uint64_t now_ms_ = 0;          // the current call's clock, set by handle()
-
-  std::vector<std::string> hist_;
-  std::size_t hist_pos_ = 0;
-  std::string draft_;
-
-  Rect area_;
-  int width_ = 80;
-  int top_ = 0;
-  mutable bool dirty_ = true;
-  mutable Flow flow_;
-
-  struct Drag {
-    bool active = false;
-    std::size_t begin = 0, end = 0;  // the pressed unit
-    int x = 0, y = 0;
-  } drag_;
-  struct Click {
-    std::uint64_t at_ms = 0;
-    int x = -1, y = -1, count = 0;
-  } click_;
+  std::unique_ptr<RolltuiInput, Handle> in_{rolltui_input_new()};
 };
 
 }  // namespace rolltui

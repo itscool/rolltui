@@ -295,10 +295,20 @@ class InputWidget : public WidgetBase {
     return std::max(rows_with_note(inner_w, ed.rows_for(inner_w)) + border, min_outer);
   }
   void layout(const ResolvedNode& rn) override {
-    InputOptions o = ed.options();
-    o.ambiguous_wide = amb();
-    o.inset = rn.node->border != Border::None ? 1 : 0;  // the widget owns the breathing room
-    if (!(o == ed.options())) ed.set_options(o);
+    // THE COMPARISON, NOT A COPY. This was `InputOptions o = ed.options();` — a whole copy
+    // of the options every frame, to change two fields, compare, and usually throw the copy
+    // away. It cost nothing visible while the prompt and the placeholder were `std::string`s
+    // short enough for SSO; the moment they became owned buffers with no small-string case
+    // (Phase 15 m5) the budget saw one allocation per steady frame. The copy was always
+    // there — CLAUDE.md's rule is to remove it rather than to make it cheap.
+    const unsigned char aw = amb() ? 1 : 0;
+    const int inset = rn.node->border != Border::None ? 1 : 0;  // the widget owns the breathing room
+    if (ed.options().ambiguous_wide != aw || ed.options().inset != inset) {
+      InputOptions o = ed.options();
+      o.ambiguous_wide = aw;
+      o.inset = inset;
+      ed.set_options(o);
+    }
     ed.layout(text_rect(rn.inner));
   }
   void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
@@ -327,7 +337,7 @@ class InputWidget : public WidgetBase {
   InputAction event(const Event& e) {
     const InputAction a = ed.handle(e, binds(), env().now_ms);
     if (a != InputAction::Submit) return a;
-    std::string text = ed.text();
+    const std::string text(ed.text());
     // A prompt sends and starts fresh; a find bar keeps its standing query (Widgets.hpp).
     if (w_->on_submit_for(content.source) == Windows::OnSubmit::SendAndClear) {
       ed.push_history(text);

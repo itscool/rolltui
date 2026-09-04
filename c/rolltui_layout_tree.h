@@ -49,6 +49,7 @@
 #include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_style.h" /* the two role ordinals that cross; see the note there */
 
 #ifdef __cplusplus
 #include <cstddef>
@@ -72,12 +73,6 @@ enum class Anchor : unsigned char {
 enum class Role : unsigned char;
 }  // namespace rolltui
 #endif
-
-/* THE ONE ROLE ORDINAL THAT CROSSES, and it is CHECKED rather than trusted: `Style.hpp`
- * static_asserts that it is `Role::background`, so the two cannot drift. Naming the ordinal
- * and not the role is what keeps the vocabulary in one file (m2's rule) while still letting
- * a node have a sensible default in a language with no `Role`. */
-#define ROLLTUI_ROLE_DEFAULT_BACKGROUND 2
 
 #ifdef __cplusplus
 extern "C" {

@@ -688,7 +688,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
       const ContentParts p = parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_));
       if (p.content) {
         begin_preview();
-        set_content(p.kind_text, menu_.editing_text());
+        set_content(p.kind_text, std::string(menu_.editing_text()));
       }
       return {O::Changed, {}};
     }

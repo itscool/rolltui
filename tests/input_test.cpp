@@ -56,8 +56,18 @@ std::string sel_of(const Input& in) { return in.selected_text(); }
 // table driven through the widget rather than a description of intent.
 std::vector<std::string> undo_trace(Input& in) {
   std::vector<std::string> trace;
-  while (in.undo()) trace.push_back(in.text());
+  while (in.undo()) trace.emplace_back(in.text());
   return trace;
+}
+
+// PHASE 15 m5: the history is `history_count()` + `history_at(i)` — nothing on the C side
+// can hand back a `std::vector<std::string>` without building one per call (the same reason
+// `Frame`'s marks are counted and indexed). This test wants the whole list to compare, so it
+// builds one HERE, where the copy is the test's own and visible.
+std::vector<std::string> history_of(const Input& in) {
+  std::vector<std::string> out;
+  for (std::size_t i = 0; i < in.history_count(); ++i) out.emplace_back(in.history_at(i));
+  return out;
 }
 std::string joined(const std::vector<std::string>& v) {
   std::string s = "[";
@@ -120,9 +130,9 @@ void test_typing_and_grapheme_boundaries() {
 void test_control_characters_never_enter() {
   Input in = fresh();
   in.insert("x\x01y\x7Fz");
-  check(in.text() == "xyz", "insert drops control characters and DEL [" + in.text() + "]");
+  check(in.text() == "xyz", "insert drops control characters and DEL [" + std::string(in.text()) + "]");
   in.handle(PasteEvent{"a\r\nb\rc\x07" "d\te"});
-  check(in.text() == "xyza\nb\ncd\te", "a paste is literal after sanitising: CR LF and CR become LF, BEL dropped, tab kept [" + in.text() + "]");
+  check(in.text() == "xyza\nb\ncd\te", "a paste is literal after sanitising: CR LF and CR become LF, BEL dropped, tab kept [" + std::string(in.text()) + "]");
   Input s = fresh();
   s.set_text("q\rw");
   check(s.text() == "q\nw", "set_text sanitises the same way");
@@ -140,13 +150,13 @@ void test_word_motions() {
   check(rights == std::vector<std::size_t>{5, 6, 10, 16, 16}, "Alt+Right: hello, the comma, big, world, then stays");
   in.set_text("one two   ");
   in.handle(ctrl('w'));
-  check(in.text() == "one " && in.caret() == 4, "Ctrl+W kills the word before the caret, trailing spaces included [" + in.text() + "]");
+  check(in.text() == "one " && in.caret() == 4, "Ctrl+W kills the word before the caret, trailing spaces included [" + std::string(in.text()) + "]");
   in.handle(key(Key::Backspace, false, false, true));
   check(in.text().empty(), "Alt+Backspace kills the same way");
   in.set_text("one two");
   in.set_caret(0);
   in.handle(alt('d'));
-  check(in.text() == " two" && in.caret() == 0, "Alt+D kills the word after the caret [" + in.text() + "]");
+  check(in.text() == " two" && in.caret() == 0, "Alt+D kills the word after the caret [" + std::string(in.text()) + "]");
   in.handle(key(Key::Delete, false, true));
   check(in.text().empty(), "Ctrl+Delete kills the spaces and the word after");
   Input u = fresh();
@@ -170,7 +180,7 @@ void test_logical_line_keys() {
   check(in.caret() == 3, "End on the first line stops at its newline");
   in.set_caret(6);
   in.handle(ctrl('u'));
-  check(in.text() == "one\no" && in.caret() == 4, "Ctrl+U kills to the start of the logical line [" + in.text() + "]");
+  check(in.text() == "one\no" && in.caret() == 4, "Ctrl+U kills to the start of the logical line [" + std::string(in.text()) + "]");
   in.set_text("hello world");
   in.set_caret(5);
   in.handle(ctrl('k'));
@@ -220,7 +230,7 @@ void test_history_with_a_draft() {
   in.push_history("two");
   in.push_history("two");
   in.push_history("");
-  check(in.history().size() == 2, "a repeat of the newest entry and an empty entry are not pushed");
+  check(in.history_count() == 2, "a repeat of the newest entry and an empty entry are not pushed");
   type(in, "draft");
   in.handle(key(Key::Up));
   check(in.text() == "two", "Up on the first row recalls the newest entry");
@@ -238,7 +248,7 @@ void test_history_with_a_draft() {
   check(in.text() == "twox", "a recalled entry can be edited");
   in.handle(key(Key::Up));
   in.handle(key(Key::Down));
-  check(in.text() == "two" && in.history()[1] == "two", "the entry itself was never modified (the edit is gone)");
+  check(in.text() == "two" && in.history_at(1) == "two", "the entry itself was never modified (the edit is gone)");
   in.clear();
   check(in.text().empty() && in.history_cursor() == 2, "clear() empties the text and rewinds the history cursor to the draft");
   in.handle(key(Key::Up));
@@ -259,7 +269,7 @@ void test_history_with_a_draft() {
   lim.push_history("1");
   lim.push_history("2");
   lim.push_history("3");
-  check(lim.history() == std::vector<std::string>{"2", "3"}, "the history limit drops the oldest");
+  check(history_of(lim) == std::vector<std::string>{"2", "3"}, "the history limit drops the oldest");
 }
 
 void test_selection_by_keys() {
@@ -601,12 +611,12 @@ void test_undo_redo_and_history_never_touch_each_other() {
   check(!in.can_undo(), "set_text() (which history recall uses) resets the WHOLE undo stack to a fresh baseline: nothing to undo yet");
   type(in, "X");
   const std::size_t cursor_before = in.history_cursor();
-  const std::vector<std::string> hist_before = in.history();
+  const std::vector<std::string> hist_before = history_of(in);
   check(in.undo() && in.text() == "two", "undo reverts the typed X");
-  check(in.history_cursor() == cursor_before && in.history() == hist_before, "undo never touches the history mechanism (Phase 9 m10, untouched by Phase 12 m1)");
+  check(in.history_cursor() == cursor_before && history_of(in) == hist_before, "undo never touches the history mechanism (Phase 9 m10, untouched by Phase 12 m1)");
   check(!in.undo() && in.text() == "two", "undo cannot reach past the history recall: set_text() is a fresh baseline, not an undoable edit");
   check(in.redo() && in.text() == "twoX", "redo restores it");
-  check(in.history_cursor() == cursor_before && in.history() == hist_before, "redo never touches the history mechanism either");
+  check(in.history_cursor() == cursor_before && history_of(in) == hist_before, "redo never touches the history mechanism either");
 }
 
 void test_undo_group_closes_on_select_all_and_mouse() {
@@ -663,7 +673,7 @@ void test_degenerate_sizes() {
     check(in.top_row() == 0, name + ": the scroll follows the caret back to the top");
     // Undo/redo survive a degenerate area too (the user, 2026-09-01's rule, extended
     // to Phase 12 m1): nothing crashes, and redo restores the paste byte-for-byte.
-    const std::string full = in.text();
+    const std::string full(in.text());
     check(in.can_undo(), name + ": there is something to undo after editing a degenerate area");
     check(in.undo() && in.text() != full, name + ": undo runs without crashing in a degenerate area");
     in.layout(a);

@@ -38,6 +38,21 @@ extern "C" {
  * plain byte it has always been in C. The underlying type is FIXED at `unsigned char`, so
  * the two spellings are the same one byte by the standard and not by convention, and the
  * assertion below is what says so out loud. */
+/* ---- THE ROLE ORDINALS THAT CROSS, AND NOTHING ELSE ABOUT ROLES (Phase 15 m5) ---------
+ *
+ * The styling vocabulary is `rolltui/Style.hpp`'s and a C file names no role — the m2 rule
+ * at `rolltui_diff.h`: a renderer is HANDED the byte it should tag its output with. That
+ * holds for every role a widget DRAWS with, and there is exactly one case it cannot cover:
+ * a struct that crosses the boundary and has a role-valued field with a DEFAULT. A layout
+ * node's background and an input's prompt are the two, and a default cannot be handed in at
+ * a call because there is no call — it is what the field is before anyone touches it.
+ *
+ * So the ORDINAL crosses and the NAME does not, and `rolltui/Style.hpp` static_asserts each
+ * one against the enum. Two lines, one home, and a compiler error the day they drift — which
+ * is what makes this an exception with a floor rather than a hole in the rule. */
+#define ROLLTUI_ROLE_DEFAULT_BACKGROUND 2 /* Role::background */
+#define ROLLTUI_ROLE_DEFAULT_PROMPT 13    /* Role::prompt */
+
 typedef struct RolltuiStyleColor {
 #ifdef __cplusplus
   enum class Kind : unsigned char { None = 0, Indexed = 1, Rgb = 2 };

@@ -392,7 +392,7 @@ int main() {
       open(r.item);
       m.handle(ctrl_u);
       type(r.typed);
-      const std::string text = m.editing_text();
+      const std::string text(m.editing_text());
       const MenuEvent ev = m.handle(key(Key::Enter));
       const bool committed = ev.kind == MenuEvent::Kind::Input;
       check(text == r.text && committed == r.commits && (!r.commits || ev.value == r.canonical) && m.editing() == !r.commits,

@@ -788,11 +788,15 @@ bool Menu::try_insert(std::string_view text) {
   if (!it) return false;
   // What the text would be after the insertion (replacing a selection), checked as a
   // prefix of some valid value before it lands. Never a coercion: refused or inserted.
-  Input probe = edit_;
-  probe.insert(text);
-  const InputCheck c = check_input(it->spec, probe.text());
+  //
+  // PHASE 15 m5: `probe_` is a reused buffer this menu owns. This used to be
+  // `Input probe = edit_;` — a copy of the WHOLE editor per keystroke, undo stack and
+  // history included, to read one string off it — which is what a port that has to name
+  // every buffer makes visible (rolltui/c/rolltui_input.h).
+  edit_.preview_insert(text, probe_);
+  const InputCheck c = check_input(it->spec, probe_);
   if (!c.prefix_ok) { edit_reason_ = c.reason; return false; }
-  edit_ = std::move(probe);
+  edit_.insert(text);
   refresh_reason();
   return true;
 }
@@ -803,7 +807,7 @@ void Menu::step(int direction) {
   const InputSpec& s = it->spec;
   InputCheck now = check_input(s, edit_.text());
   double v;
-  if (now.valid && !edit_.text().empty()) v = std::strtod(edit_.text().c_str(), nullptr);
+  if (now.valid && !edit_.text().empty()) v = std::strtod(std::string(edit_.text()).c_str(), nullptr);
   else {
     const InputCheck committed = check_input(s, it->value);
     v = committed.valid && !it->value.empty() ? std::strtod(it->value.c_str(), nullptr) : (s.min > -1e15 ? s.min : 0);

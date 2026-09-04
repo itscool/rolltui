@@ -259,7 +259,8 @@ class Menu {
   const std::string& filter() const { return filter_; }
   std::string breadcrumb() const;  // "settings › theme"
   bool editing() const { return editing_; }
-  const std::string& editing_text() const { return edit_.text(); }  // what is typed (the item's value is the committed one)
+  // A BORROW of the editor's buffer (Phase 15 m5), valid until the text next changes.
+  std::string_view editing_text() const { return edit_.text(); }  // what is typed (the item's value is the committed one)
   const std::string& edit_reason() const { return edit_reason_; }    // a refused key's or an invalid text's reason
   const Input& editor() const { return edit_; }
   void set_palette(bool on);
@@ -312,7 +313,8 @@ class Menu {
   std::size_t sel_ = 0;
   std::string filter_;
   bool editing_ = false;
-  Input edit_;               // the field being edited (single-line)
+  Input edit_;  // the field being edited (single-line)
+  Str probe_;   // the reused buffer `try_insert` judges a keystroke in (Phase 15 m5)
   std::string edit_reason_;
   bool palette_ = false;
   std::vector<FlatEntry> flat_;

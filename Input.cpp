@@ -1,695 +1,156 @@
-// rolltui/Input.cpp — see Input.hpp.
+// rolltui/Input.cpp — the SHIM over `rolltui/c/rolltui_input.h`: the RAII, the styling
+// vocabulary, the thirty action names, and the translation of one `std::function` into a
+// function pointer. The two implementations live in `InputCpp.cpp` and `c/rolltui_input.c`,
+// and `-DROLLTUI_C` picks which one links (Phase 15 m5).
+//
+// Nothing here decides anything. It exists so the C boundary never has to know what a `Role`
+// is called, what an action is called, or what a `std::function` is.
 #include "rolltui/Input.hpp"
 
-#include <algorithm>
-#include <cstdlib>
+#include "rolltui/Scratch.hpp"  // rolltui::ThreadHandle
+
+// THE OPTIONS' TWO C++ MEMBERS LIVE HERE, NOT IN EITHER IMPLEMENTATION. `InputOptions` is
+// one struct shared by both sides of the flag, so its constructor and its `==` have to be in
+// the file that is linked in BOTH configurations — putting them in `InputCpp.cpp` made the C
+// build fail to link, which is the boundary telling the truth about who owns what.
+RolltuiInputOptions::RolltuiInputOptions() { rolltui_str_set(&prompt, "> ", 2); }
+
+bool RolltuiInputOptions::operator==(const RolltuiInputOptions& o) const {
+  return rolltui_input_options_equal(this, &o) != 0;
+}
 
 namespace rolltui {
 
 namespace {
 
-// What may enter the text: CR LF and CR become LF; '\n' and '\t' pass; every other
-// control character (and DEL) is dropped.
-std::string sanitise(std::string_view in) {
-  std::string out;
-  out.reserve(in.size());
-  for (std::size_t i = 0; i < in.size(); ++i) {
-    const unsigned char c = static_cast<unsigned char>(in[i]);
-    if (c == '\r') {
-      out.push_back('\n');
-      if (i + 1 < in.size() && in[i + 1] == '\n') ++i;
-      continue;
-    }
-    if (c == '\n' || c == '\t' || (c >= 0x20 && c != 0x7F)) out.push_back(static_cast<char>(c));
-  }
-  return out;
+// THE THREE ROLES A DRAW NEEDS, handed in. `rolltui/Style.hpp` is the one place these names
+// exist; the prompt's role is the OPTIONS' and travels with them (Phase 15 m2's rule, and
+// the reason neither implementation names a role).
+constexpr RolltuiInputRoles kRoles = {
+    /*text=*/static_cast<unsigned char>(Role::input_text),
+    /*selection=*/static_cast<unsigned char>(Role::selection),
+    /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
+};
+
+// THE THIRTY ACTION NAMES, in the command order `RolltuiInputActions` declares. Input.hpp
+// lists what each does and `library_actions()` in Bindings.cpp is where the vocabulary is
+// written down; the C knows the RULES and none of the words.
+constexpr RolltuiInputActions kActions = {
+    "input.submit",           "input.newline",           "input.backspace",
+    "input.delete",           "input.kill_word_backward", "input.kill_word_forward",
+    "input.kill_to_line_start", "input.kill_to_line_end", "input.left",
+    "input.right",            "input.word_left",         "input.word_right",
+    "input.line_start",       "input.line_end",          "input.up",
+    "input.down",             "input.select_left",       "input.select_right",
+    "input.select_word_left", "input.select_word_right", "input.select_line_start",
+    "input.select_line_end",  "input.select_up",         "input.select_down",
+    "input.select_all",       "input.clear_selection",   "input.copy",
+    "input.eof",              "input.undo",              "input.redo",
+};
+
+// What crosses instead of a `std::function`: the host's callable behind a `void*`.
+void call_copy(void* ctx, const char* text, std::size_t len) {
+  Input& in = *static_cast<Input*>(ctx);
+  if (in.on_copy) in.on_copy(std::string(text, len));
 }
 
-bool is_space_at(const std::string& s, std::size_t pos) {
-  return pos < s.size() && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\n');
+// THE DRAW SCRATCH, owned per thread by the shim (rolltui/c/rolltui_frame_ops.h) — one
+// owner, named, released at thread exit and at `release_thread()`.
+RolltuiDrawScratch* draw_scratch() {
+  static thread_local ThreadHandle<RolltuiDrawScratch, rolltui_draw_scratch_new, rolltui_draw_scratch_free> h;
+  return h.get();
 }
-
-// How long an open "ordinary editing" group stays open with no further edit before the
-// next one is treated as a fresh group instead of a continuation (Input.hpp's UNDO).
-constexpr std::uint64_t kUndoGroupTimeoutMs = 700;
 
 }  // namespace
 
-// ---- content -------------------------------------------------------------------------
+Input::Input() { rolltui_input_set_copy(in_.get(), call_copy, this); }
 
-void Input::retext(std::string t, std::size_t caret) {
-  text_ = std::move(t);
-  g_ = unicode::graphemes(text_, opt_.ambiguous_wide);
-  caret_ = snap(caret);
-  if (sel_.active) {
-    sel_.anchor = snap(sel_.anchor);
-    sel_.head = snap(sel_.head);
+Input::Input(Input&& o) noexcept : on_copy(std::move(o.on_copy)), in_(std::move(o.in_)) {
+  rolltui_input_set_copy(in_.get(), call_copy, this);
+}
+
+Input& Input::operator=(Input&& o) noexcept {
+  if (this != &o) {
+    on_copy = std::move(o.on_copy);
+    in_ = std::move(o.in_);
+    rolltui_input_set_copy(in_.get(), call_copy, this);
   }
-  dirty_ = true;
+  return *this;
 }
 
-std::size_t Input::snap(std::size_t pos) const {
-  pos = std::min(pos, text_.size());
-  auto it = std::lower_bound(g_.begin(), g_.end(), pos,
-                             [](const unicode::Grapheme& g, std::size_t p) { return g.offset < p; });
-  return it == g_.end() ? text_.size() : it->offset;
+std::string_view Input::text() const {
+  std::size_t n = 0;
+  const char* p = rolltui_input_text(in_.get(), &n);
+  return std::string_view(p, n);
 }
 
-std::size_t Input::prev_boundary(std::size_t pos) const {
-  auto it = std::lower_bound(g_.begin(), g_.end(), pos,
-                             [](const unicode::Grapheme& g, std::size_t p) { return g.offset < p; });
-  if (it == g_.begin()) return 0;
-  return (it - 1)->offset;
-}
+void Input::set_text(std::string_view t) { rolltui_input_set_text(in_.get(), t.data(), t.size()); }
 
-std::size_t Input::next_boundary(std::size_t pos) const {
-  auto it = std::upper_bound(g_.begin(), g_.end(), pos,
-                             [](std::size_t p, const unicode::Grapheme& g) { return p < g.offset; });
-  return it == g_.end() ? text_.size() : it->offset;
-}
+void Input::clear() { rolltui_input_clear(in_.get()); }
 
-std::size_t Input::line_start(std::size_t pos) const {
-  if (pos == 0) return 0;
-  const std::size_t nl = text_.rfind('\n', pos - 1);
-  return nl == std::string::npos ? 0 : nl + 1;
-}
-
-std::size_t Input::line_end(std::size_t pos) const {
-  const std::size_t nl = text_.find('\n', pos);
-  return nl == std::string::npos ? text_.size() : nl;
-}
-
-void Input::set_text(std::string t) {
-  sel_ = {};
-  goal_col_.reset();
-  std::string s = sanitise(t);
-  const std::size_t n = s.size();
-  retext(std::move(s), n);
-  // A bulk replace (a host's own, or history_prev()/history_next() recalling an
-  // entry) is a fresh document, not an edit: it resets the WHOLE undo stack to the new
-  // text as the baseline (Undo.hpp's "a load, a reset"), discarding any open group
-  // rather than committing it. This is the one rule that keeps the history mechanism
-  // and the undo mechanism from ever reading or writing each other's state.
-  undo_.reset(snapshot());
-  undo_pending_ = false;
-}
-
-void Input::clear() {
-  set_text({});
-  hist_pos_ = hist_.size();
-  draft_.clear();
-}
-
-void Input::place(std::size_t pos, bool extend) {
-  close_group();  // a caret/selection move with no text change closes any open group
-  pos = snap(pos);
-  if (extend) {
-    if (!sel_.active) sel_.anchor = caret_;
-    sel_.head = pos;
-    sel_.active = true;
-  } else {
-    sel_ = {};
-  }
-  caret_ = pos;
-}
-
-void Input::set_caret(std::size_t byte, bool extend) {
-  place(byte, extend);
-  goal_col_.reset();
+InputSelection Input::selection() const {
+  InputSelection s;
+  rolltui_input_selection(in_.get(), &s);
+  return s;
 }
 
 std::string Input::selected_text() const {
-  if (sel_.empty()) return {};
-  return text_.substr(sel_.begin(), sel_.end() - sel_.begin());
+  std::size_t n = 0;
+  const char* p = rolltui_input_selected_text(in_.get(), &n);
+  return std::string(p, n);
 }
 
-void Input::select_all() {
-  if (text_.empty()) return;
-  close_group();  // a selection move with no text change closes any open group
-  sel_ = {0, text_.size(), true};
-  caret_ = text_.size();
-  goal_col_.reset();
+void Input::push_history(std::string_view entry) {
+  rolltui_input_push_history(in_.get(), entry.data(), entry.size());
 }
 
-// ---- editing -------------------------------------------------------------------------
-
-void Input::erase_range(std::size_t b, std::size_t e) {
-  b = std::min(b, text_.size());
-  e = std::min(e, text_.size());
-  if (b >= e) return;
-  std::string t = text_;
-  t.erase(b, e - b);
-  std::size_t caret = caret_;
-  if (caret >= e) caret -= (e - b);
-  else if (caret > b) caret = b;
-  sel_ = {};
-  retext(std::move(t), caret);
-  goal_col_.reset();
-}
-
-void Input::raw_insert(std::string_view utf8) {
-  std::string s = sanitise(utf8);
-  if (opt_.single_line) s.erase(std::remove(s.begin(), s.end(), '\n'), s.end());
-  erase_selection();
-  if (s.empty()) return;
-  std::string t = text_;
-  t.insert(caret_, s);
-  sel_ = {};
-  retext(std::move(t), caret_ + s.size());
-  goal_col_.reset();
-}
-
-void Input::insert(std::string_view utf8) {
-  const InputSnapshot pre = snapshot();
-  const bool replace = !sel_.empty();  // typing over a selection is a selection-replace
-  raw_insert(utf8);
-  note_edit(replace ? EditKind::Atomic : EditKind::Ordinary, pre);
-}
-
-bool Input::erase_selection() {
-  if (sel_.empty()) {
-    sel_ = {};
-    return false;
-  }
-  erase_range(sel_.begin(), sel_.end());
-  return true;
-}
-
-void Input::erase_backward() {
-  const InputSnapshot pre = snapshot();
-  if (erase_selection()) { note_edit(EditKind::Atomic, pre); return; }  // a selection-replace
-  if (caret_ == 0) return;
-  erase_range(prev_boundary(caret_), caret_);
-  note_edit(EditKind::Ordinary, pre);
-}
-
-void Input::erase_forward() {
-  const InputSnapshot pre = snapshot();
-  if (erase_selection()) { note_edit(EditKind::Atomic, pre); return; }  // a selection-replace
-  if (caret_ >= text_.size()) return;
-  erase_range(caret_, next_boundary(caret_));
-  note_edit(EditKind::Ordinary, pre);
-}
-
-std::size_t Input::word_left_of(std::size_t pos) const {
-  pos = std::min(pos, text_.size());
-  std::size_t p = pos;
-  while (p > 0 && is_space_at(text_, prev_boundary(p))) p = prev_boundary(p);
-  if (p == 0) return 0;
-  return unicode::word_range(text_, prev_boundary(p)).begin;
-}
-
-std::size_t Input::word_right_of(std::size_t pos) const {
-  pos = std::min(pos, text_.size());
-  std::size_t p = pos;
-  while (p < text_.size() && is_space_at(text_, p)) p = next_boundary(p);
-  if (p >= text_.size()) return text_.size();
-  return unicode::word_range(text_, p).end;
-}
-
-void Input::kill_word_backward() {
-  const InputSnapshot pre = snapshot();
-  if (!erase_selection()) erase_range(word_left_of(caret_), caret_);
-  note_edit(EditKind::Atomic, pre);
-}
-
-void Input::kill_word_forward() {
-  const InputSnapshot pre = snapshot();
-  if (!erase_selection()) erase_range(caret_, word_right_of(caret_));
-  note_edit(EditKind::Atomic, pre);
-}
-
-void Input::kill_to_line_start() {
-  const InputSnapshot pre = snapshot();
-  sel_ = {};
-  erase_range(line_start(caret_), caret_);
-  note_edit(EditKind::Atomic, pre);
-}
-
-void Input::kill_to_line_end() {
-  const InputSnapshot pre = snapshot();
-  sel_ = {};
-  erase_range(caret_, line_end(caret_));
-  note_edit(EditKind::Atomic, pre);
-}
-
-// ---- undo (see UNDO in Input.hpp) -----------------------------------------------------
-
-void Input::apply_snapshot(const InputSnapshot& s) {
-  goal_col_.reset();
-  sel_ = s.sel;
-  retext(s.text, s.caret);  // re-snaps caret and, if active, the selection's ends
-}
-
-void Input::close_group() {
-  if (!undo_pending_) return;
-  undo_.commit(snapshot());
-  undo_pending_ = false;
-}
-
-// Called after every mutating primitive with the snapshot taken just before it ran.
-// `kind` is Ordinary for a run of plain typing/backspacing that may still be merging,
-// Atomic for a kill, a paste or a selection-replace — always its own single-op group.
-void Input::note_edit(EditKind kind, const InputSnapshot& pre) {
-  const InputSnapshot post = snapshot();
-  if (post == pre) return;  // nothing actually changed: not an edit worth recording
-  const std::uint64_t elapsed = now_ms_ >= undo_last_ms_ ? now_ms_ - undo_last_ms_ : kUndoGroupTimeoutMs + 1;
-  const bool continues = kind == EditKind::Ordinary && undo_pending_ && elapsed <= kUndoGroupTimeoutMs;
-  if (!continues) {
-    // An open ordinary-editing group closes as a REAL step (undo will stop here).
-    if (undo_pending_) {
-      undo_.commit(pre);
-    } else if (undo_.current() != pre) {
-      // No group was open, yet the live state still drifted from the last checkpoint —
-      // one or more caret/selection moves happened since (set_caret, select_all, a
-      // mouse press/drag). Per the rule, a move is never its own undo step, so this
-      // does not commit a new one; it folds the drift into the existing checkpoint so
-      // that undoing THIS edit restores the caret/selection exactly as the move left
-      // them, not a stale position from before it.
-      undo_.replace_current(pre);
-    }
-  }
-  if (kind == EditKind::Atomic) {
-    undo_.commit(post);
-    undo_pending_ = false;
-  } else {
-    undo_pending_ = true;
-    undo_last_ms_ = now_ms_;
-  }
-}
-
-bool Input::undo() {
-  close_group();  // folds any in-progress typing into one step first
-  if (!undo_.undo()) return false;
-  apply_snapshot(undo_.current());
-  return true;
-}
-
-bool Input::redo() {
-  close_group();  // typing since the undo already abandoned any redo branch
-  if (!undo_.redo()) return false;
-  apply_snapshot(undo_.current());
-  return true;
-}
-
-void Input::move_left(bool extend) {
-  if (!extend && !sel_.empty()) { set_caret(sel_.begin(), false); return; }
-  set_caret(caret_ == 0 ? 0 : prev_boundary(caret_), extend);
-}
-
-void Input::move_right(bool extend) {
-  if (!extend && !sel_.empty()) { set_caret(sel_.end(), false); return; }
-  set_caret(next_boundary(caret_), extend);
-}
-
-void Input::move_word_left(bool extend) { set_caret(word_left_of(caret_), extend); }
-void Input::move_word_right(bool extend) { set_caret(word_right_of(caret_), extend); }
-void Input::move_line_start(bool extend) { set_caret(line_start(caret_), extend); }
-void Input::move_line_end(bool extend) { set_caret(line_end(caret_), extend); }
-
-bool Input::move_up(bool extend) {
-  ensure();
-  const CellPos p = cell_of(caret_);
-  if (p.row == 0) return false;
-  const int goal = goal_col_.value_or(p.col);
-  place(pos_at(p.row - 1, goal), extend);
-  goal_col_ = goal;
-  return true;
-}
-
-bool Input::move_down(bool extend) {
-  ensure();
-  const CellPos p = cell_of(caret_);
-  if (p.row >= flow_.rows - 1) return false;
-  const int goal = goal_col_.value_or(p.col);
-  place(pos_at(p.row + 1, goal), extend);
-  goal_col_ = goal;
-  return true;
-}
-
-// ---- history -------------------------------------------------------------------------
-
-void Input::push_history(std::string entry) {
-  if (!entry.empty() && (hist_.empty() || hist_.back() != entry)) {
-    hist_.push_back(std::move(entry));
-    while (opt_.history_limit > 0 && hist_.size() > opt_.history_limit) hist_.erase(hist_.begin());
-  }
-  hist_pos_ = hist_.size();
-  draft_.clear();
-}
-
-bool Input::history_prev() {
-  if (hist_pos_ == 0 || hist_.empty()) return false;
-  if (hist_pos_ >= hist_.size()) {
-    hist_pos_ = hist_.size();
-    draft_ = text_;
-  }
-  --hist_pos_;
-  set_text(hist_[hist_pos_]);
-  return true;
-}
-
-bool Input::history_next() {
-  if (hist_pos_ >= hist_.size()) return false;
-  ++hist_pos_;
-  set_text(hist_pos_ == hist_.size() ? draft_ : hist_[hist_pos_]);
-  return true;
-}
-
-// ---- layout --------------------------------------------------------------------------
-
-void Input::set_options(const InputOptions& o) {
-  const bool retab = o.ambiguous_wide != opt_.ambiguous_wide;
-  opt_ = o;
-  prompt_w_ = unicode::display_width(opt_.prompt, opt_.ambiguous_wide);
-  if (retab) g_ = unicode::graphemes(text_, opt_.ambiguous_wide);
-  dirty_ = true;
-}
-
-Input::Flow Input::flow(int width) const {
-  Flow f;
-  f.cells.assign(g_.size(), {});
-  const int indent = prompt_w_;
-  const int cap = std::max(width - 2 * opt_.inset, indent + 1);
-  const int tab = std::max(opt_.tab_width, 1);
-  int row = 0, col = indent;
-  for (std::size_t i = 0; i < g_.size(); ++i) {
-    const unicode::Grapheme& g = g_[i];
-    const char c0 = text_[g.offset];
-    if (c0 == '\n') {
-      f.cells[i] = {row, col, 0};
-      f.row_end.push_back(g.offset);
-      ++row;
-      col = indent;
-      continue;
-    }
-    int w = c0 == '\t' ? tab - ((col - indent) % tab) : g.width;
-    if (w > 0 && col + w > cap && col > indent) {
-      f.row_end.push_back(g.offset);
-      ++row;
-      col = indent;
-      if (c0 == '\t') w = tab;
-    }
-    f.cells[i] = {row, col, w};
-    col += w;
-  }
-  if (col >= cap && col > indent) {  // a full row: the end of the text starts the next
-    f.row_end.push_back(text_.size());
-    ++row;
-    col = indent;
-  }
-  f.row_end.push_back(text_.size());
-  f.end_row = row;
-  f.end_col = col;
-  f.rows = row + 1;
-  return f;
-}
-
-void Input::ensure() const {
-  if (!dirty_) return;
-  flow_ = flow(width_);
-  dirty_ = false;
-}
-
-int Input::rows_for(int width) const {
-  if (width == width_) {
-    ensure();
-    return flow_.rows;
-  }
-  return flow(width).rows;
-}
-
-int Input::rows() const {
-  ensure();
-  return flow_.rows;
-}
-
-void Input::layout(Rect area) {
-  area_ = {area.x + opt_.inset, area.y, std::max(area.w - 2 * opt_.inset, 0), area.h};
-  if (area.w != width_) {
-    width_ = area.w;
-    dirty_ = true;
-  }
-  ensure();
-  const int h = std::max(area_.h, 1);
-  const int cr = cell_of(caret_).row;
-  if (cr < top_) top_ = cr;
-  if (cr >= top_ + h) top_ = cr - h + 1;
-  top_ = std::clamp(top_, 0, std::max(flow_.rows - h, 0));
-}
-
-Input::CellPos Input::cell_of(std::size_t offset) const {
-  ensure();
-  offset = snap(offset);
-  if (offset >= text_.size()) return {flow_.end_row, flow_.end_col};
-  auto it = std::lower_bound(g_.begin(), g_.end(), offset,
-                             [](const unicode::Grapheme& g, std::size_t p) { return g.offset < p; });
-  const std::size_t i = static_cast<std::size_t>(it - g_.begin());
-  return {flow_.cells[i].row, flow_.cells[i].col};
-}
-
-// The position on `row` at column `col`: the grapheme covering it, the first
-// grapheme right of it (a column over the prompt / indent), else the row's end.
-std::size_t Input::pos_at(int row, int col) const {
-  ensure();
-  row = std::clamp(row, 0, flow_.rows - 1);
-  for (std::size_t i = 0; i < g_.size(); ++i) {
-    const Cell& c = flow_.cells[i];
-    if (c.row != row) continue;
-    if (col < c.col) return g_[i].offset;
-    if (col < c.col + std::max(c.width, 1)) return g_[i].offset;
-  }
-  return flow_.row_end[static_cast<std::size_t>(row)];
-}
-
-std::optional<Input::Hit> Input::hit(int x, int y) const {
-  if (area_.w <= 0 && area_.h <= 0) return std::nullopt;
-  ensure();
-  const int row = std::clamp(top_ + (y - area_.y), 0, flow_.rows - 1);
-  const int col = x - area_.x;
-  for (std::size_t i = 0; i < g_.size(); ++i) {
-    const Cell& c = flow_.cells[i];
-    if (c.row != row) continue;
-    const bool newline = text_[g_[i].offset] == '\n';
-    if (c.width == 0 && !newline) continue;  // draws nothing, so it is never "under" a pointer
-    if (col < c.col || (!newline && col < c.col + std::max(c.width, 1))) {
-      if (newline || col < c.col) return Hit{g_[i].offset, g_[i].offset};
-      return Hit{g_[i].offset, g_[i].offset + g_[i].length};
-    }
-    if (newline) break;
-  }
-  const std::size_t e = flow_.row_end[static_cast<std::size_t>(row)];
-  return Hit{e, e};
-}
-
-void Input::draw(Frame& f, const Theme& theme, bool focused) const {
-  ensure();
-  const Style prompt = theme.style(opt_.prompt_role);
-  const Style txt = theme.style(Role::input_text);
-  const Style sel = theme.style(Role::selection);
-  const Style ph = theme.style(Role::input_placeholder);
-  const Rect a = area_;
-  const int h = std::max(a.h, 0);
-  auto visible = [&](int row) { return row >= top_ && row < top_ + h; };
-  if (visible(0)) f.put_text(a.x, a.y, opt_.prompt, prompt, std::max(a.w, 0), opt_.ambiguous_wide);
-  if (text_.empty()) {
-    if (visible(0) && !opt_.placeholder.empty())
-      f.put_text(a.x + prompt_w_, a.y, opt_.placeholder, ph, std::max(a.w - prompt_w_, 0), opt_.ambiguous_wide);
-  }
-  const bool has_sel = !sel_.empty();
-  const std::size_t sb = sel_.begin(), se = sel_.end();
-  for (std::size_t i = 0; i < g_.size(); ++i) {
-    const Cell& c = flow_.cells[i];
-    if (!visible(c.row)) continue;
-    const int y = a.y + (c.row - top_);
-    const int x = a.x + c.col;
-    const std::size_t off = g_[i].offset;
-    const bool in_sel = has_sel && off >= sb && off < se;
-    const Style& st = in_sel ? sel : txt;
-    const char c0 = text_[off];
-    if (c0 == '\n') {  // a selected newline shows as one highlighted cell
-      if (in_sel && c.col < a.w) f.put(x, y, " ", 1, st);
-      continue;
-    }
-    if (c0 == '\t') {
-      for (int k = 0; k < c.width && c.col + k < a.w; ++k) f.put(x + k, y, " ", 1, st);
-      continue;
-    }
-    if (c.width <= 0 || c.col + c.width > a.w) continue;  // width-0: nothing to draw; clipped: the area's edge
-    f.put(x, y, std::string_view(text_).substr(off, g_[i].length), c.width, st);
-  }
-  if (focused) {
-    const CellPos p = cell_of(caret_);
-    if (visible(p.row)) f.set_cursor(a.x + std::min(p.col, std::max(a.w - 1, 0)), a.y + (p.row - top_), true);
-  }
-}
-
-// ---- events --------------------------------------------------------------------------
-
-void Input::unit_around(std::size_t off, bool word, std::size_t& b, std::size_t& e) const {
-  off = std::min(off, text_.size());
-  if (word) {
-    const unicode::ByteRange r = unicode::word_range(text_, off);
-    b = r.begin;
-    e = r.end;
-    return;
-  }
-  b = line_start(off);
-  e = line_end(off);
+std::string_view Input::history_at(std::size_t i) const {
+  std::size_t n = 0;
+  const char* p = rolltui_input_history_at(in_.get(), i, &n);
+  return std::string_view(p, n);
 }
 
 InputAction Input::handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms) {
-  now_ms_ = now_ms;
-  if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
-    const InputSnapshot pre = snapshot();
-    raw_insert(p->text);
-    note_edit(EditKind::Atomic, pre);  // a paste is its own group, never merged (see UNDO)
-    return InputAction::Handled;
-  }
-  if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) return handle_mouse(*m, now_ms);
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) return handle_key(*k, bindings);
-  return InputAction::Ignored;
-}
-
-InputAction Input::handle_key(const KeyEvent& k, const Bindings& b) {
-  using A = InputAction;
-  // Text is text: a printable character without Ctrl or Alt inserts and is never an action.
-  if (k.key == Key::Char && !k.ctrl && !k.alt) {
-    if (k.ch < 0x20 || k.ch == 0x7F) return A::Ignored;
-    std::string s;
-    unicode::append_utf8(s, k.ch);
-    insert(s);
-    return A::Handled;
-  }
-  const std::string_view action = b.action_for(k, "input");
-  if (action.empty()) return A::Ignored;
-  // The table, once: an action name to what it does.
-  enum class Cmd { Submit, Newline, Backspace, Delete, KillWordBack, KillWordFwd, KillLineStart, KillLineEnd, Left, Right, WordLeft, WordRight,
-                   LineStart, LineEnd, Up, Down, SelLeft, SelRight, SelWordLeft, SelWordRight, SelLineStart, SelLineEnd, SelUp, SelDown,
-                   SelectAll, ClearSel, Copy, Eof, Undo, Redo };
-  static const std::pair<std::string_view, Cmd> cmds[] = {
-      {"input.submit", Cmd::Submit}, {"input.newline", Cmd::Newline}, {"input.backspace", Cmd::Backspace}, {"input.delete", Cmd::Delete},
-      {"input.kill_word_backward", Cmd::KillWordBack}, {"input.kill_word_forward", Cmd::KillWordFwd}, {"input.kill_to_line_start", Cmd::KillLineStart},
-      {"input.kill_to_line_end", Cmd::KillLineEnd}, {"input.left", Cmd::Left}, {"input.right", Cmd::Right}, {"input.word_left", Cmd::WordLeft},
-      {"input.word_right", Cmd::WordRight}, {"input.line_start", Cmd::LineStart}, {"input.line_end", Cmd::LineEnd}, {"input.up", Cmd::Up},
-      {"input.down", Cmd::Down}, {"input.select_left", Cmd::SelLeft}, {"input.select_right", Cmd::SelRight}, {"input.select_word_left", Cmd::SelWordLeft},
-      {"input.select_word_right", Cmd::SelWordRight}, {"input.select_line_start", Cmd::SelLineStart}, {"input.select_line_end", Cmd::SelLineEnd},
-      {"input.select_up", Cmd::SelUp}, {"input.select_down", Cmd::SelDown}, {"input.select_all", Cmd::SelectAll}, {"input.clear_selection", Cmd::ClearSel},
-      {"input.copy", Cmd::Copy}, {"input.eof", Cmd::Eof}, {"input.undo", Cmd::Undo}, {"input.redo", Cmd::Redo}};
-  std::optional<Cmd> cmd;
-  for (const auto& [name, c] : cmds)
-    if (name == action) { cmd = c; break; }
-  if (!cmd) return A::Ignored;
-  switch (*cmd) {
-    case Cmd::Submit: return A::Submit;
-    case Cmd::Newline: insert("\n"); return A::Handled;
-    case Cmd::Backspace: erase_backward(); return A::Handled;
-    case Cmd::Delete: erase_forward(); return A::Handled;
-    case Cmd::KillWordBack: kill_word_backward(); return A::Handled;
-    case Cmd::KillWordFwd: kill_word_forward(); return A::Handled;
-    case Cmd::KillLineStart: kill_to_line_start(); return A::Handled;
-    case Cmd::KillLineEnd: kill_to_line_end(); return A::Handled;
-    case Cmd::Left: move_left(false); return A::Handled;
-    case Cmd::Right: move_right(false); return A::Handled;
-    case Cmd::WordLeft: move_word_left(false); return A::Handled;
-    case Cmd::WordRight: move_word_right(false); return A::Handled;
-    case Cmd::SelLeft: move_left(true); return A::Handled;
-    case Cmd::SelRight: move_right(true); return A::Handled;
-    case Cmd::SelWordLeft: move_word_left(true); return A::Handled;
-    case Cmd::SelWordRight: move_word_right(true); return A::Handled;
-    case Cmd::LineStart: if (text_.empty()) return A::Ignored; move_line_start(false); return A::Handled;
-    case Cmd::LineEnd: if (text_.empty()) return A::Ignored; move_line_end(false); return A::Handled;
-    case Cmd::SelLineStart: if (text_.empty()) return A::Ignored; move_line_start(true); return A::Handled;
-    case Cmd::SelLineEnd: if (text_.empty()) return A::Ignored; move_line_end(true); return A::Handled;
-    case Cmd::Up: if (!move_up(false)) history_prev(); return A::Handled;
-    case Cmd::Down: if (!move_down(false)) history_next(); return A::Handled;
-    case Cmd::SelUp: move_up(true); return A::Handled;
-    case Cmd::SelDown: move_down(true); return A::Handled;
-    case Cmd::SelectAll: select_all(); return A::Handled;
-    case Cmd::ClearSel: if (sel_.empty()) return A::Ignored; clear_selection(); return A::Handled;
-    case Cmd::Copy: if (sel_.empty()) return A::Ignored; if (on_copy) on_copy(selected_text()); return A::Handled;
-    case Cmd::Eof: if (text_.empty()) return A::Eof; erase_forward(); return A::Handled;
-    case Cmd::Undo: return undo() ? A::Handled : A::Ignored;
-    case Cmd::Redo: return redo() ? A::Handled : A::Ignored;
-  }
-  return A::Ignored;
-}
-
-InputAction Input::handle_mouse(const MouseEvent& m, std::uint64_t now_ms) {
-  using A = InputAction;
-  using K = MouseEvent::Kind;
-  switch (m.kind) {
-    case K::Press: {
-      if (m.button != 1) return A::Ignored;
-      const std::optional<Hit> h = hit(m.x, m.y);
-      if (!h) return A::Ignored;
-      goal_col_.reset();
-      close_group();  // a press only moves the caret/selection: closes any open group
-      if (m.shift) {  // extend from the anchor (or the caret), the pointer's glyph included
-        const std::size_t anchor = sel_.active ? sel_.anchor : caret_;
-        place(h->begin >= anchor ? h->end : h->begin, true);
-        click_ = {};
-        drag_ = {true, anchor, anchor, m.x, m.y};
-        return A::Handled;
-      }
-      const bool paired = click_.count > 0 && now_ms >= click_.at_ms && now_ms - click_.at_ms <= opt_.multi_click_ms &&
-                          std::abs(m.x - click_.x) <= 1 && m.y == click_.y;
-      click_.count = paired ? click_.count + 1 : 1;
-      if (click_.count > 3) click_.count = 1;
-      click_.at_ms = now_ms;
-      click_.x = m.x;
-      click_.y = m.y;
-      std::size_t b = h->begin, e = h->end;
-      if (click_.count >= 2) unit_around(h->begin, click_.count == 2, b, e);
-      drag_ = {true, b, e, m.x, m.y};
-      if (click_.count >= 2 && b != e) {
-        sel_ = {b, e, true};
-        caret_ = e;
-      } else {
-        sel_ = {};
-        caret_ = b;
-      }
-      return A::Handled;
-    }
-    case K::Drag:
-      if (!drag_.active) return A::Ignored;
-      drag_to(m.x, m.y);
-      return A::Handled;
-    case K::Release: {
-      if (!drag_.active) return A::Ignored;
-      // A release where the pointer already is changes nothing (a double-click's word
-      // is not narrowed to the cell under the button).
-      if (m.x != drag_.x || m.y != drag_.y) drag_to(m.x, m.y);
-      drag_.active = false;
-      if (sel_.empty()) {
-        sel_ = {};
-        return A::Handled;
-      }
-      if (on_copy) on_copy(selected_text());
-      return A::Handled;
-    }
-    default:
-      return A::Ignored;
-  }
-}
-
-void Input::drag_to(int x, int y) {
-  close_group();  // a drag only moves the selection: closes any open group
-  drag_.x = x;
-  drag_.y = y;
-  const std::optional<Hit> h = hit(x, y);
-  if (!h) return;
-  std::size_t b = h->begin, e = h->end;
-  if (click_.count >= 2) unit_around(h->begin, click_.count == 2, b, e);
-  if (b < drag_.begin) {
-    sel_.anchor = drag_.end;
-    sel_.head = b;
+  RolltuiEvent ev{};
+  std::string_view paste;
+  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_KEY;
+    ev.key = chord_of(*k);
+  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_MOUSE;
+    ev.mouse = *m;
+  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_PASTE;
+    paste = p->text;
+    ev.text = paste.data();
+    ev.text_len = paste.size();
   } else {
-    sel_.anchor = drag_.begin;
-    sel_.head = std::max(e, drag_.end);
+    return InputAction::Ignored;
   }
-  sel_.active = true;
-  caret_ = sel_.head;
+  return static_cast<InputAction>(
+      rolltui_input_handle(in_.get(), &ev, bindings.handle(), &kActions, now_ms));
+}
+
+void Input::draw(Frame& f, const Theme& theme, bool focused) const {
+  rolltui_input_draw(in_.get(), f.handle(), draw_scratch(), theme.styles.data(), &kRoles, focused);
+}
+
+Input::CellPos Input::cell_of(std::size_t offset) const {
+  CellPos p;
+  rolltui_input_cell_of(in_.get(), offset, &p.row, &p.col);
+  return p;
+}
+
+std::optional<Input::Hit> Input::hit(int x, int y) const {
+  Hit h;
+  if (!rolltui_input_hit(in_.get(), x, y, &h.begin, &h.end)) return std::nullopt;
+  return h;
+}
+
+Rect Input::area() const {
+  Rect r;
+  rolltui_input_area(in_.get(), &r);
+  return r;
 }
 
 }  // namespace rolltui

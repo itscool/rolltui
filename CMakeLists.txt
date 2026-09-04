@@ -45,11 +45,13 @@ if(ROLLTUI_C)
   set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
                     c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
                     c/rolltui_theme.c c/rolltui_bindings.c
-                    c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c)
+                    c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
+                    c/rolltui_input.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
   set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp KeysCpp.cpp
-                    ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp MarkdownCpp.cpp LayoutCpp.cpp)
+                    ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp MarkdownCpp.cpp LayoutCpp.cpp
+                    InputCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
