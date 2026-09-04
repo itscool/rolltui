@@ -5,6 +5,8 @@
 #include <string>
 
 #include "rolltui/Screen.hpp"
+
+#include "rolltui/c/rolltui_geom.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -221,6 +223,31 @@ int main() {
     loop.reset(8, 2, fill);
     loop.put_text(0, 0, "ab", Style{}, 8);
     check(loop == control, "…and twenty-five paints with resizes among them leave exactly what one paint would");
+  }
+
+  // ---- Phase 14 m1: the seam, and proof the flag SELECTS ----------------------------
+  // Both implementations satisfy this file. What is asserted here is that the one the build
+  // asked for is the one that linked — because a flag that silently fails to select would
+  // leave the whole experiment testing C++ twice and reporting success, which is this
+  // project's characteristic failure aimed at its own instrument (Phase 13 m1 had to prove
+  // its counter armed for exactly the same reason).
+  {
+#ifdef ROLLTUI_C_BUILD
+    const char* want = "c";
+#else
+    const char* want = "c++";
+#endif
+    check(std::string(rolltui_impl_name()) == want,
+          std::string("the build linked the implementation it was configured for: ") + rolltui_impl_name());
+
+    // And the seam answers correctly, whichever side it is. The frame diff's goldens above
+    // already exercise `intersect` in anger; these are the edges worth naming.
+    const Rect a{0, 0, 10, 10};
+    check(a.intersect({5, 5, 10, 10}) == Rect{5, 5, 5, 5}, "overlapping rectangles intersect");
+    check(a.intersect({20, 20, 5, 5}) == Rect{20, 20, 0, 0},
+          "…and disjoint ones give an EMPTY rect at the clamped origin, not at {0,0}");
+    check(a.intersect({2, 2, 3, 3}) == Rect{2, 2, 3, 3}, "…a contained rect is itself");
+    check(a.intersect({0, 0, 0, 0}) == Rect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
   }
 
   return report("rolltui screen_test");

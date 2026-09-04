@@ -24,6 +24,18 @@
 # so the editor can write them; they are embedded at build time and parsed at start
 # like the built-in layouts. A new file needs a re-run of cmake (CONFIGURE_DEPENDS
 # re-globs on every build in the generators that support it).
+# Phase 14 — THE C EXPERIMENT'S SWITCH (plan/phase-14.md m1). Both implementations live in
+# the tree and satisfy the SAME tests; this flag picks which object files link. Rollback is
+# turning it back off, which is what makes "immediate" true — a branch would diverge and
+# stop being immediate within a week.
+option(ROLLTUI_C "Build the library's ported slice in C rather than C++ (Phase 14)" OFF)
+if(ROLLTUI_C)
+  set(ROLLTUI_SLICE c/rolltui_geom.c)
+  message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
+else()
+  set(ROLLTUI_SLICE GeomCpp.cpp)
+endif()
+
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
 set(ROLLTUI_EMBEDDED_PRESETS ${CMAKE_CURRENT_BINARY_DIR}/embedded_presets.cpp)
 add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_PRESETS}
@@ -75,6 +87,7 @@ add_library(rolltui STATIC
   Diff.cpp
   Json.cpp
   Theme.cpp
+  ${ROLLTUI_SLICE}            # Phase 14: the ported slice — C or C++, chosen by ROLLTUI_C
   Memory.cpp                  # Phase 13: the library's ONE entry point for memory
   Effects.cpp                 # Phase 12 m6: motion is the theme's, a state is the widget's
   Screen.cpp
@@ -109,6 +122,9 @@ function(add_rolltui_test name source)
   target_link_libraries(${name} PRIVATE rolltui)
   target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   target_compile_options(${name} PRIVATE -Wall -Wextra)
+  if(ROLLTUI_C)
+    target_compile_definitions(${name} PRIVATE ROLLTUI_C_BUILD=1)
+  endif()
   target_compile_definitions(${name} PRIVATE
     ROLLTUI_UCD_DIR="${ROLLTUI_UCD_DIR}"
     ROLLTUI_FIXTURE_DIR="${ROLLTUI_FIXTURE_DIR}"
