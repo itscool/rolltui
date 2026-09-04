@@ -128,6 +128,11 @@ add_rolltui_test(rolltui-markdown-test tests/markdown_test.cpp)
 # Milestone 5: theme (roles → styles), our JSON, downgrade, SGR, the grep control.
 add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
 
+# Phase 13 m1: THE BUDGET — allocations, bytes and wall-clock per frame, asserted as a
+# RANGE against numbers recorded from a real render, with the counter proved armed on
+# every run (an exact accounting check plus a live wasteful-widget control).
+add_rolltui_test(rolltui-budget-test tests/budget_test.cpp)
+
 # Phase 12 m6: effects — the two properties over EVERY registered kind (an effect never
 # changes a span's width and never writes outside its span), the built-in kind table, and
 # "no wakeups with no marks".
