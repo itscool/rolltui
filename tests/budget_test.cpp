@@ -170,7 +170,7 @@ struct Scene {
   void paint(int w, int h, Frame& into) {
     const Rect box{0, 0, w, h};
     windows.prepare(stack, box);
-    into = Frame(w, h, theme.style(Role::background));
+    into.reset(w, h, theme.style(Role::background));  // m5: reuse, exactly as a host does
     stack.compose(into, box, theme, [&](const ResolvedNode& rn, Frame& f) { windows.draw(rn, f, theme); });
   }
 };
@@ -302,7 +302,12 @@ int main() {
   // `grapheme_boundaries`, on a path that runs for every string drawn and every span of
   // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
   // suites untouched and still green — took 887 to 448 on its own.
-  constexpr long kSteady = 144, kStreaming = 815, kResize = 24944, kSteadyKB = 173;
+  // RE-RECORDED 2026-09-03 by m5 (frame reuse + reused node/map buffers). Phase 13 so far:
+  //   steady 887 → 108   streaming 2772 → 779   resize 70272 → 24908   steady KB 455 → 7
+  // The BYTES collapse is frame reuse: a repaint no longer throws away and rebuilds a
+  // 153 KB grid. **The phase's target is a steady frame of ZERO, and 108 is not it** — the
+  // remainder is itemised in plan/phase-13.md m7, which is the milestone that closes it.
+  constexpr long kSteady = 108, kStreaming = 779, kResize = 24908, kSteadyKB = 7;
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were

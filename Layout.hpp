@@ -420,6 +420,10 @@ struct ResolvedNode {
 // Lays out one tree inside `box` (a layer's resolved placement), in tree order
 // (a container precedes its children). Hidden nodes are omitted.
 std::vector<ResolvedNode> resolve_tree(const Node& root, Rect box, Rect screen, std::size_t layer = 0);
+// The same, filling a vector the CALLER owns so a per-frame path can reuse its capacity
+// (Phase 13 m5). Same nodes, same order.
+void resolve_tree_into(const Node& root, Rect box, Rect screen, std::size_t layer,
+                       std::vector<ResolvedNode>& out);
 
 // Draws one border (no joining) — for widgets that box their own content.
 void draw_border(Frame& frame, Rect outer, Border b, const Style& line, std::string_view title,
@@ -464,6 +468,8 @@ class WindowStack {
   // Every layer resolved against `screen`, in draw order, with `focused` set on the
   // one focused window; also draws them when `frame` is given.
   std::vector<ResolvedNode> resolve(Rect screen) const;
+  // The reused-buffer form compose() uses (Phase 13 m5).
+  void resolve_into(Rect screen, std::vector<ResolvedNode>& out) const;
   void compose(Frame& frame, Rect screen, const Theme& theme, const SlotRenderer& render,
                bool ambiguous_wide = false) const;
 

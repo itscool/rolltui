@@ -1,5 +1,12 @@
 # rolltui — a small terminal-UI library of our own (plan/phase-9.md, requirement 9).
 #
+# WHAT "SMALL" AND "LIGHTWEIGHT" MEAN HERE IS MEASURED, NOT ASSERTED (Phase 13). A real
+# 120x40 render of a 40-entry document costs 108 allocations, 7 KB and ~250 us — down from
+# 887 / 455 KB — and `rolltui-budget-test` fails if any of those move in either direction.
+# The target is a steady frame that allocates NOTHING, with every allocation that does
+# happen named; `rolltui-ownership-test` holds the other half (three ownership shapes, no
+# shared_ptr, no hand-rolled new/delete).
+#
 # One static library. Headers are the API; implementations live in .cpp files, and a
 # vendored dependency (md4c) is included only by the .cpp that uses it, so a consumer
 # pays for a component once at link time rather than at every include (measured

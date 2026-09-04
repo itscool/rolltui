@@ -167,5 +167,61 @@ int main() {
     check(f.glyph(1, 0) == family, "…and the table is reusable afterwards, not poisoned by the reset");
   }
 
+  // ---- Phase 13 m5: reuse the Frame, and the ghosting control ------------------------
+  // The failure mode of a hand-written reset is not a crash — it is a STALE FIELD that
+  // renders as a perfectly well-formed frame. So the control is equivalence: a reused
+  // frame must be indistinguishable from a freshly constructed one, cell for cell,
+  // including the fields nobody thinks about.
+  {
+    const Style fill{Color::rgb(1, 2, 3), Color::rgb(4, 5, 6)};
+    // Paint a busy frame: wide glyphs, a link, a spilled cluster, marks, a moved cursor.
+    Frame used(8, 2, fill);
+    used.put_text(0, 0, "abc\xE4\xBD\xA0", Style{}, 8, false, used.link_id("https://example.invalid/"));
+    used.put(0, 1, "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7", 2, Style{});
+    used.mark(0, 0, 3, EffectState::Waiting);
+    used.set_cursor(4, 1, true);
+
+    used.reset(8, 2, fill);
+    const Frame fresh(8, 2, fill);
+    check(used == fresh, "a RESET frame equals a freshly constructed one — every field, not the ones that looked like they mattered");
+    check(used.marks().empty() && used.link(1).empty() && used.cursor() == Cursor{},
+          "…including the marks, the link table and the cursor, all of which named cells that are gone");
+    check(used.glyph(0, 1) == " " && !used.at(0, 1).spilled(), "…and the spilled glyph, so the table cannot grow across a session");
+
+    // GHOSTING: paint a full frame, reuse it for one that writes strictly fewer cells, and
+    // assert nothing of the first survives.
+    Frame reused(8, 2, fill);
+    reused.put_text(0, 0, "XXXXXXXX", Style{}, 8);
+    reused.put_text(0, 1, "YYYYYYYY", Style{}, 8);
+    reused.reset(8, 2, fill);
+    reused.put_text(0, 0, "ab", Style{}, 8);
+    Frame control(8, 2, fill);
+    control.put_text(0, 0, "ab", Style{}, 8);
+    check(reused == control, "a reused frame painted with FEWER cells has no ghost of the last paint");
+    check(frame_to_text(reused).find('X') == std::string::npos && frame_to_text(reused).find('Y') == std::string::npos,
+          "…asserted on the text too, since a ghost renders as a perfectly well-formed frame");
+
+    // RESIZE: the geometry is authoritative, and the diff refuses the old baseline.
+    Frame before(8, 2, fill);
+    before.put_text(0, 0, "12345678", Style{}, 8);
+    Frame after = before;
+    after.reset(4, 3, fill);
+    check(after.width() == 4 && after.height() == 3 && after == Frame(4, 3, fill),
+          "reset to a new size resizes and still equals a fresh frame of that size");
+    const std::string bytes = render_diff(&before, after, ColorDepth::TrueColor);
+    check(bytes.rfind("\x1b[?25l\x1b[H\x1b[2J", 0) == 0,
+          "…and diffing across a size change is a FULL repaint, so a resize cannot corrupt by geometry");
+
+    // A long run of paints, including resizes, ends where a fresh frame would.
+    Frame loop(8, 2, fill);
+    for (int i = 0; i < 25; ++i) {
+      loop.reset((i % 3) ? 8 : 5, 2, fill);
+      loop.put_text(0, 0, "run", Style{}, 8);
+    }
+    loop.reset(8, 2, fill);
+    loop.put_text(0, 0, "ab", Style{}, 8);
+    check(loop == control, "…and twenty-five paints with resizes among them leave exactly what one paint would");
+  }
+
   return report("rolltui screen_test");
 }

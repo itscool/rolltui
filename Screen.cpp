@@ -21,6 +21,18 @@ Frame::Frame(int w, int h, const Style& fill) : w_(std::max(w, 0)), h_(std::max(
   cells_.assign(static_cast<std::size_t>(w_ * h_), c);
 }
 
+void Frame::reset(int w, int h, const Style& fill) {
+  w_ = std::max(w, 0);
+  h_ = std::max(h, 0);
+  Cell c;
+  c.style = fill;
+  cells_.assign(static_cast<std::size_t>(w_ * h_), c);  // keeps capacity, resets every field
+  links_.clear();
+  long_glyphs_.clear();
+  marks_.clear();
+  cursor_ = Cursor{};
+}
+
 void Frame::clear(const Style& fill) {
   Cell c;
   c.style = fill;

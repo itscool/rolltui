@@ -758,15 +758,23 @@ WindowsReport Windows::sync(const WindowStack& stack) {
     each_window(l.root, [&](const Node& n) {
       Widget* w = widget_for(n.content);
       by_window_[n.id] = w;
+      // Phase 13 m5: the "window 'x' (content 'y'): " prefix is built only when there is
+      // something to say. It used to be built for every window of every frame and thrown
+      // away — a heap allocation per window per paint to describe a problem that almost
+      // never exists.
+      std::string p = w->problem();
+      const std::vector<std::string> notes = p.empty() ? w->notes() : std::vector<std::string>{};
+      if (p.empty() && notes.empty()) return;
       const std::string where = "window '" + n.id + "' (content '" + n.content + "'): ";
-      if (std::string p = w->problem(); !p.empty()) rep.bad_values.push_back(where + p);
-      for (const std::string& note : w->notes()) rep.bad_values.push_back(where + note);
+      if (!p.empty()) rep.bad_values.push_back(where + p);
+      for (const std::string& note : notes) rep.bad_values.push_back(where + note);
     });
   return rep;
 }
 
 void Windows::autosize(WindowStack& stack, Rect box) {
-  const std::vector<ResolvedNode> nodes = stack.resolve(box);
+  thread_local std::vector<ResolvedNode> nodes;  // m5: once per frame, reused
+  stack.resolve_into(box, nodes);
   for (const ResolvedNode& rn : nodes) {
     if (!rn.node->is_window()) continue;
     Widget* w = at(rn.node->id);
@@ -787,7 +795,9 @@ void Windows::autosize(WindowStack& stack, Rect box) {
 }
 
 void Windows::layout(const WindowStack& stack, Rect box) {
-  for (const ResolvedNode& rn : stack.resolve(box))
+  thread_local std::vector<ResolvedNode> nodes;  // m5: once per frame, reused
+  stack.resolve_into(box, nodes);
+  for (const ResolvedNode& rn : nodes)
     if (rn.node->is_window())
       if (Widget* w = at(rn.node->id)) w->layout(rn);
 }

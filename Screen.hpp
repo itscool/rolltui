@@ -98,6 +98,17 @@ class Frame {
   const Cell& at(int x, int y) const { return cells_[static_cast<std::size_t>(y * w_ + x)]; }
 
   void clear(const Style& fill);
+  // REUSES this frame's storage for the next paint (Phase 13 m5), instead of constructing
+  // a new one and throwing 153 KB away every repaint. It is EXACTLY equivalent to
+  // `Frame(w, h, fill)` — asserted, because the failure mode of a hand-written reset is
+  // ghosting: one field left over from the last paint renders as a perfectly well-formed
+  // frame that is quietly wrong. So this resets every field of every cell, and drops the
+  // link table, the spilled glyphs and the marks, all of which named cells that are gone.
+  //
+  // A SIZE CHANGE is safe here and is NOT safe to diff against: `render_diff` already
+  // repaints in full when the dimensions differ, which is what keeps rule 3 (a resize
+  // invalidates the baseline) a property of the code rather than of the caller.
+  void reset(int w, int h, const Style& fill);
   // Puts one grapheme of `cells` (1 or 2) at (x, y), clipping to the frame and the
   // right edge; returns the cells it occupied (0 when clipped away).
   int put(int x, int y, std::string_view grapheme, int cells, const Style& style,

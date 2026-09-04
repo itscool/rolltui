@@ -907,9 +907,15 @@ void place(const Node& n, Rect box, Rect screen, std::size_t layer, std::vector<
 
 }  // namespace
 
+void resolve_tree_into(const Node& root, Rect box, Rect screen, std::size_t layer,
+                       std::vector<ResolvedNode>& out) {
+  out.clear();
+  if (root.visible) place(root, box, screen, layer, out);
+}
+
 std::vector<ResolvedNode> resolve_tree(const Node& root, Rect box, Rect screen, std::size_t layer) {
   std::vector<ResolvedNode> out;
-  if (root.visible) place(root, box, screen, layer, out);
+  resolve_tree_into(root, box, screen, layer, out);
   return out;
 }
 
@@ -1031,8 +1037,10 @@ void draw_border(Frame& frame, Rect outer, Border b, const Style& line, std::str
 
 void compose_layer(Frame& frame, const std::vector<ResolvedNode>& nodes, const Theme& theme,
                    const SlotRenderer& render, bool ambiguous_wide) {
-  std::vector<std::uint8_t> map(static_cast<std::size_t>(frame.width() * frame.height()), 0);
-  std::vector<std::uint8_t> before(map.size(), 0);
+  // m5: two full-screen byte maps, once per layer per frame. Reused.
+  thread_local std::vector<std::uint8_t> map, before;
+  map.assign(static_cast<std::size_t>(frame.width() * frame.height()), 0);
+  before.assign(map.size(), 0);
   // TWO PASSES: every node's ground and border first, then every window's CONTENT
   // (Phase 12 m7). One pass was correct while a slot only ever drew inside `rn.inner`,
   // which excludes its own border — but m5's scrollbar deliberately draws into the
@@ -1161,25 +1169,37 @@ void WindowStack::cycle_focus(bool backwards) {
   l.focus = f[i]->id;
 }
 
-std::vector<ResolvedNode> WindowStack::resolve(Rect screen) const {
-  std::vector<ResolvedNode> out;
+void WindowStack::resolve_into(Rect screen, std::vector<ResolvedNode>& out) const {
+  out.clear();
   const Node* fnode = focused();
+  thread_local std::vector<ResolvedNode> layer;
   for (std::size_t i = 0; i < layers_.size(); ++i) {
     Rect box = rolltui::resolve(layers_[i].placement, screen);
-    for (ResolvedNode& rn : resolve_tree(layers_[i].root, box, screen, i)) {
+    resolve_tree_into(layers_[i].root, box, screen, i, layer);
+    for (ResolvedNode& rn : layer) {
       rn.focused = (rn.node == fnode);
       out.push_back(rn);
     }
   }
+}
+
+std::vector<ResolvedNode> WindowStack::resolve(Rect screen) const {
+  std::vector<ResolvedNode> out;
+  resolve_into(screen, out);
   return out;
 }
 
 void WindowStack::compose(Frame& frame, Rect screen, const Theme& theme, const SlotRenderer& render,
                           bool ambiguous_wide) const {
-  std::vector<ResolvedNode> all = resolve(screen);
+  // Phase 13 m5: both node vectors are REUSED buffers. This runs once per frame and was
+  // building one vector for the whole tree plus one MORE per layer, copying the nodes into
+  // it — for a steady frame that is a handful of allocations that exist only to partition
+  // a list by an integer already on each element.
+  thread_local std::vector<ResolvedNode> all, mine;
+  resolve_into(screen, all);
   for (std::size_t i = 0; i < layers_.size(); ++i) {
     if (layers_[i].modal) frame.tint(screen, theme.style(Role::overlay));
-    std::vector<ResolvedNode> mine;
+    mine.clear();
     for (const ResolvedNode& rn : all)
       if (rn.layer == i) mine.push_back(rn);
     compose_layer(frame, mine, theme, render, ambiguous_wide);
