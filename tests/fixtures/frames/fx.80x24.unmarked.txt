@@ -1,0 +1,26 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ > write me a plan for the wrap engine, with a │ theme   default-dark         │
+│   table and some code                         │ keys    default              │
+│                                               │ layout  default              │
+│ # Plan                                        │ size    80x24                │
+│                                               │ line    1/191                │
+│ 1. First step                                 │ follow  no                   │
+│                                               │ depth   truecolor            │
+│    • a nested bullet with bold and code       │ focus   input                │
+│    • another, with a link (https://           │                              │
+│      example.com/docs)                        │                              │
+│                                               │                              │
+│ 2. Second step                                │                              │
+│                                               │                              │
+│    A loose paragraph inside the second item.  │                              │
+│                                               │                              │
+│    ┌ sh ────────────────────────────────────┐ │                              │
+│    │ cmake --build build -j                 │ │                              │
+│    └────────────────────────────────────────┘ │                              │
+│                                   ▼ 172 more  │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 1/191  truecolor  focus:input
+--- tick ---
+none

@@ -8,6 +8,7 @@
 #include <cstdlib>
 
 #include "rolltui/Json.hpp"
+#include "rolltui/Unicode.hpp"
 
 namespace rolltui {
 
@@ -22,6 +23,66 @@ Style S(Color fg, Color bg = Color::none(), bool bold = false, bool italic = fal
   Style s;
   s.fg = fg; s.bg = bg; s.bold = bold; s.italic = italic; s.underline = underline; s.dim = dim; s.reverse = reverse;
   return s;
+}
+
+// ---- motion (Phase 12 m6) ------------------------------------------------------------
+// The theme's half of the effects contract: a widget says `waiting`, this says what
+// waiting LOOKS like. Every value here is expressible in a theme file (Theme.hpp's
+// "effects" object) and every one of these three maps is written into the shipped preset
+// files that carry the same name — the built-in and the file are one look with two
+// definition sites, kept equal by rolltui-presets-test.
+EffectSpec fx(std::string kind, int period_ms) {
+  EffectSpec s;
+  s.kind = std::move(kind);
+  s.period_ms = period_ms;
+  return s;
+}
+
+// For the two colour themes. The `waiting` spinner is BRAILLE (East Asian Neutral, so
+// one cell at any ambiguous-width setting — a two-cell frame would be refused by the
+// applier's width guarantee and the theme would silently stop moving).
+EffectMap colour_effects() {
+  EffectMap m;
+  EffectSpec spin = fx("spinner", 640);
+  spin.frames = {"\xE2\xA0\x8B", "\xE2\xA0\x99", "\xE2\xA0\xB9", "\xE2\xA0\xB8",
+                 "\xE2\xA0\xBC", "\xE2\xA0\xB4", "\xE2\xA0\xA6", "\xE2\xA0\xA7"};
+  m.for_state(EffectState::Waiting).push_back(std::move(spin));
+  // Bytes arriving move ALONG the text, so the sweep does too — and it is the accent, so
+  // a reader who cannot see the motion still sees which span is live.
+  EffectSpec sweep = fx("shimmer", 1200);
+  sweep.roles = {Role::accent_1};
+  sweep.width = 6;
+  m.for_state(EffectState::Streaming).push_back(std::move(sweep));
+  // A bar is a picture of a number and asks for NO tick: the number changing is already
+  // a redraw (Effects.hpp — this is what "the tick runs only while something moves" is
+  // worth in the shipped file, not only in the test).
+  EffectSpec bar = fx("bar", 0);
+  bar.roles = {Role::accent_2};
+  m.for_state(EffectState::Progress).push_back(std::move(bar));
+  EffectSpec flash = fx("blink", 400);
+  flash.roles = {Role::find_current};
+  m.for_state(EffectState::Flash).push_back(std::move(flash));
+  return m;
+}
+
+// The same four states, told with what a colourless terminal has. This is the pair the
+// design is FOR: same app, same widget code, a spinner that is ASCII here and braille
+// there, and a `streaming` that is a dim/normal breath rather than a colour sweep.
+EffectMap mono_effects() {
+  EffectMap m;
+  EffectSpec spin = fx("spinner", 400);
+  spin.frames = {"|", "/", "-", "\\"};
+  m.for_state(EffectState::Waiting).push_back(std::move(spin));
+  EffectSpec breath = fx("pulse", 1200);
+  breath.roles = {Role::text_muted, Role::text};
+  m.for_state(EffectState::Streaming).push_back(std::move(breath));
+  EffectSpec bar = fx("bar", 0);
+  bar.roles = {Role::menu_selected};  // reverse video: the only "filled" this theme has
+  m.for_state(EffectState::Progress).push_back(std::move(bar));
+  EffectSpec flash = fx("blink", 400);
+  flash.roles = {Role::find_current};
+  m.for_state(EffectState::Flash).push_back(std::move(flash));
+  return m;
 }
 
 Theme make_default_dark() {
@@ -99,6 +160,7 @@ Theme make_default_dark() {
   // The thumb rides in the border column, so it is the border's brighter twin —
   // legible against the track without becoming a second accent.
   set(Role::scrollbar, S(muted, bg));
+  t.effects = colour_effects();
   return t;
 }
 
@@ -169,6 +231,7 @@ Theme make_default_light() {
   set(Role::find_match, S(fg, find_bg));
   set(Role::find_current, S(bg, yellow, true));
   set(Role::scrollbar, S(muted, bg));
+  t.effects = colour_effects();
   return t;
 }
 
@@ -232,6 +295,7 @@ Theme make_mono() {
   // With no colour, the thumb is the glyph's job (a solid block against the border
   // line); bold is what separates it from the track.
   set(Role::scrollbar, S(n, n, true));
+  t.effects = mono_effects();
   return t;
 }
 
@@ -506,6 +570,137 @@ std::optional<Color> resolve_color(const json::Value& v, const json::Value& defs
   return std::nullopt;
 }
 
+// ---- "effects": state → what it looks like while it lasts (Phase 12 m6) --------------
+// The KIND is deliberately not judged: rung 2 belongs to whoever registered it, and a
+// theme file is read long before a host has registered anything (Effects.hpp). Everything
+// that IS the library's — the state names, the role names, the equal-width frame rule — is
+// a named bad value here, at load, where a theme author can see it.
+std::optional<EffectSpec> read_effect(const json::Value& v, const std::string& where, ThemeLoadReport& report) {
+  if (!v.is_object()) {
+    report.bad_values.push_back(where + ": expected an effect object");
+    return std::nullopt;
+  }
+  EffectSpec s;
+  auto roles_from = [&](const json::Value& x, const std::string& at) {
+    auto one = [&](const json::Value& n, const std::string& w) {
+      if (!n.is_string()) { report.bad_values.push_back(w + ": expected a role name"); return; }
+      const Role r = role_from_name(n.str);
+      if (r == Role::count_) { report.bad_values.push_back(w + ": '" + n.str + "' is not a role"); return; }
+      s.roles.push_back(r);
+    };
+    if (x.is_array())
+      for (std::size_t i = 0; i < x.arr.size(); ++i) one(x.arr[i], at + "[" + std::to_string(i) + "]");
+    else
+      one(x, at);
+  };
+  for (const auto& [k, x] : v.obj) {
+    if (k == "kind") {
+      if (!x.is_string() || x.str.empty()) { report.bad_values.push_back(where + ".kind: expected an effect kind name"); continue; }
+      s.kind = x.str;
+    } else if (k == "frames") {
+      if (!x.is_array()) { report.bad_values.push_back(where + ".frames: expected an array of strings"); continue; }
+      for (std::size_t i = 0; i < x.arr.size(); ++i) {
+        if (!x.arr[i].is_string()) { report.bad_values.push_back(where + ".frames[" + std::to_string(i) + "]: expected a string"); continue; }
+        s.frames.push_back(x.arr[i].str);
+      }
+    } else if (k == "role" || k == "roles") {
+      roles_from(x, where + "." + k);
+    } else if (k == "period_ms" || k == "width" || k == "steps") {
+      if (!x.is_number()) { report.bad_values.push_back(where + "." + k + ": expected a number"); continue; }
+      const int n = static_cast<int>(x.num);
+      if (k == "period_ms") s.period_ms = n;
+      else if (k == "width") s.width = n;
+      else s.steps = n;
+    } else if (k == "backward") {
+      if (!x.is_bool()) { report.bad_values.push_back(where + ".backward: expected true or false"); continue; }
+      s.backward = x.b;
+    } else {
+      report.unknown_keys.push_back(where + "." + k);
+    }
+  }
+  if (s.kind.empty()) {
+    report.bad_values.push_back(where + ": no \"kind\"");
+    return std::nullopt;
+  }
+  // The equal-width rule. It is checked HERE rather than left to the applier's clamp
+  // because a theme author can fix a file and a running frame cannot: the clamp is the
+  // guarantee, this is the message.
+  if (!s.frames.empty()) {
+    const int w = unicode::display_width(s.frames[0]);
+    if (w <= 0) report.bad_values.push_back(where + ".frames[0]: a frame must be at least one cell wide");
+    for (std::size_t i = 1; i < s.frames.size(); ++i)
+      if (unicode::display_width(s.frames[i]) != w) {
+        report.bad_values.push_back(where + ".frames[" + std::to_string(i) + "]: every frame must be " + std::to_string(w) +
+                                    " cells wide (an effect never changes a span's width)");
+        break;
+      }
+  }
+  return s;
+}
+
+EffectMap read_effects(const json::Value& v, ThemeLoadReport& report) {
+  EffectMap map;
+  if (v.is_null()) return map;  // no "effects" key: a still UI, and not a problem
+  if (!v.is_object()) {
+    report.bad_values.push_back("effects: expected an object of state → effect");
+    return map;
+  }
+  for (const auto& [k, x] : v.obj) {
+    const EffectState state = effect_state_from_name(k);
+    if (state == EffectState::count_ || state == EffectState::None) {
+      report.unknown_keys.push_back("effects." + k);
+      continue;
+    }
+    const std::string where = "effects." + k;
+    if (x.is_array()) {
+      for (std::size_t i = 0; i < x.arr.size(); ++i)
+        if (std::optional<EffectSpec> s = read_effect(x.arr[i], where + "[" + std::to_string(i) + "]", report)) map.for_state(state).push_back(std::move(*s));
+    } else if (std::optional<EffectSpec> s = read_effect(x, where, report)) {
+      map.for_state(state).push_back(std::move(*s));
+    }
+  }
+  return map;
+}
+
+json::Value effect_to_json(const EffectSpec& s) {
+  json::Value o = json::Value::object();
+  o.set("kind", json::Value::string(s.kind));
+  if (!s.frames.empty()) {
+    json::Value frames = json::Value::array();
+    for (const std::string& f : s.frames) frames.arr.push_back(json::Value::string(f));
+    o.set("frames", std::move(frames));
+  }
+  if (!s.roles.empty()) {
+    json::Value roles = json::Value::array();
+    for (Role r : s.roles) roles.arr.push_back(json::Value::string(std::string(role_name(r))));
+    o.set("roles", std::move(roles));
+  }
+  o.set("period_ms", json::Value::number(s.period_ms));
+  if (s.width) o.set("width", json::Value::number(s.width));
+  if (s.steps) o.set("steps", json::Value::number(s.steps));
+  if (s.backward) o.set("backward", json::Value::boolean(true));
+  return o;
+}
+
+// Written back whole, so a colour edit through the editor cannot silently drop a theme's
+// motion (the editor rebuilds the file from the parsed Theme).
+std::optional<json::Value> effects_to_json(const EffectMap& m) {
+  if (m.empty()) return std::nullopt;
+  json::Value o = json::Value::object();
+  for (std::size_t i = 1; i < kEffectStateCount; ++i) {
+    const std::vector<EffectSpec>& specs = m.for_state(static_cast<EffectState>(i));
+    if (specs.empty()) continue;
+    if (specs.size() == 1) {
+      o.set(effect_state_name(static_cast<EffectState>(i)), effect_to_json(specs[0]));
+      continue;
+    }
+    json::Value arr = json::Value::array();
+    for (const EffectSpec& s : specs) arr.arr.push_back(effect_to_json(s));
+    o.set(effect_state_name(static_cast<EffectState>(i)), std::move(arr));
+  }
+  return o;
+}
+
 }  // namespace
 
 std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report) {
@@ -520,7 +715,7 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
   report = ThemeLoadReport{};
   if (!root.is_object()) { report.error = "theme file must be a JSON object"; return std::nullopt; }
   for (const auto& [k, v] : root.obj)
-    if (k != "name" && k != "defs" && k != "roles" && k != "meta") report.unknown_keys.push_back(k);
+    if (k != "name" && k != "defs" && k != "roles" && k != "meta" && k != "effects") report.unknown_keys.push_back(k);
   const json::Value& defs = root.get("defs");
   const json::Value& roles = root.get("roles");
   if (!roles.is_object()) { report.error = "theme file has no \"roles\" object"; return std::nullopt; }
@@ -584,6 +779,7 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
     }
     t.style(r) = read_role(roles.get(name), text_style, "roles." + name);
   }
+  t.effects = read_effects(root.get("effects"), report);
   return t;
 }
 
@@ -629,6 +825,7 @@ json::Value theme_to_json_value(const Theme& theme) {
   json::Value roles = json::Value::object();
   for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(theme.styles[i], nullptr));
   root.set("roles", std::move(roles));
+  if (std::optional<json::Value> fx = effects_to_json(theme.effects)) root.set("effects", std::move(*fx));
   return root;
 }
 
@@ -654,6 +851,12 @@ json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std:
   json::Value roles = json::Value::object();
   for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(dark.styles[i], &light.styles[i]));
   root.set("roles", std::move(roles));
+  // ONE effects object for both variants: motion is a property of the theme, not of the
+  // terminal's background (Theme.hpp). The dark variant's is authoritative; a light
+  // variant that somehow disagrees would have no place in the file to say so, so this
+  // writes what the file can round-trip rather than half of a distinction that does not
+  // exist.
+  if (std::optional<json::Value> fx = effects_to_json(dark.effects)) root.set("effects", std::move(*fx));
   return root;
 }
 

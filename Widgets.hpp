@@ -78,6 +78,24 @@ struct Row {
   std::string label, value;
 };
 
+// An input's one-line note, and — since Phase 12 m6 — what STATE it is in. A host that
+// has no motion to report returns a bare string and the implicit conversion does the
+// rest; roll's "working…" returns `{text, EffectState::Waiting, when the turn started}`,
+// which is the whole of roll's waiting-for-first-token indicator. Nothing here says what
+// waiting looks like: the theme does (rolltui/Effects.hpp), and a theme that maps nothing
+// leaves the still text the host drew.
+struct Note {
+  std::string text;
+  EffectState state = EffectState::None;
+  std::uint64_t since_ms = 0;  // when it entered `state`, for the span's own phase
+  Note() = default;
+  // Implicit on purpose, and the two overloads are what keeps every host that has no
+  // motion to report writing exactly what it wrote before: `return "working";`.
+  Note(std::string t) : text(std::move(t)) {}  // NOLINT(google-explicit-constructor)
+  Note(const char* t) : text(t) {}             // NOLINT(google-explicit-constructor)
+  Note(std::string t, EffectState s, std::uint64_t since = 0) : text(std::move(t)), state(s), since_ms(since) {}
+};
+
 // What every widget needs and no widget owns: the frame's terminal facts and clock.
 struct WidgetEnv {
   bool ambiguous_wide = false;
@@ -233,6 +251,7 @@ class Windows {
   using RowsFn = std::function<std::vector<Row>()>;
   using SubmitFn = std::function<void(const std::string&)>;
   using TextFn = std::function<std::string()>;
+  using NoteFn = std::function<Note()>;
   // A host's own widget kind: a FACTORY, not an instance (Phase 11 m3). What comes back
   // is owned by this Windows, created on demand, keyed by content and never destroyed —
   // so `canvas:left` and `canvas:right` are two canvases for exactly the reason two
@@ -260,9 +279,10 @@ class Windows {
     auto it = on_submit_.find(name);
     return it == on_submit_.end() ? OnSubmit::SendAndClear : it->second;
   }
-  // An input's one-line note, drawn beside the prompt when it fits on the first row
-  // and on a row of its own otherwise (roll's "working…" hint). Optional.
-  void bind_note(std::string name, TextFn note);
+  // An input's one-line note, drawn beside the prompt when it fits on the first row and
+  // on a row of its own otherwise (roll's "working…" hint). Optional. Returning a bare
+  // string is still valid and still means "no motion" — see Note above.
+  void bind_note(std::string name, NoteFn note);
 
   // ---- what a transcript does with a long code block, and how it colours one -------
   // Both are HOST facts, and both are off until a host says otherwise (Phase 12 m5b).
@@ -393,7 +413,7 @@ class Windows {
   std::map<std::string, Track> tracks_;
   std::string bar_drag_;  // the window whose thumb is being dragged, "" for none
   int bar_grab_ = 0;      // cells from the thumb's start to where it was grabbed
-  std::map<std::string, TextFn> notes_;
+  std::map<std::string, NoteFn> notes_;
   markdown::Highlighter highlighter_;
   std::uint64_t highlighter_epoch_ = 0;
   int code_fold_over_lines_ = 0, code_cap_lines_ = 0;

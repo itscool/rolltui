@@ -101,9 +101,20 @@ std::string copied_part(const std::string& out) {
 }
 std::string frame_part(const std::string& out) {
   std::size_t at = out.find("--- copied ---\n");
-  const std::size_t role = out.find("--- role ---\n");
-  if (role != std::string::npos && (at == std::string::npos || role < at)) at = role;
+  for (const char* trailer : {"--- role ---\n", "--- tick ---\n"}) {
+    const std::size_t t = out.find(trailer);
+    if (t != std::string::npos && (at == std::string::npos || t < at)) at = t;
+  }
   return at == std::string::npos ? out : out.substr(0, at);
+}
+// The "--- tick ---" trailer's line (the ms this frame asks to be redrawn in, or
+// "none"), "" when --dump-tick was not asked for.
+std::string tick_part(const std::string& out) {
+  const std::size_t at = out.find("--- tick ---\n");
+  if (at == std::string::npos) return "";
+  std::string s = out.substr(at + 13);
+  if (!s.empty() && s.back() == '\n') s.pop_back();
+  return s;
 }
 // The "--- role ---" trailer's line ("md_heading fg=#.. bg=#.. bold"), "" when absent.
 std::string role_part(const std::string& out) {
@@ -269,6 +280,22 @@ int main(int argc, char** argv) {
       {"keys-editor.120x40.bound", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltB\""},
       {"keys-editor.120x40.moved", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltD\""},
       {"tiny.7x3.keys-editor", "--frame 7x3 --theme default-dark --keys \"F7 Enter Enter Enter Enter AltB Type:x\""},
+      // Phase 12 m6 (effects) on a fourth fixture, whose entries carry STATES and nothing
+      // else — no glyph, no colour, no period anywhere in effects.md. Three ticks of one
+      // screen, and `--dump-tick` recording what each frame ASKS FOR, in the golden bytes.
+      {"fx.80x24.tick0", "--frame 80x24 --theme default-dark --tick 0 --dump-tick --keys \"Home\"", "effects.md"},
+      {"fx.80x24.tick240", "--frame 80x24 --theme default-dark --tick 240 --dump-tick --keys \"Home\"", "effects.md"},
+      {"fx.80x24.tick640", "--frame 80x24 --theme default-dark --tick 640 --dump-tick --keys \"Home\"", "effects.md"},
+      // The SAME document under three other themes: mono's ASCII spinner, a theme that
+      // STACKS two kinds per state (a glyph from one, a colour from another, plus a
+      // trailing ellipsis), and a theme with no "effects" key at all — the degrade rung,
+      // which must be the still text the fixture wrote and a tick of "none".
+      {"fx.80x24.mono", "--frame 80x24 --theme mono --tick 200 --dump-tick --keys \"Home\"", "effects.md"},
+      {"fx.80x24.loud", "--frame 80x24 --theme '" ROLLTUI_FIXTURE_DIR "/themes/loud.json' --tick 100 --dump-tick --keys \"Home\"", "effects.md"},
+      {"fx.80x24.still", "--frame 80x24 --theme '" ROLLTUI_FIXTURE_DIR "/themes/still.json' --tick 240 --dump-tick --keys \"Home\"", "effects.md"},
+      // NOTHING MARKED: the same theme that spins above asks for no wakeup at all on a
+      // document with no states in it.
+      {"fx.80x24.unmarked", "--frame 80x24 --theme default-dark --tick 240 --dump-tick --keys \"Home\""},
   };
   std::string bottom, top, popup, popup_closed, popup_big;
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
@@ -280,6 +307,7 @@ int main(int argc, char** argv) {
   std::string le_widget, le_actions, le_new;
   std::string kh_default, kh_vim, ki_default, ki_vim, ke_open, ke_capture, ke_bound, ke_moved;
   std::string find_open, find_next, find_none, find_closed;
+  std::string fx0, fx240, fx640, fx_mono, fx_loud, fx_still, fx_unmarked;
   bool tiny_failed = false;
   for (const Case& c : cases) {
     int rc = 0;
@@ -380,6 +408,13 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "keys-editor.120x40.capture") ke_capture = out;
     if (std::string(c.name) == "keys-editor.120x40.bound") ke_bound = out;
     if (std::string(c.name) == "keys-editor.120x40.moved") ke_moved = out;
+    if (std::string(c.name) == "fx.80x24.tick0") fx0 = out;
+    if (std::string(c.name) == "fx.80x24.tick240") fx240 = out;
+    if (std::string(c.name) == "fx.80x24.tick640") fx640 = out;
+    if (std::string(c.name) == "fx.80x24.mono") fx_mono = out;
+    if (std::string(c.name) == "fx.80x24.loud") fx_loud = out;
+    if (std::string(c.name) == "fx.80x24.still") fx_still = out;
+    if (std::string(c.name) == "fx.80x24.unmarked") fx_unmarked = out;
     std::string path = frames + c.name + ".txt";
     if (record) {
       std::ofstream f(path, std::ios::binary);
@@ -572,6 +607,37 @@ int main(int argc, char** argv) {
           "a query with no matches says 0/0 and stays put rather than reporting nothing at all [" + row(find_none, 23) + "]");
     check(find_closed.find("\xE2\x95\xAD find ") == std::string::npos && row(find_closed, 23).find("find ") == std::string::npos,
           "closing the bar clears the query, so highlights never outlive the bar invisibly");
+    // ---- Phase 12 m6 (effects) — what the goldens alone do not say ------------------
+    // effects.md contains no glyph, no colour and no period: its entries say `waiting`,
+    // `streaming`, `progress`, `flash` and stop. Everything below is the THEME's answer
+    // to those five words, recorded at a fixed tick.
+    auto note_row = [&](const std::string& out) { return row(out, 3); };  // the waiting entry's row (0-based)
+    check(note_row(fx0).find("\xE2\xA0\x8B waiting") != std::string::npos, "at tick 0 the waiting span shows the theme's first braille frame [" + note_row(fx0) + "]");
+    check(note_row(fx240).find("\xE2\xA0\xB8 waiting") != std::string::npos, "…at tick 240 a different one: --tick N records an effect deterministically [" + note_row(fx240) + "]");
+    check(frame_part(fx0) != frame_part(fx240), "…so two ticks of one screen are two different frames");
+    check(frame_part(fx0) == frame_part(fx640), "…and one full period later, the same frame again (640 ms, eight frames)");
+    check(note_row(fx_mono).find("- waiting") != std::string::npos,
+          "the SAME document under mono is an ASCII spinner — one app, one widget, a different look [" + note_row(fx_mono) + "]");
+    check(note_row(fx_loud).find("^ waiting") != std::string::npos,
+          "…and under a theme that STACKS two kinds, that theme's own frames [" + note_row(fx_loud) + "]");
+    // The stack's other half: the ellipsis eats the last three cells of the streaming
+    // row while the shimmer colours it — a glyph from one kind, a colour from another.
+    check(row(fx_loud, 5).find("streaming a reply now .") != std::string::npos && row(fx_loud, 5).find("now ...") == std::string::npos,
+          "…whose SECOND kind is drawing at the same time, at the other end of another span [" + row(fx_loud, 5) + "]");
+    // The degrade rung, as a file: the same colours with no "effects" key at all.
+    check(note_row(fx_still).find("\xC2\xB7 waiting") != std::string::npos,
+          "a theme that maps nothing leaves the STILL text the document wrote [" + note_row(fx_still) + "]");
+    check(tick_part(fx_still) == "none", "…and asks for no wakeup: a still UI costs nothing");
+    check(tick_part(fx_unmarked) == "none",
+          "NO WAKEUPS WITH NO MARKS: the theme that spins above asks for nothing on a document with no states in it");
+    check(tick_part(fx0) == "38" && tick_part(fx_mono) == "100" && tick_part(fx_loud) == "26",
+          "…and where something IS marked the wakeup is the theme's own, the shortest of what the frame carries [" +
+              tick_part(fx0) + " / " + tick_part(fx_mono) + " / " + tick_part(fx_loud) + "]");
+    // The ordinary entry is the control INSIDE the fixture: five states above it, and it
+    // is byte-identical at every tick and under every theme.
+    check(row(fx0, 12) == row(fx240, 12) && row(fx0, 12) == row(fx_still, 12) && row(fx0, 12).find("An ordinary entry") != std::string::npos,
+          "an unmarked entry in a marked document never moves, under any theme or tick [" + row(fx0, 12) + "]");
+
     check(kh_default.find("Ctrl-Left, Alt-Left") != std::string::npos && kh_default.find("move one word left") != std::string::npos,
           "the default help popup (scrolled a page) is rendered from the table: word motions on Ctrl/Alt-arrows");
     check(kh_vim.find("Alt-B") != std::string::npos && kh_vim.find("Alt-F") != std::string::npos, "with vim-ish.json the help popup shows Alt-B / Alt-F: it is rendered from the LIVE table");

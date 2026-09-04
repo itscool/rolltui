@@ -45,6 +45,13 @@
 //     --code-fold FOLD,CAP     milestone 5b: fold a code block over FOLD lines to one
 //                              summary row, and cap an open one at CAP (0 disables
 //                              either). Defaults to this host's own 30,100.
+//     --tick MS                milestone 6: render the frame AT elapsed MS, so an
+//                              effect (Effects.hpp) is a golden frame like any other.
+//                              Default 0. Interactively the real clock is used and this
+//                              flag does nothing.
+//     --dump-tick              after a --frame, print the wakeup this frame ASKS FOR
+//                              ("--- tick ---" then the ms, or "none") — the harness's
+//                              way to see "the tick runs only while something is marked"
 //     --frame WxH              render exactly one frame at that size to stdout as
 //                              plain text (one row per line, trailing spaces trimmed)
 //                              and exit — the golden-frame harness and screenshot tool.
@@ -70,10 +77,13 @@
 //
 // Fixture format: a markdown file cut into entries by marker lines
 //   <!-- user -->   <!-- assistant -->   <!-- note -->   <!-- tool: summary text -->
+//   <!-- state: waiting -->   <!-- state: progress 0.4 -->
 // (text before any marker is an assistant entry). User entries render verbatim with a
 // "> " prefix in the prompt role; notes render verbatim in the note role; a tool
 // entry is a FOLDABLE verbatim block whose summary is the marker's text (folded to
-// start with).
+// start with). A `state:` entry is an assistant entry MARKED with one of Effects.hpp's
+// states and an optional fraction — a document saying what is happening, never what it
+// looks like, which is the whole of milestone 6's split written into a file.
 //
 // WIDGETS BY KIND, SOURCES BY NAME (Phase 10 m2): a window's "content" is
 // `kind[:source]` from the library's table (rolltui/Layout.hpp), and rolltui::Windows
@@ -188,6 +198,8 @@ long mtime_of(const std::string& path) {
 Document parse_fixture(const std::string& text) {
   Document doc;
   std::string kind = "assistant", summary;
+  EffectState state = EffectState::None;  // m6: what the NEXT entry is doing, if anything
+  double fraction = 0;
   std::string buf;
   int n = 0;
   auto flush = [&]() {
@@ -203,7 +215,12 @@ Document parse_fixture(const std::string& text) {
     else if (kind == "note") { e.markdown = false; e.role = Role::note; }
     else if (kind == "tool") { e.markdown = false; e.role = Role::text_muted; e.foldable = true; e.summary = summary; e.folded = true; }
     else { e.markdown = true; e.role = Role::text; }
+    // m6: a marked entry. The fixture says WHICH STATE and nothing else.
+    e.state = state;
+    e.progress = fraction;
     doc.entries.push_back(std::move(e));
+    state = EffectState::None;
+    fraction = 0;
     buf.clear();
   };
   std::istringstream in(text);
@@ -212,6 +229,18 @@ Document parse_fixture(const std::string& text) {
     if (line == "<!-- user -->" || line == "<!-- assistant -->" || line == "<!-- note -->") {
       flush();
       kind = line.substr(5, line.size() - 9);
+      continue;
+    }
+    if (line.rfind("<!-- state:", 0) == 0 && line.size() >= 15 && line.compare(line.size() - 3, 3, "-->") == 0) {
+      flush();
+      kind = "assistant";
+      std::string spec = line.substr(11, line.size() - 14);
+      const std::size_t a = spec.find_first_not_of(' ');
+      spec = (a == std::string::npos) ? "" : spec.substr(a);
+      const std::size_t sp = spec.find(' ');
+      state = effect_state_from_name(spec.substr(0, sp));
+      if (state == EffectState::count_) state = EffectState::None;
+      fraction = sp == std::string::npos ? 0 : std::strtod(spec.c_str() + sp + 1, nullptr);
       continue;
     }
     if (line.rfind("<!-- tool:", 0) == 0 && line.size() >= 14 && line.compare(line.size() - 3, 3, "-->") == 0) {
@@ -292,7 +321,13 @@ struct App {
   std::optional<AppProfile> profile;
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
+  // m6: the clock EFFECTS are applied at, kept apart from clock_ms on purpose — the
+  // widgets' clock is scripted (a click pair is one second after the last), and motion
+  // wants the real one interactively and `--tick N` under --frame. One field each beats
+  // one field meaning two things at two times.
+  std::uint64_t effect_ms = 0;
   long last_frame_us = 0;
+  EffectReport effects;  // what the last frame's marks came to; an unknown kind is said, not swallowed
   std::size_t shipped_theme_index = 0;
 
   App() {
@@ -1056,6 +1091,9 @@ struct App {
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
       if (!layout_note.empty()) status += "  [" + layout_note + "]";
       if (!window_note.empty()) status += "  [" + window_note + "]";
+      // m6: an effect kind no host registered is SAID. It cannot draw an error panel —
+      // an effect has no window — so the status line is where it surfaces.
+      if (!effects.unknown_kinds.empty()) status += "  [no effect kind '" + effects.unknown_kinds[0] + "']";
       f.put_text(0, h - 1, status, theme.style(Role::label), w, ambiguous);
       // The hints come from the live table too.
       auto hk = [&](const char* action) { const std::vector<KeyEvent>& c = bindings.chords_for(action); return c.empty() ? std::string("-") : chord_display(c[0]); };
@@ -1064,6 +1102,10 @@ struct App {
       int hw = unicode::display_width(help);
       if (hw + unicode::display_width(status) + 2 <= w) f.put_text(w - hw, h - 1, help, theme.style(Role::text_muted), hw, ambiguous);
     }
+    // Phase 12 m6: THE ONE PLACE this host applies an effect — after the whole screen has
+    // composed, so a marked span under a modal's overlay animates over what the reader
+    // actually sees, and before the frame diff.
+    effects = apply_effects(f, theme, effect_ms, ambiguous);
     last_frame_us = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
     return f;
   }
@@ -1367,7 +1409,8 @@ int usage() {
                "       rolltui-studio FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "                                [--app PROFILE.json]  preview AS that app: its sources, samples, menus, actions and kinds\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
-               "       [--dump-role ROLE] [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
+               "       [--dump-role ROLE] [--tick MS] [--dump-tick] [--code-fold FOLD,CAP]\n"
+               "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
   return 2;
 }
 
@@ -1399,6 +1442,8 @@ int main(int argc, char** argv) {
   App app;
   app.depth = detect_color_depth(std::getenv("COLORTERM"), std::getenv("TERM"), std::getenv("ROLL_COLOR_DEPTH"));
   std::string frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
+  std::uint64_t tick_ms = 0;   // milestone 6: the elapsed time --frame renders at
+  bool dump_tick = false;
   std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR, app_profile_path;
   bool frame_sgr = false;
   for (int i = 1; i < argc; ++i) {
@@ -1429,6 +1474,8 @@ int main(int argc, char** argv) {
     else if (a == "--frame") frame_spec = next();
     else if (a == "--frame-sgr") { frame_spec = next(); frame_sgr = true; }
     else if (a == "--keys") keys_spec = next();
+    else if (a == "--tick") tick_ms = std::strtoull(next().c_str(), nullptr, 10);
+    else if (a == "--dump-tick") dump_tick = true;
     else if (a.rfind("--", 0) == 0) return usage();
     else app.fixture_path = a;
   }
@@ -1530,6 +1577,7 @@ int main(int argc, char** argv) {
     app.sync_look();
     app.ensure_layout();
     run_steps(app, scripted_keys(keys_spec, w, h));
+    app.effect_ms = tick_ms;  // --tick: the frame is rendered AT this elapsed time
     Frame f = app.render(false);
     if (frame_sgr) {
       std::string bytes = render_full(f, app.depth);
@@ -1540,6 +1588,12 @@ int main(int argc, char** argv) {
       print_frame_plain(f);
     }
     if (app.copied_any) std::printf("--- copied ---\n%s\n", app.copied.c_str());
+    if (dump_tick) {
+      // What this frame ASKS FOR, which is the whole of "the tick runs only while
+      // something is marked": no marks (or nothing that moves) prints "none".
+      const std::optional<int> tick = effect_tick_ms(f, app.theme);
+      std::printf("--- tick ---\n%s\n", tick ? std::to_string(*tick).c_str() : "none");
+    }
     if (!dump_role.empty()) {
       const Role r = role_from_name(dump_role);
       if (r == Role::count_) { std::fprintf(stderr, "no role named %s\n", dump_role.c_str()); return 1; }
@@ -1565,12 +1619,16 @@ int main(int argc, char** argv) {
   while (running) {
     app.maybe_reload_theme();
     app.maybe_reload_layout();
+    app.effect_ms = now_ms();
     Frame f = app.render(true);
     term.write(render_diff(have_prev ? &prev : nullptr, f, app.depth));
+    const bool ticking = app.transcript().wants_tick();
+    // m6: how long this host may sleep is a function of what the frame MARKED, so an
+    // idle screen still costs one wakeup every 250 ms and no more.
+    const int timeout = poll_timeout_ms(f, app.theme, ticking ? 50 : 250);
     prev = std::move(f);
     have_prev = true;
-    const bool ticking = app.transcript().wants_tick();
-    for (const Event& e : term.poll(ticking ? 50 : 250)) {
+    for (const Event& e : term.poll(timeout)) {
       app.clock_ms = now_ms();
       if (const ResizeEvent* r = std::get_if<ResizeEvent>(&e)) {
         app.resize(r->w, r->h);

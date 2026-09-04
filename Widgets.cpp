@@ -184,7 +184,7 @@ class WidgetBase : public Widget {
     auto it = w_->submits_.find(name);
     return it == w_->submits_.end() ? nullptr : &it->second;
   }
-  const Windows::TextFn* note_fn(const std::string& name) const {
+  const Windows::NoteFn* note_fn(const std::string& name) const {
     auto it = w_->notes_.find(name);
     return it == w_->notes_.end() ? nullptr : &it->second;
   }
@@ -304,15 +304,20 @@ class InputWidget : public WidgetBase {
     const Rect tr = text_rect(r);
     ed.layout(tr);
     ed.draw(f, theme, rn.focused);
-    const std::string note = note_text();
-    if (note.empty()) return;
-    const int nw = unicode::display_width(note, amb());
+    const Note note = note_info();
+    if (note.text.empty()) return;
+    const int nw = unicode::display_width(note.text, amb());
+    // Phase 12 m6: the note is DRAWN here and MARKED here, over exactly the cells it took
+    // — never a rectangle, and never the row it happens to sit on, so a note that shares
+    // its row with the prompt cannot animate the prompt.
     if (tr.h < r.h) {  // its own row, under the text
-      f.put_text(r.x, r.y + tr.h, note, theme.style(Role::text_muted), std::max(r.w, 0), amb());
+      const int used = f.put_text(r.x, r.y + tr.h, note.text, theme.style(Role::text_muted), std::max(r.w, 0), amb());
+      f.mark(r.x, r.y + tr.h, used, note.state, note.since_ms);
       return;
     }
     const int nx = std::max(r.x + r.w - nw, r.x + end_col() + 2);
-    f.put_text(nx, r.y, note, theme.style(Role::text_muted), std::max(r.x + r.w - nx, 0), amb());
+    const int used = f.put_text(nx, r.y, note.text, theme.style(Role::text_muted), std::max(r.x + r.w - nx, 0), amb());
+    f.mark(nx, r.y, used, note.state, note.since_ms);
   }
   // A layout-declared input with no host code still edits and submits; a host that
   // wants the action back (to quit on Eof, to offer an Ignored key elsewhere) calls
@@ -332,9 +337,9 @@ class InputWidget : public WidgetBase {
   bool handle(const Event& e) override { return event(e) != InputAction::Ignored; }
 
  private:
-  std::string note_text() const {
-    const Windows::TextFn* fn = note_fn(content.source);
-    return fn && *fn ? (*fn)() : std::string();
+  Note note_info() const {
+    const Windows::NoteFn* fn = note_fn(content.source);
+    return fn && *fn ? (*fn)() : Note{};
   }
   // The column just past the text (or past the placeholder while it is empty): where a
   // note may sit on the first row.
@@ -345,14 +350,14 @@ class InputWidget : public WidgetBase {
   // Rows of window text: the text's rows, capped at half the parent, plus one for the
   // note when it does not fit beside a single row.
   int rows_with_note(int width, int text_rows) const {
-    const std::string note = note_text();
+    const std::string note = note_info().text;
     return input_rows(text_rows, end_col(), note.empty() ? 0 : unicode::display_width(note, amb()), width, max_rows_);
   }
   // The note takes a row of its own exactly when the window has more than one: with a
   // single row it sits beside the text (and rows_with_note only ever returns 1 with a
   // note when it fits there, or when half the parent leaves no room for a second row).
   bool note_owns_row(int width) const {
-    return !note_text().empty() && rows_with_note(width, ed.rows_for(width)) > 1;
+    return !note_info().text.empty() && rows_with_note(width, ed.rows_for(width)) > 1;
   }
   Rect text_rect(Rect r) const {
     if (r.h > 1 && note_owns_row(r.w)) r.h -= 1;
@@ -644,7 +649,7 @@ void Windows::bind_submit(std::string name, SubmitFn submit, OnSubmit on_submit)
   on_submit_[name] = on_submit;
   submits_[std::move(name)] = std::move(submit);
 }
-void Windows::bind_note(std::string name, TextFn note) { notes_[std::move(name)] = std::move(note); }
+void Windows::bind_note(std::string name, NoteFn note) { notes_[std::move(name)] = std::move(note); }
 
 void Windows::set_highlighter(markdown::Highlighter h) {
   highlighter_ = std::move(h);

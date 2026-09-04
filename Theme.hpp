@@ -29,6 +29,28 @@
 // listed once in the load report, so "I forgot one" is visible and "everything is
 // grey" is not the silent result. Unknown keys are reported, not ignored.
 //
+// MOTION IS PART OF THE LOOK, so it is part of the theme file (Phase 12 m6,
+// rolltui/Effects.hpp). An optional "effects" object maps a widget's STATE to what it
+// looks like while it is in it; a file with no "effects" key is a still UI, which is the
+// default and the degrade rung:
+//
+//   "effects": {
+//     "waiting":   { "kind": "spinner", "frames": ["⠋","⠙","⠹","⠸"], "period_ms": 640 },
+//     "streaming": [ { "kind": "shimmer", "role": "accent_1", "width": 6 },
+//                    { "kind": "ellipsis", "frames": ["   ", ".  ", ".. ", "..."] } ],
+//     "progress":  { "kind": "bar", "role": "accent_2", "period_ms": 0 }
+//   }
+//
+// A state's value is one spec or an array of them (they STACK — glyph from one, colour
+// from another). Spec keys: `kind` (required; a built-in or a name the HOST registered —
+// which is why an unknown kind is not judged here, exactly as an unknown widget kind is
+// not judged by the layout loader), `frames` (a glyph cycle; every frame must be the same
+// display width, or it is a bad value), `role` / `roles` (role NAMES — an effect picks
+// between roles and never names a colour), `period_ms` (0 or less: a still effect that
+// asks for no tick), `width`, `steps`, `backward`. Unknown state names and unknown keys
+// are reported, like everywhere else here. Effects are NOT written as {"dark","light"}
+// pairs: a spinner is a property of the theme, not of the terminal's background.
+//
 // Colour depth: a theme is written in whatever colours its author likes; `downgrade`
 // maps a colour to what the terminal can show (truecolor → 256 → 16 → mono) as a
 // pure function with a table test, and `sgr` emits the escape sequence for a style at
@@ -41,6 +63,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Effects.hpp"
 #include "rolltui/Json.hpp"
 #include "rolltui/Style.hpp"
 
@@ -53,6 +76,9 @@ struct Theme {
   std::string name;
   json::Value meta;  // free-form file metadata ("meta" in the file): a generator's seed, claimed badges
   std::array<Style, kRoleCount> styles{};
+  // What each widget STATE looks like while it lasts (Effects.hpp). Empty — the default,
+  // and what a file with no "effects" key gets — is a still UI.
+  EffectMap effects;
   const Style& style(Role r) const { return styles[static_cast<std::size_t>(r)]; }
   Style& style(Role r) { return styles[static_cast<std::size_t>(r)]; }
 };

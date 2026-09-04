@@ -251,6 +251,40 @@
         "bg": "none",
         "bold": true
       }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "|",
+          "/",
+          "-",
+          "\\"
+        ],
+        "period_ms": 400
+      },
+      "streaming": {
+        "kind": "pulse",
+        "roles": [
+          "text_muted",
+          "text"
+        ],
+        "period_ms": 1200
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "menu_selected"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 400
+      }
     }
   },
   "layout": {

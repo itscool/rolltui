@@ -68,6 +68,7 @@ add_library(rolltui STATIC
   Diff.cpp
   Json.cpp
   Theme.cpp
+  Effects.cpp                 # Phase 12 m6: motion is the theme's, a state is the widget's
   Screen.cpp
   Keys.cpp
   Terminal.cpp                # the one unit that touches a file descriptor
@@ -126,6 +127,11 @@ add_rolltui_test(rolltui-markdown-test tests/markdown_test.cpp)
 
 # Milestone 5: theme (roles → styles), our JSON, downgrade, SGR, the grep control.
 add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
+
+# Phase 12 m6: effects — the two properties over EVERY registered kind (an effect never
+# changes a span's width and never writes outside its span), the built-in kind table, and
+# "no wakeups with no marks".
+add_rolltui_test(rolltui-effects-test tests/effects_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
 # (table), and Terminal on a real pty with a forked child killed by SIGTERM.

@@ -32,6 +32,7 @@
 //
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -45,6 +46,7 @@
 
 #include "rolltui/AppProfile.hpp"
 #include "rolltui/Bindings.hpp"
+#include "rolltui/Effects.hpp"
 #include "rolltui/Json.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Screen.hpp"
@@ -134,6 +136,9 @@ struct App {
   int w = 80, h = 24;
   std::string brush = "#";
   std::string note;
+  // m6: the clock effects are applied at — 0 under --frame, so a frame dump stays a pure
+  // function of state; the real one in the event loop.
+  std::uint64_t effect_ms = 0;
 
   Rect area() const { return {0, 0, w, std::max(h - 1, 0)}; }
 
@@ -196,6 +201,10 @@ struct App {
       if (!note.empty()) status += "  [" + note + "]";
       f.put_text(0, h - 1, status, theme.style(Role::value), w);
     }
+    // Phase 12 m6, in the THIRD host too — one line, and it is the same line roll and the
+    // studio have. A paint app marks nothing today, so this frame is unchanged; the point
+    // is that a `canvas` that DID mark a span would move here with no library change.
+    apply_effects(f, theme, effect_ms);
     return f;
   }
 };
@@ -329,11 +338,14 @@ int main(int argc, char** argv) {
   Frame prev;
   bool have_prev = false;
   for (;;) {
+    app.effect_ms = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     Frame f = app.render();
     term.write(render_diff(have_prev ? &prev : nullptr, f, ColorDepth::TrueColor));
+    const int timeout = poll_timeout_ms(f, app.theme, 250);
     prev = std::move(f);
     have_prev = true;
-    for (const Event& e : term.poll(250)) {
+    for (const Event& e : term.poll(timeout)) {
       if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
         if (k->ctrl && k->key == Key::Char && k->ch == 'q') return 0;
       }

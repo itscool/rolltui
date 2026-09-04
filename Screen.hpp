@@ -36,6 +36,7 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/Effects.hpp"
 #include "rolltui/Style.hpp"
 #include "rolltui/Theme.hpp"
 
@@ -94,8 +95,19 @@ class Frame {
   // Applies `style`'s set colours (fg/bg that are not None) and its attribute bits to
   // every cell in r, leaving the glyphs — a modal's overlay (Layout.hpp).
   void tint(Rect r, const Style& style);
+  // Replaces one cell's style whole, leaving its glyph — what an effect does when it
+  // recolours without redrawing (Effects.hpp). Out of bounds is a no-op.
+  void set_style(int x, int y, const Style& style);
   void set_cursor(int x, int y, bool visible) { cursor_ = {x, y, visible}; }
   const Cursor& cursor() const { return cursor_; }
+
+  // ---- MARKS: what a widget says instead of animating (Effects.hpp) -------------------
+  // `cells` cells from (x, y) on one row are in `state`. That is the whole of a widget's
+  // vocabulary for motion: it never names a glyph, a colour or a period, and the theme
+  // may map the state to nothing at all. A mark with no state or no cells is not
+  // recorded, so "is anything marked" and "does anything move" stay the same question.
+  void mark(int x, int y, int cells, EffectState state, std::uint64_t since_ms = 0, double fraction = 0);
+  const std::vector<Mark>& marks() const { return marks_; }
 
   bool operator==(const Frame&) const = default;
 
@@ -105,6 +117,7 @@ class Frame {
   std::vector<Cell> cells_;
   Cursor cursor_;
   std::vector<std::string> links_;  // links_[id - 1]
+  std::vector<Mark> marks_;
 };
 
 // The frame as plain text: one line per row, continuation cells skipped, trailing

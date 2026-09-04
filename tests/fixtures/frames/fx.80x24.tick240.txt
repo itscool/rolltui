@@ -1,0 +1,26 @@
+┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
+│ > show me what a state looks like             │ theme   default-dark         │
+│                                               │ keys    default              │
+│ ⠸ waiting for the first token                 │ layout  default              │
+│                                               │ size    80x24                │
+│ streaming a reply now ...                     │ line    1/15                 │
+│                                               │ follow  yes                  │
+│ indexing the corpus, 45 percent of the way    │ depth   truecolor            │
+│ through it                                    │ focus   input                │
+│                                               │                              │
+│ saved                                         │                              │
+│                                               │                              │
+│ An ordinary entry, which marks nothing at all │                              │
+│ and can never move — the whole point of the   │                              │
+│ state being a document fact rather than a     │                              │
+│ rendering one.                                │                              │
+│                                               │                              │
+│                                               │                              │
+│                                               │                              │
+│                                               │                              │
+├───────────────────────────────────────────────┤                              │
+│ > type here                                   │                              │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+ default-dark  default  80x24  line 1/15  follow  truecolor  focus:input
+--- tick ---
+38

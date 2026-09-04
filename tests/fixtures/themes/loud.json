@@ -1,9 +1,9 @@
 {
-  "name": "default-light",
-  "mode": "light",
+  "name": "loud",
+  "mode": "dark",
   "depth": "auto",
   "colours": {
-    "name": "default-light",
+    "name": "loud",
     "roles": {
       "text": {
         "fg": {
@@ -515,28 +515,46 @@
       }
     },
     "effects": {
-      "waiting": {
-        "kind": "spinner",
-        "frames": [
-          "⠋",
-          "⠙",
-          "⠹",
-          "⠸",
-          "⠼",
-          "⠴",
-          "⠦",
-          "⠧"
-        ],
-        "period_ms": 640
-      },
-      "streaming": {
-        "kind": "shimmer",
-        "roles": [
-          "accent_1"
-        ],
-        "period_ms": 1200,
-        "width": 6
-      },
+      "waiting": [
+        {
+          "kind": "spinner",
+          "frames": [
+            "<",
+            "^",
+            ">",
+            "v"
+          ],
+          "period_ms": 400
+        },
+        {
+          "kind": "pulse",
+          "roles": [
+            "text_muted",
+            "accent_1"
+          ],
+          "period_ms": 400
+        }
+      ],
+      "streaming": [
+        {
+          "kind": "ellipsis",
+          "frames": [
+            "   ",
+            ".  ",
+            ".. ",
+            "..."
+          ],
+          "period_ms": 400
+        },
+        {
+          "kind": "shimmer",
+          "roles": [
+            "accent_3"
+          ],
+          "period_ms": 800,
+          "width": 5
+        }
+      ],
       "progress": {
         "kind": "bar",
         "roles": [
@@ -547,7 +565,7 @@
       "flash": {
         "kind": "blink",
         "roles": [
-          "find_current"
+          "error"
         ],
         "period_ms": 400
       }

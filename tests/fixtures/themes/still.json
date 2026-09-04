@@ -1,9 +1,9 @@
 {
-  "name": "default-light",
-  "mode": "light",
+  "name": "still",
+  "mode": "dark",
   "depth": "auto",
   "colours": {
-    "name": "default-light",
+    "name": "still",
     "roles": {
       "text": {
         "fg": {
@@ -512,44 +512,6 @@
           "dark": "#14161a",
           "light": "#fafaf8"
         }
-      }
-    },
-    "effects": {
-      "waiting": {
-        "kind": "spinner",
-        "frames": [
-          "⠋",
-          "⠙",
-          "⠹",
-          "⠸",
-          "⠼",
-          "⠴",
-          "⠦",
-          "⠧"
-        ],
-        "period_ms": 640
-      },
-      "streaming": {
-        "kind": "shimmer",
-        "roles": [
-          "accent_1"
-        ],
-        "period_ms": 1200,
-        "width": 6
-      },
-      "progress": {
-        "kind": "bar",
-        "roles": [
-          "accent_2"
-        ],
-        "period_ms": 0
-      },
-      "flash": {
-        "kind": "blink",
-        "roles": [
-          "find_current"
-        ],
-        "period_ms": 400
       }
     }
   },

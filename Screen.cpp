@@ -24,6 +24,18 @@ void Frame::clear(const Style& fill) {
   Cell c;
   c.style = fill;
   std::fill(cells_.begin(), cells_.end(), c);
+  marks_.clear();  // a mark names cells that have just been erased
+}
+
+void Frame::set_style(int x, int y, const Style& style) {
+  if (x < 0 || y < 0 || x >= w_ || y >= h_) return;
+  mut(x, y).style = style;
+}
+
+void Frame::mark(int x, int y, int cells, EffectState state, std::uint64_t since_ms, double fraction) {
+  if (cells <= 0 || state == EffectState::None) return;
+  if (y < 0 || y >= h_ || x >= w_) return;
+  marks_.push_back({x, y, cells, state, since_ms, fraction});
 }
 
 std::uint32_t Frame::link_id(std::string_view url) {

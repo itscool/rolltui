@@ -216,6 +216,10 @@ void Transcript::build(const Document& doc, int width) {
   const std::size_t n = doc.entries.size();
   layouts_.assign(n, nullptr);
   starts_.assign(n, 0);
+  // Phase 12 m6. An entry's STATE is copied here, not into the cache key: it changes the
+  // marks draw() emits and never a single line, so a turn going from waiting to streaming
+  // must not re-wrap the transcript.
+  states_.assign(n, EntryState{});
   for (auto& [id, c] : cache_) c.seen = false;
   std::size_t g = 0;
   for (std::size_t i = 0; i < n; ++i) {
@@ -233,6 +237,7 @@ void Transcript::build(const Document& doc, int width) {
       ++stats_.entries_relaid;
     }
     it->second.seen = true;
+    states_[i] = {e.state, e.progress, e.state_since_ms};
     layouts_[i] = &it->second.layout;
     starts_[i] = g;
     g += block_len(i);
@@ -509,6 +514,7 @@ void Transcript::draw(Frame& frame, const Theme& theme) const {
       me = std::upper_bound(matches_.begin(), matches_.end(), r.entry, entry_by).base();
     }
     int x = text_area_.x;
+    const int row_start = x;
     bool stop = false;
     for_each_cell(line, amb, [&](const Span& sp, std::size_t k, std::string_view gt, int w) {
       if (stop || x + w > right) { stop = true; return; }
@@ -528,6 +534,12 @@ void Transcript::draw(Frame& frame, const Theme& theme) const {
       const std::uint32_t link = sp.href.empty() ? 0 : frame.link_id(sp.href);
       x += frame.put(x, y, gt, w, st, link);
     });
+    // Phase 12 m6: this widget's ENTIRE contribution to motion. It marks the cells it just
+    // drew with the entry's state and stops — no glyph, no colour, no clock of its own.
+    // One mark per DRAWN ROW, so a state on a wrapped entry animates along each row rather
+    // than across a rectangle that has no text in half of it.
+    const EntryState& es = states_[r.entry];
+    if (es.state != EffectState::None && x > row_start) frame.mark(row_start, y, x - row_start, es.state, es.since_ms, es.progress);
   }
   const std::string marker = area_.h > 0 ? scroll_marker_text(lines_below(), text_area_.w, amb) : std::string();
   if (!marker.empty()) {

@@ -77,6 +77,15 @@ int main() {
     const ThemePreset* m = ThemePresets::shipped("mono");
     std::optional<Theme> mono = resolve_colours(*m, ThemeMode::Dark, rep);
     check(mono && rep.clean() && mono->styles == builtin_theme("mono")->styles, "shipped 'mono' is the built-in mono");
+    // Phase 12 m6: the shipped files carry the built-ins' MOTION too. Without this the
+    // two definition sites could drift in exactly the way that matters least visibly and
+    // most: a built-in that spins and a shipped file — the one every session actually
+    // runs — that is silently still.
+    check(dark->effects == builtin_theme("default-dark")->effects && light->effects == builtin_theme("default-light")->effects,
+          "shipped 'default' carries the built-in's effects at both modes");
+    check(mono->effects == builtin_theme("mono")->effects, "…and shipped 'mono' the mono theme's own");
+    check(!dark->effects.empty() && !mono->effects.empty() && !(dark->effects == mono->effects),
+          "…and the two are genuinely different looks, not one map copied twice");
     check(d->mode == "auto" && d->depth == "auto", "shipped 'default' is mode auto, depth auto");
     check(ThemePresets::shipped("default-dark")->mode == "dark" && ThemePresets::shipped("default-light")->mode == "light",
           "'default-dark' / 'default-light' are the same colours pinned to a mode");

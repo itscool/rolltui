@@ -25,10 +25,17 @@
 // the user's toggles by id. The summary line is chrome: not selectable text. A folded
 // entry's contribution to a copied selection is its summary.
 //
+// AN ENTRY MAY BE IN A STATE (Phase 12 m6, rolltui/Effects.hpp) — the entry awaiting its
+// first token, the one being streamed into, the one carrying a fraction. That is ALL a
+// document says about motion: `state` is a name, `progress` is a number, and what either
+// of them looks like is the theme's. `state` is not part of the layout cache's key
+// because it changes nothing about the LINES — the transcript marks the cells it has
+// already drawn, so a state that changes mid-stream costs no re-wrap.
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "rolltui/Effects.hpp"
 #include "rolltui/Style.hpp"
 
 namespace rolltui {
@@ -44,6 +51,10 @@ struct DocEntry {
   bool foldable = false;
   std::string summary;     // the one-line summary a foldable entry shows
   bool folded = true;      // initial fold state of a foldable entry
+  // Motion (see above). None — the default — is a still entry under every theme.
+  EffectState state = EffectState::None;
+  double progress = 0;     // EffectState::Progress: 0..1
+  std::uint64_t state_since_ms = 0;  // when it entered `state`; 0 → the shared clock's phase
 };
 
 struct Document {

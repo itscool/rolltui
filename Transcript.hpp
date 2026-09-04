@@ -328,8 +328,17 @@ class Transcript {
   void end_drag();
   static void unit_around(const std::string& text, std::size_t off, bool word, std::size_t& b, std::size_t& en);
 
+  // Phase 12 m6: what each entry SAYS about motion this frame — copied from the document
+  // in build(), never cached, because it changes the marks and not the lines.
+  struct EntryState {
+    EffectState state = EffectState::None;
+    double progress = 0;
+    std::uint64_t since_ms = 0;
+  };
+
   std::unordered_map<std::string, Cached> cache_;
   std::vector<const EntryLayout*> layouts_;  // per entry, this frame
+  std::vector<EntryState> states_;           // per entry, this frame
   std::vector<std::size_t> starts_;          // global line index of each entry's block
   std::size_t total_ = 0;
   Rect area_, text_area_;
