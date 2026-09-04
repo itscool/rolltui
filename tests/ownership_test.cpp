@@ -66,7 +66,9 @@ std::vector<std::string> library_sources(bool headers_only) {
     if (rel.rfind("tests/", 0) == 0 || rel.rfind("third_party/", 0) == 0 || rel.rfind("ucd/", 0) == 0 ||
         rel.rfind("presets/", 0) == 0)
       continue;
-    if (rel == "unicode_tables.hpp" || rel == "unicode_tables.cpp") continue;  // generated
+    // The generated tables are a .h/.c pair since Phase 14 m5, so the extension filter
+    // below already skips them; the name check stays as the statement of intent.
+    if (rel == "unicode_tables.h" || rel == "unicode_tables.c") continue;  // generated
     const std::string ext = e.path().extension().string();
     if (headers_only ? ext != ".hpp" : (ext != ".hpp" && ext != ".cpp")) continue;
     if (!headers_only && rel.rfind("tools/", 0) == 0) continue;  // a TOOL is a host, not the library

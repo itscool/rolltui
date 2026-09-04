@@ -1,7 +1,7 @@
 #pragma once
 //
 // rolltui/Unicode.hpp — the Unicode knowledge a terminal renderer needs, as pure
-// functions over the generated tables (unicode_tables.hpp/.cpp). Nothing from roll.
+// functions over the generated tables (unicode_tables.h/.c). Nothing from roll.
 //
 //   property lookups     line_break_class, east_asian_width, grapheme_break, ...
 //   UTF-8                decode_utf8 (lossy: each bad byte becomes U+FFFD, one byte
@@ -38,7 +38,7 @@
 #include <string_view>
 #include <vector>
 
-#include "rolltui/unicode_tables.hpp"
+#include "rolltui/unicode_tables.h"
 
 namespace rolltui::unicode {
 
