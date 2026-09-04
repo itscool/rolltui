@@ -3,6 +3,8 @@
 
 #include <vector>
 
+#include "rolltui/c/rolltui_lifetime.h"
+
 namespace rolltui {
 
 namespace {
@@ -68,3 +70,8 @@ void shutdown() {
 }
 
 }  // namespace rolltui
+
+// The same registration, for a C module that retains something (rolltui/c/rolltui_lifetime.h).
+// One function and no state of its own: whichever language a module is written in, its
+// releaser ends up in the same list and runs in the same reverse order.
+extern "C" void rolltui_on_shutdown(void (*fn)(void)) { rolltui::on_shutdown(fn); }

@@ -66,6 +66,22 @@
 //             for the second — the one kind that shows the base, which is what makes it
 //             read as attention rather than as colour
 //
+// PHASE 15 m2 — THE ENGINE IS BEHIND A C BOUNDARY. The kinds, the registry, the applier
+// and the tick live in `rolltui/c/rolltui_effects.h`, in one of two implementations chosen
+// by `-DROLLTUI_C` (`EffectsCpp.cpp` or `c/rolltui_effects.c`); this header is the
+// vocabulary, the theme's data and the C++ shape. `EffectCell` and `EffectOut` ARE the C
+// structs (one definition, Phase 14 m2's rule), so a host's kind reads and writes exactly
+// the bytes the applier does.
+//
+// TWO THINGS A CALLER CAN SEE, both forced by the boundary rather than chosen:
+//   - `effect_kind()` became `effect_kind_resolves()`. A resolved kind is now a function
+//     and a context inside the registry rather than an object with an address, so there is
+//     nothing to hand back a pointer to — and every caller only ever asked "does this
+//     resolve?" anyway. Same shape as `Frame::marks()` becoming count-plus-index in m2.
+//   - `EffectOut::glyph` is an inline buffer with a stated cap, set through `set_glyph()`
+//     and read through `glyph_view()`. An override past the cap is refused and counted in
+//     `glyphs_refused`, exactly as one of the wrong width is — see the C header for why a
+//     cap is right here and a spill is right for a `Cell`.
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -74,6 +90,7 @@
 #include <vector>
 
 #include "rolltui/Style.hpp"
+#include "rolltui/c/rolltui_effects.h"
 
 namespace rolltui {
 
@@ -132,24 +149,20 @@ struct EffectMap {
 
 // ---- the pure function ------------------------------------------------------------------
 
-// Everything a kind is allowed to know about the cell it is answering for.
-struct EffectCell {
-  std::uint64_t elapsed_ms = 0;  // since the span entered the state
-  int index = 0;                 // 0-based, within the span
-  int length = 1;                // the span's length in cells
-  double fraction = 0;           // Progress: 0..1
-  Style base;                    // the cell's style as drawn (a stacked kind sees the previous one's)
-  bool ambiguous_wide = false;   // this terminal's East Asian ambiguous width, so a kind
-                                 // measures its own frames the way the applier will
-};
-
-// What it may answer. Anything it does not set is left as drawn.
-struct EffectOut {
-  bool has_glyph = false;
-  std::string glyph;  // must be the same display width as the cell it lands on
-  bool has_style = false;
-  Style style;
-};
+// ONE DEFINITION (Phase 14 m2's rule, applied in m2 of this phase): both are declared in
+// `rolltui/c/rolltui_effects.h` and compiled by both languages, so there is nothing to
+// convert at the seam and nothing to drift.
+//
+//   EffectCell  everything a kind is allowed to know about the cell it answers for:
+//               elapsed_ms (since the span entered the state), index (0-based, within the
+//               span), length (the span, in cells), fraction (Progress: 0..1), base (the
+//               cell's style as drawn — a stacked kind sees the previous one's), and
+//               ambiguous_wide, so a kind measures its own frames the way the applier will.
+//   EffectOut   what it may answer; anything it does not set is left as drawn. A glyph is
+//               written with `set_glyph()` and must be the same display width as the cell
+//               it lands on.
+using EffectCell = RolltuiEffectCell;
+using EffectOut = RolltuiEffectOut;
 
 using EffectFn = std::function<void(const EffectSpec&, const Theme&, const EffectCell&, EffectOut&)>;
 
@@ -161,8 +174,11 @@ void clear_registered_effect_kinds();  // tests, and a host tearing down
 // Every kind name that resolves right now, in RESOLUTION ORDER: the library's, then the
 // host's. What the properties are asserted over.
 std::vector<std::string> effect_kind_names();
-// nullptr when nothing answers for `name` — which is a HOST fact and never a theme error.
-const EffectFn* effect_kind(std::string_view name);
+// False when nothing answers for `name` — which is a HOST fact and never a theme error.
+// (Phase 15 m2: this was `const EffectFn* effect_kind(...)`. A resolved kind is a function
+// and a context inside the registry now, not an object with an address, and every caller
+// only ever asked whether it resolved.)
+bool effect_kind_resolves(std::string_view name);
 // The library's closed table, for a test and for anything that must refuse to shadow it.
 bool is_builtin_effect_kind(std::string_view name);
 

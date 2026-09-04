@@ -34,10 +34,14 @@ if(ROLLTUI_C)
   # of these two files linked. The module cannot be half-ported — one Frame, one
   # implementation — so this line is the whole of the switch for it.
   # m3 2026-09-04 adds the wrap engine the same way.
-  set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c)
+  # Phase 15 m2 2026-09-04 adds the diff colouriser and the effects engine — the two
+  # halves of one measurement: a pure function with almost no ownership, and a registry
+  # with a process-wide retainer (plan/phase-15.md m2).
+  set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
+                    c/rolltui_diff.c c/rolltui_effects.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
-  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp)
+  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)

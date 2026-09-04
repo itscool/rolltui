@@ -127,4 +127,47 @@ class Scratch {
   bool registered_ = false;
 };
 
+// A PER-THREAD C HANDLE, made on first use (Phase 15 m2). Every ported module keeps its
+// working memory in a handle the CALLER owns (`rolltui/c/rolltui_unicode.h`, rule 1), so
+// every C++ adapter that calls one of those boundaries needs somewhere to keep one. This
+// is that somewhere, ONCE, instead of once per module: `Unicode.cpp` hand-wrote it for
+// Phase 14 m5, and `Diff.cpp` and `Effects.cpp` were about to be the second and third
+// copies — which is Phase 13's finding verbatim (seven independently invented allocations,
+// each written by someone with no reason to look at the others).
+//
+// **TWO WAYS OUT, AND IT NEEDS BOTH.** The destructor covers a thread that simply exits;
+// the registration covers `rolltui::release_thread()`, which is what lets a leak check see
+// the number BEFORE the process ends. Whichever runs first nulls the pointer, so the other
+// finds nothing to do, and the next `get()` rebuilds — which is what keeps `shutdown()`
+// safe to call in the middle of a session rather than only at the very end.
+//
+// Declare one `static thread_local` at the function that owns it, never as a member: the
+// handle's lifetime is the THREAD's, and a member would make it an object's.
+template <typename T, T* (*Make)(), void (*Free)(T*)>
+class ThreadHandle {
+ public:
+  ThreadHandle() = default;
+  ThreadHandle(const ThreadHandle&) = delete;
+  ThreadHandle& operator=(const ThreadHandle&) = delete;
+  ~ThreadHandle() { Free(p_); }  // every `Free` on these boundaries is a no-op on nullptr
+
+  T* get() {
+    if (!p_) {
+      p_ = Make();
+      // Re-registered on every rebuild, deliberately: `release_thread()` clears its own
+      // registry as it runs, so a handle made again afterwards must say so again or it
+      // would be released only the first time.
+      detail::on_thread_release([](void* h) { static_cast<ThreadHandle*>(h)->release(); }, this);
+    }
+    return p_;
+  }
+
+ private:
+  void release() {
+    Free(p_);
+    p_ = nullptr;
+  }
+  T* p_ = nullptr;  // OWNED: this object frees it, and nothing else ever holds it
+};
+
 }  // namespace rolltui

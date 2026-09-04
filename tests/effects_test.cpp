@@ -111,14 +111,14 @@ int main() {
   {
     const std::vector<std::string> names = effect_kind_names();
     for (const char* k : {"spinner", "ellipsis", "bar", "pulse", "shimmer", "gradient", "blink"})
-      check(effect_kind(k) != nullptr && is_builtin_effect_kind(k), std::string("built-in kind '") + k + "' resolves");
+      check(effect_kind_resolves(k) && is_builtin_effect_kind(k), std::string("built-in kind '") + k + "' resolves");
     check(names.size() == 7, "the library's table is CLOSED at seven kinds (" + std::to_string(names.size()) + ")");
     std::string why;
     check(!register_effect_kind("spinner", [](const EffectSpec&, const Theme&, const EffectCell&, EffectOut&) {}, &why) &&
               why.find("library's own") != std::string::npos,
           "registering a LIBRARY kind is refused by name [" + why + "]");
     check(!register_effect_kind("", [](const EffectSpec&, const Theme&, const EffectCell&, EffectOut&) {}, &why), "an empty kind name is refused");
-    check(effect_kind("confetti") == nullptr, "an unregistered name resolves to nothing (a HOST fact, not a theme error)");
+    check(!effect_kind_resolves("confetti"), "an unregistered name resolves to nothing (a HOST fact, not a theme error)");
   }
 
   // ---- the host's two kinds: one well-behaved, one that lies ------------------------
@@ -130,8 +130,7 @@ int main() {
                                  if ((in.index + static_cast<int>(in.elapsed_ms / 100)) % 2) return;
                                  out.has_style = true;
                                  out.style = th.style(s.roles.empty() ? Role::accent_1 : s.roles[0]);
-                                 out.has_glyph = true;
-                                 out.glyph = "#";
+                                 out.set_glyph("#");
                                },
                                &why),
           "a host registers its own kind [" + why + "]");
@@ -141,8 +140,7 @@ int main() {
                                [](const EffectSpec&, const Theme& th, const EffectCell& in, EffectOut& out) {
                                  out.has_style = true;
                                  out.style = th.style(Role::error);
-                                 out.has_glyph = true;
-                                 out.glyph = (in.index % 2) ? "" : "\xE4\xBD\xA0";  // 0 cells / 2 cells
+                                 out.set_glyph((in.index % 2) ? "" : "\xE4\xBD\xA0");  // 0 cells / 2 cells
                                },
                                &why),
           "…and a kind that LIES about its width, which is the sweep's control");
@@ -388,7 +386,7 @@ int main() {
         const std::vector<EffectSpec>& specs = t->effects.for_state(static_cast<EffectState>(i));
         check_quiet(!specs.empty(), t->name + " maps " + std::string(effect_state_name(static_cast<EffectState>(i))));
         for (const EffectSpec& s : specs) {
-          check_quiet(effect_kind(s.kind) != nullptr, t->name + ": kind '" + s.kind + "' resolves");
+          check_quiet(effect_kind_resolves(s.kind), t->name + ": kind '" + s.kind + "' resolves");
           if (s.frames.empty()) continue;
           const int w = unicode::display_width(s.frames[0]);
           for (const std::string& fr : s.frames) {

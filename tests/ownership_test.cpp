@@ -201,7 +201,14 @@ int main() {
     // its one hand-rolled owner into a `unique_ptr`.
     const Row recorded[] = {
         {"AppProfile.hpp", 0},   {"Bindings.hpp", 1},      {"Diff.hpp", 0},        {"Document.hpp", 0},
-        {"Effects.hpp", 2},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 0},
+        // Effects.hpp 2 → 1, RE-RECORDED 2026-09-04 by Phase 15 m2, and this is the census
+        // catching a REMOVAL, which it is meant to do just as loudly as an addition. The
+        // pointer was `const EffectFn* effect_kind(std::string_view)`. A resolved kind is a
+        // function and a context inside the registry now, not an object with an address, so
+        // there is nothing to hand back a pointer TO — and every caller only ever asked
+        // whether it resolved, which `effect_kind_resolves` answers with a bool. The one
+        // left is `std::string* why`, the optional reason-out on `register_effect_kind`.
+        {"Effects.hpp", 1},      {"Input.hpp", 0},         {"Json.hpp", 0},        {"Keys.hpp", 0},
         {"Layout.hpp", 8},       {"Markdown.hpp", 0},      {"Marker.hpp", 0},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
@@ -223,7 +230,21 @@ int main() {
         //     which is cleared by `release_thread()` before any of them could dangle.
         //   - `void* p` in the captureless lambda that casts it back to the Scratch — the
         //     same borrow, one frame later.
-        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 6},     {"Screen.hpp", 4},
+        // Scratch.hpp 6 → 9 and Screen.hpp 4 → 6, RE-RECORDED 2026-09-04 by Phase 15 m2.
+        // Scratch.hpp's three are all `ThreadHandle`, the per-thread C handle the ported
+        // modules' working memory lives in (`Unicode.cpp` hand-wrote this for Phase 14 m5;
+        // `Diff.cpp` and `Effects.cpp` were about to be copies two and three):
+        //   - `T* p_` — the one pointer here that OWNS. It is a `unique_ptr` in spirit and
+        //     not in fact because the boundary's free is a C function taken as a template
+        //     parameter; the class is move-less, copy-less and its destructor is the only
+        //     other way out, which is the same guarantee with the deleter named up front.
+        //   - `T* get()` — a BORROW of that handle, handed to the boundary for one call.
+        //   - `void* h` in the captureless release lambda — the same borrow one frame
+        //     later, cast back to the handle, exactly as `Scratch`'s already is.
+        // Screen.hpp's two are `RolltuiFrame* handle()` and its const overload: a BORROW of
+        // the handle the Frame OWNS, so that `Effects.cpp` can hand the frame to an applier
+        // written in the other language. Never stored; the window is the Frame's lifetime.
+        {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 9},     {"Screen.hpp", 6},
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 10},
@@ -290,7 +311,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 57, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 61, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

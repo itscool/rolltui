@@ -27,7 +27,9 @@
 #include <string>
 #include <vector>
 
+#include "rolltui/Diff.hpp"
 #include "rolltui/Document.hpp"
+#include "rolltui/Effects.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Lifetime.hpp"
 #include "rolltui/Memory.hpp"
@@ -71,6 +73,37 @@ void paint_something() {
   (void)render_full(f, ColorDepth::TrueColor);
 }
 
+// PHASE 15 m2: THE EFFECT-KIND REGISTRY, POPULATED — and this function is the reason the
+// zero below means anything. The registry is the first PROCESS-WIDE RETAINER in the ported
+// slice, and it holds three things per host kind: a table slot, a COPY of the name, and the
+// host's own callable, which a `void*` cannot destroy without being told how. A test that
+// asserted `live_bytes == 0` over a registry NOBODY EVER FILLED would be this repo's oldest
+// failure — an instrument reporting zero because it was pointed at nothing.
+//
+// It also exercises the two per-thread handles the same milestone added (the effects
+// scratch and the diff scratch), which `release_thread()` has to hand back for the same
+// number to come out.
+void use_the_ported_modules(const char* when) {
+  std::string why;
+  check(register_effect_kind("lifetime-probe",
+                             [](const EffectSpec&, const Theme&, const EffectCell&, EffectOut& out) {
+                               out.set_glyph("*");
+                             },
+                             &why),
+        std::string("a host kind registers, so the registry HOLDS something — ") + when + " [" + why + "]");
+  const Theme theme = *builtin_theme("default-dark");
+  Frame f(40, 4, theme.style(Role::text));
+  f.put_text(0, 1, "waiting for the model", theme.style(Role::text), 40);
+  f.mark(0, 1, 8, EffectState::Waiting);
+  const EffectReport rep = apply_effects(f, theme, 137);
+  check(rep.marks_drawn == 1 && rep.clean(),
+        std::string("…and an effect is APPLIED, so its scratch is populated too — ") + when);
+  check(effect_tick_ms(f, theme).has_value(), std::string("…and the frame asks for a wakeup — ") + when);
+  const std::vector<std::string> block = {"-one two three", "+one TWO three"};
+  check(diff_spans("diff", block, 1).size() == 3,
+        std::string("…and a diff line is coloured, which is the other new handle — ") + when);
+}
+
 }  // namespace
 
 int main() {
@@ -94,6 +127,21 @@ int main() {
   // ---- the real thing ----------------------------------------------------------------
   paint_something();
   check(builtin_layout("default") != nullptr, "a scene painted, so the caches and scratch are populated");
+  const std::size_t before_registry = mem::stats().live_bytes;
+  use_the_ported_modules("first time");
+#ifdef ROLLTUI_C_BUILD
+  // THE ARMING CHECK for the retainer this milestone added: with the registry in C every
+  // byte of it is an explicit allocation, so the gauge must SEE the retention appear before
+  // it is trusted to report it gone.
+  check(mem::stats().live_bytes > before_registry,
+        "ROLLTUI_C=ON: the gauge SEES the effect registry's retention [" + std::to_string(before_registry) + " → " +
+            std::to_string(mem::stats().live_bytes) + " B]");
+#else
+  // ROLLTUI_C=OFF the registry is a std::map, so the gauge cannot see it at all — the same
+  // honest limit budget_test asserts. The zero below is correspondingly weaker here, which
+  // is exactly what Lifetime.hpp says and what the port is steadily fixing.
+  (void)before_registry;
+#endif
 
   shutdown();
   const mem::Stats after = mem::stats();
@@ -110,6 +158,10 @@ int main() {
   check(builtin_layout("default") != nullptr, "…and the caches REBUILD, so the library still works after it");
   paint_something();
   check(true, "…including painting a whole frame again");
+  // REGISTERING THE SAME NAME AGAIN IS THE PROOF THE REGISTRY WAS REALLY EMPTIED: a second
+  // registration of a live name is refused by design, so this can only pass if `shutdown()`
+  // released the entry rather than merely leaving the bytes unaccounted.
+  use_the_ported_modules("after a shutdown");
 
   shutdown();
   check(mem::stats().live_bytes == 0, "a second shutdown() is safe and still lands on zero");

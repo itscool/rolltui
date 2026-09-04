@@ -58,6 +58,14 @@
 //   the renderer resolves overlaps by dropping the later span AND reporting it. A
 //   highlighter that needed clamping to look right would be a highlighter that is wrong.
 //
+// PHASE 15 m2 — THE COLOURISER IS BEHIND A C BOUNDARY (`rolltui/c/rolltui_diff.h`), in one
+// of two implementations chosen by `-DROLLTUI_C` (`DiffCpp.cpp` or `c/rolltui_diff.c`).
+// Nothing a caller can see changed: `diff_spans` still returns the spans by value, because
+// its shape is the `markdown::Highlighter` contract and not this module's choice. What is
+// worth knowing is one level down — the boundary reads the BLOCK through an accessor rather
+// than being handed an array of lines, so a 100-line diff colours in linear time and copies
+// no line, and it is handed the seven ROLES it may emit rather than mirroring the `Role`
+// enum in C. That table is in `Diff.cpp`, and it is the prose table below in code.
 #include <cstddef>
 #include <span>
 #include <string>

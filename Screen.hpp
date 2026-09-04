@@ -195,6 +195,13 @@ class Frame {
   // wrong answer to it. Only the LIVE entries are compared.
   bool operator==(const Frame& o) const { return rolltui_frame_equal(f_.get(), o.f_.get()) != 0; }
 
+  // A BORROW of the handle this Frame owns, for the library's OWN C boundaries — today
+  // `Effects.cpp`, which hands the frame to an applier written in the other language
+  // (Phase 15 m2). It never owns and it is never stored; the window is the Frame's own
+  // lifetime. A host has no use for it: everything a host does to a frame is above.
+  RolltuiFrame* handle() { return f_.get(); }
+  const RolltuiFrame* handle() const { return f_.get(); }
+
  private:
   std::unique_ptr<RolltuiFrame, Handle> f_;
 };

@@ -10,45 +10,24 @@
 // stating them at the header was most of the design work.
 #include "rolltui/Unicode.hpp"
 
-#include "rolltui/Scratch.hpp"  // rolltui::detail::on_thread_release
+#include "rolltui/Scratch.hpp"  // rolltui::ThreadHandle
 
 namespace rolltui::unicode {
 namespace {
 
 // ONE HANDLE PER THREAD, and no caller outside this file ever sees it. The six algorithms
 // that need working memory take it (rolltui/c/rolltui_unicode.h); it grows to a high-water
-// mark over the first few calls and never allocates again. C++ owns the lifetime the way it
-// owns every other one here — a `thread_local` with a destructor — so there is nothing for a
-// host to initialise and nothing left to clean up at thread exit.
-struct ScratchOwner {
-  RolltuiUnicodeScratch* p = nullptr;
-  ScratchOwner() = default;
-  ScratchOwner(const ScratchOwner&) = delete;
-  ScratchOwner& operator=(const ScratchOwner&) = delete;
-  ~ScratchOwner() { rolltui_u_scratch_free(p); }  // free(nullptr) is a no-op
-};
-
-// TWO WAYS OUT, and it needs both. The destructor covers a thread that simply exits; the
-// registration covers `rolltui::release_thread()`, which is what lets a leak check see the
-// number BEFORE the process ends. Whichever runs first nulls the pointer, so the other finds
-// nothing — and the next call rebuilds, which is what keeps `shutdown()` safe mid-session.
+// mark over the first few calls and never allocates again, and it is released twice over —
+// at thread exit, and at `rolltui::release_thread()` so a leak check can see the number
+// BEFORE the process ends.
 //
-// It needed saying: this was NOT a `Scratch<T>`, so it did not get the registration that class
-// now does automatically, and `lifetime_test` caught it on its first run under `ROLLTUI_C=ON`
-// — 2,496 bytes in 11 blocks that the C++ configuration's gauge could not see at all.
+// **THIS FILE HAND-WROTE THAT FOR PHASE 14 m5, and it is `ThreadHandle` now** (Phase 15 m2):
+// `Diff.cpp` and `Effects.cpp` needed the identical thing, which would have made three
+// copies of a lifetime — Phase 13's finding verbatim, one language up. The two ways out, the
+// re-registration and the null-on-whichever-runs-first are all in `Scratch.hpp` once.
 RolltuiUnicodeScratch* scratch() {
-  static thread_local ScratchOwner owner;
-  if (!owner.p) {
-    owner.p = rolltui_u_scratch_new();
-    detail::on_thread_release(
-        [](void* o) {
-          ScratchOwner* s = static_cast<ScratchOwner*>(o);
-          rolltui_u_scratch_free(s->p);
-          s->p = nullptr;
-        },
-        &owner);
-  }
-  return owner.p;
+  static thread_local ThreadHandle<RolltuiUnicodeScratch, rolltui_u_scratch_new, rolltui_u_scratch_free> h;
+  return h.get();
 }
 
 }  // namespace
