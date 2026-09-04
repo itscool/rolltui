@@ -128,6 +128,11 @@ add_rolltui_test(rolltui-markdown-test tests/markdown_test.cpp)
 # Milestone 5: theme (roles → styles), our JSON, downgrade, SGR, the grep control.
 add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
 
+# Phase 13 m2: OWNERSHIP — no shared ownership in the library (a grep control with a
+# planted-pattern liveness check), no hand-rolled new/delete, and a recorded census of
+# every raw pointer in a public header, so adding one forces its lifetime to be stated.
+add_rolltui_test(rolltui-ownership-test tests/ownership_test.cpp)
+
 # Phase 13 m1: THE BUDGET — allocations, bytes and wall-clock per frame, asserted as a
 # RANGE against numbers recorded from a real render, with the counter proved armed on
 # every run (an exact accounting check plus a live wasteful-widget control).

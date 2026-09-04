@@ -73,7 +73,7 @@ void Terminal::restore_now() {
 }
 
 Terminal::Terminal(int in_fd, int out_fd, const TerminalOptions& opts)
-    : in_(in_fd), out_(out_fd), opts_(opts), saved_(new Saved) {
+    : in_(in_fd), out_(out_fd), opts_(opts), saved_(std::make_unique<Saved>()) {
   tty_ = isatty(out_) != 0;
   if (::pipe(wake_) == 0) {
     fcntl(wake_[0], F_SETFL, O_NONBLOCK);
@@ -92,7 +92,7 @@ Terminal::~Terminal() {
   leave();
   if (wake_[0] >= 0) ::close(wake_[0]);
   if (wake_[1] >= 0) ::close(wake_[1]);
-  delete saved_;
+  // saved_ is a unique_ptr since m2; ~Terminal is where it goes.
 }
 
 void Terminal::enter() {

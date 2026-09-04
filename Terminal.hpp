@@ -22,6 +22,7 @@
 // flags, size, events from bytes written to the master, SIGWINCH → Resize, and a
 // forked child killed by SIGTERM whose restore bytes are seen by the parent.
 //
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -120,8 +121,12 @@ class Terminal {
   int wake_[2] = {-1, -1};  // self-pipe: SIGWINCH handler writes, poll() reads
   KeyProtocol protocol_ = KeyProtocol::Legacy;  // until the terminal says otherwise
   TerminalOptions opts_;
+  // OWNED (Phase 13 m2). A pimpl for the one platform type this header must not name;
+  // `unique_ptr` rather than the raw pointer + hand-rolled `delete` it was until m2, which
+  // was the library's ONLY hand-rolled ownership and the only thing an exception between
+  // the constructor's body and its destructor could have leaked.
   struct Saved;
-  Saved* saved_ = nullptr;
+  std::unique_ptr<Saved> saved_;
 };
 
 }  // namespace rolltui

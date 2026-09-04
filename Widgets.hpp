@@ -53,6 +53,25 @@
 //   height, the rule both hosts had) and writes it into the node before layout. That
 //   is the only thing a widget writes back into the layout tree.
 //
+// OWNERSHIP, stated here because this is the type that does most of it (Phase 13 m2, and
+// asserted in rolltui/tests/ownership_test.cpp). The library has THREE shapes and no
+// fourth:
+//
+//   OWNED     one owner, and it is a `unique_ptr` or a value member. `Windows` owns every
+//             widget (`map<string, unique_ptr<Widget>>`, keyed by content and never
+//             destroyed); `WindowStack` owns its layers BY VALUE; a `Frame` owns its cells.
+//   BORROWED  every raw `T*` and every `string_view` crossing this API. A borrow never
+//             owns and never frees: `bind_document(name, const Document*)` takes the
+//             HOST's document and the host is what keeps it alive, `WidgetEnv::bindings`
+//             points at the table for THIS frame, and `at()` / `transcript()` hand back a
+//             widget this `Windows` still owns.
+//   VALUE     everything else — Content, Style, Layer, Row, Mark. Copied, not referenced.
+//
+// **THERE IS NO SHARED OWNERSHIP, and a test fails if one appears.** A `shared_ptr` makes
+// a lifetime a runtime question, and every lifetime here is structural. Every `shared_ptr`
+// in the repository belongs to a HOST (the preset stores, roll's SessionView) — which is
+// the right place for one, and outside this library.
+//
 #include <cstdint>
 #include <functional>
 #include <map>
