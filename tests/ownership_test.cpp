@@ -214,7 +214,13 @@ int main() {
         {"Presets.hpp", 1},      {"PresetStore.hpp", 3},   {"Scratch.hpp", 4},     {"Screen.hpp", 4},
         {"Style.hpp", 0},
         {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
-        {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Unicode.hpp", 1},     {"Widgets.hpp", 10},
+        {"Transcript.hpp", 3},   {"Undo.hpp", 0},          {"Widgets.hpp", 10},
+        // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
+        // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
+        // pointer was `const Range* table` on `lookup()`, the binary search the inline
+        // property accessors used. The accessors go through the boundary now, so `lookup`
+        // had no callers and left with them; the header no longer hands out a pointer at all.
+        {"Unicode.hpp", 0},
         // Wrap.hpp 2 → 5, RE-RECORDED 2026-09-04 by Phase 14 m3, same as Screen.hpp above:
         // the number moved, so somebody had to say what each new pointer is. The two that
         // LEFT were `const Line* begin()/end()` — a line is built on read now, so the
@@ -267,7 +273,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 55, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 54, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

@@ -16,6 +16,19 @@
 //   sanitising           strip_escape_sequences: removes ESC/C1-introduced control
 //                        sequences so model output can never be terminal input
 //
+// PHASE 14 m5 — THE ALGORITHMS LIVE BEHIND `rolltui/c/rolltui_unicode.h`, in one of two
+// implementations chosen by `-DROLLTUI_C` (`UnicodeCpp.cpp` or `c/rolltui_unicode.c`), and
+// this header is the C++ shape of them: the typed enums, the two PODs (which ARE the C
+// structs), and the container-returning conveniences a C++ caller wants. The generated
+// tables are ONE file compiled by both languages, so there is no second copy of the data.
+//
+// TWO THINGS A CALLER CAN SEE, both forced by the port rather than chosen:
+//   - `grapheme_boundaries_into` and `line_break_opportunities_into` are GONE. They existed
+//     so the wrap engine could reach these algorithms without allocating; the boundary's
+//     caller-buffer functions are that, and the C++-only spelling had no callers left.
+//   - `lookup()` goes with them. It was the binary search the inline property accessors
+//     used, and those go through the boundary now.
+//
 // Implementations live in Unicode.cpp (the rolltui static library). Verified by the
 // three Unicode conformance suites in full (rolltui/tests/), and the width function by
 // a hand table plus a cross-check against libc wcwidth over the BMP in which every
@@ -38,56 +51,38 @@
 #include <string_view>
 #include <vector>
 
+#include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/unicode_tables.h"
 
 namespace rolltui::unicode {
 
-// ---- table lookup ------------------------------------------------------------------
-
-// Binary search over a generated table: the ranges are sorted and disjoint, so the
-// first range whose `last` is >= cp is the only candidate.
-std::uint8_t lookup(const Range* table, std::size_t n, char32_t cp, std::uint8_t def);
-
-inline LineBreak line_break_class(char32_t cp) {
-  return static_cast<LineBreak>(lookup(kLineBreak, kLineBreakCount, cp,
-                                       static_cast<std::uint8_t>(kLineBreakDefault)));
-}
+// ---- property lookups ---------------------------------------------------------------
+// The same names and typed returns they have always had, one line over the boundary each.
+// A caller drawing text never comes through here per code point: the algorithms below use
+// these INTERNALLY, on whichever side of the flag they are compiled, so a frame crosses the
+// boundary once per string rather than once per scalar.
+inline LineBreak line_break_class(char32_t cp) { return static_cast<LineBreak>(rolltui_u_line_break_class(cp)); }
 inline EastAsianWidth east_asian_width(char32_t cp) {
-  return static_cast<EastAsianWidth>(lookup(kEastAsianWidth, kEastAsianWidthCount, cp,
-                                            static_cast<std::uint8_t>(kEastAsianWidthDefault)));
+  return static_cast<EastAsianWidth>(rolltui_u_east_asian_width(cp));
 }
-inline GraphemeBreak grapheme_break(char32_t cp) {
-  return static_cast<GraphemeBreak>(lookup(kGraphemeBreak, kGraphemeBreakCount, cp,
-                                           static_cast<std::uint8_t>(kGraphemeBreakDefault)));
-}
-inline WordBreak word_break(char32_t cp) {
-  return static_cast<WordBreak>(lookup(kWordBreak, kWordBreakCount, cp,
-                                       static_cast<std::uint8_t>(kWordBreakDefault)));
-}
+inline GraphemeBreak grapheme_break(char32_t cp) { return static_cast<GraphemeBreak>(rolltui_u_grapheme_break(cp)); }
+inline WordBreak word_break(char32_t cp) { return static_cast<WordBreak>(rolltui_u_word_break(cp)); }
 inline IndicConjunctBreak indic_conjunct_break(char32_t cp) {
-  return static_cast<IndicConjunctBreak>(
-      lookup(kIndicConjunctBreak, kIndicConjunctBreakCount, cp,
-             static_cast<std::uint8_t>(kIndicConjunctBreakDefault)));
+  return static_cast<IndicConjunctBreak>(rolltui_u_indic_conjunct_break(cp));
 }
 inline GeneralCategory general_category(char32_t cp) {
-  return static_cast<GeneralCategory>(lookup(kGeneralCategory, kGeneralCategoryCount, cp,
-                                             static_cast<std::uint8_t>(kGeneralCategoryDefault)));
+  return static_cast<GeneralCategory>(rolltui_u_general_category(cp));
 }
-inline bool is_extended_pictographic(char32_t cp) {
-  return lookup(kExtendedPictographic, kExtendedPictographicCount, cp, 0) != 0;
-}
-inline bool is_default_ignorable(char32_t cp) {
-  return lookup(kDefaultIgnorable, kDefaultIgnorableCount, cp, 0) != 0;
-}
+inline bool is_extended_pictographic(char32_t cp) { return rolltui_u_is_extended_pictographic(cp) != 0; }
+inline bool is_default_ignorable(char32_t cp) { return rolltui_u_is_default_ignorable(cp) != 0; }
 
 // ---- UTF-8 -------------------------------------------------------------------------
 
-struct DecodedChar {
-  char32_t cp;
-  std::size_t offset;  // byte offset into the source
-  std::size_t length;  // bytes consumed (1 for an invalid byte)
-  bool valid;          // false: cp is U+FFFD standing in for one malformed byte
-};
+// ONE DEFINITION (Phase 14 m5): the struct is `RolltuiDecodedChar` in
+// `rolltui/c/rolltui_unicode.h`, compiled by both languages. `valid` is an `unsigned char`
+// there rather than a `bool`, for m2's reason — `_Bool`-vs-`bool` is layout-compatible by
+// fiat — and it still reads as a condition at every call site.
+using DecodedChar = RolltuiDecodedChar;
 
 // Decodes one scalar at `pos`. Overlong forms, surrogates, > U+10FFFF and truncated
 // sequences are each reported as ONE invalid byte, so decoding is total and every
@@ -140,13 +135,8 @@ int cluster_width(std::span<const char32_t> cps, bool ambiguous_wide = false);
 // the end of text. For a non-empty input boundaries[0] and boundaries[n] are true
 // (GB1, GB2); for empty input the single entry is true.
 std::vector<bool> grapheme_boundaries(std::span<const char32_t> cps);
-void grapheme_boundaries_into(std::span<const char32_t> cps, std::vector<bool>& out);
 
-struct Grapheme {
-  std::size_t offset;  // byte offset of the cluster in the source string
-  std::size_t length;  // bytes
-  int width;           // cells (cluster_width)
-};
+using Grapheme = RolltuiUnicodeGrapheme;  // one definition, in rolltui/c/rolltui_unicode.h
 
 // Clusters of a UTF-8 string with their byte spans and cell widths. Invalid bytes
 // decode to U+FFFD and form clusters of their own (width 1) — a renderer shows the
@@ -193,12 +183,14 @@ std::string strip_escape_sequences(std::string_view text);
 // ---- UAX #14: line break opportunities ---------------------------------------------
 
 enum class Break : std::uint8_t { Prohibited, Allowed, Mandatory };
+static_assert(static_cast<int>(Break::Prohibited) == ROLLTUI_BREAK_PROHIBITED, "Break::Prohibited moved");
+static_assert(static_cast<int>(Break::Allowed) == ROLLTUI_BREAK_ALLOWED, "Break::Allowed moved");
+static_assert(static_cast<int>(Break::Mandatory) == ROLLTUI_BREAK_MANDATORY, "Break::Mandatory moved");
 
 // result[i] is the opportunity before cps[i]; result[n] is the end of text, always
 // Mandatory (LB3); result[0] is always Prohibited (LB2). Untailored: LB1 resolves
 // AI/SG/XX → AL, CJ → NS, SA → CM for Mn/Mc else AL, and CB is left to LB20.
 std::vector<Break> line_break_opportunities(std::span<const char32_t> cps);
-void line_break_opportunities_into(std::span<const char32_t> cps, std::vector<Break>& out);
 
 // Convenience over UTF-8: opportunities indexed by decoded code point, alongside the
 // decode so a caller can map them back to bytes.

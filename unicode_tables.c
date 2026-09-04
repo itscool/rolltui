@@ -9,7 +9,7 @@
 //   DerivedCoreProperties-17.0.0.txt  (2025-07-30, 23:55:08 GMT)
 //   DerivedGeneralCategory-17.0.0.txt  (2025-07-24, 00:12:50 GMT)
 //   emoji-data.txt  (2025-07-25, 17:54:31 GMT)
-// generator commit: 7002e16f4c2e-dirty
+// generator commit: 344ee1969854-dirty
 //
 // Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui
 // Verify:      gen_unicode_tables rolltui/ucd --check rolltui
@@ -19,7 +19,7 @@
 #include "rolltui/unicode_tables.h"
 
 /* LineBreak: 2917 ranges, default LineBreak::XX */
-const RolltuiUnicodeRange rolltui_u_line_break[2917] = {
+const RolltuiUnicodeRange rolltui_u_table_line_break[2917] = {
   {0x0000, 0x0008, 12},  /* CM */
   {0x0009, 0x0009, 6},  /* BA */
   {0x000A, 0x000A, 30},  /* LF */
@@ -2940,7 +2940,7 @@ const RolltuiUnicodeRange rolltui_u_line_break[2917] = {
 };
 
 /* EastAsianWidth: 318 ranges, default EastAsianWidth::N */
-const RolltuiUnicodeRange rolltui_u_east_asian_width[318] = {
+const RolltuiUnicodeRange rolltui_u_table_east_asian_width[318] = {
   {0x0020, 0x007E, 4},  /* Na */
   {0x00A1, 0x00A1, 1},  /* A */
   {0x00A2, 0x00A3, 4},  /* Na */
@@ -3262,7 +3262,7 @@ const RolltuiUnicodeRange rolltui_u_east_asian_width[318] = {
 };
 
 /* GraphemeBreak: 1386 ranges, default GraphemeBreak::Other */
-const RolltuiUnicodeRange rolltui_u_grapheme_break[1386] = {
+const RolltuiUnicodeRange rolltui_u_table_grapheme_break[1386] = {
   {0x0000, 0x0009, 3},  /* Control */
   {0x000A, 0x000A, 2},  /* LF */
   {0x000B, 0x000C, 3},  /* Control */
@@ -4652,7 +4652,7 @@ const RolltuiUnicodeRange rolltui_u_grapheme_break[1386] = {
 };
 
 /* WordBreak: 1100 ranges, default WordBreak::Other */
-const RolltuiUnicodeRange rolltui_u_word_break[1100] = {
+const RolltuiUnicodeRange rolltui_u_table_word_break[1100] = {
   {0x000A, 0x000A, 2},  /* LF */
   {0x000B, 0x000C, 3},  /* Newline */
   {0x000D, 0x000D, 1},  /* CR */
@@ -5756,7 +5756,7 @@ const RolltuiUnicodeRange rolltui_u_word_break[1100] = {
 };
 
 /* IndicConjunctBreak: 473 ranges, default IndicConjunctBreak::None */
-const RolltuiUnicodeRange rolltui_u_indic_conjunct_break[473] = {
+const RolltuiUnicodeRange rolltui_u_table_indic_conjunct_break[473] = {
   {0x0300, 0x036F, 2},  /* Extend */
   {0x0483, 0x0489, 2},  /* Extend */
   {0x0591, 0x05BD, 2},  /* Extend */
@@ -6233,7 +6233,7 @@ const RolltuiUnicodeRange rolltui_u_indic_conjunct_break[473] = {
 };
 
 /* GeneralCategory: 3409 ranges, default GeneralCategory::Cn */
-const RolltuiUnicodeRange rolltui_u_general_category[3409] = {
+const RolltuiUnicodeRange rolltui_u_table_general_category[3409] = {
   {0x0000, 0x001F, 25},  /* Cc */
   {0x0020, 0x0020, 22},  /* Zs */
   {0x0021, 0x0023, 17},  /* Po */
@@ -9646,7 +9646,7 @@ const RolltuiUnicodeRange rolltui_u_general_category[3409] = {
 };
 
 /* ExtendedPictographic: 156 ranges (value is always 1; absent means No) */
-const RolltuiUnicodeRange rolltui_u_extended_pictographic[156] = {
+const RolltuiUnicodeRange rolltui_u_table_extended_pictographic[156] = {
   {0x00A9, 0x00A9, 1},
   {0x00AE, 0x00AE, 1},
   {0x203C, 0x203C, 1},
@@ -9806,7 +9806,7 @@ const RolltuiUnicodeRange rolltui_u_extended_pictographic[156] = {
 };
 
 /* DefaultIgnorable: 17 ranges (value is always 1; absent means No) */
-const RolltuiUnicodeRange rolltui_u_default_ignorable[17] = {
+const RolltuiUnicodeRange rolltui_u_table_default_ignorable[17] = {
   {0x00AD, 0x00AD, 1},
   {0x034F, 0x034F, 1},
   {0x061C, 0x061C, 1},

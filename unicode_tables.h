@@ -9,7 +9,7 @@
 //   DerivedCoreProperties-17.0.0.txt  (2025-07-30, 23:55:08 GMT)
 //   DerivedGeneralCategory-17.0.0.txt  (2025-07-24, 00:12:50 GMT)
 //   emoji-data.txt  (2025-07-25, 17:54:31 GMT)
-// generator commit: 7002e16f4c2e-dirty
+// generator commit: 344ee1969854-dirty
 //
 // Regenerate:  gen_unicode_tables rolltui/ucd --out rolltui
 // Verify:      gen_unicode_tables rolltui/ucd --check rolltui
@@ -192,28 +192,30 @@ typedef struct RolltuiUnicodeRange {
 #define ROLLTUI_GENERALCATEGORY_Cn 29
 #define ROLLTUI_GENERALCATEGORY_DEFAULT ROLLTUI_GENERALCATEGORY_Cn
 
-extern const RolltuiUnicodeRange rolltui_u_line_break[2917];  /* LineBreak */
-#define ROLLTUI_U_LINE_BREAK_COUNT 2917
-extern const RolltuiUnicodeRange rolltui_u_east_asian_width[318];  /* EastAsianWidth */
-#define ROLLTUI_U_EAST_ASIAN_WIDTH_COUNT 318
-extern const RolltuiUnicodeRange rolltui_u_grapheme_break[1386];  /* GraphemeBreak */
-#define ROLLTUI_U_GRAPHEME_BREAK_COUNT 1386
-extern const RolltuiUnicodeRange rolltui_u_word_break[1100];  /* WordBreak */
-#define ROLLTUI_U_WORD_BREAK_COUNT 1100
-extern const RolltuiUnicodeRange rolltui_u_indic_conjunct_break[473];  /* IndicConjunctBreak */
-#define ROLLTUI_U_INDIC_CONJUNCT_BREAK_COUNT 473
-extern const RolltuiUnicodeRange rolltui_u_general_category[3409];  /* GeneralCategory */
-#define ROLLTUI_U_GENERAL_CATEGORY_COUNT 3409
-extern const RolltuiUnicodeRange rolltui_u_extended_pictographic[156];  /* ExtendedPictographic (value 1 = Yes; absent = No) */
-#define ROLLTUI_U_EXTENDED_PICTOGRAPHIC_COUNT 156
-extern const RolltuiUnicodeRange rolltui_u_default_ignorable[17];  /* DefaultIgnorable (value 1 = Yes; absent = No) */
-#define ROLLTUI_U_DEFAULT_IGNORABLE_COUNT 17
+extern const RolltuiUnicodeRange rolltui_u_table_line_break[2917];  /* LineBreak */
+#define ROLLTUI_U_TABLE_LINE_BREAK_COUNT 2917
+extern const RolltuiUnicodeRange rolltui_u_table_east_asian_width[318];  /* EastAsianWidth */
+#define ROLLTUI_U_TABLE_EAST_ASIAN_WIDTH_COUNT 318
+extern const RolltuiUnicodeRange rolltui_u_table_grapheme_break[1386];  /* GraphemeBreak */
+#define ROLLTUI_U_TABLE_GRAPHEME_BREAK_COUNT 1386
+extern const RolltuiUnicodeRange rolltui_u_table_word_break[1100];  /* WordBreak */
+#define ROLLTUI_U_TABLE_WORD_BREAK_COUNT 1100
+extern const RolltuiUnicodeRange rolltui_u_table_indic_conjunct_break[473];  /* IndicConjunctBreak */
+#define ROLLTUI_U_TABLE_INDIC_CONJUNCT_BREAK_COUNT 473
+extern const RolltuiUnicodeRange rolltui_u_table_general_category[3409];  /* GeneralCategory */
+#define ROLLTUI_U_TABLE_GENERAL_CATEGORY_COUNT 3409
+extern const RolltuiUnicodeRange rolltui_u_table_extended_pictographic[156];  /* ExtendedPictographic (value 1 = Yes; absent = No) */
+#define ROLLTUI_U_TABLE_EXTENDED_PICTOGRAPHIC_COUNT 156
+extern const RolltuiUnicodeRange rolltui_u_table_default_ignorable[17];  /* DefaultIgnorable (value 1 = Yes; absent = No) */
+#define ROLLTUI_U_TABLE_DEFAULT_IGNORABLE_COUNT 17
 
 #ifdef __cplusplus
 }  /* extern "C" */
 
 // The C++ spelling of the same facts. The arrays are the C arrays under their old
 // names, so `UnicodeCpp.cpp` reads exactly as it always did.
+#include <cstddef>
+
 namespace rolltui::unicode {
 
 inline constexpr char kUnicodeVersion[] = ROLLTUI_UNICODE_VERSION;
@@ -359,22 +361,22 @@ static_assert(static_cast<unsigned>(GeneralCategory::Co) == ROLLTUI_GENERALCATEG
 static_assert(static_cast<unsigned>(GeneralCategory::Cn) == ROLLTUI_GENERALCATEGORY_Cn, "GeneralCategory::Cn and ROLLTUI_GENERALCATEGORY_Cn disagree");
 inline constexpr GeneralCategory kGeneralCategoryDefault = GeneralCategory::Cn;
 
-inline const Range* const kLineBreak = rolltui_u_line_break;
-inline constexpr std::size_t kLineBreakCount = ROLLTUI_U_LINE_BREAK_COUNT;
-inline const Range* const kEastAsianWidth = rolltui_u_east_asian_width;
-inline constexpr std::size_t kEastAsianWidthCount = ROLLTUI_U_EAST_ASIAN_WIDTH_COUNT;
-inline const Range* const kGraphemeBreak = rolltui_u_grapheme_break;
-inline constexpr std::size_t kGraphemeBreakCount = ROLLTUI_U_GRAPHEME_BREAK_COUNT;
-inline const Range* const kWordBreak = rolltui_u_word_break;
-inline constexpr std::size_t kWordBreakCount = ROLLTUI_U_WORD_BREAK_COUNT;
-inline const Range* const kIndicConjunctBreak = rolltui_u_indic_conjunct_break;
-inline constexpr std::size_t kIndicConjunctBreakCount = ROLLTUI_U_INDIC_CONJUNCT_BREAK_COUNT;
-inline const Range* const kGeneralCategory = rolltui_u_general_category;
-inline constexpr std::size_t kGeneralCategoryCount = ROLLTUI_U_GENERAL_CATEGORY_COUNT;
-inline const Range* const kExtendedPictographic = rolltui_u_extended_pictographic;
-inline constexpr std::size_t kExtendedPictographicCount = ROLLTUI_U_EXTENDED_PICTOGRAPHIC_COUNT;
-inline const Range* const kDefaultIgnorable = rolltui_u_default_ignorable;
-inline constexpr std::size_t kDefaultIgnorableCount = ROLLTUI_U_DEFAULT_IGNORABLE_COUNT;
+inline const Range* const kLineBreak = rolltui_u_table_line_break;
+inline constexpr std::size_t kLineBreakCount = ROLLTUI_U_TABLE_LINE_BREAK_COUNT;
+inline const Range* const kEastAsianWidth = rolltui_u_table_east_asian_width;
+inline constexpr std::size_t kEastAsianWidthCount = ROLLTUI_U_TABLE_EAST_ASIAN_WIDTH_COUNT;
+inline const Range* const kGraphemeBreak = rolltui_u_table_grapheme_break;
+inline constexpr std::size_t kGraphemeBreakCount = ROLLTUI_U_TABLE_GRAPHEME_BREAK_COUNT;
+inline const Range* const kWordBreak = rolltui_u_table_word_break;
+inline constexpr std::size_t kWordBreakCount = ROLLTUI_U_TABLE_WORD_BREAK_COUNT;
+inline const Range* const kIndicConjunctBreak = rolltui_u_table_indic_conjunct_break;
+inline constexpr std::size_t kIndicConjunctBreakCount = ROLLTUI_U_TABLE_INDIC_CONJUNCT_BREAK_COUNT;
+inline const Range* const kGeneralCategory = rolltui_u_table_general_category;
+inline constexpr std::size_t kGeneralCategoryCount = ROLLTUI_U_TABLE_GENERAL_CATEGORY_COUNT;
+inline const Range* const kExtendedPictographic = rolltui_u_table_extended_pictographic;
+inline constexpr std::size_t kExtendedPictographicCount = ROLLTUI_U_TABLE_EXTENDED_PICTOGRAPHIC_COUNT;
+inline const Range* const kDefaultIgnorable = rolltui_u_table_default_ignorable;
+inline constexpr std::size_t kDefaultIgnorableCount = ROLLTUI_U_TABLE_DEFAULT_IGNORABLE_COUNT;
 
 }  // namespace rolltui::unicode
 #endif  // __cplusplus

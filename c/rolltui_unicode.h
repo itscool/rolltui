@@ -1,31 +1,34 @@
 #ifndef ROLLTUI_C_UNICODE_H
 #define ROLLTUI_C_UNICODE_H
 /*
- * rolltui/c/rolltui_unicode.h — THE UNICODE SEAM (Phase 14 m3).
+ * rolltui/c/rolltui_unicode.h — THE UNICODE ALGORITHMS, as C (Phase 14 m5).
  *
- * The four things the wrap engine asks Unicode for, and nothing else. It exists because m3
- * ports `Wrap` and m4 ports `Unicode`, so for one milestone the C wrap engine has to call a
- * C++ implementation — which is the ordinary shape of an incremental port and is worth
- * meeting early rather than avoiding by reordering the work (plan/phase-14.md).
+ * UTF-8 decoding, UAX #14 line breaking, UAX #29 grapheme clusters and word boundaries,
+ * terminal cell widths, and the escape-sequence stripper. The rules and their justifications
+ * live in `rolltui/Unicode.hpp` and are not repeated here: they are the same rules in both
+ * languages, and a second copy is a second thing to drift.
  *
- * **THIS HEADER IS THE CONTRACT; `UnicodeSeam.cpp` IS TODAY'S IMPLEMENTATION OF IT.** m4
- * replaces that file's body with C and changes nothing here. Until then the seam is
- * compiled into BOTH configurations, so the C++ build links the same symbols and a mistake
- * in the seam is not a mistake that only one configuration can see.
+ * **THE ORACLE IS NOT THIS FILE, WHICH IS WHY THIS SLICE WAS WORTH PORTING LAST.** Three
+ * published conformance suites run in full against whichever implementation is linked —
+ * `GraphemeBreakTest`, `WordBreakTest` and `LineBreakTest` — plus a width table checked
+ * against libc `wcwidth` over the whole BMP with every disagreement LISTED rather than
+ * tolerated. Correctness here is decided by Unicode's own test files, not by review, which is
+ * the strongest position any milestone in this phase has been in.
  *
- * TWO RULES, both inherited:
- *   - **THE CALLER OWNS EVERY BUFFER** (m1), with the required size stated at each one. No
- *     function here allocates, and none can fail.
- *   - **NOTHING IS CAST.** A code point is `RolltuiCodepoint` (rolltui_abi.h) — `char32_t`
- *     to C++, `unsigned int` to C, asserted the same width. The alternative, a
- *     `reinterpret_cast<const char32_t*>` at the seam, is a strict-aliasing violation that
- *     compiles and works right up until it does not.
+ * THE BOUNDARY'S RULES, all inherited and none new:
+ *   1. **THE CALLER OWNS EVERY BUFFER** (m1), with the required size stated at each one. Every
+ *      output length here has a bound the caller can compute WITHOUT asking first — a decode
+ *      yields at most one scalar per byte, a boundary array is n + 1, a strip only ever
+ *      shrinks — so no function here needs a measure-then-fill round trip, and none allocates.
+ *   2. **ONE DEFINITION** (m2): `RolltuiDecodedChar` and `RolltuiUnicodeGrapheme` are the C++
+ *      `unicode::DecodedChar` and `unicode::Grapheme`, aliased rather than converted.
+ *   3. **A CODE POINT IS `RolltuiCodepoint`** (m3): `char32_t` to C++, `unsigned int` to C,
+ *      asserted the same width, never cast at the seam.
  *
- * WHAT THE PORT ALREADY NARROWED, recorded because it is evidence and not decoration: the
- * C++ `DecodedChar` carries a fourth field, `valid`, and the wrap engine has never read it.
- * The seam decodes into three parallel arrays instead of one array of structs, which also
- * deletes the `cps.assign(...)` copy loop `wrap_into` needed to get a contiguous code-point
- * array out of an array of structs.
+ * WHAT THE PORT DELETED, recorded because a removal is evidence too: `grapheme_boundaries_into`
+ * and `line_break_opportunities_into` are gone from `Unicode.hpp`. They existed so that m3's
+ * temporary seam could reach the algorithms without allocating; the caller-buffer functions
+ * below ARE that, so the C++-only spelling of the same idea had no callers left.
  */
 #include <stddef.h>
 
@@ -35,27 +38,87 @@
 extern "C" {
 #endif
 
-/* A UAX #14 opportunity at the position BEFORE a code point. These are
- * `rolltui::unicode::Break`'s three values; UnicodeSeam.cpp asserts they still are. */
+/* ---- plain data, defined once and compiled by both languages ------------------------- */
+
+/* One decoded scalar. Decoding is TOTAL: a malformed byte becomes U+FFFD with `length` 1 and
+ * `valid` 0, so every byte of the input is accounted for exactly once and a byte offset is
+ * always recoverable. */
+typedef struct RolltuiDecodedChar {
+  RolltuiCodepoint cp;
+  size_t offset; /* byte offset into the source */
+  size_t length; /* bytes consumed (1 for an invalid byte) */
+  unsigned char valid;
+} RolltuiDecodedChar;
+
+/* One extended grapheme cluster of a UTF-8 string. */
+typedef struct RolltuiUnicodeGrapheme {
+  size_t offset; /* byte offset of the cluster in the source */
+  size_t length; /* bytes */
+  int width;     /* cells */
+} RolltuiUnicodeGrapheme;
+
+/* A UAX #14 opportunity at the position BEFORE a code point. `Break`'s three values, asserted
+ * equal on the C++ side. */
 #define ROLLTUI_BREAK_PROHIBITED 0
 #define ROLLTUI_BREAK_ALLOWED 1
 #define ROLLTUI_BREAK_MANDATORY 2
 
-/* Decodes `len` bytes into three parallel caller arrays, each of which must hold at least
- * `len` entries — decoding is total and every malformed byte becomes one U+FFFD scalar of
- * length 1, so the count can never exceed the byte count. Returns the number of scalars. */
-size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, size_t* offset, size_t* length);
+/* ---- property lookups ------------------------------------------------------------------ */
+/* Each returns the property's value byte, which is one of the `ROLLTUI_<PROPERTY>_*` constants
+ * in the generated `rolltui/unicode_tables.h`. These are the whole of the Unicode property
+ * model a renderer needs; the algorithms below use them internally, so a caller drawing text
+ * never crosses this boundary per code point. */
+unsigned char rolltui_u_line_break_class(RolltuiCodepoint cp);
+unsigned char rolltui_u_east_asian_width(RolltuiCodepoint cp);
+unsigned char rolltui_u_grapheme_break(RolltuiCodepoint cp);
+unsigned char rolltui_u_word_break(RolltuiCodepoint cp);
+unsigned char rolltui_u_indic_conjunct_break(RolltuiCodepoint cp);
+unsigned char rolltui_u_general_category(RolltuiCodepoint cp);
+int rolltui_u_is_extended_pictographic(RolltuiCodepoint cp);
+int rolltui_u_is_default_ignorable(RolltuiCodepoint cp);
 
-/* UAX #14. `out` holds n + 1 entries: out[i] is the opportunity before cps[i] and out[n]
- * is end of text (always Mandatory). */
+/* ---- UTF-8 ----------------------------------------------------------------------------- */
+/* One scalar at `pos`, into a caller's struct. `pos` must be < `len`. */
+void rolltui_u_decode_one(const char* s, size_t len, size_t pos, RolltuiDecodedChar* out);
+/* Decodes into three parallel caller arrays, each of which must hold at least `len` entries —
+ * decoding is total and a malformed byte is one scalar of length 1, so the count can never
+ * exceed the byte count. Returns the number of scalars. Kept as parallel arrays rather than an
+ * array of `RolltuiDecodedChar` because the wrap engine wants a contiguous code-point array
+ * and building one out of an array of structs was a copy loop it no longer has (m3). */
+size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, size_t* offset, size_t* length);
+/* The same, into an array of structs, which is what a caller wanting `valid` needs. `out` must
+ * hold at least `len` entries. Returns the number of scalars. */
+size_t rolltui_u_decode_utf8_chars(const char* s, size_t len, RolltuiDecodedChar* out);
+/* Encodes one scalar into `out`, which must hold at least 4 bytes. Returns the bytes written. */
+size_t rolltui_u_append_utf8(RolltuiCodepoint cp, char* out);
+
+/* ---- widths ---------------------------------------------------------------------------- */
+int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide);
+int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous_wide);
+int rolltui_u_display_width(const char* utf8, size_t len, int ambiguous_wide);
+
+/* ---- UAX #29 --------------------------------------------------------------------------- */
+/* `out` holds n + 1 entries: out[i] is 1 when a boundary lies before cps[i], out[n] is the end
+ * of text. For a non-empty input out[0] and out[n] are 1; for empty input the single entry
+ * is 1. */
+void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
+void rolltui_u_word_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
+/* Clusters of a UTF-8 string with their byte spans and cell widths. `out` must hold at least
+ * `len` entries — there can be no more clusters than bytes. Returns the count. */
+size_t rolltui_u_graphemes(const char* utf8, size_t len, int ambiguous_wide, RolltuiUnicodeGrapheme* out);
+/* The word containing byte `offset`, as a byte range; an offset past the end gives
+ * {len, len}. */
+void rolltui_u_word_range(const char* utf8, size_t len, size_t offset, size_t* begin, size_t* end);
+
+/* ---- UAX #14 --------------------------------------------------------------------------- */
+/* `out` holds n + 1 entries of ROLLTUI_BREAK_*: out[i] is the opportunity before cps[i] and
+ * out[n] is end of text, always Mandatory (LB3); out[0] is always Prohibited (LB2). */
 void rolltui_u_line_break_opportunities(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
 
-/* UAX #29 extended grapheme clusters. `out` holds n + 1 entries: out[i] is 1 when a cluster
- * boundary lies before cps[i], and out[n] is the end of text. */
-void rolltui_u_grapheme_boundaries(const RolltuiCodepoint* cps, size_t n, unsigned char* out);
-
-/* Cells one extended grapheme cluster occupies. */
-int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous_wide);
+/* ---- sanitising ------------------------------------------------------------------------ */
+/* Removes terminal control sequences from text that will be RENDERED. `out` must hold at least
+ * `len` bytes — stripping only ever removes. Returns the bytes written. */
+size_t rolltui_u_strip_escape_sequences(const char* s, size_t len, char* out);
 
 #ifdef __cplusplus
 } /* extern "C" */

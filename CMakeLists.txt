@@ -34,10 +34,10 @@ if(ROLLTUI_C)
   # of these two files linked. The module cannot be half-ported — one Frame, one
   # implementation — so this line is the whole of the switch for it.
   # m3 2026-09-04 adds the wrap engine the same way.
-  set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c)
+  set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c)
   message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
 else()
-  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp)
+  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp)
 endif()
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
@@ -93,10 +93,6 @@ add_library(rolltui STATIC
                               #   strategies. Compiled into BOTH configurations for the same
                               #   reason as UnicodeSeam.cpp below — a file only one build
                               #   links is one only that build can find a defect in.
-  UnicodeSeam.cpp             # Phase 14 m3: the four things the C wrap asks Unicode for.
-                              #   Compiled into BOTH configurations on purpose — a bridge
-                              #   only one build links is one only that build can find a
-                              #   defect in. m4 replaces its body with C.
   Wrap.cpp
   Markdown.cpp
   Diff.cpp
