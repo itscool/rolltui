@@ -1,7 +1,7 @@
 // rolltui/Transcript.cpp — the SHIM over `rolltui/c/rolltui_transcript.h`: the RAII, the
 // styling vocabulary, the eleven action names, and the translation of two `std::function`s
 // into function pointers. The two implementations live in `TranscriptCpp.cpp` and
-// `c/rolltui_transcript.c`, and `-DROLLTUI_C` picks which one links (Phase 15 m5e).
+// `c/rolltui_transcript.c`, and this file is the C++ API over it (Phase 15 m5e).
 //
 // Nothing here decides anything. It exists so the C boundary never has to know what a `Role`
 // is called, what an action is called, or what a `std::function` is.

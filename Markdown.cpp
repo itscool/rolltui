@@ -1,7 +1,7 @@
 // rolltui/Markdown.cpp — the SHIM over `rolltui/c/rolltui_markdown.h`: the RAII, the
 // styling vocabulary, and the translation of one `std::function` into a function pointer.
 // The two implementations live in `MarkdownCpp.cpp` and `c/rolltui_markdown.c`, and
-// `-DROLLTUI_C` picks which one links (Phase 15 m4).
+// this file is the C++ API over it (Phase 15 m4).
 //
 // Nothing here decides anything. It exists so that the C boundary never has to know what a
 // `Role` is called, what a `std::function` is, or how a caller wants its bytes owned.

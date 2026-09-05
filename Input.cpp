@@ -1,7 +1,7 @@
 // rolltui/Input.cpp — the SHIM over `rolltui/c/rolltui_input.h`: the RAII, the styling
 // vocabulary, the thirty action names, and the translation of one `std::function` into a
 // function pointer. The two implementations live in `InputCpp.cpp` and `c/rolltui_input.c`,
-// and `-DROLLTUI_C` picks which one links (Phase 15 m5).
+// and this file is the C++ API over it (Phase 15 m5).
 //
 // Nothing here decides anything. It exists so the C boundary never has to know what a `Role`
 // is called, what an action is called, or what a `std::function` is.
@@ -11,7 +11,7 @@
 
 // THE OPTIONS' TWO C++ MEMBERS LIVE HERE, NOT IN EITHER IMPLEMENTATION. `InputOptions` is
 // one struct shared by both sides of the flag, so its constructor and its `==` have to be in
-// the file that is linked in BOTH configurations — putting them in `InputCpp.cpp` made the C
+// the file that is always linked — putting them in the deleted `InputCpp.cpp` made the C
 // build fail to link, which is the boundary telling the truth about who owns what.
 RolltuiInputOptions::RolltuiInputOptions() { rolltui_str_set(&prompt, "> ", 2); }
 

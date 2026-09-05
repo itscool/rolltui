@@ -40,7 +40,7 @@
  *
  * ---- COMPILED INTO BOTH CONFIGURATIONS, and that is a decision -------------------------
  *
- * This file is NOT in `ROLLTUI_SLICE`. It is C in the `ROLLTUI_C=OFF` build too, for the
+ * This file is not one of the ported modules; it was C in the C++ build too, for the
  * same reason `unicode_tables.c` and `rolltui_alloc.c` are: it is the DATA both
  * implementations of the renderer fill, and two copies of a data structure is two things
  * that can disagree about what a span is. What the flag chooses is the ALGORITHM that

@@ -1,7 +1,6 @@
 /* rolltui/c/rolltui_geom.c — the C side of the seam. See rolltui_geom.h. */
 #include "rolltui/c/rolltui_geom.h"
 
-const char* rolltui_impl_name(void) { return "c"; }
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int imin(int a, int b) { return a < b ? a : b; }

@@ -1,7 +1,7 @@
 // rolltui/Menu.cpp — the SHIM over `rolltui/c/rolltui_menu.h`: the JSON loader, the shipped
 // menu files, the styling vocabulary, the thirteen action names, and the validator registry
 // that stays where its callables are. The two implementations live in `MenuCpp.cpp` and
-// `c/rolltui_menu.c`, and `-DROLLTUI_C` picks which one links (Phase 15 m5).
+// `c/rolltui_menu.c`, and this file is the C++ API over it (Phase 15 m5).
 //
 // WHAT STAYS HERE AND WHY: the loader and the shipped table, the m3 split for `Theme`; and
 // three TREE WALKS with no widget state in them (`item_actions`, `unknown_validators`,
@@ -240,16 +240,6 @@ Value item_to_json(const MenuItem& it) {
     o.set("items", std::move(arr));
   }
   return o;
-}
-
-bool contains_ci(std::string_view hay, std::string_view needle) {
-  if (needle.empty()) return true;
-  auto lower = [](std::string_view s) {
-    std::string o(s);
-    for (char& c : o) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    return o;
-  };
-  return lower(hay).find(lower(needle)) != std::string::npos;
 }
 
 }  // namespace

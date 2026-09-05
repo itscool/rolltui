@@ -19,8 +19,8 @@
 // and Value must be ==-comparable (rule 4 is by comparison). Every method takes the
 // store's lock and returns copies; `version()` bumps on every change.
 //
-// PHASE 15 m3 — THE MECHANICS ARE BEHIND A C BOUNDARY (`rolltui/c/rolltui_presets.h`), in
-// one of two implementations chosen by `-DROLLTUI_C`. This template is now the ADAPTER: it
+// PHASE 15 m3 — THE MECHANICS ARE BEHIND A C BOUNDARY (`rolltui/c/rolltui_presets.h`).
+// This template is now the ADAPTER: it
 // turns a Domain traits type into the descriptor of function pointers that boundary takes,
 // and turns the boundary's answers back into the shapes a host already writes against.
 //

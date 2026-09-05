@@ -124,8 +124,7 @@
 
 namespace rolltui {
 
-// PHASE 15 m5: the whole state machine is behind `rolltui/c/rolltui_input.h`, in one of two
-// implementations chosen by `-DROLLTUI_C` (`InputCpp.cpp` or `c/rolltui_input.c`). This
+// PHASE 15 m5: the whole state machine is behind `rolltui/c/rolltui_input.h`. This
 // header is the C++ shape every host already writes against; `InputOptions` and
 // `InputSelection` ARE the C structs (one definition), and the class below is RAII plus the
 // two translations a C boundary cannot do for itself — a `std::function` clipboard into a

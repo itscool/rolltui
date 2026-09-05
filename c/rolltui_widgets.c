@@ -8,7 +8,6 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
 
-static int imax(int a, int b) { return a > b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 /* ---- the scrollbar's geometry ------------------------------------------------------------- */

@@ -24,37 +24,27 @@
 # so the editor can write them; they are embedded at build time and parsed at start
 # like the built-in layouts. A new file needs a re-run of cmake (CONFIGURE_DEPENDS
 # re-globs on every build in the generators that support it).
-# Phase 14 — THE C EXPERIMENT'S SWITCH (plan/phase-14.md m1). Both implementations live in
-# the tree and satisfy the SAME tests; this flag picks which object files link. Rollback is
-# turning it back off, which is what makes "immediate" true — a branch would diverge and
-# stop being immediate within a week.
-option(ROLLTUI_C "Build the library's ported slice in C rather than C++ (Phase 14)" OFF)
-if(ROLLTUI_C)
-  # m2 WIRED 2026-09-04: `rolltui::Frame` is an opaque handle and its storage is whichever
-  # of these two files linked. The module cannot be half-ported — one Frame, one
-  # implementation — so this line is the whole of the switch for it.
-  # m3 2026-09-04 adds the wrap engine the same way.
-  # Phase 15 m2 2026-09-04 adds the diff colouriser and the effects engine — the two
-  # halves of one measurement: a pure function with almost no ownership, and a registry
-  # with a process-wide retainer (plan/phase-15.md m2).
-  # Phase 15 m3 adds the data-and-tables tier: the key decoder and the deliverability
-  # model, the colour engine, the preset store's mechanics and the bindings table.
-  # Phase 15 m5 adds the widget and registration layer: placement, composition and the
-  # window stack. The TREE it walks is C in both configurations (c/rolltui_layout_tree.c),
-  # like the span store — the flag chooses the algorithm, never the shape of a node.
-  set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
-                    c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
-                    c/rolltui_theme.c c/rolltui_bindings.c
-                    c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
-                    c/rolltui_input.c c/rolltui_menu.c
-                    c/rolltui_widgets.c c/rolltui_transcript.c)
-  message(STATUS "rolltui: the ported slice is C (ROLLTUI_C=ON)")
-else()
-  set(ROLLTUI_SLICE GeomCpp.cpp ScreenCpp.cpp WrapCpp.cpp UnicodeCpp.cpp DiffCpp.cpp EffectsCpp.cpp KeysCpp.cpp
-                    ThemeCpp.cpp BindingsCpp.cpp PresetsCpp.cpp MarkdownCpp.cpp LayoutCpp.cpp
-                    InputCpp.cpp MenuCpp.cpp WidgetsCpp.cpp
-                    TranscriptCpp.cpp)
-endif()
+# THE LIBRARY IS THE C IMPLEMENTATION (2026-09-04, the user's call after Phase 15 m6).
+# Phase 14 built `-DROLLTUI_C` as a rollback flag: both implementations in the tree, satisfying
+# the same tests, so a module that went badly was reverted by deleting one filename from a list
+# rather than by unwinding a merge. It did its job — Phase 15 ported the whole library behind it
+# and every milestone landed green on both sides — and the flag is now spent. The sixteen
+# `*Cpp.cpp` files are deleted; these are the implementation.
+#
+# WHAT THE DELETION BUYS, beyond 8,157 lines: a control point planted in one of these files used
+# to be ABSENT in the other configuration, so a two-sided negative control had to declare which
+# build it reached (`plan/phase-16.md`'s reach parameter, now struck). With one implementation a
+# control is simply present, and `main`'s `check_controlled` crosses over unchanged.
+#
+# The C++ files that REMAIN are not implementations of these — they are the C++ API over them
+# (`Screen.cpp`, `Wrap.cpp`, `Menu.cpp`, …), plus the C++ halves of data that is C in the
+# library and C++ at its edge (`LayoutTree.cpp`, `MenuTree.cpp`, `DocumentCpp.cpp`).
+set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
+                  c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
+                  c/rolltui_theme.c c/rolltui_bindings.c
+                  c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
+                  c/rolltui_input.c c/rolltui_menu.c
+                  c/rolltui_widgets.c c/rolltui_transcript.c)
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
 set(ROLLTUI_EMBEDDED_PRESETS ${CMAKE_CURRENT_BINARY_DIR}/embedded_presets.cpp)
@@ -142,7 +132,7 @@ add_library(rolltui STATIC
   Diff.cpp
   Json.cpp
   Theme.cpp
-  ${ROLLTUI_SLICE}            # Phase 14: the ported slice — C or C++, chosen by ROLLTUI_C
+  ${ROLLTUI_SLICE}            # the library proper, in C (Phase 14 + Phase 15)
   Memory.cpp                  # Phase 13: the library's ONE entry point for memory
   Lifetime.cpp                # Phase 14 m6a: shutdown(), and no init — the release
                               #   point that makes "did we leak?" answerable
@@ -179,9 +169,6 @@ function(add_rolltui_test name source)
   target_link_libraries(${name} PRIVATE rolltui)
   target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   target_compile_options(${name} PRIVATE -Wall -Wextra)
-  if(ROLLTUI_C)
-    target_compile_definitions(${name} PRIVATE ROLLTUI_C_BUILD=1)
-  endif()
   target_compile_definitions(${name} PRIVATE
     ROLLTUI_UCD_DIR="${ROLLTUI_UCD_DIR}"
     ROLLTUI_FIXTURE_DIR="${ROLLTUI_FIXTURE_DIR}"

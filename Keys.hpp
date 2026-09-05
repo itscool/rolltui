@@ -22,8 +22,7 @@
 // its golden frame advertises "Ctrl-J", which is how it was found.
 //
 // PHASE 15 m3 — THE DECODER AND THE DELIVERABILITY MODEL ARE BEHIND A C BOUNDARY
-// (`rolltui/c/rolltui_keys.h`), in one of two implementations chosen by `-DROLLTUI_C`
-// (`KeysCpp.cpp` or `c/rolltui_keys.c`). This header is the vocabulary, the C++ event
+// (`rolltui/c/rolltui_keys.h`). This header is the vocabulary, the C++ event
 // model and the shape every widget already writes against; nothing a caller does changed.
 // Two things one level down are worth knowing:
 //   - `MouseEvent` IS the C struct (Phase 14 m2's one-definition rule), so its `ctrl` /

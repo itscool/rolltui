@@ -190,7 +190,7 @@ struct BindingsLoadReport {
 };
 
 // PHASE 15 m3 — THE CHORD SPELLING AND THE TABLE ARE BEHIND A C BOUNDARY
-// (`rolltui/c/rolltui_bindings.h`), in one of two implementations chosen by `-DROLLTUI_C`.
+// (`rolltui/c/rolltui_bindings.h`).
 // What stays on this side is what the boundary deliberately does not carry: the ACTION
 // vocabulary (`library_actions()`, `migrated_action()`), the scope policy `declare()`
 // enforces, and the JSON. Two shapes a caller can see changed, both because the table's

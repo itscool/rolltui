@@ -242,12 +242,14 @@ int main() {
     std::vector<std::string> offenders;
     for (const std::string& f : files) {
       if (f == "Theme.cpp" || f == "Style.hpp") continue;  // the built-in themes, and the constructors themselves
-      // THE COLOUR ENGINE, in its two implementations (Phase 15 m3): xterm's published
-      // 16-colour palette, which the downgrade measures against, plus the constructors it
-      // builds a reduced colour with. Both are exempt for the reason the two below are —
-      // a reference table and computed colours are not a theme naming one — and BOTH are
-      // named, so deleting either half fails the liveness check under it.
-      if (f == "ThemeCpp.cpp" || f == "c/rolltui_theme.c") continue;
+      // THE COLOUR ENGINE (Phase 15 m3): xterm's published 16-colour palette, which the
+      // downgrade measures against, plus the constructors it builds a reduced colour with.
+      // Exempt for the reason the two below are — a reference table and computed colours are
+      // not a theme naming one — and named explicitly, so a table quietly moved out of it
+      // fails the liveness check under this loop.
+      // Was TWO files until 2026-09-04, when the C++ implementation was deleted and the C
+      // became the library; the liveness check below is what caught the stale exemption.
+      if (f == "c/rolltui_theme.c") continue;
       if (f == "ThemeAnalysis.cpp" || f == "ThemeGen.cpp") continue;  // colour MATHS: they construct colours from numbers they computed, never name one
       std::string src = read_file(dir + "/" + f);
       std::istringstream in(src);
@@ -265,12 +267,12 @@ int main() {
     check(offenders.empty(), "no colour literal outside the theme's own files" + (offenders.empty() ? "" : " — " + join(offenders)));
     // …and the control can see one: Theme.cpp itself must trip the pattern.
     check(std::regex_search(read_file(dir + "/Theme.cpp"), literal), "the pattern matches Theme.cpp's built-ins (the control is live)");
-    // …and the exemptions are not empty ones. Both halves of the engine must still carry
-    // the palette they are exempt FOR, so a table quietly moved somewhere unscanned fails
-    // here instead of passing everywhere.
-    check(read_file(dir + "/ThemeCpp.cpp").find("kSystem16") != std::string::npos &&
-              read_file(dir + "/c/rolltui_theme.c").find("kSystem16") != std::string::npos,
-          "both implementations of the colour engine still carry the palette they are exempt for");
+    // …and the exemption is not an empty one. The engine must still carry the palette it is
+    // exempt FOR, so a table quietly moved somewhere unscanned fails here instead of passing
+    // everywhere. This assertion is why the exemption above could not go stale silently when
+    // the second implementation was deleted: it failed on the first run afterwards.
+    check(read_file(dir + "/c/rolltui_theme.c").find("kSystem16") != std::string::npos,
+          "the colour engine still carries the palette it is exempt for");
   }
 
   return report("rolltui theme_test");

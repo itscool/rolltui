@@ -17,20 +17,24 @@
 //   4. **THE FRICTION IS THE FEATURE.** A call that makes you name your strategy makes you
 //      pick one, which is the whole reason the set is closed.
 //
-// **WHAT THIS CANNOT COVER IN C++, said plainly so nobody reads the numbers as total:**
-// `std::string` and `std::vector` allocate through the global `operator new`, not through
-// this. Threading a custom allocator through every container would be viral and is not
-// worth it, so in C++ these figures account for the library's OWN explicit allocations and
-// nothing else — which today, after Phase 13, is very little, because a steady frame
-// allocates nothing at all. **In C the same rule is TOTAL**, since every allocation is an
-// explicit call.
+// **THIS IS NOW TOTAL, AND THE HISTORY IS WHY THAT SENTENCE IS WORTH ANYTHING.** Every
+// allocation the library makes is an explicit call through here, so these figures are the
+// library's whole footprint rather than the part it happens to be counting.
 //
-// **THAT DIFFERENCE IS NOW A MEASUREMENT AND NOT A CLAIM (Phase 14 m4).** With a 40-entry
-// scene painted and still held, `live_bytes` reads **187,776 B with `ROLLTUI_C=ON` and 0 with
-// it OFF** — the same workload, one gauge that can see it and one that cannot, because every
-// byte of the C++ version is inside a `std::` container. Both readings are ASSERTED in
-// `rolltui/tests/budget_test.cpp`, so the limit is a checked fact rather than a paragraph,
-// and it is one of the sharpest things `plan/phase-14.md`'s verdict has to weigh.
+// It said the opposite for four phases, and the limit was real: `std::string` and
+// `std::vector` allocate through the global `operator new`, never through this, and threading
+// a custom allocator through every container is viral and was never worth it. So in C++ these
+// figures covered the library's OWN explicit allocations and nothing else — **partial by
+// construction**, stated here rather than discovered later, and asserted in
+// `rolltui/tests/budget_test.cpp` rather than promised.
+//
+// **THE DIFFERENCE WAS MEASURED BEFORE IT WAS ACTED ON (Phase 14 m4, then Phase 15 m6).** On
+// one 40-entry scene painted and still held, `live_bytes` read **0 B** in the C++ build and
+// 187,776 B with Phase 14's slice ported; at the end of Phase 15 the same scene read
+// **909,600 B against 2,746,576 B**, and the sharpest form of it was a single markdown parse
+// that the gauge could see entirely in C and **not at all** in C++. The C++ implementations
+// were deleted on 2026-09-04 and that gap closed with them — the assertion in `budget_test`
+// is now the positive one, and the limit above is history rather than a caveat.
 //
 // THREADS: the counters are relaxed atomics. They are telemetry, not a ledger — a torn
 // read would misreport a number, never corrupt an allocation.

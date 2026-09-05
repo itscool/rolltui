@@ -1,4 +1,5 @@
-/* rolltui/c/rolltui_str.c — see rolltui_str.h. Compiled into BOTH configurations, for the
+/* rolltui/c/rolltui_str.c — see rolltui_str.h. It was compiled into both configurations while
+ * a C++ implementation existed, for the
  * reason `rolltui_md_lines.c` is: this is DATA, and two copies of a data structure are two
  * things that can disagree about what a name is. The flag chooses ALGORITHMS. */
 #include "rolltui/c/rolltui_str.h"

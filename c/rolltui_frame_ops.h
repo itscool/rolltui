@@ -7,7 +7,7 @@
  * frame's primitives (`rolltui_screen.h`) and the Unicode module's cluster walk. They were
  * three methods on `rolltui::Frame` in `Screen.cpp`, which is the SHIM and therefore C++ in
  * both configurations — fine while only C++ drew, and impossible the moment the layout and
- * the widgets became C. They are here, compiled into BOTH configurations for the same
+ * the widgets became C. They are here, and were compiled into both configurations for the same
  * reason `rolltui_md_lines.c` is: one implementation of "write this text into that row",
  * not one per language.
  *

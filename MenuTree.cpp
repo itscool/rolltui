@@ -1,7 +1,7 @@
 // rolltui/MenuTree.cpp — the C++ half of `rolltui/c/rolltui_menu_tree.h`: the special
 // members and the six factories, and NOTHING ELSE. Every one of them is a caller of the C
 // functions in `c/rolltui_menu_tree.c`, so "release this subtree" has one implementation and
-// a destructor is a caller of it (Phase 15 m5). Compiled in BOTH configurations.
+// a destructor is a caller of it (Phase 15 m5). The C++ edge of a tree the library holds in C.
 #include "rolltui/c/rolltui_menu_tree.h"
 
 #include <utility>

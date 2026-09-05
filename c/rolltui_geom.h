@@ -26,10 +26,6 @@
 extern "C" {
 #endif
 
-/* Which implementation is linked: "c" or "c++". The test asserts this against what the
- * build was configured with, so a flag that silently fails to select is a test failure
- * rather than a mystery — the same reason Phase 13's budget proves its counter armed. */
-const char* rolltui_impl_name(void);
 
 /* The intersection of two rectangles, written into `out` as {x, y, w, h}. An empty result
  * is {x0, y0, 0, 0} where (x0, y0) is the clamped origin — NOT {0,0,0,0}, because callers

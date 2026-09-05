@@ -12,17 +12,12 @@
 // A release point does not make the library tidier — it makes the question ANSWERABLE, which
 // is what m6b's sanitizer run needs in order to mean anything.
 //
-// **WHAT THIS ASSERTS IS WEAKER UNDER `ROLLTUI_C=OFF`, and that is stated rather than
-// glossed.** `std::` containers do not route through `rolltui::mem`, so with the flag off the
-// gauge sees only the library's own explicit allocations — very few. With it on, the gauge
-// sees the entire ported slice. **The assertion therefore gets STRONGER with every module
-// that ports, and this file does not change**; that property is the reason it is written
-// against `mem::stats()` rather than against a count taken here.
-//
-// THE CONTROL is the same shape the budget uses: a deliberate retention, made and then
-// released, so the run proves the gauge can SEE a non-zero before it trusts a zero. A test
-// that reports "nothing live" with an instrument that cannot see is this project's oldest
-// failure, aimed here at its newest instrument.
+// **WHAT THIS ASSERTS IS NOW TOTAL, and it was not always.** While a C++ implementation of
+// the library existed, `live_bytes == 0` was weaker than it looked in that build: `std::string`
+// and `std::vector` reach the global `operator new`, never `rolltui::mem`, so a zero here could
+// coexist with memory the gauge simply could not see. The C++ implementations were deleted on
+// 2026-09-04; every allocation the library makes is now an explicit call through one entry
+// point, so the zero below means the library holds nothing.
 //
 #include <string>
 #include <vector>
@@ -157,19 +152,14 @@ int main() {
   check(builtin_layout("default") != nullptr, "a scene painted, so the caches and scratch are populated");
   const std::size_t before_registry = mem::stats().live_bytes;
   use_the_ported_modules("first time");
-#ifdef ROLLTUI_C_BUILD
-  // THE ARMING CHECK for the retainer this milestone added: with the registry in C every
-  // byte of it is an explicit allocation, so the gauge must SEE the retention appear before
-  // it is trusted to report it gone.
+  // THE ARMING CHECK for the process-wide retainers: every byte of them is an explicit
+  // allocation, so the gauge must SEE the retention appear before it is trusted to report it
+  // gone. Until the port this assertion could not exist — the registry was a `std::map` and
+  // the gauge could not see it at all, so the zero after `shutdown()` was a weaker statement
+  // than it looked (`Lifetime.hpp`).
   check(mem::stats().live_bytes > before_registry,
-        "ROLLTUI_C=ON: the gauge SEES the effect registry's retention [" + std::to_string(before_registry) + " → " +
+        "the gauge SEES the effect registry's retention [" + std::to_string(before_registry) + " → " +
             std::to_string(mem::stats().live_bytes) + " B]");
-#else
-  // ROLLTUI_C=OFF the registry is a std::map, so the gauge cannot see it at all — the same
-  // honest limit budget_test asserts. The zero below is correspondingly weaker here, which
-  // is exactly what Lifetime.hpp says and what the port is steadily fixing.
-  (void)before_registry;
-#endif
 
   shutdown();
   const mem::Stats after = mem::stats();

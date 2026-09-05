@@ -1,4 +1,5 @@
-/* rolltui/c/rolltui_document.c — see rolltui_document.h. Compiled into BOTH configurations:
+/* rolltui/c/rolltui_document.c — see rolltui_document.h. It was compiled into both
+ * configurations while a C++ implementation existed:
  * this is the DATA a HOST fills and both implementations of the transcript walk. */
 #include "rolltui/c/rolltui_document.h"
 

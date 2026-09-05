@@ -26,10 +26,12 @@
 //
 //     after shutdown(), rolltui::mem::stats().live_bytes == 0 and live_blocks == 0
 //
-// It is asserted in BOTH configurations. Under `ROLLTUI_C=OFF` it is a weaker statement than
-// it looks, and that is said out loud rather than glossed: `std::` containers do not route
-// through `rolltui::mem`, so the gauge only sees the library's own explicit allocations. Under
-// `ROLLTUI_C=ON` it sees the ported slice entirely, and it sees more of the library with every
+// IT IS NOW A TOTAL STATEMENT, and it was not always one. While a C++ implementation of the
+// library existed alongside the C, this assertion was weaker than it looked in that build:
+// `std::string` and `std::vector` reach the global `operator new`, never `rolltui::mem`, so a
+// zero here could coexist with megabytes the gauge simply could not see. With the library in C
+// every allocation is an explicit call through one entry point, so `live_bytes == 0` means the
+// library holds nothing — not that it holds nothing it happens to be counting.
 // module that ports — which is the point. The assertion gets STRONGER as the port proceeds,
 // with no change to the test.
 //

@@ -14,7 +14,6 @@
 #include "rolltui/c/rolltui_wrap.h"
 
 static int imax(int a, int b) { return a > b ? a : b; }
-static int imin(int a, int b) { return a < b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static size_t zmin(size_t a, size_t b) { return a < b ? a : b; }
 static size_t zmax(size_t a, size_t b) { return a > b ? a : b; }

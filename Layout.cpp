@@ -1,7 +1,7 @@
 // rolltui/Layout.cpp — the SHIM over `rolltui/c/rolltui_layout.h`: the RAII, the JSON
 // loader, the built-ins, the styling vocabulary and the translation of one `std::function`
 // into a function pointer. The two implementations live in `LayoutCpp.cpp` and
-// `c/rolltui_layout.c`, and `-DROLLTUI_C` picks which one links (Phase 15 m5).
+// `c/rolltui_layout.c`, and this file is the C++ API over it (Phase 15 m5).
 //
 // WHAT STAYS HERE AND WHY, since it is most of the file: the LOADER and the BUILT-INS.
 // That is the split m3 made for `Theme` — only the colour engine crossed, and the JSON
@@ -223,28 +223,6 @@ constexpr std::string_view kAnchorNames[] = {"top-left", "top", "top-right", "le
                                              "right", "bottom-left", "bottom", "bottom-right"};
 constexpr std::string_view kBorderNames[] = {"none", "single", "rounded", "double", "heavy"};
 
-std::string_view trim(std::string_view s) {
-  while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.remove_prefix(1);
-  while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.remove_suffix(1);
-  return s;
-}
-
-bool parse_int(std::string_view s, int& out) {
-  s = trim(s);
-  if (s.empty()) return false;
-  std::size_t i = 0;
-  bool neg = false;
-  if (s[i] == '-' || s[i] == '+') { neg = s[i] == '-'; ++i; }
-  if (i >= s.size()) return false;
-  long v = 0;
-  for (; i < s.size(); ++i) {
-    if (s[i] < '0' || s[i] > '9') return false;
-    v = v * 10 + (s[i] - '0');
-    if (v > 1000000) return false;
-  }
-  out = static_cast<int>(neg ? -v : v);
-  return true;
-}
 }  // namespace
 
 std::string_view anchor_name(Anchor a) { return kAnchorNames[static_cast<std::size_t>(a)]; }

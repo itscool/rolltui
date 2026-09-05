@@ -1,7 +1,7 @@
 // rolltui/DocumentCpp.cpp — the C++ half of `rolltui/c/rolltui_document.h`: the special
 // members and the four list operations a host writes, and NOTHING ELSE. Every one calls the
 // C functions in `c/rolltui_document.c`, so "release this entry" has one implementation
-// (Phase 15 m5e). Compiled in BOTH configurations, like the data it belongs to.
+// (Phase 15 m5e). The C++ edge of data the library holds in C.
 #include "rolltui/c/rolltui_document.h"
 
 #include <utility>

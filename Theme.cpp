@@ -352,7 +352,7 @@ std::vector<std::string_view> builtin_theme_names() {
 // ---- colours -----------------------------------------------------------------------
 
 // THE COLOUR ENGINE IS BEHIND A C BOUNDARY (`rolltui/c/rolltui_theme.h`) since Phase 15 m3,
-// in one of two implementations chosen by `-DROLLTUI_C`. What is left on this side is the
+// and that is the implementation. What is left on this side is the
 // two things the boundary deliberately does not carry: the C++ SHAPES a caller already
 // writes against (`std::optional<Color>`, `std::string`), and the DEPTH and MODE NAMES
 // below, which are a vocabulary a config file and a `--color-depth` flag both spell — a

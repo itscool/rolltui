@@ -27,7 +27,8 @@
  *      here to price.
  *   3. **NO ALLOCATION IS HIDDEN.** `rolltui_frame_reset` reuses everything it can, exactly
  *      as Phase 13 m5 made it — a steady frame must still allocate NOTHING with this
- *      implementation linked, and the budget test asserts it in both configurations.
+ *      implementation linked. That seam (`rolltui_impl_name`) was deleted on 2026-09-04 with
+ *      the C++ implementations it existed to tell apart.
  *   4. **TEXT OUT IS A BORROW WITH A STATED WINDOW.** `rolltui_frame_glyph` returns a
  *      pointer into the frame, valid until the next call that mutates that cell. It is the
  *      same contract `Scratch` enforces one level up, and it is why a handle — not a raw

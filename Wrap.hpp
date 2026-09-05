@@ -41,8 +41,7 @@
 //     data, never terminal input").
 //
 // PHASE 14 m3 — THE LINES ARE A HANDLE. The engine lives behind
-// `rolltui/c/rolltui_wrap.h`, in one of two implementations chosen by `-DROLLTUI_C`
-// (`WrapCpp.cpp` or `c/rolltui_wrap.c`), and this header is the RAII plus the reading.
+// `rolltui/c/rolltui_wrap.h`, and this header is the RAII plus the reading.
 // `WrapOptions` and `WrapGrapheme` ARE the C structs (one definition, m2's rule); `Line`
 // is a C++ VIEW built from the boundary's out-params in exactly one place, the same
 // conversion `Mark` and `Cursor` already get on the Screen boundary.
@@ -98,7 +97,7 @@ class WrapLines {
   // THE HANDLE IS MADE ON FIRST USE, not at construction. `Scratch::release_storage()` puts a
   // default-constructed T back where the buffer was, so a default that ALLOCATES leaves the
   // scratch holding a fresh handle instead of nothing — which is precisely what
-  // `lifetime_test` caught under `ROLLTUI_C=ON`: two blocks and 384 bytes still live after
+  // `lifetime_test` caught: two blocks and 384 bytes still live after
   // `shutdown()`, one per wrap scratch. A default WrapLines now holds nothing and costs
   // nothing, and the first `wrap()` into it makes the handle.
   WrapLines() = default;

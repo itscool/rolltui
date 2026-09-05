@@ -9,7 +9,8 @@
  * note was written to prevent". Phase 15 m4 made one of those three callers C, so the note
  * required this file rather than permitting it. `Marker.hpp` is the C++ spelling over it.
  *
- * Compiled into BOTH configurations, like the span store and the Unicode tables: it is not
+ * It was compiled into both configurations while a C++ implementation existed, like the span
+ * store and the Unicode tables: it is not
  * an algorithm the flag chooses between, it is a rule with exactly one definition.
  */
 #include <stddef.h>

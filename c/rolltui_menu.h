@@ -7,7 +7,7 @@
  * field can be — with the three-state rule that makes them work: the committed value, the
  * editing text and the preview are never collapsed into one. Every rule is stated in
  * `rolltui/Menu.hpp` and asserted in `rolltui/tests/menu_test.cpp`; none of it is repeated
- * here. The TREE it walks is `rolltui_menu_tree.h`, which is C in both configurations.
+ * here. The TREE it walks is `rolltui_menu_tree.h`.
  *
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW --------------------------------------
  *

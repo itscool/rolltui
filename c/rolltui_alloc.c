@@ -3,7 +3,8 @@
  *
  * THIS IS THE ONLY FILE IN THE LIBRARY THAT MAY CALL `rolltui_mem_realloc`, and a grep
  * control in rolltui/tests/ownership_test.cpp is what makes that true rather than intended.
- * It is compiled into BOTH configurations even though only the C implementations use it — the
+ * It was compiled into both configurations while a C++ implementation existed, even though only
+ * the C used it — the
  * same reasoning as `UnicodeSeam.cpp`: a file only one build links is a file only one build
  * can find a defect in. */
 #include "rolltui/c/rolltui_alloc.h"

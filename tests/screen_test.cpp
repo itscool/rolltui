@@ -232,16 +232,8 @@ int main() {
   // project's characteristic failure aimed at its own instrument (Phase 13 m1 had to prove
   // its counter armed for exactly the same reason).
   {
-#ifdef ROLLTUI_C_BUILD
-    const char* want = "c";
-#else
-    const char* want = "c++";
-#endif
-    check(std::string(rolltui_impl_name()) == want,
-          std::string("the build linked the implementation it was configured for: ") + rolltui_impl_name());
-
-    // And the seam answers correctly, whichever side it is. The frame diff's goldens above
-    // already exercise `intersect` in anger; these are the edges worth naming.
+    // The frame diff's goldens above already exercise `intersect` in anger; these are the
+    // edges worth naming.
     const Rect a{0, 0, 10, 10};
     check(a.intersect({5, 5, 10, 10}) == Rect{5, 5, 5, 5}, "overlapping rectangles intersect");
     check(a.intersect({20, 20, 5, 5}) == Rect{20, 20, 0, 0},

@@ -32,8 +32,7 @@
 //     emitted by the renderer from a PARSED URL, never passed through from text).
 //
 // PHASE 14 m2 — THE FRAME IS A HANDLE. Its storage lives behind
-// `rolltui/c/rolltui_screen.h`, in one of two implementations chosen by `-DROLLTUI_C`
-// (`ScreenCpp.cpp` or `c/rolltui_screen.c`), and the class below is the RAII plus the
+// `rolltui/c/rolltui_screen.h`, and the class below is the RAII plus the
 // loops that are built out of the primitives — `put_text`, `fill`, `tint` and the three
 // renderers, none of which needs to know which side answered. `Cell` and `Style` ARE the C
 // structs (one definition; see rolltui_style.h), so nothing is converted at the seam.

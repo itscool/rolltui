@@ -67,8 +67,7 @@
 //             read as attention rather than as colour
 //
 // PHASE 15 m2 — THE ENGINE IS BEHIND A C BOUNDARY. The kinds, the registry, the applier
-// and the tick live in `rolltui/c/rolltui_effects.h`, in one of two implementations chosen
-// by `-DROLLTUI_C` (`EffectsCpp.cpp` or `c/rolltui_effects.c`); this header is the
+// and the tick live in `rolltui/c/rolltui_effects.h`; this header is the
 // vocabulary, the theme's data and the C++ shape. `EffectCell` and `EffectOut` ARE the C
 // structs (one definition, Phase 14 m2's rule), so a host's kind reads and writes exactly
 // the bytes the applier does.

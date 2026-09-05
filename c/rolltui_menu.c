@@ -15,7 +15,6 @@
 #define ELLIPSIS "\xE2\x80\xA6"  /* "…" */
 
 static int imax(int a, int b) { return a > b ? a : b; }
-static int imin(int a, int b) { return a < b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static size_t zmin(size_t a, size_t b) { return a < b ? a : b; }
 

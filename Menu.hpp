@@ -113,9 +113,8 @@
 
 namespace rolltui {
 
-// PHASE 15 m5: the widget and the typed-field rules are behind `rolltui/c/rolltui_menu.h`, in
-// one of two implementations chosen by `-DROLLTUI_C`; the TREE is `c/rolltui_menu_tree.h` and
-// is C in both. `InputType`, `InputSpec`, `MenuItem` and `MenuOptions` ARE those types (one
+// PHASE 15 m5: the widget and the typed-field rules are behind `rolltui/c/rolltui_menu.h`;
+// the TREE is `c/rolltui_menu_tree.h`. `InputType`, `InputSpec`, `MenuItem` and `MenuOptions` ARE those types (one
 // definition), so a host still writes `MenuItem::toggle(...)` and `it.children.push_back(...)`.
 // What a caller can see that is new: text out of the widget is a BORROW with a stated window,
 // and the flattened palette list is `flat_count()` + `flat_label(i)` rather than a vector

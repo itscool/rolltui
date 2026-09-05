@@ -135,8 +135,7 @@
 namespace rolltui {
 
 // PHASE 15 m5e: the whole widget — the layout cache, find, selection, folding, the drag and
-// the draw — is behind `rolltui/c/rolltui_transcript.h`, in one of two implementations chosen
-// by `-DROLLTUI_C` (`TranscriptCpp.cpp` or `c/rolltui_transcript.c`). `TranscriptOptions`,
+// the draw — is behind `rolltui/c/rolltui_transcript.h`. `TranscriptOptions`,
 // `EntryLayout`, `ScrollAnchor`, `TextPos`, `Selection`, `FindMatch` and `TranscriptStats` ARE
 // the C structs (one definition). Two things a caller can see, both forced by the handle:
 // `query()` and `selected_text()` hand back a `std::string_view` / a fresh `std::string` where

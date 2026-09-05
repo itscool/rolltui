@@ -3,7 +3,7 @@
 // the C functions in `c/rolltui_layout_tree.c`, so "release this subtree" has exactly one
 // implementation and a destructor is a caller of it rather than a second mechanism.
 //
-// Compiled in BOTH configurations, like the tree it belongs to (Phase 15 m5).
+// The C++ edge of a tree the library holds in C (Phase 15 m5).
 #include "rolltui/c/rolltui_layout_tree.h"
 
 #include <utility>

@@ -16,8 +16,7 @@
 //   sanitising           strip_escape_sequences: removes ESC/C1-introduced control
 //                        sequences so model output can never be terminal input
 //
-// PHASE 14 m5 — THE ALGORITHMS LIVE BEHIND `rolltui/c/rolltui_unicode.h`, in one of two
-// implementations chosen by `-DROLLTUI_C` (`UnicodeCpp.cpp` or `c/rolltui_unicode.c`), and
+// PHASE 14 m5 — THE ALGORITHMS LIVE BEHIND `rolltui/c/rolltui_unicode.h`, and
 // this header is the C++ shape of them: the typed enums, the two PODs (which ARE the C
 // structs), and the container-returning conveniences a C++ caller wants. The generated
 // tables are ONE file compiled by both languages, so there is no second copy of the data.

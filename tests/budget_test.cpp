@@ -130,11 +130,11 @@ struct Cost {
 // TWO SOURCES, ADDED TOGETHER, AND THE SECOND IS PHASE 14's DOING. The replacement
 // `operator new` above sees every C++ container; it does NOT see `rolltui::mem`, which is a
 // `malloc` wrapper. That was harmless while every allocation in a frame was a container's —
-// and it became a HOLE IN THE INSTRUMENT the moment `-DROLLTUI_C=ON` put the Frame's cells,
+// and it became a HOLE IN THE INSTRUMENT the moment the port put the Frame's cells,
 // links and spilled glyphs behind `rolltui_mem_alloc`. A budget that reports zero because it
 // cannot see the allocator is exactly the failure this file's header is built around, aimed
 // at its own counter, so `mem::stats()` is read across the same window and the deltas are
-// summed. Under `ROLLTUI_C=OFF` nothing on the frame path calls `rolltui::mem`, so the
+// summed. In the C++ build nothing on the frame path called `rolltui::mem`, so the
 // second term is 0 and every recorded number below means what it did before.
 template <typename F>
 Cost measure(F&& fn) {
@@ -252,10 +252,10 @@ int main() {
     const Cost quiet = measure([] {});
     check(quiet.allocs == 0, "…and an empty body measures zero, so the count is the body's and not the harness's");
     // THE SECOND HALF OF THE COUNTER, PROVED ARMED FOR THE SAME REASON THE FIRST IS. With
-    // `-DROLLTUI_C=ON` the Frame's cells, link table and spilled glyphs come from
+    // the Frame's cells, link table and spilled glyphs come from
     // `rolltui::mem`, which the replacement `operator new` cannot see. If this term were
     // dead, a steady frame would read zero for the wrong reason — and would keep reading it
-    // however much the C allocated. It runs in BOTH configurations, so the day the addition
+    // however much the C allocated. It ran in both configurations, so the day the addition
     // is dropped the test fails whichever way the flag is set.
     const Cost owned = measure([] {
       void* p = mem::alloc(4096);
@@ -387,7 +387,7 @@ int main() {
   //   C   (ON)       0    267 →  13   10297 →  82      39 → 7    1368 → 127
   //
   // **A RESIZE FRAME IS 122 ALLOCATIONS, DOWN FROM 10,941 — 98.9%** — and a SECOND resize to
-  // the same width is **2**, measured in both configurations. Three things did it, all of
+  // the same width is **2**, measured in both configurations while both existed. Three things did it, all of
   // them the same finding (`plan/phase-15.md` m4, `rolltui/c/rolltui_md_lines.h`):
   //   - a SPAN OWNS NOTHING. It was a `std::string` and two vectors per span; it is an
   //     offset and a length into pools the caller's store owns. That was m1's 4,128.
@@ -414,7 +414,7 @@ int main() {
   // **C RE-RECORDED 2026-09-04 by Phase 15 m5e: streaming 13 → 6 and resize 82 → 80**, and
   // the number went DOWN, which this test fails on as loudly as an increase — the floor is
   // there so that a collapse has to be explained rather than enjoyed. The cause is the
-  // transcript itself, which is the last module of the layer to port: with `ROLLTUI_C=ON`
+  // transcript itself, which was the last module of the layer to port:
   // every per-frame working buffer it needs is a `rolltui_grow` array on the handle that
   // reaches a high-water mark and stays — the cluster array the cell walk decodes into, the
   // plain wrap's per-grapheme source offsets, the match list, and the three per-entry arrays
@@ -423,11 +423,7 @@ int main() {
   // cache fill, a `Scratch` per `for_each_cell` instantiation). Same design, two languages,
   // and only one of them has a default that allocates. The C++ numbers did not move at all,
   // which is the control: `TranscriptCpp.cpp` IS the code that was there.
-#ifdef ROLLTUI_C_BUILD
   constexpr long kStreaming = 6, kResize = 80;
-#else
-  constexpr long kStreaming = 37, kResize = 122;
-#endif
   // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
   // and that was the prediction stated before the change was written: taking `std::string`
   // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were
@@ -563,16 +559,16 @@ int main() {
       // so the gauge is being asked about a real workload rather than a toy:
       //
       // RE-AIMED 2026-09-04 by Phase 15 m4, and the reason is a finding rather than a
-      // relaxation. This used to assert `live_bytes == 0` with ROLLTUI_C=OFF, because every
+      // relaxation. This used to assert `live_bytes == 0` in the C++ build, because every
       // byte of a painted scene was in a `std::string` or a `std::vector`. The span store is
-      // C in BOTH configurations now (it is DATA both implementations fill, not an algorithm
+      // C in both configurations (it is DATA an implementation fills, not an algorithm
       // the flag chooses — `rolltui/c/rolltui_md_lines.h`), so the C++ build routes real
       // occupancy through the entry point too.
       //
       // **The LIMIT it existed to assert has not gone away; its SUBJECT moved**, and the
       // assertion moved with it rather than being deleted. The markdown PARSE TREE is the
       // sharpest subject it has ever had, because the flag decides what the tree IS:
-      // `std::vector<Block>` holding `std::string`s with ROLLTUI_C=OFF, index arrays over
+      // `std::vector<Block>` holding `std::string`s in the C++ build, index arrays over
       // one byte pool with it ON. So the SAME parse is INVISIBLE to the gauge in one
       // configuration and VISIBLE in the other — the partial-in-C++/total-in-C claim,
       // measured on one line instead of described.
@@ -587,14 +583,8 @@ int main() {
         const long long delta =
             static_cast<long long>(after_parse.live_bytes) - static_cast<long long>(before_parse.live_bytes);
         check(parsed.block_count() > 0, "…the control's own subject exists: the parse produced blocks");
-#ifdef ROLLTUI_C_BUILD
-        check(delta > 0, "ROLLTUI_C=ON: the gauge SEES the whole parse tree [" + std::to_string(delta) +
+        check(delta > 0, "the gauge SEES the whole parse tree [" + std::to_string(delta) +
                              " B] — in C every allocation is an explicit call, so the entry point is TOTAL");
-#else
-        check(delta == 0, "ROLLTUI_C=OFF: the gauge CANNOT see the same parse tree [" + std::to_string(delta) +
-                              " B of it] — it is std::vector all the way down. THE LIMIT IS ASSERTED, not just "
-                              "documented");
-#endif
       }
     }
     // THE HONEST LIMIT, asserted rather than only documented: std::string and std::vector
