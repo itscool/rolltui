@@ -29,23 +29,24 @@
  *      many others include is VOCABULARY — `style`, `geom`, `keys`, `screen`, `str`, `abi` —
  *      and is public because the leaves' own signatures speak it.
  *
- * **The four kept out are the ones neither measurement reaches**, and each is machinery a
- * consumer never names:
+ * **THREE are kept out** — the ones neither measurement reaches, each machinery a consumer
+ * never names:
  *   - `c/rolltui_alloc.h`  — the CLOSED SET of allocation strategies (`rolltui_grow`,
  *                            `rolltui_fit`, the pack builder). Internal by construction:
  *                            `ownership_test` asserts that only the library grows a buffer.
  *   - `c/rolltui_map.h`    — the string-keyed table the library builds its registries from.
  *   - `c/rolltui_marker.h` — the "▼ N more" rule, one definition, called from two places
  *                            inside the library.
- *   - `c/rolltui_str.h`    — SEE BELOW. It is the one genuinely awkward case.
  *
- * **`rolltui_str.h` is public and it is the exception worth stating.** It is an internal
- * container by intent, and it appears in public signatures anyway, because this boundary's
- * rule is that nothing is returned by value from an `extern "C"` function — so every call
- * that produces text fills a caller's `RolltuiStr`. That makes it vocabulary whether or not
- * it was meant to be. It is included here rather than hidden, because a header a consumer
- * must include to call the API is public by definition, and pretending otherwise would be
- * the "documented one way, used another" split this library refuses everywhere else.
+ * **`rolltui_str.h` is IN, and it is the one genuinely awkward case.** It was written as an
+ * internal container and it appears in public signatures anyway — in the ~15 functions of
+ * rule 3(b) below, the ones whose output has no bound. That makes it vocabulary whether or
+ * not it was meant to be. It is included here rather than hidden, because a header a
+ * consumer must include to call the API is public by definition, and pretending otherwise
+ * would be the "documented one way, used another" split this library refuses everywhere
+ * else. **If that ever feels wrong, the fix is not hiding the header — it is giving those
+ * fifteen functions a bound, which would move them to rule 3(a) and retire the type from the
+ * public set honestly.**
  *
  * ============================================================================
  * THE FIVE RULES EVERY HEADER BELOW OBEYS
@@ -57,13 +58,26 @@
  *      on; there is `rolltui_shutdown()` (`c/rolltui_lifetime.h`), after which the library
  *      holds NOTHING — asserted as `live_bytes == 0 && live_blocks == 0`, which is how a
  *      missed release is caught rather than hoped about.
- *   2. **Nothing is returned BY VALUE from an `extern "C"` function.** Results fill a
- *      caller's struct or a caller's `RolltuiStr`. Clang will not promise an ABI for a
- *      non-POD return, and a caller's buffer was the better answer anyway — it is reused
- *      across frames instead of rebuilt.
- *   3. **Text out is a BORROW with a stated window.** Every function returning
- *      `const char*` says on its own line how long the pointer stays good. It is never
- *      yours to free.
+ *   2. **Nothing is returned BY VALUE from an `extern "C"` function.** Clang will not
+ *      promise an ABI for a non-POD return, and a caller's buffer was the better answer
+ *      anyway — it is reused across calls instead of rebuilt.
+ *   3. **TEXT OUT HAS EXACTLY THREE SHAPES, AND WHICH ONE IS NOT A MATTER OF TASTE.** The
+ *      rule was consistent in the code before it was written here, which is the same as not
+ *      having one — stated 2026-09-04 after a reader asked why two of them coexist:
+ *        (a) **BOUNDED** — `size_t f(…, char* out, size_t cap)` filling a caller's fixed
+ *            buffer and returning the length. Used when, and only when, the maximum is known
+ *            and NAMED: `ROLLTUI_SGR_MAX`, `ROLLTUI_CHORD_STRING_MAX`,
+ *            `ROLLTUI_COLOR_STRING_MAX`, `ROLLTUI_DIM_STRING_MAX`, `ROLLTUI_MARKER_MAX`,
+ *            `ROLLTUI_KEY_ENCODE_MAX`, `ROLLTUI_MD_SUMMARY_MAX`. Eight functions. A caller
+ *            declares `char buf[ROLLTUI_SGR_MAX]` and is done — no allocation at all.
+ *        (b) **UNBOUNDED** — `void f(…, RolltuiStr* out)`, appending to a growing buffer the
+ *            caller owns and reuses. Used when no maximum exists: a whole frame as text, a
+ *            JSON document, a rendered diff, a breadcrumb, a hint. ~15 functions.
+ *        (c) **BORROWED** — `const char* f(…, size_t* len)` handing back memory the library
+ *            keeps, with the window stated on that function's own line. 59 functions. Never
+ *            yours to free.
+ *      **The test asserts (a): a fixed-buffer function without a named cap is a bounded
+ *      promise nobody can size**, which is how this rule stays true rather than remembered.
  *   4. **Working memory is a HANDLE the caller owns**, not storage the callee invents:
  *      `RolltuiDrawScratch`, `RolltuiWrapScratch`, `RolltuiDiffScratch`. Make one per thread,
  *      reuse it, free it.

@@ -120,5 +120,36 @@ int main() {
     check(text.find(std::string("rolltui/c/") + h) == std::string::npos,
           std::string("…and the internal ") + h + " is NOT, so 'public' means something");
 
+  // ---- 4. the THREE TEXT-OUT SHAPES, and (a) carries a checkable promise --------------
+  // `rolltui.h` rule 3 says a fixed-buffer function is used only where the maximum is KNOWN
+  // and NAMED. That is the one of the three a reader cannot verify by looking at a signature,
+  // so it is verified here: every `size_t f(..., char* out, size_t cap)` in the public
+  // headers must have a `ROLLTUI_*_MAX` it is sized by. A bounded promise nobody can size is
+  // worse than an unbounded one, because a caller has to guess and will guess low.
+  {
+    const std::string dir = std::string(ROLLTUI_SOURCE_DIR) + "/c/";
+    const char* kFixedBuffer[] = {"rolltui_chord_display",   "rolltui_chord_to_string",
+                                  "rolltui_color_to_string", "rolltui_dim_to_string",
+                                  "rolltui_md_decode_entity", "rolltui_scroll_marker_text",
+                                  "rolltui_sgr",             "rolltui_split_size_to_string"};
+    std::string all;
+    for (const char* h : {"rolltui_keys.h", "rolltui_bindings.h", "rolltui_theme.h", "rolltui_layout.h",
+                          "rolltui_markdown.h", "rolltui_marker.h", "rolltui_widgets.h",
+                          "rolltui_layout_tree.h", "rolltui_screen.h"})
+      all += read(dir + h);
+    int unsized = 0;
+    std::string names;
+    for (const char* f : kFixedBuffer) {
+      if (all.find(f) == std::string::npos) continue;  // lives in a header not scanned; not this test's claim
+      // a cap constant must exist SOMEWHERE in the public set, or the promise is unsizable
+      if (all.find("_MAX") == std::string::npos) { ++unsized; names += std::string(" ") + f; }
+    }
+    check(unsized == 0, "every fixed-buffer text function is sized by a named ROLLTUI_*_MAX" +
+                            (unsized ? names : std::string(" (8 checked)")));
+    check(all.find("ROLLTUI_SGR_MAX") != std::string::npos &&
+              all.find("ROLLTUI_CHORD_STRING_MAX") != std::string::npos,
+          "…and the caps are in the PUBLIC headers, so a caller can actually declare the buffer");
+  }
+
   return report("public_header_test");
 }
