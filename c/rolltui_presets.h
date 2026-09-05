@@ -309,6 +309,89 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
                                                const char* depth, size_t depth_len, const char* name,
                                                size_t name_len);
 
+/* ---- settings and precedence (Presets.hpp; Phase 17 m2) -------------------------------------
+ *
+ * ONE LEVEL ABOVE the store: a HOST's own setting vocabulary ("theme", "theme_mode", "layout",
+ * ...) and the four-rung precedence a flag/env/config value resolves through. It never touches
+ * a `RolltuiPresetStore` or a `RolltuiPresetDomain` — which is exactly why it had ZERO C-side
+ * implementation before this: nothing else in this file ever called it, so nothing forced it
+ * out of `Presets.hpp`.
+ *
+ * WHAT DID NOT MOVE, AND STAYS AT `Presets.hpp`: `working_value(const ThemePresets&, key)` /
+ * `(const LayoutPresets&, ...)` / `(const BindingsPresets&, ...)` read a setting out of a
+ * store's WORKING COPY. For "theme"/"layout"/"bindings" that is just `store.origin()`
+ * (already this boundary's own `rolltui_preset_store_origin`), but "theme_mode"/"color_depth"
+ * read `ThemePreset::mode`/`::depth` — `std::string` MEMBERS of a C++-only struct (only its
+ * `colours` field is a `RolltuiJsonValue*` today). `ThemePreset` itself is not this task's to
+ * move, so those two fields have no C form to read them from. What DID move out of
+ * `working_value`'s own dispatch: which key is a domain's IDENTITY setting (the one whose
+ * value is the whole preset name) is now `key == rolltui_preset_domain_name(domain)` rather
+ * than "theme"/"layout"/"bindings" repeated as three more C++ string literals.
+ */
+
+typedef enum RolltuiPresetRung {
+  ROLLTUI_PRESET_RUNG_FLAG = 0,
+  ROLLTUI_PRESET_RUNG_ENV,
+  ROLLTUI_PRESET_RUNG_WORKING,
+  ROLLTUI_PRESET_RUNG_BUILTIN,
+} RolltuiPresetRung;
+
+/* A BORROW of a static string literal, never freed: "flag" | "environment" | "working copy" |
+ * "built-in default". */
+const char* rolltui_preset_rung_name(RolltuiPresetRung r, size_t* len);
+
+/* THE WHOLE RULE (Presets.hpp): the first NON-EMPTY rung wins. An empty string at a rung means
+ * "not given there". `*out_value`/`*out_value_len` BORROW whichever of the four input strings
+ * won — never copied, never allocated, valid exactly as long as that one input buffer is (the
+ * same window the caller's own four strings already have). */
+void rolltui_preset_resolve_setting(const char* flag, size_t flag_len, const char* env, size_t env_len,
+                                    const char* working, size_t working_len, const char* builtin,
+                                    size_t builtin_len, const char** out_value, size_t* out_value_len,
+                                    RolltuiPresetRung* out_rung);
+
+/* Which STORE a setting lives in — "theme_mode" is the Theme domain's even though it is not
+ * the Theme domain's IDENTITY key ("theme" is). Distinct from `RolltuiPresetDomain` above
+ * (that struct is the MECHANICS for one domain — parse/to_json/clone/...; this is a tag
+ * saying which of the three a setting belongs to), hence the `Id` suffix. */
+typedef enum RolltuiPresetDomainId {
+  ROLLTUI_PRESET_DOMAIN_THEME = 0,
+  ROLLTUI_PRESET_DOMAIN_LAYOUT,
+  ROLLTUI_PRESET_DOMAIN_BINDINGS,
+} RolltuiPresetDomainId;
+
+/* A BORROW of a static string literal: "theme" | "layout" | "bindings" — and, not by
+ * coincidence, exactly the key that is each domain's own IDENTITY setting (`kSettings`
+ * below): `working_value`'s "is this key the whole preset name" case is `key ==
+ * domain_name(store's domain)`, which is what `presets_test.cpp`'s "setting(...)->domain ==
+ * Domain::X" checks holding for every row make true. */
+const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
+
+/* One row of `kSettings` (Presets.hpp): a setting's key, which domain/store it belongs to, its
+ * environment-variable suffix ("THEME" joined to a host's own prefix), its built-in default,
+ * and help text for its legal values. BORROWED fields throughout — every string is a literal
+ * in the table below, alive for the process's whole life. */
+typedef struct RolltuiPresetSettingSpec {
+  const char* key;
+  size_t key_len;
+  RolltuiPresetDomainId domain;
+  const char* env_suffix;
+  size_t env_suffix_len;
+  const char* builtin;
+  size_t builtin_len;
+  const char* values; /* help text, e.g. "auto | dark | light" */
+  size_t values_len;
+} RolltuiPresetSettingSpec;
+
+size_t rolltui_preset_settings_count(void);
+/* BORROW, table order ("theme", "layout", "theme_mode", "color_depth", "bindings" — the order
+ * a listing offers them in), valid for the process's whole life. */
+const RolltuiPresetSettingSpec* rolltui_preset_settings_at(size_t i);
+/* The row named `key`, as an INDEX into the table above (`rolltui_preset_settings_at`) rather
+ * than a pointer — the shape a caller whose OWN copy of this table is a different array
+ * (`Presets.cpp`'s `kSettings`, built from this one row for row) needs to find the matching
+ * row without a second string comparison. -1: `key` is not a known setting. */
+int rolltui_preset_setting_index(const char* key, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

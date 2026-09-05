@@ -1,6 +1,6 @@
 /* rolltui/c/rolltui_presets.c — the C side of the preset mechanics. See rolltui_presets.h
  * for the boundary's rules and rolltui/Presets.hpp for the five rules themselves;
- * `PresetsCpp.cpp` is the other implementation of the same functions, and
+ * `Presets.cpp` is the other implementation of the same functions, and
  * `rolltui/tests/presets_test.cpp` — which asserts all five over ALL THREE domains — is the
  * oracle for both.
  *
@@ -947,4 +947,107 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
   rolltui_json_set(o, K("depth"), rolltui_json_string(depth, depth_len));
   rolltui_json_set(o, K("colours"), colours);
   return o;
+}
+
+/* ---- settings and precedence (rolltui_presets.h has the why) -------------------------------
+ * No allocation anywhere below: every string is a literal with static storage duration, and
+ * every lookup is a linear scan over a table of four or five rows. */
+
+typedef struct {
+  const char* s;
+  size_t len;
+} NameLen;
+
+#define ROLLTUI_NAMED(n) {n, sizeof(n) - 1}
+static const NameLen kRungNames[] = {
+    ROLLTUI_NAMED("flag"),
+    ROLLTUI_NAMED("environment"),
+    ROLLTUI_NAMED("working copy"),
+    ROLLTUI_NAMED("built-in default"),
+};
+#undef ROLLTUI_NAMED
+
+const char* rolltui_preset_rung_name(RolltuiPresetRung r, size_t* len) {
+  const size_t i = (size_t)r;
+  if (i >= sizeof kRungNames / sizeof kRungNames[0]) {
+    *len = 0;
+    return "";
+  }
+  *len = kRungNames[i].len;
+  return kRungNames[i].s;
+}
+
+void rolltui_preset_resolve_setting(const char* flag, size_t flag_len, const char* env, size_t env_len,
+                                    const char* working, size_t working_len, const char* builtin,
+                                    size_t builtin_len, const char** out_value, size_t* out_value_len,
+                                    RolltuiPresetRung* out_rung) {
+  if (flag_len) {
+    *out_value = flag;
+    *out_value_len = flag_len;
+    *out_rung = ROLLTUI_PRESET_RUNG_FLAG;
+    return;
+  }
+  if (env_len) {
+    *out_value = env;
+    *out_value_len = env_len;
+    *out_rung = ROLLTUI_PRESET_RUNG_ENV;
+    return;
+  }
+  if (working_len) {
+    *out_value = working;
+    *out_value_len = working_len;
+    *out_rung = ROLLTUI_PRESET_RUNG_WORKING;
+    return;
+  }
+  *out_value = builtin;
+  *out_value_len = builtin_len;
+  *out_rung = ROLLTUI_PRESET_RUNG_BUILTIN;
+}
+
+#define ROLLTUI_NAMED(n) {n, sizeof(n) - 1}
+static const NameLen kDomainNames[] = {
+    ROLLTUI_NAMED("theme"),
+    ROLLTUI_NAMED("layout"),
+    ROLLTUI_NAMED("bindings"),
+};
+#undef ROLLTUI_NAMED
+
+const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len) {
+  const size_t i = (size_t)d;
+  if (i >= sizeof kDomainNames / sizeof kDomainNames[0]) {
+    *len = 0;
+    return "";
+  }
+  *len = kDomainNames[i].len;
+  return kDomainNames[i].s;
+}
+
+/* `kSettings` (Presets.hpp), verbatim: "theme"/"layout"/"theme_mode"/"color_depth"/"bindings"
+ * in listing order. `Presets.cpp`'s own `kSettings` is BUILT FROM this table row for row
+ * rather than holding a second copy of the same five rows — "a vocabulary written down twice
+ * is a second thing to drift", the rule this port has followed everywhere else in the file. */
+#define ROLLTUI_SETTING(k, d, e, b, v) {k, sizeof(k) - 1, d, e, sizeof(e) - 1, b, sizeof(b) - 1, v, sizeof(v) - 1}
+static const RolltuiPresetSettingSpec kSettingTable[] = {
+    ROLLTUI_SETTING("theme", ROLLTUI_PRESET_DOMAIN_THEME, "THEME", "default",
+                    "a preset name (see `theme list`) or a preset file"),
+    ROLLTUI_SETTING("layout", ROLLTUI_PRESET_DOMAIN_LAYOUT, "LAYOUT", "default",
+                    "a shipped layout, a layouts/ file name, or a layout file"),
+    ROLLTUI_SETTING("theme_mode", ROLLTUI_PRESET_DOMAIN_THEME, "THEME_MODE", "auto", "auto | dark | light"),
+    ROLLTUI_SETTING("color_depth", ROLLTUI_PRESET_DOMAIN_THEME, "COLOR_DEPTH", "auto",
+                    "auto | truecolor | 256 | 16 | mono"),
+    ROLLTUI_SETTING("bindings", ROLLTUI_PRESET_DOMAIN_BINDINGS, "BINDINGS", "default",
+                    "a bindings preset name (see `bindings list`) or a bindings file"),
+};
+#undef ROLLTUI_SETTING
+#define ROLLTUI_SETTINGS_COUNT (sizeof kSettingTable / sizeof kSettingTable[0])
+
+size_t rolltui_preset_settings_count(void) { return ROLLTUI_SETTINGS_COUNT; }
+
+const RolltuiPresetSettingSpec* rolltui_preset_settings_at(size_t i) { return &kSettingTable[i]; }
+
+int rolltui_preset_setting_index(const char* key, size_t len) {
+  size_t i;
+  for (i = 0; i < ROLLTUI_SETTINGS_COUNT; ++i)
+    if (kSettingTable[i].key_len == len && (len == 0 || memcmp(kSettingTable[i].key, key, len) == 0)) return (int)i;
+  return -1;
 }

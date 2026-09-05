@@ -333,42 +333,61 @@ std::optional<Bindings> BindingsDomain::parse(const json::Value& v, PresetLoadRe
   return b;
 }
 
-// ---- precedence -----------------------------------------------------------------------------------
+// ---- precedence (Phase 17 m2: moved to `rolltui/c/rolltui_presets.h`'s own "settings and
+// precedence" section — see that header for the boundary and why `working_value` stays here
+// regardless) ---------------------------------------------------------------------------------
 
 std::string_view rung_name(Rung r) {
-  switch (r) {
-    case Rung::Flag: return "flag";
-    case Rung::Env: return "environment";
-    case Rung::Working: return "working copy";
-    case Rung::Builtin: return "built-in default";
-  }
-  return "";
+  std::size_t len = 0;
+  const char* p = rolltui_preset_rung_name(static_cast<RolltuiPresetRung>(r), &len);
+  return {p, len};
 }
 
 Resolved resolve_setting(std::string_view flag, std::string_view env, std::string_view working, std::string_view builtin) {
-  if (!flag.empty()) return {std::string(flag), Rung::Flag};
-  if (!env.empty()) return {std::string(env), Rung::Env};
-  if (!working.empty()) return {std::string(working), Rung::Working};
-  return {std::string(builtin), Rung::Builtin};
+  const char* value = nullptr;
+  std::size_t value_len = 0;
+  RolltuiPresetRung rung = ROLLTUI_PRESET_RUNG_BUILTIN;
+  rolltui_preset_resolve_setting(flag.data(), flag.size(), env.data(), env.size(), working.data(), working.size(),
+                                 builtin.data(), builtin.size(), &value, &value_len, &rung);
+  // `value`/`value_len` BORROW one of the four arguments above (rolltui_presets.h); copied
+  // into `Resolved::value` here because that field is OWNING, exactly as it was before.
+  return {std::string(value, value_len), static_cast<Rung>(rung)};
 }
 
 std::string_view domain_name(Domain d) {
-  switch (d) {
-    case Domain::Theme: return "theme";
-    case Domain::Layout: return "layout";
-    case Domain::Bindings: return "bindings";
-  }
-  return "";
+  std::size_t len = 0;
+  const char* p = rolltui_preset_domain_name(static_cast<RolltuiPresetDomainId>(d), &len);
+  return {p, len};
 }
 
+namespace {
+std::vector<SettingSpec> build_settings() {
+  std::vector<SettingSpec> out;
+  const std::size_t n = rolltui_preset_settings_count();
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const RolltuiPresetSettingSpec& s = *rolltui_preset_settings_at(i);
+    out.push_back({std::string_view(s.key, s.key_len), static_cast<Domain>(s.domain),
+                    std::string_view(s.env_suffix, s.env_suffix_len), std::string_view(s.builtin, s.builtin_len),
+                    std::string_view(s.values, s.values_len)});
+  }
+  return out;
+}
+}  // namespace
+
+// Every field BORROWS a `rolltui_preset_settings_at()` string literal (static storage
+// duration, alive for the process's whole life), so this vector's own elements are safe to
+// hand out `string_view`s into indefinitely — the same lifetime the old `inline constexpr`
+// array gave them, just built once at startup instead of spelled out a second time here.
+const std::vector<SettingSpec> kSettings = build_settings();
+
 const SettingSpec* setting(std::string_view key) {
-  for (const SettingSpec& s : kSettings)
-    if (s.key == key) return &s;
-  return nullptr;
+  const int i = rolltui_preset_setting_index(key.data(), key.size());
+  return i < 0 ? nullptr : &kSettings[static_cast<std::size_t>(i)];
 }
 
 std::string working_value(const ThemePresets& store, std::string_view key) {
-  if (key == "theme") return store.origin();
+  if (key == domain_name(Domain::Theme)) return store.origin();
   const ThemePreset w = store.working();
   if (key == "theme_mode") return w.mode;
   if (key == "color_depth") return w.depth;
@@ -376,12 +395,12 @@ std::string working_value(const ThemePresets& store, std::string_view key) {
 }
 
 std::string working_value(const LayoutPresets& store, std::string_view key) {
-  if (key == "layout") return store.origin();
+  if (key == domain_name(Domain::Layout)) return store.origin();
   return "";
 }
 
 std::string working_value(const BindingsPresets& store, std::string_view key) {
-  if (key == "bindings") return store.origin();
+  if (key == domain_name(Domain::Bindings)) return store.origin();
   return "";
 }
 

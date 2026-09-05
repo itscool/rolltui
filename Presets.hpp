@@ -226,9 +226,12 @@ struct BindingsDomain {
 };
 using BindingsPresets = PresetStore<BindingsDomain>;
 
-// ---- precedence ----------------------------------------------------------------------
+// ---- precedence (Phase 17 m2: the vocabulary below is a thin C++ shim over
+// `rolltui/c/rolltui_presets.h`'s own "settings and precedence" section, which is where
+// `Rung`/`Resolved`/`resolve_setting`/`rung_name`/`Domain`/`domain_name`/`SettingSpec`/
+// `kSettings`/`setting` now actually live; see Presets.cpp) ----------------------------
 
-enum class Rung : std::uint8_t { Flag, Env, Working, Builtin };
+enum class Rung : std::uint8_t { Flag, Env, Working, Builtin };  // same order as RolltuiPresetRung
 std::string_view rung_name(Rung r);  // "flag" | "environment" | "working copy" | "built-in default"
 
 struct Resolved {
@@ -243,7 +246,7 @@ Resolved resolve_setting(std::string_view flag, std::string_view env, std::strin
 // Which store a setting lives in. The column exists so that ONE table and ONE
 // `resolve_setting` serve every domain (Phase 10 m1): before it, "layout" was a Theme
 // row only because the layout was part of the Theme, and a host had to know that.
-enum class Domain : std::uint8_t { Theme, Layout, Bindings };
+enum class Domain : std::uint8_t { Theme, Layout, Bindings };  // same order as RolltuiPresetDomainId
 std::string_view domain_name(Domain d);  // "theme" | "layout" | "bindings"
 
 // The table. `env_suffix` is what the host's prefix is joined to ("ROLL_" + "THEME").
@@ -254,16 +257,15 @@ struct SettingSpec {
   std::string_view builtin;
   std::string_view values;  // for help text
 };
-inline constexpr SettingSpec kSettings[] = {
-    {"theme", Domain::Theme, "THEME", "default", "a preset name (see `theme list`) or a preset file"},
-    {"layout", Domain::Layout, "LAYOUT", "default", "a shipped layout, a layouts/ file name, or a layout file"},
-    {"theme_mode", Domain::Theme, "THEME_MODE", "auto", "auto | dark | light"},
-    {"color_depth", Domain::Theme, "COLOR_DEPTH", "auto", "auto | truecolor | 256 | 16 | mono"},
-    {"bindings", Domain::Bindings, "BINDINGS", "default", "a bindings preset name (see `bindings list`) or a bindings file"},
-};
+// BUILT FROM `rolltui_preset_settings_at()` row for row (Presets.cpp) rather than holding a
+// second copy of the same five rows — the C table is the one place they are spelled out now.
+extern const std::vector<SettingSpec> kSettings;
 const SettingSpec* setting(std::string_view key);  // nullptr when unknown
 // The working copy's value of a setting: the origin for "theme" / "layout" / "bindings",
-// the mode and the depth from the Theme working copy.
+// the mode and the depth from the Theme working copy. Stays C++ (Presets.cpp) — it is the
+// one member of this vocabulary that reads a PresetStore<D>, and for "theme_mode"/
+// "color_depth" a `ThemePreset`'s own `std::string mode`/`depth` fields, which have no C form
+// (`ThemePreset` is not part of this port; see the note at `rolltui_presets.h`'s own section).
 std::string working_value(const ThemePresets& store, std::string_view key);
 std::string working_value(const LayoutPresets& store, std::string_view key);    // "layout": the origin
 std::string working_value(const BindingsPresets& store, std::string_view key);  // "bindings": the origin
