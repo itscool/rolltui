@@ -38,8 +38,12 @@ int main() {
     const Generated g4 = generate(1, Ruleset::Neon, 0.0);
     check(!(g4.theme.styles == g1.theme.styles), "a different ruleset too");
     check(g1.theme.name == "gen-triadic-1-0.00", "the name records ruleset, seed and chaos [" + g1.theme.name + "]");
-    check(g1.theme.meta.get("generator").get("seed").as_number() == 1 && g1.theme.meta.get("generator").get("ruleset").as_string() == "triadic" &&
-              g1.theme.meta.get("badges").is_array(),
+    const RolltuiJsonValue* gen1 = rolltui_json_get(g1.theme.meta.get(), "generator", 9);
+    std::size_t ruleset1_len = 0;
+    const char* ruleset1 = rolltui_json_as_string(rolltui_json_get(gen1, "ruleset", 7), "", 0, &ruleset1_len);
+    check(rolltui_json_as_number(rolltui_json_get(gen1, "seed", 4), -1) == 1 &&
+              std::string_view(ruleset1, ruleset1_len) == "triadic" &&
+              rolltui_json_is_array(rolltui_json_get(g1.theme.meta.get(), "badges", 6)) != 0,
           "meta records the generator inputs and the computed badges");
   }
   // ---- every ruleset at chaos 0 is readable ----
@@ -81,7 +85,8 @@ int main() {
     const std::string text = theme_to_json(g.theme);
     ThemeLoadReport rep;
     std::optional<Theme> back = load_theme(text, ThemeMode::Dark, rep);
-    check(back && rep.clean() && back->styles == g.theme.styles && back->meta == g.theme.meta, "theme_to_json keeps meta, and the loader accepts it as a known key");
+    check(back && rep.clean() && back->styles == g.theme.styles && rolltui_json_equal(back->meta.get(), g.theme.meta.get()) != 0,
+          "theme_to_json keeps meta, and the loader accepts it as a known key");
     check(text.find("\"generator\"") != std::string::npos && text.find("\"chaos\": 0.25") != std::string::npos, "…with the generator inputs in the file");
   }
   return report("rolltui theme_gen_test");

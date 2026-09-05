@@ -286,10 +286,17 @@ std::optional<Theme> load_theme(const RolltuiJsonValue* root_c, ThemeMode mode, 
   if (t) {
     const RolltuiJsonValue* meta_c = rolltui_json_get(root_c, "meta", 4);
     if (rolltui_json_is_object(meta_c)) {
-      t->meta = json::value_from_c(meta_c);
-      const json::Value& b = t->meta.get("badges");
+      // OWNS its own clone — `meta_c` is a BORROW into `root_c`'s tree, which this function
+      // does not keep.
+      t->meta.reset(rolltui_json_clone(meta_c));
+      const RolltuiJsonValue* b = rolltui_json_get(t->meta.get(), "badges", 6);
       const char* key = mode == ThemeMode::Dark ? "dark" : "light";
-      if (b.is_object() && b.has(key)) t->meta.set("badges", b.get(key));
+      // Claimed badges may be per variant ({"dark": [...], "light": [...]}): resolve them for
+      // this mode like a colour pair, so check_claims sees one list. CLONE the sub-value
+      // before replacing "badges" with it — `rolltui_json_set` frees the OLD "badges" (the
+      // object `b` itself), which `rolltui_json_get(b, key, ...)` still borrows from.
+      if (rolltui_json_is_object(b) && rolltui_json_has(b, key, std::strlen(key)))
+        rolltui_json_set(t->meta.get(), "badges", 6, rolltui_json_clone(rolltui_json_get(b, key, std::strlen(key))));
     }
   }
   return t;
@@ -317,10 +324,11 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
   if (t && root.get("meta").is_object()) {
     // Claimed badges may be per variant ({"dark": [...], "light": [...]}): resolve them for
     // this mode like a colour pair, so check_claims sees one list.
-    t->meta = root.get("meta");
-    const json::Value& b = t->meta.get("badges");
+    t->meta.reset(json::value_to_c(root.get("meta")));
+    const RolltuiJsonValue* b = rolltui_json_get(t->meta.get(), "badges", 6);
     const char* key = mode == ThemeMode::Dark ? "dark" : "light";
-    if (b.is_object() && b.has(key)) t->meta.set("badges", b.get(key));
+    if (rolltui_json_is_object(b) && rolltui_json_has(b, key, std::strlen(key)))
+      rolltui_json_set(t->meta.get(), "badges", 6, rolltui_json_clone(rolltui_json_get(b, key, std::strlen(key))));
   }
   return t;
 }
@@ -328,7 +336,7 @@ std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLo
 json::Value theme_to_json_value(const Theme& theme) {
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(theme.name));
-  if (theme.meta.is_object()) root.set("meta", theme.meta);
+  if (rolltui_json_is_object(theme.meta.get())) root.set("meta", json::value_from_c(theme.meta.get()));
   RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), theme.effects.handle(), nullptr, nullptr, &theme_vocab());
   root.set("roles", json::value_from_c(rolltui_json_get(c, "roles", 5)));
   const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
@@ -345,14 +353,18 @@ json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std:
   // an attribute set in one variant only).
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(std::string(name)));
-  if (dark.meta.is_object()) {
-    json::Value meta = dark.meta;
+  if (rolltui_json_is_object(dark.meta.get())) {
+    json::Value meta = json::value_from_c(dark.meta.get());
     // Each variant's claimed badges, as a pair when they differ.
-    if (light.meta.is_object() && !(dark.meta.get("badges") == light.meta.get("badges"))) {
-      json::Value pair = json::Value::object();
-      pair.set("dark", dark.meta.get("badges"));
-      pair.set("light", light.meta.get("badges"));
-      meta.set("badges", std::move(pair));
+    if (rolltui_json_is_object(light.meta.get())) {
+      const RolltuiJsonValue* db = rolltui_json_get(dark.meta.get(), "badges", 6);
+      const RolltuiJsonValue* lb = rolltui_json_get(light.meta.get(), "badges", 6);
+      if (!rolltui_json_equal(db, lb)) {
+        json::Value pair = json::Value::object();
+        pair.set("dark", json::value_from_c(db));
+        pair.set("light", json::value_from_c(lb));
+        meta.set("badges", std::move(pair));
+      }
     }
     root.set("meta", std::move(meta));
   }

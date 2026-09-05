@@ -400,7 +400,15 @@ int main() {
         //     Terminal is destroyed or `negotiate_keyboard()` runs again.
         //   - `const char* env` in `negotiate_keyboard()` — `std::getenv`'s own return, read
         //     once to resolve `ROLLTUI_KEY_PROTOCOL` and never stored past that call.
-        {"Terminal.hpp", 4},     {"Theme.hpp", 3},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
+        {"Terminal.hpp", 4},
+        // Theme.hpp 3 → 4, RE-RECORDED 2026-09-04 by Phase 17 m5, when `Theme::meta` became a
+        // `RolltuiJsonValue*` instead of a `json::Value` — the other half of Presets.hpp's own
+        // milestone above (`ThemePreset::colours`), same precedent followed exactly. The one
+        // new pointer does not own two ways either:
+        //   - `RolltuiJsonValue* p` in `Theme::MetaDeleter::operator()` — the deleter of
+        //     `meta`'s OWNED tree, a `unique_ptr`'s deleter rather than a member, the same
+        //     sanctioned shape `ThemePreset::ColoursDeleter` (Presets.hpp) already uses.
+        {"Theme.hpp", 4},        {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         // Widgets.hpp 10 → 12 (Phase 15 m5): `RolltuiWindows* p` in `Windows::Handle` — the
         // deleter of the OWNED widget table, which is this milestone's named lifetime — and
         // `RolltuiWindows* handle()`, a BORROW for the shim's own factories. The ten that
@@ -475,7 +483,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 111, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 112, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

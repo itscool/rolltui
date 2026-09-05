@@ -58,6 +58,7 @@
 // (COLORTERM, TERM, and the ROLL_COLOR_DEPTH override for the unobservable case).
 //
 #include <array>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -75,13 +76,45 @@ enum class ColorDepth { Mono, Ansi16, Ansi256, TrueColor };
 
 struct Theme {
   std::string name;
-  json::Value meta;  // free-form file metadata ("meta" in the file): a generator's seed, claimed badges
+  // `meta` IS A `RolltuiJsonValue*` NOW (Phase 17 m5) — free-form file metadata ("meta" in
+  // the file: a generator's seed, claimed badges), following `ThemePreset::colours`'s exact
+  // precedent (Presets.hpp): OWNED, LONG-LIVED, a clone on copy, `rolltui_json_equal` for
+  // `==`, freed on destruction. `json::Value` ITSELF does NOT port — `rolltui/c/rolltui_json.h`
+  // names `Theme.cpp` as one of the modules that keeps a real `json::Value` elsewhere
+  // (`theme_to_json_value`/`theme_pair_to_json_value` build one; the `load_theme(const
+  // json::Value&, ...)` overload takes one) — so this ONE FIELD moves alone, the same way
+  // `ThemePreset::colours` did before every other field of that struct had a C form. This
+  // same milestone also emptied that list by two more: `ThemeAnalysis.cpp`'s and
+  // `ThemeGen.cpp`'s report/auto-fix/`generate()` moved to C alongside it and, in doing so,
+  // stopped touching `json::Value` at all — `rolltui_json.h`'s own "six modules" count is
+  // now stale by those two names, left for whoever next touches that header to correct
+  // rather than edited here (out of this task's stated file scope).
+  struct MetaDeleter {
+    void operator()(RolltuiJsonValue* p) const { rolltui_json_free(p); }
+  };
+  std::unique_ptr<RolltuiJsonValue, MetaDeleter> meta;
   std::array<Style, kRoleCount> styles{};
   // What each widget STATE looks like while it lasts (Effects.hpp). Empty — the default,
   // and what a file with no "effects" key gets — is a still UI.
   EffectMap effects;
   const Style& style(Role r) const { return styles[static_cast<std::size_t>(r)]; }
   Style& style(Role r) { return styles[static_cast<std::size_t>(r)]; }
+
+  // `unique_ptr` moves for free; only the copying half needs writing out (a deep clone, the
+  // same rule `ThemePreset`'s copy ctor/assignment already follow for the same reason).
+  Theme() = default;
+  Theme(const Theme& o) : name(o.name), meta(rolltui_json_clone(o.meta.get())), styles(o.styles), effects(o.effects) {}
+  Theme(Theme&&) = default;
+  Theme& operator=(const Theme& o) {
+    if (this != &o) {
+      name = o.name;
+      meta.reset(rolltui_json_clone(o.meta.get()));
+      styles = o.styles;
+      effects = o.effects;
+    }
+    return *this;
+  }
+  Theme& operator=(Theme&&) = default;
 };
 
 struct ThemeLoadReport {

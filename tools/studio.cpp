@@ -1564,7 +1564,7 @@ int main(int argc, char** argv) {
       std::printf("== %s, %s variant ==\n%s", check_arg.c_str(), m == ThemeMode::Dark ? "dark" : "light", report_text(r).c_str());
       const std::vector<std::string> failed = check_claims(*t, r);
       for (const std::string& f : failed) { std::printf("CLAIM FAILED: %s\n", f.c_str()); rc = 1; }
-      if (!t->meta.get("badges").is_array()) std::printf("(no badges claimed)\n");
+      if (!rolltui_json_is_array(rolltui_json_get(t->meta.get(), "badges", 6))) std::printf("(no badges claimed)\n");
       else if (failed.empty()) std::printf("every claimed badge holds\n");
       std::printf("\n");
       // A colours object without pairs is the same at both modes: one report is enough.

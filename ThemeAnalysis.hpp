@@ -33,15 +33,26 @@
 // numbers and the user commits or cancels like any other change.
 //
 // PHASE 17 m1: the colour maths above — sRGB/linear/OKLab/OKLCH, both contrast formulas,
-// ΔE, the CVD simulation — is now C (rolltui/c/rolltui_theme_analysis.h/.c); every
-// function below it is a thin forwarding shim, and `Lin`/`OkLab`/`OkLch` are the C structs
-// by alias, not a second definition. THE REPORT AND THE AUTO-FIX DID NOT MOVE: `analyse()`
-// walks every `Role` of a `Theme` and reads `theme.meta` (a `json::Value`), and none of
-// `Theme`, `Role`'s name table, or `json::Value` has a C representation yet (`Json` is
-// deliberately the last of Phase 17's seven modules, and `Theme`/`Style.hpp` are outside
-// this milestone). So everything from `RoleCheck` down stays exactly the C++ it was,
-// calling the C maths instead of computing it locally — see rolltui_theme_analysis.h's
-// own comment for the fuller reasoning.
+// ΔE, the CVD simulation — became C (rolltui/c/rolltui_theme_analysis.h/.c); every
+// function up to `simulate_cvd` is a thin forwarding shim, and `Lin`/`OkLab`/`OkLch` are the
+// C structs by alias, not a second definition.
+//
+// PHASE 17 m5: THE REPORT AND THE AUTO-FIX MOVED TOO. `Theme`'s styles table
+// (`rolltui_theme_style`/`_set_style`) and `json::Value` (`RolltuiJsonValue`,
+// `rolltui/c/rolltui_json.h`) both got C representations after m1's note above was written,
+// which is what made this possible — `analyse`, `report_text`, `check_claims`,
+// `fix_contrast`, `fix_confusable`, `propose_fixes` and `apply_fix` are now thin shims over
+// `rolltui_theme_analyse`/`_report_text`/`_check_claims`/`fix_contrast`/`fix_confusable`/
+// `propose_fixes`/`apply_fix` (rolltui_theme_analysis.h), which carry the algorithm. `Badges`
+// is `using Badges = RolltuiBadges;` below — ONE DEFINITION, the same `Lin`/`Style` move,
+// because it is thirteen plain flags with no `Role` in it. `RoleCheck`/`PairCheck`/`Fix`
+// stay REAL C++ structs, not aliases: test and tool code reads `c.role == Role::warning`,
+// an enum comparison a C struct (which cannot know `Role`, Style.hpp's own C++-only name
+// table) cannot carry — each shim builds its C++ struct from the C function's `unsigned
+// char` ordinals. See rolltui_theme_analysis.h's own header comment for the fuller
+// reasoning, including which of the report's ENGLISH sentences moved to C (`report_text`,
+// following `rolltui_layout.c`'s precedent) and which stayed here (`analyse`'s notes,
+// built from the flags the C call returns — see that header's comment for why).
 #include <array>
 #include <optional>
 #include <string>
@@ -79,10 +90,11 @@ inline constexpr Cvd kCvdTypes[] = {Cvd::Protanopia, Cvd::Deuteranopia, Cvd::Tri
 std::string_view cvd_name(Cvd c);
 Lin simulate_cvd(Lin l, Cvd type);          // Machado 2009, severity 1.0
 
-// ---- thresholds ----
-inline constexpr double kReadableRatio = 4.5;
-inline constexpr double kHighContrastRatio = 7.0;
-inline constexpr double kDistinctDeltaE = 0.08;
+// ---- thresholds. Aliases of rolltui_theme_analysis.h's `ROLLTUI_*` macros, so the number
+// is written down once (Phase 17 m5). ----
+inline constexpr double kReadableRatio = ROLLTUI_READABLE_RATIO;
+inline constexpr double kHighContrastRatio = ROLLTUI_HIGH_CONTRAST_RATIO;
+inline constexpr double kDistinctDeltaE = ROLLTUI_DISTINCT_DELTA_E;
 
 // ---- the report ----
 struct RoleCheck {
@@ -103,11 +115,11 @@ struct PairCheck {
   bool attribute_redundant = false;  // also differ by bold/italic/underline/dim/reverse
   bool collapses_16 = false, collapses_256 = false;
 };
-struct Badges {
-  bool dark = false, light = false, high_contrast = false, readable = false, cvd_safe = false;
-  bool protan_safe = false, deutan_safe = false, tritan_safe = false;
-  bool mono = false, safe_16 = false, safe_256 = false, transparent = false, attribute_redundant = false;
-};
+// ONE DEFINITION, in rolltui/c/rolltui_theme_analysis.h (the same `Lin`/`Style` move): thirteen
+// plain flags, no `Role`, nothing that keeps it from being shared. `.dark`, `.readable` and
+// every other read below is unchanged at every call site (`unsigned char` reads as bool in an
+// `if`, same as `RolltuiStyle`'s attribute bits always have).
+using Badges = RolltuiBadges;
 struct ThemeReport {
   std::vector<RoleCheck> roles;
   std::vector<PairCheck> pairs;

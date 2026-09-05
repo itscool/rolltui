@@ -117,12 +117,12 @@ int main() {
     check(warn_unknown && pair_unknown && !has_badge(r.badges, "readable") && !has_badge(r.badges, "cvd-safe") && !r.notes.empty(),
           "a none foreground is unknown, not assumed: readable and cvd-safe are withheld and a note names the pair");
     Theme claimed = *builtin_theme("default-dark");
-    claimed.meta = json::Value::object();
-    json::Value badges = json::Value::array();
-    badges.arr.push_back(json::Value::string("dark"));
-    badges.arr.push_back(json::Value::string("light"));
-    badges.arr.push_back(json::Value::string("high-contrast"));
-    claimed.meta.set("badges", badges);
+    claimed.meta.reset(rolltui_json_object());
+    RolltuiJsonValue* badges = rolltui_json_array();
+    rolltui_json_array_push(badges, rolltui_json_string("dark", 4));
+    rolltui_json_array_push(badges, rolltui_json_string("light", 5));
+    rolltui_json_array_push(badges, rolltui_json_string("high-contrast", 13));
+    rolltui_json_set(claimed.meta.get(), "badges", 6, badges);
     const std::vector<std::string> failed = check_claims(claimed, analyse(claimed));
     check(failed.size() == 2 && failed[0] == "light" && failed[1] == "high-contrast", "claimed badges are checked: dark holds, light and high-contrast do not [" + join(failed) + "]");
     check(check_claims(*builtin_theme("mono"), analyse(*builtin_theme("mono"))).empty(), "no claims: nothing fails");

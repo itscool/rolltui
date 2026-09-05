@@ -26,11 +26,19 @@
 // names a broken rule). The PRNG is our own (splitmix64) so the sequence is the same on
 // every platform and compiler.
 //
-// PHASE 17 m1: the PRNG and the ruleset name lookup below are now C
-// (rolltui/c/rolltui_theme_gen.h/.c); `Rng` is that C struct by alias. `generate()` itself
-// stays C++ — it builds a whole `Theme` and a `json::Value` meta, neither of which has a C
-// representation yet, for the same reason `ThemeAnalysis.hpp`'s report and auto-fix stayed
-// C++ (see that file's header comment).
+// PHASE 17 m1: the PRNG and the ruleset name lookup below became C
+// (rolltui/c/rolltui_theme_gen.h/.c); `Rng` is that C struct by alias.
+//
+// PHASE 17 m5: `generate()` ITSELF MOVED TOO, for the same reason `ThemeAnalysis.hpp`'s
+// report and auto-fix did (see that file's header comment): `Theme`'s styles table and
+// `json::Value` (`RolltuiJsonValue`) both got C representations, so the hue/lightness picks,
+// the repair loop and the meta tree all now live in `rolltui_theme_generate`
+// (rolltui_theme_gen.h). What's left here is a thin shim: convert `GenOptions` to plain
+// scalars (a `std::optional<bool>` needs no struct for one bit), call it, and build the
+// C++-only `Generated` (a real `Theme`, `std::vector<std::string>` — nothing a C function
+// could return by value anyway) from what it hands back — including the FINAL
+// `rolltui_theme_analyse` snapshot, which is where `role_name()` builds `broken` from,
+// exactly as `generate()`'s own header comment one file over explains.
 #include <cstdint>
 #include <optional>
 #include <string>
