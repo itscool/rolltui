@@ -194,27 +194,6 @@ class WidgetBase : public Widget {
   const Document* document(std::string_view name) const {
     return static_cast<const Document*>(rolltui_windows_document(w_->handle(), name.data(), name.size()));
   }
-  // rows/submit/note: an EXISTENCE check (`problem()`'s question, which must not invoke a
-  // host's callable just to answer it) and a separate CALL — the same two questions the
-  // std::function maps answered before, just asked of the boundary now.
-  bool has_rows(std::string_view name) const {
-    return rolltui_windows_has_rows(w_->handle(), name.data(), name.size()) != 0;
-  }
-  void call_rows(std::string_view name, Rows& out) const {
-    rolltui_windows_call_rows(w_->handle(), name.data(), name.size(), &out);
-  }
-  bool has_submit(std::string_view name) const {
-    return rolltui_windows_has_submit(w_->handle(), name.data(), name.size()) != 0;
-  }
-  void call_submit(std::string_view name, const std::string& text) const {
-    rolltui_windows_call_submit(w_->handle(), name.data(), name.size(), text.data(), text.size());
-  }
-  bool has_note(std::string_view name) const {
-    return rolltui_windows_has_note(w_->handle(), name.data(), name.size()) != 0;
-  }
-  void call_note(std::string_view name, Note& out) const {
-    rolltui_windows_call_note(w_->handle(), name.data(), name.size(), &out);
-  }
   // A menu file the host carries in its binary — Widgets.hpp's middle rung. `out` is a
   // BORROW valid only as long as the caller's own use already assumed (until the name is
   // re-added or `w_` is destroyed), which is why every caller of this copies it at once.
@@ -236,28 +215,6 @@ class WidgetBase : public Widget {
 };
 
 namespace {
-
-// The window that could not be understood: the reason, in the error role, wrapped.
-// Never blank — a layout mistake has to look like one.
-class ErrorWidget : public WidgetBase {
- public:
-  ErrorWidget(Windows& w, std::string why) : WidgetBase(w), why_(std::move(why)) {}
-  std::string problem() const override { return why_; }
-  void layout(const ResolvedNode&) override {}
-  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    const Rect r = content_rect(rn);
-    WrapOptions wo;
-    wo.ambiguous_wide = amb();
-    int y = r.y;
-    for (const Line& l : wrap("[" + why_ + "]", std::max(r.w, 1), wo)) {
-      if (y >= r.y + r.h) break;
-      f.put_text(r.x + l.indent, y++, l.text, theme.style(Role::error), std::max(r.w - l.indent, 0), amb());
-    }
-  }
-
- private:
-  std::string why_;
-};
 
 // transcript:<document>
 class TranscriptWidget : public WidgetBase {
@@ -313,112 +270,6 @@ class TranscriptWidget : public WidgetBase {
     o.code_cap_lines = w_->code_cap_lines();
     return o;
   }
-};
-
-// input:<target> — the line editor, which GROWS its window with its text (to half the
-// parent's height) and may carry a one-line note beside or under the prompt.
-class InputWidget : public WidgetBase {
- public:
-  using WidgetBase::WidgetBase;
-  Input ed;
-  int min_outer = 0;  // a host's floor (roll holds it as tall as the modal above it)
-
-  std::string problem() const override { return has_submit(content.source) ? std::string() : unbound(); }
-
-  std::optional<int> desired_outer(int inner_w, int parent_extent, int border) const override {
-    max_rows_ = input_max_rows(parent_extent, border);
-    return std::max(rows_with_note(inner_w, ed.rows_for(inner_w)) + border, min_outer);
-  }
-  void layout(const ResolvedNode& rn) override {
-    // THE COMPARISON, NOT A COPY. This was `InputOptions o = ed.options();` — a whole copy
-    // of the options every frame, to change two fields, compare, and usually throw the copy
-    // away. It cost nothing visible while the prompt and the placeholder were `std::string`s
-    // short enough for SSO; the moment they became owned buffers with no small-string case
-    // (Phase 15 m5) the budget saw one allocation per steady frame. The copy was always
-    // there — CLAUDE.md's rule is to remove it rather than to make it cheap.
-    const unsigned char aw = amb() ? 1 : 0;
-    const int inset = rn.node->border != Border::None ? 1 : 0;  // the widget owns the breathing room
-    if (ed.options().ambiguous_wide != aw || ed.options().inset != inset) {
-      InputOptions o = ed.options();
-      o.ambiguous_wide = aw;
-      o.inset = inset;
-      ed.set_options(o);
-    }
-    ed.layout(text_rect(rn.inner));
-  }
-  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    const Rect r = rn.inner;
-    const Rect tr = text_rect(r);
-    ed.layout(tr);
-    ed.draw(f, theme, rn.focused);
-    const Note& note = note_info();
-    if (note.text.empty()) return;
-    const int nw = unicode::display_width(note.text, amb());
-    // Phase 12 m6: the note is DRAWN here and MARKED here, over exactly the cells it took
-    // — never a rectangle, and never the row it happens to sit on, so a note that shares
-    // its row with the prompt cannot animate the prompt.
-    if (tr.h < r.h) {  // its own row, under the text
-      const int used = f.put_text(r.x, r.y + tr.h, note.text, theme.style(Role::text_muted), std::max(r.w, 0), amb());
-      f.mark(r.x, r.y + tr.h, used, note.state, note.since_ms);
-      return;
-    }
-    const int nx = std::max(r.x + r.w - nw, r.x + end_col() + 2);
-    const int used = f.put_text(nx, r.y, note.text, theme.style(Role::text_muted), std::max(r.x + r.w - nx, 0), amb());
-    f.mark(nx, r.y, used, note.state, note.since_ms);
-  }
-  // A layout-declared input with no host code still edits and submits; a host that
-  // wants the action back (to quit on Eof, to offer an Ignored key elsewhere) calls
-  // event() through Windows::input_event instead.
-  InputAction event(const Event& e) {
-    const InputAction a = ed.handle(e, binds(), env().now_ms);
-    if (a != InputAction::Submit) return a;
-    const std::string text(ed.text());
-    // A prompt sends and starts fresh; a find bar keeps its standing query (Widgets.hpp).
-    if (w_->on_submit_for(content.source) == Windows::OnSubmit::SendAndClear) {
-      ed.push_history(text);
-      ed.clear();
-    }
-    call_submit(content.source, text);
-    return a;
-  }
-  bool handle(const Event& e) override { return event(e) != InputAction::Ignored; }
-
- private:
-  // m5b: the Note is a MEMBER the host refills, not one it returns. This is called
-  // several times a frame (sizing, then drawing), so a by-value return was several
-  // allocations per frame for a line that rarely changes.
-  const Note& note_info() const {
-    note_.text.clear();
-    note_.state = EffectState::None;
-    note_.since_ms = 0;
-    call_note(content.source, note_);
-    return note_;
-  }
-  mutable Note note_;
-  // The column just past the text (or past the placeholder while it is empty): where a
-  // note may sit on the first row.
-  int end_col() const {
-    if (!ed.text().empty()) return ed.cell_of(ed.text().size()).col;
-    return unicode::display_width(ed.options().prompt, amb()) + unicode::display_width(ed.options().placeholder, amb());
-  }
-  // Rows of window text: the text's rows, capped at half the parent, plus one for the
-  // note when it does not fit beside a single row.
-  int rows_with_note(int width, int text_rows) const {
-    const std::string& note = note_info().text;
-    return input_rows(text_rows, end_col(), note.empty() ? 0 : unicode::display_width(note, amb()), width, max_rows_);
-  }
-  // The note takes a row of its own exactly when the window has more than one: with a
-  // single row it sits beside the text (and rows_with_note only ever returns 1 with a
-  // note when it fits there, or when half the parent leaves no room for a second row).
-  bool note_owns_row(int width) const {
-    return !note_info().text.empty() && rows_with_note(width, ed.rows_for(width)) > 1;
-  }
-  Rect text_rect(Rect r) const {
-    if (r.h > 1 && note_owns_row(r.w)) r.h -= 1;
-    return r;
-  }
-
-  mutable int max_rows_ = 1;  // this frame's cap, from the last desired_outer()
 };
 
 // menu:<name> — a menu FILE (Phase 10 m3). The three rungs are in Widgets.hpp; the
@@ -543,162 +394,21 @@ class MenuWidget : public WidgetBase {
   mutable std::vector<std::string> notes_;
 };
 
-// rows:<source> — label/value rows a host supplies. One line when the window is one
-// row high (the stacked layout's strip); otherwise a label column of 8 cells with the
-// value wrapping onto following rows, so a long value pushes the next row down rather
-// than hiding it.
-class RowsWidget : public WidgetBase {
- public:
-  using WidgetBase::WidgetBase;
-  std::string problem() const override { return has_rows(content.source) ? std::string() : unbound(); }
-  // m5b: the rows and the one-row line are MEMBERS, so a frame refills storage that is
-  // already there instead of building and destroying it.
-  mutable Rows rows_;
-  mutable std::string line_;
-  void layout(const ResolvedNode&) override {}
-  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    if (!has_rows(content.source)) return;
-    rows_.reset();   // m5b: keeps the storage; the host refills it in place
-    call_rows(content.source, rows_);
-    const Rows& rows = rows_;
-    const Rect r = rn.inner;
-    const Style label = theme.style(Role::label), value = theme.style(Role::value);
-    if (r.h == 1) {
-      line_.clear();  // m5b: a member, so the one-row form reuses its buffer too
-      std::string& s = line_;
-      for (std::size_t i = 0; i < rows.size(); ++i) {
-        if (!s.empty()) s += "  ";
-        s += rows[i].label;
-        s += ' ';
-        s += rows[i].value;
-      }
-      f.put_text(r.x + 1, r.y, s, value, std::max(r.w - 1, 0), amb());
-      return;
-    }
-    WrapOptions wo;
-    wo.ambiguous_wide = amb();
-    int y = r.y;
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-      const Row& row = rows[i];
-      if (y >= r.y + r.h) break;
-      f.put_text(r.x + 1, y, row.label, label, std::max(r.w - 1, 0), amb());
-      auto borrowed = wrap_borrow(row.value, std::max(r.w - 9, 1), wo);  // m5b: lent, not built
-      const WrapLines& lines = *borrowed;
-      if (lines.empty()) { ++y; continue; }  // an empty value still takes its row
-      for (const Line& l : lines) {
-        if (y >= r.y + r.h) break;
-        f.put_text(r.x + 9, y, l.text, value, std::max(r.w - 9, 0), amb());
-        ++y;
-      }
-    }
-  }
-};
-
-// text: / file: / help — wrapped text that scrolls by the transcript scope's actions,
-// with the transcript's own "▼ N more" marker for what is below.
-class ScrollTextWidget : public WidgetBase {
- public:
-  using WidgetBase::WidgetBase;
-  virtual std::string text() const = 0;
-
-  void layout(const ResolvedNode& rn) override {
-    area_ = content_rect(rn);
-    WrapOptions wo;
-    wo.ambiguous_wide = amb();
-    total_ = static_cast<int>(wrap(text(), std::max(area_.w, 1), wo).size());
-    top_ = std::clamp(top_, 0, std::max(total_ - std::max(area_.h, 1), 0));
-  }
-  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    layout(rn);
-    total_ = draw_scrolled_text(rn, f, theme, text(), top_, amb());
-  }
-  bool handle(const Event& e) override {
-    const KeyEvent* k = std::get_if<KeyEvent>(&e);
-    return k && scroll_by_action(*k, binds(), area_.h, total_, top_);
-  }
-  // Reports AND accepts: a wrapped-text view's position really is a line number, so
-  // there is nothing richer for the window to lose by driving it.
-  std::optional<ScrollExtent> scroll_extent(Axis axis) const override {
-    if (axis != Axis::Vertical) return std::nullopt;
-    return ScrollExtent{static_cast<std::size_t>(std::max(top_, 0)), static_cast<std::size_t>(std::max(area_.h, 0)),
-                        static_cast<std::size_t>(std::max(total_, 0))};
-  }
-  bool scroll_to(Axis axis, std::size_t first) override {
-    if (axis != Axis::Vertical) return false;
-    top_ = std::clamp(static_cast<int>(first), 0, std::max(total_ - std::max(area_.h, 1), 0));
-    return true;
-  }
-
- private:
-  Rect area_;
-  int top_ = 0, total_ = 0;
-};
-
-// text:<literal> — the layout file's own words.
-class TextWidget : public ScrollTextWidget {
- public:
-  using ScrollTextWidget::ScrollTextWidget;
-  std::string text() const override { return content.source.str(); }
-};
-
-// file:<path> — re-read when the file's mtime changes, so a dropped-in file shows up.
-class FileWidget : public ScrollTextWidget {
- public:
-  using ScrollTextWidget::ScrollTextWidget;
-  std::string problem() const override {
-    refresh();
-    return ok_ ? std::string() : "cannot read '" + path() + "'";
-  }
-  std::string text() const override {
-    refresh();
-    return ok_ ? body_ : std::string();
-  }
-
- private:
-  std::string path() const {
-    const std::string p = content.source.str();
-    if (!p.empty() && p[0] == '/') return p;
-    return dir().empty() ? p : std::string(dir()) + "/" + p;
-  }
-  void refresh() const {
-    const std::string p = path();
-    const long long m = file_stamp(p);
-    if (read_ && m == stamp_ && p == read_path_) return;
-    read_ = true;
-    stamp_ = m;
-    read_path_ = p;
-    body_ = read_text_file(p, ok_);
-  }
-  mutable bool read_ = false, ok_ = false;
-  mutable long long stamp_ = -1;
-  mutable std::string read_path_, body_;
-};
-
-// help — the key list, rendered from the LIVE bindings, so it cannot lie about a
-// rebinding. The lead and note lines are the host's (set_help), and so is the SET of
-// scopes an app has — but WHICH of them a window lists is the LAYOUT's since Phase 11
-// m5b: `help` is all of them, `help:app` is that one. A scope the host does not have is
-// a named problem and an error panel, like every other unbound source; it is not an
-// empty window, which is what silently ignoring it would produce.
-class HelpWidget : public ScrollTextWidget {
- public:
-  using ScrollTextWidget::ScrollTextWidget;
-  std::string problem() const override {
-    if (content.source.empty()) return {};
-    const std::vector<std::string>& all = w_->help_scopes();
-    if (std::find(all.begin(), all.end(), content.source.str()) != all.end()) return {};
-    std::string known;
-    for (const std::string& s : all) known += (known.empty() ? "" : " | ") + s;
-    return "'" + content.source + "' is not one of this app's key scopes (" + known + ")";
-  }
-  std::string text() const override { return w_->help_text(content.source); }
-};
 
 }  // namespace
 
 // ---- Windows -------------------------------------------------------------------------
 
-Windows::Windows() { register_builtin_kinds(); }
+Windows::Windows() {
+  register_builtin_kinds();
+  // Phase 17: the pure-C `rows`/`text`/`file`/`help`/`input` plugins read the live bindings
+  // straight off `w_` (`rolltui_windows_bindings`), with no C++-side fallback to lean on the
+  // way `Windows::bindings()` below has always had — so the boundary needs a valid table from
+  // construction, not only from the first `set_env()`. A host that never calls `set_env` (a
+  // test constructing `Windows` directly, most directly) must still get `default_bindings()`,
+  // exactly what `Windows::bindings()` already promised.
+  rolltui_windows_set_bindings(w_.get(), default_bindings().handle());
+}
 Windows::~Windows() = default;
 
 void Windows::bind_document(std::string name, const Document* doc) {
@@ -726,9 +436,9 @@ void Windows::bind_rows(std::string name, RowsFn rows) {
   std::unique_ptr<RowsFn> held = std::make_unique<RowsFn>(std::move(rows));
   rolltui_windows_bind_rows(
       w_.get(), name.data(), name.size(),
-      [](void* ctx, void* rows_obj) {
+      [](void* ctx, RolltuiRows* out) {
         RowsFn& fn = *static_cast<RowsFn*>(ctx);
-        if (fn) fn(*static_cast<Rows*>(rows_obj));
+        if (fn) fn(*out);
       },
       held.get(), [](void* ctx) { const std::unique_ptr<RowsFn> owned(static_cast<RowsFn*>(ctx)); });
   held.release();
@@ -751,9 +461,9 @@ void Windows::bind_note(std::string name, NoteFn note) {
   std::unique_ptr<NoteFn> held = std::make_unique<NoteFn>(std::move(note));
   rolltui_windows_bind_note(
       w_.get(), name.data(), name.size(),
-      [](void* ctx, void* note_obj) {
+      [](void* ctx, RolltuiNote* out) {
         NoteFn& fn = *static_cast<NoteFn*>(ctx);
-        if (fn) fn(*static_cast<Note*>(note_obj));
+        if (fn) fn(*out);
       },
       held.get(), [](void* ctx) { const std::unique_ptr<NoteFn> owned(static_cast<NoteFn*>(ctx)); });
   held.release();
@@ -828,6 +538,13 @@ void Windows::set_help(std::string lead, std::vector<std::string> scopes, std::s
   help_lead_ = std::move(lead);
   help_scopes_ = std::move(scopes);
   help_note_ = std::move(note);
+  // Mirrored to the boundary too (Phase 17): `help` is a pure-C plugin now
+  // (rolltui/c/rolltui_widget_kinds.c) and reads this back through `rolltui_windows_help_*`
+  // rather than through this C++ member — the same "BORROW half stays here, the rest
+  // crosses" split `documents_`/`owned_documents_` already makes.
+  rolltui_windows_set_help(w_.get(), help_lead_.data(), help_lead_.size(), help_note_.data(), help_note_.size());
+  rolltui_windows_clear_help_scopes(w_.get());
+  for (const std::string& s : help_scopes_) rolltui_windows_add_help_scope(w_.get(), s.data(), s.size());
 }
 
 // One scope, or every one the host set. The lead and the note belong to the whole list,
@@ -840,80 +557,91 @@ std::string Windows::help_text(std::string_view scope) const {
 void Windows::set_env(WidgetEnv env) {
   env_ = env;
   // The boundary's half of the environment: the two facts the WINDOW itself draws with (the
-  // scrollbar's ambiguous-width thumb) and the clock. The live bindings table stays here —
-  // it is a C++ object the widgets read, not something the window host asks anything of.
+  // scrollbar's ambiguous-width thumb) and the clock.
   const RolltuiWidgetEnv e{static_cast<unsigned char>(env_.ambiguous_wide), env_.now_ms};
   rolltui_windows_set_env(w_.get(), &e);
+  // Phase 17: the live bindings table crosses too, as a BORROW — `rows`/`text`/`file`/`help`/
+  // `input` are pure-C plugins now and read a chord's action or check `has()` without
+  // knowing `rolltui::Bindings` exists (`rolltui_widget_kinds.c`'s own rule: it names no
+  // action). `TranscriptWidget`/`MenuWidget` keep reading `bindings()` below directly — they
+  // are still C++.
+  rolltui_windows_set_bindings(w_.get(), bindings().handle());
 }
 const Bindings& Windows::bindings() const { return env_.bindings ? *env_.bindings : default_bindings(); }
 
 Widget* Windows::widget_for(const std::string& content) {
   RolltuiWidget* w = rolltui_windows_widget_for(w_.get(), content.data(), content.size());
-  return static_cast<Widget*>(w->self);
+  return static_cast<Widget*>(w->ctx);
 }
 
-// ---- THE VTABLE ADAPTER, and the library's own seven kinds registered through it ---------
+// ---- THE GENERIC PLUGIN ADAPTER, for `Widget` subclasses --------------------------------
 //
 // This is the whole of Phase 15 m5's answer for this module: `Widget`'s virtuals ARE the
-// vtable in `rolltui/c/rolltui_widgets.h`, and the library's kinds fill it exactly as a
-// host's registered kind does. There is one adapter table for every widget in the program,
-// because every widget's `self` is a `rolltui::Widget*` — a host reaches the boundary through
-// `register_kind`, never by filling a vtable itself.
+// plugin in `rolltui/c/rolltui_widgets.h`, and a widget built from a `Widget` subclass fills
+// it exactly the way any other plugin does. Phase 17's widget-kinds port narrowed WHO uses
+// this adapter rather than removing it: `rows`, `text`, `file`, `help` and `input` fill the
+// plugin directly now, in real C (`rolltui/c/rolltui_widget_kinds.c`), and no longer come
+// through here. What is LEFT is `transcript` and `menu` (this file's own `TranscriptWidget`/
+// `MenuWidget`, kept as `Widget` subclasses — see `rolltui_widget_kinds.h`'s header comment
+// for why) and every HOST-defined kind (`Windows::register_kind`'s `Factory =
+// std::function<std::unique_ptr<Widget>()>`, which paint's `Canvas` and roll's own
+// approval/details widgets use): `Widget` stays a real, working C++ polymorphic base for
+// exactly those two audiences, and this is the one adapter table every instance of it fills.
 
 namespace {
 
 // OWNERSHIP CROSSES BACK HERE, and it is spelled with a `unique_ptr` rather than a bare
 // `delete` — the shape `rolltui_frame_free` already uses, and the one the ownership test
 // refuses to let anything else be.
-void vt_destroy(void* self) { const std::unique_ptr<Widget> owned(static_cast<Widget*>(self)); }
+void vt_destroy(void* ctx) { const std::unique_ptr<Widget> owned(static_cast<Widget*>(ctx)); }
 
-void vt_layout(void* self, const RolltuiResolvedNode* rn) { static_cast<Widget*>(self)->layout(*rn); }
+void vt_layout(void* ctx, const RolltuiResolvedNode* rn) { static_cast<Widget*>(ctx)->layout(*rn); }
 
-void vt_draw(void* self, const RolltuiResolvedNode* rn, RolltuiFrame*) {
-  Widget* w = static_cast<Widget*>(self);
+void vt_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame*) {
+  Widget* w = static_cast<Widget*>(ctx);
   DrawCtx& d = draw_ctx();
   w->draw(*rn, *d.frame, *d.theme);
 }
 
-int vt_problem(void* self, RolltuiStr* out) {
-  const std::string why = static_cast<Widget*>(self)->problem();
+int vt_problem(void* ctx, RolltuiStr* out) {
+  const std::string why = static_cast<Widget*>(ctx)->problem();
   if (why.empty()) return 0;
   *out = why;
   return 1;
 }
 
-int vt_note_at(void* self, std::size_t i, RolltuiStr* out) {
-  const std::vector<std::string> notes = static_cast<Widget*>(self)->notes();
+int vt_note_at(void* ctx, std::size_t i, RolltuiStr* out) {
+  const std::vector<std::string> notes = static_cast<Widget*>(ctx)->notes();
   if (i >= notes.size()) return 0;
   *out = notes[i];
   return 1;
 }
 
-int vt_desired_outer(void* self, int inner_w, int parent_extent, int border, int* out) {
-  const std::optional<int> want = static_cast<Widget*>(self)->desired_outer(inner_w, parent_extent, border);
+int vt_desired_outer(void* ctx, int inner_w, int parent_extent, int border, int* out) {
+  const std::optional<int> want = static_cast<Widget*>(ctx)->desired_outer(inner_w, parent_extent, border);
   if (!want) return 0;
   *out = *want;
   return 1;
 }
 
-int vt_handle(void* self, const RolltuiEvent* e) {
+int vt_handle(void* ctx, const RolltuiEvent* e) {
   const Event ev = event_of(*e);
-  return static_cast<Widget*>(self)->handle(ev) ? 1 : 0;
+  return static_cast<Widget*>(ctx)->handle(ev) ? 1 : 0;
 }
 
-int vt_scroll_extent(void* self, unsigned char axis, RolltuiScrollExtent* out) {
+int vt_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
   const std::optional<Widget::ScrollExtent> e =
-      static_cast<Widget*>(self)->scroll_extent(static_cast<Widget::Axis>(axis));
+      static_cast<Widget*>(ctx)->scroll_extent(static_cast<Widget::Axis>(axis));
   if (!e) return 0;
   *out = *e;
   return 1;
 }
 
-int vt_scroll_to(void* self, unsigned char axis, std::size_t first) {
-  return static_cast<Widget*>(self)->scroll_to(static_cast<Widget::Axis>(axis), first) ? 1 : 0;
+int vt_scroll_to(void* ctx, unsigned char axis, std::size_t first) {
+  return static_cast<Widget*>(ctx)->scroll_to(static_cast<Widget::Axis>(axis), first) ? 1 : 0;
 }
 
-constexpr RolltuiWidgetVTable kWidgetVT = {
+constexpr RolltuiWidgetPlugin kWidgetPlugin = {
     vt_destroy, vt_layout,        vt_draw,          vt_problem,       vt_note_at,
     vt_desired_outer, vt_handle,  vt_scroll_extent, vt_scroll_to,
 };
@@ -921,14 +649,14 @@ constexpr RolltuiWidgetVTable kWidgetVT = {
 RolltuiWidget as_widget(std::unique_ptr<Widget> w) {
   RolltuiWidget out{};
   if (!w) return out;
-  out.vt = &kWidgetVT;
-  out.self = w.release();
+  out.vt = &kWidgetPlugin;
+  out.ctx = w.release();
   return out;
 }
 
-// One factory body for all seven library kinds: build it, give it its parsed content, wrap
-// it. A content that will not parse comes back empty, and the error factory answers instead
-// — which is the same path a host's unregistered kind takes.
+// One factory body for both remaining `Widget`-subclass library kinds: build it, give it its
+// parsed content, wrap it. A content that will not parse comes back empty, and the error
+// factory answers instead — which is the same path a host's unregistered kind takes.
 template <typename W>
 RolltuiWidget make_kind(void* ctx, const char* content, std::size_t n) {
   Windows& windows = *static_cast<Windows*>(ctx);
@@ -941,50 +669,71 @@ RolltuiWidget make_kind(void* ctx, const char* content, std::size_t n) {
 
 }  // namespace
 
-// The seven library kinds and the error panel, as factories — registered at construction, so
-// `widget_for` has ONE path and "a transcript window" is built the way roll's approval modal
-// is (the vtable header's rule 5).
+// The seven library kinds and the error panel, registered at construction so `widget_for`
+// has ONE path and "a transcript window" is built the way roll's approval modal is (the
+// plugin header's rule 5) — five of the seven (`rows`, `text`, `file`, `help`, and the
+// error/panel fallbacks) are pure-C plugins now, registered in one call below; `transcript`
+// and `menu` still fill the plugin through the generic `Widget` adapter above; `input` is
+// the one kind whose CONSTRUCTION needs this C++ object's own `inputs_` map (see
+// `rolltui/c/rolltui_widget_kinds.h`'s header comment for why only this one can).
 void Windows::register_builtin_kinds() {
-  // `free_ctx` is NULL: `ctx` is `this` (the `Windows` object these seven belong to), which
-  // the kind table never owns and must not try to release.
+  // The role bytes and the transcript-scope action names the pure-C kinds draw and scroll
+  // with — this file names them (rolltui_widget_kinds.h's own rule: that module names
+  // neither), computed once from the C++ `Role` enum and handed to the boundary before the
+  // kinds that read them are registered.
+  RolltuiBuiltinRoles roles{};
+  roles.text = static_cast<unsigned char>(Role::text);
+  roles.text_muted = static_cast<unsigned char>(Role::text_muted);
+  roles.error = static_cast<unsigned char>(Role::error);
+  roles.scroll_marker = static_cast<unsigned char>(Role::scroll_marker);
+  roles.label = static_cast<unsigned char>(Role::label);
+  roles.value = static_cast<unsigned char>(Role::value);
+  roles.input_text = static_cast<unsigned char>(Role::input_text);
+  roles.input_selection = static_cast<unsigned char>(Role::selection);
+  roles.input_placeholder = static_cast<unsigned char>(Role::input_placeholder);
+  rolltui_windows_set_builtin_roles(w_.get(), &roles);
+
+  // The identical six strings `rolltui::scroll_by_action` (above, unchanged, still used by
+  // two hosts directly) hardcodes — the same one-file duplication `Input.cpp`'s `kActions`
+  // already is (rolltui_widget_kinds.h's header comment says why this is not a new one).
+  static constexpr RolltuiScrollTextActions kScrollActions{
+      "transcript.line_up", "transcript.line_down", "transcript.page_up",
+      "transcript.page_down", "transcript.top", "transcript.bottom",
+  };
+  rolltui_windows_set_scroll_text_actions(w_.get(), &kScrollActions);
+
+  // rows, text, file, help, and the error/panel fallbacks: every built-in kind that needs
+  // nothing from this C++ object beyond what the boundary already exposes.
+  rolltui_widget_kinds_register(w_.get());
+
   auto reg = [&](const char* name, RolltuiWidgetFactory f) {
     rolltui_windows_register_kind(w_.get(), name, std::strlen(name), f, this, nullptr);
   };
   reg("transcript", [](void* c, const char* s, std::size_t n) {
     return make_kind<TranscriptWidget>(c, s, n);
   });
-  reg("input", [](void* c, const char* s, std::size_t n) { return make_kind<InputWidget>(c, s, n); });
   reg("menu", [](void* c, const char* s, std::size_t n) { return make_kind<MenuWidget>(c, s, n); });
-  reg("rows", [](void* c, const char* s, std::size_t n) { return make_kind<RowsWidget>(c, s, n); });
-  reg("text", [](void* c, const char* s, std::size_t n) { return make_kind<TextWidget>(c, s, n); });
-  reg("file", [](void* c, const char* s, std::size_t n) { return make_kind<FileWidget>(c, s, n); });
-  reg("help", [](void* c, const char* s, std::size_t n) { return make_kind<HelpWidget>(c, s, n); });
-  // THE TWO FALLBACKS. `error` is given a CONTENT nothing could build and works out the
-  // reason; `panel` is given a REASON. Two entry points because the argument means two
-  // different things, which is the distinction CLAUDE.md's corollary says to state rather
-  // than let one function guess between.
-  rolltui_windows_set_error_factory(
-      w_.get(),
-      [](void* c, const char* content, std::size_t n) {
+
+  // input: `Windows` OWNS the `Input` here (in `inputs_`, on demand — the same "created once
+  // per source" rule `owned_documents_` follows), and the pure-C `input` plugin's `ctx`
+  // BORROWS its handle (`Input::handle()` is public precisely so this can happen). Both
+  // `windows.input(source)` and the drawn widget then read the one underlying state.
+  rolltui_windows_register_kind(
+      w_.get(), "input", 5,
+      [](void* c, const char* content, std::size_t n) -> RolltuiWidget {
         Windows& self = *static_cast<Windows*>(c);
-        const std::string_view text(content, n);
-        std::string why;
-        if (std::optional<Content> parsed = parse_content(text, &why)) {
-          // It PARSES, so its kind is in one of the two rungs — and nothing built it, which
-          // for a registered kind means this host has no factory. A named panel, never a
-          // blank window (Layout.hpp).
-          why = "kind '" + std::string(content_kind_name(*parsed)) +
-                "' is registered but this host has no factory for it";
-        }
-        return as_widget(std::make_unique<ErrorWidget>(self, why));
+        std::optional<Content> parsed = parse_content(std::string_view(content, n));
+        if (!parsed) return RolltuiWidget{};
+        const std::string source = parsed->source.str();
+        Input& in = self.inputs_[source];
+        void* ctx = rolltui_input_widget_ctx_new(in.handle(), self.w_.get(), source.data(), source.size(),
+                                                 rolltui_windows_builtin_roles(self.w_.get()), input_actions());
+        RolltuiWidget out{};
+        out.vt = rolltui_input_widget_plugin();
+        out.ctx = ctx;
+        return out;
       },
-      this);
-  rolltui_windows_set_panel_factory(
-      w_.get(),
-      [](void* c, const char* why, std::size_t n) {
-        return as_widget(std::make_unique<ErrorWidget>(*static_cast<Windows*>(c), std::string(why, n)));
-      },
-      this);
+      this, nullptr);
 }
 
 WindowsReport Windows::sync(const WindowStack& stack) {
@@ -1037,20 +786,35 @@ bool Windows::handle(std::string_view window, const Event& e) {
   return rolltui_windows_handle(w_.get(), window.data(), window.size(), &ev) != 0;
 }
 
+// Phase 17: the `input` widget's ctx is a plain C struct now (`rolltui_widget_kinds.c`), not
+// a `Widget` subclass, so it can no longer be reached through `widget_for` + `static_cast`.
+// `rolltui_input_kind_process_event` is the ONE place "handle, then act on Submit" is
+// written — the same function the plugin's own `handle` slot calls — so a host asking for
+// the action back and the routed-event path can never disagree about what Submit does.
 InputAction Windows::input_event(std::string_view source, const Event& e) {
-  return static_cast<InputWidget*>(widget_for("input:" + std::string(source)))->event(e);
+  Input& in = inputs_[std::string(source)];
+  const RolltuiEvent ev = c_event_of(e);
+  const int action =
+      rolltui_input_kind_process_event(in.handle(), w_.get(), source.data(), source.size(), input_actions(), &ev);
+  return static_cast<InputAction>(action);
 }
 
 Transcript& Windows::transcript(std::string_view source) {
   return static_cast<TranscriptWidget*>(widget_for("transcript:" + std::string(source)))->t;
 }
 
-Input& Windows::input(std::string_view source) {
-  return static_cast<InputWidget*>(widget_for("input:" + std::string(source)))->ed;
-}
+// `Windows` OWNS the `Input` here (created on demand, exactly like `owned_documents_`), so
+// this is valid whether or not any window currently shows it — the drawn widget's ctx only
+// BORROWS this same object's handle (see `register_builtin_kinds`'s "input" factory).
+Input& Windows::input(std::string_view source) { return inputs_[std::string(source)]; }
 
 void Windows::set_input_min_outer(std::string_view source, int rows) {
-  static_cast<InputWidget*>(widget_for("input:" + std::string(source)))->min_outer = rows;
+  // The widget, not the `Input` — `min_outer` is per-window sizing state the plugin's ctx
+  // keeps, not part of the edited text the `inputs_` map owns. Created on demand, like every
+  // other `widget_for` call: a host may set the floor before any window has shown this input.
+  const std::string content = "input:" + std::string(source);
+  RolltuiWidget* w = rolltui_windows_widget_for(w_.get(), content.data(), content.size());
+  if (w && w->ctx) rolltui_input_widget_ctx_set_min_outer(w->ctx, rows);
 }
 
 Menu& Windows::menu(std::string_view source) {
@@ -1083,33 +847,46 @@ std::vector<std::string> Windows::menu_names() const {
   return out;
 }
 
+// Phase 17: `at()`'s `static_cast<Widget*>` is only valid for a window whose widget IS a
+// `Widget` subclass — true of `transcript`/`menu` and every host-defined kind, false of
+// `rows`/`text`/`file`/`help`/`input`'s pure-C ctx structs. It is used only below, and only
+// AFTER a kind check (`content_at`, which never dereferences a widget at all) has already
+// confirmed which of those two worlds a window's content is in.
 Widget* Windows::at(std::string_view window) const {
   RolltuiWidget* w = rolltui_windows_at(w_.get(), window.data(), window.size());
-  return w ? static_cast<Widget*>(w->self) : nullptr;
+  return w ? static_cast<Widget*>(w->ctx) : nullptr;
 }
 
+// Reads the WINDOW's content string directly off the boundary rather than through `at()`'s
+// `Widget*` — the one accessor here that must work for every kind alike, ported or not.
 std::optional<Content> Windows::content_at(std::string_view window) const {
-  Widget* w = at(window);
-  if (!w) return std::nullopt;
-  return w->content;
+  std::size_t len = 0;
+  const char* p = rolltui_windows_content_at(w_.get(), window.data(), window.size(), &len);
+  if (!p) return std::nullopt;
+  return parse_content(std::string_view(p, len));
 }
 
 Transcript* Windows::transcript_at(std::string_view window) const {
+  const std::optional<Content> c = content_at(window);
+  if (!c || c->kind != WidgetKind::Transcript) return nullptr;
   Widget* w = at(window);
-  if (!w || w->content.kind != WidgetKind::Transcript) return nullptr;
-  return &static_cast<TranscriptWidget*>(w)->t;
+  return w ? &static_cast<TranscriptWidget*>(w)->t : nullptr;
 }
 
+// `input`'s ctx is not a `Widget` subclass (Phase 17), so this reads `Windows`' own `inputs_`
+// map instead of `at()` — the SAME object the drawn widget's ctx borrows.
 Input* Windows::input_at(std::string_view window) const {
-  Widget* w = at(window);
-  if (!w || w->content.kind != WidgetKind::Input) return nullptr;
-  return &static_cast<InputWidget*>(w)->ed;
+  const std::optional<Content> c = content_at(window);
+  if (!c || c->kind != WidgetKind::Input) return nullptr;
+  const auto it = inputs_.find(c->source.str());
+  return it != inputs_.end() ? const_cast<Input*>(&it->second) : nullptr;
 }
 
 Menu* Windows::menu_at(std::string_view window) const {
+  const std::optional<Content> c = content_at(window);
+  if (!c || c->kind != WidgetKind::Menu) return nullptr;
   Widget* w = at(window);
-  if (!w || w->content.kind != WidgetKind::Menu) return nullptr;
-  return &static_cast<MenuWidget*>(w)->menu();
+  return w ? &static_cast<MenuWidget*>(w)->menu() : nullptr;
 }
 
 }  // namespace rolltui

@@ -82,6 +82,7 @@
 #include <vector>
 
 #include "rolltui/Bindings.hpp"
+#include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_widgets.h"
 #include "rolltui/Document.hpp"
 #include "rolltui/Input.hpp"
@@ -93,50 +94,26 @@
 
 namespace rolltui {
 
-// One row of a `rows:` window: a label column and a value that wraps under it.
-struct Row {
-  std::string label, value;
-};
-
-// WHAT A HOST FILLS instead of returning a fresh vector every frame (Phase 13 m5b, and
-// CLAUDE.md's per-frame-API rule). `reset()` keeps the vector's capacity AND every row's
+// One row of a `rows:` window: a label column and a value that wraps under it. `Rows` is
+// what a host fills instead of returning a fresh vector every frame (Phase 13 m5b, and
+// CLAUDE.md's per-frame-API rule): `reset()` keeps the array's capacity AND every row's
 // string buffers, so `add()` on a warm frame assigns into storage that already exists and
-// allocates nothing. Returning `std::vector<Row>` by value — which this was until m5b —
-// is one allocation per frame forever, to rebuild rows that usually did not change.
-class Rows {
- public:
-  void reset() { n_ = 0; }
-  void add(std::string_view label, std::string_view value) {
-    if (n_ == rows_.size()) rows_.emplace_back();
-    rows_[n_].label.assign(label);
-    rows_[n_].value.assign(value);
-    ++n_;
-  }
-  std::size_t size() const { return n_; }
-  const Row& operator[](std::size_t i) const { return rows_[i]; }
-
- private:
-  std::vector<Row> rows_;
-  std::size_t n_ = 0;  // rows_ keeps its storage past this; only the first n_ are live
-};
+// allocates nothing. Phase 15 m5e/17: BOTH ARE THE C STRUCTS now (`rolltui/c/rolltui_widgets.h`
+// — one definition, since the `rows` kind is a plugin the C boundary owns), so `add()` on a
+// live `Rows&` still says what it said; only what BUILDS the rows moved.
+using Row = RolltuiRow;
+using Rows = RolltuiRows;
 
 // An input's one-line note, and — since Phase 12 m6 — what STATE it is in. A host that
 // has no motion to report returns a bare string and the implicit conversion does the
 // rest; roll's "working…" returns `{text, EffectState::Waiting, when the turn started}`,
 // which is the whole of roll's waiting-for-first-token indicator. Nothing here says what
 // waiting looks like: the theme does (rolltui/Effects.hpp), and a theme that maps nothing
-// leaves the still text the host drew.
-struct Note {
-  std::string text;
-  EffectState state = EffectState::None;
-  std::uint64_t since_ms = 0;  // when it entered `state`, for the span's own phase
-  Note() = default;
-  // Implicit on purpose, and the two overloads are what keeps every host that has no
-  // motion to report writing exactly what it wrote before: `return "working";`.
-  Note(std::string t) : text(std::move(t)) {}  // NOLINT(google-explicit-constructor)
-  Note(const char* t) : text(t) {}             // NOLINT(google-explicit-constructor)
-  Note(std::string t, EffectState s, std::uint64_t since = 0) : text(std::move(t)), state(s), since_ms(since) {}
-};
+// leaves the still text the host drew. Phase 15 m5e/17: `Note` IS `RolltuiNote` — the `input`
+// kind is a plugin now, and `bind_note`'s callback crosses a `RolltuiNote*` the way every
+// other host binding does; a host's `[](Note& out) { out = "working"; }` still compiles
+// unchanged because the converting constructors below are the C struct's own.
+using Note = RolltuiNote;
 
 // What every widget needs and no widget owns: the frame's terminal facts and clock.
 struct WidgetEnv {
@@ -458,6 +435,16 @@ class Windows {
   // fragile reinterpret through `RolltuiDocument` or a second owner — neither pays for
   // itself the way the callback maps below do.
   std::map<std::string, Document> owned_documents_;
+  // Phase 17 (widget kinds port): `Windows` OWNS every `input:<source>` here now, one per
+  // source, created on demand exactly like `owned_documents_` above. The reason is
+  // `input()`/`input_at()`'s own contract: both must hand back a LIVE `Input&` backed by the
+  // SAME state the `input` kind (a pure-C plugin now, `rolltui/c/rolltui_widget_kinds.c`)
+  // draws and edits. `Input::handle()` (public) lets that plugin's `ctx` BORROW the
+  // `RolltuiInput*` this map owns, so both readings are one object — the same trick
+  // `rolltui::Menu` already uses for its own embedded editor. `Transcript`/`Menu` have no
+  // equivalent accessor, which is why `transcript`/`menu` are not ported (this file's kind
+  // registration below, and the porting session's report, say why).
+  std::map<std::string, Input> inputs_;
   markdown::Highlighter highlighter_;
   std::uint64_t highlighter_epoch_ = 0;
   int code_fold_over_lines_ = 0, code_cap_lines_ = 0;

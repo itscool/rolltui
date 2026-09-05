@@ -419,7 +419,12 @@ int main() {
         // returning into the widget's own `std::vector`s and `unordered_map`s; what is here
         // is `RolltuiTranscript* p` in `Transcript::Handle` (the deleter of the OWNED widget)
         // and `const EntryLayout* layout_of()`, a BORROW valid until the next layout().
-        {"Transcript.hpp", 2},          {"Widgets.hpp", 12},
+        // Widgets.hpp 12 → 11 (Phase 17, this task): a REMOVAL with nothing to replace it —
+        // `Note(const char* t)`'s declaration moved to `rolltui/c/rolltui_widgets.h` (a `.h`
+        // this census does not scan, headers_only(true) filters `.hpp` only) when `Note`
+        // became `using Note = RolltuiNote`, the one-definition C/C++ struct the `input`
+        // plugin now fills across. The eleven that remain are unchanged.
+        {"Transcript.hpp", 2},          {"Widgets.hpp", 11},
         // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
         // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
         // pointer was `const Range* table` on `lookup()`, the binary search the inline
@@ -483,7 +488,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 112, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 111, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

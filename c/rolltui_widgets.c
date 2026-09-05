@@ -7,6 +7,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
+#include "rolltui/c/rolltui_widget_kinds.h"
 
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -156,6 +157,19 @@ struct RolltuiWindows {
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
   RolltuiMap host_menus; /* name -> RolltuiStr* (a menu file's text), OWNED */
   RolltuiStr dir;        /* the preset directory; "" until set_dir */
+
+  /* ---- what a `help` window renders (moved to the boundary so `help` can be a plugin) ----- */
+  RolltuiStr help_lead, help_note;
+  RolltuiStr* help_scopes; /* GROWING AMORTISED, like `report` above */
+  size_t help_scopes_n, help_scopes_cap;
+
+  /* ---- the live bindings table and the current frame's styles, both BORROWED -------------- */
+  const RolltuiBindings* bindings; /* set alongside env; NULL only before the first set_env */
+  const RolltuiStyle* styles;      /* set at the top of rolltui_windows_draw; NULL outside one */
+
+  /* ---- what rolltui_widget_kinds.c's six built-in kinds read back through ctx = this ------ */
+  RolltuiBuiltinRoles builtin_roles;
+  RolltuiScrollTextActions scroll_actions;
 };
 
 RolltuiWindows* rolltui_windows_new(void) {
@@ -166,7 +180,7 @@ RolltuiWindows* rolltui_windows_new(void) {
 
 static void widget_destroy(RolltuiWidget* wd) {
   if (!wd) return;
-  if (wd->vt && wd->vt->destroy && wd->self) wd->vt->destroy(wd->self);
+  if (wd->vt && wd->vt->destroy && wd->ctx) wd->vt->destroy(wd->ctx);
   rolltui_mem_free(wd);
 }
 
@@ -219,6 +233,10 @@ void rolltui_windows_free(RolltuiWindows* w) {
   }
   rolltui_map_release(&w->host_menus);
   rolltui_str_free(&w->dir);
+  rolltui_str_free(&w->help_lead);
+  rolltui_str_free(&w->help_note);
+  for (i = 0; i < w->help_scopes_cap; ++i) rolltui_str_free(&w->help_scopes[i]);
+  rolltui_mem_free(w->help_scopes);
   rolltui_mem_free(w);
 }
 
@@ -332,10 +350,10 @@ int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t l
   return rolltui_map_get(&w->rows, name, len) != NULL;
 }
 
-int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, void* rows_obj) {
+int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRows* out) {
   RowsBinding* b = (RowsBinding*)rolltui_map_get(&w->rows, name, len);
   if (!b || !b->fn) return 0;
-  b->fn(b->ctx, rows_obj);
+  b->fn(b->ctx, out);
   return 1;
 }
 
@@ -388,10 +406,10 @@ int rolltui_windows_has_note(const RolltuiWindows* w, const char* name, size_t l
   return rolltui_map_get(&w->notes, name, len) != NULL;
 }
 
-int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, void* note_obj) {
+int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNote* out) {
   NoteBinding* b = (NoteBinding*)rolltui_map_get(&w->notes, name, len);
   if (!b || !b->fn) return 0;
-  b->fn(b->ctx, note_obj);
+  b->fn(b->ctx, out);
   return 1;
 }
 
@@ -422,6 +440,83 @@ size_t rolltui_windows_host_menu_count(const RolltuiWindows* w) { return rolltui
 
 const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len) {
   return rolltui_map_key_at(&w->host_menus, i, len);
+}
+
+/* ---- help (Phase 15 m5e: moved to the boundary so `help` can be a plugin) ---------------------- */
+
+void rolltui_windows_set_help(RolltuiWindows* w, const char* lead, size_t lead_len, const char* note,
+                              size_t note_len) {
+  rolltui_str_set(&w->help_lead, lead, lead_len);
+  rolltui_str_set(&w->help_note, note, note_len);
+}
+
+void rolltui_windows_clear_help_scopes(RolltuiWindows* w) { w->help_scopes_n = 0; /* keeps every buffer */ }
+
+void rolltui_windows_add_help_scope(RolltuiWindows* w, const char* scope, size_t len) {
+  w->help_scopes = (RolltuiStr*)rolltui_grow_zeroed(w->help_scopes, &w->help_scopes_cap, w->help_scopes_n + 1,
+                                                    sizeof *w->help_scopes);
+  rolltui_str_set(&w->help_scopes[w->help_scopes_n++], scope, len);
+}
+
+size_t rolltui_windows_help_scope_count(const RolltuiWindows* w) { return w->help_scopes_n; }
+
+const char* rolltui_windows_help_scope_at(const RolltuiWindows* w, size_t i, size_t* len) {
+  if (i >= w->help_scopes_n) {
+    if (len) *len = 0;
+    return "";
+  }
+  return rolltui_str_get(&w->help_scopes[i], len);
+}
+
+const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->help_lead, len); }
+const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->help_note, len); }
+
+/* ---- the live bindings table and the current frame's styles ------------------------------------ */
+
+void rolltui_windows_set_bindings(RolltuiWindows* w, const RolltuiBindings* b) { w->bindings = b; }
+const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w) { return w->bindings; }
+const RolltuiStyle* rolltui_windows_styles(const RolltuiWindows* w) { return w->styles; }
+
+/* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ---------------- */
+
+void rolltui_windows_set_builtin_roles(RolltuiWindows* w, const RolltuiBuiltinRoles* r) { w->builtin_roles = *r; }
+const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w) { return &w->builtin_roles; }
+void rolltui_windows_set_scroll_text_actions(RolltuiWindows* w, const RolltuiScrollTextActions* a) {
+  w->scroll_actions = *a;
+}
+const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w) {
+  return &w->scroll_actions;
+}
+
+/* ---- rows (Phase 15 m5e: moved to the boundary so `rows` can be a plugin) ---------------------- */
+
+void rolltui_rows_reset(RolltuiRows* r) { r->n = 0; /* keeps v's storage and every row's buffers */ }
+
+void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const char* value, size_t value_len) {
+  r->v = (RolltuiRow*)rolltui_grow_zeroed(r->v, &r->cap, r->n + 1, sizeof *r->v);
+  rolltui_str_set(&r->v[r->n].label, label, label_len);
+  rolltui_str_set(&r->v[r->n].value, value, value_len);
+  ++r->n;
+}
+
+void rolltui_rows_release(RolltuiRows* r) {
+  size_t i;
+  for (i = 0; i < r->cap; ++i) {
+    rolltui_str_free(&r->v[i].label);
+    rolltui_str_free(&r->v[i].value);
+  }
+  rolltui_mem_free(r->v);
+  r->v = NULL;
+  r->n = 0;
+  r->cap = 0;
+}
+
+/* ---- note (Phase 15 m5e: moved to the boundary so `input` can be a plugin) --------------------- */
+
+void rolltui_note_clear(RolltuiNote* n) {
+  rolltui_str_clear(&n->text); /* keeps the buffer — the reuse this call exists for */
+  n->state = 0;                /* EffectState::None */
+  n->since_ms = 0;
 }
 
 /* ---- sync ------------------------------------------------------------------------------------ */
@@ -472,12 +567,12 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
   rolltui_str_set(&s->content, n->content.p, n->content.n);
   /* THE "window 'x' (content 'y'): " PREFIX IS BUILT ONLY WHEN THERE IS SOMETHING TO SAY.
    * It used to be built for every window of every frame and thrown away (Phase 13 m5). */
-  if (wd->vt && wd->vt->problem && wd->vt->problem(wd->self, &w->scratch)) {
+  if (wd->vt && wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) {
     note_problem(w, n, &w->scratch);
     return;
   }
   if (wd->vt && wd->vt->note_at)
-    for (i = 0; wd->vt->note_at(wd->self, i, &w->scratch); ++i) note_problem(w, n, &w->scratch);
+    for (i = 0; wd->vt->note_at(wd->ctx, i, &w->scratch); ++i) note_problem(w, n, &w->scratch);
 }
 
 void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
@@ -534,7 +629,7 @@ void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, Roll
     row = parent && parent->node->kind == 1 /* Row */;
     extent = !parent ? box.h : (row ? parent->inner.w : parent->inner.h);
     border = rn->node->border != 0 ? 2 : 0;
-    if (wd->vt->desired_outer(wd->self, rn->inner.w, extent, border, &want)) {
+    if (wd->vt->desired_outer(wd->ctx, rn->inner.w, extent, border, &want)) {
       RolltuiLayoutNode* nd = rolltui_window_stack_find(stack, rn->node->id.p, rn->node->id.n);
       if (nd) {
         nd->size.fill = 0;
@@ -554,7 +649,7 @@ void rolltui_windows_layout(RolltuiWindows* w, const RolltuiWindowStack* stack, 
     RolltuiWidget* wd;
     if (rn->node->kind != 0) continue;
     wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
-    if (wd && wd->vt && wd->vt->layout) wd->vt->layout(wd->self, rn);
+    if (wd && wd->vt && wd->vt->layout) wd->vt->layout(wd->ctx, rn);
   }
 }
 
@@ -582,7 +677,7 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   if (rn->node->border == 0) return;
   if (!wd->vt || !wd->vt->scroll_extent) return;
   memset(&e, 0, sizeof e);
-  if (!wd->vt->scroll_extent(wd->self, ROLLTUI_AXIS_VERTICAL, &e)) return;
+  if (!wd->vt->scroll_extent(wd->ctx, ROLLTUI_AXIS_VERTICAL, &e)) return;
   track = rn->outer.h - 2; /* between the corners */
   x = rn->outer.x + rn->outer.w - 1;
   if (track <= 0 || rn->outer.w < 2) return;
@@ -608,23 +703,24 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
 void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
                           const RolltuiStyle* styles, const RolltuiWindowRoles* roles) {
   RolltuiWidget* wd;
+  w->styles = styles; /* the current frame's table, so a widget's draw may ask for a Role */
   if (rn->node->kind != 0) return;
   wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
   if (!wd || !wd->vt) return;
   /* A widget that CANNOT draw is replaced by the error panel — the factory's, so there is one
    * definition of what "this window is wrong" looks like. */
-  if (wd->vt->problem && wd->vt->problem(wd->self, &w->scratch)) {
+  if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) {
     if (w->panel_factory) {
       RolltuiWidget err = w->panel_factory(w->panel_ctx, w->scratch.p, w->scratch.n);
       if (err.vt) {
-        if (err.vt->layout) err.vt->layout(err.self, rn);
-        err.vt->draw(err.self, rn, f);
-        if (err.vt->destroy) err.vt->destroy(err.self);
+        if (err.vt->layout) err.vt->layout(err.ctx, rn);
+        err.vt->draw(err.ctx, rn, f);
+        if (err.vt->destroy) err.vt->destroy(err.ctx);
       }
     }
     return;
   }
-  wd->vt->draw(wd->self, rn, f);
+  wd->vt->draw(wd->ctx, rn, f);
   draw_scrollbar(w, rn, wd, f, styles, roles);
 }
 
@@ -650,7 +746,7 @@ static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, R
   if (!s || s->track.h <= 0) return 0; /* h == 0: no track drawn */
   if (!wd->vt || !wd->vt->scroll_extent) return 0;
   memset(&e, 0, sizeof e);
-  if (!wd->vt->scroll_extent(wd->self, ROLLTUI_AXIS_VERTICAL, &e)) return 0;
+  if (!wd->vt->scroll_extent(wd->ctx, ROLLTUI_AXIS_VERTICAL, &e)) return 0;
   if (!rolltui_scroll_thumb(&e, s->track.h, &t)) return 0;
   if (m->kind == 0 /* Press */) {
     int cell;
@@ -661,7 +757,7 @@ static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, R
      * and the drag that may follow it agree. */
     w->bar_grab = (cell >= t.offset && cell < t.offset + t.length) ? cell - t.offset : 0;
     if (!wd->vt->scroll_to) return 0;
-    if (!wd->vt->scroll_to(wd->self, ROLLTUI_AXIS_VERTICAL,
+    if (!wd->vt->scroll_to(wd->ctx, ROLLTUI_AXIS_VERTICAL,
                            rolltui_scroll_first_for_cell(&e, s->track.h, cell - w->bar_grab)))
       return 0;
     rolltui_str_set(&w->bar_drag, window, len);
@@ -671,7 +767,7 @@ static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, R
     if (!rolltui_str_eq(&w->bar_drag, window, len)) return 0;
     /* The pointer may be anywhere by now (the press captured it), so only its ROW counts. */
     if (wd->vt->scroll_to)
-      wd->vt->scroll_to(wd->self, ROLLTUI_AXIS_VERTICAL,
+      wd->vt->scroll_to(wd->ctx, ROLLTUI_AXIS_VERTICAL,
                         rolltui_scroll_first_for_cell(&e, s->track.h, m->y - s->track.y - w->bar_grab));
     return 1;
   }
@@ -681,7 +777,7 @@ static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, R
 int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
   RolltuiWidget* wd = rolltui_windows_at(w, window, len);
   if (!wd || !wd->vt) return 0;
-  if (wd->vt->problem && wd->vt->problem(wd->self, &w->scratch)) return 0;
+  if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
   if (handle_scrollbar(w, window, len, wd, e)) return 1;
-  return wd->vt->handle ? wd->vt->handle(wd->self, e) : 0;
+  return wd->vt->handle ? wd->vt->handle(wd->ctx, e) : 0;
 }

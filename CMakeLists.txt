@@ -44,7 +44,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                   c/rolltui_theme.c c/rolltui_bindings.c
                   c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
-                  c/rolltui_widgets.c c/rolltui_transcript.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
                   c/rolltui_json.c c/rolltui_app_profile.c
                                          # Phase 17 m1: the parser, and the app profile on
                                          #   top of it. The profile's C boundary takes and

@@ -9,16 +9,18 @@
  * repeated here.
  *
  * ============================================================================================
- * THE VTABLE, AND THE RULE FOR ADDING TO IT
+ * THE PLUGIN, AND THE RULE FOR ADDING TO IT
  * ============================================================================================
  *
  * `rolltui::Widget` is the one place the library uses inheritance for real: nine virtuals a
- * host overrides. In C that is a STRUCT OF FUNCTION POINTERS the implementor fills — which is
- * what `register_kind` already was in spirit, since a host's kind was always a factory
- * producing something the library would only ever call through those nine slots.
+ * host overrides. In C that is a STRUCT OF FUNCTION POINTERS the implementor fills — a PLUGIN
+ * CONTRACT: the set of functions a widget supplies so a window can drive it, never a service
+ * the widget asks of the window. It is what `register_kind` already was in spirit, since a
+ * host's kind was always a factory producing something the library would only ever call
+ * through those nine slots.
  *
  * **Making it a struct changes one thing that matters, and it is not the calling convention:
- * a vtable you can SEE is a set you have to CLOSE.** A virtual function is added by typing
+ * a plugin you can SEE is a set you have to CLOSE.** A virtual function is added by typing
  * one line in a header and costs nothing at the moment of writing; every existing override
  * silently keeps the base's behaviour, and nobody is asked what that behaviour should BE for
  * a widget that has never heard of the new question. `Widget` grew from four virtuals to nine
@@ -44,7 +46,7 @@
  *      would force every widget into a behaviour only some of them want — the rule Phase 12
  *      m5 wrote and this shape now enforces rather than asks for.
  *
- *   5. **THE LIBRARY'S OWN SEVEN KINDS FILL THIS VTABLE EXACTLY AS A HOST'S DOES.** There is
+ *   5. **THE LIBRARY'S OWN SEVEN KINDS FILL THIS PLUGIN EXACTLY AS A HOST'S DOES.** There is
  *      one mechanism and no privileged path: `rolltui::Windows` registers its built-ins
  *      through `rolltui_windows_register_kind` at construction, so "a transcript window" and
  *      "roll's approval modal" are built, owned, drawn and routed by the same code. The one
@@ -79,6 +81,7 @@
  */
 #include <stddef.h>
 
+#include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_keys.h"
@@ -86,6 +89,16 @@
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
+
+/* Declared, not defined: the vocabulary lives in `rolltui/Effects.hpp`, and this file names
+ * no state (the same m2 rule `rolltui_diff.h` and `rolltui_document.h` state). An opaque,
+ * already-complete enum with a fixed underlying type is a complete type wherever only a
+ * member's type is needed. */
+#ifdef __cplusplus
+namespace rolltui {
+enum class EffectState : unsigned char;
+}  // namespace rolltui
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -120,39 +133,39 @@ void rolltui_content_rect(const RolltuiResolvedNode* rn, RolltuiRect* out);
 
 /* ---- THE VTABLE ------------------------------------------------------------------------------ */
 
-typedef struct RolltuiWidgetVTable {
+typedef struct RolltuiWidgetPlugin {
   /* ---- REQUIRED (rule 2) ---- */
-  /* Frees `self`. The window table calls this and nothing else ever does. */
-  void (*destroy)(void* self);
-  void (*layout)(void* self, const RolltuiResolvedNode* rn);
-  void (*draw)(void* self, const RolltuiResolvedNode* rn, RolltuiFrame* f);
+  /* Frees `ctx`. The window table calls this and nothing else ever does. */
+  void (*destroy)(void* ctx);
+  void (*layout)(void* ctx, const RolltuiResolvedNode* rn);
+  void (*draw)(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f);
 
   /* ---- OPTIONAL: NULL means the behaviour stated on the line (rule 2) ---- */
 
   /* Why this widget cannot draw, into `out`; 0 when it can. NULL: it always can. */
-  int (*problem)(void* self, RolltuiStr* out);
+  int (*problem)(void* ctx, RolltuiStr* out);
   /* Note `i`, into `out`; 0 when there is no i-th note. A note does NOT stop the widget
    * drawing — a menu file's unknown key is named in the report and the menu still shows.
    * NULL: no notes. */
-  int (*note_at)(void* self, size_t i, RolltuiStr* out);
+  int (*note_at)(void* ctx, size_t i, RolltuiStr* out);
   /* The outer extent this widget wants along its parent's axis, into `out`; 0 to let the
    * layout decide. NULL: the layout decides, which is every widget but the input. */
-  int (*desired_outer)(void* self, int inner_w, int parent_extent, int border, int* out);
+  int (*desired_outer)(void* ctx, int inner_w, int parent_extent, int border, int* out);
   /* 1 when the event was consumed. NULL: nothing is consumed — the kinds whose whole
    * interaction is scrolling implement this; a host drives an input or a menu itself. */
-  int (*handle)(void* self, const RolltuiEvent* e);
+  int (*handle)(void* ctx, const RolltuiEvent* e);
   /* REPORTS its extent, so the window may draw a bar; 0 for none. NULL: no bar. */
-  int (*scroll_extent)(void* self, unsigned char axis, RolltuiScrollExtent* out);
+  int (*scroll_extent)(void* ctx, unsigned char axis, RolltuiScrollExtent* out);
   /* ACCEPTS a new first line, so the bar may be dragged; 0 to decline being driven. Anything
    * that returns 1 must CLAMP. NULL: reports but will not be driven (rule 4). */
-  int (*scroll_to)(void* self, unsigned char axis, size_t first);
-} RolltuiWidgetVTable;
+  int (*scroll_to)(void* ctx, unsigned char axis, size_t first);
+} RolltuiWidgetPlugin;
 
-/* One widget: what it IS and how to talk to it. The vtable is a BORROW of a table the
- * implementor keeps (a `static const` per kind); `self` is OWNED by whoever holds this. */
+/* One widget: what it IS and how to talk to it. The plugin is a BORROW of a table the
+ * implementor keeps (a `static const` per kind); `ctx` is OWNED by whoever holds this. */
 typedef struct RolltuiWidget {
-  const RolltuiWidgetVTable* vt;
-  void* self;
+  const RolltuiWidgetPlugin* vt;
+  void* ctx;
 } RolltuiWidget;
 
 /* ---- the window host --------------------------------------------------------------------------- */
@@ -160,7 +173,7 @@ typedef struct RolltuiWidget {
 typedef struct RolltuiWindows RolltuiWindows;
 
 /* Builds a widget for `content` (the whole string, "kind:source"). Returns a widget whose
- * `self` the table then OWNS, or a zeroed one to mean "I cannot build this" — which is not an
+ * `ctx` the table then OWNS, or a zeroed one to mean "I cannot build this" — which is not an
  * error path: `Windows` draws the error panel and names it in the report. */
 typedef RolltuiWidget (*RolltuiWidgetFactory)(void* ctx, const char* content, size_t len);
 
@@ -213,14 +226,51 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
 void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const void* doc);
 const void* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
 
-/* rows: `rows_obj` is opaque to C — always the caller's `rolltui::Rows&`, passed straight
- * through to `fn` and never stored past the call. */
-typedef void (*RolltuiRowsFn)(void* ctx, void* rows_obj);
+/* Forward declarations: `RolltuiRows`' own inline C++ methods below call these before their
+ * full declarations (right after the struct) would otherwise be seen. */
+typedef struct RolltuiRows RolltuiRows;
+void rolltui_rows_reset(RolltuiRows* r);
+void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const char* value, size_t value_len);
+void rolltui_rows_release(RolltuiRows* r);
+
+/* rows: one row of a `rows:` window — a label column and a value that wraps under it.
+ * `rolltui::Row` IS this struct. */
+typedef struct RolltuiRow {
+  RolltuiStr label, value;
+} RolltuiRow;
+
+/* WHAT A HOST FILLS instead of returning a fresh vector every frame (Phase 13 m5b, and
+ * CLAUDE.md's per-frame-API rule). `rolltui_rows_reset` keeps the array's capacity AND every
+ * row's string buffers, so `rolltui_rows_add` on a warm frame assigns into storage that
+ * already exists and allocates nothing. `rolltui::Rows` IS this struct. */
+typedef struct RolltuiRows {
+  RolltuiRow* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0);   /* rows live; v[0..n) */
+  size_t cap ROLLTUI_DEFAULT(0); /* rows allocated — v keeps its storage past n */
+#ifdef __cplusplus
+  void reset() { rolltui_rows_reset(this); }
+  void add(std::string_view label, std::string_view value) {
+    rolltui_rows_add(this, label.data(), label.size(), value.data(), value.size());
+  }
+  std::size_t size() const { return n; }
+  const RolltuiRow& operator[](std::size_t i) const { return v[i]; }
+  RolltuiRows() = default;
+  RolltuiRows(const RolltuiRows&) = delete;
+  RolltuiRows& operator=(const RolltuiRows&) = delete;
+  ~RolltuiRows() { rolltui_rows_release(this); }
+#endif
+} RolltuiRows;
+/* `rolltui_rows_reset`/`_add`/`_release` are forward-declared above, before this struct's own
+ * inline C++ methods that call them: `n = 0` keeps every row's buffers (`reset`); frees every
+ * row and the array and zeroes it (`release`). */
+
+/* rows: `out` is the caller's `RolltuiRows`, filled in place — never stored past the call. */
+typedef void (*RolltuiRowsFn)(void* ctx, RolltuiRows* out);
 void rolltui_windows_bind_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRowsFn fn, void* ctx,
                                void (*free_ctx)(void*));
 int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t len);
 /* 1 when something was bound and got called; 0 (a no-op) when nothing is bound to `name`. */
-int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, void* rows_obj);
+int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRows* out);
 
 /* submit: `on_submit` is `Windows::OnSubmit` as an int (0 SendAndClear, 1 Keep) — this header
  * does not know the enum's name, only its two values, bound alongside the callable because a
@@ -233,13 +283,54 @@ int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len,
 /* 0 (SendAndClear) when nothing is bound to `name` — `Windows::on_submit_for`'s own default. */
 int rolltui_windows_on_submit(const RolltuiWindows* w, const char* name, size_t len);
 
-/* note: `note_obj` is opaque to C — always the caller's `rolltui::Note&`, already cleared,
- * passed straight through to `fn`. */
-typedef void (*RolltuiNoteFn)(void* ctx, void* note_obj);
+/* note: an input's one-line note, and what STATE it is in. A host with no motion to report
+ * fills only `text`; `state` defaults to None, which is what makes the implicit conversion
+ * from a bare string do the whole of "no motion" for a host that never mentions it.
+ * `rolltui::Note` IS this struct. */
+typedef struct RolltuiNote {
+  RolltuiStr text;
+#ifdef __cplusplus
+  rolltui::EffectState state = static_cast<rolltui::EffectState>(0); /* None */
+#else
+  unsigned char state;
+#endif
+  unsigned long long since_ms ROLLTUI_DEFAULT(0); /* when it entered `state` */
+#ifdef __cplusplus
+  // No constructor, destructor or assignment of this type's OWN is declared beyond the
+  // converting ones below: `text` (a `RolltuiStr`) already has correct copy/move/destroy, so
+  // the compiler-generated special members already do the right thing by construction — the
+  // same reasoning `RolltuiContent` states for itself.
+  RolltuiNote() = default;
+  // Implicit on purpose, and the three overloads (matching `RolltuiStr`'s own) are what
+  // keeps every host that has no motion to report writing exactly what it wrote before:
+  // `return "working";`. All three, not just `string_view`, because a `std::string` argument
+  // reaching `string_view` would be a SECOND user-defined conversion on top of this
+  // constructor's own — disallowed implicitly, and exactly the trap `rolltui::Str` avoids by
+  // declaring the same three.
+  RolltuiNote(std::string_view t) : text(t) {}                                        // NOLINT(google-explicit-constructor)
+  RolltuiNote(const char* t) : text(t ? std::string_view(t) : std::string_view()) {}  // NOLINT(google-explicit-constructor)
+  RolltuiNote(const std::string& t) : text(t) {}                                      // NOLINT(google-explicit-constructor)
+  RolltuiNote(std::string_view t, rolltui::EffectState s, unsigned long long since = 0)
+      : text(t), state(s), since_ms(since) {}
+  RolltuiNote& operator=(std::string_view t) {
+    text = t;
+    state = static_cast<rolltui::EffectState>(0);
+    since_ms = 0;
+    return *this;
+  }
+  RolltuiNote& operator=(const std::string& t) { return *this = std::string_view(t); }
+  RolltuiNote& operator=(const char* t) { return *this = (t ? std::string_view(t) : std::string_view()); }
+#endif
+} RolltuiNote;
+
+void rolltui_note_clear(RolltuiNote* n); /* text = "", state = None, since_ms = 0; keeps the buffer */
+
+/* note: `out` is the caller's `RolltuiNote`, already cleared, filled in place. */
+typedef void (*RolltuiNoteFn)(void* ctx, RolltuiNote* out);
 void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteFn fn, void* ctx,
                                void (*free_ctx)(void*));
 int rolltui_windows_has_note(const RolltuiWindows* w, const char* name, size_t len);
-int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, void* note_obj);
+int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNote* out);
 
 /* the preset directory: `file:`, `menu:`'s user rung and `menus/<name>.json` resolve against
  * this. A BORROW out, "" (never NULL) until `set_dir` is first called. */
@@ -254,6 +345,22 @@ const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name,
 size_t rolltui_windows_host_menu_count(const RolltuiWindows* w);
 const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len);
 
+/* what a `help` window renders (Phase 15 m5, moved to the boundary so the `help` kind can be
+ * a plugin like the rest): an optional lead line, the scopes to list in order, an optional
+ * trailing note. `set_help` REPLACES lead/note; the scope list is built separately
+ * (`clear_help_scopes` then `add_help_scope` per entry) because it is a `std::vector` at the
+ * one C++ call site (`Windows::set_help`) and this is the same shape `rolltui_windows_add_menu`
+ * already uses for a list built one call at a time. */
+void rolltui_windows_set_help(RolltuiWindows* w, const char* lead, size_t lead_len, const char* note,
+                              size_t note_len);
+void rolltui_windows_clear_help_scopes(RolltuiWindows* w);
+void rolltui_windows_add_help_scope(RolltuiWindows* w, const char* scope, size_t len);
+size_t rolltui_windows_help_scope_count(const RolltuiWindows* w);
+/* A BORROW, valid until the scope list next changes. */
+const char* rolltui_windows_help_scope_at(const RolltuiWindows* w, size_t i, size_t* len);
+const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len);
+const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len);
+
 /* ---- the frame ------------------------------------------------------------------------------- */
 
 typedef struct RolltuiWidgetEnv {
@@ -263,6 +370,23 @@ typedef struct RolltuiWidgetEnv {
 
 void rolltui_windows_set_env(RolltuiWindows* w, const RolltuiWidgetEnv* env);
 const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w);
+
+/* THE LIVE BINDINGS TABLE, as a handle (Phase 15 m5e): a widget looks up an action's chords
+ * or asks whether a key is one of the transcript scope's without knowing `rolltui::Bindings`
+ * exists. A BORROW — `w` never frees it — set once per frame alongside `set_env` from
+ * `Bindings::handle()` (the live table, or `default_bindings().handle()`). NULL only before
+ * the first `set_env`. */
+void rolltui_windows_set_bindings(RolltuiWindows* w, const RolltuiBindings* b);
+const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w);
+
+/* THE CURRENT FRAME'S STYLE TABLE, indexed by Role ordinal — a BORROW valid for the length of
+ * one `rolltui_windows_draw` call, set at its top from the `styles` it is already handed (the
+ * same array `draw_scrollbar` inside this module reads). This is what lets a widget's `draw`
+ * ask "what does Role::text look like" without the vtable's `draw` slot carrying a fourth
+ * parameter every kind must accept whether or not it draws text — the `RolltuiWindowRoles`
+ * shape one level up, generalised to the one thing every drawing kind needs. NULL outside a
+ * draw call. */
+const RolltuiStyle* rolltui_windows_styles(const RolltuiWindows* w);
 
 /* Instantiates/reuses a widget per window and collects what each one says is wrong. The
  * report's lines are BORROWS, valid until the next sync. */
