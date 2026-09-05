@@ -18,23 +18,28 @@
 // function BOTH hosts route through, over every built-in theme including the two that map
 // every state — so it cannot be true only for the theme that happens to be loaded.
 //
-// PHASE 17: calls the C API (rolltui/c/rolltui_effects.h, rolltui_screen.h,
-// rolltui_frame_ops.h, rolltui_render.h, all reached through rolltui/rolltui.h) directly
-// for the frame and the effects engine, rather than through the rolltui::Frame /
-// rolltui::EffectMap free-function C++ shim (Effects.hpp + its shim Effects.cpp,
-// Screen.hpp + its shim Screen.cpp) that this file used to include — those are the files
-// being deleted. `rolltui::Theme` (Theme.hpp) is NOT part of that layer and is unchanged,
-// but it is the one place this file cannot follow all the way through: `Theme::effects`
-// is a `rolltui::EffectMap` DATA MEMBER (Theme.hpp is a plain struct, not yet a handle
-// behind a C boundary), and `EffectMap` exposes only a CONST handle() — there is no way
-// to reach a mutable `RolltuiEffectMap*` for a theme's own map from outside the class. So
-// building/mutating a Theme's effects (theme_with(), the STACKING and the tick-rule
-// blocks) still calls EffectMap's own methods, which is Theme.hpp's shape forcing the
-// issue rather than a choice made here — the same is true of `effect_state_name()` /
-// `effect_state_from_name()`, which have NO C form at all (rolltui_screen.h: a mark's
-// state crosses as an opaque int the C never interprets; the vocabulary is stated to stay
-// in Effects.hpp, in one language, permanently). Everything this file can reach through a
-// C call — the frame, the registry, the applier, the tick — does.
+// PHASE 17 m2: calls the C API (rolltui/c/rolltui_effects.h, rolltui_screen.h,
+// rolltui_frame_ops.h, rolltui_render.h, rolltui_theme.h, rolltui_json.h, all reached
+// through rolltui/rolltui.h) directly for the frame, the theme and the effects engine —
+// Effects.hpp, Style.hpp, Theme.hpp and Json.hpp are all deleted along with the rest of
+// the C++ binding (plan/phase-17.md milestone 2), so nothing here goes through
+// `rolltui::Frame` / `rolltui::EffectMap` / `rolltui::Theme` any more; those are the files
+// that used to be included.
+//
+// `Role` (Style.hpp) and `EffectState`/`effect_state_name`/`effect_state_from_name`
+// (Effects.hpp) have NO C form at all and are stated to stay in ONE language, permanently
+// (Effects.cpp's own comment: "the boundary deliberately does not know [the state
+// vocabulary]... so the C indexes the per-state arrays with it and the names stay in one
+// language" — the same is true of a role's NAME, rolltui_style.h's header comment: "a C
+// file names no role"). Both are reproduced below exactly as
+// rolltui/tests/theme_test.cpp already reproduces `Role` independently. `EffectMap`
+// (Effects.hpp) was a thin `unique_ptr<RolltuiEffectMap>` RAII shape over
+// `rolltui_effect_map_*`; it is reproduced the same way, as a local holder over the same C
+// calls its methods forwarded to verbatim — a theme's own effects map still needs an
+// owner, and the boundary rule is "working memory is a caller-owned handle", not "no
+// handle at all". Everything else this file touches — the frame, the registry, the
+// applier, the tick, the theme loader/dumper, the json tree — was already a direct C call
+// before this pass and is unchanged.
 //
 #include <algorithm>
 #include <array>
@@ -50,35 +55,141 @@
 
 #include "rolltui/rolltui.h"
 
-#include "rolltui/Effects.hpp"
 #include "rolltui_test.hpp"
 
-using rolltui::EffectMap;
-using rolltui::EffectState;
-using rolltui::kEffectStateCount;
-using rolltui::Role;
-using rolltui::Style;
-using rolltui::kRoleCount;
-using rolltui::kRoleNames;
-// The two vocabulary functions with no C equivalent at all (see the header note above) —
-// named explicitly rather than pulled in with everything else, so it stays visible that
-// these two are the exception and not an oversight.
-using rolltui::effect_state_from_name;
-using rolltui::effect_state_name;
 using namespace rolltui_test;
 
 namespace {
 
-// ---- mirrors rolltui::Theme (Theme.hpp) and rolltui::json::Value (Json.hpp). Role, Style,
-// EffectMap, EffectState, kRoleCount, kRoleNames, kEffectStateCount, effect_state_name are
-// UNCHANGED (kept, via the using-declarations above and the direct rolltui/Effects.hpp
-// include this file now has in Theme.hpp's place -- Style.hpp is Effects.hpp's own
-// dependency, and this file never stopped needing EffectMap as Theme::effects' real C++
-// type, which is why Theme.hpp's shape forces this one file to keep touching it, per the
-// header note at the top of this file). Only the parts genuinely gone are reproduced below:
-// the Theme struct itself, its load report, its mode enum, the built-in cache, the vocab
-// table, the JSON loader and dumper -- and, nested so every `json::`-qualified call site
-// below stays unchanged text, json::Value/parse/dump. ----
+// ---- mirrors rolltui::Role (Style.hpp), reproduced exactly as
+// rolltui/tests/theme_test.cpp independently reproduces it: NO C form exists for a role's
+// NAME at all -- a C file names no role (rolltui_style.h's header comment), so the ORDINAL
+// crosses a boundary call and the vocabulary stays in every C++ consumer that needs it. ----
+enum class Role : unsigned char {
+  // base
+  text, text_muted, background, panel_background, border, border_active, title,
+  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
+  // markdown
+  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
+  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
+  md_rule, md_strikethrough,
+  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
+  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
+  // chrome
+  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
+  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
+  // find (Phase 12 m4): every match, and the one the view is on
+  find_match, find_current,
+  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
+  scrollbar,
+  count_
+};
+constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
+static_assert(static_cast<unsigned char>(Role::text) == ROLLTUI_ROLE_DEFAULT_TEXT,
+              "the C side's default entry role must be Role::text");
+static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
+              "the C side's default node background must be Role::background");
+static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
+              "the C side's default input prompt role must be Role::prompt");
+
+// THE ROLE NAMES, FROM THE LIBRARY. This was a verbatim copy of the 49 names when this file
+// was converted, on the precedent of the one in `theme_test.cpp` commented "reproduced" —
+// which was itself a defect, deleted the same day along with the rule that made it look
+// necessary ("a C file names no role"). `ROLLTUI_ROLE_LIST` in `rolltui/c/rolltui_style.h` is
+// the one list now, and this asks the library for it.
+const std::array<const char*, kRoleCount>& kRoleNamesTable() {
+  static const std::array<const char*, kRoleCount> t = [] {
+    std::array<const char*, kRoleCount> a{};
+    for (std::size_t i = 0; i < kRoleCount; ++i)
+      a[i] = rolltui_role_name(static_cast<unsigned char>(i), nullptr);
+    return a;
+  }();
+  return t;
+}
+
+// `rolltui::Style` (Style.hpp) was a one-definition alias over the same C struct --
+// reproduced verbatim; there was never a second definition to convert away from.
+using Style = RolltuiStyle;
+
+// PHASE 17: DERIVED from `ROLLTUI_EFFECT_STATE_LIST`. This file used to declare the enum by
+// hand next to a verbatim copy of the names, on the rule that "names stay in one language" —
+// the rule that has since been reversed, because a vocabulary the C refuses to carry does not
+// disappear, it relocates into every caller that cannot reach it.
+enum class EffectState : std::uint8_t {
+#define ROLLTUI_EFFECT_STATE_CPP_(lower, UPPER, Camel) Camel = ROLLTUI_EFFECT_STATE_##UPPER,
+  ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_EFFECT_STATE_CPP_)
+#undef ROLLTUI_EFFECT_STATE_CPP_
+  count_ = ROLLTUI_EFFECT_STATE_COUNT
+};
+inline constexpr std::size_t kEffectStateCount = static_cast<std::size_t>(EffectState::count_);
+
+// THE EFFECT-STATE NAMES, FROM THE LIBRARY — same story as the roles above. The copy this
+// replaces carried the comment "names stay in one language", which was the rule at the time
+// and is what made the duplication look correct.
+inline std::string_view effect_state_name(EffectState s) {
+  std::size_t len = 0;
+  const char* n = rolltui_effect_state_name(static_cast<unsigned char>(s), &len);
+  return std::string_view(n, len);
+}
+
+inline EffectState effect_state_from_name(std::string_view name) {
+  const int i = rolltui_effect_state_from_name(name.data(), name.size());
+  return i < 0 ? EffectState::count_ : static_cast<EffectState>(i);
+}
+
+// ---- mirrors rolltui::EffectMap (Effects.hpp): OWNED, through a unique_ptr with a deleter
+// that calls the C free -- the same RAII shape the real class used, over the same
+// rolltui_effect_map_* calls its methods forwarded to verbatim. ----
+class EffectMap {
+ public:
+  struct Handle {
+    void operator()(RolltuiEffectMap* p) const { rolltui_effect_map_free(p); }
+  };
+  // THE FALLBACK ROLE IS HANDED OVER ONCE, HERE -- same as the real class: it is the only
+  // place that says which role an effect with none of its own picks.
+  EffectMap() : m_(rolltui_effect_map_new(kEffectStateCount, static_cast<unsigned char>(Role::accent_1))) {}
+  // ADOPTS an already-built map (the theme loader/built-in filler hand one back in C).
+  explicit EffectMap(RolltuiEffectMap* adopt) noexcept : m_(adopt) {}
+  EffectMap(const EffectMap& o) : m_(rolltui_effect_map_clone(o.m_.get())) {}
+  EffectMap& operator=(const EffectMap& o) {
+    if (this != &o) m_.reset(rolltui_effect_map_clone(o.m_.get()));
+    return *this;
+  }
+  EffectMap(EffectMap&&) = default;
+  EffectMap& operator=(EffectMap&&) = default;
+
+  bool empty() const { return rolltui_effect_map_empty(m_.get()) != 0; }
+  bool operator==(const EffectMap& o) const { return rolltui_effect_map_equal(m_.get(), o.m_.get()) != 0; }
+  void clear() { rolltui_effect_map_clear(m_.get()); }
+
+  std::size_t count(EffectState s) const { return rolltui_effect_map_count(m_.get(), index(s)); }
+  // A BORROW, valid until this map next changes.
+  const RolltuiEffectSpec& at(EffectState s, std::size_t i) const { return *rolltui_effect_map_at(m_.get(), index(s), i); }
+
+  std::size_t add(EffectState s, std::string_view kind, int period_ms = 800, int width = 0, int steps = 0,
+                  bool backward = false) {
+    return rolltui_effect_map_add(m_.get(), index(s), kind.data(), kind.size(), period_ms, width, steps, backward);
+  }
+  void add_frame(EffectState s, std::size_t i, std::string_view frame) {
+    rolltui_effect_map_add_frame(m_.get(), index(s), i, frame.data(), frame.size());
+  }
+  void add_role(EffectState s, std::size_t i, Role r) {
+    rolltui_effect_map_add_role(m_.get(), index(s), i, static_cast<unsigned char>(r));
+  }
+
+  const RolltuiEffectMap* handle() const { return m_.get(); }
+
+ private:
+  static std::size_t index(EffectState s) {
+    return static_cast<std::size_t>(s) < kEffectStateCount ? static_cast<std::size_t>(s) : 0;
+  }
+  std::unique_ptr<RolltuiEffectMap, Handle> m_;
+};
+
+// ---- mirrors rolltui::Theme (Theme.hpp) and rolltui::json::Value (Json.hpp): the Theme
+// struct itself, its load report, its mode enum, the built-in cache, the vocab table, the
+// JSON loader and dumper -- and, nested so every `json::`-qualified call site below stays
+// unchanged text, json::Value/parse/dump. ----
 struct Theme {
   std::string name;
   std::array<RolltuiStyle, kRoleCount> styles{};
@@ -127,18 +238,17 @@ std::vector<std::string_view> builtin_theme_names() {
   return out;
 }
 
-// Mirrors Theme.cpp's VocabTables/theme_vocab(): kRoleNames and effect_state_name are the
-// REAL, kept functions (see above), so only the pointer tables are rebuilt here.
+// Mirrors Theme.cpp's VocabTables/theme_vocab(): the pointer tables the C loader/dumper
+// take once per call. `kRoleNames` is already `const char* const*`-shaped, so only the
+// state-name table needs building.
 const RolltuiThemeVocab& theme_vocab() {
   static const struct VocabTables {
-    std::array<const char*, kRoleCount> role_names{};
     std::array<const char*, kEffectStateCount> state_names{};
     RolltuiThemeVocab vocab{};
     VocabTables() {
-      for (std::size_t i = 0; i < kRoleCount; ++i) role_names[i] = kRoleNames[i].data();
       for (std::size_t i = 0; i < kEffectStateCount; ++i)
         state_names[i] = effect_state_name(static_cast<EffectState>(i)).data();
-      vocab.role_names = role_names.data();
+      vocab.role_names = kRoleNamesTable().data();
       vocab.role_count = kRoleCount;
       vocab.text_role = static_cast<std::size_t>(Role::text);
       vocab.state_names = state_names.data();
@@ -412,9 +522,8 @@ std::vector<std::string> effect_kind_names() {
 bool effect_kind_resolves(std::string_view name) { return rolltui_effect_kind_resolves(name.data(), name.size()) != 0; }
 bool is_builtin_effect_kind(std::string_view name) { return rolltui_effect_is_builtin(name.data(), name.size()) != 0; }
 
-// ---- applying, and the tick — the direct C calls, over a Theme's OWN EffectMap (see the
-// header note: theme.effects.handle()/.empty() are the only EffectMap calls left, both
-// read-only, because Theme.hpp lends no mutable handle for anything else to call through). ----
+// ---- applying, and the tick — the direct C calls, over a Theme's OWN EffectMap
+// (theme.effects.handle()/.empty(), both read-only calls on the local EffectMap above). ----
 struct EffectReport {
   int marks_drawn = 0;
   int cells_touched = 0;

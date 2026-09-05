@@ -28,3 +28,33 @@ int rolltui_role_from_name(const char* name, size_t len) {
   }
   return -1;
 }
+
+/* ---- the effect-state names, from `ROLLTUI_EFFECT_STATE_LIST` -----------------------------
+ * Here rather than in `rolltui_effects.c` for one reason: this file is the library's
+ * VOCABULARY table, and both lists are the same kind of thing — a closed set of names a theme
+ * file is written in. Keeping them together is what stops the next one being invented
+ * somewhere else. */
+#include "rolltui/c/rolltui_effects.h"
+
+static const char* const kEffectStateNames[] = {
+#define ROLLTUI_EFFECT_STATE_NAME_(lower, UPPER, Camel) #lower,
+    ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_EFFECT_STATE_NAME_)
+#undef ROLLTUI_EFFECT_STATE_NAME_
+};
+
+const char* rolltui_effect_state_name(unsigned char state, size_t* len) {
+  /* "none" for anything out of range, matching the C++ this replaces: a mark whose state does
+   * not exist is not marked. */
+  const char* s = state < ROLLTUI_EFFECT_STATE_COUNT ? kEffectStateNames[state] : kEffectStateNames[0];
+  if (len) *len = strlen(s);
+  return s;
+}
+
+int rolltui_effect_state_from_name(const char* name, size_t len) {
+  size_t i;
+  for (i = 0; i < ROLLTUI_EFFECT_STATE_COUNT; ++i) {
+    const size_t n = strlen(kEffectStateNames[i]);
+    if (n == len && memcmp(kEffectStateNames[i], name, len) == 0) return (int)i;
+  }
+  return -1;
+}

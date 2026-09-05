@@ -7,13 +7,38 @@
 // requires), the unknown-colour rule, claimed badges, and auto-fix on a deliberately
 // broken pair.
 //
+// PHASE 17 m2: calls the C API (rolltui/c/rolltui_theme_analysis.h, rolltui_theme.h,
+// rolltui_json.h, all reached through rolltui/rolltui.h) directly — ThemeAnalysis.hpp,
+// Theme.hpp and Style.hpp are all deleted along with the rest of the C++ binding
+// (plan/phase-17.md milestone 2). `Lin`/`OkLab`/`OkLch`/`Badges` were one-definition
+// aliases over the same C structs (Phase 17 m1) and are reproduced verbatim — there was
+// never a second definition to convert away from. `Role` (Style.hpp) has no C enum form
+// at all — a C file names no role, so the ordinal crosses a boundary call and the name
+// table stays in every C++ consumer that needs it — reproduced below exactly as
+// rolltui/tests/theme_test.cpp reproduces it independently. `RoleCheck`/`PairCheck`/`Fix`
+// stay real (mirrored) C++ structs rather than aliases for the same reason
+// rolltui_theme_analysis.h's own header comment gives: this file reads `c.role ==
+// Role::warning`, an enum comparison a C struct cannot carry. `analyse`, `report_text`,
+// `check_claims`, `fix_contrast`, `fix_confusable`, `propose_fixes` and `apply_fix` were
+// thin forwarding shims over `rolltui_theme_analyse`/`_report_text`/`_check_claims`/
+// `fix_contrast`/`fix_confusable`/`propose_fixes`/`apply_fix` and are reproduced the same
+// way, over the same C calls — nothing here computes a contrast ratio, a hue rotation or
+// composes the report's English; the reference values below still hold the C maths to
+// account.
+//
+#include <array>
 #include <cmath>
+#include <cstring>
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
-#include "rolltui/ThemeAnalysis.hpp"
+#include "rolltui/rolltui.h"
+
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 namespace {
@@ -23,6 +48,391 @@ std::string join(const std::vector<std::string>& v) {
   for (const std::string& x : v) s += (s.empty() ? "" : " ") + x;
   return s;
 }
+
+// ---- mirrors rolltui::Role (Style.hpp): NO C form exists for it at all -- a C file names
+// no role (rolltui_style.h's header comment) -- reproduced in Style.hpp's exact
+// declaration order, since a theme's style table is indexed by this ordinal. ----
+enum class Role : unsigned char {
+  // base
+  text, text_muted, background, panel_background, border, border_active, title,
+  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
+  // markdown
+  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
+  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
+  md_rule, md_strikethrough,
+  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
+  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
+  // chrome
+  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
+  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
+  // find (Phase 12 m4): every match, and the one the view is on
+  find_match, find_current,
+  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
+  scrollbar,
+  count_
+};
+constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
+static_assert(static_cast<unsigned char>(Role::text) == ROLLTUI_ROLE_DEFAULT_TEXT,
+              "the C side's default entry role must be Role::text");
+static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
+              "the C side's default node background must be Role::background");
+static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
+              "the C side's default input prompt role must be Role::prompt");
+
+// THE ROLE NAMES, FROM THE LIBRARY. This was a verbatim copy of the 49 names when this file
+// was converted, on the precedent of the one in `theme_test.cpp` commented "reproduced" —
+// which was itself a defect, deleted the same day along with the rule that made it look
+// necessary ("a C file names no role"). `ROLLTUI_ROLE_LIST` in `rolltui/c/rolltui_style.h` is
+// the one list now, and this asks the library for it.
+const std::array<const char*, kRoleCount>& kRoleNamesTable() {
+  static const std::array<const char*, kRoleCount> t = [] {
+    std::array<const char*, kRoleCount> a{};
+    for (std::size_t i = 0; i < kRoleCount; ++i)
+      a[i] = rolltui_role_name(static_cast<unsigned char>(i), nullptr);
+    return a;
+  }();
+  return t;
+}
+constexpr std::string_view role_name(Role r) { return kRoleNamesTable()[static_cast<std::size_t>(r)]; }
+
+// `rolltui::Color` (Style.hpp) was a one-definition alias over the same C struct --
+// reproduced verbatim.
+using Color = RolltuiStyleColor;
+
+// ---- mirrors rolltui::Theme (Theme.hpp), but only the STYLE TABLE, NAME and META this
+// file reads -- `.effects` (EffectMap) is a C++-only shim type this fixture never
+// touches. ----
+struct Theme {
+  std::string name;
+  struct MetaDeleter {
+    void operator()(RolltuiJsonValue* p) const { rolltui_json_free(p); }
+  };
+  std::unique_ptr<RolltuiJsonValue, MetaDeleter> meta;
+  std::array<RolltuiStyle, kRoleCount> styles{};
+  const RolltuiStyle& style(Role r) const {
+    return *rolltui_theme_style(styles.data(), styles.size(), static_cast<unsigned char>(r));
+  }
+  RolltuiStyle& style(Role r) { return styles[static_cast<std::size_t>(r)]; }
+
+  Theme() = default;
+  Theme(const Theme& o) : name(o.name), meta(rolltui_json_clone(o.meta.get())), styles(o.styles) {}
+  Theme(Theme&&) = default;
+  Theme& operator=(const Theme& o) {
+    if (this != &o) {
+      name = o.name;
+      meta.reset(rolltui_json_clone(o.meta.get()));
+      styles = o.styles;
+    }
+    return *this;
+  }
+  Theme& operator=(Theme&&) = default;
+};
+
+// Mirrors rolltui::builtin_theme's cache (Theme.cpp), minus `.effects`: filled once from
+// the C built-ins, keyed by name.
+const Theme* builtin_theme(std::string_view name) {
+  static const std::vector<std::pair<std::string, Theme>> cache = [] {
+    std::vector<std::pair<std::string, Theme>> v;
+    const std::size_t n = rolltui_theme_builtin_count();
+    v.reserve(n);  // pointer stability: builtin_theme() hands back &t into this vector
+    for (std::size_t i = 0; i < n; ++i) {
+      const char* nm = rolltui_theme_builtin_name(i);
+      Theme t;
+      t.name = nm;
+      if (RolltuiEffectMap* m = rolltui_theme_builtin_fill(nm, std::strlen(nm), t.styles.data(), t.styles.size()))
+        rolltui_effect_map_free(m);  // this fixture never reads effects
+      v.emplace_back(nm, t);
+    }
+    return v;
+  }();
+  for (const auto& [n, t] : cache)
+    if (n == name) return &t;
+  return nullptr;
+}
+
+// Mirrors Theme.cpp's theme_vocab(): the role NAME table handed to the C analysis/fix
+// calls once per call. No effect-state names: this file never touches effects.
+const RolltuiThemeVocab& theme_vocab() {
+  static const RolltuiThemeVocab v = [] {
+    RolltuiThemeVocab t{};
+    t.role_names = kRoleNamesTable().data();
+    t.role_count = kRoleCount;
+    t.text_role = static_cast<std::size_t>(Role::text);
+    t.state_names = nullptr;
+    t.state_count = 0;
+    t.fallback_effect_role = static_cast<unsigned char>(Role::accent_1);
+    return t;
+  }();
+  return v;
+}
+
+// ---- mirrors rolltui::Lin/OkLab/OkLch (ThemeAnalysis.hpp): one-definition aliases over
+// the same C structs -- reproduced verbatim. ----
+using Lin = RolltuiLin;
+using OkLab = RolltuiOkLab;
+using OkLch = RolltuiOkLch;
+
+// ---- mirrors the colour-space/contrast/distance shims (ThemeAnalysis.cpp): thin
+// forwarding calls over rolltui/c/rolltui_theme_analysis.h, reproduced verbatim. ----
+double srgb_channel_to_linear(double c) { return rolltui_srgb_channel_to_linear(c); }
+double linear_channel_to_srgb(double v) { return rolltui_linear_channel_to_srgb(v); }
+std::optional<Lin> to_linear(Color c) {
+  Lin out;
+  if (!rolltui_to_linear(c, &out)) return std::nullopt;
+  return out;
+}
+Color from_linear(Lin l) {
+  Color c;
+  rolltui_from_linear(l, &c);
+  return c;
+}
+OkLab linear_to_oklab(Lin c) {
+  OkLab out;
+  rolltui_linear_to_oklab(c, &out);
+  return out;
+}
+Lin oklab_to_linear(OkLab lab) {
+  Lin out;
+  rolltui_oklab_to_linear(lab, &out);
+  return out;
+}
+OkLch oklab_to_oklch(OkLab lab) {
+  OkLch out;
+  rolltui_oklab_to_oklch(lab, &out);
+  return out;
+}
+OkLab oklch_to_oklab(OkLch lch) {
+  OkLab out;
+  rolltui_oklch_to_oklab(lch, &out);
+  return out;
+}
+double relative_luminance(Lin l) { return rolltui_relative_luminance(l); }
+double wcag_contrast(Lin a, Lin b) { return rolltui_wcag_contrast(a, b); }
+double apca_contrast(Lin text, Lin bg) { return rolltui_apca_contrast(text, bg); }
+double delta_e(OkLab a, OkLab b) { return rolltui_delta_e(a, b); }
+
+enum class Cvd : std::uint8_t { Protanopia, Deuteranopia, Tritanopia };
+constexpr Cvd kCvdTypes[] = {Cvd::Protanopia, Cvd::Deuteranopia, Cvd::Tritanopia};
+Lin simulate_cvd(Lin l, Cvd type) {
+  Lin out;
+  rolltui_simulate_cvd(l, static_cast<unsigned char>(type), &out);
+  return out;
+}
+
+// ---- thresholds: aliases of rolltui_theme_analysis.h's ROLLTUI_* macros, so the number
+// is written down once. ----
+constexpr double kReadableRatio = ROLLTUI_READABLE_RATIO;
+constexpr double kDistinctDeltaE = ROLLTUI_DISTINCT_DELTA_E;
+const std::size_t kMustDifferCount = rolltui_must_differ_count();
+
+// ---- the report: RoleCheck/PairCheck/Fix stay real C++ structs (see header note above),
+// built by analyse()/propose_fixes()'s shims from the C calls' unsigned char ordinals. ----
+struct RoleCheck {
+  Role role;
+  bool text = true;                  // a role whose fg is drawn as text (counts for readable / high-contrast)
+  std::optional<double> wcag, apca;  // absent when either colour is the terminal's
+  Color fg, bg;                      // the colours measured (bg: the role's, else the theme's background)
+  bool unknown = false;              // depends on the terminal
+  bool readable = false, high = false;
+};
+struct PairCheck {
+  Role a, b;
+  std::optional<double> delta;                    // normal vision
+  std::array<std::optional<double>, 3> delta_cvd;  // per kCvdTypes
+  bool unknown = false;
+  bool distinct = false;             // normal vision ≥ threshold
+  bool cvd_distinct = false;         // under every simulation too
+  bool attribute_redundant = false;  // also differ by bold/italic/underline/dim/reverse
+  bool collapses_16 = false, collapses_256 = false;
+};
+using Badges = RolltuiBadges;
+struct ThemeReport {
+  std::vector<RoleCheck> roles;
+  std::vector<PairCheck> pairs;
+  Badges badges{};
+  std::vector<std::string> notes;  // what could not be measured, in words
+};
+
+// Mirrors rolltui::analyse (ThemeAnalysis.cpp): thin shim over rolltui_theme_analyse,
+// plus the notes -- built here, not in C, over the same one-line re-checks the real shim
+// used (not a second implementation of any rule).
+ThemeReport analyse(const Theme& theme) {
+  ThemeReport rep;
+  std::vector<RolltuiRoleCheck> croles(kRoleCount);
+  const std::size_t pair_count = rolltui_must_differ_count();
+  std::vector<RolltuiPairCheck> cpairs(pair_count);
+  rolltui_theme_analyse(theme.styles.data(), kRoleCount, croles.data(), cpairs.data(), &rep.badges);
+
+  bool all_none = true;
+  for (const RolltuiStyle& s : theme.styles)
+    all_none &= s.fg.kind == RolltuiStyleColor::Kind::None && s.bg.kind == RolltuiStyleColor::Kind::None;
+  Lin bg_lin;
+  if (!rolltui_to_linear(theme.style(Role::background).bg, &bg_lin))
+    rep.notes.push_back("background is the terminal's own colour: dark/light and every contrast against it depend on the terminal");
+
+  bool any_text_known = false;
+  for (const RolltuiRoleCheck& c : croles)
+    if (c.text && !c.unknown) any_text_known = true;
+  if (!any_text_known && !all_none) rep.notes.push_back("no text role has both colours known; readable / high-contrast cannot be awarded");
+
+  rep.roles.reserve(kRoleCount);
+  for (const RolltuiRoleCheck& c : croles) {
+    RoleCheck rc;
+    rc.role = static_cast<Role>(c.role);
+    rc.text = c.text != 0;
+    rc.fg = c.fg;
+    rc.bg = c.bg;
+    rc.unknown = c.unknown != 0;
+    if (!rc.unknown) { rc.wcag = c.wcag; rc.apca = c.apca; }
+    rc.readable = c.readable != 0;
+    rc.high = c.high != 0;
+    rep.roles.push_back(rc);
+  }
+  rep.pairs.reserve(pair_count);
+  for (const RolltuiPairCheck& c : cpairs) {
+    PairCheck pc;
+    pc.a = static_cast<Role>(c.a);
+    pc.b = static_cast<Role>(c.b);
+    pc.unknown = c.unknown != 0;
+    if (!pc.unknown) {
+      pc.delta = c.delta;
+      for (int k = 0; k < 3; ++k) pc.delta_cvd[k] = c.delta_cvd[k];
+    }
+    pc.distinct = c.distinct != 0;
+    pc.cvd_distinct = c.cvd_distinct != 0;
+    pc.attribute_redundant = c.attribute_redundant != 0;
+    pc.collapses_16 = c.collapses_16 != 0;
+    pc.collapses_256 = c.collapses_256 != 0;
+    rep.pairs.push_back(pc);
+    if (pc.unknown && !all_none)
+      rep.notes.push_back(std::string(role_name(pc.a)) + " / " + std::string(role_name(pc.b)) +
+                           ": a foreground is the terminal's own; distinguishability depends on the terminal");
+  }
+  return rep;
+}
+
+std::vector<std::string> badge_names(const Badges& b) {
+  RolltuiStrArray a{};
+  rolltui_badge_names(&b, &a);
+  std::vector<std::string> out;
+  out.reserve(a.n);
+  for (std::size_t i = 0; i < a.n; ++i) out.emplace_back(a.v[i].p ? a.v[i].p : "", a.v[i].n);
+  rolltui_str_array_release(&a);
+  return out;
+}
+bool has_badge(const Badges& b, std::string_view name) { return rolltui_has_badge(&b, name.data(), name.size()) != 0; }
+
+std::string report_text(const ThemeReport& r) {
+  std::vector<RolltuiRoleCheck> croles(r.roles.size());
+  for (std::size_t i = 0; i < r.roles.size(); ++i) {
+    const RoleCheck& c = r.roles[i];
+    RolltuiRoleCheck& o = croles[i];
+    o.role = static_cast<unsigned char>(c.role);
+    o.text = c.text;
+    o.fg = c.fg;
+    o.bg = c.bg;
+    o.unknown = c.unknown;
+    o.wcag = c.wcag.value_or(0.0);
+    o.apca = c.apca.value_or(0.0);
+    o.readable = c.readable;
+    o.high = c.high;
+  }
+  std::vector<RolltuiPairCheck> cpairs(r.pairs.size());
+  for (std::size_t i = 0; i < r.pairs.size(); ++i) {
+    const PairCheck& c = r.pairs[i];
+    RolltuiPairCheck& o = cpairs[i];
+    o.a = static_cast<unsigned char>(c.a);
+    o.b = static_cast<unsigned char>(c.b);
+    o.unknown = c.unknown;
+    o.delta = c.delta.value_or(0.0);
+    for (int k = 0; k < 3; ++k) o.delta_cvd[k] = c.delta_cvd[k].value_or(0.0);
+    o.distinct = c.distinct;
+    o.cvd_distinct = c.cvd_distinct;
+    o.attribute_redundant = c.attribute_redundant;
+    o.collapses_16 = c.collapses_16;
+    o.collapses_256 = c.collapses_256;
+  }
+  std::vector<RolltuiStr> notes(r.notes.begin(), r.notes.end());
+  RolltuiStr out{};
+  rolltui_theme_report_text(croles.data(), croles.size(), cpairs.data(), cpairs.size(), &r.badges, notes.data(),
+                            notes.size(), &theme_vocab(), &out);
+  std::string result(out.view());
+  rolltui_str_free(&out);
+  return result;
+}
+
+std::vector<std::string> check_claims(const Theme& theme, const ThemeReport& report) {
+  RolltuiStrArray a{};
+  rolltui_check_claims(theme.meta.get(), &report.badges, &a);
+  std::vector<std::string> failed;
+  failed.reserve(a.n);
+  for (std::size_t i = 0; i < a.n; ++i) failed.emplace_back(a.v[i].p ? a.v[i].p : "", a.v[i].n);
+  rolltui_str_array_release(&a);
+  return failed;
+}
+
+// ---- auto-fix: thin shims over rolltui_fix_contrast/_confusable/_propose_fixes/
+// _apply_fix, reproduced verbatim. ----
+struct Fix {
+  Role role;
+  RolltuiStyle before, after;
+  std::string what;  // "md_link fg: contrast 3.1 → 4.6"
+  double before_value = 0, after_value = 0;
+};
+std::optional<Fix> fix_contrast(const Theme& theme, Role role, double target = kReadableRatio) {
+  RolltuiFix cf{};
+  if (!rolltui_fix_contrast(theme.styles.data(), kRoleCount, static_cast<unsigned char>(role), target, &theme_vocab(),
+                            &cf))
+    return std::nullopt;
+  Fix fix;
+  fix.role = static_cast<Role>(cf.role);
+  fix.before = cf.before;
+  fix.after = cf.after;
+  fix.what = cf.what.str();
+  fix.before_value = cf.before_value;
+  fix.after_value = cf.after_value;
+  rolltui_fix_release(&cf);
+  return fix;
+}
+std::optional<Fix> fix_confusable(const Theme& theme, Role a, Role b) {
+  RolltuiFix cf{};
+  if (!rolltui_fix_confusable(theme.styles.data(), kRoleCount, static_cast<unsigned char>(a),
+                              static_cast<unsigned char>(b), &theme_vocab(), &cf))
+    return std::nullopt;
+  Fix fix;
+  fix.role = static_cast<Role>(cf.role);
+  fix.before = cf.before;
+  fix.after = cf.after;
+  fix.what = cf.what.str();
+  fix.before_value = cf.before_value;
+  fix.after_value = cf.after_value;
+  rolltui_fix_release(&cf);
+  return fix;
+}
+std::vector<Fix> propose_fixes(const Theme& theme) {
+  RolltuiFixArray a{};
+  rolltui_propose_fixes(theme.styles.data(), kRoleCount, &theme_vocab(), &a);
+  std::vector<Fix> out;
+  out.reserve(a.n);
+  for (std::size_t i = 0; i < a.n; ++i) {
+    const RolltuiFix& cf = a.v[i];
+    Fix fix;
+    fix.role = static_cast<Role>(cf.role);
+    fix.before = cf.before;
+    fix.after = cf.after;
+    fix.what = cf.what.str();
+    fix.before_value = cf.before_value;
+    fix.after_value = cf.after_value;
+    out.push_back(std::move(fix));
+  }
+  rolltui_fix_array_release(&a);
+  return out;
+}
+Theme apply_fix(Theme theme, const Fix& fix) {
+  rolltui_apply_fix(theme.styles.data(), kRoleCount, static_cast<unsigned char>(fix.role), &fix.after);
+  return theme;
+}
+
 }  // namespace
 
 int main() {

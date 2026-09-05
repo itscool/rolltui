@@ -201,6 +201,43 @@ typedef void (*RolltuiEffectFn)(void* ctx, const RolltuiEffectSpec* spec, const 
 
 /* Why a registration was refused. The MESSAGE is built one level up, where the words are
  * already a `std::string` and can name the kind. */
+
+/* ---- THE EFFECT-STATE VOCABULARY (Phase 17, 2026-09-05) ---------------------------------
+ * The same move, and for the same reason, as `ROLLTUI_ROLE_LIST` in `rolltui_style.h`: these
+ * five names were an `enum class` plus a parallel array in `rolltui/Effects.cpp`, so a C
+ * consumer could reach neither and every one that needed them copied the list. Both spellings
+ * now expand this one.
+ *
+ * A widget MARKS a span with a state and stops; the theme maps state -> effect as data in its
+ * file. That mapping is read from a theme file BY NAME, which is exactly why the names have to
+ * be reachable from the C that does the reading.
+ *
+ * ORDER IS ABI — `none` must stay 0, because a zeroed mark means "not marked". */
+/* THREE SPELLINGS, ONE LIST: the name a theme FILE uses ("waiting"), the C constant
+ * (ROLLTUI_EFFECT_STATE_WAITING) and the identifier C++ reads best (EffectState::Waiting).
+ * A third column rather than a second list, because the whole point is that adding a state
+ * is one edit. */
+#define ROLLTUI_EFFECT_STATE_LIST(X) \
+  X(none, NONE, None) \
+  X(waiting, WAITING, Waiting) \
+  X(streaming, STREAMING, Streaming) \
+  X(progress, PROGRESS, Progress) \
+  X(flash, FLASH, Flash)
+
+typedef enum RolltuiEffectState {
+#define ROLLTUI_EFFECT_STATE_ENUM_(lower, UPPER, Camel) ROLLTUI_EFFECT_STATE_##UPPER,
+  ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_EFFECT_STATE_ENUM_)
+#undef ROLLTUI_EFFECT_STATE_ENUM_
+  ROLLTUI_EFFECT_STATE_COUNT
+} RolltuiEffectState;
+
+/* BORROWS a static literal. An out-of-range state reads back as "none", which is what the
+ * C++ `effect_state_name` did and what a mark of an unknown state means. */
+const char* rolltui_effect_state_name(unsigned char state, size_t* len);
+
+/* The state of that name, or -1 when there is none — what a theme LOADER needs. */
+int rolltui_effect_state_from_name(const char* name, size_t len);
+
 #define ROLLTUI_EFFECT_OK 0
 #define ROLLTUI_EFFECT_NO_NAME 1
 #define ROLLTUI_EFFECT_NO_FN 2
