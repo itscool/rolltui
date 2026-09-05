@@ -169,20 +169,12 @@ int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_
   return 1;
 }
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
-  // Mirrors rolltui::undeliverable_reason (Keys.cpp) — that file classifies via
-  // rolltui_key_undeliverable_reason and carries the English the C deliberately does not
-  // (rolltui_keys.h: "the C classifies and never carries a sentence"); duplicated here for
-  // the same reason the migration table is.
-  static constexpr std::string_view kReasons[6] = {
-      "",
-      "it is not a key",
-      "shift on a character key is the shifted character itself, which no terminal reports as a chord",
-      "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
-      "it needs the kitty keyboard protocol",
-      "no keyboard protocol this library speaks can report it",
-  };
+  // THE LIBRARY'S SENTENCE (Phase 17 m2a). This was a verbatim copy of the six, made because
+  // they lived in `Keys.cpp` and a C consumer could not reach them; there were three.
   const int code = rolltui_key_undeliverable_reason(k, protocol);
-  const std::string_view r = kReasons[static_cast<std::size_t>(code) < 6 ? static_cast<std::size_t>(code) : 0];
+  std::size_t rlen = 0;
+  const char* rp = rolltui_key_undeliverable_text(code, &rlen);
+  const std::string_view r(rp, rlen);
   const std::size_t n = std::min(r.size(), cap);
   std::memcpy(out, r.data(), n);
   return n;
@@ -455,26 +447,23 @@ RolltuiBindings* default_bindings() {
   return d;
 }
 
+// THE LIBRARY'S RULE, not a copy (Phase 17 m2a). This was a verbatim reimplementation of the
+// chord column's width, its 22/12 caps and "(unbound)" — so these checks asserted against the
+// test's own arithmetic, not against the one the help window draws.
 std::vector<std::string> help_lines(const RolltuiBindings* b, std::string_view scope, const std::vector<std::string>& actions = {}) {
+  std::vector<const char*> ptrs;
+  std::vector<std::size_t> lens;
+  for (const std::string& a : actions) { ptrs.push_back(a.data()); lens.push_back(a.size()); }
+  RolltuiStr buf{};
+  rolltui_help_scope_lines(b, scope.data(), scope.size(), ptrs.data(), lens.data(), ptrs.size(), nullptr, 0, &buf);
   std::vector<std::string> out;
-  std::vector<std::string> list = actions;
-  if (list.empty())
-    for (const std::string& a : bindings_actions(b))
-      if (scope_of(a) == scope) list.push_back(a);
-  std::size_t width = 0;
-  std::vector<std::string> chords;
-  for (const std::string& a : list) {
-    chords.push_back(bindings_chords_text(b, a));
-    width = std::max(width, std::min<std::size_t>(chords.back().size(), 22));
+  const std::string_view all(buf.p ? buf.p : "", buf.n);
+  for (std::size_t i = 0; i < all.size();) {
+    const std::size_t nl = all.find('\n', i);
+    out.emplace_back(all.substr(i, nl - i));
+    i = nl + 1;
   }
-  const std::size_t column = std::max<std::size_t>(width + 2, 12);
-  for (std::size_t i = 0; i < list.size(); ++i) {
-    std::string line = chords[i].empty() ? "(unbound)" : chords[i];
-    if (line.size() + 2 <= column) line.append(column - line.size(), ' ');
-    else line += "  ";
-    line += bindings_description(b, list[i]);
-    out.push_back(line);
-  }
+  rolltui_str_free(&buf);
   return out;
 }
 
@@ -901,5 +890,47 @@ int main() {
           "a chord list longer than the column is followed by two spaces, not padded");
     rolltui_bindings_free(wide);
   }
+  // ---- the four per-widget tables, expanded from the one list (Phase 17 m2a) ------------
+  // `rolltui_library_actions.c` builds `RolltuiInputActions`, `RolltuiMenuActions`,
+  // `RolltuiTranscriptActions` and `RolltuiScrollTextActions` by expanding the 59-row list with
+  // DESIGNATED initialisers, so a row whose group or field is wrong leaves that member NULL
+  // rather than failing to compile — and a NULL action name reads as "nothing is bound to this
+  // command", which is silent. This is the check that makes the expansion self-verifying: every
+  // member of all four is non-NULL, and every one names an action the table actually declares.
+  {
+    RolltuiBindings* d = default_bindings();
+    const RolltuiInputActions* ia = rolltui_input_default_actions();
+    const RolltuiMenuActions* ma = rolltui_menu_default_actions();
+    const RolltuiTranscriptActions* ta = rolltui_transcript_default_actions();
+    const RolltuiScrollTextActions* sa = rolltui_scroll_text_default_actions();
+    const char* const* input_fields = reinterpret_cast<const char* const*>(ia);
+    const std::size_t input_n = sizeof(RolltuiInputActions) / sizeof(const char*);
+    const char* const* trans_fields = reinterpret_cast<const char* const*>(ta);
+    const std::size_t trans_n = sizeof(RolltuiTranscriptActions) / sizeof(const char*);
+    const char* const* scroll_fields = reinterpret_cast<const char* const*>(sa);
+    const std::size_t scroll_n = sizeof(RolltuiScrollTextActions) / sizeof(const char*);
+    // The menu's last member is the input POINTER, not a name, so it stops one short.
+    const char* const* menu_fields = reinterpret_cast<const char* const*>(ma);
+    const std::size_t menu_n = sizeof(RolltuiMenuActions) / sizeof(const char*) - 1;
+    int missing = 0, undeclared = 0;
+    std::string bad;
+    auto scan = [&](const char* const* f, std::size_t n) {
+      for (std::size_t i = 0; i < n; ++i) {
+        if (!f[i]) { ++missing; continue; }
+        if (!rolltui_bindings_has(d, f[i], std::strlen(f[i]))) { ++undeclared; bad += std::string(" ") + f[i]; }
+      }
+    };
+    scan(input_fields, input_n);
+    scan(menu_fields, menu_n);
+    scan(trans_fields, trans_n);
+    scan(scroll_fields, scroll_n);
+    check(input_n == 30 && menu_n == 15 && trans_n == 11 && scroll_n == 6,
+          "the four tables are the sizes the headers declare [" + std::to_string(input_n) + "/" +
+              std::to_string(menu_n) + "/" + std::to_string(trans_n) + "/" + std::to_string(scroll_n) + "]");
+    check(missing == 0, "…every member is filled by the expansion [" + std::to_string(missing) + " NULL]");
+    check(undeclared == 0, "…and every one names an action the library declares [" + bad + "]");
+    check(ma->input == ia, "…and the menu's input table IS the input table, not a copy of it");
+  }
+
   return report("rolltui bindings_test");
 }

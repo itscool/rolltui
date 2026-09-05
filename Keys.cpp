@@ -103,15 +103,16 @@ std::vector<Event> KeyDecoder::flush() {
 std::string to_string(const Event& e) {
   struct V {
     std::string operator()(const KeyEvent& k) const {
-      static const char* names[] = {"Char", "Enter", "Tab", "Backspace", "Escape", "Up", "Down", "Left", "Right",
-                                    "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "F1", "F2", "F3",
-                                    "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "Unknown"};
+      // PHASE 17 m2b: the TitleCase names are `ROLLTUI_KEY_LIST`'s second column. They were a
+      // 28-entry array here with hand-copies in `keys_test`, `terminal_test` and
+      // `studio.cpp` — one identity in two spellings, the lowercase half already in C, and
+      // nothing anywhere stating that both were meant to exist.
       std::string s;
       if (k.ctrl) s += "Ctrl+";
       if (k.alt) s += "Alt+";
       if (k.shift) s += "Shift+";
       if (k.key == Key::Char) unicode::append_utf8(s, k.ch);
-      else s += names[static_cast<int>(k.key)];
+      else s += rolltui_key_display_name(static_cast<unsigned char>(k.key), nullptr);
       if (k.key == Key::Unknown) s += "(" + k.raw + ")";
       return s;
     }
@@ -137,22 +138,21 @@ std::string to_string(const Event& e) {
 // where deliverability_test's enumerated round trip holds them to each other. What is left
 // here is the naming.
 
+// PHASE 17 m2a: both are the C's vocabulary now (`ROLLTUI_PROTOCOL_LIST`).
+static_assert(static_cast<unsigned char>(KeyProtocol::Legacy) == ROLLTUI_PROTOCOL_LEGACY &&
+                  static_cast<unsigned char>(KeyProtocol::ModifyOtherKeys) == ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS &&
+                  static_cast<unsigned char>(KeyProtocol::Kitty) == ROLLTUI_PROTOCOL_KITTY,
+              "rolltui::KeyProtocol and ROLLTUI_PROTOCOL_LIST must be the same vocabulary in the same order");
+
 std::string_view protocol_name(KeyProtocol p) {
-  switch (p) {
-    case KeyProtocol::Kitty: return "kitty";
-    case KeyProtocol::ModifyOtherKeys: return "modifyOtherKeys";
-    case KeyProtocol::Legacy: break;
-  }
-  return "legacy";
+  std::size_t len = 0;
+  const char* s = rolltui_key_protocol_name(static_cast<unsigned char>(p), &len);
+  return {s, len};
 }
 
 std::optional<KeyProtocol> parse_key_protocol(std::string_view name) {
-  std::string n;
-  for (char c : name) n.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-  if (n == "legacy") return KeyProtocol::Legacy;
-  if (n == "modifyotherkeys") return KeyProtocol::ModifyOtherKeys;
-  if (n == "kitty") return KeyProtocol::Kitty;
-  return std::nullopt;
+  const int p = rolltui_key_protocol_from_name(name.data(), name.size());
+  return p < 0 ? std::nullopt : std::optional<KeyProtocol>(static_cast<KeyProtocol>(p));
 }
 
 KeyProtocol active_key_protocol() { return static_cast<KeyProtocol>(rolltui_key_active_protocol()); }
@@ -175,20 +175,14 @@ bool deliverable(const KeyEvent& k, KeyProtocol p) {
 }
 
 std::string undeliverable_reason(const KeyEvent& k, KeyProtocol p) {
-  // THE WORDS, against the C's classification. The reason names the CHEAPEST protocol that
-  // would carry the chord, so a person is told what to turn on rather than that something
-  // is impossible.
-  static constexpr std::array<std::string_view, 6> kReasons = {
-      "",
-      "it is not a key",
-      "shift on a character key is the shifted character itself, which no terminal reports as a chord",
-      "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
-      "it needs the kitty keyboard protocol",
-      "no keyboard protocol this library speaks can report it",
-  };
+  // PHASE 17 m2a: the six sentences are the C's now — `rolltui_keys.h` says why the split
+  // that kept them here (the C classifies, the C++ says the words) was right about the split
+  // and wrong about the destination.
   const RolltuiChord c = chord_of(k);
   const int code = rolltui_key_undeliverable_reason(&c, static_cast<unsigned char>(p));
-  return std::string(kReasons[static_cast<std::size_t>(code) < kReasons.size() ? code : 0]);
+  std::size_t len = 0;
+  const char* s = rolltui_key_undeliverable_text(code, &len);
+  return std::string(s, len);
 }
 
 }  // namespace rolltui

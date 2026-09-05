@@ -28,8 +28,6 @@ namespace rolltui {
 
 namespace {
 
-constexpr std::array<std::string_view, kEffectStateCount> kStateNames = {"none", "waiting", "streaming", "progress", "flash"};
-
 // THE TRAMPOLINE. A host's kind is a `std::function` taking C++ references; the registry
 // holds a function pointer and a `void*`. `ctx` is the owned `EffectFn` and `host` is the
 // `Theme*` the applier was called with — the C stores both and dereferences neither. The
@@ -51,15 +49,25 @@ RolltuiEffectScratch* scratch() {
 
 }  // namespace
 
+// PHASE 17 m2a: the five names are `ROLLTUI_EFFECT_STATE_LIST`'s (rolltui_effects.h). That
+// X-macro was added on 2026-09-05 for exactly this reason — "so a C consumer could reach
+// neither and every one that needed them copied the list" — and this file, which was the
+// original, kept its own array anyway. A vocabulary is not moved until its first owner stops
+// spelling it.
+static_assert(static_cast<unsigned char>(EffectState::None) == ROLLTUI_EFFECT_STATE_NONE &&
+                  static_cast<unsigned char>(EffectState::Flash) == ROLLTUI_EFFECT_STATE_FLASH &&
+                  kEffectStateCount == ROLLTUI_EFFECT_STATE_COUNT,
+              "rolltui::EffectState and ROLLTUI_EFFECT_STATE_LIST must be the same vocabulary in the same order");
+
 std::string_view effect_state_name(EffectState s) {
-  const std::size_t i = static_cast<std::size_t>(s);
-  return i < kEffectStateCount ? kStateNames[i] : kStateNames[0];
+  std::size_t len = 0;
+  const char* p = rolltui_effect_state_name(static_cast<unsigned char>(s), &len);
+  return {p, len};
 }
 
 EffectState effect_state_from_name(std::string_view name) {
-  for (std::size_t i = 0; i < kEffectStateCount; ++i)
-    if (kStateNames[i] == name) return static_cast<EffectState>(i);
-  return EffectState::count_;
+  const int i = rolltui_effect_state_from_name(name.data(), name.size());
+  return i < 0 ? EffectState::count_ : static_cast<EffectState>(i);
 }
 
 bool is_builtin_effect_kind(std::string_view name) {

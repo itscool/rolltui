@@ -78,13 +78,11 @@ enum class KeyProtocol : unsigned char {
   ModifyOtherKeys = ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS,
   Kitty = ROLLTUI_PROTOCOL_KITTY,
 };
+// THE LIBRARY'S, not a copy (Phase 17 m2a): the three names are `ROLLTUI_PROTOCOL_LIST`'s.
 std::string_view protocol_name(KeyProtocol p) {
-  switch (p) {
-    case KeyProtocol::Kitty: return "kitty";
-    case KeyProtocol::ModifyOtherKeys: return "modifyOtherKeys";
-    case KeyProtocol::Legacy: break;
-  }
-  return "legacy";
+  std::size_t len = 0;
+  const char* s = rolltui_key_protocol_name(static_cast<unsigned char>(p), &len);
+  return {s, len};
 }
 void set_active_key_protocol(KeyProtocol p) { rolltui_key_set_active_protocol(static_cast<unsigned char>(p)); }
 
@@ -99,20 +97,14 @@ std::optional<std::string> encode_key(const RolltuiChord& k, KeyProtocol p) {
   if (n < 0) return std::nullopt;
   return std::string(buf, static_cast<std::size_t>(n));
 }
-// THE WORDS, against the C's classification (Keys.cpp: "the C classifies and never
-// carries a sentence"). The reason names the CHEAPEST protocol that would carry the
-// chord, so a person is told what to turn on rather than that something is impossible.
+// THE WORDS ARE THE LIBRARY'S NOW (Phase 17 m2a). This was one of THREE hand-copies of the
+// six sentences, all made because `Keys.cpp` was where they lived and a test asserting on one
+// has to say it. `rolltui_keys.h` carries the retraction.
 std::string undeliverable_reason(const RolltuiChord& k, KeyProtocol p) {
-  static constexpr std::array<std::string_view, 6> kReasons = {
-      "",
-      "it is not a key",
-      "shift on a character key is the shifted character itself, which no terminal reports as a chord",
-      "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
-      "it needs the kitty keyboard protocol",
-      "no keyboard protocol this library speaks can report it",
-  };
   const int code = rolltui_key_undeliverable_reason(&k, static_cast<unsigned char>(p));
-  return std::string(kReasons[static_cast<std::size_t>(code) < kReasons.size() ? static_cast<std::size_t>(code) : 0]);
+  std::size_t len = 0;
+  const char* s = rolltui_key_undeliverable_text(code, &len);
+  return std::string(s, len);
 }
 std::string show(const RolltuiChord& k) {
   char buf[ROLLTUI_CHORD_STRING_MAX];

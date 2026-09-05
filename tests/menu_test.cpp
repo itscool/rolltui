@@ -264,18 +264,12 @@ int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_
   return 1;
 }
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
-  // Mirrors rolltui::undeliverable_reason (Keys.cpp) — see bindings_test.cpp's identical
-  // copy for why this stays test-adjacent fixture data rather than a shared header.
-  static constexpr std::string_view kReasons[6] = {
-      "",
-      "it is not a key",
-      "shift on a character key is the shifted character itself, which no terminal reports as a chord",
-      "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
-      "it needs the kitty keyboard protocol",
-      "no keyboard protocol this library speaks can report it",
-  };
+  // THE LIBRARY'S SENTENCE (Phase 17 m2a). This was a verbatim copy of the six, made because
+  // they lived in `Keys.cpp` and a C consumer could not reach them; there were three.
   const int code = rolltui_key_undeliverable_reason(k, protocol);
-  const std::string_view r = kReasons[static_cast<std::size_t>(code) < 6 ? static_cast<std::size_t>(code) : 0];
+  std::size_t rlen = 0;
+  const char* rp = rolltui_key_undeliverable_text(code, &rlen);
+  const std::string_view r(rp, rlen);
   const std::size_t n = std::min(r.size(), cap);
   std::memcpy(out, r.data(), n);
   return n;

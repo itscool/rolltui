@@ -725,3 +725,92 @@ int rolltui_key_undeliverable_reason(const RolltuiChord* k, unsigned char p) {
   if (rolltui_key_deliverable(k, ROLLTUI_PROTOCOL_KITTY)) return ROLLTUI_UNDELIVERABLE_NEEDS_KITTY;
   return ROLLTUI_UNDELIVERABLE_NEVER;
 }
+
+
+/* ---- the protocol names and the undeliverability sentences (Phase 17 m2a) -----------------
+ * Both tables expand a list in `rolltui_keys.h`; see there for why they moved. */
+
+static const char* const kProtocolNames[] = {
+#define ROLLTUI_PROTOCOL_NAME_(lower, UPPER, Camel) lower,
+    ROLLTUI_PROTOCOL_LIST(ROLLTUI_PROTOCOL_NAME_)
+#undef ROLLTUI_PROTOCOL_NAME_
+};
+
+const char* rolltui_key_protocol_name(unsigned char p, size_t* len) {
+  const char* s = kProtocolNames[p < ROLLTUI_PROTOCOL_COUNT ? p : ROLLTUI_PROTOCOL_LEGACY];
+  if (len) *len = strlen(s);
+  return s;
+}
+
+int rolltui_key_protocol_from_name(const char* name, size_t len) {
+  size_t i, j;
+  if (!name) return -1;
+  for (i = 0; i < ROLLTUI_PROTOCOL_COUNT; ++i) {
+    const char* lit = kProtocolNames[i];
+    for (j = 0; j < len; ++j) {
+      const char a = lit[j] >= 'A' && lit[j] <= 'Z' ? (char)(lit[j] - 'A' + 'a') : lit[j];
+      const char b = name[j] >= 'A' && name[j] <= 'Z' ? (char)(name[j] - 'A' + 'a') : name[j];
+      if (lit[j] == '\0' || a != b) break;
+    }
+    if (j == len && lit[j] == '\0') return (int)i;
+  }
+  return -1;
+}
+
+/* Indexed by ROLLTUI_UNDELIVERABLE_*. The reason names the CHEAPEST protocol that would carry
+ * the chord, so a person is told what to turn on rather than that something is impossible —
+ * `Keys.cpp`'s own comment, moved with the words it described. */
+static const char* const kUndeliverableText[] = {
+    "",
+    "it is not a key",
+    "shift on a character key is the shifted character itself, which no terminal reports as a chord",
+    "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
+    "it needs the kitty keyboard protocol",
+    "no keyboard protocol this library speaks can report it",
+};
+
+const char* rolltui_key_undeliverable_text(int code, size_t* len) {
+  const size_t n = sizeof kUndeliverableText / sizeof kUndeliverableText[0];
+  const char* s = (code >= 0 && (size_t)code < n) ? kUndeliverableText[code] : "";
+  if (len) *len = strlen(s);
+  return s;
+}
+
+
+/* ---- the key names, both spellings (Phase 17 m2b) ------------------------------------------
+ * One list in `rolltui_keys.h`, two columns; `rolltui_bindings.c`'s chord parser expands the
+ * SAME list for the lowercase half rather than keeping a table of its own. */
+
+typedef struct { const char* display; const char* file; } KeyNamePair;
+static const KeyNamePair kKeyNamePairs[] = {
+#define ROLLTUI_KEY_NAMES_(UPPER, Title, file) {Title, file},
+    ROLLTUI_KEY_LIST(ROLLTUI_KEY_NAMES_)
+#undef ROLLTUI_KEY_NAMES_
+};
+
+const char* rolltui_key_display_name(unsigned char key, size_t* len) {
+  const char* s = kKeyNamePairs[key < ROLLTUI_KEY_COUNT ? key : ROLLTUI_KEY_CHAR].display;
+  if (len) *len = strlen(s);
+  return s;
+}
+
+const char* rolltui_key_file_name(unsigned char key, size_t* len) {
+  const char* s = kKeyNamePairs[key < ROLLTUI_KEY_COUNT ? key : ROLLTUI_KEY_CHAR].file;
+  if (len) *len = strlen(s);
+  return s;
+}
+
+int rolltui_key_from_display_name(const char* name, size_t len) {
+  size_t i, j;
+  if (!name) return -1;
+  for (i = 0; i < ROLLTUI_KEY_COUNT; ++i) {
+    const char* lit = kKeyNamePairs[i].display;
+    for (j = 0; j < len; ++j) {
+      const char a = lit[j] >= 'A' && lit[j] <= 'Z' ? (char)(lit[j] - 'A' + 'a') : lit[j];
+      const char b = name[j] >= 'A' && name[j] <= 'Z' ? (char)(name[j] - 'A' + 'a') : name[j];
+      if (lit[j] == '\0' || a != b) break;
+    }
+    if (j == len && lit[j] == '\0') return (int)i;
+  }
+  return -1;
+}
