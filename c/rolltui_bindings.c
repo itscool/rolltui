@@ -8,10 +8,17 @@
 #include "rolltui/c/rolltui_bindings.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_lifetime.h"
+/* For `RolltuiLayoutAction`, which the header can only FORWARD-declare — `rolltui_layout.h`
+ * includes this one, so including it back from the header would be a cycle. Dereferencing one
+ * needs the definition, and a .c has no such constraint. */
+#include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_unicode.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_app_profile.c`
@@ -852,4 +859,181 @@ void rolltui_bindings_dump_json(const RolltuiBindings* b, const char* name, size
   rolltui_json_dump(root, 2, out);
   rolltui_str_append(out, "\n", 1);
   rolltui_json_free(root);
+}
+
+/* ---- DECLARING, SUGGESTING, AND THE SHIPPED TABLE — see the header ----------------------- */
+
+int rolltui_bindings_library_scope(void* ctx, const char* scope, size_t len) {
+  const size_t n = rolltui_library_action_count();
+  size_t i;
+  (void)ctx;
+  for (i = 0; i < n; ++i) {
+    size_t alen = 0, slen = 0;
+    const char* a = rolltui_library_action_name(i, &alen);
+    const char* s = rolltui_bindings_scope_of(a, alen, &slen);
+    if (slen == len && memcmp(s, scope, len) == 0) return 1;
+  }
+  return 0;
+}
+
+const char* rolltui_bindings_holder(const RolltuiBindings* b, const RolltuiChord* chord, const char* scope,
+                                    size_t scope_len, size_t* out_len) {
+  const size_t rows = rolltui_bindings_row_count(b);
+  size_t i;
+  for (i = 0; i < rows; ++i) {
+    size_t alen = 0, slen = 0, n, j;
+    const char* a = rolltui_bindings_row_at(b, i, &alen);
+    const char* s = rolltui_bindings_scope_of(a, alen, &slen);
+    if (slen != scope_len || memcmp(s, scope, scope_len) != 0) continue;
+    n = rolltui_bindings_chord_count(b, a, alen);
+    for (j = 0; j < n; ++j) {
+      RolltuiChord c;
+      if (rolltui_bindings_chord_at(b, a, alen, j, &c) && chord_eq(&c, chord)) {
+        if (out_len) *out_len = alen;
+        return a;
+      }
+    }
+  }
+  if (out_len) *out_len = 0;
+  return NULL;
+}
+
+void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools, size_t n) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    const char* name = tools[i].name;
+    const size_t nlen = name ? strlen(name) : 0;
+    RolltuiChord c;
+    int have;
+    size_t slen = 0;
+    const char* scope;
+    if (!nlen || rolltui_bindings_has_row(b, name, nlen)) continue;
+    have = tools[i].chord && tools[i].chord[0] &&
+           rolltui_chord_parse(tools[i].chord, strlen(tools[i].chord), &c);
+    scope = rolltui_bindings_scope_of(name, nlen, &slen);
+    /* The ROW is created either way — a tool that suggests nothing, or whose suggestion is
+     * taken, is still a declared action with no key rather than no action at all. */
+    rolltui_bindings_add_row(b, name, nlen);
+    if (have && rolltui_bindings_holder(b, &c, scope, slen, NULL) == NULL)
+      rolltui_bindings_add_chord(b, name, nlen, &c);
+  }
+}
+
+void rolltui_bindings_declare(RolltuiBindings* b, const RolltuiLayoutAction* declared, size_t declared_n,
+                              const RolltuiToolAction* tools, size_t tools_n) {
+  size_t i;
+  /* SUGGESTIONS FIRST — see the header. A declaration creates the row a suggestion checks. */
+  rolltui_bindings_suggest(b, tools, tools_n);
+  rolltui_bindings_undeclare_others(b, rolltui_bindings_library_scope, NULL);
+  for (i = 0; i < declared_n; ++i) {
+    size_t nlen = 0, dlen = 0;
+    const char* nm = rolltui_str_get(&declared[i].name, &nlen);
+    const char* de = rolltui_str_get(&declared[i].description, &dlen);
+    rolltui_bindings_add_action(b, nm, nlen, de, dlen);
+  }
+  for (i = 0; i < tools_n; ++i) {
+    const char* nm = tools[i].name;
+    const char* de = tools[i].description;
+    if (nm && nm[0]) rolltui_bindings_add_action(b, nm, strlen(nm), de ? de : "", de ? strlen(de) : 0);
+  }
+}
+
+/* THE SHIPPED DEFAULT TABLE — see the header for the two aborts and why they are aborts.
+ * OWNED, LONG-LIVED (CLAUDE.md strategy 4): built once, released by the shutdown hook. */
+static RolltuiBindings* g_default_bindings = NULL;
+
+static void default_bindings_clear(void) {
+  rolltui_bindings_free(g_default_bindings);
+  g_default_bindings = NULL;
+}
+
+static const char* default_bindings_json(size_t* len) {
+  size_t i;
+  for (i = 0; i < rolltui_kBindingsPresetCount; ++i)
+    if (strcmp(rolltui_kBindingsPresets[i].name, "default") == 0) {
+      const char* t = rolltui_kBindingsPresets[i].text;
+      *len = strlen(t);
+      return t;
+    }
+  *len = 0;
+  return "";
+}
+
+
+RolltuiBindings* rolltui_bindings_new_seeded(void) {
+  RolltuiBindings* b = rolltui_bindings_new();
+  const size_t n = rolltui_library_action_count();
+  size_t i;
+  /* The Enter rule's SUBJECT — the one name the C is handed so the rule can live here. */
+  rolltui_bindings_set_enter_rule(b, "input.submit", 12);
+  for (i = 0; i < n; ++i) {
+    size_t alen = 0, dlen = 0;
+    const char* a = rolltui_library_action_name(i, &alen);
+    const char* d = rolltui_library_action_description(i, &dlen);
+    rolltui_bindings_add_action(b, a, alen, d, dlen);
+  }
+  return b;
+}
+
+const RolltuiBindings* rolltui_bindings_default(void) {
+  RolltuiBindings* b;
+  RolltuiBindingsReport rep;
+  RolltuiStr summary = {0};
+  size_t tlen = 0, n = 0, rows, i;
+  const char* text;
+  const RolltuiLayoutAction* actions;
+  int ok;
+
+  if (g_default_bindings) return g_default_bindings;
+
+  b = rolltui_bindings_new_seeded();
+  text = default_bindings_json(&tlen);
+  memset(&rep, 0, sizeof rep);
+  /* AGAINST LEGACY, EXPLICITLY, and not against whatever this terminal turned out to be: the
+   * shipped file belongs to every host on every terminal, so it must be deliverable under the
+   * WEAKEST model. Checking it against the ACTIVE protocol would let a kitty terminal ship a
+   * file a plain xterm cannot press — the same defect one level up.
+   *
+   * `migrate` is NULL on purpose and is not an omission: migration rewrites names a file
+   * written before a rename still uses, and THIS file ships with the current ones. A shipped
+   * file that needed migrating would be a build mistake, and passing NULL is what makes it
+   * one instead of quietly rewriting itself. `reason` is NULL because it only supplies English
+   * for a chord that cannot be delivered, and the abort below prints the report either way. */
+  ok = rolltui_bindings_load_json(b, text, tlen, ROLLTUI_PROTOCOL_LEGACY, rolltui_bindings_library_scope, NULL,
+                                  NULL, NULL, NULL, NULL, &rep);
+  if (!ok || !rolltui_bindings_report_clean(&rep)) {
+    size_t slen = 0;
+    const char* stext;
+    rolltui_bindings_report_summary(&rep, &summary);
+    stext = rolltui_str_get(&summary, &slen);
+    fprintf(stderr, "rolltui: the shipped default bindings are broken: %.*s\n", (int)slen, stext);
+    rolltui_str_free(&summary);
+    abort();
+  }
+  rolltui_bindings_report_release(&rep);
+
+  /* The shipped default LAYOUT declares the app scope; the two files ship together, so this is
+   * the library's one complete "default screen + default keys". */
+  actions = rolltui_layout_shipped_default_actions(&n);
+  rolltui_bindings_declare(b, actions, n, NULL, 0);
+
+  /* A row for an action no shipped layout declares is a key EVERY host advertises and cannot
+   * press — the pre-Phase-11 defect re-created in file form. A mounted tool's chords come from
+   * the tool, so a tool row in this file stops the build rather than shipping. */
+  rows = rolltui_bindings_row_count(b);
+  for (i = 0; i < rows; ++i) {
+    size_t alen = 0;
+    const char* a = rolltui_bindings_row_at(b, i, &alen);
+    if (!rolltui_bindings_has(b, a, alen)) {
+      fprintf(stderr,
+              "rolltui: the shipped default bindings bind '%.*s', which no shipped layout "
+              "declares (a mounted tool's chords belong to the tool)\n",
+              (int)alen, a);
+      abort();
+    }
+  }
+
+  g_default_bindings = b;
+  rolltui_on_shutdown(default_bindings_clear);
+  return g_default_bindings;
 }

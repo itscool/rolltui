@@ -242,6 +242,86 @@ size_t rolltui_library_action_count(void);
 const char* rolltui_library_action_name(size_t i, size_t* len);
 const char* rolltui_library_action_description(size_t i, size_t* len);
 
+/* ---- DECLARING, SUGGESTING, AND THE SHIPPED TABLE (Phase 17) ----------------------------
+ * These four were the last of this module's BEHAVIOUR to live only in C++. Every primitive
+ * they stand on was already here; what was missing was the composition — and a composition a
+ * pure-C host has to re-derive is a duplicate implementation waiting to disagree.
+ *
+ * `RolltuiToolAction` is the row a MOUNTED TOOL brings: its name, its English, and the chord
+ * it SUGGESTS. A tool states its keys in code because no bindings file can — the shipped file
+ * belongs to every host, and a row in it for a tool most hosts never mount is a key they
+ * advertise and cannot press. */
+/* FORWARD, never an include: `rolltui_layout.h` includes THIS header, so including it back
+ * would be a cycle in which whichever of the two a translation unit reached first saw the
+ * other's types undefined. `rolltui_bindings_declare` only ever takes a POINTER to one, so a
+ * forward declaration is all it needs. Repeating the typedef identically is legal in both C11
+ * and C++, which is what lets the definition stay in the module that owns it. */
+typedef struct RolltuiLayoutAction RolltuiLayoutAction;
+
+typedef struct RolltuiToolAction {
+  const char* name;
+  const char* description;
+  const char* chord; /* "ctrl+q" — a SUGGESTION, never an override. NULL or "" for none. */
+} RolltuiToolAction;
+
+/* Is `scope` one the LIBRARY defines? True for exactly the scopes of the closed table above
+ * (`input`, `transcript`, `menu`, `edit`, `stack`) — a scope is the library's because the
+ * library DEFINES it, never because the library happens to ship the tool. Matches
+ * `RolltuiScopeFn`, so it can be passed straight to `rolltui_bindings_undeclare_others`. */
+int rolltui_bindings_library_scope(void* ctx, const char* scope, size_t len);
+
+/* Which action of `scope` currently holds `chord`, across EVERY row — declared or not. That
+ * breadth is the difference from `rolltui_bindings_action_for`, which answers only for
+ * declared actions: a suggestion must not land on a chord an INERT row already holds, or
+ * loading the screen that declares that row would silently steal the tool's key. Returns NULL
+ * when the chord is free. BORROWS into `b`; valid until the next mutation. */
+const char* rolltui_bindings_holder(const RolltuiBindings* b, const RolltuiChord* chord, const char* scope,
+                                    size_t scope_len, size_t* out_len);
+
+/* Installs each tool's suggested chord, into a GAP ONLY: a tool that already has a row is
+ * skipped entirely, and a suggested chord another action of the same scope already holds is
+ * dropped while the row is still created. That is what makes a bindings file always win —
+ * including an EMPTY row, which is a user saying "no key for this". */
+void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools, size_t n);
+
+/* AUTHORITATIVE over every non-library scope: after this call the declared non-library
+ * actions are EXACTLY `declared` + `tools`, so loading another screen makes the last one's
+ * inert. Merely ADDING would leave a key working because of a layout no longer running.
+ *
+ * THE ORDER INSIDE IS LOAD-BEARING AND IS WHY THESE ARE ONE CALL: the suggestions go in
+ * FIRST, because declaring an action creates an empty row for it, and a suggestion made
+ * afterwards would see that row and decline every time — a tool whose keys are all silently
+ * unbound, which is exactly what the first cut of this did. */
+void rolltui_bindings_declare(RolltuiBindings* b, const RolltuiLayoutAction* declared, size_t declared_n,
+                              const RolltuiToolAction* tools, size_t tools_n);
+
+/* THE SHIPPED DEFAULT TABLE: the embedded `default` bindings file, parsed and validated once
+ * and cached for the life of the process (released by `rolltui_shutdown`). BORROWED — never
+ * freed, never mutated by the caller; clone it to edit.
+ *
+ * IT ABORTS ON TWO BUILD MISTAKES, deliberately, because both are the LIBRARY's error and not
+ * a user's, and both would otherwise ship:
+ *   1. the file does not load cleanly — checked against the WEAKEST key protocol (Legacy) and
+ *      not against whatever this terminal turned out to be, because the shipped file belongs
+ *      to every host on every terminal. A chord that only works on kitty is fine in a user's
+ *      own file and a build mistake in this one;
+ *   2. it binds an action no shipped layout declares — a key every host advertises and cannot
+ *      press. A mounted tool's chords come from the tool, so a tool row here stops the build. */
+/* A table SEEDED with the library's own: the Enter rule set, and all 59 closed actions
+ * declared. This is what every host actually starts from, and what `rolltui_bindings_load_json`
+ * means by "the caller constructs first" — its contract is to ADD a file's rows to a table that
+ * already knows the library's vocabulary, so a file naming `input.submit` is recognised rather
+ * than reported as an unknown action. Loading the shipped file into a bare
+ * `rolltui_bindings_new()` reports all 59 as unknown; that is not a defect in either call, it
+ * is the seeding this one names.
+ *
+ * `rolltui_bindings_new` stays the EMPTY one, because a test that wants to watch rows appear
+ * needs a table with nothing in it. */
+RolltuiBindings* rolltui_bindings_new_seeded(void);
+
+const RolltuiBindings* rolltui_bindings_default(void);
+
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

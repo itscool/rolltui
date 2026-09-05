@@ -49,9 +49,8 @@ std::string_view scope_of(std::string_view action) {
 }
 
 bool library_scope(std::string_view scope) {
-  for (const ActionInfo& a : library_actions())
-    if (scope_of(a.name) == scope) return true;
-  return false;
+  // PHASE 17: the library's own closed scopes are a C fact now — one spelling of them.
+  return rolltui_bindings_library_scope(nullptr, scope.data(), scope.size()) != 0;
 }
 
 // ---- renamed actions ------------------------------------------------------------------
@@ -184,50 +183,60 @@ void Bindings::add_action(std::string_view action, std::string_view description)
 // phase exists to remove. Clearing and re-adding also lets a hot-reloaded file change
 // a description. The library's own scopes are closed and are never touched.
 void Bindings::declare(const std::vector<ActionDecl>& declared, const std::vector<ToolAction>& tools) {
-  // The suggestions FIRST, and this order is the whole reason the two are one call: a
-  // declaration creates an empty row for its action (add_action), so a suggestion made
-  // afterwards would see that row and decline every time — a tool whose keys are all
-  // silently unbound, which is exactly what the first cut of this did.
-  suggest(tools);
-  rolltui_bindings_undeclare_others(b_.get(), is_library_scope, nullptr);
-  for (const ActionDecl& d : declared) add_action(d.name, d.description);
-  for (const ToolAction& t : tools) add_action(t.name, t.description);
+  // PHASE 17: the composition — and above all its ORDER — is the library's behaviour and now
+  // lives in C (`rolltui_bindings_declare`). This marshals and forwards; it decides nothing.
+  std::vector<RolltuiLayoutAction> d(declared.size());
+  for (std::size_t i = 0; i < declared.size(); ++i) {
+    d[i] = RolltuiLayoutAction{};
+    rolltui_str_set(&d[i].name, declared[i].name.data(), declared[i].name.size());
+    rolltui_str_set(&d[i].description, declared[i].description.data(), declared[i].description.size());
+  }
+  // The C takes NUL-terminated strings; a string_view is not one, so the bytes are held for
+  // the duration of the call and nothing outlives it.
+  std::vector<std::string> keep;
+  keep.reserve(tools.size() * 3);
+  for (const ToolAction& x : tools) {
+    keep.emplace_back(x.name);
+    keep.emplace_back(x.description);
+    keep.emplace_back(x.chord);
+  }
+  std::vector<RolltuiToolAction> ts(tools.size());
+  for (std::size_t i = 0; i < tools.size(); ++i)
+    ts[i] = RolltuiToolAction{keep[i * 3].c_str(), keep[i * 3 + 1].c_str(), keep[i * 3 + 2].c_str()};
+  rolltui_bindings_declare(b_.get(), d.data(), d.size(), ts.data(), ts.size());
+  for (RolltuiLayoutAction& a : d) {
+    rolltui_str_free(&a.name);
+    rolltui_str_free(&a.description);
+  }
 }
 
 // A mounted tool's own defaults, filling GAPS only — see declare() in the header for the
 // three ways a suggestion is declined, all of which leave the action present and unbound
 // rather than absent or quietly sharing another action's chord.
 void Bindings::suggest(const std::vector<ToolAction>& tools) {
-  for (const ToolAction& t : tools) {
-    if (rolltui_bindings_has_row(b_.get(), t.name.data(), t.name.size())) continue;
-    const std::optional<KeyEvent> k = parse_chord(t.chord);
-    const bool taken = k && !holder(*k, scope_of(t.name)).empty();
-    rolltui_bindings_add_row(b_.get(), t.name.data(), t.name.size());
-    if (k && !taken) {
-      const RolltuiChord c = chord_of(*k);
-      rolltui_bindings_add_chord(b_.get(), t.name.data(), t.name.size(), &c);
-    }
+  // PHASE 17: the gap-only rule is the library's and lives in C now. Marshal and forward.
+  std::vector<std::string> keep;
+  keep.reserve(tools.size() * 3);
+  for (const ToolAction& x : tools) {
+    keep.emplace_back(x.name);
+    keep.emplace_back(x.description);
+    keep.emplace_back(x.chord);
   }
+  std::vector<RolltuiToolAction> ts(tools.size());
+  for (std::size_t i = 0; i < tools.size(); ++i)
+    ts[i] = RolltuiToolAction{keep[i * 3].c_str(), keep[i * 3 + 1].c_str(), keep[i * 3 + 2].c_str()};
+  rolltui_bindings_suggest(b_.get(), ts.data(), ts.size());
 }
 
 // WHICH ROW OF A SCOPE ALREADY HOLDS THIS CHORD, or "". Over the ROWS themselves and not
 // through action_for(), so an UNDECLARED row counts: two undeclared actions of one scope
 // conflict at load rather than silently once something declares them.
 std::string_view Bindings::holder(const KeyEvent& chord, std::string_view scope) const {
+  // PHASE 17: the search is the library's (rolltui_bindings_holder). BORROWS into `b_`.
   const RolltuiChord want = chord_of(chord);
-  const std::size_t rows = rolltui_bindings_row_count(b_.get());
-  for (std::size_t i = 0; i < rows; ++i) {
-    std::size_t alen = 0;
-    const char* a = rolltui_bindings_row_at(b_.get(), i, &alen);
-    if (scope_of(std::string_view(a, alen)) != scope) continue;
-    const std::size_t n = rolltui_bindings_chord_count(b_.get(), a, alen);
-    for (std::size_t j = 0; j < n; ++j) {
-      RolltuiChord c;
-      if (rolltui_bindings_chord_at(b_.get(), a, alen, j, &c) && key_event_of(c) == key_event_of(want))
-        return std::string_view(a, alen);
-    }
-  }
-  return {};
+  std::size_t len = 0;
+  const char* a = rolltui_bindings_holder(b_.get(), &want, scope.data(), scope.size(), &len);
+  return a ? std::string_view(a, len) : std::string_view{};
 }
 
 std::vector<std::string> Bindings::undeclared() const {
@@ -405,44 +414,16 @@ std::optional<Bindings>& default_bindings_cache() {
 }
 
 const Bindings& default_bindings() {
+  // PHASE 17: the shipped table — parsing it, validating it against the WEAKEST protocol, and
+  // both build-stopping aborts — is the library's behaviour and lives in C
+  // (`rolltui_bindings_default`). What stays here is the C++ VIEW of it: the C holds the one
+  // table and hands out a borrow, so this owns a clone. The cache and its shutdown hook are
+  // kept exactly as they were, because `rolltui_shutdown` asserts `live_bytes == 0` and this
+  // clone is live bytes.
   std::optional<Bindings>& cache = default_bindings_cache();
   if (cache) return *cache;
   on_shutdown([] { default_bindings_cache().reset(); });
-  cache = [] {
-    BindingsLoadReport rep;
-    // AGAINST LEGACY, EXPLICITLY, and not against whatever this terminal turned out to
-    // be (Phase 12 m3). The shipped file belongs to every host on every terminal, so it
-    // must be deliverable under the WEAKEST model — proved here, once, for every build,
-    // exactly as the tool-row abort below is. A chord that only works on kitty is a fine
-    // thing for a user's own file and a build mistake in this one; checking it against
-    // the active protocol would let a kitty terminal ship a file a plain xterm cannot
-    // press, which is the same defect one level up.
-    std::optional<Bindings> d = Bindings::from_json(default_bindings_json(), rep, KeyProtocol::Legacy);
-    if (!d || !rep.clean()) {
-      std::fprintf(stderr, "rolltui: the shipped default bindings are broken: %s\n", rep.summary().c_str());
-      std::abort();
-    }
-    // The shipped default LAYOUT declares the app scope (milestone 4). The two files
-    // ship together, so this is the library's one complete "default screen + default
-    // keys" — and a chord in the file for an app action the layout does not declare is
-    // a build mistake, not a user's, so say so and stop rather than run half of one.
-    // (Read straight out of the layout's own file; see shipped_default_actions.)
-    //
-    // Phase 11 m1 gave this abort a second job, which is why it is worth more than the
-    // three lines it costs: the shipped file belongs to EVERY host, so it may bind the
-    // library's widgets and the shipped screen's own actions and NOTHING ELSE. A row
-    // for `studio.quit` here would be a key every host that never mounts the studio
-    // advertises and cannot press — the defect m1 removed, re-created in
-    // file form. A mounted tool's chords come from the tool (Bindings::suggest), so a
-    // tool row in this file now stops the build instead of shipping.
-    d->declare(shipped_default_actions());
-    if (const std::vector<std::string> dead = d->undeclared(); !dead.empty()) {
-      std::fprintf(stderr, "rolltui: the shipped default bindings bind '%s', which no shipped layout declares (a mounted tool's chords belong to the tool)\n",
-                   dead.front().c_str());
-      std::abort();
-    }
-    return *d;
-  }();
+  cache = Bindings::adopt(rolltui_bindings_clone(rolltui_bindings_default()));
   return *cache;
 }
 

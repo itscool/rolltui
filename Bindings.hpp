@@ -210,6 +210,15 @@ class Bindings {
   };
   Bindings();  // empty: nothing bound (use default_bindings() for the shipped table)
   Bindings(const Bindings& o) : b_(rolltui_bindings_clone(o.b_.get())) {}
+
+  // Phase 17: ADOPT a table the C built — `rolltui_bindings_default()` holds the shipped one
+  // and hands out a borrow, so the C++ view of it is a clone this owns. Exists because the
+  // logic moved to C and this class is now a holder for it.
+  static Bindings adopt(RolltuiBindings* owned) {
+    Bindings b;
+    b.b_.reset(owned);
+    return b;
+  }
   Bindings& operator=(const Bindings& o) {
     if (this != &o) b_.reset(rolltui_bindings_clone(o.b_.get()));
     return *this;

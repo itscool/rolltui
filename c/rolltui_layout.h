@@ -474,6 +474,28 @@ void rolltui_layout_read_actions_key(const RolltuiJsonValue* root, RolltuiLayout
  * just to hand one back. */
 void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
 
+/* ---- THE SHIPPED SCREEN'S OWN ACTIONS (Phase 17) ----------------------------------------
+ * The "actions" object of the embedded `default` layout, parsed ONCE and cached for the life
+ * of the process (released by `rolltui_shutdown`). This is the fallback a file that declares
+ * no actions of its own gets, and it is what `rolltui_bindings_default` validates the shipped
+ * key file against.
+ *
+ * It moved out of C++ because it is BEHAVIOUR, not a wrapper: the primitives below
+ * (`rolltui_layout_read_actions_key`) were already here, but the parse-once-and-cache around
+ * them lived only in `rolltui::shipped_default_actions()`, so a pure-C host had to re-derive
+ * it — the duplicate-implementation failure this library keeps finding one level down.
+ *
+ * BORROWS: the array is the library's and is valid until `rolltui_shutdown`. Never freed by
+ * the caller. `*n` is the count; the array is NULL only if the embedded file is unparseable,
+ * which is a build mistake rather than a runtime one. */
+const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n);
+
+/* The embedded layout file of that name, as TEXT ("" when there is none). One definition site
+ * for "which file is `default`", so the actions above and a host loading the same screen do
+ * not each scan the embedded table their own way. */
+const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* out_len);
+
+
 /* Parses one layout file's ALREADY-PARSED JSON tree into `out` (an `out` the caller has run
  * `rolltui_loaded_layout_init` on — its old fields are not released first, matching
  * `rolltui::load_layout`'s "everything else loads with the problems reported" only at the

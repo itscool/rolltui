@@ -526,19 +526,16 @@ std::string_view builtin_json(std::string_view name) {
 // now via `rolltui_layout_read_actions_key` (Phase 17 m2) rather than a local `json::Value`
 // walk, since that primitive moved to the C alongside the rest of the loader.
 const std::vector<ActionDecl>& shipped_default_actions() {
+  // PHASE 17: parsing the shipped file's "actions" key and caching it is the library's
+  // behaviour and lives in C (`rolltui_layout_shipped_default_actions`, which BORROWS into
+  // storage released by `rolltui_shutdown`). This is the C++ view: the borrowed strings are
+  // copied once into the owned-string shape `ActionDecl` has.
   static const std::vector<ActionDecl> decls = [] {
     std::vector<ActionDecl> out;
-    const std::string_view text = builtin_json("default");
-    RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), nullptr);
-    if (v) {
-      RolltuiLayoutAction* actions = nullptr;
-      std::size_t n = 0, cap = 0;
-      rolltui_layout_read_actions_key(v, &actions, &n, &cap);
-      out.reserve(n);
-      for (std::size_t i = 0; i < n; ++i) out.push_back({actions[i].name.str(), actions[i].description.str()});
-      rolltui_layout_actions_free(actions, n);
-      rolltui_json_free(v);
-    }
+    std::size_t n = 0;
+    const RolltuiLayoutAction* a = rolltui_layout_shipped_default_actions(&n);
+    out.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) out.push_back({a[i].name.str(), a[i].description.str()});
     return out;
   }();
   return decls;

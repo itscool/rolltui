@@ -216,7 +216,16 @@ int main() {
         // stored. It exists because the stack's Escape/Tab rules are behind the C boundary
         // now and have to ask the live table what the `stack` scope binds; the words those
         // three actions are called stay in `Layout.cpp` and are handed over with them.
-        {"AppProfile.hpp", 0},   {"Bindings.hpp", 3},      {"Diff.hpp", 0},        {"Document.hpp", 0},
+        // Bindings.hpp 3 -> 4, RE-RECORDED 2026-09-05 by Phase 17, and the new one is NOT a
+        // borrow — it is the one shape this census has not held before, so it is written down
+        // rather than folded into the count. `Bindings::adopt(RolltuiBindings* owned)` TAKES
+        // OWNERSHIP: the pointer goes straight into the `unique_ptr` and the caller must not
+        // free it or touch it again. It exists because `default_bindings()`'s logic moved to
+        // C, where `rolltui_bindings_default()` holds the shipped table and hands out a
+        // BORROW; the C++ view of it is therefore a clone, and `adopt` is how a clone becomes
+        // a `Bindings` without a second copy. The name is the documentation: `adopt`, never
+        // `wrap` or `from`, because those read like the borrow this is not.
+        {"AppProfile.hpp", 0},   {"Bindings.hpp", 4},      {"Diff.hpp", 0},        {"Document.hpp", 0},
         // Effects.hpp 2 → 1, RE-RECORDED 2026-09-04 by Phase 15 m2, and this is the census
         // catching a REMOVAL, which it is meant to do just as loudly as an addition. The
         // pointer was `const EffectFn* effect_kind(std::string_view)`. A resolved kind is a
@@ -493,7 +502,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 113, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 114, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

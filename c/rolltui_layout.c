@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_lifetime.h"
 
 #define ROLLTUI_NODE_WINDOW 0
@@ -2237,4 +2238,52 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
 
 const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len) {
   return rolltui_str_get(&s->captured, len);
+}
+
+/* ---- THE SHIPPED SCREEN'S OWN ACTIONS — see the header ---------------------------------
+ * OWNED, LONG-LIVED (CLAUDE.md strategy 4): parsed once, held for the process, released by
+ * the shutdown hook. The hook is registered on the FIRST fill, which is the same idiom
+ * `rolltui_widget_kind_clear` and `rolltui_effect_clear_registered` already use here. */
+static RolltuiLayoutAction* g_shipped_actions = NULL;
+static size_t g_shipped_actions_n = 0;
+static size_t g_shipped_actions_cap = 0;
+static int g_shipped_actions_done = 0;
+
+static void shipped_actions_clear(void) {
+  rolltui_layout_actions_free(g_shipped_actions, g_shipped_actions_n);
+  g_shipped_actions = NULL;
+  g_shipped_actions_n = 0;
+  g_shipped_actions_cap = 0;
+  g_shipped_actions_done = 0;
+}
+
+const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* out_len) {
+  size_t i;
+  for (i = 0; i < rolltui_kLayoutPresetCount; ++i) {
+    const char* n = rolltui_kLayoutPresets[i].name;
+    const size_t nl = strlen(n);
+    if (nl == len && memcmp(n, name, len) == 0) {
+      const char* text = rolltui_kLayoutPresets[i].text;
+      if (out_len) *out_len = strlen(text);
+      return text;
+    }
+  }
+  if (out_len) *out_len = 0;
+  return "";
+}
+
+const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n) {
+  if (!g_shipped_actions_done) {
+    size_t tlen = 0;
+    const char* text = rolltui_layout_builtin_json("default", 7, &tlen);
+    RolltuiJsonValue* v = tlen ? rolltui_json_parse(text, tlen, NULL) : NULL;
+    g_shipped_actions_done = 1;
+    rolltui_on_shutdown(shipped_actions_clear);
+    if (v) {
+      rolltui_layout_read_actions_key(v, &g_shipped_actions, &g_shipped_actions_n, &g_shipped_actions_cap);
+      rolltui_json_free(v);
+    }
+  }
+  if (n) *n = g_shipped_actions_n;
+  return g_shipped_actions;
 }
