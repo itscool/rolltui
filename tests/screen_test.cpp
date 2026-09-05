@@ -2,17 +2,111 @@
 // screen_test.cpp — Frame semantics (wide glyphs, continuation cells, clipping, the
 // right edge) and golden byte strings for render_full / render_diff.
 //
+// PHASE 17: calls the C API (rolltui/c/rolltui_screen.h, rolltui_frame_ops.h,
+// rolltui_render.h, all reached through rolltui/rolltui.h) directly rather than through
+// the rolltui::Frame C++ RAII shim (Screen.hpp, and its shim Screen.cpp) that this file
+// used to include — those are the files being deleted. `RolltuiRect`/`RolltuiCell`/
+// `RolltuiStyle`/`RolltuiStyleColor` are the same one-definition structs `Rect`/`Cell`/
+// `Style`/`Color` used to alias, so this file names them directly instead of pulling in
+// Screen.hpp's aliases. `ColorDepth` DOES have a C spelling (`ROLLTUI_DEPTH_*`,
+// rolltui_theme.h) so this file needs no C++ Theme header for it either. The one thing
+// with no C vocabulary at all is a mark's STATE (rolltui_screen.h: the frame stores it as
+// an opaque int and never interprets it; the enum stays in Effects.hpp, C++-only, on
+// purpose) — this file does not test motion, so the one value it needs is named locally.
+//
+#include <cstddef>
+#include <cstring>
+#include <memory>
 #include <string>
+#include <string_view>
 
-#include "rolltui/Screen.hpp"
+#include "rolltui/rolltui.h"
 
-#include "rolltui/c/rolltui_geom.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 namespace {
+
+// ---- the frame: OWNED, an explicit new/free pair (CLAUDE.md's "owned handles get
+// explicit _new/_free pairs"), through a unique_ptr so an early return still frees it —
+// the same RAII shape rolltui::Frame gave a caller, now built by the caller instead. ----
+using FramePtr = std::unique_ptr<RolltuiFrame, void (*)(RolltuiFrame*)>;
+FramePtr new_frame(int w, int h, RolltuiStyle fill = {}) {
+  return FramePtr(rolltui_frame_new(w, h, fill), rolltui_frame_free);
+}
+FramePtr clone_frame(const RolltuiFrame* src) { return FramePtr(rolltui_frame_clone(src), rolltui_frame_free); }
+
+// The one draw scratch this test binary needs (Screen.cpp kept one per thread via
+// ThreadHandle; this binary is single-threaded and never frees it, the same convention
+// tests/input_test.cpp already uses for its own draw_scratch()).
+RolltuiDrawScratch* draw_scratch() {
+  static std::unique_ptr<RolltuiDrawScratch, void (*)(RolltuiDrawScratch*)> s(rolltui_draw_scratch_new(),
+                                                                              rolltui_draw_scratch_free);
+  return s.get();
+}
+
+// A mark's STATE has no C vocabulary at all (rolltui::EffectState stays C++-only,
+// Effects.hpp) — this file only needs SOME state to prove a reset/clear drops a mark, so
+// the one value used is named here rather than pulled in through Theme.hpp/Effects.hpp.
+constexpr int kWaitingState = 1;  // rolltui::EffectState::Waiting
+
+int put(RolltuiFrame* f, int x, int y, std::string_view g, int cells, RolltuiStyle s, unsigned int link = 0) {
+  return rolltui_frame_put(f, x, y, g.data(), g.size(), cells, s, link);
+}
+int put_text(RolltuiFrame* f, int x, int y, std::string_view utf8, RolltuiStyle style, int max_cells,
+             int ambiguous_wide = 0, unsigned int link = 0) {
+  return rolltui_frame_put_text(f, draw_scratch(), x, y, utf8.data(), utf8.size(), style, max_cells, ambiguous_wide,
+                                link);
+}
+void fill(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style, std::string_view g = " ") {
+  rolltui_frame_fill(f, draw_scratch(), r, style, g.data(), g.size());
+}
+RolltuiCell cell_at(const RolltuiFrame* f, int x, int y) {
+  RolltuiCell c{};
+  rolltui_frame_cell(f, x, y, &c);
+  return c;
+}
+std::string_view glyph_at(const RolltuiFrame* f, int x, int y) {
+  std::size_t n = 0;
+  const char* p = rolltui_frame_glyph(f, x, y, &n);
+  return std::string_view(p, n);
+}
+std::string_view link_at(const RolltuiFrame* f, unsigned int id) {
+  std::size_t n = 0;
+  const char* p = rolltui_frame_link(f, id, &n);
+  return std::string_view(p, n);
+}
+// The cursor: no C vocabulary either (three out-params, never a named struct), so this
+// mirrors what rolltui::Cursor was — pure data, assembled here exactly as Screen.hpp did.
+struct Cursor {
+  int x = 0, y = 0;
+  bool visible = false;
+  bool operator==(const Cursor&) const = default;
+};
+Cursor cursor_of(const RolltuiFrame* f) {
+  int x = 0, y = 0, visible = 0;
+  rolltui_frame_cursor(f, &x, &y, &visible);
+  return {x, y, visible != 0};
+}
+bool frame_eq(const RolltuiFrame* a, const RolltuiFrame* b) { return rolltui_frame_equal(a, b) != 0; }
+
+std::string frame_to_text(const RolltuiFrame* f) {
+  RolltuiStr s;
+  rolltui_frame_to_text(f, &s);
+  return s.str();
+}
+std::string render_full(const RolltuiFrame* next, unsigned char depth) {
+  RolltuiStr s;
+  rolltui_render_full(next, depth, &s);
+  return s.str();
+}
+std::string render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, unsigned char depth) {
+  RolltuiStr s;
+  rolltui_render_diff(prev, next, depth, &s);
+  return s.str();
+}
+
 std::string visible(const std::string& s) {
   std::string o;
   for (char c : s) o += (c == '\x1b') ? std::string("ESC") : std::string(1, c);
@@ -24,83 +118,93 @@ void expect_bytes(const std::string& name, const std::string& got, const std::st
 }  // namespace
 
 int main() {
-  const ColorDepth depth = ColorDepth::TrueColor;
-  Style bold;
+  const unsigned char depth = ROLLTUI_DEPTH_TRUECOLOR;
+  RolltuiStyle bold;
   bold.bold = true;
-  Style red;
-  red.fg = Color::indexed(1);
+  RolltuiStyle red;
+  red.fg = RolltuiStyleColor::indexed(1);
 
   // ---- Frame semantics -----------------------------------------------------------
   {
-    Frame f(4, 2);
-    check(f.width() == 4 && f.height() == 2 && f.glyph(3, 1) == " ", "a fresh frame is spaces");
-    check(f.put(1, 0, "a", 1, bold) == 1 && f.glyph(1, 0) == "a" && f.at(1, 0).style == bold, "put one cell");
-    check(f.put(2, 0, "\xE4\xB8\xAD", 2, red) == 2 && f.at(2, 0).width == 2 && f.at(3, 0).continuation &&
-              f.glyph(3, 0).empty(),
+    FramePtr f = new_frame(4, 2);
+    check(rolltui_frame_width(f.get()) == 4 && rolltui_frame_height(f.get()) == 2 && glyph_at(f.get(), 3, 1) == " ",
+          "a fresh frame is spaces");
+    check(put(f.get(), 1, 0, "a", 1, bold) == 1 && glyph_at(f.get(), 1, 0) == "a" && cell_at(f.get(), 1, 0).style == bold,
+          "put one cell");
+    check(put(f.get(), 2, 0, "\xE4\xB8\xAD", 2, red) == 2 && cell_at(f.get(), 2, 0).width == 2 &&
+              cell_at(f.get(), 3, 0).continuation && glyph_at(f.get(), 3, 0).empty(),
           "a wide glyph occupies its cell and a continuation cell");
-    check(f.put(3, 1, "\xE4\xB8\xAD", 2, red) == 1 && f.glyph(3, 1) == " " && f.at(3, 1).width == 1,
+    check(put(f.get(), 3, 1, "\xE4\xB8\xAD", 2, red) == 1 && glyph_at(f.get(), 3, 1) == " " &&
+              cell_at(f.get(), 3, 1).width == 1,
           "a wide glyph at the right edge becomes a space (never straddles)");
-    check(f.put(4, 0, "x", 1, bold) == 0 && f.put(0, 2, "x", 1, bold) == 0 && f.put(-1, 0, "x", 1, bold) == 0,
+    check(put(f.get(), 4, 0, "x", 1, bold) == 0 && put(f.get(), 0, 2, "x", 1, bold) == 0 &&
+              put(f.get(), -1, 0, "x", 1, bold) == 0,
           "puts outside the frame are ignored");
     // Overwrite half of the wide glyph: the other half is blanked, no orphan.
-    f.put(3, 0, "z", 1, bold);
-    check(f.glyph(2, 0) == " " && f.at(2, 0).width == 1 && f.glyph(3, 0) == "z", "overwriting a continuation cell blanks the glyph");
-    f.put(2, 0, "\xE4\xB8\xAD", 2, red);
-    f.put(2, 0, "y", 1, bold);
-    check(f.glyph(3, 0) == " " && !f.at(3, 0).continuation, "overwriting a wide glyph's first cell blanks its continuation");
+    put(f.get(), 3, 0, "z", 1, bold);
+    check(glyph_at(f.get(), 2, 0) == " " && cell_at(f.get(), 2, 0).width == 1 && glyph_at(f.get(), 3, 0) == "z",
+          "overwriting a continuation cell blanks the glyph");
+    put(f.get(), 2, 0, "\xE4\xB8\xAD", 2, red);
+    put(f.get(), 2, 0, "y", 1, bold);
+    check(glyph_at(f.get(), 3, 0) == " " && !cell_at(f.get(), 3, 0).continuation,
+          "overwriting a wide glyph's first cell blanks its continuation");
   }
   {
-    Frame f(6, 1);
-    int used = f.put_text(1, 0, "a\xE4\xB8\xAD" "bcdef", bold, 10);
-    check(used == 5 && f.glyph(1, 0) == "a" && f.at(2, 0).width == 2 && f.glyph(4, 0) == "b" &&
-              f.glyph(5, 0) == "c",
+    FramePtr f = new_frame(6, 1);
+    int used = put_text(f.get(), 1, 0, "a\xE4\xB8\xAD" "bcdef", bold, 10);
+    check(used == 5 && glyph_at(f.get(), 1, 0) == "a" && cell_at(f.get(), 2, 0).width == 2 &&
+              glyph_at(f.get(), 4, 0) == "b" && glyph_at(f.get(), 5, 0) == "c",
           "put_text lays graphemes left to right and clips at the frame edge (used " + std::to_string(used) + ")");
-    Frame g(6, 1);
-    check(g.put_text(0, 0, "abcdef", bold, 3) == 3 && g.glyph(3, 0) == " ", "put_text honours max_cells");
-    Frame h(3, 1);
-    check(h.put_text(0, 0, "ab\xE4\xB8\xAD", bold, 10) == 2 && h.glyph(2, 0) == " ",
+    FramePtr g = new_frame(6, 1);
+    check(put_text(g.get(), 0, 0, "abcdef", bold, 3) == 3 && glyph_at(g.get(), 3, 0) == " ",
+          "put_text honours max_cells");
+    FramePtr h = new_frame(3, 1);
+    check(put_text(h.get(), 0, 0, "ab\xE4\xB8\xAD", bold, 10) == 2 && glyph_at(h.get(), 2, 0) == " ",
           "put_text stops before a wide glyph that would straddle the edge");
-    Frame k(4, 1);
-    check(k.put_text(0, 0, "a\x01" "b\xCC\x81" "c", bold, 10) == 3 && k.glyph(1, 0) == "b\xCC\x81",
+    FramePtr k = new_frame(4, 1);
+    check(put_text(k.get(), 0, 0, "a\x01" "b\xCC\x81" "c", bold, 10) == 3 && glyph_at(k.get(), 1, 0) == "b\xCC\x81",
           "controls skipped, combining marks stay with their base");
-    Frame m(4, 2);
-    m.fill({1, 0, 10, 10}, red, "#");
-    check(m.glyph(0, 0) == " " && m.glyph(1, 0) == "#" && m.glyph(3, 1) == "#" && m.at(3, 1).style == red,
+    FramePtr m = new_frame(4, 2);
+    fill(m.get(), RolltuiRect{1, 0, 10, 10}, red, "#");
+    check(glyph_at(m.get(), 0, 0) == " " && glyph_at(m.get(), 1, 0) == "#" && glyph_at(m.get(), 3, 1) == "#" &&
+              cell_at(m.get(), 3, 1).style == red,
           "fill clips to the frame");
   }
   {
-    Rect a{0, 0, 10, 5}, b{5, 2, 10, 10};
-    Rect i = a.intersect(b);
-    check(i == Rect{5, 2, 5, 3}, "Rect::intersect");
-    check(a.intersect(Rect{20, 20, 1, 1}).empty(), "disjoint rects intersect to empty");
+    RolltuiRect a{0, 0, 10, 5}, b{5, 2, 10, 10};
+    RolltuiRect i = a.intersect(b);
+    check(i == RolltuiRect{5, 2, 5, 3}, "Rect::intersect");
+    check(a.intersect(RolltuiRect{20, 20, 1, 1}).empty(), "disjoint rects intersect to empty");
     check(a.contains(9, 4) && !a.contains(10, 4), "Rect::contains is half-open");
   }
 
   // ---- golden bytes --------------------------------------------------------------
   {
-    Frame blank(4, 2);
-    expect_bytes("full repaint of a blank 4x2 frame", render_full(blank, depth),
+    FramePtr blank = new_frame(4, 2);
+    expect_bytes("full repaint of a blank 4x2 frame", render_full(blank.get(), depth),
                  "\x1b[?25l\x1b[H\x1b[2J"
                  "\x1b[1;1H\x1b[0m    "
                  "\x1b[2;1H    "
                  "\x1b[0m\x1b[1;1H");
-    expect_bytes("diff with no prev is a full repaint", render_diff(nullptr, blank, depth), render_full(blank, depth));
-    expect_bytes("diff of identical frames is empty", render_diff(&blank, blank, depth), "");
+    expect_bytes("diff with no prev is a full repaint", render_diff(nullptr, blank.get(), depth),
+                 render_full(blank.get(), depth));
+    expect_bytes("diff of identical frames is empty", render_diff(blank.get(), blank.get(), depth), "");
 
-    Frame next = blank;
-    next.put(1, 0, "a", 1, bold);
-    next.put(2, 0, "b", 1, bold);
-    expect_bytes("diff addresses the changed run absolutely and emits one SGR", render_diff(&blank, next, depth),
-                 "\x1b[?25l\x1b[1;2H\x1b[0;1mab\x1b[0m\x1b[1;1H");
+    FramePtr next = clone_frame(blank.get());
+    put(next.get(), 1, 0, "a", 1, bold);
+    put(next.get(), 2, 0, "b", 1, bold);
+    expect_bytes("diff addresses the changed run absolutely and emits one SGR",
+                 render_diff(blank.get(), next.get(), depth), "\x1b[?25l\x1b[1;2H\x1b[0;1mab\x1b[0m\x1b[1;1H");
 
-    Frame wide = blank;
-    wide.put(2, 0, "\xE4\xB8\xAD", 2, red);
-    expect_bytes("a wide glyph is written once, its continuation cell skipped", render_diff(&blank, wide, depth),
+    FramePtr wide = clone_frame(blank.get());
+    put(wide.get(), 2, 0, "\xE4\xB8\xAD", 2, red);
+    expect_bytes("a wide glyph is written once, its continuation cell skipped",
+                 render_diff(blank.get(), wide.get(), depth),
                  "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\x1b[1;1H");
-    Frame wide2 = wide;
-    wide2.put(3, 0, "z", 1, red);  // blanks the glyph: cells 2 and 3 both change
-    expect_bytes("writing over a wide glyph's continuation blanks the whole glyph", render_diff(&wide, wide2, depth),
-                 "\x1b[?25l\x1b[1;3H\x1b[0;31m z\x1b[0m\x1b[1;1H");
+    FramePtr wide2 = clone_frame(wide.get());
+    put(wide2.get(), 3, 0, "z", 1, red);  // blanks the glyph: cells 2 and 3 both change
+    expect_bytes("writing over a wide glyph's continuation blanks the whole glyph",
+                 render_diff(wide.get(), wide2.get(), depth), "\x1b[?25l\x1b[1;3H\x1b[0;31m z\x1b[0m\x1b[1;1H");
 
     // THE BACKUP RULE, and it needs a case the one above does NOT provide — found
     // 2026-09-04 by a negative control that failed NOTHING when the rule was disabled.
@@ -117,35 +221,36 @@ int main() {
     // while cell 2 is identical. Without the backup the run is [3,4), `emit_run` skips the
     // continuation cell, and the glyph is never re-emitted — the terminal keeps a stale
     // one. The expected bytes below are therefore the glyph WRITTEN WHOLE from column 3.
-    Frame wide3 = wide;
-    wide3.set_style(3, 0, Style{.fg = Color::indexed(4)});
+    FramePtr wide3 = clone_frame(wide.get());
+    rolltui_frame_set_style(wide3.get(), 3, 0, RolltuiStyle{.fg = RolltuiStyleColor::indexed(4)});
     expect_bytes("a run that begins on the continuation cell starts one cell earlier",
-                 render_diff(&wide, wide3, depth),
+                 render_diff(wide.get(), wide3.get(), depth),
                  "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\x1b[1;1H");
 
-    Frame cur = blank;
-    cur.set_cursor(3, 1, true);
-    expect_bytes("cursor move only", render_diff(&blank, cur, depth), "\x1b[?25l\x1b[0m\x1b[2;4H\x1b[?25h");
+    FramePtr cur = clone_frame(blank.get());
+    rolltui_frame_set_cursor(cur.get(), 3, 1, 1);
+    expect_bytes("cursor move only", render_diff(blank.get(), cur.get(), depth), "\x1b[?25l\x1b[0m\x1b[2;4H\x1b[?25h");
 
-    Frame two = blank;
-    two.put(0, 0, "x", 1, bold);
-    two.put(3, 1, "y", 1, red);
-    expect_bytes("two runs on two rows", render_diff(&blank, two, depth),
+    FramePtr two = clone_frame(blank.get());
+    put(two.get(), 0, 0, "x", 1, bold);
+    put(two.get(), 3, 1, "y", 1, red);
+    expect_bytes("two runs on two rows", render_diff(blank.get(), two.get(), depth),
                  "\x1b[?25l\x1b[1;1H\x1b[0;1mx\x1b[2;4H\x1b[0;31my\x1b[0m\x1b[1;1H");
 
-    Frame resized(5, 2);
-    expect_bytes("a size change forces a full repaint", render_diff(&blank, resized, depth), render_full(resized, depth));
+    FramePtr resized = new_frame(5, 2);
+    expect_bytes("a size change forces a full repaint", render_diff(blank.get(), resized.get(), depth),
+                 render_full(resized.get(), depth));
 
-    Frame same_style = blank;
-    same_style.put(0, 0, "p", 1, bold);
-    same_style.put(1, 0, "q", 1, bold);
-    same_style.put(2, 0, "r", 1, red);
-    expect_bytes("SGR only when the style changes inside a run", render_diff(&blank, same_style, depth),
+    FramePtr same_style = clone_frame(blank.get());
+    put(same_style.get(), 0, 0, "p", 1, bold);
+    put(same_style.get(), 1, 0, "q", 1, bold);
+    put(same_style.get(), 2, 0, "r", 1, red);
+    expect_bytes("SGR only when the style changes inside a run", render_diff(blank.get(), same_style.get(), depth),
                  "\x1b[?25l\x1b[1;1H\x1b[0;1mpq\x1b[0;31mr\x1b[0m\x1b[1;1H");
 
-    Frame mono = blank;
-    mono.put(0, 0, "m", 1, red);
-    expect_bytes("depth downgrade flows into the emitted SGR", render_diff(&blank, mono, ColorDepth::Mono),
+    FramePtr mono = clone_frame(blank.get());
+    put(mono.get(), 0, 0, "m", 1, red);
+    expect_bytes("depth downgrade flows into the emitted SGR", render_diff(blank.get(), mono.get(), ROLLTUI_DEPTH_MONO),
                  "\x1b[?25l\x1b[1;1H\x1b[0mm\x1b[0m\x1b[1;1H");
   }
   // ---- Phase 13 m4: a cluster too long to sit in a Cell ------------------------------
@@ -156,38 +261,41 @@ int main() {
     // 👨‍👩‍👧‍👦 — MAN ZWJ WOMAN ZWJ GIRL ZWJ BOY: four 4-byte emoji and three 3-byte joiners.
     const std::string family = "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D"
                                "\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6";
-    check(family.size() == 25, "the control cluster really is longer than a Cell holds (" + std::to_string(family.size()) + " bytes)");
-    Frame f(6, 1);
-    f.put(0, 0, family, 2, Style{});
-    check(f.at(0, 0).spilled(), "a 25-byte cluster SPILLS rather than being truncated into the cell");
-    check(f.glyph(0, 0) == family, "…and reads back byte for byte through the one accessor");
-    check(f.at(0, 0).width == 2 && f.at(1, 0).continuation, "…keeping its width and its continuation cell");
+    check(family.size() == 25,
+          "the control cluster really is longer than a Cell holds (" + std::to_string(family.size()) + " bytes)");
+    FramePtr f = new_frame(6, 1);
+    put(f.get(), 0, 0, family, 2, RolltuiStyle{});
+    check(cell_at(f.get(), 0, 0).spilled(), "a 25-byte cluster SPILLS rather than being truncated into the cell");
+    check(glyph_at(f.get(), 0, 0) == family, "…and reads back byte for byte through the one accessor");
+    check(cell_at(f.get(), 0, 0).width == 2 && cell_at(f.get(), 1, 0).continuation,
+          "…keeping its width and its continuation cell");
 
     // A ten-byte cluster is the boundary and must NOT spill — an off-by-one here would
     // send every flag emoji through the slow path and nobody would notice.
-    Frame g(4, 1);
-    g.put(0, 0, "0123456789", 1, Style{});
-    check(!g.at(0, 0).spilled() && g.glyph(0, 0) == "0123456789", "exactly ten bytes stays INLINE: the boundary is >, not >=");
+    FramePtr g = new_frame(4, 1);
+    put(g.get(), 0, 0, "0123456789", 1, RolltuiStyle{});
+    check(!cell_at(g.get(), 0, 0).spilled() && glyph_at(g.get(), 0, 0) == "0123456789",
+          "exactly ten bytes stays INLINE: the boundary is >, not >=");
 
     // The frame diff compares glyphs BY VALUE across frames, so a spill index minted in
     // one frame is never mistaken for the same index in another.
-    Frame h(6, 1);
-    h.put(0, 0, family, 2, Style{});
-    check(render_diff(&f, h, ColorDepth::TrueColor).find(family) == std::string::npos,
+    FramePtr h = new_frame(6, 1);
+    put(h.get(), 0, 0, family, 2, RolltuiStyle{});
+    check(render_diff(f.get(), h.get(), ROLLTUI_DEPTH_TRUECOLOR).find(family) == std::string::npos,
           "two frames holding the same long cluster diff to nothing, though their indices are their own");
-    Frame other(6, 1);
-    other.put(0, 0, "x", 1, Style{});
-    check(render_diff(&other, f, ColorDepth::TrueColor).find(family) != std::string::npos,
+    FramePtr other = new_frame(6, 1);
+    put(other.get(), 0, 0, "x", 1, RolltuiStyle{});
+    check(render_diff(other.get(), f.get(), ROLLTUI_DEPTH_TRUECOLOR).find(family) != std::string::npos,
           "…and a frame that actually gained the cluster emits its bytes");
-    check(frame_to_text(f).rfind(family, 0) == 0, "frame_to_text carries it too");
+    check(frame_to_text(f.get()).rfind(family, 0) == 0, "frame_to_text carries it too");
 
     // clear() drops the spill table with the cells that referenced it: a stale entry would
     // grow without bound over a long session, which is the failure a table like this has.
-    f.clear(Style{});
-    f.put(0, 0, "a", 1, Style{});
-    check(!f.at(0, 0).spilled() && f.glyph(0, 0) == "a", "clear() resets the cells…");
-    f.put(1, 0, family, 2, Style{});
-    check(f.glyph(1, 0) == family, "…and the table is reusable afterwards, not poisoned by the reset");
+    rolltui_frame_clear(f.get(), RolltuiStyle{});
+    put(f.get(), 0, 0, "a", 1, RolltuiStyle{});
+    check(!cell_at(f.get(), 0, 0).spilled() && glyph_at(f.get(), 0, 0) == "a", "clear() resets the cells…");
+    put(f.get(), 1, 0, family, 2, RolltuiStyle{});
+    check(glyph_at(f.get(), 1, 0) == family, "…and the table is reusable afterwards, not poisoned by the reset");
   }
 
   // ---- Phase 13 m5: reuse the Frame, and the ghosting control ------------------------
@@ -196,54 +304,62 @@ int main() {
   // frame must be indistinguishable from a freshly constructed one, cell for cell,
   // including the fields nobody thinks about.
   {
-    const Style fill{Color::rgb(1, 2, 3), Color::rgb(4, 5, 6)};
+    const RolltuiStyle fill_style{RolltuiStyleColor::rgb(1, 2, 3), RolltuiStyleColor::rgb(4, 5, 6)};
     // Paint a busy frame: wide glyphs, a link, a spilled cluster, marks, a moved cursor.
-    Frame used(8, 2, fill);
-    used.put_text(0, 0, "abc\xE4\xBD\xA0", Style{}, 8, false, used.link_id("https://example.invalid/"));
-    used.put(0, 1, "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7", 2, Style{});
-    used.mark(0, 0, 3, EffectState::Waiting);
-    used.set_cursor(4, 1, true);
+    FramePtr used = new_frame(8, 2, fill_style);
+    const unsigned int link = rolltui_frame_link_id(used.get(), "https://example.invalid/",
+                                                     std::strlen("https://example.invalid/"));
+    put_text(used.get(), 0, 0, "abc\xE4\xBD\xA0", RolltuiStyle{}, 8, 0, link);
+    put(used.get(), 0, 1, "\xF0\x9F\x91\xA8\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7", 2, RolltuiStyle{});
+    rolltui_frame_mark(used.get(), 0, 0, 3, kWaitingState, 0, 0);
+    rolltui_frame_set_cursor(used.get(), 4, 1, 1);
 
-    used.reset(8, 2, fill);
-    const Frame fresh(8, 2, fill);
-    check(used == fresh, "a RESET frame equals a freshly constructed one — every field, not the ones that looked like they mattered");
-    check(used.mark_count() == 0 && used.link(1).empty() && used.cursor() == Cursor{},
+    rolltui_frame_reset(used.get(), 8, 2, fill_style);
+    FramePtr fresh = new_frame(8, 2, fill_style);
+    check(frame_eq(used.get(), fresh.get()),
+          "a RESET frame equals a freshly constructed one — every field, not the ones that looked like they mattered");
+    check(rolltui_frame_mark_count(used.get()) == 0 && link_at(used.get(), 1).empty() &&
+              cursor_of(used.get()) == Cursor{},
           "…including the marks, the link table and the cursor, all of which named cells that are gone");
-    check(used.glyph(0, 1) == " " && !used.at(0, 1).spilled(), "…and the spilled glyph, so the table cannot grow across a session");
+    check(glyph_at(used.get(), 0, 1) == " " && !cell_at(used.get(), 0, 1).spilled(),
+          "…and the spilled glyph, so the table cannot grow across a session");
 
     // GHOSTING: paint a full frame, reuse it for one that writes strictly fewer cells, and
     // assert nothing of the first survives.
-    Frame reused(8, 2, fill);
-    reused.put_text(0, 0, "XXXXXXXX", Style{}, 8);
-    reused.put_text(0, 1, "YYYYYYYY", Style{}, 8);
-    reused.reset(8, 2, fill);
-    reused.put_text(0, 0, "ab", Style{}, 8);
-    Frame control(8, 2, fill);
-    control.put_text(0, 0, "ab", Style{}, 8);
-    check(reused == control, "a reused frame painted with FEWER cells has no ghost of the last paint");
-    check(frame_to_text(reused).find('X') == std::string::npos && frame_to_text(reused).find('Y') == std::string::npos,
+    FramePtr reused = new_frame(8, 2, fill_style);
+    put_text(reused.get(), 0, 0, "XXXXXXXX", RolltuiStyle{}, 8);
+    put_text(reused.get(), 0, 1, "YYYYYYYY", RolltuiStyle{}, 8);
+    rolltui_frame_reset(reused.get(), 8, 2, fill_style);
+    put_text(reused.get(), 0, 0, "ab", RolltuiStyle{}, 8);
+    FramePtr control = new_frame(8, 2, fill_style);
+    put_text(control.get(), 0, 0, "ab", RolltuiStyle{}, 8);
+    check(frame_eq(reused.get(), control.get()), "a reused frame painted with FEWER cells has no ghost of the last paint");
+    check(frame_to_text(reused.get()).find('X') == std::string::npos &&
+              frame_to_text(reused.get()).find('Y') == std::string::npos,
           "…asserted on the text too, since a ghost renders as a perfectly well-formed frame");
 
     // RESIZE: the geometry is authoritative, and the diff refuses the old baseline.
-    Frame before(8, 2, fill);
-    before.put_text(0, 0, "12345678", Style{}, 8);
-    Frame after = before;
-    after.reset(4, 3, fill);
-    check(after.width() == 4 && after.height() == 3 && after == Frame(4, 3, fill),
+    FramePtr before = new_frame(8, 2, fill_style);
+    put_text(before.get(), 0, 0, "12345678", RolltuiStyle{}, 8);
+    FramePtr after = clone_frame(before.get());
+    rolltui_frame_reset(after.get(), 4, 3, fill_style);
+    FramePtr fresh_4x3 = new_frame(4, 3, fill_style);
+    check(rolltui_frame_width(after.get()) == 4 && rolltui_frame_height(after.get()) == 3 &&
+              frame_eq(after.get(), fresh_4x3.get()),
           "reset to a new size resizes and still equals a fresh frame of that size");
-    const std::string bytes = render_diff(&before, after, ColorDepth::TrueColor);
+    const std::string bytes = render_diff(before.get(), after.get(), ROLLTUI_DEPTH_TRUECOLOR);
     check(bytes.rfind("\x1b[?25l\x1b[H\x1b[2J", 0) == 0,
           "…and diffing across a size change is a FULL repaint, so a resize cannot corrupt by geometry");
 
     // A long run of paints, including resizes, ends where a fresh frame would.
-    Frame loop(8, 2, fill);
+    FramePtr loop = new_frame(8, 2, fill_style);
     for (int i = 0; i < 25; ++i) {
-      loop.reset((i % 3) ? 8 : 5, 2, fill);
-      loop.put_text(0, 0, "run", Style{}, 8);
+      rolltui_frame_reset(loop.get(), (i % 3) ? 8 : 5, 2, fill_style);
+      put_text(loop.get(), 0, 0, "run", RolltuiStyle{}, 8);
     }
-    loop.reset(8, 2, fill);
-    loop.put_text(0, 0, "ab", Style{}, 8);
-    check(loop == control, "…and twenty-five paints with resizes among them leave exactly what one paint would");
+    rolltui_frame_reset(loop.get(), 8, 2, fill_style);
+    put_text(loop.get(), 0, 0, "ab", RolltuiStyle{}, 8);
+    check(frame_eq(loop.get(), control.get()), "…and twenty-five paints with resizes among them leave exactly what one paint would");
   }
 
   // ---- Phase 14 m1: the seam, and proof the flag SELECTS ----------------------------
@@ -255,12 +371,12 @@ int main() {
   {
     // The frame diff's goldens above already exercise `intersect` in anger; these are the
     // edges worth naming.
-    const Rect a{0, 0, 10, 10};
-    check(a.intersect({5, 5, 10, 10}) == Rect{5, 5, 5, 5}, "overlapping rectangles intersect");
-    check(a.intersect({20, 20, 5, 5}) == Rect{20, 20, 0, 0},
+    const RolltuiRect a{0, 0, 10, 10};
+    check(a.intersect({5, 5, 10, 10}) == RolltuiRect{5, 5, 5, 5}, "overlapping rectangles intersect");
+    check(a.intersect({20, 20, 5, 5}) == RolltuiRect{20, 20, 0, 0},
           "…and disjoint ones give an EMPTY rect at the clamped origin, not at {0,0}");
-    check(a.intersect({2, 2, 3, 3}) == Rect{2, 2, 3, 3}, "…a contained rect is itself");
-    check(a.intersect({0, 0, 0, 0}) == Rect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
+    check(a.intersect({2, 2, 3, 3}) == RolltuiRect{2, 2, 3, 3}, "…a contained rect is itself");
+    check(a.intersect({0, 0, 0, 0}) == RolltuiRect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
   }
 
   return report("rolltui screen_test");

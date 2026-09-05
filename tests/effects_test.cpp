@@ -18,21 +18,196 @@
 // function BOTH hosts route through, over every built-in theme including the two that map
 // every state — so it cannot be true only for the theme that happens to be loaded.
 //
-#include "rolltui/Effects.hpp"
-
+// PHASE 17: calls the C API (rolltui/c/rolltui_effects.h, rolltui_screen.h,
+// rolltui_frame_ops.h, rolltui_render.h, all reached through rolltui/rolltui.h) directly
+// for the frame and the effects engine, rather than through the rolltui::Frame /
+// rolltui::EffectMap free-function C++ shim (Effects.hpp + its shim Effects.cpp,
+// Screen.hpp + its shim Screen.cpp) that this file used to include — those are the files
+// being deleted. `rolltui::Theme` (Theme.hpp) is NOT part of that layer and is unchanged,
+// but it is the one place this file cannot follow all the way through: `Theme::effects`
+// is a `rolltui::EffectMap` DATA MEMBER (Theme.hpp is a plain struct, not yet a handle
+// behind a C boundary), and `EffectMap` exposes only a CONST handle() — there is no way
+// to reach a mutable `RolltuiEffectMap*` for a theme's own map from outside the class. So
+// building/mutating a Theme's effects (theme_with(), the STACKING and the tick-rule
+// blocks) still calls EffectMap's own methods, which is Theme.hpp's shape forcing the
+// issue rather than a choice made here — the same is true of `effect_state_name()` /
+// `effect_state_from_name()`, which have NO C form at all (rolltui_screen.h: a mark's
+// state crosses as an opaque int the C never interprets; the vocabulary is stated to stay
+// in Effects.hpp, in one language, permanently). Everything this file can reach through a
+// C call — the frame, the registry, the applier, the tick — does.
+//
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "rolltui/rolltui.h"
+
 #include "rolltui/Json.hpp"
-#include "rolltui/Screen.hpp"
 #include "rolltui/Theme.hpp"
 #include "rolltui/Unicode.hpp"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
+using rolltui::EffectMap;
+using rolltui::EffectState;
+using rolltui::kEffectStateCount;
+using rolltui::Role;
+using rolltui::Style;
+using rolltui::Theme;
+using rolltui::ThemeLoadReport;
+using rolltui::ThemeMode;
+using rolltui::builtin_theme;
+using rolltui::builtin_theme_names;
+using rolltui::load_theme;
+using rolltui::theme_to_json;
+using rolltui::theme_pair_to_json_value;
+// The two vocabulary functions with no C equivalent at all (see the header note above) —
+// named explicitly rather than pulled in with everything else, so it stays visible that
+// these two are the exception and not an oversight.
+using rolltui::effect_state_from_name;
+using rolltui::effect_state_name;
+namespace json = rolltui::json;
+namespace unicode = rolltui::unicode;
 using namespace rolltui_test;
 
 namespace {
+
+// ---- the frame: OWNED, an explicit new/free pair, the same RAII shape rolltui::Frame
+// gave a caller before the port (Screen.cpp WAS this mapping). ----
+using FramePtr = std::unique_ptr<RolltuiFrame, void (*)(RolltuiFrame*)>;
+FramePtr new_frame(int w, int h, RolltuiStyle fill = {}) {
+  return FramePtr(rolltui_frame_new(w, h, fill), rolltui_frame_free);
+}
+
+RolltuiDrawScratch* draw_scratch() {
+  static std::unique_ptr<RolltuiDrawScratch, void (*)(RolltuiDrawScratch*)> s(rolltui_draw_scratch_new(),
+                                                                              rolltui_draw_scratch_free);
+  return s.get();
+}
+RolltuiEffectScratch* effect_scratch() {
+  static std::unique_ptr<RolltuiEffectScratch, void (*)(RolltuiEffectScratch*)> s(rolltui_effect_scratch_new(),
+                                                                                  rolltui_effect_scratch_free);
+  return s.get();
+}
+
+RolltuiCell cell_at(const RolltuiFrame* f, int x, int y) {
+  RolltuiCell c{};
+  rolltui_frame_cell(f, x, y, &c);
+  return c;
+}
+std::string_view glyph_at(const RolltuiFrame* f, int x, int y) {
+  std::size_t n = 0;
+  const char* p = rolltui_frame_glyph(f, x, y, &n);
+  return std::string_view(p, n);
+}
+std::string frame_to_text(const RolltuiFrame* f) {
+  RolltuiStr s;
+  rolltui_frame_to_text(f, &s);
+  return s.str();
+}
+
+// ---- the host's two kinds, and a no-op placeholder for the refusal cases. A host kind
+// registered from C crosses as {function pointer, void* ctx, void (*free_ctx)(void*)}
+// (rolltui_effects.h); none of the three below needs a context. `styles` is the theme's
+// own role table — the SAME array `Theme::style(Role)` indexes — so a kind reaches a
+// role's Style directly through it rather than through `host` (which the C dereferences
+// only if a host's own callback chooses to, and neither of these does). ----
+void noop_kind(void*, const RolltuiEffectSpec*, const RolltuiStyle*, const void*, const RolltuiEffectCell*,
+              RolltuiEffectOut*) {}
+
+void host_sweep_kind(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*,
+                     const RolltuiEffectCell* in, RolltuiEffectOut* out) {
+  if ((in->index + static_cast<int>(in->elapsed_ms / 100)) % 2) return;
+  out->has_style = 1;
+  out->style = styles[s->role(0)];  // never empty: the map substitutes its fallback
+  out->set_glyph("#");
+}
+
+// THE MISBEHAVING ONE. It tries every way a callback could corrupt a frame that the
+// signature allows: a glyph twice as wide as the cell, an empty glyph, and a style.
+void wide_liar_kind(void*, const RolltuiEffectSpec*, const RolltuiStyle* styles, const void*,
+                    const RolltuiEffectCell* in, RolltuiEffectOut* out) {
+  out->has_style = 1;
+  out->style = styles[static_cast<unsigned char>(Role::error)];
+  out->set_glyph((in->index % 2) ? "" : "\xE4\xBD\xA0");  // 0 cells / 2 cells
+}
+
+// ---- rung 2, and the registry vocabulary — the direct C calls Effects.cpp's shim made
+// on a caller's behalf; a caller now makes them itself. ----
+bool register_effect_kind(std::string_view name, RolltuiEffectFn fn, std::string* why) {
+  auto fail = [&](std::string reason) {
+    if (why) *why = std::move(reason);
+    return false;
+  };
+  const int code = rolltui_effect_register(name.data(), name.size(), fn, nullptr, nullptr);
+  switch (code) {
+    case ROLLTUI_EFFECT_OK:
+      return true;
+    case ROLLTUI_EFFECT_NO_NAME:
+      return fail("an effect kind needs a name");
+    case ROLLTUI_EFFECT_NO_FN:
+      return fail("effect kind '" + std::string(name) + "': no function");
+    case ROLLTUI_EFFECT_IS_BUILTIN:
+      return fail("'" + std::string(name) + "' is one of the library's own effect kinds");
+    default:
+      return fail("effect kind '" + std::string(name) + "' is already registered");
+  }
+}
+void clear_registered_effect_kinds() { rolltui_effect_clear_registered(); }
+std::vector<std::string> effect_kind_names() {
+  std::vector<std::string> out;
+  const std::size_t n = rolltui_effect_kind_count();
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    std::size_t len = 0;
+    const char* p = rolltui_effect_kind_name(i, &len);
+    out.emplace_back(p, len);
+  }
+  return out;
+}
+bool effect_kind_resolves(std::string_view name) { return rolltui_effect_kind_resolves(name.data(), name.size()) != 0; }
+bool is_builtin_effect_kind(std::string_view name) { return rolltui_effect_is_builtin(name.data(), name.size()) != 0; }
+
+// ---- applying, and the tick — the direct C calls, over a Theme's OWN EffectMap (see the
+// header note: theme.effects.handle()/.empty() are the only EffectMap calls left, both
+// read-only, because Theme.hpp lends no mutable handle for anything else to call through). ----
+struct EffectReport {
+  int marks_drawn = 0;
+  int cells_touched = 0;
+  int glyphs_refused = 0;
+  std::vector<std::string> unknown_kinds;
+  bool clean() const { return glyphs_refused == 0 && unknown_kinds.empty(); }
+};
+void note_unknown_kind(void* ctx, const char* kind, std::size_t len) {
+  std::vector<std::string>& out = *static_cast<std::vector<std::string>*>(ctx);
+  const std::string_view name(kind, len);
+  if (std::find(out.begin(), out.end(), name) == out.end()) out.emplace_back(name);
+}
+EffectReport apply_effects(RolltuiFrame* f, const Theme& theme, std::uint64_t now_ms, bool ambiguous_wide = false) {
+  EffectReport rep;
+  if (rolltui_frame_mark_count(f) == 0 || theme.effects.empty()) return rep;
+  RolltuiEffectReport r{};
+  rolltui_effects_apply(f, effect_scratch(), theme.styles.data(), nullptr, theme.effects.handle(), now_ms,
+                        ambiguous_wide, &r, note_unknown_kind, &rep.unknown_kinds);
+  rep.marks_drawn = r.marks_drawn;
+  rep.cells_touched = r.cells_touched;
+  rep.glyphs_refused = r.glyphs_refused;
+  return rep;
+}
+std::optional<int> effect_tick_ms(const RolltuiFrame* f, const Theme& theme) {
+  if (rolltui_frame_mark_count(f) == 0 || theme.effects.empty()) return std::nullopt;
+  const int ms = rolltui_effects_tick_ms(f, theme.effects.handle());
+  return ms > 0 ? std::optional<int>(ms) : std::nullopt;
+}
+int poll_timeout_ms(const RolltuiFrame* f, const Theme& theme, int idle_ms) {
+  const std::optional<int> tick = effect_tick_ms(f, theme);
+  if (!tick) return idle_ms;
+  return idle_ms <= 0 ? *tick : std::min(idle_ms, *tick);
+}
 
 // A theme mapping ONE state to one spec, so a kind can be exercised on its own. A spec is
 // BUILT INTO the map since Phase 15 m3 (the theme owns its specs in C), so these helpers
@@ -76,25 +251,31 @@ struct CellShot {
   bool operator==(const CellShot&) const = default;
 };
 
-std::vector<CellShot> shoot(const Frame& f) {
+std::vector<CellShot> shoot(const RolltuiFrame* f) {
   std::vector<CellShot> out;
-  for (int y = 0; y < f.height(); ++y)
-    for (int x = 0; x < f.width(); ++x) {
-      const Cell c = f.at(x, y);  // BY VALUE (Phase 14 m2): the frame lends no reference
-      out.push_back({std::string(f.glyph(x, y)), c.width, c.continuation != 0, c.style, c.link});
+  const int h = rolltui_frame_height(f), w = rolltui_frame_width(f);
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x) {
+      const RolltuiCell c = cell_at(f, x, y);  // BY VALUE (Phase 14 m2): the frame lends no reference
+      out.push_back({std::string(glyph_at(f, x, y)), c.width, c.continuation != 0, c.style, c.link});
     }
   return out;
 }
 
 // A frame with a known pattern, a run of text on row 1 including a WIDE glyph, and
 // sentinel text on every other row.
-Frame make_frame(int w, int h, const Theme& theme) {
-  Frame f(w, h, theme.style(Role::background));
-  for (int y = 0; y < h; ++y)
-    f.put_text(0, y, "0123456789abcdefghij", theme.style(Role::text), w);
-  if (h > 1) f.put_text(2, 1, "ab\xE4\xBD\xA0"  // two narrow, one wide (2 cells)
-                              "cdefghij",
-                        theme.style(Role::md_code_block), w);
+FramePtr make_frame(int w, int h, const Theme& theme) {
+  FramePtr f = new_frame(w, h, theme.style(Role::background));
+  for (int y = 0; y < h; ++y) {
+    const std::string_view row = "0123456789abcdefghij";
+    rolltui_frame_put_text(f.get(), draw_scratch(), 0, y, row.data(), row.size(), theme.style(Role::text), w, 0, 0);
+  }
+  if (h > 1) {
+    const std::string_view row2 = "ab\xE4\xBD\xA0"  // two narrow, one wide (2 cells)
+                                  "cdefghij";
+    rolltui_frame_put_text(f.get(), draw_scratch(), 2, 1, row2.data(), row2.size(), theme.style(Role::md_code_block),
+                           w, 0, 0);
+  }
   return f;
 }
 
@@ -117,10 +298,9 @@ int main() {
       check(effect_kind_resolves(k) && is_builtin_effect_kind(k), std::string("built-in kind '") + k + "' resolves");
     check(names.size() == 7, "the library's table is CLOSED at seven kinds (" + std::to_string(names.size()) + ")");
     std::string why;
-    check(!register_effect_kind("spinner", [](const EffectSpec&, const Theme&, const EffectCell&, EffectOut&) {}, &why) &&
-              why.find("library's own") != std::string::npos,
+    check(!register_effect_kind("spinner", noop_kind, &why) && why.find("library's own") != std::string::npos,
           "registering a LIBRARY kind is refused by name [" + why + "]");
-    check(!register_effect_kind("", [](const EffectSpec&, const Theme&, const EffectCell&, EffectOut&) {}, &why), "an empty kind name is refused");
+    check(!register_effect_kind("", noop_kind, &why), "an empty kind name is refused");
     check(!effect_kind_resolves("confetti"), "an unregistered name resolves to nothing (a HOST fact, not a theme error)");
   }
 
@@ -128,27 +308,10 @@ int main() {
   {
     std::string why;
     // A well-behaved host kind: one cell wide, a role it was handed, no colour of its own.
-    check(register_effect_kind("host-sweep",
-                               [](const EffectSpec& s, const Theme& th, const EffectCell& in, EffectOut& out) {
-                                 if ((in.index + static_cast<int>(in.elapsed_ms / 100)) % 2) return;
-                                 out.has_style = true;
-                                 out.style = th.style(static_cast<Role>(s.role(0)));  // never empty: the map substitutes its fallback
-                                 out.set_glyph("#");
-                               },
-                               &why),
-          "a host registers its own kind [" + why + "]");
-    // THE MISBEHAVING ONE. It tries every way a callback could corrupt a frame that the
-    // signature allows: a glyph twice as wide as the cell, an empty glyph, and a style.
-    check(register_effect_kind("wide-liar",
-                               [](const EffectSpec&, const Theme& th, const EffectCell& in, EffectOut& out) {
-                                 out.has_style = true;
-                                 out.style = th.style(Role::error);
-                                 out.set_glyph((in.index % 2) ? "" : "\xE4\xBD\xA0");  // 0 cells / 2 cells
-                               },
-                               &why),
+    check(register_effect_kind("host-sweep", host_sweep_kind, &why), "a host registers its own kind [" + why + "]");
+    check(register_effect_kind("wide-liar", wide_liar_kind, &why),
           "…and a kind that LIES about its width, which is the sweep's control");
-    check(!register_effect_kind("wide-liar", [](const EffectSpec&, const Theme&, const EffectCell&, EffectOut&) {}, &why),
-          "a second registration of the same name is refused");
+    check(!register_effect_kind("wide-liar", noop_kind, &why), "a second registration of the same name is refused");
     check(effect_kind_names().size() == 9, "both appear after the library's seven, in resolution order");
   }
 
@@ -166,18 +329,18 @@ int main() {
         for (std::uint64_t tick : {0ull, 137ull, 400ull, 999ull}) {
           for (double frac : {0.0, 0.37, 1.0}) {
             const Theme& theme = kc.theme;
-            Frame f = make_frame(20, 3, theme);
-            const std::vector<CellShot> before = shoot(f);
-            f.mark(sp.x, sp.y, sp.cells, EffectState::Waiting, 0, frac);
-            const EffectReport rep = apply_effects(f, theme, tick);
+            FramePtr f = make_frame(20, 3, theme);
+            const std::vector<CellShot> before = shoot(f.get());
+            rolltui_frame_mark(f.get(), sp.x, sp.y, sp.cells, static_cast<int>(EffectState::Waiting), 0, frac);
+            const EffectReport rep = apply_effects(f.get(), theme, tick);
             refused_total += rep.glyphs_refused;
-            const std::vector<CellShot> after = shoot(f);
+            const std::vector<CellShot> after = shoot(f.get());
             const std::string where = kc.kind + " span(" + std::to_string(sp.x) + "," + std::to_string(sp.y) + "," +
                                       std::to_string(sp.cells) + ") t=" + std::to_string(tick);
             check_quiet(before.size() == after.size(), where + ": the grid keeps its size");
-            for (int y = 0; y < f.height(); ++y)
-              for (int x = 0; x < f.width(); ++x) {
-                const std::size_t i = static_cast<std::size_t>(y * f.width() + x);
+            for (int y = 0; y < rolltui_frame_height(f.get()); ++y)
+              for (int x = 0; x < rolltui_frame_width(f.get()); ++x) {
+                const std::size_t i = static_cast<std::size_t>(y * rolltui_frame_width(f.get()) + x);
                 const bool inside = y == sp.y && x >= sp.x && x < sp.x + sp.cells;
                 if (!inside) {
                   // PROPERTY 2: nothing outside the span changed, at all.
@@ -192,10 +355,11 @@ int main() {
                             where + ": cell (" + std::to_string(x) + "," + std::to_string(y) + ")'s glyph fills exactly its cells");
               }
             // Every row still measures the frame's width — the property wrap depends on.
-            for (int y = 0; y < f.height(); ++y) {
+            for (int y = 0; y < rolltui_frame_height(f.get()); ++y) {
               int cells = 0;
-              for (int x = 0; x < f.width(); ++x) cells += f.at(x, y).width;  // a continuation cell is 0
-              check_quiet(cells == f.width(), where + ": row " + std::to_string(y) + " still measures " + std::to_string(f.width()));
+              for (int x = 0; x < rolltui_frame_width(f.get()); ++x) cells += cell_at(f.get(), x, y).width;  // a continuation cell is 0
+              check_quiet(cells == rolltui_frame_width(f.get()),
+                          where + ": row " + std::to_string(y) + " still measures " + std::to_string(rolltui_frame_width(f.get())));
             }
           }
         }
@@ -208,11 +372,11 @@ int main() {
   // ---- the lying kind changes no glyph at all --------------------------------------
   {
     const Theme theme = theme_with(EffectState::Waiting, "wide-liar");
-    Frame f = make_frame(20, 3, theme);
-    const std::string before = frame_to_text(f);
-    f.mark(2, 1, 8, EffectState::Waiting);
-    const EffectReport rep = apply_effects(f, theme, 250);
-    check(frame_to_text(f) == before, "a kind that lies about width writes no glyph anywhere");
+    FramePtr f = make_frame(20, 3, theme);
+    const std::string before = frame_to_text(f.get());
+    rolltui_frame_mark(f.get(), 2, 1, 8, static_cast<int>(EffectState::Waiting), 0, 0);
+    const EffectReport rep = apply_effects(f.get(), theme, 250);
+    check(frame_to_text(f.get()) == before, "a kind that lies about width writes no glyph anywhere");
     check(rep.glyphs_refused > 0 && !rep.clean(), "…and the report says so rather than the frame looking fine");
     check(rep.cells_touched > 0, "…while its STYLE still landed: only the illegal half was dropped");
   }
@@ -221,10 +385,10 @@ int main() {
   {
     const Theme theme = *builtin_theme("default-dark");
     auto at = [&](std::uint64_t tick) {
-      Frame f = make_frame(20, 3, theme);
-      f.mark(2, 1, 8, EffectState::Waiting);
-      apply_effects(f, theme, tick);
-      return frame_to_text(f);
+      FramePtr f = make_frame(20, 3, theme);
+      rolltui_frame_mark(f.get(), 2, 1, 8, static_cast<int>(EffectState::Waiting), 0, 0);
+      apply_effects(f.get(), theme, tick);
+      return frame_to_text(f.get());
     };
     check(at(0) == at(0), "the same tick gives the same frame, byte for byte (what --tick N records)");
     check(at(0) != at(160), "…and a different tick a different one: the effect is actually drawn");
@@ -234,17 +398,17 @@ int main() {
   // ---- a span carries its OWN phase (Mark::since_ms) ---------------------------------
   {
     const Theme theme = *builtin_theme("default-dark");
-    Frame f = make_frame(20, 3, theme);
-    f.mark(2, 1, 1, EffectState::Waiting, 0);     // started at 0
-    f.mark(6, 1, 1, EffectState::Waiting, 1000);  // started later: a different frame of the cycle
-    apply_effects(f, theme, 1160);
-    check(f.glyph(2, 1) != f.glyph(6, 1),
+    FramePtr f = make_frame(20, 3, theme);
+    rolltui_frame_mark(f.get(), 2, 1, 1, static_cast<int>(EffectState::Waiting), 0, 0);     // started at 0
+    rolltui_frame_mark(f.get(), 6, 1, 1, static_cast<int>(EffectState::Waiting), 1000, 0);  // started later: a different frame of the cycle
+    apply_effects(f.get(), theme, 1160);
+    check(glyph_at(f.get(), 2, 1) != glyph_at(f.get(), 6, 1),
           "two spans of one state with different start times are at different points of the cycle");
-    Frame g = make_frame(20, 3, theme);
-    g.mark(2, 1, 1, EffectState::Waiting);
-    g.mark(6, 1, 1, EffectState::Waiting);
-    apply_effects(g, theme, 1160);
-    check(g.glyph(2, 1) == g.glyph(6, 1), "…and two with no start time of their own move together off the shared clock");
+    FramePtr g = make_frame(20, 3, theme);
+    rolltui_frame_mark(g.get(), 2, 1, 1, static_cast<int>(EffectState::Waiting), 0, 0);
+    rolltui_frame_mark(g.get(), 6, 1, 1, static_cast<int>(EffectState::Waiting), 0, 0);
+    apply_effects(g.get(), theme, 1160);
+    check(glyph_at(g.get(), 2, 1) == glyph_at(g.get(), 6, 1), "…and two with no start time of their own move together off the shared clock");
   }
 
   // ---- STACKING: glyph from one kind, colour from another ---------------------------
@@ -256,56 +420,58 @@ int main() {
     theme.effects.add_frame(EffectState::Waiting, spin, "y");
     const std::size_t tint = theme.effects.add(EffectState::Waiting, "pulse", 0);
     theme.effects.add_role(EffectState::Waiting, tint, Role::error);
-    Frame f = make_frame(20, 3, theme);
-    f.mark(2, 1, 4, EffectState::Waiting);
-    apply_effects(f, theme, 0);
-    check(f.glyph(2, 1) == "x" && f.at(2, 1).style == theme.style(Role::error), "a stacked pair gives the glyph from one and the style from the other");
-    check(f.at(3, 1).style == theme.style(Role::error) && f.glyph(3, 1) != "x", "…and the kind that answers for one cell does not answer for the rest");
+    FramePtr f = make_frame(20, 3, theme);
+    rolltui_frame_mark(f.get(), 2, 1, 4, static_cast<int>(EffectState::Waiting), 0, 0);
+    apply_effects(f.get(), theme, 0);
+    check(glyph_at(f.get(), 2, 1) == "x" && cell_at(f.get(), 2, 1).style == theme.style(Role::error),
+          "a stacked pair gives the glyph from one and the style from the other");
+    check(cell_at(f.get(), 3, 1).style == theme.style(Role::error) && glyph_at(f.get(), 3, 1) != "x",
+          "…and the kind that answers for one cell does not answer for the rest");
   }
 
   // ---- a theme that maps nothing is a STILL UI (the degrade rung) --------------------
   {
     Theme theme = *builtin_theme("default-dark");
     theme.effects = EffectMap{};
-    Frame f = make_frame(20, 3, theme);
-    const std::vector<CellShot> before = shoot(f);
-    f.mark(2, 1, 8, EffectState::Waiting);
-    const EffectReport rep = apply_effects(f, theme, 500);
-    check(shoot(f) == before && rep.marks_drawn == 0 && rep.clean(), "a theme that maps nothing leaves a marked frame untouched");
-    check(!effect_tick_ms(f, theme).has_value(), "…and asks for no wakeup");
+    FramePtr f = make_frame(20, 3, theme);
+    const std::vector<CellShot> before = shoot(f.get());
+    rolltui_frame_mark(f.get(), 2, 1, 8, static_cast<int>(EffectState::Waiting), 0, 0);
+    const EffectReport rep = apply_effects(f.get(), theme, 500);
+    check(shoot(f.get()) == before && rep.marks_drawn == 0 && rep.clean(), "a theme that maps nothing leaves a marked frame untouched");
+    check(!effect_tick_ms(f.get(), theme).has_value(), "…and asks for no wakeup");
   }
 
   // ---- THE TICK RULE: it runs only while something is marked ------------------------
   {
     for (std::string_view name : builtin_theme_names()) {
       const Theme& theme = *builtin_theme(name);
-      Frame f = make_frame(20, 3, theme);
-      check(!effect_tick_ms(f, theme).has_value(), std::string("no wakeups with no marks — ") + std::string(name));
-      check(poll_timeout_ms(f, theme, 1000) == 1000, std::string("…so a host's idle timeout is untouched — ") + std::string(name));
-      f.mark(2, 1, 8, EffectState::Waiting);
-      const std::optional<int> tick = effect_tick_ms(f, theme);
+      FramePtr f = make_frame(20, 3, theme);
+      check(!effect_tick_ms(f.get(), theme).has_value(), std::string("no wakeups with no marks — ") + std::string(name));
+      check(poll_timeout_ms(f.get(), theme, 1000) == 1000, std::string("…so a host's idle timeout is untouched — ") + std::string(name));
+      rolltui_frame_mark(f.get(), 2, 1, 8, static_cast<int>(EffectState::Waiting), 0, 0);
+      const std::optional<int> tick = effect_tick_ms(f.get(), theme);
       check(tick && *tick >= 16, std::string("a marked waiting span asks for a tick — ") + std::string(name) + " " +
                                      (tick ? std::to_string(*tick) : "none"));
-      check(poll_timeout_ms(f, theme, 1000) == *tick, "…and the host's poll timeout becomes it");
-      check(poll_timeout_ms(f, theme, 10) == 10, "…but never LONGER than what the host already wanted");
+      check(poll_timeout_ms(f.get(), theme, 1000) == *tick, "…and the host's poll timeout becomes it");
+      check(poll_timeout_ms(f.get(), theme, 10) == 10, "…but never LONGER than what the host already wanted");
     }
     // A state the theme maps to a STILL effect asks for nothing either: a bar is a
     // picture of a number, and the number changing is already a redraw.
     const Theme& dark = *builtin_theme("default-dark");
-    Frame f = make_frame(20, 3, dark);
-    f.mark(6, 1, 8, EffectState::Progress, 0, 0.5);  // eight NARROW cells: the arithmetic is the point here, not the wide glyph
-    check(!effect_tick_ms(f, dark).has_value(), "a still effect (period_ms 0) asks for no wakeup though its span IS marked");
-    const EffectReport rep = apply_effects(f, dark, 0);
+    FramePtr f = make_frame(20, 3, dark);
+    rolltui_frame_mark(f.get(), 6, 1, 8, static_cast<int>(EffectState::Progress), 0, 0.5);  // eight NARROW cells: the arithmetic is the point here, not the wide glyph
+    check(!effect_tick_ms(f.get(), dark).has_value(), "a still effect (period_ms 0) asks for no wakeup though its span IS marked");
+    const EffectReport rep = apply_effects(f.get(), dark, 0);
     check(rep.marks_drawn == 1 && rep.cells_touched == 4, "…while still drawing: 0.5 of an 8-cell span is 4 cells");
     // A mark whose state the theme maps to nothing that RESOLVES: named, never silent.
     Theme t2 = dark;
     t2.effects.clear();
     t2.effects.add(EffectState::Flash, "confetti", 100);
-    Frame g = make_frame(20, 3, t2);
-    g.mark(2, 1, 4, EffectState::Flash);
-    const EffectReport grep = apply_effects(g, t2, 0);
+    FramePtr g = make_frame(20, 3, t2);
+    rolltui_frame_mark(g.get(), 2, 1, 4, static_cast<int>(EffectState::Flash), 0, 0);
+    const EffectReport grep = apply_effects(g.get(), t2, 0);
     check(grep.unknown_kinds.size() == 1 && grep.unknown_kinds[0] == "confetti", "an unknown kind is NAMED in the report, not silently still");
-    check(!effect_tick_ms(g, t2).has_value(), "…and asks for no wakeup, since it cannot draw");
+    check(!effect_tick_ms(g.get(), t2).has_value(), "…and asks for no wakeup, since it cannot draw");
   }
 
   // ---- the file format --------------------------------------------------------------
@@ -383,7 +549,7 @@ int main() {
         const std::size_t n = t->effects.count(state);
         check_quiet(n != 0, t->name + " maps " + std::string(effect_state_name(state)));
         for (std::size_t k = 0; k < n; ++k) {
-          const EffectSpec& s = t->effects.at(state, k);
+          const RolltuiEffectSpec& s = t->effects.at(state, k);
           const std::string kind(s.kind_view());
           check_quiet(effect_kind_resolves(kind), t->name + ": kind '" + kind + "' resolves");
           if (s.frame_count == 0) continue;

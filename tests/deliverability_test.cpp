@@ -26,7 +26,29 @@
 //            form with its worked examples, the modifier parameter 1 + (shift 1 |
 //            alt 2 | ctrl 4), and the cursor/function keys that already carry it.
 //
+// PHASE 17: calls the C API (rolltui/c/rolltui_keys.h, rolltui_bindings.h,
+// rolltui_terminal.h, all reached through rolltui/rolltui.h) directly rather than through
+// the rolltui::KeyEvent / KeyDecoder / Bindings / Terminal C++ shims (Keys.hpp + its shim
+// Keys.cpp, Bindings.hpp + its shim Bindings.cpp, Terminal.hpp + its shim Terminal.cpp)
+// this file used to include — those are the files being deleted. There is no KeyEvent on
+// this side of the boundary (rolltui_keys.h's note: it carried a std::string only a C++
+// type could hold), so every chord here is a RolltuiChord built directly. `KeyProtocol`'s
+// NAMES ("legacy"/"modifyOtherKeys"/"kitty") and the four undeliverability sentences have
+// no C form at all — Keys.cpp keeps that vocabulary out of the C layer on purpose, for a
+// config file and a `--keys` flag to spell — so this file re-states them locally, tied to
+// the C's own ordinals/codes so neither can drift. `library_actions()` and
+// `migrated_action()` are the same kind of vocabulary one level up (Bindings.cpp keeps
+// them out of rolltui_bindings.h for the same reason), so this file copies that table too
+// — the same trade tests/input_test.cpp already made for its own action table.
+//
+#include <array>
+#include <cstddef>
+#include <cstring>
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <poll.h>
@@ -34,60 +56,133 @@
 #include <unistd.h>
 #include <util.h>
 
-#include "rolltui/Bindings.hpp"
-#include "rolltui/Keys.hpp"
-#include "rolltui/Terminal.hpp"
+#include "rolltui/rolltui.h"
+
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
+// The shipped bindings preset text, generated at build time and linked into `rolltui`
+// (rolltui/cmake/embed_presets.cmake); Bindings.cpp reads it through this exact
+// declaration, and default_bindings_json() below does the same rather than duplicating
+// the embedding.
+namespace rolltui::embedded {
+extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
+extern const std::size_t kBindingsPresetCount;
+}  // namespace rolltui::embedded
+
 using namespace rolltui_test;
 
 namespace {
 
-KeyEvent key(Key k, bool ctrl = false, bool alt = false, bool shift = false) {
-  KeyEvent e;
-  e.key = k;
-  e.ctrl = ctrl;
-  e.alt = alt;
-  e.shift = shift;
-  return e;
+// KeyProtocol's ORDINALS cross (rolltui_keys.h's ROLLTUI_PROTOCOL_*); its NAMES do not.
+// This local enum is tied to those ordinals so neither can drift from what the C
+// classifies.
+enum class KeyProtocol : unsigned char {
+  Legacy = ROLLTUI_PROTOCOL_LEGACY,
+  ModifyOtherKeys = ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS,
+  Kitty = ROLLTUI_PROTOCOL_KITTY,
+};
+std::string_view protocol_name(KeyProtocol p) {
+  switch (p) {
+    case KeyProtocol::Kitty: return "kitty";
+    case KeyProtocol::ModifyOtherKeys: return "modifyOtherKeys";
+    case KeyProtocol::Legacy: break;
+  }
+  return "legacy";
 }
-KeyEvent ch(char32_t c, bool ctrl = false, bool alt = false, bool shift = false) {
-  KeyEvent e;
-  e.key = Key::Char;
-  e.ch = c;
-  e.ctrl = ctrl;
-  e.alt = alt;
-  e.shift = shift;
-  return e;
+void set_active_key_protocol(KeyProtocol p) { rolltui_key_set_active_protocol(static_cast<unsigned char>(p)); }
+
+bool deliverable(const RolltuiChord& k, KeyProtocol p) {
+  return rolltui_key_deliverable(&k, static_cast<unsigned char>(p)) != 0;
+}
+std::optional<std::string> encode_key(const RolltuiChord& k, KeyProtocol p) {
+  // CALLER-FILLED, with the bound known WITHOUT asking: the longest encoding any protocol
+  // produces is a constant in the header, so there is no measure-then-fill round trip.
+  char buf[ROLLTUI_KEY_ENCODE_MAX];
+  const long n = rolltui_key_encode(&k, static_cast<unsigned char>(p), buf, sizeof buf);
+  if (n < 0) return std::nullopt;
+  return std::string(buf, static_cast<std::size_t>(n));
+}
+// THE WORDS, against the C's classification (Keys.cpp: "the C classifies and never
+// carries a sentence"). The reason names the CHEAPEST protocol that would carry the
+// chord, so a person is told what to turn on rather than that something is impossible.
+std::string undeliverable_reason(const RolltuiChord& k, KeyProtocol p) {
+  static constexpr std::array<std::string_view, 6> kReasons = {
+      "",
+      "it is not a key",
+      "shift on a character key is the shifted character itself, which no terminal reports as a chord",
+      "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
+      "it needs the kitty keyboard protocol",
+      "no keyboard protocol this library speaks can report it",
+  };
+  const int code = rolltui_key_undeliverable_reason(&k, static_cast<unsigned char>(p));
+  return std::string(kReasons[static_cast<std::size_t>(code) < kReasons.size() ? static_cast<std::size_t>(code) : 0]);
+}
+std::string show(const RolltuiChord& k) {
+  char buf[ROLLTUI_CHORD_STRING_MAX];
+  return std::string(buf, rolltui_chord_to_string(&k, buf, sizeof buf));
+}
+// What a KeyEvent's defaulted operator== compared once `raw` was cleared — the chord
+// alone, which is all a RolltuiChord ever carries.
+bool chord_eq(const RolltuiChord& a, const RolltuiChord& b) {
+  return a.key == b.key && a.ch == b.ch && a.ctrl == b.ctrl && a.alt == b.alt && a.shift == b.shift;
+}
+
+// F2..F11 have no named constant of their own (only F1 and F12 are, rolltui_keys.h),
+// because rolltui::Key numbered them contiguously and the C only had to pin the two ends.
+constexpr int kF1 = ROLLTUI_KEY_F1, kF2 = kF1 + 1, kF3 = kF1 + 2, kF4 = kF1 + 3, kF5 = kF1 + 4, kF6 = kF1 + 5,
+              kF7 = kF1 + 6, kF8 = kF1 + 7, kF9 = kF1 + 8, kF10 = kF1 + 9, kF11 = kF1 + 10, kF12 = kF1 + 11;
+static_assert(kF12 == ROLLTUI_KEY_F12, "F1..F12 must be contiguous, matching rolltui::Key's declared order");
+
+RolltuiChord key(int k, bool ctrl = false, bool alt = false, bool shift = false) {
+  RolltuiChord c{};
+  c.key = static_cast<unsigned char>(k);
+  c.ctrl = ctrl;
+  c.alt = alt;
+  c.shift = shift;
+  return c;
+}
+RolltuiChord ch(char32_t cp, bool ctrl = false, bool alt = false, bool shift = false) {
+  RolltuiChord c{};
+  c.key = ROLLTUI_KEY_CHAR;
+  c.ch = cp;
+  c.ctrl = ctrl;
+  c.alt = alt;
+  c.shift = shift;
+  return c;
 }
 
 // What this library ACTUALLY makes of those bytes. flush() is part of it: a lone ESC is
 // only the Escape key once nothing follows, which is exactly what Terminal::poll does on
-// a timeout.
-std::vector<Event> decode(const std::string& bytes) {
-  KeyDecoder d;
-  std::vector<Event> ev = d.feed(bytes);
-  const std::vector<Event> rest = d.flush();
-  ev.insert(ev.end(), rest.begin(), rest.end());
+// a timeout. A decoded event's raw bytes are never inspected below (an Unknown key never
+// arrives from an encoding this file produced itself), so only the kind and the chord are
+// kept — there is no KeyEvent on this side of the boundary to hold anything else in.
+struct DecodedEvent {
+  unsigned char kind = ROLLTUI_EVENT_KEY;
+  RolltuiChord key{};
+};
+void collect(void* ctx, const RolltuiEvent* e) {
+  std::vector<DecodedEvent>& out = *static_cast<std::vector<DecodedEvent>*>(ctx);
+  out.push_back({e->kind, e->key});
+}
+using DecoderPtr = std::unique_ptr<RolltuiKeyDecoder, void (*)(RolltuiKeyDecoder*)>;
+std::vector<DecodedEvent> decode(const std::string& bytes) {
+  DecoderPtr d(rolltui_key_decoder_new(), rolltui_key_decoder_free);
+  std::vector<DecodedEvent> ev;
+  rolltui_key_decoder_feed(d.get(), bytes.data(), bytes.size(), collect, &ev);
+  rolltui_key_decoder_flush(d.get(), collect, &ev);
   return ev;
 }
 
 // The round trip: does the protocol's encoding of this chord come back as this chord?
 // This is the ground truth the rule is measured against — not a second copy of the rule.
-bool arrives_as_itself(const KeyEvent& k, KeyProtocol p) {
+bool arrives_as_itself(const RolltuiChord& k, KeyProtocol p) {
   const std::optional<std::string> bytes = encode_key(k, p);
   if (!bytes || bytes->empty()) return false;
-  const std::vector<Event> ev = decode(*bytes);
+  const std::vector<DecodedEvent> ev = decode(*bytes);
   if (ev.size() != 1) return false;
-  const KeyEvent* got = std::get_if<KeyEvent>(&ev[0]);
-  if (!got) return false;
-  KeyEvent bare = *got;
-  bare.raw.clear();
-  return bare == k;
+  if (ev[0].kind != ROLLTUI_EVENT_KEY) return false;
+  return chord_eq(ev[0].key, k);
 }
-
-std::string show(const KeyEvent& k) { return chord_to_string(k); }
 
 std::string show_bytes(const std::optional<std::string>& b) {
   if (!b) return "(no encoding)";
@@ -103,17 +198,19 @@ std::string show_bytes(const std::optional<std::string>& b) {
 
 // Every chord worth enumerating: each named key and a wide spread of characters, under
 // all eight modifier combinations.
-std::vector<KeyEvent> universe() {
-  std::vector<KeyEvent> all;
-  static const Key kKeys[] = {Key::Enter,  Key::Tab,   Key::Backspace, Key::Escape, Key::Up,   Key::Down,
-                              Key::Left,   Key::Right, Key::Home,      Key::End,    Key::PageUp, Key::PageDown,
-                              Key::Insert, Key::Delete, Key::F1,       Key::F2,     Key::F3,   Key::F4,
-                              Key::F5,     Key::F6,    Key::F7,        Key::F8,     Key::F9,   Key::F10,
-                              Key::F11,    Key::F12};
+std::vector<RolltuiChord> universe() {
+  std::vector<RolltuiChord> all;
+  static const int kKeys[] = {ROLLTUI_KEY_ENTER,  ROLLTUI_KEY_TAB,     ROLLTUI_KEY_BACKSPACE, ROLLTUI_KEY_ESCAPE,
+                              ROLLTUI_KEY_UP,      ROLLTUI_KEY_DOWN,    ROLLTUI_KEY_LEFT,      ROLLTUI_KEY_RIGHT,
+                              ROLLTUI_KEY_HOME,    ROLLTUI_KEY_END,     ROLLTUI_KEY_PAGEUP,    ROLLTUI_KEY_PAGEDOWN,
+                              ROLLTUI_KEY_INSERT,  ROLLTUI_KEY_DELETE,  kF1,                   kF2,
+                              kF3,                 kF4,                 kF5,                   kF6,
+                              kF7,                 kF8,                 kF9,                   kF10,
+                              kF11,                kF12};
   const std::string chars = "abcdefghijklmnopqrstuvwxyz0123456789 !@#$%^&*()-_=+[]{}\\|;:'\",.<>/?`~";
   for (int m = 0; m < 8; ++m) {
     const bool sh = m & 1, al = m & 2, ct = m & 4;
-    for (Key k : kKeys) all.push_back(key(k, ct, al, sh));
+    for (int k : kKeys) all.push_back(key(k, ct, al, sh));
     for (char c : chars) all.push_back(ch(static_cast<char32_t>(c), ct, al, sh));
   }
   return all;
@@ -171,15 +268,254 @@ KeyProtocol negotiated_with(const std::string& reply) {
   ::close(pty.master);
   KeyProtocol p = KeyProtocol::Legacy;
   {
-    TerminalOptions opts;
+    RolltuiTerminalOptions opts{};
     opts.handle_signals = false;  // this is a test process, not an application
-    Terminal t(pty.slave, pty.slave, opts);
-    p = t.key_protocol();
+    RolltuiTerminal* t = rolltui_terminal_new(pty.slave, pty.slave, opts);
+    p = static_cast<KeyProtocol>(rolltui_terminal_key_protocol(t));
+    rolltui_terminal_free(t);  // restores the terminal, exactly as ~Terminal did
   }
   ::close(pty.slave);
   int status = 0;
   ::waitpid(pid, &status, 0);
   return p;
+}
+
+// ---- bindings: the table, its file format, and the vocabulary rolltui_bindings.h
+// deliberately does not carry — `library_actions()` (which actions exist) and
+// `migrated_action()` (which three were renamed) stay in Bindings.cpp "for the reason m2
+// kept Role out of rolltui_diff.h — a vocabulary written down twice is a second thing to
+// drift", so a caller reaching for the C API hands them over itself, the same trade
+// tests/input_test.cpp made for its own action table (kActions/kRoles there). Copied
+// verbatim from Bindings.cpp's library_actions().
+struct ActionInfo {
+  std::string_view name, description;
+};
+const std::vector<ActionInfo>& library_actions() {
+  static const std::vector<ActionInfo> t = {
+      {"input.submit", "send the line (always Enter)"},
+      {"input.newline", "insert a newline"},
+      {"input.backspace", "erase before the caret (or the selection)"},
+      {"input.delete", "erase after the caret (or the selection)"},
+      {"input.kill_word_backward", "kill the word before the caret"},
+      {"input.kill_word_forward", "kill the word after the caret"},
+      {"input.kill_to_line_start", "kill to the start of the line"},
+      {"input.kill_to_line_end", "kill to the end of the line"},
+      {"input.left", "move one grapheme left"},
+      {"input.right", "move one grapheme right"},
+      {"input.word_left", "move one word left"},
+      {"input.word_right", "move one word right"},
+      {"input.line_start", "start of the line (scrolls when empty)"},
+      {"input.line_end", "end of the line (scrolls when empty)"},
+      {"input.up", "up a row, or the previous history entry"},
+      {"input.down", "down a row, or the next history entry"},
+      {"input.select_left", "extend the selection one grapheme left"},
+      {"input.select_right", "extend the selection one grapheme right"},
+      {"input.select_word_left", "extend the selection one word left"},
+      {"input.select_word_right", "extend the selection one word right"},
+      {"input.select_line_start", "extend the selection to the start of the line"},
+      {"input.select_line_end", "extend the selection to the end of the line"},
+      {"input.select_up", "extend the selection up a row"},
+      {"input.select_down", "extend the selection down a row"},
+      {"input.select_all", "select all"},
+      {"input.clear_selection", "clear the selection"},
+      {"input.copy", "copy the selection"},
+      {"input.eof", "end of input on an empty line, else delete"},
+      {"input.undo", "undo the last group of edits"},
+      {"input.redo", "redo"},
+      {"transcript.page_up", "scroll a page up"},
+      {"transcript.page_down", "scroll a page down"},
+      {"transcript.top", "scroll to the top"},
+      {"transcript.bottom", "scroll to the bottom"},
+      {"transcript.line_up", "scroll a line up"},
+      {"transcript.line_down", "scroll a line down"},
+      {"transcript.find_next", "go to the next match"},
+      {"transcript.find_prev", "go to the previous match"},
+      {"transcript.fold", "toggle the first folded block in view"},
+      {"transcript.copy", "copy the selection again"},
+      {"transcript.clear_selection", "clear the selection"},
+      {"menu.up", "previous item"},
+      {"menu.down", "next item"},
+      {"menu.page_up", "a page of items up"},
+      {"menu.page_down", "a page of items down"},
+      {"menu.first", "the first item"},
+      {"menu.last", "the last item"},
+      {"menu.activate", "act on the item"},
+      {"menu.descend", "descend into a submenu or choice"},
+      {"menu.ascend", "up one level"},
+      {"menu.back", "clear the filter / up a level / close"},
+      {"menu.erase", "erase the last filter character"},
+      {"edit.commit", "commit the value being edited"},
+      {"edit.cancel", "cancel the edit (the value returns)"},
+      {"edit.step_up", "a number field: step up"},
+      {"edit.step_down", "a number field: step down"},
+      {"stack.close_popup", "close the topmost popup"},
+      {"stack.focus_next", "move focus to the next window"},
+      {"stack.focus_prev", "move focus to the previous window"},
+  };
+  return t;
+}
+std::string_view scope_of(std::string_view action) {
+  const std::size_t dot = action.find('.');
+  return dot == std::string_view::npos ? action : action.substr(0, dot);
+}
+bool library_scope(std::string_view scope) {
+  for (const ActionInfo& a : library_actions())
+    if (scope_of(a.name) == scope) return true;
+  return false;
+}
+// THE MIGRATION TABLE, copied verbatim from Bindings.cpp — the one place any source
+// still carries the old `rolltui-playground` action names.
+constexpr std::pair<const char*, const char*> kLegacyActions[] = {
+    {"playground.cycle_theme", "studio.cycle_theme"},
+    {"playground.reload", "studio.reload"},
+    {"playground.quit", "studio.quit"},
+};
+std::optional<std::string> migrated_action(std::string_view legacy) {
+  for (const auto& [from, to] : kLegacyActions)
+    if (legacy == from) return std::string(to);
+  return std::nullopt;
+}
+
+int is_library_scope_cb(void*, const char* scope, std::size_t len) {
+  return library_scope(std::string_view(scope, len)) ? 1 : 0;
+}
+int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
+  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
+  if (!to) return 0;
+  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
+  std::memcpy(out, to->data(), n);
+  *out_len = n;
+  return 1;
+}
+std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
+  const std::string r = undeliverable_reason(*k, static_cast<KeyProtocol>(protocol));
+  const std::size_t n = std::min(r.size(), cap);
+  std::memcpy(out, r.data(), n);
+  return n;
+}
+
+struct BindingsLoadReport {
+  std::string error;
+  std::vector<std::string> unknown_actions;
+  std::vector<std::string> bad_chords;
+  std::vector<std::string> undeliverable;
+  std::vector<std::string> conflicts;
+  std::vector<std::string> bad_values;
+  std::vector<std::string> unknown_keys;
+  std::vector<std::string> migrated;
+  bool clean() const {
+    return error.empty() && unknown_actions.empty() && bad_chords.empty() && conflicts.empty() && bad_values.empty() &&
+           unknown_keys.empty() && undeliverable.empty();
+  }
+  std::string summary() const {
+    if (clean()) return "";
+    if (!error.empty()) return error;
+    std::string s;
+    auto add = [&](const std::string& x) {
+      if (!s.empty()) s += "; ";
+      s += x;
+    };
+    for (const std::string& x : bad_values) add("bad: " + x);
+    for (const std::string& x : conflicts) add("conflict: " + x);
+    for (const std::string& x : bad_chords) add("chord: " + x);
+    for (const std::string& x : undeliverable) add("undeliverable: " + x);
+    for (const std::string& x : unknown_actions) add("unknown action: " + x);
+    for (const std::string& x : unknown_keys) add("unknown: " + x);
+    return s;
+  }
+};
+void copy_report(BindingsLoadReport& out, const RolltuiBindingsReport& in) {
+  auto copy = [](const RolltuiStr* v, std::size_t n) {
+    std::vector<std::string> r;
+    r.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) r.emplace_back(v[i].view());
+    return r;
+  };
+  out.error = in.error.str();
+  out.unknown_actions = copy(in.unknown_actions, in.unknown_actions_n);
+  out.bad_chords = copy(in.bad_chords, in.bad_chords_n);
+  out.undeliverable = copy(in.undeliverable, in.undeliverable_n);
+  out.conflicts = copy(in.conflicts, in.conflicts_n);
+  out.bad_values = copy(in.bad_values, in.bad_values_n);
+  out.unknown_keys = copy(in.unknown_keys, in.unknown_keys_n);
+  out.migrated = copy(in.migrated, in.migrated_n);
+}
+
+// ---- the table: OWNED, an explicit new/free pair. NULL (rather than std::nullopt) is
+// the failure state a caller checks — a unique_ptr already has one. ----
+using BindingsPtr = std::unique_ptr<RolltuiBindings, void (*)(RolltuiBindings*)>;
+constexpr std::string_view kEnterAction = "input.submit";
+BindingsPtr new_bindings() {
+  BindingsPtr b(rolltui_bindings_new(), rolltui_bindings_free);
+  rolltui_bindings_set_enter_rule(b.get(), kEnterAction.data(), kEnterAction.size());
+  for (const ActionInfo& a : library_actions())
+    rolltui_bindings_add_action(b.get(), a.name.data(), a.name.size(), a.description.data(), a.description.size());
+  return b;
+}
+BindingsPtr bindings_from_json(std::string_view text, BindingsLoadReport& report, KeyProtocol deliver) {
+  BindingsPtr b = new_bindings();  // seeded with library_actions(), exactly as Bindings() did
+  RolltuiBindingsReport rep{};
+  const int ok = rolltui_bindings_load_json(b.get(), text.data(), text.size(), static_cast<unsigned char>(deliver),
+                                            is_library_scope_cb, nullptr, migrate_cb, nullptr, reason_cb, nullptr,
+                                            &rep);
+  copy_report(report, rep);
+  rolltui_bindings_report_release(&rep);
+  if (!ok) b.reset();
+  return b;
+}
+std::string bindings_to_json(const RolltuiBindings* b, std::string_view name) {
+  RolltuiStr text;
+  rolltui_bindings_dump_json(b, name.data(), name.size(), &text);
+  return text.str();
+}
+std::vector<RolltuiChord> chords_for(const RolltuiBindings* b, std::string_view action) {
+  const std::size_t n = rolltui_bindings_chord_count(b, action.data(), action.size());
+  std::vector<RolltuiChord> out;
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord c;
+    if (rolltui_bindings_chord_at(b, action.data(), action.size(), i, &c)) out.push_back(c);
+  }
+  return out;
+}
+// The HELP form: skips what this terminal cannot deliver (Bindings.hpp's "inert also
+// means invisible"). Reads through count-plus-index, allocating only the string returned.
+std::string chords_text(const RolltuiBindings* b, std::string_view action) {
+  const unsigned char p = rolltui_key_active_protocol();
+  const std::size_t n = rolltui_bindings_chord_count(b, action.data(), action.size());
+  std::string s;
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord c;
+    if (!rolltui_bindings_chord_at(b, action.data(), action.size(), i, &c)) continue;
+    if (!rolltui_key_deliverable(&c, p)) continue;
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    const std::size_t len = rolltui_chord_display(&c, buf, sizeof buf);
+    if (!s.empty()) s += ", ";
+    s.append(buf, len);
+  }
+  return s;
+}
+std::string_view action_for(const RolltuiBindings* b, const RolltuiChord& k, std::string_view scope) {
+  std::size_t len = 0;
+  const char* a = rolltui_bindings_action_for(b, &k, scope.data(), scope.size(), &len);
+  return a ? std::string_view(a, len) : std::string_view();
+}
+struct ActionDecl {
+  std::string name, description;
+};
+// declare(), simplified to the one shape this file uses (no mounted tools — `suggest()`
+// is a no-op over an empty tool list, so the only half that matters here is
+// undeclare-others-then-add).
+void declare(RolltuiBindings* b, const std::vector<ActionDecl>& declared) {
+  rolltui_bindings_undeclare_others(b, is_library_scope_cb, nullptr);
+  for (const ActionDecl& d : declared)
+    rolltui_bindings_add_action(b, d.name.data(), d.name.size(), d.description.data(), d.description.size());
+}
+
+std::string_view default_bindings_json() {
+  for (std::size_t i = 0; i < rolltui::embedded::kBindingsPresetCount; ++i)
+    if (rolltui::embedded::kBindingsPresets[i].first == "default") return rolltui::embedded::kBindingsPresets[i].second;
+  return "";
 }
 
 }  // namespace
@@ -191,7 +527,7 @@ int main() {
   {
     const KeyProtocol protocols[] = {KeyProtocol::Legacy, KeyProtocol::ModifyOtherKeys, KeyProtocol::Kitty};
     int checked = 0;
-    for (const KeyEvent& k : universe())
+    for (const RolltuiChord& k : universe())
       for (KeyProtocol p : protocols) {
         const bool rule = deliverable(k, p);
         const bool bytes = arrives_as_itself(k, p);
@@ -211,16 +547,22 @@ int main() {
   {
     bool monotone = true;
     std::string broke;
-    for (const KeyEvent& k : universe()) {
-      if (deliverable(k, KeyProtocol::Legacy) && !deliverable(k, KeyProtocol::ModifyOtherKeys)) { monotone = false; broke = show(k); }
-      if (deliverable(k, KeyProtocol::ModifyOtherKeys) && !deliverable(k, KeyProtocol::Kitty)) { monotone = false; broke = show(k); }
+    for (const RolltuiChord& k : universe()) {
+      if (deliverable(k, KeyProtocol::Legacy) && !deliverable(k, KeyProtocol::ModifyOtherKeys)) {
+        monotone = false;
+        broke = show(k);
+      }
+      if (deliverable(k, KeyProtocol::ModifyOtherKeys) && !deliverable(k, KeyProtocol::Kitty)) {
+        monotone = false;
+        broke = show(k);
+      }
     }
     check(monotone, "Legacy ⊆ ModifyOtherKeys ⊆ Kitty: an enhanced protocol never loses a chord [" + broke + "]");
   }
 
   // ---- 3. THE ROWS THE MILESTONE IS ABOUT, NAMED ------------------------------------
   {
-    const KeyEvent ctrl_shift_p = ch(U'p', true, false, true);
+    const RolltuiChord ctrl_shift_p = ch(U'p', true, false, true);
     check(!deliverable(ctrl_shift_p, KeyProtocol::Legacy) && !deliverable(ctrl_shift_p, KeyProtocol::ModifyOtherKeys) &&
               deliverable(ctrl_shift_p, KeyProtocol::Kitty),
           "ctrl+shift+p: not on legacy, not on modifyOtherKeys, yes on kitty — the milestone's own chord");
@@ -235,26 +577,27 @@ int main() {
     // THE ROW A GUESSED BLACKLIST GETS WRONG. "ctrl+shift+anything needs kitty" is the
     // obvious rule and it is false: the functional keys have carried a modifier
     // parameter since xterm, which is why the shipped bindings can and do use this.
-    const KeyEvent ctrl_shift_left = key(Key::Left, true, false, true);
+    const RolltuiChord ctrl_shift_left = key(ROLLTUI_KEY_LEFT, true, false, true);
     check(deliverable(ctrl_shift_left, KeyProtocol::Legacy) &&
               encode_key(ctrl_shift_left, KeyProtocol::Legacy) == std::string("\x1b[1;6D"),
           "ctrl+shift+left IS deliverable on a plain terminal: CSI 1;6D [xterm ctlseqs; kitty legacy functional table]");
-    check(deliverable(key(Key::F12, true, true, true), KeyProtocol::Legacy),
+    check(deliverable(key(kF12, true, true, true), KeyProtocol::Legacy),
           "…and so is ctrl+alt+shift+f12: every combination, on every functional key");
 
     // The other side of the same coin: Enter/Tab/Backspace/Escape are NOT functional
     // keys and carry almost nothing.
-    check(!deliverable(key(Key::Enter, false, false, true), KeyProtocol::Legacy) &&
-              !deliverable(key(Key::Enter, true), KeyProtocol::Legacy) &&
-              deliverable(key(Key::Enter, false, true), KeyProtocol::Legacy),
+    check(!deliverable(key(ROLLTUI_KEY_ENTER, false, false, true), KeyProtocol::Legacy) &&
+              !deliverable(key(ROLLTUI_KEY_ENTER, true), KeyProtocol::Legacy) &&
+              deliverable(key(ROLLTUI_KEY_ENTER, false, true), KeyProtocol::Legacy),
           "shift+enter and ctrl+enter are legacy-undeliverable (all three are 0x0D); alt+enter is ESC CR and works");
-    check(deliverable(key(Key::Enter, false, false, true), KeyProtocol::Kitty) &&
-              encode_key(key(Key::Enter, false, false, true), KeyProtocol::Kitty) == std::string("\x1b[13;2u"),
+    check(deliverable(key(ROLLTUI_KEY_ENTER, false, false, true), KeyProtocol::Kitty) &&
+              encode_key(key(ROLLTUI_KEY_ENTER, false, false, true), KeyProtocol::Kitty) == std::string("\x1b[13;2u"),
           "…and kitty tells Shift+Enter from Enter: CSI 13;2u [kitty functional key codes: ENTER 13]");
-    check(deliverable(key(Key::Tab, false, false, true), KeyProtocol::Legacy) &&
-              encode_key(key(Key::Tab, false, false, true), KeyProtocol::Legacy) == std::string("\x1b[Z"),
+    check(deliverable(key(ROLLTUI_KEY_TAB, false, false, true), KeyProtocol::Legacy) &&
+              encode_key(key(ROLLTUI_KEY_TAB, false, false, true), KeyProtocol::Legacy) == std::string("\x1b[Z"),
           "shift+tab is the exception on Tab: back-tab, CSI Z — which is why stack.focus_prev may use it");
-    check(!deliverable(key(Key::Tab, true), KeyProtocol::Legacy) && !deliverable(key(Key::Escape, false, true), KeyProtocol::Legacy),
+    check(!deliverable(key(ROLLTUI_KEY_TAB, true), KeyProtocol::Legacy) &&
+              !deliverable(key(ROLLTUI_KEY_ESCAPE, false, true), KeyProtocol::Legacy),
           "…but ctrl+tab is 0x09 (Tab's own byte) and alt+escape is ESC ESC (two Escapes): neither survives");
 
     // The control-code collisions, each named for the key that already owns the byte.
@@ -271,7 +614,8 @@ int main() {
 
     // Shift on a character is not a chord anywhere: the layout folded it in.
     check(!deliverable(ch(U'p', false, false, true), KeyProtocol::Kitty) &&
-              undeliverable_reason(ch(U'p', false, false, true), KeyProtocol::Kitty).find("shifted character") != std::string::npos,
+              undeliverable_reason(ch(U'p', false, false, true), KeyProtocol::Kitty).find("shifted character") !=
+                  std::string::npos,
           "shift+p is the character 'P' in every protocol, kitty included — and the reason says so");
     // …with exactly one multi-modifier exception legacy really does carry.
     check(deliverable(ch(U'b', false, true, true), KeyProtocol::Legacy) &&
@@ -285,7 +629,7 @@ int main() {
   {
     const char* file = R"({"name":"p","bindings":{"input.submit":["enter"],"app.palette":["ctrl+shift+p"],"app.help":["f1"]}})";
     BindingsLoadReport legacy;
-    std::optional<Bindings> b = Bindings::from_json(file, legacy, KeyProtocol::Legacy);
+    BindingsPtr b = bindings_from_json(file, legacy, KeyProtocol::Legacy);
     check(b && !legacy.clean() && legacy.undeliverable.size() == 1 &&
               legacy.undeliverable[0] ==
                   "app.palette: 'ctrl+shift+p' cannot be delivered by this terminal; it needs the kitty keyboard protocol",
@@ -296,36 +640,38 @@ int main() {
     // is the assertion that proves the answer is the terminal's and not a blacklist:
     // one file, one loader, two verdicts, decided only by the protocol argument.
     BindingsLoadReport kitty;
-    std::optional<Bindings> k = Bindings::from_json(file, kitty, KeyProtocol::Kitty);
+    BindingsPtr k = bindings_from_json(file, kitty, KeyProtocol::Kitty);
     check(k && kitty.clean(), "…and the SAME FILE loads clean under kitty [" + kitty.summary() + "]");
 
     // Kept, not dropped: today's terminal is not tomorrow's, and a bindings file is the
     // user's. The row round-trips through save; what changes is that nothing emits it.
-    check(b && b->chords_for("app.palette").size() == 1,
+    check(b && chords_for(b.get(), "app.palette").size() == 1,
           "a refused chord is KEPT in the table, so `bindings save` never eats it");
     BindingsLoadReport rt;
-    std::optional<Bindings> back = Bindings::from_json(b->to_json("p"), rt, KeyProtocol::Kitty);
-    check(back && rt.clean() && back->chords_for("app.palette").size() == 1,
+    BindingsPtr back = bindings_from_json(bindings_to_json(b.get(), "p"), rt, KeyProtocol::Kitty);
+    check(back && rt.clean() && chords_for(back.get(), "app.palette").size() == 1,
           "…and comes back alive on a terminal that can deliver it, with no edit to the file");
 
     // Inert, and invisible with it.
     set_active_key_protocol(KeyProtocol::Legacy);
-    b->declare({{"app.palette", "the palette"}});
-    check(b->action_for(ch(U'p', true, false, true), "app").empty(),
+    declare(b.get(), {{"app.palette", "the palette"}});
+    check(action_for(b.get(), ch(U'p', true, false, true), "app").empty(),
           "…while on this terminal it answers no key: kept and inert, exactly as an undeclared action's row is");
-    check(b->chords_text("app.palette").empty() && !b->chords_for("app.palette").empty(),
+    check(chords_text(b.get(), "app.palette").empty() && !chords_for(b.get(), "app.palette").empty(),
           "…and the HELP form drops it while the table keeps it: a shortcut printed is a promise the key works");
     set_active_key_protocol(KeyProtocol::Kitty);
-    check(b->action_for(ch(U'p', true, false, true), "app") == "app.palette" && b->chords_text("app.palette") == "Ctrl-Shift-P",
+    check(action_for(b.get(), ch(U'p', true, false, true), "app") == "app.palette" &&
+              chords_text(b.get(), "app.palette") == "Ctrl-Shift-P",
           "…and on kitty the very same table answers the key and prints the shortcut");
     set_active_key_protocol(KeyProtocol::Legacy);
 
     // Neither of the two mercy rungs may become an undeliverability refusal by accident.
     BindingsLoadReport other;
-    std::optional<Bindings> o = Bindings::from_json(
-        R"({"name":"o","bindings":{"input.submit":["enter"],"other.thing":["f9"],"playground.quit":["ctrl+q"]}})", other, KeyProtocol::Legacy);
-    check(o && other.clean() && other.migrated.size() == 1 && o->chords_for("studio.quit").size() == 1 &&
-              o->chords_for("other.thing").size() == 1,
+    BindingsPtr o = bindings_from_json(
+        R"({"name":"o","bindings":{"input.submit":["enter"],"other.thing":["f9"],"playground.quit":["ctrl+q"]}})",
+        other, KeyProtocol::Legacy);
+    check(o && other.clean() && other.migrated.size() == 1 && chords_for(o.get(), "studio.quit").size() == 1 &&
+              chords_for(o.get(), "other.thing").size() == 1,
           "another screen's action is still kept and a renamed one still migrated: deliverability touches neither");
   }
 
@@ -334,7 +680,7 @@ int main() {
   // a name as well as an exit status, the way Phase 11 m1's tool-row abort is.
   {
     BindingsLoadReport rep;
-    std::optional<Bindings> d = Bindings::from_json(default_bindings_json(), rep, KeyProtocol::Legacy);
+    BindingsPtr d = bindings_from_json(default_bindings_json(), rep, KeyProtocol::Legacy);
     std::string named;
     for (const std::string& u : rep.undeliverable) named += " " + u;
     check(d && rep.undeliverable.empty(),
