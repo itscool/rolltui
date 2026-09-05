@@ -20,72 +20,28 @@ extern const std::size_t kBindingsPresetCount;
 // ---- the action table ------------------------------------------------------------------
 
 const std::vector<ActionInfo>& library_actions() {
-  static const std::vector<ActionInfo> t = {
-      {"input.submit", "send the line (always Enter)"},
-      {"input.newline", "insert a newline"},
-      {"input.backspace", "erase before the caret (or the selection)"},
-      {"input.delete", "erase after the caret (or the selection)"},
-      {"input.kill_word_backward", "kill the word before the caret"},
-      {"input.kill_word_forward", "kill the word after the caret"},
-      {"input.kill_to_line_start", "kill to the start of the line"},
-      {"input.kill_to_line_end", "kill to the end of the line"},
-      {"input.left", "move one grapheme left"},
-      {"input.right", "move one grapheme right"},
-      {"input.word_left", "move one word left"},
-      {"input.word_right", "move one word right"},
-      {"input.line_start", "start of the line (scrolls when empty)"},
-      {"input.line_end", "end of the line (scrolls when empty)"},
-      {"input.up", "up a row, or the previous history entry"},
-      {"input.down", "down a row, or the next history entry"},
-      {"input.select_left", "extend the selection one grapheme left"},
-      {"input.select_right", "extend the selection one grapheme right"},
-      {"input.select_word_left", "extend the selection one word left"},
-      {"input.select_word_right", "extend the selection one word right"},
-      {"input.select_line_start", "extend the selection to the start of the line"},
-      {"input.select_line_end", "extend the selection to the end of the line"},
-      {"input.select_up", "extend the selection up a row"},
-      {"input.select_down", "extend the selection down a row"},
-      {"input.select_all", "select all"},
-      {"input.clear_selection", "clear the selection"},
-      {"input.copy", "copy the selection"},
-      {"input.eof", "end of input on an empty line, else delete"},
-      {"input.undo", "undo the last group of edits"},
-      {"input.redo", "redo"},
-      {"transcript.page_up", "scroll a page up"},
-      {"transcript.page_down", "scroll a page down"},
-      {"transcript.top", "scroll to the top"},
-      {"transcript.bottom", "scroll to the bottom"},
-      {"transcript.line_up", "scroll a line up"},
-      {"transcript.line_down", "scroll a line down"},
-      {"transcript.find_next", "go to the next match"},
-      {"transcript.find_prev", "go to the previous match"},
-      {"transcript.fold", "toggle the first folded block in view"},
-      {"transcript.copy", "copy the selection again"},
-      {"transcript.clear_selection", "clear the selection"},
-      {"menu.up", "previous item"},
-      {"menu.down", "next item"},
-      {"menu.page_up", "a page of items up"},
-      {"menu.page_down", "a page of items down"},
-      {"menu.first", "the first item"},
-      {"menu.last", "the last item"},
-      {"menu.activate", "act on the item"},
-      {"menu.descend", "descend into a submenu or choice"},
-      {"menu.ascend", "up one level"},
-      {"menu.back", "clear the filter / up a level / close"},
-      {"menu.erase", "erase the last filter character"},
-      {"edit.commit", "commit the value being edited"},
-      {"edit.cancel", "cancel the edit (the value returns)"},
-      {"edit.step_up", "a number field: step up"},
-      {"edit.step_down", "a number field: step down"},
-      {"stack.close_popup", "close the topmost popup"},
-      {"stack.focus_next", "move focus to the next window"},
-      {"stack.focus_prev", "move focus to the previous window"},
-      // Nothing follows the WIDGET scopes. `app.*` left this table in Phase 10 m4 (it is
-      // the APPLICATION's, and a layout file declares it); `editor.*` and the studio's
-      // followed it in Phase 11 m1 (they are the library's own TOOLS', and whoever mounts
-      // a tool declares them — rolltui/tools/tool_actions.hpp). Adding a scope here means
-      // claiming EVERY host performs it.
-  };
+  // THE TABLE IS THE C's NOW (`c/rolltui_library_actions.c`), and this builds the C++ view
+  // of it once. It moved because four consumers had copied all 59 rows verbatim when the
+  // shim stopped being available — the vocabulary this rule meant to keep singular had
+  // become quintuple. Built lazily and kept: the strings are static literals, so the
+  // string_views below borrow rather than own.
+  static const std::vector<ActionInfo> t = [] {
+    std::vector<ActionInfo> v;
+    const size_t n = rolltui_library_action_count();
+    v.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      size_t nl = 0, dl = 0;
+      const char* nm = rolltui_library_action_name(i, &nl);
+      const char* ds = rolltui_library_action_description(i, &dl);
+      // string_view DIRECTLY onto the C's storage — never through a std::string. The
+      // accessors borrow into static literals that outlive the process, which is exactly
+      // what a string_view wants; constructing a std::string here would make a temporary,
+      // take a view of it, and leave that view dangling at the end of the expression. I
+      // wrote it that way first and eleven suites caught it.
+      v.push_back({std::string_view(nm, nl), std::string_view(ds, dl)});
+    }
+    return v;
+  }();
   return t;
 }
 

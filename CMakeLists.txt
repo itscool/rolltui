@@ -137,6 +137,8 @@ add_library(rolltui STATIC
                               #   configurations, and for a second reason: a HOST fills it,
                               #   so two shapes of an entry would be two things to disagree.
   DocumentCpp.cpp             #   …and its C++ half.
+  c/rolltui_library_actions.c # Phase 17: the 59 library actions as DATA, once — four
+                              #   consumers had each copied them verbatim.
   c/rolltui_render.c          # the frame -> bytes step `rolltui_screen.h` deliberately
                               #   deferred ("porting them is its own step"): render_diff,
                               #   render_full and frame_to_text, filling a caller's buffer.

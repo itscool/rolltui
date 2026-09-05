@@ -231,6 +231,17 @@ int rolltui_bindings_load_json(RolltuiBindings* b, const char* text, size_t len,
  * chords must round-trip (Bindings.hpp's kept-and-inert rule). */
 void rolltui_bindings_dump_json(const RolltuiBindings* b, const char* name, size_t name_len, RolltuiStr* out);
 
+
+/* ---- THE LIBRARY'S CLOSED ACTION TABLE (Phase 17) ---------------------------------------
+ * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
+ * used to live only in `Bindings.cpp` on the rule that the C is TOLD which scopes are the
+ * library's rather than storing the table — right about SCOPES, wrong about the TABLE: with
+ * the shim gone, four consumers had each copied all 59 rows verbatim. Both accessors BORROW
+ * into static storage, valid for the life of the process. */
+size_t rolltui_library_action_count(void);
+const char* rolltui_library_action_name(size_t i, size_t* len);
+const char* rolltui_library_action_description(size_t i, size_t* len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -280,78 +280,32 @@ KeyProtocol negotiated_with(const std::string& reply) {
   return p;
 }
 
-// ---- bindings: the table, its file format, and the vocabulary rolltui_bindings.h
-// deliberately does not carry — `library_actions()` (which actions exist) and
-// `migrated_action()` (which three were renamed) stay in Bindings.cpp "for the reason m2
-// kept Role out of rolltui_diff.h — a vocabulary written down twice is a second thing to
-// drift", so a caller reaching for the C API hands them over itself, the same trade
-// tests/input_test.cpp made for its own action table (kActions/kRoles there). Copied
-// verbatim from Bindings.cpp's library_actions().
+// ---- the library's 59 actions, READ FROM THE C rather than copied ----------------------
+// This file used to carry a verbatim duplicate of the whole table. It moved into
+// `c/rolltui_library_actions.c` on 2026-09-04 precisely because four consumers had each
+// grown one — the vocabulary a "written down twice drifts" rule was protecting had become
+// quintuple. Now there is one table and this reads it.
 struct ActionInfo {
-  std::string_view name, description;
+  std::string_view name, description;  // BORROWS into the C's static literals
 };
 const std::vector<ActionInfo>& library_actions() {
-  static const std::vector<ActionInfo> t = {
-      {"input.submit", "send the line (always Enter)"},
-      {"input.newline", "insert a newline"},
-      {"input.backspace", "erase before the caret (or the selection)"},
-      {"input.delete", "erase after the caret (or the selection)"},
-      {"input.kill_word_backward", "kill the word before the caret"},
-      {"input.kill_word_forward", "kill the word after the caret"},
-      {"input.kill_to_line_start", "kill to the start of the line"},
-      {"input.kill_to_line_end", "kill to the end of the line"},
-      {"input.left", "move one grapheme left"},
-      {"input.right", "move one grapheme right"},
-      {"input.word_left", "move one word left"},
-      {"input.word_right", "move one word right"},
-      {"input.line_start", "start of the line (scrolls when empty)"},
-      {"input.line_end", "end of the line (scrolls when empty)"},
-      {"input.up", "up a row, or the previous history entry"},
-      {"input.down", "down a row, or the next history entry"},
-      {"input.select_left", "extend the selection one grapheme left"},
-      {"input.select_right", "extend the selection one grapheme right"},
-      {"input.select_word_left", "extend the selection one word left"},
-      {"input.select_word_right", "extend the selection one word right"},
-      {"input.select_line_start", "extend the selection to the start of the line"},
-      {"input.select_line_end", "extend the selection to the end of the line"},
-      {"input.select_up", "extend the selection up a row"},
-      {"input.select_down", "extend the selection down a row"},
-      {"input.select_all", "select all"},
-      {"input.clear_selection", "clear the selection"},
-      {"input.copy", "copy the selection"},
-      {"input.eof", "end of input on an empty line, else delete"},
-      {"input.undo", "undo the last group of edits"},
-      {"input.redo", "redo"},
-      {"transcript.page_up", "scroll a page up"},
-      {"transcript.page_down", "scroll a page down"},
-      {"transcript.top", "scroll to the top"},
-      {"transcript.bottom", "scroll to the bottom"},
-      {"transcript.line_up", "scroll a line up"},
-      {"transcript.line_down", "scroll a line down"},
-      {"transcript.find_next", "go to the next match"},
-      {"transcript.find_prev", "go to the previous match"},
-      {"transcript.fold", "toggle the first folded block in view"},
-      {"transcript.copy", "copy the selection again"},
-      {"transcript.clear_selection", "clear the selection"},
-      {"menu.up", "previous item"},
-      {"menu.down", "next item"},
-      {"menu.page_up", "a page of items up"},
-      {"menu.page_down", "a page of items down"},
-      {"menu.first", "the first item"},
-      {"menu.last", "the last item"},
-      {"menu.activate", "act on the item"},
-      {"menu.descend", "descend into a submenu or choice"},
-      {"menu.ascend", "up one level"},
-      {"menu.back", "clear the filter / up a level / close"},
-      {"menu.erase", "erase the last filter character"},
-      {"edit.commit", "commit the value being edited"},
-      {"edit.cancel", "cancel the edit (the value returns)"},
-      {"edit.step_up", "a number field: step up"},
-      {"edit.step_down", "a number field: step down"},
-      {"stack.close_popup", "close the topmost popup"},
-      {"stack.focus_next", "move focus to the next window"},
-      {"stack.focus_prev", "move focus to the previous window"},
-  };
+  static const std::vector<ActionInfo> t = [] {
+    std::vector<ActionInfo> v;
+    const size_t n = rolltui_library_action_count();
+    v.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+      size_t nl = 0, dl = 0;
+      const char* nm = rolltui_library_action_name(i, &nl);
+      const char* ds = rolltui_library_action_description(i, &dl);
+      // string_view DIRECTLY onto the C's storage — never through a std::string. The
+      // accessors borrow into static literals that outlive the process, which is exactly
+      // what a string_view wants; constructing a std::string here would make a temporary,
+      // take a view of it, and leave that view dangling at the end of the expression. I
+      // wrote it that way first and eleven suites caught it.
+      v.push_back({std::string_view(nm, nl), std::string_view(ds, dl)});
+    }
+    return v;
+  }();
   return t;
 }
 std::string_view scope_of(std::string_view action) {
