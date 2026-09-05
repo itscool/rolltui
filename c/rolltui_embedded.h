@@ -24,6 +24,17 @@
 extern "C" {
 #endif
 
+/* BOTH FIELDS ARE BARE `const char*`, AND A C++ CALLER MUST NOT COMPARE THEM WITH `==`.
+ * `table[i].name == "default"` compiles and compares POINTERS. It cost an afternoon on
+ * 2026-09-04: Release passed 51/51 because the compiler merged the identical literals so the
+ * pointers really were equal, and the RelWithDebInfo sanitizer build — which did not merge
+ * them — failed 14 of 31 suites. The green was not stale; it was true and useless.
+ *
+ * Everywhere else in this library an owned string is `RolltuiStr`, which carries
+ * `operator==(const char*)` and does the right thing. This struct cannot be one: it is a
+ * static table of literals that owns nothing. So the obligation moves to the caller —
+ * **wrap in `std::string_view` before comparing**, and prefer `rolltui_embedded_text()`
+ * below, which does the comparison correctly once so no caller has to. */
 typedef struct RolltuiEmbeddedFile {
   const char* name; /* the file's stem: "default", "no-panel" */
   const char* text; /* its bytes, NUL-terminated */
