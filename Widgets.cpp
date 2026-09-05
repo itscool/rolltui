@@ -65,13 +65,6 @@ void call_highlighter(void* ctx, const char* lang, std::size_t lang_n, const Rol
 
 }  // namespace
 
-std::string WindowsReport::summary() const {
-  if (bad_values.empty()) return {};
-  std::string s = bad_values.front();
-  if (bad_values.size() > 1) s += " (+" + std::to_string(bad_values.size() - 1) + " more)";
-  return s;
-}
-
 Rect content_rect(const ResolvedNode& rn) {
   Rect r;
   rolltui_content_rect(&rn, &r);
@@ -113,38 +106,35 @@ int draw_scrolled_text(const ResolvedNode& rn, Frame& f, const Theme& theme, std
   return total;
 }
 
+// PHASE 17 m2a: these four rules had a `static` C twin in `rolltui_widget_kinds.c`, described
+// there as "the same one-file duplication `Input.cpp`'s `kActions` already is". True while both
+// files existed; m2c deletes this one, and a rule with two implementations then becomes a rule
+// with one implementation and a deleted copy — or, worse, a re-derivation in whichever host
+// reached for it. The C's is THE implementation; these are one line each.
 std::string help_document(const Bindings& b, std::string_view lead, const std::vector<std::string>& scopes,
                          std::string_view note) {
-  std::string out(lead);
-  for (const std::string& scope : scopes) {
-    out += scope + ":\n";
-    for (const std::string& line : help_lines(b, scope)) out += "  " + line + "\n";
-  }
-  return out + std::string(note);
+  std::vector<const char*> ptrs;
+  std::vector<std::size_t> lens;
+  ptrs.reserve(scopes.size());
+  lens.reserve(scopes.size());
+  for (const std::string& scope : scopes) { ptrs.push_back(scope.data()); lens.push_back(scope.size()); }
+  RolltuiStr out{};
+  rolltui_help_document(b.handle(), lead.data(), lead.size(), ptrs.data(), lens.data(), ptrs.size(), note.data(),
+                        note.size(), &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return s;
 }
 
-int input_max_rows(int parent_extent, int border_rows) { return std::max(1, parent_extent / 2 - border_rows); }
+int input_max_rows(int parent_extent, int border_rows) { return rolltui_input_max_rows(parent_extent, border_rows); }
 
 int input_rows(int text_rows, int end_col, int note_width, int width, int max_rows) {
-  max_rows = std::max(max_rows, 1);
-  const int rows = std::clamp(text_rows, 1, max_rows);
-  if (note_width <= 0) return rows;
-  if (rows == 1 && end_col + 2 + note_width <= width) return 1;
-  return std::min(rows + 1, max_rows);
+  return rolltui_input_window_rows(text_rows, end_col, note_width, width, max_rows);
 }
 
 bool scroll_by_action(const KeyEvent& k, const Bindings& b, int page, int total, int& top) {
-  page = std::max(page, 1);
-  const std::string_view a = b.action_for(k, "transcript");
-  if (a == "transcript.line_up") top -= 1;
-  else if (a == "transcript.line_down") top += 1;
-  else if (a == "transcript.page_up") top -= page;
-  else if (a == "transcript.page_down") top += page;
-  else if (a == "transcript.top") top = 0;
-  else if (a == "transcript.bottom") top = total;
-  else return false;
-  top = std::clamp(top, 0, std::max(total - page, 0));
-  return true;
+  const RolltuiChord c = chord_of(k);
+  return rolltui_scroll_by_action(rolltui_scroll_text_default_actions(), b.handle(), &c, page, total, &top) != 0;
 }
 
 // ---- the widgets ---------------------------------------------------------------------
@@ -459,6 +449,10 @@ WindowsReport Windows::sync(const WindowStack& stack) {
     const char* p = rolltui_windows_report_at(w_.get(), i, &n);
     rep.bad_values.emplace_back(p, n);
   }
+  RolltuiStr s{};
+  rolltui_windows_report_summary(w_.get(), &s);
+  rep.summary_.assign(s.p ? s.p : "", s.n);
+  rolltui_str_free(&s);
   return rep;
 }
 

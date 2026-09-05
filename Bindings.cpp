@@ -1,6 +1,7 @@
 // rolltui/Bindings.cpp — see Bindings.hpp.
 #include "rolltui/Bindings.hpp"
 #include "rolltui/c/rolltui_embedded.h"
+#include "rolltui/c/rolltui_widget_kinds.h"  // the help-lines rule, one implementation (Phase 17 m2a)
 
 #include <algorithm>
 #include <cctype>
@@ -293,18 +294,13 @@ std::vector<KeyEvent> Bindings::chords_for(std::string_view action) const {
 // Read through count-plus-index rather than through `chords_for`: this one IS on a draw
 // path (a menu item's shortcut), so it allocates the string it returns and nothing else.
 std::string Bindings::chords_text(std::string_view action) const {
-  const unsigned char p = rolltui_key_active_protocol();
-  const std::size_t n = rolltui_bindings_chord_count(b_.get(), action.data(), action.size());
-  std::string s;
-  for (std::size_t i = 0; i < n; ++i) {
-    RolltuiChord c;
-    if (!rolltui_bindings_chord_at(b_.get(), action.data(), action.size(), i, &c)) continue;
-    if (!rolltui_key_deliverable(&c, p)) continue;
-    char buf[ROLLTUI_CHORD_STRING_MAX];
-    const std::size_t len = rolltui_chord_display(&c, buf, sizeof buf);
-    if (!s.empty()) s += ", ";
-    s.append(buf, len);
-  }
+  // PHASE 17 m2a: the rule — and above all the undeliverable filter — is the C's one
+  // implementation now. This is on a draw path, so the `RolltuiStr` is a local the string is
+  // moved out of; the note above about allocating exactly one string still holds.
+  RolltuiStr out{};
+  rolltui_bindings_chords_text(b_.get(), action.data(), action.size(), &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
   return s;
 }
 
@@ -333,17 +329,27 @@ void Bindings::clear(std::string_view action) { rolltui_bindings_clear(b_.get(),
 
 // ---- file format ----------------------------------------------------------------------------
 
+// PHASE 17 m2a: `rolltui_bindings_report_summary` has existed since Phase 15 and says at its
+// own declaration that it "mirrors `BindingsLoadReport::summary()` exactly" — while this
+// function went on composing the identical English beside it. A mirror is a copy with a
+// promise attached; the promise is what nothing checks. This now fills the C report from the
+// C++ one and asks the C for the sentence, so there is one composition.
 std::string BindingsLoadReport::summary() const {
   if (clean()) return "";
   if (!error.empty()) return error;
-  std::string s;
-  auto add = [&](const std::string& x) { if (!s.empty()) s += "; "; s += x; };
-  for (const std::string& x : bad_values) add("bad: " + x);
-  for (const std::string& x : conflicts) add("conflict: " + x);
-  for (const std::string& x : bad_chords) add("chord: " + x);
-  for (const std::string& x : undeliverable) add("undeliverable: " + x);
-  for (const std::string& x : unknown_actions) add("unknown action: " + x);
-  for (const std::string& x : unknown_keys) add("unknown: " + x);
+  RolltuiBindingsReport r{};
+  rolltui_bindings_report_set_error(&r, error.data(), error.size());
+  for (const std::string& x : bad_values) rolltui_bindings_report_add_bad_value(&r, x.data(), x.size());
+  for (const std::string& x : conflicts) rolltui_bindings_report_add_conflict(&r, x.data(), x.size());
+  for (const std::string& x : bad_chords) rolltui_bindings_report_add_bad_chord(&r, x.data(), x.size());
+  for (const std::string& x : undeliverable) rolltui_bindings_report_add_undeliverable(&r, x.data(), x.size());
+  for (const std::string& x : unknown_actions) rolltui_bindings_report_add_unknown_action(&r, x.data(), x.size());
+  for (const std::string& x : unknown_keys) rolltui_bindings_report_add_unknown_key(&r, x.data(), x.size());
+  RolltuiStr out{};
+  rolltui_bindings_report_summary(&r, &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  rolltui_bindings_report_release(&r);
   return s;
 }
 
@@ -427,29 +433,29 @@ const Bindings& default_bindings() {
   return *cache;
 }
 
+// Splits `rolltui_help_scope_lines`' newline-terminated block into the vector this signature
+// has always returned. The RULE — which actions, the chord column's width and its 22/12 caps,
+// "(unbound)", and dropping a chord this terminal cannot deliver — is the C's ONE
+// implementation (`rolltui_widget_kinds.h`) since Phase 17 m2a. It had three: here,
+// `rolltui_widget_kinds.c`, and a verbatim third in `bindings_test.cpp` that the suite then
+// asserted against instead of against this one.
 std::vector<std::string> help_lines(const Bindings& b, std::string_view scope, const std::vector<std::string>& actions) {
+  std::vector<const char*> ptrs;
+  std::vector<std::size_t> lens;
+  ptrs.reserve(actions.size());
+  lens.reserve(actions.size());
+  for (const std::string& a : actions) { ptrs.push_back(a.data()); lens.push_back(a.size()); }
+  RolltuiStr buf{};
+  rolltui_help_scope_lines(b.handle(), scope.data(), scope.size(), ptrs.data(), lens.data(), ptrs.size(), nullptr, 0,
+                           &buf);
   std::vector<std::string> out;
-  std::vector<std::string> list = actions;
-  if (list.empty())
-    for (const std::string& a : b.actions())
-      if (scope_of(a) == scope) list.push_back(a);
-  // The chord column is padded to the widest chord, capped at 24 cells so one long
-  // chord does not push every description off a narrow popup; a longer chord is simply
-  // followed by two spaces.
-  std::size_t width = 0;
-  std::vector<std::string> chords;
-  for (const std::string& a : list) {
-    chords.push_back(b.chords_text(a));
-    width = std::max(width, std::min<std::size_t>(chords.back().size(), 22));
+  const std::string_view all(buf.p ? buf.p : "", buf.n);
+  for (std::size_t i = 0; i < all.size();) {
+    const std::size_t nl = all.find('\n', i);
+    out.emplace_back(all.substr(i, nl - i));
+    i = nl + 1;
   }
-  const std::size_t column = std::max<std::size_t>(width + 2, 12);
-  for (std::size_t i = 0; i < list.size(); ++i) {
-    std::string line = chords[i].empty() ? "(unbound)" : chords[i];
-    if (line.size() + 2 <= column) line.append(column - line.size(), ' ');
-    else line += "  ";
-    line += b.description(list[i]);
-    out.push_back(line);
-  }
+  rolltui_str_free(&buf);
   return out;
 }
 

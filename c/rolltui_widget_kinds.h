@@ -113,6 +113,42 @@ void rolltui_widget_kinds_register(RolltuiWindows* w);
  * setters after; this is a default, not a policy. Idempotent; NULL is a no-op. */
 void rolltui_windows_set_library_defaults(RolltuiWindows* w);
 
+/* ---- THE FOUR RULES THE KINDS APPLY, public since Phase 17 m2a -----------------------------
+ *
+ * Each of these was `static` here AND written a second time in C++ (`rolltui::scroll_by_action`,
+ * `input_max_rows`, `input_rows`, `help_document`/`help_lines`), and this header called that
+ * "the same one-file duplication `Input.cpp`'s `kActions` already is". It was one-file only
+ * while the C++ file existed; m2c deletes it, and then two implementations of a rule become one
+ * implementation and one deleted copy — or, if a host had reached for it, one implementation
+ * and a re-derivation. So the C's is THE one, and the C++ side is one line over each. */
+
+/* line_up/down, page_up/down, top/bottom applied to a `page`-row view of `total` lines, with
+ * `*top` clamped to [0, total-page]. 0 when the chord is not one of the six. */
+int rolltui_scroll_by_action(const RolltuiScrollTextActions* actions, const RolltuiBindings* bindings,
+                             const RolltuiChord* k, int page, int total, int* top);
+
+/* The input window's sizing rule: the cap is HALF the parent's extent less the border rows, at
+ * least 1; the rows are the text's capped at that, plus one for a note that cannot sit beside a
+ * single row. */
+int rolltui_input_max_rows(int parent_extent, int border_rows);
+int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int width, int max_rows);
+
+/* The key list for ONE scope, appended as "<indent><chord-or-(unbound)><pad><description>\n"
+ * rows, the chord column aligned to the widest (capped at 22, minimum column 12).
+ * Undeliverable chords are left out, which is why this takes the live table rather than names.
+ * `actions`/`action_lens`/`actions_n` name the rows and their order when non-empty; otherwise
+ * every action of `scope` in table order. `indent` prefixes every row (the help document uses
+ * two spaces; `rolltui::help_lines` uses none). */
+void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_t slen, const char* const* actions,
+                              const size_t* action_lens, size_t actions_n, const char* indent, size_t indent_len,
+                              RolltuiStr* out);
+
+/* The whole help document: `lead`, then one "<scope>:\n" section per scope with that scope's
+ * rows under it, then `note`. APPENDS to `out`. */
+void rolltui_help_document(const RolltuiBindings* b, const char* lead, size_t lead_len, const char* const* scopes,
+                           const size_t* scope_lens, size_t scopes_n, const char* note, size_t note_len,
+                           RolltuiStr* out);
+
 /* ---- input: the one slot of a built-in kind's ctx a caller still reaches by hand — a host's
  * floor on the window's height regardless of what the text says (roll holds the prompt as tall
  * as the modal placed over it). `ctx` must be one the `input` factory built; a host reaches it

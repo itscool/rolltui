@@ -114,6 +114,13 @@ int rolltui_bindings_has_row(const RolltuiBindings* b, const char* action, size_
 void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len);
 
 size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action, size_t len);
+
+/* The HELP spelling: every chord bound to `action` that THIS TERMINAL can deliver, in display
+ * form ("Ctrl-W, Alt-Backspace"), comma-separated. CLEARS `out`. The undeliverable filter is
+ * what makes this the library's and not a loop a caller writes — it had three independent
+ * implementations before Phase 17 m2a, the third written by an agent that could reach neither
+ * of the other two. */
+void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out);
 /* Chord `i` of the row, into `out`. 0 when there is none. */
 int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out);
 /* The action of `scope` this chord serves, or NULL: a row that nothing declares never

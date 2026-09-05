@@ -2,6 +2,7 @@
  * rolltui_widgets.h; the rules are rolltui/Widgets.hpp's. */
 #include "rolltui/c/rolltui_widgets.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -973,4 +974,20 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
   if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
   if (handle_scrollbar(w, window, len, wd, e)) return 1;
   return wd->vt->handle ? wd->vt->handle(wd->ctx, e) : 0;
+}
+
+
+/* ---- the report's one-line form (Phase 17 m2a) --------------------------------------------- */
+void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out) {
+  const size_t n = rolltui_windows_report_count(w);
+  size_t flen = 0;
+  const char* first;
+  if (!out || n == 0) return;
+  first = rolltui_windows_report_at(w, 0, &flen);
+  rolltui_str_append(out, first, flen);
+  if (n > 1) {
+    char buf[32];
+    const int k = snprintf(buf, sizeof buf, " (+%zu more)", n - 1);
+    if (k > 0) rolltui_str_append(out, buf, (size_t)k);
+  }
 }

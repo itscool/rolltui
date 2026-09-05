@@ -193,9 +193,31 @@ int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t le
 #define ROLLTUI_SAVE_EXISTS_ASK 2
 #define ROLLTUI_SAVE_BAD_NAME 3
 #define ROLLTUI_SAVE_WRITE_FAILED 4
-/* Save-as. The MESSAGE for the first four outcomes is a fixed sentence per outcome and is
- * built one level up, where the words already are; only WRITE_FAILED has a reason of its
- * own, which goes through `err`. */
+/* The SENTENCE for an outcome (Phase 17 m2a). The comment below used to end "...is a fixed
+ * sentence per outcome and is built one level up, where the words already are" — the same
+ * sentence, in the same shape, as the four other places this phase has had to reverse: the
+ * words were one level up in `Presets.cpp`, which m2c deletes. A fixed sentence per outcome is
+ * a table, and a table belongs with the constants it is indexed by. BORROWS a static literal;
+ * `*len` may be NULL; an out-of-range code reads back as "". WRITE_FAILED's own reason is
+ * still the caller's, through `err` below — that one is not fixed. */
+const char* rolltui_preset_save_result_text(int result, size_t* len);
+
+/* ---- THE STORE'S ONE-LINE PROBLEM SENTENCE (Phase 17 m2a) ----------------------------------
+ * `rolltui::PresetLoadReport::summary()`'s composition, moved with the words it composes: the
+ * error alone when there is one, else every problem as "<prefix>: <text>" joined with "; ", in
+ * a fixed order (this store's own bad values and unknown keys, then the colours part, then the
+ * layout part, then the bindings part). Seven call sites in `studio.cpp` and one in
+ * `presets_test.cpp` draw it, and `Presets.cpp` — where it lived — is deleted in m2c.
+ *
+ * The three nested reports are the DOMAIN reports the C already defines; any of them may be
+ * NULL, meaning "this store has no such part". APPENDS to `out`, and appends nothing when
+ * every part is clean. */
+void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* bad_values, size_t bad_values_n,
+                                   const RolltuiStr* unknown_keys, size_t unknown_keys_n,
+                                   const RolltuiThemeReport* colours, const RolltuiLayoutReport* layout,
+                                   const RolltuiBindingsReport* bindings, RolltuiStr* out);
+
+/* Save-as. Only WRITE_FAILED has a reason of its own, which goes through `err`. */
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiPutFn err,
                                  void* err_ctx);
 

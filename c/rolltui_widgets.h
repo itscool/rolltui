@@ -457,6 +457,12 @@ void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack);
 size_t rolltui_windows_report_count(const RolltuiWindows* w);
 const char* rolltui_windows_report_at(const RolltuiWindows* w, size_t i, size_t* len);
 
+/* The one-line form: the first bad value, plus " (+N more)" when there are others; "" when
+ * there are none. `rolltui::WindowsReport::summary()`'s rule, moved here in Phase 17 m2a
+ * because the struct that held it is deleted in m2c and every host draws this string.
+ * APPENDS to `out`. */
+void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out);
+
 /* Asks each widget for the outer extent it wants and writes it into the node (the only thing
  * a widget writes back into the layout tree). */
 void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, RolltuiRect box);

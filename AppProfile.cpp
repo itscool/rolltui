@@ -11,13 +11,21 @@
 
 namespace rolltui {
 
+// PHASE 17 m2a: `rolltui_app_profile_report_summary` says at its own declaration that it
+// "mirrors `AppProfileReport::summary()` exactly" — and this function composed the identical
+// English beside it. Same shape as `BindingsLoadReport::summary()` one file over: a mirror is
+// a copy with a promise attached, and the promise is the part nothing checks.
 std::string AppProfileReport::summary() const {
   if (clean()) return {};
   if (!error.empty()) return error;
-  std::string s;
-  auto add = [&](const std::string& x) { if (!s.empty()) s += "; "; s += x; };
-  for (const std::string& x : bad_values) add("bad: " + x);
-  for (const std::string& x : unknown_keys) add("unknown: " + x);
+  RolltuiAppProfileReport r{};
+  for (const std::string& x : bad_values) rolltui_app_profile_report_add_bad_value(&r, x.data(), x.size());
+  for (const std::string& x : unknown_keys) rolltui_app_profile_report_add_unknown_key(&r, x.data(), x.size());
+  RolltuiStr out{};
+  rolltui_app_profile_report_summary(&r, &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  rolltui_app_profile_report_release(&r);
   return s;
 }
 

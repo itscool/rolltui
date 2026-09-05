@@ -1707,3 +1707,72 @@ int rolltui_preset_setting_index(const char* key, size_t len) {
     if (kSettingTable[i].key_len == len && (len == 0 || memcmp(kSettingTable[i].key, key, len) == 0)) return (int)i;
   return -1;
 }
+
+
+/* ---- the save-as sentences (Phase 17 m2a) --------------------------------------------------
+ * Indexed by ROLLTUI_SAVE_*; `rolltui::to_string(SaveResult)`'s four, moved with them. */
+static const char* const kSaveResultText[] = {
+    "saved",
+    "refused: a shipped preset is read-only",
+    "a preset with that name exists; confirm to overwrite",
+    "not a preset name (letters, digits, - _ . ; not starting with a dot)",
+    "write failed",
+};
+
+const char* rolltui_preset_save_result_text(int result, size_t* len) {
+  const size_t n = sizeof kSaveResultText / sizeof kSaveResultText[0];
+  const char* s = (result >= 0 && (size_t)result < n) ? kSaveResultText[result] : "";
+  if (len) *len = strlen(s);
+  return s;
+}
+
+
+/* ---- the store's one-line problem sentence (Phase 17 m2a) ---------------------------------- */
+
+static void sum_add(RolltuiStr* out, size_t* started, const char* prefix, size_t plen, const char* text,
+                    size_t tlen) {
+  if (*started) rolltui_str_append(out, "; ", 2);
+  *started = 1;
+  rolltui_str_append(out, prefix, plen);
+  rolltui_str_append(out, text, tlen);
+}
+#define SUM_ADD(out, started, lit, text, tlen) sum_add((out), (started), (lit), sizeof(lit) - 1, (text), (tlen))
+
+void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* bad_values, size_t bad_values_n,
+                                   const RolltuiStr* unknown_keys, size_t unknown_keys_n,
+                                   const RolltuiThemeReport* colours, const RolltuiLayoutReport* layout,
+                                   const RolltuiBindingsReport* bindings, RolltuiStr* out) {
+  size_t started = 0, i;
+  if (!out) return;
+  /* An error is the whole sentence: nothing else loaded, so nothing else has anything to say. */
+  if (error && error->n) { rolltui_str_append(out, error->p, error->n); return; }
+  for (i = 0; i < bad_values_n; ++i) SUM_ADD(out, &started, "bad: ", bad_values[i].p, bad_values[i].n);
+  for (i = 0; i < unknown_keys_n; ++i) SUM_ADD(out, &started, "unknown: ", unknown_keys[i].p, unknown_keys[i].n);
+  if (colours) {
+    if (colours->error.n) SUM_ADD(out, &started, "colours: ", colours->error.p, colours->error.n);
+    if (colours->missing_roles_n) {
+      /* The one COUNTED part: naming forty missing roles one by one would bury the rest. */
+      char buf[64];
+      const int k = snprintf(buf, sizeof buf, "%zu roles missing (inherit text)", colours->missing_roles_n);
+      if (k > 0) SUM_ADD(out, &started, "colours: ", buf, (size_t)k);
+    }
+    for (i = 0; i < colours->bad_values_n; ++i)
+      SUM_ADD(out, &started, "colours: ", colours->bad_values[i].p, colours->bad_values[i].n);
+    for (i = 0; i < colours->unknown_keys_n; ++i)
+      SUM_ADD(out, &started, "colours: unknown ", colours->unknown_keys[i].p, colours->unknown_keys[i].n);
+  }
+  if (layout) {
+    if (layout->error.n) SUM_ADD(out, &started, "layout: ", layout->error.p, layout->error.n);
+    for (i = 0; i < layout->bad_values_n; ++i)
+      SUM_ADD(out, &started, "layout: ", layout->bad_values[i].p, layout->bad_values[i].n);
+    for (i = 0; i < layout->unknown_keys_n; ++i)
+      SUM_ADD(out, &started, "layout: unknown ", layout->unknown_keys[i].p, layout->unknown_keys[i].n);
+  }
+  if (bindings && !rolltui_bindings_report_clean(bindings)) {
+    RolltuiStr b;
+    memset(&b, 0, sizeof b);
+    rolltui_bindings_report_summary(bindings, &b);
+    SUM_ADD(out, &started, "bindings: ", b.p ? b.p : "", b.n);
+    rolltui_str_free(&b);
+  }
+}

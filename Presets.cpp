@@ -61,33 +61,80 @@ bool valid_preset_name(std::string_view name) { return rolltui_preset_valid_name
 
 }  // namespace preset_files
 
+namespace {
+// A `std::vector<std::string>` as the `RolltuiStr` array the C takes. `RolltuiStr` OWNS its
+// bytes in C++ (rolltui_str.h gives it a destructor), so this COPIES rather than lends — which
+// is right here and would be wrong on a draw path: a store's report is composed when a preset
+// loads, never per frame.
+std::vector<RolltuiStr> as_c(const std::vector<std::string>& v) {
+  std::vector<RolltuiStr> out;
+  out.reserve(v.size());
+  for (const std::string& s : v) out.emplace_back(s);
+  return out;
+}
+}  // namespace
+
+// PHASE 17 m2a: the COMPOSITION — which parts, in what order, with which prefixes — is
+// `rolltui_preset_report_summary`'s. Seven call sites in `studio.cpp` draw this sentence and
+// this file is deleted in m2c, so the words had to leave before their home did.
 std::string PresetLoadReport::summary() const {
   if (clean()) return "";
   if (!error.empty()) return error;
-  std::string s;
-  auto add = [&](const std::string& x) { if (!s.empty()) s += "; "; s += x; };
-  for (const std::string& b : bad_values) add("bad: " + b);
-  for (const std::string& u : unknown_keys) add("unknown: " + u);
-  if (!colours.error.empty()) add("colours: " + colours.error);
-  if (!colours.missing_roles.empty()) add("colours: " + std::to_string(colours.missing_roles.size()) + " roles missing (inherit text)");
-  for (const std::string& b : colours.bad_values) add("colours: " + b);
-  for (const std::string& u : colours.unknown_keys) add("colours: unknown " + u);
-  if (!layout.error.empty()) add("layout: " + layout.error);
-  for (const std::string& b : layout.bad_values) add("layout: " + b);
-  for (const std::string& u : layout.unknown_keys) add("layout: unknown " + u);
-  if (!bindings.clean()) add("bindings: " + bindings.summary());
+  const std::vector<RolltuiStr> bad = as_c(bad_values), unk = as_c(unknown_keys);
+  const std::vector<RolltuiStr> cbad = as_c(colours.bad_values), cunk = as_c(colours.unknown_keys),
+                                cmiss = as_c(colours.missing_roles);
+  const std::vector<RolltuiStr> lbad = as_c(layout.bad_values), lunk = as_c(layout.unknown_keys);
+  const std::vector<RolltuiStr> bbad = as_c(bindings.bad_values), bconf = as_c(bindings.conflicts),
+                                bchord = as_c(bindings.bad_chords), bund = as_c(bindings.undeliverable),
+                                bact = as_c(bindings.unknown_actions), bkey = as_c(bindings.unknown_keys);
+  RolltuiThemeReport c{};
+  c.error = colours.error;
+  c.bad_values = const_cast<RolltuiStr*>(cbad.data());
+  c.bad_values_n = cbad.size();
+  c.unknown_keys = const_cast<RolltuiStr*>(cunk.data());
+  c.unknown_keys_n = cunk.size();
+  c.missing_roles = const_cast<RolltuiStr*>(cmiss.data());
+  c.missing_roles_n = cmiss.size();
+  RolltuiLayoutReport l{};
+  l.error = layout.error;
+  l.bad_values = const_cast<RolltuiStr*>(lbad.data());
+  l.bad_values_n = lbad.size();
+  l.unknown_keys = const_cast<RolltuiStr*>(lunk.data());
+  l.unknown_keys_n = lunk.size();
+  RolltuiBindingsReport b{};
+  b.error = bindings.error;
+  b.bad_values = const_cast<RolltuiStr*>(bbad.data());
+  b.bad_values_n = bbad.size();
+  b.conflicts = const_cast<RolltuiStr*>(bconf.data());
+  b.conflicts_n = bconf.size();
+  b.bad_chords = const_cast<RolltuiStr*>(bchord.data());
+  b.bad_chords_n = bchord.size();
+  b.undeliverable = const_cast<RolltuiStr*>(bund.data());
+  b.undeliverable_n = bund.size();
+  b.unknown_actions = const_cast<RolltuiStr*>(bact.data());
+  b.unknown_actions_n = bact.size();
+  b.unknown_keys = const_cast<RolltuiStr*>(bkey.data());
+  b.unknown_keys_n = bkey.size();
+  // The three nested reports BORROW the arrays above for this call only, and their `_cap`
+  // fields stay 0 — nothing here is released through them, because the vectors own it all.
+  const RolltuiStr err(error);
+  RolltuiStr out{};
+  rolltui_preset_report_summary(&err, bad.data(), bad.size(), unk.data(), unk.size(), &c, &l, &b, &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
   return s;
 }
 
+// PHASE 17 m2a: the four sentences are the C's, beside the ROLLTUI_SAVE_* codes they are
+// indexed by. `rolltui_presets.h` carries the retraction of the comment that put them here.
+static_assert(static_cast<int>(SaveResult::Saved) == ROLLTUI_SAVE_SAVED &&
+                  static_cast<int>(SaveResult::WriteFailed) == ROLLTUI_SAVE_WRITE_FAILED,
+              "rolltui::SaveResult and ROLLTUI_SAVE_* must be the same vocabulary in the same order");
+
 std::string_view to_string(SaveResult r) {
-  switch (r) {
-    case SaveResult::Saved: return "saved";
-    case SaveResult::RefusedShipped: return "refused: a shipped preset is read-only";
-    case SaveResult::ExistsAsk: return "a preset with that name exists; confirm to overwrite";
-    case SaveResult::BadName: return "not a preset name (letters, digits, - _ . ; not starting with a dot)";
-    case SaveResult::WriteFailed: return "write failed";
-  }
-  return "";
+  std::size_t len = 0;
+  const char* p = rolltui_preset_save_result_text(static_cast<int>(r), &len);
+  return {p, len};
 }
 
 // ---- the Theme domain: file format ------------------------------------------------------

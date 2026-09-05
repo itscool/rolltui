@@ -128,6 +128,13 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_widgets.h"
+/* The eight built-in kinds' registration, the five vocabularies they draw with, and the four
+ * RULES they apply that a host applies too — scroll-by-action, the input window's two sizing
+ * rules, and the help document. PUBLIC as of Phase 17 m2a, and FORCED rather than chosen: each
+ * of those rules had a C++ twin that m2c deletes, and `Bindings.cpp` and every host reach for
+ * the C one the moment it is the only one. m4 chose this set from what consumers reached for;
+ * this is that method producing a new answer, which is what it was for. */
+#include "rolltui/c/rolltui_widget_kinds.h"
 
 /* ---- the widgets themselves ---------------------------------------------------------- */
 #include "rolltui/c/rolltui_document.h"
@@ -139,6 +146,10 @@
 
 /* ---- files an app publishes or reads -------------------------------------------------- */
 #include "rolltui/c/rolltui_app_profile.h"
+/* The shipped preset/menu/layout FILES, embedded at build time. Four suites and three library
+ * modules read them; it was in neither the public list nor the internal one, which is the hole
+ * check 3 below now closes by enumerating the directory instead of a hand-written list. */
+#include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_presets.h"
 

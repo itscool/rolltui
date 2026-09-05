@@ -117,8 +117,8 @@ static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolved
 static int str_eq_lit(const char* a, size_t alen, const char* b) { return b && alen == strlen(b) && memcmp(a, b, alen) == 0; }
 
 /* Mirrors `rolltui::scroll_by_action` exactly, over `rolltui_bindings.h`. */
-static int scroll_text_scroll_by_action(const RolltuiScrollTextActions* actions, const RolltuiBindings* bindings,
-                                        const RolltuiChord* k, int page, int total, int* top) {
+int rolltui_scroll_by_action(const RolltuiScrollTextActions* actions, const RolltuiBindings* bindings,
+                             const RolltuiChord* k, int page, int total, int* top) {
   size_t alen = 0;
   const char* a;
   int max_top;
@@ -141,7 +141,7 @@ static int scroll_text_scroll_by_action(const RolltuiScrollTextActions* actions,
 
 static int scroll_text_base_handle(RolltuiScrollTextBase* b, const RolltuiEvent* e) {
   if (e->kind != ROLLTUI_EVENT_KEY) return 0;
-  return scroll_text_scroll_by_action(&b->actions, rolltui_windows_bindings(b->w), &e->key, b->area.h, b->total,
+  return rolltui_scroll_by_action(&b->actions, rolltui_windows_bindings(b->w), &e->key, b->area.h, b->total,
                                       &b->top);
 }
 
@@ -331,61 +331,51 @@ typedef struct RolltuiHelpCtx {
   RolltuiStr built; /* text(), rebuilt each call and reused */
 } RolltuiHelpCtx;
 
-static void help_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out) {
-  unsigned char proto = rolltui_key_active_protocol();
-  size_t n = rolltui_bindings_chord_count(b, action, alen);
-  size_t i;
-  rolltui_str_clear(out);
-  for (i = 0; i < n; ++i) {
-    RolltuiChord c;
-    char buf[ROLLTUI_CHORD_STRING_MAX];
-    size_t len;
-    if (!rolltui_bindings_chord_at(b, action, alen, i, &c)) continue;
-    if (!rolltui_key_deliverable(&c, proto)) continue;
-    len = rolltui_chord_display(&c, buf, sizeof buf);
-    if (out->n > 0) rolltui_str_append(out, ", ", 2);
-    rolltui_str_append(out, buf, len);
-  }
-}
-
 /* Appends "  <chord-or-'(unbound)'><pad>description\n" for every action of `scope`, column
  * aligned to the widest chord (capped at 22, minimum column 12) — `help_lines`'s own rule. */
-static void help_append_scope_lines(const RolltuiBindings* b, const char* scope, size_t slen, RolltuiStr* out) {
+void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_t slen, const char* const* actions,
+                              const size_t* action_lens, size_t actions_n, const char* indent, size_t indent_len,
+                              RolltuiStr* out) {
   size_t count = rolltui_bindings_action_count(b);
   size_t* idx = NULL;
   size_t idx_n = 0, idx_cap = 0;
   size_t width = 0, column, i;
   RolltuiStr chord;
   memset(&chord, 0, sizeof chord);
-  for (i = 0; i < count; ++i) {
-    size_t alen = 0;
-    const char* a = rolltui_bindings_action_at(b, i, &alen);
-    size_t oslen = 0;
-    const char* os = rolltui_bindings_scope_of(a, alen, &oslen);
-    if (oslen == slen && memcmp(os, scope, slen) == 0) {
-      idx = (size_t*)rolltui_grow(idx, &idx_cap, idx_n + 1, sizeof *idx);
-      idx[idx_n++] = i;
+  /* An explicit list names the rows and their order; without one, every action of `scope` in
+   * table order. Both are what `rolltui::help_lines`' optional `actions` argument already
+   * meant — the two paths differ only in where the names come from. */
+  if (actions_n == 0) {
+    for (i = 0; i < count; ++i) {
+      size_t alen = 0;
+      const char* a = rolltui_bindings_action_at(b, i, &alen);
+      size_t oslen = 0;
+      const char* os = rolltui_bindings_scope_of(a, alen, &oslen);
+      if (oslen == slen && memcmp(os, scope, slen) == 0) {
+        idx = (size_t*)rolltui_grow(idx, &idx_cap, idx_n + 1, sizeof *idx);
+        idx[idx_n++] = i;
+      }
     }
   }
-  for (i = 0; i < idx_n; ++i) {
-    size_t alen = 0;
-    const char* a = rolltui_bindings_action_at(b, idx[i], &alen);
+  for (i = 0; i < (actions_n ? actions_n : idx_n); ++i) {
+    size_t alen = actions_n ? action_lens[i] : 0;
+    const char* a = actions_n ? actions[i] : rolltui_bindings_action_at(b, idx[i], &alen);
     size_t clen;
-    help_chords_text(b, a, alen, &chord);
+    rolltui_bindings_chords_text(b, a, alen, &chord);
     clen = chord.n;
     if (clen > 22) clen = 22;
     if (clen > width) width = clen;
   }
   column = width + 2;
   if (column < 12) column = 12;
-  for (i = 0; i < idx_n; ++i) {
-    size_t alen = 0;
-    const char* a = rolltui_bindings_action_at(b, idx[i], &alen);
+  for (i = 0; i < (actions_n ? actions_n : idx_n); ++i) {
+    size_t alen = actions_n ? action_lens[i] : 0;
+    const char* a = actions_n ? actions[i] : rolltui_bindings_action_at(b, idx[i], &alen);
     size_t dlen = 0;
     const char* d;
     size_t linelen;
-    rolltui_str_append(out, "  ", 2); /* help_document's own indent, ahead of every line */
-    help_chords_text(b, a, alen, &chord);
+    rolltui_str_append(out, indent ? indent : "", indent ? indent_len : 0);
+    rolltui_bindings_chords_text(b, a, alen, &chord);
     if (chord.n == 0) {
       rolltui_str_append(out, "(unbound)", sizeof("(unbound)") - 1);
       linelen = sizeof("(unbound)") - 1;
@@ -407,6 +397,24 @@ static void help_append_scope_lines(const RolltuiBindings* b, const char* scope,
   rolltui_mem_free(idx);
 }
 
+/* `rolltui::help_document`'s port (Phase 17 m2a): the lead, one "<scope>:\n" section per
+ * scope with `rolltui_help_scope_lines`'s rows under it, then the note. `help_ctx_build_text`
+ * below is the same document over the WINDOW's own scope list, and calls the same two pieces —
+ * so the `help` window and a host's own `//help` cannot disagree about a table. */
+void rolltui_help_document(const RolltuiBindings* b, const char* lead, size_t lead_len, const char* const* scopes,
+                           const size_t* scope_lens, size_t scopes_n, const char* note, size_t note_len,
+                           RolltuiStr* out) {
+  size_t i;
+  if (!out) return;
+  rolltui_str_append(out, lead ? lead : "", lead ? lead_len : 0);
+  for (i = 0; i < scopes_n; ++i) {
+    rolltui_str_append(out, scopes[i], scope_lens[i]);
+    rolltui_str_append(out, ":\n", 2);
+    rolltui_help_scope_lines(b, scopes[i], scope_lens[i], NULL, NULL, 0, "  ", 2, out);
+  }
+  rolltui_str_append(out, note ? note : "", note ? note_len : 0);
+}
+
 static void help_ctx_build_text(RolltuiHelpCtx* h) {
   const RolltuiBindings* b = rolltui_windows_bindings(h->base.w);
   const int all = (h->scope.n == 0);
@@ -422,7 +430,7 @@ static void help_ctx_build_text(RolltuiHelpCtx* h) {
       const char* s = rolltui_windows_help_scope_at(h->base.w, i, &slen);
       rolltui_str_append(&h->built, s, slen);
       rolltui_str_append(&h->built, ":\n", 2);
-      help_append_scope_lines(b, s, slen, &h->built);
+      rolltui_help_scope_lines(b, s, slen, NULL, NULL, 0, "  ", 2, &h->built);
     }
     {
       size_t note_len = 0;
@@ -432,7 +440,7 @@ static void help_ctx_build_text(RolltuiHelpCtx* h) {
   } else {
     rolltui_str_append_str(&h->built, &h->scope);
     rolltui_str_append(&h->built, ":\n", 2);
-    help_append_scope_lines(b, h->scope.p ? h->scope.p : "", h->scope.n, &h->built);
+    rolltui_help_scope_lines(b, h->scope.p ? h->scope.p : "", h->scope.n, NULL, NULL, 0, "  ", 2, &h->built);
   }
 }
 
@@ -900,11 +908,11 @@ typedef struct RolltuiInputCtx {
   RolltuiNote note; /* reused scratch for note_info() */
 } RolltuiInputCtx;
 
-static int input_kind_max_rows(int parent_extent, int border_rows) {
+int rolltui_input_max_rows(int parent_extent, int border_rows) {
   int v = parent_extent / 2 - border_rows;
   return v > 1 ? v : 1;
 }
-static int input_kind_rows(int text_rows, int end_col, int note_width, int width, int max_rows) {
+int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int width, int max_rows) {
   int rows;
   (void)width;
   if (max_rows < 1) max_rows = 1;
@@ -945,7 +953,7 @@ static int input_ctx_rows_with_note(RolltuiInputCtx* ic, int width, int text_row
                ? 0
                : rolltui_u_display_width(ic->uscratch, note->text.p ? note->text.p : "", note->text.n,
                                         env->ambiguous_wide);
-  return input_kind_rows(text_rows, input_ctx_end_col(ic), nw, width, ic->max_rows);
+  return rolltui_input_window_rows(text_rows, input_ctx_end_col(ic), nw, width, ic->max_rows);
 }
 static int input_ctx_note_owns_row(RolltuiInputCtx* ic, int width) {
   RolltuiNote* note = input_ctx_note_info(ic);
@@ -969,7 +977,7 @@ static int input_ctx_problem(void* ctx, RolltuiStr* out) {
 static int input_ctx_desired_outer(void* ctx, int inner_w, int parent_extent, int border, int* out) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
   int v;
-  ic->max_rows = input_kind_max_rows(parent_extent, border);
+  ic->max_rows = rolltui_input_max_rows(parent_extent, border);
   v = input_ctx_rows_with_note(ic, inner_w, rolltui_input_rows_for(ic->ed, inner_w)) + border;
   *out = v > ic->min_outer ? v : ic->min_outer;
   return 1;
@@ -1473,7 +1481,7 @@ static void menu_kind_fill_shortcuts(RolltuiMenuItem* it, const RolltuiBindings*
   size_t i, n;
   if (it->action_name.n > 0) {
     if (rolltui_bindings_has(b, it->action_name.p, it->action_name.n))
-      help_chords_text(b, it->action_name.p, it->action_name.n, &it->shortcut);
+      rolltui_bindings_chords_text(b, it->action_name.p, it->action_name.n, &it->shortcut);
     else
       rolltui_str_clear(&it->shortcut);
   }

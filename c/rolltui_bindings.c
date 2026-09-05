@@ -40,25 +40,20 @@ typedef struct {
   const char* name;
   unsigned char key;
   unsigned char canonical; /* 0 for an alias: parsed, never printed */
+  RolltuiCodepoint ch;     /* non-zero only for "space", the one alias that names a CHAR chord */
 } KeyName;
 
+/* PHASE 17 m2b: the CANONICAL rows expand `rolltui_keys.h`'s ONE key list — a key with no file
+ * spelling (`Char`, `Unknown`) contributes nothing — and only the ALIASES are written here,
+ * because an alias is this file's own concern: it is parsed and never printed, so it has no
+ * place in the vocabulary the rest of the library reads. */
 static const KeyName kKeyNames[] = {
-    {"enter", ROLLTUI_KEY_ENTER, 1},     {"tab", ROLLTUI_KEY_TAB, 1},
-    {"backspace", ROLLTUI_KEY_BACKSPACE, 1}, {"escape", ROLLTUI_KEY_ESCAPE, 1},
-    {"esc", ROLLTUI_KEY_ESCAPE, 0},      {"up", ROLLTUI_KEY_UP, 1},
-    {"down", ROLLTUI_KEY_DOWN, 1},       {"left", ROLLTUI_KEY_LEFT, 1},
-    {"right", ROLLTUI_KEY_RIGHT, 1},     {"home", ROLLTUI_KEY_HOME, 1},
-    {"end", ROLLTUI_KEY_END, 1},         {"pageup", ROLLTUI_KEY_PAGEUP, 1},
-    {"pagedown", ROLLTUI_KEY_PAGEDOWN, 1}, {"pgup", ROLLTUI_KEY_PAGEUP, 0},
-    {"pgdn", ROLLTUI_KEY_PAGEDOWN, 0},   {"insert", ROLLTUI_KEY_INSERT, 1},
-    {"delete", ROLLTUI_KEY_DELETE, 1},   {"del", ROLLTUI_KEY_DELETE, 0},
-    {"space", ROLLTUI_KEY_CHAR, 0},      {"f1", ROLLTUI_KEY_F1, 1},
-    {"f2", ROLLTUI_KEY_F1 + 1, 1},       {"f3", ROLLTUI_KEY_F1 + 2, 1},
-    {"f4", ROLLTUI_KEY_F1 + 3, 1},       {"f5", ROLLTUI_KEY_F1 + 4, 1},
-    {"f6", ROLLTUI_KEY_F1 + 5, 1},       {"f7", ROLLTUI_KEY_F1 + 6, 1},
-    {"f8", ROLLTUI_KEY_F1 + 7, 1},       {"f9", ROLLTUI_KEY_F1 + 8, 1},
-    {"f10", ROLLTUI_KEY_F1 + 9, 1},      {"f11", ROLLTUI_KEY_F1 + 10, 1},
-    {"f12", ROLLTUI_KEY_F12, 1},
+#define ROLLTUI_KEY_NAME_ROW_(UPPER, Title, file) {file, ROLLTUI_KEY_##UPPER, 1, 0},
+    ROLLTUI_KEY_LIST(ROLLTUI_KEY_NAME_ROW_)
+#undef ROLLTUI_KEY_NAME_ROW_
+#define ROLLTUI_KEY_ALIAS_ROW_(name, UPPER, cp) {name, ROLLTUI_KEY_##UPPER, 0, cp},
+    ROLLTUI_KEY_ALIAS_LIST(ROLLTUI_KEY_ALIAS_ROW_)
+#undef ROLLTUI_KEY_ALIAS_ROW_
 };
 #define ROLLTUI_KEY_NAME_COUNT (sizeof kKeyNames / sizeof kKeyNames[0])
 
@@ -73,10 +68,24 @@ static int name_is(const char* s, size_t len, const char* name) {
   return name[len] == '\0';
 }
 
+/* An EMPTY spelling is not a name (Phase 17 m2b): `Char` and `Unknown` are in the shared key
+ * list with "" in the file column, because a bindings file has no word for either — a Char
+ * chord is the character itself and Unknown is undecodable bytes. Both loops over this table
+ * skip those rows.
+ *
+ * `name_is("", 0, "")` IS true, so the rows would otherwise match an empty string — but the
+ * guard is BELT AND BRACES and this comment says so rather than claiming a defect it does not
+ * prevent: `rolltui_chord_parse` refuses a zero-length last part upstream (`cur >= len`), and
+ * `rolltui_chord_to_string` returns before reaching `canonical_key_name` for both CHAR and
+ * UNKNOWN. Removing either guard was PLANTED and left all 184 assertions of `keys_test` and
+ * `bindings_test` green, which is the honest measurement. It stays because the invariant then
+ * belongs to this table rather than to two callers' early returns — but it is not load-bearing
+ * today, and a comment saying otherwise would be the kind of unbacked claim this repo treats
+ * as a defect in its own right. */
 static const char* canonical_key_name(unsigned char key) {
   size_t i;
   for (i = 0; i < ROLLTUI_KEY_NAME_COUNT; ++i)
-    if (kKeyNames[i].key == key && kKeyNames[i].canonical) return kKeyNames[i].name;
+    if (kKeyNames[i].key == key && kKeyNames[i].canonical && kKeyNames[i].name[0]) return kKeyNames[i].name;
   return NULL;
 }
 
@@ -115,12 +124,9 @@ int rolltui_chord_parse(const char* text, size_t len, RolltuiChord* out) {
     RolltuiDecodedChar d;
     size_t consumed;
     for (i = 0; i < ROLLTUI_KEY_NAME_COUNT; ++i)
-      if (name_is(last, last_len, kKeyNames[i].name)) {
+      if (kKeyNames[i].name[0] && name_is(last, last_len, kKeyNames[i].name)) {
         k.key = kKeyNames[i].key;
-        if (name_is(last, last_len, "space")) {
-          k.key = ROLLTUI_KEY_CHAR;
-          k.ch = ' ';
-        }
+        k.ch = kKeyNames[i].ch; /* "space" is the one row that names a CHAR chord */
         *out = k;
         return 1;
       }
@@ -1036,4 +1042,32 @@ const RolltuiBindings* rolltui_bindings_default(void) {
   g_default_bindings = b;
   rolltui_on_shutdown(default_bindings_clear);
   return g_default_bindings;
+}
+
+
+/* ---- the HELP spelling of an action's chords (Phase 17 m2a) --------------------------------
+ * "Ctrl-W, Alt-Backspace": every chord bound to `action` that THIS TERMINAL can actually
+ * deliver, in display form, comma-separated. The undeliverable filter is the point and is why
+ * this is not a loop a caller writes: a chord the terminal cannot report must not be offered
+ * as a shortcut (Phase 12 m3). It had THREE implementations when this was written —
+ * `Bindings::chords_text`, `help_chords_text` in `rolltui_widget_kinds.c`, and a fresh one an
+ * agent had to write in `tools/keys_editor.cpp` because it could not reach either. Two is the
+ * tell (`rolltui/rolltui.h` rule 5); three is not an argument any more.
+ * CLEARS `out` first, unlike the appending shape most of this API takes: it is one value. */
+void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out) {
+  const unsigned char proto = rolltui_key_active_protocol();
+  const size_t n = rolltui_bindings_chord_count(b, action, alen);
+  size_t i;
+  if (!out) return;
+  rolltui_str_clear(out);
+  for (i = 0; i < n; ++i) {
+    RolltuiChord c;
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    size_t len;
+    if (!rolltui_bindings_chord_at(b, action, alen, i, &c)) continue;
+    if (!rolltui_key_deliverable(&c, proto)) continue;
+    len = rolltui_chord_display(&c, buf, sizeof buf);
+    if (out->n > 0) rolltui_str_append(out, ", ", 2);
+    rolltui_str_append(out, buf, len);
+  }
 }

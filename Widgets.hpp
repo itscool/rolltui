@@ -260,7 +260,12 @@ struct WindowsReport {
   // window says is wrong, whether or not it stopped the widget drawing (Widget::notes).
   std::vector<std::string> bad_values;
   bool clean() const { return bad_values.empty(); }
-  std::string summary() const;  // the first bad value, with a count when there are more
+  // The first bad value, with a count when there are more. COMPOSED BY THE C
+  // (`rolltui_windows_report_summary`) at sync time and carried, rather than re-composed
+  // here — Phase 17 m2a: this struct is deleted in m2c and every host draws this string, so
+  // the sentence had to stop being the C++ side's before the C++ side went away.
+  std::string summary() const { return summary_; }
+  std::string summary_;
 };
 
 // The per-window widget host. One per frontend; it outlives every layout it is given.

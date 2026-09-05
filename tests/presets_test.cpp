@@ -197,6 +197,17 @@ int main() {
               rep.colours.missing_roles.size() == kRoleCount - 1,
           "a loadable working copy with problems loads and reports each: bad mode, unknown key, missing roles [" + rep.summary() + "]");
     check(s4.working().mode == "auto" && s4.working().depth == "256", "the bad value keeps its default; the good parts load");
+    // THE SENTENCE ITSELF, not just its inputs (Phase 17 m2a, +1 assertion). Every use of
+    // summary() in this suite was inside a check NAME — so the composition it performs (which
+    // parts, in what order, "bad: "/"unknown: "/"colours: " prefixes, "; " between them) was
+    // asserted by nothing at all, and moving it to C could have changed every word silently.
+    {
+      const std::string one = rep.summary();
+      check(one.find("bad: mode") == 0 && one.find("; unknown: extra") != std::string::npos &&
+                one.find("; colours: " + std::to_string(kRoleCount - 1) + " roles missing (inherit text)") !=
+                    std::string::npos,
+            "…and summary() composes them in order with their prefixes [" + one + "]");
+    }
   }
   // ---- colours-only theme files ----
   {

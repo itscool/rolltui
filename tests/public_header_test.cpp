@@ -16,7 +16,10 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <algorithm>
 #include <vector>
+
+#include <dirent.h>
 
 #include "rolltui/rolltui.h"  // MUST be sufficient on its own — that is assertion 1.
 
@@ -98,23 +101,32 @@ int main() {
   const char* kInternal[] = {"rolltui_alloc.h", "rolltui_map.h", "rolltui_marker.h"};
   int missing = 0;
   std::string names;
-  // The list is derived in the header's own comment; here we only check the four exclusions
-  // are the ONLY ones, by asserting every other c/*.h appears.
-  for (const char* h : {"rolltui_abi.h", "rolltui_geom.h", "rolltui_str.h", "rolltui_style.h",
-                        "rolltui_frame_ops.h", "rolltui_render.h", "rolltui_screen.h", "rolltui_swap.h",
-                        "rolltui_diff.h", "rolltui_markdown.h", "rolltui_md_lines.h", "rolltui_unicode.h",
-                        "rolltui_wrap.h", "rolltui_effects.h", "rolltui_theme.h", "rolltui_theme_analysis.h",
-                        "rolltui_theme_gen.h", "rolltui_bindings.h", "rolltui_keys.h", "rolltui_layout.h",
-                        "rolltui_layout_tree.h", "rolltui_widgets.h", "rolltui_document.h", "rolltui_input.h",
-                        "rolltui_menu.h", "rolltui_menu_tree.h", "rolltui_transcript.h", "rolltui_undo.h",
-                        "rolltui_app_profile.h", "rolltui_json.h", "rolltui_presets.h",
-                        "rolltui_lifetime.h", "rolltui_mem.h", "rolltui_terminal.h"}) {
+  // ENUMERATED FROM THE DIRECTORY, not from a hand-written list (Phase 17 m2a). It used to be
+  // a literal list of 34 names, and two headers — `rolltui_widget_kinds.h` and
+  // `rolltui_embedded.h` — appeared in NEITHER it nor `kInternal`, so they were unreachable
+  // through the umbrella and this check said nothing about them. A hand-list can only assert
+  // about the names someone remembered to type; reading `c/` means a new header must land in
+  // one list or the other or this fails.
+  std::vector<std::string> headers;
+  if (DIR* d = opendir((std::string(ROLLTUI_SOURCE_DIR) + "/c").c_str())) {
+    while (dirent* e = readdir(d)) {
+      const std::string n = e->d_name;
+      if (n.size() > 2 && n.compare(n.size() - 2, 2, ".h") == 0) headers.push_back(n);
+    }
+    closedir(d);
+  }
+  std::sort(headers.begin(), headers.end());
+  check(headers.size() >= 34, "the C header directory was read [" + std::to_string(headers.size()) + " headers]");
+  for (const std::string& h : headers) {
+    bool internal = false;
+    for (const char* i : kInternal) internal = internal || h == i;
+    if (internal) continue;
     if (text.find(std::string("rolltui/c/") + h) == std::string::npos) {
       ++missing;
-      names += std::string(" ") + h;
+      names += " " + h;
     }
   }
-  check(missing == 0, "every public header is named by the umbrella —" + (missing ? names : std::string(" all 34")));
+  check(missing == 0, "every public header is named by the umbrella —" + (missing ? names : " all " + std::to_string(headers.size() - 3)));
 
   for (const char* h : kInternal)
     check(text.find(std::string("rolltui/c/") + h) == std::string::npos,
