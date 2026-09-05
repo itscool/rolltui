@@ -163,6 +163,10 @@ int main() {
       const std::string ext = e.path().extension().string();
       if (ext != ".c" && ext != ".h") continue;
       if (name == "rolltui_alloc.c" || name == "rolltui_alloc.h") continue;  // the one home
+      // rolltui_mem.c DEFINES rolltui_mem_realloc (Phase 17 m1: moved from Memory.cpp,
+      // Memory.hpp's C face) rather than calling it, which is the same reason
+      // rolltui_alloc.c/h are exempted above and not a second rule.
+      if (name == "rolltui_mem.c") continue;
       ++scanned;
       std::istringstream in(read_file(e.path().string()));
       std::string line;

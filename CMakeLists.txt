@@ -139,9 +139,15 @@ add_library(rolltui STATIC
   Json.cpp
   Theme.cpp
   ${ROLLTUI_SLICE}            # the library proper, in C (Phase 14 + Phase 15)
-  Memory.cpp                  # Phase 13: the library's ONE entry point for memory
-  Lifetime.cpp                # Phase 14 m6a: shutdown(), and no init — the release
-                              #   point that makes "did we leak?" answerable
+  c/rolltui_mem.c             # Phase 13, moved to C at Phase 17 m1: the library's ONE entry
+                              #   point for memory. Memory.hpp is a thin forwarding shim now.
+  c/rolltui_lifetime.c        # Phase 14 m6a, moved to C at Phase 17 m1: shutdown(), and no
+                              #   init — the release point that makes "did we leak?"
+                              #   answerable. Lifetime.hpp is a thin forwarding shim now.
+  Lifetime.cpp                #   …and the one piece that stayed C++: `detail::on_thread_
+                              #   release`, whose only declaration (rolltui/Scratch.hpp,
+                              #   out of scope here) is deliberately not `inline`, so it
+                              #   needs an ordinary out-of-line definition somewhere.
   Effects.cpp                 # Phase 12 m6: motion is the theme's, a state is the widget's
   Screen.cpp
   Keys.cpp

@@ -2,6 +2,9 @@
 //
 // rolltui/Lifetime.hpp — THE RELEASE POINT (Phase 14 m6a).
 //
+// **THE IMPLEMENTATION MOVED TO C AT PHASE 17 m1** (`rolltui/c/rolltui_lifetime.{h,c}`);
+// this header is now a thin forwarding shim so that no existing caller has to change.
+//
 // **THERE IS NO INIT, AND THAT IS THE DESIGN.** A library you must initialise is worse than
 // one you need not: it adds an ordering requirement, a global, and one more thing a host can
 // forget. Teardown carries none of that cost — `shutdown()` is safe to never call, safe to
@@ -32,8 +35,6 @@
 // zero here could coexist with megabytes the gauge simply could not see. With the library in C
 // every allocation is an explicit call through one entry point, so `live_bytes == 0` means the
 // library holds nothing — not that it holds nothing it happens to be counting.
-// module that ports — which is the point. The assertion gets STRONGER as the port proceeds,
-// with no change to the test.
 //
 // HOW A MODULE TAKES PART: call `on_shutdown` where the retained thing is created, not in some
 // central list. A central list is a second place to forget.
@@ -47,25 +48,27 @@
 //
 #include <cstddef>
 
+#include "rolltui/c/rolltui_lifetime.h"
+
 namespace rolltui {
 
 // Registers a releaser to run at `shutdown()`, in reverse order of registration — so a module
 // that retains something built out of another module's thing is released first. Registering
 // the same function twice registers it twice; register once, where the thing is made.
-void on_shutdown(void (*fn)());
+inline void on_shutdown(void (*fn)()) { rolltui_on_shutdown(fn); }
 
 // Releases everything the library retains: every registered releaser, then this thread's
 // scratch buffers. Safe to never call and safe to call twice — the second call finds nothing
 // to do. Nothing is invalidated for a host that carries on afterwards; the caches simply
 // rebuild on next use, which is what makes this safe to call at any time rather than only at
 // the very end.
-void shutdown();
+inline void shutdown() { rolltui_shutdown(); }
 
 // Releases just the calling thread's scratch buffers — the reused storage the draw path lends
 // (rolltui/Scratch.hpp). Automatic at thread exit in C++, because those are `thread_local` and
 // have destructors; this is the explicit path, for a long-lived thread that wants to hand back
 // its high-water mark, and for a leak check that needs the number to be knowable BEFORE the
 // process ends. A thread that is about to exit need not call it.
-void release_thread();
+inline void release_thread() { rolltui_release_thread(); }
 
 }  // namespace rolltui

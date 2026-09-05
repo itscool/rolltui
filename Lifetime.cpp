@@ -1,77 +1,23 @@
-// rolltui/Lifetime.cpp — see Lifetime.hpp.
+// rolltui/Lifetime.cpp — see Lifetime.hpp. Phase 17 m1 moved this module's real logic into
+// `rolltui/c/rolltui_lifetime.c`; everything that could become a header-only inline forward
+// did (Lifetime.hpp). This one function could not:
+//
+// `rolltui::detail::on_thread_release` is DECLARED in `rolltui/Scratch.hpp`, on purpose
+// without the `inline` specifier — that header's own comment says it stays "a template and
+// nothing else" and deliberately does not include Lifetime.hpp. A function declared plainly
+// in one header needs an ordinary, out-of-line, single-definition home if it is going to be
+// *defined* rather than merely forwarded inline; that is what this translation unit is, and
+// it is the one piece of this module that a header-only shim cannot absorb without either
+// duplicating the definition (an ODR violation the moment two .cpp files pull it in) or
+// reaching into Scratch.hpp to change what it promises about itself — out of scope here.
+//
+// The function itself is a one-line forward, same as everything in Lifetime.hpp: the actual
+// per-thread registry (the growable arrays, the reverse-order release) lives in
+// rolltui/c/rolltui_lifetime.c now, reachable as `rolltui_thread_on_release`.
 #include "rolltui/Lifetime.hpp"
-
-#include <vector>
 
 #include "rolltui/c/rolltui_lifetime.h"
 
-namespace rolltui {
-
-namespace {
-
-// The process-wide releasers. A plain function pointer and not a `std::function`: a releaser
-// never needs to capture — it names a static the module already has — and a function pointer
-// keeps this registry free of the allocation-per-registration a captured lambda would cost.
-std::vector<void (*)()>& process_releasers() {
-  static std::vector<void (*)()> v;
-  return v;
-}
-
-// The calling thread's releasers, registered by `Scratch` (rolltui/Scratch.hpp) when it is
-// first locked. Per-thread rather than process-wide because a `thread_local` in one thread
-// cannot be freed from another, and pretending otherwise would be the kind of ambiguity this
-// project spends its time removing.
-std::vector<void (*)(void*)>& thread_releasers() {
-  static thread_local std::vector<void (*)(void*)> v;
-  return v;
-}
-std::vector<void*>& thread_release_targets() {
-  static thread_local std::vector<void*> v;
-  return v;
-}
-
-}  // namespace
-
-void on_shutdown(void (*fn)()) { process_releasers().push_back(fn); }
-
-namespace detail {
-
-// Registers one per-thread buffer. Called by `Scratch`'s first lock; the pair is kept as
-// (function, object) rather than a bound callable so that registration allocates at most a
-// vector growth and never a closure.
-void on_thread_release(void (*fn)(void*), void* target) {
-  thread_releasers().push_back(fn);
-  thread_release_targets().push_back(target);
-}
-
-}  // namespace detail
-
-void release_thread() {
-  std::vector<void (*)(void*)>& fns = thread_releasers();
-  std::vector<void*>& targets = thread_release_targets();
-  // Reverse order, and by INDEX: a releaser may not register anything new, but reading the
-  // size each time round costs nothing and makes that a fact rather than an assumption.
-  for (std::size_t i = fns.size(); i > 0; --i) fns[i - 1](targets[i - 1]);
-  // The registry itself is storage this thread holds, so it goes too — and the buffers
-  // re-register themselves on next use, which is what makes `release_thread()` safe to call
-  // in the middle of a session rather than only at the end.
-  fns.clear();
-  fns.shrink_to_fit();
-  targets.clear();
-  targets.shrink_to_fit();
-}
-
-void shutdown() {
-  std::vector<void (*)()>& v = process_releasers();
-  for (std::size_t i = v.size(); i > 0; --i) v[i - 1]();
-  v.clear();
-  v.shrink_to_fit();
-  release_thread();
-}
-
-}  // namespace rolltui
-
-// The same registration, for a C module that retains something (rolltui/c/rolltui_lifetime.h).
-// One function and no state of its own: whichever language a module is written in, its
-// releaser ends up in the same list and runs in the same reverse order.
-extern "C" void rolltui_on_shutdown(void (*fn)(void)) { rolltui::on_shutdown(fn); }
+namespace rolltui::detail {
+void on_thread_release(void (*fn)(void*), void* target) { rolltui_thread_on_release(fn, target); }
+}  // namespace rolltui::detail
