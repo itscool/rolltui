@@ -257,6 +257,14 @@ class Menu {
   int rows_for() const { return rolltui_menu_rows_for(m_.get()); }
   Rect area() const;
 
+
+  // THE HANDLE, so a C plugin and this object can be the SAME state rather than two.
+  // `Windows::menu()` hands a host a live reference to the widget the window draws; a pure-C
+  // widget plugin needs the same object, not a copy. `Input::handle()` already existed and is
+  // exactly why the `input` kind could port while this one could not — added 2026-09-05 to
+  // close that asymmetry (`plan/phase-17.md` m1c). Borrowed: valid while this object is.
+  RolltuiMenu* handle() { return m_.get(); }
+
  private:
   // The editor is OWNED here and BORROWED by the C widget — one owner, and `editor()`
   // still hands back the object a host already reads.

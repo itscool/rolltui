@@ -330,7 +330,7 @@ int main() {
         // `rolltui/c/rolltui_layout.h`, which this census does not scan (headers_only(true)
         // is `.hpp` files only). The borrow itself did not go away — it is stated at that
         // struct's own definition instead — only its address in this text did.
-        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
+        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 5},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -424,7 +424,12 @@ int main() {
         // this census does not scan, headers_only(true) filters `.hpp` only) when `Note`
         // became `using Note = RolltuiNote`, the one-definition C/C++ struct the `input`
         // plugin now fills across. The eleven that remain are unchanged.
-        {"Transcript.hpp", 2},          {"Widgets.hpp", 11},
+        // Transcript.hpp 2 -> 3 and Menu.hpp 4 -> 5, RE-RECORDED 2026-09-05: each gained a
+        // `handle()` returning its own `Rolltui*` — a BORROW of the object's own C state,
+        // valid while the object is, so a C widget plugin and a host's reference are the SAME
+        // state rather than two. `Input::handle()` already had one, which is precisely why the
+        // `input` kind could port to C and these two could not (plan/phase-17.md m1c).
+        {"Transcript.hpp", 3},          {"Widgets.hpp", 11},
         // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
         // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
         // pointer was `const Range* table` on `lookup()`, the binary search the inline
@@ -488,7 +493,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 111, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 113, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

@@ -247,6 +247,14 @@ class Transcript {
   Rect area() const;
   Rect text_area() const;
 
+
+  // THE HANDLE, so a C plugin and this object can be the SAME state rather than two.
+  // `Windows::transcript()` hands a host a live reference to the widget the window draws; a pure-C
+  // widget plugin needs the same object, not a copy. `Input::handle()` already existed and is
+  // exactly why the `input` kind could port while this one could not — added 2026-09-05 to
+  // close that asymmetry (`plan/phase-17.md` m1c). Borrowed: valid while this object is.
+  RolltuiTranscript* handle() { return t_.get(); }
+
  private:
   std::unique_ptr<RolltuiTranscript, Handle> t_{rolltui_transcript_new()};
   // The host's highlighter stays HERE, where its callable is, and the boundary is handed the
