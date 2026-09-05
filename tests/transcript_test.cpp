@@ -6,24 +6,173 @@
 // line clicks), edge auto-scroll; OSC 8 hyperlinks from parsed URLs; chrome never
 // copies. No terminal: every check is on a Frame or on the widget's state.
 //
+#include <array>
+#include <cstring>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
-#include "rolltui/Bindings.hpp"
-#include "rolltui/Keys.hpp"
-#include "rolltui/Markdown.hpp"
-#include "rolltui/Marker.hpp"
-#include "rolltui/Screen.hpp"
-#include "rolltui/Theme.hpp"
-#include "rolltui/Unicode.hpp"
-#include "rolltui/c/rolltui_document.h"
-#include "rolltui/c/rolltui_transcript.h"
+// PHASE 17 m2c: the C API, through the umbrella alone. What this file gained is the FIXTURE
+// below — a `Frame` with the five accessors this suite reads, a `Theme` that is a styles array
+// with a name, and a `Role` expanded from the library's own list. That fixture is deliberately
+// private and deliberately small: `plan/phase-16.md` m1 extracts a shared test module, and
+// Phase 17 runs first so that 16 moves suites that have already been rewritten once. The
+// standing condition is that a mirror may hold a SHAPE and never a rule or a word — every rule
+// here (the wrap, the marker, the action names, the role names) is a call, not a copy.
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 namespace {
+
+// ---- the fixture: the C++ shapes this suite reads, over the C ---------------------------
+
+// ONE draw scratch for this binary (`Screen.cpp` kept one per thread; a test is single-
+// threaded, so one is the whole of it). CALLER-FILLED working memory, CLAUDE.md's strategy 3.
+RolltuiDrawScratch* draw_scratch() {
+  static RolltuiDrawScratch* d = rolltui_draw_scratch_new();
+  return d;
+}
+RolltuiUnicodeScratch* u_scratch() {
+  static RolltuiUnicodeScratch* u = rolltui_u_scratch_new();
+  return u;
+}
+
+
+enum class Role : unsigned char {
+#define ROLLTUI_TEST_ROLE_(lower, UPPER) lower,
+  ROLLTUI_ROLE_LIST(ROLLTUI_TEST_ROLE_)
+#undef ROLLTUI_TEST_ROLE_
+  count_
+};
+constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
+// `RolltuiDocEntry::role`/`prefix_role` are typed `rolltui::Role` in C++ and `unsigned char`
+// in C (rolltui_document.h), so a converted consumer needs this one cast. Worth noting for m3:
+// that field names a C++ type for a vocabulary that has been C since m2a, and every host will
+// hit it.
+constexpr rolltui::Role as_role(Role r) { return static_cast<rolltui::Role>(r); }
+using Color = RolltuiStyleColor;
+using Style = RolltuiStyle;
+using Rect = RolltuiRect;
+using KeyEvent = RolltuiChord;
+using MouseEvent = RolltuiMouseEvent;
+
+// A frame, OWNED, with exactly the five accessors this suite reads. Copy and assignment are
+// kept because the checks build one, keep a copy, redraw and compare.
+class Frame {
+ public:
+  Frame() : f_(rolltui_frame_new(0, 0, RolltuiStyle{})) {}
+  Frame(int w, int h, const Style& fill = {}) : f_(rolltui_frame_new(w, h, fill)) {}
+  Frame(const Frame& o) : f_(rolltui_frame_clone(o.f_)) {}
+  Frame& operator=(const Frame& o) {
+    if (this != &o) {
+      rolltui_frame_free(f_);
+      f_ = rolltui_frame_clone(o.f_);
+    }
+    return *this;
+  }
+  Frame(Frame&& o) noexcept : f_(o.f_) { o.f_ = nullptr; }
+  Frame& operator=(Frame&& o) noexcept {
+    if (this != &o) {
+      rolltui_frame_free(f_);
+      f_ = o.f_;
+      o.f_ = nullptr;
+    }
+    return *this;
+  }
+  ~Frame() { rolltui_frame_free(f_); }
+  int width() const { return rolltui_frame_width(f_); }
+  int height() const { return rolltui_frame_height(f_); }
+  RolltuiCell at(int x, int y) const {
+    RolltuiCell c;
+    rolltui_frame_cell(f_, x, y, &c);
+    return c;
+  }
+  // A BORROW from the frame, valid until that cell is written again — the accessor to use,
+  // because a `Cell`'s own inline bytes die with the returned copy.
+  std::string_view glyph(int x, int y) const {
+    std::size_t n = 0;
+    const char* p = rolltui_frame_glyph(f_, x, y, &n);
+    return std::string_view(p, n);
+  }
+  std::string_view link(unsigned int id) const {
+    std::size_t n = 0;
+    const char* p = rolltui_frame_link(f_, id, &n);
+    return std::string_view(p ? p : "", n);
+  }
+  RolltuiFrame* handle() const { return f_; }
+  int put_text(int x, int y, std::string_view utf8, const Style& style, int max_cells, bool ambiguous_wide = false,
+               unsigned int link = 0) {
+    return rolltui_frame_put_text(f_, draw_scratch(), x, y, utf8.data(), utf8.size(), style, max_cells,
+                                  ambiguous_wide ? 1 : 0, link);
+  }
+  unsigned int link_id(std::string_view url) { return rolltui_frame_link_id(f_, url.data(), url.size()); }
+
+ private:
+  RolltuiFrame* f_ = nullptr;
+};
+
+// The three free functions this suite calls that hand back an unbounded string: the C shape is
+// APPEND-to-a-caller's-RolltuiStr (`rolltui/rolltui.h` rule 3(b)), and these are that with the
+// string moved out, because a check compares one value and throws it away.
+std::string render_full(const Frame& f, unsigned char depth) {
+  RolltuiStr out{};
+  rolltui_render_full(f.handle(), depth, &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return s;
+}
+std::string render_diff(const Frame* prev, const Frame& next, unsigned char depth) {
+  RolltuiStr out{};
+  rolltui_render_diff(prev ? prev->handle() : nullptr, next.handle(), depth, &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return s;
+}
+namespace unicode {
+inline int display_width(std::string_view s, bool ambiguous_wide) {
+  return rolltui_u_display_width(u_scratch(), s.data(), s.size(), ambiguous_wide ? 1 : 0);
+}
+}  // namespace unicode
+
+// The style table and the name this suite reads, filled from the C built-ins. `.effects` and
+// `.meta` are not carried: no theme text below has either, and a shape that carries what it
+// does not read is the start of a second `Theme`.
+struct Theme {
+  std::string name;
+  std::array<RolltuiStyle, kRoleCount> styles{};
+  const RolltuiStyle& style(Role r) const {
+    return *rolltui_theme_style(styles.data(), styles.size(), static_cast<unsigned char>(r));
+  }
+};
+const Theme* builtin_theme(std::string_view name) {
+  static const std::vector<std::pair<std::string, Theme>> cache = [] {
+    std::vector<std::pair<std::string, Theme>> v;
+    const std::size_t n = rolltui_theme_builtin_count();
+    v.reserve(n);  // pointer stability: this hands back &t into the vector
+    for (std::size_t i = 0; i < n; ++i) {
+      const char* nm = rolltui_theme_builtin_name(i);
+      Theme t;
+      t.name = nm;
+      if (RolltuiEffectMap* m = rolltui_theme_builtin_fill(nm, std::strlen(nm), t.styles.data(), t.styles.size()))
+        rolltui_effect_map_free(m);
+      v.emplace_back(nm, t);
+    }
+    return v;
+  }();
+  for (const auto& [n, t] : cache)
+    if (n == name) return &t;
+  return nullptr;
+}
+
+std::string scroll_marker_text(std::size_t hidden, int width, bool ambiguous_wide = false) {
+  char buf[ROLLTUI_MARKER_MAX];
+  return std::string(buf, rolltui_scroll_marker_text(hidden, width, ambiguous_wide ? 1 : 0, buf, sizeof buf));
+}
+
 
 RolltuiDocEntry user(const char* id, std::string text) {
   RolltuiDocEntry e;
@@ -31,7 +180,7 @@ RolltuiDocEntry user(const char* id, std::string text) {
   e.text = std::move(text);
   e.markdown = false;
   e.prefix = "> ";
-  e.prefix_role = Role::prompt;
+  e.prefix_role = as_role(Role::prompt);
   return e;
 }
 RolltuiDocEntry md(const char* id, std::string text) {
@@ -65,9 +214,11 @@ MouseEvent mouse(MouseEvent::Kind k, int x, int y, bool shift = false) {
   m.shift = shift;
   return m;
 }
-KeyEvent key(Key k) { KeyEvent e; e.key = k; return e; }
-KeyEvent ctrl(char c) { KeyEvent e; e.key = Key::Char; e.ch = static_cast<char32_t>(c); e.ctrl = true; return e; }
-KeyEvent alt(char c) { KeyEvent e; e.key = Key::Char; e.ch = static_cast<char32_t>(c); e.alt = true; return e; }
+// `KeyEvent` IS `RolltuiChord` here — the C's own struct, so there is no conversion at all
+// and the `raw` field that used to need clearing before every comparison does not exist.
+KeyEvent key(unsigned char k) { KeyEvent e{}; e.key = k; return e; }
+KeyEvent ctrl(char c) { KeyEvent e{}; e.key = ROLLTUI_KEY_CHAR; e.ch = static_cast<RolltuiCodepoint>(c); e.ctrl = 1; return e; }
+KeyEvent alt(char c) { KeyEvent e{}; e.key = ROLLTUI_KEY_CHAR; e.ch = static_cast<RolltuiCodepoint>(c); e.alt = 1; return e; }
 
 std::string row_text(const Frame& f, int y) {
   std::string s;
@@ -95,12 +246,6 @@ std::string lines(int n) {
 // moved them into `rolltui_transcript_new`. Nothing here names a role now.
 // THE ELEVEN ACTION NAMES (Transcript.cpp's kActions, verbatim). The C knows the rules
 // and none of the words.
-constexpr RolltuiTranscriptActions kActions = {
-    "transcript.line_up",   "transcript.line_down",  "transcript.page_up",
-    "transcript.page_down", "transcript.top",        "transcript.bottom",
-    "transcript.find_next", "transcript.find_prev",  "transcript.fold",
-    "transcript.copy",      "transcript.clear_selection",
-};
 
 // OWNED, through the same "unique_ptr-shaped" deleter every owned handle in this library
 // uses (Frame::Handle, the deleted Transcript::Handle) — here a plain struct instead of a
@@ -131,7 +276,7 @@ void copy_trampoline(void* ctx, const char* text, std::size_t len) {
 RolltuiEvent to_event(const KeyEvent& k) {
   RolltuiEvent ev{};
   ev.kind = ROLLTUI_EVENT_KEY;
-  ev.key = chord_of(k);
+  ev.key = k;  // already a chord
   return ev;
 }
 RolltuiEvent to_event(const MouseEvent& m) {
@@ -152,11 +297,11 @@ void draw(const RolltuiTranscript* t, Frame& f, const Theme& theme, RolltuiDrawS
 }
 bool handle(RolltuiTranscript* t, const KeyEvent& k, const RolltuiDocument& doc, std::uint64_t now_ms) {
   RolltuiEvent ev = to_event(k);
-  return rolltui_transcript_handle(t, &ev, &doc, now_ms, default_bindings().handle(), &kActions) != 0;
+  return rolltui_transcript_handle(t, &ev, &doc, now_ms, rolltui_bindings_default(), rolltui_transcript_default_actions()) != 0;
 }
 bool handle(RolltuiTranscript* t, const MouseEvent& m, const RolltuiDocument& doc, std::uint64_t now_ms) {
   RolltuiEvent ev = to_event(m);
-  return rolltui_transcript_handle(t, &ev, &doc, now_ms, default_bindings().handle(), &kActions) != 0;
+  return rolltui_transcript_handle(t, &ev, &doc, now_ms, rolltui_bindings_default(), rolltui_transcript_default_actions()) != 0;
 }
 std::string selected_text(const RolltuiTranscript* t) {
   RolltuiStr s;
@@ -429,8 +574,8 @@ int main() {
           "the selected cells wear the selection background; the next cell does not");
     check(f.at(0, 0).style.bg != sel.bg, "the prefix (chrome) is not highlighted when the line's text is only partly selected");
     check(handle(tr, alt('c'), doc, 1300) && copies == 2, "Alt-C copies again");
-    check(handle(tr, key(Key::Escape), doc, 1400) && !selection(tr).active, "Escape clears the selection");
-    check(!handle(tr, key(Key::Escape), doc, 1500), "and is not consumed when there is none");
+    check(handle(tr, key(ROLLTUI_KEY_ESCAPE), doc, 1400) && !selection(tr).active, "Escape clears the selection");
+    check(!handle(tr, key(ROLLTUI_KEY_ESCAPE), doc, 1500), "and is not consumed when there is none");
     // A plain click (no drag) selects nothing.
     handle(tr, mouse(MouseEvent::Kind::Press, 4, 0), doc, 2000);
     handle(tr, mouse(MouseEvent::Kind::Release, 4, 0), doc, 2010);
@@ -546,18 +691,18 @@ int main() {
     for (int x = 0; x < 40; ++x)
       if (f.at(x, 0).link != 0) { ++linked; url = std::string(f.link(f.at(x, 0).link)); }
     check(linked == 4 && url == "https://example.com/d", "exactly the link text's 4 cells carry the parsed URL (" + std::to_string(linked) + ", " + url + ")");
-    std::string bytes = render_full(f, ColorDepth::TrueColor);
+    std::string bytes = render_full(f, ROLLTUI_DEPTH_TRUECOLOR);
     const std::size_t open = bytes.find("\x1b]8;;https://example.com/d\x1b\\");
     const std::size_t glyphs = bytes.find("docs\x1b]8;;\x1b\\");
     check(open != std::string::npos && glyphs != std::string::npos && open < glyphs && bytes.find("docs") == glyphs,
           "the diff opens the link before its first glyph (the link's SGR may follow the open) and closes it right after the last");
     Frame plain(40, 6);
     plain.put_text(0, 0, "no links here", theme.style(Role::text), 40);
-    check(render_full(plain, ColorDepth::TrueColor).find("]8;;") == std::string::npos, "a frame without links emits no OSC 8");
+    check(render_full(plain, ROLLTUI_DEPTH_TRUECOLOR).find("]8;;") == std::string::npos, "a frame without links emits no OSC 8");
     // A changed link is a changed cell.
     Frame g = f;
     g.put_text(4, 0, "docs", theme.style(Role::md_link), 4, false, g.link_id("https://other/"));
-    check(render_diff(&f, g, ColorDepth::TrueColor).find("https://other/") != std::string::npos, "a link change alone redraws the cell");
+    check(render_diff(&f, g, ROLLTUI_DEPTH_TRUECOLOR).find("https://other/") != std::string::npos, "a link change alone redraws the cell");
     // Select everything: the code box's rules and bars never reach the copy.
     handle(tr, mouse(MouseEvent::Kind::Press, 0, 0), doc, 1000);
     handle(tr, mouse(MouseEvent::Kind::Drag, 39, 5), doc, 1100);
@@ -827,7 +972,7 @@ int main() {
           "a 12-line block over the threshold arrives folded in the transcript");
     const std::size_t folded_total = total_lines(tr);
     const std::size_t header = L->code_blocks()[0].header_line;
-    check(header != markdown::kNoLine, "…and reports the row a click has to land on");
+    check(header != ROLLTUI_MD_NO_LINE, "…and reports the row a click has to land on");
     Frame f(40, 24);
     draw(tr, f, theme, scratch);
     check(row_text(f, static_cast<int>(header)).find("\xE2\x96\xB8 diff \xC2\xB7 12 lines") != std::string::npos,
@@ -839,7 +984,7 @@ int main() {
     const RolltuiEntryLayout* open = layout_of(tr, 0);
     check(!open->code_blocks()[0].folded && total_lines(tr) > folded_total,
           "a click anywhere on the header row unfolds it");
-    check(open->code_blocks()[0].hidden == 6 && open->code_blocks()[0].marker_line != markdown::kNoLine,
+    check(open->code_blocks()[0].hidden == 6 && open->code_blocks()[0].marker_line != ROLLTUI_MD_NO_LINE,
           "…and the opened block is still CAPPED, with 6 of its 12 lines behind the marker");
     check(selection(tr).empty(), "…and it selected nothing: a control does its own job, not a drag");
 

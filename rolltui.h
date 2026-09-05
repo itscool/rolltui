@@ -113,6 +113,11 @@
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_wrap.h"
+/* The "▼ N more" rule. It was in the INTERNAL three with the note "one definition, called from
+ * two places inside the library" — and `transcript_test.cpp` asserts it directly, because that
+ * suite IS the marker's test. PUBLIC as of Phase 17 m2c, on the same evidence as everything
+ * else here: a consumer reached for it. */
+#include "rolltui/c/rolltui_marker.h"
 
 /* ---- look: theme, effects, and the analysis tools ----------------------------------- */
 #include "rolltui/c/rolltui_effects.h"

@@ -98,7 +98,9 @@ int main() {
   // ---- 3. every public header is actually named --------------------------------------
   // A header that exists, is public, and is NOT included here would be reachable only by a
   // consumer that already knew to look for it — which is the thing this file exists to stop.
-  const char* kInternal[] = {"rolltui_alloc.h", "rolltui_map.h", "rolltui_marker.h"};
+  // `rolltui_marker.h` LEFT this list in Phase 17 m2c: `transcript_test.cpp` asserts the
+  // "▼ N more" rule directly, so a consumer reaches it and m4's own method makes it public.
+  const char* kInternal[] = {"rolltui_alloc.h", "rolltui_map.h"};
   int missing = 0;
   std::string names;
   // ENUMERATED FROM THE DIRECTORY, not from a hand-written list (Phase 17 m2a). It used to be

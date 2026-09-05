@@ -29,26 +29,15 @@ using namespace rolltui_test;
 
 namespace {
 
-// ---- mirrors rolltui::Role (Style.hpp): NO C form exists for it at all -- "the role NAME
-// vocabulary stays C++ on purpose" (rolltui/rolltui.h) -- reproduced in Style.hpp's exact
-// declaration order, since a theme's style table is indexed by this ordinal. ----
+// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST`, not reproduced.
+// This block used to open "mirrors rolltui::Role (Style.hpp): NO C form exists for it at all
+// -- the role NAME vocabulary stays C++ on purpose" and then spell all 49 names in order, so
+// the file carried the role ORDER as well as (until 2026-09-05) the role NAMES. Both are C
+// now; a theme's style table is indexed by this ordinal, and the ordinal is the C's.
 enum class Role : unsigned char {
-  // base
-  text, text_muted, background, panel_background, border, border_active, title,
-  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
-  // markdown
-  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
-  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
-  md_rule, md_strikethrough,
-  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
-  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
-  // chrome
-  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
-  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
-  // find (Phase 12 m4): every match, and the one the view is on
-  find_match, find_current,
-  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
-  scrollbar,
+#define ROLLTUI_TEST_ROLE_(lower, UPPER) lower,
+  ROLLTUI_ROLE_LIST(ROLLTUI_TEST_ROLE_)
+#undef ROLLTUI_TEST_ROLE_
   count_
 };
 constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
