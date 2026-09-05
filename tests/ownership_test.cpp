@@ -252,7 +252,32 @@ int main() {
         // is one owner and not two; `const RolltuiInputActions* input_actions()` is a BORROW
         // of the thirty action names, so the menu boundary is handed a pointer to the
         // library's one table rather than a copy of it.
-        {"Effects.hpp", 3},      {"Input.hpp", 4},         {"Json.hpp", 0},        {"Keys.hpp", 1},
+// Effects.hpp 3 → 4, RE-RECORDED 2026-09-04 when Theme's built-in construction and
+        // its JSON loader moved to C (rolltui_theme.c). The new one is `RolltuiEffectMap*
+        // adopt` in `explicit EffectMap(RolltuiEffectMap* adopt)` — NOT a borrow: the C
+        // builder (`rolltui_theme_builtin_fill`, `rolltui_theme_load`) fills a map spec by
+        // spec through the same `rolltui_effect_map_add`/`_add_frame`/`_add_role` this
+        // class's own methods call, and hands the finished map back OWNED; this constructor
+        // is where that ownership crosses into the `unique_ptr` rather than being replayed
+        // one call at a time from C++.
+        // Keys.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m3. The one pointer is
+        // `RolltuiKeyDecoder* p` in `KeyDecoder::Handle` — the deleter of the decoder's
+        // OWNED C handle, the same sanctioned shape `Frame::Handle` already uses, and a
+        // `unique_ptr`'s deleter rather than a member. It borrows nothing.
+        // Input.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m5. The one pointer is
+        // `RolltuiInput* p` in `Input::Handle` — the deleter of the widget's OWNED C handle,
+        // a `unique_ptr`'s deleter rather than a member, the same sanctioned shape
+        // `Frame::Handle` and four others already use. It borrows nothing. The header's
+        // other change is not a pointer at all: `text()` and `editing_text()` hand back a
+        // `std::string_view` where they used to hand back a `const std::string&`, which is
+        // the borrow the boundary forces and states its window for.
+        // Input.hpp 1 → 4 (Phase 15 m5, second pass): the three new ones all BORROW and none
+        // owns. `RolltuiInput* handle()` and its const overload hand the editor's OWNED
+        // handle to the one other widget that embeds one — a menu's typed field — so there
+        // is one owner and not two; `const RolltuiInputActions* input_actions()` is a BORROW
+        // of the thirty action names, so the menu boundary is handed a pointer to the
+        // library's one table rather than a copy of it.
+        {"Effects.hpp", 4},      {"Input.hpp", 4},         {"Json.hpp", 0},        {"Keys.hpp", 1},
         // Markdown.hpp 0 → 10, RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the census
         // recording the milestone's whole shape change: a `Span` used to OWN a
         // `std::string` and two vectors, so the header needed no pointer to say so. Every
@@ -433,7 +458,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 108, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 109, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

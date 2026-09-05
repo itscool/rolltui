@@ -218,7 +218,13 @@ int main() {
   // WIDENED 2026-09-04 (Phase 15 m3), because the port would otherwise have walked the
   // palette out from under it: `rolltui/c/` was never scanned at all, so a colour moved
   // into a C file would have left the check green while meaning less. It scans both now,
-  // and the four exempt files are named with what each of them is.
+  // and the exempt files are named with what each of them is.
+  //
+  // NARROWED THE SAME DAY (Phase 15 m5): the three built-in themes' own colours moved from
+  // `Theme.cpp` into `c/rolltui_theme.c` alongside the colour engine m3 already put there, so
+  // `Theme.cpp` is no longer exempted (it carries no colour literal to hide any more — the
+  // pattern no longer matches it at all) and the file below stands for BOTH reasons at once,
+  // named separately so either one going stale is caught on its own.
   {
     std::string dir = ROLLTUI_SOURCE_DIR;
     std::vector<std::string> files;
@@ -241,14 +247,21 @@ int main() {
     std::regex literal(R"(Color::rgb\(|Color::indexed\(|"#[0-9a-fA-F]{6}"|\[(3[0-7]|4[0-7]|9[0-7]|10[0-7]|38;5|48;5|38;2|48;2)(;|m))");
     std::vector<std::string> offenders;
     for (const std::string& f : files) {
-      if (f == "Theme.cpp" || f == "Style.hpp") continue;  // the built-in themes, and the constructors themselves
-      // THE COLOUR ENGINE (Phase 15 m3): xterm's published 16-colour palette, which the
-      // downgrade measures against, plus the constructors it builds a reduced colour with.
-      // Exempt for the reason the two below are — a reference table and computed colours are
-      // not a theme naming one — and named explicitly, so a table quietly moved out of it
-      // fails the liveness check under this loop.
-      // Was TWO files until 2026-09-04, when the C++ implementation was deleted and the C
-      // became the library; the liveness check below is what caught the stale exemption.
+      if (f == "Style.hpp") continue;  // the constructors themselves (matched only in a comment)
+      // c/rolltui_theme.c carries TWO exemptions now, named separately so either going stale
+      // is its own failure:
+      //   1. THE COLOUR ENGINE (Phase 15 m3): xterm's published 16-colour palette, which the
+      //      downgrade measures against, plus the constructors it builds a reduced colour
+      //      with — a reference table and computed colours are not a theme naming one. Was
+      //      TWO files until 2026-09-04, when the C++ implementation was deleted and the C
+      //      became the library.
+      //   2. THE BUILT-IN THEMES (Phase 15 m5, the same day): `rolltui::Theme.cpp`'s own
+      //      taste — `make_default_dark`/`_light`/`make_mono`'s colour literals — moved here
+      //      too, so `Theme.cpp` no longer needs (or gets) an exemption of its own; the
+      //      pattern below no longer matches it at all, which is asserted rather than
+      //      assumed a few lines down.
+      // Both are named explicitly so a table quietly moved out of either fails the liveness
+      // checks under this loop.
       if (f == "c/rolltui_theme.c") continue;
       if (f == "ThemeAnalysis.cpp" || f == "ThemeGen.cpp") continue;  // colour MATHS: they construct colours from numbers they computed, never name one
       std::string src = read_file(dir + "/" + f);
@@ -265,14 +278,30 @@ int main() {
       }
     }
     check(offenders.empty(), "no colour literal outside the theme's own files" + (offenders.empty() ? "" : " — " + join(offenders)));
-    // …and the control can see one: Theme.cpp itself must trip the pattern.
-    check(std::regex_search(read_file(dir + "/Theme.cpp"), literal), "the pattern matches Theme.cpp's built-ins (the control is live)");
-    // …and the exemption is not an empty one. The engine must still carry the palette it is
-    // exempt FOR, so a table quietly moved somewhere unscanned fails here instead of passing
-    // everywhere. This assertion is why the exemption above could not go stale silently when
-    // the second implementation was deleted: it failed on the first run afterwards.
+    // NEITHER half of c/rolltui_theme.c's exemption can be proven LIVE by asking `literal`
+    // to match it, and that is worth stating rather than leaving as a silent gap: the
+    // pattern is shaped for C++ call syntax (`Color::rgb(`, `Color::indexed(`) and a raw SGR
+    // parameter written byte-by-byte, and C has neither — the colour engine's own
+    // `kSystem16` is plain `{r, g, b}` struct literals and the built-in themes below are
+    // `rgbc(0x.., 0x.., 0x..)` calls with no namespace to spell. That is exactly why the two
+    // liveness checks below are SUBSTRING searches, the same shape the pre-existing
+    // `kSystem16` one already used, rather than a second attempt to make `literal` see C: a
+    // regex that matched both languages' spellings of "a colour literal" would be looser in
+    // the C++ files this control actually polices, which is the trade the control is FOR.
+    //
+    // Theme.cpp, by contrast, IS still C++, so the pattern finding nothing there any more is
+    // exactly the assertion this control can make honestly — the built-ins really left.
+    check(!std::regex_search(read_file(dir + "/Theme.cpp"), literal),
+          "the pattern no longer matches Theme.cpp — the built-ins really left");
+    // …and neither exemption is an empty one. Each file must still carry what it is exempt
+    // for, so a table quietly moved somewhere unscanned fails here instead of passing
+    // everywhere — this is why the c/rolltui_theme.c exemption could not go stale silently
+    // when the second implementation was deleted (2026-09-04): it failed on the first run
+    // afterwards, and the same is now true of the built-ins' own move.
     check(read_file(dir + "/c/rolltui_theme.c").find("kSystem16") != std::string::npos,
           "the colour engine still carries the palette it is exempt for");
+    check(read_file(dir + "/c/rolltui_theme.c").find("default-dark") != std::string::npos,
+          "the built-in themes still carry the name that proves they live here now");
   }
 
   return report("rolltui theme_test");

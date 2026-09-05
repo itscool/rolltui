@@ -143,6 +143,12 @@ class EffectMap {
   // says which role an effect with none of its own picks, and it is on this side because a
   // role is the styling vocabulary and the C names none of it.
   EffectMap() : m_(rolltui_effect_map_new(kEffectStateCount, static_cast<unsigned char>(Role::accent_1))) {}
+  // ADOPTS an already-built map, taking ownership — Theme.cpp's built-in construction and
+  // its JSON loader (Phase 15 m5) fill one in C, spec by spec, through the same
+  // `rolltui_effect_map_add`/`_add_frame`/`_add_role` this class's own methods call; handing
+  // the finished map here is cheaper than replaying those calls one at a time from C++ and
+  // avoids a second, wasted `rolltui_effect_map_new`. `adopt` must be non-null.
+  explicit EffectMap(RolltuiEffectMap* adopt) noexcept : m_(adopt) {}
   EffectMap(const EffectMap& o) : m_(rolltui_effect_map_clone(o.m_.get())) {}
   EffectMap& operator=(const EffectMap& o) {
     if (this != &o) m_.reset(rolltui_effect_map_clone(o.m_.get()));

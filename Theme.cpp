@@ -1,316 +1,102 @@
-// rolltui/Theme.cpp — the built-in themes (the ONLY place in the library a colour
-// literal may appear — rolltui/tests/theme_test.cpp greps for that), the JSON loader,
-// colour downgrade and SGR emission. See Theme.hpp.
+// rolltui/Theme.cpp — THE C++ SHIM (Phase 15 m5). See Theme.hpp for the contract; the built-in
+// themes, the colour engine and the JSON loader/dumper all live in `rolltui/c/rolltui_theme.h`
+// (Phase 15 m3 moved the colour engine; m5, this pass, moves the rest — the built-in themes and
+// the JSON loader/dumper, which m3's own note already named as "most of the file" and never
+// moved). What is LEFT here is exactly what `rolltui/c/rolltui_theme.h`'s header comment says
+// deliberately stays: the depth/mode NAME vocabulary, and the two things `Theme::meta`
+// (`json::Value`) and `Theme::styles`/`Theme::effects`/`Theme::name`'s C++ SHAPES that no
+// caller of this header may see change (rolltui/c/rolltui_json.h's own header comment is why
+// `json::Value` itself does not port here — Theme.cpp is one of the six modules it names).
+//
+// rolltui_theme.h's loader/dumper never learn a Role's or an EffectState's NAME — a theme file
+// resolves "md_heading"/"waiting" against a table THIS file hands over once per call
+// (`RolltuiThemeVocab`), built from `Style.hpp`'s `kRoleNames` and `Effects.cpp`'s
+// `effect_state_name` and never rebuilt (a Meyer's singleton of plain pointers into
+// literal-backed storage — nothing here for `rolltui::shutdown()` to release).
 #include "rolltui/Theme.hpp"
 
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
+#include <cstring>
 
 #include "rolltui/Json.hpp"
 #include "rolltui/Lifetime.hpp"
-#include "rolltui/Unicode.hpp"
 #include "rolltui/c/rolltui_theme.h"
 
 namespace rolltui {
+
+namespace {
+
+// ---- the vocabulary, handed to the C side once per call --------------------------------
+
+// Every pointer here borrows LITERAL-backed storage — `kRoleNames`' entries are
+// `std::string_view`s over string literals (Style.hpp), and `effect_state_name`'s are the
+// same over `Effects.cpp`'s own `kStateNames` — so each is NUL-terminated (a string literal
+// always is) even though `string_view` does not generally promise that, and each lives for
+// the process's whole life. That is what lets `RolltuiThemeVocab` skip a parallel length
+// array (rolltui_theme.h's own comment) and what makes a `std::array` of pointers, not a
+// heap allocation, the whole of this singleton's storage — there is nothing for
+// `rolltui::shutdown()` to release.
+struct VocabTables {
+  std::array<const char*, kRoleCount> role_names{};
+  std::array<const char*, kEffectStateCount> state_names{};
+  RolltuiThemeVocab vocab{};
+  VocabTables() {
+    for (std::size_t i = 0; i < kRoleCount; ++i) role_names[i] = kRoleNames[i].data();
+    for (std::size_t i = 0; i < kEffectStateCount; ++i)
+      state_names[i] = effect_state_name(static_cast<EffectState>(i)).data();
+    vocab.role_names = role_names.data();
+    vocab.role_count = kRoleCount;
+    vocab.text_role = static_cast<std::size_t>(Role::text);
+    vocab.state_names = state_names.data();
+    vocab.state_count = kEffectStateCount;
+    vocab.fallback_effect_role = static_cast<unsigned char>(Role::accent_1);
+  }
+};
+
+const RolltuiThemeVocab& vocab() {
+  static const VocabTables t;
+  return t.vocab;
+}
+
+}  // namespace
+
+// ---- json::Value <-> RolltuiJsonValue*, SHARED with Json.cpp -----------------------------
+//
+// **This was a duplicated copy for the length of one parallel work session, and the reason it
+// is not one now is worth the four lines.** `Json.cpp` has always had this exact conversion;
+// it was file-local, so the agent porting this module copied it rather than reach across into
+// another module a sibling agent was editing at the same moment — a correct call about
+// collision risk, and it left the library with two implementations of one thing. The sibling
+// (`Layout.cpp`'s port) needed the same conversion and gave `Json.cpp`'s the external linkage
+// instead. Deduplicated here on integration, the third duplicate this port has found after
+// `put_text`/`fill`/`tint` and `Windows::factories_`.
+//
+// Needed for exactly two things: handing "defs"/"roles"/"effects" to the C loader when the
+// caller already holds a parsed `json::Value` (`Presets.cpp`'s embedded theme object —
+// `load_theme`'s TEXT overload parses straight to a `RolltuiJsonValue*` and never needs
+// `value_to_c` at all), and reading "meta" back out as a `json::Value`, which is that
+// struct's own C++ shape (`Theme.hpp`) and stays so. Not declared in `Json.hpp`: that
+// header's public shape stays exactly what the other C++ modules already see.
+namespace json {
+RolltuiJsonValue* value_to_c(const Value& v);
+Value value_from_c(const RolltuiJsonValue* v);
+}  // namespace json
 
 // ---- built-ins ---------------------------------------------------------------------
 
 namespace {
 
-constexpr Color rgb(std::uint8_t r, std::uint8_t g, std::uint8_t b) { return Color::rgb(r, g, b); }
-
-Style S(Color fg, Color bg = Color::none(), bool bold = false, bool italic = false,
-        bool underline = false, bool dim = false, bool reverse = false) {
-  Style s;
-  s.fg = fg; s.bg = bg; s.bold = bold; s.italic = italic; s.underline = underline; s.dim = dim; s.reverse = reverse;
-  return s;
-}
-
-// ---- motion (Phase 12 m6) ------------------------------------------------------------
-// The theme's half of the effects contract: a widget says `waiting`, this says what
-// waiting LOOKS like. Every value here is expressible in a theme file (Theme.hpp's
-// "effects" object) and every one of these three maps is written into the shipped preset
-// files that carry the same name — the built-in and the file are one look with two
-// definition sites, kept equal by rolltui-presets-test.
-// A spec is BUILT INTO the map rather than assembled beside it and moved in (Phase 15 m3:
-// the theme owns its specs in C, so there is no second owner for one to live in first).
-// These two helpers are the whole of the difference at a call site.
-std::size_t fx(EffectMap& m, EffectState state, std::string_view kind, int period_ms, Role role) {
-  const std::size_t i = m.add(state, kind, period_ms);
-  m.add_role(state, i, role);
-  return i;
-}
-
-void frames(EffectMap& m, EffectState state, std::size_t i, std::initializer_list<std::string_view> fs) {
-  for (std::string_view f : fs) m.add_frame(state, i, f);
-}
-
-// For the two colour themes. The `waiting` spinner is BRAILLE (East Asian Neutral, so
-// one cell at any ambiguous-width setting — a two-cell frame would be refused by the
-// applier's width guarantee and the theme would silently stop moving).
-EffectMap colour_effects() {
-  EffectMap m;
-  frames(m, EffectState::Waiting, m.add(EffectState::Waiting, "spinner", 640),
-         {"\xE2\xA0\x8B", "\xE2\xA0\x99", "\xE2\xA0\xB9", "\xE2\xA0\xB8",
-          "\xE2\xA0\xBC", "\xE2\xA0\xB4", "\xE2\xA0\xA6", "\xE2\xA0\xA7"});
-  // Bytes arriving move ALONG the text, so the sweep does too — and it is the accent, so
-  // a reader who cannot see the motion still sees which span is live.
-  const std::size_t sweep = m.add(EffectState::Streaming, "shimmer", 1200, /*width=*/6);
-  m.add_role(EffectState::Streaming, sweep, Role::accent_1);
-  // A bar is a picture of a number and asks for NO tick: the number changing is already
-  // a redraw (Effects.hpp — this is what "the tick runs only while something moves" is
-  // worth in the shipped file, not only in the test).
-  fx(m, EffectState::Progress, "bar", 0, Role::accent_2);
-  fx(m, EffectState::Flash, "blink", 400, Role::find_current);
-  return m;
-}
-
-// The same four states, told with what a colourless terminal has. This is the pair the
-// design is FOR: same app, same widget code, a spinner that is ASCII here and braille
-// there, and a `streaming` that is a dim/normal breath rather than a colour sweep.
-EffectMap mono_effects() {
-  EffectMap m;
-  frames(m, EffectState::Waiting, m.add(EffectState::Waiting, "spinner", 400), {"|", "/", "-", "\\"});
-  const std::size_t breath = m.add(EffectState::Streaming, "pulse", 1200);
-  m.add_role(EffectState::Streaming, breath, Role::text_muted);
-  m.add_role(EffectState::Streaming, breath, Role::text);
-  fx(m, EffectState::Progress, "bar", 0, Role::menu_selected);  // reverse video: the only "filled" this theme has
-  fx(m, EffectState::Flash, "blink", 400, Role::find_current);
-  return m;
-}
-
-Theme make_default_dark() {
-  // A restrained palette: text on a near-black ground, four accents, muted chrome.
-  // The accents and the muted grey were re-picked 2026-09-02 by ThemeAnalysis
-  // (milestone 15): the first cut's muted text missed 4.5:1 on the panel by a hair,
-  // and blue/purple and green/yellow were confusable under protanopia and
-  // deuteranopia. These five sit at hues 255/145/90/310/25 in OKLCH with their
-  // lightness spread so every must-differ pair keeps an OKLab dE >= 0.13 under all
-  // three simulations (a grid search, not taste) — rolltui-theme-analysis-test asserts
-  // dark + readable + cvd-safe on this theme.
-  const Color bg = rgb(0x14, 0x16, 0x1A), panel = rgb(0x1B, 0x1E, 0x24), fg = rgb(0xD8, 0xDC, 0xE2);
-  const Color muted = rgb(0x85, 0x8D, 0x99), border = rgb(0x3A, 0x40, 0x4A), border_active = rgb(0x84, 0xB7, 0xF9);
-  const Color blue = rgb(0x84, 0xB7, 0xF9), green = rgb(0xAD, 0xEE, 0xAE), yellow = rgb(0xCB, 0xA6, 0x3A);
-  const Color red = rgb(0xC0, 0x6A, 0x64), purple = rgb(0x9A, 0x73, 0xB8), cyan = rgb(0x6C, 0xC8, 0xC8);
-  const Color code_bg = rgb(0x1E, 0x22, 0x28), sel = rgb(0x2E, 0x44, 0x60), find_bg = rgb(0x4A, 0x3E, 0x1C);
-  Theme t;
-  t.name = "default-dark";
-  auto set = [&](Role r, Style s) { t.style(r) = s; };
-  set(Role::text, S(fg, bg));
-  set(Role::text_muted, S(muted, bg));
-  set(Role::background, S(fg, bg));
-  set(Role::panel_background, S(fg, panel));
-  set(Role::border, S(border, bg));
-  set(Role::border_active, S(border_active, bg));
-  set(Role::title, S(fg, bg, true));
-  set(Role::label, S(muted, panel));
-  set(Role::value, S(fg, panel));
-  set(Role::accent_1, S(blue, bg));
-  set(Role::accent_2, S(green, bg));
-  set(Role::accent_3, S(yellow, bg));
-  set(Role::accent_4, S(purple, bg));
-  set(Role::prompt, S(cyan, bg, true));
-  set(Role::note, S(muted, bg, false, true));
-  set(Role::warning, S(yellow, bg));
-  set(Role::error, S(red, bg, true));
-  set(Role::md_heading, S(blue, bg, true));
-  set(Role::md_emphasis, S(fg, bg, false, true));
-  set(Role::md_strong, S(fg, bg, true));
-  set(Role::md_code_inline, S(yellow, code_bg));
-  set(Role::md_code_block, S(fg, code_bg));
-  set(Role::md_code_label, S(muted, bg));
-  set(Role::md_link, S(cyan, bg, false, false, true));
-  set(Role::md_link_url, S(muted, bg));
-  set(Role::md_quote, S(muted, bg, false, true));
-  set(Role::md_list_marker, S(blue, bg));
-  set(Role::md_table_border, S(border, bg));
-  set(Role::md_table_header, S(fg, bg, true));
-  set(Role::md_rule, S(border, bg));
-  set(Role::md_strikethrough, S(muted, bg, false, false, false, true));
-  set(Role::diff_added, S(green, bg));
-  set(Role::diff_removed, S(red, bg));
-  set(Role::diff_context, S(muted, bg));
-  // m5b: the word run inside a changed PAIR. Same hue as its line — an emphasis, not a
-  // second signal — so it costs no colour budget and cannot break a must-differ pair.
-  set(Role::diff_added_word, S(green, bg, true));
-  set(Role::diff_removed_word, S(red, bg, true));
-  set(Role::input_text, S(fg, bg));
-  set(Role::input_cursor, S(bg, fg));
-  set(Role::input_placeholder, S(muted, bg, false, true));
-  set(Role::scroll_marker, S(bg, yellow, true));
-  set(Role::selection, S(fg, sel));
-  set(Role::overlay, S(muted, bg, false, false, false, true));
-  set(Role::menu_item, S(fg, panel));
-  set(Role::menu_selected, S(bg, blue, true));
-  set(Role::menu_breadcrumb, S(muted, panel));
-  set(Role::menu_shortcut, S(yellow, panel));
-  // Find (m4): every match is normal text on a dim amber ground — legible, and it keeps
-  // the line's own shape. The current one is INVERTED on the accent, which is both the
-  // strongest "you are here" a cell grid has and the reason the must-differ pair can be
-  // measured at all (Style.hpp: the check reads `fg`, so a bg-only difference is
-  // invisible to it).
-  set(Role::find_match, S(fg, find_bg));
-  set(Role::find_current, S(bg, yellow, true));
-  // The thumb rides in the border column, so it is the border's brighter twin —
-  // legible against the track without becoming a second accent.
-  set(Role::scrollbar, S(muted, bg));
-  t.effects = colour_effects();
-  return t;
-}
-
-Theme make_default_light() {
-  // Same story as the dark theme (2026-09-02): the light accents were confusable in
-  // five pairs under deuteranopia and the muted grey missed 4.5:1 on the panel; these
-  // are the grid search's pick at the same hues (a "yellow" readable on white is an
-  // olive), min dE 0.12 under every simulation.
-  const Color bg = rgb(0xFA, 0xFA, 0xF8), panel = rgb(0xEF, 0xF0, 0xF2), fg = rgb(0x22, 0x26, 0x2C);
-  const Color muted = rgb(0x5F, 0x66, 0x70), border = rgb(0xC8, 0xCC, 0xD2), border_active = rgb(0x2D, 0x4E, 0x78);
-  const Color blue = rgb(0x2D, 0x4E, 0x78), green = rgb(0x50, 0x7B, 0x51), yellow = rgb(0x5E, 0x4B, 0x0C);
-  const Color red = rgb(0x4F, 0x1A, 0x18), purple = rgb(0x40, 0x14, 0x59), cyan = rgb(0x00, 0x7A, 0x8A);
-  const Color code_bg = rgb(0xF0, 0xF1, 0xF3), sel = rgb(0xCC, 0xDF, 0xF5), find_bg = rgb(0xF7, 0xE4, 0xA8);
-  Theme t;
-  t.name = "default-light";
-  auto set = [&](Role r, Style s) { t.style(r) = s; };
-  set(Role::text, S(fg, bg));
-  set(Role::text_muted, S(muted, bg));
-  set(Role::background, S(fg, bg));
-  set(Role::panel_background, S(fg, panel));
-  set(Role::border, S(border, bg));
-  set(Role::border_active, S(border_active, bg));
-  set(Role::title, S(fg, bg, true));
-  set(Role::label, S(muted, panel));
-  set(Role::value, S(fg, panel));
-  set(Role::accent_1, S(blue, bg));
-  set(Role::accent_2, S(green, bg));
-  set(Role::accent_3, S(yellow, bg));
-  set(Role::accent_4, S(purple, bg));
-  set(Role::prompt, S(cyan, bg, true));
-  set(Role::note, S(muted, bg, false, true));
-  set(Role::warning, S(yellow, bg));
-  set(Role::error, S(red, bg, true));
-  set(Role::md_heading, S(blue, bg, true));
-  set(Role::md_emphasis, S(fg, bg, false, true));
-  set(Role::md_strong, S(fg, bg, true));
-  set(Role::md_code_inline, S(purple, code_bg));
-  set(Role::md_code_block, S(fg, code_bg));
-  set(Role::md_code_label, S(muted, bg));
-  set(Role::md_link, S(blue, bg, false, false, true));
-  set(Role::md_link_url, S(muted, bg));
-  set(Role::md_quote, S(muted, bg, false, true));
-  set(Role::md_list_marker, S(blue, bg));
-  set(Role::md_table_border, S(border, bg));
-  set(Role::md_table_header, S(fg, bg, true));
-  set(Role::md_rule, S(border, bg));
-  set(Role::md_strikethrough, S(muted, bg, false, false, false, true));
-  set(Role::diff_added, S(green, bg));
-  set(Role::diff_removed, S(red, bg));
-  set(Role::diff_context, S(muted, bg));
-  // m5b: the word run inside a changed PAIR. Same hue as its line — an emphasis, not a
-  // second signal — so it costs no colour budget and cannot break a must-differ pair.
-  set(Role::diff_added_word, S(green, bg, true));
-  set(Role::diff_removed_word, S(red, bg, true));
-  set(Role::input_text, S(fg, bg));
-  set(Role::input_cursor, S(bg, fg));
-  set(Role::scroll_marker, S(bg, yellow, true));
-  set(Role::input_placeholder, S(muted, bg, false, true));
-  set(Role::selection, S(fg, sel));
-  set(Role::overlay, S(muted, bg, false, false, false, true));
-  set(Role::menu_item, S(fg, panel));
-  set(Role::menu_selected, S(bg, blue, true));
-  set(Role::menu_breadcrumb, S(muted, panel));
-  set(Role::menu_shortcut, S(purple, panel));
-  // Find (m4) — the dark theme's rule, read for a light ground: a pale amber wash for
-  // every match, and the current one inverted on the olive that serves as this
-  // palette's yellow.
-  set(Role::find_match, S(fg, find_bg));
-  set(Role::find_current, S(bg, yellow, true));
-  set(Role::scrollbar, S(muted, bg));
-  t.effects = colour_effects();
-  return t;
-}
-
-// Attributes only: every colour is the terminal's default. Emphasis by bold, dim,
-// italic, underline and reverse, which is what a 16-colour or high-contrast setup
-// can rely on.
-Theme make_mono() {
-  const Color n = Color::none();
-  Theme t;
-  t.name = "mono";
-  for (Style& s : t.styles) s = S(n, n);
-  auto set = [&](Role r, Style s) { t.style(r) = s; };
-  // The four accents differ by attribute alone (milestone 15 found them identical):
-  // bold, italic, underline, bold+italic.
-  set(Role::accent_1, S(n, n, true));
-  set(Role::accent_2, S(n, n, false, true));
-  set(Role::accent_3, S(n, n, false, false, true));
-  set(Role::accent_4, S(n, n, true, true));
-  set(Role::text_muted, S(n, n, false, false, false, true));
-  set(Role::border, S(n, n, false, false, false, true));
-  set(Role::border_active, S(n, n, true));
-  set(Role::title, S(n, n, true));
-  set(Role::label, S(n, n, false, false, false, true));
-  set(Role::prompt, S(n, n, true));
-  set(Role::note, S(n, n, false, true));
-  set(Role::warning, S(n, n, true));
-  set(Role::error, S(n, n, true, false, false, false, true));
-  set(Role::md_heading, S(n, n, true, false, true));
-  set(Role::md_emphasis, S(n, n, false, true));
-  set(Role::md_strong, S(n, n, true));
-  set(Role::md_code_inline, S(n, n, false, false, false, false, true));
-  set(Role::md_code_label, S(n, n, false, false, false, true));
-  set(Role::md_link, S(n, n, false, false, true));
-  set(Role::md_link_url, S(n, n, false, false, false, true));
-  set(Role::md_quote, S(n, n, false, true));
-  set(Role::md_list_marker, S(n, n, true));
-  set(Role::md_table_border, S(n, n, false, false, false, true));
-  set(Role::md_table_header, S(n, n, true));
-  set(Role::md_rule, S(n, n, false, false, false, true));
-  set(Role::md_strikethrough, S(n, n, false, false, false, true));
-  set(Role::diff_added, S(n, n, true));
-  set(Role::diff_removed, S(n, n, false, false, false, true));
-  set(Role::diff_context, S(n, n, false, false, false, true));
-  // m5b, with no colour to spend: underline is the only attribute left, so it carries
-  // the word run on top of whatever its line already uses.
-  set(Role::diff_added_word, S(n, n, true, false, true));
-  set(Role::diff_removed_word, S(n, n, false, false, true, true));
-  set(Role::input_cursor, S(n, n, false, false, false, false, true));
-  set(Role::input_placeholder, S(n, n, false, false, false, true));
-  set(Role::scroll_marker, S(n, n, true, false, false, false, true));
-  set(Role::selection, S(n, n, false, false, false, false, true));
-  set(Role::overlay, S(n, n, false, false, false, true));
-  set(Role::menu_selected, S(n, n, true, false, false, false, true));
-  set(Role::menu_breadcrumb, S(n, n, false, false, false, true));
-  set(Role::menu_shortcut, S(n, n, false, false, true));
-  // Find (m4). With no colour to spend, the distinction is carried by attributes and
-  // must still be a distinction: underline marks every match, bold+reverse the current
-  // one — the same "inverted means here" this theme already uses for menu_selected.
-  set(Role::find_match, S(n, n, false, false, true));
-  set(Role::find_current, S(n, n, true, false, false, false, true));
-  // With no colour, the thumb is the glyph's job (a solid block against the border
-  // line); bold is what separates it from the track.
-  set(Role::scrollbar, S(n, n, true));
-  t.effects = mono_effects();
-  return t;
-}
-
-// THE BUILT-INS ARE A CACHE, NOT THREE `static const Theme`s — changed in Phase 15 m3, and
-// the reason is a number rather than a preference. A `Theme` now owns a `RolltuiEffectMap`,
-// which is an explicit allocation through the library's own entry point; three function-
-// local statics holding one each are three PROCESS-WIDE RETAINERS, and `rolltui::shutdown()`
-// promises `live_bytes == 0`. Before the port those maps were `std::vector`s reaching the
-// global `operator new`, so the gauge could not see them and the promise was quietly weaker
-// — which is exactly the asymmetry CLAUDE.md records about what C buys.
+// THE BUILT-INS ARE A CACHE, NOT THREE `static const Theme`s (Phase 15 m3) — a `Theme` owns a
+// `RolltuiEffectMap`, an explicit allocation through the library's own entry point, and three
+// function-local statics holding one each would be three PROCESS-WIDE RETAINERS that
+// `rolltui::shutdown()` promises to release (`live_bytes == 0`).
 //
 // FILLED WHEN EMPTY, not by a static initializer, for the reason `builtin_layout_cache()`
-// states one file over: releasing a cache is only safe if the cache rebuilds.
-// The storage and the FILL are separate on purpose. A releaser written as
-// `builtin_theme_cache().clear(); builtin_theme_cache().shrink_to_fit();` reads fine and is
-// wrong: the second call finds the cache it just emptied and REBUILDS it, so shutdown ends
-// holding exactly what it set out to release. `Layout.cpp`'s builtin-layout cache had that
-// shape from Phase 14 m6a and nobody could see it, because a `std::vector<Layout>` reaches
-// the global `operator new` and the gauge does not count it; a `Theme` owning a C map does,
-// so the port turned an invisible rebuild into a failing assertion. Both are fixed.
+// states one file over: releasing a cache is only safe if the cache rebuilds. The storage and
+// the FILL are separate on purpose. A releaser written as `builtin_theme_cache().clear();
+// builtin_theme_cache().shrink_to_fit();` reads fine and is wrong: the second call finds the
+// cache it just emptied and REBUILDS it, so shutdown ends holding exactly what it set out to
+// release — which is why the releaser below touches `theme_cache_storage()`, the STORAGE,
+// and never `builtin_theme_cache()`, the ACCESSOR that would refill it.
 std::vector<std::pair<std::string, Theme>>& theme_cache_storage() {
   static std::vector<std::pair<std::string, Theme>> cache;
   return cache;
@@ -321,18 +107,22 @@ std::vector<std::pair<std::string, Theme>>& builtin_theme_cache() {
   if (cache.empty()) {
     // RE-REGISTERED ON EVERY REBUILD, deliberately, and not through a `static bool once`:
     // `shutdown()` clears its own registry as it runs, so a cache rebuilt afterwards must
-    // say so again or the SECOND shutdown would leave it held. That is the rule
-    // `ThreadHandle` already states for a per-thread buffer and the effect registry for a
-    // process-wide one; a once-only registration is the version of it that passes the
-    // first test and fails the second.
+    // say so again or the SECOND shutdown would leave it held.
     on_shutdown([] {
       theme_cache_storage().clear();
       theme_cache_storage().shrink_to_fit();
     });
-    cache.reserve(3);
-    cache.emplace_back("default-dark", make_default_dark());
-    cache.emplace_back("default-light", make_default_light());
-    cache.emplace_back("mono", make_mono());
+    const std::size_t n = rolltui_theme_builtin_count();
+    cache.reserve(n);  // pointer stability: builtin_theme() hands back `&t` into this vector
+    for (std::size_t i = 0; i < n; ++i) {
+      const char* name = rolltui_theme_builtin_name(i);
+      Theme t;
+      t.name = name;
+      if (RolltuiEffectMap* m = rolltui_theme_builtin_fill(name, std::strlen(name), t.styles.data(), kRoleCount))
+        t.effects = EffectMap(m);  // adopts; NULL only on a role-count mismatch this file
+                                   // would already have failed a static_assert over
+      cache.emplace_back(t.name, std::move(t));
+    }
   }
   return cache;
 }
@@ -346,19 +136,22 @@ const Theme* builtin_theme(std::string_view name) {
 }
 
 std::vector<std::string_view> builtin_theme_names() {
-  return {"default-dark", "default-light", "mono"};
+  std::vector<std::string_view> out;
+  const std::size_t n = rolltui_theme_builtin_count();
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) out.push_back(rolltui_theme_builtin_name(i));
+  return out;
 }
 
 // ---- colours -----------------------------------------------------------------------
 
 // THE COLOUR ENGINE IS BEHIND A C BOUNDARY (`rolltui/c/rolltui_theme.h`) since Phase 15 m3,
-// and that is the implementation. What is left on this side is the
-// two things the boundary deliberately does not carry: the C++ SHAPES a caller already
-// writes against (`std::optional<Color>`, `std::string`), and the DEPTH and MODE NAMES
-// below, which are a vocabulary a config file and a `--color-depth` flag both spell — a
-// vocabulary written down twice is a second thing to drift, the same reasoning that kept
-// `Role` out of `rolltui_diff.h` in m2. The built-in themes above stay here too: they are
-// this library's taste, not its algorithm.
+// and that is the implementation. What is left on this side is the two things the boundary
+// deliberately does not carry: the C++ SHAPES a caller already writes against
+// (`std::optional<Color>`, `std::string`), and the DEPTH and MODE NAMES below, which are a
+// vocabulary a config file and a `--color-depth` flag both spell — a vocabulary written down
+// twice is a second thing to drift, the same reasoning that kept `Role` out of
+// `rolltui_diff.h` in m2.
 
 std::optional<Color> parse_color(std::string_view text) {
   Color c;
@@ -429,330 +222,95 @@ ThemeMode mode_for_background(Color bg) { return static_cast<ThemeMode>(rolltui_
 
 namespace {
 
-// Resolves one colour value: string forms, an integer, a defs reference, or a
-// {"dark":..,"light":..} pair. Returns nullopt and explains on failure.
-std::optional<Color> resolve_color(const json::Value& v, const json::Value& defs, ThemeMode mode,
-                                   const std::string& where, ThemeLoadReport& report, int depth = 0) {
-  if (depth > 4) {
-    report.bad_values.push_back(where + ": defs reference cycle");
+// Fills `report` (fully reset first) from loading `root_c`, and returns the theme unless
+// `root_c` itself is not a usable theme object. Shared by both `load_theme` overloads below:
+// the text one parses straight to a `RolltuiJsonValue*` and never builds a `json::Value` at
+// all; the `json::Value` one converts its argument once via `value_to_c`. Neither overload's
+// "meta" handling happens in here — rolltui_theme.h's header comment states why that field
+// stays outside this file entirely, and each caller does its own, right after this returns.
+std::optional<Theme> theme_from_c_root(const RolltuiJsonValue* root_c, ThemeMode mode, ThemeLoadReport& report) {
+  report = ThemeLoadReport{};
+  Theme t;
+  RolltuiStr name{};
+  RolltuiThemeReport rep{};
+  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &vocab(), t.styles.data(), &name, &rep);
+  report.error.assign(rep.error.p ? rep.error.p : "", rep.error.n);
+  for (std::size_t i = 0; i < rep.missing_roles_n; ++i)
+    report.missing_roles.emplace_back(rep.missing_roles[i].p ? rep.missing_roles[i].p : "", rep.missing_roles[i].n);
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i)
+    report.unknown_keys.emplace_back(rep.unknown_keys[i].p ? rep.unknown_keys[i].p : "", rep.unknown_keys[i].n);
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i)
+    report.bad_values.emplace_back(rep.bad_values[i].p ? rep.bad_values[i].p : "", rep.bad_values[i].n);
+  rolltui_theme_report_release(&rep);
+  if (!eff) {
+    rolltui_str_free(&name);
     return std::nullopt;
   }
-  if (v.is_number()) {
-    double d = v.num;
-    if (d < 0 || d > 255 || d != std::floor(d)) {
-      report.bad_values.push_back(where + ": " + std::to_string(d) + " is not an ANSI index 0-255");
-      return std::nullopt;
-    }
-    return Color::indexed(static_cast<std::uint8_t>(d));
-  }
-  if (v.is_string()) {
-    if (auto c = parse_color(v.str)) return c;
-    if (defs.has(v.str)) return resolve_color(defs.get(v.str), defs, mode, where + " → defs." + v.str, report, depth + 1);
-    report.bad_values.push_back(where + ": '" + v.str + "' is not a colour (#rrggbb, 0-255, none, or a defs name)");
-    return std::nullopt;
-  }
-  if (v.is_object()) {
-    const char* key = mode == ThemeMode::Dark ? "dark" : "light";
-    if (!v.has(key)) {
-      report.bad_values.push_back(where + ": missing \"" + key + "\" variant");
-      return std::nullopt;
-    }
-    for (const auto& [k, x] : v.obj)
-      if (k != "dark" && k != "light") report.unknown_keys.push_back(where + "." + k);
-    return resolve_color(v.get(key), defs, mode, where + "." + key, report, depth + 1);
-  }
-  report.bad_values.push_back(where + ": expected a colour");
-  return std::nullopt;
-}
-
-// ---- "effects": state → what it looks like while it lasts (Phase 12 m6) --------------
-// The KIND is deliberately not judged: rung 2 belongs to whoever registered it, and a
-// theme file is read long before a host has registered anything (Effects.hpp). Everything
-// that IS the library's — the state names, the role names, the equal-width frame rule — is
-// a named bad value here, at load, where a theme author can see it.
-// A DRAFT, and it is the only place in the library an effect's three arrays live outside
-// the map that owns them. A theme file may name "kind" after "frames" — object key order
-// is the file's — so the pieces have to be accumulated before a spec can be added; what
-// this is NOT is a second storage shape for a theme's motion, and it does not outlive the
-// call that fills it.
-struct EffectDraft {
-  std::string kind;
-  std::vector<std::string> frames;
-  std::vector<Role> roles;
-  int period_ms = 800, width = 0, steps = 0;
-  bool backward = false;
-};
-
-std::optional<EffectDraft> read_effect(const json::Value& v, const std::string& where, ThemeLoadReport& report) {
-  if (!v.is_object()) {
-    report.bad_values.push_back(where + ": expected an effect object");
-    return std::nullopt;
-  }
-  EffectDraft s;
-  auto roles_from = [&](const json::Value& x, const std::string& at) {
-    auto one = [&](const json::Value& n, const std::string& w) {
-      if (!n.is_string()) { report.bad_values.push_back(w + ": expected a role name"); return; }
-      const Role r = role_from_name(n.str);
-      if (r == Role::count_) { report.bad_values.push_back(w + ": '" + n.str + "' is not a role"); return; }
-      s.roles.push_back(r);
-    };
-    if (x.is_array())
-      for (std::size_t i = 0; i < x.arr.size(); ++i) one(x.arr[i], at + "[" + std::to_string(i) + "]");
-    else
-      one(x, at);
-  };
-  for (const auto& [k, x] : v.obj) {
-    if (k == "kind") {
-      if (!x.is_string() || x.str.empty()) { report.bad_values.push_back(where + ".kind: expected an effect kind name"); continue; }
-      s.kind = x.str;
-    } else if (k == "frames") {
-      if (!x.is_array()) { report.bad_values.push_back(where + ".frames: expected an array of strings"); continue; }
-      for (std::size_t i = 0; i < x.arr.size(); ++i) {
-        if (!x.arr[i].is_string()) { report.bad_values.push_back(where + ".frames[" + std::to_string(i) + "]: expected a string"); continue; }
-        s.frames.push_back(x.arr[i].str);
-      }
-    } else if (k == "role" || k == "roles") {
-      roles_from(x, where + "." + k);
-    } else if (k == "period_ms" || k == "width" || k == "steps") {
-      if (!x.is_number()) { report.bad_values.push_back(where + "." + k + ": expected a number"); continue; }
-      const int n = static_cast<int>(x.num);
-      if (k == "period_ms") s.period_ms = n;
-      else if (k == "width") s.width = n;
-      else s.steps = n;
-    } else if (k == "backward") {
-      if (!x.is_bool()) { report.bad_values.push_back(where + ".backward: expected true or false"); continue; }
-      s.backward = x.b;
-    } else {
-      report.unknown_keys.push_back(where + "." + k);
-    }
-  }
-  if (s.kind.empty()) {
-    report.bad_values.push_back(where + ": no \"kind\"");
-    return std::nullopt;
-  }
-  // The equal-width rule. It is checked HERE rather than left to the applier's clamp
-  // because a theme author can fix a file and a running frame cannot: the clamp is the
-  // guarantee, this is the message.
-  if (!s.frames.empty()) {
-    const int w = unicode::display_width(s.frames[0]);
-    if (w <= 0) report.bad_values.push_back(where + ".frames[0]: a frame must be at least one cell wide");
-    for (std::size_t i = 1; i < s.frames.size(); ++i)
-      if (unicode::display_width(s.frames[i]) != w) {
-        report.bad_values.push_back(where + ".frames[" + std::to_string(i) + "]: every frame must be " + std::to_string(w) +
-                                    " cells wide (an effect never changes a span's width)");
-        break;
-      }
-  }
-  return s;
-}
-
-void commit(EffectMap& map, EffectState state, const EffectDraft& d) {
-  const std::size_t i = map.add(state, d.kind, d.period_ms, d.width, d.steps, d.backward);
-  for (const std::string& f : d.frames) map.add_frame(state, i, f);
-  for (Role r : d.roles) map.add_role(state, i, r);
-}
-
-EffectMap read_effects(const json::Value& v, ThemeLoadReport& report) {
-  EffectMap map;
-  if (v.is_null()) return map;  // no "effects" key: a still UI, and not a problem
-  if (!v.is_object()) {
-    report.bad_values.push_back("effects: expected an object of state → effect");
-    return map;
-  }
-  for (const auto& [k, x] : v.obj) {
-    const EffectState state = effect_state_from_name(k);
-    if (state == EffectState::count_ || state == EffectState::None) {
-      report.unknown_keys.push_back("effects." + k);
-      continue;
-    }
-    const std::string where = "effects." + k;
-    if (x.is_array()) {
-      for (std::size_t i = 0; i < x.arr.size(); ++i)
-        if (std::optional<EffectDraft> s = read_effect(x.arr[i], where + "[" + std::to_string(i) + "]", report)) commit(map, state, *s);
-    } else if (std::optional<EffectDraft> s = read_effect(x, where, report)) {
-      commit(map, state, *s);
-    }
-  }
-  return map;
-}
-
-json::Value effect_to_json(const EffectSpec& s) {
-  json::Value o = json::Value::object();
-  o.set("kind", json::Value::string(std::string(s.kind_view())));
-  if (s.frame_count) {
-    json::Value fs = json::Value::array();
-    for (std::size_t i = 0; i < s.frame_count; ++i) fs.arr.push_back(json::Value::string(std::string(s.frame(i))));
-    o.set("frames", std::move(fs));
-  }
-  // `own_role_count`, never `role_count`: a spec that named no role borrows the map's
-  // fallback, and writing that back would put a role in the file nobody wrote.
-  if (s.own_role_count) {
-    json::Value roles = json::Value::array();
-    for (std::size_t i = 0; i < s.own_role_count; ++i)
-      roles.arr.push_back(json::Value::string(std::string(role_name(static_cast<Role>(s.roles[i])))));
-    o.set("roles", std::move(roles));
-  }
-  o.set("period_ms", json::Value::number(s.period_ms));
-  if (s.width) o.set("width", json::Value::number(s.width));
-  if (s.steps) o.set("steps", json::Value::number(s.steps));
-  if (s.backward) o.set("backward", json::Value::boolean(true));
-  return o;
-}
-
-// Written back whole, so a colour edit through the editor cannot silently drop a theme's
-// motion (the editor rebuilds the file from the parsed Theme).
-std::optional<json::Value> effects_to_json(const EffectMap& m) {
-  if (m.empty()) return std::nullopt;
-  json::Value o = json::Value::object();
-  for (std::size_t i = 1; i < kEffectStateCount; ++i) {
-    const EffectState state = static_cast<EffectState>(i);
-    const std::size_t n = m.count(state);
-    if (n == 0) continue;
-    if (n == 1) {
-      o.set(effect_state_name(state), effect_to_json(m.at(state, 0)));
-      continue;
-    }
-    json::Value arr = json::Value::array();
-    for (std::size_t k = 0; k < n; ++k) arr.arr.push_back(effect_to_json(m.at(state, k)));
-    o.set(effect_state_name(state), std::move(arr));
-  }
-  return o;
+  t.name.assign(name.p ? name.p : "", name.n);
+  rolltui_str_free(&name);
+  t.effects = EffectMap(eff);  // adopts
+  return t;
 }
 
 }  // namespace
 
 std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report) {
-  report = ThemeLoadReport{};
-  std::string err;
-  json::Value root = json::parse(json_text, err);
-  if (!err.empty()) { report.error = err; return std::nullopt; }
-  return load_theme(root, mode, report);
-}
-
-std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLoadReport& report) {
-  report = ThemeLoadReport{};
-  if (!root.is_object()) { report.error = "theme file must be a JSON object"; return std::nullopt; }
-  for (const auto& [k, v] : root.obj)
-    if (k != "name" && k != "defs" && k != "roles" && k != "meta" && k != "effects") report.unknown_keys.push_back(k);
-  const json::Value& defs = root.get("defs");
-  const json::Value& roles = root.get("roles");
-  if (!roles.is_object()) { report.error = "theme file has no \"roles\" object"; return std::nullopt; }
-  for (const auto& [k, v] : defs.obj)
-    if (!v.is_string() && !v.is_number() && !v.is_object()) report.bad_values.push_back("defs." + k + ": expected a colour");
-
-  Theme t;
-  t.name = std::string(root.get("name").as_string("unnamed"));
-  if (root.get("meta").is_object()) {
-    t.meta = root.get("meta");
-    // Claimed badges may be per variant ({"dark": [...], "light": [...]}): resolve
-    // them for this mode like a colour pair, so check_claims sees one list.
-    const json::Value& b = t.meta.get("badges");
-    if (b.is_object() && b.has(mode == ThemeMode::Dark ? "dark" : "light")) t.meta.set("badges", b.get(mode == ThemeMode::Dark ? "dark" : "light"));
+  RolltuiStr err{};
+  RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
+  if (!root_c) {
+    report = ThemeLoadReport{};
+    report.error.assign(err.p ? err.p : "", err.n);
+    rolltui_str_free(&err);
+    return std::nullopt;
   }
-  for (const auto& [k, v] : roles.obj)
-    if (role_from_name(k) == Role::count_) report.unknown_keys.push_back("roles." + k);
-
-  // Pass 1: the `text` role, the base every other role inherits from.
-  auto read_role = [&](const json::Value& v, Style base, const std::string& where) -> Style {
-    Style s = base;
-    if (!v.is_object()) {
-      report.bad_values.push_back(where + ": expected an object");
-      return s;
+  rolltui_str_free(&err);
+  std::optional<Theme> t = theme_from_c_root(root_c, mode, report);
+  if (t) {
+    const RolltuiJsonValue* meta_c = rolltui_json_get(root_c, "meta", 4);
+    if (rolltui_json_is_object(meta_c)) {
+      t->meta = json::value_from_c(meta_c);
+      const json::Value& b = t->meta.get("badges");
+      const char* key = mode == ThemeMode::Dark ? "dark" : "light";
+      if (b.is_object() && b.has(key)) t->meta.set("badges", b.get(key));
     }
-    for (const auto& [k, x] : v.obj) {
-      if (k == "fg" || k == "bg") {
-        if (auto c = resolve_color(x, defs, mode, where + "." + k, report)) (k == "fg" ? s.fg : s.bg) = *c;
-      } else if (k == "bold" || k == "italic" || k == "underline" || k == "dim" || k == "reverse") {
-        // A bool, or a {"dark": bool, "light": bool} pair like a colour (the editor can
-        // set an attribute in one variant only, and the file must be able to say so).
-        const json::Value* b = &x;
-        if (x.is_object()) {
-          const char* key = mode == ThemeMode::Dark ? "dark" : "light";
-          if (!x.has(key)) { report.bad_values.push_back(where + "." + k + ": missing \"" + key + "\" variant"); continue; }
-          b = &x.get(key);
-        }
-        if (!b->is_bool()) { report.bad_values.push_back(where + "." + k + ": expected true or false"); continue; }
-        if (k == "bold") s.bold = b->b;
-        else if (k == "italic") s.italic = b->b;
-        else if (k == "underline") s.underline = b->b;
-        else if (k == "dim") s.dim = b->b;
-        else s.reverse = b->b;
-      } else {
-        report.unknown_keys.push_back(where + "." + k);
-      }
-    }
-    return s;
-  };
-  Style text_style;
-  if (roles.has("text")) text_style = read_role(roles.get("text"), Style{}, "roles.text");
-  else report.missing_roles.push_back("text");
-  for (std::size_t i = 0; i < kRoleCount; ++i) {
-    Role r = static_cast<Role>(i);
-    std::string name(role_name(r));
-    if (r == Role::text) { t.style(r) = text_style; continue; }
-    if (!roles.has(name)) {
-      report.missing_roles.push_back(name);
-      t.style(r) = text_style;
-      continue;
-    }
-    t.style(r) = read_role(roles.get(name), text_style, "roles." + name);
   }
-  t.effects = read_effects(root.get("effects"), report);
+  rolltui_json_free(root_c);
   return t;
 }
 
-namespace {
-
-json::Value style_to_json(const Style& s, const Style* light) {
-  json::Value o = json::Value::object();
-  auto colour = [&](Color d, const Color* l) {
-    if (l && *l != d) {
-      json::Value pair = json::Value::object();
-      pair.set("dark", json::Value::string(color_to_string(d)));
-      pair.set("light", json::Value::string(color_to_string(*l)));
-      return pair;
-    }
-    return json::Value::string(color_to_string(d));
-  };
-  o.set("fg", colour(s.fg, light ? &light->fg : nullptr));
-  o.set("bg", colour(s.bg, light ? &light->bg : nullptr));
-  auto attr = [&](const char* name, bool d, bool l) {
-    if (light && d != l) {
-      json::Value pair = json::Value::object();
-      pair.set("dark", json::Value::boolean(d));
-      pair.set("light", json::Value::boolean(l));
-      o.set(name, std::move(pair));
-    } else if (d) {
-      o.set(name, json::Value::boolean(true));
-    }
-  };
-  attr("bold", s.bold, light ? light->bold : s.bold);
-  attr("italic", s.italic, light ? light->italic : s.italic);
-  attr("underline", s.underline, light ? light->underline : s.underline);
-  attr("dim", s.dim, light ? light->dim : s.dim);
-  attr("reverse", s.reverse, light ? light->reverse : s.reverse);
-  return o;
+std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLoadReport& report) {
+  RolltuiJsonValue* root_c = json::value_to_c(root);
+  std::optional<Theme> t = theme_from_c_root(root_c, mode, report);
+  rolltui_json_free(root_c);
+  if (t && root.get("meta").is_object()) {
+    // Claimed badges may be per variant ({"dark": [...], "light": [...]}): resolve them for
+    // this mode like a colour pair, so check_claims sees one list.
+    t->meta = root.get("meta");
+    const json::Value& b = t->meta.get("badges");
+    const char* key = mode == ThemeMode::Dark ? "dark" : "light";
+    if (b.is_object() && b.has(key)) t->meta.set("badges", b.get(key));
+  }
+  return t;
 }
-
-}  // namespace
 
 json::Value theme_to_json_value(const Theme& theme) {
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(theme.name));
   if (theme.meta.is_object()) root.set("meta", theme.meta);
-  json::Value roles = json::Value::object();
-  for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(theme.styles[i], nullptr));
-  root.set("roles", std::move(roles));
-  if (std::optional<json::Value> fx = effects_to_json(theme.effects)) root.set("effects", std::move(*fx));
+  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), theme.effects.handle(), nullptr, nullptr, &vocab());
+  root.set("roles", json::value_from_c(rolltui_json_get(c, "roles", 5)));
+  const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
+  if (!rolltui_json_is_null(fx)) root.set("effects", json::value_from_c(fx));
+  rolltui_json_free(c);
   return root;
 }
 
 std::string theme_to_json(const Theme& theme) { return json::dump(theme_to_json_value(theme), 2) + "\n"; }
 
 json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std::string_view name) {
-  // Colours AND attributes are written as {"dark","light"} pairs wherever the two
-  // variants differ, so the round trip is exact for both (asserted in
-  // rolltui-theme-editor-test with an attribute set in one variant only).
+  // Colours AND attributes are written as {"dark","light"} pairs wherever the two variants
+  // differ, so the round trip is exact for both (asserted in rolltui-theme-editor-test with
+  // an attribute set in one variant only).
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(std::string(name)));
   if (dark.meta.is_object()) {
@@ -766,15 +324,15 @@ json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std:
     }
     root.set("meta", std::move(meta));
   }
-  json::Value roles = json::Value::object();
-  for (std::size_t i = 0; i < kRoleCount; ++i) roles.set(kRoleNames[i], style_to_json(dark.styles[i], &light.styles[i]));
-  root.set("roles", std::move(roles));
   // ONE effects object for both variants: motion is a property of the theme, not of the
-  // terminal's background (Theme.hpp). The dark variant's is authoritative; a light
-  // variant that somehow disagrees would have no place in the file to say so, so this
-  // writes what the file can round-trip rather than half of a distinction that does not
-  // exist.
-  if (std::optional<json::Value> fx = effects_to_json(dark.effects)) root.set("effects", std::move(*fx));
+  // terminal's background (Theme.hpp) — `rolltui_theme_dump` takes `light_effects` only to
+  // document that it is never consulted, and always dumps `dark.effects` alone.
+  RolltuiJsonValue* c =
+      rolltui_theme_dump(dark.styles.data(), dark.effects.handle(), light.styles.data(), light.effects.handle(), &vocab());
+  root.set("roles", json::value_from_c(rolltui_json_get(c, "roles", 5)));
+  const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
+  if (!rolltui_json_is_null(fx)) root.set("effects", json::value_from_c(fx));
+  rolltui_json_free(c);
   return root;
 }
 
