@@ -447,30 +447,16 @@ constexpr RolltuiInputRoles kInputRoles = {
     /*selection=*/static_cast<unsigned char>(Role::selection),
     /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
 };
-// The input widget's thirty action names — copied from Input.cpp's kActions, same as
-// input_test.cpp's own copy, since a caller of the menu (which forwards to the editor)
-// has to hand this table over itself.
-constexpr RolltuiInputActions kInputActions = {
-    "input.submit",             "input.newline",            "input.backspace",
-    "input.delete",             "input.kill_word_backward", "input.kill_word_forward",
-    "input.kill_to_line_start", "input.kill_to_line_end",   "input.left",
-    "input.right",              "input.word_left",          "input.word_right",
-    "input.line_start",         "input.line_end",           "input.up",
-    "input.down",               "input.select_left",        "input.select_right",
-    "input.select_word_left",   "input.select_word_right",  "input.select_line_start",
-    "input.select_line_end",    "input.select_up",          "input.select_down",
-    "input.select_all",         "input.clear_selection",    "input.copy",
-    "input.eof",                "input.undo",                "input.redo",
-};
-const RolltuiMenuActions& menu_actions() {
-  static const RolltuiMenuActions a = {
-      "menu.up",       "menu.down",     "menu.page_up",  "menu.page_down", "menu.first",
-      "menu.last",     "menu.activate", "menu.descend",  "menu.ascend",    "menu.back",
-      "menu.erase",    "edit.commit",   "edit.cancel",   "edit.step_up",   "edit.step_down",
-      &kInputActions,
-  };
-  return a;
-}
+// THE LIBRARY'S OWN TABLES, not copies of them (Phase 17 m2a). This block used to hold a
+// verbatim copy of `Input.cpp`'s thirty action names AND of `Menu.cpp`'s fifteen, with the
+// comment "a caller of the menu has to hand this table over itself" — which was true, and was
+// the defect: `Menu.cpp`'s table was in an ANONYMOUS namespace, so no consumer could reach it
+// and every one that needed it copied it. Two consumers writing the same wrapper is the tell
+// (`rolltui/rolltui.h` rule 5); this was the second, and an agent converting the editors hit
+// the same wall from the third direction. The copies also meant this suite could not see a
+// change to the real tables at all — a planted NULL in the menu's `.input` pointer left all
+// 147 assertions green.
+const RolltuiMenuActions& menu_actions() { return *rolltui_menu_default_actions(); }
 
 void collect_validators(const MenuItem& it, std::vector<std::string>& out) {
   if (static_cast<unsigned char>(it.kind) == ROLLTUI_MENU_INPUT && !it.spec.validator.empty() &&

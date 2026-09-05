@@ -58,18 +58,11 @@ constexpr RolltuiInputRoles kInputRoles = {
     /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
 };
 
-// THE FIFTEEN ACTION NAMES, in the order `RolltuiMenuActions` declares. The last one is a
-// POINTER to the input widget's own table, so there is one table of those names in the
-// library and a typed field forwards a key to the editor without a second spelling.
-const RolltuiMenuActions& menu_actions() {
-  static const RolltuiMenuActions a = {
-      "menu.up",        "menu.down",   "menu.page_up",  "menu.page_down", "menu.first",
-      "menu.last",      "menu.activate", "menu.descend", "menu.ascend",   "menu.back",
-      "menu.erase",     "edit.commit", "edit.cancel",   "edit.step_up",   "edit.step_down",
-      input_actions(),
-  };
-  return a;
-}
+// PHASE 17 m2a: the fifteen are `rolltui_library_actions.c`'s now. They were HERE, in an
+// anonymous namespace, which made `rolltui_menu_handle` uncallable from C and from any TU that
+// did not include this header — `menu_test.cpp` had hand-written its own copy to get past it,
+// and an agent converting the three editors hit the same wall.
+const RolltuiMenuActions& menu_actions() { return *rolltui_menu_default_actions(); }
 
 InputCheck to_check(const RolltuiInputCheck& c) {
   InputCheck out;

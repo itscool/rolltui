@@ -841,6 +841,47 @@ void rolltui_widget_kinds_register(RolltuiWindows* w) {
   rolltui_windows_set_panel_factory(w, panel_widget_factory, w);
 }
 
+/* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL (Phase 17 m2a).
+ *
+ * m1c recorded the gap this closes: `rolltui_widget_kinds_register` and the five setters above
+ * were called by `rolltui::Windows`' C++ CONSTRUCTOR, so a bare `rolltui_windows_new()` came
+ * back with no kinds registered and NULL action names — ported but not reachable, which is the
+ * distinction that milestone exists to make. It also called that "a move, not a design
+ * question, blocked on the vocabularies being C data", and they now all are: the role ordinals
+ * from `rolltui_style.h`'s X-macro and the action names from `rolltui_library_actions.c`'s.
+ *
+ * A host that wants its OWN words still calls the setters afterwards; this is a default, not a
+ * policy. It is idempotent, and `Windows` is now one line over it. */
+void rolltui_windows_set_library_defaults(RolltuiWindows* w) {
+  static const RolltuiBuiltinRoles kRoles = {
+      /*text=*/ROLLTUI_ROLE_TEXT,
+      /*text_muted=*/ROLLTUI_ROLE_TEXT_MUTED,
+      /*error=*/ROLLTUI_ROLE_ERROR,
+      /*scroll_marker=*/ROLLTUI_ROLE_SCROLL_MARKER,
+      /*label=*/ROLLTUI_ROLE_LABEL,
+      /*value=*/ROLLTUI_ROLE_VALUE,
+      /*input_text=*/ROLLTUI_ROLE_INPUT_TEXT,
+      /*input_selection=*/ROLLTUI_ROLE_SELECTION,
+      /*input_placeholder=*/ROLLTUI_ROLE_INPUT_PLACEHOLDER,
+  };
+  static const RolltuiMenuRoles kMenuRoles = {
+      /*item=*/ROLLTUI_ROLE_MENU_ITEM,
+      /*selected=*/ROLLTUI_ROLE_MENU_SELECTED,
+      /*breadcrumb=*/ROLLTUI_ROLE_MENU_BREADCRUMB,
+      /*shortcut=*/ROLLTUI_ROLE_MENU_SHORTCUT,
+      /*text_muted=*/ROLLTUI_ROLE_TEXT_MUTED,
+      /*warning=*/ROLLTUI_ROLE_WARNING,
+      /*scroll_marker=*/ROLLTUI_ROLE_SCROLL_MARKER,
+  };
+  if (!w) return;
+  rolltui_windows_set_builtin_roles(w, &kRoles);
+  rolltui_windows_set_menu_roles(w, &kMenuRoles);
+  rolltui_windows_set_scroll_text_actions(w, rolltui_scroll_text_default_actions());
+  rolltui_windows_set_transcript_actions(w, rolltui_transcript_default_actions());
+  rolltui_windows_set_input_actions(w, rolltui_input_default_actions());
+  rolltui_widget_kinds_register(w);
+}
+
 /* ============================================================================================
  * input:<target> — the line editor. `Windows`' own `Input` map (C++) owns the `RolltuiInput*`
  * this ctx borrows, so `windows.input(source)` and this widget read the one underlying state

@@ -186,6 +186,13 @@ typedef int (*RolltuiValidatorFn)(void* ctx, const char* name, size_t nlen, cons
                                   RolltuiStr* why);
 void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* ctx);
 
+/* The LIBRARY'S OWN fifteen (plus the input table they point at), so a consumer can call
+ * `handle` without spelling them (Phase 17 m2a). This table used to be in an ANONYMOUS
+ * namespace in `Menu.cpp`, which made `rolltui_menu_handle` uncallable from C and from any
+ * translation unit that did not include `Menu.hpp` — `menu_test.cpp` had already hand-written
+ * its own copy to get past it. BORROWS static storage. */
+const RolltuiMenuActions* rolltui_menu_default_actions(void);
+
 void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBindings* bindings,
                          const RolltuiMenuActions* actions, RolltuiMenuEvent* out);
 

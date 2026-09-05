@@ -13,15 +13,7 @@ namespace rolltui {
 
 namespace {
 
-// THE ELEVEN ACTION NAMES. `library_actions()` in Bindings.cpp is where the vocabulary lives;
-// the C knows the RULES and none of the words.
-constexpr RolltuiTranscriptActions kActions = {
-    "transcript.line_up",   "transcript.line_down",  "transcript.page_up",
-    "transcript.page_down", "transcript.top",        "transcript.bottom",
-    "transcript.find_next", "transcript.find_prev",  "transcript.fold",
-    "transcript.copy",      "transcript.clear_selection",
-};
-
+// PHASE 17 m2a: the eleven are `rolltui_library_actions.c`'s now (one list, four expansions).
 // What crosses instead of a `std::function`: the host's callable behind a `void*`.
 void call_copy(void* ctx, const char* text, std::size_t len) {
   Transcript& t = *static_cast<Transcript*>(ctx);
@@ -82,7 +74,7 @@ bool transcript_handle(RolltuiTranscript* t, const Event& e, const Document& doc
                        const Bindings& bindings) {
   if (std::holds_alternative<ResizeEvent>(e)) return false;
   const RolltuiEvent ev = c_event_of(e);
-  return rolltui_transcript_handle(t, &ev, &doc.entries, now_ms, bindings.handle(), &kActions) != 0;
+  return rolltui_transcript_handle(t, &ev, &doc.entries, now_ms, bindings.handle(), rolltui_transcript_default_actions()) != 0;
 }
 
 bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings) {

@@ -32,21 +32,6 @@ constexpr RolltuiInputRoles kRoles = {
     /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
 };
 
-// THE THIRTY ACTION NAMES, in the command order `RolltuiInputActions` declares. Input.hpp
-// lists what each does and `library_actions()` in Bindings.cpp is where the vocabulary is
-// written down; the C knows the RULES and none of the words.
-constexpr RolltuiInputActions kActions = {
-    "input.submit",           "input.newline",           "input.backspace",
-    "input.delete",           "input.kill_word_backward", "input.kill_word_forward",
-    "input.kill_to_line_start", "input.kill_to_line_end", "input.left",
-    "input.right",            "input.word_left",         "input.word_right",
-    "input.line_start",       "input.line_end",          "input.up",
-    "input.down",             "input.select_left",       "input.select_right",
-    "input.select_word_left", "input.select_word_right", "input.select_line_start",
-    "input.select_line_end",  "input.select_up",         "input.select_down",
-    "input.select_all",       "input.clear_selection",   "input.copy",
-    "input.eof",              "input.undo",              "input.redo",
-};
 
 // What crosses instead of a `std::function`: the host's callable behind a `void*`.
 void call_copy(void* ctx, const char* text, std::size_t len) {
@@ -63,7 +48,10 @@ RolltuiDrawScratch* draw_scratch() {
 
 }  // namespace
 
-const RolltuiInputActions* input_actions() { return &kActions; }
+// PHASE 17 m2a: the thirty names are `rolltui_library_actions.c`'s now — this file used to
+// carry a second spelling of them, "in the command order `RolltuiInputActions` declares", and
+// that ordering-by-hand is exactly what the C's designated expansion removes.
+const RolltuiInputActions* input_actions() { return rolltui_input_default_actions(); }
 
 Input::Input() { rolltui_input_set_copy(in_.get(), call_copy, this); }
 
@@ -118,7 +106,7 @@ std::string_view Input::history_at(std::size_t i) const {
 InputAction input_handle(RolltuiInput* in, const Event& e, const Bindings& bindings, std::uint64_t now_ms) {
   if (std::holds_alternative<ResizeEvent>(e)) return InputAction::Ignored;
   const RolltuiEvent ev = c_event_of(e);
-  return static_cast<InputAction>(rolltui_input_handle(in, &ev, bindings.handle(), &kActions, now_ms));
+  return static_cast<InputAction>(rolltui_input_handle(in, &ev, bindings.handle(), rolltui_input_default_actions(), now_ms));
 }
 
 InputAction Input::handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms) {

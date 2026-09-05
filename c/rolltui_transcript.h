@@ -223,6 +223,9 @@ typedef struct RolltuiTranscriptActions {
   const char* clear_selection;
 } RolltuiTranscriptActions;
 
+/* The LIBRARY'S OWN eleven (Phase 17 m2a). BORROWS static storage. */
+const RolltuiTranscriptActions* rolltui_transcript_default_actions(void);
+
 int rolltui_transcript_handle(RolltuiTranscript* t, const RolltuiEvent* e, const RolltuiDocument* doc,
                               unsigned long long now_ms, const RolltuiBindings* bindings,
                               const RolltuiTranscriptActions* actions);

@@ -211,28 +211,27 @@ std::string sgr(const Style& style, ColorDepth depth) {
   return std::string(buf, n);
 }
 
+// PHASE 17 m2a: the DEPTH NAMES are C now (`rolltui_theme.h`'s `ROLLTUI_DEPTH_LIST`), and
+// this file's two functions are one line each over them. `rolltui_theme.h` used to say the
+// opposite in as many words — the retraction and the count of what that cost is at the
+// X-macro. The `static_assert`s below are what keep the two orderings one vocabulary.
+static_assert(static_cast<unsigned char>(ColorDepth::Mono) == ROLLTUI_DEPTH_MONO &&
+                  static_cast<unsigned char>(ColorDepth::Ansi16) == ROLLTUI_DEPTH_ANSI16 &&
+                  static_cast<unsigned char>(ColorDepth::Ansi256) == ROLLTUI_DEPTH_ANSI256 &&
+                  static_cast<unsigned char>(ColorDepth::TrueColor) == ROLLTUI_DEPTH_TRUECOLOR,
+              "rolltui::ColorDepth and ROLLTUI_DEPTH_LIST must be the same vocabulary in the same order");
+static_assert(static_cast<unsigned char>(ThemeMode::Dark) == ROLLTUI_MODE_DARK &&
+                  static_cast<unsigned char>(ThemeMode::Light) == ROLLTUI_MODE_LIGHT,
+              "rolltui::ThemeMode and ROLLTUI_MODE_LIST must be the same vocabulary in the same order");
+
 ColorDepth detect_color_depth(const char* colorterm, const char* term, const char* force) {
-  std::string_view f = force ? force : "";
-  if (f == "truecolor" || f == "24bit") return ColorDepth::TrueColor;
-  if (f == "256") return ColorDepth::Ansi256;
-  if (f == "16") return ColorDepth::Ansi16;
-  if (f == "mono") return ColorDepth::Mono;
-  std::string_view ct = colorterm ? colorterm : "";
-  std::string_view t = term ? term : "";
-  if (ct == "truecolor" || ct == "24bit") return ColorDepth::TrueColor;
-  if (t.find("256color") != std::string_view::npos) return ColorDepth::Ansi256;
-  if (t.empty() || t == "dumb") return ColorDepth::Mono;
-  return ColorDepth::Ansi16;
+  return static_cast<ColorDepth>(rolltui_detect_color_depth(colorterm, term, force));
 }
 
 std::string_view color_depth_name(ColorDepth d) {
-  switch (d) {
-    case ColorDepth::Mono: return "mono";
-    case ColorDepth::Ansi16: return "16";
-    case ColorDepth::Ansi256: return "256";
-    case ColorDepth::TrueColor: return "truecolor";
-  }
-  return "mono";
+  std::size_t len = 0;
+  const char* p = rolltui_color_depth_name(static_cast<unsigned char>(d), &len);
+  return {p, len};
 }
 
 // ---- OSC 11 --------------------------------------------------------------------------------

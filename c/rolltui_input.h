@@ -207,6 +207,11 @@ typedef struct RolltuiInputActions {
   const char* redo;
 } RolltuiInputActions;
 
+/* The LIBRARY'S OWN thirty, so a consumer need not spell them to call `handle` (Phase 17 m2a).
+ * BORROWS static storage. `rolltui_library_actions.c` expands one list into this and three
+ * siblings; a host with different words still passes its own struct. */
+const RolltuiInputActions* rolltui_input_default_actions(void);
+
 unsigned char rolltui_input_handle(RolltuiInput* in, const RolltuiEvent* e, const RolltuiBindings* bindings,
                                    const RolltuiInputActions* actions, unsigned long long now_ms);
 

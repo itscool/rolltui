@@ -92,21 +92,21 @@ std::string_view to_string(SaveResult r) {
 
 // ---- the Theme domain: file format ------------------------------------------------------
 
-bool valid_mode_setting(std::string_view s) { return s == "auto" || s == "dark" || s == "light"; }
-bool valid_depth_setting(std::string_view s) { return s == "auto" || s == "truecolor" || s == "256" || s == "16" || s == "mono"; }
+// PHASE 17 m2a: all four are one line over `rolltui_theme.h`'s mode/depth vocabulary now.
+// They were the FOURTH and FIRST of the four spellings that header's retraction counts — the
+// "auto" rung is the only thing this layer adds, and it is in the C too, because "auto" is
+// what a preset FILE may say and the file format is the library's.
+bool valid_mode_setting(std::string_view s) { return rolltui_theme_mode_setting_valid(s.data(), s.size()) != 0; }
+bool valid_depth_setting(std::string_view s) { return rolltui_color_depth_setting_valid(s.data(), s.size()) != 0; }
 
 std::optional<ThemeMode> mode_from_setting(std::string_view s) {
-  if (s == "dark") return ThemeMode::Dark;
-  if (s == "light") return ThemeMode::Light;
-  return std::nullopt;
+  const int m = rolltui_theme_mode_from_name(s.data(), s.size());
+  return m < 0 ? std::nullopt : std::optional<ThemeMode>(static_cast<ThemeMode>(m));
 }
 
 std::optional<ColorDepth> depth_from_setting(std::string_view s) {
-  if (s == "truecolor") return ColorDepth::TrueColor;
-  if (s == "256") return ColorDepth::Ansi256;
-  if (s == "16") return ColorDepth::Ansi16;
-  if (s == "mono") return ColorDepth::Mono;
-  return std::nullopt;
+  const int d = rolltui_color_depth_from_name(s.data(), s.size());
+  return d < 0 ? std::nullopt : std::optional<ColorDepth>(static_cast<ColorDepth>(d));
 }
 
 // ---- the Theme domain: PARSING/DUMPING PORTED TO C (`rolltui/c/rolltui_presets.h`, this

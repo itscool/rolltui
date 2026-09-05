@@ -441,70 +441,15 @@ RolltuiWidget as_widget(std::unique_ptr<Widget> w) {
 
 // Every library kind and the error panel, registered at construction so `widget_for` has
 // ONE path and "a transcript window" is built the way roll's approval modal is (the plugin
-// header's rule 5). As of Phase 17 m1c ALL EIGHT are pure-C plugins with pure-C factories:
-// the last three (`input`, `transcript`, `menu`) needed a C++ map only `Windows` had to
-// construct from, and those maps are the boundary's now. What is left here is the VOCABULARY
-// they draw and scroll with — role bytes and action names — handed over before they are
-// registered, because this file names them and that module names none of the words.
-void Windows::register_builtin_kinds() {
-  // The role bytes and the transcript-scope action names the pure-C kinds draw and scroll
-  // with — this file names them (rolltui_widget_kinds.h's own rule: that module names
-  // neither), computed once from the C++ `Role` enum and handed to the boundary before the
-  // kinds that read them are registered.
-  RolltuiBuiltinRoles roles{};
-  roles.text = static_cast<unsigned char>(Role::text);
-  roles.text_muted = static_cast<unsigned char>(Role::text_muted);
-  roles.error = static_cast<unsigned char>(Role::error);
-  roles.scroll_marker = static_cast<unsigned char>(Role::scroll_marker);
-  roles.label = static_cast<unsigned char>(Role::label);
-  roles.value = static_cast<unsigned char>(Role::value);
-  roles.input_text = static_cast<unsigned char>(Role::input_text);
-  roles.input_selection = static_cast<unsigned char>(Role::selection);
-  roles.input_placeholder = static_cast<unsigned char>(Role::input_placeholder);
-  rolltui_windows_set_builtin_roles(w_.get(), &roles);
-
-  // The identical six strings `rolltui::scroll_by_action` (above, unchanged, still used by
-  // two hosts directly) hardcodes — the same one-file duplication `Input.cpp`'s `kActions`
-  // already is (rolltui_widget_kinds.h's header comment says why this is not a new one).
-  static constexpr RolltuiScrollTextActions kScrollActions{
-      "transcript.line_up", "transcript.line_down", "transcript.page_up",
-      "transcript.page_down", "transcript.top", "transcript.bottom",
-  };
-  rolltui_windows_set_scroll_text_actions(w_.get(), &kScrollActions);
-
-  // The eleven action names the transcript kind's own `handle()` needs — the same
-  // duplication `Transcript.cpp`'s own (unrelated, still-C++) `kActions` already is, one
-  // file over: neither crosses the boundary, because a `std::function` cannot and a bare
-  // name table costs nothing to state twice.
-  static constexpr RolltuiTranscriptActions kTranscriptActions{
-      "transcript.line_up",   "transcript.line_down",  "transcript.page_up",
-      "transcript.page_down", "transcript.top",        "transcript.bottom",
-      "transcript.find_next", "transcript.find_prev",  "transcript.fold",
-      "transcript.copy",      "transcript.clear_selection",
-  };
-  rolltui_windows_set_transcript_actions(w_.get(), &kTranscriptActions);
-
-  // The seven roles the menu kind's own `draw()` needs — `rolltui_menu_draw` takes them as a
-  // per-call parameter rather than storing them (Menu.cpp's own `kRoles`, unrelated), so this
-  // is a second copy of the same six-of-seven Role names for the same reason as above.
-  static constexpr RolltuiMenuRoles kMenuRoles{
-      /*item=*/static_cast<unsigned char>(Role::menu_item),
-      /*selected=*/static_cast<unsigned char>(Role::menu_selected),
-      /*breadcrumb=*/static_cast<unsigned char>(Role::menu_breadcrumb),
-      /*shortcut=*/static_cast<unsigned char>(Role::menu_shortcut),
-      /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
-      /*warning=*/static_cast<unsigned char>(Role::warning),
-      /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
-  };
-  rolltui_windows_set_menu_roles(w_.get(), &kMenuRoles);
-
-  // The thirty action names the input kind's keys use — the last of the five vocabularies,
-  // and it is here rather than a factory parameter because the factory is the C's now.
-  rolltui_windows_set_input_actions(w_.get(), input_actions());
-
-  // …and every built-in kind, in one call.
-  rolltui_widget_kinds_register(w_.get());
-}
+// header's rule 5). As of Phase 17 m1c ALL EIGHT are pure-C plugins with pure-C factories.
+//
+// PHASE 17 m2a: and the VOCABULARY they draw and scroll with is the C's too, so this whole
+// function is one call. It used to hand over five tables — nine role bytes, six scroll-text
+// action names, eleven transcript ones, seven menu roles and thirty input ones — every one of
+// them a SECOND SPELLING of something that already existed once, and every one of them a
+// reason a bare `rolltui_windows_new()` was unusable by a pure-C host (m1c recorded exactly
+// that, as "a move, not a design question", blocked on the role names being C — they now are).
+void Windows::register_builtin_kinds() { rolltui_windows_set_library_defaults(w_.get()); }
 
 WindowsReport Windows::sync(const WindowStack& stack) {
   rolltui_windows_sync(w_.get(), stack.handle());

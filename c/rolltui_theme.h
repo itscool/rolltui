@@ -19,12 +19,14 @@
  *
  * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW -----------------------------------------
  *
- * **The DEPTH and MODE names.** `ColorDepth` crosses as a byte and the strings "truecolor",
- * "256", "16", "mono" stay in `Theme.cpp`, for exactly the reason m2 kept the styling roles
- * out of `rolltui_diff.h`: a name a config file and a `--color-depth` flag both spell is a
- * vocabulary, and a vocabulary written down twice is a second thing to drift. So
- * `detect_color_depth` — which is nothing but a comparison against those four names — stays
- * one level up, and this file is handed the answer.
+ * ~~**The DEPTH and MODE names.**~~ **RETRACTED 2026-09-05 (Phase 17 m2a) — see the mode and
+ * depth vocabulary below.** This entry read: *"`ColorDepth` crosses as a byte and the strings
+ * "truecolor", "256", "16", "mono" stay in `Theme.cpp` ... a vocabulary written down twice is
+ * a second thing to drift. So `detect_color_depth` stays one level up, and this file is handed
+ * the answer."* Right while the library was C++ with a C core; wrong once the library IS the
+ * C, because `Theme.cpp` is deleted in m2c and the vocabulary would go with it. The rule it
+ * cites is the reason it is retracted, not the reason it stood: the names had reached FOUR
+ * spellings by the time anyone counted.
  *
  * **What "none" means to a renderer.** It parses and prints the word because that is this
  * module's own FILE FORMAT, which is the thing being ported; it never decides what a
@@ -41,15 +43,88 @@
 extern "C" {
 #endif
 
-/* Colour depth, as a byte. The same order as `rolltui::ColorDepth`, asserted in Theme.cpp. */
-#define ROLLTUI_DEPTH_MONO 0
-#define ROLLTUI_DEPTH_ANSI16 1
-#define ROLLTUI_DEPTH_ANSI256 2
-#define ROLLTUI_DEPTH_TRUECOLOR 3
+/* ---- THE MODE AND DEPTH VOCABULARY (Phase 17 m2a, 2026-09-05) -----------------------------
+ *
+ * THIS FILE'S OWN TOP COMMENT SAID IT DELIBERATELY DOES NOT KNOW THESE NAMES, AND THAT WAS
+ * RIGHT WHEN IT WAS WRITTEN. It read: *"a name a config file and a `--color-depth` flag both
+ * spell is a vocabulary, and a vocabulary written down twice is a second thing to drift. So
+ * `detect_color_depth` ... stays one level up, and this file is handed the answer."* True
+ * while the library was C++ with a C core; false once the library IS the C, because
+ * `Theme.cpp` is being deleted and the vocabulary would go with it. This is the same reversal
+ * `ROLLTUI_ROLE_LIST` (rolltui_style.h) and `ROLLTUI_EFFECT_STATE_LIST` (rolltui_effects.h)
+ * already made, for the same reason and on the same evidence: a vocabulary the C refuses to
+ * carry does not disappear, it relocates into every caller that cannot reach it.
+ *
+ * FOUR SPELLINGS EXISTED WHEN THIS WAS WRITTEN, and the fourth is the one that matters:
+ *   1. `Presets.cpp`  valid_depth_setting / depth_from_setting  (the "auto" layer)
+ *   2. `Theme.cpp`    detect_color_depth / color_depth_name
+ *   3. this header's own prose
+ *   4. `rolltui/tests/theme_test.cpp:297-317` — a VERBATIM 13-line REIMPLEMENTATION of both
+ *      of (2), in an anonymous namespace, which lines 498-506 then assert against. That file
+ *      has no `using namespace rolltui` and does not include `Theme.hpp`, so it cannot reach
+ *      the real function at all: `rolltui::detect_color_depth` ships in `studio.cpp` (5 call
+ *      sites) and `TuiFrontend.cpp` and is tested by NOBODY. Nine assertions covering a path
+ *      nothing runs — the same shape found in the same file one day earlier for the role
+ *      names, and the third instance of it in this phase.
+ *
+ * ORDER IS ABI: the ordinal is what `rolltui_sgr`, `rolltui_color_downgrade` and every
+ * renderer are handed. Mono must stay 0 and TrueColor last — `rolltui_color_downgrade`
+ * compares against the constants, not against a count. */
+#define ROLLTUI_DEPTH_LIST(X) \
+  X("mono", MONO, Mono) \
+  X("16", ANSI16, Ansi16) \
+  X("256", ANSI256, Ansi256) \
+  X("truecolor", TRUECOLOR, TrueColor)
 
-/* Theme mode, as a byte. The same order as `rolltui::ThemeMode`. */
-#define ROLLTUI_MODE_DARK 0
-#define ROLLTUI_MODE_LIGHT 1
+/* The one ALIAS, and it belongs to the ENVIRONMENT rather than to the file format: COLORTERM
+ * and ROLL_COLOR_DEPTH accept "24bit", a preset file's "depth" does not, and
+ * `color_depth_name` must answer "truecolor" and only "truecolor". Keeping the two apart is
+ * not pedantry — a preset that stored "24bit" would round-trip to "truecolor" and stop
+ * matching itself, so `modified()` would report a change nobody made. Only
+ * `rolltui_detect_color_depth` reads this list. */
+#define ROLLTUI_DEPTH_ENV_ALIAS_LIST(X) X("24bit", TRUECOLOR)
+
+typedef enum RolltuiColorDepth {
+#define ROLLTUI_DEPTH_ENUM_(lower, UPPER, Camel) ROLLTUI_DEPTH_##UPPER,
+  ROLLTUI_DEPTH_LIST(ROLLTUI_DEPTH_ENUM_)
+#undef ROLLTUI_DEPTH_ENUM_
+  ROLLTUI_DEPTH_COUNT
+} RolltuiColorDepth;
+
+#define ROLLTUI_MODE_LIST(X) \
+  X("dark", DARK, Dark) \
+  X("light", LIGHT, Light)
+
+typedef enum RolltuiThemeMode {
+#define ROLLTUI_MODE_ENUM_(lower, UPPER, Camel) ROLLTUI_MODE_##UPPER,
+  ROLLTUI_MODE_LIST(ROLLTUI_MODE_ENUM_)
+#undef ROLLTUI_MODE_ENUM_
+  ROLLTUI_MODE_COUNT
+} RolltuiThemeMode;
+
+/* BORROWS a static literal; `*len` may be NULL. An out-of-range depth reads back as "mono"
+ * and an out-of-range mode as "dark", which is what the C++ `color_depth_name` did and what a
+ * zeroed byte means. */
+const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
+const char* rolltui_theme_mode_name(unsigned char mode, size_t* len);
+
+/* The depth/mode of that name, or -1 when there is none. Neither accepts "auto" (that is the
+ * SETTING layer below, not a depth) and neither accepts the env alias above. */
+int rolltui_color_depth_from_name(const char* name, size_t len);
+int rolltui_theme_mode_from_name(const char* name, size_t len);
+
+/* THE SETTING layer: what a preset file and `--color-depth`/`--theme-mode` accept, which is
+ * every name above PLUS "auto" (resolve it, do not store it). `rolltui::valid_depth_setting`
+ * and `valid_mode_setting` were these, and `rolltui_theme_preset_parse` took them as
+ * CALLBACKS precisely because a C file could not spell the names; it can now, and the
+ * callback parameters stay only so a host may narrow what IT accepts. */
+int rolltui_color_depth_setting_valid(const char* s, size_t len);
+int rolltui_theme_mode_setting_valid(const char* s, size_t len);
+
+/* COLORTERM=truecolor|24bit -> TrueColor; TERM containing "256color" -> Ansi256; TERM=dumb or
+ * empty -> Mono; else Ansi16. `force` (ROLL_COLOR_DEPTH) wins when set and valid. Any
+ * argument may be NULL. `rolltui::detect_color_depth`'s port, verbatim. */
+unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term, const char* force);
 
 /* ---- parsing and printing --------------------------------------------------------------- */
 

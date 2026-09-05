@@ -1368,3 +1368,112 @@ void rolltui_theme_set_style(RolltuiStyle* styles, size_t role_count, unsigned c
   if (!styles || !style || role >= role_count) return;
   styles[role] = *style;
 }
+
+/* ---- the mode and depth vocabulary (Phase 17 m2a) ------------------------------------------
+ * See rolltui_theme.h for why these names moved here after that header spent a phase saying
+ * they would not. The tables expand the X-macros; there is no second list to keep in step. */
+
+static const char* const kDepthNames[] = {
+#define ROLLTUI_DEPTH_NAME_(lower, UPPER, Camel) lower,
+    ROLLTUI_DEPTH_LIST(ROLLTUI_DEPTH_NAME_)
+#undef ROLLTUI_DEPTH_NAME_
+};
+
+static const char* const kModeNames[] = {
+#define ROLLTUI_MODE_NAME_(lower, UPPER, Camel) lower,
+    ROLLTUI_MODE_LIST(ROLLTUI_MODE_NAME_)
+#undef ROLLTUI_MODE_NAME_
+};
+
+typedef struct { const char* name; unsigned char depth; } DepthAlias;
+static const DepthAlias kDepthAliases[] = {
+#define ROLLTUI_DEPTH_ENV_ALIAS_(lower, UPPER) {lower, ROLLTUI_DEPTH_##UPPER},
+    ROLLTUI_DEPTH_ENV_ALIAS_LIST(ROLLTUI_DEPTH_ENV_ALIAS_)
+#undef ROLLTUI_DEPTH_ALIAS_
+};
+
+/* Exact, bounded compare against a NUL-terminated literal — the same shape
+ * `rolltui_bindings.c`'s `name_is` takes, minus the case folding these names never wanted
+ * (a theme file's "truecolor" is spelled one way). */
+static int lit_eq(const char* s, size_t len, const char* lit) {
+  size_t i;
+  for (i = 0; i < len; ++i)
+    if (lit[i] == '\0' || s[i] != lit[i]) return 0;
+  return lit[len] == '\0';
+}
+
+const char* rolltui_color_depth_name(unsigned char depth, size_t* len) {
+  const char* p = kDepthNames[depth < ROLLTUI_DEPTH_COUNT ? depth : ROLLTUI_DEPTH_MONO];
+  if (len) *len = strlen(p);
+  return p;
+}
+
+const char* rolltui_theme_mode_name(unsigned char mode, size_t* len) {
+  const char* p = kModeNames[mode < ROLLTUI_MODE_COUNT ? mode : ROLLTUI_MODE_DARK];
+  if (len) *len = strlen(p);
+  return p;
+}
+
+int rolltui_color_depth_from_name(const char* name, size_t len) {
+  size_t i;
+  if (!name) return -1;
+  for (i = 0; i < ROLLTUI_DEPTH_COUNT; ++i)
+    if (lit_eq(name, len, kDepthNames[i])) return (int)i;
+  return -1;
+}
+
+int rolltui_theme_mode_from_name(const char* name, size_t len) {
+  size_t i;
+  if (!name) return -1;
+  for (i = 0; i < ROLLTUI_MODE_COUNT; ++i)
+    if (lit_eq(name, len, kModeNames[i])) return (int)i;
+  return -1;
+}
+
+/* "auto" is a SETTING, never a depth: it means "ask the environment", which is what
+ * `rolltui_detect_color_depth` below is for. The alias is deliberately NOT accepted here —
+ * `depth_from_setting`'s C++ original did not take it either, and a preset file that stores
+ * "24bit" would round-trip to "truecolor" and stop matching itself. */
+int rolltui_color_depth_setting_valid(const char* s, size_t len) {
+  size_t i;
+  if (!s) return 0;
+  if (lit_eq(s, len, "auto")) return 1;
+  for (i = 0; i < ROLLTUI_DEPTH_COUNT; ++i)
+    if (lit_eq(s, len, kDepthNames[i])) return 1;
+  return 0;
+}
+
+int rolltui_theme_mode_setting_valid(const char* s, size_t len) {
+  size_t i;
+  if (!s) return 0;
+  if (lit_eq(s, len, "auto")) return 1;
+  for (i = 0; i < ROLLTUI_MODE_COUNT; ++i)
+    if (lit_eq(s, len, kModeNames[i])) return 1;
+  return 0;
+}
+
+/* A name as the ENVIRONMENT may spell it: the four above plus the alias. */
+static int env_depth_of(const char* s, size_t len) {
+  size_t i;
+  const int d = rolltui_color_depth_from_name(s, len);
+  if (d >= 0) return d;
+  for (i = 0; i < sizeof kDepthAliases / sizeof kDepthAliases[0]; ++i)
+    if (lit_eq(s, len, kDepthAliases[i].name)) return (int)kDepthAliases[i].depth;
+  return -1;
+}
+
+unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term, const char* force) {
+  const char* ct = colorterm ? colorterm : "";
+  const char* t = term ? term : "";
+  if (force && *force) {
+    const int d = env_depth_of(force, strlen(force));
+    if (d >= 0) return (unsigned char)d;  /* an invalid override is ignored, not an error */
+  }
+  {
+    const int d = env_depth_of(ct, strlen(ct));
+    if (d == ROLLTUI_DEPTH_TRUECOLOR) return ROLLTUI_DEPTH_TRUECOLOR;
+  }
+  if (strstr(t, "256color")) return ROLLTUI_DEPTH_ANSI256;
+  if (t[0] == '\0' || lit_eq(t, strlen(t), "dumb")) return ROLLTUI_DEPTH_MONO;
+  return ROLLTUI_DEPTH_ANSI16;
+}

@@ -294,27 +294,21 @@ std::string color_to_string(Color c) {
   const std::size_t n = rolltui_color_to_string(c, buf, sizeof buf);
   return std::string(buf, n);
 }
+// THE LIBRARY'S, not a copy of it — Phase 17 m2a. These two were a VERBATIM 13-line
+// reimplementation of `rolltui::detect_color_depth`/`color_depth_name`, and the nine checks
+// below asserted against THAT: this file has no `using namespace rolltui` and never includes
+// `Theme.hpp`, so the shipped function was not even linked in. The control that showed it
+// needs no build — `nm -C build/rolltui/rolltui-theme-test` found
+// `(anonymous namespace)::detect_color_depth` and ZERO `rolltui::` symbols — and the shipped
+// one runs in `studio.cpp` (5 sites) and `TuiFrontend.cpp:615` with nothing asserting it.
+// Same file, same shape, one day after the role-name shadow (JOURNAL 2026-09-05).
 ColorDepth detect_color_depth(const char* colorterm, const char* term, const char* force) {
-  std::string_view f = force ? force : "";
-  if (f == "truecolor" || f == "24bit") return ColorDepth::TrueColor;
-  if (f == "256") return ColorDepth::Ansi256;
-  if (f == "16") return ColorDepth::Ansi16;
-  if (f == "mono") return ColorDepth::Mono;
-  std::string_view ct = colorterm ? colorterm : "";
-  std::string_view t = term ? term : "";
-  if (ct == "truecolor" || ct == "24bit") return ColorDepth::TrueColor;
-  if (t.find("256color") != std::string_view::npos) return ColorDepth::Ansi256;
-  if (t.empty() || t == "dumb") return ColorDepth::Mono;
-  return ColorDepth::Ansi16;
+  return static_cast<ColorDepth>(rolltui_detect_color_depth(colorterm, term, force));
 }
 std::string_view color_depth_name(ColorDepth d) {
-  switch (d) {
-    case ColorDepth::Mono: return "mono";
-    case ColorDepth::Ansi16: return "16";
-    case ColorDepth::Ansi256: return "256";
-    case ColorDepth::TrueColor: return "truecolor";
-  }
-  return "mono";
+  std::size_t len = 0;
+  const char* p = rolltui_color_depth_name(static_cast<unsigned char>(d), &len);
+  return {p, len};
 }
 
 std::string read_file(const std::string& path) {

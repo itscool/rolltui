@@ -86,6 +86,9 @@ typedef struct RolltuiScrollTextActions {
  * always `Windows` itself and never this table's to release. */
 void rolltui_windows_set_builtin_roles(RolltuiWindows* w, const RolltuiBuiltinRoles* r);
 const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w);
+/* The LIBRARY'S OWN six (Phase 17 m2a) — the same list `RolltuiTranscriptActions` draws from,
+ * minus the five that need a transcript. BORROWS static storage. */
+const RolltuiScrollTextActions* rolltui_scroll_text_default_actions(void);
 void rolltui_windows_set_scroll_text_actions(RolltuiWindows* w, const RolltuiScrollTextActions* a);
 const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w);
 
@@ -101,6 +104,14 @@ const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w
  * this file: each kind reads the roles and action names back through `w`, not through its own
  * `ctx`, which is `w` itself for all of them. */
 void rolltui_widget_kinds_register(RolltuiWindows* w);
+
+/* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL (Phase 17 m2a) — every setter in this file
+ * with the library's own defaults, then `rolltui_widget_kinds_register`, in the order that
+ * function requires. This is what makes a bare `rolltui_windows_new()` usable by a pure-C
+ * host: before it, the five setters were called by `rolltui::Windows`' C++ constructor and a C
+ * caller got a table with no kinds and NULL action names. A host with its own words calls the
+ * setters after; this is a default, not a policy. Idempotent; NULL is a no-op. */
+void rolltui_windows_set_library_defaults(RolltuiWindows* w);
 
 /* ---- input: the one slot of a built-in kind's ctx a caller still reaches by hand — a host's
  * floor on the window's height regardless of what the text says (roll holds the prompt as tall
