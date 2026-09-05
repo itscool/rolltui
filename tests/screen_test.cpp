@@ -99,8 +99,29 @@ int main() {
                  "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\x1b[1;1H");
     Frame wide2 = wide;
     wide2.put(3, 0, "z", 1, red);  // blanks the glyph: cells 2 and 3 both change
-    expect_bytes("a run that begins on the continuation cell starts one cell earlier", render_diff(&wide, wide2, depth),
+    expect_bytes("writing over a wide glyph's continuation blanks the whole glyph", render_diff(&wide, wide2, depth),
                  "\x1b[?25l\x1b[1;3H\x1b[0;31m z\x1b[0m\x1b[1;1H");
+
+    // THE BACKUP RULE, and it needs a case the one above does NOT provide — found
+    // 2026-09-04 by a negative control that failed NOTHING when the rule was disabled.
+    //
+    // The assertion above used to be named "a run that begins on the continuation cell
+    // starts one cell earlier", which is the rule's own words, and it never exercised it:
+    // its own comment says why — writing over cell 3 BLANKS the glyph, so cell 2 changes
+    // too and the run starts at 2 on its own merits. The branch that backs `start` up was
+    // dead in every test in the suite. A test that names a rule and does not reach it is
+    // worse than no test, because it is why nobody looked.
+    //
+    // To reach it, the FIRST changed cell must be a continuation whose LEAD is unchanged.
+    // Restyling only cell 3 does exactly that: `same()` compares styles, so cell 3 differs
+    // while cell 2 is identical. Without the backup the run is [3,4), `emit_run` skips the
+    // continuation cell, and the glyph is never re-emitted — the terminal keeps a stale
+    // one. The expected bytes below are therefore the glyph WRITTEN WHOLE from column 3.
+    Frame wide3 = wide;
+    wide3.set_style(3, 0, Style{.fg = Color::indexed(4)});
+    expect_bytes("a run that begins on the continuation cell starts one cell earlier",
+                 render_diff(&wide, wide3, depth),
+                 "\x1b[?25l\x1b[1;3H\x1b[0;31m\xE4\xB8\xAD\x1b[0m\x1b[1;1H");
 
     Frame cur = blank;
     cur.set_cursor(3, 1, true);
