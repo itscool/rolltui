@@ -166,9 +166,9 @@ std::optional<ColorDepth> depth_from_setting(std::string_view s) {
 // `load_theme`'s actual algorithm is `rolltui_theme_load` (Phase 15 m5, `rolltui/c/
 // rolltui_theme.h`). What did NOT move, and why (both are `rolltui_presets.h`'s own header
 // comment, restated briefly since this is the call site it matters at):
-//   - the VOCAB table (`theme_vocab()` below) — a C file may not build one (`rolltui_style.h`:
-//     "a C file names no role"), so it crosses as a parameter, same as it already does for
-//     `rolltui_theme_load` itself.
+//   - ~~the VOCAB table — a C file may not build one ("a C file names no role"), so it crosses
+//     as a parameter~~ **RETRACTED, Phase 17 m2a**: it can now, and it does
+//     (`rolltui_theme_default_vocab`). The parameter stays for a host with its own roles.
 //   - `valid_mode_setting`/`valid_depth_setting` just above — re-deriving that five-line
 //     vocabulary in C would be a THIRD spelling of it (`kSettings`' help text below is
 //     already a tolerated second one) for a predicate with no other caller anywhere in the
@@ -205,7 +205,7 @@ void copy_theme_preset_report(const RolltuiThemePresetReport& rep, PresetLoadRep
 // in two files, built in neither a second time. NOT declared in `Theme.hpp` — see that file's
 // header comment — so this is the same borrowed-declaration move made three lines down for
 // `json::value_to_c`/`value_from_c` (and that `Theme.cpp` itself already makes for those two).
-const RolltuiThemeVocab& theme_vocab();
+// PHASE 17 m2a: the vocab is the library's own table now (`rolltui_theme_default_vocab`).
 
 // Needed for exactly two things: handing "colours"/the whole preset object to the C parser
 // when this file already holds a parsed `json::Value` (`PresetStore.hpp`'s adapter parses
@@ -224,7 +224,7 @@ std::optional<ThemePreset> theme_preset_from_json(const Value& v, PresetLoadRepo
   RolltuiStr mode{}, depth{};
   const RolltuiJsonValue* colours_c = nullptr;
   RolltuiThemePresetReport rep{};
-  const int ok = rolltui_theme_preset_parse(root_c, &theme_vocab(), mode_valid_c, depth_valid_c, &mode, &depth,
+  const int ok = rolltui_theme_preset_parse(root_c, rolltui_theme_default_vocab(), mode_valid_c, depth_valid_c, &mode, &depth,
                                             &colours_c, &rep);
   copy_theme_preset_report(rep, report);
   std::optional<ThemePreset> out;
@@ -267,7 +267,7 @@ std::optional<ThemePreset> ThemeDomain::parse_partial(const json::Value& v, cons
   RolltuiJsonValue* root_c = json::value_to_c(v);
   const RolltuiJsonValue* colours_c = nullptr;
   RolltuiThemePresetReport rep{};
-  const int ok = rolltui_theme_preset_parse_partial(root_c, &theme_vocab(), &colours_c, &rep);
+  const int ok = rolltui_theme_preset_parse_partial(root_c, rolltui_theme_default_vocab(), &colours_c, &rep);
   copy_theme_preset_report(rep, report);
   std::optional<ThemePreset> out;
   if (ok) {
@@ -446,7 +446,7 @@ const std::vector<RolltuiLayoutAction>& preset_layout_default_actions() {
 RolltuiPresetDomain& c_theme_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain x{};
-    rolltui_theme_preset_domain_init(&x, &theme_vocab(), mode_valid_c, depth_valid_c);
+    rolltui_theme_preset_domain_init(&x, rolltui_theme_default_vocab(), mode_valid_c, depth_valid_c);
     return x;
   }();
   if (!d.cache) on_shutdown([] { rolltui_preset_domain_release(&c_theme_domain()); });

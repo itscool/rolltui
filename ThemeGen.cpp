@@ -2,7 +2,7 @@
 #include "rolltui/ThemeGen.hpp"
 
 #include "rolltui/ThemeAnalysis.hpp"
-#include "rolltui/c/rolltui_theme.h"  // theme_vocab()'s return type, RolltuiThemeVocab
+#include "rolltui/c/rolltui_theme.h"  // rolltui_theme_default_vocab(), the library's own table
 
 namespace rolltui {
 
@@ -23,7 +23,8 @@ std::optional<Ruleset> ruleset_from_name(std::string_view name) {
 }
 
 // Borrowed from Theme.cpp — see ThemeAnalysis.cpp's identical forward declaration for why.
-const RolltuiThemeVocab& theme_vocab();
+// PHASE 17 m2a: the vocab is the library's own table now, so this file asks the C for it
+// instead of forward-declaring `Theme.cpp`'s accessor across a translation unit.
 
 // ---- generate(): a thin shim over rolltui_theme_generate (Phase 17 m5) --------------------
 // Every hue/lightness pick, the repair loop and the meta tree now live in
@@ -45,7 +46,7 @@ Generated generate(std::uint64_t seed, Ruleset ruleset, double chaos, const GenO
   const int dark_value = opts.dark.value_or(false) ? 1 : 0;
 
   rolltui_theme_generate(seed, static_cast<unsigned char>(ruleset), chaos, has_dark, dark_value,
-                        opts.max_repair_passes, &theme_vocab(), out.theme.styles.data(), kRoleCount, &cname, &cmeta,
+                        opts.max_repair_passes, rolltui_theme_default_vocab(), out.theme.styles.data(), kRoleCount, &cname, &cmeta,
                         &repairs, croles.data(), cpairs.data(), &cbadges);
 
   out.theme.name.assign(cname.p ? cname.p : "", cname.n);

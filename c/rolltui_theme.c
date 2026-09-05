@@ -1477,3 +1477,27 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
   if (t[0] == '\0' || lit_eq(t, strlen(t), "dumb")) return ROLLTUI_DEPTH_MONO;
   return ROLLTUI_DEPTH_ANSI16;
 }
+
+
+/* ---- the library's own vocabulary table (Phase 17 m2a) -------------------------------------
+ * See rolltui_theme.h for why this can exist now and could not before. */
+const RolltuiThemeVocab* rolltui_theme_default_vocab(void) {
+  static const char* role_names[ROLLTUI_ROLE_COUNT];
+  static const char* state_names[ROLLTUI_EFFECT_STATE_COUNT];
+  static RolltuiThemeVocab v;
+  static int built = 0;
+  if (!built) {
+    size_t i;
+    for (i = 0; i < ROLLTUI_ROLE_COUNT; ++i) role_names[i] = rolltui_role_name((unsigned char)i, NULL);
+    for (i = 0; i < ROLLTUI_EFFECT_STATE_COUNT; ++i)
+      state_names[i] = rolltui_effect_state_name((unsigned char)i, NULL);
+    v.role_names = role_names;
+    v.role_count = ROLLTUI_ROLE_COUNT;
+    v.text_role = ROLLTUI_ROLE_TEXT;
+    v.state_names = state_names;
+    v.state_count = ROLLTUI_EFFECT_STATE_COUNT;
+    v.fallback_effect_role = ROLLTUI_ROLE_ACCENT_1;
+    built = 1;  /* idempotent: every write above is the same value every time */
+  }
+  return &v;
+}

@@ -15,7 +15,7 @@
 #include <cmath>   // std::fmod, in fix_confusable's hue rotation — everything else moved to the C
 #include <cstdio>
 
-#include "rolltui/c/rolltui_theme.h"  // theme_vocab()'s return type, RolltuiThemeVocab
+#include "rolltui/c/rolltui_theme.h"  // rolltui_theme_default_vocab(), the library's own table
 
 namespace rolltui {
 
@@ -23,7 +23,8 @@ namespace rolltui {
 // `Presets.cpp` already forward-declares it the same way (Theme.cpp's own header comment).
 // Not declared in ThemeAnalysis.hpp: that header's public shape stays what every other
 // caller of `rolltui::ThemeAnalysis` already sees.
-const RolltuiThemeVocab& theme_vocab();
+// PHASE 17 m2a: the vocab is the library's own table now, so this file asks the C for it
+// instead of forward-declaring `Theme.cpp`'s accessor across a translation unit.
 
 // ---- colour spaces: thin forwarding shims over rolltui/c/rolltui_theme_analysis.h ------
 
@@ -193,7 +194,7 @@ std::string report_text(const ThemeReport& r) {
   std::vector<RolltuiStr> notes(r.notes.begin(), r.notes.end());
   RolltuiStr out{};
   rolltui_theme_report_text(croles.data(), croles.size(), cpairs.data(), cpairs.size(), &r.badges, notes.data(),
-                            notes.size(), &theme_vocab(), &out);
+                            notes.size(), rolltui_theme_default_vocab(), &out);
   std::string result(out.view());
   rolltui_str_free(&out);
   return result;
@@ -214,7 +215,7 @@ std::vector<std::string> check_claims(const Theme& theme, const ThemeReport& rep
 
 std::optional<Fix> fix_contrast(const Theme& theme, Role role, double target) {
   RolltuiFix cf{};
-  if (!rolltui_fix_contrast(theme.styles.data(), kRoleCount, static_cast<unsigned char>(role), target, &theme_vocab(),
+  if (!rolltui_fix_contrast(theme.styles.data(), kRoleCount, static_cast<unsigned char>(role), target, rolltui_theme_default_vocab(),
                             &cf))
     return std::nullopt;
   Fix fix;
@@ -231,7 +232,7 @@ std::optional<Fix> fix_contrast(const Theme& theme, Role role, double target) {
 std::optional<Fix> fix_confusable(const Theme& theme, Role a, Role b) {
   RolltuiFix cf{};
   if (!rolltui_fix_confusable(theme.styles.data(), kRoleCount, static_cast<unsigned char>(a),
-                              static_cast<unsigned char>(b), &theme_vocab(), &cf))
+                              static_cast<unsigned char>(b), rolltui_theme_default_vocab(), &cf))
     return std::nullopt;
   Fix fix;
   fix.role = static_cast<Role>(cf.role);
@@ -246,7 +247,7 @@ std::optional<Fix> fix_confusable(const Theme& theme, Role a, Role b) {
 
 std::vector<Fix> propose_fixes(const Theme& theme) {
   RolltuiFixArray a{};
-  rolltui_propose_fixes(theme.styles.data(), kRoleCount, &theme_vocab(), &a);
+  rolltui_propose_fixes(theme.styles.data(), kRoleCount, rolltui_theme_default_vocab(), &a);
   std::vector<Fix> out;
   out.reserve(a.n);
   for (std::size_t i = 0; i < a.n; ++i) {

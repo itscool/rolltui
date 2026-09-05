@@ -268,6 +268,21 @@ typedef struct RolltuiThemeVocab {
   unsigned char fallback_effect_role;
 } RolltuiThemeVocab;
 
+/* THE LIBRARY'S OWN, and the reason it can exist is the reason this file's "what it does not
+ * know" note above is now half retracted (Phase 17 m2a). The vocab was invented because a C
+ * file could not name a role or an effect state; both are C since the role and effect-state
+ * X-macros landed, so the library can hand a caller its own table instead of asking for one.
+ *
+ * SIX consumers were building or reaching for a table by then: `Theme.cpp` (the real one),
+ * `ThemeAnalysis.cpp` and `ThemeGen.cpp` and `Presets.cpp` (each forward-declaring
+ * `rolltui::theme_vocab()` across a translation unit), `theme_test.cpp` (a private duplicate),
+ * and `tools/theme_editor.cpp`, whose conversion forward-declared it too — a `tools/` file
+ * reaching into `Theme.cpp`, which m2c deletes.
+ *
+ * The PARAMETER stays on every function that takes one: a host with its own roles is what the
+ * vocab was for. This is the default, not a policy. BORROWS static storage. */
+const RolltuiThemeVocab* rolltui_theme_default_vocab(void);
+
 /* ---- the built-in themes ------------------------------------------------------------------
  * "default-dark", "default-light", "mono", compiled in: this library's own TASTE, not its
  * algorithm (`rolltui::Theme.cpp`'s own words, kept). Enumerated by index like every other

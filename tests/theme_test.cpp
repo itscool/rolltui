@@ -120,22 +120,12 @@ std::vector<std::string_view> builtin_theme_names() {
   return out;
 }
 
-// Mirrors Theme.cpp's theme_vocab(): the role NAME table handed to the C loader/dumper once
-// per call. No effect-state names: no theme text below has an "effects" key, so state_count
-// 0 is never consulted.
-const RolltuiThemeVocab& theme_vocab() {
-  static const RolltuiThemeVocab v = [] {
-    RolltuiThemeVocab t{};
-    t.role_names = role_name_table().data();
-    t.role_count = kRoleCount;
-    t.text_role = static_cast<std::size_t>(Role::text);
-    t.state_names = nullptr;
-    t.state_count = 0;
-    t.fallback_effect_role = static_cast<unsigned char>(Role::accent_1);
-    return t;
-  }();
-  return v;
-}
+// THE LIBRARY'S OWN VOCAB TABLE (Phase 17 m2a), not a mirror of it. This block used to open
+// "Mirrors Theme.cpp's theme_vocab()" and build the role- and state-name arrays itself,
+// because the vocab existed precisely so a C file would not have to name a role. Both
+// vocabularies are C now, so the library builds its own and six consumers stopped building
+// one — this file, `Theme.cpp`, `ThemeAnalysis.cpp`, `ThemeGen.cpp`, `Presets.cpp` and
+// `tools/theme_editor.cpp`, the last of which had reached across into `Theme.cpp` for it.
 
 // Mirrors rolltui::load_theme(string_view, ThemeMode, ThemeLoadReport&) (Theme.cpp): parse,
 // then hand the tree to the C loader, then translate its report field for field.
@@ -152,7 +142,7 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   Theme t;
   RolltuiStr name{};
   RolltuiThemeReport rep{};
-  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &theme_vocab(), t.styles.data(), &name, &rep);
+  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), rolltui_theme_default_vocab(), t.styles.data(), &name, &rep);
   rolltui_json_free(root_c);
   report.error = rep.error.str();
   for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(rep.missing_roles[i].str());
@@ -262,7 +252,7 @@ std::string dump(const Value& v, int indent = 2) {
 std::string theme_to_json(const Theme& theme) {
   Value root(rolltui_json_object());
   root.set("name", Value(rolltui_json_string(theme.name.data(), theme.name.size())));
-  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), nullptr, nullptr, nullptr, &theme_vocab());
+  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), nullptr, nullptr, nullptr, rolltui_theme_default_vocab());
   root.set("roles", Value(rolltui_json_clone(rolltui_json_get(c, "roles", 5))));
   rolltui_json_free(c);
   return dump(root, 2) + "\n";

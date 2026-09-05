@@ -122,8 +122,8 @@ bool ThemeEditor::load(const RolltuiJsonValue* colours, RolltuiThemeReport* repo
   std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> d{}, l{};
   RolltuiStr d_name{}, l_name{};
   RolltuiThemeReport light_rep{};
-  RolltuiEffectMap* d_eff = rolltui_theme_load(colours, ROLLTUI_MODE_DARK, &theme_vocab(), d.data(), &d_name, report);
-  RolltuiEffectMap* l_eff = rolltui_theme_load(colours, ROLLTUI_MODE_LIGHT, &theme_vocab(), l.data(), &l_name, &light_rep);
+  RolltuiEffectMap* d_eff = rolltui_theme_load(colours, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), d.data(), &d_name, report);
+  RolltuiEffectMap* l_eff = rolltui_theme_load(colours, ROLLTUI_MODE_LIGHT, rolltui_theme_default_vocab(), l.data(), &l_name, &light_rep);
   rolltui_theme_report_release(&light_rep);
   if (!d_eff || !l_eff) {
     rolltui_str_free(&d_name);
@@ -206,7 +206,7 @@ RolltuiJsonValue* ThemeEditor::colours_json(std::string_view name) const {
   // ONE effects object for both variants (motion is the theme's, not the terminal
   // background's): rolltui_theme_dump takes a light effects map only to document that it
   // is never consulted, and always dumps dark's alone.
-  RolltuiJsonValue* dump = rolltui_theme_dump(c.dark.data(), dark_effects_, c.light.data(), nullptr, &theme_vocab());
+  RolltuiJsonValue* dump = rolltui_theme_dump(c.dark.data(), dark_effects_, c.light.data(), nullptr, rolltui_theme_default_vocab());
   rolltui_json_set(root, "roles", 5, rolltui_json_clone(rolltui_json_get(dump, "roles", 5)));
   const RolltuiJsonValue* fx = rolltui_json_get(dump, "effects", 7);
   if (!rolltui_json_is_null(fx)) rolltui_json_set(root, "effects", 7, rolltui_json_clone(fx));
@@ -307,7 +307,7 @@ void ThemeEditor::rebuild_menu() {
 
 void ThemeEditor::refresh_fixes() {
   RolltuiFixArray fixes{};
-  rolltui_propose_fixes((mode_ == ROLLTUI_MODE_DARK ? undo_.current().dark : undo_.current().light).data(), ROLLTUI_ROLE_COUNT, &theme_vocab(), &fixes);
+  rolltui_propose_fixes((mode_ == ROLLTUI_MODE_DARK ? undo_.current().dark : undo_.current().light).data(), ROLLTUI_ROLE_COUNT, rolltui_theme_default_vocab(), &fixes);
   // Deep-copies each RolltuiFix (its one RolltuiStr member, `what`, has a real C++ copy
   // constructor, so this clones rather than aliasing); the ORIGINAL array — its own
   // `what` buffers included — is then released in full, the same as any other owned
@@ -340,7 +340,7 @@ std::string ThemeEditor::report() const {
   RolltuiBadges badges{};
   rolltui_theme_analyse(current(), ROLLTUI_ROLE_COUNT, roles.data(), pairs.data(), &badges);
   RolltuiStr out{};
-  rolltui_theme_report_text(roles.data(), ROLLTUI_ROLE_COUNT, pairs.data(), pairs.size(), &badges, nullptr, 0, &theme_vocab(), &out);
+  rolltui_theme_report_text(roles.data(), ROLLTUI_ROLE_COUNT, pairs.data(), pairs.size(), &badges, nullptr, 0, rolltui_theme_default_vocab(), &out);
   const std::string s(out.p ? out.p : "", out.n);
   rolltui_str_free(&out);
   return s;
@@ -548,7 +548,7 @@ ThemeEditor::Outcome ThemeEditor::handle(const RolltuiEvent* e, const RolltuiBin
         std::vector<RolltuiRoleCheck> roles(ROLLTUI_ROLE_COUNT);
         std::vector<RolltuiPairCheck> pairs(rolltui_must_differ_count());
         RolltuiStr name_c{};
-        rolltui_theme_generate(seed, rs, chaos, 1, dark_value, /*max_repair_passes=*/20, &theme_vocab(), out_styles.data(), ROLLTUI_ROLE_COUNT,
+        rolltui_theme_generate(seed, rs, chaos, 1, dark_value, /*max_repair_passes=*/20, rolltui_theme_default_vocab(), out_styles.data(), ROLLTUI_ROLE_COUNT,
                                &name_c, &meta, out_repairs, roles.data(), pairs.data(), out_badges);
         out_name = name_c.str();
         rolltui_str_free(&name_c);

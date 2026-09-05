@@ -47,44 +47,12 @@
 
 namespace rolltui {
 
-namespace {
-
-// ---- the vocabulary, handed to the C side once per call --------------------------------
-
-// Every pointer here borrows LITERAL-backed storage — `kRoleNames`' entries are
-// `std::string_view`s over string literals (Style.hpp), and `effect_state_name`'s are the
-// same over `Effects.cpp`'s own `kStateNames` — so each is NUL-terminated (a string literal
-// always is) even though `string_view` does not generally promise that, and each lives for
-// the process's whole life. That is what lets `RolltuiThemeVocab` skip a parallel length
-// array (rolltui_theme.h's own comment) and what makes a `std::array` of pointers, not a
-// heap allocation, the whole of this singleton's storage — there is nothing for
-// `rolltui::shutdown()` to release.
-struct VocabTables {
-  std::array<const char*, kRoleCount> role_names{};
-  std::array<const char*, kEffectStateCount> state_names{};
-  RolltuiThemeVocab vocab{};
-  VocabTables() {
-    for (std::size_t i = 0; i < kRoleCount; ++i) role_names[i] = kRoleNames[i].data();
-    for (std::size_t i = 0; i < kEffectStateCount; ++i)
-      state_names[i] = effect_state_name(static_cast<EffectState>(i)).data();
-    vocab.role_names = role_names.data();
-    vocab.role_count = kRoleCount;
-    vocab.text_role = static_cast<std::size_t>(Role::text);
-    vocab.state_names = state_names.data();
-    vocab.state_count = kEffectStateCount;
-    vocab.fallback_effect_role = static_cast<unsigned char>(Role::accent_1);
-  }
-};
-
-}  // namespace
-
-// External linkage — see this file's top comment for why. Named `theme_vocab`, not `vocab`,
-// because it now lives at namespace scope rather than file scope, where a bare `vocab` would
-// be a needlessly generic name to claim.
-const RolltuiThemeVocab& theme_vocab() {
-  static const VocabTables t;
-  return t.vocab;
-}
+// PHASE 17 m2a: the table is the C's now (`rolltui_theme_default_vocab`). It was BUILT here,
+// from `kRoleNames` and `effect_state_name`, because a C file could name neither — both are C
+// since the two X-macros landed, so the library hands a caller its own table instead of asking
+// for one. This external-linkage accessor stays only because four other C++ translation units
+// forward-declare it; each is one line from calling the C directly, and m2c will.
+const RolltuiThemeVocab& theme_vocab() { return *rolltui_theme_default_vocab(); }
 
 // ---- json::Value <-> RolltuiJsonValue*, SHARED with Json.cpp -----------------------------
 //

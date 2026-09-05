@@ -44,14 +44,12 @@
 #include "undo_stack.hpp"
 #include "tool_actions.hpp"
 
-// `rolltui::theme_vocab()` — the role/effect-state NAME TABLE every rolltui_theme_load/_dump/
-// _analyse/_generate call needs (rolltui_theme.h's RolltuiThemeVocab) — is defined in
-// Theme.cpp with EXTERNAL LINKAGE for exactly this: `Presets.cpp` already reaches it this same
-// way (forward-declared, not duplicated) rather than rebuilding the table a second time. This
-// file is the second consumer to do that on purpose rather than write a third.
-namespace rolltui {
-const RolltuiThemeVocab& theme_vocab();
-}
+// THE VOCAB IS THE LIBRARY'S (`rolltui_theme_default_vocab`, rolltui_theme.h). This file
+// briefly forward-declared `rolltui::theme_vocab()` instead — reaching across into `Theme.cpp`,
+// which m2c deletes — and the comment here argued that being the SECOND consumer to do that was
+// better than writing a third table. Both halves were true and the conclusion was still wrong:
+// six consumers were building or reaching for one, and the vocab only existed because a C file
+// could not name a role. It can, since m2a.
 
 namespace rolltui::tools {
 
