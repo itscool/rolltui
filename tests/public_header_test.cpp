@@ -151,5 +151,56 @@ int main() {
           "…and the caps are in the PUBLIC headers, so a caller can actually declare the buffer");
   }
 
+  // ---- 5. THE RATCHET: how many consumers still bypass this header ------------------------
+  // **This is the assertion this file should have had from the start, and its absence was a
+  // real hole.** Checks 1-4 certify the umbrella as a FACADE: that it compiles alone, declares
+  // nothing, and names every public header THAT EXISTS. None of them can notice a header that
+  // SHOULD exist and does not — so `rolltui.h` could be complete and the C API still be
+  // missing whole modules, which is exactly the state it was in when written (no settings
+  // vocabulary, no widget-kind plugins).
+  //
+  // The honest completeness metric is the one thing a facade check cannot fake: **a consumer
+  // with nowhere to call cannot convert.** So count the consumers still including a C++
+  // `rolltui/*.hpp` instead of this header. The number can only reach zero if the C API is
+  // genuinely complete.
+  //
+  // A RATCHET, not a fixed number: it must never RISE. A recorded exact count would have to be
+  // edited on every conversion and would tempt someone to edit it the wrong way; a ceiling
+  // costs nothing to lower and fails loudly if a new consumer reaches past the umbrella.
+  // When it reaches 0, replace this with `== 0` and delete `rolltui/*.hpp`.
+  {
+    const std::string roots[] = {std::string(ROLLTUI_SOURCE_DIR) + "/tests",
+                                 std::string(ROLLTUI_SOURCE_DIR) + "/tools"};
+    int consumers = 0;
+    std::vector<std::string> names;
+    for (const std::string& root : roots) {
+      std::error_code ec;
+      for (auto it = std::filesystem::directory_iterator(root, ec);
+           !ec && it != std::filesystem::directory_iterator(); ++it) {
+        const std::string path = it->path().string();
+        if (path.size() < 4) continue;
+        const std::string ext = it->path().extension().string();
+        if (ext != ".cpp" && ext != ".hpp") continue;
+        const std::string src = read(path);
+        // a C++ rolltui header is `rolltui/X...` with a capital after the slash
+        bool bypasses = false;
+        for (size_t i = src.find("#include \"rolltui/"); i != std::string::npos;
+             i = src.find("#include \"rolltui/", i + 1)) {
+          const char c = src[i + std::string("#include \"rolltui/").size()];
+          if (c >= 'A' && c <= 'Z') { bypasses = true; break; }
+        }
+        if (bypasses) { ++consumers; names.push_back(it->path().filename().string()); }
+      }
+    }
+    // RECORDED 2026-09-04 at 17 (the library's own tests and tools; roll's src/ and include/
+    // are counted by roll's suite, not this one). Lower it whenever a conversion lands.
+    const int kCeiling = 17;
+    std::string joined;
+    for (const std::string& n : names) joined += " " + n;
+    check(consumers <= kCeiling,
+          "consumers bypassing rolltui.h did not RISE [" + std::to_string(consumers) + " <= " +
+              std::to_string(kCeiling) + "]:" + joined);
+  }
+
   return report("public_header_test");
 }
