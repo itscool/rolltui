@@ -50,9 +50,9 @@ std::string read_until(int fd, const std::string& want, int ms) {
 // reproduces for RolltuiEvent, plus the RESIZE kind only the terminal ever produces
 // (rolltui/c/rolltui_terminal.h rule 4).
 std::string term_event_to_string(const RolltuiTermEvent& e) {
-  static const char* key_names[] = {"Char", "Enter", "Tab", "Backspace", "Escape", "Up", "Down", "Left", "Right",
-                                    "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "F1", "F2", "F3",
-                                    "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "Unknown"};
+  // THE LIBRARY'S TitleCase names (Phase 17 m2b), not a hand-copy of them. There were three
+  // copies of this 28-entry table and no source: the lowercase half was already in C, the
+  // TitleCase half was in `Keys.cpp`, and nothing said the two spellings were deliberate.
   static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
   switch (e.kind) {
     case ROLLTUI_TERM_EVENT_MOUSE: {
@@ -78,7 +78,7 @@ std::string term_event_to_string(const RolltuiTermEvent& e) {
         const std::size_t n = rolltui_u_append_utf8(e.key.ch, buf);
         s.append(buf, n);
       } else {
-        s += key_names[e.key.key];
+        s += rolltui_key_display_name(static_cast<unsigned char>(e.key.key), nullptr);
       }
       if (e.key.key == ROLLTUI_KEY_UNKNOWN) s += "(" + std::string(e.text ? e.text : "", e.text ? e.text_len : 0) + ")";
       return s;

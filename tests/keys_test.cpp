@@ -14,13 +14,12 @@ using namespace rolltui_test;
 namespace {
 
 // event_to_string mirrors rolltui::to_string(Event) (rolltui/Keys.cpp) one level down,
-// directly over RolltuiEvent: display vocabulary the boundary deliberately does not
-// carry (rolltui/c/rolltui_keys.h), so there is no C function for it — only the C
-// struct's own fields.
+// directly over RolltuiEvent. The COMPOSITION (modifier prefixes, the mouse form) is still
+// this file's; the KEY NAMES are the library's since Phase 17 m2b.
 std::string event_to_string(const RolltuiEvent& e) {
-  static const char* key_names[] = {"Char", "Enter", "Tab", "Backspace", "Escape", "Up", "Down", "Left", "Right",
-                                    "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "F1", "F2", "F3",
-                                    "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "Unknown"};
+  // THE LIBRARY'S TitleCase names (Phase 17 m2b), not a hand-copy of them. There were three
+  // copies of this 28-entry table and no source: the lowercase half was already in C, the
+  // TitleCase half was in `Keys.cpp`, and nothing said the two spellings were deliberate.
   static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
   switch (e.kind) {
     case ROLLTUI_EVENT_MOUSE: {
@@ -44,7 +43,7 @@ std::string event_to_string(const RolltuiEvent& e) {
         const std::size_t n = rolltui_u_append_utf8(e.key.ch, buf);
         s.append(buf, n);
       } else {
-        s += key_names[e.key.key];
+        s += rolltui_key_display_name(static_cast<unsigned char>(e.key.key), nullptr);
       }
       if (e.key.key == ROLLTUI_KEY_UNKNOWN) s += "(" + std::string(e.text ? e.text : "", e.text ? e.text_len : 0) + ")";
       return s;
@@ -231,5 +230,22 @@ int main() {
     rolltui_key_decoder_free(d);
     check(p == "line1\nline2", "paste text is verbatim, newlines included");
   }
+  // ---- two the m2b table change needed, and neither existed before ---------------------
+  // `Char` and `Unknown` are in the shared key list with "" as their FILE spelling (a bindings
+  // file has no word for either), and "space" is the one ALIAS that names a CHAR chord and so
+  // carries a codepoint. The second check is a real control for that: spelling the alias
+  // "spacebar" in the list turns it and two `bindings_test` assertions red. The FIRST is a
+  // true statement that is NOT a control — `rolltui_chord_parse` refuses an empty last part
+  // upstream, so the empty-name guard beside the table is belt and braces; that file says so.
+  {
+    RolltuiChord c{};
+    check(rolltui_chord_parse("", 0, &c) == 0, "an empty chord is not a chord (the empty key spelling is not a name)");
+    RolltuiChord space{};
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    check(rolltui_chord_parse("space", 5, &space) && space.key == ROLLTUI_KEY_CHAR && space.ch == U' ' &&
+              std::string(buf, rolltui_chord_to_string(&space, buf, sizeof buf)) == "space",
+          "…while 'space', which IS an alias for a Char chord, still round-trips");
+  }
+
   return report("rolltui keys_test");
 }
