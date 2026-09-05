@@ -43,18 +43,35 @@
 #include <regex>
 #include <sstream>
 
+// PHASE 17 m2 (test-porting), re-verified against the CURRENT library rather than trusting
+// the previous pass's comment here (both `load_layout`/`layout_to_json`/`builtin_layout*` and
+// Windows' bind_*/set_dir/add_menu/menu_origin/menu_names/prepare had since gained full C
+// forms — `rolltui_load_layout_text`, `rolltui_windows_bind_document`, etc. — that the old
+// comment called blocked; `Layout.cpp`/`Widgets.cpp` are now thin shims over exactly those
+// calls). Every one of those is called directly below through local `_c` helpers that mirror
+// the shim's own body verbatim, the same pattern `place()`/`resolve_tree_c()` already used.
+//
+// What GENUINELY has no C form, verified by reading the boundary headers rather than the
+// prior comment, and stays on the two headers below:
+//   - `rolltui::Layout`/`ActionDecl`'s OWN shape (`shipped_default_actions()`, `action_decls()`,
+//     the `RolltuiActionList`-vs-`vector<ActionDecl>` comparison) — `rolltui_layout.h`'s own
+//     header comment states these keep real std::string/vector fields for callers outside
+//     this port's scope (the same exception `rolltui_json.h`'s `Value` took), so Layout.hpp
+//     stays included for exactly this bridge.
+//   - `Windows`' TYPED accessors — `transcript(source)`/`input(source)`/`menu(source)` hand
+//     back a LIVE `Transcript&`/`Input&`/`Menu&` backed by maps `Windows` itself still owns
+//     (`Widgets.hpp`'s own header comment: "Phase 17... `Windows` OWNS every `input:<source>`
+//     here now"). `rolltui_windows_at`/`_widget_for` hand back a generic `RolltuiWidget{vt,
+//     ctx}` with an OPAQUE `ctx` — there is no accessor that recovers a typed `RolltuiInput*`
+//     from it, so a test (or a host) that needs to drive a specific widget's own operations
+//     (`set_text`, `scroll_to_top`, a menu's `find`/`set_options`) has no raw-C path and keeps
+//     `Windows` for it. Everything Windows/WindowStack forward with NO state of their own
+//     (routing, composing, resolving, the widget-kind registry, content parsing) is called
+//     through `rolltui_window_stack_*`/`rolltui_widget_kind_*`/`rolltui_content_*` directly
+//     instead, including inside the sections that also use `Windows` for its typed half.
 #include "rolltui/Layout.hpp"
 #include "rolltui/Widgets.hpp"
-// Phase 17 m2 (test-porting): what has a direct C equivalent today is called directly below
-// (Frame, resolve()/inner_rect(), resolve_tree(), draw_border(), the split's Node tree, the
-// text forms, the scrollbar geometry). What does NOT yet — the JSON layout/menu loader
-// (load_layout/layout_to_json/builtin_layout*, blocked on Json.hpp, last of Phase 17 m1's
-// seven and not yet ported), Windows' host-binding surface (bind_document/bind_rows/
-// bind_submit/bind_note/transcript()/input()/menu()/set_dir/set_help/add_menu/menu_origin/
-// menu_names/prepare, permanently C++ per rolltui/Widgets.hpp's own header comment), and
-// parse_content/content_to_string/register_widget_kind's English-message composition
-// (Layout.hpp's own header comment: "the sentences are composed here") — stays on
-// rolltui::Layout.hpp / rolltui::Widgets.hpp exactly as before; see the report for why.
+#include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_layout_tree.h"
@@ -169,6 +186,287 @@ Node column_of(std::vector<Node> children, SplitSize size = {}) {
   n.kind = Node::Kind::Column;
   return n;
 }
+
+// ---- direct C calls, continued: anchor/border names -----------------------------------
+std::string_view anchor_name_c(Anchor a) {
+  std::size_t n = 0;
+  const char* p = rolltui_anchor_name(static_cast<unsigned char>(a), &n);
+  return {p, n};
+}
+std::optional<Anchor> anchor_from_name_c(std::string_view name) {
+  unsigned char out = 0;
+  if (rolltui_anchor_from_name(name.data(), name.size(), &out)) return static_cast<Anchor>(out);
+  return std::nullopt;
+}
+std::string_view border_name_c(Border b) {
+  std::size_t n = 0;
+  const char* p = rolltui_border_name(static_cast<unsigned char>(b), &n);
+  return {p, n};
+}
+std::optional<Border> border_from_name_c(std::string_view name) {
+  unsigned char out = 0;
+  if (rolltui_border_from_name(name.data(), name.size(), &out)) return static_cast<Border>(out);
+  return std::nullopt;
+}
+
+// ---- direct C calls, continued: content and the widget-kind registry ------------------
+// Each mirrors Layout.cpp's own body exactly, same as parse_dim_c and friends above.
+std::string_view widget_kind_name_c(WidgetKind k) {
+  std::size_t n = 0;
+  const char* p = rolltui_widget_kind_library_name(static_cast<std::size_t>(k), &n);
+  return {p, n};
+}
+std::optional<WidgetKind> widget_kind_from_name_c(std::string_view name) {
+  unsigned char ordinal = 0, rule = 0;
+  if (rolltui_widget_kind_resolve(name.data(), name.size(), &ordinal, &rule, nullptr, nullptr) == ROLLTUI_KIND_LIBRARY)
+    return static_cast<WidgetKind>(ordinal);
+  return std::nullopt;
+}
+std::optional<Content> parse_content_c(std::string_view text, std::string* why = nullptr, ContentProblem* what = nullptr) {
+  unsigned char ordinal = 0, problem = ROLLTUI_CONTENT_PROBLEM_NONE;
+  int is_host = 0;
+  const char *name = nullptr, *source = nullptr;
+  std::size_t name_len = 0, source_len = 0;
+  Str why_str;
+  const int ok = rolltui_content_parse(text.data(), text.size(), &ordinal, &is_host, &name, &name_len, &source,
+                                       &source_len, &problem, &why_str);
+  if (what) *what = static_cast<ContentProblem>(problem);
+  if (why) *why = why_str.str();
+  if (!ok) return std::nullopt;
+  Content c;
+  c.source.assign(std::string_view(source, source_len));
+  if (is_host) {
+    c.kind = WidgetKind::Registered;
+    c.registered_name.assign(std::string_view(name, name_len));
+  } else {
+    c.kind = static_cast<WidgetKind>(ordinal);
+  }
+  return c;
+}
+std::string content_to_string_c(const Content& c) {
+  unsigned char ordinal = 0, rule = 0;
+  std::string_view kind_name;
+  if (c.kind == WidgetKind::Registered) {
+    kind_name = c.registered_name;
+    rolltui_widget_kind_resolve(c.registered_name.data(), c.registered_name.size(), &ordinal, &rule, nullptr, nullptr);
+  } else {
+    kind_name = widget_kind_name_c(c.kind);
+    rule = static_cast<unsigned char>(source_rule(c.kind));
+  }
+  Str out;
+  rolltui_content_format(kind_name.data(), kind_name.size(), c.source.data(), c.source.size(), rule, &out);
+  return out.str();
+}
+bool register_widget_kind_c(std::string_view name, SourceRule rule, std::string_view source_is, std::string* why = nullptr) {
+  const int refusal = rolltui_widget_kind_register(name.data(), name.size(), static_cast<unsigned char>(rule),
+                                                   source_is.data(), source_is.size());
+  if (why) {
+    switch (refusal) {
+      case ROLLTUI_REGISTER_EMPTY: *why = "a kind name must not be empty"; break;
+      case ROLLTUI_REGISTER_HAS_COLON: *why = "a kind name must not contain ':'"; break;
+      case ROLLTUI_REGISTER_IS_LIBRARY: *why = "'" + std::string(name) + "' is one of the library's own kinds"; break;
+      case ROLLTUI_REGISTER_RULE_DIFFERS: *why = "'" + std::string(name) + "' is already registered with a different rule"; break;
+      default: why->clear(); break;
+    }
+  }
+  return refusal == ROLLTUI_REGISTER_OK;
+}
+void clear_registered_widget_kinds_c() { rolltui_widget_kind_clear(); }
+std::optional<std::string> migrated_content_c(std::string_view legacy) {
+  std::size_t n = 0;
+  const char* p = rolltui_migrated_content(legacy.data(), legacy.size(), &n);
+  if (!p) return std::nullopt;
+  return std::string(p, n);
+}
+std::vector<std::string> widget_kind_names_c() {
+  std::vector<std::string> out;
+  for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) out.emplace_back(widget_kind_name_c(static_cast<WidgetKind>(i)));
+  for (std::size_t i = 0; i < rolltui_widget_kind_host_count(); ++i) {
+    std::size_t n = 0;
+    const char* p = rolltui_widget_kind_host_name(i, &n);
+    out.emplace_back(p, n);
+  }
+  return out;
+}
+
+// ---- direct C calls, continued: the loader (load_layout/layout_to_json/builtin_layout*) ----
+// `LayoutLoadReport`/`Layout`/`ActionDecl` stay rolltui::-side (see the include comment); only
+// the ALGORITHM these wrap moves. Every function here mirrors Layout.cpp's own body verbatim
+// — `kHooks_c`/`report_from_c_c`/`actions_to_c_c`/`loaded_to_layout_c` are that file's private
+// `kHooks`/`report_from_c`/`actions_to_c`/`loaded_to_layout`, copied because they are not
+// exported (by design: the algorithm is the boundary's, the shim's OWN plumbing is not part
+// of its public surface either).
+int role_from_name_cb_c(void*, const char* name, std::size_t len, unsigned char* out) {
+  const Role r = role_from_name(std::string_view(name, len));
+  if (r == Role::count_) return 0;
+  *out = static_cast<unsigned char>(r);
+  return 1;
+}
+std::size_t role_name_cb_c(void*, unsigned char role, char* out, std::size_t cap) {
+  const std::string_view name = role_name(static_cast<Role>(role));
+  std::size_t n = name.size();
+  if (n >= cap) n = cap ? cap - 1 : 0;
+  if (cap) {
+    std::memcpy(out, name.data(), n);
+    out[n] = '\0';
+  }
+  return n;
+}
+int is_library_scope_cb_c(void*, const char* scope, std::size_t len) { return library_scope(std::string_view(scope, len)) ? 1 : 0; }
+constexpr RolltuiLayoutHooks kHooks_c = {
+    /*is_library_scope=*/is_library_scope_cb_c, /*scope_ctx=*/nullptr,
+    /*role_from_name=*/role_from_name_cb_c,      /*role_from_name_ctx=*/nullptr,
+    /*role_name=*/role_name_cb_c,                /*role_name_ctx=*/nullptr,
+};
+
+void report_from_c_c(const RolltuiLayoutReport& r, LayoutLoadReport& report) {
+  report.error = r.error.str();
+  for (std::size_t i = 0; i < r.unknown_keys_n; ++i) report.unknown_keys.emplace_back(r.unknown_keys[i].str());
+  for (std::size_t i = 0; i < r.bad_values_n; ++i) report.bad_values.emplace_back(r.bad_values[i].str());
+  for (std::size_t i = 0; i < r.migrated_n; ++i) report.migrated.emplace_back(r.migrated[i].str());
+}
+std::vector<RolltuiLayoutAction> actions_to_c_c(const std::vector<ActionDecl>& actions) {
+  std::vector<RolltuiLayoutAction> out;
+  out.reserve(actions.size());
+  for (const ActionDecl& d : actions) out.push_back(RolltuiLayoutAction{Str(d.name), Str(d.description)});
+  return out;
+}
+Layout loaded_to_layout_c(RolltuiLoadedLayout& loaded) {
+  Layout out;
+  out.name = loaded.name;
+  out.min_width = loaded.min_width;
+  out.min_height = loaded.min_height;
+  for (std::size_t i = 0; i < loaded.actions_n; ++i) out.actions.push_back(loaded.actions[i]);
+  rolltui_layer_move(&out.base, &loaded.base);
+  for (std::size_t i = 0; i < loaded.popups_n; ++i) out.popups.push_back(std::move(loaded.popups[i]));
+  return out;
+}
+std::optional<Layout> load_layout_c(std::string_view json_text, LayoutLoadReport& report) {
+  const std::vector<RolltuiLayoutAction> default_actions = actions_to_c_c(shipped_default_actions());
+  RolltuiLoadedLayout loaded;
+  RolltuiLayoutReport rep{};
+  rolltui_loaded_layout_init(&loaded);
+  const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, default_actions.data(),
+                                          default_actions.size(), &kHooks_c, &rep);
+  report_from_c_c(rep, report);
+  rolltui_layout_report_release(&rep);
+  if (!ok) {
+    rolltui_loaded_layout_release(&loaded);
+    return std::nullopt;
+  }
+  std::optional<Layout> out = loaded_to_layout_c(loaded);
+  rolltui_loaded_layout_release(&loaded);
+  return out;
+}
+std::string layout_to_json_c(const Layout& layout) {
+  Str out;
+  rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
+                              layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
+                              layout.popups.size(), &kHooks_c, &out);
+  return out.str();
+}
+// The built-ins: the embedded table directly, parsed with load_layout_c. A fresh parse per
+// lookup (this cache is the test's own, not Layout.cpp's `builtin_layout_cache()` — nothing
+// exported reaches that one) rather than re-deriving its lazy-init subtleties for a path that
+// only ever runs a handful of times per test binary.
+const Layout* builtin_layout_c(std::string_view name) {
+  static const std::vector<std::pair<std::string, Layout>> cache = [] {
+    std::vector<std::pair<std::string, Layout>> out;
+    for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i) {
+      const RolltuiEmbeddedFile& f = rolltui_kLayoutPresets[i];
+      LayoutLoadReport rep;
+      std::optional<Layout> l = load_layout_c(f.text, rep);
+      if (l) out.emplace_back(std::string(f.name), std::move(*l));
+    }
+    return out;
+  }();
+  for (const auto& [n, l] : cache)
+    if (n == name) return &l;
+  return nullptr;
+}
+std::vector<std::string_view> builtin_layout_names_c() {
+  std::vector<std::string_view> out;
+  for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i) out.push_back(rolltui_kLayoutPresets[i].name);
+  return out;
+}
+
+// ---- direct C calls, continued: the stack, used on its own (sections 3/5/6) -----------
+// `rolltui::WindowStack` stays in scope for sections 8/9, where `Windows::prepare()` etc.
+// take a `WindowStack&` by their own signature (see the include comment) — but nothing
+// stops those same sections calling these `_c` functions too where it is convenient; the
+// choice below is per call site, not per section.
+struct StackC {
+  RolltuiWindowStack* s = rolltui_window_stack_new();
+  StackC() = default;
+  explicit StackC(const Layout& l) { rolltui_window_stack_set_base(s, &l.base); }
+  StackC(const StackC&) = delete;
+  StackC& operator=(const StackC&) = delete;
+  ~StackC() { rolltui_window_stack_free(s); }
+};
+
+RolltuiEvent key_ev(Key k, bool shift = false) {
+  RolltuiEvent e{};
+  e.kind = ROLLTUI_EVENT_KEY;
+  e.key.key = static_cast<unsigned char>(k);
+  e.key.shift = shift;
+  return e;
+}
+RolltuiEvent chr_ev(char32_t c) {
+  RolltuiEvent e{};
+  e.kind = ROLLTUI_EVENT_KEY;
+  e.key.key = ROLLTUI_KEY_CHAR;
+  e.key.ch = c;
+  return e;
+}
+RolltuiEvent mouse_ev(const MouseEvent& m) {
+  RolltuiEvent e{};
+  e.kind = ROLLTUI_EVENT_MOUSE;
+  e.mouse = m;
+  return e;
+}
+
+constexpr RolltuiStackActions kStackActions_c = {"stack.close_popup", "stack.focus_next", "stack.focus_prev"};
+
+Route route_c(RolltuiWindowStack* s, const RolltuiEvent& e, Rect screen) {
+  Str window;
+  const unsigned char kind = rolltui_window_stack_route(s, &e, screen, default_bindings().handle(), &kStackActions_c, &window);
+  return {static_cast<Route::Kind>(kind), window.str()};
+}
+std::string_view captured_c(const RolltuiWindowStack* s) {
+  std::size_t n = 0;
+  const char* p = rolltui_window_stack_captured(s, &n);
+  return {p, n};
+}
+constexpr RolltuiLayoutRoles kRoles_c = {
+    /*border=*/static_cast<unsigned char>(Role::border),
+    /*border_active=*/static_cast<unsigned char>(Role::border_active),
+    /*title=*/static_cast<unsigned char>(Role::title),
+    /*overlay=*/static_cast<unsigned char>(Role::overlay),
+};
+using SlotRendererC = std::function<void(const ResolvedNode&, Frame&)>;
+void call_slot_c(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame*) {
+  auto* p = static_cast<std::pair<const SlotRendererC*, Frame*>*>(ctx);
+  (*p->first)(*rn, *p->second);
+}
+void compose_c(RolltuiWindowStack* s, Frame& frame, Rect screen, const Theme& theme, const SlotRendererC& render) {
+  std::pair<const SlotRendererC*, Frame*> ctx{&render, &frame};
+  RolltuiComposeScratch* scratch = rolltui_compose_scratch_new();
+  rolltui_window_stack_compose(s, frame.handle(), screen, theme.styles.data(), &kRoles_c, render ? call_slot_c : nullptr,
+                               &ctx, false, scratch);
+  rolltui_compose_scratch_free(scratch);
+}
+std::vector<ResolvedNode> resolve_stack_c(const RolltuiWindowStack* s, Rect screen) {
+  std::vector<ResolvedNode> out;
+  rolltui_window_stack_resolve(s, screen, push_node_c, &out);
+  return out;
+}
+// The handful of stack methods keyed by a string id, spelled out once so a call site reads
+// `focus_c(s.s, "input")` rather than repeating `.data(), .size()` at every one.
+void focus_c(RolltuiWindowStack* s, std::string_view id) { rolltui_window_stack_focus(s, id.data(), id.size()); }
+bool has_popup_c(const RolltuiWindowStack* s, std::string_view id) {
+  return rolltui_window_stack_has_popup(s, id.data(), id.size()) != 0;
+}
+Node* find_c(RolltuiWindowStack* s, std::string_view id) { return rolltui_window_stack_find(s, id.data(), id.size()); }
 
 }  // namespace
 
@@ -290,31 +588,31 @@ int main() {
   check(!parse_split_size_c("3"), "parse_split_size rejects a bare number string");
   check(split_size_to_string_c(SplitSize::filling(2)) == "fill 2" && split_size_to_string_c(SplitSize::fixed(Dim::abs(3))) == "3",
         "split_size_to_string");
-  check(anchor_from_name("bottom-right") == Anchor::BottomRight && anchor_name(Anchor::Center) == "center" && !anchor_from_name("middle"),
+  check(anchor_from_name_c("bottom-right") == Anchor::BottomRight && anchor_name_c(Anchor::Center) == "center" && !anchor_from_name_c("middle"),
         "anchor names");
-  check(border_from_name("rounded") == Border::Rounded && border_name(Border::Heavy) == "heavy" && !border_from_name("thick"),
+  check(border_from_name_c("rounded") == Border::Rounded && border_name_c(Border::Heavy) == "heavy" && !border_from_name_c("thick"),
         "border names");
 
   // ---- 3. the loader -----------------------------------------------------------------------
   std::printf("-- loader\n");
-  for (std::string_view name : builtin_layout_names()) {
-    const Layout* l = builtin_layout(name);
+  for (std::string_view name : builtin_layout_names_c()) {
+    const Layout* l = builtin_layout_c(name);
     check(l != nullptr && l->name == name, "built-in '" + std::string(name) + "' exists");
     if (!l) continue;
     LayoutLoadReport rep;
-    std::optional<Layout> back = load_layout(layout_to_json(*l), rep);
+    std::optional<Layout> back = load_layout_c(layout_to_json_c(*l), rep);
     check(back && rep.clean() && *back == *l, "built-in '" + std::string(name) + "' round-trips through layout_to_json");
     check(l->popup("help") != nullptr && l->popup("help")->modal, "built-in '" + std::string(name) + "' declares the modal help popup");
     check(l->popup("approval") != nullptr && l->popup("approval")->modal && l->popup("approval")->placement.anchor == Anchor::Bottom,
           "built-in '" + std::string(name) + "' declares the modal approval popup, anchored to the bottom (milestone 10)");
-    WindowStack s(*l);
-    const Node* f = s.focused();
+    StackC s(*l);
+    const Node* f = rolltui_window_stack_focused(s.s);
     check(f && f->id == "input", "built-in '" + std::string(name) + "' focuses input initially");
   }
-  check(builtin_layout("nope") == nullptr, "unknown built-in → nullptr");
+  check(builtin_layout_c("nope") == nullptr, "unknown built-in → nullptr");
   {
     LayoutLoadReport rep;
-    auto l = load_layout(R"({"name": "x", "colour": 1, "root": {"content": "a", "size": "50", "shade": true, "border": "thick"},
+    auto l = load_layout_c(R"({"name": "x", "colour": 1, "root": {"content": "a", "size": "50", "shade": true, "border": "thick"},
                              "popups": [{"id": "p", "x": "50%", "w": 3.5, "anchor": "middle", "root": {"content": "b"}}]})", rep);
     check(l.has_value(), "a layout with problems still loads");
     auto has = [&](const std::vector<std::string>& v, std::string_view s) {
@@ -330,7 +628,7 @@ int main() {
   }
   {
     LayoutLoadReport rep;
-    auto l = load_layout(R"({"root": {"row": [{"content": "a"}, {"content": "a"}]}, "focus": "zzz"})", rep);
+    auto l = load_layout_c(R"({"root": {"row": [{"content": "a"}, {"content": "a"}]}, "focus": "zzz"})", rep);
     bool dup = false, dangling = false;
     for (const std::string& s : rep.bad_values) { if (s.find("duplicate id 'a'") != std::string::npos) dup = true; if (s.find("focus: no window with id 'zzz'") != std::string::npos) dangling = true; }
     check(l && dup, "a duplicate id is reported");
@@ -338,11 +636,11 @@ int main() {
   }
   {
     LayoutLoadReport rep;
-    check(!load_layout("{", rep) && rep.error.find("line") != std::string::npos, "unparseable JSON → nullopt with a line");
+    check(!load_layout_c("{", rep) && rep.error.find("line") != std::string::npos, "unparseable JSON → nullopt with a line");
     LayoutLoadReport rep2;
-    check(!load_layout(R"({"name": "x"})", rep2) && rep2.error.find("root") != std::string::npos, "no root → nullopt, error names it");
+    check(!load_layout_c(R"({"name": "x"})", rep2) && rep2.error.find("root") != std::string::npos, "no root → nullopt, error names it");
     LayoutLoadReport rep3;
-    auto l = load_layout(R"({"root": {"content": "a", "row": []}})", rep3);
+    auto l = load_layout_c(R"({"root": {"content": "a", "row": []}})", rep3);
     check(l && !rep3.bad_values.empty() && rep3.bad_values[0].find("exactly one") != std::string::npos, "a node with both content and row is a bad value");
   }
 
@@ -429,10 +727,10 @@ int main() {
   std::printf("-- composition\n");
   const Theme& dark = *builtin_theme("default-dark");
   {
-    WindowStack s(*builtin_layout("default"));
+    StackC s(*builtin_layout_c("default"));
     Frame f(80, 24, dark.style(Role::background));
     int slots = 0;
-    s.compose(f, scr, dark, [&](const ResolvedNode& rn, Frame& fr) { ++slots; fr.put_text(rn.inner.x, rn.inner.y, rn.node->content, dark.style(Role::text), rn.inner.w); });
+    compose_c(s.s, f, scr, dark, [&](const ResolvedNode& rn, Frame& fr) { ++slots; fr.put_text(rn.inner.x, rn.inner.y, rn.node->content, dark.style(Role::text), rn.inner.w); });
     check(slots == 3, "three slots rendered (" + std::to_string(slots) + ")");
     check(cell(f, 0, 0) == "┌" && cell(f, 79, 0) == "┐" && cell(f, 0, 23) == "└" && cell(f, 79, 23) == "┘", "outer corners");
     check(cell(f, 48, 0) == "┬", "top junction where status meets transcript is ┬ (" + cell(f, 48, 0) + ")");
@@ -451,12 +749,12 @@ int main() {
   {
     // A popup whose ring crosses the status's left border: no join across layers, and
     // the modal overlay tints only what is beneath.
-    WindowStack s(*builtin_layout("default"));
-    Layer help = *builtin_layout("default")->popup("help");
-    s.push(help);
+    StackC s(*builtin_layout_c("default"));
+    Layer help = *builtin_layout_c("default")->popup("help");
+    rolltui_window_stack_push(s.s, &help);
     Frame f(80, 24, dark.style(Role::background));
-    s.compose(f, scr, dark, [&](const ResolvedNode&, Frame&) {});
-    auto v = s.resolve(scr);
+    compose_c(s.s, f, scr, dark, [&](const ResolvedNode&, Frame&) {});
+    auto v = resolve_stack_c(s.s, scr);
     const ResolvedNode* h = by_id(v, "help");
     check(h && h->outer == Rect{16, 6, 48, 12}, "the help popup lands where the table says at 80x24");
     check(cell(f, 48, 6) == "─" && cell(f, 48, 17) == "─", "the popup's edge crossing the status border stays ─ (never joins the layer below)");
@@ -465,7 +763,7 @@ int main() {
     check(!f.at(20, 8).style.dim && !f.at(16, 6).style.dim, "cells of the modal itself are not tinted");
     check(cell(f, 18, 6) == "h", "popup title drawn");
     Frame g(120, 40, dark.style(Role::background));
-    s.compose(g, {0, 0, 120, 40}, dark, [&](const ResolvedNode&, Frame&) {});
+    compose_c(s.s, g, {0, 0, 120, 40}, dark, [&](const ResolvedNode&, Frame&) {});
     check(cell(g, 24, 14) == "╭" && cell(g, 95, 25) == "╯", "the same popup re-places itself at 120x40 (24,14)-(95,25)");
   }
   {
@@ -493,110 +791,107 @@ int main() {
   // ---- 6. the stack ----------------------------------------------------------------------------
   std::printf("-- stack\n");
   {
-    WindowStack s(*builtin_layout("default"));
-    auto key = [](Key k, bool shift = false) { KeyEvent e; e.key = k; e.shift = shift; return Event{e}; };
-    auto ch = [](char32_t c) { KeyEvent e; e.key = Key::Char; e.ch = c; return Event{e}; };
-    check(s.focused()->id == "input" && s.focus_layer() == 0, "initial focus is the layout's 'focus'");
-    check(s.route(ch('x'), scr) == Route{Route::Kind::Deliver, "input"}, "a key goes to the focused window");
-    check(s.route(key(Key::Tab), scr) == Route{Route::Kind::FocusMoved, "transcript"}, "Tab cycles to the transcript");
-    check(s.route(key(Key::Tab), scr) == Route{Route::Kind::FocusMoved, "input"}, "Tab wraps back to the input");
-    check(s.route(key(Key::Tab, true), scr) == Route{Route::Kind::FocusMoved, "transcript"}, "Shift-Tab cycles backwards");
-    check(s.route(key(Key::Escape), scr) == Route{Route::Kind::Deliver, "transcript"}, "Escape with no popup is delivered");
+    StackC s(*builtin_layout_c("default"));
+    check(rolltui_window_stack_focused(s.s)->id == "input" && rolltui_window_stack_focus_layer(s.s) == 0, "initial focus is the layout's 'focus'");
+    check(route_c(s.s, chr_ev('x'), scr) == Route{Route::Kind::Deliver, "input"}, "a key goes to the focused window");
+    check(route_c(s.s, key_ev(Key::Tab), scr) == Route{Route::Kind::FocusMoved, "transcript"}, "Tab cycles to the transcript");
+    check(route_c(s.s, key_ev(Key::Tab), scr) == Route{Route::Kind::FocusMoved, "input"}, "Tab wraps back to the input");
+    check(route_c(s.s, key_ev(Key::Tab, true), scr) == Route{Route::Kind::FocusMoved, "transcript"}, "Shift-Tab cycles backwards");
+    check(route_c(s.s, key_ev(Key::Escape), scr) == Route{Route::Kind::Deliver, "transcript"}, "Escape with no popup is delivered");
     MouseEvent m;
     m.kind = MouseEvent::Kind::Press;
     m.x = 60; m.y = 5;
-    check(s.route(m, scr) == Route{Route::Kind::Deliver, "status"} && s.focused()->id == "transcript",
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Deliver, "status"} && rolltui_window_stack_focused(s.s)->id == "transcript",
           "a press on a non-focusable window is delivered and leaves focus alone");
     m.x = 5; m.y = 22;
-    check(s.route(m, scr) == Route{Route::Kind::Deliver, "input"} && s.focused()->id == "input", "a press on a focusable base window focuses it");
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Deliver, "input"} && rolltui_window_stack_focused(s.s)->id == "input", "a press on a focusable base window focuses it");
     MouseEvent wheel;
     wheel.kind = MouseEvent::Kind::WheelUp;
     wheel.x = 5; wheel.y = 5;
-    check(s.route(wheel, scr) == Route{Route::Kind::Deliver, "transcript"} && s.focused()->id == "input", "a wheel goes to the window under the pointer, focus unchanged");
+    check(route_c(s.s, mouse_ev(wheel), scr) == Route{Route::Kind::Deliver, "transcript"} && rolltui_window_stack_focused(s.s)->id == "input", "a wheel goes to the window under the pointer, focus unchanged");
     // Pointer capture (milestone 9): a press captures; drags and the release follow it
     // wherever the pointer goes; after the release routing is by position again.
     m.x = 5; m.y = 5;
-    check(s.route(m, scr) == Route{Route::Kind::Deliver, "transcript"} && s.captured() == "transcript", "a press captures the pointer for its window");
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Deliver, "transcript"} && captured_c(s.s) == "transcript", "a press captures the pointer for its window");
     MouseEvent drag = m;
     drag.kind = MouseEvent::Kind::Drag;
     drag.x = 60; drag.y = 30;  // over the status panel, and below the screen
-    check(s.route(drag, scr) == Route{Route::Kind::Deliver, "transcript"}, "a drag off the window (even off the screen) still goes to the captured window");
+    check(route_c(s.s, mouse_ev(drag), scr) == Route{Route::Kind::Deliver, "transcript"}, "a drag off the window (even off the screen) still goes to the captured window");
     MouseEvent release = drag;
     release.kind = MouseEvent::Kind::Release;
-    check(s.route(release, scr) == Route{Route::Kind::Deliver, "transcript"} && s.captured().empty(), "the release goes there too and ends the capture");
-    check(s.route(drag, scr) == Route{Route::Kind::Dropped, ""}, "a drag with no capture and no window under it is dropped");
-    check(s.focused()->id == "transcript", "the press focused the transcript");
-    s.focus("input");
+    check(route_c(s.s, mouse_ev(release), scr) == Route{Route::Kind::Deliver, "transcript"} && captured_c(s.s).empty(), "the release goes there too and ends the capture");
+    check(route_c(s.s, mouse_ev(drag), scr) == Route{Route::Kind::Dropped, ""}, "a drag with no capture and no window under it is dropped");
+    check(rolltui_window_stack_focused(s.s)->id == "transcript", "the press focused the transcript");
+    focus_c(s.s, "input");
 
     // A modal popup.
-    s.push(*builtin_layout("default")->popup("help"));
-    check(s.depth() == 2 && s.has_popup("help") && s.focused()->id == "help" && s.focus_layer() == 1, "a modal focusable popup takes focus");
-    check(s.route(key(Key::Tab), scr) == Route{Route::Kind::Deliver, "help"}, "Tab with one focusable window in the layer is delivered");
+    Layer help_popup = *builtin_layout_c("default")->popup("help");
+    rolltui_window_stack_push(s.s, &help_popup);
+    check(rolltui_window_stack_depth(s.s) == 2 && has_popup_c(s.s, "help") && rolltui_window_stack_focused(s.s)->id == "help" && rolltui_window_stack_focus_layer(s.s) == 1, "a modal focusable popup takes focus");
+    check(route_c(s.s, key_ev(Key::Tab), scr) == Route{Route::Kind::Deliver, "help"}, "Tab with one focusable window in the layer is delivered");
     m.x = 5; m.y = 22;
-    check(s.route(m, scr) == Route{Route::Kind::Dropped, ""}, "a press outside a modal is dropped");
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Dropped, ""}, "a press outside a modal is dropped");
     m.x = 20; m.y = 8;
-    check(s.route(m, scr) == Route{Route::Kind::Deliver, "help"}, "a press inside the modal is delivered to it");
-    check(s.route(key(Key::Escape), scr) == Route{Route::Kind::ClosedPopup, "help"} && s.depth() == 1, "Escape closes the topmost popup");
-    check(s.focused()->id == "input", "focus returns to the base layer's window");
-    check(!s.pop(), "pop() on the base alone is false");
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Deliver, "help"}, "a press inside the modal is delivered to it");
+    check(route_c(s.s, key_ev(Key::Escape), scr) == Route{Route::Kind::ClosedPopup, "help"} && rolltui_window_stack_depth(s.s) == 1, "Escape closes the topmost popup");
+    check(rolltui_window_stack_focused(s.s)->id == "input", "focus returns to the base layer's window");
+    check(!rolltui_window_stack_pop(s.s), "pop() on the base alone is false");
 
     // A non-focusable, non-modal notice above the base.
     Layer notice;
     notice.id = "notice";
     notice.placement = P(Dim::rel(1), Dim::abs(0), Dim::abs(20), Dim::abs(1), Anchor::TopRight);
     notice.root = Node::window("text:hi");
-    s.push(notice);
-    check(s.focused()->id == "input" && s.focus_layer() == 0, "a non-focusable notice leaves focus with the base");
-    check(s.route(ch('x'), scr) == Route{Route::Kind::Deliver, "input"}, "keys still reach the base under a non-modal popup");
+    rolltui_window_stack_push(s.s, &notice);
+    check(rolltui_window_stack_focused(s.s)->id == "input" && rolltui_window_stack_focus_layer(s.s) == 0, "a non-focusable notice leaves focus with the base");
+    check(route_c(s.s, chr_ev('x'), scr) == Route{Route::Kind::Deliver, "input"}, "keys still reach the base under a non-modal popup");
     m.x = 60; m.y = 5;
-    check(s.route(m, scr) == Route{Route::Kind::Deliver, "status"}, "a press beneath a non-modal popup reaches the base window");
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Deliver, "status"}, "a press beneath a non-modal popup reaches the base window");
     m.x = 70; m.y = 0;
-    check(s.route(m, scr) == Route{Route::Kind::Deliver, "text:hi"}, "a press on the notice hits it");
-    check(s.route(key(Key::Escape), scr) == Route{Route::Kind::ClosedPopup, "notice"}, "Escape closes a notice too");
+    check(route_c(s.s, mouse_ev(m), scr) == Route{Route::Kind::Deliver, "text:hi"}, "a press on the notice hits it");
+    check(route_c(s.s, key_ev(Key::Escape), scr) == Route{Route::Kind::ClosedPopup, "notice"}, "Escape closes a notice too");
 
     // A modal layer with no focusable window drops keys rather than leaking them.
     Layer wall;
     wall.id = "wall";
     wall.modal = true;
     wall.root = Node::window("text:wait");
-    s.push(wall);
-    check(s.focused() == nullptr && s.route(ch('x'), scr) == Route{Route::Kind::Dropped, ""}, "a modal with nothing focusable drops keys");
-    s.pop();
+    rolltui_window_stack_push(s.s, &wall);
+    check(rolltui_window_stack_focused(s.s) == nullptr && route_c(s.s, chr_ev('x'), scr) == Route{Route::Kind::Dropped, ""}, "a modal with nothing focusable drops keys");
+    rolltui_window_stack_pop(s.s);
 
     // Hot reload: focus survives when the id does; falls back when it does not.
-    s.focus("transcript");
-    Layer reloaded = builtin_layout("panel-left")->base;
+    focus_c(s.s, "transcript");
+    Layer reloaded = builtin_layout_c("panel-left")->base;
     reloaded.focus.clear();
-    s.set_base(reloaded);
-    check(s.focused()->id == "transcript", "set_base keeps the focused id across a reload when it still exists");
+    rolltui_window_stack_set_base(s.s, &reloaded);
+    check(rolltui_window_stack_focused(s.s)->id == "transcript", "set_base keeps the focused id across a reload when it still exists");
     Layer other;
     other.root = Node::column({win("a", {}, Border::None, true), win("b", {}, Border::None, true)});
-    s.set_base(other);
-    check(s.focused()->id == "a", "…and falls back to the first focusable when it does not");
-    Layer named = builtin_layout("default")->base;
-    s.set_base(named);
-    check(s.focused()->id == "input", "a reloaded layout's own 'focus' wins");
-    check(s.find("status") != nullptr && s.find("nope") == nullptr, "find() by id");
-    s.find("status")->visible = false;
-    auto v = s.resolve(scr);
+    rolltui_window_stack_set_base(s.s, &other);
+    check(rolltui_window_stack_focused(s.s)->id == "a", "…and falls back to the first focusable when it does not");
+    Layer named = builtin_layout_c("default")->base;
+    rolltui_window_stack_set_base(s.s, &named);
+    check(rolltui_window_stack_focused(s.s)->id == "input", "a reloaded layout's own 'focus' wins");
+    check(find_c(s.s, "status") != nullptr && find_c(s.s, "nope") == nullptr, "find() by id");
+    find_c(s.s, "status")->visible = false;
+    auto v = resolve_stack_c(s.s, scr);
     check(by_id(v, "status") == nullptr && by_id(v, "transcript")->outer.w == 80, "hiding the status node gives the transcript the width (no-panel by a flag)");
   }
   {
     // A popup layer that is itself a split (a dialog with parts): Tab cycles inside it.
-    WindowStack s(*builtin_layout("default"));
+    StackC s(*builtin_layout_c("default"));
     Layer dlg;
     dlg.id = "dlg";
     dlg.modal = true;
     dlg.placement = P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(40), Dim::abs(10), Anchor::Center);
     dlg.root = Node::column({win("text", {}, Border::None, false), win("field", SplitSize::fixed(Dim::abs(1)), Border::None, true), win("buttons", SplitSize::fixed(Dim::abs(1)), Border::None, true)});
     dlg.root.border = Border::Rounded;
-    s.push(dlg);
-    KeyEvent tab;
-    tab.key = Key::Tab;
-    check(s.focused()->id == "field", "a dialog focuses its first focusable part");
-    check(s.route(tab, scr) == Route{Route::Kind::FocusMoved, "buttons"}, "Tab moves to the next part");
-    check(s.route(tab, scr) == Route{Route::Kind::FocusMoved, "field"}, "…and wraps within the dialog, never into the base");
-    auto v = s.resolve(scr);
+    rolltui_window_stack_push(s.s, &dlg);
+    check(rolltui_window_stack_focused(s.s)->id == "field", "a dialog focuses its first focusable part");
+    check(route_c(s.s, key_ev(Key::Tab), scr) == Route{Route::Kind::FocusMoved, "buttons"}, "Tab moves to the next part");
+    check(route_c(s.s, key_ev(Key::Tab), scr) == Route{Route::Kind::FocusMoved, "field"}, "…and wraps within the dialog, never into the base");
+    auto v = resolve_stack_c(s.s, scr);
     const ResolvedNode* frame_node = nullptr;
     for (const ResolvedNode& rn : v)
       if (rn.layer == 1 && !frame_node) frame_node = &rn;
@@ -611,8 +906,8 @@ int main() {
     // Every kind is in the table under its own name, and nothing else is.
     for (WidgetKind k : {WidgetKind::Transcript, WidgetKind::Input, WidgetKind::Menu, WidgetKind::Rows, WidgetKind::Text,
                          WidgetKind::File, WidgetKind::Help})
-      check(widget_kind_from_name(widget_kind_name(k)) == k, "kind '" + std::string(widget_kind_name(k)) + "' round-trips");
-    check(!widget_kind_from_name("dialog") && !widget_kind_from_name("") && !widget_kind_from_name("Transcript"),
+      check(widget_kind_from_name_c(widget_kind_name_c(k)) == k, "kind '" + std::string(widget_kind_name_c(k)) + "' round-trips");
+    check(!widget_kind_from_name_c("dialog") && !widget_kind_from_name_c("") && !widget_kind_from_name_c("Transcript"),
           "an unknown kind name is not in the table (and it is case-sensitive)");
 
     // Every kind parses with the source its rule demands.
@@ -632,15 +927,15 @@ int main() {
 
                           Case{"text:a:b", WidgetKind::Text, "a:b"}}) {
       std::string why;
-      const std::optional<Content> got = parse_content(c.text, &why);
+      const std::optional<Content> got = parse_content_c(c.text, &why);
       check(got && got->kind == c.kind && got->source == c.source,
-            std::string("'") + c.text + "' parses as " + std::string(widget_kind_name(c.kind)) + " + '" + c.source + "'" +
+            std::string("'") + c.text + "' parses as " + std::string(widget_kind_name_c(c.kind)) + " + '" + c.source + "'" +
                 (got ? "" : " (" + why + ")"));
     }
-    check(content_to_string({WidgetKind::Rows, "status"}) == "rows:status" && content_to_string({WidgetKind::Help, ""}) == "help" &&
-              content_to_string({WidgetKind::Help, "app"}) == "help:app" && content_to_string({WidgetKind::Text, ""}) == "text",
+    check(content_to_string_c({WidgetKind::Rows, "status"}) == "rows:status" && content_to_string_c({WidgetKind::Help, ""}) == "help" &&
+              content_to_string_c({WidgetKind::Help, "app"}) == "help:app" && content_to_string_c({WidgetKind::Text, ""}) == "text",
           "content_to_string is the inverse, and an OPTIONAL source that is empty writes no colon — one spelling, not two");
-    check(content_to_string({WidgetKind::Rows, ""}) == "rows:",
+    check(content_to_string_c({WidgetKind::Rows, ""}) == "rows:",
           "…while a REQUIRED source that is empty keeps its colon: the window says out loud that it needs a name");
 
     // Every way it can be wrong SAYS SO, by name.
@@ -648,43 +943,43 @@ int main() {
     // forbids one since m5b gave `help` an optional scope — so the case is tested through
     // one, registered and cleared right here so nothing after it inherits the vocabulary.
     std::string kind_why;
-    check(register_widget_kind("modal", SourceRule::Forbidden, "", &kind_why), "a host kind that takes no source registers [" + kind_why + "]");
+    check(register_widget_kind_c("modal", SourceRule::Forbidden, "", &kind_why), "a host kind that takes no source registers [" + kind_why + "]");
     struct Bad { const char* text; const char* names; };
     for (const Bad& b : {Bad{"dialog:x", "'dialog' is not a widget kind"},
                          Bad{"rows", "'rows' needs a source"},
                          Bad{"modal:x", "'modal' takes no source"},
                          Bad{"", "'' is not a widget kind"}}) {
       std::string why;
-      const bool bad = !parse_content(b.text, &why);
+      const bool bad = !parse_content_c(b.text, &why);
       check(bad && why.find(b.names) != std::string::npos, std::string("'") + b.text + "' is refused: " + why);
     }
     std::string why;
-    check(!parse_content("transcript", &why) && why.find("transcript:session") != std::string::npos,
+    check(!parse_content_c("transcript", &why) && why.find("transcript:session") != std::string::npos,
           "a bare Phase 9 slot name that is also a kind name says what to write instead: " + why);
-    check(!parse_content("status", &why) && why.find("rows:status") != std::string::npos,
+    check(!parse_content_c("status", &why) && why.find("rows:status") != std::string::npos,
           "…and one that is not: " + why);
-    clear_registered_widget_kinds();
+    clear_registered_widget_kinds_c();
   }
   {
     // The Phase 9 slot names, migrated once by the loader.
-    check(migrated_content("transcript") == "transcript:session" && migrated_content("status") == "rows:status" &&
-              migrated_content("input") == "input:prompt" && migrated_content("menu") == "menu:main",
+    check(migrated_content_c("transcript") == "transcript:session" && migrated_content_c("status") == "rows:status" &&
+              migrated_content_c("input") == "input:prompt" && migrated_content_c("menu") == "menu:main",
           "every Phase 9 slot name that still needs one has a migration");
     // Phase 11 m3: `custom:X` became the registered kind `X`. The five composites'
     // PHASE 9 spelling is now valid again — `approval` is a kind name — so their old
     // rows are gone from the table rather than pointing at a spelling that no longer
     // parses, and migrating a valid name would be a rewrite loop.
-    check(migrated_content("custom:approval") == "approval" && migrated_content("custom:details") == "details" &&
-              migrated_content("custom:editor") == "editor" && migrated_content("custom:confirm") == "confirm" &&
-              migrated_content("custom:report") == "report",
+    check(migrated_content_c("custom:approval") == "approval" && migrated_content_c("custom:details") == "details" &&
+              migrated_content_c("custom:editor") == "editor" && migrated_content_c("custom:confirm") == "confirm" &&
+              migrated_content_c("custom:report") == "report",
           "every Phase 10 `custom:` content migrates to the registered kind of the same name");
-    check(!migrated_content("approval") && !migrated_content("details") && !migrated_content("report"),
+    check(!migrated_content_c("approval") && !migrated_content_c("details") && !migrated_content_c("report"),
           "…and the Phase 9 spelling of those five is NOT migrated: it is the m3 name already");
-    check(!migrated_content("help") && !migrated_content("transcript:session") && !migrated_content("banana"),
+    check(!migrated_content_c("help") && !migrated_content_c("transcript:session") && !migrated_content_c("banana"),
           "help never moved, an m2 content is not re-migrated, and an unknown name has no migration");
 
     LayoutLoadReport rep;
-    const std::optional<Layout> l = load_layout(R"({"name":"old","focus":"input","root":{"column":[
+    const std::optional<Layout> l = load_layout_c(R"({"name":"old","focus":"input","root":{"column":[
         {"content":"transcript","focusable":true},{"content":"input","size":3,"focusable":true}]}})", rep);
     check(l && rep.clean(), "a Phase 9 layout still loads, clean");
     check(rep.migrated.size() == 3 && rep.migrated[0].find("'transcript' \xE2\x86\x92 'transcript:session'") != std::string::npos,
@@ -700,8 +995,8 @@ int main() {
 
     LayoutLoadReport rep2;
     std::string modal_why;
-    register_widget_kind("modal", SourceRule::Forbidden, "", &modal_why);  // see the parse block above
-    const std::optional<Layout> l2 = load_layout(R"({"name":"bad","root":{"column":[{"content":"dialog:x"},{"content":"modal:x"}]}})", rep2);
+    register_widget_kind_c("modal", SourceRule::Forbidden, "", &modal_why);  // see the parse block above
+    const std::optional<Layout> l2 = load_layout_c(R"({"name":"bad","root":{"column":[{"content":"dialog:x"},{"content":"modal:x"}]}})", rep2);
     // Phase 11 m3 moved ONE of these. A forbidden source is a fact about the string and
     // is still the loader's to name; an UNKNOWN KIND is not, because rung 2 of the
     // vocabulary belongs to a host that may not have registered yet — the library's own
@@ -710,17 +1005,17 @@ int main() {
     check(l2 && !rep2.clean() && rep2.bad_values.size() == 1 &&
               rep2.bad_values[0].find("root.column[1].content: 'modal' takes no source") != std::string::npos,
           "a forbidden source is a bad value named by PATH, and the layout still loads");
-    clear_registered_widget_kinds();
+    clear_registered_widget_kinds_c();
     std::string dwhy;
     ContentProblem dwhat = ContentProblem::None;
-    check(!parse_content("dialog:x", &dwhy, &dwhat) && dwhat == ContentProblem::UnknownKind &&
+    check(!parse_content_c("dialog:x", &dwhy, &dwhat) && dwhat == ContentProblem::UnknownKind &&
               dwhy.find("'dialog' is not a widget kind") != std::string::npos,
           "…and the unknown kind is still parse_content's named refusal, tagged so the loader can leave it to the host");
   }
   {
     // ---- m4: the layout DECLARES the actions its screen emits ---------------------
     LayoutLoadReport rep;
-    const std::optional<Layout> l = load_layout(R"({"name":"acts","actions":{"app.zoom":"zoom in","mine.thing":"my own"},
+    const std::optional<Layout> l = load_layout_c(R"({"name":"acts","actions":{"app.zoom":"zoom in","mine.thing":"my own"},
         "root":{"content":"help"}})", rep);
     check(l && rep.clean() && l->actions.size() == 2 && l->actions[0].name == "app.zoom" &&
               l->actions[0].description == "zoom in" && l->actions[1].name == "mine.thing",
@@ -728,7 +1023,7 @@ int main() {
     check(rep.migrated.empty(), "…and a file that declares actions is not given the shipped default's");
 
     LayoutLoadReport er;
-    const std::optional<Layout> bad = load_layout(R"({"name":"bad","actions":{"app.a":"ok","nodot":"x","app.":"x",
+    const std::optional<Layout> bad = load_layout_c(R"({"name":"bad","actions":{"app.a":"ok","nodot":"x","app.":"x",
         "input.frob":"x","menu.frob":"x","app.b":7},"root":{"content":"help"}})", er);
     check(bad && bad->actions.size() == 1 && bad->actions[0].name == "app.a", "…and only the well-formed ones are declared");
     // Indexed through a bounds-checked helper: a control that SEGFAULTS reports nothing
@@ -746,21 +1041,21 @@ int main() {
     // Present-but-empty is a deliberate "none" and must differ from absent, or the
     // migration above would quietly re-add what someone deliberately removed.
     LayoutLoadReport nr;
-    const std::optional<Layout> none = load_layout(R"({"name":"none","actions":{},"root":{"content":"help"}})", nr);
+    const std::optional<Layout> none = load_layout_c(R"({"name":"none","actions":{},"root":{"content":"help"}})", nr);
     check(none && none->actions.empty() && nr.migrated.empty(), "an explicit \"actions\": {} declares none and is left alone");
 
     // Round trip, including the empty case (which is why "actions" is always written).
     LayoutLoadReport rr;
-    const std::optional<Layout> back = load_layout(layout_to_json(*l), rr);
+    const std::optional<Layout> back = load_layout_c(layout_to_json_c(*l), rr);
     check(back && rr.clean() && back->actions == l->actions && *back == *l, "a layout's actions round-trip through layout_to_json");
     LayoutLoadReport rn2;
-    const std::optional<Layout> none_back = load_layout(layout_to_json(*none), rn2);
+    const std::optional<Layout> none_back = load_layout_c(layout_to_json_c(*none), rn2);
     check(none_back && none_back->actions.empty() && rn2.migrated.empty(), "…and so does declaring none");
 
     // Every shipped layout declares the same app scope: switching arrangement must not
     // change which keys work.
     bool same = true;
-    for (std::string_view n : builtin_layout_names()) same &= builtin_layout(n)->actions == shipped_default_actions();
+    for (std::string_view n : builtin_layout_names_c()) same &= builtin_layout_c(n)->actions == shipped_default_actions();
     check(same && shipped_default_actions().size() == 6, "every shipped layout declares the same six app actions");
   }
 
@@ -774,7 +1069,7 @@ int main() {
     { std::ofstream(dir + "/menus/main.json") << R"({"id":"root","label":"menu","items":[{"id":"act","label":"an action"}]})"; }
 
     LayoutLoadReport lr;
-    std::optional<Layout> lay = load_layout(R"({"name":"every-kind","focus":"prompt","root":{"column":[
+    std::optional<Layout> lay = load_layout_c(R"({"name":"every-kind","focus":"prompt","root":{"column":[
         {"id":"tx","content":"transcript:session"},
         {"id":"panel","content":"rows:status","size":2},
         {"id":"label","content":"text:a literal","size":1},
@@ -848,7 +1143,7 @@ int main() {
     // reload keeps what the user typed.
     windows.input("prompt").set_text("half-typed");
     LayoutLoadReport lr2;
-    std::optional<Layout> two = load_layout(R"({"name":"two","root":{"column":[
+    std::optional<Layout> two = load_layout_c(R"({"name":"two","root":{"column":[
         {"id":"a","content":"transcript:session"},{"id":"b","content":"transcript:session"},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})", lr2);
     check(two && lr2.clean(), "a layout showing one document in two windows loads");
@@ -862,7 +1157,7 @@ int main() {
     // Every failure, by name AND on screen — never a blank window.
     Windows windows;
     LayoutLoadReport lr;
-    std::optional<Layout> lay = load_layout(R"({"name":"unbound","root":{"column":[
+    std::optional<Layout> lay = load_layout_c(R"({"name":"unbound","root":{"column":[
         {"id":"a","content":"transcript:nope","size":1},
         {"id":"b","content":"rows:nope","size":1},
         {"id":"c","content":"nope:x","size":1},
@@ -912,7 +1207,7 @@ int main() {
     std::filesystem::create_directories(dir + "/menus");
 
     LayoutLoadReport lr;
-    std::optional<Layout> lay = load_layout(R"({"name":"menus","root":{"column":[
+    std::optional<Layout> lay = load_layout_c(R"({"name":"menus","root":{"column":[
         {"id":"a","content":"menu:main"},
         {"id":"b","content":"menu:extra"}]}})", lr);
     check(lay && lr.clean(), "a layout naming two menu files loads clean");
@@ -1062,7 +1357,7 @@ int main() {
     // Nothing here compiles the action in: the layout declares it, the bindings file
     // gives it a chord, and the help window is the only thing that draws it.
     LayoutLoadReport lr;
-    const std::optional<Layout> lay = load_layout(R"({"name":"declared","actions":{"app.zoom":"zoom the transcript"},
+    const std::optional<Layout> lay = load_layout_c(R"({"name":"declared","actions":{"app.zoom":"zoom the transcript"},
         "root":{"content":"help"}})", lr);
     check(lay && lr.clean(), "a layout declaring one app action loads clean [" + (lr.bad_values.empty() ? "" : lr.bad_values[0]) + "]");
     BindingsLoadReport br;
@@ -1101,7 +1396,7 @@ int main() {
     windows.bind_document("session", &doc);
     windows.bind_submit("prompt", [](const std::string&) {});
     LayoutLoadReport lr;
-    std::optional<Layout> lay = load_layout(R"({"name":"grow","focus":"prompt","root":{"column":[
+    std::optional<Layout> lay = load_layout_c(R"({"name":"grow","focus":"prompt","root":{"column":[
         {"id":"tx","content":"transcript:session"},
         {"id":"prompt","content":"input:prompt","size":1,"focusable":true}]}})", lr);
     WindowStack s(*lay);
@@ -1194,7 +1489,7 @@ int main() {
         return true;
       }
     };
-    clear_registered_widget_kinds();
+    clear_registered_widget_kinds_c();
     Windows windows;
     int built = 0;
     std::string why;
@@ -1209,13 +1504,13 @@ int main() {
           "registering a LIBRARY kind is refused, by name [" + why + "]");
     // …and guard two, independently: even after that attempt, `input:prompt` is still the
     // library's input. This is the assertion the milestone's control breaks.
-    check(parse_content("input:prompt")->kind == WidgetKind::Input,
+    check(parse_content_c("input:prompt")->kind == WidgetKind::Input,
           "…and `input` still resolves at rung 1: the library's table is searched FIRST, whatever a host tried to register");
-    check(widget_kind_names().back() == "canvas" && widget_kind_names().size() == widget_kinds().size() + 1,
+    check(widget_kind_names_c().back() == "canvas" && widget_kind_names_c().size() == rolltui_widget_kind_library_count() + 1,
           "the registered kind is enumerable, after the library's, in resolution order");
 
     LayoutLoadReport lr;
-    const std::optional<Layout> lay = load_layout(R"({"name":"paint","root":{"column":[
+    const std::optional<Layout> lay = load_layout_c(R"({"name":"paint","root":{"column":[
         {"id":"a","content":"canvas:main","size":3,"focusable":true},
         {"id":"b","content":"canvas:main","size":3},
         {"id":"c","content":"canvas:other","size":3},
@@ -1270,13 +1565,13 @@ int main() {
     // A layout RELOAD keeps the instance, for the reason it keeps a half-typed line: the
     // widget belongs to its content, not to the window that happened to show it.
     LayoutLoadReport lr2;
-    const std::optional<Layout> other = load_layout(R"({"name":"paint2","root":{"column":[
+    const std::optional<Layout> other = load_layout_c(R"({"name":"paint2","root":{"column":[
         {"id":"z","content":"canvas:main","size":3,"focusable":true}]}})", lr2);
     WindowStack st2(*other);
     const int before = built;
     windows.prepare(st2, box);
     check(built == before && windows.at("z") == c, "a layout reload keeps the pixels: same instance under a new window id");
-    clear_registered_widget_kinds();
+    clear_registered_widget_kinds_c();
   }
 
   // ---- the scrollbar's geometry (Phase 12 m5) ----------------------------------------
@@ -1349,7 +1644,7 @@ int main() {
       Windows windows;
       windows.bind_document("session", &doc);
       LayoutLoadReport lr;
-      const std::optional<Layout> lay = load_layout(
+      const std::optional<Layout> lay = load_layout_c(
           R"({"name":"bar","min_width":0,"min_height":0,"actions":{},"root":{"column":[
              {"id":"t","content":"transcript:session","border":"single","focusable":true}]}})", lr);
       check(lay && lr.clean(), "a one-window layout for the bar");
