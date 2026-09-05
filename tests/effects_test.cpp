@@ -37,19 +37,20 @@
 // C call — the frame, the registry, the applier, the tick — does.
 //
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "rolltui/rolltui.h"
 
-#include "rolltui/Json.hpp"
-#include "rolltui/Theme.hpp"
-#include "rolltui/Unicode.hpp"
+#include "rolltui/Effects.hpp"
 #include "rolltui_test.hpp"
 
 using rolltui::EffectMap;
@@ -57,24 +58,263 @@ using rolltui::EffectState;
 using rolltui::kEffectStateCount;
 using rolltui::Role;
 using rolltui::Style;
-using rolltui::Theme;
-using rolltui::ThemeLoadReport;
-using rolltui::ThemeMode;
-using rolltui::builtin_theme;
-using rolltui::builtin_theme_names;
-using rolltui::load_theme;
-using rolltui::theme_to_json;
-using rolltui::theme_pair_to_json_value;
+using rolltui::kRoleCount;
+using rolltui::kRoleNames;
 // The two vocabulary functions with no C equivalent at all (see the header note above) —
 // named explicitly rather than pulled in with everything else, so it stays visible that
 // these two are the exception and not an oversight.
 using rolltui::effect_state_from_name;
 using rolltui::effect_state_name;
-namespace json = rolltui::json;
-namespace unicode = rolltui::unicode;
 using namespace rolltui_test;
 
 namespace {
+
+// ---- mirrors rolltui::Theme (Theme.hpp) and rolltui::json::Value (Json.hpp). Role, Style,
+// EffectMap, EffectState, kRoleCount, kRoleNames, kEffectStateCount, effect_state_name are
+// UNCHANGED (kept, via the using-declarations above and the direct rolltui/Effects.hpp
+// include this file now has in Theme.hpp's place -- Style.hpp is Effects.hpp's own
+// dependency, and this file never stopped needing EffectMap as Theme::effects' real C++
+// type, which is why Theme.hpp's shape forces this one file to keep touching it, per the
+// header note at the top of this file). Only the parts genuinely gone are reproduced below:
+// the Theme struct itself, its load report, its mode enum, the built-in cache, the vocab
+// table, the JSON loader and dumper -- and, nested so every `json::`-qualified call site
+// below stays unchanged text, json::Value/parse/dump. ----
+struct Theme {
+  std::string name;
+  std::array<RolltuiStyle, kRoleCount> styles{};
+  EffectMap effects;
+  const RolltuiStyle& style(Role r) const {
+    return *rolltui_theme_style(styles.data(), styles.size(), static_cast<unsigned char>(r));
+  }
+};
+
+struct ThemeLoadReport {
+  std::string error;
+  std::vector<std::string> missing_roles;
+  std::vector<std::string> unknown_keys;
+  std::vector<std::string> bad_values;
+  bool clean() const { return error.empty() && missing_roles.empty() && unknown_keys.empty() && bad_values.empty(); }
+};
+
+enum class ThemeMode : unsigned char { Dark, Light };
+
+// Mirrors rolltui::builtin_theme's cache (Theme.cpp): filled once from the C built-ins,
+// keyed by name -- this file's Theme really has effects, so the adopted RolltuiEffectMap*
+// is kept this time (unlike the lighter mirrors in theme_test.cpp/menu_test.cpp).
+const Theme* builtin_theme(std::string_view name) {
+  static const std::vector<std::pair<std::string, Theme>> cache = [] {
+    std::vector<std::pair<std::string, Theme>> v;
+    const std::size_t n = rolltui_theme_builtin_count();
+    v.reserve(n);  // pointer stability: builtin_theme() hands back &t into this vector
+    for (std::size_t i = 0; i < n; ++i) {
+      const char* nm = rolltui_theme_builtin_name(i);
+      Theme t;
+      t.name = nm;
+      if (RolltuiEffectMap* m = rolltui_theme_builtin_fill(nm, std::strlen(nm), t.styles.data(), t.styles.size()))
+        t.effects = EffectMap(m);  // ADOPTS; NULL only on a role-count mismatch
+      v.emplace_back(nm, t);
+    }
+    return v;
+  }();
+  for (const auto& [n, t] : cache)
+    if (n == name) return &t;
+  return nullptr;
+}
+std::vector<std::string_view> builtin_theme_names() {
+  std::vector<std::string_view> out;
+  const std::size_t n = rolltui_theme_builtin_count();
+  for (std::size_t i = 0; i < n; ++i) out.push_back(rolltui_theme_builtin_name(i));
+  return out;
+}
+
+// Mirrors Theme.cpp's VocabTables/theme_vocab(): kRoleNames and effect_state_name are the
+// REAL, kept functions (see above), so only the pointer tables are rebuilt here.
+const RolltuiThemeVocab& theme_vocab() {
+  static const struct VocabTables {
+    std::array<const char*, kRoleCount> role_names{};
+    std::array<const char*, kEffectStateCount> state_names{};
+    RolltuiThemeVocab vocab{};
+    VocabTables() {
+      for (std::size_t i = 0; i < kRoleCount; ++i) role_names[i] = kRoleNames[i].data();
+      for (std::size_t i = 0; i < kEffectStateCount; ++i)
+        state_names[i] = effect_state_name(static_cast<EffectState>(i)).data();
+      vocab.role_names = role_names.data();
+      vocab.role_count = kRoleCount;
+      vocab.text_role = static_cast<std::size_t>(Role::text);
+      vocab.state_names = state_names.data();
+      vocab.state_count = kEffectStateCount;
+      vocab.fallback_effect_role = static_cast<unsigned char>(Role::accent_1);
+    }
+  } t;
+  return t.vocab;
+}
+
+// ---- mirrors rolltui::json::Value (Json.hpp): an OWNED tree over the C API, since Value's
+// own C++ shape is explicitly NOT ported to C (rolltui_json.h's own header comment). NESTED
+// in a `json` namespace so every `json::`-qualified call site below is unchanged text --
+// same mirror rolltui/tests/theme_test.cpp has independently, plus `.has()`, which this
+// file's file-format test needs. ----
+namespace json {
+
+class Value {
+ public:
+  Value() : v_(rolltui_json_null()) {}
+  explicit Value(RolltuiJsonValue* owned) : v_(owned ? owned : rolltui_json_null()) {}
+  Value(const Value& o) : v_(rolltui_json_clone(o.v_)) {}
+  Value& operator=(const Value& o) {
+    if (this != &o) {
+      rolltui_json_free(v_);
+      v_ = rolltui_json_clone(o.v_);
+    }
+    return *this;
+  }
+  Value(Value&& o) noexcept : v_(o.v_) { o.v_ = nullptr; }
+  Value& operator=(Value&& o) noexcept {
+    if (this != &o) {
+      rolltui_json_free(v_);
+      v_ = o.v_;
+      o.v_ = nullptr;
+    }
+    return *this;
+  }
+  ~Value() { rolltui_json_free(v_); }
+
+  bool is_null() const { return rolltui_json_is_null(v_) != 0; }
+  bool is_bool() const { return rolltui_json_is_bool(v_) != 0; }
+  bool is_number() const { return rolltui_json_is_number(v_) != 0; }
+  bool is_string() const { return rolltui_json_is_string(v_) != 0; }
+  bool is_array() const { return rolltui_json_is_array(v_) != 0; }
+  bool is_object() const { return rolltui_json_is_object(v_) != 0; }
+
+  double as_number(double def = 0) const { return rolltui_json_as_number(v_, def); }
+  bool as_bool(bool def = false) const { return rolltui_json_as_bool(v_, def) != 0; }
+  std::string as_string(std::string_view def = "") const {
+    std::size_t n = 0;
+    const char* p = rolltui_json_as_string(v_, def.data(), def.size(), &n);
+    return std::string(p, n);
+  }
+
+  Value get(std::string_view key) const { return Value(rolltui_json_clone(rolltui_json_get(v_, key.data(), key.size()))); }
+  Value operator[](std::string_view key) const { return get(key); }
+  bool has(std::string_view key) const { return rolltui_json_has(v_, key.data(), key.size()) != 0; }
+
+  std::size_t array_size() const { return rolltui_json_array_size(v_); }
+  Value array_at(std::size_t i) const { return Value(rolltui_json_clone(rolltui_json_array_at(v_, i))); }
+
+  // TAKES OWNERSHIP of child, matching rolltui_json_set exactly.
+  Value& set(std::string_view key, Value child) {
+    rolltui_json_set(v_, key.data(), key.size(), child.release());
+    return *this;
+  }
+
+  const RolltuiJsonValue* handle() const { return v_; }
+  RolltuiJsonValue* release() {
+    RolltuiJsonValue* p = v_;
+    v_ = rolltui_json_null();
+    return p;
+  }
+
+ private:
+  RolltuiJsonValue* v_;
+};
+
+Value parse(std::string_view text, std::string& error) {
+  RolltuiStr err{};
+  RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), &err);
+  error = err.str();
+  rolltui_str_free(&err);
+  return Value(v);
+}
+std::string dump(const Value& v, int indent = 2) {
+  RolltuiStr out{};
+  rolltui_json_dump(v.handle(), indent, &out);
+  std::string result = out.str();
+  rolltui_str_free(&out);
+  return result;
+}
+
+}  // namespace json
+
+// Mirrors rolltui::load_theme(string_view, ...) and rolltui::load_theme(const json::Value&,
+// ...) (Theme.cpp): both delegate to theme_from_c_root, the ONE difference being where the
+// tree comes from. The json::Value overload is SIMPLER than the shim: no json::Value<->C
+// conversion is needed at all, since this mirror's Value already IS a RolltuiJsonValue*.
+std::optional<Theme> theme_from_c_root(const RolltuiJsonValue* root_c, ThemeMode mode, ThemeLoadReport& report) {
+  report = ThemeLoadReport{};
+  Theme t;
+  RolltuiStr name{};
+  RolltuiThemeReport rep{};
+  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &theme_vocab(), t.styles.data(), &name, &rep);
+  report.error = rep.error.str();
+  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(rep.missing_roles[i].str());
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(rep.unknown_keys[i].str());
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(rep.bad_values[i].str());
+  rolltui_theme_report_release(&rep);
+  if (!eff) {
+    rolltui_str_free(&name);
+    return std::nullopt;
+  }
+  t.name = name.str();
+  rolltui_str_free(&name);
+  t.effects = EffectMap(eff);  // ADOPTS
+  return t;
+}
+std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report) {
+  RolltuiStr err{};
+  RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
+  if (!root_c) {
+    report = ThemeLoadReport{};
+    report.error = err.str();
+    rolltui_str_free(&err);
+    return std::nullopt;
+  }
+  rolltui_str_free(&err);
+  std::optional<Theme> t = theme_from_c_root(root_c, mode, report);
+  rolltui_json_free(root_c);
+  return t;
+}
+std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLoadReport& report) {
+  return theme_from_c_root(root.handle(), mode, report);
+}
+
+// Mirrors rolltui::theme_to_json (Theme.cpp), minus the "meta" this fixture's themes never
+// carry (Theme::meta is a json::Value field this mirror does not reproduce, same as
+// theme_test.cpp's).
+std::string theme_to_json(const Theme& theme) {
+  json::Value root(rolltui_json_object());
+  root.set("name", json::Value(rolltui_json_string(theme.name.data(), theme.name.size())));
+  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), theme.effects.handle(), nullptr, nullptr, &theme_vocab());
+  root.set("roles", json::Value(rolltui_json_clone(rolltui_json_get(c, "roles", 5))));
+  const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
+  if (!rolltui_json_is_null(fx)) root.set("effects", json::Value(rolltui_json_clone(fx)));
+  rolltui_json_free(c);
+  return json::dump(root, 2) + "\n";
+}
+// Mirrors rolltui::theme_pair_to_json_value (Theme.cpp), minus "meta" for the same reason.
+json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std::string_view name) {
+  json::Value root(rolltui_json_object());
+  root.set("name", json::Value(rolltui_json_string(name.data(), name.size())));
+  RolltuiJsonValue* c = rolltui_theme_dump(dark.styles.data(), dark.effects.handle(), light.styles.data(),
+                                          light.effects.handle(), &theme_vocab());
+  root.set("roles", json::Value(rolltui_json_clone(rolltui_json_get(c, "roles", 5))));
+  const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
+  if (!rolltui_json_is_null(fx)) root.set("effects", json::Value(rolltui_json_clone(fx)));
+  rolltui_json_free(c);
+  return root;
+}
+
+// ---- mirrors the one Unicode.hpp function this file used, NESTED so every
+// `unicode::`-qualified call site below is unchanged text. ----
+namespace unicode {
+RolltuiUnicodeScratch* scratch() {
+  static std::unique_ptr<RolltuiUnicodeScratch, void (*)(RolltuiUnicodeScratch*)> s(rolltui_u_scratch_new(),
+                                                                                    rolltui_u_scratch_free);
+  return s.get();
+}
+int display_width(std::string_view utf8, bool ambiguous_wide = false) {
+  return rolltui_u_display_width(scratch(), utf8.data(), utf8.size(), ambiguous_wide);
+}
+}  // namespace unicode
 
 // ---- the frame: OWNED, an explicit new/free pair, the same RAII shape rolltui::Frame
 // gave a caller before the port (Screen.cpp WAS this mapping). ----

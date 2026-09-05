@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <span>
 #include <sstream>
 #include <string>
@@ -37,15 +38,12 @@
 
 #include <dirent.h>
 
-#include "rolltui/Diff.hpp"
-#include "rolltui/Style.hpp"
-#include "rolltui/Unicode.hpp"
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/third_party/md4c/md4c.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 #ifndef ROLLTUI_FIXTURE_DIR
@@ -53,6 +51,99 @@ using namespace rolltui_test;
 #endif
 
 namespace {
+
+// ---- mirrors rolltui::Role (Style.hpp): NO C form exists for it at all -- "the role NAME
+// vocabulary stays C++ on purpose" (rolltui/rolltui.h) -- reproduced in Style.hpp's exact
+// declaration order, since a theme's style table (and, below, the diff colouriser's role
+// table) is indexed by this ordinal. ----
+enum class Role : unsigned char {
+  // base
+  text, text_muted, background, panel_background, border, border_active, title,
+  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
+  // markdown
+  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
+  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
+  md_rule, md_strikethrough,
+  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
+  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
+  // chrome
+  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
+  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
+  // find (Phase 12 m4): every match, and the one the view is on
+  find_match, find_current,
+  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
+  scrollbar,
+  count_
+};
+static_assert(static_cast<unsigned char>(Role::text) == ROLLTUI_ROLE_DEFAULT_TEXT,
+              "the C side's default entry role must be Role::text");
+static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
+              "the C side's default node background must be Role::background");
+static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
+              "the C side's default input prompt role must be Role::prompt");
+
+// ---- mirrors the two Unicode.hpp functions this file used, over the C API directly
+// (rolltui/c/rolltui_unicode.h) -- same helpers rolltui/tests/wrap_test.cpp already mirrors
+// independently, since each converted test file stands alone. ----
+RolltuiUnicodeScratch* u_scratch() {
+  static std::unique_ptr<RolltuiUnicodeScratch, void (*)(RolltuiUnicodeScratch*)> s(rolltui_u_scratch_new(),
+                                                                                    rolltui_u_scratch_free);
+  return s.get();
+}
+std::vector<RolltuiUnicodeGrapheme> graphemes(std::string_view utf8) {
+  std::vector<RolltuiUnicodeGrapheme> out(utf8.size());  // no more clusters than bytes
+  const std::size_t n = rolltui_u_graphemes(u_scratch(), utf8.data(), utf8.size(), false, out.data());
+  out.resize(n);
+  return out;
+}
+
+// ---- mirrors rolltui::markdown::HighlightSpan (Markdown.hpp) and rolltui::diff_spans
+// (Diff.hpp/Diff.cpp): the shape the diff colouriser answers in, and the colouriser itself,
+// reproduced over rolltui/c/rolltui_diff.h -- both headers said "untouched" in this file's
+// original scope note, which this conversion now closes out. `HighlightSpan` is not part of
+// the (converted) Markdown shim; it is the one type that crosses the seam between it and
+// this mirror, via `diff_highlight_fn` below. ----
+struct HighlightSpan {
+  std::size_t begin = 0;
+  std::size_t end = 0;
+  Role role = Role::md_code_block;
+};
+
+// THE ROLE TABLE, exactly Diff.cpp's kRoles: the C names no role at all, so the mapping
+// lives in this one initializer, and markdown_test's own per-line-kind assertions are its
+// oracle (swap two fields and they fail).
+constexpr RolltuiDiffRoles kDiffRoles = {
+    /*added=*/static_cast<unsigned char>(Role::diff_added),
+    /*removed=*/static_cast<unsigned char>(Role::diff_removed),
+    /*context=*/static_cast<unsigned char>(Role::diff_context),
+    /*file_header=*/static_cast<unsigned char>(Role::text_muted),
+    /*hunk=*/static_cast<unsigned char>(Role::accent_1),
+    /*added_word=*/static_cast<unsigned char>(Role::diff_added_word),
+    /*removed_word=*/static_cast<unsigned char>(Role::diff_removed_word),
+};
+// The block, read on demand: a BORROW of one line, never a copy (Diff.cpp's line_at).
+const char* diff_line_at(const void* block, std::size_t i, std::size_t* len) {
+  const std::string_view s = (*static_cast<const std::span<const std::string_view>*>(block))[i];
+  *len = s.size();
+  return s.data();
+}
+RolltuiDiffScratch* diff_scratch() {
+  static std::unique_ptr<RolltuiDiffScratch, void (*)(RolltuiDiffScratch*)> s(rolltui_diff_scratch_new(),
+                                                                              rolltui_diff_scratch_free);
+  return s.get();
+}
+std::vector<HighlightSpan> diff_spans(std::string_view lang, std::span<const std::string_view> lines,
+                                      std::size_t index) {
+  // The bound is known WITHOUT asking, same as Diff.cpp: a line takes its whole role, or
+  // splits into line / word / line.
+  RolltuiDiffSpan buf[ROLLTUI_DIFF_MAX_SPANS];
+  const std::size_t n = rolltui_diff_spans(diff_scratch(), lang.data(), lang.size(), &lines, lines.size(),
+                                           diff_line_at, index, &kDiffRoles, buf, ROLLTUI_DIFF_MAX_SPANS);
+  std::vector<HighlightSpan> out;
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) out.push_back({buf[i].begin, buf[i].end, static_cast<Role>(buf[i].role)});
+  return out;
+}
 
 std::string read_file(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
@@ -106,10 +197,10 @@ Collected md4c_text(const std::string& src) {
 
 std::vector<std::string> nonspace_graphemes(const std::string& s) {
   std::vector<std::string> v;
-  for (const unicode::Grapheme& g : unicode::graphemes(s)) {
+  for (const RolltuiUnicodeGrapheme& g : graphemes(s)) {
     std::string t(s.substr(g.offset, g.length));
     if (t == " " || t == "\n" || t == "\t" || t == "\r" || t == "\xC2\xA0") continue;
-    if (unicode::display_width(t) == 0) continue;
+    if (rolltui_u_display_width(u_scratch(), t.data(), t.size(), false) == 0) continue;
     v.push_back(t);
   }
   return v;

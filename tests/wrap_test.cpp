@@ -12,19 +12,106 @@
 //   3. wrapping the joined output again at the same width is idempotent.
 //
 #include <cstdint>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "rolltui/Unicode.hpp"
-#include "rolltui/Wrap.hpp"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 namespace {
 
-std::vector<std::string> texts(const WrapLines& lines) {
+// ---- local mirrors of the C++ shims (rolltui/Wrap.hpp, rolltui/Unicode.hpp), over the C
+// API directly -- both headers are being removed, and the shims ARE the mapping for what
+// follows: same names, same shapes, one level down.
+
+// Mirrors WrapLines/Line (rolltui/Wrap.hpp): an OWNED handle plus a BORROWED per-line view
+// built on read. `wrap()` fills it in place (rolltui_wrap, reusing all storage); `clear()`
+// drops the lines and keeps the storage (rolltui_wrap_reset); `clone()` is the separate-
+// block copy `rolltui_wrap_clone` makes, which is what `wrap_handoff` below uses it for.
+struct Line {
+  std::string_view text;                    // the bytes to draw, in order
+  std::span<const RolltuiWrapGrapheme> graphemes;  // one per drawn cluster
+  int width = 0;                            // cells, excluding `indent`
+  int indent = 0;                           // cells the renderer pads before `text`
+  bool hard = false;                        // ended by a mandatory break (or end of text)
+};
+
+class Lines {
+ public:
+  Lines() : w_(rolltui_wrap_new()) {}
+  Lines(Lines&& o) noexcept : w_(o.w_) { o.w_ = nullptr; }
+  Lines& operator=(Lines&& o) noexcept {
+    if (this != &o) {
+      rolltui_wrap_free(w_);
+      w_ = o.w_;
+      o.w_ = nullptr;
+    }
+    return *this;
+  }
+  Lines(const Lines&) = delete;
+  Lines& operator=(const Lines&) = delete;
+  ~Lines() { rolltui_wrap_free(w_); }
+
+  // Wraps INTO this handle, reusing everything it already holds. Any Line taken from it
+  // before this call is dead afterwards.
+  void wrap(std::string_view input, int width, RolltuiWrapOptions opt = {}) {
+    rolltui_wrap(w_, input.data(), input.size(), width, opt);
+  }
+  // Drops the lines and keeps every buffer (rolltui_wrap_reset).
+  void clear() { rolltui_wrap_reset(w_); }
+  // A new Lines holding a COPY of these lines and no scratch -- how a LENT result becomes
+  // an OWNED one, and what `wrap_handoff` below hands back.
+  Lines clone() const { return Lines(rolltui_wrap_clone(w_)); }
+
+  std::size_t size() const { return rolltui_wrap_line_count(w_); }
+  bool empty() const { return size() == 0; }
+  Line operator[](std::size_t i) const {
+    const char* text = nullptr;
+    const RolltuiWrapGrapheme* graphemes = nullptr;
+    std::size_t text_len = 0, grapheme_count = 0;
+    int width = 0, indent = 0, hard = 0;
+    rolltui_wrap_line(w_, i, &text, &text_len, &graphemes, &grapheme_count, &width, &indent, &hard);
+    return Line{std::string_view(text, text_len), std::span<const RolltuiWrapGrapheme>(graphemes, grapheme_count),
+                width, indent, hard != 0};
+  }
+
+  class iterator {
+   public:
+    iterator(const Lines* l, std::size_t i) : l_(l), i_(i) {}
+    Line operator*() const { return (*l_)[i_]; }
+    iterator& operator++() {
+      ++i_;
+      return *this;
+    }
+    bool operator==(const iterator& o) const { return i_ == o.i_; }
+
+   private:
+    const Lines* l_ = nullptr;
+    std::size_t i_ = 0;
+  };
+  iterator begin() const { return iterator(this, 0); }
+  iterator end() const { return iterator(this, size()); }
+
+ private:
+  explicit Lines(RolltuiWrapLines* owned) : w_(owned) {}
+  RolltuiWrapLines* w_;
+};
+
+// Mirrors the free function `rolltui::wrap()` (rolltui/Wrap.cpp): wraps into a scratch
+// handle, then clones the lines out into a fresh, scratch-free handle -- the "handed over"
+// ownership path `rolltui_wrap_clone` documents, and the one every bare `wrap(...)` call
+// below goes through (an in-place `.wrap()` on an existing Lines does not clone).
+Lines wrap_handoff(std::string_view input, int width, RolltuiWrapOptions opt = {}) {
+  Lines scratch;
+  scratch.wrap(input, width, opt);
+  return scratch.clone();
+}
+
+std::vector<std::string> texts(const Lines& lines) {
   std::vector<std::string> v;
   // `Line::text` is a BORROW now (Phase 14 m3), so a caller that wants a string says so.
   for (const Line& l : lines) v.emplace_back(l.text);
@@ -39,15 +126,23 @@ std::string show(const std::vector<std::string>& v) {
 
 // Assert exact lines. The expected list is written as the drawn bytes per line.
 void expect_lines(const std::string& name, std::string_view input, int width,
-                  const std::vector<std::string>& want, const WrapOptions& opt = {}) {
-  std::vector<std::string> got = texts(wrap(input, width, opt));
+                  const std::vector<std::string>& want, const RolltuiWrapOptions& opt = {}) {
+  std::vector<std::string> got = texts(wrap_handoff(input, width, opt));
   check(got == want, name + "  want " + show(want) + "  got " + show(got));
 }
 
-// Graphemes of a string as byte strings (via Unicode.hpp), for property 2.
-std::vector<std::string> grapheme_strings(std::string_view s) {
+// Mirrors unicode::graphemes (rolltui/Unicode.hpp), over the C API directly.
+std::vector<RolltuiUnicodeGrapheme> graphemes(RolltuiUnicodeScratch* scratch, std::string_view utf8) {
+  std::vector<RolltuiUnicodeGrapheme> out(utf8.size());  // no more clusters than bytes
+  const std::size_t n = rolltui_u_graphemes(scratch, utf8.data(), utf8.size(), false, out.data());
+  out.resize(n);
+  return out;
+}
+
+// Graphemes of a string as byte strings (via the Unicode C API), for property 2.
+std::vector<std::string> grapheme_strings(RolltuiUnicodeScratch* scratch, std::string_view s) {
   std::vector<std::string> v;
-  for (const unicode::Grapheme& g : unicode::graphemes(s)) v.emplace_back(s.substr(g.offset, g.length));
+  for (const RolltuiUnicodeGrapheme& g : graphemes(scratch, s)) v.emplace_back(s.substr(g.offset, g.length));
   return v;
 }
 
@@ -62,13 +157,13 @@ struct Rng {  // xorshift64*, seeded: the corpus is reproducible
 
 // Check the three properties for one input at one width. Returns a failure
 // description or "".
-std::string properties(std::string_view input, int width) {
-  WrapLines lines = wrap(input, width);
+std::string properties(RolltuiUnicodeScratch* u_scratch, std::string_view input, int width) {
+  Lines lines = wrap_handoff(input, width);
   if (lines.empty()) return "no lines";
   // 1. width
   for (const Line& l : lines) {
     int w = 0;
-    for (const WrapGrapheme& g : l.graphemes) w += g.width;
+    for (const RolltuiWrapGrapheme& g : l.graphemes) w += g.width;
     if (w != l.width) return "Line::width disagrees with its graphemes";
     if (width > 0 && l.width + l.indent > width && !(l.graphemes.size() == 1 && l.graphemes[0].width > width))
       return "line exceeds width " + std::to_string(width) + ": [" + std::string(l.text) + "]";
@@ -77,13 +172,13 @@ std::string properties(std::string_view input, int width) {
   // 2. every grapheme once, in order, minus dropped spaces; drawn width-0 never
   if (width > 0) {
     std::vector<std::string> src;
-    for (const std::string& g : grapheme_strings(input)) {
-      if (unicode::display_width(g) == 0 && g != "\t") continue;  // stripped
+    for (const std::string& g : grapheme_strings(u_scratch, input)) {
+      if (rolltui_u_display_width(u_scratch, g.data(), g.size(), false) == 0 && g != "\t") continue;  // stripped
       src.push_back(g);
     }
     std::vector<std::string> drawn;
     for (const Line& l : lines)
-      for (const WrapGrapheme& g : l.graphemes) drawn.emplace_back(l.text.substr(g.offset, g.length));
+      for (const RolltuiWrapGrapheme& g : l.graphemes) drawn.emplace_back(l.text.substr(g.offset, g.length));
     // Walk src; each drawn grapheme must match the next src grapheme, where a tab in
     // src matches 1..8 drawn spaces, and src spaces/tabs may be skipped (dropped).
     std::size_t si = 0, di = 0;
@@ -113,7 +208,7 @@ std::string properties(std::string_view input, int width) {
       joined += l.text;
       joined += '\n';
     }
-    std::vector<std::string> again = texts(wrap(joined, width));
+    std::vector<std::string> again = texts(wrap_handoff(joined, width));
     if (again != texts(lines)) return "not idempotent: " + show(texts(lines)) + " -> " + show(again);
   }
   return "";
@@ -122,6 +217,8 @@ std::string properties(std::string_view input, int width) {
 }  // namespace
 
 int main() {
+  RolltuiUnicodeScratch* u_scratch = rolltui_u_scratch_new();
+
   // ---- the edge-case table -------------------------------------------------------
   expect_lines("plain words", "the quick brown fox", 10, {"the quick", "brown fox"});
   expect_lines("exact fit", "abcde fghij", 5, {"abcde", "fghij"});
@@ -167,37 +264,37 @@ int main() {
   expect_lines("NBSP is not a break and not dropped", "a\xC2\xA0" "b c", 3, {"a\xC2\xA0" "b", "c"});
   expect_lines("tab expands to the next multiple of 8", "a\tb", 20, {"a       b"});
   expect_lines("tab at column 8 expands to 8", "abcdefgh\tb", 20, {"abcdefgh        b"});
-  expect_lines("tab width 4", "a\tb", 20, {"a   b"}, WrapOptions{.tab_width = 4});
+  expect_lines("tab width 4", "a\tb", 20, {"a   b"}, RolltuiWrapOptions{.tab_width = 4});
   expect_lines("a tab that overflows is dropped like spaces", "ab\tc", 4, {"ab", "c"});
   expect_lines("hyphen is an opportunity after it", "well-known", 5, {"well-", "known"});
   expect_lines("no break before a closing paren", "foo (bar)", 5, {"foo", "(bar)"});
   expect_lines("first indent reduces the first line", "aaaa bbbb cccc", 6, {"aaaa", "bbbb", "cccc"},
-               WrapOptions{.first_indent = 2});
+               RolltuiWrapOptions{.first_indent = 2});
   expect_lines("hanging indent reduces later lines", "aaaa bbbb cccc", 9, {"aaaa bbbb", "cccc"},
-               WrapOptions{.hanging_indent = 4});
+               RolltuiWrapOptions{.hanging_indent = 4});
   {
-    WrapLines l = wrap("aaaa bbbb cccc", 9, WrapOptions{.first_indent = 1, .hanging_indent = 4});
+    Lines l = wrap_handoff("aaaa bbbb cccc", 9, RolltuiWrapOptions{.first_indent = 1, .hanging_indent = 4});
     check(l.size() == 3 && l[0].indent == 1 && l[1].indent == 4 && l[2].indent == 4 &&
               l[0].text == "aaaa" && l[1].text == "bbbb" && l[2].text == "cccc",
           "indents are reported per line and applied to the width");
-    WrapLines m = wrap("abc", 3, WrapOptions{.first_indent = 10});
+    Lines m = wrap_handoff("abc", 3, RolltuiWrapOptions{.first_indent = 10});
     check(m.size() == 2 && m[0].indent == 2 && m[0].text == "a", "an indent >= width is clamped to width-1");
   }
   expect_lines("ambiguous width narrow by default", "\xC2\xA1\xC2\xA1" "a", 2, {"\xC2\xA1\xC2\xA1", "a"});
   expect_lines("ambiguous width wide on request", "\xC2\xA1\xC2\xA1" "a", 2, {"\xC2\xA1", "\xC2\xA1", "a"},
-               WrapOptions{.ambiguous_wide = true});
+               RolltuiWrapOptions{.ambiguous_wide = true});
   expect_lines("invalid bytes draw as U+FFFD and count 1", "a\xFF" "b", 10, {"a\xFF" "b"});
   expect_lines("leading spaces are preserved", "  indented text", 20, {"  indented text"});
   expect_lines("leading spaces on a continuation come from the source only", "a  b", 2, {"a", "b"});
   expect_lines("many spaces then a word wider than the rest", "a       bbbbb", 6, {"a", "bbbbb"});
   {
-    WrapLines l = wrap("ab\tc", 20);
+    Lines l = wrap_handoff("ab\tc", 20);
     check(l.size() == 1 && l[0].graphemes.size() == 9 && l[0].graphemes[2].source_offset == 2 &&
               l[0].graphemes[7].source_offset == 2 && l[0].graphemes[8].source_offset == 3,
           "expanded tab spaces record the tab's source offset");
-    WrapLines h = wrap("ab cd", 2);
+    Lines h = wrap_handoff("ab cd", 2);
     check(h.size() == 2 && !h[0].hard && h[1].hard, "soft break is not hard; end of text is");
-    WrapLines n = wrap("ab\ncd", 10);
+    Lines n = wrap_handoff("ab\ncd", 10);
     check(n.size() == 2 && n[0].hard && n[1].hard, "newline-ended line is hard");
   }
 
@@ -218,7 +315,7 @@ int main() {
   int prop_fail = 0;
   for (const std::string& s : corpus)
     for (int w = 0; w <= 48; ++w) {
-      std::string err = properties(s, w);
+      std::string err = properties(u_scratch, s, w);
       if (!err.empty() && ++prop_fail <= 20)
         check(false, "property at width " + std::to_string(w) + " on [" + s + "]: " + err);
     }
@@ -239,7 +336,7 @@ int main() {
     for (std::size_t i = 0; i < n; ++i) s += atoms[rng.below(atoms.size())];
     for (int w : {0, 1, 2, 3, 5, 8, 13, 21, 40}) {
       ++cases;
-      std::string err = properties(s, w);
+      std::string err = properties(u_scratch, s, w);
       if (!err.empty() && ++rand_fail <= 20)
         check(false, "random case at width " + std::to_string(w) + ": " + err);
     }
@@ -254,22 +351,30 @@ int main() {
   // WINDOW: the lines belong to the callee, a second window reuses the same storage, and a
   // borrow held past its window reads EMPTY rather than plausibly stale. It had no test of
   // its own before m3, which is why it gets one now.
+  //
+  // `wrap_borrow` (rolltui/Wrap.hpp) is `Scratch<WrapLines>` (rolltui/Scratch.hpp) lending
+  // ONE thread-local handle: wrapped into while "locked", reset back to empty when the
+  // lock's scope ends. Replicated directly over one Lines below, since Scratch<T> is
+  // C++-only machinery with no per-module C entry point of its own.
   {
-    const std::vector<std::string> want = texts(wrap("the quick brown fox jumps", 10));
+    const std::vector<std::string> want = texts(wrap_handoff("the quick brown fox jumps", 10));
+    Lines lent;
     {
-      auto lock = wrap_borrow("the quick brown fox jumps", 10);
-      check(texts(*lock) == want && lock->size() == want.size(),
-            "wrap_borrow lends the same lines wrap() hands over: " + show(texts(*lock)));
+      lent.wrap("the quick brown fox jumps", 10);
+      check(texts(lent) == want && lent.size() == want.size(),
+            "wrap_borrow lends the same lines wrap() hands over: " + show(texts(lent)));
+      lent.clear();  // the lock's release, on scope exit
     }
     {  // a second window, after the first closed: same buffer, different content
-      auto lock = wrap_borrow("a b c", 1);
-      check(texts(*lock) == std::vector<std::string>({"a", "b", "c"}),
+      lent.wrap("a b c", 1);
+      check(texts(lent) == std::vector<std::string>({"a", "b", "c"}),
             "…and a second window on the reused buffer answers for its own input");
+      lent.clear();
     }
     {  // rolltui/Scratch.hpp: on release the storage is CLEARED, capacity kept
-      const WrapLines* held = nullptr;
-      { auto lock = wrap_borrow("held past its own window", 8); held = &*lock; }
-      check(held->empty(), "…and a borrow read past its window is EMPTY: deterministic garbage, not stale truth");
+      lent.wrap("held past its own window", 8);
+      lent.clear();
+      check(lent.empty(), "…and a borrow read past its window is EMPTY: deterministic garbage, not stale truth");
     }
   }
 
@@ -280,14 +385,15 @@ int main() {
   // hands clones out to be read — which is precisely why it is asserted here: an ownership
   // branch in C that no test reaches is the failure mode this phase exists to guard against.
   {
-    WrapLines w = wrap("alpha beta gamma", 6);
+    Lines w = wrap_handoff("alpha beta gamma", 6);
     check(texts(w) == std::vector<std::string>({"alpha", "beta", "gamma"}), "a handed-over result reads correctly");
     w.wrap("one two three four", 8);
-    check(texts(w) == texts(wrap("one two three four", 8)),
+    check(texts(w) == texts(wrap_handoff("one two three four", 8)),
           "…and wrapping INTO it gives what a fresh wrap gives: " + show(texts(w)));
     w.wrap("x", 1);
     check(texts(w) == std::vector<std::string>({"x"}), "…and again, so the handle really did change hands cleanly");
   }
 
+  rolltui_u_scratch_free(u_scratch);
   return report("rolltui wrap_test");
 }

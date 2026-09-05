@@ -5,21 +5,22 @@
 // SGR golden strings, depth detection, the dump/load round trip — and the grep
 // control: no colour literal exists in the library outside Theme.cpp's built-ins.
 //
+#include <array>
 #include <fstream>
 #include <cstring>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include <dirent.h>
 
-#include "rolltui/Json.hpp"
-#include "rolltui/Theme.hpp"
-#include "rolltui/c/rolltui_theme.h"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 #ifndef ROLLTUI_SOURCE_DIR
@@ -27,6 +28,294 @@ using namespace rolltui_test;
 #endif
 
 namespace {
+
+// ---- mirrors rolltui::Role (Style.hpp): NO C form exists for it at all -- "the role NAME
+// vocabulary stays C++ on purpose" (rolltui/rolltui.h) -- reproduced in Style.hpp's exact
+// declaration order, since a theme's style table is indexed by this ordinal. ----
+enum class Role : unsigned char {
+  // base
+  text, text_muted, background, panel_background, border, border_active, title,
+  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
+  // markdown
+  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
+  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
+  md_rule, md_strikethrough,
+  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
+  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
+  // chrome
+  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
+  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
+  // find (Phase 12 m4): every match, and the one the view is on
+  find_match, find_current,
+  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
+  scrollbar,
+  count_
+};
+constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
+static_assert(static_cast<unsigned char>(Role::text) == ROLLTUI_ROLE_DEFAULT_TEXT,
+              "the C side's default entry role must be Role::text");
+static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
+              "the C side's default node background must be Role::background");
+static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
+              "the C side's default input prompt role must be Role::prompt");
+
+// The role NAMES, in the same order, for the vocab table `load_theme` hands the C loader --
+// Style.hpp's own kRoleNames, reproduced (a theme file resolves "md_heading" against this).
+constexpr std::array<const char*, kRoleCount> kRoleNames = {
+    "text", "text_muted", "background", "panel_background", "border", "border_active",
+    "title", "label", "value", "accent_1", "accent_2", "accent_3", "accent_4", "prompt",
+    "note", "warning", "error",
+    "md_heading", "md_emphasis", "md_strong", "md_code_inline", "md_code_block",
+    "md_code_label", "md_link", "md_link_url", "md_quote", "md_list_marker",
+    "md_table_border", "md_table_header", "md_rule", "md_strikethrough",
+    "diff_added", "diff_removed", "diff_context", "diff_added_word", "diff_removed_word",
+    "input_text", "input_cursor", "input_placeholder", "scroll_marker", "selection",
+    "overlay", "menu_item", "menu_selected", "menu_breadcrumb", "menu_shortcut",
+    "find_match", "find_current", "scrollbar",
+};
+
+// `rolltui::Color`/`rolltui::Style` (Style.hpp) were one-definition aliases over the same C
+// structs -- reproduced verbatim; there was never a second definition to convert away from.
+using Color = RolltuiStyleColor;
+using Style = RolltuiStyle;
+
+// `rolltui::ColorDepth`/`rolltui::ThemeMode` (Theme.hpp): no C form either -- the loader and
+// the colour engine both take the ordinal as a raw byte/int, never a name.
+enum class ColorDepth : unsigned char { Mono, Ansi16, Ansi256, TrueColor };
+enum class ThemeMode : unsigned char { Dark, Light };
+
+// ---- mirrors rolltui::Theme (Theme.hpp), but only the STYLE TABLE and NAME this file reads
+// -- `.meta` (json::Value) and `.effects` (EffectMap) are C++-only shim types this fixture
+// never touches (no theme text used below has an "effects" key or a "meta" object). ----
+struct Theme {
+  std::string name;
+  std::array<RolltuiStyle, kRoleCount> styles{};
+  const RolltuiStyle& style(Role r) const {
+    return *rolltui_theme_style(styles.data(), styles.size(), static_cast<unsigned char>(r));
+  }
+};
+
+struct ThemeLoadReport {
+  std::string error;
+  std::vector<std::string> missing_roles;
+  std::vector<std::string> unknown_keys;
+  std::vector<std::string> bad_values;
+  bool clean() const { return error.empty() && missing_roles.empty() && unknown_keys.empty() && bad_values.empty(); }
+};
+
+// Mirrors rolltui::builtin_theme's cache (Theme.cpp), minus `.effects`/`.meta`: filled once
+// from the C built-ins, keyed by name.
+const Theme* builtin_theme(std::string_view name) {
+  static const std::vector<std::pair<std::string, Theme>> cache = [] {
+    std::vector<std::pair<std::string, Theme>> v;
+    const std::size_t n = rolltui_theme_builtin_count();
+    v.reserve(n);  // pointer stability: builtin_theme() hands back &t into this vector
+    for (std::size_t i = 0; i < n; ++i) {
+      const char* nm = rolltui_theme_builtin_name(i);
+      Theme t;
+      t.name = nm;
+      if (RolltuiEffectMap* m = rolltui_theme_builtin_fill(nm, std::strlen(nm), t.styles.data(), t.styles.size()))
+        rolltui_effect_map_free(m);  // this fixture never reads effects
+      v.emplace_back(nm, t);
+    }
+    return v;
+  }();
+  for (const auto& [n, t] : cache)
+    if (n == name) return &t;
+  return nullptr;
+}
+std::vector<std::string_view> builtin_theme_names() {
+  std::vector<std::string_view> out;
+  const std::size_t n = rolltui_theme_builtin_count();
+  for (std::size_t i = 0; i < n; ++i) out.push_back(rolltui_theme_builtin_name(i));
+  return out;
+}
+
+// Mirrors Theme.cpp's theme_vocab(): the role NAME table handed to the C loader/dumper once
+// per call. No effect-state names: no theme text below has an "effects" key, so state_count
+// 0 is never consulted.
+const RolltuiThemeVocab& theme_vocab() {
+  static const RolltuiThemeVocab v = [] {
+    RolltuiThemeVocab t{};
+    t.role_names = kRoleNames.data();
+    t.role_count = kRoleCount;
+    t.text_role = static_cast<std::size_t>(Role::text);
+    t.state_names = nullptr;
+    t.state_count = 0;
+    t.fallback_effect_role = static_cast<unsigned char>(Role::accent_1);
+    return t;
+  }();
+  return v;
+}
+
+// Mirrors rolltui::load_theme(string_view, ThemeMode, ThemeLoadReport&) (Theme.cpp): parse,
+// then hand the tree to the C loader, then translate its report field for field.
+std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report) {
+  report = ThemeLoadReport{};
+  RolltuiStr err{};
+  RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
+  if (!root_c) {
+    report.error = err.str();
+    rolltui_str_free(&err);
+    return std::nullopt;
+  }
+  rolltui_str_free(&err);
+  Theme t;
+  RolltuiStr name{};
+  RolltuiThemeReport rep{};
+  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &theme_vocab(), t.styles.data(), &name, &rep);
+  rolltui_json_free(root_c);
+  report.error = rep.error.str();
+  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(rep.missing_roles[i].str());
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(rep.unknown_keys[i].str());
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(rep.bad_values[i].str());
+  rolltui_theme_report_release(&rep);
+  if (!eff) {
+    rolltui_str_free(&name);
+    return std::nullopt;
+  }
+  rolltui_effect_map_free(eff);  // this fixture never reads effects
+  t.name = name.str();
+  rolltui_str_free(&name);
+  return t;
+}
+
+// ---- mirrors rolltui::json::Value (Json.hpp): an OWNED tree over the C API, since Value's
+// own C++ shape (real std::string/std::vector members other call sites need) is explicitly
+// NOT ported to C -- rolltui_json.h's own header comment says so. This fixture only ever
+// reads a tree it parsed or built itself, so an owned-handle mirror with the same method
+// names is enough. ----
+class Value {
+ public:
+  Value() : v_(rolltui_json_null()) {}
+  explicit Value(RolltuiJsonValue* owned) : v_(owned ? owned : rolltui_json_null()) {}
+  Value(const Value& o) : v_(rolltui_json_clone(o.v_)) {}
+  Value& operator=(const Value& o) {
+    if (this != &o) {
+      rolltui_json_free(v_);
+      v_ = rolltui_json_clone(o.v_);
+    }
+    return *this;
+  }
+  Value(Value&& o) noexcept : v_(o.v_) { o.v_ = nullptr; }
+  Value& operator=(Value&& o) noexcept {
+    if (this != &o) {
+      rolltui_json_free(v_);
+      v_ = o.v_;
+      o.v_ = nullptr;
+    }
+    return *this;
+  }
+  ~Value() { rolltui_json_free(v_); }
+
+  bool is_null() const { return rolltui_json_is_null(v_) != 0; }
+  bool is_bool() const { return rolltui_json_is_bool(v_) != 0; }
+  bool is_number() const { return rolltui_json_is_number(v_) != 0; }
+  bool is_string() const { return rolltui_json_is_string(v_) != 0; }
+  bool is_array() const { return rolltui_json_is_array(v_) != 0; }
+  bool is_object() const { return rolltui_json_is_object(v_) != 0; }
+
+  double as_number(double def = 0) const { return rolltui_json_as_number(v_, def); }
+  bool as_bool(bool def = false) const { return rolltui_json_as_bool(v_, def) != 0; }
+  std::string as_string(std::string_view def = "") const {
+    std::size_t n = 0;
+    const char* p = rolltui_json_as_string(v_, def.data(), def.size(), &n);
+    return std::string(p, n);
+  }
+
+  // A CLONE of the BORROW rolltui_json_get hands back, so the result outlives the parent
+  // expression -- simpler than tracking a borrow's window, and cheap: these are small trees.
+  Value get(std::string_view key) const { return Value(rolltui_json_clone(rolltui_json_get(v_, key.data(), key.size()))); }
+  Value operator[](std::string_view key) const { return get(key); }
+
+  std::size_t array_size() const { return rolltui_json_array_size(v_); }
+  Value array_at(std::size_t i) const { return Value(rolltui_json_clone(rolltui_json_array_at(v_, i))); }
+
+  // TAKES OWNERSHIP of child, matching rolltui_json_set exactly (always turns this into an
+  // object, even if it was something else).
+  Value& set(std::string_view key, Value child) {
+    rolltui_json_set(v_, key.data(), key.size(), child.release());
+    return *this;
+  }
+
+  const RolltuiJsonValue* handle() const { return v_; }
+  // Hands ownership of the underlying tree to the caller; this Value keeps a fresh Null.
+  RolltuiJsonValue* release() {
+    RolltuiJsonValue* p = v_;
+    v_ = rolltui_json_null();
+    return p;
+  }
+
+ private:
+  RolltuiJsonValue* v_;
+};
+
+// Mirrors rolltui::json::parse (Json.cpp) exactly: parse to a C tree, translate the error,
+// and hand the tree over (Null on failure).
+Value parse(std::string_view text, std::string& error) {
+  RolltuiStr err{};
+  RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), &err);
+  error = err.str();
+  rolltui_str_free(&err);
+  return Value(v);
+}
+// Mirrors rolltui::json::dump (Json.cpp).
+std::string dump(const Value& v, int indent = 2) {
+  RolltuiStr out{};
+  rolltui_json_dump(v.handle(), indent, &out);
+  std::string result = out.str();
+  rolltui_str_free(&out);
+  return result;
+}
+
+// Mirrors rolltui::theme_to_json (Theme.cpp), minus the "effects"/"meta" this fixture's
+// themes never carry.
+std::string theme_to_json(const Theme& theme) {
+  Value root(rolltui_json_object());
+  root.set("name", Value(rolltui_json_string(theme.name.data(), theme.name.size())));
+  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), nullptr, nullptr, nullptr, &theme_vocab());
+  root.set("roles", Value(rolltui_json_clone(rolltui_json_get(c, "roles", 5))));
+  rolltui_json_free(c);
+  return dump(root, 2) + "\n";
+}
+
+// Mirrors Theme.cpp's colour/depth functions exactly, over the same C calls.
+Color downgrade(Color c, ColorDepth depth) {
+  rolltui_color_downgrade(&c, static_cast<unsigned char>(depth));
+  return c;
+}
+std::string sgr(const Style& style, ColorDepth depth) {
+  char buf[ROLLTUI_SGR_MAX];
+  const std::size_t n = rolltui_sgr(&style, static_cast<unsigned char>(depth), buf, sizeof buf);
+  return std::string(buf, n);
+}
+std::string color_to_string(Color c) {
+  char buf[ROLLTUI_COLOR_STRING_MAX];
+  const std::size_t n = rolltui_color_to_string(c, buf, sizeof buf);
+  return std::string(buf, n);
+}
+ColorDepth detect_color_depth(const char* colorterm, const char* term, const char* force) {
+  std::string_view f = force ? force : "";
+  if (f == "truecolor" || f == "24bit") return ColorDepth::TrueColor;
+  if (f == "256") return ColorDepth::Ansi256;
+  if (f == "16") return ColorDepth::Ansi16;
+  if (f == "mono") return ColorDepth::Mono;
+  std::string_view ct = colorterm ? colorterm : "";
+  std::string_view t = term ? term : "";
+  if (ct == "truecolor" || ct == "24bit") return ColorDepth::TrueColor;
+  if (t.find("256color") != std::string_view::npos) return ColorDepth::Ansi256;
+  if (t.empty() || t == "dumb") return ColorDepth::Mono;
+  return ColorDepth::Ansi16;
+}
+std::string_view color_depth_name(ColorDepth d) {
+  switch (d) {
+    case ColorDepth::Mono: return "mono";
+    case ColorDepth::Ansi16: return "16";
+    case ColorDepth::Ansi256: return "256";
+    case ColorDepth::TrueColor: return "truecolor";
+  }
+  return "mono";
+}
 
 std::string read_file(const std::string& path) {
   std::ifstream in(path, std::ios::binary);
@@ -58,26 +347,26 @@ int main() {
   // ---- JSON ----------------------------------------------------------------------
   {
     std::string err;
-    json::Value v = json::parse(R"({"a": 1, "b": [true, null, "xé\n"], "c": {"d": -2.5e1}})", err);
+    Value v = parse(R"({"a": 1, "b": [true, null, "xé\n"], "c": {"d": -2.5e1}})", err);
     check(err.empty() && v.is_object(), "parse an object: " + err);
     check(v["a"].as_number() == 1 && v["c"]["d"].as_number() == -25, "numbers, nested lookup");
-    check(v["b"].is_array() && v["b"].arr.size() == 3 && v["b"].arr[0].as_bool() &&
-              v["b"].arr[1].is_null() && v["b"].arr[2].as_string() == "x\xC3\xA9\n",
+    check(v["b"].is_array() && v["b"].array_size() == 3 && v["b"].array_at(0).as_bool() &&
+              v["b"].array_at(1).is_null() && v["b"].array_at(2).as_string() == "x\xC3\xA9\n",
           "arrays, booleans, null, escapes incl. \\u");
     check(v["missing"].is_null() && v["missing"]["deeper"].is_null(), "missing keys are Null and chainable");
-    check(json::dump(v, 0) == "{\"a\":1,\"b\":[true,null,\"x\xC3\xA9\\n\"],\"c\":{\"d\":-25}}",
-          "dump: compact, ordered, escaped: " + json::dump(v, 0));
-    json::Value again = json::parse(json::dump(v, 2), err);
-    check(err.empty() && json::dump(again, 0) == json::dump(v, 0), "dump → parse round-trips");
-    json::parse("{\"a\": 1,\n \"a\": 2}", err);
+    check(dump(v, 0) == "{\"a\":1,\"b\":[true,null,\"x\xC3\xA9\\n\"],\"c\":{\"d\":-25}}",
+          "dump: compact, ordered, escaped: " + dump(v, 0));
+    Value again = parse(dump(v, 2), err);
+    check(err.empty() && dump(again, 0) == dump(v, 0), "dump → parse round-trips");
+    parse("{\"a\": 1,\n \"a\": 2}", err);
     check(err == "line 2: duplicate key \"a\"", "duplicate key is an error with its line: " + err);
-    json::parse("{\"a\": [1, 2}", err);
+    parse("{\"a\": [1, 2}", err);
     check(err.rfind("line 1: expected ',' or ']'", 0) == 0, "malformed array names the line: " + err);
-    json::parse("[1] x", err);
+    parse("[1] x", err);
     check(!err.empty(), "trailing garbage is an error: " + err);
-    json::parse("\"\\ud83d\\ude00\"", err);
+    parse("\"\\ud83d\\ude00\"", err);
     check(err.empty(), "surrogate pair escape accepted");
-    check(json::parse("\"\\ud83d\\ude00\"", err).as_string() == "\xF0\x9F\x98\x80", "…and decodes to U+1F600");
+    check(parse("\"\\ud83d\\ude00\"", err).as_string() == "\xF0\x9F\x98\x80", "…and decodes to U+1F600");
   }
 
   // ---- built-ins -----------------------------------------------------------------

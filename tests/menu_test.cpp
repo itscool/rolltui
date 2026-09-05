@@ -22,6 +22,7 @@
 // instruction to treat the shim as the mapping rather than guess at one.
 //
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,12 +36,9 @@
 #include <utility>
 #include <vector>
 
-#include "rolltui/Screen.hpp"
-#include "rolltui/Theme.hpp"
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 // The embedded preset tables: permanent generated C++ data (rolltui/cmake/embed_presets.cmake),
@@ -62,6 +60,10 @@ namespace {
 // `spec.precision = ...` and `it.children.push_back(...)` below is unchanged text. ----
 using MenuItem = RolltuiMenuItem;
 using InputSpec = RolltuiInputSpec;
+// `rolltui::InputType` is a genuine permanent C++ enum (rolltui/c/rolltui_menu_tree.h,
+// namespace rolltui — not a shim type), so a targeted using-declaration replaces the
+// `using namespace rolltui;` this file no longer has, precisely for the one name it names.
+using rolltui::InputType;
 
 // `rolltui::Key` (Keys.hpp) is gone with the shim; only the values this file actually
 // uses are reproduced, against the same ROLLTUI_KEY_* constants Keys.hpp itself checked
@@ -114,6 +116,106 @@ struct MenuLoadReport {
   std::vector<std::string> unknown_keys;
   std::vector<std::string> bad_values;
   bool clean() const { return error.empty() && unknown_keys.empty() && bad_values.empty(); }
+};
+
+// ---- mirrors rolltui::Role (Style.hpp): NO C form exists for it at all -- "the role NAME
+// vocabulary stays C++ on purpose" (rolltui/rolltui.h) -- reproduced in Style.hpp's exact
+// declaration order, since a theme's style table is indexed by this ordinal and nothing else
+// ties a name to a position. ----
+enum class Role : unsigned char {
+  // base
+  text, text_muted, background, panel_background, border, border_active, title,
+  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
+  // markdown
+  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
+  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
+  md_rule, md_strikethrough,
+  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
+  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
+  // chrome
+  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
+  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
+  // find (Phase 12 m4): every match, and the one the view is on
+  find_match, find_current,
+  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
+  scrollbar,
+  count_
+};
+constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
+// Ties the mirror to the C side the same way Style.hpp itself does, rather than trusting a
+// hand-copied enum silently: if either moves, this fails the build instead of drawing wrong.
+static_assert(static_cast<unsigned char>(Role::text) == ROLLTUI_ROLE_DEFAULT_TEXT,
+              "the C side's default entry role must be Role::text");
+static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAULT_BACKGROUND,
+              "the C side's default node background must be Role::background");
+static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
+              "the C side's default input prompt role must be Role::prompt");
+
+// `rolltui::Rect`/`rolltui::Style` (Screen.hpp/Style.hpp) were one-definition aliases over
+// the same C structs -- reproduced verbatim; there was never a second definition to convert
+// away from at this seam.
+using Rect = RolltuiRect;
+using Style = RolltuiStyle;
+
+// ---- mirrors rolltui::Theme (Theme.hpp), but only the STYLE TABLE this file ever reads --
+// `.meta` (json::Value) and `.effects` (EffectMap) are C++-only shim types this fixture never
+// touches, so "Theme" here is exactly the caller-filled RolltuiStyle[kRoleCount]
+// `rolltui_theme_builtin_fill` already fills positionally. ----
+struct Theme {
+  std::array<RolltuiStyle, kRoleCount> styles{};
+  const RolltuiStyle& style(Role r) const {
+    return *rolltui_theme_style(styles.data(), styles.size(), static_cast<unsigned char>(r));
+  }
+};
+// Mirrors rolltui::builtin_theme's cache (Theme.cpp), minus the `.effects`/`.meta` this
+// fixture does not read: filled once from the C built-ins, keyed by name.
+const Theme* builtin_theme(std::string_view name) {
+  static const std::vector<std::pair<std::string, Theme>> cache = [] {
+    std::vector<std::pair<std::string, Theme>> v;
+    const std::size_t n = rolltui_theme_builtin_count();
+    v.reserve(n);  // pointer stability: builtin_theme() hands back &t into this vector
+    for (std::size_t i = 0; i < n; ++i) {
+      const char* nm = rolltui_theme_builtin_name(i);
+      Theme t;
+      if (RolltuiEffectMap* m = rolltui_theme_builtin_fill(nm, std::strlen(nm), t.styles.data(), t.styles.size()))
+        rolltui_effect_map_free(m);  // this fixture never reads effects
+      v.emplace_back(nm, t);
+    }
+    return v;
+  }();
+  for (const auto& [n, t] : cache)
+    if (n == name) return &t;
+  return nullptr;
+}
+
+// ---- mirrors rolltui::Frame (Screen.hpp): an OWNED handle plus the slice of methods this
+// file calls (draw/row need width/at/clear/glyph/handle; nothing here touches marks, links,
+// the cursor, equality or the diff renderers, so none of it is reproduced). ----
+class Frame {
+ public:
+  Frame(int w, int h, const Style& fill = {}) : f_(rolltui_frame_new(w, h, fill)) {}
+  Frame(const Frame&) = delete;
+  Frame& operator=(const Frame&) = delete;
+  ~Frame() { rolltui_frame_free(f_); }
+
+  int width() const { return rolltui_frame_width(f_); }
+  int height() const { return rolltui_frame_height(f_); }
+  RolltuiCell at(int x, int y) const {
+    RolltuiCell c{};
+    rolltui_frame_cell(f_, x, y, &c);
+    return c;
+  }
+  void clear(const Style& fill) { rolltui_frame_clear(f_, fill); }
+  std::string_view glyph(int x, int y) const {
+    std::size_t n = 0;
+    const char* p = rolltui_frame_glyph(f_, x, y, &n);
+    return std::string_view(p, n);
+  }
+  RolltuiFrame* handle() { return f_; }
+  const RolltuiFrame* handle() const { return f_; }
+
+ private:
+  RolltuiFrame* f_;
 };
 
 // ---- the library's 59 actions, READ FROM THE C rather than copied ----------------------
