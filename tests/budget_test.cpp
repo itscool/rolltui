@@ -199,7 +199,14 @@ struct Scene {
   void paint(int w, int h, Frame& into) {
     const Rect box{0, 0, w, h};
     windows.prepare(stack, box);
-    into.reset(w, h, theme.style(Role::background));  // m5: reuse, exactly as a host does
+    // m5's REUSE path. **NOT what a host does — corrected 2026-09-04, and the comment used to
+    // claim it was.** `Frame::reset` has zero callers outside this file: all three hosts build
+    // `Frame f(w, h, fill)` fresh every repaint and `prev = std::move(f)`, so each one allocates
+    // and frees a whole frame per paint (Screen.hpp puts that at ~153 KB at 120x40) while this
+    // budget reports zero. The instrument is not wrong about what it measures; it was wrong
+    // about who else measures it. Adopting reuse in the hosts is `plan/phase-17.md` m1's, where
+    // the frame handle is being redesigned anyway.
+    into.reset(w, h, theme.style(Role::background));
     stack.compose(into, box, theme, [&](const ResolvedNode& rn, Frame& f) { windows.draw(rn, f, theme); });
   }
 };
