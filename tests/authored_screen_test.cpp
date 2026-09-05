@@ -251,6 +251,27 @@ int main() {
     }
   }
 
+  // ---- the host's own kind is not exempt from the library's rules -------------------------
+  // `paint.cpp`'s header claims it: *"a source this app does not have is a NAMED problem and
+  // an error panel, exactly as an unbound `rows:` source is — a host's own kind is not exempt
+  // from the rule."* Nothing checked that, in the C++ host or the C one — found in Phase 17
+  // m3 by NULLing the plugin's `problem` slot and watching all 51 suites stay green. A claim
+  // in a comment that no assertion covers is this repo's own definition of a defect.
+  {
+    fs::create_directories(scratch + "/wrong/layouts");
+    std::ofstream(scratch + "/wrong/layouts/wrong.json", std::ios::binary | std::ios::trunc)
+        << R"({"name":"wrong","min_width":0,"min_height":0,"focus":"s","actions":{},
+               "root":{"row":[{"id":"s","content":"canvas:nope","border":"single","title":"s","focusable":true}]}})";
+    int rc = 0;
+    const std::string frame = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch +
+                                      "/wrong' --layout wrong --frame 120x10" + err,
+                                  rc);
+    check(rc == 0 && has(frame, "nothing is bound to 'nope'"),
+          "a canvas whose source the app does not have draws the panel, in the host's own words");
+    check(has(status_line(frame), "nothing is bound to 'nope'"),
+          "…and it is NAMED in the report, not merely drawn [" + status_line(frame) + "]");
+  }
+
   // ---- CONTROL: the profile is what made the authoring possible ---------------------------
   {
     const std::string blind = author(scratch + "/without", "");

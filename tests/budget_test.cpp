@@ -199,13 +199,17 @@ struct Scene {
   void paint(int w, int h, Frame& into) {
     const Rect box{0, 0, w, h};
     windows.prepare(stack, box);
-    // m5's REUSE path. **NOT what a host does — corrected 2026-09-04, and the comment used to
-    // claim it was.** `Frame::reset` has zero callers outside this file: all three hosts build
-    // `Frame f(w, h, fill)` fresh every repaint and `prev = std::move(f)`, so each one allocates
-    // and frees a whole frame per paint (Screen.hpp puts that at ~153 KB at 120x40) while this
-    // budget reports zero. The instrument is not wrong about what it measures; it was wrong
-    // about who else measures it. Adopting reuse in the hosts is `plan/phase-17.md` m1's, where
-    // the frame handle is being redesigned anyway.
+    // m5's REUSE path. **NOT what a host did — corrected 2026-09-04, when the comment claimed
+    // it was and `Frame::reset` had zero callers outside this file: all three hosts built
+    // `Frame f(w, h, fill)` fresh every repaint and `prev = std::move(f)`, so each allocated and
+    // freed a whole frame per paint (~153 KB at 120x40) while this budget reported zero.**
+    //
+    // ONE HOST DOES IT NOW (Phase 17 m3): `rolltui-paint` presents through `rolltui_swap`,
+    // whose `begin` calls `rolltui_frame_reset`, so its repaint lands inside this measurement
+    // rather than beside it. The studio and `TuiFrontend` are m3's remainder and still build a
+    // frame per repaint, which is why this note stays until they follow. When this suite is
+    // converted (m2c), the scene below should call the SWAP rather than `reset` directly —
+    // that is what makes "exactly as a host paints it" true of the sentence AND the code.
     into.reset(w, h, theme.style(Role::background));
     stack.compose(into, box, theme, [&](const ResolvedNode& rn, Frame& f) { windows.draw(rn, f, theme); });
   }

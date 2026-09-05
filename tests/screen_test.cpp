@@ -379,5 +379,82 @@ int main() {
     check(a.intersect({0, 0, 0, 0}) == RolltuiRect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
   }
 
+  // ---- THE DOUBLE BUFFER (Phase 17 m4, first called in m3) ---------------------------
+  // `rolltui_swap` exists because THREE hosts had hand-written the same `Frame prev; bool
+  // have_prev; … render_diff(have_prev ? &prev : nullptr, f); prev = std::move(f);`. Until
+  // now the only thing asserted about it was that `_new`/`_free` link (public_header_test),
+  // so its whole point — that it produces exactly what the hand-written loop produced — was
+  // checked by nothing. These are DIFFERENTIAL against that loop rather than golden strings:
+  // the claim is equivalence to the code it deletes, and a golden would only restate the
+  // renderer's own tests one file over.
+  {
+    const RolltuiStyle plain{};
+    RolltuiStyle bold{};
+    bold.bold = 1;
+    RolltuiSwap* s = rolltui_swap_new(8, 2, plain);
+    check(rolltui_swap_front(s) == nullptr, "swap: nothing has been presented, so there is no front frame yet");
+
+    RolltuiFrame* a = rolltui_swap_begin(s, 8, 2, plain);
+    put_text(a, 0, 0, "hello", bold, 8);
+    // What the hand-written loop's FIRST iteration wrote: no baseline, so a full paint.
+    FramePtr mirror = clone_frame(a);
+    const std::string want_first = render_diff(nullptr, mirror.get(), ROLLTUI_DEPTH_TRUECOLOR);
+    RolltuiStr out{};
+    rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
+    check(out.view() == want_first, "swap: the first present is a full paint — render_diff(nullptr, f)");
+    check(rolltui_swap_front(s) != nullptr && rolltui_frame_equal(rolltui_swap_front(s), mirror.get()),
+          "…and the frame just presented is now the front, byte for byte");
+
+    // A second frame drawn identically: the loop appends nothing, and so does this.
+    RolltuiFrame* b = rolltui_swap_begin(s, 8, 2, plain);
+    check(b != a, "swap: `begin` alternates between exactly TWO frames — the back is not the one just presented");
+    put_text(b, 0, 0, "hello", bold, 8);
+    out.clear();
+    rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
+    check(out.n == 0, "swap: an unchanged frame appends NOTHING (the whole reason a host keeps a baseline)");
+
+    // A third, changed: identical to what diffing against the previous frame gives.
+    RolltuiFrame* c = rolltui_swap_begin(s, 8, 2, plain);
+    check(c == a, "…and the third `begin` is the FIRST frame again: two frames for the whole run, swapped");
+    put_text(c, 0, 0, "world", bold, 8);
+    FramePtr next = clone_frame(c);
+    const std::string want_third = render_diff(mirror.get(), next.get(), ROLLTUI_DEPTH_TRUECOLOR);
+    out.clear();
+    rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
+    check(out.view() == want_third && !want_third.empty(),
+          "swap: a changed frame appends exactly render_diff(prev, next) — equivalence with the loop it replaces");
+
+    // The host's POLICY half, which is the only part that legitimately differed between the
+    // three hosts: "repaint whole at the next present".
+    RolltuiFrame* d = rolltui_swap_begin(s, 8, 2, plain);
+    put_text(d, 0, 0, "world", bold, 8);
+    rolltui_swap_invalidate(s);
+    out.clear();
+    rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
+    check(out.view() == render_diff(nullptr, next.get(), ROLLTUI_DEPTH_TRUECOLOR),
+          "swap: after `invalidate` the next present paints in FULL, though nothing on the frame changed");
+
+    // A SIZE change needs no `invalidate` — rolltui_render_diff's own rule 1, which is why
+    // `paint.cpp` has zero invalidation sites and that is not a defect.
+    RolltuiFrame* e = rolltui_swap_begin(s, 12, 3, plain);
+    check(rolltui_frame_width(e) == 12 && rolltui_frame_height(e) == 3, "swap: `begin` resizes the back frame in place");
+    put_text(e, 0, 0, "wider", bold, 12);
+    FramePtr wide = clone_frame(e);
+    out.clear();
+    rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
+    check(out.view() == render_diff(nullptr, wide.get(), ROLLTUI_DEPTH_TRUECOLOR),
+          "…and a resize repaints in full with no host call at all");
+
+    // Degenerate sizes, the standing rule for every view in this library.
+    RolltuiFrame* z = rolltui_swap_begin(s, 0, 0, plain);
+    check(rolltui_frame_width(z) == 0 && rolltui_frame_height(z) == 0, "swap: a 0x0 frame is a frame");
+    out.clear();
+    rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
+    check(true, "…and presenting it does not crash");
+    rolltui_str_free(&out);
+    rolltui_swap_free(s);
+    rolltui_swap_free(nullptr);  // free is a no-op on NULL (rolltui.h rule 1)
+  }
+
   return report("rolltui screen_test");
 }
