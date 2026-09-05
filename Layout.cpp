@@ -595,18 +595,14 @@ RolltuiComposeScratch* compose_scratch() {
   return h.get();
 }
 
-// THE THREE ROLES A COMPOSE NEEDS, handed over as bytes. `rolltui/Style.hpp` is the one place
-// these names exist; the C is told which byte to draw with, exactly as the markdown renderer
-// and the diff colouriser are (Phase 15 m2's rule).
-constexpr RolltuiLayoutRoles kRoles = {
-    /*border=*/static_cast<unsigned char>(Role::border),
-    /*border_active=*/static_cast<unsigned char>(Role::border_active),
-    /*title=*/static_cast<unsigned char>(Role::title),
-    /*overlay=*/static_cast<unsigned char>(Role::overlay),
-};
-
-// THE THREE STACK ACTIONS, likewise: the C knows the RULES and none of the words.
-constexpr RolltuiStackActions kStackActions = {"stack.close_popup", "stack.focus_next", "stack.focus_prev"};
+// THE THREE ROLES A COMPOSE NEEDS AND THE THREE STACK ACTIONS — the LIBRARY's, since Phase 17
+// m3. Both used to be spelled out here, under the note that `rolltui/Style.hpp` is the one
+// place role names exist. That was true while the library was C++ with a C core; this file is
+// deleted in m2c, and all three hosts call compose and route, so a table with no home becomes
+// three hand-written copies. `rolltui_layout_default_roles()` and
+// `rolltui_stack_default_actions()` are the one home; this is one line over each.
+const RolltuiLayoutRoles& kRoles = *rolltui_layout_default_roles();
+const RolltuiStackActions& kStackActions = *rolltui_stack_default_actions();
 
 void push_node(void* ctx, const RolltuiResolvedNode* rn) {
   static_cast<std::vector<ResolvedNode>*>(ctx)->push_back(*rn);

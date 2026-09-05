@@ -469,13 +469,11 @@ WindowsReport Windows::prepare(WindowStack& stack, Rect box) {
   return rep;
 }
 
-// THE TWO ROLES THE WINDOW ITSELF DRAWS WITH (the scrollbar's), handed over as bytes.
+// THE TWO ROLES THE WINDOW ITSELF DRAWS WITH (the scrollbar's) — the LIBRARY's since Phase 17
+// m3, for the reason `Layout.cpp`'s two are: this file is deleted and every host calls
+// `rolltui_windows_draw`.
 namespace {
-constexpr RolltuiWindowRoles kWindowRoles = {
-    /*scrollbar=*/static_cast<unsigned char>(Role::scrollbar),
-    /*border=*/static_cast<unsigned char>(Role::border),
-    /*border_active=*/static_cast<unsigned char>(Role::border_active),
-};
+const RolltuiWindowRoles& kWindowRoles = *rolltui_windows_default_roles();
 }  // namespace
 
 void Windows::draw(const ResolvedNode& rn, Frame& f, const Theme& theme) {

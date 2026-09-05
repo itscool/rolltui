@@ -477,6 +477,12 @@ typedef struct RolltuiWindowRoles {
   unsigned char border_active;
 } RolltuiWindowRoles;
 
+/* The library's own three (Phase 17 m3), for the same reason `rolltui_layout_default_roles`
+ * exists: these three bytes were `Widgets.cpp`'s `kWindowRoles`, that file is deleted, and
+ * every host calls `rolltui_windows_draw`. BORROWS static storage; a host that paints its
+ * scrollbar from another role still passes its own struct. */
+const RolltuiWindowRoles* rolltui_windows_default_roles(void);
+
 void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
                           const RolltuiStyle* styles, const RolltuiWindowRoles* roles);
 /* An event the stack routed to `window`; 1 when the widget (or its scrollbar) consumed it. */

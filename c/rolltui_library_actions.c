@@ -22,6 +22,7 @@
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_transcript.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
@@ -186,8 +187,20 @@ static const RolltuiMenuActions kMenuActions = {ROLLTUI_LIBRARY_ACTION_LIST(ROLL
 #define ROLLTUI_LA_menu(field, name)
 #define ROLLTUI_LA_edit(field, name)
 
-/* All four BORROW static storage, valid for the life of the process, never freed. */
+/* The window stack's three — the FIFTH expansion of the one list, added in m3 for the reason
+ * the other four were added in m2a. They were `Layout.cpp`'s `kStackActions`, a file m2c
+ * deletes, and all three hosts call `rolltui_window_stack_route`: a vocabulary with no home
+ * becomes one copy per caller. `ROLLTUI_LA_stack` was already declared (and empty) above
+ * because the group exists in the list; this is the target that asks for it. */
+#undef ROLLTUI_LA_stack
+#define ROLLTUI_LA_stack(field, name) .field = name,
+static const RolltuiStackActions kStackActions = {ROLLTUI_LIBRARY_ACTION_LIST(ROLLTUI_LA_PICK_)};
+#undef ROLLTUI_LA_stack
+#define ROLLTUI_LA_stack(field, name)
+
+/* All five BORROW static storage, valid for the life of the process, never freed. */
 const RolltuiInputActions* rolltui_input_default_actions(void) { return &kInputActions; }
 const RolltuiMenuActions* rolltui_menu_default_actions(void) { return &kMenuActions; }
 const RolltuiTranscriptActions* rolltui_transcript_default_actions(void) { return &kTranscriptActions; }
 const RolltuiScrollTextActions* rolltui_scroll_text_default_actions(void) { return &kScrollTextActions; }
+const RolltuiStackActions* rolltui_stack_default_actions(void) { return &kStackActions; }

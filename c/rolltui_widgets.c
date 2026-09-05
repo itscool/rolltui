@@ -894,6 +894,17 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   }
 }
 
+/* The three bytes the WINDOW itself paints with, NAMED from the role list (Phase 17 m3) —
+ * see the header for why they stopped being `Widgets.cpp`'s. */
+const RolltuiWindowRoles* rolltui_windows_default_roles(void) {
+  static const RolltuiWindowRoles r = {
+      /*scrollbar=*/ROLLTUI_ROLE_SCROLLBAR,
+      /*border=*/ROLLTUI_ROLE_BORDER,
+      /*border_active=*/ROLLTUI_ROLE_BORDER_ACTIVE,
+  };
+  return &r;
+}
+
 void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
                           const RolltuiStyle* styles, const RolltuiWindowRoles* roles) {
   RolltuiWidget* wd;

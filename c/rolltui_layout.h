@@ -143,6 +143,21 @@ typedef struct RolltuiLayoutRoles {
   unsigned char overlay;
 } RolltuiLayoutRoles;
 
+/* THE LIBRARY'S OWN ANSWER, so a host does not have to invent one (Phase 17 m3).
+ *
+ * The four bytes above lived in `Layout.cpp`'s anonymous namespace, with the note *"handed
+ * over as bytes; `rolltui/Style.hpp` is the one place these names exist"*. That note was
+ * right while the library was C++ with a C core, and it is the EIGHTH instance of the rule
+ * m2a's five were: `Layout.cpp` is deleted, the role names have been C since m2a
+ * (`ROLLTUI_ROLE_LIST`), and every one of the three hosts calls
+ * `rolltui_window_stack_compose` — so a table with no home does not disappear, it becomes
+ * three hand-written copies. Found the way seven of the previous eight were: by converting a
+ * consumer (`rolltui-paint`) and hitting the wall.
+ *
+ * BORROWS static storage, valid for the life of the process, never freed. A host that paints
+ * its borders from other roles still passes its own struct; nothing became mandatory. */
+const RolltuiLayoutRoles* rolltui_layout_default_roles(void);
+
 /* Draws one border with NO joining — for a widget that boxes its own content. `title` may
  * be NULL when `title_n` is 0. */
 void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
@@ -606,6 +621,13 @@ typedef struct RolltuiStackActions {
   const char* focus_next;
   const char* focus_prev;
 } RolltuiStackActions;
+
+/* The library's own three, expanded from the SAME closed list the other four per-widget
+ * tables come from (`rolltui_library_actions.c`) — the fifth expansion of one vocabulary,
+ * not a fifth spelling of it. Same reason as `rolltui_layout_default_roles` above: the words
+ * were `Layout.cpp`'s `kStackActions` and all three hosts call `rolltui_window_stack_route`.
+ * BORROWS static storage; a host with its own words still passes its own struct. */
+const RolltuiStackActions* rolltui_stack_default_actions(void);
 
 #define ROLLTUI_ROUTE_DELIVER 0
 #define ROLLTUI_ROUTE_CLOSED_POPUP 1

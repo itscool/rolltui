@@ -2344,3 +2344,15 @@ const RolltuiLayoutHooks* rolltui_layout_default_hooks(void) {
   };
   return &h;
 }
+
+/* The four bytes a compose paints its chrome with, NAMED from the role list this file can
+ * now reach (Phase 17 m3) — see the header for why they stopped being `Layout.cpp`'s. */
+const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
+  static const RolltuiLayoutRoles r = {
+      /*border=*/ROLLTUI_ROLE_BORDER,
+      /*border_active=*/ROLLTUI_ROLE_BORDER_ACTIVE,
+      /*title=*/ROLLTUI_ROLE_TITLE,
+      /*overlay=*/ROLLTUI_ROLE_OVERLAY,
+  };
+  return &r;
+}

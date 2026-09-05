@@ -424,7 +424,10 @@ RolltuiEvent mouse_ev(const MouseEvent& m) {
   return e;
 }
 
-constexpr RolltuiStackActions kStackActions_c = {"stack.close_popup", "stack.focus_next", "stack.focus_prev"};
+// PHASE 17 m3: the LIBRARY's three, not a copy. This file had hand-written them, which made
+// two consumers with the same table (`Layout.cpp` was the other) — rule 5's tell, fired before
+// a single host had been converted.
+const RolltuiStackActions& kStackActions_c = *rolltui_stack_default_actions();
 
 Route route_c(RolltuiWindowStack* s, const RolltuiEvent& e, Rect screen) {
   Str window;
@@ -436,12 +439,7 @@ std::string_view captured_c(const RolltuiWindowStack* s) {
   const char* p = rolltui_window_stack_captured(s, &n);
   return {p, n};
 }
-constexpr RolltuiLayoutRoles kRoles_c = {
-    /*border=*/static_cast<unsigned char>(Role::border),
-    /*border_active=*/static_cast<unsigned char>(Role::border_active),
-    /*title=*/static_cast<unsigned char>(Role::title),
-    /*overlay=*/static_cast<unsigned char>(Role::overlay),
-};
+const RolltuiLayoutRoles& kRoles_c = *rolltui_layout_default_roles();  // likewise (m3)
 using SlotRendererC = std::function<void(const ResolvedNode&, Frame&)>;
 void call_slot_c(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame*) {
   auto* p = static_cast<std::pair<const SlotRendererC*, Frame*>*>(ctx);
@@ -744,6 +742,12 @@ int main() {
           "a border takes its colour from `border` and its ground from the window it belongs to");
     check(f.at(0, 22).style.fg == dark.style(Role::border_active).fg && f.at(0, 5).style.fg == dark.style(Role::border).fg,
           "the focused input's border is border_active; the transcript's is border");
+    // PHASE 17 m3: `title` was the ONE of the four compose roles nothing asserted — the cell
+    // it lands in was checked, its colour was not. That is the whole reason a role table can
+    // move house and still be wrong: three of the four would have failed loudly and this one
+    // would have gone quietly. Pointing the compose at `warning` instead turns this red.
+    check(f.at(2, 0).style.fg == dark.style(Role::title).fg && f.at(2, 0).style.fg != dark.style(Role::border).fg,
+          "…and the title text is painted with `title`, which is not the border's colour");
   }
   {
     // A popup whose ring crosses the status's left border: no join across layers, and
@@ -1687,9 +1691,18 @@ int main() {
       check(rolltui_transcript_top_line(tr) == 0, "at the top");
       // The thumb is IN the right border column, which the widget never sees.
       const int track_x = 39;
-      bool thumb_drawn = false;
-      for (int y = 1; y < 11; ++y) if (f.glyph(track_x, y) == "\xE2\x96\x88") thumb_drawn = true;
+      bool thumb_drawn = false, thumb_coloured = false;
+      for (int y = 1; y < 11; ++y)
+        if (f.glyph(track_x, y) == "\xE2\x96\x88") {
+          thumb_drawn = true;
+          // PHASE 17 m3, and the same gap as the title above: the thumb's GLYPH was asserted
+          // and its colour was not, so `RolltuiWindowRoles::scrollbar` could name any role at
+          // all and every suite stayed green. Pointing it at `error` turns this red.
+          if (f.at(track_x, y).style.fg == th.style(Role::scrollbar).fg) thumb_coloured = true;
+        }
       check(thumb_drawn, "the window drew a thumb in its right border column");
+      check(thumb_coloured && th.style(Role::scrollbar).fg != th.style(Role::error).fg,
+            "…painted with `scrollbar`, the role the window draws its own chrome with");
       // A press near the BOTTOM of the track scrolls the transcript — the window
       // commanding a widget that accepted scroll_to().
       MouseEvent m;
