@@ -2,6 +2,7 @@
 #include "rolltui/Screen.hpp"
 
 #include "rolltui/c/rolltui_geom.h"
+#include "rolltui/c/rolltui_render.h"
 
 #include "rolltui/Scratch.hpp"
 #include "rolltui/Unicode.hpp"
@@ -56,121 +57,45 @@ void Frame::tint(Rect r, const Style& style) {
     }
 }
 
-namespace {
-
-std::string cup(int x, int y) {
-  return "\x1b[" + std::to_string(y + 1) + ";" + std::to_string(x + 1) + "H";
-}
-
-// The SGR state carried across `emit_run` calls, BY VALUE.
+// THE THREE CONSUMERS NOW FORWARD TO C (`rolltui/c/rolltui_render.h`). `rolltui_screen.h`
+// deferred them on purpose — "porting them is its own step and moves no behaviour when it
+// happens" — and this is that step. What is left here is the std::string shape a C++ caller
+// still writes against; the loops, the SGR state and the run-finding are all in the C.
 //
-// PHASE 14 m2 FIXED A REAL DEFECT HERE, found while designing the C boundary and present in
-// the C++ long before it: this used to be a `const Style*` pointing INTO a cell
-// (`current = &c.style`), kept across loop iterations and across calls. It was correct only
-// because `Frame::at()` happened to return a reference into the frame's own storage — the
-// moment an opaque handle made it return a Cell BY VALUE, that pointer aimed at a destroyed
-// temporary and every SGR decision after it read freed memory. A `Style` is fifteen bytes;
-// there was never a reason for the pointer.
-struct SgrState {
-  Style style;
-  bool have = false;
-};
-
-// Emit cells [x0, x1) of row y, tracking the SGR state across calls. A hyperlink is
-// opened when a run enters linked cells and always closed before the run ends.
-void emit_run(std::string& out, const Frame& f, int y, int x0, int x1, ColorDepth depth, SgrState& current) {
-  out += cup(x0, y);
-  std::uint32_t link = 0;
-  for (int x = x0; x < x1; ++x) {
-    const Cell c = f.at(x, y);
-    if (c.continuation) continue;
-    if (c.link != link) {  // before the SGR, so a link closes right after its last glyph
-      out += "\x1b]8;;";
-      out += f.link(c.link);
-      out += "\x1b\\";
-      link = c.link;
-    }
-    if (!current.have || !(current.style == c.style)) {
-      out += sgr(c.style, depth);
-      current.style = c.style;
-      current.have = true;
-    }
-    out += f.glyph(x, y);  // borrows from the FRAME, not from the copy above
-  }
-  if (link != 0) out += "\x1b]8;;\x1b\\";
+// HOW THE PORT WAS VERIFIED, because "moves no behaviour" is a claim and not a hope: the
+// golden-frame suites record the BYTES these produce, and they were recorded from the C++
+// implementation. Forwarding to the C and keeping 61+ goldens green is a byte-for-byte
+// equivalence check against every one of them, which is a stronger control than any
+// differential test written for the occasion.
+namespace {
+// The library's own growing buffer, lent to the C and copied out once. A caller that wants
+// the allocation gone entirely uses `rolltui_render_diff` directly with a buffer it keeps —
+// which is what `rolltui_swap.h` exists to make the normal thing.
+std::string take(RolltuiStr& s) {
+  std::size_t len = 0;
+  const char* p = rolltui_str_get(&s, &len);
+  std::string out(p ? p : "", len);
+  rolltui_str_free(&s);
+  return out;
 }
-
-// Two cells look the same on screen: everything equal, links compared by URL (the ids
-// are per frame).
-bool same(const Frame& a, const Frame& b, int x, int y) {
-  const Cell p = a.at(x, y);
-  const Cell q = b.at(x, y);
-  // Glyphs and links are both compared BY VALUE across the two frames, never by their
-  // per-frame index: a spill index and a link id mean nothing outside the frame that
-  // minted them (Screen.hpp).
-  return a.glyph(x, y) == b.glyph(x, y) && p.width == q.width && p.continuation == q.continuation &&
-         p.style == q.style && a.link(p.link) == b.link(q.link);
-}
-
-void finish(std::string& out, const Frame& f) {
-  const Cursor c = f.cursor();
-  out += "\x1b[0m";
-  out += cup(c.x, c.y);
-  if (c.visible) out += "\x1b[?25h";
-}
-
 }  // namespace
 
 std::string render_full(const Frame& next, ColorDepth depth) {
-  std::string out = "\x1b[?25l\x1b[H\x1b[2J";
-  SgrState current;
-  // The geometry is read ONCE. `width()`/`height()` cross the C boundary and do not inline,
-  // so a loop condition that calls one is a call per cell — invisible in C++, real here.
-  const int w = next.width(), h = next.height();
-  for (int y = 0; y < h; ++y) emit_run(out, next, y, 0, w, depth, current);
-  finish(out, next);
-  return out;
+  RolltuiStr s{};
+  rolltui_render_full(next.handle(), static_cast<unsigned char>(depth), &s);
+  return take(s);
 }
 
 std::string frame_to_text(const Frame& f) {
-  std::string out;
-  const int w = f.width(), h = f.height();
-  for (int y = 0; y < h; ++y) {
-    std::string row;
-    for (int x = 0; x < w; ++x) {
-      if (!f.at(x, y).continuation) row += f.glyph(x, y);
-    }
-    const std::size_t end = row.find_last_not_of(' ');
-    out += (end == std::string::npos) ? "" : row.substr(0, end + 1);
-    out += '\n';
-  }
-  return out;
+  RolltuiStr s{};
+  rolltui_frame_to_text(f.handle(), &s);
+  return take(s);
 }
 
 std::string render_diff(const Frame* prev, const Frame& next, ColorDepth depth) {
-  if (!prev || prev->width() != next.width() || prev->height() != next.height())
-    return render_full(next, depth);
-  std::string out;
-  SgrState current;
-  const int w = next.width(), h = next.height();
-  for (int y = 0; y < h; ++y) {
-    int x = 0;
-    while (x < w) {
-      if (same(*prev, next, x, y)) { ++x; continue; }
-      int start = x;
-      if (next.at(start, y).continuation && start > 0) --start;  // rewrite the glyph whole
-      int end = x + 1;
-      while (end < w && !same(*prev, next, end, y)) ++end;
-      if (end < w && next.at(end, y).continuation) ++end;
-      if (out.empty()) out += "\x1b[?25l";
-      emit_run(out, next, y, start, end, depth, current);
-      x = end;
-    }
-  }
-  if (out.empty() && prev->cursor() == next.cursor()) return out;  // nothing to do
-  if (out.empty()) out += "\x1b[?25l";
-  finish(out, next);
-  return out;
+  RolltuiStr s{};
+  rolltui_render_diff(prev ? prev->handle() : nullptr, next.handle(), static_cast<unsigned char>(depth), &s);
+  return take(s);
 }
 
 }  // namespace rolltui

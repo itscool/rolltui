@@ -119,6 +119,12 @@ add_library(rolltui STATIC
                               #   configurations, and for a second reason: a HOST fills it,
                               #   so two shapes of an entry would be two things to disagree.
   DocumentCpp.cpp             #   …and its C++ half.
+  c/rolltui_render.c          # the frame -> bytes step `rolltui_screen.h` deliberately
+                              #   deferred ("porting them is its own step"): render_diff,
+                              #   render_full and frame_to_text, filling a caller's buffer.
+  c/rolltui_swap.c            # THE DOUBLE BUFFER, because three hosts had written it. The
+                              #   per-frame lifetime stops existing and a host's repaint
+                              #   lands inside the budget instead of beside it.
   c/rolltui_map.c             # Phase 15 m5: THE STRING-KEYED TABLE, once — seven
                               #   `unordered_map<string, T>`s across two modules had it
                               #   invisibly. Both configurations, like the rest of the data.
