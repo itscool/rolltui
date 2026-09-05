@@ -2,6 +2,7 @@
 #include "rolltui/Screen.hpp"
 
 #include "rolltui/c/rolltui_geom.h"
+#include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_render.h"
 
 #include "rolltui/Scratch.hpp"
@@ -9,53 +10,40 @@
 
 namespace rolltui {
 
+// PUT_TEXT / FILL / TINT WERE IMPLEMENTED TWICE, and this deletes the second one.
+//
+// `c/rolltui_frame_ops.c` has held the C versions since Phase 15 m5 — they had to exist the
+// moment the widgets became C — and these three C++ methods went on looping over graphemes
+// themselves beside them. Two implementations of the same drawing primitive, each correct,
+// neither aware of the other: exactly the shape this library refuses everywhere else, and
+// the reason `rolltui_md_lines.h` and `rolltui_layout_tree.h` are C in one definition rather
+// than one per language. `rolltui_layout.h` states the rule for its error text — "a
+// vocabulary written down twice is a second thing to drift" — and a drawing primitive is a
+// vocabulary too. Found 2026-09-04 while sorting the C++ that is BINDING from the C++ that is
+// unported LOGIC: this looked like logic and was really a duplicate.
+//
+// The scratch is the library's own per-thread handle, the same `ThreadHandle` pattern
+// `Diff.cpp` and `Unicode.cpp` use — the C wants somewhere to decode clusters into, and that
+// is a CALLER-FILLED handle rather than storage the callee invents (CLAUDE.md's third
+// strategy, widened for working memory).
+namespace {
+RolltuiDrawScratch* draw_scratch() {
+  static thread_local ThreadHandle<RolltuiDrawScratch, rolltui_draw_scratch_new, rolltui_draw_scratch_free> h;
+  return h.get();
+}
+}  // namespace
+
 int Frame::put_text(int x, int y, std::string_view utf8, const Style& style, int max_cells,
                     bool ambiguous_wide, std::uint32_t link) {
-  const int w = width();
-  if (y < 0 || y >= height()) return 0;
-  int used = 0;
-  // Phase 13 m3: the cluster list is a REUSED buffer. This is the hottest single caller
-  // of `graphemes()` — every string any widget draws comes through here — and it was
-  // building a fresh vector for each one. Not nested: nothing in the loop below calls
-  // back into put_text.
-  static thread_local Scratch<std::vector<unicode::Grapheme>> scratch("put_text clusters");
-  auto gs = scratch.lock();  // m5b: the window is CHECKED, where m3 only claimed it
-  unicode::graphemes_into(utf8, ambiguous_wide, *gs);
-  for (const unicode::Grapheme& g : *gs) {
-    if (g.width <= 0) continue;
-    if (used + g.width > max_cells || x + used >= w) break;
-    if (g.width == 2 && x + used + 1 >= w) break;  // never a half glyph at the edge
-    used += put(x + used, y, utf8.substr(g.offset, g.length), g.width, style, link);
-  }
-  return used;
+  return rolltui_frame_put_text(handle(), draw_scratch(), x, y, utf8.data(), utf8.size(), style,
+                                max_cells, ambiguous_wide ? 1 : 0, link);
 }
 
 void Frame::fill(Rect r, const Style& style, std::string_view grapheme) {
-  Rect c = r.intersect(bounds());
-  int gw = unicode::display_width(grapheme);
-  if (gw <= 0) { grapheme = " "; gw = 1; }
-  for (int yy = c.y; yy < c.y + c.h; ++yy)
-    for (int xx = c.x; xx < c.x + c.w; xx += gw) put(xx, yy, grapheme, gw, style);
+  rolltui_frame_fill(handle(), draw_scratch(), r, style, grapheme.data(), grapheme.size());
 }
 
-void Frame::tint(Rect r, const Style& style) {
-  Rect c = r.intersect(bounds());
-  for (int yy = c.y; yy < c.y + c.h; ++yy)
-    for (int xx = c.x; xx < c.x + c.w; ++xx) {
-      // Read, amend, write back: the handle hands out a COPY of the cell, so the style a
-      // widget drew is not a reference to reach through. A Style is fifteen bytes and this
-      // allocates nothing either way.
-      Style s = at(xx, yy).style;
-      if (style.fg.kind != Color::Kind::None) s.fg = style.fg;
-      if (style.bg.kind != Color::Kind::None) s.bg = style.bg;
-      s.bold |= style.bold;
-      s.italic |= style.italic;
-      s.underline |= style.underline;
-      s.dim |= style.dim;
-      s.reverse |= style.reverse;
-      set_style(xx, yy, s);
-    }
-}
+void Frame::tint(Rect r, const Style& style) { rolltui_frame_tint(handle(), r, style); }
 
 // THE THREE CONSUMERS NOW FORWARD TO C (`rolltui/c/rolltui_render.h`). `rolltui_screen.h`
 // deferred them on purpose — "porting them is its own step and moves no behaviour when it
