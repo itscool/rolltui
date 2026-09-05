@@ -385,7 +385,7 @@ json::Value Bindings::to_json(std::string_view name) const {
 
 std::string_view default_bindings_json() {
   for (std::size_t i = 0; i < rolltui_kBindingsPresetCount; ++i)
-    if (rolltui_kBindingsPresets[i].name == "default") return rolltui_kBindingsPresets[i].text;
+    if (std::string_view(rolltui_kBindingsPresets[i].name) == "default") return rolltui_kBindingsPresets[i].text;
   return "";
 }
 

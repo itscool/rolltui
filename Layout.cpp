@@ -504,9 +504,9 @@ const std::vector<std::string_view>& builtin_names() {
   static const std::vector<std::string_view> names = [] {
     std::vector<std::string_view> out;
     for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
-      if (rolltui_kLayoutPresets[i].name == "default") out.push_back(rolltui_kLayoutPresets[i].name);
+      if (std::string_view(rolltui_kLayoutPresets[i].name) == "default") out.push_back(rolltui_kLayoutPresets[i].name);
     for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
-      if (rolltui_kLayoutPresets[i].name != "default") out.push_back(rolltui_kLayoutPresets[i].name);
+      if (std::string_view(rolltui_kLayoutPresets[i].name) != "default") out.push_back(rolltui_kLayoutPresets[i].name);
     return out;
   }();
   return names;
@@ -514,7 +514,7 @@ const std::vector<std::string_view>& builtin_names() {
 
 std::string_view builtin_json(std::string_view name) {
   for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
-    if (rolltui_kLayoutPresets[i].name == name) return rolltui_kLayoutPresets[i].text;
+    if (std::string_view(rolltui_kLayoutPresets[i].name) == name) return rolltui_kLayoutPresets[i].text;
   return "";
 }
 

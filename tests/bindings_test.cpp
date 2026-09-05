@@ -408,13 +408,13 @@ RolltuiBindings* bindings_from_json(std::string_view text, BindingsLoadReport& r
 
 std::string_view default_bindings_json() {
   for (std::size_t i = 0; i < rolltui_kBindingsPresetCount; ++i)
-    if (rolltui_kBindingsPresets[i].name == "default") return rolltui_kBindingsPresets[i].text;
+    if (std::string_view(rolltui_kBindingsPresets[i].name) == "default") return rolltui_kBindingsPresets[i].text;
   return "";
 }
 
 std::string_view builtin_layout_json(std::string_view name) {
   for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
-    if (rolltui_kLayoutPresets[i].name == name) return rolltui_kLayoutPresets[i].text;
+    if (std::string_view(rolltui_kLayoutPresets[i].name) == name) return rolltui_kLayoutPresets[i].text;
   return "";
 }
 

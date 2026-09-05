@@ -147,7 +147,7 @@ std::string menu_to_json(const MenuItem& root) {
 
 std::string_view shipped_menu(std::string_view name) {
   for (std::size_t i = 0; i < rolltui_kMenuCount; ++i)
-    if (rolltui_kMenus[i].name == name) return rolltui_kMenus[i].text;
+    if (std::string_view(rolltui_kMenus[i].name) == name) return rolltui_kMenus[i].text;
   return {};
 }
 
