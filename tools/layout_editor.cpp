@@ -144,10 +144,16 @@ std::vector<MenuItem> LayoutEditor::action_items() const {
   name.type = InputType::Name;  // "<scope>.<verb>": dots are Name characters
   name.hint = "app.<verb> (not a library scope)";
   std::vector<MenuItem> items;
-  for (const ActionDecl& d : current_.actions)
-    items.push_back(MenuItem::submenu("action." + d.name, d.name,
-                                      {MenuItem::input("action." + d.name + ".desc", "what it does", desc, d.description),
-                                       MenuItem::action("action." + d.name + ".remove", "remove this action")}));
+  // Iterates the loader's OWN element type (Layout.hpp: `Layout::actions` is a
+  // `RolltuiActionList` of `RolltuiLayoutAction`, not the `ActionDecl` a host's bindings
+  // table wants) — `.name`/`.description` are `RolltuiStr` now, so a MenuItem factory's
+  // by-value `std::string` parameter needs `.str()` where the value crosses whole, exactly
+  // as it always needed one from a real `std::string`.
+  for (const RolltuiLayoutAction& d : current_.actions)
+    items.push_back(MenuItem::submenu(
+        "action." + d.name, d.name.str(),
+        {MenuItem::input("action." + d.name + ".desc", "what it does", desc, d.description.str()),
+         MenuItem::action("action." + d.name + ".remove", "remove this action")}));
   items.push_back(MenuItem::input("action.add", "add an action (name)", name));
   return items;
 }
@@ -506,7 +512,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
     if (ev.id.rfind("popup.", 0) == 0 && ev.id.size() > 7 && ev.id.substr(ev.id.size() - 7) == ".remove") {
       const std::string pid = ev.id.substr(6, ev.id.size() - 13);
       begin_preview();
-      current_.popups.erase(std::remove_if(current_.popups.begin(), current_.popups.end(), [&](const Layer& p) { return p.id == pid; }), current_.popups.end());
+      current_.popups.erase_id(pid);
       status_ = "removed popup " + pid;
       Outcome o = commit_current();
       rebuild_menu();
@@ -517,8 +523,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
     if (ev.id.rfind("action.", 0) == 0 && ev.id.size() > 14 && ev.id.substr(ev.id.size() - 7) == ".remove") {
       const std::string name = ev.id.substr(7, ev.id.size() - 14);
       begin_preview();
-      current_.actions.erase(std::remove_if(current_.actions.begin(), current_.actions.end(), [&](const ActionDecl& d) { return d.name == name; }),
-                             current_.actions.end());
+      current_.actions.erase_name(name);
       status_ = "removed action " + name + " (a chord for it is kept and inert)";
       Outcome o = commit_current();
       menu_.set_options("actions", action_items());
@@ -599,7 +604,8 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
       const std::string name = ev.value;
       const std::string why = name.empty() ? "an action needs a name" : action_decl_problem(name);
       if (!why.empty()) { status_ = name.empty() ? why : "'" + name + "': " + why; return {O::Changed, {}}; }
-      if (std::find_if(current_.actions.begin(), current_.actions.end(), [&](const ActionDecl& d) { return d.name == name; }) != current_.actions.end()) {
+      if (std::find_if(current_.actions.begin(), current_.actions.end(),
+                       [&](const RolltuiLayoutAction& d) { return d.name == name; }) != current_.actions.end()) {
         status_ = "'" + name + "' is already declared";
         return {O::Changed, {}};
       }
@@ -612,7 +618,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const Event& e, const Bindings& nav) 
     }
     if (ev.id.rfind("action.", 0) == 0 && ev.id.size() > 12 && ev.id.substr(ev.id.size() - 5) == ".desc") {
       const std::string name = ev.id.substr(7, ev.id.size() - 12);
-      for (ActionDecl& d : current_.actions)
+      for (RolltuiLayoutAction& d : current_.actions)
         if (d.name == name) { begin_preview(); d.description = ev.value; return commit_current(); }
       return {O::None, {}};
     }

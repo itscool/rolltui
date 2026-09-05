@@ -294,7 +294,7 @@ MigrationReport migrate_theme_layout(const std::string& dir) {
       out.error = theme_path + ": its \"layout\" part is unusable (" + lrep.error + "); it was left in place";
       return out;
     }
-    const std::string origin = l->name.empty() ? "default" : l->name;
+    const std::string origin = l->name.empty() ? "default" : l->name.str();
     Value lv = LayoutDomain::to_json(*l, origin);
     lv.set("preset", Value::string(origin));
     if (!preset_files::write_file_atomic(layout_path, json::dump(lv, 2) + "\n", out.error)) return out;

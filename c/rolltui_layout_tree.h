@@ -54,6 +54,7 @@
 #ifdef __cplusplus
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 #endif
 
@@ -321,6 +322,69 @@ void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from);
 /* Takes `from`'s buffers and leaves it empty — the move, written down for C. */
 void rolltui_layer_move(RolltuiLayer* to, RolltuiLayer* from);
 int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b);
+
+/* ---- popups: an OWNED, growable array of Layer VALUES (Phase 17) --------------------------- */
+/* `Layout::popups`' storage. A FLAT array of values, not individually-heap-boxed pointers like
+ * RolltuiNodeList: nothing holds a `Layer*` across a mutation (a popup is always looked up by id
+ * on demand — `Layout::popup()`), so there is no address-stability property worth paying an
+ * extra indirection for. `RolltuiWindowStack`'s own `layers` array already proves the shape
+ * safe: a Layer is trivially relocatable (every byte it owns is behind a pointer elsewhere), so
+ * growing this array with `rolltui_grow_zeroed` and shifting on removal is exactly that same,
+ * already-proven pattern one level up. */
+typedef struct RolltuiLayerList {
+  RolltuiLayer* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0);
+  size_t cap ROLLTUI_DEFAULT(0);
+
+#ifdef __cplusplus
+  RolltuiLayerList() = default;
+  RolltuiLayerList(const RolltuiLayerList& o) { copy_from(o); }
+  RolltuiLayerList(RolltuiLayerList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  RolltuiLayerList& operator=(const RolltuiLayerList& o) {
+    if (this != &o) copy_from(o);
+    return *this;
+  }
+  RolltuiLayerList& operator=(RolltuiLayerList&& o) noexcept;
+  ~RolltuiLayerList();
+
+  std::size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  RolltuiLayer* data() { return v; }
+  const RolltuiLayer* data() const { return v; }
+  RolltuiLayer& operator[](std::size_t i) { return v[i]; }
+  const RolltuiLayer& operator[](std::size_t i) const { return v[i]; }
+  RolltuiLayer& back() { return v[n - 1]; }
+  const RolltuiLayer& back() const { return v[n - 1]; }
+  RolltuiLayer* begin() { return v; }
+  RolltuiLayer* end() { return v + n; }
+  const RolltuiLayer* begin() const { return v; }
+  const RolltuiLayer* end() const { return v + n; }
+  void push_back(RolltuiLayer&& l);
+  void push_back(const RolltuiLayer& l);
+  // Removes the layer whose id matches (a no-op when none does) — Layout.hpp's
+  // "remove this popup", the one mutation a host ever asks of this list by name.
+  void erase_id(std::string_view id);
+  void clear();
+  bool operator==(const RolltuiLayerList& o) const;
+
+ private:
+  void copy_from(const RolltuiLayerList& o);
+#endif
+} RolltuiLayerList;
+
+void rolltui_layer_list_release(RolltuiLayerList* l);          /* frees every layer + the array */
+void rolltui_layer_list_clear(RolltuiLayerList* l);             /* frees every layer, keeps the array */
+void rolltui_layer_list_copy(RolltuiLayerList* to, const RolltuiLayerList* from);
+size_t rolltui_layer_list_count(const RolltuiLayerList* l);
+RolltuiLayer* rolltui_layer_list_at(const RolltuiLayerList* l, size_t i);
+/* Appends an EMPTY layer and returns it — the C's `emplace_back`. */
+RolltuiLayer* rolltui_layer_list_add(RolltuiLayerList* l);
+void rolltui_layer_list_remove(RolltuiLayerList* l, size_t i); /* frees it, shifts the rest down */
+void rolltui_layer_list_remove_id(RolltuiLayerList* l, const char* id, size_t len); /* no-op if absent */
+int rolltui_layer_list_equal(const RolltuiLayerList* a, const RolltuiLayerList* b);
 
 /* ---- what a resolve produces --------------------------------------------------------------- */
 

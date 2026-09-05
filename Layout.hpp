@@ -221,20 +221,18 @@ inline Rect inner_rect(Rect outer, Border b) {
 // The library's table is the closed rung 1 of the header comment's resolution order.
 // `Registered` is not a kind a layout can name — it is what `Content::kind` says when
 // one spelling of a kind for every purpose that is not the library's own switch.
-enum class WidgetKind : std::uint8_t { Transcript, Input, Menu, Rows, Text, File, Help, Registered };
-
-struct Content {
-  WidgetKind kind = WidgetKind::Text;
-  std::string source;  // the part after the first ':' — a bound name, a literal, a path
-  // The host's kind name, and ONLY when `kind` is Registered — empty for every library
-  // kind, whose name is a function of the enum. There is still one spelling of a kind:
-  // `content_kind_name(c)` is it, and this field is where that function gets its answer
-  // in the one case the enum cannot carry. Deliberately LAST so that the two-field
-  // `Content{WidgetKind::Rows, "status"}` that every call site already writes keeps
-  // meaning what it says — a middle field would have silently made "status" the KIND.
-  std::string registered_name;
-  bool operator==(const Content&) const = default;
-};
+//
+// PHASE 17: `WidgetKind` and `Content` are behind `rolltui/c/rolltui_layout.h` — `WidgetKind`
+// is declared there now (beside the registry that resolves it, the same reason Border/Anchor
+// live beside the tree in `rolltui_layout_tree.h`) and `Content` IS `RolltuiContent`, the
+// Phase 14 one-definition rule Node/Layer already use. `source`/`registered_name` are
+// `RolltuiStr` rather than `std::string` now, which is exactly the "borrowed-text accessor"
+// half of the standard C answer — every operation the ~20 sites in Widgets.cpp already used
+// on them (`.data()`, `.size()`, `.empty()`, `==`, assignment from a `std::string`) survives
+// unchanged, so most of those sites did not need to change at all.
+// `rolltui::WidgetKind` is already this scope's, declared directly inside `namespace rolltui`
+// by the included header — no alias needed, unlike Content below (which names a C struct).
+using Content = RolltuiContent;
 
 std::string_view widget_kind_name(WidgetKind k);  // library kinds only; "" for Registered
 // THE one spelling of a content's kind, library or host's.
@@ -301,17 +299,33 @@ std::optional<Content> content_for_kind(std::string_view kind_name, std::string 
 // nullopt when `legacy` is not one of them.
 std::optional<std::string> migrated_content(std::string_view legacy);
 
-struct Layout {
-  std::string name;
-  int min_width = 0, min_height = 0;  // the smallest screen it is designed for; a host may switch below it
-  // The actions this screen emits, in file order (the order `help` lists them in). A
-  // host hands them to its table with Bindings::declare().
-  std::vector<ActionDecl> actions;
-  Layer base;
-  std::vector<Layer> popups;          // declared placements the host pushes by id
-  const Layer* popup(std::string_view id) const;
-  bool operator==(const Layout&) const = default;
-};
+// `min_width`/`min_height`: the smallest screen this screen is designed for; a host may
+// switch below it. `actions`: the actions this screen emits, in file order (the order
+// `help` lists them in) — a host hands them to its table with Bindings::declare(), which
+// still takes a `std::vector<ActionDecl>` (Bindings.hpp keeps its own std::string shape, for
+// its many other callers this task does not touch), so `action_decls()` below is the one
+// conversion seam a handful of unported hosts still reach for. `popups`: declared
+// placements the host pushes by id.
+//
+// PHASE 17: `Layout` IS `RolltuiLayout` (Node/Layer's one-definition rule again). `actions`
+// and `popups` are `RolltuiActionList`/`RolltuiLayerList` — an opaque-ish handle each with a
+// `count/at/add/remove`-shaped surface (`.size()`, `operator[]`, `.push_back()`,
+// `.erase_name()`/`.erase_id()`, `.clear()`) rather than `std::vector`, which is what makes
+// `Layout` itself a real C struct instead of a `std::string`/`std::vector` shim over one.
+using Layout = RolltuiLayout;
+// The conversion `paint.cpp`/`studio.cpp` reach for at the handful of call sites that still
+// need a `std::vector<ActionDecl>` from a `Layout::actions` (`Bindings::declare`, an
+// `AppProfile::actions` built from one) — declared here, not as an implicit conversion
+// operator on `RolltuiActionList` itself, because that operator would have to name
+// `rolltui::ActionDecl` from inside `rolltui_layout.h`, which does not (and must not)
+// include `Bindings.hpp` (the header comment there states why).
+std::vector<ActionDecl> action_decls(const RolltuiActionList& actions);
+// The comparison a test (or a host checking what actually loaded) reaches for beside it:
+// "does this Layout declare exactly this table" — `shipped_default_actions()` is the caller
+// this exists for. Declared here for the same reason `action_decls` is, and defined in terms
+// of it rather than a second field-by-field walk.
+bool operator==(const RolltuiActionList& a, const std::vector<ActionDecl>& b);
+inline bool operator==(const std::vector<ActionDecl>& a, const RolltuiActionList& b) { return b == a; }
 
 // Built-ins, compiled in as layout JSON and parsed once: "default" (panel right),
 // "panel-left", "no-panel", "stacked" (the bottom-strip look, the narrow-terminal

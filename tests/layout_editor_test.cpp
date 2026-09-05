@@ -309,7 +309,8 @@ int main() {
     ed.handle(key(Key::Enter));
     type(ed, "app.zoom");
     LayoutEditor::Outcome o = ed.handle(key(Key::Enter));
-    check(o.kind == O::Committed && ed.current().actions.size() == before + 1 && ed.current().actions.back() == ActionDecl{"app.zoom", ""},
+    check(o.kind == O::Committed && ed.current().actions.size() == before + 1 && ed.current().actions.back().name == "app.zoom" &&
+              ed.current().actions.back().description.empty(),
           "adding an action declares it with no description invented for it");
     check(ed.menu().find("action.app.zoom.desc") != nullptr, "…and the level grows a submenu for it, keyed by the dotted name");
     // The loader's own rules, in the editor, refusing by the same words.

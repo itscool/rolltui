@@ -137,3 +137,31 @@ RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
 RolltuiLayer::~RolltuiLayer() = default;
 
 bool RolltuiLayer::operator==(const RolltuiLayer& o) const { return rolltui_layer_equal(this, &o) != 0; }
+
+// ---- popups: an owned array of Layer values ---------------------------------------------------
+
+RolltuiLayerList::~RolltuiLayerList() { rolltui_layer_list_release(this); }
+
+void RolltuiLayerList::copy_from(const RolltuiLayerList& o) { rolltui_layer_list_copy(this, &o); }
+
+RolltuiLayerList& RolltuiLayerList::operator=(RolltuiLayerList&& o) noexcept {
+  if (this != &o) {
+    rolltui_layer_list_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+
+void RolltuiLayerList::push_back(RolltuiLayer&& l) { rolltui_layer_move(rolltui_layer_list_add(this), &l); }
+
+void RolltuiLayerList::push_back(const RolltuiLayer& l) { rolltui_layer_copy(rolltui_layer_list_add(this), &l); }
+
+void RolltuiLayerList::erase_id(std::string_view id) { rolltui_layer_list_remove_id(this, id.data(), id.size()); }
+
+void RolltuiLayerList::clear() { rolltui_layer_list_clear(this); }
+
+bool RolltuiLayerList::operator==(const RolltuiLayerList& o) const { return rolltui_layer_list_equal(this, &o) != 0; }

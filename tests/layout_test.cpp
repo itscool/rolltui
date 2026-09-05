@@ -722,8 +722,8 @@ int main() {
     LayoutLoadReport rep;
     const std::optional<Layout> l = load_layout(R"({"name":"acts","actions":{"app.zoom":"zoom in","mine.thing":"my own"},
         "root":{"content":"help"}})", rep);
-    check(l && rep.clean() && l->actions.size() == 2 && l->actions[0] == ActionDecl{"app.zoom", "zoom in"} &&
-              l->actions[1].name == "mine.thing",
+    check(l && rep.clean() && l->actions.size() == 2 && l->actions[0].name == "app.zoom" &&
+              l->actions[0].description == "zoom in" && l->actions[1].name == "mine.thing",
           "\"actions\" is an object of name → description, in file order");
     check(rep.migrated.empty(), "…and a file that declares actions is not given the shipped default's");
 
@@ -1068,7 +1068,7 @@ int main() {
     BindingsLoadReport br;
     std::optional<Bindings> binds = Bindings::from_json(R"({"name":"b","bindings":{"input.submit":["enter"],"app.zoom":["ctrl+g"]}})", br);
     check(binds && br.clean() && !binds->has("app.zoom"), "a bindings file alone does not make the action exist");
-    binds->declare(lay->actions);  // the one line a host runs
+    binds->declare(action_decls(lay->actions));  // the one line a host runs
 
     Windows windows;
     windows.set_help("", {"app"}, "");

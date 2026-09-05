@@ -334,7 +334,7 @@ class Windows {
   // sets both together (`bind_submit`) and a widget reads them at different times (a submit,
   // then separately whether to clear). `rolltui_windows_on_submit` returns 0/1 for the same
   // two values this enum names, and 0 (SendAndClear) is what "nothing bound" answers too.
-  OnSubmit on_submit_for(const std::string& name) const {
+  OnSubmit on_submit_for(std::string_view name) const {
     return rolltui_windows_on_submit(w_.get(), name.data(), name.size()) ? OnSubmit::Keep : OnSubmit::SendAndClear;
   }
   // An input's one-line note, drawn beside the prompt when it fits on the first row and

@@ -410,7 +410,7 @@ struct App {
     menu().set_options("theme", themes);
     menu().set_options("layout", layouts);
     menu().set_value("theme", store ? store->label() : "");
-    menu().set_value("layout", lstore ? lstore->label() : layout.name);
+    menu().set_value("layout", lstore ? lstore->label() : layout.name.str());
     menu().set_value("depth", std::string(color_depth_name(depth)));
     menu().set_checked("ambiguous", ambiguous);
   }
@@ -965,7 +965,7 @@ struct App {
   // this layout's — otherwise authoring roll's menu in the studio reports every one of
   // roll's actions as undeclared, which is finding 2 again in a third place.
   void declare_actions() {
-    std::vector<ActionDecl> declared = effective_layout().actions;
+    std::vector<ActionDecl> declared = action_decls(effective_layout().actions);
     if (profile)
       for (const ActionDecl& a : profile->actions)
         if (std::none_of(declared.begin(), declared.end(), [&](const ActionDecl& d) { return d.name == a.name; })) declared.push_back(a);

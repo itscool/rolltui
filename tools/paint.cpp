@@ -152,7 +152,7 @@ struct App {
     windows.bind_rows("brush", [this](Rows& out) { out.add("brush", brush); out.add("marks", std::to_string(marks())); });
     windows.set_help("", help_scopes(), "");
     stack.set_base(layout.base);
-    bindings.declare(layout.actions, {});  // the SCREEN says what this app can do (Phase 10 m4)
+    bindings.declare(action_decls(layout.actions), {});  // the SCREEN says what this app can do (Phase 10 m4)
   }
   static const std::vector<std::string>& help_scopes() {
     // The SCREEN's own actions first: they are the ones a person came to this app for,
@@ -166,7 +166,7 @@ struct App {
   void set_layout(Layout l) {
     layout = std::move(l);
     stack.set_base(layout.base);
-    bindings.declare(layout.actions, {});
+    bindings.declare(action_decls(layout.actions), {});
   }
 
   void prepare() {
@@ -220,7 +220,7 @@ AppProfile paint_profile() {
   if (const std::optional<Layout> own = load_layout(kDefaultLayout, rep)) {
     p.min_width = own->min_width;
     p.min_height = own->min_height;
-    p.actions = own->actions;
+    p.actions = action_decls(own->actions);
   }
   p.kinds.push_back({"canvas", SourceRule::Required, "a sheet the app paints on"});
   p.rows.push_back({"brush", {{"brush", "#"}, {"marks", "0"}}});

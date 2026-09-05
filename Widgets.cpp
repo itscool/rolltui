@@ -186,34 +186,39 @@ class WidgetBase : public Widget {
   const WidgetEnv& env() const { return w_->env(); }
   bool amb() const { return w_->env().ambiguous_wide; }
   const Bindings& binds() const { return w_->bindings(); }
-  const Document* document(const std::string& name) const {
+  // `name` is `std::string_view` rather than `const std::string&` (Phase 17: `Content::source`
+  // — every caller's `name` argument — is a `RolltuiStr` now, and binding it to a
+  // `const std::string&` parameter is not a conversion the language offers; `string_view`
+  // accepts a `RolltuiStr`, a `std::string`, or a literal alike, and `.data()/.size()` read
+  // the same either way).
+  const Document* document(std::string_view name) const {
     return static_cast<const Document*>(rolltui_windows_document(w_->handle(), name.data(), name.size()));
   }
   // rows/submit/note: an EXISTENCE check (`problem()`'s question, which must not invoke a
   // host's callable just to answer it) and a separate CALL — the same two questions the
   // std::function maps answered before, just asked of the boundary now.
-  bool has_rows(const std::string& name) const {
+  bool has_rows(std::string_view name) const {
     return rolltui_windows_has_rows(w_->handle(), name.data(), name.size()) != 0;
   }
-  void call_rows(const std::string& name, Rows& out) const {
+  void call_rows(std::string_view name, Rows& out) const {
     rolltui_windows_call_rows(w_->handle(), name.data(), name.size(), &out);
   }
-  bool has_submit(const std::string& name) const {
+  bool has_submit(std::string_view name) const {
     return rolltui_windows_has_submit(w_->handle(), name.data(), name.size()) != 0;
   }
-  void call_submit(const std::string& name, const std::string& text) const {
+  void call_submit(std::string_view name, const std::string& text) const {
     rolltui_windows_call_submit(w_->handle(), name.data(), name.size(), text.data(), text.size());
   }
-  bool has_note(const std::string& name) const {
+  bool has_note(std::string_view name) const {
     return rolltui_windows_has_note(w_->handle(), name.data(), name.size()) != 0;
   }
-  void call_note(const std::string& name, Note& out) const {
+  void call_note(std::string_view name, Note& out) const {
     rolltui_windows_call_note(w_->handle(), name.data(), name.size(), &out);
   }
   // A menu file the host carries in its binary — Widgets.hpp's middle rung. `out` is a
   // BORROW valid only as long as the caller's own use already assumed (until the name is
   // re-added or `w_` is destroyed), which is why every caller of this copies it at once.
-  bool host_menu(const std::string& name, std::string_view& out) const {
+  bool host_menu(std::string_view name, std::string_view& out) const {
     std::size_t len = 0;
     const char* p = rolltui_windows_host_menu(w_->handle(), name.data(), name.size(), &len);
     if (!p) return false;
@@ -512,7 +517,7 @@ class MenuWidget : public WidgetBase {
     stamp_ = stamp;
     notes_.clear();
     if (origin.empty()) {
-      m_.set_root(MenuItem::submenu(content.source, content.source, {}));
+      m_.set_root(MenuItem::submenu(content.source.str(), content.source.str(), {}));
       problem_ = "no menu file '" + content.source + "' (looked for " +
                  (user_path().empty() ? "menus/" + content.source + ".json under a preset directory (none set)" : "'" + user_path() + "'") +
                  ", the host's menus and the shipped ones)";
@@ -521,7 +526,7 @@ class MenuWidget : public WidgetBase {
     MenuLoadReport rep;
     std::optional<MenuItem> root = menu_from_json(text, rep);
     if (!root) {
-      m_.set_root(MenuItem::submenu(content.source, content.source, {}));
+      m_.set_root(MenuItem::submenu(content.source.str(), content.source.str(), {}));
       problem_ = "menu file (" + origin + ") is unusable: " + rep.error;
       return;
     }
@@ -633,7 +638,7 @@ class ScrollTextWidget : public WidgetBase {
 class TextWidget : public ScrollTextWidget {
  public:
   using ScrollTextWidget::ScrollTextWidget;
-  std::string text() const override { return content.source; }
+  std::string text() const override { return content.source.str(); }
 };
 
 // file:<path> — re-read when the file's mtime changes, so a dropped-in file shows up.
@@ -651,7 +656,7 @@ class FileWidget : public ScrollTextWidget {
 
  private:
   std::string path() const {
-    const std::string& p = content.source;
+    const std::string p = content.source.str();
     if (!p.empty() && p[0] == '/') return p;
     return dir().empty() ? p : std::string(dir()) + "/" + p;
   }
@@ -681,7 +686,7 @@ class HelpWidget : public ScrollTextWidget {
   std::string problem() const override {
     if (content.source.empty()) return {};
     const std::vector<std::string>& all = w_->help_scopes();
-    if (std::find(all.begin(), all.end(), content.source) != all.end()) return {};
+    if (std::find(all.begin(), all.end(), content.source.str()) != all.end()) return {};
     std::string known;
     for (const std::string& s : all) known += (known.empty() ? "" : " | ") + s;
     return "'" + content.source + "' is not one of this app's key scopes (" + known + ")";

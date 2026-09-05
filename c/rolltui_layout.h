@@ -70,6 +70,21 @@
 #include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
+#include <string_view>
+
+namespace rolltui {
+// ONE spelling of a content's kind, whether it is the library's own (rung 1) or a host's
+// registered one (rung 2, `Registered`) — Layout.hpp states the vocabulary; the enum lives
+// here, beside the registry that resolves it, for the same reason `Border`/`Anchor` are
+// declared beside `RolltuiLayoutNode` in `rolltui_layout_tree.h` rather than left to a
+// C++-only header: `RolltuiContent` below needs a concrete type for its `kind` field. An
+// opaque, already-complete enum with a fixed underlying type — nothing about this changes by
+// moving; every existing `WidgetKind::Transcript` etc. still names the same value.
+enum class WidgetKind : unsigned char { Transcript, Input, Menu, Rows, Text, File, Help, Registered };
+}  // namespace rolltui
+#endif
+
+#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -197,10 +212,42 @@ void rolltui_widget_kind_clear(void);
  * of a constant; NULL when `legacy` is not one of them. */
 const char* rolltui_migrated_content(const char* legacy, size_t len, size_t* out_len);
 
-/* ---- content: parsing "kind[:source]" and formatting it back, with the English (Phase 17
- * m2). `rolltui::Content` keeps its own std::string shape (see the header comment); this is
- * the DECISION and every SENTENCE, so the shim only slices `text` at the offsets handed
- * back. ------------------------------------------------------------------------------------ */
+/* ---- content: the value type, and parsing/formatting it, with the English (Phase 17 m2/m5).
+ * `rolltui::Content` IS `RolltuiContent` below — the Phase 14 one-definition rule, same as
+ * `Node`/`Layer` — so `Widgets.cpp`'s `Content content;` member and the ~20 sites reading
+ * `.source` are reading a `RolltuiStr` now rather than a `std::string`; the field keeps every
+ * operation those sites use (`.data()`, `.size()`, `.empty()`, `==`, assignment from a
+ * `std::string`/`string_view`), so most survive unchanged, the same property that let
+ * `rolltui_document.h`'s port leave ~82 call sites untouched. The DECISION and every SENTENCE
+ * a bad content produces live entirely in the functions below; the shim (`Layout.cpp`) only
+ * slices `text` at the offsets handed back. ------------------------------------------------- */
+
+/* PLAIN DATA: `kind` (POD enum) plus two `RolltuiStr`s. Every member already has correct
+ * value semantics on its own (`RolltuiStr`'s, `WidgetKind`'s as a scalar), so — exactly like
+ * `RolltuiLayoutNode` one level up, which relies on the same thing for its three `RolltuiStr`s
+ * and its `RolltuiNodeList` — this type declares NO constructor, destructor or assignment of
+ * its own: the compiler-generated ones already do the right thing by construction, and
+ * `operator==` needs only `= default` because `RolltuiStr::operator==` already exists. */
+typedef struct RolltuiContent {
+#ifdef __cplusplus
+  rolltui::WidgetKind kind = rolltui::WidgetKind::Text;
+#else
+  unsigned char kind;
+#endif
+  RolltuiStr source;          /* the part after the first ':' — a bound name, a literal, a path */
+  RolltuiStr registered_name; /* the host's kind name; empty for every library kind */
+#ifdef __cplusplus
+  bool operator==(const RolltuiContent&) const = default;
+#endif
+} RolltuiContent;
+
+/* A C caller's pair, for the same reason every owned type here has one — `kind` becomes Text
+ * and both strings empty either way. C++ needs neither (see above) but they exist so a pure
+ * C caller has the same capability. */
+void rolltui_content_init(RolltuiContent* c);
+void rolltui_content_release(RolltuiContent* c);
+void rolltui_content_copy(RolltuiContent* to, const RolltuiContent* from);
+int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b);
 
 #define ROLLTUI_CONTENT_PROBLEM_NONE 0
 #define ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND 1
@@ -286,19 +333,88 @@ void rolltui_layout_report_release(RolltuiLayoutReport* r); /* frees everything;
 int rolltui_layout_report_clean(const RolltuiLayoutReport* r);
 
 /* One entry of a layout file's "actions" object: a name and its English description. Named
- * apart from Bindings' own `ActionDecl` (which this file does not include) because this is
- * the layout FILE's vocabulary — "the actions THIS SCREEN emits" (Layout.hpp) — read by the
- * shim into whatever `rolltui::ActionDecl` is; the two structs happening to hold the same
- * two strings is a fact about the file format, not a shared type. */
+ * apart from Bindings' own `ActionDecl` (which this file does not include, keeping the
+ * layering the header comment above states: a layout FILE's vocabulary must not depend on
+ * Bindings' C++-only vocabulary) — this is the layout FILE's own two strings, "the actions
+ * THIS SCREEN emits" (Layout.hpp). Phase 17: it is ALSO now `RolltuiLayout::actions`' own
+ * element type (below), not only the loader's transient one — the two structs holding the
+ * same two strings was a fact about the file format before it was a shared type, and now it
+ * is both without this file ever naming `rolltui::ActionDecl`; the shim (`Layout.cpp`)
+ * converts to that std::string-based type at the one seam a handful of unported hosts still
+ * need it (`action_decls()`). */
 typedef struct RolltuiLayoutAction {
   RolltuiStr name;
   RolltuiStr description;
 } RolltuiLayoutAction;
 
-/* The parsed layout: a TRANSIENT carrier, never retained past one load (see the header
- * comment) — `name`/`min_width`/`min_height`/`actions` are the fields `rolltui::Layout`
- * cannot share; `base`/`popups` already ARE `RolltuiLayer`, so the shim MOVES those two
- * straight into its own `Layout` rather than copying a tree it is about to release anyway. */
+/* An OWNED, growable array of `RolltuiLayoutAction` VALUES — `RolltuiLayout::actions`' storage.
+ * A flat array, the same shape as `RolltuiLoadedLayout::actions` below and for the same
+ * reason: nothing holds an `Action*` across a mutation (a caller reads one, or appends, or
+ * removes by index), so there is no address-stability property worth an extra indirection
+ * for, and each element is two `RolltuiStr`s — already trivially relocatable. */
+typedef struct RolltuiActionList {
+  RolltuiLayoutAction* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0);
+  size_t cap ROLLTUI_DEFAULT(0);
+
+#ifdef __cplusplus
+  RolltuiActionList() = default;
+  RolltuiActionList(const RolltuiActionList& o) { copy_from(o); }
+  RolltuiActionList(RolltuiActionList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  RolltuiActionList& operator=(const RolltuiActionList& o) {
+    if (this != &o) copy_from(o);
+    return *this;
+  }
+  RolltuiActionList& operator=(RolltuiActionList&& o) noexcept;
+  ~RolltuiActionList();
+
+  std::size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  RolltuiLayoutAction* data() { return v; }
+  const RolltuiLayoutAction* data() const { return v; }
+  RolltuiLayoutAction& operator[](std::size_t i) { return v[i]; }
+  const RolltuiLayoutAction& operator[](std::size_t i) const { return v[i]; }
+  RolltuiLayoutAction& back() { return v[n - 1]; }
+  const RolltuiLayoutAction& back() const { return v[n - 1]; }
+  RolltuiLayoutAction* begin() { return v; }
+  RolltuiLayoutAction* end() { return v + n; }
+  const RolltuiLayoutAction* begin() const { return v; }
+  const RolltuiLayoutAction* end() const { return v + n; }
+  void push_back(const RolltuiLayoutAction& a);
+  // Removes the action named `name` (a no-op when none is) — the editor's "remove this
+  // action", the one mutation a host ever asks of this list by name rather than by index.
+  void erase_name(std::string_view name);
+  void clear();
+  bool operator==(const RolltuiActionList& o) const;
+
+ private:
+  void copy_from(const RolltuiActionList& o);
+#endif
+} RolltuiActionList;
+
+void rolltui_action_list_release(RolltuiActionList* l);
+void rolltui_action_list_clear(RolltuiActionList* l);
+void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* from);
+size_t rolltui_action_list_count(const RolltuiActionList* l);
+RolltuiLayoutAction* rolltui_action_list_at(const RolltuiActionList* l, size_t i);
+/* Appends an EMPTY action and returns it — the C's `emplace_back`. */
+RolltuiLayoutAction* rolltui_action_list_add(RolltuiActionList* l);
+void rolltui_action_list_remove(RolltuiActionList* l, size_t i); /* frees it, shifts the rest down */
+void rolltui_action_list_remove_name(RolltuiActionList* l, const char* name, size_t len); /* no-op if absent */
+int rolltui_action_list_equal(const RolltuiActionList* a, const RolltuiActionList* b);
+
+/* The parsed layout: a TRANSIENT carrier, never retained past one load. Phase 17 gave
+ * `rolltui::Layout` this same shape (`RolltuiLayout` below shares `RolltuiStr name` and
+ * `RolltuiActionList actions` with it byte-for-byte), so the reason this stays a SEPARATE
+ * struct is no longer "the fields cannot be shared" — it is that this one is scoped to a
+ * single `rolltui_load_layout*` call and the loader's own bookkeeping (`actions_cap` growing
+ * across a parse that has not decided the file is even usable yet) has no business being
+ * `RolltuiLayout`'s API. The shim converts once, right after a load (`Layout.cpp`'s
+ * `loaded_to_layout`): `base`/`popups` already ARE `RolltuiLayer`/`RolltuiLayer*`, so that
+ * conversion MOVES rather than copies a tree it is about to release anyway. */
 typedef struct RolltuiLoadedLayout {
   RolltuiStr name;
   int min_width, min_height;
@@ -308,6 +424,40 @@ typedef struct RolltuiLoadedLayout {
   RolltuiLayer* popups;
   size_t popups_n, popups_cap;
 } RolltuiLoadedLayout;
+
+/* ---- the layout itself: the ENDURING value a host holds (Phase 17) -------------------------
+ *
+ * `rolltui::Layout` IS this struct — the same one-definition rule as `Node`/`Layer`/`Dim`.
+ * Every member already has correct value semantics on its own (`RolltuiStr`, the two lists
+ * above, `RolltuiLayer`), so — exactly like `RolltuiLayoutNode` and unlike the two OWNING
+ * ARRAYS above it — this type declares no constructor, destructor or copy/move of its own;
+ * the compiler-generated ones already do the right thing by recursively using each member's.
+ * `popup()` is the one convenience worth a member function (a host reaches for it by name at
+ * ~a dozen call sites): a linear scan needs nothing this header does not already have. */
+typedef struct RolltuiLayout {
+  RolltuiStr name;
+  int min_width ROLLTUI_DEFAULT(0);
+  int min_height ROLLTUI_DEFAULT(0);
+  RolltuiActionList actions; /* the actions this screen emits, in file order */
+  RolltuiLayer base;
+  RolltuiLayerList popups; /* declared placements a host pushes by id */
+
+#ifdef __cplusplus
+  const RolltuiLayer* popup(std::string_view id) const {
+    for (std::size_t i = 0; i < popups.size(); ++i)
+      if (popups[i].id == id) return &popups[i];
+    return nullptr;
+  }
+  bool operator==(const RolltuiLayout&) const = default;
+#endif
+} RolltuiLayout;
+
+void rolltui_layout_init(RolltuiLayout* l);    /* zeroes; inits `base` */
+void rolltui_layout_release(RolltuiLayout* l); /* frees name/actions/base/popups; zeroes */
+void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from);
+int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b);
+/* The C-callable form of `RolltuiLayout::popup()`, for a pure C caller. */
+const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len);
 
 void rolltui_loaded_layout_init(RolltuiLoadedLayout* l);    /* zeroes; inits `base` */
 void rolltui_loaded_layout_release(RolltuiLoadedLayout* l); /* frees name/actions/base/popups; zeroes */

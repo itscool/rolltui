@@ -323,7 +323,14 @@ int main() {
         // of the styling vocabulary as the boundary carries it, exposed because the
         // TRANSCRIPT renders entries through `rolltui_md_render` directly. One table of those
         // bytes in the library, handed over by pointer rather than copied a second time.
-        {"Layout.hpp", 10},      {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
+        // Layout.hpp 10 → 9 (Phase 17, this task): a REMOVAL, which this census is meant to
+        // catch just as loudly as an addition. `const Layer* popup(std::string_view id)
+        // const;` left this file's TEXT — `Layout` is `RolltuiLayout` now (one definition,
+        // the Node/Layer rule), and `popup()` is a member of that C struct declared inline in
+        // `rolltui/c/rolltui_layout.h`, which this census does not scan (headers_only(true)
+        // is `.hpp` files only). The borrow itself did not go away — it is stated at that
+        // struct's own definition instead — only its address in this text did.
+        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 4},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -468,7 +475,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 112, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 111, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

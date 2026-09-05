@@ -1,26 +1,24 @@
-// rolltui/Layout.cpp — the SHIM over `rolltui/c/rolltui_layout.h`: RAII, and the conversion at
-// the few places `rolltui::Layout`/`rolltui::Content`/`rolltui::ActionDecl` still cross this
-// boundary with their own `std::string`/`std::vector` shape. `rolltui_layout.c` is now the
-// ONLY implementation (this file's one-time C++ counterpart, `LayoutCpp.cpp`, is one of the
-// sixteen `*Cpp.cpp` files CMakeLists.txt records as deleted once `-DROLLTUI_C` — Phase 15
-// m5's two-implementation rollback flag — was spent, 2026-09-04); this file is the C++ API
-// over it (Phase 15 m5 for placement/composition/the stack; the loader, the built-ins,
-// `Content` and every English sentence moved into the C at Phase 17 m2, once
-// `rolltui/c/rolltui_json.h` gave that side a tree it could walk without owing `json::Value`
-// anything).
+// rolltui/Layout.cpp — the SHIM over `rolltui/c/rolltui_layout.h`: RAII (what little of it
+// this module still needs), and the conversion at the few places a caller genuinely needs
+// `rolltui::ActionDecl` (Bindings.hpp's own `std::string` shape) rather than the C forms.
+// `rolltui_layout.c` is the ONLY implementation (this file's one-time C++ counterpart,
+// `LayoutCpp.cpp`, is one of the sixteen `*Cpp.cpp` files CMakeLists.txt records as deleted
+// once `-DROLLTUI_C` — Phase 15 m5's two-implementation rollback flag — was spent,
+// 2026-09-04); this file is the C++ API over it.
 //
-// WHAT STAYS HERE AND WHY, since it is most of what remains: `rolltui::Layout` keeps its own
-// `std::string name` and `std::vector<ActionDecl> actions` (`Widgets.cpp`, `paint.cpp`,
-// `studio.cpp` and `layout_editor.cpp` erase-remove, reassign and push_back a real vector at
-// call sites this task does not touch — `Layout.hpp`'s own exception, the one
-// `rolltui/c/rolltui_json.h`'s `Value` took first, for the same reason), and `rolltui::Content`
-// keeps its own `std::string source`/`registered_name` for the same reason one level down
-// (`Widgets.cpp` alone reads `content.source` as a `std::string` at ~20 call sites). So this
-// file's job is narrow but real: build a `RolltuiLayoutHooks` bridging Role's vocabulary (which
-// belongs to `Style.hpp`, never to a C file — the m2 rule at `rolltui_diff.h`) and Bindings'
-// "which scopes are the library's", and unpack the transient `RolltuiLoadedLayout` /
-// `RolltuiLayoutReport` the C loader fills into this module's own C++ types, once per load —
-// never retained past that, and never a second implementation of the walk itself.
+// PHASE 17 (this task): `rolltui::Layout`, `rolltui::Content` and `WidgetKind` ARE their C
+// forms now (`RolltuiLayout`, `RolltuiContent`, `rolltui::WidgetKind` — Layout.hpp's `using`
+// aliases), the same one-definition rule `Node`/`Layer` already used. `Layout::actions` is a
+// `RolltuiActionList` and `Layout::popups` a `RolltuiLayerList` — count/at/add/remove handles
+// over `RolltuiLayoutAction`/`RolltuiLayer` values — rather than `std::vector`, which is what
+// makes `Layout` a real C struct instead of a shim over one. The one thing this still bridges
+// is `rolltui::ActionDecl` (Bindings.hpp): it stays its own `std::string`-shaped type for the
+// many callers this task does not touch (`Bindings::declare`, `AppProfile::actions`), so
+// `action_decls()` below is the one seam that builds a `std::vector<ActionDecl>` from a
+// `RolltuiActionList` where a caller still needs one. This file's other job is unchanged:
+// build a `RolltuiLayoutHooks` bridging Role's vocabulary (`Style.hpp`'s, never a C file's —
+// the m2 rule at `rolltui_diff.h`) and Bindings' "which scopes are the library's", and unpack
+// the transient `RolltuiLoadedLayout`/`RolltuiLayoutReport` the C loader fills, once per load.
 #include "rolltui/Layout.hpp"
 
 #include "rolltui/Lifetime.hpp"
@@ -28,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 
 #include "rolltui/Json.hpp"
 #include "rolltui/Scratch.hpp"
@@ -42,6 +41,50 @@ namespace rolltui::json {
 RolltuiJsonValue* value_to_c(const Value& v);
 Value value_from_c(const RolltuiJsonValue* v);
 }  // namespace rolltui::json
+
+// ---- RolltuiActionList: the C++ edge (Phase 17) -----------------------------------------------
+// `RolltuiActionList` (rolltui_layout.h) is declared at GLOBAL scope, like every `Rolltui*` C
+// struct, so its out-of-line members are defined here — OUTSIDE `namespace rolltui` below —
+// exactly where `LayoutTree.cpp` defines `RolltuiNodeList`'s and `RolltuiLayer`'s for the same
+// reason. The five special members a raw `v` needs (it has no value semantics of its own,
+// unlike `RolltuiStr`/`RolltuiLayer`) and the methods that call a C function are declared in
+// the header and defined here rather than inline, for the same reason `RolltuiNodeList`'s
+// equivalents are out-of-line in `LayoutTree.cpp`: an inline body inside the struct is parsed
+// in a complete-class context for MEMBER names, but an ordinary (non-member) name like
+// `rolltui_action_list_release` still needs to be declared by that point in the file, and
+// these functions are declared AFTER the struct, not before it.
+
+RolltuiActionList::~RolltuiActionList() { rolltui_action_list_release(this); }
+
+void RolltuiActionList::copy_from(const RolltuiActionList& o) { rolltui_action_list_copy(this, &o); }
+
+RolltuiActionList& RolltuiActionList::operator=(RolltuiActionList&& o) noexcept {
+  if (this != &o) {
+    rolltui_action_list_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+
+void RolltuiActionList::push_back(const RolltuiLayoutAction& a) {
+  RolltuiLayoutAction* p = rolltui_action_list_add(this);
+  rolltui_str_set(&p->name, a.name.p, a.name.n);
+  rolltui_str_set(&p->description, a.description.p, a.description.n);
+}
+
+void RolltuiActionList::erase_name(std::string_view name) {
+  rolltui_action_list_remove_name(this, name.data(), name.size());
+}
+
+void RolltuiActionList::clear() { rolltui_action_list_clear(this); }
+
+bool RolltuiActionList::operator==(const RolltuiActionList& o) const {
+  return rolltui_action_list_equal(this, &o) != 0;
+}
 
 namespace rolltui {
 
@@ -195,8 +238,8 @@ constexpr RolltuiLayoutHooks kHooks = {
 
 }  // namespace
 
-// ---- content: parsing and formatting — the C's algorithm and English, this file's std::string
-// shape (see the header comment for why Content itself does not cross) -----------------------
+// ---- content: parsing and formatting — the C's algorithm and English; `Content` itself is
+// `RolltuiContent` now (Layout.hpp), so this is only the two rungs' dispatch --------------------
 
 std::optional<Content> parse_content(std::string_view text, std::string* why, ContentProblem* what) {
   unsigned char ordinal = 0, problem = ROLLTUI_CONTENT_PROBLEM_NONE;
@@ -214,11 +257,11 @@ std::optional<Content> parse_content(std::string_view text, std::string* why, Co
   Content c;
   if (is_host) {
     c.kind = WidgetKind::Registered;
-    c.registered_name = std::string(name, name_len);
+    c.registered_name = std::string_view(name, name_len);
   } else {
     c.kind = static_cast<WidgetKind>(ordinal);
   }
-  c.source = std::string(source, source_len);
+  c.source = std::string_view(source, source_len);
   return c;
 }
 
@@ -226,13 +269,13 @@ std::optional<Content> parse_content(std::string_view text, std::string* why, Co
 // through unjudged — see Layout.hpp for why a design tool needs that and a loader does not.
 std::optional<Content> content_for_kind(std::string_view kind_name, std::string source) {
   Content c;
-  c.source = std::move(source);
+  c.source = source;
   unsigned char ordinal = 0;
   switch (rolltui_widget_kind_resolve(kind_name.data(), kind_name.size(), &ordinal, nullptr, nullptr, nullptr)) {
     case ROLLTUI_KIND_LIBRARY: c.kind = static_cast<WidgetKind>(ordinal); return c;
     case ROLLTUI_KIND_HOST:
       c.kind = WidgetKind::Registered;
-      c.registered_name = std::string(kind_name);
+      c.registered_name = kind_name;
       return c;
     default: return std::nullopt;
   }
@@ -252,13 +295,8 @@ std::optional<std::string> migrated_content(std::string_view legacy) {
   return std::nullopt;
 }
 
-// ---- tree basics -------------------------------------------------------------------------
-
-const Layer* Layout::popup(std::string_view id) const {
-  for (const Layer& l : popups)
-    if (l.id == id) return &l;
-  return nullptr;
-}
+// `Layout::popup()` is now inline on `RolltuiLayout` itself (rolltui_layout.h) — a linear
+// scan needs nothing this file has that header does not already have.
 
 // ---- names and text forms ----------------------------------------------------------------
 // Anchor and border names are THIS module's own vocabulary (Layout.hpp states both closed
@@ -329,11 +367,31 @@ std::string action_decl_problem(std::string_view name) {
   return out.str();
 }
 
+// The conversion `paint.cpp`/`studio.cpp` reach for where a `std::vector<ActionDecl>` is
+// still what a caller (`Bindings::declare`, an `AppProfile::actions` built from a Layout's)
+// needs — declared in Layout.hpp because it names `rolltui::ActionDecl`, which
+// `rolltui_layout.h` must not (see that header's note on why `RolltuiLayoutAction` is named
+// apart from it).
+std::vector<ActionDecl> action_decls(const RolltuiActionList& actions) {
+  std::vector<ActionDecl> out;
+  out.reserve(actions.size());
+  for (const RolltuiLayoutAction& a : actions) out.push_back({a.name.str(), a.description.str()});
+  return out;
+}
+
+bool operator==(const RolltuiActionList& a, const std::vector<ActionDecl>& b) {
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i)
+    if (!(a[i].name == b[i].name) || !(a[i].description == b[i].description)) return false;
+  return true;
+}
+
 namespace {
 
-// `rolltui::ActionDecl` (Bindings.hpp) <-> the C loader/dumper's own `RolltuiLayoutAction` —
-// two strings each, converted at exactly this one seam rather than reaching for a shared
-// type (see rolltui_layout.h's header comment on why the two structs are named apart).
+// `rolltui::ActionDecl` (Bindings.hpp) -> the loader's own `RolltuiLayoutAction` — needed
+// only to hand `shipped_default_actions()`'s std::string-shaped table to the loader as its
+// "no actions key at all" fallback. `Layout::actions` itself is `RolltuiActionList` already
+// (Layout.hpp) and crosses with NO conversion at all, unlike before this port.
 std::vector<RolltuiLayoutAction> actions_to_c(const std::vector<ActionDecl>& actions) {
   std::vector<RolltuiLayoutAction> out;
   out.reserve(actions.size());
@@ -344,22 +402,17 @@ std::vector<RolltuiLayoutAction> actions_to_c(const std::vector<ActionDecl>& act
 // Unpacks a filled `RolltuiLoadedLayout` into a fresh `Layout`, ONCE, right after a load —
 // never retained past this call (the carrier's whole reason for being transient; see
 // rolltui_layout.h). `base`/each popup are MOVED across (both already `RolltuiLayer`), not
-// copied: the loaded tree is about to be released either way.
+// copied: the loaded tree is about to be released either way. Each action is a two-`RolltuiStr`
+// COPY (`loaded` is released right after regardless; there is no move-from-array primitive
+// worth adding for a handful of short strings read once per load).
 Layout loaded_to_layout(RolltuiLoadedLayout& loaded) {
   Layout out;
-  out.name = loaded.name.str();
+  out.name = loaded.name;
   out.min_width = loaded.min_width;
   out.min_height = loaded.min_height;
-  out.actions.reserve(loaded.actions_n);
-  for (std::size_t i = 0; i < loaded.actions_n; ++i)
-    out.actions.push_back({loaded.actions[i].name.str(), loaded.actions[i].description.str()});
+  for (std::size_t i = 0; i < loaded.actions_n; ++i) out.actions.push_back(loaded.actions[i]);
   rolltui_layer_move(&out.base, &loaded.base);
-  out.popups.reserve(loaded.popups_n);
-  for (std::size_t i = 0; i < loaded.popups_n; ++i) {
-    Layer p;
-    rolltui_layer_move(&p, &loaded.popups[i]);
-    out.popups.push_back(std::move(p));
-  }
+  for (std::size_t i = 0; i < loaded.popups_n; ++i) out.popups.push_back(std::move(loaded.popups[i]));
   return out;
 }
 
@@ -410,11 +463,14 @@ std::optional<Layout> load_layout(const json::Value& root, LayoutLoadReport& rep
   return out;
 }
 
+// `layout.actions`/`layout.popups` cross with NO conversion now — both are already the C
+// shapes `rolltui_layout_to_json_value`/`_text` want (Layout.hpp), where this used to build
+// a temporary `std::vector<RolltuiLayoutAction>` via `actions_to_c` on every dump.
+
 json::Value layout_to_json_value(const Layout& layout) {
-  const std::vector<RolltuiLayoutAction> actions = actions_to_c(layout.actions);
   RolltuiJsonValue* c =
       rolltui_layout_to_json_value(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
-                                   actions.data(), actions.size(), &layout.base, layout.popups.data(),
+                                   layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
                                    layout.popups.size(), &kHooks);
   json::Value out = json::value_from_c(c);
   rolltui_json_free(c);
@@ -422,10 +478,9 @@ json::Value layout_to_json_value(const Layout& layout) {
 }
 
 std::string layout_to_json(const Layout& layout) {
-  const std::vector<RolltuiLayoutAction> actions = actions_to_c(layout.actions);
   Str out;
   rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
-                              actions.data(), actions.size(), &layout.base, layout.popups.data(),
+                              layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
                               layout.popups.size(), &kHooks, &out);
   return out.str();
 }

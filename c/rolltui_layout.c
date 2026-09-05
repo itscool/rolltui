@@ -934,6 +934,30 @@ void rolltui_content_format(const char* kind_name, size_t kind_name_len, const c
   }
 }
 
+/* ---- RolltuiContent: the value itself, for a pure C caller (C++ needs none of these — see
+ * the header comment) --------------------------------------------------------------------------- */
+
+void rolltui_content_init(RolltuiContent* c) { memset(c, 0, sizeof *c); /* kind 0 == Text */ }
+
+void rolltui_content_release(RolltuiContent* c) {
+  if (!c) return;
+  rolltui_str_free(&c->source);
+  rolltui_str_free(&c->registered_name);
+  rolltui_content_init(c);
+}
+
+void rolltui_content_copy(RolltuiContent* to, const RolltuiContent* from) {
+  if (to == from) return;
+  to->kind = from->kind;
+  rolltui_str_set(&to->source, from->source.p, from->source.n);
+  rolltui_str_set(&to->registered_name, from->registered_name.p, from->registered_name.n);
+}
+
+int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b) {
+  return a->kind == b->kind && rolltui_str_eq(&a->source, b->source.p, b->source.n) &&
+         rolltui_str_eq(&a->registered_name, b->registered_name.p, b->registered_name.n);
+}
+
 /* ---- names: anchors and borders — Layout's OWN vocabulary, unlike Role ------------------------- */
 
 static const char* const kAnchorNames[9] = {"top-left",     "top",    "top-right", "left",   "center",
@@ -1073,6 +1097,115 @@ void rolltui_loaded_layout_release(RolltuiLoadedLayout* l) {
   for (i = 0; i < l->popups_n; ++i) rolltui_layer_release(&l->popups[i]);
   rolltui_mem_free(l->popups);
   memset(l, 0, sizeof *l);
+}
+
+/* ---- RolltuiActionList: an owned array of RolltuiLayoutAction values --------------------------- */
+/* GROWING AMORTISED, exactly like RolltuiLayerList right beside it: a RolltuiLayoutAction is
+ * two RolltuiStrs and nothing else, so it is trivially relocatable the same way. */
+
+size_t rolltui_action_list_count(const RolltuiActionList* l) { return l->n; }
+
+RolltuiLayoutAction* rolltui_action_list_at(const RolltuiActionList* l, size_t i) {
+  return i < l->n ? &l->v[i] : NULL;
+}
+
+RolltuiLayoutAction* rolltui_action_list_add(RolltuiActionList* l) {
+  l->v = (RolltuiLayoutAction*)rolltui_grow_zeroed(l->v, &l->cap, l->n + 1, sizeof *l->v);
+  return &l->v[l->n++];
+}
+
+void rolltui_action_list_remove(RolltuiActionList* l, size_t i) {
+  if (i >= l->n) return;
+  rolltui_str_free(&l->v[i].name);
+  rolltui_str_free(&l->v[i].description);
+  memmove(&l->v[i], &l->v[i + 1], (l->n - i - 1) * sizeof *l->v);
+  --l->n;
+}
+
+void rolltui_action_list_remove_name(RolltuiActionList* l, const char* name, size_t len) {
+  size_t i;
+  for (i = 0; i < l->n; ++i)
+    if (rolltui_str_eq(&l->v[i].name, name, len)) {
+      rolltui_action_list_remove(l, i);
+      return;
+    }
+}
+
+void rolltui_action_list_clear(RolltuiActionList* l) {
+  size_t i;
+  for (i = 0; i < l->n; ++i) {
+    rolltui_str_free(&l->v[i].name);
+    rolltui_str_free(&l->v[i].description);
+  }
+  l->n = 0; /* the array stays */
+}
+
+void rolltui_action_list_release(RolltuiActionList* l) {
+  rolltui_action_list_clear(l);
+  rolltui_mem_free(l->v);
+  l->v = NULL;
+  l->cap = 0;
+}
+
+void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* from) {
+  size_t i;
+  if (to == from) return;
+  rolltui_action_list_clear(to);
+  to->v = (RolltuiLayoutAction*)rolltui_grow_zeroed(to->v, &to->cap, from->n, sizeof *to->v);
+  for (i = 0; i < from->n; ++i) {
+    rolltui_str_set(&to->v[i].name, from->v[i].name.p, from->v[i].name.n);
+    rolltui_str_set(&to->v[i].description, from->v[i].description.p, from->v[i].description.n);
+  }
+  to->n = from->n;
+}
+
+int rolltui_action_list_equal(const RolltuiActionList* a, const RolltuiActionList* b) {
+  size_t i;
+  if (a->n != b->n) return 0;
+  for (i = 0; i < a->n; ++i) {
+    if (!rolltui_str_eq(&a->v[i].name, b->v[i].name.p, b->v[i].name.n)) return 0;
+    if (!rolltui_str_eq(&a->v[i].description, b->v[i].description.p, b->v[i].description.n)) return 0;
+  }
+  return 1;
+}
+
+/* ---- RolltuiLayout: the enduring value (see the header comment) -------------------------------- */
+
+void rolltui_layout_init(RolltuiLayout* l) {
+  memset(l, 0, sizeof *l);
+  rolltui_layer_init(&l->base);
+}
+
+void rolltui_layout_release(RolltuiLayout* l) {
+  if (!l) return;
+  rolltui_str_free(&l->name);
+  rolltui_action_list_release(&l->actions);
+  rolltui_layer_release(&l->base);
+  rolltui_layer_list_release(&l->popups);
+  rolltui_layout_init(l);
+}
+
+void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from) {
+  if (to == from) return;
+  rolltui_str_set(&to->name, from->name.p, from->name.n);
+  to->min_width = from->min_width;
+  to->min_height = from->min_height;
+  rolltui_action_list_copy(&to->actions, &from->actions);
+  rolltui_layer_copy(&to->base, &from->base);
+  rolltui_layer_list_copy(&to->popups, &from->popups);
+}
+
+int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b) {
+  return rolltui_str_eq(&a->name, b->name.p, b->name.n) && a->min_width == b->min_width &&
+         a->min_height == b->min_height && rolltui_action_list_equal(&a->actions, &b->actions) &&
+         rolltui_layer_equal(&a->base, &b->base) && rolltui_layer_list_equal(&a->popups, &b->popups);
+}
+
+const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len) {
+  size_t i;
+  for (i = 0; i < l->popups.n; ++i)
+    if (rolltui_str_eq(&l->popups.v[i].id, id, len)) return &l->popups.v[i];
+  return NULL;
 }
 
 void rolltui_layout_read_actions_key(const RolltuiJsonValue* root, RolltuiLayoutAction** actions, size_t* actions_n,
