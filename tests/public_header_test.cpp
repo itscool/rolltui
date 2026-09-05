@@ -194,7 +194,10 @@ int main() {
     }
     // RECORDED 2026-09-04 at 17 (the library's own tests and tools; roll's src/ and include/
     // are counted by roll's suite, not this one). Lower it whenever a conversion lands.
-    const int kCeiling = 17;
+    // 17 -> 14, 2026-09-05: the conversions that landed between are the four theme/effects
+    // tests, layout_test and the preset-domain work; the ceiling had simply not been dropped
+    // behind them, which is the one way a ratchet quietly stops ratcheting.
+    const int kCeiling = 14;
     std::string joined;
     for (const std::string& n : names) joined += " " + n;
     check(consumers <= kCeiling,

@@ -119,8 +119,16 @@ RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m);
 /* Depth-first, any level; NULL when absent. */
 RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
 /* A Choice's options / a Submenu's items, by COPY, then the flat list and the selection are
- * rebuilt — which is why this one is here and the three plain setters are in the shim. */
+ * rebuilt. */
 int rolltui_menu_set_options(RolltuiMenu* m, const char* id, size_t len, const RolltuiMenuItemList* options);
+/* THE THREE PLAIN SETTERS, each `find` plus one assignment, 0 when no item has that id. They
+ * lived in the shim through Phase 15 on the argument that a caller could write `find` itself —
+ * true, and the reason it stopped holding is rule 5: with `Windows::menu()` handing back a
+ * `RolltuiMenu*`, BOTH hosts write the same three-line wrapper, which is the tell that the API
+ * is wrong rather than the consumers (Phase 17 m1c). */
+int rolltui_menu_set_value(RolltuiMenu* m, const char* id, size_t len, const char* value, size_t value_len);
+int rolltui_menu_set_checked(RolltuiMenu* m, const char* id, size_t len, int checked);
+int rolltui_menu_set_enabled(RolltuiMenu* m, const char* id, size_t len, int enabled);
 
 /* ---- navigation state --------------------------------------------------------------------------- */
 void rolltui_menu_reset(RolltuiMenu* m);

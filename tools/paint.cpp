@@ -182,8 +182,8 @@ struct App {
     if (r.kind != Route::Kind::Deliver) return;
     if (windows.handle(r.window, e)) return;
     // A menu window is the host's to drive, exactly as in every other host.
-    if (Menu* m = windows.menu_at(r.window)) {
-      const MenuEvent ev = m->handle(e, bindings);
+    if (RolltuiMenu* m = windows.menu_at(r.window)) {
+      const MenuEvent ev = menu_handle(m, e, bindings);
       if (ev.kind == MenuEvent::Kind::Choose && ev.id == "brush" && !ev.value.empty()) brush = ev.value;
       if (ev.kind == MenuEvent::Kind::Activate && ev.id == "clear" && canvas()) canvas()->clear();
     }

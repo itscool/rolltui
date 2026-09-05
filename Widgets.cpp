@@ -32,24 +32,6 @@ DrawCtx& draw_ctx() {
   return c;
 }
 
-// The two event conversions the adapter needs. A `PasteEvent`'s text is a BORROW for the
-// call, which is the same window the decoder's own envelope states.
-RolltuiEvent c_event_of(const Event& e) {
-  RolltuiEvent ev{};
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_KEY;
-    ev.key = chord_of(*k);
-  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_MOUSE;
-    ev.mouse = *m;
-  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_PASTE;
-    ev.text = p->text.data();
-    ev.text_len = p->text.size();
-  }
-  return ev;
-}
-
 // Declared here and defined with the vtable adapter below: `register_kind` needs it and sits
 // above the concrete kinds it wraps.
 RolltuiWidget as_widget(std::unique_ptr<Widget> w);
@@ -58,6 +40,27 @@ Event event_of(const RolltuiEvent& e) {
   if (e.kind == ROLLTUI_EVENT_MOUSE) return e.mouse;
   if (e.kind == ROLLTUI_EVENT_PASTE) return PasteEvent{std::string(e.text ? e.text : "", e.text_len)};
   return key_event_of(e.key);
+}
+
+// The syntax highlighter's trampoline context: the host's callable and the two buffers the
+// translation needs, all three owned by ONE of these per `Windows` (Phase 17 m1c) and released
+// by the boundary through the `free_ctx` it was handed alongside — so the type is file-local
+// and the header never learns it exists. `Transcript.cpp` has the identical shape one level
+// down, for a standalone `rolltui::Transcript`.
+struct HighlightCtx {
+  markdown::Highlighter fn;
+  std::vector<std::string_view> lines;
+  std::vector<markdown::HighlightSpan> spans;
+};
+
+void call_highlighter(void* ctx, const char* lang, std::size_t lang_n, const RolltuiMdCodeLine* lines,
+                      std::size_t line_count, std::size_t index, RolltuiMdSpanSink emit, void* sink) {
+  HighlightCtx& h = *static_cast<HighlightCtx*>(ctx);
+  if (!h.fn) return;
+  h.lines.resize(line_count);
+  for (std::size_t i = 0; i < line_count; ++i) h.lines[i] = std::string_view(lines[i].p, lines[i].n);
+  h.spans = h.fn(std::string_view(lang, lang_n), std::span<const std::string_view>(h.lines), index);
+  for (const markdown::HighlightSpan& s : h.spans) emit(sink, s.begin, s.end, static_cast<unsigned char>(s.role));
 }
 
 }  // namespace
@@ -146,13 +149,12 @@ bool scroll_by_action(const KeyEvent& k, const Bindings& b, int page, int total,
 
 // ---- the widgets ---------------------------------------------------------------------
 
-// Phase 17 m1c: `WidgetBase`/`TranscriptWidget`/`MenuWidget` — the C++ `Widget` subclasses
-// that filled the `transcript`/`menu` kinds through the generic adapter below — are gone.
-// Both kinds are pure-C ctxs now (`rolltui/c/rolltui_widget_kinds.c`), BORROWING the
-// `RolltuiTranscript*`/`RolltuiMenu*` that `transcripts_`/`menus_` (Widgets.hpp) own, the
-// same shape `input` already used. Their construction still crosses here (`transcripts_`/
-// `menus_` are C++ maps the boundary never sees), registered in `register_builtin_kinds()`
-// below; every per-frame call is the ctx's own.
+// Phase 17 m1c: there is no concrete widget left in this file. `WidgetBase`/`TranscriptWidget`/
+// `MenuWidget` — the C++ `Widget` subclasses that filled the `transcript`/`menu` kinds through
+// the generic adapter below — are gone, and so are the three factories that were the last
+// thing holding `input`/`transcript`/`menu` on this side: all eight built-in kinds are pure-C
+// plugins over objects the boundary owns (`rolltui/c/rolltui_widget_kinds.c`). What is left of
+// `Windows` here is vocabulary, the host-callable trampolines, and forwarding.
 
 // ---- Windows -------------------------------------------------------------------------
 
@@ -230,17 +232,26 @@ void Windows::bind_note(std::string name, NoteFn note) {
   held.release();
 }
 
-// Phase 17 m1c: PUSHED straight onto every transcript that already exists (`transcripts_`,
-// created on demand and never destroyed, so every entry here is one a host or a window has
-// asked for), rather than left for each one to PULL on its own next frame. `transcript()`
-// below applies the same push to a transcript created AFTER this call, so either order —
-// `set_highlighter` before or after a source's first use — ends with the live highlighter on
-// every live transcript, which is the same "set at any time, picked up once" contract the
-// old per-widget epoch existed to keep; nothing here needs to poll for a change because
-// nothing is left to miss one.
+// Phase 17 m1c: the callable and its two scratch buffers cross as one {fn, ctx, free_ctx},
+// and the BOUNDARY pushes it onto every transcript it owns — the ones that already exist and
+// each one created afterwards — so either order of `set_highlighter` and a source's first use
+// ends with the live highlighter on every live transcript. That is the same "set at any time,
+// picked up once" contract the old per-widget epoch existed to keep; nothing polls for a
+// change because nothing is left to miss one.
+//
+// ONE context per `Windows`, not one per transcript: `lines`/`spans` are only live inside a
+// call, so sharing them costs nothing and saves an allocation per transcript. An unset
+// highlighter crosses as a NULL fn, which is the seam's own "never invoked".
 void Windows::set_highlighter(markdown::Highlighter h) {
-  highlighter_ = std::move(h);
-  for (auto& [name, t] : transcripts_) t.set_highlight(highlighter_);
+  if (!h) {
+    rolltui_windows_set_highlight(w_.get(), nullptr, nullptr, nullptr);
+    return;
+  }
+  std::unique_ptr<HighlightCtx> held = std::make_unique<HighlightCtx>();
+  held->fn = std::move(h);
+  rolltui_windows_set_highlight(w_.get(), call_highlighter, held.get(),
+                                [](void* c) { const std::unique_ptr<HighlightCtx> owned(static_cast<HighlightCtx*>(c)); });
+  held.release();
 }
 
 void Windows::set_code_fold(int fold_over_lines, int cap_lines) {
@@ -430,10 +441,11 @@ RolltuiWidget as_widget(std::unique_ptr<Widget> w) {
 
 // Every library kind and the error panel, registered at construction so `widget_for` has
 // ONE path and "a transcript window" is built the way roll's approval modal is (the plugin
-// header's rule 5) — `rows`, `text`, `file`, `help`, and the error/panel fallbacks are pure-C
-// plugins that need nothing from this C++ object, registered in one call below; `input`,
-// `transcript` and `menu` are pure-C plugins too, but each needs a C++ map only `Windows`
-// has (`inputs_`/`transcripts_`/`menus_`) to construct from, so their factories stay here.
+// header's rule 5). As of Phase 17 m1c ALL EIGHT are pure-C plugins with pure-C factories:
+// the last three (`input`, `transcript`, `menu`) needed a C++ map only `Windows` had to
+// construct from, and those maps are the boundary's now. What is left here is the VOCABULARY
+// they draw and scroll with — role bytes and action names — handed over before they are
+// registered, because this file names them and that module names none of the words.
 void Windows::register_builtin_kinds() {
   // The role bytes and the transcript-scope action names the pure-C kinds draw and scroll
   // with — this file names them (rolltui_widget_kinds.h's own rule: that module names
@@ -486,64 +498,12 @@ void Windows::register_builtin_kinds() {
   };
   rolltui_windows_set_menu_roles(w_.get(), &kMenuRoles);
 
-  // rows, text, file, help, and the error/panel fallbacks: every built-in kind that needs
-  // nothing from this C++ object beyond what the boundary already exposes.
+  // The thirty action names the input kind's keys use — the last of the five vocabularies,
+  // and it is here rather than a factory parameter because the factory is the C's now.
+  rolltui_windows_set_input_actions(w_.get(), input_actions());
+
+  // …and every built-in kind, in one call.
   rolltui_widget_kinds_register(w_.get());
-
-  // input: `Windows` OWNS the `Input` here (in `inputs_`, on demand — the same "created once
-  // per source" rule `owned_documents_` follows), and the pure-C `input` plugin's `ctx`
-  // BORROWS its handle (`Input::handle()` is public precisely so this can happen). Both
-  // `windows.input(source)` and the drawn widget then read the one underlying state.
-  rolltui_windows_register_kind(
-      w_.get(), "input", 5,
-      [](void* c, const char* content, std::size_t n) -> RolltuiWidget {
-        Windows& self = *static_cast<Windows*>(c);
-        std::optional<Content> parsed = parse_content(std::string_view(content, n));
-        if (!parsed) return RolltuiWidget{};
-        const std::string source = parsed->source.str();
-        Input& in = self.inputs_[source];
-        void* ctx = rolltui_input_widget_ctx_new(in.handle(), self.w_.get(), source.data(), source.size(),
-                                                 rolltui_windows_builtin_roles(self.w_.get()), input_actions());
-        RolltuiWidget out{};
-        out.vt = rolltui_input_widget_plugin();
-        out.ctx = ctx;
-        return out;
-      },
-      this, nullptr);
-
-  // transcript: same shape as `input`, over `transcripts_` — direct map access (never
-  // `self.transcript(source)`, which itself constructs this same widget on first use and
-  // would recurse back here).
-  rolltui_windows_register_kind(
-      w_.get(), "transcript", 10,
-      [](void* c, const char* content, std::size_t n) -> RolltuiWidget {
-        Windows& self = *static_cast<Windows*>(c);
-        std::optional<Content> parsed = parse_content(std::string_view(content, n));
-        if (!parsed) return RolltuiWidget{};
-        const std::string source = parsed->source.str();
-        Transcript& t = self.transcripts_[source];
-        RolltuiWidget out{};
-        out.vt = rolltui_transcript_widget_plugin();
-        out.ctx = rolltui_transcript_widget_ctx_new(t.handle(), self.w_.get(), source.data(), source.size());
-        return out;
-      },
-      this, nullptr);
-
-  // menu: same shape, over `menus_`.
-  rolltui_windows_register_kind(
-      w_.get(), "menu", 4,
-      [](void* c, const char* content, std::size_t n) -> RolltuiWidget {
-        Windows& self = *static_cast<Windows*>(c);
-        std::optional<Content> parsed = parse_content(std::string_view(content, n));
-        if (!parsed) return RolltuiWidget{};
-        const std::string source = parsed->source.str();
-        Menu& m = self.menus_[source];
-        RolltuiWidget out{};
-        out.vt = rolltui_menu_widget_plugin();
-        out.ctx = rolltui_menu_widget_ctx_new(m.handle(), self.w_.get(), source.data(), source.size());
-        return out;
-      },
-      this, nullptr);
 }
 
 WindowsReport Windows::sync(const WindowStack& stack) {
@@ -602,64 +562,40 @@ bool Windows::handle(std::string_view window, const Event& e) {
 // written — the same function the plugin's own `handle` slot calls — so a host asking for
 // the action back and the routed-event path can never disagree about what Submit does.
 InputAction Windows::input_event(std::string_view source, const Event& e) {
-  Input& in = inputs_[std::string(source)];
   const RolltuiEvent ev = c_event_of(e);
-  const int action =
-      rolltui_input_kind_process_event(in.handle(), w_.get(), source.data(), source.size(), input_actions(), &ev);
+  const int action = rolltui_input_kind_process_event(input(source), w_.get(), source.data(), source.size(), &ev);
   return static_cast<InputAction>(action);
 }
 
-// `Windows` OWNS the `Transcript` here (created on demand, exactly like `owned_documents_`),
-// so this is valid whether or not any window currently shows it — the drawn widget's ctx
-// only BORROWS this same object's handle (see `register_builtin_kinds`'s "transcript"
-// factory). A transcript created AFTER `set_highlighter` was called gets the live
-// highlighter applied right here, at creation, so the order the two are called in cannot
-// matter (`set_highlighter` pushes to every transcript that already exists).
-Transcript& Windows::transcript(std::string_view source) {
-  const std::string key(source);
-  const bool existed = transcripts_.count(key) != 0;
-  Transcript& t = transcripts_[key];
-  if (!existed && highlighter_) t.set_highlight(highlighter_);
-  return t;
+// THE THREE TYPED ACCESSORS, straight through to the table that owns them (Phase 17 m1c).
+// Each object is created on demand and kept until this `Windows` is gone, so a reference is
+// valid whether or not any window currently shows it — and it is the SAME object the drawn
+// widget's ctx borrows, because the built-in factories ask this same table for it. That
+// identity is the whole reason the maps and the factories had to move together.
+RolltuiTranscript* Windows::transcript(std::string_view source) {
+  return rolltui_windows_transcript(w_.get(), source.data(), source.size());
 }
 
-// `Windows` OWNS the `Input` here (created on demand, exactly like `owned_documents_`), so
-// this is valid whether or not any window currently shows it — the drawn widget's ctx only
-// BORROWS this same object's handle (see `register_builtin_kinds`'s "input" factory).
-Input& Windows::input(std::string_view source) { return inputs_[std::string(source)]; }
-
-void Windows::set_input_min_outer(std::string_view source, int rows) {
-  // The widget, not the `Input` — `min_outer` is per-window sizing state the plugin's ctx
-  // keeps, not part of the edited text the `inputs_` map owns. Created on demand, like every
-  // other `widget_for` call: a host may set the floor before any window has shown this input.
-  const std::string content = "input:" + std::string(source);
-  RolltuiWidget* w = rolltui_windows_widget_for(w_.get(), content.data(), content.size());
-  if (w && w->ctx) rolltui_input_widget_ctx_set_min_outer(w->ctx, rows);
+RolltuiInput* Windows::input(std::string_view source) {
+  return rolltui_windows_input(w_.get(), source.data(), source.size());
 }
 
-// `Windows` OWNS the `Menu` here (`menus_`, created on demand), so this is valid whether or
-// not any window currently shows it — exactly `transcript()`'s shape. What `Menu` alone
-// cannot do is re-resolve its FILE: that state (loaded/stamp/origin/problem) lives in the
-// widget's own ctx now (Phase 17 m1c), so this forces a refresh through `widget_for` — which
-// builds the ctx on first call via `register_builtin_kinds`'s "menu" factory, a DIRECT
-// `menus_[source]` access that never calls back into this method (calling `self.menu(source)`
-// from that factory would recurse: `menu()` calls `widget_for`, whose first call IS the
-// factory). A host asking for `windows.menu("main")` before any window has shown it — every
-// `layout_test.cpp` case does — still gets the file read right now, not at the next draw.
-Menu& Windows::menu(std::string_view source) {
-  const std::string content = "menu:" + std::string(source);
-  RolltuiWidget* wd = rolltui_windows_widget_for(w_.get(), content.data(), content.size());
-  if (wd && wd->ctx) rolltui_menu_widget_ctx_refresh(wd->ctx);
-  return menus_[std::string(source)];
+// What `RolltuiMenu` alone cannot do is re-resolve its FILE: that state (loaded/stamp/origin/
+// problem) is the widget ctx's, and `rolltui_windows_menu` drives it — so asking for
+// `windows.menu("main")` before any window has shown it (every `layout_test.cpp` case does)
+// still reads the file NOW rather than at the next draw.
+RolltuiMenu* Windows::menu(std::string_view source) {
+  return rolltui_windows_menu(w_.get(), source.data(), source.size());
 }
 
 std::string Windows::menu_origin(std::string_view source) {
-  const std::string content = "menu:" + std::string(source);
-  RolltuiWidget* wd = rolltui_windows_widget_for(w_.get(), content.data(), content.size());
-  if (!wd || !wd->ctx) return {};
   std::size_t len = 0;
-  const char* p = rolltui_menu_widget_ctx_origin(wd->ctx, &len);
+  const char* p = rolltui_windows_menu_origin(w_.get(), source.data(), source.size(), &len);
   return std::string(p, len);
+}
+
+void Windows::set_input_min_outer(std::string_view source, int rows) {
+  rolltui_windows_set_input_min_outer(w_.get(), source.data(), source.size(), rows);
 }
 
 std::vector<std::string> Windows::menu_names() const {
@@ -704,31 +640,19 @@ std::optional<Content> Windows::content_at(std::string_view window) const {
   return parse_content(std::string_view(p, len));
 }
 
-// `transcript`'s ctx is not a `Widget` subclass (Phase 17 m1c), so this reads `Windows`' own
-// `transcripts_` map instead of `at()` — the SAME object the drawn widget's ctx borrows.
-Transcript* Windows::transcript_at(std::string_view window) const {
-  const std::optional<Content> c = content_at(window);
-  if (!c || c->kind != WidgetKind::Transcript) return nullptr;
-  const auto it = transcripts_.find(c->source.str());
-  return it != transcripts_.end() ? const_cast<Transcript*>(&it->second) : nullptr;
+// …and the same three by WINDOW id. None of these three ctxs is a `Widget` subclass (Phase 17
+// m1c), so none can come through `at()`'s `static_cast`; the boundary reads the window's own
+// content string, checks the kind, and hands back the typed handle its table owns.
+RolltuiTranscript* Windows::transcript_at(std::string_view window) const {
+  return rolltui_windows_transcript_at(w_.get(), window.data(), window.size());
 }
 
-// `input`'s ctx is not a `Widget` subclass (Phase 17), so this reads `Windows`' own `inputs_`
-// map instead of `at()` — the SAME object the drawn widget's ctx borrows.
-Input* Windows::input_at(std::string_view window) const {
-  const std::optional<Content> c = content_at(window);
-  if (!c || c->kind != WidgetKind::Input) return nullptr;
-  const auto it = inputs_.find(c->source.str());
-  return it != inputs_.end() ? const_cast<Input*>(&it->second) : nullptr;
+RolltuiInput* Windows::input_at(std::string_view window) const {
+  return rolltui_windows_input_at(w_.get(), window.data(), window.size());
 }
 
-// `menu`'s ctx is not a `Widget` subclass either (Phase 17 m1c) — reads `menus_` directly,
-// same shape as `input_at`/`transcript_at`.
-Menu* Windows::menu_at(std::string_view window) const {
-  const std::optional<Content> c = content_at(window);
-  if (!c || c->kind != WidgetKind::Menu) return nullptr;
-  const auto it = menus_.find(c->source.str());
-  return it != menus_.end() ? const_cast<Menu*>(&it->second) : nullptr;
+RolltuiMenu* Windows::menu_at(std::string_view window) const {
+  return rolltui_windows_menu_at(w_.get(), window.data(), window.size());
 }
 
 }  // namespace rolltui

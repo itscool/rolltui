@@ -286,7 +286,13 @@ int main() {
         // is one owner and not two; `const RolltuiInputActions* input_actions()` is a BORROW
         // of the thirty action names, so the menu boundary is handed a pointer to the
         // library's one table rather than a copy of it.
-        {"Effects.hpp", 4},      {"Input.hpp", 4},         {"Json.hpp", 0},        {"Keys.hpp", 1},
+        // Input.hpp 4 -> 5, RE-RECORDED 2026-09-05 by Phase 17 m1c. The new one is
+        // `input_handle(RolltuiInput* in, …)`: the handle-taking form of `Input::handle`, which
+        // BORROWS the editor for the length of the call and owns nothing. It exists because
+        // `Windows::input()` hands back the library's own handle now, so a host driving the
+        // prompt has no `Input&` to call a method on — and the two things it cannot do for
+        // itself (the Event conversion, the thirty action names) are this library's.
+        {"Effects.hpp", 4},      {"Input.hpp", 5},         {"Json.hpp", 0},        {"Keys.hpp", 1},
         // Markdown.hpp 0 → 10, RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the census
         // recording the milestone's whole shape change: a `Span` used to OWN a
         // `std::string` and two vectors, so the header needed no pointer to say so. Every
@@ -346,7 +352,12 @@ int main() {
         // and `rolltui_menu_editor(m_.get())` borrows it back for the menu's life. A member
         // that owned became a call that borrows, which is why the count went UP while the
         // ownership got simpler.
-        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 6},
+        // Menu.hpp 6 -> 7, RE-RECORDED 2026-09-05 by Phase 17 m1c: `menu_handle(RolltuiMenu* m,
+        // …)`, the handle-taking form of `Menu::handle`, BORROWING for the call. Same reason as
+        // `input_handle` above, and three hosts reach for it (roll, the studio, paint). The two
+        // tree walks added beside it — `apply_shortcuts(MenuItem&)` and
+        // `item_actions(const MenuItem&)` — take a REFERENCE, so they add no pointer at all.
+        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -445,7 +456,21 @@ int main() {
         // valid while the object is, so a C widget plugin and a host's reference are the SAME
         // state rather than two. `Input::handle()` already had one, which is precisely why the
         // `input` kind could port to C and these two could not (plan/phase-17.md m1c).
-        {"Transcript.hpp", 3},          {"Widgets.hpp", 11},
+        // Transcript.hpp 3 -> 4 and Widgets.hpp 11 -> 14, RE-RECORDED 2026-09-05 by Phase 17
+        // m1c — the milestone that moved `inputs_`/`transcripts_`/`menus_` out of `Windows`
+        // and into `RolltuiWindows`. **The census went UP by four while three C++ maps that
+        // OWNED every input, transcript and menu in the program went away**, which is exactly
+        // the trade this ratchet exists to make visible rather than to prevent.
+        //   Transcript.hpp: `transcript_handle(RolltuiTranscript* t, …)`, the handle-taking
+        //     form of `Transcript::handle` — the same shape as `input_handle`/`menu_handle`.
+        //   Widgets.hpp: `transcript(source)`, `input(source)` and `menu(source)` hand back
+        //     `RolltuiTranscript*`/`RolltuiInput*`/`RolltuiMenu*` where they used to hand back
+        //     a `Transcript&`/`Input&`/`Menu&` into maps this class owned. Every one is a
+        //     BORROW of an object the WINDOW TABLE owns for its whole life, and it is the same
+        //     object the window draws — which is the property the milestone is for, and the
+        //     reason a C-side map beside the C++ one was refused as a second owner.
+        //   The three `_at(window)` accessors changed TYPE without changing count.
+        {"Transcript.hpp", 4},          {"Widgets.hpp", 14},
         // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
         // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
         // pointer was `const Range* table` on `lookup()`, the binary search the inline
@@ -509,7 +534,10 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 115, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    // 115 -> 121 (Phase 17 m1c): +1 each for `input_handle`/`menu_handle`/`transcript_handle`
+    // and +3 for `Windows`' three typed accessors handing back the library's own handles. Every
+    // one is a BORROW; what left in the same change is three C++ maps that OWNED widgets.
+    check(total == 121, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

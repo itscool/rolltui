@@ -121,6 +121,20 @@ std::string to_string(const Event& e);
 RolltuiChord chord_of(const KeyEvent& k);
 KeyEvent key_event_of(const RolltuiChord& c);
 
+// THE C FORM OF AN EVENT, for the C entry points that take one (`rolltui_menu_handle`,
+// `rolltui_transcript_handle`, `rolltui_input_handle`, `rolltui_windows_handle`).
+//
+// It is HERE and public as of Phase 17 m1c because it had become FOUR verbatim copies inside
+// the library — `Input.cpp`, `Menu.cpp`, `Transcript.cpp` and `Widgets.cpp` each wrote the
+// same fifteen lines — and every host that drives a widget through a raw handle needs a fifth.
+// Two consumers writing one wrapper is the tell (`rolltui/rolltui.h` rule 5); five is not an
+// argument any more.
+//
+// THE PASTE CASE'S `text` IS A BORROW of `e`'s own string, so the result is valid only while
+// `e` is — the same window the decoder's envelope states. A ResizeEvent has no C form and
+// comes back zeroed (`kind` 0 is a key event with no chord, which every C `handle` ignores).
+RolltuiEvent c_event_of(const Event& e);
+
 // ---- DELIVERABILITY (Phase 12 m3) ---------------------------------------------------
 //
 // THE DEFECT THIS EXISTS FOR: `ctrl+shift+p` parses, binds, saves, and shows in the help

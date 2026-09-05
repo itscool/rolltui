@@ -179,6 +179,19 @@ std::string menu_to_json(const MenuItem& root);
 std::string_view shipped_menu(std::string_view name);  // "" when there is no such file
 std::vector<std::string_view> shipped_menu_names();
 
+// THE TWO TREE WALKS, over the ITEM tree rather than over a `Menu` (Phase 17 m1c). This
+// header already said they have no widget state in them; what changed is that a host now holds
+// a `RolltuiMenu*` and reaches its root through `rolltui_menu_root`, so the walk had nowhere to
+// be called from. `Menu::apply_shortcuts`/`item_actions` below are one line over each.
+void apply_shortcuts(MenuItem& root, const Bindings& b);
+std::vector<std::pair<std::string, std::string>> item_actions(const MenuItem& root);
+
+// DRIVING A MENU THROUGH ITS HANDLE (Phase 17 m1c). `Windows::menu()` hands back the
+// `RolltuiMenu*` the window table owns, and the two things a host cannot supply for itself are
+// the event conversion and the menu scope's ACTION NAMES (this module's — `rolltui_menu.h`
+// states they never cross). `Menu::handle` below is one line over this.
+MenuEvent menu_handle(RolltuiMenu* m, const Event& e, const Bindings& bindings);
+
 class Menu {
  public:
   // A Text field's host validator: the reason the text is refused, or nullopt when fine.

@@ -311,9 +311,15 @@ struct App {
   // binds the fixture document, its status rows, the prompt and its own composites by
   // name, and never asks what a slot means.
   Windows windows;
-  Transcript& transcript() { return windows.transcript("session"); }
-  Input& editor() { return windows.input("prompt"); }
-  Menu& menu() { return windows.menu("main"); }  // menus/main.json (Phase 10 m3)
+  // PHASE 17 m1c: the window table OWNS these three, so what comes back is the library's own
+  // handle rather than a `rolltui::` wrapper — the same object the window draws, driven the way
+  // a host on the C API drives one.
+  RolltuiTranscript* transcript() { return windows.transcript("session"); }
+  RolltuiInput* editor() { return windows.input("prompt"); }
+  RolltuiMenu* menu() { return windows.menu("main"); }  // menus/main.json (Phase 10 m3)
+  void set_menu_value(std::string_view id, std::string_view v) {
+    rolltui_menu_set_value(menu(), id.data(), id.size(), v.data(), v.size());
+  }
   int submitted = 0;        // entries the input added to the document
   std::string copied;       // the last copy (the studio has no clipboard)
   // The TARGET app being authored for (Phase 11 m4), or nullopt: the studio previews as
@@ -331,12 +337,20 @@ struct App {
   EffectReport effects;  // what the last frame's marks came to; an unknown kind is said, not swallowed
   std::size_t shipped_theme_index = 0;
 
+  // The studio has no clipboard: a copy is remembered so a test can assert it. One trampoline
+  // for both widgets, since both take the same {fn, ctx} pair.
+  static void remember_copy(void* ctx, const char* text, std::size_t len) {
+    App& self = *static_cast<App*>(ctx);
+    self.copied.assign(text, len);
+    self.copied_any = true;
+  }
+
   App() {
-    transcript().on_copy = [this](const std::string& s) { copied = s; copied_any = true; };
-    editor().on_copy = transcript().on_copy;
+    rolltui_transcript_set_copy(transcript(), remember_copy, this);
+    rolltui_input_set_copy(editor(), remember_copy, this);
     InputOptions o;
     o.placeholder = "type here";
-    editor().set_options(o);
+    rolltui_input_set_options(editor(), &o);
     bind_windows();
   }
 
@@ -353,7 +367,7 @@ struct App {
     // The find bar's Enter is "next match" — the universal find-bar convention, and it
     // needs no routing rule: the popup's input is focused, so its Submit arrives here.
     // sync_find() first, because the matches must exist before stepping through them.
-    windows.bind_submit("find", [this](const std::string&) { sync_find(); transcript().find_next(); },
+    windows.bind_submit("find", [this](const std::string&) { sync_find(); rolltui_transcript_find_next(transcript()); },
                         Windows::OnSubmit::Keep);
     // The studio's three composites are REGISTERED KINDS since Phase 11 m3, not
     // draw callbacks bound by name: `editor` is a kind this binary adds to the layout
@@ -404,21 +418,21 @@ struct App {
   // current values. Ids are bound below in menu_event(); the file knows nothing of what
   // they do.
   void refresh_menu() {
-    std::vector<MenuItem> themes, layouts;
+    RolltuiMenuItemList themes, layouts;
     if (store) for (const PresetInfo& p : store->list()) themes.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
     if (lstore) for (const PresetInfo& p : lstore->list()) layouts.push_back(MenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
-    menu().set_options("theme", themes);
-    menu().set_options("layout", layouts);
-    menu().set_value("theme", store ? store->label() : "");
-    menu().set_value("layout", lstore ? lstore->label() : layout.name.str());
-    menu().set_value("depth", std::string(color_depth_name(depth)));
-    menu().set_checked("ambiguous", ambiguous);
+    rolltui_menu_set_options(menu(), "theme", 5, &themes);
+    rolltui_menu_set_options(menu(), "layout", 6, &layouts);
+    set_menu_value("theme", store ? store->label() : "");
+    set_menu_value("layout", lstore ? lstore->label() : layout.name.str());
+    set_menu_value("depth", std::string(color_depth_name(depth)));
+    rolltui_menu_set_checked(menu(), "ambiguous", 9, ambiguous);
   }
   void open_menu(bool palette) {
     if (stack.has_popup("menu")) { close_popup("menu"); return; }
     refresh_menu();  // presets and layout files may have changed
-    menu().reset();
-    menu().set_palette(palette);
+    rolltui_menu_reset(menu());
+    rolltui_menu_set_palette(menu(), palette);
     if (const Layer* p = effective_layout().popup("menu")) stack.push(*p);
   }
   void close_popup(const std::string& id) {
@@ -1033,15 +1047,17 @@ struct App {
   // golden harness worth having.
   void sync_find() {
     if (!stack.has_popup("find")) return;
-    if (transcript().set_query(windows.input("find").text())) ensure_layout();
+    std::size_t n = 0;
+    const char* q = rolltui_input_text(windows.input("find"), &n);
+    if (rolltui_transcript_set_query(transcript(), q, n)) ensure_layout();
   }
 
   void toggle_find() {
     if (stack.has_popup("find")) {
       while (stack.depth() > 1 && !(stack.top().id == "find")) stack.pop();
       stack.pop();
-      windows.input("find").clear();
-      transcript().set_query("");
+      rolltui_input_clear(windows.input("find"));
+      rolltui_transcript_set_query(transcript(), "", 0);
       return;
     }
     if (const Layer* p = effective_layout().popup("find")) { stack.push(*p); stack.focus("find"); }
@@ -1051,13 +1067,15 @@ struct App {
   // `rows:status`: the studio's own facts. The widget draws them (one row per
   // fact, or one line when the window is a single row) — this says only what they are.
   void status_rows(Rows& out) {
-    const std::size_t total = transcript().total_lines();
+    const std::size_t total = rolltui_transcript_total_lines(transcript());
     out.add("theme", store ? store->label() : theme.name);
     out.add("keys", bstore ? bstore->label() : "default");
     out.add("layout", effective_layout().name + (stacked_fallback ? " (fallback)" : ""));
     out.add("size", std::to_string(w) + "x" + std::to_string(h));
-    out.add("line", std::to_string(total == 0 ? 0 : transcript().top_line() + 1) + "/" + std::to_string(total));
-    out.add("follow", transcript().scroll().follow ? "yes" : "no");
+    out.add("line", std::to_string(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1) + "/" + std::to_string(total));
+    RolltuiScrollAnchor anchor;
+    rolltui_transcript_scroll(transcript(), &anchor);
+    out.add("follow", anchor.follow ? "yes" : "no");
     out.add("depth", color_depth_name(depth));
     out.add("focus", stack.focused() ? stack.focused()->id : "-");
     if (show_timing) out.add("frame", std::to_string(last_frame_us) + " us");
@@ -1091,17 +1109,21 @@ struct App {
     stack.compose(f, area, theme, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, theme); draw_selection(rn, fr); }, ambiguous);
     if (h > 1) {
       f.fill({0, h - 1, w, 1}, theme.style(Role::panel_background));
-      const std::size_t total = transcript().total_lines();
+      const std::size_t total = rolltui_transcript_total_lines(transcript());
+      RolltuiScrollAnchor anchor;
+      rolltui_transcript_scroll(transcript(), &anchor);
+      std::size_t query_len = 0;
+      rolltui_transcript_query(transcript(), &query_len);
       std::string status = " " + (store ? store->label() : theme.name) + (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "") + "  " + effective_layout().name + (lstore && lstore->modified() ? " (modified)" : "") + "  " + std::to_string(w) + "x" + std::to_string(h) +
-                           "  line " + std::to_string(total == 0 ? 0 : transcript().top_line() + 1) + "/" + std::to_string(total) +
-                           (transcript().scroll().follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
+                           "  line " + std::to_string(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1) + "/" + std::to_string(total) +
+                           (anchor.follow ? "  follow" : "") + "  " + std::string(color_depth_name(depth)) +
                            "  focus:" + (stack.focused() ? stack.focused()->id : "-");
       if (with_timing) status += "  " + std::to_string(last_frame_us) + " us";
       // The match count and position (m4's "visible"): the widget owns finding, a host
       // owns saying so — the same split as every other number on this line.
-      if (!transcript().query().empty())
-        status += "  find " + std::to_string(transcript().current_match_number()) + "/" +
-                  std::to_string(transcript().match_count());
+      if (query_len != 0)
+        status += "  find " + std::to_string(rolltui_transcript_current_match_number(transcript())) + "/" +
+                  std::to_string(rolltui_transcript_match_count(transcript()));
       if (copied_any) status += "  copied " + std::to_string(copied.size()) + "B";
       if (stacked_fallback) status += "  [stacked: below " + std::to_string(layout.min_width) + "x" + std::to_string(layout.min_height) + "]";
       if (!theme_note.empty()) status += "  [" + theme_note + "]";
@@ -1149,7 +1171,9 @@ struct App {
       if (ed == "editor.theme") { toggle_editor(); return true; }
       if (ed == "editor.layout") { toggle_layout_editor(); return true; }
       if (ed == "editor.keys") { toggle_keys_editor(); return true; }
-      if (app == "app.help" && !(k->key == Key::Char && !k->ctrl && !k->alt && !editor().text().empty())) { toggle_help(); return true; }
+      std::size_t draft_n = 0;
+      rolltui_input_text(editor(), &draft_n);
+      if (app == "app.help" && !(k->key == Key::Char && !k->ctrl && !k->alt && draft_n != 0)) { toggle_help(); return true; }
       if (app == "app.menu") { open_menu(false); return true; }
       if (app == "app.palette") { open_menu(true); return true; }
       if (app == "app.find") { toggle_find(); return true; }
@@ -1216,7 +1240,7 @@ struct App {
     // layout file may call its windows anything (Phase 10 m2). Since Phase 11 m3 that
     // holds for the studio's OWN three as well: they are registered kinds, so they take
     // their events through the same Windows::handle as every built-in.
-    if (Menu* m = windows.menu_at(r.window)) return menu_event(m->handle(ev, bindings));
+    if (RolltuiMenu* m = windows.menu_at(r.window)) return menu_event(menu_handle(m, ev, bindings));
     const std::optional<Content> c = windows.content_at(r.window);
     if (c && c->kind == WidgetKind::Registered) { windows.handle(r.window, ev); return true; }
     if (c && c->kind == WidgetKind::Transcript) {
@@ -1243,23 +1267,23 @@ struct App {
     // What the input Ignored is offered to the transcript (its own scope of the table).
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
       const std::string_view a = bindings.action_for(*k, "transcript");
-      if (a == "transcript.page_up") transcript().scroll_page(-1);
-      else if (a == "transcript.page_down") transcript().scroll_page(1);
-      else if (a == "transcript.top") transcript().scroll_to_top();
-      else if (a == "transcript.bottom") transcript().scroll_to_bottom();
-      else if (a == "transcript.fold") transcript().toggle_fold_nearest_top(doc);
-      else if (a == "transcript.find_next") { sync_find(); transcript().find_next(); }
-      else if (a == "transcript.find_prev") { sync_find(); transcript().find_prev(); }
-      else if (a == "transcript.copy") transcript().copy_selection();
+      if (a == "transcript.page_up") rolltui_transcript_scroll_page(transcript(), -1);
+      else if (a == "transcript.page_down") rolltui_transcript_scroll_page(transcript(), 1);
+      else if (a == "transcript.top") rolltui_transcript_scroll_to_top(transcript());
+      else if (a == "transcript.bottom") rolltui_transcript_scroll_to_bottom(transcript());
+      else if (a == "transcript.fold") rolltui_transcript_toggle_fold_nearest_top(transcript(), &doc.entries);
+      else if (a == "transcript.find_next") { sync_find(); rolltui_transcript_find_next(transcript()); }
+      else if (a == "transcript.find_prev") { sync_find(); rolltui_transcript_find_prev(transcript()); }
+      else if (a == "transcript.copy") rolltui_transcript_copy_selection(transcript());
     } else if (const MouseEvent* m = std::get_if<MouseEvent>(&ev);
                m && (m->kind == MouseEvent::Kind::WheelUp || m->kind == MouseEvent::Kind::WheelDown)) {
-      transcript().handle(ev, doc, clock_ms, bindings);
+      transcript_handle(transcript(), ev, doc, clock_ms, bindings);
     }
     return true;
   }
   void tick() {
     ensure_layout();
-    transcript().tick();
+    rolltui_transcript_tick(transcript());
   }
 };
 
@@ -1691,7 +1715,7 @@ int main(int argc, char** argv) {
     Frame f = app.render(true);
     const std::string diff = render_diff(have_prev ? &prev : nullptr, f, app.depth);
     rolltui_terminal_write(term, diff.data(), diff.size());
-    const bool ticking = app.transcript().wants_tick();
+    const bool ticking = rolltui_transcript_wants_tick(app.transcript());
     // m6: how long this host may sleep is a function of what the frame MARKED, so an
     // idle screen still costs one wakeup every 250 ms and no more.
     const int timeout = poll_timeout_ms(f, app.theme, ticking ? 50 : 250);

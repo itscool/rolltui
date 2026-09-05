@@ -167,6 +167,22 @@ struct RolltuiWindows {
   const RolltuiBindings* bindings; /* set alongside env; NULL only before the first set_env */
   const RolltuiStyle* styles;      /* set at the top of rolltui_windows_draw; NULL outside one */
 
+  /* ---- THE TYPED WIDGETS THIS TABLE OWNS, BY SOURCE (Phase 17 m1c) ------------------------
+   * The three maps `rolltui::Windows` used to keep on the C++ side, moved here in the same
+   * change that repointed the `input`/`transcript`/`menu` factories at them — the header says
+   * why the two halves could not be done separately. Created on demand by the accessors and
+   * by those factories alike, and destroyed only with `w`. STRATEGY 5 (GROWING HEAP): each
+   * handle is its own module's `_new`/`_free` pair, and the map owns nothing but the keys. */
+  RolltuiMap inputs;      /* source -> RolltuiInput*, OWNED */
+  RolltuiMap transcripts; /* source -> RolltuiTranscript*, OWNED */
+  RolltuiMap menus;       /* source -> RolltuiMenu*, OWNED */
+  /* The highlighter every transcript above renders code blocks through, as {fn, ctx,
+   * free_ctx} — pushed onto the ones that exist and onto each new one, so neither order of
+   * `set_highlight` and `transcript` can lose it (Widgets.hpp's contract). */
+  RolltuiMdHighlightFn highlight_fn;
+  void* highlight_ctx;
+  void (*highlight_free_ctx)(void*);
+
   /* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ---------- */
   RolltuiBuiltinRoles builtin_roles;
   RolltuiScrollTextActions scroll_actions;
@@ -174,6 +190,7 @@ struct RolltuiWindows {
   RolltuiCodeFold code_fold;
   RolltuiTranscriptActions transcript_actions;
   RolltuiMenuRoles menu_roles;
+  const RolltuiInputActions* input_actions; /* BORROWED, process lifetime */
 };
 
 RolltuiWindows* rolltui_windows_new(void) {
@@ -241,6 +258,18 @@ void rolltui_windows_free(RolltuiWindows* w) {
   rolltui_str_free(&w->help_note);
   for (i = 0; i < w->help_scopes_cap; ++i) rolltui_str_free(&w->help_scopes[i]);
   rolltui_mem_free(w->help_scopes);
+  /* The typed widgets (m1c), AFTER `by_content` above: every widget ctx BORROWS one of these,
+   * so the borrowers have to be gone before the owners are. */
+  for (i = 0; i < rolltui_map_count(&w->inputs); ++i)
+    rolltui_input_free((RolltuiInput*)rolltui_map_value_at(&w->inputs, i));
+  rolltui_map_release(&w->inputs);
+  for (i = 0; i < rolltui_map_count(&w->transcripts); ++i)
+    rolltui_transcript_free((RolltuiTranscript*)rolltui_map_value_at(&w->transcripts, i));
+  rolltui_map_release(&w->transcripts);
+  for (i = 0; i < rolltui_map_count(&w->menus); ++i)
+    rolltui_menu_free((RolltuiMenu*)rolltui_map_value_at(&w->menus, i));
+  rolltui_map_release(&w->menus);
+  free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
   rolltui_mem_free(w);
 }
 
@@ -291,6 +320,17 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
   RolltuiWidget built;
   size_t i;
   if (wd) return wd;
+  /* THE ROW IS CLAIMED BEFORE THE FACTORY RUNS (Phase 17 m1c), and that ordering is load-
+   * bearing rather than tidy: a factory may ask this table for the typed object its own
+   * content names — `rolltui_windows_menu` does, because resolving a menu's FILE goes through
+   * the very widget being built — and without the row already present that call would come
+   * straight back in here and recurse forever. With it present but ZEROED, the re-entrant call
+   * reads "not built yet" and answers accordingly; the outer call fills it in below. A zeroed
+   * widget is already a legal state here — it is exactly what an unbuildable content with no
+   * error factory leaves — so nothing downstream learns a new case. */
+  wd = (RolltuiWidget*)rolltui_mem_alloc(sizeof *wd);
+  memset(wd, 0, sizeof *wd);
+  rolltui_map_put(&w->by_content, content, len, wd);
   memset(&built, 0, sizeof built);
   for (i = 0; i < w->kind_n; ++i)
     if (rolltui_str_eq(&w->kinds[i].name, content, kl)) {
@@ -300,9 +340,7 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
   /* NOTHING BUILT IS NOT AN ERROR PATH: the error factory draws the reason, which is
    * Layout.hpp's "a window is never blank because its content was not understood". */
   if (!built.vt && w->error_factory) built = w->error_factory(w->error_ctx, content, len);
-  wd = (RolltuiWidget*)rolltui_mem_alloc(sizeof *wd);
   *wd = built;
-  rolltui_map_put(&w->by_content, content, len, wd);
   return wd;
 }
 
@@ -323,6 +361,130 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
     return NULL;
   }
   return rolltui_str_get(&s->content, out_len);
+}
+
+/* ---- THE TYPED WIDGETS, OWNED HERE (Phase 17 m1c; the header states why) --------------------
+ *
+ * One object per SOURCE, created on demand and kept until `w` is freed — the same rule the
+ * widget table itself follows, and the reason a host driving `input:prompt` and the window
+ * drawing it are one object rather than two that pass each other's tests separately. */
+
+RolltuiInput* rolltui_windows_input(RolltuiWindows* w, const char* source, size_t len) {
+  RolltuiInput* in = (RolltuiInput*)rolltui_map_get(&w->inputs, source, len);
+  if (in) return in;
+  in = rolltui_input_new();
+  rolltui_map_put(&w->inputs, source, len, in);
+  return in;
+}
+
+RolltuiTranscript* rolltui_windows_transcript(RolltuiWindows* w, const char* source, size_t len) {
+  RolltuiTranscript* t = (RolltuiTranscript*)rolltui_map_get(&w->transcripts, source, len);
+  if (t) return t;
+  t = rolltui_transcript_new(); /* its roles are its own defaults now (rolltui_transcript.c) */
+  /* The live highlighter, applied at CREATION so a transcript first asked for after
+   * `set_highlight` is not silently the one that misses it. */
+  if (w->highlight_fn) rolltui_transcript_set_highlight(t, w->highlight_fn, w->highlight_ctx);
+  rolltui_map_put(&w->transcripts, source, len, t);
+  return t;
+}
+
+void rolltui_windows_set_highlight(RolltuiWindows* w, RolltuiMdHighlightFn fn, void* ctx,
+                                   void (*free_ctx)(void*)) {
+  size_t i;
+  free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
+  w->highlight_fn = fn;
+  w->highlight_ctx = ctx;
+  w->highlight_free_ctx = free_ctx;
+  /* PUSHED onto every transcript that already exists, rather than left for each to pull on
+   * its own next frame: nothing here polls an epoch, so nothing is left to miss a change. */
+  for (i = 0; i < rolltui_map_count(&w->transcripts); ++i)
+    rolltui_transcript_set_highlight((RolltuiTranscript*)rolltui_map_value_at(&w->transcripts, i), fn, ctx);
+}
+
+/* The menu's own map half, WITHOUT the file refresh — this is what the `menu` factory calls,
+ * and it must not reach back into `rolltui_windows_widget_for` (which is what built it). */
+static RolltuiMenu* menu_for_source(RolltuiWindows* w, const char* source, size_t len) {
+  RolltuiMenu* m = (RolltuiMenu*)rolltui_map_get(&w->menus, source, len);
+  if (m) return m;
+  m = rolltui_menu_new(); /* single-line editor, no prompt: the menu's own (rolltui_menu.c) */
+  rolltui_map_put(&w->menus, source, len, m);
+  return m;
+}
+
+/* The widget ctx that resolves `menu:<source>`'s FILE, or NULL when this content builds
+ * something else (an unparsable content gets the error widget, whose ctx is not a menu's —
+ * checking the vtable is what makes that a NULL rather than a misread struct). */
+static void* menu_ctx_for_source(RolltuiWindows* w, const char* source, size_t len) {
+  /* A LOCAL key, not a scratch member on `w`: the factory this call can reach re-enters here
+   * for the same source, and a shared buffer would be re-set — possibly reallocated — under
+   * the outer call that is still reading from it. Nine bytes on a path that already stat()s a
+   * file is not the allocation to save. */
+  RolltuiStr key;
+  RolltuiWidget* wd;
+  void* ctx = NULL;
+  memset(&key, 0, sizeof key);
+  rolltui_str_set(&key, "menu:", 5);
+  rolltui_str_append(&key, source, len);
+  wd = rolltui_windows_widget_for(w, key.p, key.n);
+  if (wd && wd->ctx && wd->vt == rolltui_menu_widget_plugin()) ctx = wd->ctx;
+  rolltui_str_free(&key);
+  return ctx;
+}
+
+RolltuiMenu* rolltui_windows_menu(RolltuiWindows* w, const char* source, size_t len) {
+  RolltuiMenu* m = menu_for_source(w, source, len);
+  /* What the `RolltuiMenu` alone cannot do is re-resolve its FILE: that state (loaded/stamp/
+   * origin/problem) is the widget ctx's. Asking for a menu before any window has shown it —
+   * every `layout_test.cpp` case does — reads the file NOW rather than at the next draw. */
+  void* ctx = menu_ctx_for_source(w, source, len);
+  if (ctx) rolltui_menu_widget_ctx_refresh(ctx);
+  return m;
+}
+
+const char* rolltui_windows_menu_origin(RolltuiWindows* w, const char* source, size_t len, size_t* out_len) {
+  void* ctx;
+  menu_for_source(w, source, len);
+  ctx = menu_ctx_for_source(w, source, len);
+  if (!ctx) {
+    if (out_len) *out_len = 0;
+    return "";
+  }
+  return rolltui_menu_widget_ctx_origin(ctx, out_len);
+}
+
+/* ---- …and the same three by WINDOW id -------------------------------------------------------
+ *
+ * The window's CONTENT is what says which kind it holds, so this parses it exactly as
+ * `rolltui_windows_content_at` + `rolltui::parse_content` did on the C++ side: a window whose
+ * content is a different kind (or does not parse at all) answers NULL rather than a widget of
+ * the wrong type read through the right pointer. */
+static void* typed_at(const RolltuiWindows* w, const RolltuiMap* by_source, const char* kind, size_t kind_n,
+                      const char* window, size_t len) {
+  WindowSlot* s = slot_of(w, window, len);
+  unsigned char ordinal = 0, problem = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  RolltuiStr why;
+  void* out = NULL;
+  if (!s) return NULL;
+  memset(&why, 0, sizeof why);
+  if (rolltui_content_parse(s->content.p ? s->content.p : "", s->content.n, &ordinal, &is_host, &name, &name_len,
+                            &source, &source_len, &problem, &why) &&
+      !is_host && name_len == kind_n && memcmp(name, kind, kind_n) == 0)
+    out = rolltui_map_get(by_source, source, source_len);
+  rolltui_str_free(&why);
+  return out;
+}
+
+RolltuiInput* rolltui_windows_input_at(const RolltuiWindows* w, const char* window, size_t len) {
+  return (RolltuiInput*)typed_at(w, &w->inputs, "input", 5, window, len);
+}
+RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const char* window, size_t len) {
+  return (RolltuiTranscript*)typed_at(w, &w->transcripts, "transcript", 10, window, len);
+}
+RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len) {
+  return (RolltuiMenu*)typed_at(w, &w->menus, "menu", 4, window, len);
 }
 
 /* ---- what a host BINDS, by name (Phase 15 m6) ------------------------------------------------ */
@@ -501,6 +663,23 @@ const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const Rolltui
 }
 void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r) { w->menu_roles = *r; }
 const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w) { return &w->menu_roles; }
+void rolltui_windows_set_input_actions(RolltuiWindows* w, const RolltuiInputActions* a) { w->input_actions = a; }
+const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w) { return w->input_actions; }
+
+/* The floor a host holds an input's window at whatever its text says — per-WINDOW sizing the
+ * `input` plugin's ctx keeps, not part of the edited text `inputs` owns, so this reaches the
+ * widget rather than the editor. Created on demand like any other `widget_for`: a host may set
+ * the floor before a window has ever shown this input. */
+void rolltui_windows_set_input_min_outer(RolltuiWindows* w, const char* source, size_t len, int rows) {
+  RolltuiStr key;
+  RolltuiWidget* wd;
+  memset(&key, 0, sizeof key);
+  rolltui_str_set(&key, "input:", 6);
+  rolltui_str_append(&key, source, len);
+  wd = rolltui_windows_widget_for(w, key.p, key.n);
+  if (wd && wd->ctx && wd->vt == rolltui_input_widget_plugin()) rolltui_input_widget_ctx_set_min_outer(wd->ctx, rows);
+  rolltui_str_free(&key);
+}
 
 /* ---- rows (Phase 15 m5e: moved to the boundary so `rows` can be a plugin) ---------------------- */
 

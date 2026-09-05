@@ -330,14 +330,13 @@ class Windows {
   // they are a judgement about ITS transcript's shape, not a library constant.
   void set_highlighter(markdown::Highlighter h);
   void set_code_fold(int fold_over_lines, int cap_lines);
-  const markdown::Highlighter& highlighter() const { return highlighter_; }
-  // Phase 17 m1c: pushed straight onto every LIVE `Transcript` (`transcripts_`, below) the
+  // Phase 17 m1c: the highlighter is PUSHED onto every transcript the boundary owns the
   // moment it is set, and onto each new one as it is created — so a transcript picks up a
   // LATER highlighter instead of silently keeping the first, with no epoch for a widget to
   // poll. Before the port this was PULLED once per frame, by a widget comparing its own
-  // last-seen epoch against this counter; there is no such per-frame pull left to drive
-  // (the transcript kind is pure C now and never touches the highlighter), so nothing reads
-  // an epoch anymore and none is kept.
+  // last-seen epoch against a counter; there is no such per-frame pull left to drive (the
+  // transcript kind is pure C now and never touches the highlighter), so nothing reads an
+  // epoch anymore and none is kept.
   int code_fold_over_lines() const { return code_fold_over_lines_; }
   int code_cap_lines() const { return code_cap_lines_; }
 
@@ -397,13 +396,22 @@ class Windows {
   InputAction input_event(std::string_view source, const Event& e);
 
   // ---- the widgets, by source (created on demand, never destroyed) ----
-  Transcript& transcript(std::string_view source);
-  Input& input(std::string_view source);
+  //
+  // PHASE 17 m1c: these hand back the LIBRARY's own handles rather than the `rolltui::`
+  // wrapper objects `Windows` used to keep in three C++ maps beside the widget table. The
+  // maps moved into `RolltuiWindows` in the same change that repointed the `input`/
+  // `transcript`/`menu` factories at them, because a C-side map beside a C++ one is two
+  // owners of one source — `rolltui/c/rolltui_widgets.h` has the whole argument. Each is a
+  // BORROW of an object the table owns for its whole life; every operation a host used to
+  // reach through the wrapper is the matching `rolltui_input_*`/`_transcript_*`/`_menu_*`
+  // call, which is what a host on the C API writes anyway.
+  RolltuiTranscript* transcript(std::string_view source);
+  RolltuiInput* input(std::string_view source);
   // The menu loaded from `menus/<source>.json` — a host fills a choice's options and
   // reads values back through it. An unresolvable name gives an EMPTY menu (and a
-  // reported window), never a null: a host's `menu("main").set_value(...)` is valid
-  // whether or not the file is there, exactly as `input("prompt")` is.
-  Menu& menu(std::string_view source);
+  // reported window), never a null: a host's `set_value` on it is valid whether or not
+  // the file is there, exactly as `input("prompt")` is.
+  RolltuiMenu* menu(std::string_view source);
   // Which rung answered for `menus/<source>.json`: the file's path, "the host's", "a
   // shipped menu", or "" when nothing did.
   std::string menu_origin(std::string_view source);
@@ -419,9 +427,9 @@ class Windows {
   // ---- what a window holds (routing) ----
   Widget* at(std::string_view window) const;
   std::optional<Content> content_at(std::string_view window) const;
-  Transcript* transcript_at(std::string_view window) const;
-  Input* input_at(std::string_view window) const;
-  Menu* menu_at(std::string_view window) const;
+  RolltuiTranscript* transcript_at(std::string_view window) const;
+  RolltuiInput* input_at(std::string_view window) const;
+  RolltuiMenu* menu_at(std::string_view window) const;
 
  private:
   Widget* widget_for(const std::string& content);
@@ -438,23 +446,17 @@ class Windows {
   // fragile reinterpret through `RolltuiDocument` or a second owner — neither pays for
   // itself the way the callback maps below do.
   std::map<std::string, Document> owned_documents_;
-  // Phase 17 (widget kinds port): `Windows` OWNS every `input:<source>` here now, one per
-  // source, created on demand exactly like `owned_documents_` above. The reason is
-  // `input()`/`input_at()`'s own contract: both must hand back a LIVE `Input&` backed by the
-  // SAME state the `input` kind (a pure-C plugin now, `rolltui/c/rolltui_widget_kinds.c`)
-  // draws and edits. `Input::handle()` (public) lets that plugin's `ctx` BORROW the
-  // `RolltuiInput*` this map owns, so both readings are one object.
-  std::map<std::string, Input> inputs_;
-  // Phase 17 m1c: the same trick, now for `transcript`/`menu` — `Transcript::handle()`/
-  // `Menu::handle()` (public, added 2026-09-05) are the accessors `Input::handle()` already
-  // had, which is exactly what let `input` port while these two did not until now.
-  // `transcript()`/`menu()` hand back a LIVE reference into these maps; the pure-C ctx
-  // (`rolltui/c/rolltui_widget_kinds.c`) BORROWS the same handle, so a host driving one
-  // directly (`transcript().handle(...)`, `menu().handle(...)`, both hosts do) and the window
-  // that draws it are one object, never two that could drift apart.
-  std::map<std::string, Transcript> transcripts_;
-  std::map<std::string, Menu> menus_;
-  markdown::Highlighter highlighter_;
+  // THE THREE MAPS THAT USED TO BE HERE — `inputs_`, `transcripts_`, `menus_`, one
+  // `rolltui::Input`/`Transcript`/`Menu` per source — ARE THE BOUNDARY'S NOW (Phase 17 m1c).
+  // They were the last thing a built-in factory had to cross back into C++ for, which is what
+  // made `input`/`transcript`/`menu` ported-but-unreachable: the kinds were C and the objects
+  // they drew were not. `rolltui_widgets.h` states the ownership argument for why the maps and
+  // the factories had to move in ONE change. The HIGHLIGHTER went with them: its `std::function`
+  // crosses as {fn, ctx, free_ctx} like every other host callable here, so the trampoline
+  // context (the callable plus its two scratch vectors) is heap-held and released BY the
+  // boundary — one per `Windows` rather than one per transcript, since the scratch is only
+  // live inside a call. What stays on this side is what would only ever be a second copy
+  // behind a reference this class already hands out (`help_*` above, `owned_documents_`).
   int code_fold_over_lines_ = 0, code_cap_lines_ = 0;
   // THE WIDGET TABLE, THE PER-WINDOW ROUTING TABLE, THE KIND REGISTRY AND THE SCROLLBAR'S
   // TRACKS ARE THE BOUNDARY'S (Phase 15 m5). They were four `std::map`s and two loose

@@ -45,6 +45,25 @@ RolltuiChord chord_of(const KeyEvent& k) {
   return c;
 }
 
+// …and the whole Event, which four files in this library had each written for themselves
+// before Phase 17 m1c gave it one home (Keys.hpp says why). The paste text is BORROWED from
+// `e` for exactly as long as `e` lives, which is what every C `handle` needs and no longer.
+RolltuiEvent c_event_of(const Event& e) {
+  RolltuiEvent ev{};
+  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_KEY;
+    ev.key = chord_of(*k);
+  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_MOUSE;
+    ev.mouse = *m;
+  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
+    ev.kind = ROLLTUI_EVENT_PASTE;
+    ev.text = p->text.data();
+    ev.text_len = p->text.size();
+  }
+  return ev;
+}
+
 namespace {
 
 // The sink the decoder emits through: one event appended per call, with the borrowed

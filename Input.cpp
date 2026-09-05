@@ -112,25 +112,17 @@ std::string_view Input::history_at(std::size_t i) const {
   return std::string_view(p, n);
 }
 
+// The handle-taking form, for the same reason `menu_handle`/`transcript_handle` have one
+// (Phase 17 m1c): what a host holds for an input the window table owns is a `RolltuiInput*`,
+// and the thirty action names are this file's.
+InputAction input_handle(RolltuiInput* in, const Event& e, const Bindings& bindings, std::uint64_t now_ms) {
+  if (std::holds_alternative<ResizeEvent>(e)) return InputAction::Ignored;
+  const RolltuiEvent ev = c_event_of(e);
+  return static_cast<InputAction>(rolltui_input_handle(in, &ev, bindings.handle(), &kActions, now_ms));
+}
+
 InputAction Input::handle(const Event& e, const Bindings& bindings, std::uint64_t now_ms) {
-  RolltuiEvent ev{};
-  std::string_view paste;
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_KEY;
-    ev.key = chord_of(*k);
-  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_MOUSE;
-    ev.mouse = *m;
-  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_PASTE;
-    paste = p->text;
-    ev.text = paste.data();
-    ev.text_len = paste.size();
-  } else {
-    return InputAction::Ignored;
-  }
-  return static_cast<InputAction>(
-      rolltui_input_handle(in_.get(), &ev, bindings.handle(), &kActions, now_ms));
+  return input_handle(in_.get(), e, bindings, now_ms);
 }
 
 void Input::draw(Frame& f, const Theme& theme, bool focused) const {

@@ -84,6 +84,20 @@ using namespace rolltui_test;
 
 namespace {
 
+// The input's text as a view. `Windows::input()` hands back the library's own handle now
+// (Phase 17 m1c), and the C's text accessor is pointer+length like every other borrow here.
+std::string_view input_text(const RolltuiInput* in) {
+  std::size_t n = 0;
+  const char* p = rolltui_input_text(in, &n);
+  return std::string_view(p, n);
+}
+void set_input_text(RolltuiInput* in, std::string_view t) { rolltui_input_set_text(in, t.data(), t.size()); }
+bool transcript_selection_active(const RolltuiTranscript* t) {
+  RolltuiSelection sel;
+  rolltui_transcript_selection(t, &sel);
+  return sel.active != 0;
+}
+
 std::string rect_str(Rect r) {
   return "{" + std::to_string(r.x) + "," + std::to_string(r.y) + "," + std::to_string(r.w) + "," + std::to_string(r.h) + "}";
 }
@@ -1131,17 +1145,41 @@ int main() {
     check(row(by_id(v, "prompt")->inner.y).find(">") == 0, "input: the line editor's prompt [" + row(by_id(v, "prompt")->inner.y) + "]");
 
     // The typed accessors a host routes with.
-    check(windows.transcript_at("tx") == &windows.transcript("session") && windows.input_at("prompt") == &windows.input("prompt") &&
-              windows.menu_at("m") == &windows.menu("main") && windows.at("own") == windows.registered("mine", "one"),
+    check(windows.transcript_at("tx") == windows.transcript("session") && windows.input_at("prompt") == windows.input("prompt") &&
+              windows.menu_at("m") == windows.menu("main") && windows.at("own") == windows.registered("mine", "one"),
           "a window's widget is reachable by window id, typed by kind — a registered one through registered(), the same shape as transcript(source)");
     check(!windows.transcript_at("prompt") && !windows.input_at("tx") && !windows.menu_at("own") && !windows.registered("nope"),
           "…and never as the wrong kind, and an unregistered name is nullptr rather than an empty instance");
     check(windows.content_at("panel") == Content{WidgetKind::Rows, "status"} && !windows.content_at("nope"),
           "content_at names what a window holds");
 
+    // PHASE 17 m1c — THE CHECK THAT SEPARATES "PORTED" FROM "REACHABLE", and the reason the
+    // milestone was reopened after being ticked. The three accessors above were reachable
+    // through `Windows` for four phases; what was NOT was getting the typed handle out of the
+    // C table, because the objects lived in C++ maps and a C-side map beside them would have
+    // been a second owner. So this drives the input through the LIBRARY's entry points alone,
+    // on the table's own handle, and looks for the bytes on the drawn frame — an accessor that
+    // handed back a different object would pass every check above and fail this one.
+    RolltuiWindows* wh = windows.handle();
+    rolltui_input_set_text(rolltui_windows_input(wh, "prompt", 6), "typed through the C", 19);
+    windows.prepare(s, box);
+    Frame f2(40, 12, dark.style(Role::background));
+    s.compose(f2, box, dark, [&](const ResolvedNode& rn, Frame& fr) { windows.draw(rn, fr, dark); });
+    auto row2 = [&](int y) {
+      std::string out;
+      for (int x = 0; x < 40; ++x) out += f2.glyph(x, y);
+      while (!out.empty() && out.back() == ' ') out.pop_back();
+      return out;
+    };
+    const int prompt_y = by_id(s.resolve(box), "prompt")->inner.y;
+    check(row2(prompt_y).find("typed through the C") != std::string::npos,
+          "the widget a window draws IS the object the C table hands back by source — one owner, "
+          "asked for through `rolltui_windows_input` and nothing else [" + row2(prompt_y) + "]");
+    rolltui_input_clear(rolltui_windows_input(wh, "prompt", 6));
+
     // One widget per CONTENT: two windows on one source are one widget, and a layout
     // reload keeps what the user typed.
-    windows.input("prompt").set_text("half-typed");
+    rolltui_input_set_text(windows.input("prompt"), "half-typed", 10);
     LayoutLoadReport lr2;
     std::optional<Layout> two = load_layout_c(R"({"name":"two","root":{"column":[
         {"id":"a","content":"transcript:session"},{"id":"b","content":"transcript:session"},
@@ -1150,8 +1188,8 @@ int main() {
     s.set_base(two->base);
     windows.prepare(s, box);
     check(windows.transcript_at("a") == windows.transcript_at("b"), "two windows on one content are ONE widget");
-    check(windows.input("prompt").text() == "half-typed", "a layout reload keeps the input's text (the widget belongs to the content)");
-    windows.input("prompt").clear();
+    check(input_text(windows.input("prompt")) == "half-typed", "a layout reload keeps the input's text (the widget belongs to the content)");
+    rolltui_input_clear(windows.input("prompt"));
   }
   {
     // Every failure, by name AND on screen — never a blank window.
@@ -1219,30 +1257,30 @@ int main() {
     // Read a loaded tree without ever indexing into one that did not load: a control
     // that SEGFAULTS reports nothing (CLAUDE.md), and every rung here can be empty.
     auto first_label = [&](const char* name) {
-      const MenuItem& r = windows.menu(name).root();
+      const MenuItem& r = *rolltui_menu_root(windows.menu(name));
       return r.children.empty() ? std::string("(no items)") : r.children.front().label;
     };
     auto option_count = [&](const char* name, const char* id) {
-      const MenuItem* it = windows.menu(name).find(id);
+      const MenuItem* it = rolltui_menu_find(windows.menu(name), id, std::strlen(id));
       return it ? static_cast<int>(it->children.size()) : -1;
     };
     // Rung 3, with nothing else present: the library's own shipped menus/main.json.
     check(!shipped_menu("main").empty() && shipped_menu("nothing-ships-this").empty(),
           "the library ships menus/main.json and nothing under a name it has no file for");
-    check(windows.menu_origin("main") == "a shipped menu" && windows.menu("main").root().label == "settings",
+    check(windows.menu_origin("main") == "a shipped menu" && rolltui_menu_root(windows.menu("main"))->label == "settings",
           "with no user file and no host menu, `menu:main` is the SHIPPED one [" + windows.menu_origin("main") + "]");
 
     // Rung 2: a menu the host carries in its binary shadows the shipped one.
     windows.add_menu("main", R"({"id":"root","label":"the host's","items":[{"id":"h","label":"host item"}]})");
-    check(windows.menu_origin("main") == "the host's" && windows.menu("main").root().label == "the host's",
+    check(windows.menu_origin("main") == "the host's" && rolltui_menu_root(windows.menu("main"))->label == "the host's",
           "a host's add_menu() shadows the shipped file [" + windows.menu_origin("main") + "]");
 
     // Rung 1: the user's own file shadows both — and is picked up with no rebuild and
     // no restart, which is what a menu file being a file is FOR.
     { std::ofstream(dir + "/menus/main.json") << R"({"id":"root","label":"mine","items":[{"id":"u","label":"user item"}]})"; }
-    check(windows.menu_origin("main") == dir + "/menus/main.json" && windows.menu("main").root().label == "mine",
+    check(windows.menu_origin("main") == dir + "/menus/main.json" && rolltui_menu_root(windows.menu("main"))->label == "mine",
           "a user's menus/main.json shadows the host's and the shipped one [" + windows.menu_origin("main") + "]");
-    check(windows.menu("main").root().children.size() == 1 && first_label("main") == "user item",
+    check(rolltui_menu_root(windows.menu("main"))->children.size() == 1 && first_label("main") == "user item",
           "…and it is the user's tree that is loaded [" + first_label("main") + "]");
 
     // A window naming a menu nobody has is a named bad value AND a drawn reason.
@@ -1305,12 +1343,15 @@ int main() {
     rep = windows.prepare(s, box);
     check(rep.bad_values.size() == 1 && rep.bad_values[0].find("colour") != std::string::npos,
           "an unknown key is reported… [" + rep.summary() + "]");
-    check(windows.menu_at("b") && windows.menu_at("b")->root().children.size() == 1 && first_label("extra") == "still here",
+    check(windows.menu_at("b") && rolltui_menu_root(windows.menu_at("b"))->children.size() == 1 && first_label("extra") == "still here",
           "…and the menu still loads and draws (an unknown key is not fatal) [" + first_label("extra") + "]");
 
     // A host's set_options on a file-loaded tree: the structure is the file's, the
     // options are the host's runtime facts — the split both hosts now live on.
-    windows.menu("extra").set_options("d", {MenuItem::action("one", "one"), MenuItem::action("two", "two")});
+    RolltuiMenuItemList two_options;
+    two_options.push_back(MenuItem::action("one", "one"));
+    two_options.push_back(MenuItem::action("two", "two"));
+    rolltui_menu_set_options(windows.menu("extra"), "d", 1, &two_options);
     check(option_count("extra", "d") == 2, "a host fills a file-loaded item's options by id (" + std::to_string(option_count("extra", "d")) + ")");
 
     // ---- m4: a menu item may NAME an action, and it is checked against the live table.
@@ -1324,7 +1365,7 @@ int main() {
     rep = windows.prepare(s, box);
     check(rep.bad_values.size() == 1 && rep.bad_values[0].find("item 'z' names the action 'app.zoom', which no layout declares") != std::string::npos,
           "a menu item naming an UNDECLARED action is a bad value, by item and action [" + rep.summary() + "]");
-    check(windows.menu("extra").find("d") != nullptr, "…and the item that names a DECLARED action is not reported");
+    check(rolltui_menu_find(windows.menu("extra"), "d", 1) != nullptr, "…and the item that names a DECLARED action is not reported");
 
     // declare() is the whole screen's list (m6), so app.details has to be named again
     // here or it stops being declared — which the very next assertion relies on.
@@ -1334,7 +1375,7 @@ int main() {
     // The point of naming the action: the shortcut is the LIVE chords, so a rebinding
     // can never leave a stale key in a menu file.
     auto shortcut_of = [&](const char* id) {
-      const MenuItem* it = windows.menu("extra").find(id);
+      const MenuItem* it = rolltui_menu_find(windows.menu("extra"), id, std::strlen(id));
       return it ? it->shortcut : std::string("(no such item)");
     };
     check(shortcut_of("d") == "F3" && shortcut_of("z").empty(),
@@ -1403,17 +1444,17 @@ int main() {
     const Rect box{0, 0, 20, 20};
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(1)), "an empty input takes one row");
-    windows.input("prompt").set_text("one\ntwo\nthree");
+    set_input_text(windows.input("prompt"), "one\ntwo\nthree");
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(3)), "three lines of text: three rows");
-    windows.input("prompt").set_text(std::string(30, 'x') + "\n" + std::string(30, 'y') + "\n" + std::string(200, 'z'));
+    set_input_text(windows.input("prompt"), std::string(30, 'x') + "\n" + std::string(30, 'y') + "\n" + std::string(200, 'z'));
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(10)), "…and never more than half the parent's height");
     windows.bind_note("prompt", [](Note& out) { out.text = "working"; });
-    windows.input("prompt").set_text("hi");
+    set_input_text(windows.input("prompt"), "hi");
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(1)), "a note that fits beside one row of text adds nothing");
-    windows.input("prompt").set_text("a text that is much longer than the window");
+    set_input_text(windows.input("prompt"), "a text that is much longer than the window");
     windows.prepare(s, box);
     check(s.find("prompt")->size == SplitSize::fixed(Dim::abs(4)), "…and takes its own row under a wrapped one (3 text rows + 1)");
   }
@@ -1654,11 +1695,11 @@ int main() {
       const Theme& th = *builtin_theme("default-dark");
       Frame f(40, 12);
       for (const ResolvedNode& rn : s.resolve(box)) windows.draw(rn, f, th);
-      Transcript& tr = windows.transcript("session");
-      tr.scroll_to_top();
+      RolltuiTranscript* tr = windows.transcript("session");
+      rolltui_transcript_scroll_to_top(tr);
       windows.prepare(s, box);
       for (const ResolvedNode& rn : s.resolve(box)) windows.draw(rn, f, th);
-      check(tr.top_line() == 0, "at the top");
+      check(rolltui_transcript_top_line(tr) == 0, "at the top");
       // The thumb is IN the right border column, which the widget never sees.
       const int track_x = 39;
       bool thumb_drawn = false;
@@ -1676,26 +1717,26 @@ int main() {
       // discriminates is that no selection began. Found by the negative control, which
       // passed this line while the bar was inert.
       check(windows.handle("t", m), "a press on the track is handled");
-      check(!tr.selection().active, "…by the WINDOW: no drag-selection started, which is what a press on the text would do");
+      check(!transcript_selection_active(tr), "…by the WINDOW: no drag-selection started, which is what a press on the text would do");
       windows.prepare(s, box);
-      check(tr.top_line() > 0, "…and it moved the transcript (" + std::to_string(tr.top_line()) + ")");
-      const std::size_t after_press = tr.top_line();
+      check(rolltui_transcript_top_line(tr) > 0, "…and it moved the transcript (" + std::to_string(rolltui_transcript_top_line(tr)) + ")");
+      const std::size_t after_press = rolltui_transcript_top_line(tr);
       // A drag back up keeps driving it: the press captured the pointer.
       m.kind = MouseEvent::Kind::Drag;
       m.y = 1;
       check(windows.handle("t", m), "a drag on the thumb keeps being consumed");
       windows.prepare(s, box);
-      check(tr.top_line() < after_press, "…and dragging up scrolls up");
+      check(rolltui_transcript_top_line(tr) < after_press, "…and dragging up scrolls up");
       m.kind = MouseEvent::Kind::Release;
       check(windows.handle("t", m), "the release ends the drag");
       // A press one column INSIDE the track is the text's, not the bar's.
       m.kind = MouseEvent::Kind::Press;
       m.x = track_x - 1;
       m.y = 5;
-      const std::size_t before_text = tr.top_line();
+      const std::size_t before_text = rolltui_transcript_top_line(tr);
       windows.handle("t", m);
       windows.prepare(s, box);
-      check(tr.top_line() == before_text, "a press one column inside the track does not scroll: the bar owns ONE column");
+      check(rolltui_transcript_top_line(tr) == before_text, "a press one column inside the track does not scroll: the bar owns ONE column");
     }
     // THE property, over a sweep rather than the two cases above — and stated with the
     // limit the sweep itself found: it holds WHEN THERE IS ROOM TO SAY. A thumb with

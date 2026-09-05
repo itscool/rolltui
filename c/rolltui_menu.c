@@ -907,6 +907,19 @@ RolltuiMenu* rolltui_menu_new(void) {
    * created an input for it and passed it — the two-consumers-one-wrapper tell. A menu with no
    * editor cannot edit a typed field, so there was never a menu that wanted a different one. */
   m->edit = rolltui_input_new();
+  /* …AND SHAPED HERE, for the same reason the editor is owned here (Phase 17 m1c). A menu's
+   * typed field is a SINGLE line with no prompt; both remaining callers — `rolltui::Menu`'s
+   * constructor and `menu_test.cpp`'s holder — set exactly these two the moment they built
+   * one, which is rule 5's tell again. A caller wanting a different editor shape still calls
+   * `rolltui_input_set_options` on `rolltui_menu_editor(m)`. */
+  {
+    RolltuiInputOptions o;
+    rolltui_input_options_init(&o);
+    o.single_line = 1;
+    rolltui_str_clear(&o.prompt); /* a field is not a prompt */
+    rolltui_input_set_options(m->edit, &o);
+    rolltui_input_options_release(&o);
+  }
   m->u = rolltui_u_scratch_new();
   return m;
 }
@@ -964,6 +977,27 @@ int rolltui_menu_set_options(RolltuiMenu* m, const char* id, size_t len, const R
   rolltui_menu_list_copy(&it->children, options);
   rebuild_flat(m);
   clamp_selection(m);
+  return 1;
+}
+
+int rolltui_menu_set_value(RolltuiMenu* m, const char* id, size_t len, const char* value, size_t value_len) {
+  RolltuiMenuItem* it = rolltui_menu_find(m, id, len);
+  if (!it) return 0;
+  rolltui_str_set(&it->value, value, value_len);
+  return 1;
+}
+
+int rolltui_menu_set_checked(RolltuiMenu* m, const char* id, size_t len, int checked) {
+  RolltuiMenuItem* it = rolltui_menu_find(m, id, len);
+  if (!it) return 0;
+  it->checked = (unsigned char)(checked != 0);
+  return 1;
+}
+
+int rolltui_menu_set_enabled(RolltuiMenu* m, const char* id, size_t len, int enabled) {
+  RolltuiMenuItem* it = rolltui_menu_find(m, id, len);
+  if (!it) return 0;
+  it->enabled = (unsigned char)(enabled != 0);
   return 1;
 }
 

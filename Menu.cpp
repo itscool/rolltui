@@ -199,13 +199,11 @@ void fill_shortcuts(MenuItem& it, const Bindings& b) {
 
 }  // namespace
 
-Menu::Menu() {
-  InputOptions o;
-  o.single_line = 1;
-  o.prompt.clear();
-  rolltui_input_set_options(rolltui_menu_editor(m_.get()), &o);
-  rolltui_menu_set_validator_fn(m_.get(), call_validator, &validators_);
-}
+// The editor's shape (single line, no prompt) is `rolltui_menu_new`'s now — this constructor
+// and `menu_test.cpp`'s holder were writing the identical two lines right after it, which is
+// rule 5's tell. What is left here is the one thing that cannot cross: the host validator
+// registry, ASKED for by name rather than moved (rolltui_menu.h states the trade).
+Menu::Menu() { rolltui_menu_set_validator_fn(m_.get(), call_validator, &validators_); }
 
 Menu::Menu(MenuItem root) : Menu() { set_root(std::move(root)); }
 
@@ -217,22 +215,13 @@ const MenuItem* Menu::find(std::string_view id) const {
 }
 
 bool Menu::set_value(std::string_view id, std::string value) {
-  MenuItem* it = find(id);
-  if (!it) return false;
-  it->value = std::move(value);
-  return true;
+  return rolltui_menu_set_value(m_.get(), id.data(), id.size(), value.data(), value.size()) != 0;
 }
 bool Menu::set_checked(std::string_view id, bool checked) {
-  MenuItem* it = find(id);
-  if (!it) return false;
-  it->checked = static_cast<unsigned char>(checked);
-  return true;
+  return rolltui_menu_set_checked(m_.get(), id.data(), id.size(), checked) != 0;
 }
 bool Menu::set_enabled(std::string_view id, bool enabled) {
-  MenuItem* it = find(id);
-  if (!it) return false;
-  it->enabled = static_cast<unsigned char>(enabled);
-  return true;
+  return rolltui_menu_set_enabled(m_.get(), id.data(), id.size(), enabled) != 0;
 }
 
 bool Menu::set_options(std::string_view id, std::vector<MenuItem> options) {
@@ -261,13 +250,17 @@ std::vector<std::string> Menu::unknown_validators() const {
   return out;
 }
 
-std::vector<std::pair<std::string, std::string>> Menu::item_actions() const {
+std::vector<std::pair<std::string, std::string>> item_actions(const MenuItem& root) {
   std::vector<std::pair<std::string, std::string>> out;
-  collect_item_actions(root(), out);
+  collect_item_actions(root, out);
   return out;
 }
 
-void Menu::apply_shortcuts(const Bindings& b) { fill_shortcuts(*rolltui_menu_root(m_.get()), b); }
+void apply_shortcuts(MenuItem& root, const Bindings& b) { fill_shortcuts(root, b); }
+
+std::vector<std::pair<std::string, std::string>> Menu::item_actions() const { return rolltui::item_actions(root()); }
+
+void Menu::apply_shortcuts(const Bindings& b) { rolltui::apply_shortcuts(*rolltui_menu_root(m_.get()), b); }
 
 void Menu::reset() { rolltui_menu_reset(m_.get()); }
 
@@ -309,29 +302,21 @@ std::string_view Menu::flat_label(std::size_t i) const {
   return std::string_view(p, n);
 }
 
-MenuEvent Menu::handle(const Event& e, const Bindings& bindings) {
-  RolltuiEvent ev{};
-  std::string_view paste;
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_KEY;
-    ev.key = chord_of(*k);
-  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_MOUSE;
-    ev.mouse = *m;
-  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_PASTE;
-    paste = p->text;
-    ev.text = paste.data();
-    ev.text_len = paste.size();
-  } else {
-    return {};
-  }
+// THE HANDLE-TAKING FORM IS THE REAL ONE (Phase 17 m1c). Three hosts drive a menu the window
+// table owns, and what they hold is a `RolltuiMenu*`; the two things they cannot do for
+// themselves are the event conversion (Keys.hpp's `c_event_of`, one copy now) and the menu
+// scope's ACTION NAMES, which are this file's and which `rolltui_menu.h` says never cross.
+MenuEvent menu_handle(RolltuiMenu* m, const Event& e, const Bindings& bindings) {
+  if (std::holds_alternative<ResizeEvent>(e)) return {};
+  const RolltuiEvent ev = c_event_of(e);
   RolltuiMenuEvent out{};
-  rolltui_menu_handle(m_.get(), &ev, bindings.handle(), &menu_actions(), &out);
+  rolltui_menu_handle(m, &ev, bindings.handle(), &menu_actions(), &out);
   MenuEvent r{static_cast<MenuEvent::Kind>(out.kind), out.id.str(), out.value.str(), out.checked != 0};
   rolltui_menu_event_release(&out);
   return r;
 }
+
+MenuEvent Menu::handle(const Event& e, const Bindings& bindings) { return menu_handle(m_.get(), e, bindings); }
 
 void Menu::draw(Frame& f, const Theme& theme, bool focused) const {
   rolltui_menu_draw(m_.get(), f.handle(), draw_scratch(), theme.styles.data(), &kRoles, &kInputRoles,

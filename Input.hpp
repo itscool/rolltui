@@ -151,6 +151,10 @@ enum class InputAction : unsigned char {
   Eof = ROLLTUI_INPUT_EOF,
 };
 
+// DRIVING AN INPUT THROUGH ITS HANDLE (Phase 17 m1c) — the same shape as `menu_handle` and
+// `transcript_handle`: the event conversion and the thirty action names.
+InputAction input_handle(RolltuiInput* in, const Event& e, const Bindings& bindings, std::uint64_t now_ms = 0);
+
 class Input {
  public:
   // OWNED, through a `unique_ptr` with a deleter that calls the C free — the same shape

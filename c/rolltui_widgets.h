@@ -87,6 +87,7 @@
 #include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_transcript.h"
 #include "rolltui/c/rolltui_layout.h"
@@ -210,28 +211,58 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
 /* The widget a WINDOW holds, or NULL — filled by `sync`. */
 RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, size_t len);
 
-/* ---- A KNOWN GAP, RECORDED RATHER THAN HALF-CLOSED (Phase 17, 2026-09-05) ----------------
- * `rolltui_windows_at`/`_widget_for` hand back an opaque `RolltuiWidget{vt, ctx}`: enough to
- * DRAW a widget and route an event at it, and nothing else. There is no way to recover the
- * typed `RolltuiInput*` / `RolltuiTranscript*` / `RolltuiMenu*` behind one, so a host cannot
- * set an input's text, scroll a transcript or read a menu's selection through this API.
+/* ---- THE TYPED WIDGETS, OWNED HERE AND REACHABLE BY NAME (Phase 17 m1c, 2026-09-05) ------
+ * `rolltui_windows_at`/`_widget_for` above hand back an opaque `RolltuiWidget{vt, ctx}`:
+ * enough to DRAW a widget and route an event at it, and nothing else. TWO CONSUMERS reached
+ * for the missing typed call on the same day, separately (roll's `TuiFrontend` and
+ * `layout_test`) — `rolltui.h` rule 5's tell that the API was wrong rather than the consumers.
  *
- * TWO CONSUMERS REACHED FOR THAT SAME MISSING CALL ON THE SAME DAY, separately (roll's
- * `TuiFrontend` and `layout_test`) — which is `rolltui.h` rule 5's tell that the API is wrong
- * rather than the consumers.
+ * THE FIX IS OWNERSHIP, NOT AN ACCESSOR, and that distinction is why this took two attempts.
+ * The three accessors alone were written once and REVERTED: `Windows` kept these widgets in
+ * C++ maps (`Widgets.cpp`'s `inputs_`/`transcripts_`/`menus_`) that the built-in factories
+ * constructed from, so a C-side map would have been a SECOND owner — a host asking for
+ * `input:x` would get one object and the window drawing `input:x` would draw another, two
+ * views of one source silently diverging, and every suite passes either way. The maps moved
+ * HERE and the three built-in factories were repointed at them in ONE change; these accessors
+ * and those factories now read the same table, so there is one object per source by
+ * construction.
  *
- * IT IS NOT CLOSED HERE, AND THE REASON IS THE INTERESTING PART. Adding the three accessors is
- * ten lines and was written and then REVERTED: `Windows` keeps those widgets in C++ maps
- * (`Widgets.cpp`'s `inputs_`/`transcripts_`/`menus_`) that the built-in factories construct
- * from, so a C-side map would be a SECOND owner. A host calling `rolltui_windows_input("x")`
- * would get one object and the window drawing `input:x` would draw another — two views of one
- * source silently diverging, which is the exact property this table already promises against
- * ("two windows on one content are two views of one widget").
- *
- * THE ORDER THAT WORKS: move the three maps into this struct AND repoint the built-in
- * factories at them in ONE change, then the ~85 host call sites follow. Doing the accessors
- * first buys nothing and risks a half-state no test would catch, because both objects behave
- * correctly in isolation. See `plan/phase-17.md` m1c. */
+ * Created on demand and never destroyed until `w` is — the same rule the widget table itself
+ * states ("two windows on one content are two views of one widget"). Every one comes back
+ * fully formed: an input with the library's defaults, a transcript with the library's roles
+ * and whatever highlighter `rolltui_windows_set_highlight` last set, a menu with its own
+ * single-line editor and its file resolved NOW rather than at the next draw. */
+RolltuiInput* rolltui_windows_input(RolltuiWindows* w, const char* source, size_t len);
+RolltuiTranscript* rolltui_windows_transcript(RolltuiWindows* w, const char* source, size_t len);
+RolltuiMenu* rolltui_windows_menu(RolltuiWindows* w, const char* source, size_t len);
+/* Which rung answered for `menus/<source>.json`: the file's path, "the host's", "a shipped
+ * menu", or "" when nothing did. Re-resolves first; a BORROW until the next refresh. */
+const char* rolltui_windows_menu_origin(RolltuiWindows* w, const char* source, size_t len, size_t* out_len);
+
+/* …and the same three by WINDOW id: the typed handle that window's widget draws, or NULL when
+ * the window is unknown or its content is a different kind. `sync` fills the window table, so
+ * a window that has never been synced answers NULL — which is what `content_at` already does
+ * and is not an error. */
+RolltuiInput* rolltui_windows_input_at(const RolltuiWindows* w, const char* window, size_t len);
+RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const char* window, size_t len);
+RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len);
+
+/* THE SYNTAX HIGHLIGHTER every transcript this table owns renders code blocks through — a
+ * HOST fact, off until set (`rolltui/Widgets.hpp` states the seam). Pushed straight onto every
+ * transcript that already exists AND onto each one created afterwards, so the order a host
+ * calls this and `rolltui_windows_transcript` in cannot matter and nothing has an epoch to
+ * poll. `ctx` is released through `free_ctx` when this is called again or when `w` is freed —
+ * the {fn, ctx, free_ctx} shape `rolltui_windows_bind_rows` and `rolltui_effect_register`
+ * already use for a host's callable. */
+void rolltui_windows_set_highlight(RolltuiWindows* w, RolltuiMdHighlightFn fn, void* ctx,
+                                   void (*free_ctx)(void*));
+
+/* THE EXTRA ROWS an `input:<source>` window must have whatever its text says (roll holds the
+ * prompt as tall as the modal placed over it). Per-WINDOW sizing the widget keeps, not part of
+ * the edited text the input owns — which is why it is set here by source name rather than on
+ * the `RolltuiInput*` above. The widget is created on demand, so a host may set the floor
+ * before any window has shown this input. */
+void rolltui_windows_set_input_min_outer(RolltuiWindows* w, const char* source, size_t len, int rows);
 
 /* That window's content string, a BORROW valid until the next `sync`. */
 const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,

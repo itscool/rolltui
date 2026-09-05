@@ -492,13 +492,10 @@ void fill_shortcuts(MenuItem& it, const RolltuiBindings* b) {
 
 class Menu {
  public:
-  // PHASE 17: the menu owns its editor. This holder used to create one and hand it in —
-  // the second of the two identical wrappers that moved the job into the library.
+  // PHASE 17: the menu owns its editor, AND SHAPES IT. This holder used to create the editor
+  // and hand it in, then set single_line/no-prompt on it — the second of the two identical
+  // wrappers each time, which is what moved both jobs into the library.
   Menu() : m_(rolltui_menu_new()), editor_(rolltui_menu_editor(m_)) {
-    RolltuiInputOptions o;
-    o.single_line = 1;
-    o.prompt.clear();
-    rolltui_input_set_options(editor_, &o);
     rolltui_menu_set_validator_fn(m_, call_validator, &validators_);
   }
   explicit Menu(MenuItem root) : Menu() { set_root(std::move(root)); }

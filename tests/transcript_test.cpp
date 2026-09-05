@@ -90,15 +90,9 @@ std::string lines(int n) {
 // `handle()` did inline, and one free function per method — copied here (not invented)
 // because a test that calls the C API directly has nowhere else for the mapping to live.
 
-// THE FIVE ROLES A DRAW NEEDS, handed in once (Transcript.cpp's kRoles, verbatim).
-constexpr RolltuiTranscriptRoles kRoles = {
-    /*background=*/static_cast<unsigned char>(Role::background),
-    /*selection=*/static_cast<unsigned char>(Role::selection),
-    /*find_match=*/static_cast<unsigned char>(Role::find_match),
-    /*find_current=*/static_cast<unsigned char>(Role::find_current),
-    /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
-    /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
-};
+// THE SIX ROLES A DRAW NEEDS are the transcript's own defaults as of Phase 17 m1c — this
+// file carried Transcript.cpp's `kRoles` verbatim, and being the SECOND copy is exactly what
+// moved them into `rolltui_transcript_new`. Nothing here names a role now.
 // THE ELEVEN ACTION NAMES (Transcript.cpp's kActions, verbatim). The C knows the rules
 // and none of the words.
 constexpr RolltuiTranscriptActions kActions = {
@@ -114,7 +108,7 @@ constexpr RolltuiTranscriptActions kActions = {
 // rather than a method needing `this`. `Transcript()`'s constructor, kept whole.
 struct TranscriptHandle {
   RolltuiTranscript* p;
-  TranscriptHandle() : p(rolltui_transcript_new()) { rolltui_transcript_set_roles(p, &kRoles); }
+  TranscriptHandle() : p(rolltui_transcript_new()) {}
   ~TranscriptHandle() { rolltui_transcript_free(p); }
   TranscriptHandle(const TranscriptHandle&) = delete;
   TranscriptHandle& operator=(const TranscriptHandle&) = delete;

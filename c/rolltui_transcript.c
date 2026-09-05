@@ -1609,6 +1609,18 @@ RolltuiTranscript* rolltui_transcript_new(void) {
   t->click_.y = -1;
   t->u_ = rolltui_u_scratch_new();
   t->wrap_ = rolltui_wrap_new();
+  /* THE SIX ROLES A DRAW NEEDS, SET HERE (Phase 17 m1c). They used to be handed in by every
+   * caller right after this call — `rolltui::Transcript`'s constructor and
+   * `transcript_test.cpp`'s handle wrote the IDENTICAL six-line table, which is rule 5's tell
+   * that the API was wrong rather than the consumers. The role vocabulary is this library's
+   * own C enum now (`rolltui_style.h`), so a transcript can name its own defaults; a caller
+   * that wants different ones still calls `rolltui_transcript_set_roles`. */
+  t->roles_.background = ROLLTUI_ROLE_BACKGROUND;
+  t->roles_.selection = ROLLTUI_ROLE_SELECTION;
+  t->roles_.find_match = ROLLTUI_ROLE_FIND_MATCH;
+  t->roles_.find_current = ROLLTUI_ROLE_FIND_CURRENT;
+  t->roles_.scroll_marker = ROLLTUI_ROLE_SCROLL_MARKER;
+  t->roles_.text_muted = ROLLTUI_ROLE_TEXT_MUTED;
   return t;
 }
 

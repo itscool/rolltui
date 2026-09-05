@@ -151,6 +151,11 @@ using TranscriptStats = RolltuiTranscriptStats;
 
 inline bool operator<(const TextPos& a, const TextPos& b) { return rolltui_text_pos_less(&a, &b) != 0; }
 
+// DRIVING A TRANSCRIPT THROUGH ITS HANDLE (Phase 17 m1c) — the same shape, and for the same
+// two reasons, as `menu_handle`: the event conversion and the eleven action names.
+bool transcript_handle(RolltuiTranscript* t, const Event& e, const Document& doc, std::uint64_t now_ms,
+                       const Bindings& bindings);
+
 class Transcript {
  public:
   // OWNED, through a `unique_ptr` with a deleter that calls the C free.

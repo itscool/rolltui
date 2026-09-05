@@ -13,18 +13,6 @@ namespace rolltui {
 
 namespace {
 
-// THE FIVE ROLES A DRAW NEEDS, handed in. `rolltui/Style.hpp` is the one place these names
-// exist; every other role a line is drawn in travels on the SPAN, which the markdown renderer
-// already tagged (Phase 15 m2's rule).
-constexpr RolltuiTranscriptRoles kRoles = {
-    /*background=*/static_cast<unsigned char>(Role::background),
-    /*selection=*/static_cast<unsigned char>(Role::selection),
-    /*find_match=*/static_cast<unsigned char>(Role::find_match),
-    /*find_current=*/static_cast<unsigned char>(Role::find_current),
-    /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
-    /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
-};
-
 // THE ELEVEN ACTION NAMES. `library_actions()` in Bindings.cpp is where the vocabulary lives;
 // the C knows the RULES and none of the words.
 constexpr RolltuiTranscriptActions kActions = {
@@ -71,10 +59,12 @@ void call_highlighter(void* ctx, const char* lang, std::size_t lang_n, const Rol
 }
 }  // namespace
 
-Transcript::Transcript() {
-  rolltui_transcript_set_copy(t_.get(), call_copy, this);
-  rolltui_transcript_set_roles(t_.get(), &kRoles);
-}
+// THE SIX ROLES A DRAW NEEDS are `rolltui_transcript_new`'s own defaults as of Phase 17 m1c:
+// this constructor and `transcript_test.cpp`'s handle were setting the identical table right
+// after it — rule 5's tell — and the vocabulary they spelled is the C's own now
+// (`rolltui_style.h`), so there was nothing left for this side to supply.
+// `rolltui_transcript_set_roles` remains for a caller wanting different ones; nothing does.
+Transcript::Transcript() { rolltui_transcript_set_copy(t_.get(), call_copy, this); }
 Transcript::~Transcript() = default;
 
 void Transcript::layout(const Document& doc, Rect area, const TranscriptOptions& opt) {
@@ -85,24 +75,18 @@ void Transcript::draw(Frame& frame, const Theme& theme) const {
   rolltui_transcript_draw(t_.get(), frame.handle(), draw_scratch(), theme.styles.data());
 }
 
+// The handle-taking form, for the same reason `menu_handle` has one (Phase 17 m1c): a host
+// driving the transcript the window table owns holds a `RolltuiTranscript*`, and the eleven
+// action names are this file's — `rolltui_transcript.h` says they never cross by themselves.
+bool transcript_handle(RolltuiTranscript* t, const Event& e, const Document& doc, std::uint64_t now_ms,
+                       const Bindings& bindings) {
+  if (std::holds_alternative<ResizeEvent>(e)) return false;
+  const RolltuiEvent ev = c_event_of(e);
+  return rolltui_transcript_handle(t, &ev, &doc.entries, now_ms, bindings.handle(), &kActions) != 0;
+}
+
 bool Transcript::handle(const Event& e, const Document& doc, std::uint64_t now_ms, const Bindings& bindings) {
-  RolltuiEvent ev{};
-  std::string_view paste;
-  if (const KeyEvent* k = std::get_if<KeyEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_KEY;
-    ev.key = chord_of(*k);
-  } else if (const MouseEvent* m = std::get_if<MouseEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_MOUSE;
-    ev.mouse = *m;
-  } else if (const PasteEvent* p = std::get_if<PasteEvent>(&e)) {
-    ev.kind = ROLLTUI_EVENT_PASTE;
-    paste = p->text;
-    ev.text = paste.data();
-    ev.text_len = paste.size();
-  } else {
-    return false;
-  }
-  return rolltui_transcript_handle(t_.get(), &ev, &doc.entries, now_ms, bindings.handle(), &kActions) != 0;
+  return transcript_handle(t_.get(), e, doc, now_ms, bindings);
 }
 
 bool Transcript::toggle_fold_nearest_top(const Document& doc) {

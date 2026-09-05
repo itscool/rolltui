@@ -823,11 +823,20 @@ static RolltuiWidget panel_widget_factory(void* c, const char* why, size_t n) {
   return make_error_widget(w, rolltui_windows_builtin_roles(w)->error, why, n);
 }
 
+/* The three below are defined further down, with the kinds they build. Declared here so the
+ * one registration point stays one function rather than three scattered ones. */
+static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n);
+static RolltuiWidget transcript_widget_factory(void* c, const char* content, size_t n);
+static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n);
+
 void rolltui_widget_kinds_register(RolltuiWindows* w) {
   rolltui_windows_register_kind(w, "rows", 4, rows_widget_factory, w, NULL);
   rolltui_windows_register_kind(w, "text", 4, text_widget_factory, w, NULL);
   rolltui_windows_register_kind(w, "file", 4, file_widget_factory, w, NULL);
   rolltui_windows_register_kind(w, "help", 4, help_widget_factory, w, NULL);
+  rolltui_windows_register_kind(w, "input", 5, input_widget_factory, w, NULL);
+  rolltui_windows_register_kind(w, "transcript", 10, transcript_widget_factory, w, NULL);
+  rolltui_windows_register_kind(w, "menu", 4, menu_widget_factory, w, NULL);
   rolltui_windows_set_error_factory(w, error_widget_factory, w);
   rolltui_windows_set_panel_factory(w, panel_widget_factory, w);
 }
@@ -845,7 +854,6 @@ typedef struct RolltuiInputCtx {
   int min_outer;
   int max_rows; /* this frame's cap, from the last desired_outer() */
   RolltuiBuiltinRoles roles;
-  const RolltuiInputActions* actions; /* BORROWED, process lifetime (rolltui::input_actions()) */
   RolltuiUnicodeScratch* uscratch;
   RolltuiDrawScratch* draw;
   RolltuiNote note; /* reused scratch for note_info() */
@@ -978,10 +986,13 @@ static void input_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
 }
 
 int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const char* source, size_t source_len,
-                                     const RolltuiInputActions* actions, const RolltuiEvent* e) {
+                                     const RolltuiEvent* e) {
   const RolltuiBindings* b = rolltui_windows_bindings(w);
   const RolltuiWidgetEnv* env = rolltui_windows_env(w);
-  int action = (int)rolltui_input_handle(ed, e, b, actions, env->now_ms);
+  /* The action names are `w`'s (Phase 17 m1c) rather than a parameter: with the `input`
+   * FACTORY on this side there is no caller in the middle holding them, and one source beats
+   * two ways to say the same thing. */
+  int action = (int)rolltui_input_handle(ed, e, b, rolltui_windows_input_actions(w), env->now_ms);
   if (action != ROLLTUI_INPUT_SUBMIT) return action;
   {
     size_t tlen = 0;
@@ -1001,8 +1012,8 @@ int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const 
 }
 static int input_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
-  return rolltui_input_kind_process_event(ic->ed, ic->w, ic->source.p ? ic->source.p : "", ic->source.n, ic->actions,
-                                         e) != ROLLTUI_INPUT_IGNORED;
+  return rolltui_input_kind_process_event(ic->ed, ic->w, ic->source.p ? ic->source.p : "", ic->source.n, e) !=
+         ROLLTUI_INPUT_IGNORED;
 }
 static void input_ctx_destroy(void* ctx) {
   RolltuiInputCtx* ic = (RolltuiInputCtx*)ctx;
@@ -1020,19 +1031,37 @@ static const RolltuiWidgetPlugin kInputPlugin = {
 
 const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void) { return &kInputPlugin; }
 
-void* rolltui_input_widget_ctx_new(RolltuiInput* ed, RolltuiWindows* w, const char* source, size_t source_len,
-                                    const RolltuiBuiltinRoles* roles, const RolltuiInputActions* actions) {
-  RolltuiInputCtx* ic = (RolltuiInputCtx*)rolltui_mem_alloc(sizeof *ic);
+/* The editor is the window TABLE's, asked for by source (Phase 17 m1c) — the same object
+ * `rolltui_windows_input` hands a host, never a second one built here. */
+static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n) {
+  RolltuiWindows* w = (RolltuiWindows*)c;
+  unsigned char ordinal = 0, problem = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  RolltuiStr why;
+  RolltuiInputCtx* ic;
+  RolltuiWidget out;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+                             &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  ic = (RolltuiInputCtx*)rolltui_mem_alloc(sizeof *ic);
   memset(ic, 0, sizeof *ic);
-  ic->ed = ed;
+  ic->ed = rolltui_windows_input(w, source, source_len);
   ic->w = w;
   rolltui_str_set(&ic->source, source, source_len);
-  ic->roles = *roles;
-  ic->actions = actions;
+  ic->roles = *rolltui_windows_builtin_roles(w);
   ic->uscratch = rolltui_u_scratch_new();
   ic->draw = rolltui_draw_scratch_new();
   ic->max_rows = 1;
-  return ic;
+  out.vt = &kInputPlugin;
+  out.ctx = ic;
+  return out;
 }
 void rolltui_input_widget_ctx_set_min_outer(void* ctx, int rows) { ((RolltuiInputCtx*)ctx)->min_outer = rows; }
 
@@ -1130,17 +1159,34 @@ static const RolltuiWidgetPlugin kTranscriptPlugin = {
     NULL,                   transcript_ctx_handle, transcript_ctx_scroll_extent, transcript_ctx_scroll_to,
 };
 
-const RolltuiWidgetPlugin* rolltui_transcript_widget_plugin(void) { return &kTranscriptPlugin; }
+static const RolltuiWidgetPlugin* transcript_widget_plugin(void) { return &kTranscriptPlugin; }
 
-void* rolltui_transcript_widget_ctx_new(RolltuiTranscript* t, RolltuiWindows* w, const char* source,
-                                        size_t source_len) {
-  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)rolltui_mem_alloc(sizeof *tc);
+static RolltuiWidget transcript_widget_factory(void* c, const char* content, size_t n) {
+  RolltuiWindows* w = (RolltuiWindows*)c;
+  unsigned char ordinal = 0, problem = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  RolltuiStr why;
+  RolltuiTranscriptCtx* tc;
+  RolltuiWidget out;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+                             &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  tc = (RolltuiTranscriptCtx*)rolltui_mem_alloc(sizeof *tc);
   memset(tc, 0, sizeof *tc);
-  tc->t = t;
+  tc->t = rolltui_windows_transcript(w, source, source_len);
   tc->w = w;
   rolltui_str_set(&tc->source, source, source_len);
   tc->draw = rolltui_draw_scratch_new();
-  return tc;
+  out.vt = transcript_widget_plugin();
+  out.ctx = tc;
+  return out;
 }
 
 /* ============================================================================================
@@ -1450,15 +1496,38 @@ static const RolltuiWidgetPlugin kMenuPlugin = {
 
 const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void) { return &kMenuPlugin; }
 
-void* rolltui_menu_widget_ctx_new(RolltuiMenu* m, RolltuiWindows* w, const char* source, size_t source_len) {
-  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)rolltui_mem_alloc(sizeof *mc);
+/* `rolltui_windows_menu` re-resolves the FILE through this very ctx, so it reaches back into
+ * `rolltui_windows_widget_for` for the widget being built here. That terminates because the
+ * table claims the row BEFORE running a factory (rolltui_widgets.c says so at the claim): the
+ * re-entrant call sees a zeroed widget, skips the refresh, and hands back the menu object —
+ * which is all this factory wants. The outer caller refreshes once this returns. */
+static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n) {
+  RolltuiWindows* w = (RolltuiWindows*)c;
+  unsigned char ordinal = 0, problem = 0;
+  int is_host = 0;
+  const char *name = NULL, *source = NULL;
+  size_t name_len = 0, source_len = 0;
+  RolltuiStr why;
+  RolltuiMenuCtx* mc;
+  RolltuiWidget out;
+  memset(&out, 0, sizeof out);
+  memset(&why, 0, sizeof why);
+  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+                             &why)) {
+    rolltui_str_free(&why);
+    return out;
+  }
+  rolltui_str_free(&why);
+  mc = (RolltuiMenuCtx*)rolltui_mem_alloc(sizeof *mc);
   memset(mc, 0, sizeof *mc);
-  mc->m = m;
+  mc->m = rolltui_windows_menu(w, source, source_len);
   mc->w = w;
   rolltui_str_set(&mc->source, source, source_len);
   mc->stamp = -1;
   mc->draw = rolltui_draw_scratch_new();
-  return mc;
+  out.vt = &kMenuPlugin;
+  out.ctx = mc;
+  return out;
 }
 
 void rolltui_menu_widget_ctx_refresh(void* ctx) { menu_ctx_refresh((RolltuiMenuCtx*)ctx); }
