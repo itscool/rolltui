@@ -4,6 +4,23 @@
 #include <algorithm>
 #include <cstdlib>
 
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_theme.h"
+
+// `json::Value <-> RolltuiJsonValue*`, SHARED with Json.cpp — the same borrowed-declaration
+// move `Theme.cpp`/`Layout.cpp`/`Presets.cpp` already make, needed here for exactly one
+// thing each way: reading the loaded preset's "defs" subtree into `defs_` (a real
+// `json::Value`, queried by real `.obj`/`.is_string()` operations in `rebuild_palette`), and
+// handing `colours_json`'s freshly-built pair object across as the `RolltuiJsonValue*`
+// `ThemePreset::colours` and `ThemePresets::set_colours` now use (Phase 17 m2). Declared at
+// `rolltui::json` (NOT `rolltui::tools::json` — this file's own namespace is
+// `rolltui::tools`, and nesting it there would silently declare a second, unrelated,
+// never-defined symbol instead of naming the real one).
+namespace rolltui::json {
+RolltuiJsonValue* value_to_c(const Value& v);
+Value value_from_c(const RolltuiJsonValue* v);
+}  // namespace rolltui::json
+
 namespace rolltui::tools {
 
 namespace {
@@ -55,7 +72,7 @@ bool ThemeEditor::load(const ThemePreset& preset, ThemeLoadReport& report) {
   std::optional<Theme> l = resolve_colours(preset, ThemeMode::Light, light_rep);
   if (!d || !l) return false;
   current_ = {*d, *l};
-  defs_ = preset.colours.get("defs");
+  defs_ = json::value_from_c(rolltui_json_get(preset.colours.get(), "defs", 4));
   undo_.reset(current_);
   preview_.reset();
   rebuild_palette();
@@ -88,9 +105,9 @@ void ThemeEditor::set_mode(ThemeMode m) {
   refresh_fixes();
 }
 
-json::Value ThemeEditor::colours_json(std::string_view name) const {
+RolltuiJsonValue* ThemeEditor::colours_json(std::string_view name) const {
   const ThemeEdit& c = undo_.current();
-  return theme_pair_to_json_value(c.dark, c.light, name);
+  return json::value_to_c(theme_pair_to_json_value(c.dark, c.light, name));
 }
 
 void ThemeEditor::rebuild_palette() {
@@ -110,11 +127,13 @@ void ThemeEditor::rebuild_palette() {
   };
   palette_.push_back({Color::none(), "none", "none"});
   for (const Theme* t : {&current_.dark, &current_.light})
-    for (std::size_t i = 0; i < kRoleCount; ++i)
-      for (Color c : {t->styles[i].fg, t->styles[i].bg}) {
+    for (std::size_t i = 0; i < kRoleCount; ++i) {
+      const RolltuiStyle* s = rolltui_theme_style(t->styles.data(), kRoleCount, i);
+      for (Color c : {s->fg, s->bg}) {
         const std::string id = color_to_string(c);
         if (!has(id)) palette_.push_back({c, id, label_for(id)});
       }
+    }
 }
 
 void ThemeEditor::rebuild_menu() {
@@ -194,7 +213,7 @@ void ThemeEditor::sync_values() {
   const Theme& t = mode_ == ThemeMode::Dark ? undo_.current().dark : undo_.current().light;
   for (std::size_t i = 0; i < kRoleCount; ++i) {
     const std::string base = "role." + std::string(kRoleNames[i]);
-    const Style& s = t.styles[i];
+    const Style& s = *rolltui_theme_style(t.styles.data(), kRoleCount, i);
     menu_.set_value(base + ".fg", color_to_string(s.fg));
     menu_.set_value(base + ".bg", color_to_string(s.bg));
     for (const char* a : kAttrs) menu_.set_checked(base + "." + a, attr_value(s, a));

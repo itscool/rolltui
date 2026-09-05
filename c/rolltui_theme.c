@@ -1354,3 +1354,17 @@ RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const Roll
   if (fx) rolltui_json_set(root, K("effects"), fx);
   return root;
 }
+
+/* ---- the style table: one role at a time (Phase 17 m2) ------------------------------------
+ * See this file's header for why these take `(styles, role_count, role)` rather than a
+ * `Theme` handle: the table is the caller's own fixed-size storage, never allocated here. */
+
+const RolltuiStyle* rolltui_theme_style(const RolltuiStyle* styles, size_t role_count, unsigned char role) {
+  if (!styles || role >= role_count) return NULL;
+  return &styles[role];
+}
+
+void rolltui_theme_set_style(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* style) {
+  if (!styles || !style || role >= role_count) return;
+  styles[role] = *style;
+}

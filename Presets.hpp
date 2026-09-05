@@ -72,6 +72,7 @@
 // renderer re-reads only when it must.
 //
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -83,27 +84,51 @@
 #include "rolltui/Layout.hpp"
 #include "rolltui/PresetStore.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_json.h"
 
 namespace rolltui {
 
 // ---- the Theme domain ----------------------------------------------------------------
 
-// `colours` STAYS a `json::Value`. Its own parse/dump ALGORITHM moved to C
-// (`theme_preset_from_json`/`_to_json`/`ThemeDomain::parse_partial`, `Presets.cpp` — this
-// header comment is the finding that port left behind): each now crosses "colours" as a
-// `RolltuiJsonValue*` for the one call it needs it. The FIELD stayed a `json::Value` because
-// real callers reach into it with real `json::Value` operations a C-backed proxy cannot
-// honestly offer: `theme_editor.cpp`'s `defs_ = preset.colours.get("defs")`, `studio.cpp`'s
-// `store->set_colours(teditor.colours_json(store->origin()))`, and this struct's own
-// `ThemePresets::set_colours(json::Value, bool)` below. None of those three call sites is
-// this task's to change. This is the SAME position `rolltui/c/rolltui_json.h`'s header
-// comment states for the five other C++ modules still holding a real `Value`, applied to one
-// field of one struct rather than to a whole file.
+// `colours` IS A `RolltuiJsonValue*` NOW (Phase 17 m2 — the three call sites named below,
+// which a prior pass declined as "none of those three is this task's to change", are exactly
+// the list that made it this task's to change). Its own parse/dump ALGORITHM already lived in
+// C (`theme_preset_from_json`/`_to_json`/`ThemeDomain::parse_partial`, `Presets.cpp`): every
+// one of those already built or read "colours" as a `RolltuiJsonValue*` for the one call it
+// needed it, then round-tripped through `json::value_from_c`/`_to_c` just to store it back in
+// a `json::Value` FIELD — the field was the only reason the round trip existed. Owning the
+// tree directly (a clone on copy, `rolltui_json_equal` for `==`, freed on destruction — the
+// same OWNED-handle shape `rolltui::EffectMap` already uses for `Theme::effects`) removes that
+// round trip entirely rather than moving it. The three real callers now read:
+// `theme_editor.cpp`'s `defs_ = json::value_from_c(rolltui_json_get(preset.colours.get(),
+// "defs", 4))`, `studio.cpp`'s `store->set_colours(teditor.colours_json(store->origin()))`
+// (unchanged text — `colours_json()` now returns an OWNED `RolltuiJsonValue*` and
+// `set_colours` now takes ownership of one, so the same call still type-checks), and this
+// struct's own `ThemePresets::set_colours(RolltuiJsonValue*, bool)` below.
 struct ThemePreset {
-  json::Value colours;          // a theme file object (Theme.hpp's format; dark/light pairs allowed)
+  struct ColoursDeleter { void operator()(RolltuiJsonValue* p) const { rolltui_json_free(p); } };
+  // OWNED, LONG-LIVED: a theme file object (Theme.hpp's format; dark/light pairs allowed).
+  std::unique_ptr<RolltuiJsonValue, ColoursDeleter> colours;
   std::string mode = "auto";    // auto | dark | light — auto: the host asks the terminal (OSC 11), dark when it cannot
   std::string depth = "auto";   // auto | truecolor | 256 | 16 | mono — auto: detect_color_depth over the environment
-  bool operator==(const ThemePreset&) const = default;
+
+  // `unique_ptr` moves for free; only the copying half needs writing out (a deep clone, the
+  // same "OWNED, and cloned rather than shared" rule `rolltui::EffectMap` already follows).
+  ThemePreset() = default;
+  ThemePreset(const ThemePreset& o) : colours(rolltui_json_clone(o.colours.get())), mode(o.mode), depth(o.depth) {}
+  ThemePreset(ThemePreset&&) = default;
+  ThemePreset& operator=(const ThemePreset& o) {
+    if (this != &o) {
+      colours.reset(rolltui_json_clone(o.colours.get()));
+      mode = o.mode;
+      depth = o.depth;
+    }
+    return *this;
+  }
+  ThemePreset& operator=(ThemePreset&&) = default;
+  bool operator==(const ThemePreset& o) const {
+    return rolltui_json_equal(colours.get(), o.colours.get()) != 0 && mode == o.mode && depth == o.depth;
+  }
 };
 
 // File format: { "name", "mode", "depth", "colours": {theme object} }. "colours" is
@@ -137,8 +162,11 @@ struct ThemeDomain {
 class ThemePresets : public PresetStore<ThemeDomain> {
  public:
   using PresetStore<ThemeDomain>::PresetStore;
-  // Part edits (rule 2: every runtime change lands in the working copy).
-  void set_colours(json::Value colours, bool persist = true) { edit([&](ThemePreset& p) { p.colours = std::move(colours); }, persist); }
+  // Part edits (rule 2: every runtime change lands in the working copy). TAKES OWNERSHIP of
+  // `colours` — the same contract `rolltui_theme_preset_to_json`/`rolltui_json_set` already
+  // have for a tree handed across this boundary; `edit`'s callback runs exactly once
+  // (`rolltui_preset_store_edit`), so there is no double-adopt to guard against.
+  void set_colours(RolltuiJsonValue* colours, bool persist = true) { edit([&](ThemePreset& p) { p.colours.reset(colours); }, persist); }
   void set_mode(std::string mode, bool persist = true) { edit([&](ThemePreset& p) { p.mode = std::move(mode); }, persist); }
   void set_depth(std::string depth, bool persist = true) { edit([&](ThemePreset& p) { p.depth = std::move(depth); }, persist); }
 };

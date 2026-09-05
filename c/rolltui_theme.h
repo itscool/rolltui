@@ -88,6 +88,26 @@ int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* 
  * above 0.5 is light, anything else — including a colour that is not rgb — is dark. */
 unsigned char rolltui_mode_for_background(RolltuiStyleColor bg);
 
+/* ---- the style table: one role at a time (Phase 17 m2) ------------------------------------
+ *
+ * `rolltui::Theme::styles` is a fixed table the C++ side owns (a `std::array<RolltuiStyle,
+ * kRoleCount>` — no allocation here, and none of this file's business to size) that
+ * `rolltui_theme_builtin_fill`/`_load`/`_dump` below already fill and read POSITIONALLY,
+ * `role_count` long. These two are the ORDINAL, bounds-checked way to read or write ONE entry
+ * instead of a caller indexing `styles[role]` by hand: this file still names no role
+ * (`rolltui_style.h`'s own rule, restated at the top of this file) — `role` crosses as the
+ * ordinal a renderer is already handed, never a name, and `role_count` is the caller's own
+ * vocabulary size, passed in exactly like every function above already takes it. */
+
+/* A BORROW into the caller's own table, valid exactly as long as `styles` is. NULL when
+ * `styles` is NULL or `role` is out of range — a bad ordinal is a caller bug, not a crash. */
+const RolltuiStyle* rolltui_theme_style(const RolltuiStyle* styles, size_t role_count, unsigned char role);
+
+/* Writes `*style` into `styles[role]`. A no-op — not a crash — when either pointer is NULL or
+ * `role` is out of range, the same defensive shape `rolltui_theme_builtin_fill` already takes
+ * for a mismatched count. */
+void rolltui_theme_set_style(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* style);
+
 /* ---- the built-in themes, and the JSON theme loader/dumper (Phase 15 m5) ------------------
  *
  * Everything above this line was Phase 15 m3: the colour engine, ~200 lines that were already

@@ -9,9 +9,10 @@
 //
 #include <string>
 
+#include "../tools/undo_stack.hpp"
+#include "rolltui/c/rolltui_json.h"
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
-#include "undo_stack.hpp"
 
 using namespace rolltui;
 using namespace rolltui::tools;
@@ -145,12 +146,14 @@ int main() {
     ed.handle(key(Key::Enter));
     check(ed.mode() == ThemeMode::Light && ed.current().styles == ed.committed().light.styles, "choosing light previews and edits the light variant");
     check(ed.current().style(Role::md_heading).fg == builtin_theme("default-light")->style(Role::md_heading).fg, "the light variant has its own heading colour");
-    json::Value pair = ed.colours_json("edited");
+    RolltuiJsonValue* pair = ed.colours_json("edited");  // OWNED — freed below
     ThemeLoadReport r2;
     std::optional<Theme> d = load_theme(pair, ThemeMode::Dark, r2), l = load_theme(pair, ThemeMode::Light, r2);
     check(d && l && d->styles == ed.committed().dark.styles && l->styles == ed.committed().light.styles,
           "the written-back pair object loads to both variants exactly (bold was set in dark only: an attribute pair)");
-    check(pair.get("roles").get("md_heading").get("bold").is_object(), "…the file carries bold as a {dark, light} pair for that role");
+    const RolltuiJsonValue* bold = rolltui_json_get(rolltui_json_get(rolltui_json_get(pair, "roles", 5), "md_heading", 10), "bold", 4);
+    check(rolltui_json_is_object(bold), "…the file carries bold as a {dark, light} pair for that role");
+    rolltui_json_free(pair);
   }
   // ---- the host-facing outcomes ----
   {

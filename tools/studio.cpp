@@ -157,6 +157,7 @@
 #include "rolltui/Input.hpp"
 #include "rolltui/Keys.hpp"
 #include "rolltui/AppProfile.hpp"
+#include "rolltui/c/rolltui_json.h"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Menu.hpp"
 #include "rolltui/Presets.hpp"
@@ -1526,7 +1527,13 @@ int main(int argc, char** argv) {
       else if (failed.empty()) std::printf("every claimed badge holds\n");
       std::printf("\n");
       // A colours object without pairs is the same at both modes: one report is enough.
-      if (json::dump(p->colours, 0).find("\"dark\"") == std::string::npos) break;
+      // `p->colours` is a `RolltuiJsonValue*` now (Phase 17 m2); dump it through the C API
+      // rather than converting back to a `json::Value` for one substring check.
+      RolltuiStr dump{};
+      rolltui_json_dump(p->colours.get(), 0, &dump);
+      const bool has_dark_pair = std::string(dump.p ? dump.p : "", dump.n).find("\"dark\"") != std::string::npos;
+      rolltui_str_free(&dump);
+      if (!has_dark_pair) break;
     }
     return rc;
   }

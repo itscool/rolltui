@@ -36,8 +36,8 @@
 #include "rolltui/Theme.hpp"
 #include "rolltui/ThemeAnalysis.hpp"
 #include "rolltui/ThemeGen.hpp"
-#include "tool_actions.hpp"
 #include "undo_stack.hpp"
+#include "tool_actions.hpp"
 
 namespace rolltui::tools {
 
@@ -77,7 +77,10 @@ class ThemeEditor {
   const ThemeEdit& current_edit() const { return current_; }
   const ThemeEdit& committed() const { return undo_.current(); }
   bool previewing() const { return preview_.has_value(); }
-  json::Value colours_json(std::string_view name) const;  // the committed variants as one file object
+  // The committed variants as one file object. OWNED — the caller frees it with
+  // `rolltui_json_free` (or hands it straight to `ThemePresets::set_colours`, which adopts
+  // it: `store->set_colours(teditor.colours_json(store->origin()))`).
+  RolltuiJsonValue* colours_json(std::string_view name) const;
 
   Menu& menu() { return menu_; }
   const Menu& menu() const { return menu_; }

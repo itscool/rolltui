@@ -190,7 +190,9 @@ std::optional<ThemePreset> theme_preset_from_json(const Value& v, PresetLoadRepo
     ThemePreset p;
     p.mode = mode.str();
     p.depth = depth.str();
-    p.colours = json::value_from_c(colours_c);
+    // `colours_c` is a BORROW of a subtree of `root_c` (this header's own comment) and
+    // `root_c` is freed below, so `p.colours` clones it rather than adopting it.
+    p.colours.reset(rolltui_json_clone(colours_c));
     out = std::move(p);
   }
   rolltui_theme_preset_report_release(&rep);
@@ -201,9 +203,9 @@ std::optional<ThemePreset> theme_preset_from_json(const Value& v, PresetLoadRepo
 }
 
 Value theme_preset_to_json(const ThemePreset& p, std::string_view name) {
-  // `rolltui_theme_preset_to_json` TAKES OWNERSHIP of the colours tree; `value_to_c` builds
-  // one fresh for exactly this call, so there is nothing left to free on this side.
-  RolltuiJsonValue* c = rolltui_theme_preset_to_json(json::value_to_c(p.colours), p.mode.data(), p.mode.size(),
+  // `rolltui_theme_preset_to_json` TAKES OWNERSHIP of the colours tree; `p` keeps its own, so
+  // this hands over a clone rather than `p.colours` itself.
+  RolltuiJsonValue* c = rolltui_theme_preset_to_json(rolltui_json_clone(p.colours.get()), p.mode.data(), p.mode.size(),
                                                      p.depth.data(), p.depth.size(), name.data(), name.size());
   Value out = json::value_from_c(c);
   rolltui_json_free(c);
@@ -211,7 +213,7 @@ Value theme_preset_to_json(const ThemePreset& p, std::string_view name) {
 }
 
 std::optional<Theme> resolve_colours(const ThemePreset& p, ThemeMode mode, ThemeLoadReport& report) {
-  return load_theme(p.colours, mode, report);
+  return load_theme(p.colours.get(), mode, report);
 }
 
 // ---- the Theme domain: traits and the store's own methods -------------------------------
@@ -228,7 +230,9 @@ std::optional<ThemePreset> ThemeDomain::parse_partial(const json::Value& v, cons
   std::optional<ThemePreset> out;
   if (ok) {
     ThemePreset p = working;
-    p.colours = json::value_from_c(colours_c);
+    // `colours_c` borrows `root_c` (see `rolltui_theme_preset_parse_partial`'s own comment),
+    // which is freed below.
+    p.colours.reset(rolltui_json_clone(colours_c));
     out = std::move(p);
   }
   rolltui_theme_preset_report_release(&rep);

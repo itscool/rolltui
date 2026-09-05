@@ -358,7 +358,17 @@ int main() {
         // Screen.hpp's two are `RolltuiFrame* handle()` and its const overload: a BORROW of
         // the handle the Frame OWNS, so that `Effects.cpp` can hand the frame to an applier
         // written in the other language. Never stored; the window is the Frame's lifetime.
-        {"Presets.hpp", 1},      // PresetStore.hpp 3 → 25, RE-RECORDED 2026-09-04 by Phase 15 m3, and this row is the
+// Presets.hpp 1 → 3, RE-RECORDED 2026-09-04 by Phase 17 m2, when `ThemePreset::colours`
+        // became a `RolltuiJsonValue*` instead of a `json::Value` (Theme.hpp's row, below, has
+        // the same milestone's other half). Neither new pointer owns two ways:
+        //   - `RolltuiJsonValue* p` in `ThemePreset::ColoursDeleter::operator()` — the deleter
+        //     of `colours`'s OWNED tree, a `unique_ptr`'s deleter rather than a member, the
+        //     same sanctioned shape `Frame::Handle`/`Terminal::Handle` already use.
+        //   - `RolltuiJsonValue* colours` in `ThemePresets::set_colours` — TAKES OWNERSHIP,
+        //     adopted into the working copy's `colours` member; the same contract
+        //     `rolltui_theme_preset_to_json`/`rolltui_json_set` already have for a tree handed
+        //     across this boundary.
+        {"Presets.hpp", 3},      // PresetStore.hpp 3 → 25, RE-RECORDED 2026-09-04 by Phase 15 m3, and this row is the
         // milestone's own measurement rather than an accounting chore. The template became
         // an ADAPTER onto `rolltui/c/rolltui_presets.h`, and a C boundary over a generic
         // container is nothing BUT pointers: twenty-two of the twenty-five are parameters
@@ -383,7 +393,7 @@ int main() {
         //     Terminal is destroyed or `negotiate_keyboard()` runs again.
         //   - `const char* env` in `negotiate_keyboard()` — `std::getenv`'s own return, read
         //     once to resolve `ROLLTUI_KEY_PROTOCOL` and never stored past that call.
-        {"Terminal.hpp", 4},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
+        {"Terminal.hpp", 4},     {"Theme.hpp", 3},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         // Widgets.hpp 10 → 12 (Phase 15 m5): `RolltuiWindows* p` in `Windows::Handle` — the
         // deleter of the OWNED widget table, which is this milestone's named lifetime — and
         // `RolltuiWindows* handle()`, a BORROW for the shim's own factories. The ten that
@@ -458,7 +468,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 109, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 112, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

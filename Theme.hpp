@@ -66,6 +66,7 @@
 #include "rolltui/Effects.hpp"
 #include "rolltui/Json.hpp"
 #include "rolltui/Style.hpp"
+#include "rolltui/c/rolltui_json.h"
 
 namespace rolltui {
 
@@ -102,6 +103,11 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
 // The same over an already-parsed object (a preset file embeds a theme object —
 // Presets.hpp); `report.error` is set when it is not a usable theme object.
 std::optional<Theme> load_theme(const json::Value& root, ThemeMode mode, ThemeLoadReport& report);
+// The same over an already-parsed C TREE (Phase 17 m2: `ThemePreset::colours` is a
+// `RolltuiJsonValue*` now, not a `json::Value`) — the TEXT overload above parses to exactly
+// this shape and delegates here, so `Presets.cpp`'s `resolve_colours` reaches the same
+// algorithm with no `json::Value` round trip at all.
+std::optional<Theme> load_theme(const RolltuiJsonValue* root, ThemeMode mode, ThemeLoadReport& report);
 
 // The theme as a file in the format above (every role explicit, no defs), so a user can
 // dump a built-in, edit it, and load it back; round-trips exactly.

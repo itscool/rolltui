@@ -8,6 +8,18 @@
 // caller of this header may see change (rolltui/c/rolltui_json.h's own header comment is why
 // `json::Value` itself does not port here — Theme.cpp is one of the six modules it names).
 //
+// PHASE 17 m2 added a THIRD `load_theme` overload, over an already-parsed C tree
+// (`const RolltuiJsonValue*`), because `ThemePreset::colours` (Presets.hpp) is one now instead
+// of a `json::Value` — the TEXT overload below is rewritten to parse-then-delegate to it, so
+// the "meta" handling that used to live only in the text overload is not a second copy.
+// `Theme::meta`'s own shape is UNCHANGED by that: `Presets.cpp`'s `ThemeGen.cpp`/
+// `ThemeAnalysis.cpp` neighbours are real `json::Value` tree consumers Phase 17 m1 already
+// named as staying that way (`rolltui/c/rolltui_json.h`'s header comment), and changing this
+// field would force them into a port this milestone did not scope. `rolltui_theme.h`'s new
+// `rolltui_theme_style`/`_set_style` accessors are the styles-table half of the same
+// milestone; they need nothing here because this file already hands the whole array to the
+// loader/dumper/built-in filler positionally rather than indexing it one role at a time.
+//
 // rolltui_theme.h's loader/dumper never learn a Role's or an EffectState's NAME — a theme file
 // resolves "md_heading"/"waiting" against a table THIS file hands over once per call
 // (`RolltuiThemeVocab`), built from `Style.hpp`'s `kRoleNames` and `Effects.cpp`'s
@@ -269,16 +281,7 @@ std::optional<Theme> theme_from_c_root(const RolltuiJsonValue* root_c, ThemeMode
 
 }  // namespace
 
-std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report) {
-  RolltuiStr err{};
-  RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
-  if (!root_c) {
-    report = ThemeLoadReport{};
-    report.error.assign(err.p ? err.p : "", err.n);
-    rolltui_str_free(&err);
-    return std::nullopt;
-  }
-  rolltui_str_free(&err);
+std::optional<Theme> load_theme(const RolltuiJsonValue* root_c, ThemeMode mode, ThemeLoadReport& report) {
   std::optional<Theme> t = theme_from_c_root(root_c, mode, report);
   if (t) {
     const RolltuiJsonValue* meta_c = rolltui_json_get(root_c, "meta", 4);
@@ -289,6 +292,20 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
       if (b.is_object() && b.has(key)) t->meta.set("badges", b.get(key));
     }
   }
+  return t;
+}
+
+std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, ThemeLoadReport& report) {
+  RolltuiStr err{};
+  RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
+  if (!root_c) {
+    report = ThemeLoadReport{};
+    report.error.assign(err.p ? err.p : "", err.n);
+    rolltui_str_free(&err);
+    return std::nullopt;
+  }
+  rolltui_str_free(&err);
+  std::optional<Theme> t = load_theme(root_c, mode, report);
   rolltui_json_free(root_c);
   return t;
 }

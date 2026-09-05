@@ -16,6 +16,7 @@
 
 #include "rolltui/Json.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_theme.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -88,7 +89,10 @@ int main() {
     check(builtin_theme_names().size() == 3, "names list");
     check(dark->style(Role::background).bg != light->style(Role::background).bg, "dark and light differ in background");
     bool mono_colourless = true;
-    for (const Style& s : mono->styles) mono_colourless &= (s.fg == Color::none() && s.bg == Color::none());
+    for (std::size_t i = 0; i < kRoleCount; ++i) {
+      const RolltuiStyle* s = rolltui_theme_style(mono->styles.data(), kRoleCount, i);
+      mono_colourless &= (s->fg == Color::none() && s->bg == Color::none());
+    }
     check(mono_colourless, "mono uses no colour at all");
     check(mono->style(Role::md_strong).bold && mono->style(Role::error).reverse, "mono still distinguishes by attribute");
     check(dark->style(Role::md_strong).bold && dark->style(Role::md_emphasis).italic && dark->style(Role::md_link).underline,
