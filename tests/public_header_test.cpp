@@ -209,7 +209,11 @@ int main() {
     // 17 -> 14, 2026-09-05: the conversions that landed between are the four theme/effects
     // tests, layout_test and the preset-domain work; the ceiling had simply not been dropped
     // behind them, which is the one way a ratchet quietly stops ratcheting.
-    const int kCeiling = 14;
+    // 14 -> 10, 2026-09-05 (m1d + m2a/m2c): `tool_actions.hpp`, `keys_editor.hpp`,
+    // `layout_editor.hpp`, `authored_screen_test.cpp` and `input_test.cpp` converted; the ten
+    // left are the two remaining hosts, `theme_editor.hpp`, and six test suites that still
+    // need `Layout`/`Theme`/`Screen`/`Widgets`/`Bindings`/`Unicode` C++ types.
+    const int kCeiling = 10;
     std::string joined;
     for (const std::string& n : names) joined += " " + n;
     check(consumers <= kCeiling,

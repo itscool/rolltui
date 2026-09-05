@@ -58,23 +58,12 @@ void init_options(RolltuiInputOptions& o) {
   rolltui_input_options_init(&o);
 }
 
-// The thirty action names, in `RolltuiInputActions`' declared order — copied from
-// Input.cpp's `kActions` (the shim this test no longer calls through), since a caller of
-// `rolltui_input_handle` has to hand this table over itself; the C knows what each command
-// DOES and none of the words (rolltui_input.h).
-constexpr RolltuiInputActions kActions = {
-    "input.submit",             "input.newline",           "input.backspace",
-    "input.delete",             "input.kill_word_backward", "input.kill_word_forward",
-    "input.kill_to_line_start", "input.kill_to_line_end",   "input.left",
-    "input.right",              "input.word_left",          "input.word_right",
-    "input.line_start",         "input.line_end",           "input.up",
-    "input.down",               "input.select_left",        "input.select_right",
-    "input.select_word_left",   "input.select_word_right",  "input.select_line_start",
-    "input.select_line_end",    "input.select_up",          "input.select_down",
-    "input.select_all",         "input.clear_selection",    "input.copy",
-    "input.eof",                "input.undo",               "input.redo",
-};
-
+// THE LIBRARY'S THIRTY, not a copy of them (Phase 17 m2a). This block used to hold a verbatim
+// copy of `Input.cpp`'s table, with the comment "since a caller of `rolltui_input_handle` has
+// to hand this table over itself" — true, and the reason `rolltui_library_actions.c` counted
+// FOUR copies of the 59-row vocabulary. `rolltui_input_default_actions()` is the caller's
+// answer now, expanded from the one list; a host with different words still passes its own.
+const RolltuiInputActions& kActions_ref() { return *rolltui_input_default_actions(); }
 // The three roles a draw needs — copied from Input.cpp's `kRoles`.
 constexpr RolltuiInputRoles kRoles = {
     static_cast<unsigned char>(Role::input_text),
@@ -99,7 +88,7 @@ enum class InputAction : unsigned char {
 };
 
 InputAction handle(RolltuiInput* in, const RolltuiEvent& e, std::uint64_t now_ms = 0) {
-  return static_cast<InputAction>(rolltui_input_handle(in, &e, default_bindings().handle(), &kActions, now_ms));
+  return static_cast<InputAction>(rolltui_input_handle(in, &e, default_bindings().handle(), &kActions_ref(), now_ms));
 }
 
 // A BORROW of the C's buffer, valid until the text next changes — same contract

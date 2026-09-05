@@ -48,11 +48,14 @@
 #include <string>
 #include <vector>
 
-#include "rolltui/AppProfile.hpp"
-#include "rolltui/Layout.hpp"
+// PHASE 17 m2c: the C API, through the umbrella alone. This suite reads two files back —
+// the app profile `rolltui-paint --profile` wrote, and the layout the studio saved — and
+// both loaders are C: `rolltui_app_profile_parse` and `rolltui_load_layout_text`. The
+// hooks the second one wants are the library's own now (`rolltui_layout_default_hooks`),
+// which is what made this conversion two lines rather than a copied table.
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 #ifndef ROLLTUI_STUDIO_BIN
@@ -92,6 +95,9 @@ std::string read_file(const std::string& path, bool& ok) {
 }
 
 bool has(const std::string& haystack, const std::string& needle) { return haystack.find(needle) != std::string::npos; }
+// A `const char*` the library BORROWS back, as a string this file can compare. Valid only
+// while the profile is — which is the whole of the borrow rule, stated at each accessor.
+std::string borrowed(const char* p) { return p ? std::string(p) : std::string(); }
 
 std::string status_line(const std::string& frame) {
   std::vector<std::string> rows;
@@ -145,18 +151,27 @@ int main() {
     bool ok = false;
     const std::string text = read_file(profile, ok);
     check(rc == 0 && ok, "`rolltui-paint --profile` wrote the app's profile");
-    AppProfileReport rep;
-    const std::optional<AppProfile> p = load_app_profile(text, rep);
-    check(p && rep.clean(), "…and it loads clean [" + rep.summary() + "]");
+    RolltuiAppProfileReport rep{};
+    RolltuiAppProfile* p = rolltui_app_profile_parse(text.data(), text.size(), &rep);
+    RolltuiStr sum{};
+    rolltui_app_profile_report_summary(&rep, &sum);
+    check(p && rolltui_app_profile_report_clean(&rep),
+          "…and it loads clean [" + std::string(sum.p ? sum.p : "", sum.n) + "]");
+    rolltui_str_free(&sum);
     if (p) {
-      check(p->app == "paint" && p->kinds.size() == 1 && p->kinds[0].name == "canvas" &&
-                p->kinds[0].rule == SourceRule::Required,
+      check(borrowed(rolltui_app_profile_app(p, nullptr)) == "paint" && rolltui_app_profile_kind_count(p) == 1 &&
+                borrowed(rolltui_app_profile_kind_name(p, 0, nullptr)) == "canvas" &&
+                rolltui_app_profile_kind_rule(p, 0) == ROLLTUI_APP_PROFILE_SOURCE_REQUIRED,
             "…naming the one kind this app registers, and that it takes a source");
-      check(p->menus.size() == 1 && p->menus[0].name == "tools" && has(p->menus[0].json, "Clear the sheet"),
+      check(rolltui_app_profile_menu_count(p) == 1 && borrowed(rolltui_app_profile_menu_name(p, 0, nullptr)) == "tools" &&
+                has(borrowed(rolltui_app_profile_menu_json(p, 0, nullptr)), "Clear the sheet"),
             "…and carrying its tool palette VERBATIM, so the studio resolves `menu:tools` as this app does");
-      check(p->documents.empty() && p->submits.empty() && p->min_width == 20 && p->min_height == 6,
+      check(rolltui_app_profile_document_count(p) == 0 && rolltui_app_profile_submit_count(p) == 0 &&
+                rolltui_app_profile_min_width(p) == 20 && rolltui_app_profile_min_height(p) == 6,
             "…with no document and no submit target: this app has no transcript and no input");
     }
+    rolltui_app_profile_free(p);
+    rolltui_app_profile_report_release(&rep);
   }
 
   // ---- 2. the studio authors the screen, knowing only that file --------------------------
@@ -184,16 +199,24 @@ int main() {
   const std::string saved = read_file(scratch + "/with/layouts/easel.json", ok);
   check(ok, "layouts/easel.json exists — the artifact the target app reads");
   {
-    LayoutLoadReport rep;
-    const std::optional<Layout> l = load_layout(saved, rep);
-    check(l && rep.clean(), "…it loads clean [" + rep.error + "]");
-    if (l) {
-      check(l->name == "easel" && l->min_width == 20 && l->min_height == 6,
+    RolltuiLoadedLayout l;
+    RolltuiLayoutReport rep{};
+    rolltui_loaded_layout_init(&l);
+    std::size_t defaults_n = 0;
+    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+    const int ok_l = rolltui_load_layout_text(saved.data(), saved.size(), &l, defaults, defaults_n,
+                                              rolltui_layout_default_hooks(), &rep);
+    check(ok_l && rolltui_layout_report_clean(&rep), "…it loads clean [" + std::string(rep.error.p ? rep.error.p : "", rep.error.n) + "]");
+    if (ok_l) {
+      check(l.name.view() == "easel" && l.min_width == 20 && l.min_height == 6,
             "…named as typed, with the thresholds inherited from the PROFILE (m5's one right inheritance)");
-      check(l->actions.size() == 1 && l->actions[0].name == "app.easel" && l->actions[0].description == "clear the easel sheet",
+      check(l.actions_n == 1 && l.actions[0].name.view() == "app.easel" &&
+                l.actions[0].description.view() == "clear the easel sheet",
             "…declaring exactly the one action a person typed, with the description they gave it");
-      check(l->popups.empty(), "…and no popup: it was created from the skeleton, not from the screen that was open");
+      check(l.popups_n == 0, "…and no popup: it was created from the skeleton, not from the screen that was open");
     }
+    rolltui_loaded_layout_release(&l);
+    rolltui_layout_report_release(&rep);
     check(has(saved, "\"content\": \"canvas:sheet\"") && has(saved, "\"content\": \"menu:tools\"") && has(saved, "\"content\": \"help\""),
           "…and the three contents are the app's kind, the app's menu, and a library kind");
   }

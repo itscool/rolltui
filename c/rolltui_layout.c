@@ -1100,6 +1100,27 @@ void rolltui_loaded_layout_release(RolltuiLoadedLayout* l) {
   memset(l, 0, sizeof *l);
 }
 
+/* `RolltuiLoadedLayout` and `RolltuiLayout` share `name`/`actions`(list)/`base`/`popups`(list)
+ * byte for byte (this file's own header comment on `RolltuiLayout` says so), so every field
+ * below is a MOVE, never a copy: `loaded` is about to be released by the caller either way. */
+void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout* out) {
+  if (!loaded || !out) return;
+  rolltui_str_move(&out->name, &loaded->name);
+  out->min_width = loaded->min_width;
+  out->min_height = loaded->min_height;
+  out->actions.v = loaded->actions;
+  out->actions.n = loaded->actions_n;
+  out->actions.cap = loaded->actions_cap;
+  loaded->actions = NULL;
+  loaded->actions_n = loaded->actions_cap = 0;
+  rolltui_layer_move(&out->base, &loaded->base);
+  out->popups.v = loaded->popups;
+  out->popups.n = loaded->popups_n;
+  out->popups.cap = loaded->popups_cap;
+  loaded->popups = NULL;
+  loaded->popups_n = loaded->popups_cap = 0;
+}
+
 /* ---- RolltuiActionList: an owned array of RolltuiLayoutAction values --------------------------- */
 /* GROWING AMORTISED, exactly like RolltuiLayerList right beside it: a RolltuiLayoutAction is
  * two RolltuiStrs and nothing else, so it is trivially relocatable the same way. */
@@ -2286,4 +2307,40 @@ const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n) {
   }
   if (n) *n = g_shipped_actions_n;
   return g_shipped_actions;
+}
+
+
+/* ---- the library's own hooks (Phase 17 m2a) ------------------------------------------------
+ * See rolltui_layout.h for why these three questions no longer have to be asked back. */
+
+static int default_role_from_name(void* ctx, const char* name, size_t len, unsigned char* out) {
+  const int r = rolltui_role_from_name(name, len);
+  (void)ctx;
+  if (r < 0) return 0;
+  *out = (unsigned char)r;
+  return 1;
+}
+
+static size_t default_role_name(void* ctx, unsigned char role, char* out, size_t cap) {
+  size_t n = 0;
+  const char* name = rolltui_role_name(role, &n);
+  (void)ctx;
+  if (n >= cap) n = cap ? cap - 1 : 0;
+  if (cap) {
+    memcpy(out, name, n);
+    out[n] = '\0';
+  }
+  return n;
+}
+
+const RolltuiLayoutHooks* rolltui_layout_default_hooks(void) {
+  static const RolltuiLayoutHooks h = {
+      /*is_library_scope=*/rolltui_bindings_library_scope,
+      /*scope_ctx=*/NULL,
+      /*role_from_name=*/default_role_from_name,
+      /*role_from_name_ctx=*/NULL,
+      /*role_name=*/default_role_name,
+      /*role_name_ctx=*/NULL,
+  };
+  return &h;
 }

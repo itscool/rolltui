@@ -306,32 +306,17 @@ std::vector<std::string> widget_kind_names_c() {
 // ---- direct C calls, continued: the loader (load_layout/layout_to_json/builtin_layout*) ----
 // `LayoutLoadReport`/`Layout`/`ActionDecl` stay rolltui::-side (see the include comment); only
 // the ALGORITHM these wrap moves. Every function here mirrors Layout.cpp's own body verbatim
-// — `kHooks_c`/`report_from_c_c`/`actions_to_c_c`/`loaded_to_layout_c` are that file's private
-// `kHooks`/`report_from_c`/`actions_to_c`/`loaded_to_layout`, copied because they are not
-// exported (by design: the algorithm is the boundary's, the shim's OWN plumbing is not part
-// of its public surface either).
-int role_from_name_cb_c(void*, const char* name, std::size_t len, unsigned char* out) {
-  const Role r = role_from_name(std::string_view(name, len));
-  if (r == Role::count_) return 0;
-  *out = static_cast<unsigned char>(r);
-  return 1;
-}
-std::size_t role_name_cb_c(void*, unsigned char role, char* out, std::size_t cap) {
-  const std::string_view name = role_name(static_cast<Role>(role));
-  std::size_t n = name.size();
-  if (n >= cap) n = cap ? cap - 1 : 0;
-  if (cap) {
-    std::memcpy(out, name.data(), n);
-    out[n] = '\0';
-  }
-  return n;
-}
-int is_library_scope_cb_c(void*, const char* scope, std::size_t len) { return library_scope(std::string_view(scope, len)) ? 1 : 0; }
-constexpr RolltuiLayoutHooks kHooks_c = {
-    /*is_library_scope=*/is_library_scope_cb_c, /*scope_ctx=*/nullptr,
-    /*role_from_name=*/role_from_name_cb_c,      /*role_from_name_ctx=*/nullptr,
-    /*role_name=*/role_name_cb_c,                /*role_name_ctx=*/nullptr,
-};
+// — `report_from_c_c`/`actions_to_c_c` are that file's private `report_from_c`/`actions_to_c`,
+// copied because they are not exported. (`kHooks_c` and `loaded_to_layout_c` were too, and
+// both are gone: see below and `rolltui_loaded_layout_to_layout`. The justification that used
+// to sit here — "the shim's OWN plumbing is not part of its public surface either" — was true
+// while the shim existed and is exactly what stops being true when the shim is deleted.)
+// PHASE 17 m2a: `kHooks_c` is gone. It was a VERBATIM copy of `Layout.cpp`'s private
+// `kHooks`, justified in the comment above as "the shim's OWN plumbing is not part of its
+// public surface either" — true while the shim existed, and wrong once the shim is the thing
+// being deleted. The three questions it answered (role from name, role name, is this scope the
+// library's) are all C now, so `rolltui_layout_default_hooks()` answers them and neither this
+// file nor any host in m3 needs a table.
 
 void report_from_c_c(const RolltuiLayoutReport& r, LayoutLoadReport& report) {
   report.error = r.error.str();
@@ -345,14 +330,14 @@ std::vector<RolltuiLayoutAction> actions_to_c_c(const std::vector<ActionDecl>& a
   for (const ActionDecl& d : actions) out.push_back(RolltuiLayoutAction{Str(d.name), Str(d.description)});
   return out;
 }
+// PHASE 17 m2a: the FOURTH copy of this conversion, and the last. `Layout.cpp` had one,
+// `rolltui_presets.c` had a second, an agent converting `layout_editor.cpp` needed a third —
+// and this one, element by element instead of by field-adopt, was the one nobody had counted.
+// `rolltui_loaded_layout_to_layout` MOVES rather than copies, which is what the caller wanted
+// every time: the loaded carrier is released immediately after.
 Layout loaded_to_layout_c(RolltuiLoadedLayout& loaded) {
   Layout out;
-  out.name = loaded.name;
-  out.min_width = loaded.min_width;
-  out.min_height = loaded.min_height;
-  for (std::size_t i = 0; i < loaded.actions_n; ++i) out.actions.push_back(loaded.actions[i]);
-  rolltui_layer_move(&out.base, &loaded.base);
-  for (std::size_t i = 0; i < loaded.popups_n; ++i) out.popups.push_back(std::move(loaded.popups[i]));
+  rolltui_loaded_layout_to_layout(&loaded, &out);
   return out;
 }
 std::optional<Layout> load_layout_c(std::string_view json_text, LayoutLoadReport& report) {
@@ -361,7 +346,7 @@ std::optional<Layout> load_layout_c(std::string_view json_text, LayoutLoadReport
   RolltuiLayoutReport rep{};
   rolltui_loaded_layout_init(&loaded);
   const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, default_actions.data(),
-                                          default_actions.size(), &kHooks_c, &rep);
+                                          default_actions.size(), rolltui_layout_default_hooks(), &rep);
   report_from_c_c(rep, report);
   rolltui_layout_report_release(&rep);
   if (!ok) {
@@ -376,7 +361,7 @@ std::string layout_to_json_c(const Layout& layout) {
   Str out;
   rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
                               layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
-                              layout.popups.size(), &kHooks_c, &out);
+                              layout.popups.size(), rolltui_layout_default_hooks(), &out);
   return out.str();
 }
 // The built-ins: the embedded table directly, parsed with load_layout_c. A fresh parse per

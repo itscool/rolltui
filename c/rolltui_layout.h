@@ -309,6 +309,25 @@ typedef struct RolltuiLayoutHooks {
   void* role_name_ctx;
 } RolltuiLayoutHooks;
 
+/* THE LIBRARY'S OWN, and the reason this exists is the reason the hooks themselves are now
+ * vestigial (Phase 17 m2a). The three callbacks were invented because the role names and the
+ * library's scope list were C++ facts a C file could not reach — the comment above still says
+ * "ask back rather than carry a table". Both are C now (`rolltui_role_from_name`/`_name` in
+ * rolltui_style.h, `rolltui_bindings_library_scope` one header over), so the library can
+ * answer its own questions and every caller that was writing this table by hand can stop.
+ *
+ * Two were writing it by hand: `Layout.cpp`'s private `kHooks`, and a VERBATIM copy in
+ * `layout_test.cpp` whose own comment justified itself — *"copied because they are not
+ * exported (by design: the algorithm is the boundary's, the shim's OWN plumbing is not part
+ * of its public surface either)"*. Correct while the shim existed; wrong once the shim is what
+ * is being deleted, which is the fifth time this phase that same sentence has had to be
+ * reversed. Every host in m3 would have been the third, fourth and fifth copy.
+ *
+ * The parameter STAYS on every function below rather than being removed: a host with its own
+ * role vocabulary is exactly what the hooks were for, and that case is real (an app profile's
+ * kinds). This is the default, not a policy. BORROWS static storage. */
+const RolltuiLayoutHooks* rolltui_layout_default_hooks(void);
+
 /* Why `name` cannot be declared as an action ("" when it can) — Layout.hpp's three rules, as
  * ONE function, so the loader and the design editor refuse exactly the same names with
  * exactly the same words. REPLACES `*out`. Calls back through `hooks->is_library_scope` for
@@ -461,6 +480,23 @@ const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id,
 
 void rolltui_loaded_layout_init(RolltuiLoadedLayout* l);    /* zeroes; inits `base` */
 void rolltui_loaded_layout_release(RolltuiLoadedLayout* l); /* frees name/actions/base/popups; zeroes */
+
+/* Unpacks a filled `RolltuiLoadedLayout` into a fresh `RolltuiLayout`, ONCE, right after a
+ * load — the loaded carrier is never retained past this call (rolltui_load_layout[_text]'s
+ * contract). `out` is a caller-owned `RolltuiLayout` this fills (run `rolltui_layout_init`
+ * on it first, or hand in a freshly zeroed one); its previous contents, if any, are NOT
+ * released first. MOVES `name`, `actions` and `popups` (whole-array field adoption — the two
+ * structs share `name`/`actions`(list)/`base`/`popups`(list) byte for byte, this file's own
+ * comment on `RolltuiLayout` states why) and `base` (`rolltui_layer_move`); `loaded` is left
+ * with empty actions/popups/base and must still be released by the caller (its `name` is
+ * untouched by the move above and would otherwise leak).
+ *
+ * THIS IS THE ONE HOME for a conversion that existed twice before it: `rolltui::Layout.cpp`'s
+ * `loaded_to_layout` (anonymous-namespace-private, one push_back per action/popup) and
+ * `rolltui_presets.c`'s `loaded_layout_move` (file-static, this same field-adopt shape). Both
+ * predate this accessor; this is the version to reach for from anywhere else, including a
+ * pure-C caller, which neither of those was. */
+void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout* out);
 
 /* Reads exactly the "actions" object of an already-parsed tree, APPENDING every string-
  * valued entry. Never through `rolltui_load_layout`, which asks for this when a file

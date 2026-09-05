@@ -206,36 +206,10 @@ const std::vector<WidgetKind>& widget_kinds() {
 // either table itself; these two functions and the one constant below are the whole bridge.
 namespace {
 
-int role_from_name_cb(void*, const char* name, std::size_t len, unsigned char* out) {
-  const Role r = role_from_name(std::string_view(name, len));
-  if (r == Role::count_) return 0;
-  *out = static_cast<unsigned char>(r);
-  return 1;
-}
-
-std::size_t role_name_cb(void*, unsigned char role, char* out, std::size_t cap) {
-  const std::string_view name = role_name(static_cast<Role>(role));
-  std::size_t n = name.size();
-  if (n >= cap) n = cap ? cap - 1 : 0;
-  if (cap) {
-    std::memcpy(out, name.data(), n);
-    out[n] = '\0';
-  }
-  return n;
-}
-
-int is_library_scope_cb(void*, const char* scope, std::size_t len) {
-  return library_scope(std::string_view(scope, len)) ? 1 : 0;
-}
-
-constexpr RolltuiLayoutHooks kHooks = {
-    /*is_library_scope=*/is_library_scope_cb,
-    /*scope_ctx=*/nullptr,
-    /*role_from_name=*/role_from_name_cb,
-    /*role_from_name_ctx=*/nullptr,
-    /*role_name=*/role_name_cb,
-    /*role_name_ctx=*/nullptr,
-};
+// PHASE 17 m2a: the three callbacks are the LIBRARY's now. They existed because the role
+// names and the scope list were C++ facts a C file could not reach; both are C, so
+// `rolltui_layout_default_hooks()` answers all three and this file stops carrying a table
+// that `layout_test.cpp` had already copied verbatim.
 
 }  // namespace
 
@@ -364,7 +338,7 @@ std::string split_size_to_string(SplitSize s) {
 
 std::string action_decl_problem(std::string_view name) {
   Str out;
-  rolltui_action_decl_problem(name.data(), name.size(), &kHooks, &out);
+  rolltui_action_decl_problem(name.data(), name.size(), rolltui_layout_default_hooks(), &out);
   return out.str();
 }
 
@@ -400,20 +374,14 @@ std::vector<RolltuiLayoutAction> actions_to_c(const std::vector<ActionDecl>& act
   return out;
 }
 
-// Unpacks a filled `RolltuiLoadedLayout` into a fresh `Layout`, ONCE, right after a load —
-// never retained past this call (the carrier's whole reason for being transient; see
-// rolltui_layout.h). `base`/each popup are MOVED across (both already `RolltuiLayer`), not
-// copied: the loaded tree is about to be released either way. Each action is a two-`RolltuiStr`
-// COPY (`loaded` is released right after regardless; there is no move-from-array primitive
-// worth adding for a handful of short strings read once per load).
+// Unpacks a filled `RolltuiLoadedLayout` into a fresh `Layout`, ONCE, right after a load.
+// PHASE 17: promoted to `rolltui_loaded_layout_to_layout` (rolltui_layout.h) — this was an
+// anonymous-namespace-private duplicate of a shape `rolltui_presets.c`'s own
+// `loaded_layout_move` also carried privately; a pure-C caller (rolltui/tools/layout_editor.cpp)
+// needed the same conversion and could reach neither, so it is one function now, not three.
 Layout loaded_to_layout(RolltuiLoadedLayout& loaded) {
   Layout out;
-  out.name = loaded.name;
-  out.min_width = loaded.min_width;
-  out.min_height = loaded.min_height;
-  for (std::size_t i = 0; i < loaded.actions_n; ++i) out.actions.push_back(loaded.actions[i]);
-  rolltui_layer_move(&out.base, &loaded.base);
-  for (std::size_t i = 0; i < loaded.popups_n; ++i) out.popups.push_back(std::move(loaded.popups[i]));
+  rolltui_loaded_layout_to_layout(&loaded, &out);
   return out;
 }
 
@@ -432,7 +400,7 @@ std::optional<Layout> load_layout(std::string_view json_text, LayoutLoadReport& 
   RolltuiLayoutReport rep{};
   rolltui_loaded_layout_init(&loaded);
   const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, default_actions.data(),
-                                          default_actions.size(), &kHooks, &rep);
+                                          default_actions.size(), rolltui_layout_default_hooks(), &rep);
   report_from_c(rep, report);
   rolltui_layout_report_release(&rep);
   if (!ok) {
@@ -451,7 +419,7 @@ std::optional<Layout> load_layout(const json::Value& root, LayoutLoadReport& rep
   RolltuiLayoutReport rep{};
   rolltui_loaded_layout_init(&loaded);
   const int ok =
-      rolltui_load_layout(c_root, &loaded, default_actions.data(), default_actions.size(), &kHooks, &rep);
+      rolltui_load_layout(c_root, &loaded, default_actions.data(), default_actions.size(), rolltui_layout_default_hooks(), &rep);
   rolltui_json_free(c_root);
   report_from_c(rep, report);
   rolltui_layout_report_release(&rep);
@@ -472,7 +440,7 @@ json::Value layout_to_json_value(const Layout& layout) {
   RolltuiJsonValue* c =
       rolltui_layout_to_json_value(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
                                    layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
-                                   layout.popups.size(), &kHooks);
+                                   layout.popups.size(), rolltui_layout_default_hooks());
   json::Value out = json::value_from_c(c);
   rolltui_json_free(c);
   return out;
@@ -482,7 +450,7 @@ std::string layout_to_json(const Layout& layout) {
   Str out;
   rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
                               layout.actions.data(), layout.actions.size(), &layout.base, layout.popups.data(),
-                              layout.popups.size(), &kHooks, &out);
+                              layout.popups.size(), rolltui_layout_default_hooks(), &out);
   return out.str();
 }
 

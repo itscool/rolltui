@@ -382,36 +382,26 @@ std::optional<Bindings> BindingsDomain::parse(const json::Value& v, PresetLoadRe
 // `domain_storage<D>()` (PresetStore.hpp) does in C++ — what each still needs, once, is the
 // vocabulary bridge this file already writes for Theme (`theme_vocab()`, `mode_valid_c`/
 // `depth_valid_c` above). Layout's and Bindings' own bridges already exist too, verbatim, in
-// `Layout.cpp`'s anonymous-namespace `kHooks` and `Bindings.cpp`'s anonymous-namespace
-// `is_library_scope`/`migrate_cb`/`reason_cb` — unreachable from here, both anonymous
-// namespaces in OTHER translation units — so this is a second, small copy of the same three
-// bridges, calling the identical PUBLIC functions (`library_scope`, `migrated_action`,
-// `undeliverable_reason`, `role_from_name`, `role_name`) those two already call: the same
-// one-file duplication `rolltui/c/rolltui_widget_kinds.c`'s `help_chords_text` already is for
-// `Bindings::chords_text`, not a second DECISION about any of the five questions they answer.
+// ~~`Layout.cpp`'s anonymous-namespace `kHooks` and `Bindings.cpp`'s anonymous-namespace
+// `is_library_scope`~~ — **that paragraph is spent as of Phase 17 m2a.** It used to end: *"so
+// this is a second, small copy of the same three bridges ... the same one-file duplication
+// `help_chords_text` already is for `Bindings::chords_text`, not a second DECISION."* Every
+// clause of that was true, and it was still the wrong conclusion twice over: `help_chords_text`
+// turned out to be one of THREE and is now `rolltui_bindings_chords_text`, and `kHooks` was one
+// of FOUR (here, `Layout.cpp`, `layout_test.cpp`, and every host m3 has yet to convert) and is
+// now `rolltui_layout_default_hooks()`. A copy that is "not a second decision" still drifts,
+// and — more to the point here — still has to have a home when the file it was copied from is
+// deleted. What is left below is the two bridges that reach a C++ TABLE rather than a C
+// function, which is a different thing.
 namespace {
 
-int preset_role_from_name_cb(void*, const char* name, std::size_t len, unsigned char* out) {
-  const Role r = role_from_name(std::string_view(name, len));
-  if (r == Role::count_) return 0;
-  *out = static_cast<unsigned char>(r);
-  return 1;
-}
-std::size_t preset_role_name_cb(void*, unsigned char role, char* out, std::size_t cap) {
-  const std::string_view name = role_name(static_cast<Role>(role));
-  std::size_t n = name.size();
-  if (n >= cap) n = cap ? cap - 1 : 0;
-  if (cap) {
-    std::memcpy(out, name.data(), n);
-    out[n] = '\0';
-  }
-  return n;
-}
-// Shared by the Layout domain's hooks below and the Bindings domain's own scope predicate:
-// `RolltuiLayoutHooks::is_library_scope` and Bindings' `RolltuiScopeFn` are the same C type.
-int preset_is_library_scope_cb(void*, const char* scope, std::size_t len) {
-  return library_scope(std::string_view(scope, len)) ? 1 : 0;
-}
+// PHASE 17 m2a: the role and scope bridges are GONE — `rolltui_layout_default_hooks()` is
+// the library's own, and `rolltui_bindings_library_scope` was already public. What is left
+// below is the two that still bridge a C++ TABLE: the renamed-action list (`kLegacyActions`
+// in `Bindings.cpp`, which `studio_golden_test` asserts is the only source that names the
+// tool's old name — so this comment must not name it either, and the first draft of it did,
+// which is that control doing its job) and the undeliverability reason, which is C now but
+// is reached here through a `KeyEvent`.
 int preset_migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
   const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
   if (!to) return 0;
@@ -427,17 +417,6 @@ std::size_t preset_reason_cb(void*, const RolltuiChord* k, unsigned char protoco
   return n;
 }
 
-const RolltuiLayoutHooks& preset_layout_hooks() {
-  static const RolltuiLayoutHooks h = {
-      /*is_library_scope=*/preset_is_library_scope_cb,
-      /*scope_ctx=*/nullptr,
-      /*role_from_name=*/preset_role_from_name_cb,
-      /*role_from_name_ctx=*/nullptr,
-      /*role_name=*/preset_role_name_cb,
-      /*role_name_ctx=*/nullptr,
-  };
-  return h;
-}
 
 // `shipped_default_actions()`'s C form, built once: each `RolltuiLayoutAction` is deep-copied
 // into the vector by its own (compiler-generated, correct because `RolltuiStr`'s own copy
@@ -478,7 +457,7 @@ RolltuiPresetDomain& c_layout_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain x{};
     const std::vector<RolltuiLayoutAction>& actions = preset_layout_default_actions();
-    rolltui_layout_preset_domain_init(&x, &preset_layout_hooks(), actions.data(), actions.size());
+    rolltui_layout_preset_domain_init(&x, rolltui_layout_default_hooks(), actions.data(), actions.size());
     return x;
   }();
   if (!d.cache) on_shutdown([] { rolltui_preset_domain_release(&c_layout_domain()); });
@@ -488,7 +467,7 @@ RolltuiPresetDomain& c_layout_domain() {
 RolltuiPresetDomain& c_bindings_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain x{};
-    rolltui_bindings_preset_domain_init(&x, preset_is_library_scope_cb, nullptr, preset_migrate_cb, nullptr,
+    rolltui_bindings_preset_domain_init(&x, rolltui_bindings_library_scope, nullptr, preset_migrate_cb, nullptr,
                                        preset_reason_cb, nullptr);
     return x;
   }();
