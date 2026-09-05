@@ -235,7 +235,15 @@ class PresetStore {
     return std::string(p, len);
   }
   bool modified() const { return rolltui_preset_store_modified(s_.get()) != 0; }
-  std::string label() const { return modified() ? origin() + " (modified)" : origin(); }
+  // PHASE 17 m2a: the " (modified)" suffix is the C's word now — `rolltui_presets.h` says why,
+  // and names the second spelling of it that already existed in `studio.cpp`.
+  std::string label() const {
+    RolltuiStr out{};
+    rolltui_preset_store_label(s_.get(), &out);
+    std::string v(out.p ? out.p : "", out.n);
+    rolltui_str_free(&out);
+    return v;
+  }
   std::uint64_t version() const { return rolltui_preset_store_version(s_.get()); }
   std::string last_error() const {
     std::size_t len = 0;

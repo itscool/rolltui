@@ -170,6 +170,15 @@ void* rolltui_preset_store_working(const RolltuiPresetStore* s);
 const char* rolltui_preset_store_origin(const RolltuiPresetStore* s, size_t* len);
 const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t* len);
 int rolltui_preset_store_modified(const RolltuiPresetStore* s);
+
+/* "<origin>", or "<origin> (modified)" once the working copy differs from what it was loaded
+ * from — `rolltui::PresetStore::label()`'s composition, and the SECOND English sentence this
+ * module owned that lived one level up (Phase 17 m2a, found while measuring m2c: the first
+ * sweep for unported English read every `.cpp` and no `.hpp`, and `PresetStore.hpp` is a
+ * template header where the whole store lives inline). `studio.cpp:1173` already spells
+ * " (modified)" a second time, for a LAYOUT's own name rather than for a store's origin — one
+ * word, two spellings, exactly the shape this phase keeps finding. APPENDS to `out`. */
+void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out);
 unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
 
 /* The only write anyone does (rule 2): replace the working copy. TAKES OWNERSHIP of `v`. */

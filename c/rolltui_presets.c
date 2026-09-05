@@ -1776,3 +1776,13 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
     rolltui_str_free(&b);
   }
 }
+
+/* ---- the working copy's label (Phase 17 m2a) ----------------------------------------------- */
+void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
+  size_t len = 0;
+  const char* origin;
+  if (!out) return;
+  origin = rolltui_preset_store_origin(s, &len);
+  rolltui_str_append(out, origin, len);
+  if (rolltui_preset_store_modified(s)) rolltui_str_append(out, " (modified)", 11);
+}
