@@ -12,6 +12,21 @@
 //                                              // a Null value you can keep querying
 //   json::dump(v, indent)                      // deterministic output, for round trips
 //
+// PHASE 17 m1: the parsing and serialising ALGORITHMS now live in C
+// (`rolltui/c/rolltui_json.h`); `parse`/`dump` below are thin shims that convert to and
+// from that file's tree and otherwise change nothing. `Value` itself keeps this exact
+// `std::string`/`std::vector` shape — unlike `DocEntry`/`MenuItem`, it is NOT made "the same
+// struct" as its C counterpart, because roughly 40 call sites across six other C++ modules
+// (`Theme.cpp`, `Layout.cpp`, `Menu.cpp`, `Bindings.cpp`, `Presets.cpp`, `ThemeGen.cpp`,
+// `ThemeAnalysis.cpp`, `PresetStore.hpp`) read and write `.str`/`.arr`/`.obj` with real
+// `std::vector`/`std::string` operations a C-backed proxy cannot honestly offer (an
+// erase-remove over `.obj` in `Presets.cpp`, `.str` handed into a `vector<string>::push_back`
+// in `Theme.cpp`, a whole-vector assignment and aggregate-init `push_back`s in
+// `TuiFrontend.cpp`/`paint.cpp`). None of those six are ported by this task, so this header's
+// public shape is UNCHANGED and every one of those call sites keeps compiling exactly as
+// written. See `rolltui/c/rolltui_json.h`'s header comment for the full reasoning — it is the
+// one place `json::Value` still crosses this library's boundary as a tree rather than as
+// text, and it is a deliberate, scoped exception rather than the pattern to copy.
 #include <cstddef>
 #include <string>
 #include <string_view>

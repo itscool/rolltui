@@ -41,6 +41,23 @@
 // never hand-maintained: a hand-written one drifts from the binary silently, which is the
 // failure this file exists to remove one level down.
 //
+// PHASE 17 m1: the parsing and serialising ALGORITHM now lives in C
+// (`rolltui/c/rolltui_app_profile.h`), which takes and returns TEXT — never a JSON tree —
+// with no qualification needed (unlike `Json.hpp`'s own note on this same question). This
+// header's `load_app_profile`/`app_profile_to_json` are thin shims over it, and `AppProfile`
+// itself keeps this exact `std::string`/`std::vector` shape: `TuiFrontend.cpp`'s
+// `roll_app_profile()` and `paint.cpp`'s `paint_profile()` build one by hand with a direct
+// `p.actions = shipped_default_actions()` vector assignment and aggregate-init `push_back`/
+// `emplace_back` calls neither file is touched to change. Two of this header's signatures
+// still cross the library's boundary as a JSON tree rather than as text —
+// `load_app_profile(const json::Value&, …)` and `app_profile_to_json(...) -> json::Value` —
+// which is precisely the leak CLAUDE.md's design note names (`rolltui-paint` includes
+// `Json.hpp` for exactly one call, `json::dump(app_profile_to_json(...))`). Both are kept
+// ONLY because this shim's job is "no existing caller changes"; both are implemented in
+// terms of the new C module's text-only functions (dump-then-parse, parse-then-dump) rather
+// than a second tree-walking implementation, and a LATER step — deleting this shim and
+// moving `rolltui-paint` onto `rolltui_app_profile_dump` directly — removes them for good.
+//
 #include <optional>
 #include <string>
 #include <vector>

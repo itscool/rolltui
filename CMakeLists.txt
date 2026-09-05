@@ -45,6 +45,12 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                   c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
                   c/rolltui_widgets.c c/rolltui_transcript.c
+                  c/rolltui_json.c c/rolltui_app_profile.c
+                                         # Phase 17 m1: the parser, and the app profile on
+                                         #   top of it. The profile's C boundary takes and
+                                         #   returns TEXT — a JSON tree never crosses it,
+                                         #   which is the leak `rolltui-paint` demonstrated
+                                         #   by including Json.hpp for a single dump call.
                   c/rolltui_theme_analysis.c c/rolltui_theme_gen.c
                                          # Phase 17 m1: the colour maths and the generator's
                                          #   PRNG/ruleset lookup — the parts of

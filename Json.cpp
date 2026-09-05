@@ -1,11 +1,10 @@
-// rolltui/Json.cpp — see Json.hpp.
+// rolltui/Json.cpp — see Json.hpp. `parse`/`dump` are thin shims over
+// `rolltui/c/rolltui_json.h`, which now holds the actual algorithm (Phase 17 m1); everything
+// else here is unchanged C++ working directly on `Value`'s own `std::string`/`std::vector`
+// members, which this module keeps for the reasons stated at the top of Json.hpp.
 #include "rolltui/Json.hpp"
 
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-
-#include "rolltui/Unicode.hpp"
+#include "rolltui/c/rolltui_json.h"
 
 namespace rolltui::json {
 
@@ -35,246 +34,87 @@ Value& Value::set(std::string_view key, Value v) {
 
 namespace {
 
-struct Parser {
-  std::string_view s;
-  std::size_t i = 0;
-  int line = 1;
-  std::string error;
-
-  bool fail(const std::string& msg) {
-    if (error.empty()) error = "line " + std::to_string(line) + ": " + msg;
-    return false;
+// The C tree's `kind` byte and `Value::Kind` are deliberately not `static_cast` across —
+// that would be relying on the two enumerations staying numbered alike by coincidence
+// (CLAUDE.md's "layout-compatible-by-fiat" failure shape, one level removed from memory
+// layout). An explicit table is one more line and cannot silently drift.
+Value::Kind kind_from_c(unsigned char k) {
+  switch (k) {
+    case ROLLTUI_JSON_BOOL: return Value::Kind::Bool;
+    case ROLLTUI_JSON_NUMBER: return Value::Kind::Number;
+    case ROLLTUI_JSON_STRING: return Value::Kind::String;
+    case ROLLTUI_JSON_ARRAY: return Value::Kind::Array;
+    case ROLLTUI_JSON_OBJECT: return Value::Kind::Object;
+    default: return Value::Kind::Null;
   }
-  void ws() {
-    while (i < s.size()) {
-      char c = s[i];
-      if (c == '\n') { ++line; ++i; }
-      else if (c == ' ' || c == '\t' || c == '\r') ++i;
-      else break;
-    }
-  }
-  bool expect(char c) {
-    ws();
-    if (i < s.size() && s[i] == c) { ++i; return true; }
-    return fail(std::string("expected '") + c + "'" +
-                (i < s.size() ? std::string(" but found '") + s[i] + "'" : " at end of input"));
-  }
-  bool parse_string(std::string& out) {
-    if (i >= s.size() || s[i] != '"') return fail("expected a string");
-    ++i;
-    while (i < s.size()) {
-      char c = s[i++];
-      if (c == '"') return true;
-      if (c == '\n') return fail("newline inside a string");
-      if (c != '\\') { out.push_back(c); continue; }
-      if (i >= s.size()) return fail("unterminated escape");
-      char e = s[i++];
-      switch (e) {
-        case '"': out.push_back('"'); break;
-        case '\\': out.push_back('\\'); break;
-        case '/': out.push_back('/'); break;
-        case 'b': out.push_back('\b'); break;
-        case 'f': out.push_back('\f'); break;
-        case 'n': out.push_back('\n'); break;
-        case 'r': out.push_back('\r'); break;
-        case 't': out.push_back('\t'); break;
-        case 'u': {
-          auto hex4 = [&](char32_t& v) {
-            if (i + 4 > s.size()) return false;
-            v = 0;
-            for (int k = 0; k < 4; ++k) {
-              char h = s[i++];
-              int d;
-              if (h >= '0' && h <= '9') d = h - '0';
-              else if (h >= 'a' && h <= 'f') d = h - 'a' + 10;
-              else if (h >= 'A' && h <= 'F') d = h - 'A' + 10;
-              else return false;
-              v = (v << 4) | static_cast<char32_t>(d);
-            }
-            return true;
-          };
-          char32_t v;
-          if (!hex4(v)) return fail("bad \\u escape");
-          if (v >= 0xD800 && v <= 0xDBFF) {  // surrogate pair
-            char32_t lo = 0;
-            if (i + 6 <= s.size() && s[i] == '\\' && s[i + 1] == 'u') {
-              i += 2;
-              if (!hex4(lo) || lo < 0xDC00 || lo > 0xDFFF) return fail("bad surrogate pair");
-              v = 0x10000 + ((v - 0xD800) << 10) + (lo - 0xDC00);
-            } else {
-              v = 0xFFFD;
-            }
-          } else if (v >= 0xDC00 && v <= 0xDFFF) {
-            v = 0xFFFD;
-          }
-          unicode::append_utf8(out, v);
-          break;
-        }
-        default: return fail(std::string("unknown escape \\") + e);
-      }
-    }
-    return fail("unterminated string");
-  }
-  bool parse_value(Value& out, int depth) {
-    if (depth > 200) return fail("nesting too deep");
-    ws();
-    if (i >= s.size()) return fail("unexpected end of input");
-    char c = s[i];
-    if (c == '{') {
-      ++i;
-      out = Value::object();
-      ws();
-      if (i < s.size() && s[i] == '}') { ++i; return true; }
-      for (;;) {
-        ws();
-        std::string key;
-        if (!parse_string(key)) return false;
-        if (!expect(':')) return false;
-        Value v;
-        if (!parse_value(v, depth + 1)) return false;
-        for (const auto& [k, existing] : out.obj)
-          if (k == key) return fail("duplicate key \"" + key + "\"");
-        out.obj.emplace_back(std::move(key), std::move(v));
-        ws();
-        if (i < s.size() && s[i] == ',') { ++i; continue; }
-        if (i < s.size() && s[i] == '}') { ++i; return true; }
-        return fail("expected ',' or '}' in object");
-      }
-    }
-    if (c == '[') {
-      ++i;
-      out = Value::array();
-      ws();
-      if (i < s.size() && s[i] == ']') { ++i; return true; }
-      for (;;) {
-        Value v;
-        if (!parse_value(v, depth + 1)) return false;
-        out.arr.push_back(std::move(v));
-        ws();
-        if (i < s.size() && s[i] == ',') { ++i; continue; }
-        if (i < s.size() && s[i] == ']') { ++i; return true; }
-        return fail("expected ',' or ']' in array");
-      }
-    }
-    if (c == '"') {
-      std::string str;
-      if (!parse_string(str)) return false;
-      out = Value::string(std::move(str));
-      return true;
-    }
-    auto literal = [&](std::string_view word) {
-      if (s.substr(i, word.size()) == word) { i += word.size(); return true; }
-      return false;
-    };
-    if (literal("true")) { out = Value::boolean(true); return true; }
-    if (literal("false")) { out = Value::boolean(false); return true; }
-    if (literal("null")) { out = Value::null(); return true; }
-    if (c == '-' || (c >= '0' && c <= '9')) {
-      std::size_t start = i;
-      if (s[i] == '-') ++i;
-      while (i < s.size() && ((s[i] >= '0' && s[i] <= '9') || s[i] == '.' || s[i] == 'e' ||
-                              s[i] == 'E' || s[i] == '+' || s[i] == '-'))
-        ++i;
-      std::string num(s.substr(start, i - start));
-      char* end = nullptr;
-      double d = std::strtod(num.c_str(), &end);
-      if (!end || *end != '\0' || num == "-") return fail("bad number '" + num + "'");
-      out = Value::number(d);
-      return true;
-    }
-    return fail(std::string("unexpected character '") + c + "'");
-  }
-};
-
-void dump_string(std::string& o, std::string_view s) {
-  o.push_back('"');
-  for (char c : s) {
-    switch (c) {
-      case '"': o += "\\\""; break;
-      case '\\': o += "\\\\"; break;
-      case '\n': o += "\\n"; break;
-      case '\r': o += "\\r"; break;
-      case '\t': o += "\\t"; break;
-      default:
-        if (static_cast<unsigned char>(c) < 0x20) {
-          char buf[8];
-          std::snprintf(buf, sizeof buf, "\\u%04X", static_cast<unsigned>(static_cast<unsigned char>(c)));
-          o += buf;
-        } else {
-          o.push_back(c);
-        }
-    }
-  }
-  o.push_back('"');
 }
 
-void dump_value(std::string& o, const Value& v, int indent, int level) {
-  std::string pad(static_cast<std::size_t>(indent * level), ' ');
-  std::string pad1(static_cast<std::size_t>(indent * (level + 1)), ' ');
-  const char* nl = indent > 0 ? "\n" : "";
-  switch (v.kind) {
-    case Value::Kind::Null: o += "null"; break;
-    case Value::Kind::Bool: o += v.b ? "true" : "false"; break;
-    case Value::Kind::Number: {
-      char buf[32];
-      if (std::floor(v.num) == v.num && std::fabs(v.num) < 1e15)
-        std::snprintf(buf, sizeof buf, "%.0f", v.num);
-      else
-        std::snprintf(buf, sizeof buf, "%.17g", v.num);
-      o += buf;
-      break;
-    }
-    case Value::Kind::String: dump_string(o, v.str); break;
-    case Value::Kind::Array:
-      if (v.arr.empty()) { o += "[]"; break; }
-      o += "[";
-      o += nl;
-      for (std::size_t k = 0; k < v.arr.size(); ++k) {
-        o += pad1;
-        dump_value(o, v.arr[k], indent, level + 1);
-        if (k + 1 < v.arr.size()) o += ",";
-        o += nl;
-      }
-      o += pad + "]";
-      break;
-    case Value::Kind::Object:
-      if (v.obj.empty()) { o += "{}"; break; }
-      o += "{";
-      o += nl;
-      for (std::size_t k = 0; k < v.obj.size(); ++k) {
-        o += pad1;
-        dump_string(o, v.obj[k].first);
-        o += indent > 0 ? ": " : ":";
-        dump_value(o, v.obj[k].second, indent, level + 1);
-        if (k + 1 < v.obj.size()) o += ",";
-        o += nl;
-      }
-      o += pad + "}";
-      break;
+// Recursively converts a parsed C tree into a C++ Value tree. This is a real, full copy —
+// the cost `Json.hpp`'s header comment names as the price of keeping `Value` a real
+// `std::string`/`std::vector` type instead of a proxy over the C storage.
+Value value_from_c(const RolltuiJsonValue* v) {
+  Value out;
+  if (!v) return out;
+  out.kind = kind_from_c(v->kind);
+  out.b = v->b != 0;
+  out.num = v->num;
+  out.str.assign(v->str.p ? std::string_view(v->str.p, v->str.n) : std::string_view());
+  const std::size_t arr_n = rolltui_json_array_size(v);
+  out.arr.reserve(arr_n);
+  for (std::size_t i = 0; i < arr_n; ++i) out.arr.push_back(value_from_c(rolltui_json_array_at(v, i)));
+  const std::size_t obj_n = rolltui_json_object_size(v);
+  out.obj.reserve(obj_n);
+  for (std::size_t i = 0; i < obj_n; ++i) {
+    std::size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(v, i, &klen);
+    out.obj.emplace_back(std::string(k, klen), value_from_c(rolltui_json_object_value_at(v, i)));
   }
+  return out;
+}
+
+// The other direction: builds a fresh, owned C tree out of a C++ Value, for `dump()` to hand
+// to `rolltui_json_dump`. The caller frees the result with `rolltui_json_free`.
+RolltuiJsonValue* value_to_c(const Value& v) {
+  switch (v.kind) {
+    case Value::Kind::Null: return rolltui_json_null();
+    case Value::Kind::Bool: return rolltui_json_bool(v.b ? 1 : 0);
+    case Value::Kind::Number: return rolltui_json_number(v.num);
+    case Value::Kind::String: return rolltui_json_string(v.str.data(), v.str.size());
+    case Value::Kind::Array: {
+      RolltuiJsonValue* out = rolltui_json_array();
+      for (const Value& e : v.arr) rolltui_json_array_push(out, value_to_c(e));
+      return out;
+    }
+    case Value::Kind::Object: {
+      RolltuiJsonValue* out = rolltui_json_object();
+      for (const auto& [k, val] : v.obj) rolltui_json_set(out, k.data(), k.size(), value_to_c(val));
+      return out;
+    }
+  }
+  return rolltui_json_null();
 }
 
 }  // namespace
 
 Value parse(std::string_view text, std::string& error) {
-  Parser p;
-  p.s = text;
-  Value v;
-  error.clear();
-  if (!p.parse_value(v, 0)) { error = p.error; return Value::null(); }
-  p.ws();
-  if (p.i != text.size()) {
-    p.fail("trailing characters after the value");
-    error = p.error;
-    return Value::null();
-  }
-  return v;
+  RolltuiStr err{};
+  RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), &err);
+  error.assign(err.p ? err.p : "", err.n);
+  rolltui_str_free(&err);
+  if (!v) return Value::null();
+  Value out = value_from_c(v);
+  rolltui_json_free(v);
+  return out;
 }
 
 std::string dump(const Value& v, int indent) {
-  std::string o;
-  dump_value(o, v, indent, 0);
-  return o;
+  RolltuiJsonValue* c = value_to_c(v);
+  RolltuiStr out{};
+  rolltui_json_dump(c, indent, &out);
+  rolltui_json_free(c);
+  std::string result(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return result;
 }
 
 }  // namespace rolltui::json

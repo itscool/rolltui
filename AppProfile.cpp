@@ -1,7 +1,13 @@
-// rolltui/AppProfile.cpp — see AppProfile.hpp.
+// rolltui/AppProfile.cpp — see AppProfile.hpp. `load_app_profile`/`app_profile_to_json` are
+// thin shims over `rolltui/c/rolltui_app_profile.h`, which now holds the actual parsing and
+// serialising algorithm (Phase 17 m1); `profile_contents`/`mount_app_profile` are unchanged
+// C++ working directly on the `AppProfile` struct's own members, which this module keeps for
+// the reasons stated at the top of AppProfile.hpp.
 #include "rolltui/AppProfile.hpp"
 
 #include <algorithm>
+
+#include "rolltui/c/rolltui_app_profile.h"
 
 namespace rolltui {
 
@@ -17,193 +23,204 @@ std::string AppProfileReport::summary() const {
 
 namespace {
 
-// The source rule as a word. One table, both directions, so a profile file and the
-// library's own kind table spell "forbidden" the same way.
-struct RuleName { SourceRule rule; const char* name; };
-constexpr RuleName kRules[] = {
-    {SourceRule::Required, "required"}, {SourceRule::Optional, "optional"}, {SourceRule::Forbidden, "forbidden"}};
-
-const char* rule_name(SourceRule r) {
-  for (const RuleName& n : kRules)
-    if (n.rule == r) return n.name;
-  return "required";
+// `AppProfile::Kind::rule`'s `SourceRule` and `rolltui_app_profile.h`'s
+// `ROLLTUI_APP_PROFILE_SOURCE_*` share numeric values as a DOCUMENTED fact (that header's
+// own comment states it), but the conversion is still an explicit switch rather than a
+// `static_cast` relying on it — the same reasoning `Json.cpp`'s `kind_from_c` gives, and the
+// same failure shape CLAUDE.md names: two things numbered alike by coincidence is not the
+// same as two things declared to agree.
+SourceRule rule_from_c(int rule) {
+  switch (rule) {
+    case ROLLTUI_APP_PROFILE_SOURCE_REQUIRED: return SourceRule::Required;
+    case ROLLTUI_APP_PROFILE_SOURCE_OPTIONAL: return SourceRule::Optional;
+    default: return SourceRule::Forbidden;
+  }
 }
-std::optional<SourceRule> rule_from_name(std::string_view s) {
-  for (const RuleName& n : kRules)
-    if (s == n.name) return n.rule;
-  return std::nullopt;
-}
-
-int int_or(const json::Value& v, int def) { return v.is_number() ? static_cast<int>(v.as_number()) : def; }
-
-}  // namespace
-
-std::optional<AppProfile> load_app_profile(std::string_view text, AppProfileReport& report) {
-  report = AppProfileReport{};
-  std::string err;
-  const json::Value v = json::parse(text, err);
-  if (!err.empty()) { report.error = err; return std::nullopt; }
-  return load_app_profile(v, report);
+int rule_to_c(SourceRule rule) {
+  switch (rule) {
+    case SourceRule::Required: return ROLLTUI_APP_PROFILE_SOURCE_REQUIRED;
+    case SourceRule::Optional: return ROLLTUI_APP_PROFILE_SOURCE_OPTIONAL;
+    default: return ROLLTUI_APP_PROFILE_SOURCE_FORBIDDEN;
+  }
 }
 
-std::optional<AppProfile> load_app_profile(const json::Value& v, AppProfileReport& report) {
-  report = AppProfileReport{};
-  if (!v.is_object()) { report.error = "an app profile must be a JSON object"; return std::nullopt; }
+AppProfileReport report_from_c(const RolltuiAppProfileReport& r) {
+  AppProfileReport out;
+  out.error.assign(r.error.p ? r.error.p : "", r.error.n);
+  out.unknown_keys.reserve(r.unknown_keys_n);
+  for (std::size_t i = 0; i < r.unknown_keys_n; ++i)
+    out.unknown_keys.emplace_back(r.unknown_keys[i].p ? r.unknown_keys[i].p : "", r.unknown_keys[i].n);
+  out.bad_values.reserve(r.bad_values_n);
+  for (std::size_t i = 0; i < r.bad_values_n; ++i)
+    out.bad_values.emplace_back(r.bad_values[i].p ? r.bad_values[i].p : "", r.bad_values[i].n);
+  return out;
+}
+
+// Recursively converts a parsed C profile into the C++ struct roll's `TuiFrontend.cpp` and
+// `rolltui-paint` build by hand — a real, full copy, the same cost `Json.hpp`'s conversion
+// pays and for the same reason: the C++ shape stays a real `std::vector`/`std::string` type
+// rather than a proxy over the C storage, because those two files assign and aggregate-init
+// it directly (see `AppProfile.hpp`'s header comment).
+AppProfile app_profile_from_c(const RolltuiAppProfile* c) {
   AppProfile p;
-  p.app = std::string(v.get("app").as_string());
-  if (p.app.empty()) { report.error = "an app profile needs an \"app\" name"; return std::nullopt; }
-  p.min_width = int_or(v.get("min_width"), 0);
-  p.min_height = int_or(v.get("min_height"), 0);
+  std::size_t len = 0;
+  p.app.assign(rolltui_app_profile_app(c, &len), len);
+  p.min_width = rolltui_app_profile_min_width(c);
+  p.min_height = rolltui_app_profile_min_height(c);
 
-  for (const auto& [k, x] : v.obj)
-    if (k != "app" && k != "min_width" && k != "min_height" && k != "actions" && k != "kinds" && k != "sources" &&
-        k != "menus" && k != "help")
-      report.unknown_keys.push_back(k);
-
-  // actions: name → description, the same shape a layout's "actions" has.
-  if (const json::Value& a = v.get("actions"); a.is_object()) {
-    for (const auto& [name, d] : a.obj) {
-      if (!d.is_string()) { report.bad_values.push_back("actions." + name + ": expected a string"); continue; }
-      p.actions.push_back({name, std::string(d.str)});
-    }
-  } else if (!a.is_null()) {
-    report.bad_values.push_back("actions: expected an object of name -> description");
+  const std::size_t an = rolltui_app_profile_action_count(c);
+  p.actions.reserve(an);
+  for (std::size_t i = 0; i < an; ++i) {
+    std::size_t nlen = 0, dlen = 0;
+    const char* n = rolltui_app_profile_action_name(c, i, &nlen);
+    const char* d = rolltui_app_profile_action_description(c, i, &dlen);
+    p.actions.push_back({std::string(n, nlen), std::string(d, dlen)});
   }
 
-  // kinds the app registers.
-  if (const json::Value& ks = v.get("kinds"); ks.is_array()) {
-    for (const json::Value& k : ks.arr) {
-      AppProfile::Kind kind;
-      kind.name = std::string(k.get("name").as_string());
-      if (kind.name.empty()) { report.bad_values.push_back("kinds[]: a kind needs a name"); continue; }
-      const std::string_view rule = k.get("source").as_string("forbidden");
-      if (std::optional<SourceRule> r = rule_from_name(rule)) kind.rule = *r;
-      else report.bad_values.push_back("kinds." + kind.name + ".source: '" + std::string(rule) + "' is not required | optional | forbidden");
-      kind.describes = std::string(k.get("describes").as_string());
-      p.kinds.push_back(std::move(kind));
-    }
-  } else if (!ks.is_null()) {
-    report.bad_values.push_back("kinds: expected an array");
+  const std::size_t kn = rolltui_app_profile_kind_count(c);
+  p.kinds.reserve(kn);
+  for (std::size_t i = 0; i < kn; ++i) {
+    AppProfile::Kind k;
+    std::size_t nlen = 0, dlen = 0;
+    const char* n = rolltui_app_profile_kind_name(c, i, &nlen);
+    const char* d = rolltui_app_profile_kind_describes(c, i, &dlen);
+    k.name = std::string(n, nlen);
+    k.rule = rule_from_c(rolltui_app_profile_kind_rule(c, i));
+    k.describes = std::string(d, dlen);
+    p.kinds.push_back(std::move(k));
   }
 
-  if (const json::Value& s = v.get("sources"); s.is_object()) {
-    for (const auto& [k, x] : s.obj)
-      if (k != "documents" && k != "rows" && k != "submits" && k != "notes") report.unknown_keys.push_back("sources." + k);
-    for (const json::Value& d : s.get("documents").arr) {
-      AppProfile::Document doc;
-      doc.name = std::string(d.get("name").as_string());
-      if (doc.name.empty()) { report.bad_values.push_back("sources.documents[]: a document needs a name"); continue; }
-      doc.sample = std::string(d.get("sample").as_string());
-      p.documents.push_back(std::move(doc));
-    }
-    for (const json::Value& r : s.get("rows").arr) {
-      AppProfile::RowSource rs;
-      rs.name = std::string(r.get("name").as_string());
-      if (rs.name.empty()) { report.bad_values.push_back("sources.rows[]: a row source needs a name"); continue; }
-      for (const json::Value& row : r.get("sample").arr)
-        rs.sample.emplace_back(std::string(row.get("label").as_string()), std::string(row.get("value").as_string()));
-      p.rows.push_back(std::move(rs));
-    }
-    for (const json::Value& n : s.get("submits").arr)
-      if (n.is_string()) p.submits.emplace_back(n.str);
-    for (const json::Value& n : s.get("notes").arr)
-      if (n.is_string()) p.notes.emplace_back(n.str);
-  } else if (!s.is_null()) {
-    report.bad_values.push_back("sources: expected an object");
+  const std::size_t docn = rolltui_app_profile_document_count(c);
+  p.documents.reserve(docn);
+  for (std::size_t i = 0; i < docn; ++i) {
+    std::size_t nlen = 0, slen = 0;
+    const char* n = rolltui_app_profile_document_name(c, i, &nlen);
+    const char* s = rolltui_app_profile_document_sample(c, i, &slen);
+    p.documents.push_back({std::string(n, nlen), std::string(s, slen)});
   }
 
-  if (const json::Value& h = v.get("help"); h.is_object()) {
-    for (const auto& [k, x] : h.obj)
-      if (k != "lead" && k != "note" && k != "scopes") report.unknown_keys.push_back("help." + k);
-    p.help.lead = std::string(h.get("lead").as_string());
-    p.help.note = std::string(h.get("note").as_string());
-    for (const json::Value& s : h.get("scopes").arr)
-      if (s.is_string()) p.help.scopes.emplace_back(s.str);
-  } else if (!h.is_null()) {
-    report.bad_values.push_back("help: expected an object");
+  const std::size_t rn = rolltui_app_profile_row_count(c);
+  p.rows.reserve(rn);
+  for (std::size_t i = 0; i < rn; ++i) {
+    AppProfile::RowSource rs;
+    std::size_t nlen = 0;
+    const char* n = rolltui_app_profile_row_name(c, i, &nlen);
+    rs.name = std::string(n, nlen);
+    const std::size_t sn = rolltui_app_profile_row_sample_count(c, i);
+    rs.sample.reserve(sn);
+    for (std::size_t j = 0; j < sn; ++j) {
+      std::size_t llen = 0, vlen = 0;
+      const char* l = rolltui_app_profile_row_sample_label(c, i, j, &llen);
+      const char* v = rolltui_app_profile_row_sample_value(c, i, j, &vlen);
+      rs.sample.emplace_back(std::string(l, llen), std::string(v, vlen));
+    }
+    p.rows.push_back(std::move(rs));
   }
 
-  if (const json::Value& ms = v.get("menus"); ms.is_array()) {
-    for (const json::Value& m : ms.arr) {
-      AppProfile::MenuFile mf;
-      mf.name = std::string(m.get("name").as_string());
-      if (mf.name.empty()) { report.bad_values.push_back("menus[]: a menu needs a name"); continue; }
-      // The file's text VERBATIM. A profile carries the bytes rather than a parsed tree
-      // so the app's own menu loader and the tool's are reading the same thing — a
-      // re-serialised tree would be a second spelling that can drift.
-      mf.json = std::string(m.get("json").as_string());
-      p.menus.push_back(std::move(mf));
-    }
-  } else if (!ms.is_null()) {
-    report.bad_values.push_back("menus: expected an array");
+  const std::size_t sun = rolltui_app_profile_submit_count(c);
+  p.submits.reserve(sun);
+  for (std::size_t i = 0; i < sun; ++i) {
+    std::size_t slen = 0;
+    const char* s = rolltui_app_profile_submit_at(c, i, &slen);
+    p.submits.emplace_back(s, slen);
+  }
+
+  const std::size_t non = rolltui_app_profile_note_count(c);
+  p.notes.reserve(non);
+  for (std::size_t i = 0; i < non; ++i) {
+    std::size_t slen = 0;
+    const char* s = rolltui_app_profile_note_at(c, i, &slen);
+    p.notes.emplace_back(s, slen);
+  }
+
+  const std::size_t mn = rolltui_app_profile_menu_count(c);
+  p.menus.reserve(mn);
+  for (std::size_t i = 0; i < mn; ++i) {
+    std::size_t nlen = 0, jlen = 0;
+    const char* n = rolltui_app_profile_menu_name(c, i, &nlen);
+    const char* j = rolltui_app_profile_menu_json(c, i, &jlen);
+    p.menus.push_back({std::string(n, nlen), std::string(j, jlen)});
+  }
+
+  std::size_t leadlen = 0, notelen = 0;
+  const char* lead = rolltui_app_profile_help_lead(c, &leadlen);
+  const char* note = rolltui_app_profile_help_note(c, &notelen);
+  p.help.lead = std::string(lead, leadlen);
+  p.help.note = std::string(note, notelen);
+  const std::size_t scn = rolltui_app_profile_help_scope_count(c);
+  p.help.scopes.reserve(scn);
+  for (std::size_t i = 0; i < scn; ++i) {
+    std::size_t slen = 0;
+    const char* s = rolltui_app_profile_help_scope_at(c, i, &slen);
+    p.help.scopes.emplace_back(s, slen);
   }
   return p;
 }
 
-json::Value app_profile_to_json(const AppProfile& p) {
-  json::Value root = json::Value::object();
-  root.set("app", json::Value::string(p.app));
-  root.set("min_width", json::Value::number(p.min_width));
-  root.set("min_height", json::Value::number(p.min_height));
-  json::Value actions = json::Value::object();
-  for (const ActionDecl& a : p.actions) actions.set(a.name, json::Value::string(a.description));
-  root.set("actions", std::move(actions));
-  json::Value kinds = json::Value::array();
-  for (const AppProfile::Kind& k : p.kinds) {
-    json::Value o = json::Value::object();
-    o.set("name", json::Value::string(k.name));
-    o.set("source", json::Value::string(rule_name(k.rule)));
-    o.set("describes", json::Value::string(k.describes));
-    kinds.arr.push_back(std::move(o));
-  }
-  root.set("kinds", std::move(kinds));
-  json::Value sources = json::Value::object();
-  json::Value docs = json::Value::array();
-  for (const AppProfile::Document& d : p.documents) {
-    json::Value o = json::Value::object();
-    o.set("name", json::Value::string(d.name));
-    o.set("sample", json::Value::string(d.sample));
-    docs.arr.push_back(std::move(o));
-  }
-  sources.set("documents", std::move(docs));
-  json::Value rows = json::Value::array();
+// The other direction: builds a fresh, owned C profile out of a hand-built C++ AppProfile,
+// for `app_profile_to_json` to hand to `rolltui_app_profile_dump`. The caller frees the
+// result with `rolltui_app_profile_free`. Built out of the SAME `_new`/`add_*`/`set_*`
+// primitives `rolltui_app_profile_parse` itself uses while walking parsed JSON, so there is
+// exactly one way a profile's fields get set (`rolltui_app_profile.h`'s header comment).
+RolltuiAppProfile* app_profile_to_c(const AppProfile& p) {
+  RolltuiAppProfile* c = rolltui_app_profile_new();
+  rolltui_app_profile_set_app(c, p.app.data(), p.app.size());
+  rolltui_app_profile_set_min_size(c, p.min_width, p.min_height);
+  for (const ActionDecl& a : p.actions)
+    rolltui_app_profile_add_action(c, a.name.data(), a.name.size(), a.description.data(), a.description.size());
+  for (const AppProfile::Kind& k : p.kinds)
+    rolltui_app_profile_add_kind(c, k.name.data(), k.name.size(), rule_to_c(k.rule), k.describes.data(),
+                                 k.describes.size());
+  for (const AppProfile::Document& d : p.documents)
+    rolltui_app_profile_add_document(c, d.name.data(), d.name.size(), d.sample.data(), d.sample.size());
   for (const AppProfile::RowSource& r : p.rows) {
-    json::Value o = json::Value::object();
-    o.set("name", json::Value::string(r.name));
-    json::Value sample = json::Value::array();
-    for (const auto& [label, value] : r.sample) {
-      json::Value row = json::Value::object();
-      row.set("label", json::Value::string(label));
-      row.set("value", json::Value::string(value));
-      sample.arr.push_back(std::move(row));
-    }
-    o.set("sample", std::move(sample));
-    rows.arr.push_back(std::move(o));
+    const std::size_t idx = rolltui_app_profile_add_row(c, r.name.data(), r.name.size());
+    for (const auto& [label, value] : r.sample)
+      rolltui_app_profile_row_add_sample(c, idx, label.data(), label.size(), value.data(), value.size());
   }
-  sources.set("rows", std::move(rows));
-  json::Value submits = json::Value::array();
-  for (const std::string& s : p.submits) submits.arr.push_back(json::Value::string(s));
-  sources.set("submits", std::move(submits));
-  json::Value notes = json::Value::array();
-  for (const std::string& s : p.notes) notes.arr.push_back(json::Value::string(s));
-  sources.set("notes", std::move(notes));
-  root.set("sources", std::move(sources));
-  json::Value help = json::Value::object();
-  help.set("lead", json::Value::string(p.help.lead));
-  help.set("note", json::Value::string(p.help.note));
-  json::Value scopes = json::Value::array();
-  for (const std::string& s : p.help.scopes) scopes.arr.push_back(json::Value::string(s));
-  help.set("scopes", std::move(scopes));
-  root.set("help", std::move(help));
-  json::Value menus = json::Value::array();
-  for (const AppProfile::MenuFile& m : p.menus) {
-    json::Value o = json::Value::object();
-    o.set("name", json::Value::string(m.name));
-    o.set("json", json::Value::string(m.json));
-    menus.arr.push_back(std::move(o));
-  }
-  root.set("menus", std::move(menus));
-  return root;
+  for (const std::string& s : p.submits) rolltui_app_profile_add_submit(c, s.data(), s.size());
+  for (const std::string& s : p.notes) rolltui_app_profile_add_note(c, s.data(), s.size());
+  for (const AppProfile::MenuFile& m : p.menus)
+    rolltui_app_profile_add_menu(c, m.name.data(), m.name.size(), m.json.data(), m.json.size());
+  rolltui_app_profile_set_help(c, p.help.lead.data(), p.help.lead.size(), p.help.note.data(), p.help.note.size());
+  for (const std::string& s : p.help.scopes) rolltui_app_profile_add_help_scope(c, s.data(), s.size());
+  return c;
+}
+
+}  // namespace
+
+std::optional<AppProfile> load_app_profile(std::string_view text, AppProfileReport& report) {
+  RolltuiAppProfileReport crep{};
+  RolltuiAppProfile* c = rolltui_app_profile_parse(text.data(), text.size(), &crep);
+  report = report_from_c(crep);
+  rolltui_app_profile_report_release(&crep);
+  if (!c) return std::nullopt;
+  AppProfile p = app_profile_from_c(c);
+  rolltui_app_profile_free(c);
+  return p;
+}
+
+// A tree still crosses here — see this header's own note on why the shim keeps this
+// overload's signature. Implemented in terms of the text overload above (dump then parse)
+// rather than as a second, independent tree walk, so there remains exactly one parsing
+// implementation (`rolltui_app_profile.c`) rather than two that could disagree.
+std::optional<AppProfile> load_app_profile(const json::Value& v, AppProfileReport& report) {
+  return load_app_profile(json::dump(v, 0), report);
+}
+
+// Also still returns a tree, for the same reason. Builds the C profile, dumps it to TEXT
+// (the fix `rolltui_app_profile.h` makes at its own boundary — see its header comment) and
+// parses that text back into the tree this signature promises, rather than hand-building a
+// second tree-construction implementation alongside the C one.
+json::Value app_profile_to_json(const AppProfile& p) {
+  RolltuiAppProfile* c = app_profile_to_c(p);
+  RolltuiStr text{};
+  rolltui_app_profile_dump(c, /*indent=*/0, &text);
+  rolltui_app_profile_free(c);
+  std::string err;
+  json::Value v = json::parse(std::string_view(text.p ? text.p : "", text.n), err);
+  rolltui_str_free(&text);
+  return v;
 }
 
 std::vector<std::string> profile_contents(const AppProfile& p) {
