@@ -1,12 +1,13 @@
 #ifndef ROLLTUI_C_BINDINGS_H
 #define ROLLTUI_C_BINDINGS_H
 /*
- * rolltui/c/rolltui_bindings.h — CHORDS AND THE BINDING TABLE, as C (Phase 15 m3).
+ * rolltui/c/rolltui_bindings.h — CHORDS AND THE BINDING TABLE, as C (Phase 15 m3; the file
+ * format joins them at Phase 17 m1, once `rolltui_json.h` existed to build it on).
  *
- * A chord's spelling ("ctrl+shift+left") and its help form ("Ctrl-Shift-Left"), plus the
- * table an action's keys live in and every edit to it. Every rule is stated in
- * `rolltui/Bindings.hpp` and asserted in `rolltui/tests/bindings_test.cpp`; none of it is
- * repeated here.
+ * A chord's spelling ("ctrl+shift+left") and its help form ("Ctrl-Shift-Left"), the table an
+ * action's keys live in and every edit to it, and — since m1 — the file format that reads and
+ * writes a whole table at once. Every rule is stated in `rolltui/Bindings.hpp` and asserted in
+ * `rolltui/tests/bindings_test.cpp`; none of it is repeated here.
  *
  * THE BOUNDARY'S RULES, all inherited from Phase 14 and none new:
  *   1. **THE CALLER OWNS EVERY BUFFER.** Every string OUT of this file is either written
@@ -33,10 +34,17 @@
  * NAME is the vocabulary and is handed over once, by `rolltui_bindings_set_enter_rule`.
  * The C then knows only "bare Enter in this scope belongs to this action and nothing
  * else", which is the whole of the rule and none of the words.
+ *
+ * **Why a chord cannot be delivered, in English.** `rolltui_key_undeliverable_reason`
+ * (rolltui_keys.h) classifies into a CODE for the same reason `library_actions()` above
+ * stays put: "the C classifies and never carries a sentence" is that header's own rule, and
+ * copying its six sentences here would be the vocabulary duplicated a second way. The file
+ * loader below asks for the words through `RolltuiReasonFn` instead.
  */
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_str.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -136,6 +144,92 @@ int rolltui_bindings_breaks_enter_rule(const RolltuiBindings* b, const char* act
 /* The scope of an action name: "input" of "input.submit", the whole name when there is no
  * dot. A BORROW of the caller's own bytes. */
 const char* rolltui_bindings_scope_of(const char* action, size_t len, size_t* out_len);
+
+/* ---- the file format (Phase 17 m1): TEXT across the boundary, never a tree ----------------
+ *
+ * The loader and its report move here now that `rolltui_json.h` exists; what stays this
+ * module's C++ (Bindings.cpp) is exactly what stayed out of THIS file at Phase 15 m3 for the
+ * same reason: `library_actions()` and `migrated_action()` are a VOCABULARY (which action
+ * names exist; which three were renamed), asked back through callbacks rather than moved,
+ * matching `rolltui_bindings_undeclare_others`'s `RolltuiScopeFn` above. A fourth vocabulary
+ * joins them for the same reason: the six English sentences for an undeliverable chord live
+ * in `Keys.cpp` (`rolltui_keys.h` states why — "the C classifies and never carries a
+ * sentence") and must not be copied here either.
+ */
+
+/* THE REPORT, transparent like `RolltuiAppProfileReport`: exactly `RolltuiStr` values in
+ * GROWING AMORTISED arrays, one per `BindingsLoadReport` field. Zero-initialise before use. */
+typedef struct RolltuiBindingsReport {
+  RolltuiStr error; /* non-empty: unusable, and rolltui_bindings_load_json leaves `b` untouched */
+  RolltuiStr* unknown_actions;
+  size_t unknown_actions_n, unknown_actions_cap;
+  RolltuiStr* bad_chords;
+  size_t bad_chords_n, bad_chords_cap;
+  /* Chords this terminal cannot deliver: kept in `b` and reported, never dropped. */
+  RolltuiStr* undeliverable;
+  size_t undeliverable_n, undeliverable_cap;
+  RolltuiStr* conflicts;
+  size_t conflicts_n, conflicts_cap;
+  RolltuiStr* bad_values;
+  size_t bad_values_n, bad_values_cap;
+  RolltuiStr* unknown_keys;
+  size_t unknown_keys_n, unknown_keys_cap;
+  /* A renamed action's rewrite, said once: "'<old>' \xE2\x86\x92 '<new>'" — not a problem
+   * (`rolltui_bindings_report_clean` ignores it), so a host says it once, never asked to. */
+  RolltuiStr* migrated;
+  size_t migrated_n, migrated_cap;
+} RolltuiBindingsReport;
+
+void rolltui_bindings_report_release(RolltuiBindingsReport* r); /* frees everything; zeroes it */
+void rolltui_bindings_report_set_error(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_unknown_action(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_bad_chord(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_undeliverable(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_conflict(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_bad_value(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_unknown_key(RolltuiBindingsReport* r, const char* s, size_t len);
+void rolltui_bindings_report_add_migrated(RolltuiBindingsReport* r, const char* s, size_t len);
+int rolltui_bindings_report_clean(const RolltuiBindingsReport* r); /* `migrated` does not count */
+/* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
+ * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
+ * that order (never `migrated` — it is not a problem). Replaces `*out`. */
+void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
+
+/* Whether `legacy` (an action name) was renamed; when 1, the new name has been written into
+ * `out` (a caller buffer of at least ROLLTUI_ACTION_NAME_MAX bytes) with `*out_len` set. The
+ * three-row table itself stays in Bindings.cpp — this is only how the loader asks it, once
+ * per key, exactly as the C++ loop already did. */
+#define ROLLTUI_ACTION_NAME_MAX 64
+typedef int (*RolltuiMigrateFn)(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len);
+
+/* The English for why a chord cannot be delivered, into a caller buffer of at least
+ * ROLLTUI_UNDELIVERABLE_REASON_MAX bytes — deliberately not duplicated here (see the header
+ * comment above this section). Returns the length written. */
+#define ROLLTUI_UNDELIVERABLE_REASON_MAX 128
+typedef size_t (*RolltuiReasonFn)(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out, size_t cap);
+
+/* ADDS a file's rows to `b`, which the caller constructs first (`Bindings::Bindings()` seeds
+ * the library's own actions before calling this, exactly as the original C++ loop started
+ * from `Bindings b;`) — so an action the caller already declared is never re-added, and its
+ * row, if the file has one, simply gains chords. `deliver` is the protocol every chord in the
+ * file is checked against. `is_library`/`migrate`/`reason` are the three vocabulary questions
+ * above, asked back through callbacks.
+ *
+ * Returns 0 only when the file is fundamentally unusable (not a JSON object, or no "bindings"
+ * object) — `report->error` says which, and `b` is left exactly as it was passed in. A lesser
+ * problem is reported and `b` still gains whatever the file was good for, matching the C++
+ * original's "a file with problems still loads" contract. `report` is reset (as if freshly
+ * zero-initialised) on every call, success or failure. */
+int rolltui_bindings_load_json(RolltuiBindings* b, const char* text, size_t len, unsigned char deliver_protocol,
+                               RolltuiScopeFn is_library, void* library_ctx, RolltuiMigrateFn migrate,
+                               void* migrate_ctx, RolltuiReasonFn reason, void* reason_ctx,
+                               RolltuiBindingsReport* report);
+
+/* Serialises to TEXT: {"name", "bindings": {action: [chord, ...], ...}}, 2-space indented with
+ * a trailing newline (matches `json::dump(v, 2) + "\n"`). REPLACES `*out`. Every row is
+ * written, declared or not — the file is the whole domain (rule 1), and an undeclared row's
+ * chords must round-trip (Bindings.hpp's kept-and-inert rule). */
+void rolltui_bindings_dump_json(const RolltuiBindings* b, const char* name, size_t name_len, RolltuiStr* out);
 
 #ifdef __cplusplus
 } /* extern "C" */

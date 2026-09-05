@@ -16,17 +16,27 @@
 // (`rolltui/c/rolltui_json.h`); `parse`/`dump` below are thin shims that convert to and
 // from that file's tree and otherwise change nothing. `Value` itself keeps this exact
 // `std::string`/`std::vector` shape — unlike `DocEntry`/`MenuItem`, it is NOT made "the same
-// struct" as its C counterpart, because roughly 40 call sites across six other C++ modules
-// (`Theme.cpp`, `Layout.cpp`, `Menu.cpp`, `Bindings.cpp`, `Presets.cpp`, `ThemeGen.cpp`,
-// `ThemeAnalysis.cpp`, `PresetStore.hpp`) read and write `.str`/`.arr`/`.obj` with real
-// `std::vector`/`std::string` operations a C-backed proxy cannot honestly offer (an
-// erase-remove over `.obj` in `Presets.cpp`, `.str` handed into a `vector<string>::push_back`
-// in `Theme.cpp`, a whole-vector assignment and aggregate-init `push_back`s in
-// `TuiFrontend.cpp`/`paint.cpp`). None of those six are ported by this task, so this header's
-// public shape is UNCHANGED and every one of those call sites keeps compiling exactly as
-// written. See `rolltui/c/rolltui_json.h`'s header comment for the full reasoning — it is the
-// one place `json::Value` still crosses this library's boundary as a tree rather than as
-// text, and it is a deliberate, scoped exception rather than the pattern to copy.
+// struct" as its C counterpart, because roughly 40 call sites across several other C++
+// modules read and write `.str`/`.arr`/`.obj` with real `std::vector`/`std::string`
+// operations a C-backed proxy cannot honestly offer: an erase-remove over `.obj` in
+// `Presets.cpp`'s Layout domain (`load_layout` stays C++ permanently — `rolltui_layout.h`'s
+// own header comment states why), `.str` handed into a `vector<string>::push_back` in
+// `Theme.cpp` (`load_theme` likewise), and a whole-vector assignment and aggregate-init
+// `push_back`s in `TuiFrontend.cpp`/`paint.cpp`. `ThemeGen.cpp`, `ThemeAnalysis.cpp` and
+// `PresetStore.hpp` round out the list for the same reason as `Theme.cpp`'s.
+//
+// PHASE 17 m2 ported `Bindings.cpp`'s and `Menu.cpp`'s own JSON walks to C
+// (`rolltui_bindings_load_json`/`_dump_json`, `rolltui_menu_parse_json`/`_dump_json`) — unlike
+// the modules above, neither had a sibling algorithm on the other side of a permanent boundary
+// to entangle it, so the whole walk moved rather than a shell calling back. `Menu.cpp` no
+// longer touches `json::Value` at all. `Bindings.cpp` still does, but only as a ROUND TRIP at
+// its public edge (`from_json(const json::Value&, ...)` dumps to text and takes the ported
+// text path; `to_json` parses the ported dump back into a `Value`) — the "thin shim: convert
+// in, call this file, convert out" this header's own comment describes, kept for the two
+// callers (a test, and `Presets.cpp`'s `BindingsDomain`) that still hand it a parsed tree.
+// See `rolltui/c/rolltui_json.h`'s header comment for the full reasoning — it is the one
+// place `json::Value` still crosses this library's boundary as a tree rather than as text,
+// and it is a deliberate, scoped exception rather than the pattern to copy.
 #include <cstddef>
 #include <string>
 #include <string_view>

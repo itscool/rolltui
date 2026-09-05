@@ -1,12 +1,17 @@
-// rolltui/Menu.cpp — the SHIM over `rolltui/c/rolltui_menu.h`: the JSON loader, the shipped
-// menu files, the styling vocabulary, the thirteen action names, and the validator registry
-// that stays where its callables are. The two implementations live in `MenuCpp.cpp` and
-// `c/rolltui_menu.c`, and this file is the C++ API over it (Phase 15 m5).
+// rolltui/Menu.cpp — the SHIM over `rolltui/c/rolltui_menu.h`: the shipped menu files, the
+// styling vocabulary, the thirteen action names, and the validator registry that stays where
+// its callables are. `c/rolltui_menu.c` is the one implementation of the widget, the tree and
+// (Phase 17 m1) the JSON loader; this file is the C++ API over it (Phase 15 m5, extended).
 //
-// WHAT STAYS HERE AND WHY: the loader and the shipped table, the m3 split for `Theme`; and
-// three TREE WALKS with no widget state in them (`item_actions`, `unknown_validators`,
+// WHAT STAYS HERE AND WHY: the shipped table (a table of names, not an algorithm — the m3
+// split for `Theme`); the validator registry (a `std::function` map the C asks about rather
+// than holds, `rolltui_menu.h`'s own trade for "which scopes are the library's"); and three
+// TREE WALKS with no widget state in them (`item_actions`, `unknown_validators`,
 // `apply_shortcuts`), because the C would gain nothing from them but a second place to know
-// what `Bindings::chords_text` means.
+// what `Bindings::chords_text` means. The JSON loader (`menu_from_json`/`menu_to_json`) moved
+// to C at Phase 17 m1, once `rolltui_json.h` existed to build it on — see that function's own
+// note and `rolltui_menu.h`'s header comment for why a menu file, unlike Theme's and Layout's,
+// had nothing left behind.
 #include "rolltui/Menu.hpp"
 
 #include <algorithm>
@@ -14,7 +19,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "rolltui/Json.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Scratch.hpp"  // rolltui::ThreadHandle
 #include "rolltui/Unicode.hpp"
@@ -104,162 +108,37 @@ std::string input_hint(const InputSpec& spec) {
 }
 
 // ---- JSON ----------------------------------------------------------------------------
-
-namespace {
-
-using json::Value;
-
-const char* kind_name(MenuItem::Kind k) {
-  switch (k) {
-    case MenuItem::Kind::Action: return "action";
-    case MenuItem::Kind::Submenu: return "submenu";
-    case MenuItem::Kind::Toggle: return "toggle";
-    case MenuItem::Kind::Choice: return "choice";
-    case MenuItem::Kind::Input: return "input";
-  }
-  return "action";
-}
-
-std::optional<MenuItem::Kind> kind_from_name(std::string_view s) {
-  if (s == "action") return MenuItem::Kind::Action;
-  if (s == "submenu") return MenuItem::Kind::Submenu;
-  if (s == "toggle") return MenuItem::Kind::Toggle;
-  if (s == "choice") return MenuItem::Kind::Choice;
-  if (s == "input") return MenuItem::Kind::Input;
-  return std::nullopt;
-}
-
-// `ids` is the tree-wide set of action ids; a Choice's OPTIONS are values, unique only
-// within their choice (two choices may both offer "auto"), so they get their own set.
-MenuItem item_from_json(const Value& v, const std::string& where, MenuLoadReport& rep, std::vector<std::string>& ids) {
-  MenuItem it;
-  if (!v.is_object()) { rep.bad_values.push_back(where + ": expected an item object"); return it; }
-  bool kind_given = false;
-  std::vector<std::pair<std::string, const Value*>> spec_keys;
-  for (const auto& [k, x] : v.obj) {
-    const std::string at = where + "." + k;
-    if (k == "id" || k == "label" || k == "shortcut" || k == "value" || k == "action") {
-      if (!x.is_string()) { rep.bad_values.push_back(at + ": expected a string"); continue; }
-      if (k == "id") it.id = x.str;
-      else if (k == "label") it.label = x.str;
-      else if (k == "shortcut") it.shortcut = x.str;
-      else if (k == "action") it.action_name = x.str;
-      else it.value = x.str;
-    } else if (k == "kind") {
-      auto kd = x.is_string() ? kind_from_name(x.str) : std::nullopt;
-      if (!kd) rep.bad_values.push_back(at + ": expected action | submenu | toggle | choice | input");
-      else { it.kind = *kd; kind_given = true; }
-    } else if (k == "enabled" || k == "checked") {
-      if (!x.is_bool()) { rep.bad_values.push_back(at + ": expected true or false"); continue; }
-      (k == "enabled" ? it.enabled : it.checked) = x.b;
-    } else if (k == "items") {
-      if (!x.is_array()) { rep.bad_values.push_back(at + ": expected an array of items"); continue; }
-      const bool choice = v.get("kind").as_string() == "choice";
-      std::vector<std::string> option_ids;
-      for (std::size_t i = 0; i < x.arr.size(); ++i)
-        it.children.push_back(item_from_json(x.arr[i], at + "[" + std::to_string(i) + "]", rep, choice ? option_ids : ids));
-    } else if (k == "type" || k == "min" || k == "max" || k == "step" || k == "precision" || k == "max_len" || k == "min_len" || k == "optional" ||
-               k == "validator" || k == "hint") {
-      spec_keys.emplace_back(k, &x);
-    } else {
-      rep.unknown_keys.push_back(at);
-    }
-  }
-  if (!kind_given) it.kind = v.has("items") ? MenuItem::Kind::Submenu : MenuItem::Kind::Action;
-  // An action's shortcut is the bindings' to say (Menu.hpp): a file that also spells one
-  // out is stating the same fact twice, and the second copy is what goes stale.
-  if (!it.action_name.empty() && !it.shortcut.empty()) {
-    rep.bad_values.push_back(where + ".shortcut: an item with an \"action\" takes its shortcut from the bindings (ignored)");
-    it.shortcut.clear();
-  }
-  for (const auto& [k, xp] : spec_keys) {
-    const Value& x = *xp;
-    const std::string at = where + "." + k;
-    if (it.kind != MenuItem::Kind::Input) { rep.unknown_keys.push_back(at + " (only an input has it)"); continue; }
-    if (k == "type") {
-      auto t = x.is_string() ? input_type_from_name(x.str) : std::nullopt;
-      if (!t) rep.bad_values.push_back(at + ": expected text | int | float | color | size | dim | name");
-      else it.spec.type = *t;
-    } else if (k == "min" || k == "max" || k == "step") {
-      if (!x.is_number()) { rep.bad_values.push_back(at + ": expected a number"); continue; }
-      (k == "min" ? it.spec.min : k == "max" ? it.spec.max : it.spec.step) = x.num;
-    } else if (k == "precision" || k == "max_len" || k == "min_len") {
-      if (!x.is_number() || x.num < 0 || x.num != std::floor(x.num)) { rep.bad_values.push_back(at + ": expected a whole number ≥ 0"); continue; }
-      if (k == "precision") it.spec.precision = static_cast<int>(x.num);
-      else if (k == "max_len") it.spec.max_len = static_cast<std::size_t>(x.num);
-      else it.spec.min_len = static_cast<std::size_t>(x.num);
-    } else if (k == "optional") {
-      if (!x.is_bool()) { rep.bad_values.push_back(at + ": expected true or false"); continue; }
-      it.spec.optional = x.b;
-    } else if (k == "validator" || k == "hint") {
-      if (!x.is_string()) { rep.bad_values.push_back(at + ": expected a string"); continue; }
-      (k == "validator" ? it.spec.validator : it.spec.hint) = x.str;
-    }
-  }
-  if (it.kind == MenuItem::Kind::Input && it.spec.min > it.spec.max) rep.bad_values.push_back(where + ": min is above max");
-  if (it.kind == MenuItem::Kind::Input && !it.spec.validator.empty() && it.spec.type != InputType::Text)
-    rep.bad_values.push_back(where + ".validator: only a text input takes a validator (a typed input validates itself)");
-  if (it.id.empty()) rep.bad_values.push_back(where + ": an item needs an \"id\"");
-  else if (std::find(ids.begin(), ids.end(), it.id.view()) != ids.end()) rep.bad_values.push_back(where + ".id: duplicate id '" + it.id + "'");
-  else ids.emplace_back(it.id.view());
-  if (it.label.empty()) it.label = it.id;
-  return it;
-}
-
-Value item_to_json(const MenuItem& it) {
-  Value o = Value::object();
-  o.set("id", Value::string(it.id.str()));
-  if (!(it.label == it.id)) o.set("label", Value::string(it.label.str()));
-  const bool implied = (it.kind == MenuItem::Kind::Submenu && !it.children.empty()) ||
-                       (it.kind == MenuItem::Kind::Action && it.children.empty());
-  if (!implied) o.set("kind", Value::string(kind_name(it.kind)));
-  if (!it.action_name.empty()) o.set("action", Value::string(it.action_name.str()));
-  // An action's shortcut is derived and is never written back (apply_shortcuts fills it
-  // from the live chords), so a round trip cannot bake one moment's keys into a file.
-  if (it.action_name.empty() && !it.shortcut.empty()) o.set("shortcut", Value::string(it.shortcut.str()));
-  if (!it.enabled) o.set("enabled", Value::boolean(false));
-  if (it.checked) o.set("checked", Value::boolean(true));
-  if (!it.value.empty()) o.set("value", Value::string(it.value.str()));
-  if (it.kind == MenuItem::Kind::Input) {
-    const InputSpec d;
-    const InputSpec& s = it.spec;
-    if (s.type != d.type) o.set("type", Value::string(std::string(input_type_name(s.type))));
-    if (s.min != d.min) o.set("min", Value::number(s.min));
-    if (s.max != d.max) o.set("max", Value::number(s.max));
-    if (s.step != d.step) o.set("step", Value::number(s.step));
-    if (s.precision != d.precision) o.set("precision", Value::number(s.precision));
-    if (s.max_len != d.max_len) o.set("max_len", Value::number(static_cast<double>(s.max_len)));
-    if (s.min_len != d.min_len) o.set("min_len", Value::number(static_cast<double>(s.min_len)));
-    if (s.optional) o.set("optional", Value::boolean(true));
-    if (!s.validator.empty()) o.set("validator", Value::string(s.validator.str()));
-    if (!s.hint.empty()) o.set("hint", Value::string(s.hint.str()));
-  }
-  if (!it.children.empty()) {
-    Value arr = Value::array();
-    for (const MenuItem& c : it.children) arr.arr.push_back(item_to_json(c));
-    o.set("items", std::move(arr));
-  }
-  return o;
-}
-
-}  // namespace
+//
+// PHASE 17 m1: the whole walk — `item_from_json`/`item_to_json`, the kind-name table, the
+// tree-wide/per-choice id sets, the leading-dot fix-up — moved to C
+// (`rolltui_menu_parse_json`/`rolltui_menu_dump_json`) now that `rolltui_json.h` exists to
+// build it on. Unlike Theme's and Layout's loaders, a menu file has no sibling algorithm
+// staying C++ to entangle it (Theme.cpp's `load_theme`; `rolltui_layout.h`'s own header
+// comment states why theirs stays), so nothing of the walk was left behind here — see
+// `rolltui/c/rolltui_menu.h`'s header comment.
 
 std::optional<MenuItem> menu_from_json(std::string_view json_text, MenuLoadReport& report) {
-  report = MenuLoadReport{};
-  std::string err;
-  Value root = json::parse(json_text, err);
-  if (!err.empty()) { report.error = err; return std::nullopt; }
-  if (!root.is_object()) { report.error = "menu file must be a JSON object"; return std::nullopt; }
-  std::vector<std::string> ids;
-  MenuItem it = item_from_json(root, "", report, ids);
-  for (std::vector<std::string>* list : {&report.unknown_keys, &report.bad_values})
-    for (std::string& s : *list)
-      if (!s.empty() && s[0] == '.') s.erase(0, 1);
-  if (it.kind != MenuItem::Kind::Submenu) report.bad_values.push_back("kind: the root must be a submenu (it holds the top level)");
+  MenuItem it;  // default-constructed: Action, everything else empty — the caller-owned node
+                // rolltui_menu_parse_json fills in place rather than allocating.
+  RolltuiMenuLoadReport rep{};
+  const int ok = rolltui_menu_parse_json(json_text.data(), json_text.size(), &it, &rep);
+  report.error = rep.error.str();
+  report.unknown_keys.clear();
+  report.bad_values.clear();
+  report.unknown_keys.reserve(rep.unknown_keys_n);
+  report.bad_values.reserve(rep.bad_values_n);
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.emplace_back(rep.unknown_keys[i].view());
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.emplace_back(rep.bad_values[i].view());
+  rolltui_menu_load_report_release(&rep);
+  if (!ok) return std::nullopt;
   return it;
 }
 
-std::string menu_to_json(const MenuItem& root) { return json::dump(item_to_json(root), 2) + "\n"; }
+std::string menu_to_json(const MenuItem& root) {
+  RolltuiStr out;
+  rolltui_menu_dump_json(&root, &out);
+  return out.str();
+}
 
 // The shipped menu files, embedded by cmake/embed_presets.cmake from
 // rolltui/presets/menus/ — the same machinery as the shipped presets, so a menu that

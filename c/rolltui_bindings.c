@@ -1,16 +1,28 @@
-/* rolltui/c/rolltui_bindings.c — the C side of chords and the binding table. See
- * rolltui_bindings.h for the boundary's rules and rolltui/Bindings.hpp for the binding
- * rules themselves; `BindingsCpp.cpp` is the other implementation of the same functions,
- * and `rolltui/tests/bindings_test.cpp` is the oracle for both.
+/* rolltui/c/rolltui_bindings.c — the C side of chords, the binding table, and (Phase 17 m1)
+ * the file format. See rolltui_bindings.h for the boundary's rules and rolltui/Bindings.hpp
+ * for the binding rules themselves; `rolltui/tests/bindings_test.cpp` is the oracle.
  *
  * Everything allocates through the closed set in `rolltui_alloc.h`. A table is one handle
- * and holds nothing process-wide, so nothing here registers a shutdown releaser. */
+ * and holds nothing process-wide, so nothing here registers a shutdown releaser; the report
+ * likewise owns nothing beyond one call's arrays. */
 #include "rolltui/c/rolltui_bindings.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_unicode.h"
+
+/* A literal C string plus its length, the same one-time convenience `rolltui_app_profile.c`
+ * and `rolltui_json.c` each name locally rather than share — a load happens once per file,
+ * never per frame, so the `strlen` this costs is not one this library's budget covers. */
+#define K(s) (s), strlen(s)
+
+static int streq(const char* s, size_t slen, const char* lit) {
+  const size_t litlen = strlen(lit);
+  return slen == litlen && (litlen == 0 || memcmp(s, lit, litlen) == 0);
+}
 
 /* ---- the key-name table ------------------------------------------------------------------ */
 /* THIS MODULE'S OWN FILE FORMAT, which is why it is here and `library_actions()` is not: a
@@ -498,4 +510,346 @@ int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) {
       if (!chord_eq(&a->rows[i].chords[j], &b->rows[i].chords[j])) return 0;
   }
   return 1;
+}
+
+/* ---- the file format (Phase 17 m1) --------------------------------------------------------- */
+
+/* ---- the report: a plain `RolltuiStr` array per `BindingsLoadReport` field, the same shape
+ * `rolltui_app_profile.c`'s report uses. ---------------------------------------------------- */
+
+void rolltui_bindings_report_release(RolltuiBindingsReport* r) {
+  size_t i;
+  if (!r) return;
+  rolltui_str_free(&r->error);
+#define REL(list) \
+  for (i = 0; i < r->list##_n; ++i) rolltui_str_free(&r->list[i]); \
+  rolltui_mem_free(r->list)
+  REL(unknown_actions);
+  REL(bad_chords);
+  REL(undeliverable);
+  REL(conflicts);
+  REL(bad_values);
+  REL(unknown_keys);
+  REL(migrated);
+#undef REL
+  memset(r, 0, sizeof *r);
+}
+
+void rolltui_bindings_report_set_error(RolltuiBindingsReport* r, const char* s, size_t len) {
+  rolltui_str_set(&r->error, s, len);
+}
+
+/* `fn` is the SINGULAR suffix the header declares (`add_bad_chord`, one call per occurrence,
+ * matching `rolltui_app_profile.c`'s own convention); `field` is the PLURAL array it grows. */
+#define ADD(fn, field)                                                                                       \
+  void rolltui_bindings_report_add_##fn(RolltuiBindingsReport* r, const char* s, size_t len) {                \
+    r->field =                                                                                               \
+        (RolltuiStr*)rolltui_grow_zeroed(r->field, &r->field##_cap, r->field##_n + 1, sizeof *r->field);      \
+    rolltui_str_set(&r->field[r->field##_n++], s, len);                                                      \
+  }
+ADD(unknown_action, unknown_actions)
+ADD(bad_chord, bad_chords)
+ADD(undeliverable, undeliverable)
+ADD(conflict, conflicts)
+ADD(bad_value, bad_values)
+ADD(unknown_key, unknown_keys)
+ADD(migrated, migrated)
+#undef ADD
+
+int rolltui_bindings_report_clean(const RolltuiBindingsReport* r) {
+  /* `migrated` does not count — a rename is said, never a problem (Bindings.hpp). */
+  return r->error.n == 0 && r->unknown_actions_n == 0 && r->bad_chords_n == 0 && r->conflicts_n == 0 &&
+         r->bad_values_n == 0 && r->unknown_keys_n == 0 && r->undeliverable_n == 0;
+}
+
+/* A ten-line growing byte buffer, the same private helper `rolltui_app_profile.c` and
+ * `rolltui_json.c` each name locally for the same GROWING AMORTISED role. */
+typedef struct { char* p; size_t len, cap; } SBuf;
+
+static void sbuf_add(SBuf* b, const char* s, size_t n) {
+  if (!n) return;
+  b->p = (char*)rolltui_grow(b->p, &b->cap, b->len + n, sizeof *b->p);
+  memcpy(b->p + b->len, s, n);
+  b->len += n;
+}
+
+void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out) {
+  SBuf b;
+  size_t i;
+  int first = 1;
+  if (rolltui_bindings_report_clean(r)) {
+    rolltui_str_clear(out);
+    return;
+  }
+  if (r->error.n != 0) {
+    rolltui_str_set(out, r->error.p, r->error.n);
+    return;
+  }
+  memset(&b, 0, sizeof b);
+#define JOIN(list, label)                              \
+  for (i = 0; i < r->list##_n; ++i) {                  \
+    if (!first) sbuf_add(&b, "; ", 2);                  \
+    first = 0;                                          \
+    sbuf_add(&b, label, strlen(label));                 \
+    sbuf_add(&b, r->list[i].p, r->list[i].n);           \
+  }
+  JOIN(bad_values, "bad: ")
+  JOIN(conflicts, "conflict: ")
+  JOIN(bad_chords, "chord: ")
+  JOIN(undeliverable, "undeliverable: ")
+  JOIN(unknown_actions, "unknown action: ")
+  JOIN(unknown_keys, "unknown: ")
+#undef JOIN
+  rolltui_str_set(out, b.p, b.len);
+  rolltui_mem_free(b.p);
+}
+
+/* ---- the loader ------------------------------------------------------------------------- */
+
+/* Builds `action + suffix` into a fresh `RolltuiStr` and hands it to `add`; frees the buffer.
+ * The one shape every per-row message below shares, whether the suffix is a fixed literal or
+ * one built with more pieces first (the caller then passes a `RolltuiStr`'s own bytes as the
+ * "suffix"). */
+static void report_at(void (*add)(RolltuiBindingsReport*, const char*, size_t), RolltuiBindingsReport* r,
+                      const char* action, size_t action_len, const char* suffix, size_t suffix_len) {
+  RolltuiStr msg;
+  memset(&msg, 0, sizeof msg);
+  rolltui_str_set(&msg, action, action_len);
+  rolltui_str_append(&msg, suffix, suffix_len);
+  add(r, msg.p, msg.n);
+  rolltui_str_free(&msg);
+}
+
+/* WHICH ROW of `scope` already holds this chord, or NULL — the C's own `Bindings::holder`,
+ * over the ROWS themselves and not through `rolltui_bindings_action_for`, so an UNDECLARED
+ * row conflicts at load exactly as Bindings.hpp states. `scope`/`scope_len` is already a bare
+ * scope (no dot), and `scope_eq` extracting ITS scope again is a no-op — the same function the
+ * public API already uses for two action names, reused here for one action name and one bare
+ * scope. */
+static const Row* holder_row(const RolltuiBindings* b, const RolltuiChord* k, const char* scope, size_t scope_len) {
+  size_t i, j;
+  for (i = 0; i < b->row_count; ++i) {
+    const Row* r = &b->rows[i];
+    if (!scope_eq(r->action.p, r->action.len, scope, scope_len)) continue;
+    for (j = 0; j < r->chord_count; ++j)
+      if (chord_eq(&r->chords[j], k)) return r;
+  }
+  return NULL;
+}
+
+/* One row of the file: `action` already migrated, `chords_v` its JSON value. Mirrors the body
+ * of the C++ loader's per-key loop exactly, including the two problems that are reported but
+ * do NOT stop the row from loading (an undeliverable chord is kept; the file itself still
+ * loads on any per-chord problem). */
+static void load_one_row(RolltuiBindings* b, const char* action, size_t action_len, const RolltuiJsonValue* chords_v,
+                         unsigned char deliver, RolltuiScopeFn is_library, void* library_ctx, RolltuiReasonFn reason,
+                         void* reason_ctx, RolltuiBindingsReport* report) {
+  size_t i, n;
+  if (!rolltui_bindings_has(b, action, action_len)) {
+    /* A library scope is closed, so a name it does not define is a typo. Any other scope
+     * belongs to a layout this file knows nothing about: the row is kept, inert, until
+     * something declares it (Bindings.hpp's kept-and-inert rule). */
+    size_t slen = 0;
+    const char* scope = rolltui_bindings_scope_of(action, action_len, &slen);
+    if ((is_library && is_library(library_ctx, scope, slen)) || slen == action_len) {
+      rolltui_bindings_report_add_unknown_action(report, action, action_len);
+      return;
+    }
+    /* Only if there is no row yet — a MIGRATED name can land on one the file already wrote
+     * ("studio.quit": [] beside a "playground.quit"), and a second row for one action would
+     * split what the user sees from what fires. */
+    rolltui_bindings_add_row(b, action, action_len);
+  }
+  if (!rolltui_json_is_array(chords_v)) {
+    report_at(rolltui_bindings_report_add_bad_value, report, action, action_len, K(": expected an array of chords"));
+    return;
+  }
+  n = rolltui_json_array_size(chords_v);
+  for (i = 0; i < n; ++i) {
+    const RolltuiJsonValue* cv = rolltui_json_array_at(chords_v, i);
+    RolltuiChord k;
+    size_t clen = 0;
+    const char* ctext;
+    if (!rolltui_json_is_string(cv)) {
+      report_at(rolltui_bindings_report_add_bad_value, report, action, action_len, K(": a chord must be a string"));
+      continue;
+    }
+    ctext = rolltui_json_as_string(cv, "", 0, &clen);
+    if (!rolltui_chord_parse(ctext, clen, &k)) {
+      RolltuiStr msg;
+      memset(&msg, 0, sizeof msg);
+      rolltui_str_set(&msg, action, action_len);
+      rolltui_str_append(&msg, K(": '"));
+      rolltui_str_append(&msg, ctext, clen);
+      rolltui_str_append(&msg, K("' is not a chord"));
+      rolltui_bindings_report_add_bad_chord(report, msg.p, msg.n);
+      rolltui_str_free(&msg);
+      continue;
+    }
+    /* A chord this terminal cannot deliver: named, with the reason — and then KEPT anyway (no
+     * `continue`), because the refusal is about what can fire, not about what the user wrote;
+     * the row round-trips through save so the same file loads clean the day the terminal
+     * negotiates a stronger protocol (Bindings.hpp). */
+    if (!rolltui_key_deliverable(&k, deliver)) {
+      char rbuf[ROLLTUI_UNDELIVERABLE_REASON_MAX];
+      char cbuf[ROLLTUI_CHORD_STRING_MAX];
+      const size_t rlen = reason ? reason(reason_ctx, &k, deliver, rbuf, sizeof rbuf) : 0;
+      const size_t clen2 = rolltui_chord_to_string(&k, cbuf, sizeof cbuf);
+      RolltuiStr msg;
+      memset(&msg, 0, sizeof msg);
+      rolltui_str_set(&msg, action, action_len);
+      rolltui_str_append(&msg, K(": '"));
+      rolltui_str_append(&msg, cbuf, clen2);
+      rolltui_str_append(&msg, K("' cannot be delivered by this terminal; "));
+      rolltui_str_append(&msg, rbuf, rlen);
+      rolltui_bindings_report_add_undeliverable(report, msg.p, msg.n);
+      rolltui_str_free(&msg);
+    }
+    {
+      const int is_enter = is_bare_enter(&k);
+      size_t slen = 0;
+      const char* scope = rolltui_bindings_scope_of(action, action_len, &slen);
+      const int is_input = slen == 5 && memcmp(scope, "input", 5) == 0;
+      const int is_submit = streq(action, action_len, "input.submit");
+      if (is_enter && is_input && !is_submit) {
+        report_at(rolltui_bindings_report_add_bad_value, report, action, action_len,
+                 K(": 'enter' is always input.submit and cannot be bound here (refused)"));
+        continue;
+      }
+    }
+    {
+      /* A conflict within the scope: the FIRST binding in the file wins. Over the rows
+       * themselves (holder_row), not through action_for, so two UNDECLARED actions of one
+       * scope conflict here rather than silently once something declares them. */
+      size_t slen = 0;
+      const char* scope = rolltui_bindings_scope_of(action, action_len, &slen);
+      const Row* other = holder_row(b, &k, scope, slen);
+      if (other && !str_is(&other->action, action, action_len)) {
+        RolltuiStr msg;
+        memset(&msg, 0, sizeof msg);
+        rolltui_str_append(&msg, K("'"));
+        rolltui_str_append(&msg, ctext, clen);
+        rolltui_str_append(&msg, K("' bound to both "));
+        rolltui_str_append(&msg, other->action.p, other->action.len);
+        rolltui_str_append(&msg, K(" and "));
+        rolltui_str_append(&msg, action, action_len);
+        rolltui_str_append(&msg, K(" ("));
+        rolltui_str_append(&msg, other->action.p, other->action.len);
+        rolltui_str_append(&msg, K(" kept)"));
+        rolltui_bindings_report_add_conflict(report, msg.p, msg.n);
+        rolltui_str_free(&msg);
+        continue;
+      }
+    }
+    rolltui_bindings_add_chord(b, action, action_len, &k);
+  }
+}
+
+int rolltui_bindings_load_json(RolltuiBindings* b, const char* text, size_t len, unsigned char deliver_protocol,
+                               RolltuiScopeFn is_library, void* library_ctx, RolltuiMigrateFn migrate,
+                               void* migrate_ctx, RolltuiReasonFn reason, void* reason_ctx,
+                               RolltuiBindingsReport* report) {
+  RolltuiJsonValue* root;
+  RolltuiStr jerr;
+  const RolltuiJsonValue* map;
+  size_t i, n;
+  memset(&jerr, 0, sizeof jerr);
+  rolltui_bindings_report_release(report);
+  root = rolltui_json_parse(text, len, &jerr);
+  if (!root) {
+    rolltui_bindings_report_set_error(report, jerr.p ? jerr.p : "", jerr.n);
+    rolltui_str_free(&jerr);
+    return 0;
+  }
+  rolltui_str_free(&jerr);
+  if (!rolltui_json_is_object(root)) {
+    rolltui_bindings_report_set_error(report, K("a bindings file must be a JSON object"));
+    rolltui_json_free(root);
+    return 0;
+  }
+  map = rolltui_json_get(root, K("bindings"));
+  if (!rolltui_json_is_object(map)) {
+    rolltui_bindings_report_set_error(report, K("a bindings file needs a \"bindings\" object"));
+    rolltui_json_free(root);
+    return 0;
+  }
+  n = rolltui_json_object_size(root);
+  for (i = 0; i < n; ++i) {
+    size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(root, i, &klen);
+    if (!streq(k, klen, "name") && !streq(k, klen, "bindings") && !streq(k, klen, "preset"))
+      rolltui_bindings_report_add_unknown_key(report, k, klen);
+  }
+  n = rolltui_json_object_size(map);
+  for (i = 0; i < n; ++i) {
+    size_t klen = 0;
+    const char* key = rolltui_json_object_key_at(map, i, &klen);
+    const RolltuiJsonValue* chords_v = rolltui_json_object_value_at(map, i);
+    /* A RENAMED action is rewritten once, here, before anything else reads the name — it has
+     * to be before, because the kept-and-inert rule below would otherwise file the OLD name
+     * as some other screen's row (Bindings.hpp). Said in `migrated`, never a problem. */
+    char migrate_buf[ROLLTUI_ACTION_NAME_MAX];
+    const char* action = key;
+    size_t action_len = klen;
+    size_t mlen = 0;
+    if (migrate && migrate(migrate_ctx, key, klen, migrate_buf, &mlen)) {
+      RolltuiStr msg;
+      memset(&msg, 0, sizeof msg);
+      rolltui_str_append(&msg, K("'"));
+      rolltui_str_append(&msg, key, klen);
+      rolltui_str_append(&msg, K("' \xE2\x86\x92 '"));
+      rolltui_str_append(&msg, migrate_buf, mlen);
+      rolltui_str_append(&msg, K("'"));
+      rolltui_bindings_report_add_migrated(report, msg.p, msg.n);
+      rolltui_str_free(&msg);
+      action = migrate_buf;
+      action_len = mlen;
+    }
+    load_one_row(b, action, action_len, chords_v, deliver_protocol, is_library, library_ctx, reason, reason_ctx,
+                report);
+  }
+  /* The Enter rule, the other half: the rule's subject must have Enter, restored when a file
+   * moved it away. The NAME is the vocabulary and was handed over once, at construction
+   * (`rolltui_bindings_set_enter_rule`); this reads it back rather than assuming it. */
+  if (b->enter_action.len != 0) {
+    RolltuiChord enter;
+    const Row* r = find_row(b, b->enter_action.p, b->enter_action.len);
+    int has_enter = 0;
+    memset(&enter, 0, sizeof enter);
+    enter.key = ROLLTUI_KEY_ENTER;
+    if (r) {
+      size_t j;
+      for (j = 0; j < r->chord_count; ++j)
+        if (chord_eq(&r->chords[j], &enter)) { has_enter = 1; break; }
+    }
+    if (!has_enter) {
+      report_at(rolltui_bindings_report_add_bad_value, report, b->enter_action.p, b->enter_action.len,
+               K(": 'enter' is always bound to it (restored)"));
+      rolltui_bindings_add_chord(b, b->enter_action.p, b->enter_action.len, &enter);
+    }
+  }
+  rolltui_json_free(root);
+  return 1;
+}
+
+void rolltui_bindings_dump_json(const RolltuiBindings* b, const char* name, size_t name_len, RolltuiStr* out) {
+  RolltuiJsonValue* root = rolltui_json_object();
+  RolltuiJsonValue* map = rolltui_json_object();
+  size_t i;
+  rolltui_json_set(root, K("name"), rolltui_json_string(name, name_len));
+  for (i = 0; i < b->row_count; ++i) {
+    const Row* r = &b->rows[i];
+    RolltuiJsonValue* arr = rolltui_json_array();
+    size_t j;
+    for (j = 0; j < r->chord_count; ++j) {
+      char buf[ROLLTUI_CHORD_STRING_MAX];
+      const size_t blen = rolltui_chord_to_string(&r->chords[j], buf, sizeof buf);
+      rolltui_json_array_push(arr, rolltui_json_string(buf, blen));
+    }
+    rolltui_json_set(map, r->action.p, r->action.len, arr);
+  }
+  rolltui_json_set(root, K("bindings"), map);
+  rolltui_json_dump(root, 2, out);
+  rolltui_str_append(out, "\n", 1);
+  rolltui_json_free(root);
 }

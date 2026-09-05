@@ -1,5 +1,5 @@
-/* rolltui/c/rolltui_menu.c — the C side of the menu widget and the typed-field rules. See
- * rolltui_menu.h; the rules are rolltui/Menu.hpp's. */
+/* rolltui/c/rolltui_menu.c — the C side of the menu widget, the typed-field rules and (Phase
+ * 17 m1) the file format. See rolltui_menu.h; the rules are rolltui/Menu.hpp's. */
 #include "rolltui/c/rolltui_menu.h"
 
 #include <ctype.h>
@@ -9,7 +9,18 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_layout.h"
+
+/* A literal C string plus its length, the same one-time convenience `rolltui_bindings.c` and
+ * `rolltui_app_profile.c` each name locally rather than share — a menu loads once per file,
+ * never per frame. */
+#define K(s) (s), strlen(s)
+
+static int streq(const char* s, size_t slen, const char* lit) {
+  const size_t litlen = strlen(lit);
+  return slen == litlen && (litlen == 0 || memcmp(s, lit, litlen) == 0);
+}
 
 #define CRUMB " \xE2\x80\xBA "   /* " › " */
 #define ELLIPSIS "\xE2\x80\xA6"  /* "…" */
@@ -1577,4 +1588,401 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
       rolltui_frame_put(f, x0 + w - 1, y + rows - 1, "\xE2\x96\xBC", 3, 1, styles[roles->scroll_marker], 0);
   }
   rolltui_str_free(&line);
+}
+
+/* ---- the file format (Phase 17 m1) --------------------------------------------------------- */
+
+/* ---- the report: mirrors `MenuLoadReport` field-for-field, the same shape
+ * `rolltui_app_profile.c`'s and `rolltui_bindings.c`'s reports use. --------------------------- */
+
+void rolltui_menu_load_report_release(RolltuiMenuLoadReport* r) {
+  size_t i;
+  if (!r) return;
+  rolltui_str_free(&r->error);
+  for (i = 0; i < r->unknown_keys_n; ++i) rolltui_str_free(&r->unknown_keys[i]);
+  rolltui_mem_free(r->unknown_keys);
+  for (i = 0; i < r->bad_values_n; ++i) rolltui_str_free(&r->bad_values[i]);
+  rolltui_mem_free(r->bad_values);
+  memset(r, 0, sizeof *r);
+}
+
+void rolltui_menu_load_report_set_error(RolltuiMenuLoadReport* r, const char* s, size_t len) {
+  rolltui_str_set(&r->error, s, len);
+}
+
+void rolltui_menu_load_report_add_unknown_key(RolltuiMenuLoadReport* r, const char* s, size_t len) {
+  r->unknown_keys =
+      (RolltuiStr*)rolltui_grow_zeroed(r->unknown_keys, &r->unknown_keys_cap, r->unknown_keys_n + 1, sizeof *r->unknown_keys);
+  rolltui_str_set(&r->unknown_keys[r->unknown_keys_n++], s, len);
+}
+
+void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char* s, size_t len) {
+  r->bad_values =
+      (RolltuiStr*)rolltui_grow_zeroed(r->bad_values, &r->bad_values_cap, r->bad_values_n + 1, sizeof *r->bad_values);
+  rolltui_str_set(&r->bad_values[r->bad_values_n++], s, len);
+}
+
+int rolltui_menu_load_report_clean(const RolltuiMenuLoadReport* r) {
+  return r->error.n == 0 && r->unknown_keys_n == 0 && r->bad_values_n == 0;
+}
+
+/* `where + suffix` into a fresh report entry; the one shape every per-item message shares. */
+static void bad_value_at(RolltuiMenuLoadReport* r, const char* where, size_t wlen, const char* suffix, size_t slen) {
+  RolltuiStr msg;
+  memset(&msg, 0, sizeof msg);
+  rolltui_str_set(&msg, where, wlen);
+  rolltui_str_append(&msg, suffix, slen);
+  rolltui_menu_load_report_add_bad_value(r, msg.p, msg.n);
+  rolltui_str_free(&msg);
+}
+
+static void unknown_key_at(RolltuiMenuLoadReport* r, const char* where, size_t wlen, const char* suffix, size_t slen) {
+  RolltuiStr msg;
+  memset(&msg, 0, sizeof msg);
+  rolltui_str_set(&msg, where, wlen);
+  rolltui_str_append(&msg, suffix, slen);
+  rolltui_menu_load_report_add_unknown_key(r, msg.p, msg.n);
+  rolltui_str_free(&msg);
+}
+
+/* THE TREE-WIDE ID SET, and a Choice's own fresh one for its options (Menu.hpp: "a Choice's
+ * OPTIONS are values, unique only within their choice"). GROWING AMORTISED, the same shape a
+ * report's own lists use: ids are only ever added, across one parse. */
+typedef struct {
+  RolltuiStr* v;
+  size_t n, cap;
+} IdSet;
+
+static int idset_has(const IdSet* s, const char* p, size_t n) {
+  size_t i;
+  for (i = 0; i < s->n; ++i)
+    if (rolltui_str_eq(&s->v[i], p, n)) return 1;
+  return 0;
+}
+
+static void idset_add(IdSet* s, const char* p, size_t n) {
+  s->v = (RolltuiStr*)rolltui_grow_zeroed(s->v, &s->cap, s->n + 1, sizeof *s->v);
+  rolltui_str_set(&s->v[s->n++], p, n);
+}
+
+static void idset_free(IdSet* s) {
+  size_t i;
+  for (i = 0; i < s->n; ++i) rolltui_str_free(&s->v[i]);
+  rolltui_mem_free(s->v);
+  s->v = NULL;
+  s->n = s->cap = 0;
+}
+
+static const char* kind_name(unsigned char k) {
+  switch (k) {
+    case ROLLTUI_MENU_ACTION: return "action";
+    case ROLLTUI_MENU_SUBMENU: return "submenu";
+    case ROLLTUI_MENU_TOGGLE: return "toggle";
+    case ROLLTUI_MENU_CHOICE: return "choice";
+    case ROLLTUI_MENU_INPUT: return "input";
+    default: return "action";
+  }
+}
+
+static int kind_from_name(const char* s, size_t len, unsigned char* out) {
+  if (streq(s, len, "action")) { *out = ROLLTUI_MENU_ACTION; return 1; }
+  if (streq(s, len, "submenu")) { *out = ROLLTUI_MENU_SUBMENU; return 1; }
+  if (streq(s, len, "toggle")) { *out = ROLLTUI_MENU_TOGGLE; return 1; }
+  if (streq(s, len, "choice")) { *out = ROLLTUI_MENU_CHOICE; return 1; }
+  if (streq(s, len, "input")) { *out = ROLLTUI_MENU_INPUT; return 1; }
+  return 0;
+}
+
+/* A leading '.' from `where + "." + key`, when `where` is the root's empty string — the same
+ * one-character fix-up `menu_from_json` applied to the whole report afterward rather than
+ * threading a "am I the root" flag through every recursive call. Shifts in place; no
+ * realloc, because the result is never longer than what is already held. */
+static void strip_leading_dot(RolltuiStr* s) {
+  if (s->n > 0 && s->p[0] == '.') {
+    memmove(s->p, s->p + 1, s->n - 1);
+    s->n -= 1;
+    s->p[s->n] = '\0';
+  }
+}
+
+/* ONE ITEM, recursively — a direct port of `Menu.cpp`'s `item_from_json`, preserving every
+ * message and every ordering rule: `where` is this item's own path ("", "items[1]",
+ * "items[1].items[0]", ...), spec keys are deferred to a second pass so an item's `kind` is
+ * settled (by the FIRST pass, wherever "kind" fell in file order) before any of them are
+ * checked against it, and `ids` is the CALLER's set — the tree-wide one, or a fresh one for a
+ * Choice's own options, chosen by the CALLER exactly as `item_from_json`'s did. */
+static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t wlen, RolltuiMenuItem* it,
+                           RolltuiMenuLoadReport* rep, IdSet* ids) {
+  size_t i, n;
+  int kind_given = 0;
+  size_t* spec_idx = NULL;
+  size_t spec_cap = 0, spec_n = 0;
+
+  if (!rolltui_json_is_object(v)) {
+    bad_value_at(rep, where, wlen, K(": expected an item object"));
+    return;
+  }
+  n = rolltui_json_object_size(v);
+  for (i = 0; i < n; ++i) {
+    size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(v, i, &klen);
+    const RolltuiJsonValue* x = rolltui_json_object_value_at(v, i);
+    RolltuiStr at;
+    memset(&at, 0, sizeof at);
+    rolltui_str_set(&at, where, wlen);
+    rolltui_str_append(&at, K("."));
+    rolltui_str_append(&at, k, klen);
+
+    if (streq(k, klen, "id") || streq(k, klen, "label") || streq(k, klen, "shortcut") || streq(k, klen, "value") ||
+        streq(k, klen, "action")) {
+      if (!rolltui_json_is_string(x)) {
+        bad_value_at(rep, at.p, at.n, K(": expected a string"));
+      } else {
+        size_t slen = 0;
+        const char* s = rolltui_json_as_string(x, "", 0, &slen);
+        if (streq(k, klen, "id")) rolltui_str_set(&it->id, s, slen);
+        else if (streq(k, klen, "label")) rolltui_str_set(&it->label, s, slen);
+        else if (streq(k, klen, "shortcut")) rolltui_str_set(&it->shortcut, s, slen);
+        else if (streq(k, klen, "action")) rolltui_str_set(&it->action_name, s, slen);
+        else rolltui_str_set(&it->value, s, slen);
+      }
+    } else if (streq(k, klen, "kind")) {
+      size_t slen = 0;
+      const char* s = rolltui_json_is_string(x) ? rolltui_json_as_string(x, "", 0, &slen) : NULL;
+      unsigned char kd = 0;
+      if (!s || !kind_from_name(s, slen, &kd)) {
+        bad_value_at(rep, at.p, at.n, K(": expected action | submenu | toggle | choice | input"));
+      } else {
+        it->kind = kd;
+        kind_given = 1;
+      }
+    } else if (streq(k, klen, "enabled") || streq(k, klen, "checked")) {
+      if (!rolltui_json_is_bool(x)) {
+        bad_value_at(rep, at.p, at.n, K(": expected true or false"));
+      } else {
+        const unsigned char bv = (unsigned char)rolltui_json_as_bool(x, 0);
+        if (streq(k, klen, "enabled")) it->enabled = bv;
+        else it->checked = bv;
+      }
+    } else if (streq(k, klen, "items")) {
+      if (!rolltui_json_is_array(x)) {
+        bad_value_at(rep, at.p, at.n, K(": expected an array of items"));
+      } else {
+        /* "kind" read straight from the JSON, not from `it->kind`/`kind_given` — "items" may
+         * be visited before "kind" in file order, and object LOOKUP is order-independent even
+         * though this loop over members is not (the C++'s `v.get("kind")` is the same read). */
+        size_t kindlen = 0;
+        const char* kinds_ = rolltui_json_as_string(rolltui_json_get(v, K("kind")), "", 0, &kindlen);
+        const int choice = streq(kinds_, kindlen, "choice");
+        const size_t an = rolltui_json_array_size(x);
+        size_t ai;
+        IdSet option_ids;
+        memset(&option_ids, 0, sizeof option_ids);
+        for (ai = 0; ai < an; ++ai) {
+          RolltuiMenuItem* child = rolltui_menu_list_add(&it->children);
+          RolltuiStr childat;
+          char idxbuf[32];
+          const int idxlen = snprintf(idxbuf, sizeof idxbuf, "[%zu]", ai);
+          memset(&childat, 0, sizeof childat);
+          rolltui_str_set(&childat, at.p, at.n);
+          rolltui_str_append(&childat, idxbuf, idxlen > 0 ? (size_t)idxlen : 0);
+          item_from_json(rolltui_json_array_at(x, ai), childat.p, childat.n, child, rep, choice ? &option_ids : ids);
+          rolltui_str_free(&childat);
+        }
+        idset_free(&option_ids);
+      }
+    } else if (streq(k, klen, "type") || streq(k, klen, "min") || streq(k, klen, "max") || streq(k, klen, "step") ||
+               streq(k, klen, "precision") || streq(k, klen, "max_len") || streq(k, klen, "min_len") ||
+               streq(k, klen, "optional") || streq(k, klen, "validator") || streq(k, klen, "hint")) {
+      /* Deferred to a second pass, below, exactly as the C++'s `spec_keys` were — so an
+       * item's `kind` (settled by the first pass, wherever "kind" itself fell) is known
+       * before any of them are checked against it. */
+      spec_idx = (size_t*)rolltui_grow(spec_idx, &spec_cap, spec_n + 1, sizeof *spec_idx);
+      spec_idx[spec_n++] = i;
+    } else {
+      rolltui_menu_load_report_add_unknown_key(rep, at.p, at.n);
+    }
+    rolltui_str_free(&at);
+  }
+  if (!kind_given) it->kind = rolltui_json_has(v, K("items")) ? ROLLTUI_MENU_SUBMENU : ROLLTUI_MENU_ACTION;
+
+  /* An action's shortcut is the bindings' to say (Menu.hpp): a file that also spells one out
+   * is stating the same fact twice, and the second copy is what goes stale. */
+  if (it->action_name.n != 0 && it->shortcut.n != 0) {
+    bad_value_at(rep, where, wlen, K(".shortcut: an item with an \"action\" takes its shortcut from the bindings (ignored)"));
+    rolltui_str_clear(&it->shortcut);
+  }
+
+  for (i = 0; i < spec_n; ++i) {
+    size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(v, spec_idx[i], &klen);
+    const RolltuiJsonValue* x = rolltui_json_object_value_at(v, spec_idx[i]);
+    RolltuiStr at;
+    memset(&at, 0, sizeof at);
+    rolltui_str_set(&at, where, wlen);
+    rolltui_str_append(&at, K("."));
+    rolltui_str_append(&at, k, klen);
+
+    if (it->kind != ROLLTUI_MENU_INPUT) {
+      unknown_key_at(rep, at.p, at.n, K(" (only an input has it)"));
+      rolltui_str_free(&at);
+      continue;
+    }
+    if (streq(k, klen, "type")) {
+      size_t tlen = 0;
+      const char* ts = rolltui_json_is_string(x) ? rolltui_json_as_string(x, "", 0, &tlen) : NULL;
+      unsigned char t = 0;
+      if (!ts || !rolltui_input_type_from_name(ts, tlen, &t))
+        bad_value_at(rep, at.p, at.n, K(": expected text | int | float | color | size | dim | name"));
+      else it->spec.type = t;
+    } else if (streq(k, klen, "min") || streq(k, klen, "max") || streq(k, klen, "step")) {
+      if (!rolltui_json_is_number(x)) {
+        bad_value_at(rep, at.p, at.n, K(": expected a number"));
+      } else {
+        const double num = rolltui_json_as_number(x, 0);
+        if (streq(k, klen, "min")) it->spec.min = num;
+        else if (streq(k, klen, "max")) it->spec.max = num;
+        else it->spec.step = num;
+      }
+    } else if (streq(k, klen, "precision") || streq(k, klen, "max_len") || streq(k, klen, "min_len")) {
+      const double num = rolltui_json_as_number(x, -1);
+      if (!rolltui_json_is_number(x) || num < 0 || num != floor(num)) {
+        bad_value_at(rep, at.p, at.n, K(": expected a whole number \xE2\x89\xA5 0"));
+      } else if (streq(k, klen, "precision")) {
+        it->spec.precision = (int)num;
+      } else if (streq(k, klen, "max_len")) {
+        it->spec.max_len = (size_t)num;
+      } else {
+        it->spec.min_len = (size_t)num;
+      }
+    } else if (streq(k, klen, "optional")) {
+      if (!rolltui_json_is_bool(x)) bad_value_at(rep, at.p, at.n, K(": expected true or false"));
+      else it->spec.optional = (unsigned char)rolltui_json_as_bool(x, 0);
+    } else /* "validator" or "hint" */ {
+      if (!rolltui_json_is_string(x)) {
+        bad_value_at(rep, at.p, at.n, K(": expected a string"));
+      } else {
+        size_t slen = 0;
+        const char* s = rolltui_json_as_string(x, "", 0, &slen);
+        if (streq(k, klen, "validator")) rolltui_str_set(&it->spec.validator, s, slen);
+        else rolltui_str_set(&it->spec.hint, s, slen);
+      }
+    }
+    rolltui_str_free(&at);
+  }
+  rolltui_mem_free(spec_idx);
+
+  if (it->kind == ROLLTUI_MENU_INPUT && it->spec.min > it->spec.max)
+    bad_value_at(rep, where, wlen, K(": min is above max"));
+  if (it->kind == ROLLTUI_MENU_INPUT && it->spec.validator.n != 0 && it->spec.type != ROLLTUI_INPUT_TYPE_TEXT)
+    bad_value_at(rep, where, wlen, K(".validator: only a text input takes a validator (a typed input validates itself)"));
+  if (it->id.n == 0) {
+    bad_value_at(rep, where, wlen, K(": an item needs an \"id\""));
+  } else if (idset_has(ids, it->id.p, it->id.n)) {
+    RolltuiStr msg;
+    memset(&msg, 0, sizeof msg);
+    rolltui_str_set(&msg, where, wlen);
+    rolltui_str_append(&msg, K(".id: duplicate id '"));
+    rolltui_str_append(&msg, it->id.p, it->id.n);
+    rolltui_str_append(&msg, K("'"));
+    rolltui_menu_load_report_add_bad_value(rep, msg.p, msg.n);
+    rolltui_str_free(&msg);
+  } else {
+    idset_add(ids, it->id.p, it->id.n);
+  }
+  if (it->label.n == 0) rolltui_str_set(&it->label, it->id.p, it->id.n);
+}
+
+int rolltui_menu_parse_json(const char* text, size_t len, RolltuiMenuItem* out, RolltuiMenuLoadReport* report) {
+  RolltuiJsonValue* root;
+  RolltuiStr jerr;
+  IdSet ids;
+  size_t i;
+  memset(&jerr, 0, sizeof jerr);
+  memset(&ids, 0, sizeof ids);
+  rolltui_menu_load_report_release(report);
+  rolltui_menu_item_release(out); /* leaves `out` freshly empty (rolltui_menu_item_init'd) */
+  root = rolltui_json_parse(text, len, &jerr);
+  if (!root) {
+    rolltui_menu_load_report_set_error(report, jerr.p ? jerr.p : "", jerr.n);
+    rolltui_str_free(&jerr);
+    return 0;
+  }
+  rolltui_str_free(&jerr);
+  if (!rolltui_json_is_object(root)) {
+    rolltui_menu_load_report_set_error(report, K("menu file must be a JSON object"));
+    rolltui_json_free(root);
+    return 0;
+  }
+  item_from_json(root, "", 0, out, report, &ids);
+  idset_free(&ids);
+  rolltui_json_free(root);
+  /* The root's own path is "", so its direct children's messages read ".items[i]...": strip
+   * the one leading dot, matching `menu_from_json`'s post-process exactly (unknown_keys and
+   * bad_values only — never `error`, which is not path-prefixed). */
+  for (i = 0; i < report->unknown_keys_n; ++i) strip_leading_dot(&report->unknown_keys[i]);
+  for (i = 0; i < report->bad_values_n; ++i) strip_leading_dot(&report->bad_values[i]);
+  if (out->kind != ROLLTUI_MENU_SUBMENU)
+    rolltui_menu_load_report_add_bad_value(report, K("kind: the root must be a submenu (it holds the top level)"));
+  return 1;
+}
+
+/* ONE ITEM, recursively, the other direction — a direct port of `Menu.cpp`'s `item_to_json`. */
+static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
+  RolltuiJsonValue* o = rolltui_json_object();
+  const int implied = (it->kind == ROLLTUI_MENU_SUBMENU && it->children.n != 0) ||
+                      (it->kind == ROLLTUI_MENU_ACTION && it->children.n == 0);
+  const int label_is_id =
+      it->label.n == it->id.n && (it->label.n == 0 || memcmp(it->label.p, it->id.p, it->label.n) == 0);
+  size_t i;
+
+  rolltui_json_set(o, K("id"), rolltui_json_string(it->id.p, it->id.n));
+  if (!label_is_id) rolltui_json_set(o, K("label"), rolltui_json_string(it->label.p, it->label.n));
+  if (!implied) {
+    const char* kn = kind_name(it->kind);
+    rolltui_json_set(o, K("kind"), rolltui_json_string(kn, strlen(kn)));
+  }
+  if (it->action_name.n != 0) rolltui_json_set(o, K("action"), rolltui_json_string(it->action_name.p, it->action_name.n));
+  /* An action's shortcut is DERIVED and never written back (apply_shortcuts fills it from the
+   * live chords), so a round trip cannot bake one moment's keys into a file. */
+  if (it->action_name.n == 0 && it->shortcut.n != 0)
+    rolltui_json_set(o, K("shortcut"), rolltui_json_string(it->shortcut.p, it->shortcut.n));
+  if (!it->enabled) rolltui_json_set(o, K("enabled"), rolltui_json_bool(0));
+  if (it->checked) rolltui_json_set(o, K("checked"), rolltui_json_bool(1));
+  if (it->value.n != 0) rolltui_json_set(o, K("value"), rolltui_json_string(it->value.p, it->value.n));
+
+  if (it->kind == ROLLTUI_MENU_INPUT) {
+    RolltuiInputSpec d;
+    const RolltuiInputSpec* s = &it->spec;
+    rolltui_input_spec_init(&d);
+    if (s->type != d.type) {
+      size_t tlen = 0;
+      const char* tn = rolltui_input_type_name(s->type, &tlen);
+      rolltui_json_set(o, K("type"), rolltui_json_string(tn, tlen));
+    }
+    if (s->min != d.min) rolltui_json_set(o, K("min"), rolltui_json_number(s->min));
+    if (s->max != d.max) rolltui_json_set(o, K("max"), rolltui_json_number(s->max));
+    if (s->step != d.step) rolltui_json_set(o, K("step"), rolltui_json_number(s->step));
+    if (s->precision != d.precision) rolltui_json_set(o, K("precision"), rolltui_json_number(s->precision));
+    if (s->max_len != d.max_len) rolltui_json_set(o, K("max_len"), rolltui_json_number((double)s->max_len));
+    if (s->min_len != d.min_len) rolltui_json_set(o, K("min_len"), rolltui_json_number((double)s->min_len));
+    if (s->optional) rolltui_json_set(o, K("optional"), rolltui_json_bool(1));
+    if (s->validator.n != 0) rolltui_json_set(o, K("validator"), rolltui_json_string(s->validator.p, s->validator.n));
+    if (s->hint.n != 0) rolltui_json_set(o, K("hint"), rolltui_json_string(s->hint.p, s->hint.n));
+    rolltui_input_spec_release(&d);
+  }
+
+  if (it->children.n != 0) {
+    RolltuiJsonValue* arr = rolltui_json_array();
+    for (i = 0; i < it->children.n; ++i) rolltui_json_array_push(arr, item_to_json(it->children.v[i]));
+    rolltui_json_set(o, K("items"), arr);
+  }
+  return o;
+}
+
+void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out) {
+  RolltuiJsonValue* v = item_to_json(root);
+  rolltui_json_dump(v, 2, out);
+  rolltui_str_append(out, "\n", 1);
+  rolltui_json_free(v);
 }

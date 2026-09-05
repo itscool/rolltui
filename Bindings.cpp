@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 
 #include "rolltui/Lifetime.hpp"
 #include "rolltui/Layout.hpp"  // shipped_default_actions() — the app scope the shipped screen declares
@@ -166,6 +167,46 @@ int is_library_scope(void*, const char* scope, std::size_t len) {
 // The Enter rule's SUBJECT — the one name the C is handed, once, so that the rule can live
 // there and the vocabulary here (Bindings.hpp).
 constexpr std::string_view kEnterAction = "input.submit";
+
+// PHASE 17 m1: the file-format loader moved to C (rolltui_bindings_load_json); these two ask
+// back the vocabulary questions that stay here, the same trade `is_library_scope` above
+// already makes for "which scopes are the library's" — `migrated_action()`'s three-row table
+// per the header comment there, and (Keys.cpp's own split, "the C classifies and never
+// carries a sentence") the English for an undeliverable chord.
+int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
+  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
+  if (!to) return 0;
+  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
+  std::memcpy(out, to->data(), n);
+  *out_len = n;
+  return 1;
+}
+
+std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
+  const std::string r = undeliverable_reason(key_event_of(*k), static_cast<KeyProtocol>(protocol));
+  const std::size_t n = std::min(r.size(), cap);
+  std::memcpy(out, r.data(), n);
+  return n;
+}
+
+// The one place a `RolltuiBindingsReport`'s arrays become the `std::vector<std::string>`s
+// every existing caller already writes against.
+void copy_report(BindingsLoadReport& out, const RolltuiBindingsReport& in) {
+  auto copy = [](const RolltuiStr* v, std::size_t n) {
+    std::vector<std::string> r;
+    r.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) r.emplace_back(v[i].view());
+    return r;
+  };
+  out.error = in.error.str();
+  out.unknown_actions = copy(in.unknown_actions, in.unknown_actions_n);
+  out.bad_chords = copy(in.bad_chords, in.bad_chords_n);
+  out.undeliverable = copy(in.undeliverable, in.undeliverable_n);
+  out.conflicts = copy(in.conflicts, in.conflicts_n);
+  out.bad_values = copy(in.bad_values, in.bad_values_n);
+  out.unknown_keys = copy(in.unknown_keys, in.unknown_keys_n);
+  out.migrated = copy(in.migrated, in.migrated_n);
+}
 
 }  // namespace
 
@@ -352,104 +393,39 @@ std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadRe
   return from_json(v, report, active_key_protocol());
 }
 
+// PHASE 17 m1: the loader itself — the walk over the file's JSON, chord by chord, and every
+// rule from the header comment (kept-and-inert, the rename migration, the deliverability
+// refusal, the Enter rule, a scope conflict) — moved to C (`rolltui_bindings_load_json`) now
+// that `rolltui_json.h` exists to build it on. What is left here is what stayed at Phase 15
+// m3 for the same reason and never crossed: `library_scope`/`migrated_action` (the action
+// vocabulary) and `undeliverable_reason` (Keys.cpp's own English), asked back through the
+// three callbacks above.
 std::optional<Bindings> Bindings::from_json(std::string_view text, BindingsLoadReport& report, KeyProtocol deliver) {
-  report = BindingsLoadReport{};
-  std::string err;
-  json::Value v = json::parse(text, err);
-  if (!err.empty()) { report.error = err; return std::nullopt; }
-  return from_json(v, report, deliver);
-}
-
-std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadReport& report, KeyProtocol deliver) {
-  report = BindingsLoadReport{};
-  if (!v.is_object()) { report.error = "a bindings file must be a JSON object"; return std::nullopt; }
-  const json::Value& map = v.get("bindings");
-  if (!map.is_object()) { report.error = "a bindings file needs a \"bindings\" object"; return std::nullopt; }
-  for (const auto& [k, x] : v.obj)
-    if (k != "name" && k != "bindings" && k != "preset") report.unknown_keys.push_back(k);
-  Bindings b;
-  for (const auto& [key, chords] : map.obj) {
-    // A RENAMED action is rewritten once, here, before anything else reads the name —
-    // and it has to be before, because the kept-and-inert rule two lines down would
-    // otherwise file `playground.quit` as some other screen's row and Ctrl-Q would
-    // quietly stop quitting. Said in `migrated`, never a problem (Bindings.hpp).
-    std::string action = key;
-    if (std::optional<std::string> to = migrated_action(action)) {
-      report.migrated.push_back("'" + action + "' \xE2\x86\x92 '" + *to + "'");
-      action = *to;
-    }
-    if (!b.has(action)) {
-      // A library scope is closed, so a name it does not define is a typo and is said
-      // so. Any other scope belongs to a layout that this file knows nothing about: the
-      // row is kept, inert, until something declares it (Bindings.hpp).
-      if (library_scope(scope_of(action)) || scope_of(action) == action) {
-        report.unknown_actions.push_back(action);
-        continue;
-      }
-      // Only if there is no row yet. A JSON object cannot repeat a key, but a MIGRATED
-      // name can land on one the file already wrote ("studio.quit": [] beside a
-      // "playground.quit"), and two rows for one action would leave chords_mut() filling
-      // the first while lookup answered from whichever came first — the chords the user
-      // can see and the chords that fire, in two different places.
-      rolltui_bindings_add_row(b.b_.get(), action.data(), action.size());
-    }
-    if (!chords.is_array()) { report.bad_values.push_back(action + ": expected an array of chords"); continue; }
-    for (const json::Value& c : chords.arr) {
-      if (!c.is_string()) { report.bad_values.push_back(action + ": a chord must be a string"); continue; }
-      const std::optional<KeyEvent> k = parse_chord(c.str);
-      if (!k) { report.bad_chords.push_back(action + ": '" + c.str + "' is not a chord"); continue; }
-      // A chord this terminal cannot deliver: named, with the reason and what to turn on
-      // — and then KEPT anyway (no `continue`). The refusal is about what can fire, not
-      // about what the user is allowed to have written: the row round-trips through save,
-      // so the same file loads clean the day the terminal negotiates kitty, and
-      // action_for()/chords_text() are what make it inert and invisible until then.
-      if (!deliverable(*k, deliver))
-        report.undeliverable.push_back(action + ": '" + chord_to_string(*k) + "' cannot be delivered by this terminal; " +
-                                       undeliverable_reason(*k, deliver));
-      const bool is_enter = k->key == Key::Enter && !k->ctrl && !k->alt && !k->shift;
-      if (is_enter && scope_of(action) == "input" && action != "input.submit") {
-        report.bad_values.push_back(action + ": 'enter' is always input.submit and cannot be bound here (refused)");
-        continue;
-      }
-      // A conflict within the scope: report it; the FIRST binding in the file wins.
-      // Searched over the rows themselves, not through action_for, so two UNDECLARED
-      // actions of one scope conflict here rather than silently once declared.
-      const std::string_view other = b.holder(*k, scope_of(action));
-      if (!other.empty() && other != action) {
-        report.conflicts.push_back("'" + c.str + "' bound to both " + std::string(other) + " and " + action + " (" + std::string(other) + " kept)");
-        continue;
-      }
-      const RolltuiChord c0 = chord_of(*k);
-      rolltui_bindings_add_chord(b.b_.get(), action.data(), action.size(), &c0);
-    }
-  }
-  // The Enter rule, the other half: input.submit must have Enter.
-  KeyEvent enter;
-  enter.key = Key::Enter;
-  const std::vector<KeyEvent> submit = b.chords_for(kEnterAction);
-  if (std::find(submit.begin(), submit.end(), enter) == submit.end()) {
-    report.bad_values.push_back("input.submit: 'enter' is always bound to it (restored)");
-    const RolltuiChord c0 = chord_of(enter);
-    rolltui_bindings_add_chord(b.b_.get(), kEnterAction.data(), kEnterAction.size(), &c0);
-  }
+  Bindings b;  // seeded with library_actions() — the loader ADDS the file's rows onto it
+  RolltuiBindingsReport rep{};
+  const int ok = rolltui_bindings_load_json(b.b_.get(), text.data(), text.size(), static_cast<unsigned char>(deliver),
+                                            is_library_scope, nullptr, migrate_cb, nullptr, reason_cb, nullptr, &rep);
+  copy_report(report, rep);
+  rolltui_bindings_report_release(&rep);
+  if (!ok) return std::nullopt;
   return b;
 }
 
+// The Value overload exists for a caller that already holds a parsed file — Presets.cpp's
+// `BindingsDomain::parse`, which `PresetStore`'s own generic text→Value conversion drives —
+// and re-dumps it to text rather than duplicating the walk above: the "thin shim: convert in,
+// call this file, convert out" `rolltui_json.h`'s header comment describes for exactly this
+// situation. A preset loads once, not per frame, so the extra pass is not one this library's
+// budget covers.
+std::optional<Bindings> Bindings::from_json(const json::Value& v, BindingsLoadReport& report, KeyProtocol deliver) {
+  return from_json(json::dump(v, 0), report, deliver);
+}
+
 json::Value Bindings::to_json(std::string_view name) const {
-  json::Value root = json::Value::object();
-  root.set("name", json::Value::string(std::string(name)));
-  json::Value map = json::Value::object();
-  const std::size_t rows = rolltui_bindings_row_count(b_.get());
-  for (std::size_t i = 0; i < rows; ++i) {
-    std::size_t alen = 0;
-    const char* a = rolltui_bindings_row_at(b_.get(), i, &alen);
-    json::Value arr = json::Value::array();
-    for (const KeyEvent& k : chords_for(std::string_view(a, alen)))
-      arr.arr.push_back(json::Value::string(chord_to_string(k)));
-    map.set(std::string(a, alen), std::move(arr));
-  }
-  root.set("bindings", std::move(map));
-  return root;
+  RolltuiStr text;
+  rolltui_bindings_dump_json(b_.get(), name.data(), name.size(), &text);
+  std::string err;
+  return json::parse(text.view(), err);
 }
 
 // ---- the shipped default ------------------------------------------------------------------------

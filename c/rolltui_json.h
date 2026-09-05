@@ -38,8 +38,21 @@
  * That is a real cost (a full tree conversion on every parse and every dump) that a same-
  * struct port would not have paid; it buys the ~40 call sites above zero required changes,
  * which is what "thin C++ shim so no existing caller changes" means for this module
- * specifically. A LATER step — deleting the shim and moving those six modules onto this
- * header directly — removes the conversion entirely; it is out of this task's scope.
+ * specifically.
+ *
+ * PHASE 17 m2 ported two of the six anyway — `Bindings.cpp` and `Menu.cpp` (`Menu.hpp`'s
+ * `menu_from_json`/`_to_json`, `Bindings.hpp`'s `from_json`/`to_json`) — because, unlike the
+ * other four, NEITHER had a sibling algorithm staying C++ to entangle it: `Theme.cpp`'s and
+ * `Presets.cpp`'s Layout domain each call into a same-language function that must keep seeing
+ * a real `Value` (`load_theme`, `load_layout`), and `TuiFrontend.cpp`/`paint.cpp` build one by
+ * real container ops directly. A menu file and a bindings file have no such neighbour, so the
+ * whole walk moved to this file's C API (`rolltui_menu_parse_json`/`rolltui_bindings_load_json`
+ * and their `_dump_json`/`_to_json` counterparts) rather than a shell calling back across the
+ * boundary. `Bindings.cpp`'s `json::Value` overloads are now themselves a thin shim OVER that
+ * text path (dump in, parse out) — kept only because two callers still hand it a parsed tree.
+ * `Presets.cpp`'s `ThemeDomain` and `LayoutDomain` were NOT re-examined by that task and remain
+ * exactly as reasoned above; deleting the Bindings shim entirely (its two remaining callers
+ * moving to the text-based overloads) is a further, smaller step, still out of scope.
  *
  * `rolltui/AppProfile.hpp`'s new C backing (`rolltui_app_profile.h`) is NOT in this
  * position: nothing outside `rolltui_app_profile.c` itself ever touches a `RolltuiJsonValue`,

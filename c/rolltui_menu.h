@@ -1,22 +1,28 @@
 #ifndef ROLLTUI_C_MENU_H
 #define ROLLTUI_C_MENU_H
 /*
- * rolltui/c/rolltui_menu.h — THE MENU WIDGET AND THE TYPED-FIELD RULES (Phase 15 m5).
+ * rolltui/c/rolltui_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND (Phase 17 m1) THE
+ * FILE FORMAT (Phase 15 m5 for the rest).
  *
  * Level navigation, a typed filter, a breadcrumb, palette mode, and the seven input TYPES a
  * field can be — with the three-state rule that makes them work: the committed value, the
  * editing text and the preview are never collapsed into one. Every rule is stated in
  * `rolltui/Menu.hpp` and asserted in `rolltui/tests/menu_test.cpp`; none of it is repeated
- * here. The TREE it walks is `rolltui_menu_tree.h`.
+ * here. The TREE it walks and builds is `rolltui_menu_tree.h`.
  *
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW --------------------------------------
  *
- * **JSON, the shipped menu files, and the VALIDATOR REGISTRY.** The first two stay in
- * `Menu.cpp` for the reason m3's `Theme` loader did. The third is more interesting: a Text
- * field's host validator is a `std::function` keyed by name, and rather than move that map
- * across, the C ASKS — one callback, "is a validator by this name registered, and does it
- * accept this text". The map stays where the callables are, which is the same trade
- * `rolltui_bindings.h` makes for "is this scope the library's".
+ * **The shipped menu files, and the VALIDATOR REGISTRY.** The embedded table (which menus
+ * SHIP, the `.json` files under `rolltui/presets/menus`) stays in `Menu.cpp` for the reason
+ * m3's `Theme` loader did — it is a table of names, not an algorithm. The validator registry
+ * is more interesting: a Text field's host validator is a `std::function` keyed by name, and
+ * rather than move that map across, the C ASKS — one callback, "is a validator by this name
+ * registered, and does it accept this text". The map stays where the callables are, which is
+ * the same trade `rolltui_bindings.h` makes for "is this scope the library's". The JSON
+ * loader below JOINS this file at Phase 17 m1, once `rolltui_json.h` existed to build it on
+ * — unlike Theme's and Layout's, which stay in their C++ modules permanently (see those
+ * headers), a menu FILE has no sibling algorithm on the other side of a boundary to entangle
+ * it, so the whole walk moves.
  *
  * **Which tree items name an action, and what a chord is called.** `item_actions()`,
  * `unknown_validators()` and `apply_shortcuts()` are TREE WALKS with no widget state in
@@ -201,6 +207,40 @@ typedef struct RolltuiMenuRoles {
 void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
                        const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
                        const RolltuiInputRoles* input_roles, int focused);
+
+/* ---- the file format (Phase 17 m1): TEXT across the boundary, never a tree ---------------- */
+
+/* THE REPORT, transparent like `RolltuiAppProfileReport` and `RolltuiBindingsReport`: exactly
+ * `RolltuiStr` values in GROWING AMORTISED arrays, one per `MenuLoadReport` field.
+ * Zero-initialise before use. */
+typedef struct RolltuiMenuLoadReport {
+  RolltuiStr error; /* non-empty: unusable, and rolltui_menu_parse_json returns 0 */
+  RolltuiStr* unknown_keys;
+  size_t unknown_keys_n, unknown_keys_cap;
+  RolltuiStr* bad_values;
+  size_t bad_values_n, bad_values_cap;
+} RolltuiMenuLoadReport;
+
+void rolltui_menu_load_report_release(RolltuiMenuLoadReport* r); /* frees everything; zeroes it */
+void rolltui_menu_load_report_set_error(RolltuiMenuLoadReport* r, const char* s, size_t len);
+void rolltui_menu_load_report_add_unknown_key(RolltuiMenuLoadReport* r, const char* s, size_t len);
+void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char* s, size_t len);
+int rolltui_menu_load_report_clean(const RolltuiMenuLoadReport* r);
+
+/* Parses a WHOLE menu file's TEXT into `out`, which the caller owns (a stack `RolltuiMenuItem`
+ * default-constructed in C++, or `rolltui_menu_item_init`'d in C) — this FILLS it in place
+ * rather than handing back a fresh allocation, releasing whatever `out` held first, so the one
+ * node every file has costs the caller nothing beyond what it already owns.
+ *
+ * Returns 0 only when `text` is fundamentally unusable (a JSON syntax error, or the root is
+ * not an object) — `report->error` says which, and `out` is left freshly empty. Otherwise 1,
+ * even when the file's own shape is wrong (a bad kind, a duplicate id, a root that is not a
+ * submenu, ...) — those are reported and `out` gets whatever the file was good for, matching
+ * `menu_from_json`'s "still returns" contract. `report` is reset on every call. */
+int rolltui_menu_parse_json(const char* text, size_t len, RolltuiMenuItem* out, RolltuiMenuLoadReport* report);
+/* Serialises `root`, 2-space indented with a trailing newline (matches `json::dump(v, 2) +
+ * "\n"`). REPLACES `*out`. */
+void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out);
 
 #ifdef __cplusplus
 } /* extern "C" */
