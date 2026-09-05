@@ -1,13 +1,18 @@
 #ifndef ROLLTUI_C_LAYOUT_H
 #define ROLLTUI_C_LAYOUT_H
 /*
- * rolltui/c/rolltui_layout.h — PLACEMENT, COMPOSITION AND THE STACK (Phase 15 m5).
+ * rolltui/c/rolltui_layout.h — PLACEMENT, COMPOSITION, THE STACK AND THE LOADER (Phase 15 m5,
+ * the loader and every English sentence added at Phase 17 m2).
  *
  * The algorithm half of the layout module: what a Dim resolves to, how a Row divides its
- * width, which borders join, which window has focus and where an event goes. Every rule is
- * stated in `rolltui/Layout.hpp` and asserted in `rolltui/tests/layout_test.cpp`; none of it
- * is repeated here. The DATA it walks is `rolltui_layout_tree.h`, which is C in both
- * configurations — the flag chooses this file or `LayoutCpp.cpp`, never the shape of a node.
+ * width, which borders join, which window has focus and where an event goes, and — since
+ * Phase 17 m2 — how a layout FILE turns into that tree and back. Every rule is stated in
+ * `rolltui/Layout.hpp` and asserted in `rolltui/tests/layout_test.cpp`; none of it is
+ * repeated here. The DATA it walks is `rolltui_layout_tree.h`, which is C unconditionally: m5
+ * built `-DROLLTUI_C` as a two-implementation rollback flag, and CMakeLists.txt's own note
+ * records that flag as SPENT as of 2026-09-04 — `LayoutCpp.cpp` (this file's one-time C++
+ * counterpart) is deleted along with the other fifteen `*Cpp.cpp` files, and this is now the
+ * only implementation, not one side of a flag.
  *
  * ---- THE LIFETIME THIS FILE MAKES EXPLICIT ----------------------------------------------
  *
@@ -36,17 +41,29 @@
  *
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ---------------------------------------
  *
- * **JSON, and the English in a report.** `load_layout`, `layout_to_json` and the built-ins
- * stay in `Layout.cpp` — the split m3 made for `Theme`, where only the colour engine crossed
- * and the loader never moved. The same holds for the SENTENCES a bad content string
- * produces: the registry below answers WHICH RUNG resolved a kind and WHAT RULE its source
- * follows, and the shim composes the message, because a vocabulary written down twice is a
- * second thing to drift.
+ * **`rolltui::Layout`, `rolltui::Content` and `rolltui::ActionDecl`'s own shapes.** All three
+ * keep their `std::string`/`std::vector` fields in `Layout.hpp` — the same exception
+ * `rolltui_json.h`'s `Value` took, and for the same reason: `Widgets.cpp`, `paint.cpp`,
+ * `studio.cpp` and `layout_editor.cpp` read `Content::source`, erase-remove and reassign
+ * `Layout::actions` as a real `std::vector<ActionDecl>` at call sites this file does not
+ * touch. What crosses below is the ALGORITHM (JSON in, JSON out, which rung, what rule) and
+ * every SENTENCE a bad layout produces (moved from `Layout.cpp` at Phase 17 m2, once
+ * `rolltui_json.h` gave this file a tree to walk that owed nothing to `json::Value`);
+ * `RolltuiLoadedLayout` below is the transient, C-shaped carrier the shim unpacks into its
+ * own `Layout` once per load and never retains.
+ *
+ * **Role names.** `background`'s vocabulary is `Style.hpp`'s (`rolltui_layout_tree.h`'s own
+ * rule: "this file names no role"), so the loader and the dumper ask back through
+ * `RolltuiLayoutHooks::role_from_name`/`role_name` rather than carrying a table of their own
+ * — the same shape `RolltuiScopeFn` already uses for "which scopes are the library's".
+ * Anchor and border names, by contrast, are THIS module's own vocabulary (Layout.hpp states
+ * both), so they are declared and looked up right here, no callback needed.
  */
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_frame_ops.h"
+#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_screen.h"
@@ -139,8 +156,10 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
 
 /* ---- the widget-kind registry ------------------------------------------------------------------ */
 /* Rung 1 is a CLOSED table this file holds; rung 2 is what a host registered, which is a
- * process-wide retainer released by `rolltui::shutdown()`. What a kind's source is CALLED,
- * and every sentence a bad content produces, stay in the shim. */
+ * process-wide retainer released by `rolltui::shutdown()`. What a kind's source is CALLED
+ * lives here too now (below, `rolltui_content_parse`/`_format`) — moved from the shim at
+ * Phase 17 m2, since composing the sentence needs nothing `rolltui::Content`'s own
+ * std::string shape supplies that this file cannot already answer itself. */
 
 #define ROLLTUI_SOURCE_REQUIRED 0
 #define ROLLTUI_SOURCE_OPTIONAL 1
@@ -177,6 +196,164 @@ void rolltui_widget_kind_clear(void);
 /* Phase 9's bare slot names and Phase 10's `custom:` contents → their m3 spelling. A BORROW
  * of a constant; NULL when `legacy` is not one of them. */
 const char* rolltui_migrated_content(const char* legacy, size_t len, size_t* out_len);
+
+/* ---- content: parsing "kind[:source]" and formatting it back, with the English (Phase 17
+ * m2). `rolltui::Content` keeps its own std::string shape (see the header comment); this is
+ * the DECISION and every SENTENCE, so the shim only slices `text` at the offsets handed
+ * back. ------------------------------------------------------------------------------------ */
+
+#define ROLLTUI_CONTENT_PROBLEM_NONE 0
+#define ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND 1
+#define ROLLTUI_CONTENT_PROBLEM_MISSING_SOURCE 2
+#define ROLLTUI_CONTENT_PROBLEM_FORBIDDEN_SOURCE 3
+
+/* Parses "kind[:source]". 1 on success: `ordinal` is the library WidgetKind (rung 1) when
+ * `*is_host` comes back 0, meaningless when it comes back 1 (rung 2 — the shim reads the
+ * registered name back through `name`/`name_len` instead). `name`/`name_len` (the part
+ * before the colon) and `source`/`source_len` (the part after, "" with a valid pointer when
+ * there was none) are always filled and are BORROWS into `text` — never a copy, because a
+ * caller that wants a `std::string` is about to make one anyway (Content's own shape). On
+ * failure (0): `problem` says which of the three ways (never None), and `why` — cleared on
+ * entry — gets the exact sentence `rolltui::parse_content` always produced. */
+int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, int* is_host, const char** name,
+                         size_t* name_len, const char** source, size_t* source_len, unsigned char* problem,
+                         RolltuiStr* why);
+/* content_to_string's join rule: `kind_name`, then ":" + `source` exactly when `rule` says
+ * the colon belongs (Required always; Optional only when `source` is non-empty). REPLACES
+ * `*out`. */
+void rolltui_content_format(const char* kind_name, size_t kind_name_len, const char* source, size_t source_len,
+                            unsigned char rule, RolltuiStr* out);
+
+/* ---- names: anchors and borders are THIS module's own vocabulary (Layout.hpp states both
+ * closed lists), unlike Role — see the header comment. ------------------------------------- */
+
+const char* rolltui_anchor_name(unsigned char a, size_t* len); /* "" when `a` is out of range */
+int rolltui_anchor_from_name(const char* name, size_t len, unsigned char* out);
+const char* rolltui_border_name(unsigned char b, size_t* len);
+int rolltui_border_from_name(const char* name, size_t len, unsigned char* out);
+
+/* ---- the loader: a layout file's JSON, in both directions, as C (Phase 17 m2) ------------
+ *
+ * `load_layout`, `layout_to_json[_value]`, the built-ins' per-file parse and every message a
+ * bad layout produces move here from `Layout.cpp`, now that `rolltui_json.h` gives this file
+ * a tree it can walk without owing `json::Value` anything. What does NOT move is stated at
+ * the top of this header: `rolltui::Layout` (name + actions need real std::string/vector
+ * semantics at call sites outside this port's scope) and Role's vocabulary (Style.hpp's).
+ * `RolltuiLayoutHooks` is how this file reaches back for both without naming either. */
+
+/* Role names: ask back rather than carry a table (see above). `role_from_name` returns 1
+ * and fills `*out` on a recognised name; `role_name` returns the name's length, writing at
+ * most `cap` bytes plus a NUL into `out` (0/nothing written when the ordinal is unknown to
+ * the caller) — the same "caller-owned buffer, BORROW the count back" shape `rolltui_chord_
+ * to_string` already uses, chosen over a `const char**` BORROW because a role's name has no
+ * storage on this side of the call to borrow FROM. */
+typedef int (*RolltuiRoleFromNameFn)(void* ctx, const char* name, size_t len, unsigned char* out);
+typedef size_t (*RolltuiRoleNameFn)(void* ctx, unsigned char role, char* out, size_t cap);
+#define ROLLTUI_ROLE_NAME_MAX 32 /* longest shipped role name plus room; Style.hpp's table is the oracle */
+
+/* Bundled rather than three flat parameters threaded through every loader/dumper call: one
+ * thing to hand over, and `rolltui_action_decl_problem` needs only the scope half of it. */
+typedef struct RolltuiLayoutHooks {
+  RolltuiScopeFn is_library_scope;
+  void* scope_ctx;
+  RolltuiRoleFromNameFn role_from_name;
+  void* role_from_name_ctx;
+  RolltuiRoleNameFn role_name;
+  void* role_name_ctx;
+} RolltuiLayoutHooks;
+
+/* Why `name` cannot be declared as an action ("" when it can) — Layout.hpp's three rules, as
+ * ONE function, so the loader and the design editor refuse exactly the same names with
+ * exactly the same words. REPLACES `*out`. Calls back through `hooks->is_library_scope` for
+ * "which scopes are the library's" — that stays Bindings' vocabulary (rolltui_bindings.h's
+ * own rule), never duplicated here. */
+void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayoutHooks* hooks, RolltuiStr* out);
+
+/* ---- the report: unknown keys / bad values are problems, migrations are notes (Layout.hpp's
+ * `LayoutLoadReport::clean()`). Transparent, the same shape `rolltui_app_profile.h`'s own
+ * report uses: `RolltuiStr` values in GROWING AMORTISED arrays. Zero-initialise before use. */
+typedef struct RolltuiLayoutReport {
+  RolltuiStr error; /* non-empty: the file was unusable */
+  RolltuiStr* unknown_keys;
+  size_t unknown_keys_n, unknown_keys_cap;
+  RolltuiStr* bad_values;
+  size_t bad_values_n, bad_values_cap;
+  RolltuiStr* migrated; /* NOT part of "clean" — a note, never a problem */
+  size_t migrated_n, migrated_cap;
+} RolltuiLayoutReport;
+
+void rolltui_layout_report_release(RolltuiLayoutReport* r); /* frees everything; zeroes it */
+int rolltui_layout_report_clean(const RolltuiLayoutReport* r);
+
+/* One entry of a layout file's "actions" object: a name and its English description. Named
+ * apart from Bindings' own `ActionDecl` (which this file does not include) because this is
+ * the layout FILE's vocabulary — "the actions THIS SCREEN emits" (Layout.hpp) — read by the
+ * shim into whatever `rolltui::ActionDecl` is; the two structs happening to hold the same
+ * two strings is a fact about the file format, not a shared type. */
+typedef struct RolltuiLayoutAction {
+  RolltuiStr name;
+  RolltuiStr description;
+} RolltuiLayoutAction;
+
+/* The parsed layout: a TRANSIENT carrier, never retained past one load (see the header
+ * comment) — `name`/`min_width`/`min_height`/`actions` are the fields `rolltui::Layout`
+ * cannot share; `base`/`popups` already ARE `RolltuiLayer`, so the shim MOVES those two
+ * straight into its own `Layout` rather than copying a tree it is about to release anyway. */
+typedef struct RolltuiLoadedLayout {
+  RolltuiStr name;
+  int min_width, min_height;
+  RolltuiLayoutAction* actions;
+  size_t actions_n, actions_cap;
+  RolltuiLayer base;
+  RolltuiLayer* popups;
+  size_t popups_n, popups_cap;
+} RolltuiLoadedLayout;
+
+void rolltui_loaded_layout_init(RolltuiLoadedLayout* l);    /* zeroes; inits `base` */
+void rolltui_loaded_layout_release(RolltuiLoadedLayout* l); /* frees name/actions/base/popups; zeroes */
+
+/* Reads exactly the "actions" object of an already-parsed tree, APPENDING every string-
+ * valued entry. Never through `rolltui_load_layout`, which asks for this when a file
+ * declares none — going through the full loader to compute its own fallback would recurse
+ * into itself; this is the raw, independent read `rolltui::shipped_default_actions()` needs
+ * (one definition site is still the "default" file; this is a direct read of one key of it). */
+void rolltui_layout_read_actions_key(const RolltuiJsonValue* root, RolltuiLayoutAction** actions, size_t* actions_n,
+                                    size_t* actions_cap);
+/* Releases an array `rolltui_layout_read_actions_key` filled (or any array of this shape) —
+ * so a caller need not reach past this header for `rolltui_alloc.h`'s raw `rolltui_mem_free`
+ * just to hand one back. */
+void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
+
+/* Parses one layout file's ALREADY-PARSED JSON tree into `out` (an `out` the caller has run
+ * `rolltui_loaded_layout_init` on — its old fields are not released first, matching
+ * `rolltui::load_layout`'s "everything else loads with the problems reported" only at the
+ * level a fresh handle already gives it). 1 when there is a usable "root" (`report` may
+ * still carry problems); 0 only when the JSON is not an object or has none of it
+ * (`report->error` says which — `out` is left as `rolltui_loaded_layout_init` set it).
+ * `default_actions`/`_n` are `shipped_default_actions()`'s, handed in for the "no actions
+ * key at all" fallback (see `rolltui_layout_read_actions_key` for why that is computed
+ * independently rather than through this same function). `report` is NOT reset on entry —
+ * matching `rolltui::load_layout`'s own convention, the caller starts one fresh per call. */
+int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
+                        const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                        const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);
+/* The same over TEXT: parses it first, and a JSON syntax error also becomes `report->error`
+ * (0 returned) rather than reaching the loader at all. */
+int rolltui_load_layout_text(const char* text, size_t len, RolltuiLoadedLayout* out,
+                             const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                             const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);
+
+/* Builds the JSON tree (an OWNED value the caller frees) — `layout_to_json_value`'s port.
+ * `base`/`popups` are BORROWS (read-only: this never copies a tree merely to serialise it). */
+RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height,
+                                               const RolltuiLayoutAction* actions, size_t actions_n,
+                                               const RolltuiLayer* base, const RolltuiLayer* popups,
+                                               size_t popups_n, const RolltuiLayoutHooks* hooks);
+/* Dumps straight to TEXT, indent 2, REPLACING `*out` — `layout_to_json`'s port. */
+void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height,
+                                const RolltuiLayoutAction* actions, size_t actions_n, const RolltuiLayer* base,
+                                const RolltuiLayer* popups, size_t popups_n, const RolltuiLayoutHooks* hooks,
+                                RolltuiStr* out);
 
 /* ---- the stack ------------------------------------------------------------------------------- */
 

@@ -1,32 +1,54 @@
-// rolltui/Layout.cpp — the SHIM over `rolltui/c/rolltui_layout.h`: the RAII, the JSON
-// loader, the built-ins, the styling vocabulary and the translation of one `std::function`
-// into a function pointer. The two implementations live in `LayoutCpp.cpp` and
-// `c/rolltui_layout.c`, and this file is the C++ API over it (Phase 15 m5).
+// rolltui/Layout.cpp — the SHIM over `rolltui/c/rolltui_layout.h`: RAII, and the conversion at
+// the few places `rolltui::Layout`/`rolltui::Content`/`rolltui::ActionDecl` still cross this
+// boundary with their own `std::string`/`std::vector` shape. `rolltui_layout.c` is now the
+// ONLY implementation (this file's one-time C++ counterpart, `LayoutCpp.cpp`, is one of the
+// sixteen `*Cpp.cpp` files CMakeLists.txt records as deleted once `-DROLLTUI_C` — Phase 15
+// m5's two-implementation rollback flag — was spent, 2026-09-04); this file is the C++ API
+// over it (Phase 15 m5 for placement/composition/the stack; the loader, the built-ins,
+// `Content` and every English sentence moved into the C at Phase 17 m2, once
+// `rolltui/c/rolltui_json.h` gave that side a tree it could walk without owing `json::Value`
+// anything).
 //
-// WHAT STAYS HERE AND WHY, since it is most of the file: the LOADER and the BUILT-INS.
-// That is the split m3 made for `Theme` — only the colour engine crossed, and the JSON
-// loader never moved — for the same reason: `json::Value` is a C++ tree with no business at
-// a C boundary, and the ENGLISH in a report is a vocabulary that would otherwise exist
-// twice. The C decides which rung resolved a widget kind and what rule its source follows;
-// the sentences are composed here.
+// WHAT STAYS HERE AND WHY, since it is most of what remains: `rolltui::Layout` keeps its own
+// `std::string name` and `std::vector<ActionDecl> actions` (`Widgets.cpp`, `paint.cpp`,
+// `studio.cpp` and `layout_editor.cpp` erase-remove, reassign and push_back a real vector at
+// call sites this task does not touch — `Layout.hpp`'s own exception, the one
+// `rolltui/c/rolltui_json.h`'s `Value` took first, for the same reason), and `rolltui::Content`
+// keeps its own `std::string source`/`registered_name` for the same reason one level down
+// (`Widgets.cpp` alone reads `content.source` as a `std::string` at ~20 call sites). So this
+// file's job is narrow but real: build a `RolltuiLayoutHooks` bridging Role's vocabulary (which
+// belongs to `Style.hpp`, never to a C file — the m2 rule at `rolltui_diff.h`) and Bindings'
+// "which scopes are the library's", and unpack the transient `RolltuiLoadedLayout` /
+// `RolltuiLayoutReport` the C loader fills into this module's own C++ types, once per load —
+// never retained past that, and never a second implementation of the walk itself.
 #include "rolltui/Layout.hpp"
 
 #include "rolltui/Lifetime.hpp"
 
-#include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "rolltui/Json.hpp"
 #include "rolltui/Scratch.hpp"
-#include "rolltui/Unicode.hpp"
+
+namespace rolltui::json {
+// Defined in Json.cpp, with external linkage there for exactly this reason (Phase 17 m2):
+// `load_layout(const Value&, …)` and `layout_to_json_value` still cross a `json::Value` too
+// (`Presets.cpp` embeds a layout inside a bigger preset document), and forward-declaring the
+// one tree-conversion implementation Json.cpp already has is what keeps there being exactly
+// one, rather than a second copy of it living here. Not declared in `Json.hpp` itself — that
+// header's public shape stays exactly what the other six C++ modules already see.
+RolltuiJsonValue* value_to_c(const Value& v);
+Value value_from_c(const RolltuiJsonValue* v);
+}  // namespace rolltui::json
 
 namespace rolltui {
 
 // ---- content: the widget kind and its source ----------------------------------------------
-// Rung 1 and rung 2 both live in the C (`rolltui_layout.h`); what a Content IS, and every
-// sentence about one, lives here.
+// Rung 1 and rung 2 both live in the C (`rolltui_layout.h`); what a Content IS lives here
+// (Layout.hpp's own std::string shape — see this file's header comment), and every SENTENCE
+// about one now lives in the C too (`rolltui_content_parse`/`_format`, Phase 17 m2).
 
 namespace {
 
@@ -133,45 +155,70 @@ const std::vector<WidgetKind>& widget_kinds() {
   return all;
 }
 
+// ---- Role and scope: the two callbacks a C loader/dumper cannot name itself ---------------
+// Role's vocabulary is `Style.hpp`'s (`rolltui_layout_tree.h`'s own rule: "this file names no
+// role"), and "which scopes are the library's" is Bindings' (`rolltui_bindings.h`'s own rule).
+// `RolltuiLayoutHooks` is how the C loader/dumper reaches back for both without carrying
+// either table itself; these two functions and the one constant below are the whole bridge.
+namespace {
+
+int role_from_name_cb(void*, const char* name, std::size_t len, unsigned char* out) {
+  const Role r = role_from_name(std::string_view(name, len));
+  if (r == Role::count_) return 0;
+  *out = static_cast<unsigned char>(r);
+  return 1;
+}
+
+std::size_t role_name_cb(void*, unsigned char role, char* out, std::size_t cap) {
+  const std::string_view name = role_name(static_cast<Role>(role));
+  std::size_t n = name.size();
+  if (n >= cap) n = cap ? cap - 1 : 0;
+  if (cap) {
+    std::memcpy(out, name.data(), n);
+    out[n] = '\0';
+  }
+  return n;
+}
+
+int is_library_scope_cb(void*, const char* scope, std::size_t len) {
+  return library_scope(std::string_view(scope, len)) ? 1 : 0;
+}
+
+constexpr RolltuiLayoutHooks kHooks = {
+    /*is_library_scope=*/is_library_scope_cb,
+    /*scope_ctx=*/nullptr,
+    /*role_from_name=*/role_from_name_cb,
+    /*role_from_name_ctx=*/nullptr,
+    /*role_name=*/role_name_cb,
+    /*role_name_ctx=*/nullptr,
+};
+
+}  // namespace
+
+// ---- content: parsing and formatting — the C's algorithm and English, this file's std::string
+// shape (see the header comment for why Content itself does not cross) -----------------------
+
 std::optional<Content> parse_content(std::string_view text, std::string* why, ContentProblem* what) {
-  if (what) *what = ContentProblem::None;
-  auto fail = [&](ContentProblem kind, std::string reason) -> std::optional<Content> {
-    if (why) *why = std::move(reason);
-    if (what) *what = kind;
+  unsigned char ordinal = 0, problem = ROLLTUI_CONTENT_PROBLEM_NONE;
+  int is_host = 0;
+  const char *name = nullptr, *source = nullptr;
+  std::size_t name_len = 0, source_len = 0;
+  Str why_c;
+  const int ok = rolltui_content_parse(text.data(), text.size(), &ordinal, &is_host, &name, &name_len, &source,
+                                       &source_len, &problem, &why_c);
+  if (what) *what = static_cast<ContentProblem>(problem);
+  if (!ok) {
+    if (why) *why = why_c.str();
     return std::nullopt;
-  };
-  const std::size_t colon = text.find(':');
-  const std::string_view name = text.substr(0, colon);
+  }
   Content c;
-  unsigned char ordinal = 0, rule = ROLLTUI_SOURCE_REQUIRED;
-  const char* describes = "";
-  std::size_t describes_n = 0;
-  // THE RESOLUTION ORDER (Layout.hpp) is the C's; rung 3 is this failing with a named
-  // reason, which is the half that has to be in a language with sentences.
-  const int rung =
-      rolltui_widget_kind_resolve(name.data(), name.size(), &ordinal, &rule, &describes, &describes_n);
-  if (rung == ROLLTUI_KIND_LIBRARY) {
-    c.kind = static_cast<WidgetKind>(ordinal);
-  } else if (rung == ROLLTUI_KIND_HOST) {
+  if (is_host) {
     c.kind = WidgetKind::Registered;
-    c.registered_name = std::string(name);
+    c.registered_name = std::string(name, name_len);
   } else {
-    std::string known;
-    for (const std::string& n : widget_kind_names()) known += (known.empty() ? "" : " | ") + n;
-    if (std::optional<std::string> m = migrated_content(text))
-      return fail(ContentProblem::UnknownKind, "'" + std::string(text) + "' is an older spelling, not a widget kind; write '" + *m + "'");
-    return fail(ContentProblem::UnknownKind, "'" + std::string(name) + "' is not a widget kind (" + known + ")");
+    c.kind = static_cast<WidgetKind>(ordinal);
   }
-  const std::string kname(name);
-  if (colon != std::string_view::npos) c.source = std::string(text.substr(colon + 1));
-  if (rule == ROLLTUI_SOURCE_FORBIDDEN && colon != std::string_view::npos)
-    return fail(ContentProblem::ForbiddenSource, "'" + kname + "' takes no source; write '" + kname + "'");
-  if (rule == ROLLTUI_SOURCE_REQUIRED && c.source.empty()) {
-    if (std::optional<std::string> m = migrated_content(text))  // an older name that is also a kind name
-      return fail(ContentProblem::MissingSource, "'" + std::string(text) + "' is an older spelling, not a content; write '" + *m + "'");
-    return fail(ContentProblem::MissingSource,
-                "'" + kname + "' needs a source (" + std::string(describes, describes_n) + "): write '" + kname + ":<name>'");
-  }
+  c.source = std::string(source, source_len);
   return c;
 }
 
@@ -192,14 +239,11 @@ std::optional<Content> content_for_kind(std::string_view kind_name, std::string 
 }
 
 std::string content_to_string(const Content& c) {
-  std::string s(content_kind_name(c));
-  // An OPTIONAL source that is empty writes no colon at all: `help` and `text` are then
-  // spelled the way every file already spells them, and both forms parse to the same
-  // Content, so this is one spelling rather than two. A REQUIRED source that is empty
-  // keeps its colon — `transcript:` is a window saying out loud that it needs a name.
-  const SourceRule rule = content_source_rule(c);
-  if (rule == SourceRule::Required || (rule == SourceRule::Optional && !c.source.empty())) s += ":" + c.source;
-  return s;
+  const std::string_view kind_name = content_kind_name(c);
+  Str out;
+  rolltui_content_format(kind_name.data(), kind_name.size(), c.source.data(), c.source.size(),
+                         static_cast<unsigned char>(content_source_rule(c)), &out);
+  return out.str();
 }
 
 std::optional<std::string> migrated_content(std::string_view legacy) {
@@ -217,24 +261,27 @@ const Layer* Layout::popup(std::string_view id) const {
 }
 
 // ---- names and text forms ----------------------------------------------------------------
+// Anchor and border names are THIS module's own vocabulary (Layout.hpp states both closed
+// lists), so — unlike Role — they are looked up straight through the C's tables.
 
-namespace {
-constexpr std::string_view kAnchorNames[] = {"top-left", "top", "top-right", "left", "center",
-                                             "right", "bottom-left", "bottom", "bottom-right"};
-constexpr std::string_view kBorderNames[] = {"none", "single", "rounded", "double", "heavy"};
-
-}  // namespace
-
-std::string_view anchor_name(Anchor a) { return kAnchorNames[static_cast<std::size_t>(a)]; }
+std::string_view anchor_name(Anchor a) {
+  std::size_t n = 0;
+  const char* p = rolltui_anchor_name(static_cast<unsigned char>(a), &n);
+  return {p, n};
+}
 std::optional<Anchor> anchor_from_name(std::string_view name) {
-  for (std::size_t i = 0; i < 9; ++i)
-    if (kAnchorNames[i] == name) return static_cast<Anchor>(i);
+  unsigned char out = 0;
+  if (rolltui_anchor_from_name(name.data(), name.size(), &out)) return static_cast<Anchor>(out);
   return std::nullopt;
 }
-std::string_view border_name(Border b) { return kBorderNames[static_cast<std::size_t>(b)]; }
+std::string_view border_name(Border b) {
+  std::size_t n = 0;
+  const char* p = rolltui_border_name(static_cast<unsigned char>(b), &n);
+  return {p, n};
+}
 std::optional<Border> border_from_name(std::string_view name) {
-  for (std::size_t i = 0; i < 5; ++i)
-    if (kBorderNames[i] == name) return static_cast<Border>(i);
+  unsigned char out = 0;
+  if (rolltui_border_from_name(name.data(), name.size(), &out)) return static_cast<Border>(out);
   return std::nullopt;
 }
 
@@ -271,318 +318,117 @@ std::string split_size_to_string(SplitSize s) {
 }
 
 // ---- the loader ----------------------------------------------------------------------------
+// `load_layout`, `layout_to_json[_value]`, `action_decl_problem` and every message a bad
+// layout produces now live in `rolltui_layout.c` (Phase 17 m2); this section converts at the
+// boundary `rolltui::Layout`/`rolltui::ActionDecl`'s own shape still needs (see the header
+// comment) and otherwise adds nothing of its own.
+
+std::string action_decl_problem(std::string_view name) {
+  Str out;
+  rolltui_action_decl_problem(name.data(), name.size(), &kHooks, &out);
+  return out.str();
+}
 
 namespace {
 
-using json::Value;
-
-// A dim from JSON: an integer number → cells; a string → parse_dim.
-std::optional<Dim> dim_from_json(const Value& v, const std::string& where, LayoutLoadReport& rep) {
-  if (v.is_number()) {
-    if (v.num != std::floor(v.num) || std::fabs(v.num) > 1000000) {
-      rep.bad_values.push_back(where + ": a number is whole cells; use \"N%\" for a fraction");
-      return std::nullopt;
-    }
-    return Dim::abs(static_cast<int>(v.num));
-  }
-  if (v.is_string()) {
-    if (auto d = parse_dim(v.str)) return d;
-    rep.bad_values.push_back(where + ": '" + v.str + "' is not a dim (an integer, or \"N%\" with an optional \"± cells\")");
-    return std::nullopt;
-  }
-  rep.bad_values.push_back(where + ": expected an integer or a \"N%\" string");
-  return std::nullopt;
+// `rolltui::ActionDecl` (Bindings.hpp) <-> the C loader/dumper's own `RolltuiLayoutAction` —
+// two strings each, converted at exactly this one seam rather than reaching for a shared
+// type (see rolltui_layout.h's header comment on why the two structs are named apart).
+std::vector<RolltuiLayoutAction> actions_to_c(const std::vector<ActionDecl>& actions) {
+  std::vector<RolltuiLayoutAction> out;
+  out.reserve(actions.size());
+  for (const ActionDecl& d : actions) out.push_back(RolltuiLayoutAction{Str(d.name), Str(d.description)});
+  return out;
 }
 
-bool bool_from_json(const Value& v, const std::string& where, LayoutLoadReport& rep, bool& out) {
-  if (!v.is_bool()) { rep.bad_values.push_back(where + ": expected true or false"); return false; }
-  out = v.b;
-  return true;
-}
-// The same for the flags that cross the boundary as BYTES. One overload rather than a cast
-// at each of the four call sites, because a cast at a call site is where a `visible` that
-// should have been `focusable` hides.
-bool bool_from_json(const Value& v, const std::string& where, LayoutLoadReport& rep, unsigned char& out) {
-  bool b = out != 0;
-  if (!bool_from_json(v, where, rep, b)) return false;
-  out = static_cast<unsigned char>(b);
-  return true;
-}
-
-void collect_ids(const Node& n, std::vector<std::string>& seen, const std::string& where, LayoutLoadReport& rep) {
-  if (!n.id.empty()) {
-    if (std::find(seen.begin(), seen.end(), n.id.view()) != seen.end()) rep.bad_values.push_back(where + ".id: duplicate id '" + n.id + "'");
-    else seen.emplace_back(n.id.view());
+// Unpacks a filled `RolltuiLoadedLayout` into a fresh `Layout`, ONCE, right after a load —
+// never retained past this call (the carrier's whole reason for being transient; see
+// rolltui_layout.h). `base`/each popup are MOVED across (both already `RolltuiLayer`), not
+// copied: the loaded tree is about to be released either way.
+Layout loaded_to_layout(RolltuiLoadedLayout& loaded) {
+  Layout out;
+  out.name = loaded.name.str();
+  out.min_width = loaded.min_width;
+  out.min_height = loaded.min_height;
+  out.actions.reserve(loaded.actions_n);
+  for (std::size_t i = 0; i < loaded.actions_n; ++i)
+    out.actions.push_back({loaded.actions[i].name.str(), loaded.actions[i].description.str()});
+  rolltui_layer_move(&out.base, &loaded.base);
+  out.popups.reserve(loaded.popups_n);
+  for (std::size_t i = 0; i < loaded.popups_n; ++i) {
+    Layer p;
+    rolltui_layer_move(&p, &loaded.popups[i]);
+    out.popups.push_back(std::move(p));
   }
-  for (std::size_t i = 0; i < n.children.size(); ++i)
-    collect_ids(n.children[i], seen, where + (n.kind == Node::Kind::Row ? ".row[" : ".column[") + std::to_string(i) + "]", rep);
+  return out;
 }
 
-Node node_from_json(const Value& v, const std::string& where, LayoutLoadReport& rep) {
-  Node n;
-  if (!v.is_object()) { rep.bad_values.push_back(where + ": expected a node object"); return n; }
-  const bool has_row = v.has("row"), has_col = v.has("column"), has_content = v.has("content");
-  if ((has_row ? 1 : 0) + (has_col ? 1 : 0) + (has_content ? 1 : 0) != 1) {
-    rep.bad_values.push_back(where + ": a node has exactly one of \"content\", \"row\", \"column\"");
-    return n;
-  }
-  n.kind = has_row ? Node::Kind::Row : has_col ? Node::Kind::Column : Node::Kind::Window;
-  for (const auto& [k, x] : v.obj) {
-    const std::string at = where + "." + k;
-    if (k == "row" || k == "column") {
-      if (!x.is_array()) { rep.bad_values.push_back(at + ": expected an array of nodes"); continue; }
-      for (std::size_t i = 0; i < x.arr.size(); ++i)
-        n.children.push_back(node_from_json(x.arr[i], at + "[" + std::to_string(i) + "]", rep));
-    } else if (k == "content") {
-      if (!x.is_string()) rep.bad_values.push_back(at + ": expected a string");
-      else n.content = x.str;
-    } else if (k == "id") {
-      if (!x.is_string()) rep.bad_values.push_back(at + ": expected a string");
-      else n.id = x.str;
-    } else if (k == "title") {
-      if (!x.is_string()) rep.bad_values.push_back(at + ": expected a string");
-      else n.title = x.str;
-    } else if (k == "border") {
-      auto b = x.is_string() ? border_from_name(x.str) : std::nullopt;
-      if (!b) rep.bad_values.push_back(at + ": expected none | single | rounded | double | heavy");
-      else n.border = *b;
-    } else if (k == "background") {
-      Role r = x.is_string() ? role_from_name(x.str) : Role::count_;
-      if (r == Role::count_) rep.bad_values.push_back(at + ": expected a role name");
-      else n.background = r;
-    } else if (k == "focusable") {
-      bool_from_json(x, at, rep, n.focusable);
-    } else if (k == "visible") {
-      bool_from_json(x, at, rep, n.visible);
-    } else if (k == "size") {
-      if (x.is_number()) {
-        if (auto d = dim_from_json(x, at, rep)) n.size = SplitSize::fixed(*d);
-      } else if (x.is_string()) {
-        if (auto s = parse_split_size(x.str)) n.size = *s;
-        else rep.bad_values.push_back(at + ": '" + x.str + "' is not a size (an integer, \"N%\", \"fill\" or \"fill N\")");
-      } else {
-        rep.bad_values.push_back(at + ": expected an integer, \"N%\", \"fill\" or \"fill N\"");
-      }
-    } else {
-      rep.unknown_keys.push_back(at);
-    }
-  }
-  // Content is kind[:source] (Layout.hpp). A Phase 9 slot name is rewritten once and
-  // said so; anything else the table does not know is a bad value that names the fix.
-  if (n.is_window()) {
-    if (std::optional<std::string> to = migrated_content(n.content)) {
-      rep.migrated.push_back(where + ".content: '" + n.content + "' \xE2\x86\x92 '" + *to + "'");
-      if (n.id.empty()) n.id = n.content;  // the id it had before the rewrite, so lookups keep working
-      n.content = *to;
-    }
-    std::string why;
-    ContentProblem what = ContentProblem::None;
-    // An UNKNOWN KIND is deliberately NOT a bad value here — see ContentProblem in
-    // Layout.hpp. The vocabulary's second rung belongs to the host, and this loader runs
-    // before a host has necessarily registered anything; Windows reports it, by name,
-    // with the error panel drawn. Every other problem is a fact about the STRING and is
-    // the loader's to name.
-    if (!parse_content(n.content, &why, &what) && what != ContentProblem::UnknownKind)
-      rep.bad_values.push_back(where + ".content: " + why);
-  }
-  if (n.is_window() && n.id.empty()) n.id = n.content;
-  return n;
-}
-
-Layer layer_from_json(const Value& v, const std::string& where, bool is_popup, LayoutLoadReport& rep) {
-  Layer l;
-  if (!v.is_object()) { rep.bad_values.push_back(where + ": expected an object"); return l; }
-  bool have_root = false;
-  for (const auto& [k, x] : v.obj) {
-    const std::string at = where + "." + k;
-    if (k == "root") { l.root = node_from_json(x, at, rep); have_root = true; }
-    else if (k == "focus") { if (!x.is_string()) rep.bad_values.push_back(at + ": expected a window id"); else l.focus = x.str; }
-    else if (is_popup && k == "id") { if (!x.is_string()) rep.bad_values.push_back(at + ": expected a string"); else l.id = x.str; }
-    else if (is_popup && k == "modal") bool_from_json(x, at, rep, l.modal);
-    else if (is_popup && k == "clamp") bool_from_json(x, at, rep, l.placement.clamp);
-    else if (is_popup && k == "anchor") {
-      auto a = x.is_string() ? anchor_from_name(x.str) : std::nullopt;
-      if (!a) rep.bad_values.push_back(at + ": expected top-left | top | top-right | left | center | right | bottom-left | bottom | bottom-right");
-      else l.placement.anchor = *a;
-    } else if (is_popup && (k == "x" || k == "y" || k == "w" || k == "h")) {
-      if (auto d = dim_from_json(x, at, rep)) {
-        if (k == "x") l.placement.x = *d;
-        else if (k == "y") l.placement.y = *d;
-        else if (k == "w") l.placement.w = *d;
-        else l.placement.h = *d;
-      }
-    } else if (is_popup && (k == "min_w" || k == "min_h" || k == "max_w" || k == "max_h")) {
-      if (auto d = dim_from_json(x, at, rep)) {
-        if (k == "min_w") l.placement.min_w = *d;
-        else if (k == "min_h") l.placement.min_h = *d;
-        else if (k == "max_w") l.placement.max_w = *d;
-        else l.placement.max_h = *d;
-      }
-    } else {
-      rep.unknown_keys.push_back(at);
-    }
-  }
-  if (!have_root) rep.bad_values.push_back(where + ": no \"root\" node");
-  std::vector<std::string> ids;
-  collect_ids(l.root, ids, where + ".root", rep);
-  if (!l.focus.empty() && std::find(ids.begin(), ids.end(), l.focus.view()) == ids.end())
-    rep.bad_values.push_back(where + ".focus: no window with id '" + l.focus + "'");
-  return l;
-}
-
-Value dim_to_json(Dim d) {
-  if (d.fraction == 0) return Value::number(d.cells);
-  return Value::string(dim_to_string(d));
-}
-
-Value node_to_json(const Node& n) {
-  Value o = Value::object();
-  if (n.is_window()) {
-    if (!(n.id == n.content)) o.set("id", Value::string(n.id.str()));
-    o.set("content", Value::string(n.content.str()));
-  } else if (!n.id.empty()) {
-    o.set("id", Value::string(n.id.str()));
-  }
-  if (n.border != Border::None) o.set("border", Value::string(std::string(border_name(n.border))));
-  if (!n.title.empty()) o.set("title", Value::string(n.title.str()));
-  if (n.focusable) o.set("focusable", Value::boolean(true));
-  if (!n.visible) o.set("visible", Value::boolean(false));
-  if (n.background != Role::background) o.set("background", Value::string(std::string(role_name(n.background))));
-  if (n.size != SplitSize{}) {
-    if (!n.size.fill && n.size.dim.fraction == 0) o.set("size", Value::number(n.size.dim.cells));
-    else o.set("size", Value::string(split_size_to_string(n.size)));
-  }
-  if (!n.is_window()) {
-    Value arr = Value::array();
-    for (const Node& c : n.children) arr.arr.push_back(node_to_json(c));
-    o.set(n.kind == Node::Kind::Row ? "row" : "column", std::move(arr));
-  }
-  return o;
-}
-
-Value layer_to_json(const Layer& l, bool is_popup) {
-  Value o = Value::object();
-  if (is_popup) {
-    o.set("id", Value::string(l.id.str()));
-    o.set("x", dim_to_json(l.placement.x));
-    o.set("y", dim_to_json(l.placement.y));
-    o.set("w", dim_to_json(l.placement.w));
-    o.set("h", dim_to_json(l.placement.h));
-    if (l.placement.anchor != Anchor::TopLeft) o.set("anchor", Value::string(std::string(anchor_name(l.placement.anchor))));
-    if (!l.placement.clamp) o.set("clamp", Value::boolean(false));
-    if (l.placement.min_w) o.set("min_w", dim_to_json(*l.placement.min_w));
-    if (l.placement.min_h) o.set("min_h", dim_to_json(*l.placement.min_h));
-    if (l.placement.max_w) o.set("max_w", dim_to_json(*l.placement.max_w));
-    if (l.placement.max_h) o.set("max_h", dim_to_json(*l.placement.max_h));
-    if (l.modal) o.set("modal", Value::boolean(true));
-  }
-  if (!l.focus.empty()) o.set("focus", Value::string(l.focus.str()));
-  o.set("root", node_to_json(l.root));
-  return o;
+void report_from_c(const RolltuiLayoutReport& r, LayoutLoadReport& report) {
+  report.error = r.error.str();
+  for (std::size_t i = 0; i < r.unknown_keys_n; ++i) report.unknown_keys.emplace_back(r.unknown_keys[i].str());
+  for (std::size_t i = 0; i < r.bad_values_n; ++i) report.bad_values.emplace_back(r.bad_values[i].str());
+  for (std::size_t i = 0; i < r.migrated_n; ++i) report.migrated.emplace_back(r.migrated[i].str());
 }
 
 }  // namespace
 
-std::string action_decl_problem(std::string_view name) {
-  const std::string_view scope = scope_of(name);
-  if (scope == name || scope.empty() || name.size() <= scope.size() + 1)
-    return "an action is \"<scope>.<verb>\", both parts non-empty";
-  if (library_scope(scope))
-    return "the '" + std::string(scope) + "' scope is the library's and cannot be declared";
-  return {};
-}
-
 std::optional<Layout> load_layout(std::string_view json_text, LayoutLoadReport& report) {
-  std::string err;
-  Value root = json::parse(json_text, err);
-  if (!err.empty()) { report.error = err; return std::nullopt; }
-  return load_layout(root, report);
-}
-
-std::optional<Layout> load_layout(const Value& root, LayoutLoadReport& report) {
-  if (!root.is_object()) { report.error = "layout file must be a JSON object"; return std::nullopt; }
-  if (!root.has("root")) { report.error = "layout file has no \"root\" node"; return std::nullopt; }
-  Layout out;
-  Value base = Value::object();
-  bool have_actions = false;
-  for (const auto& [k, v] : root.obj) {
-    if (k == "name") { if (!v.is_string()) report.bad_values.push_back("name: expected a string"); else out.name = v.str; }
-    else if (k == "min_width" || k == "min_height") {
-      if (!v.is_number() || v.num < 0 || v.num != std::floor(v.num)) report.bad_values.push_back(k + ": expected a whole number of cells");
-      else (k == "min_width" ? out.min_width : out.min_height) = static_cast<int>(v.num);
-    } else if (k == "root" || k == "focus") {
-      base.set(k, v);
-    } else if (k == "actions") {
-      have_actions = true;
-      if (!v.is_object()) { report.bad_values.push_back("actions: expected an object of action name \xE2\x86\x92 description"); continue; }
-      for (const auto& [name, desc] : v.obj) {
-        const std::string at = "actions." + name;
-        if (const std::string why = action_decl_problem(name); !why.empty())
-          report.bad_values.push_back(at + ": " + why);
-        else if (std::find_if(out.actions.begin(), out.actions.end(), [&](const ActionDecl& d) { return d.name == name; }) != out.actions.end())
-          report.bad_values.push_back(at + ": declared twice");
-        else if (!desc.is_string())
-          report.bad_values.push_back(at + ": expected a description string");
-        else
-          out.actions.push_back({name, desc.str});
-      }
-    } else if (k == "popups") {
-      if (!v.is_array()) { report.bad_values.push_back("popups: expected an array"); continue; }
-      for (std::size_t i = 0; i < v.arr.size(); ++i) {
-        const std::string where = "popups[" + std::to_string(i) + "]";
-        Layer p = layer_from_json(v.arr[i], where, true, report);
-        if (p.id.empty()) report.bad_values.push_back(where + ": a popup needs an \"id\"");
-        else if (out.popup(p.id.view())) report.bad_values.push_back(where + ".id: duplicate popup id '" + p.id + "'");
-        out.popups.push_back(std::move(p));
-      }
-    } else {
-      report.unknown_keys.push_back(k);
-    }
+  const std::vector<RolltuiLayoutAction> default_actions = actions_to_c(shipped_default_actions());
+  RolltuiLoadedLayout loaded;
+  RolltuiLayoutReport rep{};
+  rolltui_loaded_layout_init(&loaded);
+  const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, default_actions.data(),
+                                          default_actions.size(), &kHooks, &rep);
+  report_from_c(rep, report);
+  rolltui_layout_report_release(&rep);
+  if (!ok) {
+    rolltui_loaded_layout_release(&loaded);
+    return std::nullopt;
   }
-  out.base = layer_from_json(base, "", false, report);
-  // A file written before actions existed (Phase 9, and every layout a user has saved
-  // since) declares none — and would silently lose every app key. It is given the
-  // shipped default's, named in `migrated` the way a Phase 9 content string is; the next
-  // save writes them into the file. An explicit `"actions": {}` means none and is kept.
-  if (!have_actions) {
-    out.actions = shipped_default_actions();
-    if (!out.actions.empty()) {
-      std::string names;
-      for (const ActionDecl& d : out.actions) names += (names.empty() ? "" : ", ") + d.name;
-      report.migrated.push_back("actions: none declared; the shipped default's were added (" + names + ")");
-    }
-  }
-  // The base's report paths begin with "." because its keys sit at the top level.
-  for (std::vector<std::string>* list : {&report.unknown_keys, &report.bad_values})
-    for (std::string& s : *list)
-      if (!s.empty() && s[0] == '.') s.erase(0, 1);
+  std::optional<Layout> out = loaded_to_layout(loaded);
+  rolltui_loaded_layout_release(&loaded);
   return out;
 }
 
-Value layout_to_json_value(const Layout& layout) {
-  Value o = Value::object();
-  o.set("name", Value::string(layout.name));
-  if (layout.min_width) o.set("min_width", Value::number(layout.min_width));
-  if (layout.min_height) o.set("min_height", Value::number(layout.min_height));
-  // Always written, even when empty: an absent "actions" key means "a file from before
-  // they existed" and is filled in by the loader, so a layout that deliberately declares
-  // none has to be able to say so (see load_layout).
-  {
-    Value acts = Value::object();
-    for (const ActionDecl& d : layout.actions) acts.set(d.name, Value::string(d.description));
-    o.set("actions", std::move(acts));
+std::optional<Layout> load_layout(const json::Value& root, LayoutLoadReport& report) {
+  const std::vector<RolltuiLayoutAction> default_actions = actions_to_c(shipped_default_actions());
+  RolltuiJsonValue* c_root = json::value_to_c(root);
+  RolltuiLoadedLayout loaded;
+  RolltuiLayoutReport rep{};
+  rolltui_loaded_layout_init(&loaded);
+  const int ok =
+      rolltui_load_layout(c_root, &loaded, default_actions.data(), default_actions.size(), &kHooks, &rep);
+  rolltui_json_free(c_root);
+  report_from_c(rep, report);
+  rolltui_layout_report_release(&rep);
+  if (!ok) {
+    rolltui_loaded_layout_release(&loaded);
+    return std::nullopt;
   }
-  Value base = layer_to_json(layout.base, false);
-  for (auto& [k, v] : base.obj) o.set(k, std::move(v));
-  if (!layout.popups.empty()) {
-    Value arr = Value::array();
-    for (const Layer& p : layout.popups) arr.arr.push_back(layer_to_json(p, true));
-    o.set("popups", std::move(arr));
-  }
-  return o;
+  std::optional<Layout> out = loaded_to_layout(loaded);
+  rolltui_loaded_layout_release(&loaded);
+  return out;
 }
 
-std::string layout_to_json(const Layout& layout) { return json::dump(layout_to_json_value(layout), 2); }
+json::Value layout_to_json_value(const Layout& layout) {
+  const std::vector<RolltuiLayoutAction> actions = actions_to_c(layout.actions);
+  RolltuiJsonValue* c =
+      rolltui_layout_to_json_value(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
+                                   actions.data(), actions.size(), &layout.base, layout.popups.data(),
+                                   layout.popups.size(), &kHooks);
+  json::Value out = json::value_from_c(c);
+  rolltui_json_free(c);
+  return out;
+}
+
+std::string layout_to_json(const Layout& layout) {
+  const std::vector<RolltuiLayoutAction> actions = actions_to_c(layout.actions);
+  Str out;
+  rolltui_layout_to_json_text(layout.name.data(), layout.name.size(), layout.min_width, layout.min_height,
+                              actions.data(), actions.size(), &layout.base, layout.popups.data(),
+                              layout.popups.size(), &kHooks, &out);
+  return out.str();
+}
 
 // ---- built-ins -----------------------------------------------------------------------------
 
@@ -624,17 +470,23 @@ std::string_view builtin_json(std::string_view name) {
 
 // Read straight out of the shipped "default" file's "actions" object — NEVER through
 // load_layout, which asks for these when a file declares none and would recurse into
-// itself. One definition site is still the file; this is a direct read of one key of it.
+// itself. One definition site is still the file; this is a direct read of one key of it,
+// now via `rolltui_layout_read_actions_key` (Phase 17 m2) rather than a local `json::Value`
+// walk, since that primitive moved to the C alongside the rest of the loader.
 const std::vector<ActionDecl>& shipped_default_actions() {
   static const std::vector<ActionDecl> decls = [] {
     std::vector<ActionDecl> out;
-    std::string err;
-    const Value v = json::parse(builtin_json("default"), err);
-    if (!err.empty() || !v.is_object()) return out;
-    const Value& acts = v.get("actions");
-    if (!acts.is_object()) return out;
-    for (const auto& [name, desc] : acts.obj)
-      if (desc.is_string()) out.push_back({name, desc.str});
+    const std::string_view text = builtin_json("default");
+    RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), nullptr);
+    if (v) {
+      RolltuiLayoutAction* actions = nullptr;
+      std::size_t n = 0, cap = 0;
+      rolltui_layout_read_actions_key(v, &actions, &n, &cap);
+      out.reserve(n);
+      for (std::size_t i = 0; i < n; ++i) out.push_back({actions[i].name.str(), actions[i].description.str()});
+      rolltui_layout_actions_free(actions, n);
+      rolltui_json_free(v);
+    }
     return out;
   }();
   return decls;

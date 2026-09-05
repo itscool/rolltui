@@ -49,9 +49,19 @@ Value::Kind kind_from_c(unsigned char k) {
   }
 }
 
+}  // namespace
+
 // Recursively converts a parsed C tree into a C++ Value tree. This is a real, full copy —
 // the cost `Json.hpp`'s header comment names as the price of keeping `Value` a real
 // `std::string`/`std::vector` type instead of a proxy over the C storage.
+//
+// NOT in the anonymous namespace above (Phase 17 m2): `Layout.cpp`'s `load_layout(const
+// Value&, …)` / `layout_to_json_value` still cross a `json::Value` too (`Presets.cpp` embeds
+// a layout inside a bigger preset document), and forward-declaring these two here — rather
+// than duplicating a second tree-conversion implementation — is what keeps there being
+// exactly one. `Json.hpp`'s own public shape is unchanged: nothing here is declared there,
+// so the six other C++ modules that only ever see `Value`/`parse`/`dump` see no more than
+// they did before.
 Value value_from_c(const RolltuiJsonValue* v) {
   Value out;
   if (!v) return out;
@@ -93,8 +103,6 @@ RolltuiJsonValue* value_to_c(const Value& v) {
   }
   return rolltui_json_null();
 }
-
-}  // namespace
 
 Value parse(std::string_view text, std::string& error) {
   RolltuiStr err{};
