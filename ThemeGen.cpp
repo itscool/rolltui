@@ -9,33 +9,20 @@
 
 namespace rolltui {
 
-std::uint64_t Rng::next() {
-  std::uint64_t z = (state += 0x9E3779B97F4A7C15ull);
-  z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
-  z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
-  return z ^ (z >> 31);
-}
-
-double Rng::unit() { return static_cast<double>(next() >> 11) * (1.0 / 9007199254740992.0); }
+// Rng::next()/unit() are now rolltui_rng_next/rolltui_rng_unit (rolltui/c/rolltui_theme_gen.c),
+// called by the inline methods rolltui_theme_gen.h declares on RolltuiRng itself — there is
+// nothing left to define here.
 
 std::string_view ruleset_name(Ruleset r) {
-  switch (r) {
-    case Ruleset::Analogous: return "analogous";
-    case Ruleset::Complementary: return "complementary";
-    case Ruleset::Triadic: return "triadic";
-    case Ruleset::Tetradic: return "tetradic";
-    case Ruleset::Monochrome: return "monochrome";
-    case Ruleset::Pastel: return "pastel";
-    case Ruleset::Neon: return "neon";
-    case Ruleset::Earth: return "earth";
-  }
-  return "";
+  std::size_t len;
+  const char* s = rolltui_ruleset_name(static_cast<unsigned char>(r), &len);
+  return std::string_view(s, len);
 }
 
 std::optional<Ruleset> ruleset_from_name(std::string_view name) {
-  for (Ruleset r : kRulesets)
-    if (ruleset_name(r) == name) return r;
-  return std::nullopt;
+  unsigned char out;
+  if (!rolltui_ruleset_from_name(name.data(), name.size(), &out)) return std::nullopt;
+  return static_cast<Ruleset>(out);
 }
 
 namespace {

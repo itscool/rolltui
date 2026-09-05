@@ -26,6 +26,11 @@
 // names a broken rule). The PRNG is our own (splitmix64) so the sequence is the same on
 // every platform and compiler.
 //
+// PHASE 17 m1: the PRNG and the ruleset name lookup below are now C
+// (rolltui/c/rolltui_theme_gen.h/.c); `Rng` is that C struct by alias. `generate()` itself
+// stays C++ — it builds a whole `Theme` and a `json::Value` meta, neither of which has a C
+// representation yet, for the same reason `ThemeAnalysis.hpp`'s report and auto-fix stayed
+// C++ (see that file's header comment).
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -33,6 +38,7 @@
 #include <vector>
 
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_theme_gen.h"
 
 namespace rolltui {
 
@@ -57,12 +63,9 @@ struct Generated {
 };
 Generated generate(std::uint64_t seed, Ruleset ruleset, double chaos, const GenOptions& opts = {});
 
-// splitmix64 — exposed for the tests' determinism check.
-struct Rng {
-  std::uint64_t state;
-  explicit Rng(std::uint64_t seed) : state(seed) {}
-  std::uint64_t next();
-  double unit();  // [0, 1)
-};
+// splitmix64 — exposed for the tests' determinism check. ONE DEFINITION, in
+// rolltui/c/rolltui_theme_gen.h, the same move Phase 14 m2 made for Color/Style:
+// `Rng(seed)`, `.next()` and `.unit()` all read exactly as before.
+using Rng = RolltuiRng;
 
 }  // namespace rolltui

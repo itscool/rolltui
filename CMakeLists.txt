@@ -44,7 +44,19 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                   c/rolltui_theme.c c/rolltui_bindings.c
                   c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
-                  c/rolltui_widgets.c c/rolltui_transcript.c)
+                  c/rolltui_widgets.c c/rolltui_transcript.c
+                  c/rolltui_theme_analysis.c c/rolltui_theme_gen.c
+                                         # Phase 17 m1: the colour maths and the generator's
+                                         #   PRNG/ruleset lookup — the parts of
+                                         #   ThemeAnalysis/ThemeGen with no Theme, Role or
+                                         #   json::Value in them. Their .cpp files REMAIN,
+                                         #   unlike the *Cpp.cpp Phase 15 deleted: the
+                                         #   report, the auto-fix and generate() are real
+                                         #   C++ logic over a Theme, not a binding, and they
+                                         #   port when Theme and Json do.
+                  c/rolltui_terminal.c)  # Phase 17 m1: the one unit that touches a file
+                                         #   descriptor — 43 POSIX calls that were wrapped in
+                                         #   C++, which is the strongest argument FOR C here.
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
 set(ROLLTUI_EMBEDDED_PRESETS ${CMAKE_CURRENT_BINARY_DIR}/embedded_presets.cpp)

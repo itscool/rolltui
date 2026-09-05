@@ -346,7 +346,19 @@ int main() {
         // of this from `Value` and `PresetLoadReport&` and cost three.
         {"PresetStore.hpp", 25},   {"Scratch.hpp", 9},     {"Screen.hpp", 6},
         {"Style.hpp", 0},
-        {"Terminal.hpp", 0},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
+        // Terminal.hpp 0 → 4, RE-RECORDED 2026-09-04 by Phase 17 m1, when the terminal's
+        // implementation moved behind rolltui/c/rolltui_terminal.h and the class shrank to
+        // one handle. None of the four owns:
+        //   - `RolltuiTerminal* p` in `Terminal::Handle` — the deleter of the OWNED C
+        //     handle, a `unique_ptr`'s deleter rather than a member, the same sanctioned
+        //     shape `Frame::Handle` and `KeyDecoder::Handle` already use.
+        //   - `const char* p`, twice, in `enter_sequence()` and `leave_sequence()` — a
+        //     BORROW out of the handle, turned into a `string_view` in the same expression
+        //     and never stored. The window is stated at the C header: valid until the
+        //     Terminal is destroyed or `negotiate_keyboard()` runs again.
+        //   - `const char* env` in `negotiate_keyboard()` — `std::getenv`'s own return, read
+        //     once to resolve `ROLLTUI_KEY_PROTOCOL` and never stored past that call.
+        {"Terminal.hpp", 4},     {"Theme.hpp", 2},         {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
         // Widgets.hpp 10 → 12 (Phase 15 m5): `RolltuiWindows* p` in `Windows::Handle` — the
         // deleter of the OWNED widget table, which is this milestone's named lifetime — and
         // `RolltuiWindows* handle()`, a BORROW for the shim's own factories. The ten that
@@ -421,7 +433,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 104, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 108, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

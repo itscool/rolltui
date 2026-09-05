@@ -32,6 +32,16 @@
 // bold) — the one fix that works for every CVD type. The editor shows the before/after
 // numbers and the user commits or cancels like any other change.
 //
+// PHASE 17 m1: the colour maths above — sRGB/linear/OKLab/OKLCH, both contrast formulas,
+// ΔE, the CVD simulation — is now C (rolltui/c/rolltui_theme_analysis.h/.c); every
+// function below it is a thin forwarding shim, and `Lin`/`OkLab`/`OkLch` are the C structs
+// by alias, not a second definition. THE REPORT AND THE AUTO-FIX DID NOT MOVE: `analyse()`
+// walks every `Role` of a `Theme` and reads `theme.meta` (a `json::Value`), and none of
+// `Theme`, `Role`'s name table, or `json::Value` has a C representation yet (`Json` is
+// deliberately the last of Phase 17's seven modules, and `Theme`/`Style.hpp` are outside
+// this milestone). So everything from `RoleCheck` down stays exactly the C++ it was,
+// calling the C maths instead of computing it locally — see rolltui_theme_analysis.h's
+// own comment for the fuller reasoning.
 #include <array>
 #include <optional>
 #include <string>
@@ -40,12 +50,16 @@
 
 #include "rolltui/Style.hpp"
 #include "rolltui/Theme.hpp"
+#include "rolltui/c/rolltui_theme_analysis.h"
 
 namespace rolltui {
 
-struct Lin { double r = 0, g = 0, b = 0; };      // linear sRGB, 0..1
-struct OkLab { double L = 0, a = 0, b = 0; };
-struct OkLch { double L = 0, C = 0, h = 0; };    // h in degrees, [0, 360)
+// ONE DEFINITION, in rolltui/c/rolltui_theme_analysis.h, compiled by both languages
+// (Phase 17 m1, the same move Phase 14 m2 made for Color/Style). `Lin{...}`, `.r`, `.a`,
+// `.h` and every other read below is unchanged at every call site.
+using Lin = RolltuiLin;      // linear sRGB, 0..1
+using OkLab = RolltuiOkLab;
+using OkLch = RolltuiOkLch;  // h in degrees, [0, 360)
 
 double srgb_channel_to_linear(double c);   // c in 0..1
 double linear_channel_to_srgb(double v);

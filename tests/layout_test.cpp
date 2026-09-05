@@ -45,6 +45,21 @@
 
 #include "rolltui/Layout.hpp"
 #include "rolltui/Widgets.hpp"
+// Phase 17 m2 (test-porting): what has a direct C equivalent today is called directly below
+// (Frame, resolve()/inner_rect(), resolve_tree(), draw_border(), the split's Node tree, the
+// text forms, the scrollbar geometry). What does NOT yet — the JSON layout/menu loader
+// (load_layout/layout_to_json/builtin_layout*, blocked on Json.hpp, last of Phase 17 m1's
+// seven and not yet ported), Windows' host-binding surface (bind_document/bind_rows/
+// bind_submit/bind_note/transcript()/input()/menu()/set_dir/set_help/add_menu/menu_origin/
+// menu_names/prepare, permanently C++ per rolltui/Widgets.hpp's own header comment), and
+// parse_content/content_to_string/register_widget_kind's English-message composition
+// (Layout.hpp's own header comment: "the sentences are composed here") — stays on
+// rolltui::Layout.hpp / rolltui::Widgets.hpp exactly as before; see the report for why.
+#include "rolltui/c/rolltui_frame_ops.h"
+#include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_layout_tree.h"
+#include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_widgets.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -74,10 +89,84 @@ const ResolvedNode* by_id(const std::vector<ResolvedNode>& v, std::string_view i
 
 std::string cell(const Frame& f, int x, int y) { return std::string(f.glyph(x, y)); }
 
+// ---- direct C calls, replacing the rolltui::-namespaced free functions below (Phase 17 m2) ----
+// Each mirrors the C++ shim's own body exactly (rolltui/Layout.hpp's inline definitions and
+// rolltui/Layout.cpp) — the shim IS the mapping. Named with a `_c`/`Node::`-free spelling so
+// they do not collide with the still-included rolltui:: originals used elsewhere in this file.
+
+Rect place(const Placement& p, Rect parent) {
+  RolltuiRect r;
+  rolltui_placement_resolve(&p, parent, &r);
+  return r;
+}
+
+std::optional<Dim> parse_dim_c(std::string_view text) {
+  Dim d;
+  if (!rolltui_parse_dim(text.data(), text.size(), &d)) return std::nullopt;
+  return d;
+}
+
+std::string dim_to_string_c(Dim d) {
+  char buf[ROLLTUI_DIM_STRING_MAX];
+  return std::string(buf, rolltui_dim_to_string(d, buf, sizeof buf));
+}
+
+std::optional<SplitSize> parse_split_size_c(std::string_view text) {
+  SplitSize s;
+  if (!rolltui_parse_split_size(text.data(), text.size(), &s)) return std::nullopt;
+  return s;
+}
+
+std::string split_size_to_string_c(SplitSize s) {
+  char buf[ROLLTUI_DIM_STRING_MAX];
+  return std::string(buf, rolltui_split_size_to_string(s, buf, sizeof buf));
+}
+
+void push_node_c(void* ctx, const RolltuiResolvedNode* rn) {
+  static_cast<std::vector<ResolvedNode>*>(ctx)->push_back(*rn);
+}
+
+std::vector<ResolvedNode> resolve_tree_c(const Node& root, Rect box, Rect screen, std::size_t layer = 0) {
+  std::vector<ResolvedNode> out;
+  rolltui_resolve_tree(&root, box, screen, layer, push_node_c, &out);
+  return out;
+}
+
+std::string cell_c(const RolltuiFrame* f, int x, int y) {
+  std::size_t n = 0;
+  const char* p = rolltui_frame_glyph(f, x, y, &n);
+  return std::string(p, n);
+}
+
+// Node::row/column/window/window_id are LayoutTree.cpp statics (one of "the 3 C++ data
+// edges" Phase 17 m2 deletes); these build the same shapes through the plain C entry points
+// (rolltui_layout_tree.h) instead: rolltui_layout_node_init zeroes/defaults exactly as the
+// struct's own defaults would, rolltui_node_list_add is the list's emplace_back, and
+// rolltui_layout_node_copy fills the slot it returns.
 Node win(const char* content, SplitSize size = {}, Border b = Border::Single, bool focusable = false) {
-  Node n = Node::window(content, size);
+  Node n;
+  rolltui_layout_node_init(&n);
+  n.kind = Node::Kind::Window;
+  n.id = content;
+  n.content = content;
+  n.size = size;
   n.border = b;
   n.focusable = focusable;
+  return n;
+}
+
+Node row_of(std::vector<Node> children, SplitSize size = {}) {
+  Node n;
+  rolltui_layout_node_init(&n);
+  n.kind = Node::Kind::Row;
+  n.size = size;
+  for (const Node& c : children) rolltui_layout_node_copy(rolltui_node_list_add(&n.children), &c);
+  return n;
+}
+
+Node column_of(std::vector<Node> children, SplitSize size = {}) {
+  Node n = row_of(std::move(children), size);
+  n.kind = Node::Kind::Column;
   return n;
 }
 
@@ -89,62 +178,62 @@ int main() {
 
   // ---- 1. resolve(): the table -----------------------------------------------------------
   std::printf("-- resolve table\n");
-  expect_rect("all absolute", resolve(P(Dim::abs(2), Dim::abs(3), Dim::abs(10), Dim::abs(5)), scr), {2, 3, 10, 5});
-  expect_rect("rel(1) fills 81x25", resolve(P(A0, A0, Dim::rel(1), Dim::rel(1)), {0, 0, 81, 25}), {0, 0, 81, 25});
-  expect_rect("rel(1) fills 1x1", resolve(P(A0, A0, Dim::rel(1), Dim::rel(1)), {0, 0, 1, 1}), {0, 0, 1, 1});
-  expect_rect("rel(0.5) width floors at 81", resolve(P(A0, A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 81, 25}), {0, 0, 40, 25});
+  expect_rect("all absolute", place(P(Dim::abs(2), Dim::abs(3), Dim::abs(10), Dim::abs(5)), scr), {2, 3, 10, 5});
+  expect_rect("rel(1) fills 81x25", place(P(A0, A0, Dim::rel(1), Dim::rel(1)), {0, 0, 81, 25}), {0, 0, 81, 25});
+  expect_rect("rel(1) fills 1x1", place(P(A0, A0, Dim::rel(1), Dim::rel(1)), {0, 0, 1, 1}), {0, 0, 1, 1});
+  expect_rect("rel(0.5) width floors at 81", place(P(A0, A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 81, 25}), {0, 0, 40, 25});
   expect_rect("second half starts at 40 and takes the remainder at 81",
-              resolve(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 81, 25}), {40, 0, 41, 25});
-  expect_rect("halves at width 7: first", resolve(P(A0, A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 7, 1}), {0, 0, 3, 1});
-  expect_rect("halves at width 7: second", resolve(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 7, 1}), {3, 0, 4, 1});
-  expect_rect("thirds at 10: first", resolve(P(A0, A0, Dim::rel(1.0 / 3), Dim::rel(1)), {0, 0, 10, 1}), {0, 0, 3, 1});
-  expect_rect("thirds at 10: second", resolve(P(Dim::rel(1.0 / 3), A0, Dim::rel(1.0 / 3), Dim::rel(1)), {0, 0, 10, 1}), {3, 0, 3, 1});
+              place(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 81, 25}), {40, 0, 41, 25});
+  expect_rect("halves at width 7: first", place(P(A0, A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 7, 1}), {0, 0, 3, 1});
+  expect_rect("halves at width 7: second", place(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), {0, 0, 7, 1}), {3, 0, 4, 1});
+  expect_rect("thirds at 10: first", place(P(A0, A0, Dim::rel(1.0 / 3), Dim::rel(1)), {0, 0, 10, 1}), {0, 0, 3, 1});
+  expect_rect("thirds at 10: second", place(P(Dim::rel(1.0 / 3), A0, Dim::rel(1.0 / 3), Dim::rel(1)), {0, 0, 10, 1}), {3, 0, 3, 1});
   expect_rect("thirds at 10: third fills to the edge (1e-6 tolerance)",
-              resolve(P(Dim::rel(2.0 / 3), A0, Dim::rel(1.0 / 3), Dim::rel(1)), {0, 0, 10, 1}), {6, 0, 4, 1});
-  expect_rect("rel(1, -32): the rest minus the panel", resolve(P(A0, A0, Dim::rel(1, -32), Dim::rel(1, -3)), scr), {0, 0, 48, 21});
-  expect_rect("panel at rel(1, -32) with abs 32", resolve(P(Dim::rel(1, -32), A0, Dim::abs(32), Dim::rel(1)), scr), {48, 0, 32, 24});
-  expect_rect("input at y rel(1, -3) h 3 tiles with h rel(1, -3)", resolve(P(A0, Dim::rel(1, -3), Dim::rel(1), Dim::abs(3)), scr), {0, 21, 80, 3});
-  expect_rect("negative size clamps to 0", resolve(P(A0, A0, Dim::rel(1, -32), Dim::rel(1)), {0, 0, 20, 5}), {0, 0, 0, 5});
+              place(P(Dim::rel(2.0 / 3), A0, Dim::rel(1.0 / 3), Dim::rel(1)), {0, 0, 10, 1}), {6, 0, 4, 1});
+  expect_rect("rel(1, -32): the rest minus the panel", place(P(A0, A0, Dim::rel(1, -32), Dim::rel(1, -3)), scr), {0, 0, 48, 21});
+  expect_rect("panel at rel(1, -32) with abs 32", place(P(Dim::rel(1, -32), A0, Dim::abs(32), Dim::rel(1)), scr), {48, 0, 32, 24});
+  expect_rect("input at y rel(1, -3) h 3 tiles with h rel(1, -3)", place(P(A0, Dim::rel(1, -3), Dim::rel(1), Dim::abs(3)), scr), {0, 21, 80, 3});
+  expect_rect("negative size clamps to 0", place(P(A0, A0, Dim::rel(1, -32), Dim::rel(1)), {0, 0, 20, 5}), {0, 0, 0, 5});
   {
     Placement p = P(A0, A0, Dim::rel(1, -32), Dim::rel(1));
     p.min_w = Dim::abs(10);
-    expect_rect("min_w lifts a negative size", resolve(p, {0, 0, 20, 5}), {0, 0, 10, 5});
+    expect_rect("min_w lifts a negative size", place(p, {0, 0, 20, 5}), {0, 0, 10, 5});
   }
-  expect_rect("center anchor, even size", resolve(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(20), Dim::abs(10), Anchor::Center), scr), {30, 7, 20, 10});
-  expect_rect("center anchor at 81x25 lands on the same cell", resolve(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(20), Dim::abs(10), Anchor::Center), {0, 0, 81, 25}), {30, 7, 20, 10});
-  expect_rect("center anchor, odd size (integer half)", resolve(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(21), Dim::abs(11), Anchor::Center), scr), {30, 7, 21, 11});
-  expect_rect("bottom-right anchor", resolve(P(Dim::rel(1), Dim::rel(1), Dim::abs(10), Dim::abs(3), Anchor::BottomRight), scr), {70, 21, 10, 3});
-  expect_rect("right anchor with a rel width floors (no edge rule)", resolve(P(Dim::rel(1), A0, Dim::rel(0.25), Dim::rel(1), Anchor::Right), {0, 0, 81, 1}), {61, 0, 20, 1});
-  expect_rect("right anchor at x rel(0.5) w rel(0.5) sizes 40 at 81", resolve(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1), Anchor::Right), {0, 0, 81, 1}), {0, 0, 40, 1});
-  expect_rect("top anchor centres horizontally only", resolve(P(Dim::rel(0.5), Dim::abs(2), Dim::abs(10), Dim::abs(4), Anchor::Top), scr), {35, 2, 10, 4});
-  expect_rect("clamp moves an overflowing x back", resolve(P(Dim::abs(75), A0, Dim::abs(10), Dim::abs(2)), scr), {70, 0, 10, 2});
-  expect_rect("clamp off leaves the overflow", resolve(P(Dim::abs(75), A0, Dim::abs(10), Dim::abs(2), Anchor::TopLeft, false), scr), {75, 0, 10, 2});
-  expect_rect("clamp shrinks an oversize width to the parent", resolve(P(A0, A0, Dim::abs(100), Dim::abs(2)), scr), {0, 0, 80, 2});
-  expect_rect("clamp lifts a negative x", resolve(P(Dim::abs(-5), Dim::abs(-1), Dim::abs(10), Dim::abs(2)), scr), {0, 0, 10, 2});
-  expect_rect("clamp off keeps a negative x", resolve(P(Dim::abs(-5), A0, Dim::abs(10), Dim::abs(2), Anchor::TopLeft, false), scr), {-5, 0, 10, 2});
+  expect_rect("center anchor, even size", place(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(20), Dim::abs(10), Anchor::Center), scr), {30, 7, 20, 10});
+  expect_rect("center anchor at 81x25 lands on the same cell", place(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(20), Dim::abs(10), Anchor::Center), {0, 0, 81, 25}), {30, 7, 20, 10});
+  expect_rect("center anchor, odd size (integer half)", place(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(21), Dim::abs(11), Anchor::Center), scr), {30, 7, 21, 11});
+  expect_rect("bottom-right anchor", place(P(Dim::rel(1), Dim::rel(1), Dim::abs(10), Dim::abs(3), Anchor::BottomRight), scr), {70, 21, 10, 3});
+  expect_rect("right anchor with a rel width floors (no edge rule)", place(P(Dim::rel(1), A0, Dim::rel(0.25), Dim::rel(1), Anchor::Right), {0, 0, 81, 1}), {61, 0, 20, 1});
+  expect_rect("right anchor at x rel(0.5) w rel(0.5) sizes 40 at 81", place(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1), Anchor::Right), {0, 0, 81, 1}), {0, 0, 40, 1});
+  expect_rect("top anchor centres horizontally only", place(P(Dim::rel(0.5), Dim::abs(2), Dim::abs(10), Dim::abs(4), Anchor::Top), scr), {35, 2, 10, 4});
+  expect_rect("clamp moves an overflowing x back", place(P(Dim::abs(75), A0, Dim::abs(10), Dim::abs(2)), scr), {70, 0, 10, 2});
+  expect_rect("clamp off leaves the overflow", place(P(Dim::abs(75), A0, Dim::abs(10), Dim::abs(2), Anchor::TopLeft, false), scr), {75, 0, 10, 2});
+  expect_rect("clamp shrinks an oversize width to the parent", place(P(A0, A0, Dim::abs(100), Dim::abs(2)), scr), {0, 0, 80, 2});
+  expect_rect("clamp lifts a negative x", place(P(Dim::abs(-5), Dim::abs(-1), Dim::abs(10), Dim::abs(2)), scr), {0, 0, 10, 2});
+  expect_rect("clamp off keeps a negative x", place(P(Dim::abs(-5), A0, Dim::abs(10), Dim::abs(2), Anchor::TopLeft, false), scr), {-5, 0, 10, 2});
   {
     Placement p = P(A0, A0, Dim::rel(0.5), Dim::rel(1));
     p.max_w = Dim::abs(30);
-    expect_rect("max_w caps", resolve(p, scr), {0, 0, 30, 24});
+    expect_rect("max_w caps", place(p, scr), {0, 0, 30, 24});
     p.min_w = Dim::abs(50);
-    expect_rect("min wins over max", resolve(p, scr), {0, 0, 50, 24});
+    expect_rect("min wins over max", place(p, scr), {0, 0, 50, 24});
     Placement q = P(A0, A0, Dim::rel(0.5), Dim::rel(1));
     q.max_w = Dim::rel(0.25);
-    expect_rect("max in rel units", resolve(q, scr), {0, 0, 20, 24});
+    expect_rect("max in rel units", place(q, scr), {0, 0, 20, 24});
   }
-  expect_rect("parent offset is added", resolve(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), {10, 5, 60, 10}), {40, 5, 30, 10});
-  expect_rect("zero parent: rel → empty", resolve(P(A0, A0, Dim::rel(1), Dim::rel(1)), {0, 0, 0, 0}), {0, 0, 0, 0});
-  expect_rect("zero parent: abs clamps to empty", resolve(P(A0, A0, Dim::abs(5), Dim::abs(5)), {3, 3, 0, 0}), {3, 3, 0, 0});
-  expect_rect("centred popup wider than a small parent clamps to it", resolve(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(30), Dim::abs(30), Anchor::Center), {0, 0, 20, 10}), {0, 0, 20, 10});
+  expect_rect("parent offset is added", place(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), {10, 5, 60, 10}), {40, 5, 30, 10});
+  expect_rect("zero parent: rel → empty", place(P(A0, A0, Dim::rel(1), Dim::rel(1)), {0, 0, 0, 0}), {0, 0, 0, 0});
+  expect_rect("zero parent: abs clamps to empty", place(P(A0, A0, Dim::abs(5), Dim::abs(5)), {3, 3, 0, 0}), {3, 3, 0, 0});
+  expect_rect("centred popup wider than a small parent clamps to it", place(P(Dim::rel(0.5), Dim::rel(0.5), Dim::abs(30), Dim::abs(30), Anchor::Center), {0, 0, 20, 10}), {0, 0, 20, 10});
   {
     // The help popup as every built-in declares it: mixed units, centred, min/max.
     Placement p = P(Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.6), Dim::abs(12), Anchor::Center);
     p.min_w = Dim::abs(24);
     p.max_w = Dim::abs(72);
-    expect_rect("help popup at 80x24", resolve(p, scr), {16, 6, 48, 12});
-    expect_rect("help popup re-placed at 120x40", resolve(p, {0, 0, 120, 40}), {24, 14, 72, 12});
-    expect_rect("help popup at 40x12 (min_w, clamp)", resolve(p, {0, 0, 40, 12}), {8, 0, 24, 12});
-    expect_rect("help popup at 20x8 (clamped to the parent)", resolve(p, {0, 0, 20, 8}), {0, 0, 20, 8});
+    expect_rect("help popup at 80x24", place(p, scr), {16, 6, 48, 12});
+    expect_rect("help popup re-placed at 120x40", place(p, {0, 0, 120, 40}), {24, 14, 72, 12});
+    expect_rect("help popup at 40x12 (min_w, clamp)", place(p, {0, 0, 40, 12}), {8, 0, 24, 12});
+    expect_rect("help popup at 20x8 (clamped to the parent)", place(p, {0, 0, 20, 8}), {0, 0, 20, 8});
   }
 
   // ---- 1b. the tiling properties at every width ----------------------------------------
@@ -154,19 +243,19 @@ int main() {
     const double fs[] = {0.1, 1.0 / 3, 0.5, 0.75, 0.9};
     for (int W = 0; W <= 300; ++W) {
       Rect par{0, 0, W, 1};
-      Rect a = resolve(P(A0, A0, Dim::rel(0.5), Dim::rel(1)), par);
-      Rect b = resolve(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), par);
+      Rect a = place(P(A0, A0, Dim::rel(0.5), Dim::rel(1)), par);
+      Rect b = place(P(Dim::rel(0.5), A0, Dim::rel(0.5), Dim::rel(1)), par);
       if (!(a.x == 0 && b.x == a.w && a.w + b.w == W)) ++bad_halves;
       int pos = 0;
       for (int q = 0; q < 4; ++q) {
-        Rect r = resolve(P(Dim::rel(q * 0.25), A0, Dim::rel(0.25), Dim::rel(1)), par);
+        Rect r = place(P(Dim::rel(q * 0.25), A0, Dim::rel(0.25), Dim::rel(1)), par);
         if (r.x != pos) ++bad_quarters;
         pos += r.w;
       }
       if (pos != W) ++bad_quarters;
-      if (resolve(P(A0, A0, Dim::rel(1), Dim::rel(1)), par).w != W) ++bad_fill;
+      if (place(P(A0, A0, Dim::rel(1), Dim::rel(1)), par).w != W) ++bad_fill;
       for (double f : fs) {
-        Rect r = resolve(P(Dim::rel(0.5), A0, Dim::rel(f), Dim::rel(1)), par);
+        Rect r = place(P(Dim::rel(0.5), A0, Dim::rel(f), Dim::rel(1)), par);
         int fl = static_cast<int>(std::floor(f * W + 1e-6));
         int want_max = std::min(fl + 1, W - r.x);
         if (r.w < std::min(fl, W - r.x) || r.w > want_max) ++bad_floor;
@@ -180,26 +269,26 @@ int main() {
 
   // ---- 2. text forms -----------------------------------------------------------------------
   std::printf("-- text forms\n");
-  check(parse_dim("50%") == Dim::rel(0.5), "parse_dim 50%");
-  check(parse_dim("100% - 32") == Dim::rel(1, -32), "parse_dim '100% - 32'");
-  check(parse_dim("100%-32") == Dim::rel(1, -32), "parse_dim '100%-32'");
-  check(parse_dim("25% + 2") == Dim::rel(0.25, 2), "parse_dim '25% + 2'");
-  check(parse_dim(" 0% ") == Dim::rel(0), "parse_dim ' 0% '");
-  check(parse_dim("12.5%") == Dim::rel(0.125), "parse_dim 12.5%");
-  check(!parse_dim("32"), "parse_dim rejects a bare number (cells are a JSON number, not a string)");
-  check(!parse_dim("abc"), "parse_dim rejects 'abc'");
-  check(!parse_dim("50% * 2"), "parse_dim rejects an unknown operator");
-  check(!parse_dim("%"), "parse_dim rejects '%'");
-  check(dim_to_string(Dim::abs(32)) == "32", "dim_to_string abs");
-  check(dim_to_string(Dim::rel(0.5)) == "50%", "dim_to_string 50%");
-  check(dim_to_string(Dim::rel(1, -32)) == "100% - 32", "dim_to_string '100% - 32'");
-  check(dim_to_string(Dim::rel(0.25, 2)) == "25% + 2", "dim_to_string '25% + 2'");
-  check(parse_split_size("fill") == SplitSize::filling(1), "parse_split_size fill");
-  check(parse_split_size("fill 3") == SplitSize::filling(3), "parse_split_size 'fill 3'");
-  check(parse_split_size("40%") == SplitSize::fixed(Dim::rel(0.4)), "parse_split_size 40%");
-  check(!parse_split_size("fill 0"), "parse_split_size rejects a zero weight");
-  check(!parse_split_size("3"), "parse_split_size rejects a bare number string");
-  check(split_size_to_string(SplitSize::filling(2)) == "fill 2" && split_size_to_string(SplitSize::fixed(Dim::abs(3))) == "3",
+  check(parse_dim_c("50%") == Dim::rel(0.5), "parse_dim 50%");
+  check(parse_dim_c("100% - 32") == Dim::rel(1, -32), "parse_dim '100% - 32'");
+  check(parse_dim_c("100%-32") == Dim::rel(1, -32), "parse_dim '100%-32'");
+  check(parse_dim_c("25% + 2") == Dim::rel(0.25, 2), "parse_dim '25% + 2'");
+  check(parse_dim_c(" 0% ") == Dim::rel(0), "parse_dim ' 0% '");
+  check(parse_dim_c("12.5%") == Dim::rel(0.125), "parse_dim 12.5%");
+  check(!parse_dim_c("32"), "parse_dim rejects a bare number (cells are a JSON number, not a string)");
+  check(!parse_dim_c("abc"), "parse_dim rejects 'abc'");
+  check(!parse_dim_c("50% * 2"), "parse_dim rejects an unknown operator");
+  check(!parse_dim_c("%"), "parse_dim rejects '%'");
+  check(dim_to_string_c(Dim::abs(32)) == "32", "dim_to_string abs");
+  check(dim_to_string_c(Dim::rel(0.5)) == "50%", "dim_to_string 50%");
+  check(dim_to_string_c(Dim::rel(1, -32)) == "100% - 32", "dim_to_string '100% - 32'");
+  check(dim_to_string_c(Dim::rel(0.25, 2)) == "25% + 2", "dim_to_string '25% + 2'");
+  check(parse_split_size_c("fill") == SplitSize::filling(1), "parse_split_size fill");
+  check(parse_split_size_c("fill 3") == SplitSize::filling(3), "parse_split_size 'fill 3'");
+  check(parse_split_size_c("40%") == SplitSize::fixed(Dim::rel(0.4)), "parse_split_size 40%");
+  check(!parse_split_size_c("fill 0"), "parse_split_size rejects a zero weight");
+  check(!parse_split_size_c("3"), "parse_split_size rejects a bare number string");
+  check(split_size_to_string_c(SplitSize::filling(2)) == "fill 2" && split_size_to_string_c(SplitSize::fixed(Dim::abs(3))) == "3",
         "split_size_to_string");
   check(anchor_from_name("bottom-right") == Anchor::BottomRight && anchor_name(Anchor::Center) == "center" && !anchor_from_name("middle"),
         "anchor names");
@@ -261,27 +350,27 @@ int main() {
   std::printf("-- split\n");
   {
     // Fixed + fill: sums to the extent. No borders: no sharing.
-    Node root = Node::row({win("a", SplitSize::fixed(Dim::abs(10)), Border::None), win("b", {}, Border::None), win("c", SplitSize::fixed(Dim::rel(0.25)), Border::None)});
-    auto v = resolve_tree(root, {0, 0, 81, 5}, {0, 0, 81, 5});
+    Node root = row_of({win("a", SplitSize::fixed(Dim::abs(10)), Border::None), win("b", {}, Border::None), win("c", SplitSize::fixed(Dim::rel(0.25)), Border::None)});
+    auto v = resolve_tree_c(root, {0, 0, 81, 5}, {0, 0, 81, 5});
     expect_rect("fixed abs 10", by_id(v, "a")->outer, {0, 0, 10, 5});
     expect_rect("rel 25% of 81 floors to 20 (cumulative edge: 10+25% → 30)", by_id(v, "c")->outer, {61, 0, 20, 5});
     expect_rect("fill takes the remainder", by_id(v, "b")->outer, {10, 0, 51, 5});
   }
   {
-    Node root = Node::row({win("a", SplitSize::fixed(Dim::rel(0.5)), Border::None), win("b", SplitSize::fixed(Dim::rel(0.5)), Border::None)});
+    Node root = row_of({win("a", SplitSize::fixed(Dim::rel(0.5)), Border::None), win("b", SplitSize::fixed(Dim::rel(0.5)), Border::None)});
     int bad = 0;
     for (int W = 0; W <= 200; ++W) {
-      auto v = resolve_tree(root, {0, 0, W, 1}, {0, 0, W, 1});
+      auto v = resolve_tree_c(root, {0, 0, W, 1}, {0, 0, W, 1});
       const ResolvedNode *a = by_id(v, "a"), *b = by_id(v, "b");
       if (!(a->outer.x == 0 && b->outer.x == a->outer.w && a->outer.w + b->outer.w == W)) ++bad;
     }
     check(bad == 0, "50% + 50% in a row tiles at every width 0..200 (" + std::to_string(bad) + " bad)");
   }
   {
-    Node root = Node::column({win("a", SplitSize::filling(1), Border::None), win("b", SplitSize::filling(2), Border::None), win("c", SplitSize::fixed(Dim::abs(3)), Border::None)});
+    Node root = column_of({win("a", SplitSize::filling(1), Border::None), win("b", SplitSize::filling(2), Border::None), win("c", SplitSize::fixed(Dim::abs(3)), Border::None)});
     int bad = 0;
     for (int H = 0; H <= 200; ++H) {
-      auto v = resolve_tree(root, {0, 0, 10, H}, {0, 0, 10, H});
+      auto v = resolve_tree_c(root, {0, 0, 10, H}, {0, 0, 10, H});
       const ResolvedNode *a = by_id(v, "a"), *b = by_id(v, "b"), *c = by_id(v, "c");
       int rem = std::max(H - 3, 0);
       if (!(a->outer.h + b->outer.h == rem && a->outer.h == rem / 3 && c->outer.h == std::min(3, H) && c->outer.y == a->outer.h + b->outer.h)) ++bad;
@@ -290,47 +379,47 @@ int main() {
   }
   {
     // Shared edge: both bordered → overlap by one; the pair spans the extent exactly.
-    Node root = Node::row({win("a", SplitSize::fixed(Dim::abs(32))), win("b")});
-    auto v = resolve_tree(root, {0, 0, 80, 10}, {0, 0, 80, 10});
+    Node root = row_of({win("a", SplitSize::fixed(Dim::abs(32))), win("b")});
+    auto v = resolve_tree_c(root, {0, 0, 80, 10}, {0, 0, 80, 10});
     expect_rect("bordered a keeps its 32", by_id(v, "a")->outer, {0, 0, 32, 10});
     expect_rect("bordered b starts on a's right border and reaches the edge", by_id(v, "b")->outer, {31, 0, 49, 10});
     expect_rect("b's inner excludes both borders", by_id(v, "b")->inner, {32, 1, 47, 8});
-    Node root2 = Node::row({win("a", SplitSize::fixed(Dim::abs(32)), Border::None), win("b")});
-    auto v2 = resolve_tree(root2, {0, 0, 80, 10}, {0, 0, 80, 10});
+    Node root2 = row_of({win("a", SplitSize::fixed(Dim::abs(32)), Border::None), win("b")});
+    auto v2 = resolve_tree_c(root2, {0, 0, 80, 10}, {0, 0, 80, 10});
     expect_rect("one side unbordered: no sharing", by_id(v2, "b")->outer, {32, 0, 48, 10});
   }
   {
     // A column whose children are all bordered is bordered on its side; a mixed one is not.
-    Node all = Node::row({Node::column({win("t"), win("i", SplitSize::fixed(Dim::abs(3)))}), win("s", SplitSize::fixed(Dim::abs(32)))});
-    auto v = resolve_tree(all, {0, 0, 80, 24}, {0, 0, 80, 24});
+    Node all = row_of({column_of({win("t"), win("i", SplitSize::fixed(Dim::abs(3)))}), win("s", SplitSize::fixed(Dim::abs(32)))});
+    auto v = resolve_tree_c(all, {0, 0, 80, 24}, {0, 0, 80, 24});
     expect_rect("status shares the column's right edge", by_id(v, "s")->outer, {48, 0, 32, 24});
     expect_rect("transcript spans to the shared column", by_id(v, "t")->outer, {0, 0, 49, 22});
     expect_rect("input shares the transcript's bottom edge", by_id(v, "i")->outer, {0, 21, 49, 3});
-    Node mixed = Node::row({Node::column({win("t"), win("i", SplitSize::fixed(Dim::abs(3)), Border::None)}), win("s", SplitSize::fixed(Dim::abs(32)))});
-    auto v2 = resolve_tree(mixed, {0, 0, 80, 24}, {0, 0, 80, 24});
+    Node mixed = row_of({column_of({win("t"), win("i", SplitSize::fixed(Dim::abs(3)), Border::None)}), win("s", SplitSize::fixed(Dim::abs(32)))});
+    auto v2 = resolve_tree_c(mixed, {0, 0, 80, 24}, {0, 0, 80, 24});
     expect_rect("a column with an unbordered child does not share", by_id(v2, "s")->outer, {48, 0, 32, 24});
     expect_rect("…so the transcript stops short of it", by_id(v2, "t")->outer, {0, 0, 48, 21});
   }
   {
-    Node root = Node::row({win("a", SplitSize::fixed(Dim::abs(10)), Border::None), win("hidden", {}, Border::None), win("b", {}, Border::None)});
+    Node root = row_of({win("a", SplitSize::fixed(Dim::abs(10)), Border::None), win("hidden", {}, Border::None), win("b", {}, Border::None)});
     root.children[1].visible = false;
-    auto v = resolve_tree(root, {0, 0, 50, 1}, {0, 0, 50, 1});
+    auto v = resolve_tree_c(root, {0, 0, 50, 1}, {0, 0, 50, 1});
     check(by_id(v, "hidden") == nullptr, "a hidden node is not resolved");
     expect_rect("…and takes no space", by_id(v, "b")->outer, {10, 0, 40, 1});
   }
   {
-    Node root = Node::row({win("a", SplitSize::fixed(Dim::abs(30)), Border::None), win("b", SplitSize::fixed(Dim::abs(30)), Border::None), win("c", SplitSize::fixed(Dim::abs(30)), Border::None)});
-    auto v = resolve_tree(root, {0, 0, 50, 1}, {0, 0, 50, 1});
+    Node root = row_of({win("a", SplitSize::fixed(Dim::abs(30)), Border::None), win("b", SplitSize::fixed(Dim::abs(30)), Border::None), win("c", SplitSize::fixed(Dim::abs(30)), Border::None)});
+    auto v = resolve_tree_c(root, {0, 0, 50, 1}, {0, 0, 50, 1});
     expect_rect("overflow: second is clipped", by_id(v, "b")->outer, {30, 0, 20, 1});
     expect_rect("overflow: third gets 0", by_id(v, "c")->outer, {50, 0, 0, 1});
-    Node root2 = Node::row({win("a", SplitSize::fixed(Dim::abs(10)), Border::None), win("b", SplitSize::fixed(Dim::abs(10)), Border::None)});
-    auto v2 = resolve_tree(root2, {0, 0, 50, 1}, {0, 0, 50, 1});
+    Node root2 = row_of({win("a", SplitSize::fixed(Dim::abs(10)), Border::None), win("b", SplitSize::fixed(Dim::abs(10)), Border::None)});
+    auto v2 = resolve_tree_c(root2, {0, 0, 50, 1}, {0, 0, 50, 1});
     expect_rect("shortfall with no fill leaves space, no stretch", by_id(v2, "b")->outer, {10, 0, 10, 1});
   }
   {
-    Node root = Node::column({win("a"), win("b", SplitSize::fixed(Dim::abs(3)))});
+    Node root = column_of({win("a"), win("b", SplitSize::fixed(Dim::abs(3)))});
     root.border = Border::Single;
-    auto v = resolve_tree(root, {0, 0, 40, 10}, {0, 0, 40, 10});
+    auto v = resolve_tree_c(root, {0, 0, 40, 10}, {0, 0, 40, 10});
     expect_rect("a bordered container splits its inner rect", by_id(v, "a")->outer, {1, 1, 38, 6});
     expect_rect("…bottom child shares a's edge", by_id(v, "b")->outer, {1, 6, 38, 3});
     check(v.front().node == &root && v.size() == 3, "tree order: container first, then children");
@@ -381,16 +470,24 @@ int main() {
   }
   {
     // draw_border on its own, and the degenerate sizes.
-    Frame f(10, 3, {});
-    draw_border(f, {0, 0, 10, 3}, Border::Double, {}, "ab", {});
-    check(cell(f, 0, 0) == "╔" && cell(f, 9, 2) == "╝" && cell(f, 2, 0) == "a" && cell(f, 5, 0) == "═" && cell(f, 0, 1) == "║", "double border with title");
-    Frame g(10, 3, {});
-    draw_border(g, {0, 0, 1, 3}, Border::Single, {}, "", {});
-    check(cell(g, 0, 0) == "╷" && cell(g, 0, 1) == "│" && cell(g, 0, 2) == "╵", "a 1-wide border is a vertical line");
-    draw_border(g, {2, 0, 3, 1}, Border::Single, {}, "", {});
-    check(cell(g, 2, 0) == "╶" && cell(g, 3, 0) == "─" && cell(g, 4, 0) == "╴", "a 1-high border is a horizontal line");
-    draw_border(g, {-2, -1, 5, 3}, Border::Single, {}, "", {});
-    check(cell(g, 2, 1) == "┘" && cell(g, 0, 1) == "─", "a border partly off-frame is clipped, not wrapped");
+    RolltuiDrawScratch* scratch = rolltui_draw_scratch_new();
+    RolltuiFrame* f = rolltui_frame_new(10, 3, Style{});
+    rolltui_draw_border(f, scratch, Rect{0, 0, 10, 3}, static_cast<unsigned char>(Border::Double), Style{}, "ab", 2,
+                       Style{}, 0);
+    check(cell_c(f, 0, 0) == "╔" && cell_c(f, 9, 2) == "╝" && cell_c(f, 2, 0) == "a" && cell_c(f, 5, 0) == "═" && cell_c(f, 0, 1) == "║", "double border with title");
+    RolltuiFrame* g = rolltui_frame_new(10, 3, Style{});
+    rolltui_draw_border(g, scratch, Rect{0, 0, 1, 3}, static_cast<unsigned char>(Border::Single), Style{}, "", 0,
+                       Style{}, 0);
+    check(cell_c(g, 0, 0) == "╷" && cell_c(g, 0, 1) == "│" && cell_c(g, 0, 2) == "╵", "a 1-wide border is a vertical line");
+    rolltui_draw_border(g, scratch, Rect{2, 0, 3, 1}, static_cast<unsigned char>(Border::Single), Style{}, "", 0,
+                       Style{}, 0);
+    check(cell_c(g, 2, 0) == "╶" && cell_c(g, 3, 0) == "─" && cell_c(g, 4, 0) == "╴", "a 1-high border is a horizontal line");
+    rolltui_draw_border(g, scratch, Rect{-2, -1, 5, 3}, static_cast<unsigned char>(Border::Single), Style{}, "", 0,
+                       Style{}, 0);
+    check(cell_c(g, 2, 1) == "┘" && cell_c(g, 0, 1) == "─", "a border partly off-frame is clipped, not wrapped");
+    rolltui_draw_scratch_free(scratch);
+    rolltui_frame_free(f);
+    rolltui_frame_free(g);
   }
 
   // ---- 6. the stack ----------------------------------------------------------------------------
@@ -1190,7 +1287,7 @@ int main() {
   {
     struct Case {
       const char* name;
-      Widget::ScrollExtent e;
+      RolltuiScrollExtent e;
       int track;
       bool drawn;
       int offset, length;
@@ -1220,8 +1317,8 @@ int main() {
         {"first past the end clamps to the bottom", {999, 10, 100}, 10, true, 9, 1},
     };
     for (const Case& c : cases) {
-      ScrollThumb t{-1, -1};
-      const bool drawn = scroll_thumb(c.e, c.track, t);
+      RolltuiScrollThumb t{-1, -1};
+      const bool drawn = rolltui_scroll_thumb(&c.e, c.track, &t) != 0;
       const bool ok = drawn == c.drawn && (!drawn || (t.offset == c.offset && t.length == c.length));
       check(ok, std::string("thumb: ") + c.name + " → " + (drawn ? std::to_string(t.offset) + "+" + std::to_string(t.length) : "no bar"));
       if (drawn) check(t.offset >= 0 && t.length >= 1 && t.offset + t.length <= c.track,
@@ -1229,12 +1326,13 @@ int main() {
     }
     // The inverse round-trips at both ends, which is what makes a drag land where the
     // pointer is rather than one cell off.
-    const Widget::ScrollExtent e{0, 10, 100};
-    check(scroll_first_for_cell(e, 10, 0) == 0, "cell 0 of the track is the first line");
-    check(scroll_first_for_cell(e, 10, 9) == 90, "the last cell is the last scroll position");
-    check(scroll_first_for_cell(e, 10, -5) == 0 && scroll_first_for_cell(e, 10, 99) == 90,
+    const RolltuiScrollExtent e{0, 10, 100};
+    check(rolltui_scroll_first_for_cell(&e, 10, 0) == 0, "cell 0 of the track is the first line");
+    check(rolltui_scroll_first_for_cell(&e, 10, 9) == 90, "the last cell is the last scroll position");
+    check(rolltui_scroll_first_for_cell(&e, 10, -5) == 0 && rolltui_scroll_first_for_cell(&e, 10, 99) == 90,
           "a cell outside the track clamps rather than running off either end");
-    check(scroll_first_for_cell({0, 10, 10}, 10, 5) == 0, "…and a document that fits has one position: 0");
+    const RolltuiScrollExtent fits{0, 10, 10};
+    check(rolltui_scroll_first_for_cell(&fits, 10, 5) == 0, "…and a document that fits has one position: 0");
 
     // ---- the bar END TO END: the window draws it and drives the widget ----------------
     // The point of the milestone as the user re-scoped it: a widget OPTS IN, the window
@@ -1315,8 +1413,9 @@ int main() {
     for (std::size_t total = 12; total <= 400; total += 7)
       for (int track = 3; track <= 24; ++track)
         for (std::size_t first = 0; first + 10 <= total; ++first) {
-          ScrollThumb t;
-          if (!scroll_thumb({first, 10, total}, track, t)) continue;
+          RolltuiScrollThumb t;
+          const RolltuiScrollExtent extent{first, 10, total};
+          if (!rolltui_scroll_thumb(&extent, track, &t)) continue;
           if (track - t.length < 2) { degenerate_seen = true; continue; }
           const bool at_top = first == 0, at_bottom = first == total - 10;
           if ((t.offset == 0) != at_top || (t.offset + t.length == track) != at_bottom) {
