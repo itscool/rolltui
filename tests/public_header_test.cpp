@@ -106,7 +106,7 @@ int main() {
                         "rolltui_wrap.h", "rolltui_effects.h", "rolltui_theme.h", "rolltui_theme_analysis.h",
                         "rolltui_theme_gen.h", "rolltui_bindings.h", "rolltui_keys.h", "rolltui_layout.h",
                         "rolltui_layout_tree.h", "rolltui_widgets.h", "rolltui_document.h", "rolltui_input.h",
-                        "rolltui_menu.h", "rolltui_menu_tree.h", "rolltui_transcript.h",
+                        "rolltui_menu.h", "rolltui_menu_tree.h", "rolltui_transcript.h", "rolltui_undo.h",
                         "rolltui_app_profile.h", "rolltui_json.h", "rolltui_presets.h",
                         "rolltui_lifetime.h", "rolltui_mem.h", "rolltui_terminal.h"}) {
     if (text.find(std::string("rolltui/c/") + h) == std::string::npos) {
@@ -114,7 +114,7 @@ int main() {
       names += std::string(" ") + h;
     }
   }
-  check(missing == 0, "every public header is named by the umbrella —" + (missing ? names : std::string(" all 33")));
+  check(missing == 0, "every public header is named by the umbrella —" + (missing ? names : std::string(" all 34")));
 
   for (const char* h : kInternal)
     check(text.find(std::string("rolltui/c/") + h) == std::string::npos,

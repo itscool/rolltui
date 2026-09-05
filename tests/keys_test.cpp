@@ -2,30 +2,94 @@
 // keys_test.cpp — the bytes → events table for KeyDecoder, incl. split feeds, the
 // lone-ESC flush, SGR mouse and bracketed paste.
 //
+#include <cstddef>
 #include <string>
 #include <vector>
 
-#include "rolltui/Keys.hpp"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 namespace {
 
-std::string names(const std::vector<Event>& v) {
+// event_to_string mirrors rolltui::to_string(Event) (rolltui/Keys.cpp) one level down,
+// directly over RolltuiEvent: display vocabulary the boundary deliberately does not
+// carry (rolltui/c/rolltui_keys.h), so there is no C function for it — only the C
+// struct's own fields.
+std::string event_to_string(const RolltuiEvent& e) {
+  static const char* key_names[] = {"Char", "Enter", "Tab", "Backspace", "Escape", "Up", "Down", "Left", "Right",
+                                    "Home", "End", "PageUp", "PageDown", "Insert", "Delete", "F1", "F2", "F3",
+                                    "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "Unknown"};
+  static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
+  switch (e.kind) {
+    case ROLLTUI_EVENT_MOUSE: {
+      std::string s = "Mouse ";
+      if (e.mouse.ctrl) s += "Ctrl+";
+      if (e.mouse.alt) s += "Alt+";
+      if (e.mouse.shift) s += "Shift+";
+      s += mouse_kinds[static_cast<int>(e.mouse.kind)];
+      if (e.mouse.button) s += " " + std::to_string(e.mouse.button);
+      return s + " @" + std::to_string(e.mouse.x) + "," + std::to_string(e.mouse.y);
+    }
+    case ROLLTUI_EVENT_PASTE:
+      return "Paste(" + std::to_string(e.text_len) + " bytes)";
+    default: {
+      std::string s;
+      if (e.key.ctrl) s += "Ctrl+";
+      if (e.key.alt) s += "Alt+";
+      if (e.key.shift) s += "Shift+";
+      if (e.key.key == ROLLTUI_KEY_CHAR) {
+        char buf[4];
+        const std::size_t n = rolltui_u_append_utf8(e.key.ch, buf);
+        s.append(buf, n);
+      } else {
+        s += key_names[e.key.key];
+      }
+      if (e.key.key == ROLLTUI_KEY_UNKNOWN) s += "(" + std::string(e.text ? e.text : "", e.text ? e.text_len : 0) + ")";
+      return s;
+    }
+  }
+}
+
+// The sink the decoder emits through: one event appended per call, with the borrowed
+// bytes copied HERE, inside the window the boundary states, and nowhere else — the
+// same shape as rolltui/Keys.cpp's own `collect`, just formatting instead of building
+// a variant.
+void collect(void* ctx, const RolltuiEvent* e) {
+  static_cast<std::vector<std::string>*>(ctx)->push_back(event_to_string(*e));
+}
+
+void capture_paste(void* ctx, const RolltuiEvent* e) {
+  if (e->kind == ROLLTUI_EVENT_PASTE) *static_cast<std::string*>(ctx) = std::string(e->text, e->text_len);
+}
+
+std::vector<std::string> feed_events(RolltuiKeyDecoder* d, const std::string& bytes) {
+  std::vector<std::string> out;
+  rolltui_key_decoder_feed(d, bytes.data(), bytes.size(), collect, &out);
+  return out;
+}
+
+std::vector<std::string> flush_events(RolltuiKeyDecoder* d) {
+  std::vector<std::string> out;
+  rolltui_key_decoder_flush(d, collect, &out);
+  return out;
+}
+
+std::string names(const std::vector<std::string>& v) {
   std::string s;
-  for (const Event& e : v) s += (s.empty() ? "" : " | ") + to_string(e);
+  for (const std::string& x : v) s += (s.empty() ? "" : " | ") + x;
   return s;
 }
 
-void table(const std::string& bytes, const std::string& want, bool flush = false) {
-  KeyDecoder d;
-  std::vector<Event> ev = d.feed(bytes);
-  if (flush) {
-    std::vector<Event> more = d.flush();
+void table(const std::string& bytes, const std::string& want, bool flush_after = false) {
+  RolltuiKeyDecoder* d = rolltui_key_decoder_new();
+  std::vector<std::string> ev = feed_events(d, bytes);
+  if (flush_after) {
+    std::vector<std::string> more = flush_events(d);
     ev.insert(ev.end(), more.begin(), more.end());
   }
+  rolltui_key_decoder_free(d);
   std::string got = names(ev);
   std::string shown;
   for (char c : bytes) shown += (c == '\x1b') ? std::string("ESC") : (static_cast<unsigned char>(c) < 0x20 ? "^" + std::string(1, static_cast<char>(c + '@')) : std::string(1, c));
@@ -130,35 +194,42 @@ int main() {
 
   // Split feeds: sequences cut at the read boundary complete on the next feed.
   {
-    KeyDecoder d;
-    std::vector<Event> a = d.feed("\x1b[");
-    std::vector<Event> b = d.feed("A");
+    RolltuiKeyDecoder* d = rolltui_key_decoder_new();
+    std::vector<std::string> a = feed_events(d, "\x1b[");
+    std::vector<std::string> b = feed_events(d, "A");
     check(a.empty() && names(b) == "Up", "CSI split across feeds completes");
-    KeyDecoder e;
-    std::vector<Event> c = e.feed("\xE4\xB8");
-    std::vector<Event> f = e.feed("\xAD");
+    rolltui_key_decoder_free(d);
+    RolltuiKeyDecoder* e = rolltui_key_decoder_new();
+    std::vector<std::string> c = feed_events(e, "\xE4\xB8");
+    std::vector<std::string> f = feed_events(e, "\xAD");
     check(c.empty() && names(f) == "\xE4\xB8\xAD", "UTF-8 split across feeds completes");
-    KeyDecoder g;
-    g.feed("\x1b[200~ab");
-    check(g.in_paste(), "paste in progress is reported");
-    std::vector<Event> h = g.feed("cd\x1b[20");
-    std::vector<Event> i = g.feed("1~");
+    rolltui_key_decoder_free(e);
+    RolltuiKeyDecoder* g = rolltui_key_decoder_new();
+    feed_events(g, "\x1b[200~ab");
+    check(rolltui_key_decoder_in_paste(g) != 0, "paste in progress is reported");
+    std::vector<std::string> h = feed_events(g, "cd\x1b[20");
+    std::vector<std::string> i = feed_events(g, "1~");
     check(h.empty() && names(i) == "Paste(4 bytes)", "paste terminator split across feeds");
-    KeyDecoder j;
-    j.feed("\x1b[200~xy");
-    check(names(j.flush()) == "Paste(2 bytes)", "an unterminated paste is delivered on flush");
-    KeyDecoder k;
-    check(names(k.feed("\xFF")) == "\xEF\xBF\xBD", "an invalid byte is U+FFFD, not silence");
-    KeyDecoder l;
-    l.feed("\xF0\x9F");
-    check(!l.feed("").size() && names(l.flush()) == "\xEF\xBF\xBD | \xEF\xBF\xBD", "a truncated sequence flushes as replacements");
+    rolltui_key_decoder_free(g);
+    RolltuiKeyDecoder* j = rolltui_key_decoder_new();
+    feed_events(j, "\x1b[200~xy");
+    check(names(flush_events(j)) == "Paste(2 bytes)", "an unterminated paste is delivered on flush");
+    rolltui_key_decoder_free(j);
+    RolltuiKeyDecoder* k = rolltui_key_decoder_new();
+    check(names(feed_events(k, "\xFF")) == "\xEF\xBF\xBD", "an invalid byte is U+FFFD, not silence");
+    rolltui_key_decoder_free(k);
+    RolltuiKeyDecoder* l = rolltui_key_decoder_new();
+    feed_events(l, "\xF0\x9F");
+    check(!feed_events(l, "").size() && names(flush_events(l)) == "\xEF\xBF\xBD | \xEF\xBF\xBD", "a truncated sequence flushes as replacements");
+    rolltui_key_decoder_free(l);
   }
   {
-    PasteEvent p;
-    KeyDecoder d;
-    for (const Event& e : d.feed("\x1b[200~line1\nline2\x1b[201~"))
-      if (const PasteEvent* pe = std::get_if<PasteEvent>(&e)) p = *pe;
-    check(p.text == "line1\nline2", "paste text is verbatim, newlines included");
+    std::string p;
+    RolltuiKeyDecoder* d = rolltui_key_decoder_new();
+    const std::string bytes = "\x1b[200~line1\nline2\x1b[201~";
+    rolltui_key_decoder_feed(d, bytes.data(), bytes.size(), capture_paste, &p);
+    rolltui_key_decoder_free(d);
+    check(p == "line1\nline2", "paste text is verbatim, newlines included");
   }
   return report("rolltui keys_test");
 }

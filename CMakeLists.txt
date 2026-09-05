@@ -137,6 +137,9 @@ add_library(rolltui STATIC
                               #   configurations, and for a second reason: a HOST fills it,
                               #   so two shapes of an entry would be two things to disagree.
   DocumentCpp.cpp             #   …and its C++ half.
+  c/rolltui_undo.c            # Phase 17: opaque-snapshot undo, the C form of the last
+                              #   pure-C++ template. The editors keep a C++ adapter of
+                              #   their own under tools/, which is a HOST's business.
   c/rolltui_library_actions.c # Phase 17: the 59 library actions as DATA, once — four
                               #   consumers had each copied them verbatim.
   c/rolltui_render.c          # the frame -> bytes step `rolltui_screen.h` deliberately

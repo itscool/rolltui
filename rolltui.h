@@ -135,6 +135,7 @@
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_menu_tree.h"
 #include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_undo.h"
 
 /* ---- files an app publishes or reads -------------------------------------------------- */
 #include "rolltui/c/rolltui_app_profile.h"

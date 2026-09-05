@@ -18,15 +18,16 @@
 //
 #include <clocale>
 #include <cstdio>
+#include <cstring>
 #include <cwchar>
 #include <functional>
 #include <string>
 #include <vector>
 
-#include "rolltui/Unicode.hpp"
+#include "rolltui/rolltui.h"
+#include "rolltui/unicode_tables.h"  // ROLLTUI_GENERALCATEGORY_Cn: the C constants, not the C++ enum
 #include "rolltui_test.hpp"
 
-using namespace rolltui::unicode;
 using namespace rolltui_test;
 
 namespace {
@@ -37,7 +38,7 @@ std::string hex(char32_t c) {
   return b;
 }
 
-int cw(std::vector<char32_t> cps, bool amb = false) { return cluster_width(cps, amb); }
+int cw(std::vector<char32_t> cps, bool amb = false) { return rolltui_u_cluster_width(cps.data(), cps.size(), amb); }
 
 // One explained disagreement: which code points it covers (by predicate over the
 // code point and the two answers) and why.
@@ -49,37 +50,41 @@ struct Known {
 }  // namespace
 
 int main() {
+  // Working memory for display_width (rolltui/c/rolltui_unicode.h): CALLER-OWNED, made
+  // once and reused for every call below, freed before the one return.
+  RolltuiUnicodeScratch* scratch = rolltui_u_scratch_new();
+
   // ---- hand table: single code points --------------------------------------------
-  check(codepoint_width('a') == 1, "a: 1");
-  check(codepoint_width(0x4E2D) == 2, "U+4E2D 中 (W): 2");
-  check(codepoint_width(0xFF21) == 2, "U+FF21 fullwidth A (F): 2");
-  check(codepoint_width(0xFF61) == 1, "U+FF61 halfwidth ideographic full stop (H): 1");
-  check(codepoint_width(0x3000) == 2, "U+3000 ideographic space (F): 2");
-  check(codepoint_width(0x1F600) == 2, "U+1F600 😀 (W): 2");
-  check(codepoint_width(0x263A) == 1, "U+263A ☺ text-presentation (N): 1");
-  check(codepoint_width(0x0301) == 0, "U+0301 combining acute (Mn): 0");
-  check(codepoint_width(0x093F) == 0, "U+093F Devanagari vowel sign I (Mc): 0 — macOS libc's answer");
-  check(codepoint_width(0x20DD) == 0, "U+20DD combining enclosing circle (Me): 0");
-  check(codepoint_width(0x200B) == 0, "U+200B zero width space (Cf): 0");
-  check(codepoint_width(0x200D) == 0, "U+200D ZWJ: 0");
-  check(codepoint_width(0xFE0F) == 0, "U+FE0F VS16: 0");
-  check(codepoint_width(0x00AD) == 0, "U+00AD soft hyphen (Default_Ignorable): 0");
-  check(codepoint_width(0x115F) == 0, "U+115F Hangul choseong filler (Default_Ignorable): 0");
-  check(codepoint_width(0x1100) == 2, "U+1100 Hangul choseong kiyeok (L, W): 2");
-  check(codepoint_width(0x1161) == 0, "U+1161 Hangul jungseong A (V): 0");
-  check(codepoint_width(0x11A8) == 0, "U+11A8 Hangul jongseong kiyeok (T): 0");
-  check(codepoint_width(0xAC01) == 2, "U+AC01 각 precomposed syllable (W): 2");
-  check(codepoint_width(0x0000) == 0, "U+0000 (Cc): 0");
-  check(codepoint_width('\t') == 0, "TAB (Cc): 0 — the wrap engine expands tabs itself");
-  check(codepoint_width(0x2028) == 0, "U+2028 line separator (Zl): 0");
-  check(codepoint_width(0x00A1) == 1, "U+00A1 ¡ (A): 1 by default");
-  check(codepoint_width(0x00A1, true) == 2, "U+00A1 ¡ (A): 2 with ambiguous_wide");
-  check(codepoint_width(0xE000) == 1, "U+E000 private use (A): 1 by default");
-  check(codepoint_width(0xFFFD) == 1, "U+FFFD replacement character (A): 1");
-  check(codepoint_width(0x20AC) == 1, "U+20AC € (A): 1 by default");
-  check(codepoint_width(0x0378) == 1, "U+0378 unassigned (N): 1");
-  check(codepoint_width(0x2A6E0) == 2, "U+2A6E0 unassigned in Plane 2 (W by @missing): 2");
-  check(codepoint_width(0x1F3FD) == 2, "U+1F3FD skin-tone modifier alone (Sk, W): 2, a colour swatch");
+  check(rolltui_u_codepoint_width('a', false) == 1, "a: 1");
+  check(rolltui_u_codepoint_width(0x4E2D, false) == 2, "U+4E2D 中 (W): 2");
+  check(rolltui_u_codepoint_width(0xFF21, false) == 2, "U+FF21 fullwidth A (F): 2");
+  check(rolltui_u_codepoint_width(0xFF61, false) == 1, "U+FF61 halfwidth ideographic full stop (H): 1");
+  check(rolltui_u_codepoint_width(0x3000, false) == 2, "U+3000 ideographic space (F): 2");
+  check(rolltui_u_codepoint_width(0x1F600, false) == 2, "U+1F600 😀 (W): 2");
+  check(rolltui_u_codepoint_width(0x263A, false) == 1, "U+263A ☺ text-presentation (N): 1");
+  check(rolltui_u_codepoint_width(0x0301, false) == 0, "U+0301 combining acute (Mn): 0");
+  check(rolltui_u_codepoint_width(0x093F, false) == 0, "U+093F Devanagari vowel sign I (Mc): 0 — macOS libc's answer");
+  check(rolltui_u_codepoint_width(0x20DD, false) == 0, "U+20DD combining enclosing circle (Me): 0");
+  check(rolltui_u_codepoint_width(0x200B, false) == 0, "U+200B zero width space (Cf): 0");
+  check(rolltui_u_codepoint_width(0x200D, false) == 0, "U+200D ZWJ: 0");
+  check(rolltui_u_codepoint_width(0xFE0F, false) == 0, "U+FE0F VS16: 0");
+  check(rolltui_u_codepoint_width(0x00AD, false) == 0, "U+00AD soft hyphen (Default_Ignorable): 0");
+  check(rolltui_u_codepoint_width(0x115F, false) == 0, "U+115F Hangul choseong filler (Default_Ignorable): 0");
+  check(rolltui_u_codepoint_width(0x1100, false) == 2, "U+1100 Hangul choseong kiyeok (L, W): 2");
+  check(rolltui_u_codepoint_width(0x1161, false) == 0, "U+1161 Hangul jungseong A (V): 0");
+  check(rolltui_u_codepoint_width(0x11A8, false) == 0, "U+11A8 Hangul jongseong kiyeok (T): 0");
+  check(rolltui_u_codepoint_width(0xAC01, false) == 2, "U+AC01 각 precomposed syllable (W): 2");
+  check(rolltui_u_codepoint_width(0x0000, false) == 0, "U+0000 (Cc): 0");
+  check(rolltui_u_codepoint_width('\t', false) == 0, "TAB (Cc): 0 — the wrap engine expands tabs itself");
+  check(rolltui_u_codepoint_width(0x2028, false) == 0, "U+2028 line separator (Zl): 0");
+  check(rolltui_u_codepoint_width(0x00A1, false) == 1, "U+00A1 ¡ (A): 1 by default");
+  check(rolltui_u_codepoint_width(0x00A1, true) == 2, "U+00A1 ¡ (A): 2 with ambiguous_wide");
+  check(rolltui_u_codepoint_width(0xE000, false) == 1, "U+E000 private use (A): 1 by default");
+  check(rolltui_u_codepoint_width(0xFFFD, false) == 1, "U+FFFD replacement character (A): 1");
+  check(rolltui_u_codepoint_width(0x20AC, false) == 1, "U+20AC € (A): 1 by default");
+  check(rolltui_u_codepoint_width(0x0378, false) == 1, "U+0378 unassigned (N): 1");
+  check(rolltui_u_codepoint_width(0x2A6E0, false) == 2, "U+2A6E0 unassigned in Plane 2 (W by @missing): 2");
+  check(rolltui_u_codepoint_width(0x1F3FD, false) == 2, "U+1F3FD skin-tone modifier alone (Sk, W): 2, a colour swatch");
 
   // ---- hand table: clusters ------------------------------------------------------
   check(cw({'e', 0x0301}) == 1, "e + U+0301: 1");
@@ -100,12 +105,16 @@ int main() {
   check(cw({0x0301}) == 0, "a lone combining mark: 0");
   check(cw({}) == 0, "empty cluster: 0");
   check(cw({0x00A1, 0x0301}, true) == 2, "ambiguous_wide flows through cluster_width");
-  check(display_width("hello") == 5, "display_width(\"hello\") = 5");
-  check(display_width("") == 0, "display_width(\"\") = 0");
-  check(display_width("\xE4\xB8\xAD\xE6\x96\x87") == 4, "display_width(\"中文\") = 4");
-  check(display_width("a\xCC\x81" "b") == 2, "display_width(a + U+0301 + b) = 2");
-  check(display_width("\xFF") == 1, "an invalid byte shows as U+FFFD: 1");
-  check(display_width("\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5\xF0\x9F\x87\xAF") == 3, "flag + lone RI = 2 + 1");
+  check(rolltui_u_display_width(scratch, "hello", std::strlen("hello"), false) == 5, "display_width(\"hello\") = 5");
+  check(rolltui_u_display_width(scratch, "", std::strlen(""), false) == 0, "display_width(\"\") = 0");
+  check(rolltui_u_display_width(scratch, "\xE4\xB8\xAD\xE6\x96\x87", std::strlen("\xE4\xB8\xAD\xE6\x96\x87"), false) == 4,
+        "display_width(\"中文\") = 4");
+  check(rolltui_u_display_width(scratch, "a\xCC\x81" "b", std::strlen("a\xCC\x81" "b"), false) == 2,
+        "display_width(a + U+0301 + b) = 2");
+  check(rolltui_u_display_width(scratch, "\xFF", std::strlen("\xFF"), false) == 1, "an invalid byte shows as U+FFFD: 1");
+  check(rolltui_u_display_width(scratch, "\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5\xF0\x9F\x87\xAF",
+                                std::strlen("\xF0\x9F\x87\xAF\xF0\x9F\x87\xB5\xF0\x9F\x87\xAF"), false) == 3,
+        "flag + lone RI = 2 + 1");
 
   // ---- the libc cross-check over the BMP -----------------------------------------
   // The control must be seen to work: under the C locale wcwidth returns -1 for
@@ -118,7 +127,7 @@ int main() {
   const std::vector<Known> known = {
       {"unassigned code points: we follow East_Asian_Width (1, or 2 inside the CJK "
        "blocks); libc returns 0 for anything its table does not know",
-       [](char32_t cp, int, int libc) { return general_category(cp) == GeneralCategory::Cn && libc == 0; }},
+       [](char32_t cp, int, int libc) { return rolltui_u_general_category(cp) == ROLLTUI_GENERALCATEGORY_Cn && libc == 0; }},
       {"assigned after libc's table was built (libc returns 0, its answer for "
        "unassigned): U+088F, 0C5C, 0CDC, 1B4E-1B4F, 1B7F, 1C89-1C8A, 20C1, 2427-2429, "
        "2B96, A7CB-A7CF, A7D2, A7D4, A7DA-A7DC, A7F1, FBC3-FBD2, FD90-FD91, FDC8-FDCE",
@@ -171,7 +180,7 @@ int main() {
     ++scanned;
     int libc = wcwidth(static_cast<wchar_t>(cp));
     if (libc < 0) libc = 0;  // "not printable" and "zero cells" are the same advance
-    int ours = codepoint_width(cp);
+    int ours = rolltui_u_codepoint_width(cp, false);
     if (ours == libc) continue;
     ++disagreements;
     int owners = 0;
@@ -191,5 +200,6 @@ int main() {
     check(claimed[i] > 0, "known entry still applies (" + std::to_string(claimed[i]) +
                               " code points): " + known[i].why);
 
+  rolltui_u_scratch_free(scratch);
   return report("rolltui width_test");
 }

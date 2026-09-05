@@ -99,8 +99,8 @@
 #include "rolltui/Keys.hpp"
 #include "rolltui/Layout.hpp"
 #include "rolltui/Menu.hpp"
-#include "rolltui/Undo.hpp"
 #include "tool_actions.hpp"
+#include "undo_stack.hpp"
 
 namespace rolltui::tools {
 

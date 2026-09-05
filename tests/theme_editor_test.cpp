@@ -9,9 +9,9 @@
 //
 #include <string>
 
-#include "rolltui/Undo.hpp"
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
+#include "undo_stack.hpp"
 
 using namespace rolltui;
 using namespace rolltui::tools;

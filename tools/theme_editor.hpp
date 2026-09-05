@@ -7,7 +7,7 @@
 // plus the recovery model the user set: every change applies LIVE to the preview as
 // the selection moves or the text is typed; Enter COMMITS, Escape (or Left) CANCELS the
 // focused change and the field returns to its committed value; Ctrl-Z / Ctrl-Y undo and
-// redo over whole-theme snapshots (rolltui/Undo.hpp); a full reset is a menu action the
+// redo over whole-theme snapshots (undo_stack.hpp); a full reset is a menu action the
 // host confirms in a popup, never a bare key. Undo and reset work blind, which is what
 // makes an editor drawn in the theme it is editing safe: an unreadable choice is felt
 // at once and undone without seeing.
@@ -36,8 +36,8 @@
 #include "rolltui/Theme.hpp"
 #include "rolltui/ThemeAnalysis.hpp"
 #include "rolltui/ThemeGen.hpp"
-#include "rolltui/Undo.hpp"
 #include "tool_actions.hpp"
+#include "undo_stack.hpp"
 
 namespace rolltui::tools {
 

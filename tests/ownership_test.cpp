@@ -394,7 +394,7 @@ int main() {
         // returning into the widget's own `std::vector`s and `unordered_map`s; what is here
         // is `RolltuiTranscript* p` in `Transcript::Handle` (the deleter of the OWNED widget)
         // and `const EntryLayout* layout_of()`, a BORROW valid until the next layout().
-        {"Transcript.hpp", 2},   {"Undo.hpp", 0},          {"Widgets.hpp", 12},
+        {"Transcript.hpp", 2},          {"Widgets.hpp", 12},
         // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
         // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
         // pointer was `const Range* table` on `lookup()`, the binary search the inline

@@ -76,7 +76,7 @@
 #include <string>
 #include <vector>
 
-#include "rolltui/Unicode.hpp"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -130,6 +130,11 @@ std::string status_line(const std::string& frame) {
 int main(int argc, char** argv) {
   const bool record = (argc > 1 && std::strcmp(argv[1], "--record") == 0);
   const std::string frames = std::string(ROLLTUI_FIXTURE_DIR) + "/frames/";
+
+  // Working memory for display_width (rolltui/c/rolltui_unicode.h): CALLER-OWNED, made
+  // once and reused for every row of every case below, freed before the one return.
+  // (named u_scratch, not scratch — that name is already the preset scratch directory's)
+  RolltuiUnicodeScratch* u_scratch = rolltui_u_scratch_new();
 
   // ---- the scratch preset directory: the screen's four files and nothing else --------
   const char* tmp = std::getenv("TMPDIR");
@@ -233,7 +238,7 @@ int main(int argc, char** argv) {
     std::string row;
     while (std::getline(in, row)) {
       ++rows;
-      if (rolltui::unicode::display_width(row) > w) {
+      if (rolltui_u_display_width(u_scratch, row.data(), row.size(), false) > w) {
         fits = false;
         check(false, std::string(c.name) + ": row wider than " + std::to_string(w) + ": [" + row + "]");
       }
@@ -495,5 +500,6 @@ int main(int argc, char** argv) {
   }
 
   fs::remove_all(scratch);
+  rolltui_u_scratch_free(u_scratch);
   return report("rolltui files_only_test");
 }
