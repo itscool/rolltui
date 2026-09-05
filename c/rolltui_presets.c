@@ -735,3 +735,216 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
   pthread_mutex_unlock(&s->mu);
   return result;
 }
+
+/* ---- the Theme domain's preset FILE FORMAT (this task) -------------------------------------
+ * See rolltui_presets.h for the boundary this section keeps (the vocab table, and mode/depth
+ * value validity, both cross as parameters rather than being re-derived here) and why. */
+
+/* `K("literal")` — the (ptr, len) pair for a string literal, the same convenience
+ * `rolltui_theme.c`'s own loader already uses (`strlen` costs nothing at preset-load rate,
+ * never per frame). File-local to this translation unit, like that one's. */
+#define K(s) (s), strlen(s)
+
+static int tp_streq(const char* s, size_t len, const char* lit) {
+  const size_t n = strlen(lit);
+  return len == n && (n == 0 || memcmp(s, lit, n) == 0);
+}
+
+/* ---- the report: three growing arrays of small owned strings, the MOVE shape
+ * `rolltui_layout.c`'s own `add_bad`/`add_unknown` already use — build the message into a
+ * local `RolltuiStr`, hand it straight over, so there is exactly one copy of the bytes rather
+ * than a build-then-copy-then-free. Private to this file: nothing outside ever writes one — a
+ * caller (`Presets.cpp`) only reads it after a parse call, then releases it. */
+static void tp_add_bad(RolltuiThemePresetReport* r, RolltuiStr* msg) {
+  r->bad_values = (RolltuiStr*)rolltui_grow_zeroed(r->bad_values, &r->bad_values_cap, r->bad_values_n + 1,
+                                                   sizeof *r->bad_values);
+  rolltui_str_move(&r->bad_values[r->bad_values_n++], msg);
+}
+static void tp_add_unknown(RolltuiThemePresetReport* r, RolltuiStr* msg) {
+  r->unknown_keys = (RolltuiStr*)rolltui_grow_zeroed(r->unknown_keys, &r->unknown_keys_cap, r->unknown_keys_n + 1,
+                                                     sizeof *r->unknown_keys);
+  rolltui_str_move(&r->unknown_keys[r->unknown_keys_n++], msg);
+}
+static void tp_add_note(RolltuiThemePresetReport* r, RolltuiStr* msg) {
+  r->notes = (RolltuiStr*)rolltui_grow_zeroed(r->notes, &r->notes_cap, r->notes_n + 1, sizeof *r->notes);
+  rolltui_str_move(&r->notes[r->notes_n++], msg);
+}
+
+void rolltui_theme_preset_report_release(RolltuiThemePresetReport* r) {
+  size_t i;
+  if (!r) return;
+  rolltui_str_free(&r->error);
+  for (i = 0; i < r->bad_values_n; ++i) rolltui_str_free(&r->bad_values[i]);
+  rolltui_mem_free(r->bad_values);
+  for (i = 0; i < r->unknown_keys_n; ++i) rolltui_str_free(&r->unknown_keys[i]);
+  rolltui_mem_free(r->unknown_keys);
+  for (i = 0; i < r->notes_n; ++i) rolltui_str_free(&r->notes[i]);
+  rolltui_mem_free(r->notes);
+  rolltui_theme_report_release(&r->colours);
+  memset(r, 0, sizeof *r);
+}
+
+/* The colours part, at BOTH modes — `rolltui_theme_load` directly, the entanglement this port
+ * removes (rolltui_presets.h's header comment). `report->colours` becomes DARK's report
+ * verbatim; LIGHT's own bad values not already in it are merged in — mirrors
+ * `theme_preset_from_json`'s own double load exactly, including that only dark's success/
+ * failure decides the return value. `styles` is sized by `vocab->role_count` (a RUNTIME value:
+ * `Style.hpp`'s `kRoleCount` does not cross this boundary, `rolltui_style.h`'s own rule) and
+ * allocated ONCE, reused for both calls — each fully overwrites it, so there is nothing to
+ * re-zero between them. Neither call's styles or effect map is kept: this function answers
+ * only "did it load, and what did it say", the same thing the two discarded `Theme`s in the
+ * original C++ were kept only long enough to ask. */
+static int tp_load_colours(const RolltuiJsonValue* colours, const RolltuiThemeVocab* vocab,
+                           RolltuiThemePresetReport* report) {
+  RolltuiStyle* styles = (RolltuiStyle*)rolltui_mem_alloc(vocab->role_count * sizeof *styles);
+  RolltuiStr name = {0};
+  RolltuiEffectMap* dark_eff;
+  RolltuiThemeReport light_rep = {0};
+  RolltuiStr light_name = {0};
+  RolltuiEffectMap* light_eff;
+  size_t li;
+
+  dark_eff = rolltui_theme_load(colours, ROLLTUI_MODE_DARK, vocab, styles, &name, &report->colours);
+  rolltui_str_free(&name);
+  if (dark_eff) rolltui_effect_map_free(dark_eff);
+
+  light_eff = rolltui_theme_load(colours, ROLLTUI_MODE_LIGHT, vocab, styles, &light_name, &light_rep);
+  rolltui_str_free(&light_name);
+  if (light_eff) rolltui_effect_map_free(light_eff);
+
+  for (li = 0; li < light_rep.bad_values_n; ++li) {
+    size_t blen = 0;
+    const char* btext = rolltui_str_get(&light_rep.bad_values[li], &blen);
+    int dup = 0;
+    size_t di;
+    for (di = 0; di < report->colours.bad_values_n; ++di)
+      if (rolltui_str_eq(&report->colours.bad_values[di], btext, blen)) { dup = 1; break; }
+    if (!dup) rolltui_theme_report_add_bad_value(&report->colours, btext, blen);
+  }
+  rolltui_theme_report_release(&light_rep);
+  rolltui_mem_free(styles);
+  return dark_eff != NULL;
+}
+
+int rolltui_theme_preset_parse(const RolltuiJsonValue* root, const RolltuiThemeVocab* vocab,
+                               RolltuiThemePresetValidFn mode_valid, RolltuiThemePresetValidFn depth_valid,
+                               RolltuiStr* out_mode, RolltuiStr* out_depth, const RolltuiJsonValue** out_colours,
+                               RolltuiThemePresetReport* report) {
+  size_t i, n;
+  rolltui_theme_preset_report_release(report);
+  *out_colours = NULL;
+  if (!rolltui_json_is_object(root)) {
+    rolltui_str_set(&report->error, K("a preset file must be a JSON object"));
+    return 0;
+  }
+  if (!rolltui_json_has(root, K("colours"))) {
+    rolltui_str_set(&report->error, K("a preset file needs a \"colours\" object (Theme.hpp's format)"));
+    return 0;
+  }
+  /* `ThemePreset`'s own member-initialisers (Presets.hpp): both default to "auto" when the
+   * key is absent or fails its check below — set here, up front, once. */
+  rolltui_str_set(out_mode, K("auto"));
+  rolltui_str_set(out_depth, K("auto"));
+  n = rolltui_json_object_size(root);
+  for (i = 0; i < n; ++i) {
+    size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(root, i, &klen);
+    const RolltuiJsonValue* x = rolltui_json_object_value_at(root, i);
+    if (tp_streq(k, klen, "name") || tp_streq(k, klen, "preset")) {
+      if (!rolltui_json_is_string(x)) {
+        RolltuiStr msg = {0};
+        rolltui_str_append(&msg, k, klen);
+        rolltui_str_append(&msg, K(": expected a string"));
+        tp_add_bad(report, &msg);
+      }
+    } else if (tp_streq(k, klen, "mode")) {
+      size_t slen = 0;
+      const char* s = rolltui_json_as_string(x, "", 0, &slen);
+      if (!mode_valid(s, slen)) {
+        RolltuiStr msg = {0};
+        rolltui_str_append(&msg, K("mode: expected auto | dark | light"));
+        tp_add_bad(report, &msg);
+      } else {
+        rolltui_str_set(out_mode, s, slen);
+      }
+    } else if (tp_streq(k, klen, "depth")) {
+      size_t slen = 0;
+      const char* s = rolltui_json_as_string(x, "", 0, &slen);
+      if (!depth_valid(s, slen)) {
+        RolltuiStr msg = {0};
+        rolltui_str_append(&msg, K("depth: expected auto | truecolor | 256 | 16 | mono"));
+        tp_add_bad(report, &msg);
+      } else {
+        rolltui_str_set(out_depth, s, slen);
+      }
+    } else if (tp_streq(k, klen, "colours")) {
+      *out_colours = x;
+    } else if (tp_streq(k, klen, "layout")) {
+      /* A Phase 9 preset file. Not an unknown key and not a bad value — the part was valid,
+       * it simply is not the Theme's any more — so it is a NOTE naming it, and the file
+       * still loads clean. (The working copy is moved across once instead;
+       * `migrate_theme_layout()`, which stays C++ in `Presets.cpp`.) */
+      RolltuiStr msg = {0};
+      rolltui_str_append(&msg, K("\"layout\": ignored — a layout is its own preset now (layouts/)"));
+      tp_add_note(report, &msg);
+    } else {
+      RolltuiStr msg = {0};
+      rolltui_str_append(&msg, k, klen);
+      tp_add_unknown(report, &msg);
+    }
+  }
+  if (!tp_load_colours(*out_colours, vocab, report)) {
+    size_t elen = 0;
+    const char* etext = rolltui_str_get(&report->colours.error, &elen);
+    RolltuiStr msg = {0};
+    rolltui_str_append(&msg, K("colours: "));
+    rolltui_str_append(&msg, etext, elen);
+    rolltui_str_move(&report->error, &msg);
+    return 0;
+  }
+  return 1;
+}
+
+int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const RolltuiThemeVocab* vocab,
+                                       const RolltuiJsonValue** out_colours, RolltuiThemePresetReport* report) {
+  RolltuiStyle* styles;
+  RolltuiStr name = {0};
+  RolltuiEffectMap* eff;
+  rolltui_theme_preset_report_release(report);
+  *out_colours = NULL;
+  if (!rolltui_json_is_object(root) || rolltui_json_has(root, K("colours")) || !rolltui_json_has(root, K("roles")))
+    return 0; /* not partial: report->error stays empty, so the generic mechanics fall back
+               * to rolltui_theme_preset_parse() on the same text (get_locked, above). */
+  styles = (RolltuiStyle*)rolltui_mem_alloc(vocab->role_count * sizeof *styles);
+  eff = rolltui_theme_load(root, ROLLTUI_MODE_DARK, vocab, styles, &name, &report->colours);
+  rolltui_str_free(&name);
+  rolltui_mem_free(styles);
+  if (!eff) {
+    /* UNPREFIXED, unlike `_parse`'s "colours: " — the whole file IS the colours object here,
+     * so there is no second thing to name (ported as found: `ThemeDomain::parse_partial`'s
+     * own asymmetry with `_parse`, which validates both modes; this validates dark only). */
+    size_t elen = 0;
+    const char* etext = rolltui_str_get(&report->colours.error, &elen);
+    rolltui_str_set(&report->error, etext, elen);
+    return 0;
+  }
+  rolltui_effect_map_free(eff);
+  *out_colours = root;
+  {
+    RolltuiStr msg = {0};
+    rolltui_str_append(&msg, K("is a colours-only theme file; mode and depth are kept"));
+    tp_add_note(report, &msg);
+  }
+  return 1;
+}
+
+RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const char* mode, size_t mode_len,
+                                               const char* depth, size_t depth_len, const char* name,
+                                               size_t name_len) {
+  RolltuiJsonValue* o = rolltui_json_object();
+  rolltui_json_set(o, K("name"), rolltui_json_string(name, name_len));
+  rolltui_json_set(o, K("mode"), rolltui_json_string(mode, mode_len));
+  rolltui_json_set(o, K("depth"), rolltui_json_string(depth, depth_len));
+  rolltui_json_set(o, K("colours"), colours);
+  return o;
+}

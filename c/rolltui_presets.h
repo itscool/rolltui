@@ -51,6 +51,10 @@
  */
 #include <stddef.h>
 
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_theme.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -197,6 +201,113 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
 void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiPutFn put, void* ctx);
 void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiPutFn put,
                                       void* ctx);
+
+/* ---- the Theme domain's preset FILE FORMAT (this task; everything above is domain-agnostic
+ * mechanics, and this is the one domain whose OWN parse/to_json moved here with it) ----------
+ *
+ * `rolltui::ThemePreset` (Presets.hpp) wraps a Theme.hpp colours object with "name" (write-
+ * only — read back as the STORE's own bookkeeping, via `to_json_with_origin`'s "preset" key,
+ * never this format's own), "mode" and "depth". What blocked this port before was that the
+ * "colours" part's validation is `rolltui_theme_load` — a C++-only function until Phase 15 m5.
+ * It is C now (`rolltui_theme.h`), so this file calls it DIRECTLY instead of bouncing back into
+ * C++ for it. Two things deliberately do NOT move here, each for its own stated reason:
+ *
+ *   - The VOCAB table `rolltui_theme_load` itself needs (role/state NAMES) still cannot be
+ *     built here — `rolltui_style.h`: "a C file names no role" — so it crosses as a parameter
+ *     exactly as it already does for `rolltui_theme_load`, and `Presets.cpp`'s shim obtains it
+ *     from `Theme.cpp`'s `theme_vocab()` (given external linkage for exactly this) and hands
+ *     it down. One table, read in two places, built in neither of them a second time.
+ *   - Whether a "mode"/"depth" STRING is one of the valid values ("auto"/"dark"/"light", …) is
+ *     `rolltui::valid_mode_setting`/`valid_depth_setting` (Presets.hpp) — a five-line C++
+ *     predicate with no other caller anywhere in the tree. Re-deriving it here would be a
+ *     THIRD spelling of that vocabulary (Presets.hpp's `kSettings` help text is already a
+ *     second, tolerated one) for a predicate that exists for this one call site, so instead
+ *     `rolltui_theme_preset_parse` takes it as a CALLBACK — the same "domain supplies the
+ *     policy, mechanics supply the walk" shape `RolltuiPresetDomain` itself is built from —
+ *     which keeps the walk a SINGLE PASS (bad_values/unknown_keys/notes stay in file order,
+ *     the same order `rolltui::json::Value::obj` already preserves) rather than a second pass
+ *     over the same object after the fact.
+ *
+ * The "colours" subtree crosses as a `RolltuiJsonValue*` BORROW, never text: `Presets.cpp`'s
+ * shim already holds a parsed tree at every call site (`PresetStore.hpp`'s adapter parses text
+ * to a tree before calling the domain), so converting it once with `json::value_to_c` — the
+ * same conversion `Theme.cpp` already pays for its own `json::Value` overload of `load_theme`
+ * — is the honest boundary, not text re-parsed a second time nor a tree invented to avoid one
+ * conversion. `*out_colours` is a BORROW of a subtree of `root`, valid exactly as long as
+ * `root` is (the same window `rolltui_json_get` itself promises).
+ */
+
+/* Mirrors `rolltui::ThemeLoadReport`/`PresetLoadReport`'s Theme-relevant fields, transparent
+ * like `RolltuiThemeReport`/`RolltuiAppProfileReport` one file over — nothing about a
+ * diagnostic list needs hiding, and nothing outside `rolltui_presets.c` ever writes one; a
+ * caller only reads it after a parse call, then releases it. */
+typedef struct RolltuiThemePresetReport {
+  RolltuiStr error; /* non-empty: unusable */
+  RolltuiStr* bad_values;   size_t bad_values_n,   bad_values_cap;   /* GROWING AMORTISED */
+  RolltuiStr* unknown_keys; size_t unknown_keys_n, unknown_keys_cap; /* GROWING AMORTISED */
+  RolltuiStr* notes;        size_t notes_n,        notes_cap;        /* GROWING AMORTISED */
+  RolltuiThemeReport colours; /* the "colours" part's own report, verbatim */
+} RolltuiThemePresetReport;
+
+/* Frees everything and zeroes the struct — safe on an already-zeroed one and on repeated
+ * calls, the same "reset, not just release" contract every report on this boundary states. */
+void rolltui_theme_preset_report_release(RolltuiThemePresetReport* r);
+
+/* A pure predicate over a "mode"/"depth" string — no context, because `valid_mode_setting`/
+ * `valid_depth_setting` (Presets.hpp) are themselves pure over a `string_view` with nothing to
+ * capture. `Presets.cpp` hands over a captureless-lambda-decayed function pointer, the same
+ * bridge `PresetStore.hpp`'s own `domain_storage<D>()` already builds an entire domain
+ * descriptor out of. */
+typedef int (*RolltuiThemePresetValidFn)(const char* s, size_t len);
+
+/* Parses a preset file's top level from an already-parsed tree: "name"/"preset" (must be a
+ * string when present, else a bad value; the VALUE itself is the store's business, not read
+ * here), "mode"/"depth" (checked with `mode_valid`/`depth_valid`; kept at whatever `out_mode`/
+ * `out_depth` already held — this file sets both to "auto" first, matching `ThemePreset`'s own
+ * member-initialisers — when the key is absent or fails its check), "colours" (required; a
+ * bad "preset file must be a JSON object"/"needs a \"colours\" object" `report->error` when
+ * `root` itself is not usable, checked BEFORE anything else), "layout" (a Phase 9 leftover:
+ * not an error, a NOTE naming it — this format's own vocabulary to own, the same position
+ * `rolltui_theme.h` takes for a theme file's structural keys). Unknown keys are reported, not
+ * rejected. Colour validation runs at BOTH modes (dark then light) so a role wrong only in one
+ * variant is still caught: `report->colours` is dark's report, plus light's bad values not
+ * already in dark's — mirroring `theme_preset_from_json`'s own double load exactly, including
+ * the asymmetry that only DARK's success/failure decides the return value.
+ *
+ * Returns 1 when `root` is a usable preset (`report` may still carry notes/bad_values/
+ * unknown_keys — a usable file can still have problems), 0 when it is not (`report->error`
+ * says which; `*out_colours` is NULL). `report` is reset by this call, as every report on this
+ * boundary is. */
+int rolltui_theme_preset_parse(const RolltuiJsonValue* root, const RolltuiThemeVocab* vocab,
+                               RolltuiThemePresetValidFn mode_valid, RolltuiThemePresetValidFn depth_valid,
+                               RolltuiStr* out_mode, RolltuiStr* out_depth, const RolltuiJsonValue** out_colours,
+                               RolltuiThemePresetReport* report);
+
+/* The colours-only PARTIAL form (Theme.hpp's plain file: "roles" at the top, no "colours"
+ * key) — mode/depth are not touched at all (the C++ shim keeps the rest of `working` itself,
+ * per `ThemeDomain::parse_partial`'s own contract). Returns 0 with `report->error` EMPTY when
+ * `root` is not partial-shaped at all (not an object, already has "colours", or has no
+ * "roles") — the generic mechanics then fall back to `rolltui_theme_preset_parse` on the SAME
+ * text (`rolltui_presets.c`'s own `get_locked`: "NULL when the file is not partial, and
+ * `parse` is then used"). Returns 0 with `report->error` SET when `root` looked partial but
+ * the colours failed to load (UNPREFIXED — unlike `_parse`'s "colours: " prefix, the whole
+ * file IS the colours object here, so there is no second thing to name) — no fallback in this
+ * case; the caller's own file was simply broken. Returns 1 with `*out_colours` borrowing
+ * `root` itself and a note in `report` on success. Only DARK is validated here — mirroring
+ * `ThemeDomain::parse_partial`'s own asymmetry with `_parse`'s two-mode check, ported as
+ * found rather than corrected. */
+int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const RolltuiThemeVocab* vocab,
+                                       const RolltuiJsonValue** out_colours, RolltuiThemePresetReport* report);
+
+/* Builds a preset file's tree: {"name","mode","depth","colours"}. TAKES OWNERSHIP of
+ * `colours` (folds it into the result directly, the same contract `rolltui_json_set` itself
+ * has) — the caller has usually just built it fresh via `json::value_to_c` for this one call
+ * and has no further use for it, so consuming it here is a clone fewer. OWNED; the caller
+ * frees the result with `rolltui_json_free`. Never sets "preset": that key is
+ * `to_json_with_origin`'s, one level up, not this format's own. */
+RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const char* mode, size_t mode_len,
+                                               const char* depth, size_t depth_len, const char* name,
+                                               size_t name_len);
 
 #ifdef __cplusplus
 } /* extern "C" */

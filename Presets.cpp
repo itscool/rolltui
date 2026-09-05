@@ -12,6 +12,8 @@
 
 #include <unistd.h>
 
+#include "rolltui/c/rolltui_presets.h"
+
 namespace rolltui {
 
 namespace embedded {
@@ -112,51 +114,100 @@ std::optional<ColorDepth> depth_from_setting(std::string_view s) {
   return std::nullopt;
 }
 
+// ---- the Theme domain: PARSING/DUMPING PORTED TO C (`rolltui/c/rolltui_presets.h`, this
+// task) ------------------------------------------------------------------------------------
+//
+// What moved: the structural walk (which keys exist, "colours" required, "layout" ignored
+// with a note, unknown keys reported) and the colours part's validation, now calling
+// `rolltui_theme_load` DIRECTLY — the entanglement that used to force this to stay C++
+// (validation went through this file's own `load_theme`, which was C++) is gone now that
+// `load_theme`'s actual algorithm is `rolltui_theme_load` (Phase 15 m5, `rolltui/c/
+// rolltui_theme.h`). What did NOT move, and why (both are `rolltui_presets.h`'s own header
+// comment, restated briefly since this is the call site it matters at):
+//   - the VOCAB table (`theme_vocab()` below) — a C file may not build one (`rolltui_style.h`:
+//     "a C file names no role"), so it crosses as a parameter, same as it already does for
+//     `rolltui_theme_load` itself.
+//   - `valid_mode_setting`/`valid_depth_setting` just above — re-deriving that five-line
+//     vocabulary in C would be a THIRD spelling of it (`kSettings`' help text below is
+//     already a tolerated second one) for a predicate with no other caller anywhere in the
+//     tree, so `rolltui_theme_preset_parse` takes it as a CALLBACK instead — the same "domain
+//     supplies the policy" shape `RolltuiPresetDomain` itself is built from — which keeps the
+//     walk a single pass in file order rather than a second pass over the object.
+namespace {
+
+// Bridges to `RolltuiThemePresetValidFn` (`int(*)(const char*, size_t)`, no context — both
+// predicates are pure over a string with nothing to capture). Plain free functions rather than
+// captureless lambdas only because there are two named call sites for each; the C++-to-C
+// function-pointer crossing is the same one `PresetStore.hpp`'s own `domain_storage<D>()`
+// already relies on throughout.
+int mode_valid_c(const char* s, std::size_t len) { return valid_mode_setting(std::string_view(s, len)) ? 1 : 0; }
+int depth_valid_c(const char* s, std::size_t len) { return valid_depth_setting(std::string_view(s, len)) ? 1 : 0; }
+
+// The Theme-relevant fields of `RolltuiThemePresetReport`, copied into a `PresetLoadReport` —
+// the C side's report and the C++ one agree field for field, so this is a straight copy, not
+// a translation. Shared by `theme_preset_from_json` and `ThemeDomain::parse_partial`.
+void copy_theme_preset_report(const RolltuiThemePresetReport& rep, PresetLoadReport& report) {
+  report.error = rep.error.str();
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(rep.bad_values[i].str());
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(rep.unknown_keys[i].str());
+  for (std::size_t i = 0; i < rep.notes_n; ++i) report.notes.push_back(rep.notes[i].str());
+  report.colours.error = rep.colours.error.str();
+  for (std::size_t i = 0; i < rep.colours.missing_roles_n; ++i) report.colours.missing_roles.push_back(rep.colours.missing_roles[i].str());
+  for (std::size_t i = 0; i < rep.colours.unknown_keys_n; ++i) report.colours.unknown_keys.push_back(rep.colours.unknown_keys[i].str());
+  for (std::size_t i = 0; i < rep.colours.bad_values_n; ++i) report.colours.bad_values.push_back(rep.colours.bad_values[i].str());
+}
+
+}  // namespace
+
+// `Theme.cpp`'s vocab table, given external linkage there for exactly this: one table, read
+// in two files, built in neither a second time. NOT declared in `Theme.hpp` — see that file's
+// header comment — so this is the same borrowed-declaration move made three lines down for
+// `json::value_to_c`/`value_from_c` (and that `Theme.cpp` itself already makes for those two).
+const RolltuiThemeVocab& theme_vocab();
+
+// Needed for exactly two things: handing "colours"/the whole preset object to the C parser
+// when this file already holds a parsed `json::Value` (`PresetStore.hpp`'s adapter parses
+// text to a tree before calling this domain), and reading the "colours" subtree back out as a
+// `json::Value` afterwards, which is that field's own C++ shape (`ThemePreset::colours`,
+// declared in Presets.hpp — see the comment there for why it stays that shape and which
+// callers force it). Not declared in `Json.hpp`: see `Theme.cpp`'s identical note.
+namespace json {
+RolltuiJsonValue* value_to_c(const Value& v);
+Value value_from_c(const RolltuiJsonValue* v);
+}  // namespace json
+
 std::optional<ThemePreset> theme_preset_from_json(const Value& v, PresetLoadReport& report) {
   report = PresetLoadReport{};
-  if (!v.is_object()) { report.error = "a preset file must be a JSON object"; return std::nullopt; }
-  if (!v.has("colours")) { report.error = "a preset file needs a \"colours\" object (Theme.hpp's format)"; return std::nullopt; }
-  ThemePreset p;
-  for (const auto& [k, x] : v.obj) {
-    if (k == "name" || k == "preset") {
-      if (!x.is_string()) report.bad_values.push_back(k + ": expected a string");
-    } else if (k == "mode") {
-      if (!x.is_string() || !valid_mode_setting(x.str)) report.bad_values.push_back("mode: expected auto | dark | light");
-      else p.mode = x.str;
-    } else if (k == "depth") {
-      if (!x.is_string() || !valid_depth_setting(x.str)) report.bad_values.push_back("depth: expected auto | truecolor | 256 | 16 | mono");
-      else p.depth = x.str;
-    } else if (k == "colours") {
-      p.colours = x;
-    } else if (k == "layout") {
-      // A Phase 9 preset file. Not an unknown key and not a bad value — the part was
-      // valid, it simply is not the Theme's any more — so it is a NOTE naming it, and
-      // the file still loads clean. (The working copy is moved across once instead;
-      // migrate_theme_layout().)
-      report.notes.push_back("\"layout\": ignored — a layout is its own preset now (layouts/)");
-    } else {
-      report.unknown_keys.push_back(k);
-    }
+  RolltuiJsonValue* root_c = json::value_to_c(v);
+  RolltuiStr mode{}, depth{};
+  const RolltuiJsonValue* colours_c = nullptr;
+  RolltuiThemePresetReport rep{};
+  const int ok = rolltui_theme_preset_parse(root_c, &theme_vocab(), mode_valid_c, depth_valid_c, &mode, &depth,
+                                            &colours_c, &rep);
+  copy_theme_preset_report(rep, report);
+  std::optional<ThemePreset> out;
+  if (ok) {
+    ThemePreset p;
+    p.mode = mode.str();
+    p.depth = depth.str();
+    p.colours = json::value_from_c(colours_c);
+    out = std::move(p);
   }
-  // Validate the colours part at both modes so a bad file is reported at load, not at
-  // the first frame; the loader's own report is kept (missing roles, unknown keys).
-  ThemeLoadReport dark, light;
-  std::optional<Theme> td = load_theme(p.colours, ThemeMode::Dark, dark);
-  load_theme(p.colours, ThemeMode::Light, light);
-  report.colours = dark;
-  for (const std::string& b : light.bad_values)
-    if (std::find(dark.bad_values.begin(), dark.bad_values.end(), b) == dark.bad_values.end()) report.colours.bad_values.push_back(b);
-  if (!td) { report.error = "colours: " + dark.error; return std::nullopt; }
-  return p;
+  rolltui_theme_preset_report_release(&rep);
+  rolltui_str_free(&mode);
+  rolltui_str_free(&depth);
+  rolltui_json_free(root_c);
+  return out;
 }
 
 Value theme_preset_to_json(const ThemePreset& p, std::string_view name) {
-  Value o = Value::object();
-  o.set("name", Value::string(std::string(name)));
-  o.set("mode", Value::string(p.mode));
-  o.set("depth", Value::string(p.depth));
-  o.set("colours", p.colours);
-  return o;
+  // `rolltui_theme_preset_to_json` TAKES OWNERSHIP of the colours tree; `value_to_c` builds
+  // one fresh for exactly this call, so there is nothing left to free on this side.
+  RolltuiJsonValue* c = rolltui_theme_preset_to_json(json::value_to_c(p.colours), p.mode.data(), p.mode.size(),
+                                                     p.depth.data(), p.depth.size(), name.data(), name.size());
+  Value out = json::value_from_c(c);
+  rolltui_json_free(c);
+  return out;
 }
 
 std::optional<Theme> resolve_colours(const ThemePreset& p, ThemeMode mode, ThemeLoadReport& report) {
@@ -169,14 +220,20 @@ std::size_t ThemeDomain::shipped_count() { return embedded::kThemePresetCount; }
 std::pair<std::string_view, std::string_view> ThemeDomain::shipped_at(std::size_t i) { return embedded::kThemePresets[i]; }
 
 std::optional<ThemePreset> ThemeDomain::parse_partial(const json::Value& v, const ThemePreset& working, PresetLoadReport& report) {
-  if (!v.is_object() || v.has("colours") || !v.has("roles")) return std::nullopt;
-  ThemePreset p = working;
-  p.colours = v;
-  ThemeLoadReport tr;
-  if (!load_theme(v, ThemeMode::Dark, tr)) { report.error = tr.error; return std::nullopt; }
-  report.colours = tr;
-  report.notes.push_back("is a colours-only theme file; mode and depth are kept");
-  return p;
+  RolltuiJsonValue* root_c = json::value_to_c(v);
+  const RolltuiJsonValue* colours_c = nullptr;
+  RolltuiThemePresetReport rep{};
+  const int ok = rolltui_theme_preset_parse_partial(root_c, &theme_vocab(), &colours_c, &rep);
+  copy_theme_preset_report(rep, report);
+  std::optional<ThemePreset> out;
+  if (ok) {
+    ThemePreset p = working;
+    p.colours = json::value_from_c(colours_c);
+    out = std::move(p);
+  }
+  rolltui_theme_preset_report_release(&rep);
+  rolltui_json_free(root_c);
+  return out;
 }
 
 // ---- the Layout domain (Phase 10 m1) ----------------------------------------------------

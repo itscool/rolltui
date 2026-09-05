@@ -88,6 +88,17 @@ namespace rolltui {
 
 // ---- the Theme domain ----------------------------------------------------------------
 
+// `colours` STAYS a `json::Value`. Its own parse/dump ALGORITHM moved to C
+// (`theme_preset_from_json`/`_to_json`/`ThemeDomain::parse_partial`, `Presets.cpp` — this
+// header comment is the finding that port left behind): each now crosses "colours" as a
+// `RolltuiJsonValue*` for the one call it needs it. The FIELD stayed a `json::Value` because
+// real callers reach into it with real `json::Value` operations a C-backed proxy cannot
+// honestly offer: `theme_editor.cpp`'s `defs_ = preset.colours.get("defs")`, `studio.cpp`'s
+// `store->set_colours(teditor.colours_json(store->origin()))`, and this struct's own
+// `ThemePresets::set_colours(json::Value, bool)` below. None of those three call sites is
+// this task's to change. This is the SAME position `rolltui/c/rolltui_json.h`'s header
+// comment states for the five other C++ modules still holding a real `Value`, applied to one
+// field of one struct rather than to a whole file.
 struct ThemePreset {
   json::Value colours;          // a theme file object (Theme.hpp's format; dark/light pairs allowed)
   std::string mode = "auto";    // auto | dark | light — auto: the host asks the terminal (OSC 11), dark when it cannot

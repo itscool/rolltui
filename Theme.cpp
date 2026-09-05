@@ -13,6 +13,18 @@
 // (`RolltuiThemeVocab`), built from `Style.hpp`'s `kRoleNames` and `Effects.cpp`'s
 // `effect_state_name` and never rebuilt (a Meyer's singleton of plain pointers into
 // literal-backed storage — nothing here for `rolltui::shutdown()` to release).
+//
+// `theme_vocab()` below is given EXTERNAL linkage (the Presets.cpp theme-preset port, plan/
+// phase-15.md) for exactly the reason `Json.cpp`'s `value_to_c`/`value_from_c` already are: a
+// second C++ file now calls `rolltui_theme_load` directly on its own JSON tree (`Presets.cpp`'s
+// `ThemeDomain` — validating a preset file's "colours" part no longer needs to bounce through
+// this file's `load_theme` overloads to reach the same C function) and needs the SAME vocab
+// table rather than a second one, which would be the exact "vocabulary written down twice"
+// failure this file's own header comment warns about one paragraph up. NOT declared in
+// `Theme.hpp`: that header's public shape stays exactly what every other caller of
+// `rolltui::Theme` already sees — `Presets.cpp` forward-declares it locally instead, the same
+// borrowed-declaration move `Theme.cpp` itself already makes for `json::value_to_c`/
+// `value_from_c` below.
 #include "rolltui/Theme.hpp"
 
 #include <cstring>
@@ -52,12 +64,15 @@ struct VocabTables {
   }
 };
 
-const RolltuiThemeVocab& vocab() {
+}  // namespace
+
+// External linkage — see this file's top comment for why. Named `theme_vocab`, not `vocab`,
+// because it now lives at namespace scope rather than file scope, where a bare `vocab` would
+// be a needlessly generic name to claim.
+const RolltuiThemeVocab& theme_vocab() {
   static const VocabTables t;
   return t.vocab;
 }
-
-}  // namespace
 
 // ---- json::Value <-> RolltuiJsonValue*, SHARED with Json.cpp -----------------------------
 //
@@ -233,7 +248,7 @@ std::optional<Theme> theme_from_c_root(const RolltuiJsonValue* root_c, ThemeMode
   Theme t;
   RolltuiStr name{};
   RolltuiThemeReport rep{};
-  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &vocab(), t.styles.data(), &name, &rep);
+  RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &theme_vocab(), t.styles.data(), &name, &rep);
   report.error.assign(rep.error.p ? rep.error.p : "", rep.error.n);
   for (std::size_t i = 0; i < rep.missing_roles_n; ++i)
     report.missing_roles.emplace_back(rep.missing_roles[i].p ? rep.missing_roles[i].p : "", rep.missing_roles[i].n);
@@ -297,7 +312,7 @@ json::Value theme_to_json_value(const Theme& theme) {
   json::Value root = json::Value::object();
   root.set("name", json::Value::string(theme.name));
   if (theme.meta.is_object()) root.set("meta", theme.meta);
-  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), theme.effects.handle(), nullptr, nullptr, &vocab());
+  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), theme.effects.handle(), nullptr, nullptr, &theme_vocab());
   root.set("roles", json::value_from_c(rolltui_json_get(c, "roles", 5)));
   const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
   if (!rolltui_json_is_null(fx)) root.set("effects", json::value_from_c(fx));
@@ -328,7 +343,7 @@ json::Value theme_pair_to_json_value(const Theme& dark, const Theme& light, std:
   // terminal's background (Theme.hpp) — `rolltui_theme_dump` takes `light_effects` only to
   // document that it is never consulted, and always dumps `dark.effects` alone.
   RolltuiJsonValue* c =
-      rolltui_theme_dump(dark.styles.data(), dark.effects.handle(), light.styles.data(), light.effects.handle(), &vocab());
+      rolltui_theme_dump(dark.styles.data(), dark.effects.handle(), light.styles.data(), light.effects.handle(), &theme_vocab());
   root.set("roles", json::value_from_c(rolltui_json_get(c, "roles", 5)));
   const RolltuiJsonValue* fx = rolltui_json_get(c, "effects", 7);
   if (!rolltui_json_is_null(fx)) root.set("effects", json::value_from_c(fx));
