@@ -140,6 +140,7 @@ add_library(rolltui STATIC
   c/rolltui_undo.c            # Phase 17: opaque-snapshot undo, the C form of the last
                               #   pure-C++ template. The editors keep a C++ adapter of
                               #   their own under tools/, which is a HOST's business.
+  c/rolltui_style.c           # Phase 17: the 49 role names, from the one X-macro list
   c/rolltui_library_actions.c # Phase 17: the 59 library actions as DATA, once — four
                               #   consumers had each copied them verbatim.
   c/rolltui_embedded.c        # the shipped presets as C DATA — see its header for the

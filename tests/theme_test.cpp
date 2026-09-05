@@ -59,20 +59,20 @@ static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAU
 static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
               "the C side's default input prompt role must be Role::prompt");
 
-// The role NAMES, in the same order, for the vocab table `load_theme` hands the C loader --
-// Style.hpp's own kRoleNames, reproduced (a theme file resolves "md_heading" against this).
-constexpr std::array<const char*, kRoleCount> kRoleNames = {
-    "text", "text_muted", "background", "panel_background", "border", "border_active",
-    "title", "label", "value", "accent_1", "accent_2", "accent_3", "accent_4", "prompt",
-    "note", "warning", "error",
-    "md_heading", "md_emphasis", "md_strong", "md_code_inline", "md_code_block",
-    "md_code_label", "md_link", "md_link_url", "md_quote", "md_list_marker",
-    "md_table_border", "md_table_header", "md_rule", "md_strikethrough",
-    "diff_added", "diff_removed", "diff_context", "diff_added_word", "diff_removed_word",
-    "input_text", "input_cursor", "input_placeholder", "scroll_marker", "selection",
-    "overlay", "menu_item", "menu_selected", "menu_breadcrumb", "menu_shortcut",
-    "find_match", "find_current", "scrollbar",
-};
+// THE ROLE NAMES, FROM THE LIBRARY — not reproduced. This block used to be a verbatim copy
+// of `Style.hpp`'s table with the comment "reproduced", and it was the FIFTH copy of this
+// vocabulary in the tree. It also silently shadowed `rolltui::kRoleNames` in this whole
+// translation unit, which is how a check added below it could compare the C table against a
+// hand-copy and pass no matter what either side said (found 2026-09-05, by that check's own
+// control failing to fire).
+const std::array<const char*, kRoleCount>& role_name_table() {
+  static const std::array<const char*, kRoleCount> t = [] {
+    std::array<const char*, kRoleCount> a{};
+    for (std::size_t i = 0; i < kRoleCount; ++i) a[i] = rolltui_role_name(static_cast<unsigned char>(i), nullptr);
+    return a;
+  }();
+  return t;
+}
 
 // `rolltui::Color`/`rolltui::Style` (Style.hpp) were one-definition aliases over the same C
 // structs -- reproduced verbatim; there was never a second definition to convert away from.
@@ -137,7 +137,7 @@ std::vector<std::string_view> builtin_theme_names() {
 const RolltuiThemeVocab& theme_vocab() {
   static const RolltuiThemeVocab v = [] {
     RolltuiThemeVocab t{};
-    t.role_names = kRoleNames.data();
+    t.role_names = role_name_table().data();
     t.role_count = kRoleCount;
     t.text_role = static_cast<std::size_t>(Role::text);
     t.state_names = nullptr;
@@ -596,6 +596,51 @@ int main() {
     check(read_file(dir + "/c/rolltui_theme.c").find("default-dark") != std::string::npos,
           "the built-in themes still carry the name that proves they live here now");
   }
+
+
+  // ---- THE ROLE VOCABULARY HAS ONE SPELLING (Phase 17) ------------------------------------
+  // The 49 roles used to be an `enum class` plus a parallel name array in `rolltui/Style.hpp`,
+  // which a C consumer could reach neither of — so a host converting off the C++ had to invent
+  // the role bytes, and this very file kept a verbatim copy of the names with the comment
+  // "reproduced". Both now derive from `ROLLTUI_ROLE_LIST` in `rolltui/c/rolltui_style.h`.
+  //
+  // THE PROPERTY IS STRUCTURAL, so it is asserted structurally: the names exist as a literal
+  // list in exactly ONE file. A runtime comparison of two tables would only prove they agree
+  // today, and the copy this replaced agreed for months.
+  {
+    const std::string dir = ROLLTUI_SOURCE_DIR;
+    const std::string list = read_file(dir + "/c/rolltui_style.h");
+    check(list.find("ROLLTUI_ROLE_LIST(X)") != std::string::npos,
+          "the role list lives in the C header, as the one X-macro both languages expand");
+    check(list.find("X(md_code_block, MD_CODE_BLOCK)") != std::string::npos,
+          "…and it carries the roles by name, so this is the list and not a forward declaration");
+    // The C++ spelling must EXPAND that list, never restate it. Style.hpp naming a role
+    // literally would be the second spelling coming back.
+    const std::string style_hpp = read_file(dir + "/Style.hpp");
+    check(style_hpp.find("ROLLTUI_ROLE_LIST(ROLLTUI_ROLE_CPP_)") != std::string::npos,
+          "Style.hpp's enum EXPANDS the list rather than restating it");
+    check(style_hpp.find("\"md_code_block\"") == std::string::npos,
+          "…and names no role in a literal of its own, which is what a second spelling looks like");
+    // The control: the matcher finds a role name literal when there IS one, so the assertion
+    // above is a real absence rather than a pattern that never matches.
+    check(read_file(dir + "/tests/theme_test.cpp").find("\"md_code_block\"") != std::string::npos,
+          "…and the matcher does find a role literal where one exists (this file), so it is armed");
+
+    // What the C now answers that it could not before, and the round-trip that ties the two
+    // accessors to each other rather than to a copy of the table.
+    bool round_trips = true;
+    for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
+      std::size_t len = 0;
+      const char* n = rolltui_role_name(static_cast<unsigned char>(i), &len);
+      if (rolltui_role_from_name(n, len) != static_cast<int>(i)) round_trips = false;
+    }
+    check(round_trips, "every role's name resolves back to its own ordinal, all 49 of them");
+    check(rolltui_role_from_name("no_such_role", 12) == -1, "an unknown role name is -1, not 0");
+    std::size_t oob = 99;
+    check(std::string_view(rolltui_role_name(200, &oob), oob).empty(),
+          "an out-of-range role is \"\", never a read past the table");
+  }
+
 
   return report("rolltui theme_test");
 }

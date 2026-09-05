@@ -27,24 +27,15 @@
 
 namespace rolltui {
 
+// PHASE 17: DERIVED from `ROLLTUI_ROLE_LIST` in `rolltui/c/rolltui_style.h`, which is the one
+// place the 49 roles are written down. This spelling exists only so that `Role::text` still
+// reads the way the call sites already write it; it adds no name and can add none. When this
+// header goes, the vocabulary does not go with it — which is exactly what was wrong before.
 enum class Role : std::uint8_t {
-  // base
-  text, text_muted, background, panel_background, border, border_active, title,
-  label, value, accent_1, accent_2, accent_3, accent_4, prompt, note, warning, error,
-  // markdown
-  md_heading, md_emphasis, md_strong, md_code_inline, md_code_block, md_code_label,
-  md_link, md_link_url, md_quote, md_list_marker, md_table_border, md_table_header,
-  md_rule, md_strikethrough,
-  // diffs; the _word pair is the CHANGED RUN inside a -/+ line pair (Phase 12 m5b)
-  diff_added, diff_removed, diff_context, diff_added_word, diff_removed_word,
-  // chrome
-  input_text, input_cursor, input_placeholder, scroll_marker, selection, overlay,
-  menu_item, menu_selected, menu_breadcrumb, menu_shortcut,
-  // find (Phase 12 m4): every match, and the one the view is on
-  find_match, find_current,
-  // the scrollbar thumb (Phase 12 m5); its TRACK is the window's own border
-  scrollbar,
-  count_
+#define ROLLTUI_ROLE_CPP_(lower, UPPER) lower = ROLLTUI_ROLE_##UPPER,
+  ROLLTUI_ROLE_LIST(ROLLTUI_ROLE_CPP_)
+#undef ROLLTUI_ROLE_CPP_
+  count_ = ROLLTUI_ROLE_COUNT
 };
 
 inline constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
@@ -97,17 +88,14 @@ inline constexpr RolePair kMustDiffer[] = {
 // who ignores that gets told, which is the point.
 inline constexpr std::size_t kMustDifferCount = sizeof(kMustDiffer) / sizeof(kMustDiffer[0]);
 
+// PHASE 17: DERIVED, like the enum above. These were two hand-kept lists in this file, in
+// the same order, with nothing checking that they stayed in it — a role added to one and not
+// the other would have drawn under the wrong name rather than failing to build. Now the
+// stringisation comes from the same X-macro, so there is no order to keep.
 inline constexpr std::array<std::string_view, kRoleCount> kRoleNames = {
-    "text", "text_muted", "background", "panel_background", "border", "border_active",
-    "title", "label", "value", "accent_1", "accent_2", "accent_3", "accent_4", "prompt",
-    "note", "warning", "error",
-    "md_heading", "md_emphasis", "md_strong", "md_code_inline", "md_code_block",
-    "md_code_label", "md_link", "md_link_url", "md_quote", "md_list_marker",
-    "md_table_border", "md_table_header", "md_rule", "md_strikethrough",
-    "diff_added", "diff_removed", "diff_context", "diff_added_word", "diff_removed_word",
-    "input_text", "input_cursor", "input_placeholder", "scroll_marker", "selection",
-    "overlay", "menu_item", "menu_selected", "menu_breadcrumb", "menu_shortcut",
-    "find_match", "find_current", "scrollbar",
+#define ROLLTUI_ROLE_NAME_CPP_(lower, UPPER) #lower,
+    ROLLTUI_ROLE_LIST(ROLLTUI_ROLE_NAME_CPP_)
+#undef ROLLTUI_ROLE_NAME_CPP_
 };
 
 inline constexpr std::string_view role_name(Role r) {
