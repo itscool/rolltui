@@ -20,6 +20,7 @@
 // the m2 rule at `rolltui_diff.h`) and Bindings' "which scopes are the library's", and unpack
 // the transient `RolltuiLoadedLayout`/`RolltuiLayoutReport` the C loader fills, once per load.
 #include "rolltui/Layout.hpp"
+#include "rolltui/c/rolltui_embedded.h"
 
 #include "rolltui/Lifetime.hpp"
 
@@ -494,10 +495,6 @@ std::string layout_to_json(const Layout& layout) {
 // the same table for LayoutDomain::shipped_at, so a shipped preset and its built-in
 // cannot drift; presets_test asserts they are equal anyway, because "cannot" has been
 // wrong before.
-namespace embedded {
-extern const std::pair<std::string_view, std::string_view> kLayoutPresets[];
-extern const std::size_t kLayoutPresetCount;
-}  // namespace embedded
 
 namespace {
 
@@ -506,18 +503,18 @@ namespace {
 const std::vector<std::string_view>& builtin_names() {
   static const std::vector<std::string_view> names = [] {
     std::vector<std::string_view> out;
-    for (std::size_t i = 0; i < embedded::kLayoutPresetCount; ++i)
-      if (embedded::kLayoutPresets[i].first == "default") out.push_back(embedded::kLayoutPresets[i].first);
-    for (std::size_t i = 0; i < embedded::kLayoutPresetCount; ++i)
-      if (embedded::kLayoutPresets[i].first != "default") out.push_back(embedded::kLayoutPresets[i].first);
+    for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
+      if (rolltui_kLayoutPresets[i].name == "default") out.push_back(rolltui_kLayoutPresets[i].name);
+    for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
+      if (rolltui_kLayoutPresets[i].name != "default") out.push_back(rolltui_kLayoutPresets[i].name);
     return out;
   }();
   return names;
 }
 
 std::string_view builtin_json(std::string_view name) {
-  for (std::size_t i = 0; i < embedded::kLayoutPresetCount; ++i)
-    if (embedded::kLayoutPresets[i].first == name) return embedded::kLayoutPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
+    if (rolltui_kLayoutPresets[i].name == name) return rolltui_kLayoutPresets[i].text;
   return "";
 }
 

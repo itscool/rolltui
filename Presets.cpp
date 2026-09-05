@@ -12,18 +12,11 @@
 
 #include <unistd.h>
 
+#include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_presets.h"
 
 namespace rolltui {
 
-namespace embedded {
-extern const std::pair<std::string_view, std::string_view> kThemePresets[];
-extern const std::size_t kThemePresetCount;
-extern const std::pair<std::string_view, std::string_view> kLayoutPresets[];
-extern const std::size_t kLayoutPresetCount;
-extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
-extern const std::size_t kBindingsPresetCount;
-}  // namespace embedded
 
 namespace fs = std::filesystem;
 using json::Value;
@@ -218,8 +211,8 @@ std::optional<Theme> resolve_colours(const ThemePreset& p, ThemeMode mode, Theme
 
 // ---- the Theme domain: traits and the store's own methods -------------------------------
 
-std::size_t ThemeDomain::shipped_count() { return embedded::kThemePresetCount; }
-std::pair<std::string_view, std::string_view> ThemeDomain::shipped_at(std::size_t i) { return embedded::kThemePresets[i]; }
+std::size_t ThemeDomain::shipped_count() { return rolltui_kThemePresetCount; }
+std::pair<std::string_view, std::string_view> ThemeDomain::shipped_at(std::size_t i) { return {rolltui_kThemePresets[i].name, rolltui_kThemePresets[i].text}; }
 
 std::optional<ThemePreset> ThemeDomain::parse_partial(const json::Value& v, const ThemePreset& working, PresetLoadReport& report) {
   RolltuiJsonValue* root_c = json::value_to_c(v);
@@ -242,8 +235,8 @@ std::optional<ThemePreset> ThemeDomain::parse_partial(const json::Value& v, cons
 
 // ---- the Layout domain (Phase 10 m1) ----------------------------------------------------
 
-std::size_t LayoutDomain::shipped_count() { return embedded::kLayoutPresetCount; }
-std::pair<std::string_view, std::string_view> LayoutDomain::shipped_at(std::size_t i) { return embedded::kLayoutPresets[i]; }
+std::size_t LayoutDomain::shipped_count() { return rolltui_kLayoutPresetCount; }
+std::pair<std::string_view, std::string_view> LayoutDomain::shipped_at(std::size_t i) { return {rolltui_kLayoutPresets[i].name, rolltui_kLayoutPresets[i].text}; }
 
 std::optional<Layout> LayoutDomain::parse(const json::Value& v, PresetLoadReport& report) {
   report = PresetLoadReport{};
@@ -315,8 +308,8 @@ MigrationReport migrate_theme_layout(const std::string& dir) {
 
 // ---- the Bindings domain -------------------------------------------------------------------
 
-std::size_t BindingsDomain::shipped_count() { return embedded::kBindingsPresetCount; }
-std::pair<std::string_view, std::string_view> BindingsDomain::shipped_at(std::size_t i) { return embedded::kBindingsPresets[i]; }
+std::size_t BindingsDomain::shipped_count() { return rolltui_kBindingsPresetCount; }
+std::pair<std::string_view, std::string_view> BindingsDomain::shipped_at(std::size_t i) { return {rolltui_kBindingsPresets[i].name, rolltui_kBindingsPresets[i].text}; }
 
 std::optional<Bindings> BindingsDomain::parse(const json::Value& v, PresetLoadReport& report) {
   report = PresetLoadReport{};

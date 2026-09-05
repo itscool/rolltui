@@ -13,6 +13,7 @@
 // note and `rolltui_menu.h`'s header comment for why a menu file, unlike Theme's and Layout's,
 // had nothing left behind.
 #include "rolltui/Menu.hpp"
+#include "rolltui/c/rolltui_embedded.h"
 
 #include <algorithm>
 #include <cmath>
@@ -143,20 +144,16 @@ std::string menu_to_json(const MenuItem& root) {
 // The shipped menu files, embedded by cmake/embed_presets.cmake from
 // rolltui/presets/menus/ — the same machinery as the shipped presets, so a menu that
 // ships is a real file in the source tree and not a string in a .cpp (Phase 10 m3).
-namespace embedded {
-extern const std::pair<std::string_view, std::string_view> kMenus[];
-extern const std::size_t kMenuCount;
-}  // namespace embedded
 
 std::string_view shipped_menu(std::string_view name) {
-  for (std::size_t i = 0; i < embedded::kMenuCount; ++i)
-    if (embedded::kMenus[i].first == name) return embedded::kMenus[i].second;
+  for (std::size_t i = 0; i < rolltui_kMenuCount; ++i)
+    if (rolltui_kMenus[i].name == name) return rolltui_kMenus[i].text;
   return {};
 }
 
 std::vector<std::string_view> shipped_menu_names() {
   std::vector<std::string_view> out;
-  for (std::size_t i = 0; i < embedded::kMenuCount; ++i) out.push_back(embedded::kMenus[i].first);
+  for (std::size_t i = 0; i < rolltui_kMenuCount; ++i) out.push_back(rolltui_kMenus[i].name);
   return out;
 }
 

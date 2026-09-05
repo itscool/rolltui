@@ -27,6 +27,7 @@
 // mapping rather than guess at one.
 //
 #include <algorithm>
+#include "rolltui/c/rolltui_embedded.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -51,12 +52,6 @@ using namespace rolltui_test;
 // (rolltui/cmake/embed_presets.cmake), redeclared here exactly as Bindings.cpp,
 // Layout.cpp and Presets.cpp each already do independently. Declared before every use
 // below — an `extern` forward declaration has to precede the code that reads it.
-namespace rolltui::embedded {
-extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
-extern const std::size_t kBindingsPresetCount;
-extern const std::pair<std::string_view, std::string_view> kLayoutPresets[];
-extern const std::size_t kLayoutPresetCount;
-}  // namespace rolltui::embedded
 
 // `RolltuiChord` (rolltui/c/rolltui_keys.h) deliberately has no `operator==` of its own —
 // unlike `RolltuiMouseEvent`/`RolltuiRect`/`RolltuiCell`, nothing in the C API compares two
@@ -412,14 +407,14 @@ RolltuiBindings* bindings_from_json(std::string_view text, BindingsLoadReport& r
 // test is free next to what deliverability_test already spends. ----
 
 std::string_view default_bindings_json() {
-  for (std::size_t i = 0; i < rolltui::embedded::kBindingsPresetCount; ++i)
-    if (rolltui::embedded::kBindingsPresets[i].first == "default") return rolltui::embedded::kBindingsPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kBindingsPresetCount; ++i)
+    if (rolltui_kBindingsPresets[i].name == "default") return rolltui_kBindingsPresets[i].text;
   return "";
 }
 
 std::string_view builtin_layout_json(std::string_view name) {
-  for (std::size_t i = 0; i < rolltui::embedded::kLayoutPresetCount; ++i)
-    if (rolltui::embedded::kLayoutPresets[i].first == name) return rolltui::embedded::kLayoutPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
+    if (rolltui_kLayoutPresets[i].name == name) return rolltui_kLayoutPresets[i].text;
   return "";
 }
 

@@ -65,7 +65,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   C++, which is the strongest argument FOR C here.
 
 file(GLOB ROLLTUI_THEME_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/themes/*.json)
-set(ROLLTUI_EMBEDDED_PRESETS ${CMAKE_CURRENT_BINARY_DIR}/embedded_presets.cpp)
+set(ROLLTUI_EMBEDDED_PRESETS ${CMAKE_CURRENT_BINARY_DIR}/embedded_presets.c)
 add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_PRESETS}
   COMMAND ${CMAKE_COMMAND} -DOUT=${ROLLTUI_EMBEDDED_PRESETS} -DTABLE=kThemePresets "-DFILES=${ROLLTUI_THEME_PRESETS}"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
@@ -76,7 +76,7 @@ add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_PRESETS}
 # also the built-in layouts — builtin_layout() parses this same embedded table, so the
 # four layouts have ONE definition site (a file), not a file plus a string in Layout.cpp.
 file(GLOB ROLLTUI_LAYOUT_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/layouts/*.json)
-set(ROLLTUI_EMBEDDED_LAYOUTS ${CMAKE_CURRENT_BINARY_DIR}/embedded_layouts.cpp)
+set(ROLLTUI_EMBEDDED_LAYOUTS ${CMAKE_CURRENT_BINARY_DIR}/embedded_layouts.c)
 add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_LAYOUTS}
   COMMAND ${CMAKE_COMMAND} -DOUT=${ROLLTUI_EMBEDDED_LAYOUTS} -DTABLE=kLayoutPresets "-DFILES=${ROLLTUI_LAYOUT_PRESETS}"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
@@ -89,7 +89,7 @@ add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_LAYOUTS}
 # resolves, the shipped rung under the user's directory and the host's own embedded
 # menus (rolltui/Widgets.hpp).
 file(GLOB ROLLTUI_MENUS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/menus/*.json)
-set(ROLLTUI_EMBEDDED_MENUS ${CMAKE_CURRENT_BINARY_DIR}/embedded_menus.cpp)
+set(ROLLTUI_EMBEDDED_MENUS ${CMAKE_CURRENT_BINARY_DIR}/embedded_menus.c)
 add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_MENUS}
   COMMAND ${CMAKE_COMMAND} -DOUT=${ROLLTUI_EMBEDDED_MENUS} -DTABLE=kMenus "-DFILES=${ROLLTUI_MENUS}"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
@@ -99,7 +99,7 @@ add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_MENUS}
 
 # Milestone 17: the Bindings domain's shipped presets (presets/bindings/*.json) the same way.
 file(GLOB ROLLTUI_BINDINGS_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/bindings/*.json)
-set(ROLLTUI_EMBEDDED_BINDINGS ${CMAKE_CURRENT_BINARY_DIR}/embedded_bindings.cpp)
+set(ROLLTUI_EMBEDDED_BINDINGS ${CMAKE_CURRENT_BINARY_DIR}/embedded_bindings.c)
 add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_BINDINGS}
   COMMAND ${CMAKE_COMMAND} -DOUT=${ROLLTUI_EMBEDDED_BINDINGS} -DTABLE=kBindingsPresets "-DFILES=${ROLLTUI_BINDINGS_PRESETS}"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
@@ -142,6 +142,8 @@ add_library(rolltui STATIC
                               #   their own under tools/, which is a HOST's business.
   c/rolltui_library_actions.c # Phase 17: the 59 library actions as DATA, once — four
                               #   consumers had each copied them verbatim.
+  c/rolltui_embedded.c        # the shipped presets as C DATA — see its header for the
+                              #   fifth-copy incident that moved them out of C++.
   c/rolltui_render.c          # the frame -> bytes step `rolltui_screen.h` deliberately
                               #   deferred ("porting them is its own step"): render_diff,
                               #   render_full and frame_to_text, filling a caller's buffer.

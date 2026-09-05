@@ -162,7 +162,7 @@
 #include "rolltui/Menu.hpp"
 #include "rolltui/Presets.hpp"
 #include "rolltui/Screen.hpp"
-#include "rolltui/Terminal.hpp"
+#include "rolltui/c/rolltui_terminal.h"  // PHASE 17 m3: the terminal loop calls the C directly
 #include "rolltui/ThemeAnalysis.hpp"
 #include "rolltui/ThemeGen.hpp"
 #include "rolltui/Theme.hpp"
@@ -1452,6 +1452,47 @@ std::uint64_t now_ms() {
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
+// PHASE 17 m3: the terminal loop calls `rolltui_terminal.h` directly instead of going
+// through `rolltui/Terminal.hpp` (the shim class stays the shim's business, and this is
+// the one place studio.cpp genuinely does not need it — a raw terminal handle, unlike
+// Theme/Bindings/Menu/Layout, crosses no boundary this file must still speak the C++ shape
+// of for the editor tools). `Event`/`KeyEvent`/`MouseEvent`/`PasteEvent`/`ResizeEvent`
+// themselves stay `rolltui::`'s (Keys.hpp, which stays included — see the report): this
+// callback's job is exactly what `rolltui::Terminal`'s own `collect()` (Terminal.cpp) does,
+// converting one `RolltuiTermEvent` into one `rolltui::Event` and handing it to `App::handle`
+// immediately rather than batching into a `std::vector<Event>` first.
+struct PollCtx {
+  App* app;
+  bool* have_prev;
+  bool* running;
+  bool stop = false;
+};
+void on_term_event(void* vctx, const RolltuiTermEvent* te) {
+  PollCtx* c = static_cast<PollCtx*>(vctx);
+  if (c->stop) return;  // `app.handle` already said stop; ignore the rest of this batch
+  c->app->clock_ms = now_ms();
+  if (te->kind == ROLLTUI_TERM_EVENT_RESIZE) {
+    c->app->resize(te->w, te->h);
+    *c->have_prev = false;
+    return;
+  }
+  Event e;
+  if (te->kind == ROLLTUI_TERM_EVENT_MOUSE) {
+    e = te->mouse;  // MouseEvent IS RolltuiMouseEvent (Phase 14 m2's one-definition rule)
+  } else if (te->kind == ROLLTUI_TERM_EVENT_PASTE) {
+    e = PasteEvent{std::string(te->text, te->text_len)};
+  } else {
+    KeyEvent k = key_event_of(te->key);
+    if (te->text) k.raw.assign(te->text, te->text_len);
+    if (k.key == Key::Char && k.ctrl && k.ch == 'l') *c->have_prev = false;
+    e = std::move(k);
+  }
+  if (!c->app->handle(e)) {
+    *c->running = false;
+    c->stop = true;
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1624,13 +1665,18 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  Terminal term(STDIN_FILENO, STDOUT_FILENO);
-  if (!term.is_tty()) { std::fprintf(stderr, "not a terminal; use --frame WxH\n"); return 1; }
-  if (!app.mode_flag && app.store->working().mode == "auto") {
-    const std::optional<Color> bg = term.query_background(150);
-    app.detected_mode = bg ? mode_for_background(*bg) : ThemeMode::Dark;
+  RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, RolltuiTerminalOptions{});
+  if (!rolltui_terminal_is_tty(term)) {
+    std::fprintf(stderr, "not a terminal; use --frame WxH\n");
+    rolltui_terminal_free(term);
+    return 1;
   }
-  app.resize(term.width(), term.height());
+  if (!app.mode_flag && app.store->working().mode == "auto") {
+    RolltuiStyleColor bg{};
+    const int have_bg = rolltui_terminal_query_background(term, 150, &bg);
+    app.detected_mode = have_bg ? mode_for_background(bg) : ThemeMode::Dark;
+  }
+  app.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
   app.load_layout_arg();
   app.sync_look();
   app.ensure_layout();
@@ -1643,25 +1689,18 @@ int main(int argc, char** argv) {
     app.maybe_reload_layout();
     app.effect_ms = now_ms();
     Frame f = app.render(true);
-    term.write(render_diff(have_prev ? &prev : nullptr, f, app.depth));
+    const std::string diff = render_diff(have_prev ? &prev : nullptr, f, app.depth);
+    rolltui_terminal_write(term, diff.data(), diff.size());
     const bool ticking = app.transcript().wants_tick();
     // m6: how long this host may sleep is a function of what the frame MARKED, so an
     // idle screen still costs one wakeup every 250 ms and no more.
     const int timeout = poll_timeout_ms(f, app.theme, ticking ? 50 : 250);
     prev = std::move(f);
     have_prev = true;
-    for (const Event& e : term.poll(timeout)) {
-      app.clock_ms = now_ms();
-      if (const ResizeEvent* r = std::get_if<ResizeEvent>(&e)) {
-        app.resize(r->w, r->h);
-        have_prev = false;
-        continue;
-      }
-      if (const KeyEvent* k = std::get_if<KeyEvent>(&e); k && k->key == Key::Char && k->ctrl && k->ch == 'l')
-        have_prev = false;
-      if (!app.handle(e)) { running = false; break; }
-    }
+    PollCtx ctx{&app, &have_prev, &running};
+    rolltui_terminal_poll(term, timeout, on_term_event, &ctx);
     if (ticking) app.tick();
   }
+  rolltui_terminal_free(term);
   return 0;
 }

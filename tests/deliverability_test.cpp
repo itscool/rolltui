@@ -42,6 +42,7 @@
 // — the same trade tests/input_test.cpp already made for its own action table.
 //
 #include <array>
+#include "rolltui/c/rolltui_embedded.h"
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -64,10 +65,6 @@
 // (rolltui/cmake/embed_presets.cmake); Bindings.cpp reads it through this exact
 // declaration, and default_bindings_json() below does the same rather than duplicating
 // the embedding.
-namespace rolltui::embedded {
-extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
-extern const std::size_t kBindingsPresetCount;
-}  // namespace rolltui::embedded
 
 using namespace rolltui_test;
 
@@ -467,8 +464,8 @@ void declare(RolltuiBindings* b, const std::vector<ActionDecl>& declared) {
 }
 
 std::string_view default_bindings_json() {
-  for (std::size_t i = 0; i < rolltui::embedded::kBindingsPresetCount; ++i)
-    if (rolltui::embedded::kBindingsPresets[i].first == "default") return rolltui::embedded::kBindingsPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kBindingsPresetCount; ++i)
+    if (rolltui_kBindingsPresets[i].name == "default") return rolltui_kBindingsPresets[i].text;
   return "";
 }
 

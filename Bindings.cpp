@@ -1,5 +1,6 @@
 // rolltui/Bindings.cpp — see Bindings.hpp.
 #include "rolltui/Bindings.hpp"
+#include "rolltui/c/rolltui_embedded.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,10 +13,6 @@
 
 namespace rolltui {
 
-namespace embedded {
-extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
-extern const std::size_t kBindingsPresetCount;
-}  // namespace embedded
 
 // ---- the action table ------------------------------------------------------------------
 
@@ -387,8 +384,8 @@ json::Value Bindings::to_json(std::string_view name) const {
 // ---- the shipped default ------------------------------------------------------------------------
 
 std::string_view default_bindings_json() {
-  for (std::size_t i = 0; i < embedded::kBindingsPresetCount; ++i)
-    if (embedded::kBindingsPresets[i].first == "default") return embedded::kBindingsPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kBindingsPresetCount; ++i)
+    if (rolltui_kBindingsPresets[i].name == "default") return rolltui_kBindingsPresets[i].text;
   return "";
 }
 

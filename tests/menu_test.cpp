@@ -22,6 +22,7 @@
 // instruction to treat the shim as the mapping rather than guess at one.
 //
 #include <algorithm>
+#include "rolltui/c/rolltui_embedded.h"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -44,14 +45,6 @@ using namespace rolltui_test;
 // The embedded preset tables: permanent generated C++ data (rolltui/cmake/embed_presets.cmake),
 // redeclared here exactly as Bindings.cpp/Layout.cpp/Menu.cpp/Presets.cpp each already do
 // independently. Declared before every use below.
-namespace rolltui::embedded {
-extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
-extern const std::size_t kBindingsPresetCount;
-extern const std::pair<std::string_view, std::string_view> kLayoutPresets[];
-extern const std::size_t kLayoutPresetCount;
-extern const std::pair<std::string_view, std::string_view> kMenus[];
-extern const std::size_t kMenuCount;
-}  // namespace rolltui::embedded
 
 namespace {
 
@@ -322,13 +315,13 @@ std::string bindings_chords_text(const RolltuiBindings* b, std::string_view acti
   return s;
 }
 std::string_view default_bindings_json() {
-  for (std::size_t i = 0; i < rolltui::embedded::kBindingsPresetCount; ++i)
-    if (rolltui::embedded::kBindingsPresets[i].first == "default") return rolltui::embedded::kBindingsPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kBindingsPresetCount; ++i)
+    if (rolltui_kBindingsPresets[i].name == "default") return rolltui_kBindingsPresets[i].text;
   return "";
 }
 std::string_view builtin_layout_json(std::string_view name) {
-  for (std::size_t i = 0; i < rolltui::embedded::kLayoutPresetCount; ++i)
-    if (rolltui::embedded::kLayoutPresets[i].first == name) return rolltui::embedded::kLayoutPresets[i].second;
+  for (std::size_t i = 0; i < rolltui_kLayoutPresetCount; ++i)
+    if (rolltui_kLayoutPresets[i].name == name) return rolltui_kLayoutPresets[i].text;
   return "";
 }
 const std::vector<ActionDecl>& shipped_default_actions() {
@@ -407,13 +400,13 @@ std::string menu_to_json(const MenuItem& root) {
   return out.str();
 }
 std::string_view shipped_menu(std::string_view name) {
-  for (std::size_t i = 0; i < rolltui::embedded::kMenuCount; ++i)
-    if (rolltui::embedded::kMenus[i].first == name) return rolltui::embedded::kMenus[i].second;
+  for (std::size_t i = 0; i < rolltui_kMenuCount; ++i)
+    if (rolltui_kMenus[i].name == name) return rolltui_kMenus[i].text;
   return {};
 }
 std::vector<std::string_view> shipped_menu_names() {
   std::vector<std::string_view> out;
-  for (std::size_t i = 0; i < rolltui::embedded::kMenuCount; ++i) out.push_back(rolltui::embedded::kMenus[i].first);
+  for (std::size_t i = 0; i < rolltui_kMenuCount; ++i) out.push_back(rolltui_kMenus[i].name);
   return out;
 }
 
