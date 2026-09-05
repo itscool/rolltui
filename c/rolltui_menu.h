@@ -105,7 +105,12 @@ void rolltui_menu_event_release(RolltuiMenuEvent* e);
 
 typedef struct RolltuiMenu RolltuiMenu;
 /* `editor` is BORROWED and must outlive the menu — `rolltui::Menu` owns it. */
-RolltuiMenu* rolltui_menu_new(RolltuiInput* editor);
+/* The menu OWNS its editor (Phase 17): the typed-field editing a menu does is not optional,
+ * and every caller was constructing one to hand in. `rolltui_menu_editor` borrows it back. */
+RolltuiMenu* rolltui_menu_new(void);
+
+/* The menu's editor, BORROWED, valid for the menu's life. */
+RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m);
 void rolltui_menu_free(RolltuiMenu* m);
 
 /* ---- the tree ---------------------------------------------------------------------------------- */

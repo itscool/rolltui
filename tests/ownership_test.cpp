@@ -339,7 +339,14 @@ int main() {
         // `rolltui/c/rolltui_layout.h`, which this census does not scan (headers_only(true)
         // is `.hpp` files only). The borrow itself did not go away — it is stated at that
         // struct's own definition instead — only its address in this text did.
-        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 5},
+        // Menu.hpp 5 -> 6, RE-RECORDED 2026-09-05 by Phase 17. The new one is a BORROW and the
+        // ownership it reflects moved the RIGHT way: this class used to OWN an `Input edit_`
+        // member and lend its handle to `rolltui_menu_new`, and both callers in the tree did
+        // exactly that — the two-consumers-one-wrapper tell. The C menu owns its editor now,
+        // and `rolltui_menu_editor(m_.get())` borrows it back for the menu's life. A member
+        // that owned became a call that borrows, which is why the count went UP while the
+        // ownership got simpler.
+        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 6},
         // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
         // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
         // FUNCTION pointer, which the scanner's pattern does not match and which borrows
@@ -502,7 +509,7 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    check(total == 114, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    check(total == 115, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

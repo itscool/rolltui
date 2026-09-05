@@ -86,6 +86,9 @@
 #include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_transcript.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_screen.h"
@@ -206,6 +209,30 @@ void rolltui_windows_set_panel_factory(RolltuiWindows* w, RolltuiWidgetFactory f
 RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content, size_t len);
 /* The widget a WINDOW holds, or NULL — filled by `sync`. */
 RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, size_t len);
+
+/* ---- A KNOWN GAP, RECORDED RATHER THAN HALF-CLOSED (Phase 17, 2026-09-05) ----------------
+ * `rolltui_windows_at`/`_widget_for` hand back an opaque `RolltuiWidget{vt, ctx}`: enough to
+ * DRAW a widget and route an event at it, and nothing else. There is no way to recover the
+ * typed `RolltuiInput*` / `RolltuiTranscript*` / `RolltuiMenu*` behind one, so a host cannot
+ * set an input's text, scroll a transcript or read a menu's selection through this API.
+ *
+ * TWO CONSUMERS REACHED FOR THAT SAME MISSING CALL ON THE SAME DAY, separately (roll's
+ * `TuiFrontend` and `layout_test`) — which is `rolltui.h` rule 5's tell that the API is wrong
+ * rather than the consumers.
+ *
+ * IT IS NOT CLOSED HERE, AND THE REASON IS THE INTERESTING PART. Adding the three accessors is
+ * ten lines and was written and then REVERTED: `Windows` keeps those widgets in C++ maps
+ * (`Widgets.cpp`'s `inputs_`/`transcripts_`/`menus_`) that the built-in factories construct
+ * from, so a C-side map would be a SECOND owner. A host calling `rolltui_windows_input("x")`
+ * would get one object and the window drawing `input:x` would draw another — two views of one
+ * source silently diverging, which is the exact property this table already promises against
+ * ("two windows on one content are two views of one widget").
+ *
+ * THE ORDER THAT WORKS: move the three maps into this struct AND repoint the built-in
+ * factories at them in ONE change, then the ~85 host call sites follow. Doing the accessors
+ * first buys nothing and risks a half-state no test would catch, because both objects behave
+ * correctly in isolation. See `plan/phase-17.md` m1c. */
+
 /* That window's content string, a BORROW valid until the next `sync`. */
 const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
                                        size_t* out_len);

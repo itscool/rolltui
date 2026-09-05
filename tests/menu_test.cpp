@@ -492,7 +492,9 @@ void fill_shortcuts(MenuItem& it, const RolltuiBindings* b) {
 
 class Menu {
  public:
-  Menu() : editor_(rolltui_input_new()), m_(rolltui_menu_new(editor_)) {
+  // PHASE 17: the menu owns its editor. This holder used to create one and hand it in —
+  // the second of the two identical wrappers that moved the job into the library.
+  Menu() : m_(rolltui_menu_new()), editor_(rolltui_menu_editor(m_)) {
     RolltuiInputOptions o;
     o.single_line = 1;
     o.prompt.clear();
@@ -502,10 +504,7 @@ class Menu {
   explicit Menu(MenuItem root) : Menu() { set_root(std::move(root)); }
   Menu(const Menu&) = delete;
   Menu& operator=(const Menu&) = delete;
-  ~Menu() {
-    rolltui_menu_free(m_);
-    rolltui_input_free(editor_);
-  }
+  ~Menu() { rolltui_menu_free(m_); /* the editor goes with it — the menu owns it now */ }
 
   // ---- the tree ----
   void set_root(MenuItem root) { rolltui_menu_set_root(m_, &root); }
@@ -621,8 +620,9 @@ class Menu {
   }
 
  private:
-  RolltuiInput* editor_;  // BORROWED by m_; must outlive it — freed AFTER m_ below
   RolltuiMenu* m_;
+  RolltuiInput* editor_;  // BORROWED from m_, which owns it; declared after m_ so it is
+                          // initialised from a constructed menu.
   std::vector<std::pair<std::string, Validator>> validators_;
 };
 

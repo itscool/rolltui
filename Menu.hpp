@@ -234,9 +234,12 @@ class Menu {
   std::string breadcrumb() const;  // "settings › theme"
   bool editing() const { return rolltui_menu_editing(m_.get()) != 0; }
   // A BORROW of the editor's buffer (Phase 15 m5), valid until the text next changes.
-  std::string_view editing_text() const { return edit_.text(); }
+  std::string_view editing_text() const {
+    std::size_t n = 0;
+    const char* p = rolltui_input_text(rolltui_menu_editor(m_.get()), &n);
+    return std::string_view(p, n);
+  }
   std::string_view edit_reason() const;  // a refused key's or an invalid text's reason
-  const Input& editor() const { return edit_; }
   void set_palette(bool on) { rolltui_menu_set_palette(m_.get(), on); }
   bool palette() const { return rolltui_menu_palette(m_.get()) != 0; }
   // The flattened palette list, counted and indexed rather than handed over whole.
@@ -266,10 +269,11 @@ class Menu {
   RolltuiMenu* handle() { return m_.get(); }
 
  private:
-  // The editor is OWNED here and BORROWED by the C widget — one owner, and `editor()`
-  // still hands back the object a host already reads.
-  Input edit_;
-  std::unique_ptr<RolltuiMenu, Handle> m_{rolltui_menu_new(edit_.handle())};
+  // PHASE 17: the MENU owns its editor now, not this class. Both C++ callers of
+  // `rolltui_menu_new` were creating an input to hand in, which is the two-consumers-one-
+  // wrapper tell; the C took the job. `editor()` above borrows it back, so a host reads the
+  // same object it always did.
+  std::unique_ptr<RolltuiMenu, Handle> m_{rolltui_menu_new()};
   std::vector<std::pair<std::string, Validator>> validators_;
 };
 

@@ -203,7 +203,7 @@ Menu::Menu() {
   InputOptions o;
   o.single_line = 1;
   o.prompt.clear();
-  edit_.set_options(o);
+  rolltui_input_set_options(rolltui_menu_editor(m_.get()), &o);
   rolltui_menu_set_validator_fn(m_.get(), call_validator, &validators_);
 }
 

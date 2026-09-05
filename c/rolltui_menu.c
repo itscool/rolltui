@@ -898,12 +898,15 @@ void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out) {
 
 /* ---- lifetime ------------------------------------------------------------------------------------------ */
 
-RolltuiMenu* rolltui_menu_new(RolltuiInput* editor) {
+RolltuiMenu* rolltui_menu_new(void) {
   RolltuiMenu* m = (RolltuiMenu*)rolltui_mem_alloc(sizeof *m);
   memset(m, 0, sizeof *m);
   rolltui_menu_item_init(&m->root);
   m->root.kind = ROLLTUI_MENU_SUBMENU;
-  m->edit = editor;
+  /* OWNED (Phase 17). This used to be a borrowed parameter, and BOTH callers in the tree
+   * created an input for it and passed it — the two-consumers-one-wrapper tell. A menu with no
+   * editor cannot edit a typed field, so there was never a menu that wanted a different one. */
+  m->edit = rolltui_input_new();
   m->u = rolltui_u_scratch_new();
   return m;
 }
@@ -918,6 +921,7 @@ void rolltui_menu_free(RolltuiMenu* m) {
   flat_release(m);
   rolltui_mem_free(m->vis);
   rolltui_u_scratch_free(m->u);
+  rolltui_input_free(m->edit); /* OWNED since Phase 17 */
   rolltui_mem_free(m);
 }
 
@@ -1986,3 +1990,8 @@ void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out) {
   rolltui_str_append(out, "\n", 1);
   rolltui_json_free(v);
 }
+
+/* The menu's own editor, BORROWED — valid for the menu's life. What `Menu::editor()` returns,
+ * and the reason owning the input costs a caller nothing: the three states a typed field has
+ * (committed value, editing text, preview) are still readable. */
+RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m) { return m->edit; }
