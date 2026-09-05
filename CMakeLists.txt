@@ -231,6 +231,12 @@ add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
 # every raw pointer in a public header, so adding one forces its lifetime to be stated.
 add_rolltui_test(rolltui-ownership-test tests/ownership_test.cpp)
 
+# Phase 17 m2: THE PUBLIC HEADER's own guarantees, as assertions. That including
+# `rolltui/rolltui.h` alone is SUFFICIENT is proved by this translation unit compiling and
+# calling the API; that the header declares NOTHING of its own is a grep control which proves
+# itself against a planted declaration first.
+add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
+
 # Phase 14 m6a: THE RELEASE POINT, as an assertion — after shutdown() the library holds
 # NOTHING, asserted as a number in both configurations, with a control that proves the gauge
 # can see a retention before it is trusted to report a zero. Until this existed, "did the
