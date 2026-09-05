@@ -73,13 +73,45 @@ void rolltui_content_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
 
 /* ---- the host ------------------------------------------------------------------------------- */
 
-/* One registered kind: a name, a factory and the context it was registered with. The
- * library's own seven are in here beside a host's, which is rule 5 made literal. */
+/* One registered kind: a name, a factory and the context it was registered with, plus how to
+ * release that context — NULL for the library's own seven, whose `ctx` is the `Windows`
+ * object and not this table's to free (rule 5 made literal: they are in here beside a
+ * host's, but a host's alone is owned here). */
 typedef struct KindRow {
   RolltuiStr name;
   RolltuiWidgetFactory factory;
   void* ctx;
+  void (*free_ctx)(void*);
 } KindRow;
+
+/* ---- what a host BOUND, by name (Phase 15 m6) ---------------------------------------------
+ * One heap-allocated binding per bound name, stored as a `RolltuiMap` value (STRATEGY 5:
+ * GROWING HEAP, alongside every other per-entry allocation in this file — `WindowSlot`, the
+ * report's `RolltuiStr`s). `free_binding_ctx` is shared by all three callback kinds; each
+ * struct also carries its OWN function-pointer type so a caller can never hand a rows
+ * callback to `bind_note` and have it silently compile. */
+typedef struct RowsBinding {
+  RolltuiRowsFn fn;
+  void* ctx;
+  void (*free_ctx)(void*);
+} RowsBinding;
+
+typedef struct SubmitBinding {
+  RolltuiSubmitFn fn;
+  void* ctx;
+  void (*free_ctx)(void*);
+  int on_submit;
+} SubmitBinding;
+
+typedef struct NoteBinding {
+  RolltuiNoteFn fn;
+  void* ctx;
+  void (*free_ctx)(void*);
+} NoteBinding;
+
+static void free_binding_ctx(void* ctx, void (*free_ctx)(void*)) {
+  if (free_ctx) free_ctx(ctx);
+}
 
 /* Where a window's scrollbar track WAS on the last frame, so `handle` — which is given a
  * window id and no geometry — can tell a press on the thumb from a press on the text. */
@@ -116,6 +148,14 @@ struct RolltuiWindows {
 
   RolltuiResolvedNode* nodes; /* the per-frame resolve buffer, reused */
   size_t node_n, node_cap;
+
+  /* ---- what a host BOUND, by name (Phase 15 m6) ------------------------------------------ */
+  RolltuiMap documents;  /* name -> BORROWED doc pointer, opaque to C; never freed by this table */
+  RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
+  RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
+  RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
+  RolltuiMap host_menus; /* name -> RolltuiStr* (a menu file's text), OWNED */
+  RolltuiStr dir;        /* the preset directory; "" until set_dir */
 };
 
 RolltuiWindows* rolltui_windows_new(void) {
@@ -142,29 +182,63 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(s);
   }
   rolltui_map_release(&w->by_window);
-  for (i = 0; i < w->kind_n; ++i) rolltui_str_free(&w->kinds[i].name);
+  for (i = 0; i < w->kind_n; ++i) {
+    free_binding_ctx(w->kinds[i].ctx, w->kinds[i].free_ctx);
+    rolltui_str_free(&w->kinds[i].name);
+  }
   rolltui_mem_free(w->kinds);
   for (i = 0; i < w->report_cap; ++i) rolltui_str_free(&w->report[i]);
   rolltui_mem_free(w->report);
   rolltui_str_free(&w->scratch);
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
+  /* the host-binding surface (m6): `documents` is BORROWS only, nothing to free per entry. */
+  rolltui_map_release(&w->documents);
+  for (i = 0; i < rolltui_map_count(&w->rows); ++i) {
+    RowsBinding* b = (RowsBinding*)rolltui_map_value_at(&w->rows, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->rows);
+  for (i = 0; i < rolltui_map_count(&w->submits); ++i) {
+    SubmitBinding* b = (SubmitBinding*)rolltui_map_value_at(&w->submits, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->submits);
+  for (i = 0; i < rolltui_map_count(&w->notes); ++i) {
+    NoteBinding* b = (NoteBinding*)rolltui_map_value_at(&w->notes, i);
+    free_binding_ctx(b->ctx, b->free_ctx);
+    rolltui_mem_free(b);
+  }
+  rolltui_map_release(&w->notes);
+  for (i = 0; i < rolltui_map_count(&w->host_menus); ++i) {
+    RolltuiStr* s = (RolltuiStr*)rolltui_map_value_at(&w->host_menus, i);
+    rolltui_str_free(s);
+    rolltui_mem_free(s);
+  }
+  rolltui_map_release(&w->host_menus);
+  rolltui_str_free(&w->dir);
   rolltui_mem_free(w);
 }
 
 void rolltui_windows_register_kind(RolltuiWindows* w, const char* name, size_t len,
-                                   RolltuiWidgetFactory factory, void* ctx) {
+                                   RolltuiWidgetFactory factory, void* ctx, void (*free_ctx)(void*)) {
   size_t i;
   for (i = 0; i < w->kind_n; ++i)
     if (rolltui_str_eq(&w->kinds[i].name, name, len)) {
+      /* REPLACING: release what this name owned before taking the new one. */
+      free_binding_ctx(w->kinds[i].ctx, w->kinds[i].free_ctx);
       w->kinds[i].factory = factory;
       w->kinds[i].ctx = ctx;
+      w->kinds[i].free_ctx = free_ctx;
       return;
     }
   w->kinds = (KindRow*)rolltui_grow_zeroed(w->kinds, &w->kind_cap, w->kind_n + 1, sizeof *w->kinds);
   rolltui_str_set(&w->kinds[w->kind_n].name, name, len);
   w->kinds[w->kind_n].factory = factory;
   w->kinds[w->kind_n].ctx = ctx;
+  w->kinds[w->kind_n].free_ctx = free_ctx;
   ++w->kind_n;
 }
 
@@ -227,6 +301,127 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
     return NULL;
   }
   return rolltui_str_get(&s->content, out_len);
+}
+
+/* ---- what a host BINDS, by name (Phase 15 m6) ------------------------------------------------ */
+
+void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const void* doc) {
+  /* A BORROW: nothing to release on replace, unlike the callback maps below. */
+  rolltui_map_put(&w->documents, name, len, (void*)doc);
+}
+
+const void* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->documents, name, len);
+}
+
+void rolltui_windows_bind_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRowsFn fn, void* ctx,
+                               void (*free_ctx)(void*)) {
+  RowsBinding* b = (RowsBinding*)rolltui_mem_alloc(sizeof *b);
+  RowsBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  prev = (RowsBinding*)rolltui_map_put(&w->rows, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->rows, name, len) != NULL;
+}
+
+int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, void* rows_obj) {
+  RowsBinding* b = (RowsBinding*)rolltui_map_get(&w->rows, name, len);
+  if (!b || !b->fn) return 0;
+  b->fn(b->ctx, rows_obj);
+  return 1;
+}
+
+void rolltui_windows_bind_submit(RolltuiWindows* w, const char* name, size_t len, RolltuiSubmitFn fn, void* ctx,
+                                 void (*free_ctx)(void*), int on_submit) {
+  SubmitBinding* b = (SubmitBinding*)rolltui_mem_alloc(sizeof *b);
+  SubmitBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  b->on_submit = on_submit;
+  prev = (SubmitBinding*)rolltui_map_put(&w->submits, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_has_submit(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->submits, name, len) != NULL;
+}
+
+int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len, const char* text, size_t tlen) {
+  SubmitBinding* b = (SubmitBinding*)rolltui_map_get(&w->submits, name, len);
+  if (!b || !b->fn) return 0;
+  b->fn(b->ctx, text, tlen);
+  return 1;
+}
+
+int rolltui_windows_on_submit(const RolltuiWindows* w, const char* name, size_t len) {
+  SubmitBinding* b = (SubmitBinding*)rolltui_map_get(&w->submits, name, len);
+  return b ? b->on_submit : 0; /* 0: SendAndClear, the default nothing-bound also means */
+}
+
+void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteFn fn, void* ctx,
+                               void (*free_ctx)(void*)) {
+  NoteBinding* b = (NoteBinding*)rolltui_mem_alloc(sizeof *b);
+  NoteBinding* prev;
+  b->fn = fn;
+  b->ctx = ctx;
+  b->free_ctx = free_ctx;
+  prev = (NoteBinding*)rolltui_map_put(&w->notes, name, len, b);
+  if (prev) {
+    free_binding_ctx(prev->ctx, prev->free_ctx);
+    rolltui_mem_free(prev);
+  }
+}
+
+int rolltui_windows_has_note(const RolltuiWindows* w, const char* name, size_t len) {
+  return rolltui_map_get(&w->notes, name, len) != NULL;
+}
+
+int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, void* note_obj) {
+  NoteBinding* b = (NoteBinding*)rolltui_map_get(&w->notes, name, len);
+  if (!b || !b->fn) return 0;
+  b->fn(b->ctx, note_obj);
+  return 1;
+}
+
+void rolltui_windows_set_dir(RolltuiWindows* w, const char* dir, size_t len) { rolltui_str_set(&w->dir, dir, len); }
+
+const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->dir, len); }
+
+void rolltui_windows_add_menu(RolltuiWindows* w, const char* name, size_t len, const char* json, size_t json_len) {
+  RolltuiStr* s = (RolltuiStr*)rolltui_map_get(&w->host_menus, name, len);
+  if (!s) {
+    s = (RolltuiStr*)rolltui_mem_alloc(sizeof *s);
+    memset(s, 0, sizeof *s);
+    rolltui_map_put(&w->host_menus, name, len, s);
+  }
+  rolltui_str_set(s, json, json_len);
+}
+
+const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name, size_t len, size_t* out_len) {
+  RolltuiStr* s = (RolltuiStr*)rolltui_map_get(&w->host_menus, name, len);
+  if (!s) {
+    if (out_len) *out_len = 0;
+    return NULL;
+  }
+  return rolltui_str_get(s, out_len);
+}
+
+size_t rolltui_windows_host_menu_count(const RolltuiWindows* w) { return rolltui_map_count(&w->host_menus); }
+
+const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len) {
+  return rolltui_map_key_at(&w->host_menus, i, len);
 }
 
 /* ---- sync ------------------------------------------------------------------------------------ */

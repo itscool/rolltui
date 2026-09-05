@@ -53,17 +53,29 @@
  *
  * ============================================================================================
  *
- * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ----------------------------------------
+ * ---- WHAT A HOST BINDS, AND WHY THAT CROSSES NOW TOO (Phase 15 m6) -------------------------
  *
- * **What a host BOUND.** A document, a row source, a submit target, a note, a menu file, the
- * help scopes and the preset directory are host facts bound to host callables, and they stay
- * in `Widgets.cpp` with the kinds that read them — the same trade m5c made for the menu's
- * validator registry, and for the same reason: moving a `std::function` map across a C
- * boundary buys nothing when the only code that calls it is on the other side.
+ * Through m5 this said a document, a row source, a submit target, a note and a menu file
+ * stay in `Widgets.cpp` with the kinds that read them, on the argument that moving a
+ * `std::function` map across a C boundary buys nothing when the only code that calls it is
+ * on the other side. **That argument stopped holding the moment `Windows` itself became a
+ * thin C++ shim over this file: the caller IS the other side now**, so the map belongs at the
+ * boundary with the widget table it already shares an owner with. A `std::function` crosses
+ * the same way a host's widget kind already did (`rolltui_windows_register_kind`, below) and
+ * the way `rolltui_effect_register`'s host kinds do: as {a function pointer, a `void* ctx`,
+ * an optional `void (*free_ctx)(void*)`}. The C dereferences neither the row/note object nor
+ * the document it is handed for a name — it only ever hands the pointer back to whichever
+ * function was registered with it, opaque both ways.
  *
- * What DOES cross is the ownership this milestone is about: the widget table keyed by
- * content, the kind registry, the per-window routing table, and the scrollbar's memo of where
- * each track was drawn.
+ * **What still does NOT cross:** the help lead/note/scope LIST (`set_help`). Nothing there is
+ * a callable — it is a few plain strings a host sets once at startup, and the reference
+ * `Windows::help_scopes()` already hands back costs no allocation per frame. Moving the bytes
+ * here would only ever be a second copy behind that same reference, never a `std::function`
+ * removed, so it stays a `Widgets.cpp` member beside `Windows`.
+ *
+ * What crosses regardless of any of this is the ownership Phase 15 m5 was about: the widget
+ * table keyed by content, the kind registry, the per-window routing table, and the
+ * scrollbar's memo of where each track was drawn.
  */
 #include <stddef.h>
 
@@ -156,11 +168,14 @@ RolltuiWindows* rolltui_windows_new(void);
 void rolltui_windows_free(RolltuiWindows* w);
 
 /* Registers a kind NAME with the factory that builds it. The library's own seven go through
- * this call at construction, exactly as a host's does (rule 5). The layout vocabulary's half
- * of the registration — and the refusal to shadow a library kind — is
- * `rolltui_widget_kind_register` in `rolltui_layout.h`. */
+ * this call at construction, exactly as a host's does (rule 5) — with `free_ctx` NULL, since
+ * their `ctx` is the `Windows` object itself and is not this table's to release. A host's own
+ * kind passes a real `free_ctx`, which runs when the row is replaced (a second `register_kind`
+ * for the same name) and at `rolltui_windows_free` — the same shape `rolltui_effect_register`
+ * uses for a host's effect kinds. The layout vocabulary's half of the registration — and the
+ * refusal to shadow a library kind — is `rolltui_widget_kind_register` in `rolltui_layout.h`. */
 void rolltui_windows_register_kind(RolltuiWindows* w, const char* name, size_t len,
-                                   RolltuiWidgetFactory factory, void* ctx);
+                                   RolltuiWidgetFactory factory, void* ctx, void (*free_ctx)(void*));
 /* THE TWO FALLBACKS, and they are two because their ARGUMENT means two different things —
  * which is exactly the implicit resolution CLAUDE.md's corollary says to spell out rather
  * than let one function guess between.
@@ -180,6 +195,64 @@ RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, s
 /* That window's content string, a BORROW valid until the next `sync`. */
 const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
                                        size_t* out_len);
+
+/* ---- what a host BINDS, by name (Phase 15 m6) ------------------------------------------------
+ *
+ * `bind_*` replaces whatever was bound to `name` before (releasing its `ctx` through the OLD
+ * `free_ctx`, if it had one), and `rolltui_windows_free` releases whatever is left. Every
+ * `has_*`/`call_*` pair is the same two questions `WidgetBase` always asked: "is anything
+ * bound here" (a `problem()` check, which must not invoke a host's callable just to find out)
+ * and "answer, if something is" (`call_*`, a no-op when nothing is bound). A CALLER that
+ * checked `has_*` need not check the return of `call_*` too; it exists for a caller that did
+ * not, the same defensive shape the C++ side had with `fn && *fn`.
+ */
+
+/* documents: `doc` is a BORROW this table never frees — the host, or `Windows`'
+ * `owned_documents_` for a sample built from markdown, keeps it alive. Opaque to C: always a
+ * `const rolltui::Document*`, handed back exactly as given. */
+void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const void* doc);
+const void* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
+
+/* rows: `rows_obj` is opaque to C — always the caller's `rolltui::Rows&`, passed straight
+ * through to `fn` and never stored past the call. */
+typedef void (*RolltuiRowsFn)(void* ctx, void* rows_obj);
+void rolltui_windows_bind_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRowsFn fn, void* ctx,
+                               void (*free_ctx)(void*));
+int rolltui_windows_has_rows(const RolltuiWindows* w, const char* name, size_t len);
+/* 1 when something was bound and got called; 0 (a no-op) when nothing is bound to `name`. */
+int rolltui_windows_call_rows(RolltuiWindows* w, const char* name, size_t len, void* rows_obj);
+
+/* submit: `on_submit` is `Windows::OnSubmit` as an int (0 SendAndClear, 1 Keep) — this header
+ * does not know the enum's name, only its two values, bound alongside the callable because a
+ * host always sets both together. */
+typedef void (*RolltuiSubmitFn)(void* ctx, const char* text, size_t len);
+void rolltui_windows_bind_submit(RolltuiWindows* w, const char* name, size_t len, RolltuiSubmitFn fn, void* ctx,
+                                 void (*free_ctx)(void*), int on_submit);
+int rolltui_windows_has_submit(const RolltuiWindows* w, const char* name, size_t len);
+int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len, const char* text, size_t tlen);
+/* 0 (SendAndClear) when nothing is bound to `name` — `Windows::on_submit_for`'s own default. */
+int rolltui_windows_on_submit(const RolltuiWindows* w, const char* name, size_t len);
+
+/* note: `note_obj` is opaque to C — always the caller's `rolltui::Note&`, already cleared,
+ * passed straight through to `fn`. */
+typedef void (*RolltuiNoteFn)(void* ctx, void* note_obj);
+void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNoteFn fn, void* ctx,
+                               void (*free_ctx)(void*));
+int rolltui_windows_has_note(const RolltuiWindows* w, const char* name, size_t len);
+int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, void* note_obj);
+
+/* the preset directory: `file:`, `menu:`'s user rung and `menus/<name>.json` resolve against
+ * this. A BORROW out, "" (never NULL) until `set_dir` is first called. */
+void rolltui_windows_set_dir(RolltuiWindows* w, const char* dir, size_t len);
+const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len);
+
+/* a menu file the HOST carries in its own binary — `menu:<name>`'s middle rung (the order is
+ * `Widgets.hpp`'s). The text is copied in; the borrow out is valid until that name is bound
+ * again or `w` is freed. `_count`/`_name_at` enumerate every host menu for `Windows::menu_names`. */
+void rolltui_windows_add_menu(RolltuiWindows* w, const char* name, size_t len, const char* json, size_t json_len);
+const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name, size_t len, size_t* out_len);
+size_t rolltui_windows_host_menu_count(const RolltuiWindows* w);
+const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len);
 
 /* ---- the frame ------------------------------------------------------------------------------- */
 

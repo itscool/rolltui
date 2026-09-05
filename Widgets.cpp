@@ -173,8 +173,11 @@ long long file_stamp(const std::string& path) {
 
 // ---- the widgets ---------------------------------------------------------------------
 
-// Named (not in the anonymous namespace) because it is Windows' one friend: every
-// widget reaches the host's bindings through these accessors and nothing else does.
+// Every widget reaches the host's bindings through these accessors and nothing else does.
+// Phase 15 m6: they now reach `handle()` — a PUBLIC borrow of the boundary object every
+// `Windows` already exposes — rather than this class's own fields, so `WidgetBase` no
+// longer needs to be `Windows`' friend; the maps it used to reach directly (`documents_`,
+// `rows_`, `submits_`, `notes_`, `host_menus_`, `dir_`) live at the boundary now.
 class WidgetBase : public Widget {
  public:
   explicit WidgetBase(Windows& w) : w_(&w) {}
@@ -184,26 +187,44 @@ class WidgetBase : public Widget {
   bool amb() const { return w_->env().ambiguous_wide; }
   const Bindings& binds() const { return w_->bindings(); }
   const Document* document(const std::string& name) const {
-    auto it = w_->documents_.find(name);
-    return it == w_->documents_.end() ? nullptr : it->second;
+    return static_cast<const Document*>(rolltui_windows_document(w_->handle(), name.data(), name.size()));
   }
-  const Windows::RowsFn* rows_fn(const std::string& name) const {
-    auto it = w_->rows_.find(name);
-    return it == w_->rows_.end() ? nullptr : &it->second;
+  // rows/submit/note: an EXISTENCE check (`problem()`'s question, which must not invoke a
+  // host's callable just to answer it) and a separate CALL — the same two questions the
+  // std::function maps answered before, just asked of the boundary now.
+  bool has_rows(const std::string& name) const {
+    return rolltui_windows_has_rows(w_->handle(), name.data(), name.size()) != 0;
   }
-  const Windows::SubmitFn* submit_fn(const std::string& name) const {
-    auto it = w_->submits_.find(name);
-    return it == w_->submits_.end() ? nullptr : &it->second;
+  void call_rows(const std::string& name, Rows& out) const {
+    rolltui_windows_call_rows(w_->handle(), name.data(), name.size(), &out);
   }
-  const Windows::NoteFn* note_fn(const std::string& name) const {
-    auto it = w_->notes_.find(name);
-    return it == w_->notes_.end() ? nullptr : &it->second;
+  bool has_submit(const std::string& name) const {
+    return rolltui_windows_has_submit(w_->handle(), name.data(), name.size()) != 0;
   }
-  const std::string* host_menu(const std::string& name) const {
-    auto it = w_->host_menus_.find(name);
-    return it == w_->host_menus_.end() ? nullptr : &it->second;
+  void call_submit(const std::string& name, const std::string& text) const {
+    rolltui_windows_call_submit(w_->handle(), name.data(), name.size(), text.data(), text.size());
   }
-  const std::string& dir() const { return w_->dir_; }
+  bool has_note(const std::string& name) const {
+    return rolltui_windows_has_note(w_->handle(), name.data(), name.size()) != 0;
+  }
+  void call_note(const std::string& name, Note& out) const {
+    rolltui_windows_call_note(w_->handle(), name.data(), name.size(), &out);
+  }
+  // A menu file the host carries in its binary — Widgets.hpp's middle rung. `out` is a
+  // BORROW valid only as long as the caller's own use already assumed (until the name is
+  // re-added or `w_` is destroyed), which is why every caller of this copies it at once.
+  bool host_menu(const std::string& name, std::string_view& out) const {
+    std::size_t len = 0;
+    const char* p = rolltui_windows_host_menu(w_->handle(), name.data(), name.size(), &len);
+    if (!p) return false;
+    out = std::string_view(p, len);
+    return true;
+  }
+  std::string_view dir() const {
+    std::size_t len = 0;
+    const char* p = rolltui_windows_dir(w_->handle(), &len);
+    return std::string_view(p, len);
+  }
   std::string unbound() const { return "nothing is bound to '" + content.source + "'"; }
 
   Windows* w_;
@@ -297,7 +318,7 @@ class InputWidget : public WidgetBase {
   Input ed;
   int min_outer = 0;  // a host's floor (roll holds it as tall as the modal above it)
 
-  std::string problem() const override { return submit_fn(content.source) ? std::string() : unbound(); }
+  std::string problem() const override { return has_submit(content.source) ? std::string() : unbound(); }
 
   std::optional<int> desired_outer(int inner_w, int parent_extent, int border) const override {
     max_rows_ = input_max_rows(parent_extent, border);
@@ -352,7 +373,7 @@ class InputWidget : public WidgetBase {
       ed.push_history(text);
       ed.clear();
     }
-    if (const Windows::SubmitFn* fn = submit_fn(content.source); fn && *fn) (*fn)(text);
+    call_submit(content.source, text);
     return a;
   }
   bool handle(const Event& e) override { return event(e) != InputAction::Ignored; }
@@ -365,7 +386,7 @@ class InputWidget : public WidgetBase {
     note_.text.clear();
     note_.state = EffectState::None;
     note_.since_ms = 0;
-    if (const Windows::NoteFn* fn = note_fn(content.source); fn && *fn) (*fn)(note_);
+    call_note(content.source, note_);
     return note_;
   }
   mutable Note note_;
@@ -454,7 +475,7 @@ class MenuWidget : public WidgetBase {
 
  private:
   std::string user_path() const {
-    return dir().empty() ? std::string() : dir() + "/menus/" + content.source + ".json";
+    return dir().empty() ? std::string() : std::string(dir()) + "/menus/" + content.source + ".json";
   }
   // Which rung answers, and with what — the order stated in Widgets.hpp. A file the
   // user has is preferred even when it is unreadable garbage: shadowing must not fail
@@ -468,8 +489,8 @@ class MenuWidget : public WidgetBase {
       origin = p;
       return;
     }
-    if (const std::string* host = host_menu(content.source)) {
-      text = *host;
+    if (std::string_view host_text; host_menu(content.source, host_text)) {
+      text = std::string(host_text);
       origin = "the host's";
       return;
     }
@@ -524,17 +545,16 @@ class MenuWidget : public WidgetBase {
 class RowsWidget : public WidgetBase {
  public:
   using WidgetBase::WidgetBase;
-  std::string problem() const override { return rows_fn(content.source) ? std::string() : unbound(); }
+  std::string problem() const override { return has_rows(content.source) ? std::string() : unbound(); }
   // m5b: the rows and the one-row line are MEMBERS, so a frame refills storage that is
   // already there instead of building and destroying it.
   mutable Rows rows_;
   mutable std::string line_;
   void layout(const ResolvedNode&) override {}
   void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    const Windows::RowsFn* fn = rows_fn(content.source);
-    if (!fn || !*fn) return;
+    if (!has_rows(content.source)) return;
     rows_.reset();   // m5b: keeps the storage; the host refills it in place
-    (*fn)(rows_);
+    call_rows(content.source, rows_);
     const Rows& rows = rows_;
     const Rect r = rn.inner;
     const Style label = theme.style(Role::label), value = theme.style(Role::value);
@@ -633,7 +653,7 @@ class FileWidget : public ScrollTextWidget {
   std::string path() const {
     const std::string& p = content.source;
     if (!p.empty() && p[0] == '/') return p;
-    return dir().empty() ? p : dir() + "/" + p;
+    return dir().empty() ? p : std::string(dir()) + "/" + p;
   }
   void refresh() const {
     const std::string p = path();
@@ -676,7 +696,9 @@ class HelpWidget : public ScrollTextWidget {
 Windows::Windows() { register_builtin_kinds(); }
 Windows::~Windows() = default;
 
-void Windows::bind_document(std::string name, const Document* doc) { documents_[std::move(name)] = doc; }
+void Windows::bind_document(std::string name, const Document* doc) {
+  rolltui_windows_bind_document(w_.get(), name.data(), name.size(), doc);
+}
 
 void Windows::bind_sample_document(std::string name, std::string markdown) {
   DocEntry e;
@@ -685,14 +707,52 @@ void Windows::bind_sample_document(std::string name, std::string markdown) {
   Document& d = owned_documents_[name];
   d.entries.clear();
   d.entries.push_back(std::move(e));
-  documents_[std::move(name)] = &d;
+  rolltui_windows_bind_document(w_.get(), name.data(), name.size(), &d);
 }
-void Windows::bind_rows(std::string name, RowsFn rows) { rows_[std::move(name)] = std::move(rows); }
+
+// bind_rows/bind_submit/bind_note: Phase 15 m6. The callable is heap-held (never a raw
+// `new`) and released the way `Effects.cpp`'s `register_effect_kind` releases a host's
+// effect kind — a `unique_ptr` taken back inside the C-invoked deleter, so there is no
+// hand-rolled `delete` in this path either. The trampoline checks the callable's own
+// truthiness before calling it, the same defensive shape `fn && *fn` had at every call
+// site before: a host CAN bind an empty `std::function`, and the boundary must not learn
+// what that means, only that the C++ side already decided not to call it.
+void Windows::bind_rows(std::string name, RowsFn rows) {
+  std::unique_ptr<RowsFn> held = std::make_unique<RowsFn>(std::move(rows));
+  rolltui_windows_bind_rows(
+      w_.get(), name.data(), name.size(),
+      [](void* ctx, void* rows_obj) {
+        RowsFn& fn = *static_cast<RowsFn*>(ctx);
+        if (fn) fn(*static_cast<Rows*>(rows_obj));
+      },
+      held.get(), [](void* ctx) { const std::unique_ptr<RowsFn> owned(static_cast<RowsFn*>(ctx)); });
+  held.release();
+}
+
 void Windows::bind_submit(std::string name, SubmitFn submit, OnSubmit on_submit) {
-  on_submit_[name] = on_submit;
-  submits_[std::move(name)] = std::move(submit);
+  std::unique_ptr<SubmitFn> held = std::make_unique<SubmitFn>(std::move(submit));
+  rolltui_windows_bind_submit(
+      w_.get(), name.data(), name.size(),
+      [](void* ctx, const char* text, std::size_t len) {
+        SubmitFn& fn = *static_cast<SubmitFn*>(ctx);
+        if (fn) fn(std::string(text, len));
+      },
+      held.get(), [](void* ctx) { const std::unique_ptr<SubmitFn> owned(static_cast<SubmitFn*>(ctx)); },
+      on_submit == OnSubmit::Keep ? 1 : 0);
+  held.release();
 }
-void Windows::bind_note(std::string name, NoteFn note) { notes_[std::move(name)] = std::move(note); }
+
+void Windows::bind_note(std::string name, NoteFn note) {
+  std::unique_ptr<NoteFn> held = std::make_unique<NoteFn>(std::move(note));
+  rolltui_windows_bind_note(
+      w_.get(), name.data(), name.size(),
+      [](void* ctx, void* note_obj) {
+        NoteFn& fn = *static_cast<NoteFn*>(ctx);
+        if (fn) fn(*static_cast<Note*>(note_obj));
+      },
+      held.get(), [](void* ctx) { const std::unique_ptr<NoteFn> owned(static_cast<NoteFn*>(ctx)); });
+  held.release();
+}
 
 void Windows::set_highlighter(markdown::Highlighter h) {
   highlighter_ = std::move(h);
@@ -708,43 +768,56 @@ void Windows::set_code_fold(int fold_over_lines, int cap_lines) {
 // here — so the vocabulary can never name a kind nothing can build. Rung 1 refuses a
 // library name inside register_widget_kind(), which is why the factory is only stored
 // after it says yes.
+//
+// Phase 15 m6: the FACTORY itself is heap-held and handed to the boundary as its own `ctx`
+// per kind (the `Effects.cpp`/`bind_rows` shape again), rather than kept in a C++-side
+// `factories_` map that a shared, capture-less trampoline looked up by name. That map
+// duplicated the layout vocabulary's own host-kind table for no reason beyond existing
+// before this boundary did — `registered()` below asks that table directly now.
 bool Windows::register_kind(std::string name, Factory factory, SourceRule rule, std::string source_is, std::string* why) {
   if (!factory) {
     if (why) *why = "a widget kind needs a factory";
     return false;
   }
   if (!register_widget_kind(name, rule, std::move(source_is), why)) return false;
-  factories_[name] = std::move(factory);
+  std::unique_ptr<Factory> held = std::make_unique<Factory>(std::move(factory));
   // …and the boundary's half. One call registers the NAME with the layout vocabulary and the
   // FACTORY here, and this is where the host's kind joins the library's own seven in the one
   // table `widget_for` reads (the vtable header's rule 5).
   rolltui_windows_register_kind(
       w_.get(), name.data(), name.size(),
-      [](void* c, const char* content, std::size_t n) {
-        Windows& self = *static_cast<Windows*>(c);
+      [](void* c, const char* content, std::size_t n) -> RolltuiWidget {
+        Factory& factory = *static_cast<Factory*>(c);
         std::optional<Content> parsed = parse_content(std::string_view(content, n));
         if (!parsed) return RolltuiWidget{};
-        auto it = self.factories_.find(parsed->registered_name);
-        if (it == self.factories_.end()) return RolltuiWidget{};
-        std::unique_ptr<Widget> w = it->second();
+        std::unique_ptr<Widget> w = factory();
         if (!w) return RolltuiWidget{};
         w->content = *parsed;
         return as_widget(std::move(w));
       },
-      this);
+      held.get(), [](void* c) { const std::unique_ptr<Factory> owned(static_cast<Factory*>(c)); });
+  held.release();
   return true;
 }
 
 Widget* Windows::registered(std::string_view kind, std::string_view source) {
+  // "Does a HOST own this kind" is exactly what the layout vocabulary's rung 2 already
+  // answers (Layout.cpp's `rolltui_widget_kind_resolve`) — asking it directly is what let
+  // the redundant `factories_` map above go. A library kind (rung 1) answers "no": this
+  // accessor has always been for a host's own registered widget, never `transcript()`'s.
+  unsigned char ordinal = 0;
+  if (rolltui_widget_kind_resolve(kind.data(), kind.size(), &ordinal, nullptr, nullptr, nullptr) != ROLLTUI_KIND_HOST)
+    return nullptr;
   Content c;
   c.kind = WidgetKind::Registered;
   c.registered_name = std::string(kind);
   c.source = std::string(source);
-  if (factories_.find(c.registered_name) == factories_.end()) return nullptr;
   return widget_for(content_to_string(c));
 }
-void Windows::add_menu(std::string name, std::string json_text) { host_menus_[std::move(name)] = std::move(json_text); }
-void Windows::set_dir(std::string dir) { dir_ = std::move(dir); }
+void Windows::add_menu(std::string name, std::string json_text) {
+  rolltui_windows_add_menu(w_.get(), name.data(), name.size(), json_text.data(), json_text.size());
+}
+void Windows::set_dir(std::string dir) { rolltui_windows_set_dir(w_.get(), dir.data(), dir.size()); }
 
 void Windows::set_help(std::string lead, std::vector<std::string> scopes, std::string note) {
   help_lead_ = std::move(lead);
@@ -867,8 +940,10 @@ RolltuiWidget make_kind(void* ctx, const char* content, std::size_t n) {
 // `widget_for` has ONE path and "a transcript window" is built the way roll's approval modal
 // is (the vtable header's rule 5).
 void Windows::register_builtin_kinds() {
+  // `free_ctx` is NULL: `ctx` is `this` (the `Windows` object these seven belong to), which
+  // the kind table never owns and must not try to release.
   auto reg = [&](const char* name, RolltuiWidgetFactory f) {
-    rolltui_windows_register_kind(w_.get(), name, std::strlen(name), f, this);
+    rolltui_windows_register_kind(w_.get(), name, std::strlen(name), f, this, nullptr);
   };
   reg("transcript", [](void* c, const char* s, std::size_t n) {
     return make_kind<TranscriptWidget>(c, s, n);
@@ -986,12 +1061,18 @@ std::vector<std::string> Windows::menu_names() const {
   auto add = [&out](std::string name) {
     if (std::find(out.begin(), out.end(), name) == out.end()) out.push_back(std::move(name));
   };
-  if (!dir_.empty()) {
+  std::size_t dir_len = 0;
+  const char* dir_p = rolltui_windows_dir(w_.get(), &dir_len);
+  if (const std::string_view d(dir_p, dir_len); !d.empty()) {
     std::error_code ec;
-    for (const auto& e : std::filesystem::directory_iterator(dir_ + "/menus", ec))
+    for (const auto& e : std::filesystem::directory_iterator(std::string(d) + "/menus", ec))
       if (e.path().extension() == ".json") add(e.path().stem().string());
   }
-  for (const auto& [name, _] : host_menus_) add(name);
+  for (std::size_t i = 0; i < rolltui_windows_host_menu_count(w_.get()); ++i) {
+    std::size_t n = 0;
+    const char* p = rolltui_windows_host_menu_name_at(w_.get(), i, &n);
+    add(std::string(p, n));
+  }
   for (std::string_view name : shipped_menu_names()) add(std::string(name));
   std::sort(out.begin(), out.end());
   return out;

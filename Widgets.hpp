@@ -330,9 +330,12 @@ class Windows {
   // its own "next match" key — correct-looking code, silently wrong.
   enum class OnSubmit { SendAndClear, Keep };
   void bind_submit(std::string name, SubmitFn submit, OnSubmit on_submit = OnSubmit::SendAndClear);
+  // Phase 15 m6: the map this read moved to the boundary with `submits_` itself, since a host
+  // sets both together (`bind_submit`) and a widget reads them at different times (a submit,
+  // then separately whether to clear). `rolltui_windows_on_submit` returns 0/1 for the same
+  // two values this enum names, and 0 (SendAndClear) is what "nothing bound" answers too.
   OnSubmit on_submit_for(const std::string& name) const {
-    auto it = on_submit_.find(name);
-    return it == on_submit_.end() ? OnSubmit::SendAndClear : it->second;
+    return rolltui_windows_on_submit(w_.get(), name.data(), name.size()) ? OnSubmit::Keep : OnSubmit::SendAndClear;
   }
   // An input's one-line note, drawn beside the prompt when it fits on the first row and
   // on a row of its own otherwise (roll's "working…" hint). Optional. Returning a bare
@@ -441,36 +444,41 @@ class Windows {
   Menu* menu_at(std::string_view window) const;
 
  private:
-  friend class WidgetBase;
   Widget* widget_for(const std::string& content);
   // The library's own seven kinds and the error panel, registered through the same call a
   // host uses (rolltui/c/rolltui_widgets.h's rule 5).
   void register_builtin_kinds();
   WidgetEnv env_;
-  std::string dir_;
   std::string help_lead_, help_note_;
   std::vector<std::string> help_scopes_;
-  std::map<std::string, const Document*> documents_;
-  std::map<std::string, Document> owned_documents_;  // bind_sample_document's
-  std::map<std::string, RowsFn> rows_;
-  std::map<std::string, SubmitFn> submits_;
-  std::map<std::string, OnSubmit> on_submit_;
-  // Where each window's scrollbar track WAS on the last frame, so handle() — which is
-  // given a window id and no geometry — can tell a press on the thumb from a press on
-  // the text. Written by draw(), read by handle(): the frame is always drawn before the
-  // events that follow it, so this is a memo of the last frame, never a second source of
-  // truth about where anything is.
-  std::map<std::string, NoteFn> notes_;
+  // `bind_sample_document`'s OWNED copy, for a tool previewing another app's sample content
+  // with no live document to point at (AppProfile.hpp). Stays a C++ map: unlike the BORROW
+  // half (`documents_`, moved to the boundary below), this OWNS a `Document` value on a path
+  // called once per named source rather than per frame, and moving it would need either a
+  // fragile reinterpret through `RolltuiDocument` or a second owner — neither pays for
+  // itself the way the callback maps below do.
+  std::map<std::string, Document> owned_documents_;
   markdown::Highlighter highlighter_;
   std::uint64_t highlighter_epoch_ = 0;
   int code_fold_over_lines_ = 0, code_cap_lines_ = 0;
-  std::map<std::string, std::string> host_menus_;  // add_menu: name → the file's text
-  std::map<std::string, Factory> factories_;       // register_kind: kind name → how to build one
   // THE WIDGET TABLE, THE PER-WINDOW ROUTING TABLE, THE KIND REGISTRY AND THE SCROLLBAR'S
   // TRACKS ARE THE BOUNDARY'S (Phase 15 m5). They were four `std::map`s and two loose
   // scalars here; the one that mattered was `map<string, unique_ptr<Widget>> by_content_`,
   // which is this milestone's named lifetime and is now an explicit table that destroys
   // every widget through the vtable's own `destroy` slot.
+  //
+  // THE HOST-BINDING SURFACE IS THE BOUNDARY'S TOO, AS OF m6 — `bind_document`'s BORROW
+  // half, `bind_rows`/`bind_submit`/`bind_note`, `add_menu`, `set_dir`, and the kind
+  // registry's own factory storage. They were six more `std::map`s (one, `factories_`,
+  // duplicating the layout registry's own host-kind table — `registered()` now asks that
+  // table directly) and a `std::string dir_`. A `std::function` crosses as {function
+  // pointer, `void* ctx`, an optional `void (*free_ctx)(void*)`}, the same shape
+  // `Effects.cpp`'s `register_effect_kind` already uses for a host's effect kinds, and
+  // `WidgetBase` reaches the boundary through `handle()` instead of this class's
+  // friendship — which is why `friend class WidgetBase` is gone. `owned_documents_` and the
+  // three `help_*` members above stay C++: neither owns a `std::function`, and moving them
+  // would buy nothing (this file's own `rolltui_windows_bind_document` doc comment says why
+  // for the former; `rolltui/c/rolltui_widgets.h`'s header comment says why for the latter).
   std::unique_ptr<RolltuiWindows, Handle> w_{rolltui_windows_new()};
 };
 
