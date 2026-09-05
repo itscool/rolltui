@@ -90,19 +90,47 @@
 // drag_to / end_drag): the child before the seam takes an absolute size equal to the
 // pointer's distance from its start; the release commits once.
 //
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "rolltui/Bindings.hpp"
-#include "rolltui/Keys.hpp"
-#include "rolltui/Layout.hpp"
-#include "rolltui/Menu.hpp"
+#include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_layout_tree.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_menu_tree.h"
 #include "tool_actions.hpp"
 #include "undo_stack.hpp"
 
 namespace rolltui::tools {
+
+// The C tree types, under the names every editor already writes them as (Layout.hpp's own
+// aliases, before it went away). Layout/Node/Layer/Dim/SplitSize/Content ARE their C structs
+// (one definition), so these stay ordinary value members below — RolltuiBindings/RolltuiMenu
+// do not, which is the one real split in this file's own state.
+using Layout = RolltuiLayout;
+using Node = RolltuiLayoutNode;
+using Layer = RolltuiLayer;
+using Dim = RolltuiDim;
+using SplitSize = RolltuiSplitSize;
+using Content = RolltuiContent;
+using MenuItem = RolltuiMenuItem;
+using InputSpec = RolltuiInputSpec;
+
+// One of the library's shipped built-in screens ("default", "panel-left", "no-panel",
+// "stacked"), freshly parsed — BY VALUE, unlike the deleted `rolltui::builtin_layout`,
+// which cached a pointer into a process-wide table. A tool calls this a handful of times
+// (once at construction, a handful more in its own tests), so the cache that made sense
+// for every host asking every frame is not worth carrying here; composed from
+// `rolltui_layout_builtin_json` + `rolltui_load_layout_text` +
+// `rolltui_loaded_layout_to_layout` (rolltui/c/rolltui_layout.h) — all three permanent C
+// entry points, the last one promoted for exactly this call (Phase 17 m1d). An unknown
+// name parses the empty string and comes back an empty Layout; every caller here only
+// ever asks for "default", which always exists.
+Layout builtin_layout(std::string_view name);
 
 class LayoutEditor {
  public:
@@ -114,6 +142,10 @@ class LayoutEditor {
   };
 
   LayoutEditor();
+  ~LayoutEditor() { rolltui_menu_free(menu_); }
+  LayoutEditor(const LayoutEditor&) = delete;
+  LayoutEditor& operator=(const LayoutEditor&) = delete;
+
   void load(const Layout& layout);                      // the baseline; undo restarts; selection: the first window
   // The contents the host OFFERS ("transcript:session", "rows:status", …) — the hint
   // beside the source field for the selected kind. A hint, not a menu: a source the
@@ -141,10 +173,10 @@ class LayoutEditor {
   void select_next(bool backwards = false);
   const Node* selected_node() const;
 
-  Menu& menu() { return menu_; }
-  const Menu& menu() const { return menu_; }
-  Outcome handle(const Event& e, const Bindings& nav);  // `nav`: the host's bindings (menu + editor scopes)
-  Outcome handle(const Event& e) { return handle(e, editor_bindings()); }   // Alt+arrows nudge; Ctrl-Z/Ctrl-Y; Tab / Shift-Tab select; the rest is the menu's
+  RolltuiMenu* menu() { return menu_; }
+  const RolltuiMenu* menu() const { return menu_; }
+  Outcome handle(const RolltuiEvent* e, const RolltuiBindings* nav);  // `nav`: the host's bindings (menu + editor scopes)
+  Outcome handle(const RolltuiEvent* e) { return handle(e, editor_bindings()); }   // Alt+arrows nudge; Ctrl-Z/Ctrl-Y; Tab / Shift-Tab select; the rest is the menu's
   bool undo();
   bool redo();
   std::size_t undo_depth() const { return undo_.undo_depth(); }
@@ -201,7 +233,7 @@ class LayoutEditor {
   std::string unique_id(const std::string& base) const;
   std::vector<MenuItem> action_items() const;
 
-  Menu menu_;
+  RolltuiMenu* menu_ = rolltui_menu_new();
   Layout current_;
   UndoStack<Layout> undo_;
   std::optional<Layout> preview_;

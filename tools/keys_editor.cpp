@@ -2,20 +2,84 @@
 #include "keys_editor.hpp"
 
 #include <algorithm>
+#include <cstddef>
 
 namespace rolltui::tools {
 
 namespace {
 const char* kScopes[] = {"input", "transcript", "menu", "edit", "stack", "app", "editor", "studio"};
+
+// Mechanical std::vector -> RolltuiMenuItemList glue for rolltui_menu_set_options, which
+// (unlike the tree-building factories, which already take a std::vector) wants the
+// library's own owned-list type. No domain knowledge — every editor needs the same loop
+// because rolltui_menu_set_options does, so it is not worth a shared header over.
+void set_options(RolltuiMenu* m, std::string_view id, std::vector<MenuItem> options) {
+  RolltuiMenuItemList list;
+  for (MenuItem& it : options) list.push_back(std::move(it));
+  rolltui_menu_set_options(m, id.data(), id.size(), &list);
+}
+void set_enabled(RolltuiMenu* m, std::string_view id, bool enabled) {
+  rolltui_menu_set_enabled(m, id.data(), id.size(), enabled ? 1 : 0);
 }
 
-KeysEditor::KeysEditor() : current_(default_bindings()) {
+// A chord's canonical / display spelling, built into a caller-owned std::string — the
+// bounded C form (rolltui_bindings.h's rule 3a) with no logic of its own.
+std::string chord_str(const RolltuiChord& k) {
+  char buf[ROLLTUI_CHORD_STRING_MAX];
+  return std::string(buf, rolltui_chord_to_string(&k, buf, sizeof buf));
+}
+std::string chord_disp(const RolltuiChord& k) {
+  char buf[ROLLTUI_CHORD_STRING_MAX];
+  return std::string(buf, rolltui_chord_display(&k, buf, sizeof buf));
+}
+std::string scope_of_str(const std::string& action) {
+  std::size_t n = 0;
+  const char* p = rolltui_bindings_scope_of(action.c_str(), action.size(), &n);
+  return std::string(p, n);
+}
+// Every declared action name, in table order — rolltui::Bindings::actions()'s shape.
+std::vector<std::string> action_names(const RolltuiBindings* b) {
+  std::vector<std::string> out;
+  const std::size_t n = rolltui_bindings_action_count(b);
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    std::size_t len = 0;
+    const char* p = rolltui_bindings_action_at(b, i, &len);
+    out.emplace_back(p, len);
+  }
+  return out;
+}
+// Every chord bound to `action`, deliverable or not — rolltui::Bindings::chords_for()'s shape.
+std::vector<RolltuiChord> chords_for(const RolltuiBindings* b, const std::string& action) {
+  std::vector<RolltuiChord> out;
+  const std::size_t n = rolltui_bindings_chord_count(b, action.c_str(), action.size());
+  out.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord k{};
+    if (rolltui_bindings_chord_at(b, action.c_str(), action.size(), i, &k)) out.push_back(k);
+  }
+  return out;
+}
+// The HELP form: only the chords the active protocol can actually deliver — a thin
+// RolltuiStr-to-std::string convenience over rolltui_bindings_chords_text, which is the
+// library's own (the filtering used to be a third independent copy of this; it is not
+// one any more).
+std::string chords_text(const RolltuiBindings* b, const std::string& action) {
+  RolltuiStr s{};
+  rolltui_bindings_chords_text(b, action.c_str(), action.size(), &s);
+  std::string out(s.p ? s.p : "", s.n);
+  rolltui_str_free(&s);
+  return out;
+}
+}  // namespace
+
+KeysEditor::KeysEditor() : current_(rolltui_bindings_clone(rolltui_bindings_default())) {
   undo_.reset(current_);
   rebuild_menu();
 }
 
-void KeysEditor::load(const Bindings& b) {
-  current_ = b;
+void KeysEditor::load(const RolltuiBindings* b) {
+  current_ = KeyTable(rolltui_bindings_clone(b));
   undo_.reset(current_);
   capture_.reset();
   rebuild_menu();
@@ -26,7 +90,7 @@ void KeysEditor::set_presets(std::vector<std::string> names) {
   presets_ = std::move(names);
   std::vector<MenuItem> opts;
   for (const std::string& n : presets_) opts.push_back(MenuItem::action(n, n));
-  menu_.set_options("load", std::move(opts));
+  set_options(menu_, "load", std::move(opts));
 }
 
 void KeysEditor::set_shipped(std::vector<std::string> names, bool may_write) {
@@ -34,8 +98,8 @@ void KeysEditor::set_shipped(std::vector<std::string> names, bool may_write) {
   may_write_shipped_ = may_write;
   std::vector<MenuItem> opts;
   for (const std::string& n : shipped_) opts.push_back(MenuItem::action(n, n));
-  menu_.set_options("write_shipped", std::move(opts));
-  menu_.set_enabled("write_shipped", may_write && !shipped_.empty());
+  set_options(menu_, "write_shipped", std::move(opts));
+  set_enabled(menu_, "write_shipped", may_write && !shipped_.empty());
 }
 
 const std::string& KeysEditor::capturing_action() const {
@@ -47,13 +111,14 @@ void KeysEditor::rebuild_menu() {
   std::vector<MenuItem> scopes;
   for (const char* scope : kScopes) {
     std::vector<MenuItem> actions;
-    for (const std::string& a : current_.actions()) {
-      if (scope_of(a) != scope) continue;
+    for (const std::string& a : action_names(current_.get())) {
+      if (scope_of_str(a) != scope) continue;
       std::vector<MenuItem> items;
       items.push_back(MenuItem::action("bind." + a, "add a chord (press it)\xE2\x80\xA6"));
-      for (const KeyEvent& k : current_.chords_for(a)) items.push_back(MenuItem::action("unbind." + a + "." + chord_to_string(k), "remove " + chord_display(k)));
+      for (const RolltuiChord& k : chords_for(current_.get(), a))
+        items.push_back(MenuItem::action("unbind." + a + "." + chord_str(k), "remove " + chord_disp(k)));
       items.push_back(MenuItem::action("clear." + a, "clear every chord"));
-      const std::string chords = current_.chords_text(a);
+      const std::string chords = chords_text(current_.get(), a);
       actions.push_back(MenuItem::submenu("action." + a, a.substr(a.find('.') + 1) + "  " + (chords.empty() ? "(unbound)" : chords), std::move(items)));
     }
     scopes.push_back(MenuItem::submenu(std::string("scope.") + scope, scope, std::move(actions)));
@@ -70,8 +135,8 @@ void KeysEditor::rebuild_menu() {
        MenuItem::choice("load", "Load preset", std::move(loads), ""), MenuItem::input("save", "Save as preset", name),
        MenuItem::choice("write_shipped", "Write a SHIPPED preset (the editor's privilege)", std::move(ships), ""),
        MenuItem::action("reset_loaded", "Reset to the loaded preset\xE2\x80\xA6")});
-  menu_.set_root(std::move(root));
-  menu_.set_enabled("write_shipped", may_write_shipped_ && !shipped_.empty());
+  rolltui_menu_set_root(menu_, &root);
+  set_enabled(menu_, "write_shipped", may_write_shipped_ && !shipped_.empty());
 }
 
 // Refreshes one action's level in place (its label and its remove items), keeping the
@@ -80,11 +145,13 @@ void KeysEditor::rebuild_action(std::string_view action) {
   std::vector<MenuItem> items;
   const std::string a(action);
   items.push_back(MenuItem::action("bind." + a, "add a chord (press it)\xE2\x80\xA6"));
-  for (const KeyEvent& k : current_.chords_for(a)) items.push_back(MenuItem::action("unbind." + a + "." + chord_to_string(k), "remove " + chord_display(k)));
+  for (const RolltuiChord& k : chords_for(current_.get(), a))
+    items.push_back(MenuItem::action("unbind." + a + "." + chord_str(k), "remove " + chord_disp(k)));
   items.push_back(MenuItem::action("clear." + a, "clear every chord"));
-  menu_.set_options("action." + a, std::move(items));
-  if (MenuItem* it = menu_.find("action." + a)) {
-    const std::string chords = current_.chords_text(a);
+  const std::string level = "action." + a;
+  set_options(menu_, level, std::move(items));
+  if (MenuItem* it = rolltui_menu_find(menu_, level.c_str(), level.size())) {
+    const std::string chords = chords_text(current_.get(), a);
     it->label = a.substr(a.find('.') + 1) + "  " + (chords.empty() ? "(unbound)" : chords);
   }
 }
@@ -95,9 +162,9 @@ KeysEditor::Outcome KeysEditor::commit() {
   return {Outcome::Kind::Committed, {}};
 }
 
-void KeysEditor::replace(Bindings b) {
+void KeysEditor::replace(RolltuiBindings* b) {
   capture_.reset();
-  current_ = std::move(b);
+  current_ = KeyTable(b);  // adopts
   undo_.commit(current_);
   rebuild_menu();
 }
@@ -130,71 +197,84 @@ std::string KeysEditor::status_line() const {
   return s;
 }
 
-KeysEditor::Outcome KeysEditor::handle(const Event& e, const Bindings& nav) {
-  using K = MenuEvent::Kind;
+KeysEditor::Outcome KeysEditor::handle(const RolltuiEvent* e, const RolltuiBindings* nav) {
   using O = Outcome::Kind;
   if (capture_) {
-    const auto* k = std::get_if<KeyEvent>(&e);
-    if (!k) return {O::None, {}};
-    if (k->key == Key::Escape && !k->ctrl && !k->alt && !k->shift) { capture_.reset(); status_ = "capture cancelled"; return {O::Changed, {}}; }
-    if (k->key == Key::Unknown) { status_ = "that key has no chord name; try another"; return {O::Changed, {}}; }
+    if (e->kind != ROLLTUI_EVENT_KEY) return {O::None, {}};
+    const RolltuiChord k = e->key;
+    if (k.key == ROLLTUI_KEY_ESCAPE && !k.ctrl && !k.alt && !k.shift) { capture_.reset(); status_ = "capture cancelled"; return {O::Changed, {}}; }
+    if (k.key == ROLLTUI_KEY_UNKNOWN) { status_ = "that key has no chord name; try another"; return {O::Changed, {}}; }
     const std::string action = *capture_;
     capture_.reset();
-    std::string moved;
-    if (!current_.bind(action, *k, &moved)) {
-      status_ = "refused: " + chord_display(*k) + " cannot be bound to " + action + (k->key == Key::Enter ? " (Enter is always input.submit)" : "");
+    const char* moved_from_p = nullptr;
+    std::size_t moved_from_len = 0;
+    if (!rolltui_bindings_bind(current_.get(), action.c_str(), action.size(), &k, &moved_from_p, &moved_from_len)) {
+      status_ = "refused: " + chord_disp(k) + " cannot be bound to " + action + (k.key == ROLLTUI_KEY_ENTER ? " (Enter is always input.submit)" : "");
       return {O::Changed, {}};
     }
+    const std::string moved = moved_from_p ? std::string(moved_from_p, moved_from_len) : std::string();
     // Short, for a 48-column popup: the scope is in the breadcrumb already.
     auto verb = [](const std::string& a) { return a.substr(a.find('.') + 1); };
-    status_ = "bound " + chord_display(*k) + " \xE2\x86\x92 " + verb(action) + (moved.empty() ? "" : " (was " + verb(moved) + ")");
+    status_ = "bound " + chord_disp(k) + " \xE2\x86\x92 " + verb(action) + (moved.empty() ? "" : " (was " + verb(moved) + ")");
     rebuild_action(action);
     if (!moved.empty()) rebuild_action(moved);
     return commit();
   }
-  if (const auto* k = std::get_if<KeyEvent>(&e)) {
-    const std::string_view ed = nav.action_for(*k, "editor");
+  if (e->kind == ROLLTUI_EVENT_KEY) {
+    const RolltuiChord k = e->key;
+    std::size_t len = 0;
+    const char* ed_p = rolltui_bindings_action_for(nav, &k, "editor", 6, &len);
+    const std::string_view ed = ed_p ? std::string_view(ed_p, len) : std::string_view();
     if (ed == "editor.undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
     if (ed == "editor.redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
   }
   status_.clear();
-  const MenuEvent ev = menu_.handle(e, nav);
-  if (ev.kind == K::Activate) {
-    if (ev.id.rfind("bind.", 0) == 0) { capture_ = ev.id.substr(5); status_.clear(); return {O::Changed, {}}; }
-    if (ev.id.rfind("unbind.", 0) == 0) {
-      const std::string rest = ev.id.substr(7);
+  RolltuiMenuEvent raw{};
+  rolltui_menu_handle(menu_, e, nav, rolltui_menu_default_actions(), &raw);
+  const unsigned char kind = raw.kind;
+  const std::string id = raw.id.str();
+  const std::string value = raw.value.str();
+  rolltui_menu_event_release(&raw);
+  if (kind == ROLLTUI_MENU_EVENT_ACTIVATE) {
+    if (id.rfind("bind.", 0) == 0) { capture_ = id.substr(5); status_.clear(); return {O::Changed, {}}; }
+    if (id.rfind("unbind.", 0) == 0) {
+      const std::string rest = id.substr(7);
       // "<action>.<chord>": the action has one dot; the chord is what follows the second.
       const std::size_t first = rest.find('.');
       const std::size_t second = rest.find('.', first + 1);
       if (second == std::string::npos) return {O::None, {}};
       const std::string action = rest.substr(0, second), chord = rest.substr(second + 1);
-      if (const std::optional<KeyEvent> k = parse_chord(chord)) {
-        if (!current_.unbind(action, *k)) { status_ = "refused: " + chord_display(*k) + " stays on " + action; return {O::Changed, {}}; }
-        status_ = "removed " + chord_display(*k) + " from " + action;
+      RolltuiChord k{};
+      if (rolltui_chord_parse(chord.c_str(), chord.size(), &k)) {
+        if (!rolltui_bindings_unbind(current_.get(), action.c_str(), action.size(), &k)) {
+          status_ = "refused: " + chord_disp(k) + " stays on " + action;
+          return {O::Changed, {}};
+        }
+        status_ = "removed " + chord_disp(k) + " from " + action;
         rebuild_action(action);
         return commit();
       }
       return {O::None, {}};
     }
-    if (ev.id.rfind("clear.", 0) == 0) {
-      const std::string action = ev.id.substr(6);
-      current_.clear(action);
+    if (id.rfind("clear.", 0) == 0) {
+      const std::string action = id.substr(6);
+      rolltui_bindings_clear(current_.get(), action.c_str(), action.size());
       status_ = action == "input.submit" ? "input.submit keeps Enter" : "cleared " + action;
       rebuild_action(action);
       return commit();
     }
-    if (ev.id == "undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
-    if (ev.id == "redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
-    if (ev.id == "reset_loaded") return {O::ResetLoaded, {}};
+    if (id == "undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (id == "redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (id == "reset_loaded") return {O::ResetLoaded, {}};
     return {O::None, {}};
   }
-  if (ev.kind == K::Choose) {
-    if (ev.id == "load") return {O::LoadPreset, ev.value};
-    if (ev.id == "write_shipped") return {O::WriteShipped, ev.value};
+  if (kind == ROLLTUI_MENU_EVENT_CHOOSE) {
+    if (id == "load") return {O::LoadPreset, value};
+    if (id == "write_shipped") return {O::WriteShipped, value};
     return {O::None, {}};
   }
-  if (ev.kind == K::Input && ev.id == "save") return {O::SaveAs, ev.value};
-  if (ev.kind == K::Closed) return {O::Closed, {}};
+  if (kind == ROLLTUI_MENU_EVENT_INPUT && id == "save") return {O::SaveAs, value};
+  if (kind == ROLLTUI_MENU_EVENT_CLOSED) return {O::Closed, {}};
   return {O::None, {}};
 }
 

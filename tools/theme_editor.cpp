@@ -4,23 +4,6 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include "rolltui/c/rolltui_json.h"
-#include "rolltui/c/rolltui_theme.h"
-
-// `json::Value <-> RolltuiJsonValue*`, SHARED with Json.cpp — the same borrowed-declaration
-// move `Theme.cpp`/`Layout.cpp`/`Presets.cpp` already make, needed here for exactly one
-// thing each way: reading the loaded preset's "defs" subtree into `defs_` (a real
-// `json::Value`, queried by real `.obj`/`.is_string()` operations in `rebuild_palette`), and
-// handing `colours_json`'s freshly-built pair object across as the `RolltuiJsonValue*`
-// `ThemePreset::colours` and `ThemePresets::set_colours` now use (Phase 17 m2). Declared at
-// `rolltui::json` (NOT `rolltui::tools::json` — this file's own namespace is
-// `rolltui::tools`, and nesting it there would silently declare a second, unrelated,
-// never-defined symbol instead of naming the real one).
-namespace rolltui::json {
-RolltuiJsonValue* value_to_c(const Value& v);
-Value value_from_c(const RolltuiJsonValue* v);
-}  // namespace rolltui::json
-
 namespace rolltui::tools {
 
 namespace {
@@ -44,11 +27,80 @@ bool attr_value(const Style& s, std::string_view name) {
   return s.reverse;
 }
 
+// ---- menu tree glue (mechanical; the identical shape keys_editor.cpp / layout_editor.cpp
+// already carry — see either's comment for why this is not a header of its own). -------------
+void set_options(RolltuiMenu* m, std::string_view id, std::vector<MenuItem> options) {
+  RolltuiMenuItemList list;
+  for (MenuItem& it : options) list.push_back(std::move(it));
+  rolltui_menu_set_options(m, id.data(), id.size(), &list);
+}
+void set_enabled(RolltuiMenu* m, std::string_view id, bool enabled) { rolltui_menu_set_enabled(m, id.data(), id.size(), enabled ? 1 : 0); }
+void set_value(RolltuiMenu* m, std::string_view id, std::string_view value) {
+  rolltui_menu_set_value(m, id.data(), id.size(), value.data(), value.size());
+}
+void set_checked(RolltuiMenu* m, std::string_view id, bool checked) { rolltui_menu_set_checked(m, id.data(), id.size(), checked ? 1 : 0); }
+MenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m, id.data(), id.size()); }
+
+// ---- role names: direct, bounded C calls. --------------------------------------------------
+std::string role_name(unsigned char r) {
+  std::size_t len = 0;
+  const char* p = rolltui_role_name(r, &len);
+  return p ? std::string(p, len) : std::string();
+}
+std::optional<unsigned char> role_from_name(std::string_view name) {
+  const int r = rolltui_role_from_name(name.data(), name.size());
+  return r >= 0 ? std::optional<unsigned char>(static_cast<unsigned char>(r)) : std::nullopt;
+}
+
+// ---- colour text: direct, bounded C calls. -------------------------------------------------
+std::optional<Color> parse_color(std::string_view text) {
+  Color c{};
+  if (!rolltui_color_parse(text.data(), text.size(), &c)) return std::nullopt;
+  return c;
+}
+std::string color_to_string(Color c) {
+  char buf[ROLLTUI_COLOR_STRING_MAX];
+  return std::string(buf, rolltui_color_to_string(c, buf, sizeof buf));
+}
+
+// A variant's own "meta" out of an already-parsed colours tree — rolltui_theme_load never
+// touches "meta" (rolltui_theme.h's own header comment: it and "name" are the two fields
+// that stay outside that file), so this mirrors Theme.cpp's `theme_from_c_root` exactly:
+// clone whatever "meta" object is present, then resolve a colour-pair-shaped "badges"
+// ({"dark":[...], "light":[...]}) down to the one list for `mode`, the same way a role's
+// fg/bg pair resolves.
+RolltuiJsonValue* extract_meta(const RolltuiJsonValue* colours, unsigned char mode) {
+  const RolltuiJsonValue* src = rolltui_json_get(colours, "meta", 4);
+  if (!rolltui_json_is_object(src)) return nullptr;
+  RolltuiJsonValue* meta = rolltui_json_clone(src);
+  const RolltuiJsonValue* b = rolltui_json_get(meta, "badges", 6);
+  const char* key = mode == ROLLTUI_MODE_DARK ? "dark" : "light";
+  if (rolltui_json_is_object(b) && rolltui_json_has(b, key, std::string_view(key).size()))
+    rolltui_json_set(meta, "badges", 6, rolltui_json_clone(rolltui_json_get(b, key, std::string_view(key).size())));
+  return meta;
+}
+
+// ---- one theme's styles + effects, built from a built-in name. The light variant's effect
+// map is never consulted (rolltui_theme.h states the asymmetry: "effects" is always dark's
+// alone), so a caller filling the light variant frees what comes back unread.
+RolltuiEffectMap* fill_builtin(std::string_view name, std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT>& styles) {
+  return rolltui_theme_builtin_fill(name.data(), name.size(), styles.data(), ROLLTUI_ROLE_COUNT);
+}
+
 }  // namespace
 
+unsigned char ThemeEditor::default_effect_fallback_role() {
+  // rolltui::EffectMap's own default constructor's fallback (Effects.hpp) — accent_1.
+  const int r = rolltui_role_from_name("accent_1", 8);
+  return r >= 0 ? static_cast<unsigned char>(r) : 0;
+}
+
 ThemeEditor::ThemeEditor() {
-  current_.dark = *builtin_theme("default-dark");
-  current_.light = *builtin_theme("default-light");
+  rolltui_effect_map_free(dark_effects_);
+  dark_effects_ = fill_builtin("default-dark", current_.dark);
+  current_.dark_name = "default-dark";
+  rolltui_effect_map_free(fill_builtin("default-light", current_.light));
+  current_.light_name = "default-light";
   undo_.reset(current_);
   rebuild_palette();
   rebuild_menu();
@@ -59,20 +111,42 @@ std::optional<ThemeEditor::Field> ThemeEditor::field_of(std::string_view id) {
   std::string_view rest = id.substr(5);
   const std::size_t dot = rest.find('.');
   if (dot == std::string_view::npos) return std::nullopt;
-  const Role r = role_from_name(rest.substr(0, dot));
-  if (r == Role::count_) return std::nullopt;
+  const std::optional<unsigned char> r = role_from_name(rest.substr(0, dot));
+  if (!r) return std::nullopt;
   std::string_view f = rest.substr(dot + 1);
   if (f.size() > 7 && f.substr(f.size() - 7) == ".custom") f = f.substr(0, f.size() - 7);
-  return Field{r, std::string(f)};
+  return Field{*r, std::string(f)};
 }
 
-bool ThemeEditor::load(const ThemePreset& preset, ThemeLoadReport& report) {
-  ThemeLoadReport light_rep;
-  std::optional<Theme> d = resolve_colours(preset, ThemeMode::Dark, report);
-  std::optional<Theme> l = resolve_colours(preset, ThemeMode::Light, light_rep);
-  if (!d || !l) return false;
-  current_ = {*d, *l};
-  defs_ = json::value_from_c(rolltui_json_get(preset.colours.get(), "defs", 4));
+bool ThemeEditor::load(const RolltuiJsonValue* colours, RolltuiThemeReport* report) {
+  std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> d{}, l{};
+  RolltuiStr d_name{}, l_name{};
+  RolltuiThemeReport light_rep{};
+  RolltuiEffectMap* d_eff = rolltui_theme_load(colours, ROLLTUI_MODE_DARK, &theme_vocab(), d.data(), &d_name, report);
+  RolltuiEffectMap* l_eff = rolltui_theme_load(colours, ROLLTUI_MODE_LIGHT, &theme_vocab(), l.data(), &l_name, &light_rep);
+  rolltui_theme_report_release(&light_rep);
+  if (!d_eff || !l_eff) {
+    rolltui_str_free(&d_name);
+    rolltui_str_free(&l_name);
+    rolltui_effect_map_free(d_eff);
+    rolltui_effect_map_free(l_eff);
+    return false;
+  }
+  current_.dark = d;
+  current_.light = l;
+  current_.dark_name = d_name.str();
+  current_.light_name = l_name.str();
+  rolltui_str_free(&d_name);
+  rolltui_str_free(&l_name);
+  rolltui_json_free(current_.dark_meta);
+  current_.dark_meta = extract_meta(colours, ROLLTUI_MODE_DARK);
+  rolltui_json_free(current_.light_meta);
+  current_.light_meta = extract_meta(colours, ROLLTUI_MODE_LIGHT);
+  rolltui_effect_map_free(dark_effects_);
+  dark_effects_ = d_eff;
+  rolltui_effect_map_free(l_eff);  // discarded: only dark's effects are ever dumped
+  rolltui_json_free(defs_);
+  defs_ = rolltui_json_clone(rolltui_json_get(colours, "defs", 4));
   undo_.reset(current_);
   preview_.reset();
   rebuild_palette();
@@ -85,7 +159,7 @@ void ThemeEditor::set_presets(std::vector<std::string> names) {
   presets_ = std::move(names);
   std::vector<MenuItem> opts;
   for (const std::string& n : presets_) opts.push_back(MenuItem::action(n, n));
-  menu_.set_options("load", std::move(opts));
+  set_options(menu_, "load", std::move(opts));
 }
 
 void ThemeEditor::set_shipped(std::vector<std::string> names, bool may_write) {
@@ -93,21 +167,51 @@ void ThemeEditor::set_shipped(std::vector<std::string> names, bool may_write) {
   may_write_shipped_ = may_write;
   std::vector<MenuItem> opts;
   for (const std::string& n : shipped_) opts.push_back(MenuItem::action(n, n));
-  menu_.set_options("write_shipped", std::move(opts));
-  menu_.set_enabled("write_shipped", may_write && !shipped_.empty());
+  set_options(menu_, "write_shipped", std::move(opts));
+  set_enabled(menu_, "write_shipped", may_write && !shipped_.empty());
 }
 
-void ThemeEditor::set_mode(ThemeMode m) {
+void ThemeEditor::set_mode(unsigned char m) {
   if (preview_) cancel_preview();
   mode_ = m;
-  menu_.set_value("mode", m == ThemeMode::Dark ? "dark" : "light");
+  set_value(menu_, "mode", m == ROLLTUI_MODE_DARK ? "dark" : "light");
   sync_values();
   refresh_fixes();
 }
 
 RolltuiJsonValue* ThemeEditor::colours_json(std::string_view name) const {
+  // theme_pair_to_json_value's algorithm (Theme.cpp), verbatim: {"name", ["meta"], "roles",
+  // ["effects"]} built in THAT order — rolltui_theme_dump only ever returns {roles,
+  // [effects]}, so "name" (and "meta") are written before it, not appended after: a preset
+  // store compares this tree against what it loaded, and a key-order difference alone
+  // reads as "modified" (studio_golden_test's editor.*.heading-undo caught this).
   const ThemeEdit& c = undo_.current();
-  return json::value_to_c(theme_pair_to_json_value(c.dark, c.light, name));
+  RolltuiJsonValue* root = rolltui_json_object();
+  rolltui_json_set(root, "name", 4, rolltui_json_string(name.data(), name.size()));
+  if (c.dark_meta && rolltui_json_is_object(c.dark_meta)) {
+    RolltuiJsonValue* meta = rolltui_json_clone(c.dark_meta);
+    // Each variant's claimed badges, as a pair when they differ.
+    if (c.light_meta && rolltui_json_is_object(c.light_meta)) {
+      const RolltuiJsonValue* db = rolltui_json_get(c.dark_meta, "badges", 6);
+      const RolltuiJsonValue* lb = rolltui_json_get(c.light_meta, "badges", 6);
+      if (!rolltui_json_equal(db, lb)) {
+        RolltuiJsonValue* pair = rolltui_json_object();
+        rolltui_json_set(pair, "dark", 4, rolltui_json_clone(db));
+        rolltui_json_set(pair, "light", 5, rolltui_json_clone(lb));
+        rolltui_json_set(meta, "badges", 6, pair);
+      }
+    }
+    rolltui_json_set(root, "meta", 4, meta);
+  }
+  // ONE effects object for both variants (motion is the theme's, not the terminal
+  // background's): rolltui_theme_dump takes a light effects map only to document that it
+  // is never consulted, and always dumps dark's alone.
+  RolltuiJsonValue* dump = rolltui_theme_dump(c.dark.data(), dark_effects_, c.light.data(), nullptr, &theme_vocab());
+  rolltui_json_set(root, "roles", 5, rolltui_json_clone(rolltui_json_get(dump, "roles", 5)));
+  const RolltuiJsonValue* fx = rolltui_json_get(dump, "effects", 7);
+  if (!rolltui_json_is_null(fx)) rolltui_json_set(root, "effects", 7, rolltui_json_clone(fx));
+  rolltui_json_free(dump);
+  return root;
 }
 
 void ThemeEditor::rebuild_palette() {
@@ -117,19 +221,25 @@ void ThemeEditor::rebuild_palette() {
   };
   // defs names for labels: a defs entry that is a plain colour string.
   std::vector<std::pair<std::string, std::string>> names;  // colour id → def name
-  for (const auto& [k, v] : defs_.obj)
-    if (v.is_string())
-      if (std::optional<Color> c = parse_color(v.str)) names.emplace_back(color_to_string(*c), k);
+  for (std::size_t i = 0, n = defs_ ? rolltui_json_object_size(defs_) : 0; i < n; ++i) {
+    std::size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(defs_, i, &klen);
+    const RolltuiJsonValue* v = rolltui_json_object_value_at(defs_, i);
+    if (!rolltui_json_is_string(v)) continue;
+    std::size_t vlen = 0;
+    const char* vs = rolltui_json_as_string(v, "", 0, &vlen);
+    if (std::optional<Color> c = parse_color(std::string_view(vs, vlen))) names.emplace_back(color_to_string(*c), std::string(k, klen));
+  }
   auto label_for = [&](const std::string& id) {
     for (const auto& [cid, n] : names)
       if (cid == id) return n + " = " + id;
     return id;
   };
   palette_.push_back({Color::none(), "none", "none"});
-  for (const Theme* t : {&current_.dark, &current_.light})
-    for (std::size_t i = 0; i < kRoleCount; ++i) {
-      const RolltuiStyle* s = rolltui_theme_style(t->styles.data(), kRoleCount, i);
-      for (Color c : {s->fg, s->bg}) {
+  for (const std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT>* t : {&current_.dark, &current_.light})
+    for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
+      const RolltuiStyle& s = (*t)[i];
+      for (Color c : {s.fg, s.bg}) {
         const std::string id = color_to_string(c);
         if (!has(id)) palette_.push_back({c, id, label_for(id)});
       }
@@ -140,8 +250,8 @@ void ThemeEditor::rebuild_menu() {
   std::vector<MenuItem> palette_opts;
   for (const PaletteEntry& p : palette_) palette_opts.push_back(MenuItem::action(p.id, p.label));
   std::vector<MenuItem> roles;
-  for (std::size_t i = 0; i < kRoleCount; ++i) {
-    const std::string name(kRoleNames[i]);
+  for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
+    const std::string name = role_name(static_cast<unsigned char>(i));
     const std::string base = "role." + name;
     std::vector<MenuItem> fields;
     fields.push_back(MenuItem::choice(base + ".fg", "fg", palette_opts, ""));
@@ -157,7 +267,11 @@ void ThemeEditor::rebuild_menu() {
   for (const std::string& n : presets_) load_opts.push_back(MenuItem::action(n, n));
   for (const std::string& n : shipped_) shipped_opts.push_back(MenuItem::action(n, n));
   std::vector<MenuItem> rulesets;
-  for (Ruleset r : kRulesets) rulesets.push_back(MenuItem::action(std::string(ruleset_name(r)), std::string(ruleset_name(r))));
+  for (unsigned char r = 0; r < ROLLTUI_RULESET_COUNT; ++r) {
+    std::size_t len = 0;
+    const char* rn = rolltui_ruleset_name(r, &len);
+    rulesets.push_back(MenuItem::action(std::string(rn, len), std::string(rn, len)));
+  }
   InputSpec seed, chaos, name;
   seed.type = InputType::Int;
   seed.min = 0;
@@ -171,7 +285,7 @@ void ThemeEditor::rebuild_menu() {
       "root", "theme editor",
       {MenuItem::submenu("roles", "Roles", std::move(roles)),
        MenuItem::choice("mode", "Mode (edit + preview)", {MenuItem::action("dark", "dark"), MenuItem::action("light", "light")},
-                        mode_ == ThemeMode::Dark ? "dark" : "light"),
+                        mode_ == ROLLTUI_MODE_DARK ? "dark" : "light"),
        MenuItem::action("check", "Check: contrast, colour-vision, badges"),
        MenuItem::submenu("fixes", "Fixes (proposals; Enter applies one, undoable)", {}),
        MenuItem::submenu("generate", "Generate a theme (seeded)",
@@ -185,40 +299,63 @@ void ThemeEditor::rebuild_menu() {
        MenuItem::action("reset_builtin", "Reset to the built-in default\xE2\x80\xA6")});
   // A rebuild (a load, a replace) starts at the top level; a committed custom colour
   // only refreshes the option lists in place (commit_current), keeping the position.
-  menu_.set_root(std::move(root));
-  menu_.set_enabled("write_shipped", may_write_shipped_ && !shipped_.empty());
+  rolltui_menu_set_root(menu_, &root);
+  set_enabled(menu_, "write_shipped", may_write_shipped_ && !shipped_.empty());
   sync_values();
   refresh_fixes();
 }
 
 void ThemeEditor::refresh_fixes() {
-  fixes_ = propose_fixes(mode_ == ThemeMode::Dark ? undo_.current().dark : undo_.current().light);
+  RolltuiFixArray fixes{};
+  rolltui_propose_fixes((mode_ == ROLLTUI_MODE_DARK ? undo_.current().dark : undo_.current().light).data(), ROLLTUI_ROLE_COUNT, &theme_vocab(), &fixes);
+  // Deep-copies each RolltuiFix (its one RolltuiStr member, `what`, has a real C++ copy
+  // constructor, so this clones rather than aliasing); the ORIGINAL array — its own
+  // `what` buffers included — is then released in full, the same as any other owned
+  // array this file is handed.
+  fixes_.assign(fixes.v, fixes.v + fixes.n);
+  rolltui_fix_array_release(&fixes);
   std::vector<MenuItem> items;
-  for (std::size_t i = 0; i < fixes_.size(); ++i) items.push_back(MenuItem::action("fix." + std::to_string(i), fixes_[i].what));
+  for (std::size_t i = 0; i < fixes_.size(); ++i) items.push_back(MenuItem::action("fix." + std::to_string(i), fixes_[i].what.str()));
   if (items.empty()) { items.push_back(MenuItem::action("fix.none", "(nothing to fix in this variant)")); items.back().enabled = false; }
-  menu_.set_options("fixes", std::move(items));
+  set_options(menu_, "fixes", std::move(items));
 }
 
 std::string ThemeEditor::badges_line() const {
+  std::vector<RolltuiRoleCheck> roles(ROLLTUI_ROLE_COUNT);
+  std::vector<RolltuiPairCheck> pairs(rolltui_must_differ_count());
+  RolltuiBadges badges{};
+  rolltui_theme_analyse(current(), ROLLTUI_ROLE_COUNT, roles.data(), pairs.data(), &badges);
+  RolltuiStrArray names{};
+  rolltui_badge_names(&badges, &names);
   std::string s = "badges:";
-  const std::vector<std::string> names = badge_names(analyse(current()).badges);
-  for (const std::string& n : names) s += " " + n;
-  if (names.empty()) s += " (none)";
+  for (std::size_t i = 0; i < names.n; ++i) s += " " + names.v[i].str();
+  if (names.n == 0) s += " (none)";
+  rolltui_str_array_release(&names);
   return s;
 }
 
-std::string ThemeEditor::report() const { return report_text(analyse(current())); }
+std::string ThemeEditor::report() const {
+  std::vector<RolltuiRoleCheck> roles(ROLLTUI_ROLE_COUNT);
+  std::vector<RolltuiPairCheck> pairs(rolltui_must_differ_count());
+  RolltuiBadges badges{};
+  rolltui_theme_analyse(current(), ROLLTUI_ROLE_COUNT, roles.data(), pairs.data(), &badges);
+  RolltuiStr out{};
+  rolltui_theme_report_text(roles.data(), ROLLTUI_ROLE_COUNT, pairs.data(), pairs.size(), &badges, nullptr, 0, &theme_vocab(), &out);
+  const std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return s;
+}
 
 void ThemeEditor::sync_values() {
-  const Theme& t = mode_ == ThemeMode::Dark ? undo_.current().dark : undo_.current().light;
-  for (std::size_t i = 0; i < kRoleCount; ++i) {
-    const std::string base = "role." + std::string(kRoleNames[i]);
-    const Style& s = *rolltui_theme_style(t.styles.data(), kRoleCount, i);
-    menu_.set_value(base + ".fg", color_to_string(s.fg));
-    menu_.set_value(base + ".bg", color_to_string(s.bg));
-    for (const char* a : kAttrs) menu_.set_checked(base + "." + a, attr_value(s, a));
+  const std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT>& t = mode_ == ROLLTUI_MODE_DARK ? undo_.current().dark : undo_.current().light;
+  for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
+    const std::string base = "role." + role_name(static_cast<unsigned char>(i));
+    const Style& s = t[i];
+    set_value(menu_, base + ".fg", color_to_string(s.fg));
+    set_value(menu_, base + ".bg", color_to_string(s.bg));
+    for (const char* a : kAttrs) set_checked(menu_, base + "." + a, attr_value(s, a));
   }
-  menu_.set_value("mode", mode_ == ThemeMode::Dark ? "dark" : "light");
+  set_value(menu_, "mode", mode_ == ROLLTUI_MODE_DARK ? "dark" : "light");
 }
 
 void ThemeEditor::apply(Field f, Color c) {
@@ -246,10 +383,10 @@ ThemeEditor::Outcome ThemeEditor::commit_current() {
   if (palette_.size() != before) {
     std::vector<MenuItem> opts;
     for (const PaletteEntry& p : palette_) opts.push_back(MenuItem::action(p.id, p.label));
-    for (std::size_t i = 0; i < kRoleCount; ++i) {
-      const std::string base = "role." + std::string(kRoleNames[i]);
-      menu_.set_options(base + ".fg", opts);
-      menu_.set_options(base + ".bg", opts);
+    for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
+      const std::string base = "role." + role_name(static_cast<unsigned char>(i));
+      set_options(menu_, base + ".fg", opts);
+      set_options(menu_, base + ".bg", opts);
     }
   }
   sync_values();
@@ -257,9 +394,13 @@ ThemeEditor::Outcome ThemeEditor::commit_current() {
   return {Outcome::Kind::Committed, {}};
 }
 
-void ThemeEditor::replace(ThemeEdit e) {
+void ThemeEditor::replace(ThemeEdit e, RolltuiEffectMap* dark_effects) {
   preview_.reset();
   current_ = std::move(e);
+  if (dark_effects) {
+    rolltui_effect_map_free(dark_effects_);
+    dark_effects_ = dark_effects;
+  }
   undo_.commit(current_);
   rebuild_palette();
   rebuild_menu();
@@ -285,139 +426,186 @@ bool ThemeEditor::redo() {
   return true;
 }
 
-std::optional<Role> ThemeEditor::focused_role() const {
-  auto role_in = [](std::string_view id) -> std::optional<Role> {
+std::optional<unsigned char> ThemeEditor::focused_role() const {
+  auto role_in = [](std::string_view id) -> std::optional<unsigned char> {
     if (id.rfind("role.", 0) != 0) return std::nullopt;
     std::string_view rest = id.substr(5);
     const std::size_t dot = rest.find('.');
-    const Role r = role_from_name(dot == std::string_view::npos ? rest : rest.substr(0, dot));
-    return r == Role::count_ ? std::nullopt : std::optional<Role>(r);
+    return role_from_name(dot == std::string_view::npos ? rest : rest.substr(0, dot));
   };
-  if (auto r = role_in(menu_.level().id)) return r;
-  if (const MenuItem* it = menu_.selected_item())
-    if (auto r = role_in(it->id)) return r;
+  if (auto r = role_in(rolltui_menu_level(menu_)->id.view())) return r;
+  if (const MenuItem* it = rolltui_menu_selected_item(menu_))
+    if (auto r = role_in(it->id.view())) return r;
   return std::nullopt;
 }
 
 std::optional<Color> ThemeEditor::highlighted_color() const {
-  const MenuItem* it = menu_.selected_item();
+  const MenuItem* it = rolltui_menu_selected_item(menu_);
   if (!it) return std::nullopt;
-  if (menu_.editing() && it->id.size() > 7 && it->id.view().substr(it->id.size() - 7) == ".custom") return parse_color(menu_.editing_text());
-  if (const std::optional<Field> f = field_of(menu_.level().id); f && (f->name == "fg" || f->name == "bg")) return parse_color(it->id);
+  const bool editing = rolltui_menu_editing(menu_) != 0;
+  if (editing && it->id.size() > 7 && it->id.view().substr(it->id.size() - 7) == ".custom") {
+    std::size_t len = 0;
+    const char* p = rolltui_input_text(rolltui_menu_editor(menu_), &len);
+    return parse_color(std::string_view(p, len));
+  }
+  if (const std::optional<Field> f = field_of(rolltui_menu_level(menu_)->id.view()); f && (f->name == "fg" || f->name == "bg")) return parse_color(it->id.view());
   return std::nullopt;
 }
 
 std::string ThemeEditor::status_line() const {
   std::string s;
-  if (menu_.editing() && !menu_.edit_reason().empty()) s = "refused: " + menu_.edit_reason();
+  const bool editing = rolltui_menu_editing(menu_) != 0;
+  std::size_t reason_len = 0;
+  const char* reason = rolltui_menu_edit_reason(menu_, &reason_len);
+  if (editing && reason_len > 0) s = "refused: " + std::string(reason, reason_len);
   else if (preview_) s = "previewing \xE2\x80\x94 Enter commits, Esc cancels";
   else s = status_.empty() ? "Enter commits, Esc cancels" : status_;
   s += " \xC2\xB7 undo " + std::to_string(undo_.undo_depth()) + " \xC2\xB7 redo " + std::to_string(undo_.redo_depth());
-  s += std::string(" \xC2\xB7 ") + (mode_ == ThemeMode::Dark ? "dark" : "light");
+  s += std::string(" \xC2\xB7 ") + (mode_ == ROLLTUI_MODE_DARK ? "dark" : "light");
   return s;
 }
 
-ThemeEditor::Outcome ThemeEditor::handle(const Event& e, const Bindings& nav) {
-  using K = MenuEvent::Kind;
+ThemeEditor::Outcome ThemeEditor::handle(const RolltuiEvent* e, const RolltuiBindings* nav) {
   using O = Outcome::Kind;
-  if (const auto* k = std::get_if<KeyEvent>(&e)) {
+  if (e->kind == ROLLTUI_EVENT_KEY) {
     // An undo or redo changes the COMMITTED value: the host writes it to the store.
-    const std::string_view ed = nav.action_for(*k, "editor");
+    std::size_t len = 0;
+    const char* ed_p = rolltui_bindings_action_for(nav, &e->key, "editor", 6, &len);
+    const std::string_view ed = ed_p ? std::string_view(ed_p, len) : std::string_view();
     if (ed == "editor.undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
     if (ed == "editor.redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
   }
   status_.clear();
-  const MenuEvent ev = menu_.handle(e, nav);
+  RolltuiMenuEvent raw{};
+  rolltui_menu_handle(menu_, e, nav, rolltui_menu_default_actions(), &raw);
+  const unsigned char kind = raw.kind;
+  const std::string id = raw.id.str();
+  const std::string value = raw.value.str();
+  const bool checked = raw.checked != 0;
+  rolltui_menu_event_release(&raw);
   // ---- committing events ----
-  if (ev.kind == K::Choose) {
-    if (const std::optional<Field> f = field_of(ev.id)) {
-      if (std::optional<Color> c = parse_color(ev.value)) { begin_preview(); apply(*f, *c); }
+  if (kind == ROLLTUI_MENU_EVENT_CHOOSE) {
+    if (const std::optional<Field> f = field_of(id)) {
+      if (std::optional<Color> c = parse_color(value)) { begin_preview(); apply(*f, *c); }
       return commit_current();
     }
-    if (ev.id == "mode") { set_mode(ev.value == "light" ? ThemeMode::Light : ThemeMode::Dark); return {O::Changed, {}}; }
-    if (ev.id == "load") return {O::LoadPreset, ev.value};
-    if (ev.id == "write_shipped") return {O::WriteShipped, ev.value};
+    if (id == "mode") { set_mode(value == "light" ? ROLLTUI_MODE_LIGHT : ROLLTUI_MODE_DARK); return {O::Changed, {}}; }
+    if (id == "load") return {O::LoadPreset, value};
+    if (id == "write_shipped") return {O::WriteShipped, value};
     return {O::None, {}};
   }
-  if (ev.kind == K::Toggle) {
-    if (const std::optional<Field> f = field_of(ev.id)) {
+  if (kind == ROLLTUI_MENU_EVENT_TOGGLE) {
+    if (const std::optional<Field> f = field_of(id)) {
       begin_preview();
-      attr_of(style_at(f->role), f->name) = ev.checked;
+      attr_of(style_at(f->role), f->name) = checked;
       return commit_current();
     }
     return {O::None, {}};
   }
-  if (ev.kind == K::Input) {
-    if (ev.id == "save") return {O::SaveAs, ev.value};
-    if (const std::optional<Field> f = field_of(ev.id)) {
-      if (std::optional<Color> c = parse_color(ev.value)) { begin_preview(); apply(*f, *c); return commit_current(); }
+  if (kind == ROLLTUI_MENU_EVENT_INPUT) {
+    if (id == "save") return {O::SaveAs, value};
+    if (const std::optional<Field> f = field_of(id)) {
+      if (std::optional<Color> c = parse_color(value)) { begin_preview(); apply(*f, *c); return commit_current(); }
       cancel_preview();
-      status_ = "'" + ev.value + "' is not a colour (#rrggbb, 0-255, none)";
+      status_ = "'" + value + "' is not a colour (#rrggbb, 0-255, none)";
       return {O::Changed, {}};
     }
     return {O::None, {}};
   }
-  if (ev.kind == K::Activate) {
-    if (ev.id == "undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
-    if (ev.id == "redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
-    if (ev.id == "reset_loaded") return {O::ResetLoaded, {}};
-    if (ev.id == "reset_builtin") return {O::ResetBuiltin, {}};
-    if (ev.id == "check") return {O::Check, {}};
-    if (ev.id.rfind("fix.", 0) == 0 && ev.id != "fix.none") {
-      const std::size_t i = static_cast<std::size_t>(std::atoi(ev.id.c_str() + 4));
+  if (kind == ROLLTUI_MENU_EVENT_ACTIVATE) {
+    if (id == "undo") { const bool did = undo(); status_ = did ? "undone" : "nothing to undo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (id == "redo") { const bool did = redo(); status_ = did ? "redone" : "nothing to redo"; return {did ? O::Committed : O::Changed, {}}; }
+    if (id == "reset_loaded") return {O::ResetLoaded, {}};
+    if (id == "reset_builtin") return {O::ResetBuiltin, {}};
+    if (id == "check") return {O::Check, {}};
+    if (id.rfind("fix.", 0) == 0 && id != "fix.none") {
+      const std::size_t i = static_cast<std::size_t>(std::atoi(id.c_str() + 4));
       if (i < fixes_.size()) {
         begin_preview();
-        Theme& t = mode_ == ThemeMode::Dark ? current_.dark : current_.light;
-        t = apply_fix(t, fixes_[i]);
-        status_ = "applied: " + fixes_[i].what;
+        std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT>& t = mode_ == ROLLTUI_MODE_DARK ? current_.dark : current_.light;
+        rolltui_apply_fix(t.data(), ROLLTUI_ROLE_COUNT, fixes_[i].role, &fixes_[i].after);
+        status_ = "applied: " + fixes_[i].what.str();
         Outcome o = commit_current();
-        menu_.handle(KeyEvent{Key::Left});  // back to the (refreshed) Fixes level's parent
+        const RolltuiChord left{ROLLTUI_KEY_LEFT};
+        const RolltuiEvent left_ev{ROLLTUI_EVENT_KEY, left, {}, nullptr, 0};
+        RolltuiMenuEvent discard{};
+        rolltui_menu_handle(menu_, &left_ev, nav, rolltui_menu_default_actions(), &discard);  // back to the (refreshed) Fixes level's parent
+        rolltui_menu_event_release(&discard);
         return o;
       }
       return {O::None, {}};
     }
-    if (ev.id == "gen.run") {
-      const std::optional<Ruleset> rs = ruleset_from_name(menu_.find("gen.ruleset")->value);
-      const std::uint64_t seed = static_cast<std::uint64_t>(std::strtoull(menu_.find("gen.seed")->value.c_str(), nullptr, 10));
-      const double chaos = std::strtod(menu_.find("gen.chaos")->value.c_str(), nullptr);
-      if (!rs) { status_ = "pick a ruleset first"; return {O::Changed, {}}; }
-      GenOptions dark_opts, light_opts;
-      dark_opts.dark = true;
-      light_opts.dark = false;
-      const Generated gd = generate(seed, *rs, chaos, dark_opts), gl = generate(seed, *rs, chaos, light_opts);
-      preview_.reset();
-      current_ = {gd.theme, gl.theme};
-      undo_.commit(current_);
-      rebuild_palette();
-      sync_values();
-      refresh_fixes();
+    if (id == "gen.run") {
+      const MenuItem* ruleset_item = find(menu_, "gen.ruleset");
+      unsigned char rs = 0;
+      const bool has_rs = ruleset_item && rolltui_ruleset_from_name(ruleset_item->value.data(), ruleset_item->value.size(), &rs);
+      const std::uint64_t seed = static_cast<std::uint64_t>(std::strtoull(find(menu_, "gen.seed")->value.c_str(), nullptr, 10));
+      const double chaos = std::strtod(find(menu_, "gen.chaos")->value.c_str(), nullptr);
+      if (!has_rs) { status_ = "pick a ruleset first"; return {O::Changed, {}}; }
+      auto run = [&](int dark_value, std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT>& out_styles, std::string& out_name,
+                     RolltuiJsonValue*& out_meta, int* out_repairs, RolltuiBadges* out_badges) {
+        RolltuiJsonValue* meta = nullptr;
+        std::vector<RolltuiRoleCheck> roles(ROLLTUI_ROLE_COUNT);
+        std::vector<RolltuiPairCheck> pairs(rolltui_must_differ_count());
+        RolltuiStr name_c{};
+        rolltui_theme_generate(seed, rs, chaos, 1, dark_value, /*max_repair_passes=*/20, &theme_vocab(), out_styles.data(), ROLLTUI_ROLE_COUNT,
+                               &name_c, &meta, out_repairs, roles.data(), pairs.data(), out_badges);
+        out_name = name_c.str();
+        rolltui_str_free(&name_c);
+        out_meta = meta;  // ADOPTED — {"generator": {ruleset, seed, chaos}, "badges": [...]}
+        std::string broken;
+        for (const RolltuiRoleCheck& c : roles)
+          if (c.text && !c.unknown && !c.readable) broken += (broken.empty() ? "" : "; ") + role_name(c.role) + " contrast " + std::to_string(c.wcag).substr(0, 4);
+        for (const RolltuiPairCheck& c : pairs)
+          if (!c.unknown && !(c.distinct && c.cvd_distinct) && !c.attribute_redundant)
+            broken += (broken.empty() ? "" : "; ") + role_name(c.a) + "/" + role_name(c.b) + " confusable";
+        return broken;
+      };
+      ThemeEdit gen{};
+      int dark_repairs = 0, light_repairs = 0;
+      RolltuiBadges dark_badges{}, light_badges{};
+      const std::string dark_broken = run(1, gen.dark, gen.dark_name, gen.dark_meta, &dark_repairs, &dark_badges);
+      const std::string light_broken = run(0, gen.light, gen.light_name, gen.light_meta, &light_repairs, &light_badges);
+      // A generated theme has no motion of its own: replace() with no effects argument
+      // keeps whatever this editor already has, which is wrong here specifically — a
+      // fresh, empty map is the honest answer, matching `Generated`'s default-constructed
+      // (still-UI) `Theme::effects` the C++ shim never touched either.
+      replace(gen, rolltui_effect_map_new(ROLLTUI_EFFECT_STATE_COUNT, default_effect_fallback_role()));
+      const bool dark_mode = mode_ == ROLLTUI_MODE_DARK;
+      RolltuiStrArray badge_names{};
+      rolltui_badge_names(dark_mode ? &dark_badges : &light_badges, &badge_names);
       std::string b;
-      for (const std::string& x : (mode_ == ThemeMode::Dark ? gd : gl).badges) b += " " + x;
-      status_ = "generated " + gd.theme.name + " \xE2\x80\x94" + (b.empty() ? " no badges" : b) +
-                ((mode_ == ThemeMode::Dark ? gd : gl).broken.empty() ? "" : "; broken: " + (mode_ == ThemeMode::Dark ? gd : gl).broken[0]);
+      for (std::size_t i = 0; i < badge_names.n; ++i) b += " " + badge_names.v[i].str();
+      rolltui_str_array_release(&badge_names);
+      const std::string& broken = dark_mode ? dark_broken : light_broken;
+      status_ = "generated " + (dark_mode ? current_.dark_name : current_.light_name) + " \xE2\x80\x94" + (b.empty() ? " no badges" : b) +
+                (broken.empty() ? "" : "; broken: " + broken);
       return {O::Committed, {}};
     }
     return {O::None, {}};
   }
-  if (ev.kind == K::Closed) return {O::Closed, {}};
+  if (kind == ROLLTUI_MENU_EVENT_CLOSED) return {O::Closed, {}};
   // ---- live preview: the highlighted palette entry, or a custom colour being typed ----
-  const MenuItem* sel = menu_.selected_item();
-  const std::optional<Field> level_field = field_of(menu_.level().id);
-  if (level_field && (level_field->name == "fg" || level_field->name == "bg") && sel && !menu_.editing()) {
-    if (std::optional<Color> c = parse_color(sel->id)) {
+  const MenuItem* sel = rolltui_menu_selected_item(menu_);
+  const bool editing = rolltui_menu_editing(menu_) != 0;
+  const std::optional<Field> level_field = field_of(rolltui_menu_level(menu_)->id.view());
+  if (level_field && (level_field->name == "fg" || level_field->name == "bg") && sel && !editing) {
+    if (std::optional<Color> c = parse_color(sel->id.view())) {
       begin_preview();
       apply(*level_field, *c);
       return {O::Changed, {}};
     }
   }
-  if (menu_.editing() && sel) {
-    if (const std::optional<Field> f = field_of(sel->id)) {
+  if (editing && sel) {
+    if (const std::optional<Field> f = field_of(sel->id.view())) {
       begin_preview();
       // The editing text, never the item's value: that is the committed colour.
-      if (std::optional<Color> c = parse_color(menu_.editing_text())) apply(*f, *c);
+      std::size_t len = 0;
+      const char* p = rolltui_input_text(rolltui_menu_editor(menu_), &len);
+      if (std::optional<Color> c = parse_color(std::string_view(p, len))) apply(*f, *c);
       else {  // not (yet) a colour: show the committed value while typing continues
-        const Theme& pt = mode_ == ThemeMode::Dark ? preview_->dark : preview_->light;
-        apply(*f, f->name == "fg" ? pt.style(f->role).fg : pt.style(f->role).bg);
+        const std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT>& pt = mode_ == ROLLTUI_MODE_DARK ? preview_->dark : preview_->light;
+        apply(*f, f->name == "fg" ? pt[f->role].fg : pt[f->role].bg);
       }
       return {O::Changed, {}};
     }

@@ -377,9 +377,16 @@ struct App {
       return std::make_unique<CallbackWidget>([this](const ResolvedNode& rn, Frame& f, const Theme&) { draw_editor(rn, f); },
                                          [this](const Event& e) {
                                            hint.clear();
-                                           if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(e, bindings));
-                                           else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(e, bindings));
-                                           else editor_outcome(teditor.handle(e, bindings));
+                                           if (editor_mode == EditorMode::Layout) {
+                                             const RolltuiEvent ce = rolltui::c_event_of(e);
+                                             layout_outcome(leditor.handle(&ce, bindings.handle()));
+                                           } else if (editor_mode == EditorMode::Keys) {
+                                             const RolltuiEvent ce = rolltui::c_event_of(e);
+                                             keys_outcome(keditor.handle(&ce, bindings.handle()));
+                                           } else {
+                                             const RolltuiEvent ce = rolltui::c_event_of(e);
+                                             editor_outcome(teditor.handle(&ce, bindings.handle()));
+                                           }
                                            return true;
                                          });
     }, SourceRule::Forbidden, "");
@@ -520,10 +527,15 @@ struct App {
       const Layout working_layout = lstore->working();
       if (!(layout == working_layout)) { layout = working_layout; apply_layout(); }
     }
-    theme = editor_mode == EditorMode::Theme ? teditor.current() : resolved;
+    // teditor.current() is a BORROW of just the styles now (the theme editor's own edit
+    // buffer carries no name/meta/effects — theme_editor.hpp's vocabulary-ownership
+    // rule); this window's own name/meta/effects stay whatever the preset store last
+    // resolved, which only the styles-driven role rendering reads.
+    if (editor_mode == EditorMode::Theme) std::copy_n(teditor.current(), kRoleCount, theme.styles.data());
+    else theme = resolved;
     if (editor_mode == EditorMode::Layout && !(layout == leditor.current())) { layout = leditor.current(); apply_layout(); }
     if (bstore && bstore->version() != bstore_seen) { bstore_seen = bstore->version(); bindings = bstore->working(); declare_actions(); }
-    if (editor_mode == EditorMode::Keys) { bindings = keditor.current(); declare_actions(); }
+    if (editor_mode == EditorMode::Keys) { bindings = Bindings::adopt(rolltui_bindings_clone(keditor.current())); declare_actions(); }
   }
   bool load_bindings_arg() {
     if (bindings_arg.empty()) return true;
@@ -593,14 +605,15 @@ struct App {
   void toggle_editor() {
     if (editor_mode == EditorMode::Theme) { close_editor(); return; }
     close_editor();
-    ThemeLoadReport rep;
-    teditor.load(store->working(), rep);
+    RolltuiThemeReport rep{};
+    teditor.load(store->working().colours.get(), &rep);
+    rolltui_theme_report_release(&rep);
     std::vector<std::string> names, shipped;
     for (const PresetInfo& p : store->list()) names.push_back(p.name);
     for (std::string_view n : ThemePresets::shipped_names()) shipped.push_back(std::string(n));
     teditor.set_presets(names);
     teditor.set_shipped(shipped, store->options().may_write_shipped);
-    teditor.set_mode(mode);
+    teditor.set_mode(mode == ThemeMode::Dark ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT);
     editor_open = true;
     editor_mode = EditorMode::Theme;
     stack.push(editor_popup("theme editor"));
@@ -615,7 +628,7 @@ struct App {
     // layout declares and nobody could rebind — and would have taken `editor` and
     // `studio` with it the moment they stopped being library actions. What this
     // hands over is what the studio is actually running.
-    keditor.load(bindings);
+    keditor.load(bindings.handle());
     std::vector<std::string> names, shipped;
     for (const PresetInfo& p : bstore->list()) names.push_back(p.name);
     for (std::string_view n : BindingsPresets::shipped_names()) shipped.push_back(std::string(n));
@@ -631,7 +644,7 @@ struct App {
     switch (o.kind) {
       case K::None: case K::Changed: break;
       case K::Committed:
-        bstore->set_working(keditor.committed(), persist);
+        bstore->set_working(Bindings::adopt(rolltui_bindings_clone(keditor.committed())), persist);
         break;
       case K::SaveAs: {
         std::string err;
@@ -650,13 +663,13 @@ struct App {
       case K::LoadPreset: {
         PresetLoadReport rep;
         if (!bstore->load(o.value, rep, persist)) hint = rep.error;
-        else { keditor.load(bstore->working()); hint = rep.clean() ? "loaded bindings '" + o.value + "'" : "loaded '" + o.value + "' with problems: " + rep.summary(); }
+        else { keditor.load(bstore->working().handle()); hint = rep.clean() ? "loaded bindings '" + o.value + "'" : "loaded '" + o.value + "' with problems: " + rep.summary(); }
         break;
       }
       case K::ResetLoaded:
         ask("Reset every binding to the preset '" + bstore->origin() + "'? (y/n)", [this] {
           PresetLoadReport rep;
-          if (std::optional<Bindings> b = bstore->get(bstore->origin(), rep)) { keditor.replace(*b); keys_outcome({K::Committed, {}}); hint = "reset (undoable)"; }
+          if (std::optional<Bindings> b = bstore->get(bstore->origin(), rep)) { keditor.replace(rolltui_bindings_clone(b->handle())); keys_outcome({K::Committed, {}}); hint = "reset (undoable)"; }
           else hint = rep.error;
         });
         break;
@@ -673,9 +686,9 @@ struct App {
     m.h = r.h - box;
     MenuOptions mo;
     mo.ambiguous_wide = ambiguous;
-    keditor.menu().set_options(mo);
-    keditor.menu().layout(m);
-    if (m.h > 0) keditor.menu().draw(f, theme, rn.focused);
+    rolltui_menu_set_options_struct(keditor.menu(), &mo);
+    rolltui_menu_layout(keditor.menu(), m);
+    if (m.h > 0) draw_raw_menu(keditor.menu(), f, rn.focused);
     int y = r.y + m.h;
     const Style label = theme.style(Role::label), value = theme.style(Role::value);
     if (y < r.y + r.h) f.put_text(r.x, y++, "preset: " + bstore->label() + " \xC2\xB7 Enter on an action, then press the chord", label, r.w, ambiguous);
@@ -845,7 +858,7 @@ struct App {
       case K::LoadPreset: {
         PresetLoadReport rep;
         if (!store->load(o.value, rep, persist)) hint = rep.error;
-        else { ThemeLoadReport tr; teditor.load(store->working(), tr); hint = "loaded '" + o.value + "'"; }
+        else { RolltuiThemeReport tr{}; teditor.load(store->working().colours.get(), &tr); rolltui_theme_report_release(&tr); hint = "loaded '" + o.value + "'"; }
         break;
       }
       case K::ResetLoaded:
@@ -854,13 +867,19 @@ struct App {
           if (std::optional<ThemePreset> p = store->get(store->origin(), rep)) {
             ThemeLoadReport tr;
             std::optional<Theme> d = resolve_colours(*p, ThemeMode::Dark, tr), l = resolve_colours(*p, ThemeMode::Light, tr);
-            if (d && l) { teditor.replace({*d, *l}); editor_outcome({K::Committed, {}}); hint = "reset to '" + store->origin() + "' (undoable)"; }
+            if (d && l) {
+              teditor.replace({d->styles, l->styles, d->name, l->name}, rolltui_effect_map_clone(d->effects.handle()));
+              editor_outcome({K::Committed, {}});
+              hint = "reset to '" + store->origin() + "' (undoable)";
+            }
           } else hint = rep.error;
         });
         break;
       case K::ResetBuiltin:
         ask("Reset every role to the built-in default? (y/n)", [this] {
-          teditor.replace({*builtin_theme("default-dark"), *builtin_theme("default-light")});
+          const Theme* bd = builtin_theme("default-dark");
+          const Theme* bl = builtin_theme("default-light");
+          teditor.replace({bd->styles, bl->styles, bd->name, bl->name}, rolltui_effect_map_clone(bd->effects.handle()));
           editor_outcome({K::Committed, {}});
           hint = "reset to the built-in default (undoable)";
         });
@@ -895,9 +914,9 @@ struct App {
     m.h = r.h - box;
     MenuOptions mo;
     mo.ambiguous_wide = ambiguous;
-    leditor.menu().set_options(mo);
-    leditor.menu().layout(m);
-    if (m.h > 0) leditor.menu().draw(f, theme, rn.focused);
+    rolltui_menu_set_options_struct(leditor.menu(), &mo);
+    rolltui_menu_layout(leditor.menu(), m);
+    if (m.h > 0) draw_raw_menu(leditor.menu(), f, rn.focused);
     int y = r.y + m.h;
     const Style label = theme.style(Role::label), value = theme.style(Role::value);
     if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h)
@@ -916,14 +935,14 @@ struct App {
     m.h = r.h - box;
     MenuOptions mo;
     mo.ambiguous_wide = ambiguous;
-    teditor.menu().set_options(mo);
-    teditor.menu().layout(m);
-    if (m.h > 0) teditor.menu().draw(f, theme, rn.focused);
+    rolltui_menu_set_options_struct(teditor.menu(), &mo);
+    rolltui_menu_layout(teditor.menu(), m);
+    if (m.h > 0) draw_raw_menu(teditor.menu(), f, rn.focused);
     int y = r.y + m.h;
     const Style label = theme.style(Role::label), value = theme.style(Role::value);
-    if (std::optional<Role> role = teditor.focused_role()) {
-      const Style& s = theme.style(*role);
-      std::string line = std::string(role_name(*role)) + "  fg " + color_to_string(s.fg) + "  bg " + color_to_string(s.bg);
+    if (std::optional<unsigned char> role = teditor.focused_role()) {
+      const Style& s = theme.style(static_cast<Role>(*role));
+      std::string line = std::string(role_name(static_cast<Role>(*role))) + "  fg " + color_to_string(s.fg) + "  bg " + color_to_string(s.bg);
       for (const char* a : {"bold", "italic", "underline", "dim", "reverse"}) {
         const bool on = std::string_view(a) == "bold" ? s.bold : std::string_view(a) == "italic" ? s.italic : std::string_view(a) == "underline" ? s.underline : std::string_view(a) == "dim" ? s.dim : s.reverse;
         if (on) line += std::string("  ") + a;
@@ -988,13 +1007,67 @@ struct App {
   // The tools this binary MOUNTS: the three editors, and its own three keys. A host that
   // mounted only the theme editor would list only that one — which is the point of the
   // milestone, and why this list is here rather than in the library.
+  //
+  // Phase 17 m1d: tools::editor_actions()/studio_actions() now hand back a
+  // `std::span<const RolltuiToolAction>` (tool_actions.hpp calls rolltui_bindings.h
+  // directly), so this is where studio's own not-yet-converted `Bindings::declare`
+  // (which still wants a `std::vector<ToolAction>`) picks the three fields back out —
+  // a bridge that belongs here rather than in tool_actions.hpp, which does not know who
+  // is still C++.
   static const std::vector<ToolAction>& mounted_tools() {
     static const std::vector<ToolAction> all = [] {
-      std::vector<ToolAction> out = tools::editor_actions();
-      for (const ToolAction& a : tools::studio_actions()) out.push_back(a);
+      std::vector<ToolAction> out;
+      auto add = [&out](std::span<const RolltuiToolAction> ts) {
+        for (const RolltuiToolAction& a : ts) out.push_back({a.name, a.description, a.chord ? a.chord : ""});
+      };
+      add(tools::editor_actions());
+      add(tools::studio_actions());
       return out;
     }();
     return all;
+  }
+  // Phase 17 m1d: KeysEditor::menu() now hands back a raw RolltuiMenu*, so this file draws
+  // it directly instead of through the (deleted, for this one editor) rolltui::Menu::draw
+  // convenience. The seven/three roles are studio's OWN choice of which theme role paints
+  // which part of a menu it draws itself — Menu.cpp's own kRoles/kInputRoles are that
+  // class's private default for ITS draw() method and are not a vocabulary any hosts must
+  // share (Windows itself takes a host-supplied RolltuiMenuRoles for the same reason); this
+  // one table is used for keys/layout/theme's menus alike as each editor's own C
+  // conversion reaches this same call shape, so it is written once, here, not per editor.
+  static const RolltuiMenuRoles& editor_menu_roles() {
+    static constexpr RolltuiMenuRoles r = {
+        static_cast<unsigned char>(Role::menu_item),       static_cast<unsigned char>(Role::menu_selected),
+        static_cast<unsigned char>(Role::menu_breadcrumb), static_cast<unsigned char>(Role::menu_shortcut),
+        static_cast<unsigned char>(Role::text_muted),      static_cast<unsigned char>(Role::warning),
+        static_cast<unsigned char>(Role::scroll_marker)};
+    return r;
+  }
+  static const RolltuiInputRoles& editor_input_roles() {
+    static constexpr RolltuiInputRoles r = {static_cast<unsigned char>(Role::input_text), static_cast<unsigned char>(Role::selection),
+                                            static_cast<unsigned char>(Role::input_placeholder)};
+    return r;
+  }
+  static RolltuiDrawScratch*& editor_draw_scratch_slot() {
+    static RolltuiDrawScratch* s = nullptr;
+    return s;
+  }
+  static RolltuiDrawScratch* editor_draw_scratch() {
+    RolltuiDrawScratch*& slot = editor_draw_scratch_slot();
+    if (!slot) {
+      slot = rolltui_draw_scratch_new();
+      rolltui_on_shutdown([] {
+        RolltuiDrawScratch*& s = editor_draw_scratch_slot();
+        rolltui_draw_scratch_free(s);
+        s = nullptr;
+      });
+    }
+    return slot;
+  }
+  // A raw RolltuiMenu*'s draw(), matching rolltui::Menu::draw's own body exactly
+  // (Menu.cpp) — the one-line convenience that class no longer offers once menu() stops
+  // returning one.
+  void draw_raw_menu(RolltuiMenu* m, Frame& f, bool focused) const {
+    rolltui_menu_draw(m, f.handle(), editor_draw_scratch(), theme.styles.data(), &editor_menu_roles(), &editor_input_roles(), focused);
   }
   const Layout& effective_layout() const { return stacked_fallback ? *builtin_layout("stacked") : layout; }
   Rect layout_area() const { return {0, 0, w, h > 1 ? h - 1 : h}; }
@@ -1155,7 +1228,11 @@ struct App {
     if (const KeyEvent* k = std::get_if<KeyEvent>(&ev)) {
       if (k->key == Key::Char && k->ctrl && !k->alt && k->ch == 'c') return false;  // Ctrl-C is the host's, not an action
       // The keys editor is capturing: every key is the chord, nothing else acts.
-      if (editor_mode == EditorMode::Keys && keditor.capturing()) { keys_outcome(keditor.handle(ev, bindings)); return true; }
+      if (editor_mode == EditorMode::Keys && keditor.capturing()) {
+        const RolltuiEvent ce = rolltui::c_event_of(ev);
+        keys_outcome(keditor.handle(&ce, bindings.handle()));
+        return true;
+      }
       const std::string_view st = bindings.action_for(*k, "studio"), app = bindings.action_for(*k, "app"), ed = bindings.action_for(*k, "editor");
       if (st == "studio.quit") return false;
       if (st == "studio.cycle_theme") {
@@ -1164,7 +1241,7 @@ struct App {
         PresetLoadReport rep;
         theme_arg.clear();
         store->load(names[shipped_theme_index], rep, persist);
-        if (editor_mode == EditorMode::Theme) { ThemeLoadReport tr; teditor.load(store->working(), tr); }
+        if (editor_mode == EditorMode::Theme) { RolltuiThemeReport tr{}; teditor.load(store->working().colours.get(), &tr); rolltui_theme_report_release(&tr); }
         return true;
       }
       if (st == "studio.reload") { load_fixture(); return true; }
@@ -1182,9 +1259,16 @@ struct App {
     ensure_layout();
     if (const PasteEvent* p = std::get_if<PasteEvent>(&ev)) {
       if (stack.has_popup("editor") && stack.focused() && stack.focused()->id == "editor") {
-        if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(*p, bindings));
-        else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(*p, bindings));
-        else editor_outcome(teditor.handle(*p, bindings));
+        if (editor_mode == EditorMode::Layout) {
+          const RolltuiEvent ce = rolltui::c_event_of(ev);
+          layout_outcome(leditor.handle(&ce, bindings.handle()));
+        } else if (editor_mode == EditorMode::Keys) {
+          const RolltuiEvent ce = rolltui::c_event_of(ev);
+          keys_outcome(keditor.handle(&ce, bindings.handle()));
+        } else {
+          const RolltuiEvent ce = rolltui::c_event_of(ev);
+          editor_outcome(teditor.handle(&ce, bindings.handle()));
+        }
         return true;
       }
       windows.input_event("prompt", *p);  // a paste goes to the prompt whatever has focus
@@ -1197,9 +1281,16 @@ struct App {
         k && editor_open && stack.focused() && stack.focused()->id == "editor" &&
         (bindings.action_for(*k, "stack") == "stack.close_popup" || bindings.action_for(*k, "stack") == "stack.focus_next" || bindings.action_for(*k, "stack") == "stack.focus_prev")) {
       hint.clear();
-      if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(ev, bindings));
-      else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(ev, bindings));
-      else if (bindings.action_for(*k, "stack") == "stack.close_popup") editor_outcome(teditor.handle(ev, bindings));
+      if (editor_mode == EditorMode::Layout) {
+        const RolltuiEvent ce = rolltui::c_event_of(ev);
+        layout_outcome(leditor.handle(&ce, bindings.handle()));
+      } else if (editor_mode == EditorMode::Keys) {
+        const RolltuiEvent ce = rolltui::c_event_of(ev);
+        keys_outcome(keditor.handle(&ce, bindings.handle()));
+      } else if (bindings.action_for(*k, "stack") == "stack.close_popup") {
+        const RolltuiEvent ce = rolltui::c_event_of(ev);
+        editor_outcome(teditor.handle(&ce, bindings.handle()));
+      }
       return true;
     }
     // The layout editor's mouse: a press on a seam starts a resize drag, a press on a
@@ -1336,13 +1427,18 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
       else if (name.rfind("Alt", 0) == 0) { a = true; name.erase(0, 3); }
       else break;
     }
-    static const std::pair<const char*, Key> keys[] = {
-        {"Up", Key::Up}, {"Down", Key::Down}, {"Left", Key::Left}, {"Right", Key::Right}, {"PageUp", Key::PageUp},
-        {"PageDown", Key::PageDown}, {"Home", Key::Home}, {"End", Key::End}, {"Enter", Key::Enter}, {"Escape", Key::Escape},
-        {"Tab", Key::Tab}, {"Backspace", Key::Backspace}, {"Delete", Key::Delete}, {"F1", Key::F1}, {"F2", Key::F2},
-        {"F3", Key::F3}, {"F4", Key::F4}, {"F5", Key::F5}, {"F6", Key::F6}, {"F7", Key::F7}, {"F8", Key::F8}};
-    for (const auto& [n, k] : keys)
-      if (name == n) { out = key(k, shift, c, a); return true; }
+    // Phase 17 m2b: the name -> Key table lived here as a fifth hand copy of the
+    // library's key vocabulary (the other four were bindings_test, deliverability_test,
+    // keys_test and rolltui_bindings.c's own kKeyNames before they were unified).
+    // rolltui_key_from_display_name reads the same X-macro list Keys.cpp's to_string and
+    // the chord parser do, case-insensitively (scripts are typed by a person). This also
+    // WIDENS coverage versus the old table, which stopped at F8 and never had Insert —
+    // an omission nothing here suggested was deliberate, so a script naming F9-F12 or
+    // Insert now resolves instead of falling through to "unrecognised".
+    if (const int k = rolltui_key_from_display_name(name.data(), name.size()); k >= 0) {
+      out = key(static_cast<Key>(k), shift, c, a);
+      return true;
+    }
     if (name.size() == 1 && (c || a) && name[0] >= 'A' && name[0] <= 'Z') {  // CtrlA, AltC, ...
       out = c ? ctrl(static_cast<char>(name[0] - 'A' + 'a')) : alt(static_cast<char>(name[0] - 'A' + 'a'));
       out.shift = shift;
