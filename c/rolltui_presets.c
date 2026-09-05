@@ -1271,27 +1271,11 @@ static void strip_preset_member(RolltuiJsonValue* root) {
   }
 }
 
-/* `RolltuiLoadedLayout` and `RolltuiLayout` share `name`/`actions`(list)/`base`/`popups`(list)
- * byte for byte (rolltui_layout.h's own comment on `RolltuiLayout`) — this MOVES rather than
- * copies the tree a caller is about to release anyway, the same reason `Layout.cpp`'s own
- * `loaded_to_layout` exists, just field-level here instead of one push_back per element. */
-static void loaded_layout_move(RolltuiLoadedLayout* in, RolltuiLayout* out) {
-  rolltui_str_move(&out->name, &in->name);
-  out->min_width = in->min_width;
-  out->min_height = in->min_height;
-  out->actions.v = in->actions;
-  out->actions.n = in->actions_n;
-  out->actions.cap = in->actions_cap;
-  in->actions = NULL;
-  in->actions_n = in->actions_cap = 0;
-  rolltui_layer_move(&out->base, &in->base);
-  out->popups.v = in->popups;
-  out->popups.n = in->popups_n;
-  out->popups.cap = in->popups_cap;
-  in->popups = NULL;
-  in->popups_n = in->popups_cap = 0;
-}
-
+/* The loaded tree is MOVED into a `RolltuiLayout`, not copied, since the caller releases it
+ * either way — `rolltui_loaded_layout_to_layout`. This file had its own file-static copy of
+ * that conversion, whose comment said it existed "the same reason `Layout.cpp`'s own
+ * `loaded_to_layout` exists"; there were THREE of it, and it took an agent converting
+ * `layout_editor.cpp` to need a fourth before anyone counted (Phase 17 m2a). */
 static void* layout_domain_parse(const char* text, size_t len, void* rep) {
   RolltuiLayoutPresetReport* r = (RolltuiLayoutPresetReport*)rep;
   RolltuiJsonValue* root;
@@ -1327,7 +1311,7 @@ static void* layout_domain_parse(const char* text, size_t len, void* rep) {
   }
   out = (RolltuiLayout*)rolltui_mem_alloc(sizeof *out);
   rolltui_layout_init(out);
-  loaded_layout_move(&loaded, out);
+  rolltui_loaded_layout_to_layout(&loaded, out);
   rolltui_loaded_layout_release(&loaded); /* a no-op now: every owning field was moved out */
   return out;
 }
