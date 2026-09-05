@@ -51,7 +51,9 @@
  */
 #include <stddef.h>
 
+#include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_theme.h"
 
@@ -308,6 +310,119 @@ int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const Rollt
 RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const char* mode, size_t mode_len,
                                                const char* depth, size_t depth_len, const char* name,
                                                size_t name_len);
+
+/* ---- C-SIDE DOMAIN DESCRIPTORS for Theme, Layout and Bindings (Phase 17 m1c) ----------------
+ *
+ * `PresetStore.hpp`'s `domain_storage<D>()` is the only place that has ever ASSEMBLED a
+ * `RolltuiPresetDomain` — it is a C++ template, so nothing built purely in C could ever reach
+ * one. Every domain's own file-format ALGORITHM is already C by this point
+ * (`rolltui_theme_preset_parse` above, `rolltui_load_layout`/`_text`, `rolltui_bindings_load_json`)
+ * — what was missing was the ASSEMBLY: filling `parse`/`parse_partial`/`to_json`/
+ * `to_json_with_origin`/`origin_of`/`clone`/`destroy`/`equal`/`shipped_count`/`shipped_at` with
+ * real C functions over each domain's real C value type, so a store can be built with no C++
+ * anywhere in the call chain. Two independent sessions reached for this and found nothing —
+ * that is the signal this exists to close.
+ *
+ * WHAT EACH STILL TAKES FROM C++, ONCE, AT INIT — the SAME "domain supplies the policy" shape
+ * this header already uses for Theme's `mode_valid`/`depth_valid` above, extended to the two
+ * new domains rather than invented for them:
+ *   Theme     the role/state VOCAB (`rolltui_style.h`: "a C file names no role") and the two
+ *             mode/depth validators — exactly what `rolltui_theme_preset_parse` already took
+ *             as parameters; this section only keeps a copy to hand over on every call.
+ *   Layout    the SAME role vocab plus "which scopes are the library's" (`RolltuiLayoutHooks`,
+ *             already `rolltui_load_layout`'s own parameter) and the shipped `default` layout's
+ *             own "actions" list (`shipped_default_actions()`'s C-callable form).
+ *   Bindings  "which scopes are the library's", the renamed-action table, and the six
+ *             undeliverable-chord sentences — `rolltui_bindings_load_json`'s own three
+ *             callback parameters, unchanged.
+ * None of these is a vocabulary this section invents: each is a call site further down the
+ * SAME file that already had to be told the identical thing, now told ONCE at process start
+ * (by whichever caller — C++ today, since that is where the tables still live — builds the
+ * descriptor) instead of on every call. A caller that never calls the matching `_init`
+ * function gets a domain with no vocabulary to check against: every scope reads as
+ * non-library and no chord is ever undeliverable, which is a wrong but LOUD answer (a role or
+ * scope this host actually has will misbehave immediately and visibly), never a silent one.
+ *
+ * Each domain's REPORT is its own file-level report PLUS the one thing every domain shares
+ * with `PresetLoadReport` and none of them had on its own: a top-level `error` a caller can
+ * set/read independently of the nested report (`rolltui_load_layout`/`rolltui_bindings_load_json`
+ * already write their OWN `error` field on the nested report; the mechanics' own failures — "no
+ * preset 'x'", "unreadable (...)" — land on the outer one), and a growing `notes` array the
+ * mechanics' own `add_note`/`prefix_notes` write into alongside whatever the domain's own parse
+ * appended to it (a migrated action, a rewritten layout slot). Zero-initialise before use, and
+ * release with the matching `_release` below (its own `reset` in the report_fns already does).
+ */
+
+/* ---- the Theme domain ----------------------------------------------------------------------
+ * `rolltui::ThemePreset` (Presets.hpp) IS this struct — "colours" is a `RolltuiJsonValue*`
+ * there today (Phase 17 m2) and "mode"/"depth" are two strings, which is already all-C. */
+typedef struct RolltuiThemePresetValue {
+  RolltuiJsonValue* colours ROLLTUI_DEFAULT(nullptr); /* OWNED */
+  RolltuiStr mode;                                     /* "auto" | "dark" | "light" */
+  RolltuiStr depth;                                    /* "auto" | "truecolor" | "256" | "16" | "mono" */
+} RolltuiThemePresetValue;
+
+void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v); /* frees `colours`; zeroes */
+
+const RolltuiPresetReportFns* rolltui_theme_preset_report_fns(void);
+/* Fills `out` with the Theme domain's mechanics — nothing here is a paraphrase of
+ * `rolltui_theme_preset_parse`/`_parse_partial`, it is those functions with the walk they
+ * already do. `vocab`/`mode_valid`/`depth_valid` are BORROWED for the process's life: a host
+ * calls this once, at startup, with process-lifetime tables — the same assumption
+ * `rolltui_windows_set_builtin_roles` already makes of ITS caller. */
+void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThemeVocab* vocab,
+                                      RolltuiThemePresetValidFn mode_valid, RolltuiThemePresetValidFn depth_valid);
+
+/* ---- the Layout domain ----------------------------------------------------------------------
+ * The Value is `RolltuiLayout` itself (rolltui_layout.h): the shipped presets ARE the
+ * built-ins, embedded once and read by both a host's `builtin_layout()`-shaped lookup and this
+ * domain, so the two can never disagree — the same fact Presets.hpp already states of the
+ * C++ path. */
+typedef struct RolltuiLayoutPresetReport {
+  RolltuiStr error; /* the PRESET-level error: a copy of `layout.error` on failure, or the
+                     * mechanics' own ("no layout preset 'x' ...") */
+  RolltuiLayoutReport layout; /* the file's own: error, unknown_keys, bad_values, migrated */
+  RolltuiStr* notes;          /* "layout: content X" (one per `layout.migrated` entry) plus
+                               * whatever the mechanics itself adds */
+  size_t notes_n, notes_cap;
+} RolltuiLayoutPresetReport;
+
+void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r); /* frees everything; zeroes */
+
+const RolltuiPresetReportFns* rolltui_layout_preset_report_fns(void);
+/* `default_actions`/`_n` are BORROWED for the process's life, same as `hooks` — a host passes
+ * `shipped_default_actions()`'s C form (the shipped "default" layout's own "actions" list). */
+void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLayoutHooks* hooks,
+                                       const RolltuiLayoutAction* default_actions, size_t default_actions_n);
+
+/* ---- the Bindings domain --------------------------------------------------------------------
+ * The Value is `RolltuiBindings*` itself (rolltui_bindings.h) — already fully C, so this
+ * domain's `clone`/`destroy`/`equal` are `rolltui_bindings_clone`/`_free`/`_equal` verbatim. */
+typedef struct RolltuiBindingsPresetReport {
+  RolltuiStr error; /* the PRESET-level error: a copy of `bindings.error` on failure, or the
+                     * mechanics' own */
+  RolltuiBindingsReport bindings; /* the file's own: unknown_actions/bad_chords/undeliverable/
+                                   * conflicts/bad_values/unknown_keys (its "bindings" object)/
+                                   * migrated */
+  RolltuiStr* unknown_keys; /* the PRESET file's own top-level keys other than "name" /
+                             * "bindings" / "preset" — `rolltui_bindings_load_json` only ever
+                             * looks at its "bindings" object, so this level's unknown keys are
+                             * this domain's own to find */
+  size_t unknown_keys_n, unknown_keys_cap;
+  RolltuiStr* notes; /* "bindings: action X" (one per `bindings.migrated` entry) plus whatever
+                      * the mechanics itself adds */
+  size_t notes_n, notes_cap;
+} RolltuiBindingsPresetReport;
+
+void rolltui_bindings_preset_report_release(RolltuiBindingsPresetReport* r); /* frees everything; zeroes */
+
+const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void);
+/* `is_library_scope`/`migrate`/`reason` are BORROWED for the process's life, the same three
+ * callbacks `rolltui_bindings_load_json` already takes — this keeps a copy to hand over on
+ * every call instead of threading them through the generic mechanics. */
+void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
+                                         RolltuiMigrateFn migrate, void* migrate_ctx, RolltuiReasonFn reason,
+                                         void* reason_ctx);
 
 /* ---- settings and precedence (Presets.hpp; Phase 17 m2) -------------------------------------
  *

@@ -3,7 +3,7 @@
 /*
  * rolltui/c/rolltui_embedded.h — the shipped presets, compiled in, as C data.
  *
- * `rolltui/presets/{themes,layouts,menus,bindings}/*.json` are REAL FILES in the source
+ * `rolltui/presets/{themes,layouts,menus,bindings}/` JSON files are REAL FILES in the source
  * tree — the editors write them, and `files_only_test` proves a whole screen can be nothing
  * but files. These tables are the same bytes compiled in, so a fresh install has working
  * defaults with nothing on disk, and `presets_test` asserts the two cannot drift.

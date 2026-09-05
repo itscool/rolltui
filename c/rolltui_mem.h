@@ -33,7 +33,16 @@
  * read would misreport a number, never corrupt an allocation.
  *
  * WHERE `rolltui_mem_alloc` / `rolltui_mem_realloc` / `rolltui_mem_free` /
- * `rolltui_mem_stats` ARE DECLARED: not here, but in `rolltui/c/rolltui_alloc.h`. That
+ * THE COUNTERS ARE DECLARED HERE, in the module that owns them — moved 2026-09-05, when a
+ * test found `rolltui_mem_stats` was reachable only through `rolltui/c/rolltui_alloc.h`, which
+ * is INTERNAL. That made `rolltui.h`'s rule 1 untrue as written: it tells a consumer
+ * `rolltui_shutdown()` asserts `live_bytes == 0`, while the call that reads `live_bytes` was
+ * not in the public set. This module's own note below demands the opposite — the figures must
+ * be "readable at RUNTIME and not only inside a test binary", which is roll's status pane. The
+ * old text follows, kept because the reasoning for the old home is still why `rolltui_alloc.h`
+ * includes this one rather than declaring anything itself:
+ *
+ * (WAS: not here, but in `rolltui/c/rolltui_alloc.h`.) That
  * header needed them before this one existed (every C translation unit already includes
  * it for the closed set of allocation strategies built on top of these four), and it
  * still declares them "for every C translation unit" rather than duplicating the same
@@ -58,6 +67,22 @@ extern "C" {
  * describe storage that still exists and zeroing them would be a lie; `peak_bytes` is
  * re-based to whatever is currently live, which is the lowest value it could honestly
  * take. For a test that wants a window; never called by the library itself. */
+/* MEMORY USAGE, QUERYABLE AT RUNTIME — the allocator's own counters, in
+ * the shape this boundary uses everywhere: out-params, any of which may be NULL, so a caller
+ * asks for exactly the numbers it means to show. Phase 13's requirement was that these be
+ * readable at RUNTIME and not only inside a test binary — one pipeline, two consumers, the
+ * human-facing pane and the router's own adaptation reading the same records.
+ *
+ * The three byte numbers answer three different questions and are deliberately not collapsed:
+ *   bytes_requested  CUMULATIVE and never decreasing — a growing buffer is counted again at
+ *                    every growth. A churn signal, NOT how much is held.
+ *   live_bytes       HELD RIGHT NOW, as the allocator's usable size. This is the one a status
+ *                    pane means by "memory usage".
+ *   peak_bytes       the high-water mark of live_bytes — for a library built on reusing
+ *                    buffers, how big the reuse ever had to get. */
+void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_requested,
+                       size_t* live_bytes, size_t* peak_bytes, size_t* live_blocks);
+
 void rolltui_mem_reset_stats(void);
 
 #ifdef __cplusplus

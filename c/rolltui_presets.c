@@ -20,6 +20,7 @@
 #include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_embedded.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
 /* GROWING, AMORTISED (rolltui_alloc.h strategy 2). Not NUL-terminated by construction —
@@ -947,6 +948,661 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
   rolltui_json_set(o, K("depth"), rolltui_json_string(depth, depth_len));
   rolltui_json_set(o, K("colours"), colours);
   return o;
+}
+
+/* ============================================================================================
+ * C-SIDE DOMAIN DESCRIPTORS (rolltui_presets.h has the why) — Theme, then Layout, then
+ * Bindings, in the order the header states them.
+ * ============================================================================================ */
+
+/* Reads the "preset" key a working-copy FILE carries (written by `to_json_with_origin`
+ * below), "default" when absent or the text does not parse — the one answer
+ * `PresetStore.hpp`'s own `domain_storage<D>()` gives for all three domains alike, since none
+ * of their OWN file formats say anything about it either. Shared: nothing here is
+ * domain-specific. */
+static void generic_preset_origin_of(const char* text, size_t len, RolltuiPutFn put, void* ctx) {
+  RolltuiStr err = {0};
+  RolltuiJsonValue* root = rolltui_json_parse(text, len, &err);
+  static const char kDefault[] = "default";
+  if (root) {
+    size_t olen = 0;
+    const char* o = rolltui_json_as_string(rolltui_json_get(root, K("preset")), kDefault, 7, &olen);
+    put(ctx, o, olen);
+    rolltui_json_free(root);
+  } else {
+    put(ctx, kDefault, 7);
+  }
+  rolltui_str_free(&err);
+}
+
+/* ---- the Theme domain ------------------------------------------------------------------------ */
+
+void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v) {
+  if (!v) return;
+  rolltui_json_free(v->colours);
+  rolltui_str_free(&v->mode);
+  rolltui_str_free(&v->depth);
+  memset(v, 0, sizeof *v);
+}
+
+static void theme_preset_report_reset(void* r) { rolltui_theme_preset_report_release((RolltuiThemePresetReport*)r); }
+static void theme_preset_report_set_error(void* r, const char* s, size_t len) {
+  rolltui_str_set(&((RolltuiThemePresetReport*)r)->error, s, len);
+}
+static void theme_preset_report_get_error(const void* r, RolltuiPutFn put, void* ctx) {
+  const RolltuiThemePresetReport* t = (const RolltuiThemePresetReport*)r;
+  put(ctx, t->error.p ? t->error.p : "", t->error.n);
+}
+static void theme_preset_report_add_note(void* r, const char* s, size_t len) {
+  RolltuiStr msg = {0};
+  rolltui_str_set(&msg, s, len);
+  tp_add_note((RolltuiThemePresetReport*)r, &msg); /* the file's own move-in helper, reused */
+}
+static void theme_preset_report_prefix_notes(void* r, const char* p, size_t len) {
+  RolltuiThemePresetReport* t = (RolltuiThemePresetReport*)r;
+  size_t i;
+  for (i = 0; i < t->notes_n; ++i) {
+    RolltuiStr n = {0};
+    rolltui_str_append(&n, p, len);
+    rolltui_str_append_str(&n, &t->notes[i]);
+    rolltui_str_move(&t->notes[i], &n);
+  }
+}
+static const RolltuiPresetReportFns kThemePresetReportFns = {
+    theme_preset_report_reset,
+    theme_preset_report_set_error,
+    theme_preset_report_get_error,
+    theme_preset_report_add_note,
+    theme_preset_report_prefix_notes,
+};
+const RolltuiPresetReportFns* rolltui_theme_preset_report_fns(void) { return &kThemePresetReportFns; }
+
+/* The vocab and the two validators, set once by `rolltui_theme_preset_domain_init` and read by
+ * every call below — the same "keep a copy, hand it over every call" shape
+ * `rolltui_windows_set_builtin_roles` already uses one level up (a process-wide domain here,
+ * instead of a per-`Windows` table). */
+static const RolltuiThemeVocab* g_theme_vocab;
+static RolltuiThemePresetValidFn g_theme_mode_valid;
+static RolltuiThemePresetValidFn g_theme_depth_valid;
+
+static size_t theme_domain_shipped_count(void) { return rolltui_kThemePresetCount; }
+static void theme_domain_shipped_at(size_t i, const char** name, size_t* nlen, const char** text, size_t* tlen) {
+  *name = rolltui_kThemePresets[i].name;
+  *nlen = strlen(*name);
+  *text = rolltui_kThemePresets[i].text;
+  *tlen = strlen(*text);
+}
+
+/* A NULL REPORT IS LEGAL AT THE DESCRIPTOR AND MEANS "DO NOT TELL ME WHY" — added
+ * 2026-09-05, when the first test ever to pass one crashed here. Every other out-param in
+ * this library is optional (`rolltui_mem_stats`: "Any pointer may be NULL"), and a C caller
+ * that only wants the value has no reason to build a report to throw away.
+ *
+ * IT IS GUARDED HERE, AT THE TWO WRAPPERS, AND NOT INSIDE THE PARSE FUNCTIONS. The first
+ * attempt substituted a scratch report inside `rolltui_theme_preset_parse{,_partial}` and
+ * released it before each `return` — which silently broke two assertions, because one of
+ * those returns is the body of a brace-less `if` and the inserted line made it
+ * unconditional. The parse functions keep their contract (a report is required); only the
+ * descriptor, which is the one door a NULL can come through, substitutes one. */
+static void* theme_domain_parse(const char* text, size_t len, void* rep) {
+  RolltuiThemePresetReport* r = (RolltuiThemePresetReport*)rep;
+  RolltuiThemePresetReport scratch = {0};
+  if (!r) r = &scratch;
+  RolltuiJsonValue* root;
+  RolltuiStr err = {0};
+  RolltuiStr mode = {0}, depth = {0};
+  const RolltuiJsonValue* colours = NULL;
+  RolltuiThemePresetValue* out = NULL;
+  root = rolltui_json_parse(text, len, &err);
+  if (!root) {
+    rolltui_str_append(&r->error, K("unreadable ("));
+    rolltui_str_append_str(&r->error, &err);
+    rolltui_str_append(&r->error, ")", 1);
+    rolltui_str_free(&err);
+    if (r == &scratch) rolltui_theme_preset_report_release(&scratch);
+    return NULL;
+  }
+  rolltui_str_free(&err);
+  if (rolltui_theme_preset_parse(root, g_theme_vocab, g_theme_mode_valid, g_theme_depth_valid, &mode, &depth,
+                                &colours, r)) {
+    out = (RolltuiThemePresetValue*)rolltui_mem_alloc(sizeof *out);
+    memset(out, 0, sizeof *out);
+    /* `colours` BORROWS `root` (this header's own comment on `rolltui_theme_preset_parse`),
+     * which is freed below, so the value clones it rather than adopting it. */
+    out->colours = rolltui_json_clone(colours);
+    rolltui_str_move(&out->mode, &mode);
+    rolltui_str_move(&out->depth, &depth);
+  }
+  rolltui_str_free(&mode);
+  rolltui_str_free(&depth);
+  rolltui_json_free(root);
+  if (r == &scratch) rolltui_theme_preset_report_release(&scratch);
+  return out;
+}
+
+static void* theme_domain_parse_partial(const char* text, size_t len, const void* working, void* rep) {
+  RolltuiThemePresetReport* r = (RolltuiThemePresetReport*)rep;
+  RolltuiThemePresetReport scratch = {0};
+  if (!r) r = &scratch;
+  RolltuiJsonValue* root;
+  RolltuiStr err = {0};
+  const RolltuiJsonValue* colours = NULL;
+  RolltuiThemePresetValue* out = NULL;
+  const RolltuiThemePresetValue* w = (const RolltuiThemePresetValue*)working;
+  root = rolltui_json_parse(text, len, &err);
+  if (!root) {
+    rolltui_str_append(&r->error, K("unreadable ("));
+    rolltui_str_append_str(&r->error, &err);
+    rolltui_str_append(&r->error, ")", 1);
+    rolltui_str_free(&err);
+    if (r == &scratch) rolltui_theme_preset_report_release(&scratch);
+    return NULL;
+  }
+  rolltui_str_free(&err);
+  if (rolltui_theme_preset_parse_partial(root, g_theme_vocab, &colours, r)) {
+    out = (RolltuiThemePresetValue*)rolltui_mem_alloc(sizeof *out);
+    memset(out, 0, sizeof *out);
+    out->colours = rolltui_json_clone(colours);
+    rolltui_str_set(&out->mode, w->mode.p ? w->mode.p : "", w->mode.n);
+    rolltui_str_set(&out->depth, w->depth.p ? w->depth.p : "", w->depth.n);
+  }
+  rolltui_json_free(root);
+  if (r == &scratch) rolltui_theme_preset_report_release(&scratch);
+  return out;
+}
+
+static void theme_domain_to_json(const void* v, const char* name, size_t len, RolltuiPutFn put, void* ctx) {
+  const RolltuiThemePresetValue* p = (const RolltuiThemePresetValue*)v;
+  RolltuiJsonValue* tree = rolltui_theme_preset_to_json(rolltui_json_clone(p->colours), p->mode.p, p->mode.n,
+                                                        p->depth.p, p->depth.n, name, len);
+  RolltuiStr out = {0};
+  rolltui_json_dump(tree, 2, &out);
+  rolltui_str_append(&out, "\n", 1);
+  put(ctx, out.p, out.n);
+  rolltui_json_free(tree);
+  rolltui_str_free(&out);
+}
+static void theme_domain_to_json_with_origin(const void* v, const char* name, size_t len, RolltuiPutFn put,
+                                             void* ctx) {
+  const RolltuiThemePresetValue* p = (const RolltuiThemePresetValue*)v;
+  RolltuiJsonValue* tree = rolltui_theme_preset_to_json(rolltui_json_clone(p->colours), p->mode.p, p->mode.n,
+                                                        p->depth.p, p->depth.n, name, len);
+  RolltuiStr out = {0};
+  rolltui_json_set(tree, K("preset"), rolltui_json_string(name, len));
+  rolltui_json_dump(tree, 2, &out);
+  rolltui_str_append(&out, "\n", 1);
+  put(ctx, out.p, out.n);
+  rolltui_json_free(tree);
+  rolltui_str_free(&out);
+}
+
+static void* theme_domain_clone(const void* v) {
+  const RolltuiThemePresetValue* p = (const RolltuiThemePresetValue*)v;
+  RolltuiThemePresetValue* out = (RolltuiThemePresetValue*)rolltui_mem_alloc(sizeof *out);
+  /* `rolltui_mem_alloc` does not zero: `rolltui_str_set` below reads `out->mode`/`out->depth`
+   * as ALREADY-VALID `RolltuiStr`s (to decide whether to reuse or grow their buffers), so a
+   * fresh allocation must be zeroed before either is touched, exactly as `theme_domain_parse`
+   * above already does — ASan's `rolltui_fit` unpoison check on garbage `cap`/`p` is what
+   * caught this one missing here. */
+  memset(out, 0, sizeof *out);
+  out->colours = rolltui_json_clone(p->colours);
+  rolltui_str_set(&out->mode, p->mode.p ? p->mode.p : "", p->mode.n);
+  rolltui_str_set(&out->depth, p->depth.p ? p->depth.p : "", p->depth.n);
+  return out;
+}
+static void theme_domain_destroy(void* v) {
+  rolltui_theme_preset_value_release((RolltuiThemePresetValue*)v);
+  rolltui_mem_free(v);
+}
+static int theme_domain_equal(const void* a, const void* b) {
+  const RolltuiThemePresetValue *x = (const RolltuiThemePresetValue*)a, *y = (const RolltuiThemePresetValue*)b;
+  return rolltui_json_equal(x->colours, y->colours) &&
+         rolltui_str_eq(&x->mode, y->mode.p ? y->mode.p : "", y->mode.n) &&
+         rolltui_str_eq(&x->depth, y->depth.p ? y->depth.p : "", y->depth.n);
+}
+
+void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThemeVocab* vocab,
+                                      RolltuiThemePresetValidFn mode_valid, RolltuiThemePresetValidFn depth_valid) {
+  g_theme_vocab = vocab;
+  g_theme_mode_valid = mode_valid;
+  g_theme_depth_valid = depth_valid;
+  memset(out, 0, sizeof *out);
+  out->kind = "theme";
+  out->kind_len = sizeof("theme") - 1;
+  out->working_file = "theme.working.json";
+  out->working_file_len = sizeof("theme.working.json") - 1;
+  out->subdir = "themes";
+  out->subdir_len = sizeof("themes") - 1;
+  out->shipped_count = theme_domain_shipped_count;
+  out->shipped_at = theme_domain_shipped_at;
+  out->parse = theme_domain_parse;
+  out->parse_partial = theme_domain_parse_partial;
+  out->to_json = theme_domain_to_json;
+  out->to_json_with_origin = theme_domain_to_json_with_origin;
+  out->origin_of = generic_preset_origin_of;
+  out->clone = theme_domain_clone;
+  out->destroy = theme_domain_destroy;
+  out->equal = theme_domain_equal;
+}
+
+/* ---- the Layout domain ----------------------------------------------------------------------- */
+
+void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r) {
+  size_t i;
+  if (!r) return;
+  rolltui_str_free(&r->error);
+  rolltui_layout_report_release(&r->layout);
+  for (i = 0; i < r->notes_n; ++i) rolltui_str_free(&r->notes[i]);
+  rolltui_mem_free(r->notes);
+  memset(r, 0, sizeof *r);
+}
+static RolltuiStr* layout_preset_note_add(RolltuiLayoutPresetReport* r) {
+  r->notes = (RolltuiStr*)rolltui_grow_zeroed(r->notes, &r->notes_cap, r->notes_n + 1, sizeof *r->notes);
+  return &r->notes[r->notes_n++];
+}
+static void layout_preset_report_reset(void* r) {
+  rolltui_layout_preset_report_release((RolltuiLayoutPresetReport*)r);
+}
+static void layout_preset_report_set_error(void* r, const char* s, size_t len) {
+  rolltui_str_set(&((RolltuiLayoutPresetReport*)r)->error, s, len);
+}
+static void layout_preset_report_get_error(const void* r, RolltuiPutFn put, void* ctx) {
+  const RolltuiLayoutPresetReport* l = (const RolltuiLayoutPresetReport*)r;
+  put(ctx, l->error.p ? l->error.p : "", l->error.n);
+}
+static void layout_preset_report_add_note(void* r, const char* s, size_t len) {
+  RolltuiStr* n = layout_preset_note_add((RolltuiLayoutPresetReport*)r);
+  rolltui_str_set(n, s, len);
+}
+static void layout_preset_report_prefix_notes(void* r, const char* p, size_t len) {
+  RolltuiLayoutPresetReport* l = (RolltuiLayoutPresetReport*)r;
+  size_t i;
+  for (i = 0; i < l->notes_n; ++i) {
+    RolltuiStr n = {0};
+    rolltui_str_append(&n, p, len);
+    rolltui_str_append_str(&n, &l->notes[i]);
+    rolltui_str_move(&l->notes[i], &n);
+  }
+}
+static const RolltuiPresetReportFns kLayoutPresetReportFns = {
+    layout_preset_report_reset,
+    layout_preset_report_set_error,
+    layout_preset_report_get_error,
+    layout_preset_report_add_note,
+    layout_preset_report_prefix_notes,
+};
+const RolltuiPresetReportFns* rolltui_layout_preset_report_fns(void) { return &kLayoutPresetReportFns; }
+
+/* The hooks and the shipped `default` layout's own actions, set once by
+ * `rolltui_layout_preset_domain_init` — the same shape the Theme domain's vocab/validators
+ * above already use. */
+static const RolltuiLayoutHooks* g_layout_hooks;
+static const RolltuiLayoutAction* g_layout_default_actions;
+static size_t g_layout_default_actions_n;
+
+static size_t layout_domain_shipped_count(void) { return rolltui_kLayoutPresetCount; }
+static void layout_domain_shipped_at(size_t i, const char** name, size_t* nlen, const char** text, size_t* tlen) {
+  *name = rolltui_kLayoutPresets[i].name;
+  *nlen = strlen(*name);
+  *text = rolltui_kLayoutPresets[i].text;
+  *tlen = strlen(*text);
+}
+
+/* "preset" is the STORE's own bookkeeping in a working-copy file, not a layout key
+ * (`LayoutDomain::parse`'s rule) — stripped here, on a tree this call already owns outright,
+ * over the type's own already-public fields and existing free functions. `rolltui_json.h` has
+ * no removal primitive of its own (only `_set`, insert-or-replace — adding one belongs in that
+ * file, not this one), so this is the walk `rolltui_json_object_size`/`_key_at` already make
+ * possible, not a new API grown here. At most one "preset" member can exist (the parser
+ * itself rejects a duplicate key), so the first match found is the only one there is. */
+static void strip_preset_member(RolltuiJsonValue* root) {
+  size_t i;
+  if (!root || !rolltui_json_is_object(root)) return;
+  for (i = 0; i < root->obj_n; ++i) {
+    RolltuiJsonMember* m = root->obj[i];
+    if (m->key.n == 6 && memcmp(m->key.p, "preset", 6) == 0) {
+      rolltui_str_free(&m->key);
+      rolltui_json_free(m->value);
+      rolltui_mem_free(m);
+      for (; i + 1 < root->obj_n; ++i) root->obj[i] = root->obj[i + 1];
+      root->obj_n -= 1;
+      return;
+    }
+  }
+}
+
+/* `RolltuiLoadedLayout` and `RolltuiLayout` share `name`/`actions`(list)/`base`/`popups`(list)
+ * byte for byte (rolltui_layout.h's own comment on `RolltuiLayout`) — this MOVES rather than
+ * copies the tree a caller is about to release anyway, the same reason `Layout.cpp`'s own
+ * `loaded_to_layout` exists, just field-level here instead of one push_back per element. */
+static void loaded_layout_move(RolltuiLoadedLayout* in, RolltuiLayout* out) {
+  rolltui_str_move(&out->name, &in->name);
+  out->min_width = in->min_width;
+  out->min_height = in->min_height;
+  out->actions.v = in->actions;
+  out->actions.n = in->actions_n;
+  out->actions.cap = in->actions_cap;
+  in->actions = NULL;
+  in->actions_n = in->actions_cap = 0;
+  rolltui_layer_move(&out->base, &in->base);
+  out->popups.v = in->popups;
+  out->popups.n = in->popups_n;
+  out->popups.cap = in->popups_cap;
+  in->popups = NULL;
+  in->popups_n = in->popups_cap = 0;
+}
+
+static void* layout_domain_parse(const char* text, size_t len, void* rep) {
+  RolltuiLayoutPresetReport* r = (RolltuiLayoutPresetReport*)rep;
+  RolltuiJsonValue* root;
+  RolltuiStr err = {0};
+  RolltuiLoadedLayout loaded;
+  RolltuiLayout* out = NULL;
+  int ok;
+  size_t i;
+  root = rolltui_json_parse(text, len, &err);
+  if (!root) {
+    rolltui_str_append(&r->error, K("unreadable ("));
+    rolltui_str_append_str(&r->error, &err);
+    rolltui_str_append(&r->error, ")", 1);
+    rolltui_str_free(&err);
+    return NULL;
+  }
+  rolltui_str_free(&err);
+  strip_preset_member(root);
+  rolltui_loaded_layout_init(&loaded);
+  ok = rolltui_load_layout(root, &loaded, g_layout_default_actions, g_layout_default_actions_n, g_layout_hooks,
+                           &r->layout);
+  rolltui_json_free(root);
+  if (!ok) {
+    rolltui_str_set(&r->error, r->layout.error.p ? r->layout.error.p : "", r->layout.error.n);
+    rolltui_loaded_layout_release(&loaded);
+    return NULL;
+  }
+  for (i = 0; i < r->layout.migrated_n; ++i) {
+    RolltuiStr* n = layout_preset_note_add(r);
+    rolltui_str_clear(n);
+    rolltui_str_append(n, K("layout: content "));
+    rolltui_str_append_str(n, &r->layout.migrated[i]);
+  }
+  out = (RolltuiLayout*)rolltui_mem_alloc(sizeof *out);
+  rolltui_layout_init(out);
+  loaded_layout_move(&loaded, out);
+  rolltui_loaded_layout_release(&loaded); /* a no-op now: every owning field was moved out */
+  return out;
+}
+
+static void layout_domain_to_json(const void* v, const char* name, size_t len, RolltuiPutFn put, void* ctx) {
+  const RolltuiLayout* l = (const RolltuiLayout*)v;
+  RolltuiStr out = {0};
+  /* The preset name is NEVER written over the layout's own "name" (`LayoutDomain::to_json`'s
+   * rule — a save that silently renamed what was saved would break `modified()`). */
+  (void)name;
+  (void)len;
+  rolltui_layout_to_json_text(l->name.p, l->name.n, l->min_width, l->min_height, l->actions.v, l->actions.n, &l->base,
+                              l->popups.v, l->popups.n, g_layout_hooks, &out);
+  put(ctx, out.p, out.n);
+  rolltui_str_free(&out);
+}
+static void layout_domain_to_json_with_origin(const void* v, const char* name, size_t len, RolltuiPutFn put,
+                                              void* ctx) {
+  const RolltuiLayout* l = (const RolltuiLayout*)v;
+  RolltuiJsonValue* tree = rolltui_layout_to_json_value(l->name.p, l->name.n, l->min_width, l->min_height,
+                                                        l->actions.v, l->actions.n, &l->base, l->popups.v,
+                                                        l->popups.n, g_layout_hooks);
+  RolltuiStr out = {0};
+  rolltui_json_set(tree, K("preset"), rolltui_json_string(name, len));
+  rolltui_json_dump(tree, 2, &out);
+  rolltui_str_append(&out, "\n", 1);
+  put(ctx, out.p, out.n);
+  rolltui_json_free(tree);
+  rolltui_str_free(&out);
+}
+
+static void* layout_domain_clone(const void* v) {
+  RolltuiLayout* out = (RolltuiLayout*)rolltui_mem_alloc(sizeof *out);
+  rolltui_layout_init(out);
+  rolltui_layout_copy(out, (const RolltuiLayout*)v);
+  return out;
+}
+static void layout_domain_destroy(void* v) {
+  RolltuiLayout* l = (RolltuiLayout*)v;
+  rolltui_layout_release(l);
+  rolltui_mem_free(l);
+}
+static int layout_domain_equal(const void* a, const void* b) {
+  return rolltui_layout_equal((const RolltuiLayout*)a, (const RolltuiLayout*)b);
+}
+
+void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLayoutHooks* hooks,
+                                       const RolltuiLayoutAction* default_actions, size_t default_actions_n) {
+  g_layout_hooks = hooks;
+  g_layout_default_actions = default_actions;
+  g_layout_default_actions_n = default_actions_n;
+  memset(out, 0, sizeof *out);
+  out->kind = "layout";
+  out->kind_len = sizeof("layout") - 1;
+  out->working_file = "layout.working.json";
+  out->working_file_len = sizeof("layout.working.json") - 1;
+  out->subdir = "layouts";
+  out->subdir_len = sizeof("layouts") - 1;
+  out->shipped_count = layout_domain_shipped_count;
+  out->shipped_at = layout_domain_shipped_at;
+  out->parse = layout_domain_parse;
+  out->parse_partial = NULL; /* a layout file is always whole (LayoutDomain's own rule) */
+  out->to_json = layout_domain_to_json;
+  out->to_json_with_origin = layout_domain_to_json_with_origin;
+  out->origin_of = generic_preset_origin_of;
+  out->clone = layout_domain_clone;
+  out->destroy = layout_domain_destroy;
+  out->equal = layout_domain_equal;
+}
+
+/* ---- the Bindings domain --------------------------------------------------------------------- */
+
+void rolltui_bindings_preset_report_release(RolltuiBindingsPresetReport* r) {
+  size_t i;
+  if (!r) return;
+  rolltui_str_free(&r->error);
+  rolltui_bindings_report_release(&r->bindings);
+  for (i = 0; i < r->unknown_keys_n; ++i) rolltui_str_free(&r->unknown_keys[i]);
+  rolltui_mem_free(r->unknown_keys);
+  for (i = 0; i < r->notes_n; ++i) rolltui_str_free(&r->notes[i]);
+  rolltui_mem_free(r->notes);
+  memset(r, 0, sizeof *r);
+}
+static RolltuiStr* bindings_preset_unknown_add(RolltuiBindingsPresetReport* r) {
+  r->unknown_keys =
+      (RolltuiStr*)rolltui_grow_zeroed(r->unknown_keys, &r->unknown_keys_cap, r->unknown_keys_n + 1,
+                                       sizeof *r->unknown_keys);
+  return &r->unknown_keys[r->unknown_keys_n++];
+}
+static RolltuiStr* bindings_preset_note_add(RolltuiBindingsPresetReport* r) {
+  r->notes = (RolltuiStr*)rolltui_grow_zeroed(r->notes, &r->notes_cap, r->notes_n + 1, sizeof *r->notes);
+  return &r->notes[r->notes_n++];
+}
+static void bindings_preset_report_reset(void* r) {
+  rolltui_bindings_preset_report_release((RolltuiBindingsPresetReport*)r);
+}
+static void bindings_preset_report_set_error(void* r, const char* s, size_t len) {
+  rolltui_str_set(&((RolltuiBindingsPresetReport*)r)->error, s, len);
+}
+static void bindings_preset_report_get_error(const void* r, RolltuiPutFn put, void* ctx) {
+  const RolltuiBindingsPresetReport* b = (const RolltuiBindingsPresetReport*)r;
+  put(ctx, b->error.p ? b->error.p : "", b->error.n);
+}
+static void bindings_preset_report_add_note(void* r, const char* s, size_t len) {
+  RolltuiStr* n = bindings_preset_note_add((RolltuiBindingsPresetReport*)r);
+  rolltui_str_set(n, s, len);
+}
+static void bindings_preset_report_prefix_notes(void* r, const char* p, size_t len) {
+  RolltuiBindingsPresetReport* b = (RolltuiBindingsPresetReport*)r;
+  size_t i;
+  for (i = 0; i < b->notes_n; ++i) {
+    RolltuiStr n = {0};
+    rolltui_str_append(&n, p, len);
+    rolltui_str_append_str(&n, &b->notes[i]);
+    rolltui_str_move(&b->notes[i], &n);
+  }
+}
+static const RolltuiPresetReportFns kBindingsPresetReportFns = {
+    bindings_preset_report_reset,
+    bindings_preset_report_set_error,
+    bindings_preset_report_get_error,
+    bindings_preset_report_add_note,
+    bindings_preset_report_prefix_notes,
+};
+const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void) { return &kBindingsPresetReportFns; }
+
+/* The three vocabulary hooks, set once by `rolltui_bindings_preset_domain_init` — the same
+ * three `rolltui_bindings_load_json` itself already takes as parameters. */
+static RolltuiScopeFn g_bindings_is_library_scope;
+static void* g_bindings_scope_ctx;
+static RolltuiMigrateFn g_bindings_migrate;
+static void* g_bindings_migrate_ctx;
+static RolltuiReasonFn g_bindings_reason;
+static void* g_bindings_reason_ctx;
+
+static size_t bindings_domain_shipped_count(void) { return rolltui_kBindingsPresetCount; }
+static void bindings_domain_shipped_at(size_t i, const char** name, size_t* nlen, const char** text, size_t* tlen) {
+  *name = rolltui_kBindingsPresets[i].name;
+  *nlen = strlen(*name);
+  *text = rolltui_kBindingsPresets[i].text;
+  *tlen = strlen(*text);
+}
+
+/* Seeded exactly as `rolltui::Bindings::Bindings()` seeds one: every library action declared,
+ * and the Enter rule set — over the closed table (`rolltui_library_action_*`) rather than a
+ * second copy of the 59 rows, the same table that already closed this exact gap for four
+ * other consumers (`rolltui_bindings.h`'s own header comment). */
+static RolltuiBindings* bindings_domain_new_seeded(void) {
+  RolltuiBindings* b = rolltui_bindings_new();
+  const size_t n = rolltui_library_action_count();
+  size_t i;
+  rolltui_bindings_set_enter_rule(b, K("input.submit"));
+  for (i = 0; i < n; ++i) {
+    size_t nlen = 0, dlen = 0;
+    const char* name = rolltui_library_action_name(i, &nlen);
+    const char* desc = rolltui_library_action_description(i, &dlen);
+    rolltui_bindings_add_action(b, name, nlen, desc, dlen);
+  }
+  return b;
+}
+
+static int bindings_key_is_outer(const char* k, size_t klen) {
+  return (klen == 4 && memcmp(k, "name", 4) == 0) || (klen == 8 && memcmp(k, "bindings", 8) == 0) ||
+         (klen == 6 && memcmp(k, "preset", 6) == 0);
+}
+
+static void* bindings_domain_parse(const char* text, size_t len, void* rep) {
+  RolltuiBindingsPresetReport* r = (RolltuiBindingsPresetReport*)rep;
+  RolltuiJsonValue* root;
+  RolltuiStr err = {0};
+  RolltuiBindings* b;
+  int ok;
+  size_t i;
+  root = rolltui_json_parse(text, len, &err);
+  if (!root) {
+    rolltui_str_append(&r->error, K("unreadable ("));
+    rolltui_str_append_str(&r->error, &err);
+    rolltui_str_append(&r->error, ")", 1);
+    rolltui_str_free(&err);
+    return NULL;
+  }
+  rolltui_str_free(&err);
+  b = bindings_domain_new_seeded();
+  /* `rolltui_bindings_load_json` re-parses `text` itself: the outer-key walk just below needs
+   * the tree anyway, and there is no tree-taking overload to hand it this one instead — a real
+   * but minor cost paid once per load, never once per frame. */
+  ok = rolltui_bindings_load_json(b, text, len, rolltui_key_active_protocol(), g_bindings_is_library_scope,
+                                 g_bindings_scope_ctx, g_bindings_migrate, g_bindings_migrate_ctx,
+                                 g_bindings_reason, g_bindings_reason_ctx, &r->bindings);
+  if (!ok) {
+    rolltui_str_set(&r->error, r->bindings.error.p ? r->bindings.error.p : "", r->bindings.error.n);
+    rolltui_bindings_free(b);
+    rolltui_json_free(root);
+    return NULL;
+  }
+  if (rolltui_json_is_object(root)) {
+    const size_t on = rolltui_json_object_size(root);
+    for (i = 0; i < on; ++i) {
+      size_t klen = 0;
+      const char* k = rolltui_json_object_key_at(root, i, &klen);
+      if (!bindings_key_is_outer(k, klen)) {
+        RolltuiStr* n = bindings_preset_unknown_add(r);
+        rolltui_str_set(n, k, klen);
+      }
+    }
+  }
+  for (i = 0; i < r->bindings.migrated_n; ++i) {
+    RolltuiStr* n = bindings_preset_note_add(r);
+    rolltui_str_clear(n);
+    rolltui_str_append(n, K("bindings: action "));
+    rolltui_str_append_str(n, &r->bindings.migrated[i]);
+  }
+  rolltui_json_free(root);
+  return b;
+}
+
+static void bindings_domain_to_json(const void* v, const char* name, size_t len, RolltuiPutFn put, void* ctx) {
+  RolltuiStr out = {0};
+  rolltui_bindings_dump_json((const RolltuiBindings*)v, name, len, &out); /* already trailing-newlined */
+  put(ctx, out.p, out.n);
+  rolltui_str_free(&out);
+}
+static void bindings_domain_to_json_with_origin(const void* v, const char* name, size_t len, RolltuiPutFn put,
+                                                void* ctx) {
+  Buf text = {NULL, 0, 0};
+  RolltuiStr err = {0}, out = {0};
+  RolltuiJsonValue* tree;
+  bindings_domain_to_json(v, name, len, buf_put, &text);
+  tree = rolltui_json_parse(text.p, text.len, &err);
+  if (tree) {
+    rolltui_json_set(tree, K("preset"), rolltui_json_string(name, len));
+    rolltui_json_dump(tree, 2, &out);
+    rolltui_str_append(&out, "\n", 1);
+    put(ctx, out.p, out.n);
+    rolltui_json_free(tree);
+  } else {
+    put(ctx, text.p, text.len); /* rolltui_bindings_dump_json always produces valid JSON */
+  }
+  buf_free(&text);
+  rolltui_str_free(&out);
+  rolltui_str_free(&err);
+}
+
+static void* bindings_domain_clone(const void* v) { return rolltui_bindings_clone((const RolltuiBindings*)v); }
+static void bindings_domain_destroy(void* v) { rolltui_bindings_free((RolltuiBindings*)v); }
+static int bindings_domain_equal(const void* a, const void* b) {
+  return rolltui_bindings_equal((const RolltuiBindings*)a, (const RolltuiBindings*)b);
+}
+
+void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
+                                         RolltuiMigrateFn migrate, void* migrate_ctx, RolltuiReasonFn reason,
+                                         void* reason_ctx) {
+  g_bindings_is_library_scope = is_library_scope;
+  g_bindings_scope_ctx = scope_ctx;
+  g_bindings_migrate = migrate;
+  g_bindings_migrate_ctx = migrate_ctx;
+  g_bindings_reason = reason;
+  g_bindings_reason_ctx = reason_ctx;
+  memset(out, 0, sizeof *out);
+  out->kind = "bindings";
+  out->kind_len = sizeof("bindings") - 1;
+  out->working_file = "bindings.working.json";
+  out->working_file_len = sizeof("bindings.working.json") - 1;
+  out->subdir = "bindings";
+  out->subdir_len = sizeof("bindings") - 1;
+  out->shipped_count = bindings_domain_shipped_count;
+  out->shipped_at = bindings_domain_shipped_at;
+  out->parse = bindings_domain_parse;
+  out->parse_partial = NULL; /* a bindings file is always whole (BindingsDomain's own rule) */
+  out->to_json = bindings_domain_to_json;
+  out->to_json_with_origin = bindings_domain_to_json_with_origin;
+  out->origin_of = generic_preset_origin_of;
+  out->clone = bindings_domain_clone;
+  out->destroy = bindings_domain_destroy;
+  out->equal = bindings_domain_equal;
 }
 
 /* ---- settings and precedence (rolltui_presets.h has the why) -------------------------------

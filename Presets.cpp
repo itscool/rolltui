@@ -12,6 +12,8 @@
 
 #include <unistd.h>
 
+#include "rolltui/Keys.hpp"
+#include "rolltui/Lifetime.hpp"
 #include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_presets.h"
 
@@ -324,6 +326,127 @@ std::optional<Bindings> BindingsDomain::parse(const json::Value& v, PresetLoadRe
   // writes the new name.
   for (const std::string& m : report.bindings.migrated) report.notes.push_back("bindings: action " + m);
   return b;
+}
+
+// ---- the C-side domain descriptors (Phase 17 m1c) ----------------------------------------
+//
+// `rolltui_theme_preset_domain_init`/`rolltui_layout_preset_domain_init`/
+// `rolltui_bindings_preset_domain_init` (rolltui_presets.h) are pure C and do the ASSEMBLY
+// `domain_storage<D>()` (PresetStore.hpp) does in C++ — what each still needs, once, is the
+// vocabulary bridge this file already writes for Theme (`theme_vocab()`, `mode_valid_c`/
+// `depth_valid_c` above). Layout's and Bindings' own bridges already exist too, verbatim, in
+// `Layout.cpp`'s anonymous-namespace `kHooks` and `Bindings.cpp`'s anonymous-namespace
+// `is_library_scope`/`migrate_cb`/`reason_cb` — unreachable from here, both anonymous
+// namespaces in OTHER translation units — so this is a second, small copy of the same three
+// bridges, calling the identical PUBLIC functions (`library_scope`, `migrated_action`,
+// `undeliverable_reason`, `role_from_name`, `role_name`) those two already call: the same
+// one-file duplication `rolltui/c/rolltui_widget_kinds.c`'s `help_chords_text` already is for
+// `Bindings::chords_text`, not a second DECISION about any of the five questions they answer.
+namespace {
+
+int preset_role_from_name_cb(void*, const char* name, std::size_t len, unsigned char* out) {
+  const Role r = role_from_name(std::string_view(name, len));
+  if (r == Role::count_) return 0;
+  *out = static_cast<unsigned char>(r);
+  return 1;
+}
+std::size_t preset_role_name_cb(void*, unsigned char role, char* out, std::size_t cap) {
+  const std::string_view name = role_name(static_cast<Role>(role));
+  std::size_t n = name.size();
+  if (n >= cap) n = cap ? cap - 1 : 0;
+  if (cap) {
+    std::memcpy(out, name.data(), n);
+    out[n] = '\0';
+  }
+  return n;
+}
+// Shared by the Layout domain's hooks below and the Bindings domain's own scope predicate:
+// `RolltuiLayoutHooks::is_library_scope` and Bindings' `RolltuiScopeFn` are the same C type.
+int preset_is_library_scope_cb(void*, const char* scope, std::size_t len) {
+  return library_scope(std::string_view(scope, len)) ? 1 : 0;
+}
+int preset_migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
+  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
+  if (!to) return 0;
+  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
+  std::memcpy(out, to->data(), n);
+  *out_len = n;
+  return 1;
+}
+std::size_t preset_reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
+  const std::string r = undeliverable_reason(key_event_of(*k), static_cast<KeyProtocol>(protocol));
+  const std::size_t n = std::min(r.size(), cap);
+  std::memcpy(out, r.data(), n);
+  return n;
+}
+
+const RolltuiLayoutHooks& preset_layout_hooks() {
+  static const RolltuiLayoutHooks h = {
+      /*is_library_scope=*/preset_is_library_scope_cb,
+      /*scope_ctx=*/nullptr,
+      /*role_from_name=*/preset_role_from_name_cb,
+      /*role_from_name_ctx=*/nullptr,
+      /*role_name=*/preset_role_name_cb,
+      /*role_name_ctx=*/nullptr,
+  };
+  return h;
+}
+
+// `shipped_default_actions()`'s C form, built once: each `RolltuiLayoutAction` is deep-copied
+// into the vector by its own (compiler-generated, correct because `RolltuiStr`'s own copy
+// constructor is) copy constructor, and released the same way when the process tears down.
+const std::vector<RolltuiLayoutAction>& preset_layout_default_actions() {
+  static const std::vector<RolltuiLayoutAction> v = [] {
+    std::vector<RolltuiLayoutAction> out;
+    out.reserve(shipped_default_actions().size());
+    for (const ActionDecl& a : shipped_default_actions()) {
+      RolltuiLayoutAction c{};
+      rolltui_str_set(&c.name, a.name.data(), a.name.size());
+      rolltui_str_set(&c.description, a.description.data(), a.description.size());
+      out.push_back(c);
+    }
+    return out;
+  }();
+  return v;
+}
+
+}  // namespace
+
+// Each domain's shipped-preset cache is a process-wide RETAINER (rolltui_presets.h), so each
+// registers its own release at `rolltui::shutdown()` the same way `detail::domain_for<D>()`
+// above already does for the three C++ domains — on first use (`!d.cache`) rather than at
+// static-init, matching `ThreadHandle`'s own rule one level up: register where the retained
+// thing is about to be made, not before.
+RolltuiPresetDomain& c_theme_domain() {
+  static RolltuiPresetDomain d = [] {
+    RolltuiPresetDomain x{};
+    rolltui_theme_preset_domain_init(&x, &theme_vocab(), mode_valid_c, depth_valid_c);
+    return x;
+  }();
+  if (!d.cache) on_shutdown([] { rolltui_preset_domain_release(&c_theme_domain()); });
+  return d;
+}
+
+RolltuiPresetDomain& c_layout_domain() {
+  static RolltuiPresetDomain d = [] {
+    RolltuiPresetDomain x{};
+    const std::vector<RolltuiLayoutAction>& actions = preset_layout_default_actions();
+    rolltui_layout_preset_domain_init(&x, &preset_layout_hooks(), actions.data(), actions.size());
+    return x;
+  }();
+  if (!d.cache) on_shutdown([] { rolltui_preset_domain_release(&c_layout_domain()); });
+  return d;
+}
+
+RolltuiPresetDomain& c_bindings_domain() {
+  static RolltuiPresetDomain d = [] {
+    RolltuiPresetDomain x{};
+    rolltui_bindings_preset_domain_init(&x, preset_is_library_scope_cb, nullptr, preset_migrate_cb, nullptr,
+                                       preset_reason_cb, nullptr);
+    return x;
+  }();
+  if (!d.cache) on_shutdown([] { rolltui_preset_domain_release(&c_bindings_domain()); });
+  return d;
 }
 
 // ---- precedence (Phase 17 m2: moved to `rolltui/c/rolltui_presets.h`'s own "settings and

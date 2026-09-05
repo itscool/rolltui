@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "rolltui/Presets.hpp"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -429,5 +430,69 @@ int main() {
   }
 
   fs::remove_all(world, ec);
+  // ---- THE C-SIDE DOMAIN DESCRIPTORS, which shipped with no checked-in test ---------------
+  // Phase 17 gave Theme/Layout/Bindings C descriptors so a pure-C caller can build a store —
+  // the gap TWO separate agents hit independently. They were verified during the port by a
+  // scratch program that was never checked in, which means ~200 lines of new C entered the
+  // library covered by nothing. **Untested code in a library whose whole argument is its
+  // controls is the one thing this session should not ship**, so this is that coverage.
+  //
+  // It asserts the property the descriptors exist FOR: a C descriptor and the C++ template
+  // path must agree about the same shipped presets. If they ever disagree, a host that built
+  // its store the C way and one that built it the C++ way would see different defaults —
+  // exactly the two-spellings failure CLAUDE.md's vocabulary rule names.
+  {
+    check(c_theme_domain().parse && c_theme_domain().to_json && c_theme_domain().clone &&
+              c_theme_domain().destroy && c_theme_domain().equal && c_theme_domain().shipped_at,
+          "the C theme domain fills every slot the store calls through");
+    check(c_layout_domain().parse && c_layout_domain().clone && c_layout_domain().destroy &&
+              c_layout_domain().equal,
+          "…and so does the C layout domain");
+    check(c_bindings_domain().parse && c_bindings_domain().clone && c_bindings_domain().destroy &&
+              c_bindings_domain().equal,
+          "…and the C bindings domain");
+    // A CLONE MUST SURVIVE ITS ORIGINAL, which is the exact bug ASan caught during the port:
+    // theme_domain_clone allocated without zeroing, and rolltui_str_set then read the
+    // uninitialised RolltuiStr as if it were valid. A clone that is merely allocated is not a
+    // clone, so this parses one, clones it, destroys the original and reads the copy.
+    const RolltuiPresetDomain& d = c_theme_domain();
+    const char* name = nullptr;
+    const char* text = nullptr;
+    std::size_t nlen = 0, tlen = 0;
+    check(d.shipped_count() > 0, "the C theme domain reports its shipped presets");
+    d.shipped_at(0, &name, &nlen, &text, &tlen);
+    check(text != nullptr && tlen > 0, "…and hands one back as TEXT, never a tree");
+    if (text && tlen) {
+      void* a = d.parse(text, tlen, nullptr);
+      check(a != nullptr, "…which the domain parses");
+      if (a) {
+        void* b = d.clone(a);
+        check(b != nullptr && d.equal(a, b), "…a clone equals its original");
+        d.destroy(a);
+        check(b != nullptr && d.equal(b, b), "…and OUTLIVES it: the clone is whole after the original is destroyed");
+        if (b) d.destroy(b);
+      }
+    }
+
+    // A NULL REPORT ON THE *FAILING* PATH — the case that actually writes into the report and
+    // then has nowhere to put it. Both halves of the fix are held here, and the second half
+    // needed an instrument this suite did not have. The obvious claim — "ASan's leak checker
+    // catches a missing release" — was written, CHECKED, and was false: macOS ships ASan with
+    // the leak detector off, and `presets_test` never called `rolltui_shutdown`, so deleting
+    // the release leaked through a clean 31/31 sanitizer run (control run 2026-09-05, exit 0,
+    // no report). The library's own counter is the instrument that actually exists, and this
+    // is the first test outside `budget`/`lifetime` to point it at a single call:
+    //   crash-free  holds the guard   (without it this aborts — control run, exit 134)
+    //   byte-exact  holds the release (without it live_bytes grows — nothing else would say)
+    static const char kBad[] = "{ this is not a theme";
+    std::size_t live_before = 0, live_after = 0;
+    rolltui_mem_stats(nullptr, nullptr, nullptr, &live_before, nullptr, nullptr);
+    const bool refused = d.parse(kBad, sizeof kBad - 1, nullptr) == nullptr;
+    rolltui_mem_stats(nullptr, nullptr, nullptr, &live_after, nullptr, nullptr);
+    check(refused, "a NULL report is legal on the failing path too: bad text is refused, not a crash");
+    check(live_after == live_before,
+          "…and the report it had nowhere to put is released: the allocator is back to baseline");
+  }
+
   return report("rolltui presets_test");
 }
