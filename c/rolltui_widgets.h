@@ -82,6 +82,7 @@
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_document.h"
 #include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_keys.h"
@@ -220,11 +221,15 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
  * not, the same defensive shape the C++ side had with `fn && *fn`.
  */
 
-/* documents: `doc` is a BORROW this table never frees — the host, or `Windows`'
- * `owned_documents_` for a sample built from markdown, keeps it alive. Opaque to C: always a
- * `const rolltui::Document*`, handed back exactly as given. */
-void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const void* doc);
-const void* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
+/* documents: `doc` is a BORROW this table never frees — the host, or `Windows`'s
+ * `owned_documents_` for a sample built from markdown, keeps the `rolltui::Document` alive.
+ * What crosses is `&doc->entries`, not `doc` itself: a `rolltui::Document` (Document.hpp) is
+ * exactly one `RolltuiDocument` member and nothing else, so this table stores and hands back
+ * the REAL type the transcript kind (`rolltui_widget_kinds.c`) reads directly — never an
+ * opaque blob only C++ could interpret, the way this table's `const void*` used to work
+ * before a pure-C kind needed to read one (Phase 17 m1c). */
+void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocument* doc);
+const RolltuiDocument* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
 
 /* Forward declarations: `RolltuiRows`' own inline C++ methods below call these before their
  * full declarations (right after the struct) would otherwise be seen. */

@@ -3,28 +3,42 @@
 /*
  * rolltui/c/rolltui_widget_kinds.h — THE LIBRARY'S OWN WIDGET KINDS, IN C (Phase 15/17).
  *
- * `rows`, `text`, `file`, `help`, `input` and the error/panel fallbacks fill the plugin
- * contract (`rolltui/c/rolltui_widgets.h`) here, in real C11, calling only the already-C
- * engines (`rolltui_input.h`, `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`,
- * `rolltui_marker.h`) — never `rolltui::Transcript`/`Input`/`Menu`/`Theme`/`Bindings`. Every
- * rule these kinds obey (the input's auto-sizing and note placement, the `file:`/`help`
- * re-read and scope rules, the never-blank error panel) is stated in `rolltui/Widgets.hpp`
- * and asserted in `rolltui/tests/layout_test.cpp`; none of it is repeated here.
+ * `rows`, `text`, `file`, `help`, `input`, `transcript` and `menu`, and the error/panel
+ * fallbacks, fill the plugin contract (`rolltui/c/rolltui_widgets.h`) here, in real C11,
+ * calling only the already-C engines (`rolltui_input.h`, `rolltui_transcript.h`,
+ * `rolltui_menu.h`, `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`,
+ * `rolltui_marker.h`, `rolltui_embedded.h`) — never `rolltui::Transcript`/`Input`/`Menu`/
+ * `Theme`/`Bindings`. Every rule these kinds obey (the input's auto-sizing and note
+ * placement, the `file:`/`help` re-read and scope rules, the never-blank error panel, the
+ * transcript's scroll-by-anchor and the menu's three-rung file resolution) is stated in
+ * `rolltui/Widgets.hpp` and asserted in `rolltui/tests/layout_test.cpp`; none of it is
+ * repeated here.
  *
- * ---- WHY `transcript` AND `menu` ARE NOT HERE -------------------------------------------
+ * ---- WHY `transcript` AND `menu` ARE HERE TOO, AND WHAT STILL ISN'T (Phase 17 m1c) --------
  *
- * Both remain the C++ `Widget` subclasses in `Widgets.cpp`, filling the plugin through the
- * generic adapter every host-defined kind (roll's approval/details, paint's `Canvas`) also
- * uses. `Windows::transcript(source)`/`.menu(source)` — public, host-facing, 9+1 external
- * call sites — return a LIVE `rolltui::Transcript&`/`Menu&` backed by the SAME state the
- * window draws, which `rolltui::Input` makes possible for the `input` kind below through its
- * public `handle()` (a BORROW of its `RolltuiInput*`): `Windows` owns the `Input` object,
- * this file's ctx only borrows the handle, and both read the one underlying state. `Transcript`
- * and `Menu` have no equivalent accessor — porting either to a ctx that a C plugin can own
- * would leave `Windows::transcript()`/`.menu()` with no live object to reference without
- * either constructing a second, DIVERGENT one (a real bug: scrolling through the widget would
- * not move the one a host reads) or adding a `handle()` to `Transcript`/`Menu` (outside this
- * file's scope; see the porting session's report for the exact one-line asks).
+ * Through m1b these two stayed the C++ `Widget` subclasses in `Widgets.cpp`, on the ground
+ * that `Windows::transcript(source)`/`.menu(source)` — public, host-facing, called directly
+ * by both hosts to drive scrolling, selection and navigation, not only by the window that
+ * draws them — must hand back a LIVE `rolltui::Transcript&`/`Menu&` backed by the SAME state
+ * the window draws, and neither class had a way to lend a C plugin that same state without
+ * constructing a second, DIVERGENT one. `Transcript::handle()`/`Menu::handle()` (BORROWS of
+ * their `RolltuiTranscript*`/`RolltuiMenu*`, added 2026-09-05 mirroring `Input::handle()`)
+ * close that gap exactly as `Input::handle()` already had: `Windows` owns the `Transcript`/
+ * `Menu` object (in its own `transcripts_`/`menus_` maps, the same shape as `inputs_`), and
+ * this file's ctx only BORROWS the handle, so `windows.transcript("main")` and the drawn
+ * widget are one object.
+ *
+ * CONSTRUCTION still crosses from Widgets.cpp, for the same reason `input`'s does: building
+ * a `Transcript`/`Menu` needs `Windows::transcripts_`/`menus_`, C++ maps this file never
+ * sees. Every PER-FRAME call (layout/draw/handle/problem/note_at/scroll_extent/scroll_to) is
+ * this file's own, over the already-C `rolltui_transcript.h`/`rolltui_menu.h` engines. What
+ * stays C++ and is asked for rather than moved: the transcript's syntax HIGHLIGHTER (a
+ * `std::function`, pushed straight onto the `RolltuiTranscript` by `Windows::set_highlighter`/
+ * `transcript()` — no epoch to poll here, because the ctx never touches it); the menu's text
+ * VALIDATORS (`rolltui::Menu`'s own registry, asked through `rolltui_menu_set_validator_fn`
+ * exactly as before); and `apply_shortcuts`'s tree walk, re-derived here in C over
+ * `rolltui_bindings_has`/`rolltui_menu_list_*` — the same one-file duplication `help`'s own
+ * chord-joining loop below already is, not a new kind of trade.
  *
  * ---- INTERNAL: NOT PART OF THE PUBLIC API -------------------------------------------------
  *
@@ -39,6 +53,8 @@
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_transcript.h"
 #include "rolltui/c/rolltui_widgets.h"
 
 #ifdef __cplusplus
@@ -102,6 +118,51 @@ void rolltui_input_widget_ctx_set_min_outer(void* ctx, int rows);
  * whatever is bound to `source`. Returns one of ROLLTUI_INPUT_IGNORED/HANDLED/SUBMIT/EOF. */
 int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const char* source, size_t source_len,
                                       const RolltuiInputActions* actions, const RolltuiEvent* e);
+
+/* ---- transcript/menu-shared: the config `Windows` carries for them (Phase 17 m1c), handed
+ * over ONCE and read back through `w` the same way `RolltuiBuiltinRoles`/
+ * `RolltuiScrollTextActions` above already are. --------------------------------------------- */
+
+/* The two ints a transcript's code-block folding needs — `Windows::set_code_fold`'s own,
+ * mirrored to the boundary so the transcript kind below can read them at layout time. */
+typedef struct RolltuiCodeFold {
+  int fold_over_lines, cap_lines;
+} RolltuiCodeFold;
+void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
+const RolltuiCodeFold* rolltui_windows_code_fold(const RolltuiWindows* w);
+
+/* The eleven action names `rolltui_transcript_handle` needs. */
+void rolltui_windows_set_transcript_actions(RolltuiWindows* w, const RolltuiTranscriptActions* a);
+const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const RolltuiWindows* w);
+
+/* The seven roles a menu draw needs. Unlike a transcript's (baked into the `RolltuiTranscript`
+ * once, at construction, by `rolltui_transcript_set_roles`), `rolltui_menu_draw` takes them as
+ * a per-call parameter, so the menu kind below reads them back through `w` on every draw. */
+void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r);
+const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w);
+
+/* ---- transcript: BORROWS the RolltuiTranscript* `Windows::transcripts_` (a C++ map) owns,
+ * exactly as `input` borrows its editor's handle above — construction crosses from
+ * Widgets.cpp for the same reason input's does (the map is a C++ member this file never
+ * sees); every per-frame call is this file's own. -------------------------------------------- */
+void* rolltui_transcript_widget_ctx_new(RolltuiTranscript* t, RolltuiWindows* w, const char* source,
+                                        size_t source_len);
+const RolltuiWidgetPlugin* rolltui_transcript_widget_plugin(void);
+
+/* ---- menu: BORROWS the RolltuiMenu* `Windows::menus_` owns, same shape. -------------------- */
+void* rolltui_menu_widget_ctx_new(RolltuiMenu* m, RolltuiWindows* w, const char* source, size_t source_len);
+const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void);
+/* Re-resolves the menu FILE if its rung or mtime changed — a no-op otherwise (a stat() and a
+ * string compare). `Windows::menu(source)` calls this directly through the ctx
+ * `rolltui_windows_widget_for` returns, so asking for the `Menu&` before any window has ever
+ * shown it still reads the file NOW rather than at the next draw — the same guarantee the
+ * file/problem/note_at/layout/scroll_extent slots below already give each other by all
+ * calling it themselves. */
+void rolltui_menu_widget_ctx_refresh(void* ctx);
+/* Which rung answered: "" | a path | "the host's" | "a shipped menu" — mirrors
+ * `rolltui::Menu`'s own (removed) origin() accessor. Refreshes first, then a BORROW valid
+ * until the ctx's next refresh. */
+const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len);
 
 #ifdef __cplusplus
 } /* extern "C" */

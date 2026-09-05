@@ -1,9 +1,9 @@
 /* rolltui/c/rolltui_widget_kinds.c — see rolltui_widget_kinds.h. The library's own `rows`,
- * `text`, `file`, `help` and `input` kinds, plus the error/panel fallbacks, each filling
- * `rolltui/c/rolltui_widgets.h`'s plugin contract in real C11 — calling only the C engines
- * (`rolltui_input.h`, `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`,
- * `rolltui_marker.h`, `rolltui_unicode.h`), never a C++ header. `transcript` and `menu` stay
- * in `Widgets.cpp` — see this file's own header comment for why. */
+ * `text`, `file`, `help`, `input`, `transcript` and `menu` kinds, plus the error/panel
+ * fallbacks, each filling `rolltui/c/rolltui_widgets.h`'s plugin contract in real C11 —
+ * calling only the C engines (`rolltui_input.h`, `rolltui_transcript.h`, `rolltui_menu.h`,
+ * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
+ * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
 #include "rolltui/c/rolltui_widget_kinds.h"
 
 #include <stdio.h>
@@ -12,6 +12,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_embedded.h"
 #include "rolltui/c/rolltui_frame_ops.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_layout.h"
@@ -230,12 +231,28 @@ static void file_ctx_path(const RolltuiFileCtx* fc, RolltuiStr* out) {
   rolltui_str_append_str(out, &fc->configured);
 }
 
-/* Mirrors `file_stamp` in Widgets.cpp exactly: mtime to the nanosecond, plus size. */
+/* The one file's identity for change detection: mtime to the NANOSECOND, plus size — whole
+ * seconds alone miss a rewrite inside one second (CLAUDE.md's cmake-staleness note is the
+ * same granularity trap), and a `file:`/menu file edited twice in a second is exactly what
+ * someone iterating on one does. Shared by `file` below and by the `menu` kind further down:
+ * one definition of "has this path changed" for both re-read rules. */
 static long long file_ctx_stamp(const char* path) {
   struct stat st;
   if (stat(path, &st) != 0) return -1;
   return (long long)st.st_mtimespec.tv_sec * 1000000000LL + (long long)st.st_mtimespec.tv_nsec +
          (long long)st.st_size;
+}
+
+/* Appends the whole file at `path` to `out` (which the caller has already cleared); 1 when it
+ * could be opened. Shared by `file_ctx_refresh` below and the `menu` kind's own re-read. */
+static int read_whole_file(const char* path, RolltuiStr* out) {
+  FILE* fh = fopen(path, "rb");
+  char buf[4096];
+  size_t got;
+  if (!fh) return 0;
+  while ((got = fread(buf, 1, sizeof buf, fh)) > 0) rolltui_str_append(out, buf, got);
+  fclose(fh);
+  return 1;
 }
 
 static void file_ctx_refresh(RolltuiFileCtx* fc) {
@@ -252,17 +269,7 @@ static void file_ctx_refresh(RolltuiFileCtx* fc) {
   fc->stamp = m;
   rolltui_str_move(&fc->read_path, &p);
   rolltui_str_clear(&fc->body);
-  fc->ok = 0;
-  {
-    FILE* fh = fopen(fc->read_path.p ? fc->read_path.p : "", "rb");
-    if (fh) {
-      char buf[4096];
-      size_t got;
-      while ((got = fread(buf, 1, sizeof buf, fh)) > 0) rolltui_str_append(&fc->body, buf, got);
-      fclose(fh);
-      fc->ok = 1;
-    }
-  }
+  fc->ok = read_whole_file(fc->read_path.p ? fc->read_path.p : "", &fc->body);
 }
 
 static int file_ctx_problem(void* ctx, RolltuiStr* out) {
@@ -1028,3 +1035,436 @@ void* rolltui_input_widget_ctx_new(RolltuiInput* ed, RolltuiWindows* w, const ch
   return ic;
 }
 void rolltui_input_widget_ctx_set_min_outer(void* ctx, int rows) { ((RolltuiInputCtx*)ctx)->min_outer = rows; }
+
+/* ============================================================================================
+ * transcript:<document> — BORROWS the RolltuiTranscript* Windows' own `transcripts_` map owns
+ * (Phase 17 m1c). What still does NOT cross: the syntax highlighter, pushed straight onto the
+ * `RolltuiTranscript` by `Windows::set_highlighter`/`transcript()` in Widgets.cpp, so this ctx
+ * never touches it and needs no epoch to poll.
+ * ============================================================================================ */
+
+typedef struct RolltuiTranscriptCtx {
+  RolltuiTranscript* t; /* BORROWED — Windows' own transcripts_ map owns it */
+  RolltuiWindows* w;    /* BORROWED */
+  RolltuiStr source;
+  RolltuiDrawScratch* draw;
+} RolltuiTranscriptCtx;
+
+static void transcript_ctx_options(const RolltuiTranscriptCtx* tc, const RolltuiResolvedNode* rn,
+                                   RolltuiTranscriptOptions* out) {
+  const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
+  const RolltuiCodeFold* cf = rolltui_windows_code_fold(tc->w);
+  memset(out, 0, sizeof *out);
+  out->ambiguous_wide = env->ambiguous_wide;
+  out->tab_width = 8;
+  out->gap = 1;
+  out->inset = rn->node->border != 0 ? 1 : 0;
+  out->wheel_lines = 3;
+  out->code_fold_over_lines = cf->fold_over_lines;
+  out->code_cap_lines = cf->cap_lines;
+  out->multi_click_ms = 400;
+}
+
+static int transcript_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  if (rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n)) return 0;
+  rolltui_str_clear(out);
+  rolltui_str_append(out, "nothing is bound to '", sizeof("nothing is bound to '") - 1);
+  rolltui_str_append_str(out, &tc->source);
+  rolltui_str_append(out, "'", 1);
+  return 1;
+}
+static void transcript_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  const RolltuiDocument* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
+  RolltuiTranscriptOptions o;
+  if (!doc) return;
+  transcript_ctx_options(tc, rn, &o);
+  rolltui_transcript_layout(tc->t, doc, rn->inner, &o);
+}
+static void transcript_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  const RolltuiDocument* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
+  RolltuiTranscriptOptions o;
+  if (!doc) return;
+  transcript_ctx_options(tc, rn, &o);
+  rolltui_transcript_layout(tc->t, doc, rn->inner, &o);
+  rolltui_transcript_draw(tc->t, f, tc->draw, rolltui_windows_styles(tc->w));
+}
+static int transcript_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  const RolltuiDocument* doc = rolltui_windows_document(tc->w, tc->source.p ? tc->source.p : "", tc->source.n);
+  const RolltuiWidgetEnv* env;
+  if (!doc) return 0;
+  env = rolltui_windows_env(tc->w);
+  return rolltui_transcript_handle(tc->t, e, doc, env->now_ms, rolltui_windows_bindings(tc->w),
+                                   rolltui_windows_transcript_actions(tc->w));
+}
+static int transcript_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  int vh;
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  vh = rolltui_transcript_viewport_height(tc->t);
+  out->first = rolltui_transcript_top_line(tc->t);
+  out->visible = (size_t)(vh > 0 ? vh : 0);
+  out->total = rolltui_transcript_total_lines(tc->t);
+  return 1;
+}
+static int transcript_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  long delta;
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  delta = (long)first - (long)rolltui_transcript_top_line(tc->t);
+  rolltui_transcript_scroll_by(tc->t, delta);
+  return 1;
+}
+static void transcript_ctx_destroy(void* ctx) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)ctx;
+  rolltui_str_free(&tc->source);
+  rolltui_draw_scratch_free(tc->draw);
+  rolltui_mem_free(tc);
+}
+
+static const RolltuiWidgetPlugin kTranscriptPlugin = {
+    transcript_ctx_destroy, transcript_ctx_layout, transcript_ctx_draw, transcript_ctx_problem, NULL,
+    NULL,                   transcript_ctx_handle, transcript_ctx_scroll_extent, transcript_ctx_scroll_to,
+};
+
+const RolltuiWidgetPlugin* rolltui_transcript_widget_plugin(void) { return &kTranscriptPlugin; }
+
+void* rolltui_transcript_widget_ctx_new(RolltuiTranscript* t, RolltuiWindows* w, const char* source,
+                                        size_t source_len) {
+  RolltuiTranscriptCtx* tc = (RolltuiTranscriptCtx*)rolltui_mem_alloc(sizeof *tc);
+  memset(tc, 0, sizeof *tc);
+  tc->t = t;
+  tc->w = w;
+  rolltui_str_set(&tc->source, source, source_len);
+  tc->draw = rolltui_draw_scratch_new();
+  return tc;
+}
+
+/* ============================================================================================
+ * menu:<name> — a menu FILE (Widgets.hpp's three rungs), re-read like `file:` when it changes
+ * on disk. BORROWS the RolltuiMenu* Windows' own `menus_` map owns; what still does NOT cross:
+ * the text-field VALIDATOR REGISTRY (`rolltui::Menu`'s own, asked through
+ * `rolltui_menu_set_validator_fn` exactly as before this ctx existed).
+ * ============================================================================================ */
+
+typedef struct RolltuiMenuCtx {
+  RolltuiMenu* m;    /* BORROWED — Windows' own menus_ map owns it */
+  RolltuiWindows* w; /* BORROWED */
+  RolltuiStr source;
+  int loaded;
+  long long stamp;
+  RolltuiStr origin;  /* "" | a path | "the host's" | "a shipped menu" */
+  RolltuiStr problem; /* "" when the file resolved and parsed fine */
+  /* The file's own unknown_keys + bad_values, formatted, refreshed only when the FILE changes. */
+  RolltuiStr* notes;
+  size_t notes_n, notes_cap;
+  /* An item naming an undeclared action — recomputed against the LIVE bindings at the start
+   * of every note_at(ctx, 0, …) pass, since this can change with no file re-read at all. */
+  RolltuiStr* live_notes;
+  size_t live_notes_n, live_notes_cap;
+  RolltuiDrawScratch* draw;
+} RolltuiMenuCtx;
+
+static void menu_ctx_user_path(const RolltuiMenuCtx* mc, RolltuiStr* out) {
+  size_t dir_len = 0;
+  const char* dir = rolltui_windows_dir(mc->w, &dir_len);
+  rolltui_str_clear(out);
+  if (dir_len == 0) return; /* "" — no preset directory set */
+  rolltui_str_set(out, dir, dir_len);
+  rolltui_str_append(out, "/menus/", sizeof("/menus/") - 1);
+  rolltui_str_append_str(out, &mc->source);
+  rolltui_str_append(out, ".json", sizeof(".json") - 1);
+}
+
+/* Which rung answers, and with what — the three-rung order Widgets.hpp states. A file the
+ * user has is preferred even when it is unreadable garbage: shadowing must not fail over to
+ * a different menu, or a typo in one's own file is a silent substitution. */
+static void menu_ctx_resolve(RolltuiMenuCtx* mc, RolltuiStr* text, RolltuiStr* origin, long long* stamp) {
+  RolltuiStr p;
+  memset(&p, 0, sizeof p);
+  menu_ctx_user_path(mc, &p);
+  *stamp = p.n == 0 ? -1 : file_ctx_stamp(p.p);
+  if (*stamp >= 0) {
+    rolltui_str_clear(text);
+    read_whole_file(p.p, text); /* an unreadable race after a successful stat is ignored, as
+                                  * the C++ original did: the empty text then reports as a
+                                  * bad-JSON "is unusable", an honest if rare outcome. */
+    rolltui_str_move(origin, &p);
+    return;
+  }
+  rolltui_str_free(&p);
+  {
+    size_t hlen = 0;
+    const char* h = rolltui_windows_host_menu(mc->w, mc->source.p ? mc->source.p : "", mc->source.n, &hlen);
+    if (h) {
+      rolltui_str_set(text, h, hlen);
+      rolltui_str_set(origin, "the host's", sizeof("the host's") - 1);
+      return;
+    }
+  }
+  {
+    const char* s =
+        rolltui_embedded_text(rolltui_kMenus, rolltui_kMenuCount, mc->source.p ? mc->source.p : "", mc->source.n);
+    if (s) {
+      rolltui_str_set(text, s, strlen(s));
+      rolltui_str_set(origin, "a shipped menu", sizeof("a shipped menu") - 1);
+      return;
+    }
+  }
+  rolltui_str_clear(text);
+  rolltui_str_clear(origin);
+}
+
+static RolltuiStr* menu_ctx_note_add(RolltuiMenuCtx* mc) {
+  mc->notes = (RolltuiStr*)rolltui_grow_zeroed(mc->notes, &mc->notes_cap, mc->notes_n + 1, sizeof *mc->notes);
+  return &mc->notes[mc->notes_n++];
+}
+
+/* Re-resolves and re-parses only when the rung or the file's stamp changed — the same
+ * loaded_/stamp_/origin_ check `file_ctx_refresh` makes for `file:`, one rung wider. Called
+ * from every slot that needs current state (problem/note_at/layout/scroll_extent), so it is
+ * cheap when nothing changed: a stat() and a string compare. */
+static void menu_ctx_refresh(RolltuiMenuCtx* mc) {
+  RolltuiStr text, origin;
+  long long stamp = -1;
+  size_t i;
+  memset(&text, 0, sizeof text);
+  memset(&origin, 0, sizeof origin);
+  menu_ctx_resolve(mc, &text, &origin, &stamp);
+  if (mc->loaded && rolltui_str_eq(&mc->origin, origin.p ? origin.p : "", origin.n) && stamp == mc->stamp) {
+    rolltui_str_free(&text);
+    rolltui_str_free(&origin);
+    return;
+  }
+  mc->loaded = 1;
+  rolltui_str_move(&mc->origin, &origin);
+  mc->stamp = stamp;
+  for (i = 0; i < mc->notes_n; ++i) rolltui_str_free(&mc->notes[i]);
+  mc->notes_n = 0;
+  if (mc->origin.n == 0) {
+    /* No rung answered: an empty submenu named after itself, and a problem that says
+     * exactly where all three rungs were looked for. */
+    RolltuiMenuItem root;
+    RolltuiStr up;
+    memset(&up, 0, sizeof up);
+    rolltui_menu_item_init(&root);
+    root.kind = ROLLTUI_MENU_SUBMENU;
+    rolltui_str_set(&root.id, mc->source.p ? mc->source.p : "", mc->source.n);
+    rolltui_str_set(&root.label, mc->source.p ? mc->source.p : "", mc->source.n);
+    rolltui_menu_set_root(mc->m, &root);
+    rolltui_menu_item_release(&root);
+    menu_ctx_user_path(mc, &up);
+    rolltui_str_clear(&mc->problem);
+    rolltui_str_append(&mc->problem, "no menu file '", sizeof("no menu file '") - 1);
+    rolltui_str_append_str(&mc->problem, &mc->source);
+    rolltui_str_append(&mc->problem, "' (looked for ", sizeof("' (looked for ") - 1);
+    if (up.n == 0) {
+      rolltui_str_append(&mc->problem, "menus/", sizeof("menus/") - 1);
+      rolltui_str_append_str(&mc->problem, &mc->source);
+      rolltui_str_append(&mc->problem, ".json under a preset directory (none set)",
+                         sizeof(".json under a preset directory (none set)") - 1);
+    } else {
+      rolltui_str_append(&mc->problem, "'", 1);
+      rolltui_str_append_str(&mc->problem, &up);
+      rolltui_str_append(&mc->problem, "'", 1);
+    }
+    rolltui_str_append(&mc->problem, ", the host's menus and the shipped ones)",
+                       sizeof(", the host's menus and the shipped ones)") - 1);
+    rolltui_str_free(&up);
+    rolltui_str_free(&text);
+    return;
+  }
+  {
+    RolltuiMenuItem root;
+    RolltuiMenuLoadReport rep;
+    int ok;
+    memset(&rep, 0, sizeof rep);
+    rolltui_menu_item_init(&root);
+    ok = rolltui_menu_parse_json(text.p ? text.p : "", text.n, &root, &rep);
+    if (!ok) {
+      RolltuiMenuItem empty;
+      rolltui_menu_item_init(&empty);
+      empty.kind = ROLLTUI_MENU_SUBMENU;
+      rolltui_str_set(&empty.id, mc->source.p ? mc->source.p : "", mc->source.n);
+      rolltui_str_set(&empty.label, mc->source.p ? mc->source.p : "", mc->source.n);
+      rolltui_menu_set_root(mc->m, &empty);
+      rolltui_menu_item_release(&empty);
+      rolltui_str_clear(&mc->problem);
+      rolltui_str_append(&mc->problem, "menu file (", sizeof("menu file (") - 1);
+      rolltui_str_append_str(&mc->problem, &mc->origin);
+      rolltui_str_append(&mc->problem, ") is unusable: ", sizeof(") is unusable: ") - 1);
+      rolltui_str_append_str(&mc->problem, &rep.error);
+    } else {
+      rolltui_str_clear(&mc->problem);
+      for (i = 0; i < rep.unknown_keys_n; ++i) {
+        RolltuiStr* n = menu_ctx_note_add(mc);
+        rolltui_str_clear(n);
+        rolltui_str_append(n, "menu file (", sizeof("menu file (") - 1);
+        rolltui_str_append_str(n, &mc->origin);
+        rolltui_str_append(n, "): ", sizeof("): ") - 1);
+        rolltui_str_append_str(n, &rep.unknown_keys[i]);
+      }
+      for (i = 0; i < rep.bad_values_n; ++i) {
+        RolltuiStr* n = menu_ctx_note_add(mc);
+        rolltui_str_clear(n);
+        rolltui_str_append(n, "menu file (", sizeof("menu file (") - 1);
+        rolltui_str_append_str(n, &mc->origin);
+        rolltui_str_append(n, "): ", sizeof("): ") - 1);
+        rolltui_str_append_str(n, &rep.bad_values[i]);
+      }
+      rolltui_menu_set_root(mc->m, &root);
+    }
+    rolltui_menu_item_release(&root);
+    rolltui_menu_load_report_release(&rep);
+  }
+  rolltui_str_free(&text);
+}
+
+static int menu_ctx_problem(void* ctx, RolltuiStr* out) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  menu_ctx_refresh(mc);
+  if (mc->problem.n == 0) return 0;
+  rolltui_str_set(out, mc->problem.p ? mc->problem.p : "", mc->problem.n);
+  return 1;
+}
+
+static RolltuiStr* menu_ctx_live_note_add(RolltuiMenuCtx* mc) {
+  mc->live_notes =
+      (RolltuiStr*)rolltui_grow_zeroed(mc->live_notes, &mc->live_notes_cap, mc->live_notes_n + 1, sizeof *mc->live_notes);
+  return &mc->live_notes[mc->live_notes_n++];
+}
+
+/* Mirrors `Menu::item_actions()` + the undeclared-action check `MenuWidget::notes()` made of
+ * it: every item naming an `action_name` the live bindings do not declare, named by item id
+ * and by action — never silently dropped. */
+static void menu_ctx_collect_action_notes(RolltuiMenuCtx* mc, RolltuiMenuItem* it, const RolltuiBindings* b) {
+  size_t i, n;
+  if (it->action_name.n > 0 && !rolltui_bindings_has(b, it->action_name.p, it->action_name.n)) {
+    RolltuiStr* note = menu_ctx_live_note_add(mc);
+    rolltui_str_clear(note);
+    rolltui_str_append(note, "menu file (", sizeof("menu file (") - 1);
+    rolltui_str_append_str(note, &mc->origin);
+    rolltui_str_append(note, "): item '", sizeof("): item '") - 1);
+    rolltui_str_append_str(note, &it->id);
+    rolltui_str_append(note, "' names the action '", sizeof("' names the action '") - 1);
+    rolltui_str_append_str(note, &it->action_name);
+    rolltui_str_append(note, "', which no layout declares", sizeof("', which no layout declares") - 1);
+  }
+  n = rolltui_menu_list_count(&it->children);
+  for (i = 0; i < n; ++i) menu_ctx_collect_action_notes(mc, rolltui_menu_list_at(&it->children, i), b);
+}
+
+static int menu_ctx_note_at(void* ctx, size_t i, RolltuiStr* out) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  menu_ctx_refresh(mc);
+  if (i == 0) {
+    size_t k;
+    for (k = 0; k < mc->live_notes_n; ++k) rolltui_str_free(&mc->live_notes[k]);
+    mc->live_notes_n = 0;
+    menu_ctx_collect_action_notes(mc, rolltui_menu_root(mc->m), rolltui_windows_bindings(mc->w));
+  }
+  if (i < mc->notes_n) {
+    rolltui_str_set(out, mc->notes[i].p ? mc->notes[i].p : "", mc->notes[i].n);
+    return 1;
+  }
+  {
+    const size_t j = i - mc->notes_n;
+    if (j < mc->live_notes_n) {
+      rolltui_str_set(out, mc->live_notes[j].p ? mc->live_notes[j].p : "", mc->live_notes[j].n);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* Mirrors `Bindings::chords_text` exactly, over `rolltui_bindings.h` — the same chord-joining
+ * loop `help_chords_text` above already is, reused directly rather than written a third time. */
+static void menu_kind_fill_shortcuts(RolltuiMenuItem* it, const RolltuiBindings* b) {
+  size_t i, n;
+  if (it->action_name.n > 0) {
+    if (rolltui_bindings_has(b, it->action_name.p, it->action_name.n))
+      help_chords_text(b, it->action_name.p, it->action_name.n, &it->shortcut);
+    else
+      rolltui_str_clear(&it->shortcut);
+  }
+  n = rolltui_menu_list_count(&it->children);
+  for (i = 0; i < n; ++i) menu_kind_fill_shortcuts(rolltui_menu_list_at(&it->children, i), b);
+}
+
+static int menu_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  menu_ctx_refresh(mc);
+  out->first = (size_t)rolltui_menu_scroll_first(mc->m);
+  out->visible = (size_t)rolltui_menu_scroll_visible(mc->m);
+  out->total = rolltui_menu_visible(mc->m, NULL);
+  return 1;
+}
+
+static void menu_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  const RolltuiWidgetEnv* env = rolltui_windows_env(mc->w);
+  RolltuiMenuOptions o;
+  menu_ctx_refresh(mc);
+  menu_kind_fill_shortcuts(rolltui_menu_root(mc->m), rolltui_windows_bindings(mc->w));
+  o = *rolltui_menu_options(mc->m);
+  o.ambiguous_wide = env->ambiguous_wide;
+  o.inset = rn->node->border != 0 ? 1 : 0;
+  rolltui_menu_set_options_struct(mc->m, &o);
+  rolltui_menu_layout(mc->m, rn->inner);
+}
+
+static void menu_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(mc->w);
+  RolltuiInputRoles iroles;
+  menu_ctx_layout(ctx, rn);
+  iroles.text = br->input_text;
+  iroles.selection = br->input_selection;
+  iroles.placeholder = br->input_placeholder;
+  rolltui_menu_draw(mc->m, f, mc->draw, rolltui_windows_styles(mc->w), rolltui_windows_menu_roles(mc->w), &iroles,
+                    rn->focused);
+}
+
+static void menu_ctx_destroy(void* ctx) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  size_t i;
+  rolltui_str_free(&mc->source);
+  rolltui_str_free(&mc->origin);
+  rolltui_str_free(&mc->problem);
+  for (i = 0; i < mc->notes_n; ++i) rolltui_str_free(&mc->notes[i]);
+  rolltui_mem_free(mc->notes);
+  for (i = 0; i < mc->live_notes_n; ++i) rolltui_str_free(&mc->live_notes[i]);
+  rolltui_mem_free(mc->live_notes);
+  rolltui_draw_scratch_free(mc->draw);
+  rolltui_mem_free(mc);
+}
+
+static const RolltuiWidgetPlugin kMenuPlugin = {
+    menu_ctx_destroy, menu_ctx_layout, menu_ctx_draw, menu_ctx_problem, menu_ctx_note_at,
+    NULL,             NULL,            menu_ctx_scroll_extent, NULL,
+};
+
+const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void) { return &kMenuPlugin; }
+
+void* rolltui_menu_widget_ctx_new(RolltuiMenu* m, RolltuiWindows* w, const char* source, size_t source_len) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)rolltui_mem_alloc(sizeof *mc);
+  memset(mc, 0, sizeof *mc);
+  mc->m = m;
+  mc->w = w;
+  rolltui_str_set(&mc->source, source, source_len);
+  mc->stamp = -1;
+  mc->draw = rolltui_draw_scratch_new();
+  return mc;
+}
+
+void rolltui_menu_widget_ctx_refresh(void* ctx) { menu_ctx_refresh((RolltuiMenuCtx*)ctx); }
+
+const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  menu_ctx_refresh(mc);
+  return rolltui_str_get(&mc->origin, len);
+}

@@ -167,9 +167,13 @@ struct RolltuiWindows {
   const RolltuiBindings* bindings; /* set alongside env; NULL only before the first set_env */
   const RolltuiStyle* styles;      /* set at the top of rolltui_windows_draw; NULL outside one */
 
-  /* ---- what rolltui_widget_kinds.c's six built-in kinds read back through ctx = this ------ */
+  /* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ---------- */
   RolltuiBuiltinRoles builtin_roles;
   RolltuiScrollTextActions scroll_actions;
+  /* Phase 17 m1c: the transcript and menu kinds' own config, same shape as the two above. */
+  RolltuiCodeFold code_fold;
+  RolltuiTranscriptActions transcript_actions;
+  RolltuiMenuRoles menu_roles;
 };
 
 RolltuiWindows* rolltui_windows_new(void) {
@@ -323,13 +327,13 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
 
 /* ---- what a host BINDS, by name (Phase 15 m6) ------------------------------------------------ */
 
-void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const void* doc) {
+void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocument* doc) {
   /* A BORROW: nothing to release on replace, unlike the callback maps below. */
   rolltui_map_put(&w->documents, name, len, (void*)doc);
 }
 
-const void* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len) {
-  return rolltui_map_get(&w->documents, name, len);
+const RolltuiDocument* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len) {
+  return (const RolltuiDocument*)rolltui_map_get(&w->documents, name, len);
 }
 
 void rolltui_windows_bind_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRowsFn fn, void* ctx,
@@ -487,6 +491,16 @@ void rolltui_windows_set_scroll_text_actions(RolltuiWindows* w, const RolltuiScr
 const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w) {
   return &w->scroll_actions;
 }
+void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c) { w->code_fold = *c; }
+const RolltuiCodeFold* rolltui_windows_code_fold(const RolltuiWindows* w) { return &w->code_fold; }
+void rolltui_windows_set_transcript_actions(RolltuiWindows* w, const RolltuiTranscriptActions* a) {
+  w->transcript_actions = *a;
+}
+const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const RolltuiWindows* w) {
+  return &w->transcript_actions;
+}
+void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r) { w->menu_roles = *r; }
+const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w) { return &w->menu_roles; }
 
 /* ---- rows (Phase 15 m5e: moved to the boundary so `rows` can be a plugin) ---------------------- */
 

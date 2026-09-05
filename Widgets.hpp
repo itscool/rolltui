@@ -331,10 +331,13 @@ class Windows {
   void set_highlighter(markdown::Highlighter h);
   void set_code_fold(int fold_over_lines, int cap_lines);
   const markdown::Highlighter& highlighter() const { return highlighter_; }
-  // Bumped by set_highlighter, so a transcript can pick up a LATER one instead of
-  // silently keeping the first — set-once is a host convention, not a guarantee, and a
-  // second call quietly ignored is the shape of bug this project keeps finding.
-  std::uint64_t highlighter_epoch() const { return highlighter_epoch_; }
+  // Phase 17 m1c: pushed straight onto every LIVE `Transcript` (`transcripts_`, below) the
+  // moment it is set, and onto each new one as it is created — so a transcript picks up a
+  // LATER highlighter instead of silently keeping the first, with no epoch for a widget to
+  // poll. Before the port this was PULLED once per frame, by a widget comparing its own
+  // last-seen epoch against this counter; there is no such per-frame pull left to drive
+  // (the transcript kind is pure C now and never touches the highlighter), so nothing reads
+  // an epoch anymore and none is kept.
   int code_fold_over_lines() const { return code_fold_over_lines_; }
   int code_cap_lines() const { return code_cap_lines_; }
 
@@ -440,13 +443,18 @@ class Windows {
   // `input()`/`input_at()`'s own contract: both must hand back a LIVE `Input&` backed by the
   // SAME state the `input` kind (a pure-C plugin now, `rolltui/c/rolltui_widget_kinds.c`)
   // draws and edits. `Input::handle()` (public) lets that plugin's `ctx` BORROW the
-  // `RolltuiInput*` this map owns, so both readings are one object — the same trick
-  // `rolltui::Menu` already uses for its own embedded editor. `Transcript`/`Menu` have no
-  // equivalent accessor, which is why `transcript`/`menu` are not ported (this file's kind
-  // registration below, and the porting session's report, say why).
+  // `RolltuiInput*` this map owns, so both readings are one object.
   std::map<std::string, Input> inputs_;
+  // Phase 17 m1c: the same trick, now for `transcript`/`menu` — `Transcript::handle()`/
+  // `Menu::handle()` (public, added 2026-09-05) are the accessors `Input::handle()` already
+  // had, which is exactly what let `input` port while these two did not until now.
+  // `transcript()`/`menu()` hand back a LIVE reference into these maps; the pure-C ctx
+  // (`rolltui/c/rolltui_widget_kinds.c`) BORROWS the same handle, so a host driving one
+  // directly (`transcript().handle(...)`, `menu().handle(...)`, both hosts do) and the window
+  // that draws it are one object, never two that could drift apart.
+  std::map<std::string, Transcript> transcripts_;
+  std::map<std::string, Menu> menus_;
   markdown::Highlighter highlighter_;
-  std::uint64_t highlighter_epoch_ = 0;
   int code_fold_over_lines_ = 0, code_cap_lines_ = 0;
   // THE WIDGET TABLE, THE PER-WINDOW ROUTING TABLE, THE KIND REGISTRY AND THE SCROLLBAR'S
   // TRACKS ARE THE BOUNDARY'S (Phase 15 m5). They were four `std::map`s and two loose
@@ -460,9 +468,10 @@ class Windows {
   // duplicating the layout registry's own host-kind table — `registered()` now asks that
   // table directly) and a `std::string dir_`. A `std::function` crosses as {function
   // pointer, `void* ctx`, an optional `void (*free_ctx)(void*)`}, the same shape
-  // `Effects.cpp`'s `register_effect_kind` already uses for a host's effect kinds, and
-  // `WidgetBase` reaches the boundary through `handle()` instead of this class's
-  // friendship — which is why `friend class WidgetBase` is gone. `owned_documents_` and the
+  // `Effects.cpp`'s `register_effect_kind` already uses for a host's effect kinds. Phase 15
+  // m6 had this C++ boundary reached through `handle()` rather than a `friend class
+  // WidgetBase`; Phase 17 m1c removed `WidgetBase` itself (transcript/menu's C++ `Widget`
+  // subclass, `unbound()` and all) once neither kind needed it. `owned_documents_` and the
   // three `help_*` members above stay C++: neither owns a `std::function`, and moving them
   // would buy nothing (this file's own `rolltui_windows_bind_document` doc comment says why
   // for the former; `rolltui/c/rolltui_widgets.h`'s header comment says why for the latter).

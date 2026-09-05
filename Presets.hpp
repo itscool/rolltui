@@ -85,6 +85,7 @@
 #include "rolltui/PresetStore.hpp"
 #include "rolltui/Theme.hpp"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_presets.h"
 
 namespace rolltui {
 
@@ -269,5 +270,27 @@ const SettingSpec* setting(std::string_view key);  // nullptr when unknown
 std::string working_value(const ThemePresets& store, std::string_view key);
 std::string working_value(const LayoutPresets& store, std::string_view key);    // "layout": the origin
 std::string working_value(const BindingsPresets& store, std::string_view key);  // "bindings": the origin
+
+// ---- the C-side domain descriptors (Phase 17 m1c) --------------------------------------------
+//
+// `PresetStore<ThemeDomain|LayoutDomain|BindingsDomain>` above is C++, through the template in
+// PresetStore.hpp — the only place that has ever ASSEMBLED a `RolltuiPresetDomain`. These three
+// accessors build and cache (once, like `detail::domain_for<D>()` above) the SAME three domains
+// as pure C `RolltuiPresetDomain` values (`rolltui/c/rolltui_presets.h`'s own new section) that
+// a pure-C caller could hand straight to `rolltui_preset_store_new` — no `PresetStore<D>`, no
+// `json::Value`, no C++ anywhere past this call. What still lives here, in C++, is exactly the
+// vocabulary bridge `ThemeDomain`'s own `theme_vocab()` above already needed (role/scope names,
+// the renamed-action table, the six undeliverable-chord sentences) — the tables themselves have
+// no C form, so whoever builds the descriptor has to be told them once; nothing past that call
+// is a paraphrase of anything above, it calls the identical C engines
+// (`rolltui_theme_preset_parse`, `rolltui_load_layout`, `rolltui_bindings_load_json`) this file's
+// own domains already do.
+// NON-const, matching `detail::domain_for<D>()`'s own signature above: the mechanics itself
+// mutates one field of a live domain (`cache`, the parsed shipped-preset cache, built on
+// first use), so a `const&` here would only move the `const_cast` a caller of
+// `rolltui_preset_store_new` needs into every call site instead of removing it.
+RolltuiPresetDomain& c_theme_domain();
+RolltuiPresetDomain& c_layout_domain();
+RolltuiPresetDomain& c_bindings_domain();
 
 }  // namespace rolltui
