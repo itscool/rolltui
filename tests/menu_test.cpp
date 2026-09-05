@@ -4,21 +4,596 @@
 // the degenerate-size rule (0 or 1 cells in either dimension draws nothing outside
 // the area and never crashes).
 //
+// PHASE 17 m2: converted off the C++ shim (`rolltui/Menu.hpp`/`Menu.cpp`, and the
+// `rolltui/Bindings.hpp`/`Bindings.cpp` it in turn depended on for `default_bindings()`),
+// both being deleted — this file now calls `rolltui/c/rolltui_menu.h`,
+// `rolltui/c/rolltui_menu_tree.h` and `rolltui/c/rolltui_bindings.h` directly, reached
+// only through the umbrella `rolltui/rolltui.h`. `Frame`/`Theme`/`Rect`/`Role`/`Style`
+// (Screen.hpp/Theme.hpp) are NOT part of that layer and are unchanged — they are either
+// one-definition aliases of the C structs already, or permanent C++-only vocabulary with
+// no C counterpart, the same finding `input_test.cpp` recorded for its own conversion.
+// `MenuItem`/`InputSpec` likewise ARE `RolltuiMenuItem`/`RolltuiInputSpec` (one
+// definition, Phase 15 m5), so the aliases below reproduce exactly what Menu.hpp's own
+// `using` declarations gave every call site — `MenuItem::toggle(...)`,
+// `it.children.push_back(...)` and the rest are unchanged text below for that reason.
+// The shim's own composition (the widget class, the action vocabulary,
+// `default_bindings()`'s assembly) has no home yet on the C side, so it is reproduced
+// here as local fixture code mirroring `Menu.cpp`/`Bindings.cpp` line for line, per the
+// instruction to treat the shim as the mapping rather than guess at one.
+//
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <functional>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
-#include "rolltui/Menu.hpp"
+#include "rolltui/Screen.hpp"
+#include "rolltui/Theme.hpp"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
 using namespace rolltui_test;
 
+// The embedded preset tables: permanent generated C++ data (rolltui/cmake/embed_presets.cmake),
+// redeclared here exactly as Bindings.cpp/Layout.cpp/Menu.cpp/Presets.cpp each already do
+// independently. Declared before every use below.
+namespace rolltui::embedded {
+extern const std::pair<std::string_view, std::string_view> kBindingsPresets[];
+extern const std::size_t kBindingsPresetCount;
+extern const std::pair<std::string_view, std::string_view> kLayoutPresets[];
+extern const std::size_t kLayoutPresetCount;
+extern const std::pair<std::string_view, std::string_view> kMenus[];
+extern const std::size_t kMenuCount;
+}  // namespace rolltui::embedded
+
 namespace {
 
-KeyEvent key(Key k) { KeyEvent e; e.key = k; return e; }
-KeyEvent ch(char c) { KeyEvent e; e.key = Key::Char; e.ch = static_cast<char32_t>(c); return e; }
+// ---- PHASE 15 m5: MenuItem/InputSpec ARE the C structs (one definition) — the same
+// aliases Menu.hpp declared, reproduced here so every `MenuItem::toggle(...)`,
+// `spec.precision = ...` and `it.children.push_back(...)` below is unchanged text. ----
+using MenuItem = RolltuiMenuItem;
+using InputSpec = RolltuiInputSpec;
+
+// `rolltui::Key` (Keys.hpp) is gone with the shim; only the values this file actually
+// uses are reproduced, against the same ROLLTUI_KEY_* constants Keys.hpp itself checked
+// its enum against (rolltui_keys.h's own static_assert).
+enum class Key : unsigned char {
+  Char = ROLLTUI_KEY_CHAR,
+  Backspace = ROLLTUI_KEY_BACKSPACE,
+  Delete = ROLLTUI_KEY_DELETE,
+  Down = ROLLTUI_KEY_DOWN,
+  End = ROLLTUI_KEY_END,
+  Enter = ROLLTUI_KEY_ENTER,
+  Escape = ROLLTUI_KEY_ESCAPE,
+  Home = ROLLTUI_KEY_HOME,
+  Left = ROLLTUI_KEY_LEFT,
+  PageUp = ROLLTUI_KEY_PAGEUP,
+  Right = ROLLTUI_KEY_RIGHT,
+  Up = ROLLTUI_KEY_UP,
+};
+// `rolltui::MouseEvent` (Keys.hpp) was `using MouseEvent = RolltuiMouseEvent;` — the
+// struct itself is one-definition and permanent (rolltui_keys.h), only the alias name
+// was the shim's; reproduced for the same reason the two above are.
+using MouseEvent = RolltuiMouseEvent;
+// `rolltui::PasteEvent` was a bare `{ std::string text; }` with no C counterpart (a
+// paste's bytes travel in `RolltuiEvent::text`/`text_len`, never as a standalone type) —
+// reproduced as local fixture data.
+struct PasteEvent {
+  std::string text;
+};
+
+// ---- mirrors rolltui::MenuEvent (Menu.hpp) — `Kind` as a NESTED enum so every
+// `MenuEvent::Kind::X` below is unchanged text. ----
+struct MenuEvent {
+  enum class Kind : unsigned char {
+    None = ROLLTUI_MENU_EVENT_NONE,
+    Activate = ROLLTUI_MENU_EVENT_ACTIVATE,
+    Toggle = ROLLTUI_MENU_EVENT_TOGGLE,
+    Choose = ROLLTUI_MENU_EVENT_CHOOSE,
+    Input = ROLLTUI_MENU_EVENT_INPUT,
+    Closed = ROLLTUI_MENU_EVENT_CLOSED,
+  };
+  Kind kind = Kind::None;
+  std::string id;
+  std::string value;
+  bool checked = false;
+};
+
+// ---- mirrors rolltui::MenuLoadReport (Menu.hpp). ----
+struct MenuLoadReport {
+  std::string error;
+  std::vector<std::string> unknown_keys;
+  std::vector<std::string> bad_values;
+  bool clean() const { return error.empty() && unknown_keys.empty() && bad_values.empty(); }
+};
+
+// ---- mirrors rolltui::ActionInfo / library_actions() (Bindings.cpp) verbatim — needed
+// here only to build a working `default_bindings()` for `apply_shortcuts`, exactly as
+// bindings_test.cpp's own copy (duplicated rather than shared: each converted test file
+// is a standalone translation unit, as the originals were). ----
+struct ActionInfo {
+  std::string_view name;
+  std::string_view description;
+};
+const std::vector<ActionInfo>& library_actions() {
+  static const std::vector<ActionInfo> t = {
+      {"input.submit", "send the line (always Enter)"},
+      {"input.newline", "insert a newline"},
+      {"input.backspace", "erase before the caret (or the selection)"},
+      {"input.delete", "erase after the caret (or the selection)"},
+      {"input.kill_word_backward", "kill the word before the caret"},
+      {"input.kill_word_forward", "kill the word after the caret"},
+      {"input.kill_to_line_start", "kill to the start of the line"},
+      {"input.kill_to_line_end", "kill to the end of the line"},
+      {"input.left", "move one grapheme left"},
+      {"input.right", "move one grapheme right"},
+      {"input.word_left", "move one word left"},
+      {"input.word_right", "move one word right"},
+      {"input.line_start", "start of the line (scrolls when empty)"},
+      {"input.line_end", "end of the line (scrolls when empty)"},
+      {"input.up", "up a row, or the previous history entry"},
+      {"input.down", "down a row, or the next history entry"},
+      {"input.select_left", "extend the selection one grapheme left"},
+      {"input.select_right", "extend the selection one grapheme right"},
+      {"input.select_word_left", "extend the selection one word left"},
+      {"input.select_word_right", "extend the selection one word right"},
+      {"input.select_line_start", "extend the selection to the start of the line"},
+      {"input.select_line_end", "extend the selection to the end of the line"},
+      {"input.select_up", "extend the selection up a row"},
+      {"input.select_down", "extend the selection down a row"},
+      {"input.select_all", "select all"},
+      {"input.clear_selection", "clear the selection"},
+      {"input.copy", "copy the selection"},
+      {"input.eof", "end of input on an empty line, else delete"},
+      {"input.undo", "undo the last group of edits"},
+      {"input.redo", "redo"},
+      {"transcript.page_up", "scroll a page up"},
+      {"transcript.page_down", "scroll a page down"},
+      {"transcript.top", "scroll to the top"},
+      {"transcript.bottom", "scroll to the bottom"},
+      {"transcript.line_up", "scroll a line up"},
+      {"transcript.line_down", "scroll a line down"},
+      {"transcript.find_next", "go to the next match"},
+      {"transcript.find_prev", "go to the previous match"},
+      {"transcript.fold", "toggle the first folded block in view"},
+      {"transcript.copy", "copy the selection again"},
+      {"transcript.clear_selection", "clear the selection"},
+      {"menu.up", "previous item"},
+      {"menu.down", "next item"},
+      {"menu.page_up", "a page of items up"},
+      {"menu.page_down", "a page of items down"},
+      {"menu.first", "the first item"},
+      {"menu.last", "the last item"},
+      {"menu.activate", "act on the item"},
+      {"menu.descend", "descend into a submenu or choice"},
+      {"menu.ascend", "up one level"},
+      {"menu.back", "clear the filter / up a level / close"},
+      {"menu.erase", "erase the last filter character"},
+      {"edit.commit", "commit the value being edited"},
+      {"edit.cancel", "cancel the edit (the value returns)"},
+      {"edit.step_up", "a number field: step up"},
+      {"edit.step_down", "a number field: step down"},
+      {"stack.close_popup", "close the topmost popup"},
+      {"stack.focus_next", "move focus to the next window"},
+      {"stack.focus_prev", "move focus to the previous window"},
+  };
+  return t;
+}
+std::string_view scope_of(std::string_view action) {
+  const std::size_t dot = action.find('.');
+  return dot == std::string_view::npos ? action : action.substr(0, dot);
+}
+bool library_scope(std::string_view scope) {
+  for (const ActionInfo& a : library_actions())
+    if (scope_of(a.name) == scope) return true;
+  return false;
+}
+int is_library_scope_cb(void*, const char* scope, std::size_t len) {
+  return library_scope(std::string_view(scope, len)) ? 1 : 0;
+}
+constexpr std::pair<const char*, const char*> kLegacyActions[] = {
+    {"playground.cycle_theme", "studio.cycle_theme"},
+    {"playground.reload", "studio.reload"},
+    {"playground.quit", "studio.quit"},
+};
+std::optional<std::string> migrated_action(std::string_view legacy) {
+  for (const auto& [from, to] : kLegacyActions)
+    if (legacy == from) return std::string(to);
+  return std::nullopt;
+}
+int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
+  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
+  if (!to) return 0;
+  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
+  std::memcpy(out, to->data(), n);
+  *out_len = n;
+  return 1;
+}
+std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
+  // Mirrors rolltui::undeliverable_reason (Keys.cpp) — see bindings_test.cpp's identical
+  // copy for why this stays test-adjacent fixture data rather than a shared header.
+  static constexpr std::string_view kReasons[6] = {
+      "",
+      "it is not a key",
+      "shift on a character key is the shifted character itself, which no terminal reports as a chord",
+      "it needs the kitty keyboard protocol or xterm's modifyOtherKeys",
+      "it needs the kitty keyboard protocol",
+      "no keyboard protocol this library speaks can report it",
+  };
+  const int code = rolltui_key_undeliverable_reason(k, protocol);
+  const std::string_view r = kReasons[static_cast<std::size_t>(code) < 6 ? static_cast<std::size_t>(code) : 0];
+  const std::size_t n = std::min(r.size(), cap);
+  std::memcpy(out, r.data(), n);
+  return n;
+}
+constexpr std::string_view kEnterAction = "input.submit";
+RolltuiBindings* bindings_new() {
+  RolltuiBindings* b = rolltui_bindings_new();
+  rolltui_bindings_set_enter_rule(b, kEnterAction.data(), kEnterAction.size());
+  for (const ActionInfo& a : library_actions())
+    rolltui_bindings_add_action(b, a.name.data(), a.name.size(), a.description.data(), a.description.size());
+  return b;
+}
+struct ActionDecl {
+  std::string name, description;
+};
+// The `tools` half of Bindings::declare()/suggest() is never exercised here (menu_test
+// only needs the shipped default's own app.* actions), so it is not reproduced — an
+// empty-tools declare() is exactly rolltui_bindings_undeclare_others + the add_action loop.
+void bindings_declare(RolltuiBindings* b, const std::vector<ActionDecl>& declared) {
+  rolltui_bindings_undeclare_others(b, is_library_scope_cb, nullptr);
+  for (const ActionDecl& d : declared)
+    rolltui_bindings_add_action(b, d.name.data(), d.name.size(), d.description.data(), d.description.size());
+}
+std::string bindings_chords_text(const RolltuiBindings* b, std::string_view action) {
+  const unsigned char p = rolltui_key_active_protocol();
+  const std::size_t n = rolltui_bindings_chord_count(b, action.data(), action.size());
+  std::string s;
+  for (std::size_t i = 0; i < n; ++i) {
+    RolltuiChord c{};
+    if (!rolltui_bindings_chord_at(b, action.data(), action.size(), i, &c)) continue;
+    if (!rolltui_key_deliverable(&c, p)) continue;
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    const std::size_t len = rolltui_chord_display(&c, buf, sizeof buf);
+    if (!s.empty()) s += ", ";
+    s.append(buf, len);
+  }
+  return s;
+}
+std::string_view default_bindings_json() {
+  for (std::size_t i = 0; i < rolltui::embedded::kBindingsPresetCount; ++i)
+    if (rolltui::embedded::kBindingsPresets[i].first == "default") return rolltui::embedded::kBindingsPresets[i].second;
+  return "";
+}
+std::string_view builtin_layout_json(std::string_view name) {
+  for (std::size_t i = 0; i < rolltui::embedded::kLayoutPresetCount; ++i)
+    if (rolltui::embedded::kLayoutPresets[i].first == name) return rolltui::embedded::kLayoutPresets[i].second;
+  return "";
+}
+const std::vector<ActionDecl>& shipped_default_actions() {
+  static const std::vector<ActionDecl> decls = [] {
+    std::vector<ActionDecl> out;
+    const std::string_view text = builtin_layout_json("default");
+    RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), nullptr);
+    if (v) {
+      RolltuiLayoutAction* actions = nullptr;
+      std::size_t n = 0, cap = 0;
+      rolltui_layout_read_actions_key(v, &actions, &n, &cap);
+      out.reserve(n);
+      for (std::size_t i = 0; i < n; ++i) out.push_back({actions[i].name.str(), actions[i].description.str()});
+      rolltui_layout_actions_free(actions, n);
+      rolltui_json_free(v);
+    }
+    return out;
+  }();
+  return decls;
+}
+// Mirrors Bindings.cpp's default_bindings(): builds the shipped table fresh, aborting on
+// the same two build mistakes it does. OWNED — every caller below frees it.
+RolltuiBindings* default_bindings() {
+  RolltuiBindings* d = bindings_new();
+  RolltuiBindingsReport rep{};
+  const int ok = rolltui_bindings_load_json(d, default_bindings_json().data(), default_bindings_json().size(),
+                                            ROLLTUI_PROTOCOL_LEGACY, is_library_scope_cb, nullptr, migrate_cb, nullptr,
+                                            reason_cb, nullptr, &rep);
+  if (!ok || !rolltui_bindings_report_clean(&rep)) {
+    RolltuiStr summary;
+    rolltui_bindings_report_summary(&rep, &summary);
+    std::fprintf(stderr, "rolltui: the shipped default bindings are broken: %s\n", summary.c_str());
+    std::abort();
+  }
+  rolltui_bindings_report_release(&rep);
+  bindings_declare(d, shipped_default_actions());
+  return d;
+}
+// A shared, process-wide copy for the hot path (Menu::handle's single-argument overload,
+// called on nearly every keystroke below) — default_bindings() is a pure function of
+// static embedded data, so caching it changes nothing it can produce, only how often it
+// is rebuilt. Freed at process exit via the static's own destructor.
+const RolltuiBindings* cached_default_bindings() {
+  static std::unique_ptr<RolltuiBindings, void (*)(RolltuiBindings*)> b(default_bindings(), rolltui_bindings_free);
+  return b.get();
+}
+
+std::optional<RolltuiChord> parse_chord(std::string_view text) {
+  RolltuiChord c{};
+  if (!rolltui_chord_parse(text.data(), text.size(), &c)) return std::nullopt;
+  return c;
+}
+
+std::string input_hint(const InputSpec& spec) {
+  RolltuiStr s;
+  rolltui_input_hint(&spec, &s);
+  return s.str();
+}
+
+std::optional<MenuItem> menu_from_json(std::string_view json_text, MenuLoadReport& report) {
+  MenuItem it;  // default: Action kind, everything empty — filled IN PLACE, not allocated
+  RolltuiMenuLoadReport rep{};
+  const int ok = rolltui_menu_parse_json(json_text.data(), json_text.size(), &it, &rep);
+  report.error = rep.error.str();
+  report.unknown_keys.clear();
+  report.bad_values.clear();
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.emplace_back(rep.unknown_keys[i].view());
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.emplace_back(rep.bad_values[i].view());
+  rolltui_menu_load_report_release(&rep);
+  if (!ok) return std::nullopt;
+  return it;
+}
+std::string menu_to_json(const MenuItem& root) {
+  RolltuiStr out;
+  rolltui_menu_dump_json(&root, &out);
+  return out.str();
+}
+std::string_view shipped_menu(std::string_view name) {
+  for (std::size_t i = 0; i < rolltui::embedded::kMenuCount; ++i)
+    if (rolltui::embedded::kMenus[i].first == name) return rolltui::embedded::kMenus[i].second;
+  return {};
+}
+std::vector<std::string_view> shipped_menu_names() {
+  std::vector<std::string_view> out;
+  for (std::size_t i = 0; i < rolltui::embedded::kMenuCount; ++i) out.push_back(rolltui::embedded::kMenus[i].first);
+  return out;
+}
+
+// ---- the widget: mirrors rolltui::Menu (Menu.hpp/Menu.cpp) — a thin local class over
+// the C widget and its owned editor, kept under the SAME name and method signatures so
+// this file's several hundred `m.foo(...)` call sites stay unchanged; every method body
+// is a direct C call, which is the actual point of the conversion. ----
+
+using Validator = std::function<std::optional<std::string>(std::string_view)>;
+
+int call_validator(void* ctx, const char* name, std::size_t nlen, const char* text, std::size_t tlen, RolltuiStr* why) {
+  auto* vs = static_cast<const std::vector<std::pair<std::string, Validator>>*>(ctx);
+  for (const auto& [n, fn] : *vs)
+    if (n == std::string_view(name, nlen)) {
+      if (std::optional<std::string> w = fn(std::string_view(text, tlen))) *why = *w;
+      return 1;
+    }
+  return 0;
+}
+
+RolltuiDrawScratch* draw_scratch() {
+  static std::unique_ptr<RolltuiDrawScratch, void (*)(RolltuiDrawScratch*)> s(rolltui_draw_scratch_new(),
+                                                                              rolltui_draw_scratch_free);
+  return s.get();
+}
+
+constexpr RolltuiMenuRoles kMenuRoles = {
+    /*item=*/static_cast<unsigned char>(Role::menu_item),
+    /*selected=*/static_cast<unsigned char>(Role::menu_selected),
+    /*breadcrumb=*/static_cast<unsigned char>(Role::menu_breadcrumb),
+    /*shortcut=*/static_cast<unsigned char>(Role::menu_shortcut),
+    /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
+    /*warning=*/static_cast<unsigned char>(Role::warning),
+    /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
+};
+constexpr RolltuiInputRoles kInputRoles = {
+    /*text=*/static_cast<unsigned char>(Role::input_text),
+    /*selection=*/static_cast<unsigned char>(Role::selection),
+    /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
+};
+// The input widget's thirty action names — copied from Input.cpp's kActions, same as
+// input_test.cpp's own copy, since a caller of the menu (which forwards to the editor)
+// has to hand this table over itself.
+constexpr RolltuiInputActions kInputActions = {
+    "input.submit",             "input.newline",            "input.backspace",
+    "input.delete",             "input.kill_word_backward", "input.kill_word_forward",
+    "input.kill_to_line_start", "input.kill_to_line_end",   "input.left",
+    "input.right",              "input.word_left",          "input.word_right",
+    "input.line_start",         "input.line_end",           "input.up",
+    "input.down",               "input.select_left",        "input.select_right",
+    "input.select_word_left",   "input.select_word_right",  "input.select_line_start",
+    "input.select_line_end",    "input.select_up",          "input.select_down",
+    "input.select_all",         "input.clear_selection",    "input.copy",
+    "input.eof",                "input.undo",                "input.redo",
+};
+const RolltuiMenuActions& menu_actions() {
+  static const RolltuiMenuActions a = {
+      "menu.up",       "menu.down",     "menu.page_up",  "menu.page_down", "menu.first",
+      "menu.last",     "menu.activate", "menu.descend",  "menu.ascend",    "menu.back",
+      "menu.erase",    "edit.commit",   "edit.cancel",   "edit.step_up",   "edit.step_down",
+      &kInputActions,
+  };
+  return a;
+}
+
+void collect_validators(const MenuItem& it, std::vector<std::string>& out) {
+  if (static_cast<unsigned char>(it.kind) == ROLLTUI_MENU_INPUT && !it.spec.validator.empty() &&
+      std::find(out.begin(), out.end(), it.spec.validator.view()) == out.end())
+    out.emplace_back(it.spec.validator.view());
+  for (const MenuItem& c : it.children) collect_validators(c, out);
+}
+void collect_item_actions(const MenuItem& it, std::vector<std::pair<std::string, std::string>>& out) {
+  if (!it.action_name.empty()) out.emplace_back(it.id.str(), it.action_name.str());
+  for (const MenuItem& c : it.children) collect_item_actions(c, out);
+}
+void fill_shortcuts(MenuItem& it, const RolltuiBindings* b) {
+  if (!it.action_name.empty())
+    it.shortcut = rolltui_bindings_has(b, it.action_name.data(), it.action_name.size())
+                      ? bindings_chords_text(b, it.action_name.view())
+                      : std::string();
+  for (MenuItem& c : it.children) fill_shortcuts(c, b);
+}
+
+class Menu {
+ public:
+  Menu() : editor_(rolltui_input_new()), m_(rolltui_menu_new(editor_)) {
+    RolltuiInputOptions o;
+    o.single_line = 1;
+    o.prompt.clear();
+    rolltui_input_set_options(editor_, &o);
+    rolltui_menu_set_validator_fn(m_, call_validator, &validators_);
+  }
+  explicit Menu(MenuItem root) : Menu() { set_root(std::move(root)); }
+  Menu(const Menu&) = delete;
+  Menu& operator=(const Menu&) = delete;
+  ~Menu() {
+    rolltui_menu_free(m_);
+    rolltui_input_free(editor_);
+  }
+
+  // ---- the tree ----
+  void set_root(MenuItem root) { rolltui_menu_set_root(m_, &root); }
+  const MenuItem& root() const { return *rolltui_menu_root(m_); }
+  MenuItem* find(std::string_view id) { return rolltui_menu_find(m_, id.data(), id.size()); }
+  const MenuItem* find(std::string_view id) const { return rolltui_menu_find(const_cast<RolltuiMenu*>(m_), id.data(), id.size()); }
+  bool set_value(std::string_view id, std::string value) {
+    MenuItem* it = find(id);
+    if (!it) return false;
+    it->value = std::move(value);
+    return true;
+  }
+  void set_validator(std::string_view name, Validator v) {
+    for (auto& [n, fn] : validators_)
+      if (n == name) {
+        fn = std::move(v);
+        return;
+      }
+    validators_.emplace_back(std::string(name), std::move(v));
+  }
+  std::vector<std::string> unknown_validators() const {
+    std::vector<std::string> used, out;
+    collect_validators(root(), used);
+    for (const std::string& u : used) {
+      bool known = false;
+      for (const auto& [n, fn] : validators_) known |= n == u;
+      if (!known) out.push_back(u);
+    }
+    return out;
+  }
+  std::vector<std::pair<std::string, std::string>> item_actions() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    collect_item_actions(root(), out);
+    return out;
+  }
+  void apply_shortcuts(const RolltuiBindings* b) { fill_shortcuts(*rolltui_menu_root(m_), b); }
+
+  // ---- navigation state ----
+  void reset() { rolltui_menu_reset(m_); }
+  std::vector<std::size_t> path() const {
+    const std::size_t* p = nullptr;
+    const std::size_t n = rolltui_menu_path(m_, &p);
+    return std::vector<std::size_t>(p, p + n);
+  }
+  std::size_t selected() const { return rolltui_menu_selected(m_); }
+  const MenuItem* selected_item() const { return rolltui_menu_selected_item(m_); }
+  std::vector<std::size_t> visible() const {
+    const std::size_t* v = nullptr;
+    const std::size_t n = rolltui_menu_visible(m_, &v);
+    return std::vector<std::size_t>(v, v + n);
+  }
+  std::string_view filter() const {
+    std::size_t n = 0;
+    const char* p = rolltui_menu_filter(m_, &n);
+    return std::string_view(p, n);
+  }
+  std::string breadcrumb() const {
+    RolltuiStr s;
+    rolltui_menu_breadcrumb(m_, &s);
+    return s.str();
+  }
+  bool editing() const { return rolltui_menu_editing(m_) != 0; }
+  std::string_view editing_text() const {
+    std::size_t n = 0;
+    const char* p = rolltui_input_text(editor_, &n);
+    return std::string_view(p, n);
+  }
+  std::string_view edit_reason() const {
+    std::size_t n = 0;
+    const char* p = rolltui_menu_edit_reason(m_, &n);
+    return std::string_view(p, n);
+  }
+  void set_palette(bool on) { rolltui_menu_set_palette(m_, on ? 1 : 0); }
+  bool palette() const { return rolltui_menu_palette(m_) != 0; }
+  std::size_t flat_count() const { return rolltui_menu_flat_count(m_); }
+  std::string_view flat_label(std::size_t i) const {
+    std::size_t n = 0;
+    const char* p = rolltui_menu_flat_label(m_, i, &n);
+    return std::string_view(p, n);
+  }
+
+  // ---- events ----
+  MenuEvent handle(const RolltuiEvent& e, const RolltuiBindings* bindings) {
+    RolltuiMenuEvent out{};
+    rolltui_menu_handle(m_, &e, bindings, &menu_actions(), &out);
+    MenuEvent r;
+    r.kind = static_cast<MenuEvent::Kind>(out.kind);
+    r.id = out.id.str();
+    r.value = out.value.str();
+    r.checked = out.checked != 0;
+    rolltui_menu_event_release(&out);
+    return r;
+  }
+  MenuEvent handle(const RolltuiEvent& e) { return handle(e, cached_default_bindings()); }
+  MenuEvent handle(const RolltuiMouseEvent& m) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_MOUSE;
+    e.mouse = m;
+    return handle(e);
+  }
+  MenuEvent handle(const PasteEvent& p) {
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_PASTE;
+    e.text = p.text.data();
+    e.text_len = p.text.size();
+    return handle(e);
+  }
+
+  // ---- layout + drawing ----
+  void layout(Rect area) { rolltui_menu_layout(m_, area); }
+  void draw(Frame& f, const Theme& theme, bool focused) const {
+    rolltui_menu_draw(m_, f.handle(), draw_scratch(), theme.styles.data(), &kMenuRoles, &kInputRoles, focused ? 1 : 0);
+  }
+
+ private:
+  RolltuiInput* editor_;  // BORROWED by m_; must outlive it — freed AFTER m_ below
+  RolltuiMenu* m_;
+  std::vector<std::pair<std::string, Validator>> validators_;
+};
+
+RolltuiEvent key(Key k) {
+  RolltuiEvent e{};
+  e.kind = ROLLTUI_EVENT_KEY;
+  e.key.key = static_cast<unsigned char>(k);
+  return e;
+}
+RolltuiEvent ch(char c) {
+  RolltuiEvent e{};
+  e.kind = ROLLTUI_EVENT_KEY;
+  e.key.key = static_cast<unsigned char>(Key::Char);
+  e.key.ch = static_cast<char32_t>(c);
+  return e;
+}
 
 MenuItem sample() {
   return MenuItem::submenu(
@@ -124,8 +699,8 @@ int main() {
     m.handle(key(Key::Escape));
     check(m.find("save")->value == "mine" && !m.editing(), "Escape cancels the edit and restores the value");
     m.handle(key(Key::Enter));
-    KeyEvent ctrl_u = ch('u');
-    ctrl_u.ctrl = true;
+    RolltuiEvent ctrl_u = ch('u');
+    ctrl_u.key.ctrl = true;
     m.handle(ctrl_u);
     check(m.editing() && m.editing_text().empty() && m.find("save")->value == "mine", "Ctrl-U (input.kill_to_line_start) while editing clears the text; the value waits for a commit");
     m.handle(key(Key::Escape));
@@ -283,14 +858,18 @@ int main() {
     Menu m(*root);
     check(m.item_actions() == (std::vector<std::pair<std::string, std::string>>{{"a", "app.help"}, {"b", "app.menu"}}),
           "item_actions lists every item that names one, by item id");
-    m.apply_shortcuts(default_bindings());
+    RolltuiBindings* b_ah = default_bindings();
+    m.apply_shortcuts(b_ah);
+    rolltui_bindings_free(b_ah);
     auto sc = [&](const char* id) { const MenuItem* it = m.find(id); return it ? it->shortcut : std::string("(missing)"); };
     check(sc("a") == "F1, ?" && sc("b") == "F2" && sc("c") == "F5",
           "apply_shortcuts fills them from the LIVE chords and leaves a plain shortcut alone [" + sc("a") + "]");
-    Bindings rebound = default_bindings();
-    rebound.clear("app.help");
-    rebound.bind("app.help", *parse_chord("f8"));
+    RolltuiBindings* rebound = default_bindings();
+    rolltui_bindings_clear(rebound, "app.help", 8);
+    const RolltuiChord f8 = *parse_chord("f8");
+    rolltui_bindings_bind(rebound, "app.help", 8, &f8, nullptr, nullptr);
     m.apply_shortcuts(rebound);
+    rolltui_bindings_free(rebound);
     check(sc("a") == "F8", "…and it is idempotent, so a rebinding shows immediately [" + sc("a") + "]");
 
     // A derived shortcut is never written back: a round trip must not bake one moment's
@@ -343,8 +922,8 @@ int main() {
       m.handle(key(Key::Enter));
     };
     auto type = [&](std::string_view s) { for (char c : s) m.handle(ch(c)); };
-    KeyEvent ctrl_u = ch('u');
-    ctrl_u.ctrl = true;
+    RolltuiEvent ctrl_u = ch('u');
+    ctrl_u.key.ctrl = true;
     // Each row: the item, what is typed into the CLEARED field (Ctrl-U first, so a row
     // whose every key is refused ends empty rather than at the selected-all value), the
     // text that results (refused keys leave no trace), then Enter: whether it commits
@@ -450,9 +1029,9 @@ int main() {
     PasteEvent good, bad;
     good.text = "12";
     bad.text = "abc";
-    m.handle(Event(good));
+    m.handle(good);
     check(m.editing_text() == "12", "a pasted '12' replaces the selection [" + m.editing_text() + "]");
-    m.handle(Event(bad));
+    m.handle(bad);
     check(m.editing_text() == "12" && !m.edit_reason().empty(), "a pasted 'abc' is refused whole, with the reason");
     m.handle(key(Key::Escape));
     // Hints, and the spec round-tripping through the file format.
