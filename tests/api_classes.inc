@@ -274,8 +274,8 @@ ROLLTUI_API(rolltui_color_depth_from_name, PUBLIC)
 ROLLTUI_API(rolltui_color_depth_name, INTERNAL)
 ROLLTUI_API(rolltui_color_depth_setting_valid, PUBLIC)
 ROLLTUI_API(rolltui_color_downgrade, INTERNAL)  /* a theme-loading step */
-ROLLTUI_API(rolltui_color_parse, INTERNAL)
-ROLLTUI_API(rolltui_color_to_string, INTERNAL)
+ROLLTUI_API(rolltui_color_parse, PUBLIC)    /* KEPT: the menu's typed color field hands a host TEXT, so without this its value is unusable (Phase 21, rolltui-paint) */
+ROLLTUI_API(rolltui_color_to_string, PUBLIC) /* KEPT: the other half of that round trip — a host that stores a colour writes it back to its own file */
 ROLLTUI_API(rolltui_detect_color_depth, PUBLIC)
 ROLLTUI_API(rolltui_mode_for_background, PUBLIC)
 ROLLTUI_API(rolltui_parse_osc11_reply, INTERNAL)  /* a theme-loading step */

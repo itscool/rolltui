@@ -1,0 +1,7 @@
+{
+  "id": "root", "label": "places", "items": [
+    { "id": "sort", "label": "Sort by", "kind": "choice",
+      "items": [ { "id": "name", "label": "name" }, { "id": "size", "label": "size" },
+                 { "id": "modified", "label": "modified" } ] },
+    { "id": "hidden", "label": "Show dotfiles", "kind": "toggle" },
+    { "id": "up", "label": "Go to the parent" } ] }

@@ -79,7 +79,12 @@ std::vector<std::string> library_sources(bool headers_only) {
     const bool is_header = ext == ".hpp" || ext == ".h";
     const bool is_source = ext == ".cpp" || ext == ".c";
     if (headers_only ? !is_header : !(is_header || is_source)) continue;
-    if (!headers_only && rel.rfind("tools/", 0) == 0) continue;  // a TOOL is a host, not the library
+    // A TOOL is a host, not the library — and so is an EXAMPLE (Phase 21: `rolltui-paint` moved
+    // to `examples/` and `rolltui-explorer` joined it there, so the directory that means "not the
+    // library" is now two). The rule this skips is the LIBRARY's ownership discipline; a host may
+    // own its own widget's context with `new`/`delete`, which is exactly what a widget plugin's
+    // `destroy` slot is for.
+    if (!headers_only && (rel.rfind("tools/", 0) == 0 || rel.rfind("examples/", 0) == 0)) continue;
     out.push_back(rel);
   }
   return out;

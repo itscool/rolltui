@@ -266,7 +266,7 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_T
 # builds a screen, draws a frame and drives a preset store; the three suites that drive whole
 # host binaries; and the two meta-tests, which scan sources rather than call the library.
 set(ROLLTUI_PUBLIC_ONLY_TESTS
-  c_consumer_test.c
+  c_consumer_test.c explorer_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp
   public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
@@ -353,9 +353,20 @@ target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_C
 # file. `--frame WxH` prints one frame (the studio's convention); `--stroke X,Y-X,Y`
 # synthesises a press, the drags between and a release, so a canvas can be shown to
 # receive them with no terminal.
-add_executable(rolltui-paint tools/paint.cpp)
+add_executable(rolltui-paint examples/paint.cpp)
 target_link_libraries(rolltui-paint PRIVATE rolltui)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
+target_include_directories(rolltui-paint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+
+# Phase 21: THE FOURTH CONSUMER — a read-only file-system browser whose custom widget is a
+# macOS-style column view. It is the first widget in this repo with INTERNAL STRUCTURE the
+# library does not already model (children of its own, a selection that propagates sideways,
+# two scroll axes, a content-dependent width), which is what makes it an instrument rather
+# than a demo: what it could NOT do through `rolltui/rolltui.h` alone is the phase's finding.
+# It is a CONSUMER like `rolltui-paint` — it never opts in to an internal header.
+add_executable(rolltui-explorer examples/explorer.cpp)
+target_link_libraries(rolltui-explorer PRIVATE rolltui)
+target_compile_options(rolltui-explorer PRIVATE -Wall -Wextra)
 
 # Milestone 14: the theme editor's model — every role reachable, live preview, commit,
 # cancel, undo/redo, the palette, the written-back pair object — driven without a
@@ -398,6 +409,23 @@ target_compile_definitions(rolltui-authored-screen-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>"
   ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint>")
 add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
+
+# Phase 21 m4: the explorer's golden frames and its files-only control — the screen's own
+# words (the window ids, the browser scope's actions, the titles) appear in no source the
+# binary is built from, exactly as `files_only_test` asserts for the studio's fixture screen.
+# Phase 21: paint as the ADVERSARIAL probe — the ramps make a real picture, a hand-picked RGB
+# down-converts at every depth (paint is the first consumer whose colour is user DATA rather
+# than the theme's expression of a state), and the block ramp meets East Asian AMBIGUOUS width
+# head-on instead of avoiding it.
+add_rolltui_test(rolltui-paint-art-test tests/paint_art_test.cpp)
+target_compile_definitions(rolltui-paint-art-test PRIVATE ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint>")
+add_dependencies(rolltui-paint-art-test rolltui-paint)
+
+add_rolltui_test(rolltui-explorer-test tests/explorer_test.cpp)
+target_compile_definitions(rolltui-explorer-test PRIVATE
+  ROLLTUI_EXPLORER_BIN="$<TARGET_FILE:rolltui-explorer>"
+  ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")
+add_dependencies(rolltui-explorer-test rolltui-explorer)
 
 add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE

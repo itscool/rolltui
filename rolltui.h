@@ -1857,6 +1857,27 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
  * the result is NOT terminated and the length is returned. */
 #define ROLLTUI_COLOR_STRING_MAX 8
 
+/* A COLOUR, BOTH WAYS, AND THEY ARE PUBLIC BECAUSE A TYPED FIELD MADE THEM SO (Phase 21).
+ * The menu widget offers `"kind": "input", "type": "color"`, and a committed input hands the
+ * host back TEXT (`RolltuiMenuEvent::value`). Until `rolltui-paint` grew a colour palette in its
+ * own menu FILE, nothing in the tree had ever driven that field from a host — and when one did,
+ * there was no public way to turn the text the field had just validated into a colour. A public
+ * input type whose value cannot be used is a contradiction in the surface rather than a missing
+ * convenience, so both halves of the round trip are here.
+ *
+ * NOTE WHAT IS AND IS NOT CONSTRAINED, because the effects rule is easy to read too widely: an
+ * EFFECT may never invent a colour (it picks the base style or a ROLE the theme named), which is
+ * what keeps `mono` legible and the grep control green. A WIDGET DRAWING is not on that path —
+ * `rolltui_frame_put_text` and `rolltui_frame_fill` take a `RolltuiStyle` BY VALUE — so a canvas
+ * may write any colour into any cell, exactly as a document's text carries its own. The renderer
+ * down-converts at the frame's depth, so a hand-picked RGB still reads at 256, 16 and mono.
+ *
+ * `parse`: "#rrggbb" | "none" | "0".."255". 1 on success, 0 when it is not a colour.
+ * `to_string`: the same spelling back, into `cap` bytes (`ROLLTUI_COLOR_STRING_MAX` is enough);
+ * the result is NOT terminated and the length is returned. */
+int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
+size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
+
 
 /* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset,
  * so a cell's style never depends on the previous cell's. The longest is

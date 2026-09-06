@@ -86,10 +86,13 @@ const char* rolltui_theme_builtin_name(size_t i);
  * zeroed byte means. */
 const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
 
-/* "#rrggbb" | "none" | "0".."255". 1 on success, 0 when it is not a colour. */
-int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
+/* `rolltui_color_parse` and `rolltui_color_to_string` MOVED to `rolltui/rolltui.h` (Phase 21):
+ * the menu offers a typed `"type": "color"` field whose committed value is TEXT, so a host that
+ * lets a person pick a colour could not turn what the field validated into a `RolltuiStyleColor`.
+ * A public input type whose value has no public parser is a contradiction inside the surface,
+ * and `rolltui-paint` is the consumer that hit it. */
 
-size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
+
 
 /* ---- the dumper ----------------------------------------------------------------------------
  * Builds a fresh, OWNED tree (caller frees with `rolltui_json_free`) with a "roles" object

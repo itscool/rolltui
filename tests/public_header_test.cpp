@@ -281,6 +281,11 @@ int main() {
     list_files(repo + "/tests", {".cpp", ".hpp"}, files);
     list_files(repo + "/tools", {".cpp", ".hpp"}, files);
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tools", {".cpp", ".hpp"}, files);
+    // PHASE 21: `rolltui/examples/` is scanned too, and NOTHING in it may opt in. It holds the
+    // two CONSUMERS — `rolltui-paint` (moved here from `tools/` when the directory's name
+    // finally misled someone) and `rolltui-explorer` — and a consumer that reaches past the
+    // definition is what makes this zero worth asserting.
+    list_files(std::string(ROLLTUI_SOURCE_DIR) + "/examples", {".cpp", ".hpp"}, files);
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tests", {".cpp", ".hpp", ".c"}, files);
     std::vector<std::string> offenders;
     int opted = 0;
@@ -441,10 +446,14 @@ int main() {
     // and it opts in to internal headers like a test. `rolltui-paint` IS a consumer and is the
     // only thing left in `tools/` that counts — a generic painting app is the closest thing in
     // this tree to what an outsider would write, which is why Phase 11 built it.
+    // PHASE 21: the consumer set is `rolltui/examples/` — paint AND the explorer, the fourth
+    // consumer, whose Miller-column browser is the first widget in the tree with internal
+    // structure the library does not model. What an ALIGNED rich widget reaches is the floor
+    // the public surface cannot go below.
     std::set<std::string> paint_reach;
     {
       std::map<std::string, int> counts;
-      for (const char* f : {"/tools/paint.cpp", "/tools/tool_str.hpp"})
+      for (const char* f : {"/examples/paint.cpp", "/examples/explorer.cpp", "/tools/tool_str.hpp"})
         count_idents(strip_comments_and_literals(read(root + f)), counts);
       for (const auto& [k, v] : counts) paint_reach.insert(k);
     }
@@ -564,7 +573,8 @@ int main() {
     // the loop that found them iterated until it compiled), four the sufficiency check in
     // section 1 needs, and `rolltui_rect_intersect`, whose declaration never moved so the
     // compile loop could not flag it. Each carries its sentence in the table.
-    check(kept.size() == 57,
+    // 57 -> 59 (Phase 21): the two colour functions above, each carrying its KEPT reason.
+    check(kept.size() == 59,
           "the KEPT rows — PUBLIC for a stated reason, not for a consumer's reach — are the recorded " +
               std::to_string(kept.size()) + "; a new one is a decision that re-records this number");
     std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached, misplaced, public_for_a_test;
@@ -611,7 +621,11 @@ int main() {
     // KEPT reason: the leak gauge and the named rungs, the 37 a public C++ member in the
     // definition calls (found by COMPILING it, which no reach bucket can do), and the four the
     // sufficiency check in section 1 needs.
-    const int kPublic = 346, kInternal_ = 477, kDelete = 0;
+    // 346 -> 348 (Phase 21): `rolltui_color_parse` and `rolltui_color_to_string` moved to PUBLIC
+    // because the menu's typed `"type": "color"` field hands a host TEXT and there was no public
+    // way to use it — a public input type whose value cannot be parsed is a contradiction in the
+    // surface, and it holds independently of the consumer that found it.
+    const int kPublic = 348, kInternal_ = 475, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +

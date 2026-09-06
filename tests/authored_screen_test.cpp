@@ -242,7 +242,9 @@ int main() {
           "…all three windows, titled as the author titled them");
     // The canvas is a REAL widget: it received the press, every drag between the two
     // points, and the release, and it kept the marks. 22 cells for a 21-step stroke.
-    check(has(frame, "###") && has(status_line(frame), "marks 22"),
+    // Phase 21: the default tool is the ascii ramp at level 4, so a stroke lays `=` rather than
+    // the single `#` the one-glyph brush used to.
+    check(has(frame, "===") && has(status_line(frame), "marks 22"),
           "…the canvas took the whole drag — press, drags and release — and painted it [" + status_line(frame) + "]");
     check(has(frame, "Clear the sheet") && has(frame, "Brush"),
           "…the palette is the app's own menu file, drawn in a window a person placed");

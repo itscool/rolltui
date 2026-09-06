@@ -72,13 +72,62 @@ namespace {
 // The tool palette. A MENU FILE the app carries in its own binary — the middle of Phase
 // 10 m3's three rungs — so a user can shadow it with menus/tools.json and the studio can
 // preview it verbatim from the profile.
+// PHASE 21: the palette is the app's own FILE, and every tool a person picks now comes out of
+// it — the ramp, the ink, the brush size and its shape. Two of them are the menu's TYPED input
+// fields (`"kind": "input"`, `"type": "int"` with a range and `"type": "color"`), which NOTHING
+// in this tree drove from a host before: they were built in Phase 10 and only the editors used
+// them. What that cost is wall 7 in `plan/phase-21.md`.
 constexpr const char* kToolsMenu = R"({
   "id": "root", "label": "tools", "items": [
-    { "id": "brush", "label": "Brush", "kind": "choice",
-      "items": [ { "id": "#", "label": "block  #" }, { "id": "*", "label": "star   *" },
-                 { "id": "." , "label": "dot    ." }, { "id": "o", "label": "ring   o" } ] },
+    { "id": "ramp", "label": "Shading", "kind": "choice",
+      "items": [ { "id": "ascii", "label": "ascii   .:-=+*#%@" },
+                 { "id": "blocks", "label": "blocks  \u2591\u2592\u2593\u2588" } ] },
+    { "id": "level", "label": "Level", "kind": "input", "type": "int",
+      "min": 0, "max": 9, "step": 1, "value": "4", "hint": "0 lightest, 9 darkest" },
+    { "id": "ink", "label": "Ink", "kind": "input", "type": "color",
+      "value": "#d8dce2", "hint": "#rrggbb, 0-255 or none" },
+    { "id": "size", "label": "Brush size", "kind": "input", "type": "int",
+      "min": 1, "max": 5, "step": 1, "value": "1", "hint": "cells across" },
     { "id": "clear", "label": "Clear the sheet" } ] }
 )";
+
+// THE TWO RAMPS, and the second is a deliberate Unicode probe. CLAUDE.md records that U+2588
+// FULL BLOCK is East Asian AMBIGUOUS and overflowed a one-cell column on a wide-ambiguous
+// terminal in Phase 12 m7. A painting app whose best tool is a block ramp should meet that
+// rather than avoid it, so `--ambiguous-wide` is a real mode here and a golden frame runs in it.
+struct Ramp {
+  const char* name;
+  const char* cells[10];  // lightest to darkest; a cell is one grapheme
+  int steps;
+};
+constexpr Ramp kRamps[] = {
+    {"ascii", {" ", ".", ":", "-", "=", "+", "*", "#", "%", "@"}, 10},
+    {"blocks", {" ", "\xE2\x96\x91", "\xE2\x96\x91", "\xE2\x96\x92", "\xE2\x96\x92",
+                "\xE2\x96\x93", "\xE2\x96\x93", "\xE2\x96\x88", "\xE2\x96\x88", "\xE2\x96\x88"}, 10},
+};
+
+// WALL 7, AND IT WAS FIXED AT THE API RATHER THAN HERE (phase file). The menu offers
+// `"type": "color"` and a committed input hands the host TEXT, and `rolltui_color_parse` — the
+// library's own, which the theme loader has always used — was INTERNAL. A public input type
+// whose value has no public parser is a contradiction in the surface, so the parser and its
+// `to_string` pair are public now and this app calls them. The five-line hex parser that stood
+// here for one commit is deleted: `rolltui.h` rule 5 says fix the API, never ship the wrapper.
+
+// What a stroke lays down. THE CELL CARRIES GLYPH AND COLOUR TOGETHER — see the log: a
+// `RolltuiCell` is the library's own and is not a host's to build, so this is the parallel
+// structure the phase asked me to be plain about.
+struct Ink {
+  int ramp = 0;                  // WHICH ramp, per cell: a picture mixes them, so the cell has
+  int level = 4;                 // to carry it. Storing only the level made the last ramp chosen
+  RolltuiStyleColor color = RolltuiStyleColor::rgb(0xd8, 0xdc, 0xe2);  // repaint the whole sheet.
+};
+
+struct Tool {
+  int ambiguous = 0;  // the app's --ambiguous-wide, lent to the canvas (wall 8)
+  int ramp = 0;
+  Ink ink;
+  int size = 1;
+};
 
 // The app's own screen, for a run with no --layout: one canvas and the palette beside it.
 // A file, in the sense that matters — it is parsed by the same loader as any other, and
@@ -108,11 +157,15 @@ constexpr const char* kCanvasDescribes = "a sheet the app paints on";
 // difference from a virtual nobody was asked about.
 struct Canvas {
   std::string source;            // what the layout named after the colon
-  const std::string* brush;      // the host's current tool, read at paint time — BORROWED
+  const Tool* tool;              // the host's current tool, read at paint time — BORROWED
   RolltuiWindows* windows;       // BORROWED: where `draw` asks for the frame's style table
   RolltuiDrawScratch* draw_scratch = nullptr;
   RolltuiRect inner{};
-  std::map<std::pair<int, int>, char> pixels;
+  // A PAINTED CELL IS GLYPH-LEVEL PLUS COLOUR, and it is the host's own struct: `RolltuiCell`
+  // is the library's grid cell, built by the frame, and there is no public way for a host to
+  // make or hold one. So a paint app keeps a parallel picture and turns it into cells at draw
+  // time — stated in the wall log rather than left implicit.
+  std::map<std::pair<int, int>, Ink> pixels;
 };
 
 void canvas_destroy(void* ctx) {
@@ -138,11 +191,39 @@ void canvas_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   // Role::text look like" without the vtable carrying a fourth parameter every kind must
   // accept (`rolltui_widgets.h`'s note on `rolltui_windows_styles`).
   const RolltuiStyle* styles = rolltui_windows_styles(c->windows);
-  const RolltuiStyle ink = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
-  for (const auto& [at, ch] : c->pixels) {
+  const RolltuiStyle base = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
+  for (const auto& [at, ink] : c->pixels) {
     const auto [x, y] = at;
     if (x < 0 || y < 0 || x >= r.w || y >= r.h) continue;  // the picture outlives the viewport
-    rolltui_frame_put_text(f, c->draw_scratch, r.x + x, r.y + y, &ch, 1, ink, 1, 0, 0);
+    const Ramp& ramp = kRamps[ink.ramp % 2];
+    const int step = ink.level < 0 ? 0 : (ink.level >= ramp.steps ? ramp.steps - 1 : ink.level);
+    const char* g = ramp.cells[step];
+    // A HOST NAMES ITS OWN COLOUR HERE, and it is worth being explicit that this is NOT the
+    // effects rule. `rolltui.h` says an EFFECT never invents a colour — it picks the base style
+    // or a role the theme named — because an effect is the THEME's motion and must stay legible
+    // in `mono`. A canvas's pixel is the USER's content, the same way a document's text is, and
+    // content has always carried its own colour. What keeps mono honest is the RAMP: the shape
+    // survives with no colour at all.
+    RolltuiStyle st = base;
+    if (ink.color.kind != RolltuiStyleColor::Kind::None) st.fg = ink.color;
+    // WALL 8: `rolltui_windows_env` is INTERNAL, so a host's widget cannot read back the
+    // ambiguity the library was told about — and, exactly as with the bindings table in wall 1,
+    // it does not need to: the HOST set it and lends it through the tool. The block ramp is
+    // EA-AMBIGUOUS, so on a wide-ambiguous terminal U+2588 is TWO cells and `put_text` refuses
+    // to cut one in half — a visible refusal rather than a torn row.
+    // THE AMBIGUOUS-WIDTH FALLBACK, AND IT IS THE APP'S TO MAKE (Phase 21's Unicode probe).
+    // U+2588 and friends are East Asian AMBIGUOUS: on a terminal that renders them two cells
+    // wide, `put_text` will not cut one in half and lays down NOTHING — measured, and the whole
+    // block ramp vanished. The library is right to refuse and it says so the only way a draw
+    // call can: it RETURNS THE CELLS IT USED. So a host that checks the return can fall back,
+    // and this one falls back to the ascii ramp's step of the same darkness — the picture keeps
+    // its shape, which is the same reason the ramp exists for `mono`.
+    if (rolltui_frame_put_text(f, c->draw_scratch, r.x + x, r.y + y, g, std::strlen(g), st, 1,
+                               c->tool->ambiguous, 0) == 0) {
+      const char* fallback = kRamps[0].cells[step];
+      rolltui_frame_put_text(f, c->draw_scratch, r.x + x, r.y + y, fallback, std::strlen(fallback), st, 1,
+                             c->tool->ambiguous, 0);
+    }
   }
 }
 
@@ -159,7 +240,19 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
   using K = RolltuiMouseEvent::Kind;
   const K k = e->mouse.kind;
   if (k != K::Press && k != K::Drag && k != K::Release) return 0;
-  if (k != K::Release) c->pixels[{e->mouse.x - c->inner.x, e->mouse.y - c->inner.y}] = c->brush->front();
+  if (k != K::Release) {
+    // A brush is a SIZE and a SHAPE now, so a drag lays a footprint rather than one cell.
+    const int cx = e->mouse.x - c->inner.x, cy = e->mouse.y - c->inner.y;
+    const int n = c->tool->size < 1 ? 1 : (c->tool->size > 5 ? 5 : c->tool->size);
+    const int rad = n / 2;
+    for (int dy = -rad; dy <= rad; ++dy)
+      for (int dx = -rad; dx <= rad; ++dx) {
+        if (n % 2 == 0 && (dx == -rad || dy == -rad)) continue;  // an even brush grows right/down
+        Ink laid = c->tool->ink;
+        laid.ramp = c->tool->ramp;  // the cell remembers which ramp drew it
+        c->pixels[{cx + dx, cy + dy}] = laid;
+      }
+  }
   return 1;
 }
 
@@ -180,7 +273,7 @@ constexpr RolltuiWidgetPlugin kCanvasPlugin = {
 // What the factory is registered WITH: the two borrows a canvas needs and nothing else. One
 // per app, held by `App`, so the factory's `ctx` outlives every widget it builds.
 struct CanvasFactoryCtx {
-  const std::string* brush;
+  const Tool* tool;
   RolltuiWindows* windows;
 };
 
@@ -194,7 +287,7 @@ RolltuiWidget canvas_factory(void* ctx, const char* content, std::size_t len) {
   // cannot build this", and `Windows` draws the error panel and names it in the report.
   if (!rolltui_content_parse(content, len, nullptr, nullptr, nullptr, nullptr, &source, &source_len, &problem, &why))
     return RolltuiWidget{};
-  Canvas* c = new Canvas{std::string(source, source_len), fc->brush, fc->windows, rolltui_draw_scratch_new(), {}, {}};
+  Canvas* c = new Canvas{std::string(source, source_len), fc->tool, fc->windows, rolltui_draw_scratch_new(), {}, {}};
   return RolltuiWidget{&kCanvasPlugin, c};
 }
 
@@ -215,7 +308,7 @@ struct App {
   RolltuiLayout layout{};
   CanvasFactoryCtx factory_ctx{};
   int w = 80, h = 24;
-  std::string brush = "#";
+  Tool tool;
   std::string note;
   // m6: the clock effects are applied at — 0 under --frame, so a frame dump stays a pure
   // function of state; the real one in the event loop.
@@ -256,7 +349,7 @@ struct App {
     // layout vocabulary (rung 2, which refuses a library name) and the FACTORY with the
     // window table. After this the library builds `canvas:<source>` like any built-in, and
     // this host never sees a window id again.
-    factory_ctx = {&brush, windows};
+    factory_ctx = {&tool, windows};
     register_canvas_kind();
     rolltui_windows_register_kind(windows, kCanvasKind, std::strlen(kCanvasKind), canvas_factory, &factory_ctx,
                                   nullptr);
@@ -265,7 +358,15 @@ struct App {
         windows, "brush", 5,
         [](void* ctx, RolltuiRows* out) {
           App& a = *static_cast<App*>(ctx);
-          rolltui_rows_add(out, "brush", 5, a.brush.data(), a.brush.size());
+          const char* ramp = kRamps[a.tool.ramp % 2].name;
+          rolltui_rows_add(out, "shading", 7, ramp, std::strlen(ramp));
+          const std::string lvl = std::to_string(a.tool.ink.level);
+          rolltui_rows_add(out, "level", 5, lvl.data(), lvl.size());
+          char ink[ROLLTUI_COLOR_STRING_MAX];
+          const std::size_t n = rolltui_color_to_string(a.tool.ink.color, ink, sizeof ink);
+          rolltui_rows_add(out, "ink", 3, ink, n);
+          const std::string brush = std::to_string(a.tool.size);
+          rolltui_rows_add(out, "brush", 5, brush.data(), brush.size());
           const std::string marks = std::to_string(a.marks());
           rolltui_rows_add(out, "marks", 5, marks.data(), marks.size());
         },
@@ -325,7 +426,7 @@ struct App {
   }
 
   void prepare() {
-    const RolltuiWidgetEnv env{0, effect_ms};
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(tool.ambiguous), effect_ms};
     rolltui_windows_set_env(windows, &env);
     rolltui_windows_set_bindings(windows, bindings);
     rolltui_windows_sync(windows, stack);
@@ -353,7 +454,20 @@ struct App {
     if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
       RolltuiMenuEvent ev{};
       rolltui_menu_handle(m, &e, bindings, rolltui_menu_default_actions(), &ev);
-      if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && view_of(ev.id) == "brush" && ev.value.n != 0) brush = str_of(ev.value);
+      // THE TYPED FIELDS FROM A HOST'S SIDE, which nothing in this tree did before Phase 21.
+      // What the API makes easy: a committed value arrives already validated and CANONICAL, so
+      // there is no range check, no re-format and no error path here — the field refused
+      // anything that could not become a valid value while it was still being typed. What it
+      // makes hard is only that the value is text, which `rolltui_color_parse` now answers.
+      if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && ev.value.n != 0) {
+        if (view_of(ev.id) == "ramp") tool.ramp = view_of(ev.value) == "blocks" ? 1 : 0;
+      }
+      if (ev.kind == ROLLTUI_MENU_EVENT_INPUT && ev.value.n != 0) {
+        const std::string v = str_of(ev.value);
+        if (view_of(ev.id) == "level") tool.ink.level = std::atoi(v.c_str());
+        if (view_of(ev.id) == "size") tool.size = std::atoi(v.c_str());
+        if (view_of(ev.id) == "ink") rolltui_color_parse(v.data(), v.size(), &tool.ink.color);
+      }
       if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "clear" && canvas()) canvas()->pixels.clear();
       rolltui_menu_event_release(&ev);
     }
@@ -364,13 +478,20 @@ struct App {
   void render_into(RolltuiFrame* f) {
     prepare();
     rolltui_window_stack_compose(stack, f, area(), styles, rolltui_layout_default_roles(), draw_slot, this,
-                                 /*ambiguous_wide=*/0, compose_scratch);
+                                 tool.ambiguous, compose_scratch);
     if (h > 1) {
       rolltui_frame_fill(f, draw_scratch, RolltuiRect{0, h - 1, w, 1}, style(ROLLTUI_ROLE_PANEL_BACKGROUND),
                          nullptr, 0);
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
-      std::string status = " " + str_of(layout.name) + "  " + std::to_string(w) + "x" + std::to_string(h) + "  brush " +
-                           brush + "  marks " + std::to_string(marks()) + "  focus:" +
+      char inkstr[ROLLTUI_COLOR_STRING_MAX];
+      const std::size_t inkn = rolltui_color_to_string(tool.ink.color, inkstr, sizeof inkstr);
+      // COMPACT ON PURPOSE: the tool grew from one glyph to a ramp, a level, an ink and a size,
+      // and a status line that pushes the window REPORT off the right edge hides the one thing
+      // that must never be hidden. `ascii/4 #d8dce2 b1` says all four in a third of the width.
+      std::string status = " " + str_of(layout.name) + "  " + std::to_string(w) + "x" + std::to_string(h) +
+                           "  " + kRamps[tool.ramp % 2].name + "/" + std::to_string(tool.ink.level) + " " +
+                           std::string(inkstr, inkn) + " b" + std::to_string(tool.size) +
+                           "  marks " + std::to_string(marks()) + "  focus:" +
                            (focused ? str_of(focused->id) : std::string("-"));
       if (!note.empty()) status += "  [" + note + "]";
       rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0,
@@ -431,7 +552,10 @@ RolltuiAppProfile* paint_profile() {
   rolltui_app_profile_add_kind(p, kCanvasKind, std::strlen(kCanvasKind), ROLLTUI_SOURCE_REQUIRED, kCanvasDescribes,
                                std::strlen(kCanvasDescribes));
   const std::size_t row = rolltui_app_profile_add_row(p, "brush", 5);
-  rolltui_app_profile_row_add_sample(p, row, "brush", 5, "#", 1);
+  rolltui_app_profile_row_add_sample(p, row, "shading", 7, "ascii", 5);
+  rolltui_app_profile_row_add_sample(p, row, "level", 5, "4", 1);
+  rolltui_app_profile_row_add_sample(p, row, "ink", 3, "#d8dce2", 7);
+  rolltui_app_profile_row_add_sample(p, row, "brush", 5, "1", 1);
   rolltui_app_profile_row_add_sample(p, row, "marks", 5, "0", 1);
   // the same list this binary hands its own Windows
   for (const std::string& s : App::help_scopes()) rolltui_app_profile_add_help_scope(p, s.data(), s.size());
@@ -476,7 +600,10 @@ bool load_layout_text(std::string_view text, RolltuiLayout* out, RolltuiLayoutRe
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-paint [--presets DIR] [--layout NAME|FILE] [--theme NAME] [--frame WxH]\n"
-               "                     [--stroke X,Y-X,Y]  a press, the drags between, and a release\n"
+               "                     [--present truecolor|256|16|mono] [--ambiguous-wide]\n"
+               "                     [--ramp ascii|blocks] [--level 0-9] [--ink #rrggbb] [--size N]\n"
+               "                     [--stroke X,Y-X,Y] [--dot X,Y]\n"
+               "                     tool flags and strokes are applied IN THE ORDER WRITTEN\n"
                "       rolltui-paint --profile [PATH]     write this app's profile (what a layout may name in it)\n");
   return 2;
 }
@@ -550,8 +677,12 @@ RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, stroke_spec, profile_path;
-  bool want_profile = false;
+  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, profile_path, present_depth;
+  bool want_profile = false, ambiguous = false;
+  // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
+  // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
+  // flags and the strokes are collected as an ordered list and replayed after the app is built.
+  std::vector<std::pair<std::string, std::string>> script;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
@@ -559,7 +690,11 @@ int main(int argc, char** argv) {
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
     else if (a == "--frame") frame_spec = next();
-    else if (a == "--stroke") stroke_spec = next();
+    else if (a == "--present") present_depth = next();
+    else if (a == "--ambiguous-wide") ambiguous = true;
+    else if (a == "--stroke" || a == "--ramp" || a == "--level" || a == "--ink" || a == "--size" ||
+             a == "--dot")
+      script.emplace_back(a, next());
     else if (a == "--profile") { want_profile = true; if (i + 1 < argc && argv[i + 1][0] != '-') profile_path = next(); }
     else return usage();
   }
@@ -586,6 +721,7 @@ int main(int argc, char** argv) {
   }
 
   App app;
+  app.tool.ambiguous = ambiguous ? 1 : 0;
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");  // an unknown --theme keeps the app's own look
   rolltui_windows_set_dir(app.windows, presets_dir.data(), presets_dir.size());
@@ -624,21 +760,45 @@ int main(int argc, char** argv) {
   if (!frame_spec.empty()) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
     app.prepare();
-    if (!stroke_spec.empty()) {
-      int x1, y1, x2, y2;
-      if (std::sscanf(stroke_spec.c_str(), "%d,%d-%d,%d", &x1, &y1, &x2, &y2) != 4) return usage();
-      app.handle(mouse_event(RolltuiMouseEvent::Kind::Press, x1, y1));
-      const int steps = std::max(std::abs(x2 - x1), std::abs(y2 - y1));
-      for (int s = 1; s <= steps; ++s)
-        app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x1 + (x2 - x1) * s / std::max(steps, 1),
-                               y1 + (y2 - y1) * s / std::max(steps, 1)));
-      app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x2, y2));
+    for (const auto& [flag, val] : script) {
+      if (flag == "--ramp") app.tool.ramp = val == "blocks" ? 1 : 0;
+      else if (flag == "--level") app.tool.ink.level = std::atoi(val.c_str());
+      else if (flag == "--size") app.tool.size = std::atoi(val.c_str());
+      else if (flag == "--ink") rolltui_color_parse(val.data(), val.size(), &app.tool.ink.color);
+      else if (flag == "--dot") {
+        int x = 0, y = 0;
+        if (std::sscanf(val.c_str(), "%d,%d", &x, &y) != 2) return usage();
+        app.handle(mouse_event(RolltuiMouseEvent::Kind::Press, x, y));
+        app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x, y));
+      } else {
+        int x1, y1, x2, y2;
+        if (std::sscanf(val.c_str(), "%d,%d-%d,%d", &x1, &y1, &x2, &y2) != 4) return usage();
+        app.handle(mouse_event(RolltuiMouseEvent::Kind::Press, x1, y1));
+        const int steps = std::max(std::abs(x2 - x1), std::abs(y2 - y1));
+        for (int st = 1; st <= steps; ++st)
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x1 + (x2 - x1) * st / std::max(steps, 1),
+                                 y1 + (y2 - y1) * st / std::max(steps, 1)));
+        app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x2, y2));
+      }
     }
     // Even the one-shot path goes through the swap: it is the only place a frame is made, so
     // there is exactly one draw path rather than a printing one beside a presenting one.
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
+    // `--present DEPTH` writes the ESCAPE BYTES rather than the glyphs, which is the only way to
+    // see what a hand-picked RGB becomes at `256`, `16` and `mono` — the down-conversion is the
+    // renderer's, and a paint app is the first consumer whose colours are USER DATA rather than
+    // the theme's expression of a state.
+    if (!present_depth.empty()) {
+      const int d = rolltui_color_depth_from_name(present_depth.data(), present_depth.size());
+      RolltuiStr bytes{};
+      rolltui_swap_present(swap, d < 0 ? ROLLTUI_DEPTH_TRUECOLOR : static_cast<unsigned char>(d), &bytes);
+      std::fwrite(bytes.p ? bytes.p : "", 1, bytes.n, stdout);
+      rolltui_str_free(&bytes);
+      rolltui_swap_free(swap);
+      return 0;
+    }
     RolltuiStr text{};
     rolltui_frame_to_text(f, &text);
     std::fwrite(text.p ? text.p : "", 1, text.n, stdout);
