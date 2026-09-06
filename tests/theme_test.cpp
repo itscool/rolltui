@@ -137,7 +137,7 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   RolltuiStr err{};
   RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
   if (!root_c) {
-    report.error = err.str();
+    report.error = str_of(err);
     rolltui_str_free(&err);
     return std::nullopt;
   }
@@ -147,17 +147,17 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   RolltuiThemeReport rep{};
   RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), rolltui_theme_default_vocab(), t.styles.data(), &name, &rep);
   rolltui_json_free(root_c);
-  report.error = rep.error.str();
-  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(rep.missing_roles[i].str());
-  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(rep.unknown_keys[i].str());
-  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(rep.bad_values[i].str());
+  report.error = str_of(rep.error);
+  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(str_of(rep.missing_roles[i]));
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(str_of(rep.unknown_keys[i]));
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(str_of(rep.bad_values[i]));
   rolltui_theme_report_release(&rep);
   if (!eff) {
     rolltui_str_free(&name);
     return std::nullopt;
   }
   rolltui_effect_map_free(eff);  // this fixture never reads effects
-  t.name = name.str();
+  t.name = str_of(name);
   rolltui_str_free(&name);
   return t;
 }
@@ -237,7 +237,7 @@ class Value {
 Value parse(std::string_view text, std::string& error) {
   RolltuiStr err{};
   RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), &err);
-  error = err.str();
+  error = str_of(err);
   rolltui_str_free(&err);
   return Value(v);
 }
@@ -245,7 +245,7 @@ Value parse(std::string_view text, std::string& error) {
 std::string dump(const Value& v, int indent = 2) {
   RolltuiStr out{};
   rolltui_json_dump(v.handle(), indent, &out);
-  std::string result = out.str();
+  std::string result = str_of(out);
   rolltui_str_free(&out);
   return result;
 }

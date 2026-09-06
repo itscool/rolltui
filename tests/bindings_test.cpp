@@ -187,10 +187,10 @@ void copy_report(BindingsLoadReport& out, const RolltuiBindingsReport& in) {
   auto copy = [](const RolltuiStr* v, std::size_t n) {
     std::vector<std::string> r;
     r.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) r.emplace_back(v[i].view());
+    for (std::size_t i = 0; i < n; ++i) r.emplace_back(view_of(v[i]));
     return r;
   };
-  out.error = in.error.str();
+  out.error = str_of(in.error);
   out.unknown_actions = copy(in.unknown_actions, in.unknown_actions_n);
   out.bad_chords = copy(in.bad_chords, in.bad_chords_n);
   out.undeliverable = copy(in.undeliverable, in.undeliverable_n);
@@ -340,7 +340,7 @@ bool bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) { return
 std::string bindings_to_json(const RolltuiBindings* b, std::string_view name) {
   RolltuiStr out;
   rolltui_bindings_dump_json(b, name.data(), name.size(), &out);
-  return out.str();
+  return str_of(out);
 }
 
 // Mirrors Bindings::from_json, minus the json::Value round trip that existed only for a
@@ -394,7 +394,7 @@ const std::vector<ActionDecl>& shipped_default_actions() {
       std::size_t n = 0, cap = 0;
       rolltui_layout_read_actions_key(v, &actions, &n, &cap);
       out.reserve(n);
-      for (std::size_t i = 0; i < n; ++i) out.push_back({actions[i].name.str(), actions[i].description.str()});
+      for (std::size_t i = 0; i < n; ++i) out.push_back({str_of(actions[i].name), str_of(actions[i].description)});
       rolltui_layout_actions_free(actions, n);
       rolltui_json_free(v);
     }

@@ -198,11 +198,11 @@ void paint_something() {
   RolltuiDocument doc{};
   for (int i = 0; i < 8; ++i) {
     RolltuiDocEntry* e = rolltui_document_add(&doc);
-    e->id = "e" + std::to_string(i);
+    set_str(e->id, "e" + std::to_string(i));
     e->markdown = 1;
-    e->text = "## Entry " + std::to_string(i) +
-              "\n\nSome prose that is long enough to wrap, with `code` and a "
-              "[link](https://example.invalid/p).\n\n- one\n- two\n";
+    set_str(e->text, "## Entry " + std::to_string(i) +
+                         "\n\nSome prose that is long enough to wrap, with `code` and a "
+                         "[link](https://example.invalid/p).\n\n- one\n- two\n");
   }
   RolltuiWindows* windows = rolltui_windows_new();
   rolltui_windows_set_library_defaults(windows);
@@ -243,7 +243,7 @@ void paint_something() {
 
 void probe_effect(void*, const RolltuiEffectSpec*, const RolltuiStyle*, const void*, const RolltuiEffectCell*,
                   RolltuiEffectOut* out) {
-  out->set_glyph("*");
+  out->set_glyph("*", 1);
 }
 void note_unknown_effect(void* ctx, const char*, std::size_t) { *static_cast<bool*>(ctx) = true; }
 

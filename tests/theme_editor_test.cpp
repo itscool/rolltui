@@ -144,7 +144,7 @@ int main() {
       all &= find(ed.menu(), base) && find(ed.menu(), base + ".fg") && find(ed.menu(), base + ".bg") && find(ed.menu(), base + ".bold") && find(ed.menu(), base + ".fg.custom");
     }
     check(all, "every role has fg, bg, custom fg and the attribute toggles");
-    check(find(ed.menu(), "role.md_heading.fg")->value == color_to_string(base_dark[md_heading].fg), "a choice shows the role's current colour as its value");
+    check(view_of(find(ed.menu(), "role.md_heading.fg")->value) == color_to_string(base_dark[md_heading].fg), "a choice shows the role's current colour as its value");
     check(ed.palette().size() > 5 && ed.palette()[0].id == "none", "the palette is every colour in use, none first (" + std::to_string(ed.palette().size()) + " entries)");
   }
   // ---- three levels deep: Roles › md_heading › fg › entry; preview, cancel, commit ----
@@ -156,12 +156,12 @@ int main() {
     check(breadcrumb_of(ed) == "theme editor \xE2\x80\xBA Roles \xE2\x80\xBA md_heading" && ed.focused_role() == md_heading,
           "filter + Enter reaches md_heading; the editor knows the focused role [" + breadcrumb_of(ed) + "]");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));  // fg choice
-    check(rolltui_menu_level(ed.menu())->id == "role.md_heading.fg" && rolltui_menu_selected_item(ed.menu())->id == color_to_string(original), "the fg choice opens on the current colour");
+    check(rolltui_menu_level(ed.menu())->id == "role.md_heading.fg" && view_of(rolltui_menu_selected_item(ed.menu())->id) == color_to_string(original), "the fg choice opens on the current colour");
     // Move to a different entry: the preview applies live.
     Color previewed = original;
     for (int i = 0; i < 6 && previewed == original; ++i) {
       o = handle(ed, key(ROLLTUI_KEY_DOWN));
-      previewed = *parse_color(rolltui_menu_selected_item(ed.menu())->id.view());
+      previewed = *parse_color(view_of(rolltui_menu_selected_item(ed.menu())->id));
     }
     check(!(previewed == original) && ed.current()[md_heading].fg == previewed && ed.previewing() && o.kind == ThemeEditor::Outcome::Kind::Changed,
           "moving the selection previews that colour on the role before anything is committed");
@@ -171,12 +171,12 @@ int main() {
     check(!ed.previewing() && ed.current()[md_heading].fg == original && rolltui_menu_level(ed.menu())->id == "role.md_heading",
           "Escape cancels: the field returns to its committed value and the menu ascends");
     handle(ed, key(ROLLTUI_KEY_ENTER));  // fg again
-    for (int i = 0; i < 6 && *parse_color(rolltui_menu_selected_item(ed.menu())->id.view()) == original; ++i) handle(ed, key(ROLLTUI_KEY_DOWN));
-    const Color chosen = *parse_color(rolltui_menu_selected_item(ed.menu())->id.view());
+    for (int i = 0; i < 6 && *parse_color(view_of(rolltui_menu_selected_item(ed.menu())->id)) == original; ++i) handle(ed, key(ROLLTUI_KEY_DOWN));
+    const Color chosen = *parse_color(view_of(rolltui_menu_selected_item(ed.menu())->id));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == ThemeEditor::Outcome::Kind::Committed && ed.committed().dark[md_heading].fg == chosen && ed.undo_depth() == 1 && !ed.previewing(),
           "Enter commits: the committed theme has the colour, undo depth 1");
-    check(find(ed.menu(), "role.md_heading.fg")->value == color_to_string(chosen), "…and the choice shows the new value");
+    check(view_of(find(ed.menu(), "role.md_heading.fg")->value) == color_to_string(chosen), "…and the choice shows the new value");
     std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> base_light{};
     rolltui_effect_map_free(rolltui_theme_builtin_fill("default-light", 13, base_light.data(), ROLLTUI_ROLE_COUNT));
     check(ed.committed().light[md_heading].fg == base_light[md_heading].fg, "the light variant is untouched");
@@ -193,7 +193,7 @@ int main() {
     handle(ed, key(ROLLTUI_KEY_DOWN));
     handle(ed, key(ROLLTUI_KEY_DOWN));
     handle(ed, key(ROLLTUI_KEY_DOWN));  // bold (fg, bg, custom fg, custom bg, bold)
-    check(rolltui_menu_selected_item(ed.menu())->id == "role.md_heading.bold", "the fifth field is the bold toggle [" + rolltui_menu_selected_item(ed.menu())->id.str() + "]");
+    check(rolltui_menu_selected_item(ed.menu())->id == "role.md_heading.bold", "the fifth field is the bold toggle [" + str_of(rolltui_menu_selected_item(ed.menu())->id) + "]");
     const bool was = ed.current()[md_heading].bold;
     ThemeEditor::Outcome o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == ThemeEditor::Outcome::Kind::Committed && ed.committed().dark[md_heading].bold == !was && ed.undo_depth() == 2, "Enter on a toggle flips and commits");
@@ -202,7 +202,7 @@ int main() {
   {
     handle(ed, key(ROLLTUI_KEY_UP));
     handle(ed, key(ROLLTUI_KEY_UP));  // custom fg
-    check(rolltui_menu_selected_item(ed.menu())->id == "role.md_heading.fg.custom", "custom fg [" + rolltui_menu_selected_item(ed.menu())->id.str() + "]");
+    check(rolltui_menu_selected_item(ed.menu())->id == "role.md_heading.fg.custom", "custom fg [" + str_of(rolltui_menu_selected_item(ed.menu())->id) + "]");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "#123456");
     check(ed.previewing() && ed.current()[md_heading].fg == Color::rgb(0x12, 0x34, 0x56), "typing a valid colour previews it live");
@@ -314,7 +314,7 @@ int main() {
     handle(e2, key(ROLLTUI_KEY_HOME));
     type(e2, "fixes");
     handle(e2, key(ROLLTUI_KEY_ENTER));  // Fixes level
-    const std::string first(rolltui_menu_selected_item(e2.menu())->label.view());
+    const std::string first(view_of(rolltui_menu_selected_item(e2.menu())->label));
     o = handle(e2, key(ROLLTUI_KEY_ENTER));
     check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.fixes().size() == 1 && e2.undo_depth() == 2,
           "Enter on a proposal applies it as a commit (undoable) and the list shrinks: applied [" + first + "]");

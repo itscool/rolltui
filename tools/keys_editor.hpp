@@ -12,6 +12,7 @@
 //
 // Phase 17 m1d: calls `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
+#include "tool_str.hpp"
 #include <cstddef>
 #include <optional>
 #include <string>

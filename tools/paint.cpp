@@ -65,6 +65,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "tool_str.hpp"
 
 namespace {
 
@@ -318,7 +319,7 @@ struct App {
 
   void set_layout(RolltuiLayout l) {
     rolltui_layout_release(&layout);
-    layout = l;  // MOVED: `l` was filled by `rolltui_loaded_layout_to_layout` and is not released
+    layout = std::move(l);  // MOVED: `l` was filled by `rolltui_loaded_layout_to_layout` and is left empty
     rolltui_window_stack_set_base(stack, &layout.base);
     declare_actions();
   }
@@ -344,7 +345,7 @@ struct App {
     RolltuiStr window{};
     const unsigned char kind =
         rolltui_window_stack_route(stack, &e, area(), bindings, rolltui_stack_default_actions(), &window);
-    const std::string target = window.str();
+    const std::string target = str_of(window);
     rolltui_str_free(&window);
     if (kind != ROLLTUI_ROUTE_DELIVER) return;
     if (rolltui_windows_handle(windows, target.data(), target.size(), &e)) return;
@@ -352,8 +353,8 @@ struct App {
     if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
       RolltuiMenuEvent ev{};
       rolltui_menu_handle(m, &e, bindings, rolltui_menu_default_actions(), &ev);
-      if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && ev.id.view() == "brush" && ev.value.n != 0) brush = ev.value.str();
-      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && ev.id.view() == "clear" && canvas()) canvas()->pixels.clear();
+      if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && view_of(ev.id) == "brush" && ev.value.n != 0) brush = str_of(ev.value);
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "clear" && canvas()) canvas()->pixels.clear();
       rolltui_menu_event_release(&ev);
     }
   }
@@ -368,9 +369,9 @@ struct App {
       rolltui_frame_fill(f, draw_scratch, RolltuiRect{0, h - 1, w, 1}, style(ROLLTUI_ROLE_PANEL_BACKGROUND),
                          nullptr, 0);
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
-      std::string status = " " + layout.name.str() + "  " + std::to_string(w) + "x" + std::to_string(h) + "  brush " +
+      std::string status = " " + str_of(layout.name) + "  " + std::to_string(w) + "x" + std::to_string(h) + "  brush " +
                            brush + "  marks " + std::to_string(marks()) + "  focus:" +
-                           (focused ? focused->id.str() : std::string("-"));
+                           (focused ? str_of(focused->id) : std::string("-"));
       if (!note.empty()) status += "  [" + note + "]";
       rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0,
                              0);
@@ -614,7 +615,7 @@ int main(int argc, char** argv) {
   } else {
     have = load_layout_text(kDefaultLayout, &loaded, &rep);
   }
-  app.set_layout(loaded);
+  app.set_layout(loaded.clone());
   app.mount();
   for (std::size_t i = 0; i < rep.bad_values_n; ++i)
     std::fprintf(stderr, "rolltui-paint: %s\n", rep.bad_values[i].c_str());

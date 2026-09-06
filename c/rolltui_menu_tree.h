@@ -33,8 +33,7 @@
 
 #ifdef __cplusplus
 #include <cstddef>
-#include <string>
-#include <vector>
+#include <cstring>
 #endif
 
 /* The typed-input vocabulary, outside `extern "C"` so C++ keeps the scoped enum every call
@@ -76,6 +75,7 @@ typedef struct RolltuiInputSpec {
 
 #ifdef __cplusplus
   bool operator==(const RolltuiInputSpec& o) const;
+  RolltuiInputSpec clone() const;  /* `rolltui_input_spec_copy`, spelled (Phase 19 m2) */
 #endif
 } RolltuiInputSpec;
 
@@ -126,12 +126,12 @@ typedef struct RolltuiMenuItemList {
   using value_type = RolltuiMenuItem;
 
   RolltuiMenuItemList() = default;
-  RolltuiMenuItemList(const RolltuiMenuItemList& o);
+  RolltuiMenuItemList(const RolltuiMenuItemList&) = delete;  /* Phase 19 m2: `rolltui_menu_list_copy`, spelled */
   RolltuiMenuItemList(RolltuiMenuItemList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
     o.v = nullptr;
     o.n = o.cap = 0;
   }
-  RolltuiMenuItemList& operator=(const RolltuiMenuItemList& o);
+  RolltuiMenuItemList& operator=(const RolltuiMenuItemList&) = delete;
   RolltuiMenuItemList& operator=(RolltuiMenuItemList&& o) noexcept;
   ~RolltuiMenuItemList();
 
@@ -148,7 +148,6 @@ typedef struct RolltuiMenuItemList {
   const_iterator begin() const { return {v}; }
   const_iterator end() const { return {v + n}; }
   void push_back(RolltuiMenuItem&& c);
-  void push_back(const RolltuiMenuItem& c);
   void clear();
   bool operator==(const RolltuiMenuItemList& o) const;
 #endif
@@ -180,16 +179,24 @@ typedef struct RolltuiMenuItem {
 #ifdef __cplusplus
   RolltuiMenuItem();
   bool operator==(const RolltuiMenuItem& o) const;
-
-  static RolltuiMenuItem action(std::string id, std::string label, std::string shortcut = {});
-  static RolltuiMenuItem submenu(std::string id, std::string label, std::vector<RolltuiMenuItem> children);
-  static RolltuiMenuItem toggle(std::string id, std::string label, bool checked);
-  static RolltuiMenuItem choice(std::string id, std::string label, std::vector<RolltuiMenuItem> options,
-                                std::string value);
-  static RolltuiMenuItem input(std::string id, std::string label, std::string value = {});
-  static RolltuiMenuItem input(std::string id, std::string label, RolltuiInputSpec spec, std::string value = {});
+  RolltuiMenuItem clone() const;
+  // The builders every host wrote items with — kept, in rolltui's own vocabulary (Phase 19 m2):
+  // C strings in, `rolltui_menu_item_set` underneath. The std::string forms are gone; a host
+  // with a std::string passes `.c_str()`.
+  static RolltuiMenuItem action(const char* id, const char* label, const char* shortcut = "");
+  static RolltuiMenuItem submenu(const char* id, const char* label);
+  static RolltuiMenuItem toggle(const char* id, const char* label, bool checked);
+  static RolltuiMenuItem choice(const char* id, const char* label, const char* value);  /* options: children.push_back */
+  static RolltuiMenuItem input(const char* id, const char* label, const char* value = "");
+  static RolltuiMenuItem input(const char* id, const char* label, RolltuiInputSpec spec, const char* value = "");
 #endif
 } RolltuiMenuItem;
+
+/* Sets an item's kind, id and label in one call, releasing whatever they held — the C form of
+ * the builders above, so a C host builds an item the way a C++ one does. `shortcut` may be
+ * NULL with `shortcut_len` 0. */
+void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* id, size_t id_len, const char* label,
+                           size_t label_len, const char* shortcut, size_t shortcut_len);
 
 void rolltui_menu_item_init(RolltuiMenuItem* it);
 void rolltui_menu_item_release(RolltuiMenuItem* it); /* everything below and inside; leaves it clean */
@@ -224,14 +231,9 @@ inline bool RolltuiInputSpec::operator==(const RolltuiInputSpec& o) const {
 
 // ---- the child list ---------------------------------------------------------------------
 
-inline RolltuiMenuItemList::RolltuiMenuItemList(const RolltuiMenuItemList& o) { rolltui_menu_list_copy(this, &o); }
 
 inline RolltuiMenuItemList::~RolltuiMenuItemList() { rolltui_menu_list_release(this); }
 
-inline RolltuiMenuItemList& RolltuiMenuItemList::operator=(const RolltuiMenuItemList& o) {
-  if (this != &o) rolltui_menu_list_copy(this, &o);
-  return *this;
-}
 
 inline RolltuiMenuItemList& RolltuiMenuItemList::operator=(RolltuiMenuItemList&& o) noexcept {
   if (this != &o) {
@@ -247,9 +249,6 @@ inline RolltuiMenuItemList& RolltuiMenuItemList::operator=(RolltuiMenuItemList&&
 
 inline void RolltuiMenuItemList::push_back(RolltuiMenuItem&& c) { *rolltui_menu_list_add(this) = std::move(c); }
 
-inline void RolltuiMenuItemList::push_back(const RolltuiMenuItem& c) {
-  rolltui_menu_item_copy(rolltui_menu_list_add(this), &c);
-}
 
 inline void RolltuiMenuItemList::clear() { rolltui_menu_list_clear(this); }
 
@@ -267,58 +266,56 @@ inline RolltuiMenuItem::RolltuiMenuItem() = default;
 inline bool RolltuiMenuItem::operator==(const RolltuiMenuItem& o) const {
   return rolltui_menu_item_equal(this, &o) != 0;
 }
-
-inline RolltuiMenuItem RolltuiMenuItem::action(std::string id, std::string label, std::string shortcut) {
+inline RolltuiInputSpec RolltuiInputSpec::clone() const {
+  RolltuiInputSpec out;
+  rolltui_input_spec_copy(&out, this);
+  return out;
+}
+inline RolltuiMenuItem RolltuiMenuItem::clone() const {
+  RolltuiMenuItem out;
+  rolltui_menu_item_copy(&out, this);
+  return out;
+}
+inline RolltuiMenuItem RolltuiMenuItem::action(const char* id, const char* label, const char* shortcut) {
   RolltuiMenuItem it;
-  it.kind = Kind::Action;
-  it.id = std::move(id);
-  it.label = std::move(label);
-  it.shortcut = std::move(shortcut);
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Action), id, std::strlen(id), label, std::strlen(label), shortcut,
+                        shortcut ? std::strlen(shortcut) : 0);
   return it;
 }
-
-inline RolltuiMenuItem RolltuiMenuItem::submenu(std::string id, std::string label,
-                                         std::vector<RolltuiMenuItem> children) {
+inline RolltuiMenuItem RolltuiMenuItem::submenu(const char* id, const char* label) {
   RolltuiMenuItem it;
-  it.kind = Kind::Submenu;
-  it.id = std::move(id);
-  it.label = std::move(label);
-  for (RolltuiMenuItem& c : children) it.children.push_back(std::move(c));
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Submenu), id, std::strlen(id), label, std::strlen(label), nullptr, 0);
   return it;
 }
-
-inline RolltuiMenuItem RolltuiMenuItem::toggle(std::string id, std::string label, bool checked) {
+inline RolltuiMenuItem RolltuiMenuItem::choice(const char* id, const char* label, const char* value) {
   RolltuiMenuItem it;
-  it.kind = Kind::Toggle;
-  it.id = std::move(id);
-  it.label = std::move(label);
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Choice), id, std::strlen(id), label, std::strlen(label), nullptr, 0);
+  it.value = value;
+  return it;
+}
+inline RolltuiMenuItem RolltuiMenuItem::input(const char* id, const char* label, const char* value) {
+  RolltuiMenuItem it;
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Input), id, std::strlen(id), label, std::strlen(label), nullptr, 0);
+  it.value = value;
+  return it;
+}
+inline RolltuiMenuItem RolltuiMenuItem::input(const char* id, const char* label, RolltuiInputSpec spec, const char* value) {
+  RolltuiMenuItem it = input(id, label, value);
+  it.spec = std::move(spec);
+  return it;
+}
+inline RolltuiMenuItem RolltuiMenuItem::toggle(const char* id, const char* label, bool checked) {
+  RolltuiMenuItem it;
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Toggle), id, std::strlen(id), label, std::strlen(label), nullptr, 0);
   it.checked = static_cast<unsigned char>(checked);
   return it;
 }
 
-inline RolltuiMenuItem RolltuiMenuItem::choice(std::string id, std::string label,
-                                        std::vector<RolltuiMenuItem> options, std::string value) {
-  RolltuiMenuItem it = submenu(std::move(id), std::move(label), std::move(options));
-  it.kind = Kind::Choice;
-  it.value = std::move(value);
-  return it;
-}
 
-inline RolltuiMenuItem RolltuiMenuItem::input(std::string id, std::string label, std::string value) {
-  RolltuiMenuItem it;
-  it.kind = Kind::Input;
-  it.id = std::move(id);
-  it.label = std::move(label);
-  it.value = std::move(value);
-  return it;
-}
 
-inline RolltuiMenuItem RolltuiMenuItem::input(std::string id, std::string label, RolltuiInputSpec spec,
-                                       std::string value) {
-  RolltuiMenuItem it = input(std::move(id), std::move(label), std::move(value));
-  it.spec = std::move(spec);
-  return it;
-}
+
+
+
 #endif /* __cplusplus */
 
 #endif /* ROLLTUI_C_MENU_TREE_H */

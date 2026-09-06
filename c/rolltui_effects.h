@@ -66,7 +66,6 @@
 
 #ifdef __cplusplus
 #include <cstring>
-#include <string_view>
 #endif
 
 #ifdef __cplusplus
@@ -106,17 +105,11 @@ typedef struct RolltuiEffectOut {
 #ifdef __cplusplus
   // A kind says what it wants drawn. Always records the full length, so an override past
   // the cap is refused by the applier rather than silently truncated into a valid-looking
-  // narrower glyph.
-  void set_glyph(std::string_view g) {
+  // narrower glyph. Pointer and length: rolltui's own shape (Phase 19 m2).
+  void set_glyph(const char* g, std::size_t n) {
     has_glyph = 1;
-    glyph_len = g.size();
-    if (g.size() <= ROLLTUI_EFFECT_GLYPH_MAX && !g.empty()) std::memcpy(glyph, g.data(), g.size());
-  }
-  // Empty when nothing was set, and when what was set is past the cap — a caller that can
-  // see the bytes could only mis-measure them.
-  std::string_view glyph_view() const {
-    return glyph_len > 0 && glyph_len <= ROLLTUI_EFFECT_GLYPH_MAX ? std::string_view(glyph, glyph_len)
-                                                                  : std::string_view();
+    glyph_len = n;
+    if (n <= ROLLTUI_EFFECT_GLYPH_MAX && n != 0) std::memcpy(glyph, g, n);
   }
 #endif
 } RolltuiEffectOut;
@@ -150,10 +143,6 @@ typedef struct RolltuiEffectSpec {
   unsigned char backward;
 
 #ifdef __cplusplus
-  std::string_view kind_view() const { return std::string_view(kind, kind_len); }
-  std::string_view frame(std::size_t i) const {
-    return i < frame_count ? std::string_view(frames[i].bytes, frames[i].len) : std::string_view();
-  }
   std::size_t roles_size() const { return role_count; }
   unsigned char role(std::size_t i) const { return roles[i % role_count]; }
 #endif

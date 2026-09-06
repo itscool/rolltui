@@ -129,6 +129,7 @@ enum class EffectState : unsigned char;
 #endif
 
 #ifdef __cplusplus
+#include <cstring>
 extern "C" {
 #endif
 
@@ -352,9 +353,14 @@ typedef struct RolltuiRows {
   size_t cap ROLLTUI_DEFAULT(0); /* rows allocated — v keeps its storage past n */
 #ifdef __cplusplus
   void reset() { rolltui_rows_reset(this); }
-  void add(std::string_view label, std::string_view value) {
-    rolltui_rows_add(this, label.data(), label.size(), value.data(), value.size());
+  // rolltui's own shapes only (Phase 19 m2): a pointer and a length, or a RolltuiStr.
+  void add(const char* label, std::size_t label_len, const char* value, std::size_t value_len) {
+    rolltui_rows_add(this, label, label_len, value, value_len);
   }
+  void add(const char* label, const char* value) { rolltui_rows_add(this, label, std::strlen(label), value, std::strlen(value)); }
+  void add(const char* label, const char* value, std::size_t value_len) { rolltui_rows_add(this, label, std::strlen(label), value, value_len); }
+  void add(const char* label, const RolltuiStr& value) { rolltui_rows_add(this, label, std::strlen(label), value.p, value.n); }
+  void add(const RolltuiStr& label, const RolltuiStr& value) { rolltui_rows_add(this, label.p, label.n, value.p, value.n); }
   std::size_t size() const { return n; }
   const RolltuiRow& operator[](std::size_t i) const { return v[i]; }
   RolltuiRows() = default;
@@ -404,25 +410,21 @@ typedef struct RolltuiNote {
   // the compiler-generated special members already do the right thing by construction — the
   // same reasoning `RolltuiContent` states for itself.
   RolltuiNote() = default;
-  // Implicit on purpose, and the three overloads (matching `RolltuiStr`'s own) are what
-  // keeps every host that has no motion to report writing exactly what it wrote before:
-  // `return "working";`. All three, not just `string_view`, because a `std::string` argument
-  // reaching `string_view` would be a SECOND user-defined conversion on top of this
-  // constructor's own — disallowed implicitly, and exactly the trap `rolltui::Str` avoids by
-  // declaring the same three.
-  RolltuiNote(std::string_view t) : text(t) {}                                        // NOLINT(google-explicit-constructor)
-  RolltuiNote(const char* t) : text(t ? std::string_view(t) : std::string_view()) {}  // NOLINT(google-explicit-constructor)
-  RolltuiNote(const std::string& t) : text(t) {}                                      // NOLINT(google-explicit-constructor)
-  RolltuiNote(std::string_view t, rolltui::EffectState s, unsigned long long since = 0)
-      : text(t), state(s), since_ms(since) {}
-  RolltuiNote& operator=(std::string_view t) {
-    text = t;
+  // Implicit from a C string on purpose: a host with no motion to report writes
+  // `return "working";`. Anything else sets the text by pointer and length — rolltui's own
+  // shape, never a std:: one (Phase 19 m2).
+  RolltuiNote(const char* t) : text(t) {}  // NOLINT(google-explicit-constructor)
+  RolltuiNote(const char* t, std::size_t n, rolltui::EffectState s, unsigned long long since = 0) : state(s), since_ms(since) {
+    text.assign(t, n);
+  }
+  // Text only: the state and its clock reset, which is what "a plain note" means.
+  RolltuiNote& set(const char* t, std::size_t n) {
+    text.assign(t, n);
     state = static_cast<rolltui::EffectState>(0);
     since_ms = 0;
     return *this;
   }
-  RolltuiNote& operator=(const std::string& t) { return *this = std::string_view(t); }
-  RolltuiNote& operator=(const char* t) { return *this = (t ? std::string_view(t) : std::string_view()); }
+  RolltuiNote& operator=(const char* t) { return set(t, t ? std::strlen(t) : 0); }
 #endif
 } RolltuiNote;
 

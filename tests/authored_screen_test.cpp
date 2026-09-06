@@ -208,10 +208,10 @@ int main() {
                                               rolltui_layout_default_hooks(), &rep);
     check(ok_l && rolltui_layout_report_clean(&rep), "…it loads clean [" + std::string(rep.error.p ? rep.error.p : "", rep.error.n) + "]");
     if (ok_l) {
-      check(l.name.view() == "easel" && l.min_width == 20 && l.min_height == 6,
+      check(view_of(l.name) == "easel" && l.min_width == 20 && l.min_height == 6,
             "…named as typed, with the thresholds inherited from the PROFILE (m5's one right inheritance)");
-      check(l.actions_n == 1 && l.actions[0].name.view() == "app.easel" &&
-                l.actions[0].description.view() == "clear the easel sheet",
+      check(l.actions_n == 1 && view_of(l.actions[0].name) == "app.easel" &&
+                view_of(l.actions[0].description) == "clear the easel sheet",
             "…declaring exactly the one action a person typed, with the description they gave it");
       check(l.popups_n == 0, "…and no popup: it was created from the skeleton, not from the screen that was open");
     }

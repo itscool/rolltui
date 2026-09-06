@@ -42,6 +42,7 @@
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/third_party/md4c/md4c.h"
+#include "md_test_helpers.hpp"
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -270,7 +271,7 @@ void plain_text_into(std::span<const RolltuiMdLine> lines, std::string& out) {
   out.clear();
   for (std::size_t i = 0; i < lines.size(); ++i) {
     if (i) out += '\n';
-    for (const RolltuiMdSpan& sp : lines[i].spans()) out.append(sp.text());
+    for (const RolltuiMdSpan& sp : spans_of(lines[i])) out.append(text_of(sp));
   }
 }
 std::string plain_text(std::span<const RolltuiMdLine> lines) {
@@ -314,7 +315,7 @@ std::string never_drops(const std::string& src, int width) {
   }
   for (const RolltuiMdLine& l : lines) {
     int w = 0;
-    for (const RolltuiMdSpan& s : l.spans()) w += s.width;
+    for (const RolltuiMdSpan& s : spans_of(l)) w += s.width;
     if (w != l.width) return "StyledLine::width disagrees with its spans";
     if (l.width - width > 1)  // the wrap engine's single-oversized-grapheme allowance
       return "line exceeds width by " + std::to_string(l.width - width) + ": [" + plain_text(l) + "]";
@@ -330,8 +331,8 @@ std::vector<std::string> lines_of(std::span<const RolltuiMdLine> v) {
 
 bool has_role(std::span<const RolltuiMdLine> v, Role r, const std::string& text) {
   for (const RolltuiMdLine& l : v)
-    for (const RolltuiMdSpan& s : l.spans())
-      if (static_cast<Role>(s.role) == r && s.text().find(text) != std::string_view::npos) return true;
+    for (const RolltuiMdSpan& s : spans_of(l))
+      if (static_cast<Role>(s.role) == r && text_of(s).find(text) != std::string_view::npos) return true;
   return false;
 }
 
@@ -663,7 +664,7 @@ int main() {
                 r.code_blocks()[0].hidden == 0 && r.code_blocks()[0].header_line == ROLLTUI_MD_NO_LINE &&
                 r.code_blocks()[0].marker_line == ROLLTUI_MD_NO_LINE,
             "no thresholds: the block is reported but nothing folds, caps or gains a row");
-      check(r.code_blocks()[0].lines == 5 && r.code_blocks()[0].bytes == 10 && r.code_blocks()[0].lang() == "cpp",
+      check(r.code_blocks()[0].lines == 5 && r.code_blocks()[0].bytes == 10 && lang_of(r.code_blocks()[0]) == "cpp",
             "…and it is reported with its language, line count and byte size");
       check(r.text().substr(r.code_blocks()[0].text_begin, r.code_blocks()[0].text_end - r.code_blocks()[0].text_begin) ==
                 "a\nb\nc\nd\ne\n",
@@ -686,7 +687,7 @@ int main() {
       check(r.text().find("a\nb\nc\nd\ne") != std::string_view::npos,
             "…and EVERY BYTE of the block is still in the logical text");
       check(r.code_blocks()[0].header_line != ROLLTUI_MD_NO_LINE &&
-                r.lines()[r.code_blocks()[0].header_line].spans().size() >= 2,
+                spans_of(r.lines()[r.code_blocks()[0].header_line]).size() >= 2,
             "the header row is reported by line number, which is what a click routes by");
     }
     {
@@ -781,7 +782,7 @@ int main() {
       RolltuiMdRenderOptions ro{.width = 40};
       ro.fold_over_lines = 2;
       const Lines r = render("<div>\n<p>a</p>\n<p>b</p>\n</div>\n", ro);
-      check(r.code_blocks().size() == 1 && r.code_blocks()[0].folded && r.code_blocks()[0].lang() == "html",
+      check(r.code_blocks().size() == 1 && r.code_blocks()[0].folded && lang_of(r.code_blocks()[0]) == "html",
             "an HTML block folds too, and names itself html");
     }
     {
@@ -834,9 +835,9 @@ int main() {
     // ---- word level (m5b): the PAIRING rule, then the REFINEMENT rule --------------
     // Every case here is stated in Diff.hpp; the point of the table is that the rules
     // are asserted rather than tuned until a screenshot looked right.
-    auto spans_of = [](std::vector<std::string_view> block, std::size_t i) { return diff_spans("diff", block, i); };
+    auto diff_spans_at = [](std::vector<std::string_view> block, std::size_t i) { return diff_spans("diff", block, i); };
     auto word_range_of = [&](std::vector<std::string_view> block, std::size_t i, std::size_t& b, std::size_t& e) {
-      for (const auto& x : spans_of(std::move(block), i))
+      for (const auto& x : diff_spans_at(std::move(block), i))
         if (x.role == Role::diff_added_word || x.role == Role::diff_removed_word) { b = x.begin; e = x.end; return true; }
       return false;
     };
@@ -847,7 +848,7 @@ int main() {
             "the removed side's changed word is marked, and it is exactly the word");
       check(word_range_of(pair, 1, b, e) && pair[1].substr(b, e - b) == "bar",
             "…and so is the added side's: BOTH halves of a pair, never only the '+'");
-      const auto three = spans_of(pair, 0);
+      const auto three = diff_spans_at(pair, 0);
       check(three.size() == 3 && three[0].begin == 0 && three[0].role == Role::diff_removed &&
                 three[1].role == Role::diff_removed_word && three[2].end == pair[0].size() &&
                 three[2].role == Role::diff_removed,
@@ -890,14 +891,14 @@ int main() {
     bool has_added_word = false, has_removed_word = false;
     std::string all, added_word, removed_word;
     for (const RolltuiMdLine& l : r.lines())
-      for (const RolltuiMdSpan& x : l.spans()) {
+      for (const RolltuiMdSpan& x : spans_of(l)) {
         const Role role = static_cast<Role>(x.role);
-        all.append(x.text());
+        all.append(text_of(x));
         if (role == Role::diff_added) has_added = true;
         if (role == Role::diff_removed) has_removed = true;
         if (role == Role::accent_1) has_hunk = true;
-        if (role == Role::diff_added_word) { has_added_word = true; added_word.append(x.text()); }
-        if (role == Role::diff_removed_word) { has_removed_word = true; removed_word.append(x.text()); }
+        if (role == Role::diff_added_word) { has_added_word = true; added_word.append(text_of(x)); }
+        if (role == Role::diff_removed_word) { has_removed_word = true; removed_word.append(text_of(x)); }
       }
     marks_kept = all.find("-old line") != std::string::npos && all.find("+new line") != std::string::npos;
     check(has_added && has_removed && has_hunk, "a ```diff fence colours through the diff roles");
@@ -909,7 +910,7 @@ int main() {
     const Lines plain = render("```\n@@ -1,2 +1,2 @@\n-old line\n+new line\n context\n```\n", ro);
     bool any_diff_role = false;
     for (const RolltuiMdLine& l : plain.lines())
-      for (const RolltuiMdSpan& x : l.spans())
+      for (const RolltuiMdSpan& x : spans_of(l))
         if (static_cast<Role>(x.role) != Role::md_code_block && static_cast<Role>(x.role) != Role::md_code_label)
           any_diff_role = true;
     check(!any_diff_role, "a bare fence over content that looks EXACTLY like a diff renders plain");

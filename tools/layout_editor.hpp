@@ -90,6 +90,7 @@
 // drag_to / end_drag): the child before the seam takes an absolute size equal to the
 // pointer's distance from its start; the release commits once.
 //
+#include "tool_str.hpp"
 #include <cstddef>
 #include <optional>
 #include <string>

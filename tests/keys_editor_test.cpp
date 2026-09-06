@@ -77,7 +77,7 @@ int main() {
             find(ed.menu(), "unbind.input.word_left.ctrl+left"),
         "the tree is scope › action › {add, remove <chord>, clear}");
   check(find(ed.menu(), "action.input.word_left")->label == "word_left  Ctrl-Left, Alt-Left",
-        "an action's label shows its chords [" + find(ed.menu(), "action.input.word_left")->label.str() + "]");
+        "an action's label shows its chords [" + str_of(find(ed.menu(), "action.input.word_left")->label) + "]");
   // ---- capture: Alt-B onto word_left ----
   go(ed, key(ROLLTUI_KEY_ENTER));          // scopes
   go(ed, key(ROLLTUI_KEY_ENTER));          // input
@@ -96,7 +96,7 @@ int main() {
   o = go(ed, ch('b', false, true));  // Alt-B
   check(o.kind == O::Committed && !ed.capturing() && action_for(ed.current(), ch('b', false, true), "input") == "input.word_left" && ed.undo_depth() == 1,
         "the next key becomes the chord: Alt-B → word_left, one commit");
-  check(ed.status_line().find("bound Alt-B \xE2\x86\x92 word_left") == 0 && find(ed.menu(), "action.input.word_left")->label.find("Alt-B") != std::string::npos,
+  check(ed.status_line().find("bound Alt-B \xE2\x86\x92 word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("Alt-B") != std::string::npos,
         "the status and the action's label show the new chord [" + ed.status_line() + "]");
   check(find(ed.menu(), "unbind.input.word_left.alt+b") != nullptr, "…and a remove item for it appears");
   // ---- a conflict moves ----
@@ -116,12 +116,12 @@ int main() {
   // ---- remove, clear ----
   go(ed, key(ROLLTUI_KEY_END));            // clear every chord
   go(ed, key(ROLLTUI_KEY_UP));             // remove Alt-D (the last remove item)
-  const std::string label(rolltui_menu_selected_item(ed.menu())->label.view());
+  const std::string label(view_of(rolltui_menu_selected_item(ed.menu())->label));
   o = go(ed, key(ROLLTUI_KEY_ENTER));
   check(label == "remove Alt-D" && o.kind == O::Committed && action_for(ed.current(), ch('d', false, true), "input").empty(), "remove takes a chord off [" + label + "]");
   go(ed, key(ROLLTUI_KEY_END));
   o = go(ed, key(ROLLTUI_KEY_ENTER));
-  check(o.kind == O::Committed && chord_count(ed.current(), "input.word_left") == 0 && find(ed.menu(), "action.input.word_left")->label.find("(unbound)") != std::string::npos,
+  check(o.kind == O::Committed && chord_count(ed.current(), "input.word_left") == 0 && view_of(find(ed.menu(), "action.input.word_left")->label).find("(unbound)") != std::string::npos,
         "clear empties the action and the label says (unbound)");
   // ---- undo / redo ----
   const std::size_t depth = ed.undo_depth();

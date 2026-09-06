@@ -297,7 +297,7 @@ const std::vector<ActionDecl>& shipped_default_actions() {
       std::size_t n = 0, cap = 0;
       rolltui_layout_read_actions_key(v, &actions, &n, &cap);
       out.reserve(n);
-      for (std::size_t i = 0; i < n; ++i) out.push_back({actions[i].name.str(), actions[i].description.str()});
+      for (std::size_t i = 0; i < n; ++i) out.push_back({str_of(actions[i].name), str_of(actions[i].description)});
       rolltui_layout_actions_free(actions, n);
       rolltui_json_free(v);
     }
@@ -341,18 +341,18 @@ std::optional<RolltuiChord> parse_chord(std::string_view text) {
 std::string input_hint(const InputSpec& spec) {
   RolltuiStr s;
   rolltui_input_hint(&spec, &s);
-  return s.str();
+  return str_of(s);
 }
 
 std::optional<MenuItem> menu_from_json(std::string_view json_text, MenuLoadReport& report) {
   MenuItem it;  // default: Action kind, everything empty — filled IN PLACE, not allocated
   RolltuiMenuLoadReport rep{};
   const int ok = rolltui_menu_parse_json(json_text.data(), json_text.size(), &it, &rep);
-  report.error = rep.error.str();
+  report.error = str_of(rep.error);
   report.unknown_keys.clear();
   report.bad_values.clear();
-  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.emplace_back(rep.unknown_keys[i].view());
-  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.emplace_back(rep.bad_values[i].view());
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.emplace_back(view_of(rep.unknown_keys[i]));
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.emplace_back(view_of(rep.bad_values[i]));
   rolltui_menu_load_report_release(&rep);
   if (!ok) return std::nullopt;
   return it;
@@ -360,7 +360,7 @@ std::optional<MenuItem> menu_from_json(std::string_view json_text, MenuLoadRepor
 std::string menu_to_json(const MenuItem& root) {
   RolltuiStr out;
   rolltui_menu_dump_json(&root, &out);
-  return out.str();
+  return str_of(out);
 }
 std::string_view shipped_menu(std::string_view name) {
   for (std::size_t i = 0; i < rolltui_kMenuCount; ++i)
@@ -384,7 +384,7 @@ int call_validator(void* ctx, const char* name, std::size_t nlen, const char* te
   auto* vs = static_cast<const std::vector<std::pair<std::string, Validator>>*>(ctx);
   for (const auto& [n, fn] : *vs)
     if (n == std::string_view(name, nlen)) {
-      if (std::optional<std::string> w = fn(std::string_view(text, tlen))) *why = *w;
+      if (std::optional<std::string> w = fn(std::string_view(text, tlen))) set_str(*why, *w);
       return 1;
     }
   return 0;
@@ -423,19 +423,19 @@ const RolltuiMenuActions& menu_actions() { return *rolltui_menu_default_actions(
 
 void collect_validators(const MenuItem& it, std::vector<std::string>& out) {
   if (static_cast<unsigned char>(it.kind) == ROLLTUI_MENU_INPUT && !it.spec.validator.empty() &&
-      std::find(out.begin(), out.end(), it.spec.validator.view()) == out.end())
-    out.emplace_back(it.spec.validator.view());
+      std::find(out.begin(), out.end(), view_of(it.spec.validator)) == out.end())
+    out.emplace_back(view_of(it.spec.validator));
   for (const MenuItem& c : it.children) collect_validators(c, out);
 }
 void collect_item_actions(const MenuItem& it, std::vector<std::pair<std::string, std::string>>& out) {
-  if (!it.action_name.empty()) out.emplace_back(it.id.str(), it.action_name.str());
+  if (!it.action_name.empty()) out.emplace_back(str_of(it.id), str_of(it.action_name));
   for (const MenuItem& c : it.children) collect_item_actions(c, out);
 }
 void fill_shortcuts(MenuItem& it, const RolltuiBindings* b) {
   if (!it.action_name.empty())
-    it.shortcut = rolltui_bindings_has(b, it.action_name.data(), it.action_name.size())
-                      ? bindings_chords_text(b, it.action_name.view())
-                      : std::string();
+    set_str(it.shortcut, rolltui_bindings_has(b, it.action_name.data(), it.action_name.size())
+                             ? bindings_chords_text(b, view_of(it.action_name))
+                             : std::string());
   for (MenuItem& c : it.children) fill_shortcuts(c, b);
 }
 
@@ -460,7 +460,7 @@ class Menu {
   bool set_value(std::string_view id, std::string value) {
     MenuItem* it = find(id);
     if (!it) return false;
-    it->value = std::move(value);
+    set_str(it->value, std::move(value));
     return true;
   }
   void set_validator(std::string_view name, Validator v) {
@@ -510,7 +510,7 @@ class Menu {
   std::string breadcrumb() const {
     RolltuiStr s;
     rolltui_menu_breadcrumb(m_, &s);
-    return s.str();
+    return str_of(s);
   }
   bool editing() const { return rolltui_menu_editing(m_) != 0; }
   std::string_view editing_text() const {
@@ -538,8 +538,8 @@ class Menu {
     rolltui_menu_handle(m_, &e, bindings, &menu_actions(), &out);
     MenuEvent r;
     r.kind = static_cast<MenuEvent::Kind>(out.kind);
-    r.id = out.id.str();
-    r.value = out.value.str();
+    r.id = str_of(out.id);
+    r.value = str_of(out.value);
     r.checked = out.checked != 0;
     rolltui_menu_event_release(&out);
     return r;
@@ -587,17 +587,21 @@ RolltuiEvent ch(char c) {
 }
 
 MenuItem sample() {
-  return MenuItem::submenu(
-      "root", "settings",
-      {MenuItem::choice("theme", "Theme",
-                        {MenuItem::action("default", "default"), MenuItem::action("mono", "mono"), MenuItem::action("light", "light")},
-                        "default"),
-       MenuItem::submenu("layout", "Layout",
-                         {MenuItem::action("layout.default", "default"), MenuItem::action("layout.stacked", "stacked", "F2")}),
-       MenuItem::toggle("wrap", "Wrap long lines", false),
-       MenuItem::input("save", "Save as"),
-       MenuItem::action("quit", "Quit", "Ctrl-Q"),
-       MenuItem::action("disabled", "Nothing here")});
+  std::vector<MenuItem> themes;
+  themes.push_back(MenuItem::action("default", "default"));
+  themes.push_back(MenuItem::action("mono", "mono"));
+  themes.push_back(MenuItem::action("light", "light"));
+  std::vector<MenuItem> layouts;
+  layouts.push_back(MenuItem::action("layout.default", "default"));
+  layouts.push_back(MenuItem::action("layout.stacked", "stacked", "F2"));
+  std::vector<MenuItem> top;
+  top.push_back(choice_of("theme", "Theme", std::move(themes), "default"));
+  top.push_back(submenu_of("layout", "Layout", std::move(layouts)));
+  top.push_back(MenuItem::toggle("wrap", "Wrap long lines", false));
+  top.push_back(MenuItem::input("save", "Save as"));
+  top.push_back(MenuItem::action("quit", "Quit", "Ctrl-Q"));
+  top.push_back(MenuItem::action("disabled", "Nothing here"));
+  return submenu_of("root", "settings", std::move(top));
 }
 
 std::string row(const Frame& f, int y) {
@@ -829,7 +833,7 @@ int main() {
     }
     MenuLoadReport rep;
     std::optional<MenuItem> main = menu_from_json(shipped_menu("main"), rep);
-    Menu m(main.value_or(MenuItem::submenu("root", "root", {})));
+    Menu m(main ? std::move(*main) : MenuItem::submenu("root", "root"));
     check(main && m.find("theme") && m.find("layout") && m.find("depth"),
           "menus/main.json is the settings menu over the three preset domains");
     check(shipped_menu("no-such-menu").empty(), "an unshipped name is empty, never a wrong menu");
@@ -840,19 +844,19 @@ int main() {
     std::optional<MenuItem> root = menu_from_json(
         R"({"id":"r","items":[{"id":"a","label":"A","action":"app.help"},{"id":"b","label":"B","action":"app.menu","shortcut":"F9"},
             {"id":"c","label":"C","shortcut":"F5"}]})", rep);
-    auto id_at = [&](std::size_t i) { return root && i < root->children.size() ? root->children[i].action_name : std::string("(missing)"); };
+    auto id_at = [&](std::size_t i) { return root && i < root->children.size() ? str_of(root->children[i].action_name) : std::string("(missing)"); };
     check(root && id_at(0) == "app.help" && id_at(2).empty(), "\"action\" is read; an item without one has none");
     check(rep.bad_values.size() == 1 && rep.bad_values[0].find(".shortcut: an item with an \"action\" takes its shortcut from the bindings") != std::string::npos &&
               root && root->children[1].shortcut.empty(),
           "…and spelling a shortcut out beside it is a bad value, dropped [" + (rep.bad_values.empty() ? "" : rep.bad_values[0]) + "]");
 
-    Menu m(*root);
+    Menu m(root->clone());
     check(m.item_actions() == (std::vector<std::pair<std::string, std::string>>{{"a", "app.help"}, {"b", "app.menu"}}),
           "item_actions lists every item that names one, by item id");
     RolltuiBindings* b_ah = default_bindings();
     m.apply_shortcuts(b_ah);
     rolltui_bindings_free(b_ah);
-    auto sc = [&](const char* id) { const MenuItem* it = m.find(id); return it ? it->shortcut : std::string("(missing)"); };
+    auto sc = [&](const char* id) { const MenuItem* it = m.find(id); return it ? str_of(it->shortcut) : std::string("(missing)"); };
     check(sc("a") == "F1, ?" && sc("b") == "F2" && sc("c") == "F5",
           "apply_shortcuts fills them from the LIVE chords and leaves a plain shortcut alone [" + sc("a") + "]");
     RolltuiBindings* rebound = default_bindings();
@@ -891,22 +895,22 @@ int main() {
     opt.optional = true;
     InputSpec otxt = spec(InputType::Text);
     otxt.optional = true;
-    MenuItem typed = MenuItem::submenu(
-        "root", "typed",
-        {MenuItem::input("pct", "Percent", spec(InputType::Int, 0, 100), "50"),        // 0
-         MenuItem::input("delta", "Delta", spec(InputType::Int, -10, 10), "0"),        // 1
-         MenuItem::input("digit", "Digit", spec(InputType::Int, 5, 9), "7"),           // 2
-         MenuItem::input("teen", "Teen", spec(InputType::Int, 10, 19), "15"),          // 3
-         MenuItem::input("chaos", "Chaos", flt, "0.5"),                                // 4
-         MenuItem::input("col", "Colour", spec(InputType::Color), "#112233"),          // 5
-         MenuItem::input("sz", "Size", spec(InputType::Size), "fill"),                 // 6
-         MenuItem::input("dm", "Dim", spec(InputType::Dim), "1"),                      // 7
-         MenuItem::input("nm", "Name", spec(InputType::Name), "abc"),                  // 8
-         MenuItem::input("txt", "Text", txt, "ok"),                                    // 9
-         MenuItem::input("opt", "Optional", opt, ""),                                  // 10
-         MenuItem::input("otxt", "Optional text", otxt, "hi"),                         // 11
-         MenuItem::input("rtxt", "Required text", spec(InputType::Text), "hi")});       // 12
-    Menu m(typed);
+    std::vector<MenuItem> typed_items;
+    typed_items.push_back(MenuItem::input("pct", "Percent", spec(InputType::Int, 0, 100), "50"));
+    typed_items.push_back(MenuItem::input("delta", "Delta", spec(InputType::Int, -10, 10), "0"));
+    typed_items.push_back(MenuItem::input("digit", "Digit", spec(InputType::Int, 5, 9), "7"));
+    typed_items.push_back(MenuItem::input("teen", "Teen", spec(InputType::Int, 10, 19), "15"));
+    typed_items.push_back(MenuItem::input("chaos", "Chaos", flt.clone(), "0.5"));
+    typed_items.push_back(MenuItem::input("col", "Colour", spec(InputType::Color), "#112233"));
+    typed_items.push_back(MenuItem::input("sz", "Size", spec(InputType::Size), "fill"));
+    typed_items.push_back(MenuItem::input("dm", "Dim", spec(InputType::Dim), "1"));
+    typed_items.push_back(MenuItem::input("nm", "Name", spec(InputType::Name), "abc"));
+    typed_items.push_back(MenuItem::input("txt", "Text", txt.clone(), "ok"));
+    typed_items.push_back(MenuItem::input("opt", "Optional", opt.clone(), ""));
+    typed_items.push_back(MenuItem::input("otxt", "Optional text", otxt.clone(), "hi"));
+    typed_items.push_back(MenuItem::input("rtxt", "Required text", spec(InputType::Text), "hi"));
+    MenuItem typed = submenu_of("root", "typed", std::move(typed_items));       // 12
+    Menu m(typed.clone());
     auto open = [&](int index) {
       m.reset();
       for (int i = 0; i < index; ++i) m.handle(key(Key::Down));
@@ -966,7 +970,7 @@ int main() {
       const MenuEvent ev = m.handle(key(Key::Enter));
       const bool committed = ev.kind == MenuEvent::Kind::Input;
       check(text == r.text && committed == r.commits && (!r.commits || ev.value == r.canonical) && m.editing() == !r.commits,
-            std::string(r.why) + " [text '" + text + "', " + (committed ? "committed '" + ev.value + "'" : "refused: " + m.edit_reason()) + "]");
+            std::string(r.why) + " [text '" + text + "', " + (committed ? "committed '" + ev.value + "'" : "refused: " + std::string(m.edit_reason())) + "]");
       if (r.commits) check(m.selected_item()->value == r.canonical, "…the item's value is the canonical text");
     }
     // A registered validator: consulted at the commit only, never at a key.
@@ -978,7 +982,7 @@ int main() {
     open(9);
     type("abc");
     MenuEvent ev = m.handle(key(Key::Enter));
-    check(ev.kind == MenuEvent::Kind::None && m.editing() && m.edit_reason() == "an even number of characters", "the validator's reason refuses the commit [" + m.edit_reason() + "]");
+    check(ev.kind == MenuEvent::Kind::None && m.editing() && m.edit_reason() == "an even number of characters", "the validator's reason refuses the commit [" + std::string(m.edit_reason()) + "]");
     m.handle(key(Key::Backspace));
     ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::Input && ev.value == "ab", "…and a text it accepts commits");
@@ -986,7 +990,7 @@ int main() {
     open(3);
     m.handle(key(Key::Home));
     m.handle(key(Key::Delete));
-    check(m.editing_text() == "5" && !m.edit_reason().empty(), "deleting the 1 of 15 (10..19) is allowed; the reason shows [" + m.edit_reason() + "]");
+    check(m.editing_text() == "5" && !m.edit_reason().empty(), "deleting the 1 of 15 (10..19) is allowed; the reason shows [" + std::string(m.edit_reason()) + "]");
     ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::None && m.editing() && m.selected_item()->value == "15", "…and the commit is refused, the value kept");
     // Select-all on open: typing replaces; an arrow places the caret.
@@ -996,22 +1000,22 @@ int main() {
     type("d");
     m.handle(key(Key::Home));
     type("z");
-    check(m.editing_text() == "zabcd", "End / Home place the caret in the selected-all text; typing inserts there [" + m.editing_text() + "]");
+    check(m.editing_text() == "zabcd", "End / Home place the caret in the selected-all text; typing inserts there [" + std::string(m.editing_text()) + "]");
     m.handle(key(Key::Escape));
     check(!m.editing() && m.selected_item()->value == "abc", "Escape cancels: the value is untouched");
     // Steppers: from a valid text, ± step, clamped; from an empty text, the committed value.
     open(4);
     m.handle(key(Key::Up));
-    check(m.editing_text() == "0.60", "Up on 0.5 (step 0.1, precision 2) is 0.60 [" + m.editing_text() + "]");
+    check(m.editing_text() == "0.60", "Up on 0.5 (step 0.1, precision 2) is 0.60 [" + std::string(m.editing_text()) + "]");
     for (int i = 0; i < 6; ++i) m.handle(key(Key::Up));
-    check(m.editing_text() == "1.00", "…clamped at max [" + m.editing_text() + "]");
+    check(m.editing_text() == "1.00", "…clamped at max [" + std::string(m.editing_text()) + "]");
     m.handle(key(Key::Down));
-    check(m.editing_text() == "0.90", "Down steps back [" + m.editing_text() + "]");
+    check(m.editing_text() == "0.90", "Down steps back [" + std::string(m.editing_text()) + "]");
     m.set_value("pct", "50");
     open(0);
     m.handle(ctrl_u);
     m.handle(key(Key::Up));
-    check(m.editing_text() == "50", "Up from an empty text lands on the committed value first [" + m.editing_text() + "]");
+    check(m.editing_text() == "50", "Up from an empty text lands on the committed value first [" + std::string(m.editing_text()) + "]");
     m.handle(key(Key::Up));
     check(m.editing_text() == "51", "…then steps");
     m.handle(key(Key::Escape));
@@ -1021,7 +1025,7 @@ int main() {
     good.text = "12";
     bad.text = "abc";
     m.handle(good);
-    check(m.editing_text() == "12", "a pasted '12' replaces the selection [" + m.editing_text() + "]");
+    check(m.editing_text() == "12", "a pasted '12' replaces the selection [" + std::string(m.editing_text()) + "]");
     m.handle(bad);
     check(m.editing_text() == "12" && !m.edit_reason().empty(), "a pasted 'abc' is refused whole, with the reason");
     m.handle(key(Key::Escape));

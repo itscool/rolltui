@@ -54,7 +54,6 @@ void write_file(const fs::path& p, const std::string& s) {
   out << s;
 }
 void put_str(void* ctx, const char* s, std::size_t len) { static_cast<std::string*>(ctx)->append(s, len); }
-std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
 
 // ---- the three domain descriptors are `rolltui_preset_domain(...)` throughout (see the header
 // note); the NULL-`parse_partial` guard this file once worked around locally is the library's
@@ -148,12 +147,12 @@ class StoreBase {
   std::string working_path() const {
     RolltuiStr out;
     rolltui_preset_store_working_path(s_, &out);
-    return out.str();
+    return str_of(out);
   }
   std::string preset_path(std::string_view name) const {
     RolltuiStr out;
     rolltui_preset_store_preset_path(s_, name.data(), name.size(), &out);
-    return out.str();
+    return str_of(out);
   }
   void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
   int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
@@ -212,14 +211,14 @@ class ThemeStore : public StoreBase {
     ThemeValueHandle v = working();
     RolltuiThemePresetValue* raw = v.v;
     v.v = nullptr;
-    raw->mode = mode;
+    set_str(raw->mode, mode);
     rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
   }
   void set_depth(std::string_view depth, bool persist = true) {
     ThemeValueHandle v = working();
     RolltuiThemePresetValue* raw = v.v;
     v.v = nullptr;
-    raw->depth = depth;
+    set_str(raw->depth, depth);
     rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
   }
   ThemeValueHandle get(std::string_view name, ThemePresetReport& rep) const {
@@ -233,7 +232,7 @@ class ThemeStore : public StoreBase {
     RolltuiStrList names;
     rolltui_preset_shipped_names(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), &names);
     std::vector<std::string> out;
-    for (const RolltuiStr& n : names) out.push_back(n.str());
+    for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
   }
   static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()) != 0; }
@@ -273,7 +272,7 @@ class LayoutStore : public StoreBase {
   void start(LayoutPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
   RolltuiLayout working() const {
     void* v = rolltui_preset_store_working(s_);
-    RolltuiLayout out = *static_cast<RolltuiLayout*>(v);
+    RolltuiLayout out = (*static_cast<RolltuiLayout*>(v)).clone();
     rolltui_preset_store_value_free(s_, v);
     return out;
   }
@@ -285,7 +284,7 @@ class LayoutStore : public StoreBase {
   std::optional<RolltuiLayout> get(std::string_view name, LayoutPresetReport& rep) const {
     void* v = rolltui_preset_store_get(s_, name.data(), name.size(), &rep);
     if (!v) return std::nullopt;
-    RolltuiLayout out = *static_cast<RolltuiLayout*>(v);
+    RolltuiLayout out = (*static_cast<RolltuiLayout*>(v)).clone();
     rolltui_preset_store_value_free(s_, v);
     return out;
   }
@@ -297,7 +296,7 @@ class LayoutStore : public StoreBase {
     RolltuiStrList names;
     rolltui_preset_shipped_names(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), &names);
     std::vector<std::string> out;
-    for (const RolltuiStr& n : names) out.push_back(n.str());
+    for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
   }
   static std::string shipped_json(std::string_view name) {
@@ -558,7 +557,7 @@ int main() {
   // ---- save as (rule 3) ----
   {
     RolltuiStr err;
-    check(store.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over a shipped name is refused by name (rule 5): " + err.str());
+    check(store.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over a shipped name is refused by name (rule 5): " + str_of(err));
     check(store.save_as("../evil", false, err) == ROLLTUI_SAVE_BAD_NAME && store.save_as(".hidden", false, err) == ROLLTUI_SAVE_BAD_NAME, "a path-like or dot name is refused");
     check(store.save_as("mine", false, err) == ROLLTUI_SAVE_SAVED && err.empty(), "save-as 'mine' saves");
     check(store.label() == "mine" && store.origin() == "mine" && !store.modified(), "…and the working copy is now 'mine', unmodified");
@@ -566,11 +565,11 @@ int main() {
     RolltuiPresetList list;
     store.list(list);
     bool has_mine = false, shipped_first = !list.empty() && list[0].shipped && list[0].name == "default";
-    for (const RolltuiPresetInfo& p : list) if (p.name == "mine" && !p.shipped && p.path == store.preset_path("mine")) has_mine = true;
+    for (const RolltuiPresetInfo& p : list) if (p.name == "mine" && !p.shipped && view_of(p.path) == store.preset_path("mine")) has_mine = true;
     check(shipped_first && has_mine, "list() has the shipped presets first and the user preset with its path");
     store.set_depth("256");
     check(store.label() == "mine (modified)", "an edit after saving reads 'mine (modified)'");
-    check(store.save_as("mine", false, err) == ROLLTUI_SAVE_EXISTS_ASK, "save-as over an existing user preset asks once: " + err);
+    check(store.save_as("mine", false, err) == ROLLTUI_SAVE_EXISTS_ASK, "save-as over an existing user preset asks once: " + str_of(err));
     check(store.save_as("mine", true, err) == ROLLTUI_SAVE_SAVED && store.label() == "mine", "…and saves with confirmation");
     // Load copies (rule 3): the preset is read-only — editing the working copy does
     // not touch the file.
@@ -605,7 +604,7 @@ int main() {
     editor.set_mode("light");
     RolltuiStr err;
     check(editor.save_as("default", false, err) == ROLLTUI_SAVE_SAVED && fs::exists(fs::path(shipped_dir) / "default.json"),
-          "with may_write_shipped the editor writes 'default' into the shipped directory: " + err);
+          "with may_write_shipped the editor writes 'default' into the shipped directory: " + str_of(err));
     RolltuiStr e2{};
     const std::string written = read_file(fs::path(shipped_dir) / "default.json");
     RolltuiJsonValue* v = rolltui_json_parse(written.data(), written.size(), &e2);

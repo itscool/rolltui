@@ -81,6 +81,14 @@ void rolltui_menu_list_copy(RolltuiMenuItemList* to, const RolltuiMenuItemList* 
 
 /* ---- the item -------------------------------------------------------------------------------- */
 
+void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* id, size_t id_len, const char* label,
+                           size_t label_len, const char* shortcut, size_t shortcut_len) {
+  it->kind = kind;
+  rolltui_str_set(&it->id, id, id_len);
+  rolltui_str_set(&it->label, label, label_len);
+  rolltui_str_set(&it->shortcut, shortcut, shortcut_len);
+}
+
 void rolltui_menu_item_init(RolltuiMenuItem* it) {
   memset(it, 0, sizeof *it);
   it->enabled = 1; /* the one field whose zero is not the default */

@@ -42,8 +42,7 @@
 #include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
-#include <string>
-#include <string_view>
+#include <cstring>
 extern "C" {
 #endif
 
@@ -55,54 +54,37 @@ typedef struct RolltuiStr {
   size_t cap ROLLTUI_DEFAULT(0);    /* bytes allocated, including room for the NUL */
 
 #ifdef __cplusplus
+  // THE C++ SHAPE, cut to the user's rule (Phase 19 m2, 2026-09-06): a member may name rolltui's
+  // own types and the C standard's, never a std:: container or view. What a host wants as a
+  // std::string it converts in its own file, at the site that wants it. COPY IS DELETED:
+  // `RolltuiStr a = b;` was a deep copy in C++ and a shallow alias in C — Phase 16 m6's
+  // double-free, one type over — and the one spelling is `a.assign(b)`, which is
+  // `rolltui_str_set`. MOVE stays: it is `rolltui_str_move` as a member. THE DESTRUCTOR STAYS:
+  // RAII is the language's ownership model, `rolltui_str_free` is public and the C consumer
+  // proves the pair, so it hides nothing. Every other member is one C function with `this`.
   RolltuiStr() = default;
-  RolltuiStr(const RolltuiStr& o) { assign(o.view()); }
+  RolltuiStr(const RolltuiStr&) = delete;
+  RolltuiStr& operator=(const RolltuiStr&) = delete;
   RolltuiStr(RolltuiStr&& o) noexcept : p(o.p), n(o.n), cap(o.cap) { o.p = nullptr; o.n = o.cap = 0; }
-  RolltuiStr(std::string_view s) { assign(s); }  // NOLINT(google-explicit-constructor)
-  RolltuiStr(const char* s) { assign(s ? std::string_view(s) : std::string_view()); }  // NOLINT
-  RolltuiStr(const std::string& s) { assign(s); }  // NOLINT(google-explicit-constructor)
-  ~RolltuiStr();
-  RolltuiStr& operator=(const RolltuiStr& o) {
-    if (this != &o) assign(o.view());
-    return *this;
-  }
   RolltuiStr& operator=(RolltuiStr&& o) noexcept;
-  RolltuiStr& operator=(std::string_view s) {
-    assign(s);
-    return *this;
-  }
-  RolltuiStr& operator=(const char* s) { return *this = (s ? std::string_view(s) : std::string_view()); }
-  RolltuiStr& operator=(const std::string& s) { return *this = std::string_view(s); }
-
-  void assign(std::string_view s);
-  // APPEND, which a streaming entry does every token. `rolltui_str_append` grows exactly, so
-  // a long stream reallocs per token — the same policy `std::string` hides behind doubling.
-  // The transcript's own text is the markdown store's, not this; an entry's is written by a
-  // host, and the honest answer for a host is the strategy it can see.
-  RolltuiStr& operator+=(std::string_view s);
-  RolltuiStr& operator+=(const char* s) { return *this += (s ? std::string_view(s) : std::string_view()); }
-  RolltuiStr& operator+=(char c) { return *this += std::string_view(&c, 1); }
-  std::string_view view() const { return std::string_view(p ? p : "", n); }
-  operator std::string_view() const { return view(); }  // NOLINT(google-explicit-constructor)
+  RolltuiStr(const char* s) { assign(s); }  // NOLINT(google-explicit-constructor)
+  ~RolltuiStr();
+  RolltuiStr& operator=(const char* s) { assign(s); return *this; }
+  void assign(const char* s, std::size_t len);
+  void assign(const char* s) { assign(s, s ? std::strlen(s) : 0); }
+  void assign(const RolltuiStr& o) { assign(o.p, o.n); }
+  void append(const char* s, std::size_t len);
+  void append(const RolltuiStr& o) { append(o.p, o.n); }
+  RolltuiStr& operator+=(const char* s) { append(s, s ? std::strlen(s) : 0); return *this; }
+  RolltuiStr& operator+=(char c) { append(&c, 1); return *this; }
   const char* c_str() const { return p ? p : ""; }
   const char* data() const { return p ? p : ""; }
   std::size_t size() const { return n; }
   bool empty() const { return n == 0; }
   void clear();  // keeps the buffer — the reuse this type exists for
-  std::string str() const { return std::string(view()); }
-  // The three read-only `string_view` operations callers actually reach for. They return
-  // VIEWS, never new strings — which is the borrow this type is for, said once here rather
-  // than spelled out at twenty call sites.
-  static constexpr std::size_t npos = std::string_view::npos;
-  std::size_t find(std::string_view s, std::size_t pos = 0) const { return view().find(s, pos); }
-  std::size_t find(char c, std::size_t pos = 0) const { return view().find(c, pos); }
-  std::string_view substr(std::size_t pos, std::size_t count = npos) const { return view().substr(pos, count); }
-  bool operator==(std::string_view o) const { return view() == o; }
-  bool operator==(const char* o) const { return view() == (o ? std::string_view(o) : std::string_view()); }
-  bool operator==(const RolltuiStr& o) const { return view() == o.view(); }
-  // Written out rather than left to the `string_view` conversion, which would make
-  // `str == some_std_string` AMBIGUOUS (two equally good conversions) at every call site.
-  bool operator==(const std::string& o) const { return view() == o; }
+  bool eq(const char* s, std::size_t len) const;
+  bool operator==(const char* o) const { return eq(o, o ? std::strlen(o) : 0); }
+  bool operator==(const RolltuiStr& o) const { return eq(o.p, o.n); }
 #endif
 } RolltuiStr;
 
@@ -210,28 +192,11 @@ using Str = RolltuiStr;
 using PtrVec = RolltuiPtrVec;
 }  // namespace rolltui
 
-// The two concatenations the library's report-building actually writes. `std::string` has
-// no `operator+` for a `string_view`, so without these every `where + ": " + n.id` in a
-// loader would have to spell a conversion — which would make this port's diff about
-// spelling instead of about ownership.
-inline std::string operator+(const std::string& a, const RolltuiStr& b) {
-  std::string s = a;
-  s.append(b.view());
-  return s;
-}
-inline std::string operator+(const RolltuiStr& a, const char* b) {
-  std::string s(a.view());
-  s += b;
-  return s;
-}
-
 inline RolltuiStr::~RolltuiStr() { rolltui_str_free(this); }
 inline RolltuiStrList::~RolltuiStrList() { rolltui_str_list_release(this); }
-inline void RolltuiStr::assign(std::string_view s) { rolltui_str_set(this, s.data(), s.size()); }
-inline RolltuiStr& RolltuiStr::operator+=(std::string_view s) {
-  rolltui_str_append(this, s.data(), s.size());
-  return *this;
-}
+inline void RolltuiStr::assign(const char* s, std::size_t len) { rolltui_str_set(this, s, len); }
+inline void RolltuiStr::append(const char* s, std::size_t len) { rolltui_str_append(this, s, len); }
+inline bool RolltuiStr::eq(const char* s, std::size_t len) const { return rolltui_str_eq(this, s, len) != 0; }
 inline void RolltuiStr::clear() { rolltui_str_clear(this); }
 inline RolltuiStr& RolltuiStr::operator=(RolltuiStr&& o) noexcept {
   if (this != &o) rolltui_str_move(this, &o);

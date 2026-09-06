@@ -140,7 +140,7 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   RolltuiStr err{};
   RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
   if (!root_c) {
-    report.error = err.str();
+    report.error = str_of(err);
     rolltui_str_free(&err);
     return std::nullopt;
   }
@@ -150,10 +150,10 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   RolltuiStr name{};
   RolltuiThemeReport rep{};
   RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &theme_vocab(), t.styles.data(), &name, &rep);
-  report.error = rep.error.str();
-  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(rep.missing_roles[i].str());
-  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(rep.unknown_keys[i].str());
-  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(rep.bad_values[i].str());
+  report.error = str_of(rep.error);
+  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(str_of(rep.missing_roles[i]));
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(str_of(rep.unknown_keys[i]));
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(str_of(rep.bad_values[i]));
   rolltui_theme_report_release(&rep);
   if (!eff) {
     rolltui_str_free(&name);
@@ -161,7 +161,7 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
     return std::nullopt;
   }
   rolltui_effect_map_free(eff);  // this fixture never reads effects
-  t.name = name.str();
+  t.name = str_of(name);
   rolltui_str_free(&name);
 
   const RolltuiJsonValue* meta_c = rolltui_json_get(root_c, "meta", 4);
@@ -188,7 +188,7 @@ std::string theme_to_json(const Theme& theme) {
   rolltui_json_free(c);
   RolltuiStr out{};
   rolltui_json_dump(root, 2, &out);
-  std::string result(out.str());
+  std::string result(str_of(out));
   rolltui_str_free(&out);
   rolltui_json_free(root);
   return result + "\n";

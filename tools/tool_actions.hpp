@@ -21,6 +21,7 @@
 // "DECLARING, SUGGESTING, AND THE SHIPPED TABLE" for why a tool states its keys in code
 // while a layout must not.
 //
+#include "tool_str.hpp"
 #include <cstddef>
 #include <span>
 

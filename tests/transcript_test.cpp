@@ -22,6 +22,7 @@
 // standing condition is that a mirror may hold a SHAPE and never a rule or a word — every rule
 // here (the wrap, the marker, the action names, the role names) is a call, not a copy.
 #include "rolltui/rolltui.h"
+#include "md_test_helpers.hpp"
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -177,7 +178,7 @@ std::string scroll_marker_text(std::size_t hidden, int width, bool ambiguous_wid
 RolltuiDocEntry user(const char* id, std::string text) {
   RolltuiDocEntry e;
   e.id = id;
-  e.text = std::move(text);
+  set_str(e.text, std::move(text));
   e.markdown = false;
   e.prefix = "> ";
   e.prefix_role = as_role(Role::prompt);
@@ -186,21 +187,21 @@ RolltuiDocEntry user(const char* id, std::string text) {
 RolltuiDocEntry md(const char* id, std::string text) {
   RolltuiDocEntry e;
   e.id = id;
-  e.text = std::move(text);
+  set_str(e.text, std::move(text));
   e.markdown = true;
   return e;
 }
 RolltuiDocEntry verbatim(const char* id, std::string text) {
   RolltuiDocEntry e;
   e.id = id;
-  e.text = std::move(text);
+  set_str(e.text, std::move(text));
   e.markdown = false;
   return e;
 }
 RolltuiDocEntry tool(const char* id, std::string summary, std::string text) {
   RolltuiDocEntry e = verbatim(id, std::move(text));
   e.foldable = true;
-  e.summary = std::move(summary);
+  set_str(e.summary, std::move(summary));
   e.folded = true;
   return e;
 }
@@ -306,7 +307,7 @@ bool handle(RolltuiTranscript* t, const MouseEvent& m, const RolltuiDocument& do
 std::string selected_text(const RolltuiTranscript* t) {
   RolltuiStr s;
   rolltui_transcript_selected_text(t, &s);
-  return s.str();
+  return str_of(s);
 }
 std::size_t top_line(const RolltuiTranscript* t) { return rolltui_transcript_top_line(t); }
 RolltuiScrollAnchor scroll(const RolltuiTranscript* t) {
@@ -367,7 +368,7 @@ void select(RolltuiTranscript* t, RolltuiTextPos anchor, RolltuiTextPos head) {
   rolltui_transcript_select(t, anchor, head);
 }
 void toggle_fold(RolltuiTranscript* t, const RolltuiDocEntry& e) {
-  const std::string_view id = e.id.view();
+  const std::string_view id = view_of(e.id);
   rolltui_transcript_set_folded(t, id.data(), id.size(), !is_folded(t, e));
 }
 void set_code_uncapped(RolltuiTranscript* t, std::string_view id, std::size_t block, bool uncapped) {
@@ -517,7 +518,7 @@ int main() {
     TranscriptHandle tr;
     layout(tr, doc, {0, 0, 30, 8}, opt);
     const RolltuiEntryLayout* L = layout_of(tr, 1);
-    check(L && L->folded && L->lines().size() == 1 && L->hidden_lines == 3 && L->text() == "read_file X",
+    check(L && L->folded && lines_of(*L).size() == 1 && L->hidden_lines == 3 && text_of(*L) == "read_file X",
           "a foldable entry starts folded: one summary line, three hidden, its text is the summary");
     Frame f(30, 8);
     draw(tr, f, theme, scratch);
@@ -526,14 +527,14 @@ int main() {
     handle(tr, mouse(MouseEvent::Kind::Release, 5, 2), doc, 1000);
     layout(tr, doc, {0, 0, 30, 8}, opt);
     L = layout_of(tr, 1);
-    check(L && !L->folded && L->lines().size() == 4 && L->text() == "a\nb\nc", "a click on the summary line unfolds: summary + 3 body lines, text is the body");
+    check(L && !L->folded && lines_of(*L).size() == 4 && text_of(*L) == "a\nb\nc", "a click on the summary line unfolds: summary + 3 body lines, text is the body");
     check(!selection(tr).active, "the click selected nothing");
     f = Frame(30, 8);
     draw(tr, f, theme, scratch);
     check(row_text(f, 2) == "\xE2\x96\xBE read_file X" && row_text(f, 3) == "a", "unfolded: ▾ summary then the body");
     check(handle(tr, ctrl('o'), doc, 2000), "Ctrl-O finds the first fold in view");
     layout(tr, doc, {0, 0, 30, 8}, opt);
-    check(is_folded(tr, doc[1]) && layout_of(tr, 1)->lines().size() == 1, "and toggles it back");
+    check(is_folded(tr, doc[1]) && lines_of(*layout_of(tr, 1)).size() == 1, "and toggles it back");
     scroll_to_top(tr);
     layout(tr, doc, {0, 0, 30, 1}, opt);  // a one-row viewport showing only the prompt
     check(!handle(tr, ctrl('o'), doc, 3000), "Ctrl-O with no summary line in view does nothing");
@@ -968,10 +969,10 @@ int main() {
     TranscriptHandle tr;
     layout(tr, doc, {0, 0, 40, 24}, fold);
     const RolltuiEntryLayout* L = layout_of(tr, 0);
-    check(L && L->code_blocks().size() == 1 && L->code_blocks()[0].folded,
+    check(L && code_blocks_of(*L).size() == 1 && code_blocks_of(*L)[0].folded,
           "a 12-line block over the threshold arrives folded in the transcript");
     const std::size_t folded_total = total_lines(tr);
-    const std::size_t header = L->code_blocks()[0].header_line;
+    const std::size_t header = code_blocks_of(*L)[0].header_line;
     check(header != ROLLTUI_MD_NO_LINE, "…and reports the row a click has to land on");
     Frame f(40, 24);
     draw(tr, f, theme, scratch);
@@ -982,26 +983,26 @@ int main() {
     handle(tr, mouse(MouseEvent::Kind::Press, 30, static_cast<int>(header)), doc, 1000);
     layout(tr, doc, {0, 0, 40, 24}, fold);
     const RolltuiEntryLayout* open = layout_of(tr, 0);
-    check(!open->code_blocks()[0].folded && total_lines(tr) > folded_total,
+    check(!code_blocks_of(*open)[0].folded && total_lines(tr) > folded_total,
           "a click anywhere on the header row unfolds it");
-    check(open->code_blocks()[0].hidden == 6 && open->code_blocks()[0].marker_line != ROLLTUI_MD_NO_LINE,
+    check(code_blocks_of(*open)[0].hidden == 6 && code_blocks_of(*open)[0].marker_line != ROLLTUI_MD_NO_LINE,
           "…and the opened block is still CAPPED, with 6 of its 12 lines behind the marker");
     check(selection(tr).empty(), "…and it selected nothing: a control does its own job, not a drag");
 
     // Click 2: the "▼ N more" row lifts the cap for THAT block — the same reasoning that
     // made the transcript's own marker clickable in m5, one rung down.
-    const std::size_t marker = open->code_blocks()[0].marker_line;
+    const std::size_t marker = code_blocks_of(*open)[0].marker_line;
     handle(tr, mouse(MouseEvent::Kind::Press, 5, static_cast<int>(marker)), doc, 2000);
     layout(tr, doc, {0, 0, 40, 24}, fold);
-    check(layout_of(tr, 0)->code_blocks()[0].hidden == 0, "a click on the block's ▼ marker shows the rest of it");
+    check(code_blocks_of(*layout_of(tr, 0))[0].hidden == 0, "a click on the block's ▼ marker shows the rest of it");
 
     // Ctrl-O takes the nearest fold from the top, whether it is an entry's or a block's.
     set_code_folded(tr, "c1", 0, true);
     layout(tr, doc, {0, 0, 40, 24}, fold);
-    check(layout_of(tr, 0)->code_blocks()[0].folded, "set_code_folded shuts it again");
+    check(code_blocks_of(*layout_of(tr, 0))[0].folded, "set_code_folded shuts it again");
     handle(tr, ctrl('o'), doc, 3000);
     layout(tr, doc, {0, 0, 40, 24}, fold);
-    check(!layout_of(tr, 0)->code_blocks()[0].folded, "transcript.fold (Ctrl-O) toggles a code block too — no new action for it");
+    check(!code_blocks_of(*layout_of(tr, 0))[0].folded, "transcript.fold (Ctrl-O) toggles a code block too — no new action for it");
 
     // THE PROPERTY THE DESIGN EXISTS FOR. A fold hides lines and never text, so the
     // match count is the same open and shut. If this ever fails, a folded block has
@@ -1016,10 +1017,10 @@ int main() {
     // …and revealing one of them has to OPEN the block, because the text was there but
     // the line was not. The query is set while the block is shut, so the reveal is the
     // only thing that could have opened it.
-    check(layout_of(tr, 0)->code_blocks()[0].folded, "the block is shut when the query is typed");
+    check(code_blocks_of(*layout_of(tr, 0))[0].folded, "the block is shut when the query is typed");
     set_query(tr, "needle7");
     layout(tr, doc, {0, 0, 40, 24}, fold);
-    check(match_count(tr) == 1 && !layout_of(tr, 0)->code_blocks()[0].folded,
+    check(match_count(tr) == 1 && !code_blocks_of(*layout_of(tr, 0))[0].folded,
           "revealing a match inside a folded block unfolds it");
 
     // A selection over the entry copies the block's real code, not its summary: the
@@ -1028,7 +1029,7 @@ int main() {
     set_code_folded(tr, "c1", 0, true);
     set_code_uncapped(tr, "c1", 0, false);
     layout(tr, doc, {0, 0, 40, 24}, fold);
-    const std::string_view text = layout_of(tr, 0)->text();
+    const std::string_view text = text_of(*layout_of(tr, 0));
     select(tr, {0, 0, 0}, {0, text.size(), 0});
     check(selected_text(tr).find("needle7") != std::string::npos,
           "a selection over a folded block copies the CODE, because the fold never touched the text");

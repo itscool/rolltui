@@ -53,9 +53,6 @@
 
 #ifdef __cplusplus
 #include <cstddef>
-#include <string>
-#include <string_view>
-#include <vector>
 #endif
 
 /* The enums both languages use. Outside `extern "C"` because a C++ scoped enum is what
@@ -194,12 +191,12 @@ typedef struct RolltuiNodeList {
   using value_type = RolltuiLayoutNode;
 
   RolltuiNodeList() = default;
-  RolltuiNodeList(const RolltuiNodeList& o) { copy_from(o); }
+  RolltuiNodeList(const RolltuiNodeList&) = delete;  /* Phase 19 m2: copy is `rolltui_node_list_copy`, spelled */
   RolltuiNodeList(RolltuiNodeList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
     o.v = nullptr;
     o.n = o.cap = 0;
   }
-  RolltuiNodeList& operator=(const RolltuiNodeList& o);
+  RolltuiNodeList& operator=(const RolltuiNodeList&) = delete;
   RolltuiNodeList& operator=(RolltuiNodeList&& o) noexcept;
   ~RolltuiNodeList();
 
@@ -223,7 +220,6 @@ typedef struct RolltuiNodeList {
   bool operator==(const RolltuiNodeList& o) const;
 
  private:
-  void copy_from(const RolltuiNodeList& o);
 #endif
 } RolltuiNodeList;
 
@@ -257,11 +253,14 @@ typedef struct RolltuiLayoutNode {
 
 #ifdef __cplusplus
   bool is_window() const { return kind == Kind::Window; }
-  static RolltuiLayoutNode window(std::string content, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode window_id(std::string id, std::string content, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode row(std::vector<RolltuiLayoutNode> children, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode column(std::vector<RolltuiLayoutNode> children, RolltuiSplitSize size = {});
   bool operator==(const RolltuiLayoutNode& o) const;
+  RolltuiLayoutNode clone() const;
+  // The builders the editor and the tests write trees with — C strings in, fields set
+  // (Phase 19 m2). A container node takes its children by `children.push_back(std::move(c))`.
+  static RolltuiLayoutNode window(const char* content, RolltuiSplitSize size = {});
+  static RolltuiLayoutNode window_id(const char* id, const char* content, RolltuiSplitSize size = {});
+  static RolltuiLayoutNode row(RolltuiSplitSize size = {});
+  static RolltuiLayoutNode column(RolltuiSplitSize size = {});
 #endif
 } RolltuiLayoutNode;
 
@@ -307,11 +306,15 @@ typedef struct RolltuiLayer {
 
 #ifdef __cplusplus
   RolltuiLayer();
-  RolltuiLayer(const RolltuiLayer& o);
+  // COPY IS DELETED (Phase 19 m2): `RolltuiLayer copy = *p;` was a deep copy here and a shallow
+  // alias in C — the double-free Phase 16 m6 measured. The spelling is `clone()`, which is
+  // `rolltui_layer_copy`. The destructor calls the named `rolltui_layer_release` and stays.
+  RolltuiLayer(const RolltuiLayer&) = delete;
   RolltuiLayer(RolltuiLayer&& o) noexcept;
-  RolltuiLayer& operator=(const RolltuiLayer& o);
+  RolltuiLayer& operator=(const RolltuiLayer&) = delete;
   RolltuiLayer& operator=(RolltuiLayer&& o) noexcept;
   ~RolltuiLayer();
+  RolltuiLayer clone() const;
   bool operator==(const RolltuiLayer& o) const;
 #endif
 } RolltuiLayer;
@@ -338,15 +341,12 @@ typedef struct RolltuiLayerList {
 
 #ifdef __cplusplus
   RolltuiLayerList() = default;
-  RolltuiLayerList(const RolltuiLayerList& o) { copy_from(o); }
+  RolltuiLayerList(const RolltuiLayerList&) = delete;  /* Phase 19 m2 */
   RolltuiLayerList(RolltuiLayerList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
     o.v = nullptr;
     o.n = o.cap = 0;
   }
-  RolltuiLayerList& operator=(const RolltuiLayerList& o) {
-    if (this != &o) copy_from(o);
-    return *this;
-  }
+  RolltuiLayerList& operator=(const RolltuiLayerList&) = delete;
   RolltuiLayerList& operator=(RolltuiLayerList&& o) noexcept;
   ~RolltuiLayerList();
 
@@ -363,15 +363,13 @@ typedef struct RolltuiLayerList {
   const RolltuiLayer* begin() const { return v; }
   const RolltuiLayer* end() const { return v + n; }
   void push_back(RolltuiLayer&& l);
-  void push_back(const RolltuiLayer& l);
   // Removes the layer whose id matches (a no-op when none does) — Layout.hpp's
   // "remove this popup", the one mutation a host ever asks of this list by name.
-  void erase_id(std::string_view id);
+  void erase_id(const char* id, std::size_t len);
   void clear();
   bool operator==(const RolltuiLayerList& o) const;
 
  private:
-  void copy_from(const RolltuiLayerList& o);
 #endif
 } RolltuiLayerList;
 
@@ -414,12 +412,7 @@ typedef struct RolltuiResolvedNode {
  * implement, is that home and removes the last C++ translation unit from the library. */
 inline RolltuiNodeList::~RolltuiNodeList() { rolltui_node_list_release(this); }
 
-inline void RolltuiNodeList::copy_from(const RolltuiNodeList& o) { rolltui_node_list_copy(this, &o); }
 
-inline RolltuiNodeList& RolltuiNodeList::operator=(const RolltuiNodeList& o) {
-  if (this != &o) rolltui_node_list_copy(this, &o);
-  return *this;
-}
 
 inline RolltuiNodeList& RolltuiNodeList::operator=(RolltuiNodeList&& o) noexcept {
   if (this != &o) {
@@ -464,37 +457,41 @@ inline bool RolltuiNodeList::operator==(const RolltuiNodeList& o) const {
 
 // ---- the node -------------------------------------------------------------------------------
 
-inline RolltuiLayoutNode RolltuiLayoutNode::window(std::string content, RolltuiSplitSize size) {
-  RolltuiLayoutNode n;
-  n.kind = Kind::Window;
-  n.id = content;
-  n.content = std::move(content);
-  n.size = size;
-  return n;
-}
 
-inline RolltuiLayoutNode RolltuiLayoutNode::window_id(std::string id, std::string content, RolltuiSplitSize size) {
-  RolltuiLayoutNode n = window(std::move(content), size);
-  n.id = std::move(id);
-  return n;
-}
 
-inline RolltuiLayoutNode RolltuiLayoutNode::row(std::vector<RolltuiLayoutNode> children, RolltuiSplitSize size) {
-  RolltuiLayoutNode n;
-  n.kind = Kind::Row;
-  for (RolltuiLayoutNode& c : children) n.children.push_back(std::move(c));
-  n.size = size;
-  return n;
-}
 
-inline RolltuiLayoutNode RolltuiLayoutNode::column(std::vector<RolltuiLayoutNode> children, RolltuiSplitSize size) {
-  RolltuiLayoutNode n = row(std::move(children), size);
-  n.kind = Kind::Column;
-  return n;
-}
 
 inline bool RolltuiLayoutNode::operator==(const RolltuiLayoutNode& o) const {
   return rolltui_layout_node_equal(this, &o) != 0;
+}
+inline RolltuiLayoutNode RolltuiLayoutNode::clone() const {
+  RolltuiLayoutNode out;
+  rolltui_layout_node_copy(&out, this);
+  return out;
+}
+inline RolltuiLayoutNode RolltuiLayoutNode::window(const char* content, RolltuiSplitSize size) {
+  RolltuiLayoutNode n;
+  n.kind = Kind::Window;
+  n.id = content;
+  n.content = content;
+  n.size = size;
+  return n;
+}
+inline RolltuiLayoutNode RolltuiLayoutNode::window_id(const char* id, const char* content, RolltuiSplitSize size) {
+  RolltuiLayoutNode n = window(content, size);
+  n.id = id;
+  return n;
+}
+inline RolltuiLayoutNode RolltuiLayoutNode::row(RolltuiSplitSize size) {
+  RolltuiLayoutNode n;
+  n.kind = Kind::Row;
+  n.size = size;
+  return n;
+}
+inline RolltuiLayoutNode RolltuiLayoutNode::column(RolltuiSplitSize size) {
+  RolltuiLayoutNode n = row(size);
+  n.kind = Kind::Column;
+  return n;
 }
 
 // ---- a layer ---------------------------------------------------------------------------------
@@ -508,8 +505,6 @@ inline RolltuiLayer::RolltuiLayer() {
   placement.clamp = 1;
 }
 
-inline RolltuiLayer::RolltuiLayer(const RolltuiLayer& o) : RolltuiLayer() { rolltui_layer_copy(this, &o); }
-
 inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
     : id(std::move(o.id)),
       placement(o.placement),
@@ -518,11 +513,12 @@ inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
       focus(std::move(o.focus)) {
   o.modal = 0;
 }
-
-inline RolltuiLayer& RolltuiLayer::operator=(const RolltuiLayer& o) {
-  if (this != &o) rolltui_layer_copy(this, &o);
-  return *this;
+inline RolltuiLayer RolltuiLayer::clone() const {
+  RolltuiLayer out;
+  rolltui_layer_copy(&out, this);
+  return out;
 }
+
 
 inline RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
   if (this != &o) {
@@ -544,7 +540,6 @@ inline bool RolltuiLayer::operator==(const RolltuiLayer& o) const { return rollt
 
 inline RolltuiLayerList::~RolltuiLayerList() { rolltui_layer_list_release(this); }
 
-inline void RolltuiLayerList::copy_from(const RolltuiLayerList& o) { rolltui_layer_list_copy(this, &o); }
 
 inline RolltuiLayerList& RolltuiLayerList::operator=(RolltuiLayerList&& o) noexcept {
   if (this != &o) {
@@ -560,9 +555,8 @@ inline RolltuiLayerList& RolltuiLayerList::operator=(RolltuiLayerList&& o) noexc
 
 inline void RolltuiLayerList::push_back(RolltuiLayer&& l) { rolltui_layer_move(rolltui_layer_list_add(this), &l); }
 
-inline void RolltuiLayerList::push_back(const RolltuiLayer& l) { rolltui_layer_copy(rolltui_layer_list_add(this), &l); }
 
-inline void RolltuiLayerList::erase_id(std::string_view id) { rolltui_layer_list_remove_id(this, id.data(), id.size()); }
+inline void RolltuiLayerList::erase_id(const char* id, std::size_t len) { rolltui_layer_list_remove_id(this, id, len); }
 
 inline void RolltuiLayerList::clear() { rolltui_layer_list_clear(this); }
 

@@ -24,6 +24,7 @@
 // committed colours into the preset store on Committed; run a save-as, a load, a
 // shipped write or a reset (the last three after confirming) on the matching Outcome.
 //
+#include "tool_str.hpp"
 #include <array>
 #include <cstddef>
 #include <optional>

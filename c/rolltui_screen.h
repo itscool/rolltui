@@ -58,7 +58,6 @@
 #include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
-#include <string_view>
 #endif
 
 #ifdef __cplusplus
@@ -91,13 +90,6 @@ typedef struct RolltuiCell {
   static constexpr unsigned char kSpilled = ROLLTUI_CELL_SPILLED;
 
   bool spilled() const { return len == kSpilled; }
-  // The inline bytes, as a view INTO THIS CELL — so a view taken from a Cell that `at()`
-  // returned by value dies with it. Empty for a continuation cell, and NOT the answer for
-  // a spilled cell: `rolltui_frame_glyph` (rolltui::Frame::glyph) is the one accessor that
-  // is right in both cases, and it borrows from the FRAME.
-  std::string_view inline_bytes() const {
-    return std::string_view(bytes, spilled() ? 0u : static_cast<unsigned>(len));
-  }
   bool operator==(const RolltuiCell&) const = default;
 #endif
 } RolltuiCell;

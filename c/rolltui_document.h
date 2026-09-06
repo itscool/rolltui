@@ -32,7 +32,6 @@
 
 #ifdef __cplusplus
 #include <cstddef>
-#include <string>
 
 namespace rolltui {
 // Declared, not defined: the vocabularies live in `rolltui/Style.hpp` and
@@ -77,11 +76,15 @@ typedef struct RolltuiDocEntry {
 
 #ifdef __cplusplus
   RolltuiDocEntry();
-  RolltuiDocEntry(const RolltuiDocEntry& o);
+  // COPY IS DELETED (Phase 19 m2): the explicit spelling is `clone()`, which is
+  // `rolltui_doc_entry_copy`. MOVE and the destructor stay — the destructor calls the named
+  // `rolltui_doc_entry_release` and hides nothing.
+  RolltuiDocEntry(const RolltuiDocEntry&) = delete;
   RolltuiDocEntry(RolltuiDocEntry&& o) noexcept;
-  RolltuiDocEntry& operator=(const RolltuiDocEntry& o);
+  RolltuiDocEntry& operator=(const RolltuiDocEntry&) = delete;
   RolltuiDocEntry& operator=(RolltuiDocEntry&& o) noexcept;
   ~RolltuiDocEntry();
+  RolltuiDocEntry clone() const;
 #endif
 } RolltuiDocEntry;
 
@@ -119,14 +122,15 @@ typedef struct RolltuiDocument {
   };
 
   RolltuiDocument() = default;
-  RolltuiDocument(const RolltuiDocument& o);
+  RolltuiDocument(const RolltuiDocument&) = delete;  /* clone() is the spelling (Phase 19 m2) */
   RolltuiDocument(RolltuiDocument&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
     o.v = nullptr;
     o.n = o.cap = 0;
   }
-  RolltuiDocument& operator=(const RolltuiDocument& o);
+  RolltuiDocument& operator=(const RolltuiDocument&) = delete;
   RolltuiDocument& operator=(RolltuiDocument&& o) noexcept;
   ~RolltuiDocument();
+  RolltuiDocument clone() const;
 
   std::size_t size() const { return n; }
   bool empty() const { return n == 0; }
@@ -171,8 +175,6 @@ void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from);
 inline RolltuiDocEntry::RolltuiDocEntry() = default;
 inline RolltuiDocEntry::~RolltuiDocEntry() = default;
 
-inline RolltuiDocEntry::RolltuiDocEntry(const RolltuiDocEntry& o) { rolltui_doc_entry_copy(this, &o); }
-
 inline RolltuiDocEntry::RolltuiDocEntry(RolltuiDocEntry&& o) noexcept
     : id(std::move(o.id)),
       version(o.version),
@@ -187,11 +189,12 @@ inline RolltuiDocEntry::RolltuiDocEntry(RolltuiDocEntry&& o) noexcept
       state(o.state),
       progress(o.progress),
       state_since_ms(o.state_since_ms) {}
-
-inline RolltuiDocEntry& RolltuiDocEntry::operator=(const RolltuiDocEntry& o) {
-  if (this != &o) rolltui_doc_entry_copy(this, &o);
-  return *this;
+inline RolltuiDocEntry RolltuiDocEntry::clone() const {
+  RolltuiDocEntry out;
+  rolltui_doc_entry_copy(&out, this);
+  return out;
 }
+
 
 inline RolltuiDocEntry& RolltuiDocEntry::operator=(RolltuiDocEntry&& o) noexcept {
   if (this != &o) {
@@ -214,14 +217,14 @@ inline RolltuiDocEntry& RolltuiDocEntry::operator=(RolltuiDocEntry&& o) noexcept
 
 // ---- the list ---------------------------------------------------------------------------
 
-inline RolltuiDocument::RolltuiDocument(const RolltuiDocument& o) { rolltui_document_copy(this, &o); }
+inline RolltuiDocument RolltuiDocument::clone() const {
+  RolltuiDocument out;
+  rolltui_document_copy(&out, this);
+  return out;
+}
 
 inline RolltuiDocument::~RolltuiDocument() { rolltui_document_release(this); }
 
-inline RolltuiDocument& RolltuiDocument::operator=(const RolltuiDocument& o) {
-  if (this != &o) rolltui_document_copy(this, &o);
-  return *this;
-}
 
 inline RolltuiDocument& RolltuiDocument::operator=(RolltuiDocument&& o) noexcept {
   if (this != &o) {

@@ -457,7 +457,7 @@ int main() {
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];
     // MEASURED 2026-09-06 (Phase 19 m1): 851 functions in 37 public headers.
-    const int kPublic = 577, kTool = 42, kInternal_ = 184, kDelete = 48;
+    const int kPublic = 578, kTool = 42, kInternal_ = 184, kDelete = 48;  // +1 in m2: rolltui_menu_item_set
     check(totals["PUBLIC"] == kPublic && totals["TOOL_FACING"] == kTool && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", TOOL_FACING " + std::to_string(totals["TOOL_FACING"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) + ") — a moved class re-records them deliberately");
@@ -470,6 +470,44 @@ int main() {
         std::printf("\n");
       }
     }
+  }
+
+  // ---- 7. NO std:: CONTAINER OR VIEW UNDER __cplusplus IN A PUBLIC HEADER (Phase 19 m2) ---
+  // The user's rule, 2026-09-06: a C++ member on one of these structs may name rolltui's own
+  // types and the C standard's, never a std:: container or view — a member that binds every
+  // consumer to one C++ API is lock-in of another kind and makes every other binding harder.
+  // 117 such lines were cut in m2; this is what keeps the count at zero. Comments are stripped
+  // first, so prose that MENTIONS std::string is not a violation, and the scanner proves itself
+  // on a planted line before its zero is believed.
+  {
+    static const std::regex std_view(R"(\bstd::(string|string_view|vector|span|optional|map|set|function|unique_ptr|shared_ptr)\b)");
+    const std::string root = std::string(ROLLTUI_SOURCE_DIR);
+    std::vector<std::string> offenders;
+    int cpp_lines = 0;
+    for (const std::string& h : headers) {
+      const std::string t = strip_all_comments(read(root + "/c/" + h));
+      std::istringstream in(t);
+      std::string line;
+      bool in_cpp = false;
+      int depth = 0;
+      int lineno = 0;
+      while (std::getline(in, line)) {
+        ++lineno;
+        const std::string s = line.substr(line.find_first_not_of(" \t") == std::string::npos ? line.size() : line.find_first_not_of(" \t"));
+        if (s.rfind("#ifdef __cplusplus", 0) == 0 || s.rfind("#if defined(__cplusplus)", 0) == 0) { in_cpp = true; depth = 1; continue; }
+        if (in_cpp && s.rfind("#if", 0) == 0) { ++depth; continue; }
+        if (in_cpp && s.rfind("#endif", 0) == 0) { if (--depth == 0) in_cpp = false; continue; }
+        if (!in_cpp) continue;
+        ++cpp_lines;
+        if (std::regex_search(s, std_view)) offenders.push_back(h + ":" + std::to_string(lineno) + ": " + s.substr(0, 80));
+      }
+    }
+    check(cpp_lines > 500, "the __cplusplus scanner sees the C++ members (" + std::to_string(cpp_lines) + " lines)");
+    check(std::regex_search(std::string("  std::string_view view() const;"), std_view) && !std::regex_search(std::string("  RolltuiStr s;"), std_view),
+          "…and its pattern matches a std:: view and not rolltui's own type");
+    std::string joined;
+    for (const std::string& o : offenders) joined += "\n      " + o;
+    check(offenders.empty(), "no __cplusplus member of a public header names a std:: container or view — rolltui's own types and the C standard's only" + joined);
   }
 
   return report("public_header_test");

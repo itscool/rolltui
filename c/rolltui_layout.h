@@ -68,7 +68,6 @@
 #include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
-#include <string_view>
 
 extern "C" {
 #endif
@@ -417,15 +416,12 @@ typedef struct RolltuiActionList {
 
 #ifdef __cplusplus
   RolltuiActionList() = default;
-  RolltuiActionList(const RolltuiActionList& o) { copy_from(o); }
+  RolltuiActionList(const RolltuiActionList&) = delete;  /* Phase 19 m2: copy is `rolltui_action_list_copy`, spelled */
   RolltuiActionList(RolltuiActionList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
     o.v = nullptr;
     o.n = o.cap = 0;
   }
-  RolltuiActionList& operator=(const RolltuiActionList& o) {
-    if (this != &o) copy_from(o);
-    return *this;
-  }
+  RolltuiActionList& operator=(const RolltuiActionList&) = delete;
   RolltuiActionList& operator=(RolltuiActionList&& o) noexcept;
   ~RolltuiActionList();
 
@@ -444,12 +440,11 @@ typedef struct RolltuiActionList {
   void push_back(const RolltuiLayoutAction& a);
   // Removes the action named `name` (a no-op when none is) — the editor's "remove this
   // action", the one mutation a host ever asks of this list by name rather than by index.
-  void erase_name(std::string_view name);
+  void erase_name(const char* name, std::size_t len);
   void clear();
   bool operator==(const RolltuiActionList& o) const;
 
  private:
-  void copy_from(const RolltuiActionList& o);
 #endif
 } RolltuiActionList;
 
@@ -501,12 +496,15 @@ typedef struct RolltuiLayout {
   RolltuiLayerList popups; /* declared placements a host pushes by id */
 
 #ifdef __cplusplus
-  const RolltuiLayer* popup(std::string_view id) const {
+  const RolltuiLayer* popup(const char* id, std::size_t len) const {
     for (std::size_t i = 0; i < popups.size(); ++i)
-      if (popups[i].id == id) return &popups[i];
+      if (popups[i].id.eq(id, len)) return &popups[i];
     return nullptr;
   }
   bool operator==(const RolltuiLayout&) const = default;
+  // The explicit copy (Phase 19 m2): `rolltui_layout_copy`, spelled at the call site. Copying
+  // by `=` is deleted through every member, which is the point.
+  RolltuiLayout clone() const;
 #endif
 } RolltuiLayout;
 
@@ -729,8 +727,12 @@ const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* l
  * They are not part of the deleted binding: they are what makes "the C++ type IS the C struct"
  * true (Phase 14's one-definition rule). */
 inline RolltuiActionList::~RolltuiActionList() { rolltui_action_list_release(this); }
+inline RolltuiLayout RolltuiLayout::clone() const {
+  RolltuiLayout out;
+  rolltui_layout_copy(&out, this);
+  return out;
+}
 
-inline void RolltuiActionList::copy_from(const RolltuiActionList& o) { rolltui_action_list_copy(this, &o); }
 
 inline RolltuiActionList& RolltuiActionList::operator=(RolltuiActionList&& o) noexcept {
   if (this != &o) {
@@ -750,8 +752,8 @@ inline void RolltuiActionList::push_back(const RolltuiLayoutAction& a) {
   rolltui_str_set(&p->description, a.description.p, a.description.n);
 }
 
-inline void RolltuiActionList::erase_name(std::string_view name) {
-  rolltui_action_list_remove_name(this, name.data(), name.size());
+inline void RolltuiActionList::erase_name(const char* name, std::size_t len) {
+  rolltui_action_list_remove_name(this, name, len);
 }
 
 inline void RolltuiActionList::clear() { rolltui_action_list_clear(this); }

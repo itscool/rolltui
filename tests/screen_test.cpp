@@ -94,17 +94,17 @@ bool frame_eq(const RolltuiFrame* a, const RolltuiFrame* b) { return rolltui_fra
 std::string frame_to_text(const RolltuiFrame* f) {
   RolltuiStr s;
   rolltui_frame_to_text(f, &s);
-  return s.str();
+  return str_of(s);
 }
 std::string render_full(const RolltuiFrame* next, unsigned char depth) {
   RolltuiStr s;
   rolltui_render_full(next, depth, &s);
-  return s.str();
+  return str_of(s);
 }
 std::string render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, unsigned char depth) {
   RolltuiStr s;
   rolltui_render_diff(prev, next, depth, &s);
-  return s.str();
+  return str_of(s);
 }
 
 std::string visible(const std::string& s) {
@@ -401,7 +401,7 @@ int main() {
     const std::string want_first = render_diff(nullptr, mirror.get(), ROLLTUI_DEPTH_TRUECOLOR);
     RolltuiStr out{};
     rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
-    check(out.view() == want_first, "swap: the first present is a full paint — render_diff(nullptr, f)");
+    check(view_of(out) == want_first, "swap: the first present is a full paint — render_diff(nullptr, f)");
     check(rolltui_swap_front(s) != nullptr && rolltui_frame_equal(rolltui_swap_front(s), mirror.get()),
           "…and the frame just presented is now the front, byte for byte");
 
@@ -421,7 +421,7 @@ int main() {
     const std::string want_third = render_diff(mirror.get(), next.get(), ROLLTUI_DEPTH_TRUECOLOR);
     out.clear();
     rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
-    check(out.view() == want_third && !want_third.empty(),
+    check(view_of(out) == want_third && !want_third.empty(),
           "swap: a changed frame appends exactly render_diff(prev, next) — equivalence with the loop it replaces");
 
     // The host's POLICY half, which is the only part that legitimately differed between the
@@ -431,7 +431,7 @@ int main() {
     rolltui_swap_invalidate(s);
     out.clear();
     rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
-    check(out.view() == render_diff(nullptr, next.get(), ROLLTUI_DEPTH_TRUECOLOR),
+    check(view_of(out) == render_diff(nullptr, next.get(), ROLLTUI_DEPTH_TRUECOLOR),
           "swap: after `invalidate` the next present paints in FULL, though nothing on the frame changed");
 
     // A SIZE change needs no `invalidate` — rolltui_render_diff's own rule 1, which is why
@@ -442,7 +442,7 @@ int main() {
     FramePtr wide = clone_frame(e);
     out.clear();
     rolltui_swap_present(s, ROLLTUI_DEPTH_TRUECOLOR, &out);
-    check(out.view() == render_diff(nullptr, wide.get(), ROLLTUI_DEPTH_TRUECOLOR),
+    check(view_of(out) == render_diff(nullptr, wide.get(), ROLLTUI_DEPTH_TRUECOLOR),
           "…and a resize repaints in full with no host call at all");
 
     // Degenerate sizes, the standing rule for every view in this library.

@@ -341,11 +341,12 @@ std::string report_text(const ThemeReport& r) {
     o.collapses_16 = c.collapses_16;
     o.collapses_256 = c.collapses_256;
   }
-  std::vector<RolltuiStr> notes(r.notes.begin(), r.notes.end());
+  std::vector<RolltuiStr> notes;
+  for (const std::string& n : r.notes) { notes.emplace_back(); notes.back().assign(n.data(), n.size()); }
   RolltuiStr out{};
   rolltui_theme_report_text(croles.data(), croles.size(), cpairs.data(), cpairs.size(), &r.badges, notes.data(),
                             notes.size(), &theme_vocab(), &out);
-  std::string result(out.view());
+  std::string result(view_of(out));
   rolltui_str_free(&out);
   return result;
 }
@@ -377,7 +378,7 @@ std::optional<Fix> fix_contrast(const Theme& theme, Role role, double target = k
   fix.role = static_cast<Role>(cf.role);
   fix.before = cf.before;
   fix.after = cf.after;
-  fix.what = cf.what.str();
+  fix.what = str_of(cf.what);
   fix.before_value = cf.before_value;
   fix.after_value = cf.after_value;
   rolltui_fix_release(&cf);
@@ -392,7 +393,7 @@ std::optional<Fix> fix_confusable(const Theme& theme, Role a, Role b) {
   fix.role = static_cast<Role>(cf.role);
   fix.before = cf.before;
   fix.after = cf.after;
-  fix.what = cf.what.str();
+  fix.what = str_of(cf.what);
   fix.before_value = cf.before_value;
   fix.after_value = cf.after_value;
   rolltui_fix_release(&cf);
@@ -409,7 +410,7 @@ std::vector<Fix> propose_fixes(const Theme& theme) {
     fix.role = static_cast<Role>(cf.role);
     fix.before = cf.before;
     fix.after = cf.after;
-    fix.what = cf.what.str();
+    fix.what = str_of(cf.what);
     fix.before_value = cf.before_value;
     fix.after_value = cf.after_value;
     out.push_back(std::move(fix));

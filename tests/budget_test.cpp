@@ -246,9 +246,9 @@ struct Scene {
 
     for (int i = 0; i < 40; ++i) {
       RolltuiDocEntry* e = rolltui_document_add(&doc);
-      e->id = "e" + std::to_string(i);
+      set_str(e->id, "e" + std::to_string(i));
       e->markdown = 1;
-      e->text = entry_text(i);
+      set_str(e->text, entry_text(i));
     }
     rolltui_windows_bind_document(windows, "session", 7, &doc);
     rolltui_windows_bind_rows(

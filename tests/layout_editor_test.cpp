@@ -62,7 +62,7 @@ MenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m
 // A missing item is a NAMED answer, never a null deref: this file crashed on one.
 std::string value_of(const LayoutEditor& ed, const char* id) {
   const MenuItem* it = find(const_cast<LayoutEditor&>(ed).menu(), id);
-  return it ? it->value.str() : "(no item '" + std::string(id) + "')";
+  return it ? str_of(it->value) : "(no item '" + std::string(id) + "')";
 }
 bool enabled_of(const LayoutEditor& ed, const char* id) {
   const MenuItem* it = find(const_cast<LayoutEditor&>(ed).menu(), id);
@@ -70,7 +70,7 @@ bool enabled_of(const LayoutEditor& ed, const char* id) {
 }
 std::string content_of(const LayoutEditor& ed, const char* node) {
   const Node* n = LayoutEditor::find_node(ed.current().base.root, node);
-  return n ? n->content.str() : "(no node '" + std::string(node) + "')";
+  return n ? str_of(n->content) : "(no node '" + std::string(node) + "')";
 }
 std::string editing_text_of(LayoutEditor& ed) {
   std::size_t len = 0;
@@ -126,7 +126,7 @@ int main() {
     handle(ed, key(ROLLTUI_KEY_TAB, true));
     check(ed.selected() == "input", "Shift-Tab goes back");
     ed.select("transcript");
-    check(ed.selected() == "transcript" && find(ed.menu(), "root")->label.find("transcript") != std::string::npos, "select(id) and the breadcrumb names the node");
+    check(ed.selected() == "transcript" && view_of(find(ed.menu(), "root")->label).find("transcript") != std::string::npos, "select(id) and the breadcrumb names the node");
     check(value_of(ed, "border") == "single" && value_of(ed, "kind") == "transcript" && value_of(ed, "source") == "session" && value_of(ed, "size") == "fill",
           "the menu shows the selected node's border, kind, source and size");
   }
@@ -230,7 +230,7 @@ int main() {
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "note");
     LayoutEditor::Outcome o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && ed.current().popups.size() == before + 1 && ed.current().popup("note") && ed.current().popup("note")->root.content == "text:note",
+    check(o.kind == O::Committed && ed.current().popups.size() == before + 1 && ed.current().popup("note", 4) && ed.current().popup("note", 4)->root.content == "text:note",
           "adding a popup creates a centred modal one with a text slot");
     check(find(ed.menu(), "popup.note.x") != nullptr, "…and the menu grows a level for it");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
@@ -243,24 +243,24 @@ int main() {
     for (int i = 0; i < 5; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
     type(ed, "80%");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && ed.committed().popup("note")->placement.w == Dim::rel(0.8), "a placement dim typed as 80% commits");
+    check(o.kind == O::Committed && ed.committed().popup("note", 4)->placement.w == Dim::rel(0.8), "a placement dim typed as 80% commits");
     handle(ed, key(ROLLTUI_KEY_DOWN));
     handle(ed, key(ROLLTUI_KEY_DOWN));   // anchor
     handle(ed, key(ROLLTUI_KEY_ENTER));
     handle(ed, key(ROLLTUI_KEY_HOME));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && ed.committed().popup("note")->placement.anchor == Anchor::TopLeft, "the anchor choice commits top-left");
+    check(o.kind == O::Committed && ed.committed().popup("note", 4)->placement.anchor == Anchor::TopLeft, "the anchor choice commits top-left");
     handle(ed, key(ROLLTUI_KEY_END));    // remove
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && !ed.current().popup("note"), "remove deletes the popup");
+    check(o.kind == O::Committed && !ed.current().popup("note", 4), "remove deletes the popup");
   }
   // ---- undo / redo, outcomes ----
   {
     const std::size_t depth = ed.undo_depth();
     handle(ed, ctrl('z'));
-    check(ed.undo_depth() == depth - 1 && ed.current().popup("note") != nullptr, "Ctrl-Z brings the popup back");
+    check(ed.undo_depth() == depth - 1 && ed.current().popup("note", 4) != nullptr, "Ctrl-Z brings the popup back");
     handle(ed, ctrl('y'));
-    check(ed.undo_depth() == depth && !ed.current().popup("note"), "Ctrl-Y removes it again");
+    check(ed.undo_depth() == depth && !ed.current().popup("note", 4), "Ctrl-Y removes it again");
     ed.set_layouts({"default", "stacked", "two"});
     act(ed, "load layout");
     handle(ed, key(ROLLTUI_KEY_DOWN));
@@ -430,9 +430,9 @@ int main() {
     handle(ed, key(ROLLTUI_KEY_END));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && ed.committed().base.focus == "input",
-          "…and the rest are the base layer's FOCUSABLE windows [" + ed.committed().base.focus.str() + "]");
+          "…and the rest are the base layer's FOCUSABLE windows [" + str_of(ed.committed().base.focus) + "]");
     // The skeleton itself, as a value: nothing carried, whatever was open.
-    const Layout before = ed.current();
+    const Layout before = ed.current().clone();
     check(before.popups.size() == 5 && before.actions.size() == 6 && before.min_width == 72,
           "the screen it is created FROM has five popups, six actions and a threshold");
     act(ed, "new layout");
@@ -444,7 +444,7 @@ int main() {
           "New layout carries no popup, no action and no threshold out of it");
     check(made.base.root.is_window() && made.base.root.id == "main" && made.base.root.content == "text:" &&
               made.base.focus == "main" && ed.selected() == "main",
-          "…one window naming nothing a host must have bound, focused, and selected [" + made.base.root.content.str() + "]");
+          "…one window naming nothing a host must have bound, focused, and selected [" + str_of(made.base.root.content) + "]");
     check(ed.undo() && ed.current() == before, "…and it is one commit: Ctrl-Z is the screen that was open");
     ed.redo();
     // The one inheritance, and it is the TARGET's.
@@ -478,7 +478,7 @@ int main() {
       const MenuItem* it = find(e.menu(), "kind");
       std::string s;
       if (!it) return std::string("(no item 'kind')");
-      for (const MenuItem& o : it->children) s += (s.empty() ? "" : " ") + o.id.str();
+      for (const MenuItem& o : it->children) s += (s.empty() ? "" : " ") + str_of(o.id);
       return s;
     };
     check(options(te) == "transcript input menu rows text file help",
@@ -498,7 +498,7 @@ int main() {
     check(enabled_of(te, "source") && find(te.menu(), "source") && find(te.menu(), "source")->spec.type == InputType::Name &&
               find(te.menu(), "source")->spec.hint == "main",
           "…its source field obeys the rule ITS HOST gave it, hinted from the profile's own contents [" +
-              (find(te.menu(), "source") ? find(te.menu(), "source")->spec.hint.str() : std::string("(none)")) + "]");
+              (find(te.menu(), "source") ? str_of(find(te.menu(), "source")->spec.hint) : std::string("(none)")) + "]");
     // A registered kind that takes no source disables the field exactly as `help` does,
     // and DROPS the source rather than writing a content the loader would refuse.
     act(te, "widget kind");

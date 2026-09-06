@@ -318,14 +318,14 @@ class Value {
 Value parse(std::string_view text, std::string& error) {
   RolltuiStr err{};
   RolltuiJsonValue* v = rolltui_json_parse(text.data(), text.size(), &err);
-  error = err.str();
+  error = str_of(err);
   rolltui_str_free(&err);
   return Value(v);
 }
 std::string dump(const Value& v, int indent = 2) {
   RolltuiStr out{};
   rolltui_json_dump(v.handle(), indent, &out);
-  std::string result = out.str();
+  std::string result = str_of(out);
   rolltui_str_free(&out);
   return result;
 }
@@ -342,16 +342,16 @@ std::optional<Theme> theme_from_c_root(const RolltuiJsonValue* root_c, ThemeMode
   RolltuiStr name{};
   RolltuiThemeReport rep{};
   RolltuiEffectMap* eff = rolltui_theme_load(root_c, static_cast<int>(mode), &theme_vocab(), t.styles.data(), &name, &rep);
-  report.error = rep.error.str();
-  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(rep.missing_roles[i].str());
-  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(rep.unknown_keys[i].str());
-  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(rep.bad_values[i].str());
+  report.error = str_of(rep.error);
+  for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(str_of(rep.missing_roles[i]));
+  for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(str_of(rep.unknown_keys[i]));
+  for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(str_of(rep.bad_values[i]));
   rolltui_theme_report_release(&rep);
   if (!eff) {
     rolltui_str_free(&name);
     return std::nullopt;
   }
-  t.name = name.str();
+  t.name = str_of(name);
   rolltui_str_free(&name);
   t.effects = EffectMap(eff);  // ADOPTS
   return t;
@@ -361,7 +361,7 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   RolltuiJsonValue* root_c = rolltui_json_parse(json_text.data(), json_text.size(), &err);
   if (!root_c) {
     report = ThemeLoadReport{};
-    report.error = err.str();
+    report.error = str_of(err);
     rolltui_str_free(&err);
     return std::nullopt;
   }
@@ -444,7 +444,7 @@ std::string_view glyph_at(const RolltuiFrame* f, int x, int y) {
 std::string frame_to_text(const RolltuiFrame* f) {
   RolltuiStr s;
   rolltui_frame_to_text(f, &s);
-  return s.str();
+  return str_of(s);
 }
 
 // ---- the host's two kinds, and a no-op placeholder for the refusal cases. A host kind
@@ -461,7 +461,7 @@ void host_sweep_kind(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styl
   if ((in->index + static_cast<int>(in->elapsed_ms / 100)) % 2) return;
   out->has_style = 1;
   out->style = styles[s->role(0)];  // never empty: the map substitutes its fallback
-  out->set_glyph("#");
+  out->set_glyph("#", 1);
 }
 
 // THE MISBEHAVING ONE. It tries every way a callback could corrupt a frame that the
@@ -470,7 +470,7 @@ void wide_liar_kind(void*, const RolltuiEffectSpec*, const RolltuiStyle* styles,
                     const RolltuiEffectCell* in, RolltuiEffectOut* out) {
   out->has_style = 1;
   out->style = styles[static_cast<unsigned char>(Role::error)];
-  out->set_glyph((in->index % 2) ? "" : "\xE4\xBD\xA0");  // 0 cells / 2 cells
+  out->set_glyph(std::string_view((in->index % 2) ? "" : "\xE4\xBD\xA0").data(), std::string_view((in->index % 2) ? "" : "\xE4\xBD\xA0").size());  // 0 cells / 2 cells
 }
 
 // ---- rung 2, and the registry vocabulary — the direct C calls Effects.cpp's shim made
@@ -886,12 +886,12 @@ int main() {
         check_quiet(n != 0, t->name + " maps " + std::string(effect_state_name(state)));
         for (std::size_t k = 0; k < n; ++k) {
           const RolltuiEffectSpec& s = t->effects.at(state, k);
-          const std::string kind(s.kind_view());
+          const std::string kind(kind_of(s));
           check_quiet(effect_kind_resolves(kind), t->name + ": kind '" + kind + "' resolves");
           if (s.frame_count == 0) continue;
-          const int w = unicode::display_width(s.frame(0));
+          const int w = unicode::display_width(frame_of(s, 0));
           for (std::size_t fi = 0; fi < s.frame_count; ++fi) {
-            const std::string_view fr = s.frame(fi);
+            const std::string_view fr = frame_of(s, fi);
             check_quiet(unicode::display_width(fr) == w, t->name + ": every frame of '" + kind + "' is " + std::to_string(w) + " cells");
             // …at BOTH ambiguous-width settings, or the applier would refuse the glyph on
             // a wide-ambiguous terminal and the theme would silently stop moving.

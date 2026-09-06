@@ -47,8 +47,6 @@
 
 #ifdef __cplusplus
 #include <cstddef>
-#include <span>
-#include <string_view>
 #endif
 
 #ifdef __cplusplus
@@ -82,25 +80,6 @@ typedef struct RolltuiEntryLayout {
   unsigned char folded ROLLTUI_DEFAULT(0);
   size_t hidden_lines ROLLTUI_DEFAULT(0); /* body lines a fold hides */
 
-#ifdef __cplusplus
-  // As drawn: the summary line first when foldable.
-  std::span<const RolltuiMdLine> lines() const {
-    const RolltuiMdLine* p = store ? rolltui_md_lines_all(store) : nullptr;
-    const std::size_t n = store ? rolltui_md_lines_count(store) : 0;
-    return {p + (p ? body : 0), n > body ? n - body : 0};
-  }
-  // Logical text; a folded entry's is its summary.
-  std::string_view text() const {
-    return store ? std::string_view(rolltui_md_lines_text(store), rolltui_md_lines_text_size(store))
-                 : std::string_view();
-  }
-  // The entry's code blocks, with header_line/marker_line already shifted onto THIS layout's
-  // line numbering (the entry's own summary row moves everything by one).
-  std::span<const RolltuiMdCodeBlock> code_blocks() const {
-    const RolltuiMdCodeBlock* p = store ? rolltui_md_lines_code_blocks(store) : nullptr;
-    return {p, p ? rolltui_md_lines_code_block_count(store) : 0};
-  }
-#endif
 } RolltuiEntryLayout;
 
 /* The store, made on FIRST USE — a default-constructed layout (a cache entry that has not

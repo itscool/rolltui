@@ -1,4 +1,5 @@
 // rolltui/tools/layout_editor.cpp — see layout_editor.hpp.
+#include "tool_str.hpp"
 #include "layout_editor.hpp"
 
 #include <algorithm>
@@ -10,7 +11,7 @@ namespace {
 
 // ---- menu tree glue (mechanical; identical shape to keys_editor.cpp's, no shared vocabulary
 // in it — see that file's comment on why this is not a header of its own). --------------------
-void set_options(RolltuiMenu* m, std::string_view id, std::vector<MenuItem> options) {
+void set_options(RolltuiMenu* m, std::string_view id, std::vector<MenuItem>&& options) {
   RolltuiMenuItemList list;
   for (MenuItem& it : options) list.push_back(std::move(it));
   rolltui_menu_set_options(m, id.data(), id.size(), &list);
@@ -33,11 +34,11 @@ std::optional<Content> content_for_kind(std::string_view kind_name, std::string 
       ROLLTUI_KIND_UNKNOWN)
     return std::nullopt;
   Content c;
-  c.kind = kind_name;
-  c.source = std::move(source);
+  set_str(c.kind, kind_name);
+  set_str(c.source, std::move(source));
   return c;
 }
-std::string content_kind_name(const Content& c) { return c.kind.str(); }
+std::string content_kind_name(const Content& c) { return str_of(c.kind); }
 unsigned char content_source_rule(const Content& c) {
   unsigned char rule = ROLLTUI_SOURCE_REQUIRED;
   rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), nullptr, &rule, nullptr, nullptr);
@@ -80,8 +81,8 @@ std::optional<Content> parse_content(std::string_view text, std::string* why = n
   }
   rolltui_str_free(&why_c);
   Content c;
-  c.kind = std::string_view(name_p, name_len);
-  c.source = std::string_view(source_p, source_len);
+  set_str(c.kind, std::string_view(name_p, name_len));
+  set_str(c.source, std::string_view(source_p, source_len));
   return c;
 }
 std::string action_decl_problem(std::string_view name) {
@@ -154,7 +155,7 @@ Layout builtin_layout(std::string_view name) {
 // ---- tree helpers ---------------------------------------------------------------------
 
 Node* LayoutEditor::find_node(Node& root, std::string_view id) {
-  if (root.id == id) return &root;
+  if (view_of(root.id) == id) return &root;
   for (Node& c : root.children)
     if (Node* f = find_node(c, id)) return f;
   return nullptr;
@@ -163,7 +164,7 @@ const Node* LayoutEditor::find_node(const Node& root, std::string_view id) { ret
 
 Node* LayoutEditor::parent_of(Node& root, std::string_view id, std::size_t* index) {
   for (std::size_t i = 0; i < root.children.size(); ++i) {
-    if (root.children[i].id == id) { if (index) *index = i; return &root; }
+    if (view_of(root.children[i].id) == id) { if (index) *index = i; return &root; }
     if (Node* p = parent_of(root.children[i], id, index)) return p;
   }
   return nullptr;
@@ -172,7 +173,7 @@ Node* LayoutEditor::parent_of(Node& root, std::string_view id, std::size_t* inde
 std::vector<std::string> LayoutEditor::ids_in_order(const Node& root) {
   std::vector<std::string> out;
   auto walk = [&](auto& self, const Node& n) -> void {
-    if (!n.id.empty()) out.emplace_back(n.id.view());
+    if (!n.id.empty()) out.emplace_back(view_of(n.id));
     for (const Node& c : n.children) self(self, c);
   };
   walk(walk, root);
@@ -200,19 +201,19 @@ LayoutEditor::LayoutEditor() {
     kinds_.emplace_back(name, len);
   }
   current_ = builtin_layout("default");
-  undo_.reset(current_);
+  undo_.reset(current_.clone());
   select_next();
   rebuild_menu();
 }
 
 void LayoutEditor::load(const Layout& layout) {
-  current_ = layout;
-  undo_.reset(current_);
+  current_ = (layout).clone();
+  undo_.reset(current_.clone());
   preview_.reset();
   sel_.clear();
   select_next();
   rebuild_menu();
-  status_ = "loaded " + current_.name.str();
+  status_ = "loaded " + str_of(current_.name);
 }
 
 void LayoutEditor::set_sources(std::vector<std::string> contents) {
@@ -223,7 +224,7 @@ void LayoutEditor::set_sources(std::vector<std::string> contents) {
 void LayoutEditor::set_kinds(std::vector<std::string> names) {
   kinds_ = std::move(names);
   std::vector<MenuItem> opts;
-  for (const std::string& n : kinds_) opts.push_back(MenuItem::action(n, n));
+  for (const std::string& n : kinds_) opts.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
   set_options(menu_, "kind", std::move(opts));
   sync_content_fields();
 }
@@ -231,7 +232,7 @@ void LayoutEditor::set_kinds(std::vector<std::string> names) {
 void LayoutEditor::set_menus(std::vector<std::string> names) {
   menus_ = std::move(names);
   std::vector<MenuItem> opts;
-  for (const std::string& n : menus_) opts.push_back(MenuItem::action(n, n));
+  for (const std::string& n : menus_) opts.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
   set_options(menu_, "menu_file", std::move(opts));
   sync_content_fields();
 }
@@ -245,7 +246,7 @@ void LayoutEditor::set_default_min(int width, int height) {
 // series of edits to the open layout: there is nothing to forget to clear.
 Layout LayoutEditor::skeleton(std::string name) const {
   Layout l{};
-  l.name = name;
+  set_str(l.name, name);
   l.min_width = default_min_w_;   // the TARGET's — see the header. Everything else is empty.
   l.min_height = default_min_h_;
   Node w = Node::window("text:");  // the one kind that names nothing a host must have bound
@@ -260,7 +261,7 @@ Layout LayoutEditor::skeleton(std::string name) const {
 void LayoutEditor::set_layouts(std::vector<std::string> names) {
   layouts_ = std::move(names);
   std::vector<MenuItem> opts;
-  for (const std::string& n : layouts_) opts.push_back(MenuItem::action(n, n));
+  for (const std::string& n : layouts_) opts.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
   set_options(menu_, "load", std::move(opts));
 }
 
@@ -297,12 +298,14 @@ std::vector<MenuItem> LayoutEditor::action_items() const {
   // `RolltuiLayoutAction`, whose `.name`/`.description` are `RolltuiStr` — a MenuItem
   // factory's by-value `std::string` parameter needs `.str()` where the value crosses
   // whole, exactly as it always needed one from a real `std::string`.
-  for (const RolltuiLayoutAction& d : current_.actions)
-    items.push_back(MenuItem::submenu(
-        "action." + d.name.str(), d.name.str(),
-        {MenuItem::input("action." + d.name.str() + ".desc", "what it does", desc, d.description.str()),
-         MenuItem::action("action." + d.name.str() + ".remove", "remove this action")}));
-  items.push_back(MenuItem::input("action.add", "add an action (name)", name));
+  for (const RolltuiLayoutAction& d : current_.actions) {
+    const std::string name = str_of(d.name);
+    std::vector<MenuItem> fields;
+    fields.push_back(MenuItem::input(("action." + name + ".desc").c_str(), "what it does", desc.clone(), str_of(d.description).c_str()));
+    fields.push_back(MenuItem::action(("action." + name + ".remove").c_str(), "remove this action"));
+    items.push_back(submenu_of(("action." + name).c_str(), name.c_str(), std::move(fields)));
+  }
+  items.push_back(MenuItem::input("action.add", "add an action (name)", name.clone()));
   return items;
 }
 
@@ -310,9 +313,9 @@ void LayoutEditor::rebuild_menu() {
   std::vector<MenuItem> borders, anchors, kinds, menus, loads;
   for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
-  for (const std::string& n : kinds_) kinds.push_back(MenuItem::action(n, n));
-  for (const std::string& n : menus_) menus.push_back(MenuItem::action(n, n));
-  for (const std::string& n : layouts_) loads.push_back(MenuItem::action(n, n));
+  for (const std::string& n : kinds_) kinds.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
+  for (const std::string& n : menus_) menus.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
+  for (const std::string& n : layouts_) loads.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
   InputSpec dim, size, name, text, threshold;
   dim.type = InputType::Dim;
   size.type = InputType::Size;
@@ -325,31 +328,46 @@ void LayoutEditor::rebuild_menu() {
   threshold.hint = "0 = this screen states none";
   std::vector<MenuItem> popups;
   for (const Layer& p : current_.popups) {
-    popups.push_back(MenuItem::submenu("popup." + p.id.str(), p.id.str(),
-                                       {MenuItem::input("popup." + p.id.str() + ".x", "x", dim, dim_to_string(p.placement.x)), MenuItem::input("popup." + p.id.str() + ".y", "y", dim, dim_to_string(p.placement.y)),
-                                        MenuItem::input("popup." + p.id.str() + ".w", "w", dim, dim_to_string(p.placement.w)), MenuItem::input("popup." + p.id.str() + ".h", "h", dim, dim_to_string(p.placement.h)),
-                                        MenuItem::choice("popup." + p.id.str() + ".anchor", "anchor", anchors, std::string(anchor_name(p.placement.anchor))),
-                                        MenuItem::toggle("popup." + p.id.str() + ".modal", "modal", p.modal), MenuItem::action("popup." + p.id.str() + ".remove", "remove this popup")}));
+    const std::string id = str_of(p.id), base = "popup." + id;
+    std::vector<MenuItem> fields;
+    fields.push_back(MenuItem::input((base + ".x").c_str(), "x", dim.clone(), dim_to_string(p.placement.x).c_str()));
+    fields.push_back(MenuItem::input((base + ".y").c_str(), "y", dim.clone(), dim_to_string(p.placement.y).c_str()));
+    fields.push_back(MenuItem::input((base + ".w").c_str(), "w", dim.clone(), dim_to_string(p.placement.w).c_str()));
+    fields.push_back(MenuItem::input((base + ".h").c_str(), "h", dim.clone(), dim_to_string(p.placement.h).c_str()));
+    fields.push_back(choice_of((base + ".anchor").c_str(), "anchor", clone_items(anchors), std::string(anchor_name(p.placement.anchor)).c_str()));
+    fields.push_back(MenuItem::toggle((base + ".modal").c_str(), "modal", p.modal != 0));
+    fields.push_back(MenuItem::action((base + ".remove").c_str(), "remove this popup"));
+    popups.push_back(submenu_of(base.c_str(), id.c_str(), std::move(fields)));
   }
-  popups.push_back(MenuItem::input("popup.add", "add a popup (id)", name));
-  MenuItem root = MenuItem::submenu(
-      "root", "layout editor",
-      {MenuItem::action("next", "Select the next node", "Tab"), MenuItem::action("prev", "Select the previous node", "Shift-Tab"),
-       MenuItem::action("split_row", "Split into a row (side by side)"), MenuItem::action("split_column", "Split into a column (stacked)"),
-       MenuItem::action("swap_prev", "Swap with the previous sibling"), MenuItem::action("swap_next", "Swap with the next sibling"),
-       MenuItem::toggle("visible", "Visible", true), MenuItem::choice("border", "Border", borders, "single"), MenuItem::input("title", "Title", text),
-       MenuItem::choice("kind", "Widget kind", std::move(kinds), "transcript"), MenuItem::input("source", "Source", text),
-       MenuItem::choice("menu_file", "Menu file", std::move(menus), ""), MenuItem::input("size", "Size (Alt+arrows nudge)", size),
-       MenuItem::toggle("focusable", "Focusable", false), MenuItem::action("delete", "Delete this node"),
-       MenuItem::submenu("popups", "Popups", std::move(popups)),
-       MenuItem::submenu("actions", "Actions this screen emits", action_items()),
-       MenuItem::input("min_width", "Minimum width this screen needs", threshold),
-       MenuItem::input("min_height", "Minimum height this screen needs", threshold),
-       MenuItem::choice("focus", "Focused window", {}, ""),
-       MenuItem::action("undo", "Undo", "Ctrl-Z"), MenuItem::action("redo", "Redo", "Ctrl-Y"),
-       MenuItem::input("new", "New layout, from an empty screen (name)", name),
-       MenuItem::choice("load", "Load layout", std::move(loads), ""), MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name),
-       MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6")});
+  popups.push_back(MenuItem::input("popup.add", "add a popup (id)", name.clone()));
+  std::vector<MenuItem> top;
+  top.push_back(MenuItem::action("next", "Select the next node", "Tab"));
+  top.push_back(MenuItem::action("prev", "Select the previous node", "Shift-Tab"));
+  top.push_back(MenuItem::action("split_row", "Split into a row (side by side)"));
+  top.push_back(MenuItem::action("split_column", "Split into a column (stacked)"));
+  top.push_back(MenuItem::action("swap_prev", "Swap with the previous sibling"));
+  top.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
+  top.push_back(MenuItem::toggle("visible", "Visible", true));
+  top.push_back(choice_of("border", "Border", std::move(borders), "single"));
+  top.push_back(MenuItem::input("title", "Title", text.clone()));
+  top.push_back(choice_of("kind", "Widget kind", std::move(kinds), "transcript"));
+  top.push_back(MenuItem::input("source", "Source", text.clone()));
+  top.push_back(choice_of("menu_file", "Menu file", std::move(menus), ""));
+  top.push_back(MenuItem::input("size", "Size (Alt+arrows nudge)", size.clone()));
+  top.push_back(MenuItem::toggle("focusable", "Focusable", false));
+  top.push_back(MenuItem::action("delete", "Delete this node"));
+  top.push_back(submenu_of("popups", "Popups", std::move(popups)));
+  top.push_back(submenu_of("actions", "Actions this screen emits", action_items()));
+  top.push_back(MenuItem::input("min_width", "Minimum width this screen needs", threshold.clone()));
+  top.push_back(MenuItem::input("min_height", "Minimum height this screen needs", threshold.clone()));
+  top.push_back(MenuItem::choice("focus", "Focused window", ""));
+  top.push_back(MenuItem::action("undo", "Undo", "Ctrl-Z"));
+  top.push_back(MenuItem::action("redo", "Redo", "Ctrl-Y"));
+  top.push_back(MenuItem::input("new", "New layout, from an empty screen (name)", name.clone()));
+  top.push_back(choice_of("load", "Load layout", std::move(loads), ""));
+  top.push_back(MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name.clone()));
+  top.push_back(MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6"));
+  MenuItem root = submenu_of("root", "layout editor", std::move(top));
   rolltui_menu_set_root(menu_, &root);
   sync_values();
 }
@@ -357,7 +375,7 @@ void LayoutEditor::rebuild_menu() {
 LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) {
   ContentParts p;
   if (!n || !n->is_window()) return p;
-  const std::string_view content = n->content.view();
+  const std::string_view content = view_of(n->content);
   const std::size_t colon = content.find(':');
   p.kind_text = content.substr(0, colon);
   if (colon != std::string_view::npos) p.source = content.substr(colon + 1);
@@ -398,7 +416,7 @@ bool LayoutEditor::set_content(const std::string& kind_name, const std::string& 
     status_ = "'" + kind_name + "' is not a widget kind this app can build";
     return false;
   }
-  n->content = content_to_string(*c);
+  set_str(n->content, content_to_string(*c));
   return true;
 }
 
@@ -428,8 +446,8 @@ void LayoutEditor::sync_content_fields() {
     it->spec.hint.clear();
     for (const std::string& c : sources_)
       if (std::optional<Content> oc = parse_content(c); oc && content_kind_name(*oc) == p.kind_text && !oc->source.empty())
-        it->spec.hint = it->spec.hint.str() + (it->spec.hint.empty() ? "" : " | ") + oc->source.str();
-    if (it->spec.hint.empty()) it->spec.hint = content_source_describes(*p.content);
+        set_str(it->spec.hint, str_of(it->spec.hint) + (it->spec.hint.empty() ? "" : " | ") + str_of(oc->source));
+    if (it->spec.hint.empty()) set_str(it->spec.hint, content_source_describes(*p.content));
   }
 }
 
@@ -445,36 +463,36 @@ void LayoutEditor::sync_values() {
     focusable.push_back(MenuItem::action("", "(none \xE2\x80\x94 the first focusable window in tree order)"));
     for (const std::string& id : ids_in_order(current_.base.root))
       if (const Node* w = find_node(current_.base.root, id); w && w->is_window() && w->focusable)
-        focusable.push_back(MenuItem::action(id, id));
+        focusable.push_back(MenuItem::action(std::string(id).c_str(), std::string(id).c_str()));
     set_options(menu_, "focus", std::move(focusable));
-    set_value(menu_, "focus", current_.base.focus.str());
+    set_value(menu_, "focus", str_of(current_.base.focus));
   }
   const Node* n = selected_node();
   if (!n) return;
   set_checked(menu_, "visible", n->visible);
   set_value(menu_, "border", std::string(border_name(n->border)));
-  set_value(menu_, "title", n->title.str());
+  set_value(menu_, "title", str_of(n->title));
   set_value(menu_, "size", split_size_to_string(n->size));
   set_checked(menu_, "focusable", n->focusable);
   set_enabled(menu_, "focusable", n->is_window());
   sync_content_fields();
-  if (MenuItem* root = find(menu_, "root")) root->label = "layout editor \xE2\x80\xA2 " + sel_ + (n->is_window() ? "" : n->kind == Node::Kind::Row ? " (row)" : " (column)");
+  if (MenuItem* root = find(menu_, "root")) set_str(root->label, "layout editor \xE2\x80\xA2 " + sel_ + (n->is_window() ? "" : n->kind == Node::Kind::Row ? " (row)" : " (column)"));
 }
 
 // ---- preview / commit -----------------------------------------------------------------
 
-void LayoutEditor::begin_preview() { if (!preview_) preview_ = current_; }
+void LayoutEditor::begin_preview() { if (!preview_) preview_ = current_.clone(); }
 
 void LayoutEditor::cancel_preview() {
   if (!preview_) return;
-  current_ = *preview_;
+  current_ = (*preview_).clone();
   preview_.reset();
 }
 
 LayoutEditor::Outcome LayoutEditor::commit_current() {
   preview_.reset();
   if (current_ == undo_.current()) { sync_values(); return {Outcome::Kind::Changed, {}}; }
-  undo_.commit(current_);
+  undo_.commit(current_.clone());
   sync_values();
   return {Outcome::Kind::Committed, {}};
 }
@@ -482,7 +500,7 @@ LayoutEditor::Outcome LayoutEditor::commit_current() {
 void LayoutEditor::replace(Layout l) {
   preview_.reset();
   current_ = std::move(l);
-  undo_.commit(current_);
+  undo_.commit(current_.clone());
   if (!find_node(current_.base.root, sel_)) { sel_.clear(); select_next(); }
   rebuild_menu();
 }
@@ -490,7 +508,7 @@ void LayoutEditor::replace(Layout l) {
 bool LayoutEditor::undo() {
   cancel_preview();
   if (!undo_.undo()) return false;
-  current_ = undo_.current();
+  current_ = (undo_.current()).clone();
   if (!find_node(current_.base.root, sel_)) { sel_.clear(); select_next(); }
   rebuild_menu();
   status_ = "undone";
@@ -500,7 +518,7 @@ bool LayoutEditor::undo() {
 bool LayoutEditor::redo() {
   cancel_preview();
   if (!undo_.redo()) return false;
-  current_ = undo_.current();
+  current_ = (undo_.current()).clone();
   if (!find_node(current_.base.root, sel_)) { sel_.clear(); select_next(); }
   rebuild_menu();
   status_ = "redone";
@@ -518,18 +536,20 @@ bool LayoutEditor::apply_op(Op op) {
   switch (op) {
     case Op::SplitRow:
     case Op::SplitColumn: {
-      Node copy = *n;
-      copy.id = unique_id(n->id.str());
+      Node copy = (*n).clone();
+      set_str(copy.id, unique_id(str_of(n->id)));
       copy.size = SplitSize::filling();
-      if (!copy.title.empty()) copy.title = copy.id;  // so the two panes read apart
-      Node first = *n;
+      if (!copy.title.empty()) copy.title.assign(copy.id);  // so the two panes read apart
+      Node first = (*n).clone();
       first.size = SplitSize::filling();
-      Node split = op == Op::SplitRow ? Node::row({first, copy}) : Node::column({first, copy});
+      Node split = op == Op::SplitRow ? Node::row() : Node::column();
+      split.children.push_back(std::move(first));
+      split.children.push_back(std::move(copy));
       split.size = n->size;
-      split.id = unique_id(n->id.str() + (op == Op::SplitRow ? "-row" : "-column"));
+      set_str(split.id, unique_id(str_of(n->id) + (op == Op::SplitRow ? "-row" : "-column")));
       *n = std::move(split);
       status_ = "split " + sel_ + (op == Op::SplitRow ? " side by side" : " stacked");
-      sel_ = n->children[0].id.str();
+      sel_ = str_of(n->children[0].id);
       return true;
     }
     case Op::SwapPrev:
@@ -551,11 +571,11 @@ bool LayoutEditor::apply_op(Op op) {
       parent->children.erase(parent->children.begin() + static_cast<std::ptrdiff_t>(idx));
       // A split with one child left collapses into that child (keeping the split's size).
       if (parent->children.size() == 1 && parent != &root) {
-        Node only = parent->children[0];
+        Node only = (parent->children[0]).clone();
         only.size = parent->size;
         *parent = std::move(only);
       } else if (parent->children.size() == 1) {
-        Node only = parent->children[0];
+        Node only = (parent->children[0]).clone();
         only.size = SplitSize::filling();
         root = std::move(only);
       }
@@ -602,13 +622,13 @@ std::string LayoutEditor::selection_line() const {
   if (!n) return {};
   // Size and border come first: a content is kind[:source] (Phase 10 m2) and can be
   // long, and it is the one field the menu above always shows in full.
-  std::string s = "selected: " + n->id.str() + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
+  std::string s = "selected: " + str_of(n->id) + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
                   (n->visible ? "" : "  hidden") +
-                  (n->is_window() ? "  " + n->content.str() : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
+                  (n->is_window() ? "  " + str_of(n->content) : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
   // A content that does not parse is said HERE as well as in the window's error panel:
   // the editor is where it gets repaired, so the reason belongs beside the fields.
   if (n->is_window())
-    if (std::string why; !parse_content(n->content.view(), &why)) s += " \xE2\x80\x94 " + why;
+    if (std::string why; !parse_content(view_of(n->content), &why)) s += " \xE2\x80\x94 " + why;
   return s;
 }
 
@@ -649,8 +669,8 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
   RolltuiMenuEvent raw{};
   rolltui_menu_handle(menu_, e, nav, rolltui_menu_default_actions(), &raw);
   const unsigned char kind = raw.kind;
-  const std::string id = raw.id.str();
-  const std::string value = raw.value.str();
+  const std::string id = str_of(raw.id);
+  const std::string value = str_of(raw.value);
   const bool checked = raw.checked != 0;
   rolltui_menu_event_release(&raw);
   if (kind == ROLLTUI_MENU_EVENT_ACTIVATE) {
@@ -672,7 +692,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     if (id.rfind("popup.", 0) == 0 && id.size() > 7 && id.substr(id.size() - 7) == ".remove") {
       const std::string pid = id.substr(6, id.size() - 13);
       begin_preview();
-      current_.popups.erase_id(pid);
+      current_.popups.erase_id(std::string_view(pid).data(), std::string_view(pid).size());
       status_ = "removed popup " + pid;
       Outcome o = commit_current();
       rebuild_menu();
@@ -683,7 +703,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     if (id.rfind("action.", 0) == 0 && id.size() > 14 && id.substr(id.size() - 7) == ".remove") {
       const std::string name = id.substr(7, id.size() - 14);
       begin_preview();
-      current_.actions.erase_name(name);
+      current_.actions.erase_name(std::string_view(name).data(), std::string_view(name).size());
       status_ = "removed action " + name + " (a chord for it is kept and inert)";
       Outcome o = commit_current();
       set_options(menu_, "actions", action_items());
@@ -700,7 +720,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     if (id.rfind("popup.", 0) == 0) {
       const std::string pid = id.substr(6, id.size() - 12);
       for (Layer& p : current_.popups)
-        if (p.id == pid) { begin_preview(); p.modal = checked; return commit_current(); }
+        if (view_of(p.id) == pid) { begin_preview(); p.modal = checked; return commit_current(); }
     }
     return {O::None, {}};
   }
@@ -721,7 +741,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     }
     if (id == "focus") {
       begin_preview();
-      current_.base.focus = value;  // "" is a real answer: the first focusable in tree order
+      set_str(current_.base.focus, value);  // "" is a real answer: the first focusable in tree order
       status_ = value.empty() ? "the first focusable window in tree order takes focus" : "focus starts on " + value;
       return commit_current();
     }
@@ -729,7 +749,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     if (id.rfind("popup.", 0) == 0 && id.size() > 7 && id.substr(id.size() - 7) == ".anchor") {
       const std::string pid = id.substr(6, id.size() - 13);
       for (Layer& p : current_.popups)
-        if (p.id == pid) { if (auto a = anchor_from_name(value)) { begin_preview(); p.placement.anchor = *a; } return commit_current(); }
+        if (view_of(p.id) == pid) { if (auto a = anchor_from_name(value)) { begin_preview(); p.placement.anchor = *a; } return commit_current(); }
     }
     return {O::None, {}};
   }
@@ -752,7 +772,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       target = std::atoi(value.c_str());
       return commit_current();
     }
-    if (id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = value; return commit_current(); }
+    if (id == "title") { begin_preview(); if (Node* n = sel_node()) set_str(n->title, value); return commit_current(); }
     if (id == "source") {
       const ContentParts p = content_parts();
       if (!p.content) { status_ = "'" + p.kind_text + "' is not a widget kind \xE2\x80\x94 set the kind first"; return {O::Changed, {}}; }
@@ -765,12 +785,12 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       const std::string why = name.empty() ? "an action needs a name" : action_decl_problem(name);
       if (!why.empty()) { status_ = name.empty() ? why : "'" + name + "': " + why; return {O::Changed, {}}; }
       if (std::find_if(current_.actions.begin(), current_.actions.end(),
-                       [&](const RolltuiLayoutAction& d) { return d.name == name; }) != current_.actions.end()) {
+                       [&](const RolltuiLayoutAction& d) { return view_of(d.name) == name; }) != current_.actions.end()) {
         status_ = "'" + name + "' is already declared";
         return {O::Changed, {}};
       }
       begin_preview();
-      current_.actions.push_back({name, {}});  // the description is the next field, not a placeholder invented here
+      { RolltuiLayoutAction a{}; set_str(a.name, name); current_.actions.push_back(a); }  // the description is the next field, not a placeholder invented here
       status_ = "declared " + name + " \xE2\x80\x94 say what it does, then bind a key to it";
       Outcome o = commit_current();
       set_options(menu_, "actions", action_items());
@@ -779,7 +799,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     if (id.rfind("action.", 0) == 0 && id.size() > 12 && id.substr(id.size() - 5) == ".desc") {
       const std::string name = id.substr(7, id.size() - 12);
       for (RolltuiLayoutAction& d : current_.actions)
-        if (d.name == name) { begin_preview(); d.description = value; return commit_current(); }
+        if (view_of(d.name) == name) { begin_preview(); set_str(d.description, value); return commit_current(); }
       return {O::None, {}};
     }
     if (id == "size") {
@@ -789,16 +809,16 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       return {O::Changed, {}};
     }
     if (id == "popup.add") {
-      if (value.empty() || current_.popup(value)) { status_ = value.empty() ? "a popup needs an id" : "a popup named '" + value + "' exists"; return {O::Changed, {}}; }
+      if (value.empty() || current_.popup(std::string_view(value).data(), std::string_view(value).size())) { status_ = value.empty() ? "a popup needs an id" : "a popup named '" + value + "' exists"; return {O::Changed, {}}; }
       begin_preview();
       Layer l{};
-      l.id = value;
+      set_str(l.id, value);
       l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(8), Anchor::Center, true, {}, {}, {}, {}};
       l.modal = true;
-      Node n = Node::window("text:" + value);
-      n.id = value;
+      Node n = Node::window(("text:" + value).c_str());
+      set_str(n.id, value);
       n.border = Border::Rounded;
-      n.title = value;
+      set_str(n.title, value);
       n.focusable = true;
       l.root = std::move(n);
       current_.popups.push_back(std::move(l));
@@ -819,7 +839,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       }
       if (!d) { cancel_preview(); status_ = "'" + value + "' is not a dim (N | N% | N% ± cells)"; return {O::Changed, {}}; }
       for (Layer& p : current_.popups)
-        if (p.id == pid) {
+        if (view_of(p.id) == pid) {
           begin_preview();
           if (field == "x") p.placement.x = *d;
           else if (field == "y") p.placement.y = *d;
@@ -833,19 +853,19 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
   if (kind == ROLLTUI_MENU_EVENT_CLOSED) return {O::Closed, {}};
   // ---- live preview while a choice is highlighted or an input is being typed ----
   const MenuItem* sel = rolltui_menu_selected_item(menu_);
-  const std::string_view level = rolltui_menu_level(menu_)->id.view();
+  const std::string_view level = view_of(rolltui_menu_level(menu_)->id);
   const bool editing = rolltui_menu_editing(menu_) != 0;
   if (sel && !editing && level == "border") {
-    if (auto b = border_from_name(sel->id.view())) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
+    if (auto b = border_from_name(view_of(sel->id))) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
   }
   if (sel && !editing && level == "kind") {
     begin_preview();
-    if (!set_content(sel->id.str(), carried_source(sel->id.str()))) cancel_preview();
+    if (!set_content(str_of(sel->id), carried_source(str_of(sel->id)))) cancel_preview();
     return {O::Changed, {}};
   }
   if (sel && !editing && level == "menu_file") {
     begin_preview();
-    set_content("menu", sel->id.str());
+    set_content("menu", str_of(sel->id));
     return {O::Changed, {}};
   }
   if (editing && sel) {
@@ -853,7 +873,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     std::size_t etext_len = 0;
     const char* etext_p = rolltui_input_text(rolltui_menu_editor(menu_), &etext_len);
     const std::string_view editing_text(etext_p, etext_len);
-    if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) n->title = editing_text; return {O::Changed, {}}; }
+    if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) set_str(n->title, editing_text); return {O::Changed, {}}; }
     if (sel->id == "source") {
       const ContentParts p = parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_));
       if (p.content) {

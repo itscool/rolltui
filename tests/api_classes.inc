@@ -695,6 +695,7 @@ ROLLTUI_API(rolltui_menu_item_equal, PUBLIC)  /* rule 1: a public type's lifecyc
 ROLLTUI_API(rolltui_menu_item_free, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_item_init, PUBLIC)
 ROLLTUI_API(rolltui_menu_item_new, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
+ROLLTUI_API(rolltui_menu_item_set, PUBLIC)  /* the C form of the item builders every host wrote — added Phase 19 m2 */
 ROLLTUI_API(rolltui_menu_item_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_list_add, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_menu_list_at, INTERNAL)  /* only the library's own .c reaches it */

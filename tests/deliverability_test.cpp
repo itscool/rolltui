@@ -346,10 +346,10 @@ void copy_report(BindingsLoadReport& out, const RolltuiBindingsReport& in) {
   auto copy = [](const RolltuiStr* v, std::size_t n) {
     std::vector<std::string> r;
     r.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) r.emplace_back(v[i].view());
+    for (std::size_t i = 0; i < n; ++i) r.emplace_back(view_of(v[i]));
     return r;
   };
-  out.error = in.error.str();
+  out.error = str_of(in.error);
   out.unknown_actions = copy(in.unknown_actions, in.unknown_actions_n);
   out.bad_chords = copy(in.bad_chords, in.bad_chords_n);
   out.undeliverable = copy(in.undeliverable, in.undeliverable_n);
@@ -382,7 +382,7 @@ BindingsPtr bindings_from_json(std::string_view text, BindingsLoadReport& report
 std::string bindings_to_json(const RolltuiBindings* b, std::string_view name) {
   RolltuiStr text;
   rolltui_bindings_dump_json(b, name.data(), name.size(), &text);
-  return text.str();
+  return str_of(text);
 }
 std::vector<RolltuiChord> chords_for(const RolltuiBindings* b, std::string_view action) {
   const std::size_t n = rolltui_bindings_chord_count(b, action.data(), action.size());

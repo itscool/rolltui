@@ -53,8 +53,6 @@
 
 #ifdef __cplusplus
 #include <cstdint>
-#include <span>
-#include <string_view>
 #else
 #include <stdint.h>
 #endif
@@ -86,11 +84,6 @@ typedef struct RolltuiMdSpan {
   int width; /* cells */
   unsigned char role;
 
-#ifdef __cplusplus
-  std::string_view text() const { return {text_p, text_n}; }
-  std::string_view href() const { return {href_p, href_n}; }
-  std::span<const std::uint32_t> sources() const { return {src_p, src_n}; }
-#endif
 } RolltuiMdSpan;
 
 /* One drawn line: a contiguous run of the store's spans. */
@@ -99,9 +92,6 @@ typedef struct RolltuiMdLine {
   size_t span_n;
   int width;
 
-#ifdef __cplusplus
-  std::span<const RolltuiMdSpan> spans() const { return {span_p, span_n}; }
-#endif
 } RolltuiMdLine;
 
 typedef struct RolltuiMdLines RolltuiMdLines;
@@ -233,9 +223,6 @@ typedef struct RolltuiMdCodeBlock {
   size_t marker_line; /* …and the cap's */
   size_t text_begin, text_end; /* the block's byte range in the logical text */
 
-#ifdef __cplusplus
-  std::string_view lang() const { return {lang_p, lang_n}; }
-#endif
 } RolltuiMdCodeBlock;
 
 /* Appends one. `lang_p`/`lang_n` are copied; every other field is taken as given. */
