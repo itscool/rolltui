@@ -25,55 +25,53 @@ MenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m
 // ---- content: built directly from rolltui_widget_kind_resolve, the primitive Layout.hpp's
 // own content_for_kind/content_kind_name/content_source_rule/content_source_describes were
 // always "the one accessor" over (its own words) — none of these carry a decision of their
-// own beyond what that one C call already answers. ---------------------------------------------
+// own beyond what that one C call already answers. Phase 18 m2: a kind's NAME is its identity
+// whichever rung it came from, so `Content` holds the name and the source and each helper here
+// is one C call over the name. ------------------------------------------------------------------
 std::optional<Content> content_for_kind(std::string_view kind_name, std::string source = {}) {
-  unsigned char ordinal = 0, rule = 0;
-  const int which = rolltui_widget_kind_resolve(kind_name.data(), kind_name.size(), &ordinal, &rule, nullptr, nullptr);
-  if (which == ROLLTUI_KIND_UNKNOWN) return std::nullopt;
+  if (rolltui_widget_kind_resolve(kind_name.data(), kind_name.size(), nullptr, nullptr, nullptr, nullptr) ==
+      ROLLTUI_KIND_UNKNOWN)
+    return std::nullopt;
   Content c;
-  if (which == ROLLTUI_KIND_LIBRARY) c.kind = static_cast<WidgetKind>(ordinal);
-  else {
-    c.kind = WidgetKind::Registered;
-    c.registered_name = kind_name;
-  }
+  c.kind = kind_name;
   c.source = std::move(source);
   return c;
 }
-std::string content_kind_name(const Content& c) {
-  if (c.kind == WidgetKind::Registered) return c.registered_name.str();
-  std::size_t len = 0;
-  const char* p = rolltui_widget_kind_library_name(static_cast<std::size_t>(c.kind), &len);
-  return p ? std::string(p, len) : std::string();
-}
+std::string content_kind_name(const Content& c) { return c.kind.str(); }
 unsigned char content_source_rule(const Content& c) {
-  const std::string name = content_kind_name(c);
-  unsigned char rule = 0;
-  rolltui_widget_kind_resolve(name.c_str(), name.size(), nullptr, &rule, nullptr, nullptr);
+  unsigned char rule = ROLLTUI_SOURCE_REQUIRED;
+  rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), nullptr, &rule, nullptr, nullptr);
   return rule;
 }
+// The kind's source SHAPE — a row of the registry, whichever rung it came from. This was the
+// one per-kind rule the retired enum had been carrying silently (`Text || File`).
+unsigned char content_source_shape(const Content& c) {
+  std::size_t row = 0;
+  if (rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), &row, nullptr, nullptr, nullptr) == ROLLTUI_KIND_UNKNOWN)
+    return ROLLTUI_SOURCE_SHAPE_NAME;
+  return rolltui_widget_kind_source_shape(row);
+}
 std::string content_source_describes(const Content& c) {
-  const std::string name = content_kind_name(c);
   const char* source_is = nullptr;
   std::size_t len = 0;
-  rolltui_widget_kind_resolve(name.c_str(), name.size(), nullptr, nullptr, &source_is, &len);
+  rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), nullptr, nullptr, &source_is, &len);
   return source_is ? std::string(source_is, len) : std::string();
 }
 std::string content_to_string(const Content& c) {
-  const std::string name = content_kind_name(c);
   RolltuiStr out{};
-  rolltui_content_format(name.c_str(), name.size(), c.source.data(), c.source.size(), content_source_rule(c), &out);
+  rolltui_content_format(c.kind.data(), c.kind.size(), c.source.data(), c.source.size(), content_source_rule(c), &out);
   const std::string s(out.p ? out.p : "", out.n);
   rolltui_str_free(&out);
   return s;
 }
 std::optional<Content> parse_content(std::string_view text, std::string* why = nullptr) {
-  unsigned char ordinal = 0;
+  std::size_t row = 0;
   int is_host = 0;
   const char *name_p = nullptr, *source_p = nullptr;
   std::size_t name_len = 0, source_len = 0;
   unsigned char problem = 0;
   RolltuiStr why_c{};
-  const int ok = rolltui_content_parse(text.data(), text.size(), &ordinal, &is_host, &name_p, &name_len, &source_p,
+  const int ok = rolltui_content_parse(text.data(), text.size(), &row, &is_host, &name_p, &name_len, &source_p,
                                        &source_len, &problem, &why_c);
   if (!ok) {
     if (why) why->assign(why_c.p ? why_c.p : "", why_c.n);
@@ -82,12 +80,7 @@ std::optional<Content> parse_content(std::string_view text, std::string* why = n
   }
   rolltui_str_free(&why_c);
   Content c;
-  if (is_host) {
-    c.kind = WidgetKind::Registered;
-    c.registered_name = std::string_view(name_p, name_len);
-  } else {
-    c.kind = static_cast<WidgetKind>(ordinal);
-  }
+  c.kind = std::string_view(name_p, name_len);
   c.source = std::string_view(source_p, source_len);
   return c;
 }
@@ -203,7 +196,7 @@ LayoutEditor::LayoutEditor() {
   // nothing about a target app can only honestly offer the kinds every host has.
   for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
     std::size_t len = 0;
-    const char* name = rolltui_widget_kind_library_name(i, &len);
+    const char* name = rolltui_widget_kind_name(i, &len);
     kinds_.emplace_back(name, len);
   }
   current_ = builtin_layout("default");
@@ -390,9 +383,7 @@ std::string LayoutEditor::base_source() const {
 // There is no Forbidden case to handle here: content_to_string already drops a source a
 // kind may not have, so that rule lives in one place (rolltui_content_format).
 std::string LayoutEditor::carried_source(std::string_view kind_name) const {
-  std::size_t len = 0;
-  const char* help_name = rolltui_widget_kind_library_name(static_cast<std::size_t>(WidgetKind::Help), &len);
-  return kind_name == std::string_view(help_name, len) ? std::string() : base_source();
+  return kind_name == "help" ? std::string() : base_source();
 }
 
 // A kind NAME and a source in, `kind[:source]` out — through content_to_string, so the
@@ -418,7 +409,7 @@ void LayoutEditor::sync_content_fields() {
   const Node* n = selected_node();
   const bool window = n && n->is_window();
   const ContentParts p = content_parts();
-  const bool is_menu = p.content && p.content->kind == WidgetKind::Menu;
+  const bool is_menu = p.content && p.content->kind == "menu";
   set_value(menu_, "kind", p.kind_text);
   set_value(menu_, "source", p.source);
   set_value(menu_, "menu_file", is_menu ? p.source : std::string());
@@ -430,9 +421,9 @@ void LayoutEditor::sync_content_fields() {
   const bool source_field = window && p.content && !is_menu && rule != ROLLTUI_SOURCE_FORBIDDEN;
   set_enabled(menu_, "source", source_field);
   if (MenuItem* it = find(menu_, "source"); it && source_field) {
-    // A path is not a Name; a literal is anything and may be empty.
-    const WidgetKind k = p.content->kind;
-    it->spec.type = (k == WidgetKind::Text || k == WidgetKind::File) ? InputType::Text : InputType::Name;
+    // A path is not a Name; a literal is anything and may be empty — the kind's SHAPE, read
+    // from its registry row whichever rung it came from (Phase 18 m2).
+    it->spec.type = content_source_shape(*p.content) == ROLLTUI_SOURCE_SHAPE_TEXT ? InputType::Text : InputType::Name;
     it->spec.optional = rule == ROLLTUI_SOURCE_OPTIONAL;
     it->spec.hint.clear();
     for (const std::string& c : sources_)

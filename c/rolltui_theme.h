@@ -209,7 +209,7 @@ void rolltui_theme_set_style(RolltuiStyle* styles, size_t role_count, unsigned c
  * A theme's OWN "name" ("default-dark" etc.) is a different thing and is NOT vocabulary in
  * that sense: it is DATA belonging to the theme object itself, with no C++ enum it could
  * drift from, exactly as a widget kind's own library-table names
- * (`rolltui_widget_kind_library_name`) are plain data one file over. That is why
+ * (`rolltui_widget_kind_name`) are plain data one file over. That is why
  * `rolltui_theme_builtin_name` below hardcodes it directly, the same way this file already
  * hardcodes "dark"/"light" and the theme file's OWN structural keys ("roles", "defs", "fg",
  * "kind", "frames", ...) — this module's file format is its own vocabulary to own, the same
@@ -286,7 +286,7 @@ const RolltuiThemeVocab* rolltui_theme_default_vocab(void);
 /* ---- the built-in themes ------------------------------------------------------------------
  * "default-dark", "default-light", "mono", compiled in: this library's own TASTE, not its
  * algorithm (`rolltui::Theme.cpp`'s own words, kept). Enumerated by index like every other
- * closed table a sibling file exposes (`rolltui_widget_kind_library_name`,
+ * closed table a sibling file exposes (`rolltui_widget_kind_name`,
  * `rolltui_effect_kind_name`). */
 #define ROLLTUI_THEME_BUILTIN_COUNT 3
 size_t rolltui_theme_builtin_count(void);

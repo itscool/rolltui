@@ -409,6 +409,16 @@ int main() {
           "unknown keys named: " + join(rep3.unknown_keys));
     check(contains(rep3.bad_values, "roles.text.bold: expected true or false"), "bad attribute named");
 
+    // PHASE 18 m1 — THE RUNG THAT IS CLOSED ON PURPOSE. Which role pairs must differ is the
+    // library's rule (`kMustDiffer`, rolltui_theme_analysis.c), so a theme file that tries to
+    // state it is told the key is not one — the same unknown-key report as any other. This
+    // line is what makes "closed by decision" checkable rather than "closed by omission".
+    ThemeLoadReport rep_md;
+    auto md = load_theme(R"({"roles": {"text": {"fg": "#ffffff"}}, "must_differ": [["warning", "error"]]})",
+                         ThemeMode::Dark, rep_md);
+    check(md.has_value() && contains(rep_md.unknown_keys, "must_differ"),
+          "a theme stating its own must-differ pairs loads and is told the key is not one: " + join(rep_md.unknown_keys));
+
     ThemeLoadReport rep4;
     check(!load_theme("{", ThemeMode::Dark, rep4) && !rep4.error.empty(), "unparseable JSON: error, no theme: " + rep4.error);
     ThemeLoadReport rep5;

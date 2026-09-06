@@ -60,7 +60,13 @@ extern "C" {
  *
  * ORDER IS ABI. The ordinals are what cross in `RolltuiDocEntry`, `RolltuiLayoutNode` and the
  * style array `rolltui_window_stack_compose` is handed. APPEND to the end of a section; never
- * reorder, never insert. */
+ * reorder, never insert.
+ *
+ * A NEW ROLE ANSWERS ONE MORE QUESTION BEFORE IT IS DONE: must it be visually distinct from
+ * some other role? DO write the answer — a pair, or a stated "none" and why — at `kMustDiffer`
+ * in `rolltui_theme_analysis.c`, the one home of that rule (a LIBRARY rule, closed on purpose;
+ * Phase 18 m1). DON'T leave it to be inferred: nothing here can check the omission, and the
+ * by-name assertion in `theme_analysis_test.cpp` is the only place it shows. */
 #include <stddef.h>
 
 #define ROLLTUI_ROLE_LIST(X) \

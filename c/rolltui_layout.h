@@ -41,16 +41,14 @@
  *
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ---------------------------------------
  *
- * **`rolltui::Layout`, `rolltui::Content` and `rolltui::ActionDecl`'s own shapes.** All three
- * keep their `std::string`/`std::vector` fields in `Layout.hpp` — the same exception
- * `rolltui_json.h`'s `Value` took, and for the same reason: `Widgets.cpp`, `paint.cpp`,
- * `studio.cpp` and `layout_editor.cpp` read `Content::source`, erase-remove and reassign
- * `Layout::actions` as a real `std::vector<ActionDecl>` at call sites this file does not
- * touch. What crosses below is the ALGORITHM (JSON in, JSON out, which rung, what rule) and
- * every SENTENCE a bad layout produces (moved from `Layout.cpp` at Phase 17 m2, once
- * `rolltui_json.h` gave this file a tree to walk that owed nothing to `json::Value`);
- * `RolltuiLoadedLayout` below is the transient, C-shaped carrier the shim unpacks into its
- * own `Layout` once per load and never retains.
+ * **(Historical, kept for the reasoning.)** When this was written, `rolltui::Layout`,
+ * `rolltui::Content` and `rolltui::ActionDecl` kept `std::string`/`std::vector` fields in
+ * `Layout.hpp` and a shim unpacked `RolltuiLoadedLayout` into them once per load. `Layout.hpp`
+ * and the shim are deleted (Phase 17 m2c): `RolltuiLayout`, `RolltuiContent` and
+ * `RolltuiLayoutAction` below ARE the types every consumer holds, and since Phase 18 m2 a
+ * content's kind is its NAME rather than a C++-only enum (the registry section says why).
+ * What crosses is unchanged — the ALGORITHM (JSON in, JSON out, which rung, what rule) and
+ * every SENTENCE a bad layout produces.
  *
  * **Role names.** `background`'s vocabulary is `Style.hpp`'s (`rolltui_layout_tree.h`'s own
  * rule: "this file names no role"), so the loader and the dumper ask back through
@@ -72,19 +70,6 @@
 #ifdef __cplusplus
 #include <string_view>
 
-namespace rolltui {
-// ONE spelling of a content's kind, whether it is the library's own (rung 1) or a host's
-// registered one (rung 2, `Registered`) — Layout.hpp states the vocabulary; the enum lives
-// here, beside the registry that resolves it, for the same reason `Border`/`Anchor` are
-// declared beside `RolltuiLayoutNode` in `rolltui_layout_tree.h` rather than left to a
-// C++-only header: `RolltuiContent` below needs a concrete type for its `kind` field. An
-// opaque, already-complete enum with a fixed underlying type — nothing about this changes by
-// moving; every existing `WidgetKind::Transcript` etc. still names the same value.
-enum class WidgetKind : unsigned char { Transcript, Input, Menu, Rows, Text, File, Help, Registered };
-}  // namespace rolltui
-#endif
-
-#ifdef __cplusplus
 extern "C" {
 #endif
 
@@ -184,34 +169,77 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
                            const RolltuiStyle* styles, const RolltuiLayoutRoles* roles, RolltuiSlotFn render,
                            void* ctx, int ambiguous_wide, RolltuiComposeScratch* scratch);
 
-/* ---- the widget-kind registry ------------------------------------------------------------------ */
-/* Rung 1 is a CLOSED table this file holds; rung 2 is what a host registered, which is a
- * process-wide retainer released by `rolltui::shutdown()`. What a kind's source is CALLED
- * lives here too now (below, `rolltui_content_parse`/`_format`) — moved from the shim at
- * Phase 17 m2, since composing the sentence needs nothing `rolltui::Content`'s own
- * std::string shape supplies that this file cannot already answer itself. */
+/* ---- the widget-kind registry ------------------------------------------------------------------
+ *
+ * ONE IDENTITY, AND IT IS THE NAME (Phase 18 m2, 2026-09-05). A kind is identified by its
+ * name everywhere that matters — a layout file's `content` names it, a host registers it by
+ * name, `RolltuiWindows` looks its factory up by name, the studio's picker offers names — and
+ * until Phase 18 m2 a SECOND identity stood beside that one: `enum class WidgetKind`, C++-only,
+ * declared in this C header, whose last value `Registered` meant "look at the name instead".
+ * It is retired. THE REJECTED ALTERNATIVE was to keep it the way `Anchor` and `Border` are
+ * kept — a closed set in the library's own file, named from the same table — and the analogy
+ * fails at exactly `Registered`: an enum with an escape value is a closed set and an open one
+ * wearing one type, every consumer branched on the escape first, nothing anywhere switched on
+ * it (so its closedness bought no exhaustiveness check), and a C consumer never saw it at all
+ * while the `ordinal` out-params below leaked its numbering into C with no header saying what
+ * the numbers meant. The 33 `WidgetKind::` sites and the two parallel accessor sets
+ * (`_library_name/_rule/_source_is` beside `_host_name`) were the visible cost.
+ *
+ * THE REGISTRY IS ONE ENUMERATION OF ROWS: the library's own kinds first, in table order, then
+ * a host's in registration order. A row carries every per-kind rule AS DATA — the source RULE
+ * (required / optional / forbidden), the source SHAPE (a name a host binds, or free text such
+ * as a literal or a path), and what the source IS in English — so a consumer recovers a kind's
+ * rules the way a host kind always did, through its row, never through a type.
+ * `rolltui_widget_kind_library_count()` is the BOUNDARY: row `i` is the library's exactly when
+ * `i < library_count`, and that boundary is the flag the safety property needs.
+ *
+ * THE SAFETY PROPERTY — rung 1 is never shadowed — never depended on the type. It is two
+ * guards, independent of each other and both by name:
+ *   1. `rolltui_widget_kind_register` REFUSES a library name (`ROLLTUI_REGISTER_IS_LIBRARY`)
+ *      before any host row is written;
+ *   2. `rolltui_widget_kind_resolve` searches the library rows FIRST, unconditionally — the
+ *      guard that survives even if a shadowing row somehow existed.
+ * `layout_test.cpp` plants a registration of `input` against both; `c_consumer_test.c` plants
+ * `transcript` from C, where no C++ special member can absorb the answer.
+ *
+ * SOURCE SHAPE is the one per-kind rule the enum had been carrying SILENTLY: the design editor
+ * typed a `text`/`file` source as free text and everything else as a Name by comparing enum
+ * values, so a host kind could never take a path or a literal. It is a column now. A host
+ * row's shape is NAME — a DEFAULT stated here, not a policy: the trigger for a `shape`
+ * parameter on `rolltui_widget_kind_register` is a host kind whose source is a path or a
+ * literal, and none exists (roll's `approval`/`details`, the studio's `editor`/`confirm`/
+ * `report` take no source; paint's `canvas` binds a name).
+ *
+ * Rung 2 is a process-wide retainer released by `rolltui::shutdown()`. What a kind's source is
+ * CALLED lives here too (`rolltui_content_parse`/`_format`, below). */
 
 #define ROLLTUI_SOURCE_REQUIRED 0
 #define ROLLTUI_SOURCE_OPTIONAL 1
 #define ROLLTUI_SOURCE_FORBIDDEN 2
 
+/* The SHAPE of a source, when one is given — what the design editor's source field accepts. */
+#define ROLLTUI_SOURCE_SHAPE_NAME 0 /* a bound name: a document, a row source, a menu file, a key scope */
+#define ROLLTUI_SOURCE_SHAPE_TEXT 1 /* free text, may be empty: a literal (`text:`), a path (`file:`) */
+
 /* Which rung answered, which is the whole of what the C decides. */
 #define ROLLTUI_KIND_UNKNOWN 0  /* neither rung */
-#define ROLLTUI_KIND_LIBRARY 1  /* rung 1, and `*ordinal` is its WidgetKind */
-#define ROLLTUI_KIND_HOST 2     /* rung 2 */
+#define ROLLTUI_KIND_LIBRARY 1  /* rung 1: `*row < rolltui_widget_kind_library_count()` */
+#define ROLLTUI_KIND_HOST 2     /* rung 2: `*row` is at or past that boundary */
 
-/* Resolves a kind NAME. `rule` and `source_is` (a BORROW valid until the registry changes)
- * are filled for the two answering rungs; any out-param may be NULL. */
-int rolltui_widget_kind_resolve(const char* name, size_t len, unsigned char* ordinal, unsigned char* rule,
+/* Resolves a kind NAME. `*row` is its row in the one enumeration, filled for BOTH answering
+ * rungs; `rule` and `source_is` (a BORROW valid until the registry changes) likewise. Any
+ * out-param may be NULL. */
+int rolltui_widget_kind_resolve(const char* name, size_t len, size_t* row, unsigned char* rule,
                                 const char** source_is, size_t* source_is_len);
-/* The library's closed table, in table order. */
+/* The one enumeration. Rows [0, library_count) are the library's closed table, in table order;
+ * rows [library_count, count) are a host's, in registration order. A row past the end reads as
+ * "" / REQUIRED / NAME rather than past either table. */
+size_t rolltui_widget_kind_count(void);
 size_t rolltui_widget_kind_library_count(void);
-const char* rolltui_widget_kind_library_name(size_t i, size_t* len);
-unsigned char rolltui_widget_kind_library_rule(size_t i);
-const char* rolltui_widget_kind_library_source_is(size_t i, size_t* len);
-/* …and rung 2, in registration order. */
-size_t rolltui_widget_kind_host_count(void);
-const char* rolltui_widget_kind_host_name(size_t i, size_t* len);
+const char* rolltui_widget_kind_name(size_t row, size_t* len);
+unsigned char rolltui_widget_kind_rule(size_t row);
+unsigned char rolltui_widget_kind_source_shape(size_t row);
+const char* rolltui_widget_kind_source_is(size_t row, size_t* len);
 
 /* Why a registration was refused, so the shim can say it in words. 0 is accepted. */
 #define ROLLTUI_REGISTER_OK 0
@@ -227,37 +255,28 @@ void rolltui_widget_kind_clear(void);
  * of a constant; NULL when `legacy` is not one of them. */
 
 /* ---- content: the value type, and parsing/formatting it, with the English (Phase 17 m2/m5).
- * `rolltui::Content` IS `RolltuiContent` below — the Phase 14 one-definition rule, same as
- * `Node`/`Layer` — so `Widgets.cpp`'s `Content content;` member and the ~20 sites reading
- * `.source` are reading a `RolltuiStr` now rather than a `std::string`; the field keeps every
- * operation those sites use (`.data()`, `.size()`, `.empty()`, `==`, assignment from a
- * `std::string`/`string_view`), so most survive unchanged, the same property that let
- * `rolltui_document.h`'s port leave ~82 call sites untouched. The DECISION and every SENTENCE
- * a bad content produces live entirely in the functions below; the shim (`Layout.cpp`) only
- * slices `text` at the offsets handed back. ------------------------------------------------- */
+ * `RolltuiContent` is the value every consumer holds (the design editor's `Content` is a
+ * `using` of it); the DECISION and every SENTENCE a bad content produces live entirely in the
+ * functions below, and a consumer only slices `text` at the offsets handed back. ------------- */
 
-/* PLAIN DATA: `kind` (POD enum) plus two `RolltuiStr`s. Every member already has correct
- * value semantics on its own (`RolltuiStr`'s, `WidgetKind`'s as a scalar), so — exactly like
- * `RolltuiLayoutNode` one level up, which relies on the same thing for its three `RolltuiStr`s
- * and its `RolltuiNodeList` — this type declares NO constructor, destructor or assignment of
- * its own: the compiler-generated ones already do the right thing by construction, and
- * `operator==` needs only `= default` because `RolltuiStr::operator==` already exists. */
+/* PLAIN DATA: the kind's NAME and its source — the two halves of `kind[:source]` and nothing
+ * more. Until Phase 18 m2 this carried a C++-only `WidgetKind` enum plus a `registered_name`
+ * that was empty for every library kind: two fields to say one name. Every member has correct
+ * value semantics on its own (`RolltuiStr`'s), so — exactly like `RolltuiLayoutNode` one level
+ * up — this type declares NO constructor, destructor or assignment of its own, and `operator==`
+ * needs only `= default`. An EMPTY `kind` names nothing: `rolltui_content_parse` fills one and
+ * `rolltui_widget_kind_resolve` answers for one; neither invents a default kind. */
 typedef struct RolltuiContent {
-#ifdef __cplusplus
-  rolltui::WidgetKind kind = rolltui::WidgetKind::Text;
-#else
-  unsigned char kind;
-#endif
-  RolltuiStr source;          /* the part after the first ':' — a bound name, a literal, a path */
-  RolltuiStr registered_name; /* the host's kind name; empty for every library kind */
+  RolltuiStr kind;   /* the kind's name — its identity, whichever rung it resolves at */
+  RolltuiStr source; /* the part after the first ':' — a bound name, a literal, a path */
 #ifdef __cplusplus
   bool operator==(const RolltuiContent&) const = default;
 #endif
 } RolltuiContent;
 
-/* A C caller's pair, for the same reason every owned type here has one — `kind` becomes Text
- * and both strings empty either way. C++ needs neither (see above) but they exist so a pure
- * C caller has the same capability. */
+/* A C caller's pair, for the same reason every owned type here has one — both strings empty
+ * either way. C++ needs neither (see above) but they exist so a pure C caller has the same
+ * capability. */
 void rolltui_content_init(RolltuiContent* c);
 void rolltui_content_release(RolltuiContent* c);
 void rolltui_content_copy(RolltuiContent* to, const RolltuiContent* from);
@@ -268,15 +287,14 @@ int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b);
 #define ROLLTUI_CONTENT_PROBLEM_MISSING_SOURCE 2
 #define ROLLTUI_CONTENT_PROBLEM_FORBIDDEN_SOURCE 3
 
-/* Parses "kind[:source]". 1 on success: `ordinal` is the library WidgetKind (rung 1) when
- * `*is_host` comes back 0, meaningless when it comes back 1 (rung 2 — the shim reads the
- * registered name back through `name`/`name_len` instead). `name`/`name_len` (the part
+/* Parses "kind[:source]". 1 on success: `*row` is the kind's row in the registry (both rungs)
+ * and `*is_host` says which rung answered (0 library, 1 host). `name`/`name_len` (the part
  * before the colon) and `source`/`source_len` (the part after, "" with a valid pointer when
  * there was none) are always filled and are BORROWS into `text` — never a copy, because a
- * caller that wants a `std::string` is about to make one anyway (Content's own shape). On
+ * caller that wants its own string is about to make one anyway (`RolltuiContent`'s shape). On
  * failure (0): `problem` says which of the three ways (never None), and `why` — cleared on
  * entry — gets the exact sentence `rolltui::parse_content` always produced. */
-int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, int* is_host, const char** name,
+int rolltui_content_parse(const char* text, size_t len, size_t* row, int* is_host, const char** name,
                          size_t* name_len, const char** source, size_t* source_len, unsigned char* problem,
                          RolltuiStr* why);
 /* content_to_string's join rule: `kind_name`, then ":" + `source` exactly when `rule` says

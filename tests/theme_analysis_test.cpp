@@ -33,6 +33,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "rolltui/rolltui.h"
@@ -503,6 +504,28 @@ int main() {
     for (const RoleCheck& c : dark.roles) every_number &= !c.unknown && c.wcag && c.apca;
     check(every_number, "every role of default-dark has both numbers (nothing is none)");
     check(report_text(dark).find("badges: dark") == 0 && report_text(dark).find("must-differ pairs") != std::string::npos, "report_text starts with the badges and lists the pairs");
+
+    // PHASE 18 m1 — THE RULE, BY NAME. `kMustDiffer` is a LIBRARY rule closed on purpose (the
+    // decision and every pair's reason are written at the table in rolltui_theme_analysis.c).
+    // This reads the pairs the analysis hands back and asserts their MEMBERSHIP, so a change to
+    // the table is a change to a test — a decision — rather than an edit nothing notices. The
+    // count alone (asserted above) cannot tell eleven right pairs from eleven wrong ones.
+    {
+      const std::vector<std::pair<Role, Role>> expected = {
+          {Role::diff_added, Role::diff_removed},     {Role::warning, Role::error},
+          {Role::accent_1, Role::accent_2},           {Role::accent_1, Role::accent_3},
+          {Role::accent_1, Role::accent_4},           {Role::accent_2, Role::accent_3},
+          {Role::accent_2, Role::accent_4},           {Role::accent_3, Role::accent_4},
+          {Role::menu_item, Role::menu_selected},     {Role::input_text, Role::input_placeholder},
+          {Role::find_match, Role::find_current}};
+      bool same = dark.pairs.size() == expected.size();
+      std::string got;
+      for (std::size_t i = 0; i < dark.pairs.size(); ++i) {
+        same = same && i < expected.size() && dark.pairs[i].a == expected[i].first && dark.pairs[i].b == expected[i].second;
+        got += std::string(i ? ", " : "") + std::string(role_name(dark.pairs[i].a)) + "/" + std::string(role_name(dark.pairs[i].b));
+      }
+      check(same, "the must-differ pairs are exactly the library's eleven, by name and in table order: " + got);
+    }
   }
   // ---- unknown colours, claims ----
   {

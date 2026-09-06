@@ -205,8 +205,8 @@ class LayoutEditor {
   // The selected window's content split at the first ':' — WITHOUT requiring it to
   // parse, so a content typed by hand into a file can be shown and repaired here.
   // `content` is nullopt when the text before the colon names no kind in either rung of
-  // the registry; when it is set, `content->kind` is the library kind or `Registered`,
-  // and `content_source_rule(*content)` is that kind's rule whichever it is.
+  // the registry; when it is set, `content->kind` is the kind's NAME whichever rung it came
+  // from, and `content_source_rule(*content)` is that kind's rule whichever it is.
   struct ContentParts {
     std::optional<Content> content;
     std::string kind_text, source;
@@ -222,9 +222,9 @@ class LayoutEditor {
   void rebuild_menu();
   void sync_values();
   void sync_content_fields();  // the kind/source/menu-file values, specs and enabled-ness
-  // Writes kind[:source] into the selected window. By NAME, because a registered kind's
-  // name is the only thing that identifies it — `WidgetKind::Registered` names them all.
-  // A name in neither rung writes nothing and is reported.
+  // Writes kind[:source] into the selected window. By NAME, because a kind's name is the
+  // only thing that identifies it (Phase 18 m2 retired the enum whose `Registered` value used
+  // to say so for the host half). A name in neither rung writes nothing and is reported.
   bool set_content(const std::string& kind_name, const std::string& source);
   void begin_preview();
   void cancel_preview();

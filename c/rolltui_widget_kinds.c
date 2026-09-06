@@ -683,7 +683,7 @@ static RolltuiWidget make_error_widget(RolltuiWindows* w, unsigned char role_err
 
 static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -694,7 +694,7 @@ static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out; /* rolltui_windows_widget_for falls back to the error factory */
@@ -716,7 +716,7 @@ static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n)
 
 static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -726,7 +726,7 @@ static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -743,7 +743,7 @@ static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n)
 
 static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -753,7 +753,7 @@ static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -771,7 +771,7 @@ static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n)
 
 static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -781,7 +781,7 @@ static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -801,7 +801,7 @@ static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n)
  * lambdas exactly, over `rolltui_content_parse` instead of `rolltui::parse_content`. */
 static RolltuiWidget error_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -810,7 +810,7 @@ static RolltuiWidget error_widget_factory(void* c, const char* content, size_t n
   RolltuiWidget out;
   memset(&why, 0, sizeof why);
   memset(&msg, 0, sizeof msg);
-  if (rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                             &why)) {
     /* it PARSES, so its kind is in one of the two rungs and nothing built it — a registered
      * kind this host has no factory for. A named panel, never a blank window. */
@@ -1095,7 +1095,8 @@ const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void) { return &kInputPlu
  * `rolltui_windows_input` hands a host, never a second one built here. */
 static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0, problem = 0;
+  unsigned char problem = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -1104,7 +1105,7 @@ static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -1223,7 +1224,8 @@ static const RolltuiWidgetPlugin* transcript_widget_plugin(void) { return &kTran
 
 static RolltuiWidget transcript_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0, problem = 0;
+  unsigned char problem = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -1232,7 +1234,7 @@ static RolltuiWidget transcript_widget_factory(void* c, const char* content, siz
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -1563,7 +1565,8 @@ const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void) { return &kMenuPlugi
  * which is all this factory wants. The outer caller refreshes once this returns. */
 static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n) {
   RolltuiWindows* w = (RolltuiWindows*)c;
-  unsigned char ordinal = 0, problem = 0;
+  unsigned char problem = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -1572,7 +1575,7 @@ static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &ordinal, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;

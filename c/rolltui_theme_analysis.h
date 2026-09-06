@@ -3,13 +3,13 @@
 /*
  * rolltui/c/rolltui_theme_analysis.h — THE COLOUR MATHS, as C (Phase 17 m1).
  *
- * `rolltui/ThemeAnalysis.hpp` is "is this theme readable, and by whom?" in full: colour
+ * `rolltui/ThemeAnalysis.hpp` WAS "is this theme readable, and by whom?" in full: colour
  * spaces, WCAG/APCA contrast, colour-vision-deficiency simulation, a per-role/per-pair
- * REPORT, and auto-fix PROPOSALS. That file states the thresholds and the shape of the
- * report; this one carries only the half of it with NO Theme, Role or JSON in it —
- * sRGB/linear/OKLab/OKLCH conversion, the two contrast formulas, ΔE, and the Machado CVD
- * matrices. Every formula's reference and every reference value is in the .c file next to
- * the code now, and `rolltui/tests/theme_analysis_test.cpp` is still the oracle for both.
+ * REPORT, and auto-fix PROPOSALS. It is deleted (Phase 17 m2c) and this file is the whole of
+ * it. The first half — sRGB/linear/OKLab/OKLCH conversion, the two contrast formulas, ΔE, and
+ * the Machado CVD matrices — has NO Theme, Role or JSON in it. Every formula's reference and
+ * every reference value is in the .c file next to the code, and
+ * `rolltui/tests/theme_analysis_test.cpp` is the oracle for both halves.
  *
  * THE REPORT AND THE AUTO-FIX ARE HERE NOW TOO (moved from `rolltui/ThemeAnalysis.cpp`,
  * Phase 17 m5): `Theme`'s styles table (`rolltui_theme_style`/`_set_style`) and `json::Value`
@@ -36,12 +36,11 @@
  *      boundary still writes `Lin{...}` / `lin.r` exactly as before. `RolltuiBadges` joins
  *      them the same way (`rolltui::Badges` is now `using Badges = RolltuiBadges;`) —
  *      it is thirteen plain flags, no `Role`, no `std::string`, nothing that keeps it from
- *      being one definition. `RolltuiRoleCheck`/`RolltuiPairCheck`/`RolltuiFix` are NOT: the
- *      C++-facing `RoleCheck`/`PairCheck`/`Fix` are read by test and tool code as
- *      `c.role == Role::warning`, an enum comparison a C struct cannot carry (`Role` is
- *      C++-only — Style.hpp's name table stays that way, this file's own next section
- *      says why), so those three stay real C++ structs in `ThemeAnalysis.hpp`, built by its
- *      shim from this file's `unsigned char` ordinals.
+ *      being one definition. `RolltuiRoleCheck`/`RolltuiPairCheck`/`RolltuiFix` carry role
+ *      ORDINALS as `unsigned char` — `ROLLTUI_ROLE_*` values, the role vocabulary having been
+ *      C since Phase 17 m2a (`ROLLTUI_ROLE_LIST`, rolltui_style.h). A C++ consumer that wants
+ *      to read `c.role == Role::warning` mirrors the three structs over the same calls
+ *      (`theme_analysis_test.cpp` does); this file hands over numbers and never a type.
  *   4. **NOTHING ALLOCATES** in the colour-maths half; the report/auto-fix half's
  *      allocations are named above and are the only ones in this file.
  */
@@ -120,15 +119,15 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out);
 /* =========================================================================================
  * THE REPORT AND THE AUTO-FIX (Phase 17 m5)
  *
- * `analyse()` walks a whole styles table and the must-differ PAIRS (`rolltui::kMustDiffer`,
- * Style.hpp); `report_text`, `check_claims` and the auto-fix functions build on its result.
- * None of them need a `Theme` (no meta, no effects, no name) — every one takes the STYLES
- * TABLE directly, `rolltui_theme_builtin_fill`'s own shape. The must-differ pairs and which
- * roles count as "text" are THIS FILE's own local ordinals, matching `rolltui::Role`'s
- * declaration order exactly (the same `rolltui_theme.c` precedent for its built-in themes'
- * role positions), guarded the same way: `role_count` must match this file's own table
- * before either is trusted — a mismatch reads as "nothing to analyse" rather than writing
- * past the end of a caller's array.
+ * `analyse()` walks a whole styles table and the must-differ PAIRS (`kMustDiffer` in the .c —
+ * A LIBRARY RULE, CLOSED ON PURPOSE since Phase 18 m1; the decision, its reason and every
+ * pair's justification are written at that table); `report_text`, `check_claims` and the
+ * auto-fix functions build on its result. None of them need a `Theme` (no meta, no effects,
+ * no name) — every one takes the STYLES TABLE directly, `rolltui_theme_builtin_fill`'s own
+ * shape. The pairs and which roles count as "text" are written in `ROLLTUI_ROLE_*` ordinals
+ * (file-local `R_*` aliases generated from `ROLLTUI_ROLE_LIST`), guarded: `role_count` must
+ * equal `ROLLTUI_ROLE_COUNT` before either is trusted — a mismatch reads as "nothing to
+ * analyse" rather than writing past the end of a caller's array.
  *
  * WHERE THE ENGLISH LIVES — a real call, not a lookup, so the reasoning is stated once:
  * `report_text` composes the WHOLE diagnostic report (badges, notes, a line per text role,
@@ -138,13 +137,13 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out);
  * sentences are this module's OWN fixed diagnostic vocabulary — produced once, printed
  * VERBATIM by two callers (`--check` and the editor's popup — ThemeAnalysis.hpp's own
  * words), tested byte-for-byte, with no caller ever wanting a different rendering of the
- * same numbers. Composing it a second time in the C++ shim would be exactly the drift
+ * same numbers. Composing it a second time in a consumer would be exactly the drift
  * `rolltui_layout.c`'s own comment already argues against for its error sentences.
  * `analyse()`'s NOTES and `generate()`'s BROKEN list are the opposite case and deliberately
- * stay C++: each is a handful of short, call-site-specific sentences built from flags this
- * file already hands back (`unknown`, `text`, `readable`, and the badges), so the shim
- * builds them with `role_name()` — which it already has for free — rather than this file
- * carrying a vocab table it would otherwise have no other reason to take.
+ * stay the CONSUMER's: each is a handful of short, call-site-specific sentences built from
+ * flags this file already hands back (`unknown`, `text`, `readable`, and the badges), so a
+ * consumer builds them with `rolltui_role_name` — which it already has — rather than this
+ * file carrying sentences it would otherwise have no other reason to own.
  * ========================================================================================= */
 
 /* ---- badges: a fixed, closed set of 13 names — this module's OWN vocabulary, never a
@@ -182,8 +181,12 @@ int rolltui_has_badge(const RolltuiBadges* b, const char* name, size_t len);
 #define ROLLTUI_HIGH_CONTRAST_RATIO 7.0
 #define ROLLTUI_DISTINCT_DELTA_E 0.08
 
-/* The must-differ pairs' COUNT (Style.hpp's `kMustDifferCount`) — a fixed, closed set of
- * role-ordinal pairs this file carries locally (see this section's top comment). */
+/* The must-differ pairs' COUNT. The pairs themselves are a LIBRARY RULE, closed on purpose
+ * (Phase 18 m1 — the decision, its reason and every pair's justification are written at the
+ * table, `kMustDiffer` in rolltui_theme_analysis.c). Only the count is a constant here because
+ * only the count is a caller's business: it sizes the `out_pairs` array `rolltui_theme_analyse`
+ * fills, and the pairs come back IN it (`RolltuiPairCheck.a`/`.b`), which is how a theme author
+ * sees the rule — by analysing a theme, never by editing the rule. */
 #define ROLLTUI_MUST_DIFFER_COUNT 11
 size_t rolltui_must_differ_count(void); /* returns ROLLTUI_MUST_DIFFER_COUNT */
 
@@ -211,14 +214,14 @@ typedef struct RolltuiPairCheck {
  * arrays and `*out_badges` are written positionally in full on success. Returns 0 (nothing
  * written) when `role_count` does not match this file's own role table (the same defensive
  * shape `rolltui_theme_builtin_fill` already takes). Mirrors `rolltui::analyse` exactly,
- * MINUS the notes — see this section's top comment for why those are the C++ shim's to
+ * MINUS the notes — see this section's top comment for why those are the consumer's to
  * build from the `unknown`/`text`/`readable` flags and `*out_badges` this already returns. */
 int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, RolltuiRoleCheck* out_roles,
                           RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges);
 
 /* Composes the full report exactly as `rolltui::report_text` did: "badges: ...\n", each of
- * `notes` as "note: ...\n" (the caller's own — `ThemeReport::notes`, already built; see this
- * section's top comment for why those live in the shim), a blank line and a line per TEXT
+ * `notes` as "note: ...\n" (the caller's own, already built; see this section's top comment
+ * for why those live in the consumer), a blank line and a line per TEXT
  * role, a blank line and a line per pair. APPENDS to `*out` (rolltui.h's UNBOUNDED text
  * shape) rather than clearing it first — a fresh caller passes a zero-initialised `RolltuiStr`. */
 void rolltui_theme_report_text(const RolltuiRoleCheck* roles, size_t role_count, const RolltuiPairCheck* pairs,

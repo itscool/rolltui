@@ -388,13 +388,14 @@ void use_the_ported_modules(const char* when) {
         std::string("…and a host WIDGET kind registers, so the layout registry holds something — ") + when + " [" +
             register_why + "]");
 
-  unsigned char ordinal = 0, problem = 0;
+  unsigned char problem = 0;
+  std::size_t row = 0;
   int is_host = 0;
   const char *name = nullptr, *source = nullptr;
   std::size_t name_len = 0, source_len = 0;
   RolltuiStr why{};
   constexpr std::string_view kProbeContent = "lifetime-probe-kind:x";
-  const int parsed = rolltui_content_parse(kProbeContent.data(), kProbeContent.size(), &ordinal, &is_host, &name,
+  const int parsed = rolltui_content_parse(kProbeContent.data(), kProbeContent.size(), &row, &is_host, &name,
                                            &name_len, &source, &source_len, &problem, &why);
   rolltui_str_free(&why);
   check(parsed != 0, std::string("…and a content resolves through it, so rung 2 is really reached — ") + when);

@@ -38,15 +38,22 @@
  * one-file duplication `help`'s own chord-joining loop below already is, not a new trade.
  *
  *
- * ---- INTERNAL: NOT PART OF THE PUBLIC API -------------------------------------------------
+ * ---- PUBLIC SINCE PHASE 17 m2a, AND NOBODY CONSTRUCTS THESE BY NAME ------------------------
  *
- * `rolltui/rolltui.h` does not include this header and `rolltui/tests/public_header_test.cpp`
- * does not name it — the same footing as `rolltui_alloc.h`/`rolltui_map.h`/`rolltui_marker.h`.
- * Nobody outside this library ever constructs a `RowsWidget` or a `TextWidget` by name;
+ * This paragraph used to be headed "INTERNAL: NOT PART OF THE PUBLIC API" and said that
+ * `rolltui/rolltui.h` does not include this header and `public_header_test.cpp` does not name
+ * it. Both clauses were false by the time Phase 18 m2 read them: the umbrella includes this
+ * header (its own comment there says why — the four rules below had C++ twins that m2c
+ * deleted, and every host reached for the C ones), and `public_header_test.cpp` enumerates
+ * `c/` from disk with only `rolltui_alloc.h` and `rolltui_map.h` internal. Corrected in place
+ * rather than deleted, per the rule that a milestone owns every sentence about what it moved.
+ * What was true stays true: nobody outside this library ever constructs a `RowsWidget` or a
+ * `TextWidget` by name;
  * `rolltui::Windows` builds them from the kind table when a layout names `rows:status` or
  * `text:...`. A consumer binds data (`bind_rows`, `bind_document`, `bind_submit`, `bind_note`)
- * and lets the layout name the kind — exactly as `WidgetKind` (public, in `rolltui_layout.h`)
- * and the plugin contract (public, in `rolltui_widgets.h`) already say.
+ * and lets the layout name the kind — exactly as the widget-kind registry (public, in
+ * `rolltui_layout.h`; a kind's NAME is its identity since Phase 18 m2) and the plugin contract
+ * (public, in `rolltui_widgets.h`) already say.
  */
 #include <stddef.h>
 

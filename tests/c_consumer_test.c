@@ -281,6 +281,25 @@ int main(void) {
     check(rolltui_window_stack_pop(app.stack) != 0, "…and it pops again");
   }
 
+  /* ---- 3d. THE GUARD THAT NEEDS NO CLOSED TYPE (Phase 18 m2) ------------------------------- *
+   * `enum class WidgetKind` is retired: a kind's NAME is its identity, and the registry is one
+   * enumeration with the library's rows first. The safety property — rung 1 is never shadowed —
+   * is two guards BY NAME, planted here from C, where no C++ special member can absorb the
+   * answer (`layout_test.cpp` plants `input` through its C++ shims; this is `transcript`, raw). */
+  {
+    size_t row = (size_t)-1;
+    unsigned char rule = 0;
+    const size_t rows_before = rolltui_widget_kind_count();
+    check(rolltui_widget_kind_register("transcript", 10, ROLLTUI_SOURCE_REQUIRED, "", 0) == ROLLTUI_REGISTER_IS_LIBRARY,
+          "registering a library kind's name is refused, by name, from C");
+    check(rolltui_widget_kind_resolve("transcript", 10, &row, &rule, NULL, NULL) == ROLLTUI_KIND_LIBRARY &&
+              row < rolltui_widget_kind_library_count() && rule == ROLLTUI_SOURCE_REQUIRED,
+          "...and it still resolves at rung 1, as a row inside the library's boundary, with its own rule");
+    check(rolltui_widget_kind_count() == rows_before, "...and the refused registration added no row");
+    check(rolltui_widget_kind_source_shape(row) == ROLLTUI_SOURCE_SHAPE_NAME,
+          "...and its source SHAPE is a row of the registry, readable from C, not a C++ enum compare");
+  }
+
   /* ---- 3c. AN EVENT, ROUTED AND DELIVERED ------------------------------------------------- */
   {
     RolltuiEvent e;

@@ -475,7 +475,8 @@ const char* rolltui_windows_menu_origin(RolltuiWindows* w, const char* source, s
 static void* typed_at(const RolltuiWindows* w, const RolltuiMap* by_source, const char* kind, size_t kind_n,
                       const char* window, size_t len) {
   WindowSlot* s = slot_of(w, window, len);
-  unsigned char ordinal = 0, problem = 0;
+  unsigned char problem = 0;
+  size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
   size_t name_len = 0, source_len = 0;
@@ -483,7 +484,7 @@ static void* typed_at(const RolltuiWindows* w, const RolltuiMap* by_source, cons
   void* out = NULL;
   if (!s) return NULL;
   memset(&why, 0, sizeof why);
-  if (rolltui_content_parse(s->content.p ? s->content.p : "", s->content.n, &ordinal, &is_host, &name, &name_len,
+  if (rolltui_content_parse(s->content.p ? s->content.p : "", s->content.n, &row, &is_host, &name, &name_len,
                             &source, &source_len, &problem, &why) &&
       !is_host && name_len == kind_n && memcmp(name, kind, kind_n) == 0)
     out = rolltui_map_get(by_source, source, source_len);

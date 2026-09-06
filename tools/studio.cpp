@@ -1129,7 +1129,7 @@ struct App {
     std::vector<std::string> kinds;
     for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
       std::size_t n = 0;
-      const char* p = rolltui_widget_kind_library_name(i, &n);
+      const char* p = rolltui_widget_kind_name(i, &n);
       kinds.emplace_back(p, n);
     }
     if (profile) {
@@ -1815,19 +1815,20 @@ struct App {
     std::size_t content_len = 0;
     const char* content_p = rolltui_windows_content_at(windows, target.data(), target.size(), &content_len);
     if (content_p) {
-      unsigned char ordinal = 0; int is_host = 0;
+      std::size_t row = 0; int is_host = 0;
       const char *cname = nullptr, *csource = nullptr; std::size_t cname_len = 0, csource_len = 0;
       unsigned char problem = 0; RolltuiStr why{};
-      if (rolltui_content_parse(content_p, content_len, &ordinal, &is_host, &cname, &cname_len, &csource, &csource_len, &problem, &why)) {
+      if (rolltui_content_parse(content_p, content_len, &row, &is_host, &cname, &cname_len, &csource, &csource_len, &problem, &why)) {
+        const std::string_view kind(cname, cname_len);  // the kind's NAME is its identity (Phase 18 m2)
         if (is_host) { rolltui_windows_handle(windows, target.data(), target.size(), &ev); rolltui_str_free(&why); return true; }
-        if (static_cast<rolltui::WidgetKind>(ordinal) == rolltui::WidgetKind::Transcript) {
+        if (kind == "transcript") {
           rolltui_str_free(&why);
           if (rolltui_windows_handle(windows, target.data(), target.size(), &ev)) return true;
           // typing while the transcript has focus still types (falls through to the prompt)
           if (ev.kind != ROLLTUI_EVENT_KEY) return true;
           return input_event("prompt", ev);
         }
-        if (static_cast<rolltui::WidgetKind>(ordinal) == rolltui::WidgetKind::Input) {
+        if (kind == "input") {
           const std::string source(csource, csource_len);
           rolltui_str_free(&why);
           return input_event(source, ev);

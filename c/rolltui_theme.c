@@ -338,33 +338,26 @@ unsigned char rolltui_mode_for_background(RolltuiStyleColor bg) {
   return y > 0.5 ? ROLLTUI_MODE_LIGHT : ROLLTUI_MODE_DARK;
 }
 
-/* ---- role and effect-state ORDINALS, LOCAL to this file's built-in theme tables only -----
+/* ---- role and effect-state ordinals, as file-local ALIASES of the library's own ------------
  * The loader and dumper below never use these: they resolve every role/state through the
  * caller's `RolltuiThemeVocab` table instead, exactly as this header's own comment states.
  * These exist for ONE reason — so the three built-in themes below read as
- * `styles[R_accent_1] = ...` instead of `styles[9] = ...`, the same distance from a bare
- * magic number that `set(Role::accent_1, ...)` was in the C++. They are not exposed, they do
- * not cross this file's boundary, and they carry no vocabulary anyone outside needs — but
- * their ORDER must still agree with `rolltui::Role`'s declaration order (`Style.hpp`), so
- * `rolltui_theme_builtin_fill` below checks `role_count` against `ROLLTUI_THEME_ROLE_COUNT_`
- * before trusting either table: a mismatch reads as "this theme doesn't exist" rather than
- * writing past the end of a caller's array. */
-enum {
-  R_text, R_text_muted, R_background, R_panel_background, R_border, R_border_active, R_title,
-  R_label, R_value, R_accent_1, R_accent_2, R_accent_3, R_accent_4, R_prompt, R_note, R_warning, R_error,
-  R_md_heading, R_md_emphasis, R_md_strong, R_md_code_inline, R_md_code_block, R_md_code_label,
-  R_md_link, R_md_link_url, R_md_quote, R_md_list_marker, R_md_table_border, R_md_table_header,
-  R_md_rule, R_md_strikethrough,
-  R_diff_added, R_diff_removed, R_diff_context, R_diff_added_word, R_diff_removed_word,
-  R_input_text, R_input_cursor, R_input_placeholder, R_scroll_marker, R_selection, R_overlay,
-  R_menu_item, R_menu_selected, R_menu_breadcrumb, R_menu_shortcut,
-  R_find_match, R_find_current,
-  R_scrollbar,
-  ROLLTUI_THEME_ROLE_COUNT_
-};
-/* Same reasoning, for `EffectState` (Effects.hpp): "none" is index 0 and never a spec a
- * built-in (or a theme file) may address directly. */
-enum { ST_none, ST_waiting, ST_streaming, ST_progress, ST_flash, ROLLTUI_THEME_STATE_COUNT_ };
+ * `styles[R_accent_1] = ...` instead of `styles[9] = ...`. `R_<name>` is
+ * `ROLLTUI_ROLE_<NAME>` and `ST_<name>` is `ROLLTUI_EFFECT_STATE_<NAME>`, each generated from
+ * the X-macro that owns the list (`ROLLTUI_ROLE_LIST`, `ROLLTUI_EFFECT_STATE_LIST`). Until
+ * Phase 18 m1 both were HAND-WRITTEN COPIES whose comment said their order "must still agree
+ * with rolltui::Role's declaration order (Style.hpp)" — a file deleted the day before, and
+ * `rolltui_theme_analysis.c` carried a third copy. A copy can drift; an alias cannot.
+ * `rolltui_theme_builtin_fill` below still checks `role_count` against `ROLLTUI_ROLE_COUNT`
+ * before trusting a caller's array: a mismatch reads as "this theme doesn't exist" rather
+ * than writing past its end. */
+#define ROLLTUI_R_ALIAS_(lower, UPPER) R_##lower = ROLLTUI_ROLE_##UPPER,
+enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
+#undef ROLLTUI_R_ALIAS_
+/* "none" is index 0 and never a spec a built-in (or a theme file) may address directly. */
+#define ROLLTUI_ST_ALIAS_(lower, UPPER, Camel) ST_##lower = ROLLTUI_EFFECT_STATE_##UPPER,
+enum { ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_ST_ALIAS_) };
+#undef ROLLTUI_ST_ALIAS_
 
 /* ---- small helpers shared by the built-ins and the loader --------------------------------- */
 
@@ -714,7 +707,7 @@ RolltuiEffectMap* rolltui_theme_builtin_fill(const char* name, size_t name_len, 
                                              size_t role_count) {
   RolltuiEffectMap* m;
   void (*filler)(RolltuiStyle*, size_t, RolltuiEffectMap*);
-  if (role_count != ROLLTUI_THEME_ROLE_COUNT_) return NULL;
+  if (role_count != ROLLTUI_ROLE_COUNT) return NULL;
   if (streq(name, name_len, "default-dark")) filler = fill_default_dark;
   else if (streq(name, name_len, "default-light")) filler = fill_default_light;
   else if (streq(name, name_len, "mono")) filler = fill_mono;
@@ -722,7 +715,7 @@ RolltuiEffectMap* rolltui_theme_builtin_fill(const char* name, size_t name_len, 
   /* OWNED, LONG-LIVED (rolltui_alloc.h strategy 4), through the entry point
    * `rolltui_effect_map_new` already is. The fallback role is handed over here, once, the
    * same value `rolltui::EffectMap`'s default constructor already hands it. */
-  m = rolltui_effect_map_new(ROLLTUI_THEME_STATE_COUNT_, (unsigned char)R_accent_1);
+  m = rolltui_effect_map_new(ROLLTUI_EFFECT_STATE_COUNT, (unsigned char)R_accent_1);
   filler(styles, role_count, m);
   return m;
 }

@@ -66,7 +66,7 @@
 //     which is exactly the property the old comment said only `Windows`' C++ maps could give.
 // Every remaining `rolltui::`-namespaced type below (`RolltuiLayoutNode`/`RolltuiLayer`/
 // `RolltuiDim`/`RolltuiPlacement`/`RolltuiSplitSize`/`RolltuiResolvedNode`/`RolltuiContent`/
-// `Border`/`Anchor`/`WidgetKind`) is declared inside `rolltui/c/*.h`'s own `#ifdef __cplusplus`
+// `Border`/`Anchor`; `WidgetKind` was one until Phase 18 m2 retired it) is declared inside `rolltui/c/*.h`'s own `#ifdef __cplusplus`
 // blocks — reachable from `rolltui/rolltui.h` alone, no C++ binding header needed. `Rect`,
 // `RolltuiStyle`/`Color`, `Theme`, `Role`'s named enumerators, `Frame`, `Windows`/`WindowStack`
 // (the class), `Key`, `RolltuiMouseEvent`'s short alias and `Route` WERE Layout.hpp/Widgets.hpp's own
@@ -302,55 +302,46 @@ std::optional<Border> border_from_name_c(std::string_view name) {
 }
 
 // ---- direct C calls, continued: content and the widget-kind registry ------------------
-// Each mirrors Layout.cpp's own body exactly, same as parse_dim_c and friends above.
-std::string_view widget_kind_name_c(WidgetKind k) {
+// Each mirrors Layout.cpp's own body exactly, same as parse_dim_c and friends above. Phase 18
+// m2: a kind's NAME is its identity (the C++-only enum is retired), so each of these is one C
+// call over a name; the rung comes back as `rolltui_widget_kind_resolve`'s return and the row
+// is where the kind's rules live, whichever rung it came from.
+std::string_view widget_kind_name_c(std::size_t row) {
   std::size_t n = 0;
-  const char* p = rolltui_widget_kind_library_name(static_cast<std::size_t>(k), &n);
+  const char* p = rolltui_widget_kind_name(row, &n);
   return {p, n};
 }
-std::optional<WidgetKind> widget_kind_from_name_c(std::string_view name) {
-  unsigned char ordinal = 0, rule = 0;
-  if (rolltui_widget_kind_resolve(name.data(), name.size(), &ordinal, &rule, nullptr, nullptr) == ROLLTUI_KIND_LIBRARY)
-    return static_cast<WidgetKind>(ordinal);
-  return std::nullopt;
+// The ROW a name resolves to (either rung), nullopt for neither; `*rung` says which.
+std::optional<std::size_t> widget_kind_row_c(std::string_view name, int* rung = nullptr) {
+  std::size_t row = 0;
+  unsigned char rule = 0;
+  const int r = rolltui_widget_kind_resolve(name.data(), name.size(), &row, &rule, nullptr, nullptr);
+  if (rung) *rung = r;
+  if (r == ROLLTUI_KIND_UNKNOWN) return std::nullopt;
+  return row;
 }
 std::optional<RolltuiContent> parse_content_c(std::string_view text, std::string* why = nullptr, unsigned char* what = nullptr) {
-  unsigned char ordinal = 0, problem = ROLLTUI_CONTENT_PROBLEM_NONE;
+  unsigned char problem = ROLLTUI_CONTENT_PROBLEM_NONE;
+  std::size_t row = 0;
   int is_host = 0;
   const char *name = nullptr, *source = nullptr;
   std::size_t name_len = 0, source_len = 0;
   Str why_str;
-  const int ok = rolltui_content_parse(text.data(), text.size(), &ordinal, &is_host, &name, &name_len, &source,
+  const int ok = rolltui_content_parse(text.data(), text.size(), &row, &is_host, &name, &name_len, &source,
                                        &source_len, &problem, &why_str);
   if (what) *what = problem;
   if (why) *why = why_str.str();
   if (!ok) return std::nullopt;
   RolltuiContent c;
+  c.kind.assign(std::string_view(name, name_len));
   c.source.assign(std::string_view(source, source_len));
-  if (is_host) {
-    c.kind = WidgetKind::Registered;
-    c.registered_name.assign(std::string_view(name, name_len));
-  } else {
-    c.kind = static_cast<WidgetKind>(ordinal);
-  }
   return c;
 }
 std::string content_to_string_c(const RolltuiContent& c) {
-  unsigned char ordinal = 0, rule = 0;
-  std::string_view kind_name;
-  if (c.kind == WidgetKind::Registered) {
-    kind_name = c.registered_name;
-    rolltui_widget_kind_resolve(c.registered_name.data(), c.registered_name.size(), &ordinal, &rule, nullptr, nullptr);
-  } else {
-    kind_name = widget_kind_name_c(c.kind);
-    // The library's own per-kind rule, by ordinal — Layout.hpp's `source_rule(WidgetKind)`
-    // was a small lookup table matching this same closed set; `WidgetKind`'s library values
-    // ARE the ordinal `rolltui_widget_kind_library_rule` indexes by, so there is no table
-    // left to keep.
-    rule = rolltui_widget_kind_library_rule(static_cast<std::size_t>(c.kind));
-  }
+  unsigned char rule = 0;
+  rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), nullptr, &rule, nullptr, nullptr);
   Str out;
-  rolltui_content_format(kind_name.data(), kind_name.size(), c.source.data(), c.source.size(), rule, &out);
+  rolltui_content_format(c.kind.data(), c.kind.size(), c.source.data(), c.source.size(), rule, &out);
   return out.str();
 }
 bool register_widget_kind_c(std::string_view name, unsigned char rule, std::string_view source_is, std::string* why = nullptr) {
@@ -369,12 +360,7 @@ bool register_widget_kind_c(std::string_view name, unsigned char rule, std::stri
 void clear_registered_widget_kinds_c() { rolltui_widget_kind_clear(); }
 std::vector<std::string> widget_kind_names_c() {
   std::vector<std::string> out;
-  for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) out.emplace_back(widget_kind_name_c(static_cast<WidgetKind>(i)));
-  for (std::size_t i = 0; i < rolltui_widget_kind_host_count(); ++i) {
-    std::size_t n = 0;
-    const char* p = rolltui_widget_kind_host_name(i, &n);
-    out.emplace_back(p, n);
-  }
+  for (std::size_t i = 0; i < rolltui_widget_kind_count(); ++i) out.emplace_back(widget_kind_name_c(i));
   return out;
 }
 
@@ -704,8 +690,8 @@ struct WindowsC {
     // A NAME that is not a rung-2 (host-registered) kind at all is nullptr, never the
     // "unknown kind" error widget `widget_for` would build for it — `content_at`'s own
     // reported-by-name path is the place that error belongs, not this typed accessor.
-    unsigned char ordinal = 0, rule = 0;
-    if (rolltui_widget_kind_resolve(kind.data(), kind.size(), &ordinal, &rule, nullptr, nullptr) != ROLLTUI_KIND_HOST)
+    unsigned char rule = 0;
+    if (rolltui_widget_kind_resolve(kind.data(), kind.size(), nullptr, &rule, nullptr, nullptr) != ROLLTUI_KIND_HOST)
       return nullptr;
     Str content;
     rolltui_content_format(kind.data(), kind.size(), source.data(), source.size(), rule, &content);
@@ -1307,39 +1293,58 @@ int main() {
   // ---- 7. content and widgets (Phase 10 m2) --------------------------------------------------
   std::printf("-- content: the kind table\n");
   {
-    // Every kind is in the table under its own name, and nothing else is.
-    for (WidgetKind k : {WidgetKind::Transcript, WidgetKind::Input, WidgetKind::Menu, WidgetKind::Rows, WidgetKind::Text,
-                         WidgetKind::File, WidgetKind::Help})
-      check(widget_kind_from_name_c(widget_kind_name_c(k)) == k, "kind '" + std::string(widget_kind_name_c(k)) + "' round-trips");
-    check(!widget_kind_from_name_c("dialog") && !widget_kind_from_name_c("") && !widget_kind_from_name_c("Transcript"),
+    // Every library kind is in the table under its own name, AT ITS OWN ROW, and nothing
+    // else is — Phase 18 m2: the name is the identity and the row is where its rules live.
+    const std::size_t lib = rolltui_widget_kind_library_count();
+    check(lib == 7 && rolltui_widget_kind_count() == lib, "the library's closed table has seven kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
+    for (std::size_t i = 0; i < lib; ++i) {
+      int rung = ROLLTUI_KIND_UNKNOWN;
+      check(widget_kind_row_c(widget_kind_name_c(i), &rung) == i && rung == ROLLTUI_KIND_LIBRARY,
+            "kind '" + std::string(widget_kind_name_c(i)) + "' round-trips to row " + std::to_string(i) + " at rung 1");
+    }
+    check(!widget_kind_row_c("dialog") && !widget_kind_row_c("") && !widget_kind_row_c("Transcript"),
           "an unknown kind name is not in the table (and it is case-sensitive)");
+    // The per-kind rules are the ROW's, as data. The source SHAPE was the one rule the retired
+    // enum had been carrying silently (the design editor compared `Text || File`).
+    {
+      bool shapes = true;
+      for (std::size_t i = 0; i < lib; ++i) {
+        const std::string_view n = widget_kind_name_c(i);
+        const bool text = n == "text" || n == "file";
+        shapes = shapes && rolltui_widget_kind_source_shape(i) == (text ? ROLLTUI_SOURCE_SHAPE_TEXT : ROLLTUI_SOURCE_SHAPE_NAME);
+      }
+      check(shapes, "text and file take free text (a literal, a path); every other library kind's source is a Name");
+      check(widget_kind_name_c(lib + 500).empty() && rolltui_widget_kind_rule(lib + 500) == ROLLTUI_SOURCE_REQUIRED &&
+                rolltui_widget_kind_source_shape(lib + 500) == ROLLTUI_SOURCE_SHAPE_NAME &&
+                std::string_view(rolltui_widget_kind_source_is(lib + 500, nullptr)).empty(),
+            "a row past the end is empty, REQUIRED and a Name — never a read past either table");
+    }
 
     // Every kind parses with the source its rule demands.
-    struct Case { const char* text; WidgetKind kind; const char* source; };
-    for (const Case& c : {Case{"transcript:session", WidgetKind::Transcript, "session"},
-                          Case{"input:prompt", WidgetKind::Input, "prompt"},
-                          Case{"menu:main", WidgetKind::Menu, "main"},
-                          Case{"rows:status", WidgetKind::Rows, "status"},
-                          Case{"text: a label", WidgetKind::Text, " a label"},
-                          Case{"text", WidgetKind::Text, ""},
-                          Case{"text:", WidgetKind::Text, ""},
-                          Case{"file:/tmp/x.md", WidgetKind::File, "/tmp/x.md"},
-                          Case{"help", WidgetKind::Help, ""},
+    struct Case { const char* text; const char* kind; const char* source; };
+    for (const Case& c : {Case{"transcript:session", "transcript", "session"},
+                          Case{"input:prompt", "input", "prompt"},
+                          Case{"menu:main", "menu", "main"},
+                          Case{"rows:status", "rows", "status"},
+                          Case{"text: a label", "text", " a label"},
+                          Case{"text", "text", ""},
+                          Case{"text:", "text", ""},
+                          Case{"file:/tmp/x.md", "file", "/tmp/x.md"},
+                          Case{"help", "help", ""},
                           // Phase 11 m5b: `help` takes an OPTIONAL scope, so which keys a
                           // window lists is the layout's and not only the host's.
-                          Case{"help:app", WidgetKind::Help, "app"},
+                          Case{"help:app", "help", "app"},
 
-                          Case{"text:a:b", WidgetKind::Text, "a:b"}}) {
+                          Case{"text:a:b", "text", "a:b"}}) {
       std::string why;
       const std::optional<RolltuiContent> got = parse_content_c(c.text, &why);
       check(got && got->kind == c.kind && got->source == c.source,
-            std::string("'") + c.text + "' parses as " + std::string(widget_kind_name_c(c.kind)) + " + '" + c.source + "'" +
-                (got ? "" : " (" + why + ")"));
+            std::string("'") + c.text + "' parses as " + c.kind + " + '" + c.source + "'" + (got ? "" : " (" + why + ")"));
     }
-    check(content_to_string_c({WidgetKind::Rows, "status"}) == "rows:status" && content_to_string_c({WidgetKind::Help, ""}) == "help" &&
-              content_to_string_c({WidgetKind::Help, "app"}) == "help:app" && content_to_string_c({WidgetKind::Text, ""}) == "text",
+    check(content_to_string_c({"rows", "status"}) == "rows:status" && content_to_string_c({"help", ""}) == "help" &&
+              content_to_string_c({"help", "app"}) == "help:app" && content_to_string_c({"text", ""}) == "text",
           "content_to_string is the inverse, and an OPTIONAL source that is empty writes no colon — one spelling, not two");
-    check(content_to_string_c({WidgetKind::Rows, ""}) == "rows:",
+    check(content_to_string_c({"rows", ""}) == "rows:",
           "…while a REQUIRED source that is empty keeps its colon: the window says out loud that it needs a name");
 
     // Every way it can be wrong SAYS SO, by name.
@@ -1519,7 +1524,7 @@ int main() {
           "a window's widget is reachable by window id, typed by kind — a registered one through registered(), the same shape as transcript(source)");
     check(!windows.transcript_at("prompt") && !windows.input_at("tx") && !windows.menu_at("own") && !windows.registered("nope"),
           "…and never as the wrong kind, and an unregistered name is nullptr rather than an empty instance");
-    check(windows.content_at("panel") == content_to_string_c(RolltuiContent{WidgetKind::Rows, "status"}) && !windows.content_at("nope"),
+    check(windows.content_at("panel") == content_to_string_c(RolltuiContent{"rows", "status"}) && !windows.content_at("nope"),
           "content_at names what a window holds");
 
     // PHASE 17 m1c — THE CHECK THAT SEPARATES "PORTED" FROM "REACHABLE", and the reason the
@@ -1894,10 +1899,27 @@ int main() {
           "registering a LIBRARY kind is refused, by name [" + why + "]");
     // …and guard two, independently: even after that attempt, `input:prompt` is still the
     // library's input. This is the assertion the milestone's control breaks.
-    check(parse_content_c("input:prompt")->kind == WidgetKind::Input,
-          "…and `input` still resolves at rung 1: the library's table is searched FIRST, whatever a host tried to register");
-    check(widget_kind_names_c().back() == "canvas" && widget_kind_names_c().size() == rolltui_widget_kind_library_count() + 1,
+    {
+      int rung = ROLLTUI_KIND_UNKNOWN;
+      const std::optional<std::size_t> row = widget_kind_row_c("input", &rung);
+      check(parse_content_c("input:prompt")->kind == "input" && row && *row < rolltui_widget_kind_library_count() &&
+                rung == ROLLTUI_KIND_LIBRARY,
+            "…and `input` still resolves at rung 1, inside the library's boundary: the library's rows are searched FIRST, whatever a host tried to register");
+    }
+    check(widget_kind_names_c().back() == "canvas" && widget_kind_names_c().size() == rolltui_widget_kind_library_count() + 1 &&
+              rolltui_widget_kind_count() == rolltui_widget_kind_library_count() + 1,
           "the registered kind is enumerable, after the library's, in resolution order");
+    {
+      // Phase 18 m2: a host kind is a ROW past the library's boundary, and its rules are the
+      // row's — the rung as an index, not a type; the shape as a stated default, not a guess.
+      int rung = ROLLTUI_KIND_UNKNOWN;
+      const std::optional<std::size_t> row = widget_kind_row_c("canvas", &rung);
+      check(row && *row == rolltui_widget_kind_library_count() && rung == ROLLTUI_KIND_HOST && widget_kind_name_c(*row) == "canvas" &&
+                rolltui_widget_kind_rule(*row) == ROLLTUI_SOURCE_REQUIRED &&
+                rolltui_widget_kind_source_shape(*row) == ROLLTUI_SOURCE_SHAPE_NAME &&
+                std::string_view(rolltui_widget_kind_source_is(*row, nullptr)) == "a drawing surface",
+            "a registered kind is a row past the library's boundary, at rung 2, carrying its own rule, a Name-shaped source and its description");
+    }
 
     LayoutReport lr;
     const std::optional<RolltuiLayout> lay = load_layout_c(R"({"name":"paint","root":{"column":[

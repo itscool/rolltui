@@ -633,19 +633,23 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
 typedef struct KindRow {
   const char* name;
   unsigned char rule;
+  unsigned char shape;
   const char* source_is;
 } KindRow;
 
-/* THE TABLE. One definition site: the names, the source rule and what a source means all
- * come from here, and the ORDER is `rolltui::WidgetKind`'s (asserted on the C++ side). */
+/* THE TABLE. One definition site AND THE ONLY NUMBERING: the names, the source rule, the
+ * source shape and what a source means all come from here, and a kind's row IS its position
+ * in this array. Until Phase 18 m2 the order was "rolltui::WidgetKind's, asserted on the C++
+ * side" — a C table pinned by a C++ enum. Nothing in any language numbers these a second
+ * time now (the header's registry section has the decision). */
 static const KindRow kKinds[] = {
-    {"transcript", ROLLTUI_SOURCE_REQUIRED, "a document the host binds"},
-    {"input", ROLLTUI_SOURCE_REQUIRED, "the target a submitted line goes to"},
-    {"menu", ROLLTUI_SOURCE_REQUIRED, "a menu file"},
-    {"rows", ROLLTUI_SOURCE_REQUIRED, "a row source the host binds"},
-    {"text", ROLLTUI_SOURCE_OPTIONAL, "the literal text"},
-    {"file", ROLLTUI_SOURCE_REQUIRED, "a path"},
-    {"help", ROLLTUI_SOURCE_OPTIONAL, "one key scope, or every one when empty"},
+    {"transcript", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a document the host binds"},
+    {"input", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "the target a submitted line goes to"},
+    {"menu", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a menu file"},
+    {"rows", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a row source the host binds"},
+    {"text", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_TEXT, "the literal text"},
+    {"file", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_TEXT, "a path"},
+    {"help", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_NAME, "one key scope, or every one when empty"},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 
@@ -681,14 +685,14 @@ static int library_kind_index(const char* name, size_t len, size_t* out) {
   return 0;
 }
 
-int rolltui_widget_kind_resolve(const char* name, size_t len, unsigned char* ordinal, unsigned char* rule,
+int rolltui_widget_kind_resolve(const char* name, size_t len, size_t* row, unsigned char* rule,
                                 const char** source_is, size_t* source_is_len) {
   size_t i;
   const HostKind* h;
-  /* THE RESOLUTION ORDER (Layout.hpp). Rung 1 first, unconditionally — the guard that
-   * survives even if a shadowing registration somehow existed. */
+  /* THE RESOLUTION ORDER (the header's registry section). Rung 1 first, unconditionally — the
+   * guard that survives even if a shadowing registration somehow existed. */
   if (library_kind_index(name, len, &i)) {
-    if (ordinal) *ordinal = (unsigned char)i;
+    if (row) *row = i;
     if (rule) *rule = kKinds[i].rule;
     if (source_is) *source_is = kKinds[i].source_is;
     if (source_is_len) *source_is_len = strlen(kKinds[i].source_is);
@@ -696,6 +700,7 @@ int rolltui_widget_kind_resolve(const char* name, size_t len, unsigned char* ord
   }
   h = host_kind(name, len);
   if (h) {
+    if (row) *row = KIND_COUNT + (size_t)(h - g_host_kinds);
     if (rule) *rule = h->rule;
     if (source_is) *source_is = rolltui_str_get(&h->source_is, source_is_len);
     return ROLLTUI_KIND_HOST;
@@ -703,38 +708,42 @@ int rolltui_widget_kind_resolve(const char* name, size_t len, unsigned char* ord
   return ROLLTUI_KIND_UNKNOWN;
 }
 
+/* THE ONE ENUMERATION: library rows first, then the host's. Each accessor answers the
+ * out-of-range case itself ("" / REQUIRED / NAME) rather than reading past either table. */
+size_t rolltui_widget_kind_count(void) { return KIND_COUNT + g_host_count; }
 size_t rolltui_widget_kind_library_count(void) { return KIND_COUNT; }
 
-const char* rolltui_widget_kind_library_name(size_t i, size_t* len) {
-  if (i >= KIND_COUNT) {
-    if (len) *len = 0;
-    return "";
+const char* rolltui_widget_kind_name(size_t row, size_t* len) {
+  if (row < KIND_COUNT) {
+    if (len) *len = strlen(kKinds[row].name);
+    return kKinds[row].name;
   }
-  if (len) *len = strlen(kKinds[i].name);
-  return kKinds[i].name;
+  row -= KIND_COUNT;
+  if (row < g_host_count) return rolltui_str_get(&g_host_kinds[row].name, len);
+  if (len) *len = 0;
+  return "";
 }
 
-unsigned char rolltui_widget_kind_library_rule(size_t i) {
-  return i < KIND_COUNT ? kKinds[i].rule : ROLLTUI_SOURCE_REQUIRED;
+unsigned char rolltui_widget_kind_rule(size_t row) {
+  if (row < KIND_COUNT) return kKinds[row].rule;
+  row -= KIND_COUNT;
+  return row < g_host_count ? g_host_kinds[row].rule : ROLLTUI_SOURCE_REQUIRED;
 }
 
-const char* rolltui_widget_kind_library_source_is(size_t i, size_t* len) {
-  if (i >= KIND_COUNT) {
-    if (len) *len = 0;
-    return "";
-  }
-  if (len) *len = strlen(kKinds[i].source_is);
-  return kKinds[i].source_is;
+unsigned char rolltui_widget_kind_source_shape(size_t row) {
+  /* A host row's shape is NAME — the header's stated default, not a policy. */
+  return row < KIND_COUNT ? kKinds[row].shape : ROLLTUI_SOURCE_SHAPE_NAME;
 }
 
-size_t rolltui_widget_kind_host_count(void) { return g_host_count; }
-
-const char* rolltui_widget_kind_host_name(size_t i, size_t* len) {
-  if (i >= g_host_count) {
-    if (len) *len = 0;
-    return "";
+const char* rolltui_widget_kind_source_is(size_t row, size_t* len) {
+  if (row < KIND_COUNT) {
+    if (len) *len = strlen(kKinds[row].source_is);
+    return kKinds[row].source_is;
   }
-  return rolltui_str_get(&g_host_kinds[i].name, len);
+  row -= KIND_COUNT;
+  if (row < g_host_count) return rolltui_str_get(&g_host_kinds[row].source_is, len);
+  if (len) *len = 0;
+  return "";
 }
 
 int rolltui_widget_kind_register(const char* name, size_t len, unsigned char rule, const char* source_is,
@@ -795,7 +804,7 @@ static void appn(RolltuiStr* s, const char* p, size_t n) { rolltui_str_append(s,
 
 /* ---- content: parsing and formatting, as C (Phase 17 m2) --------------------------------------- */
 
-int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, int* is_host, const char** name,
+int rolltui_content_parse(const char* text, size_t len, size_t* row, int* is_host, const char** name,
                          size_t* name_len, const char** source, size_t* source_len, unsigned char* problem,
                          RolltuiStr* why) {
   size_t colon = len, i;
@@ -814,7 +823,7 @@ int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, 
   if (name) *name = text;
   if (name_len) *name_len = colon;
 
-  rung = rolltui_widget_kind_resolve(text, colon, ordinal, &rule, &describes, &describes_n);
+  rung = rolltui_widget_kind_resolve(text, colon, row, &rule, &describes, &describes_n);
   if (rung == ROLLTUI_KIND_LIBRARY) {
     if (is_host) *is_host = 0;
   } else if (rung == ROLLTUI_KIND_HOST) {
@@ -828,20 +837,14 @@ int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, 
     if (source_len) *source_len = 0;
     if (why) {
       {
-        size_t k, kc = rolltui_widget_kind_library_count(), hc = rolltui_widget_kind_host_count();
+        size_t k, kc = rolltui_widget_kind_count();
         app(why, "'");
         appn(why, text, colon);
         app(why, "' is not a widget kind (");
         for (k = 0; k < kc; ++k) {
           size_t ln = 0;
-          const char* kn = rolltui_widget_kind_library_name(k, &ln);
+          const char* kn = rolltui_widget_kind_name(k, &ln);
           if (k) app(why, " | ");
-          appn(why, kn, ln);
-        }
-        for (k = 0; k < hc; ++k) {
-          size_t ln = 0;
-          const char* kn = rolltui_widget_kind_host_name(k, &ln);
-          if (kc + k) app(why, " | ");
           appn(why, kn, ln);
         }
         app(why, ")");
@@ -905,25 +908,23 @@ void rolltui_content_format(const char* kind_name, size_t kind_name_len, const c
 /* ---- RolltuiContent: the value itself, for a pure C caller (C++ needs none of these — see
  * the header comment) --------------------------------------------------------------------------- */
 
-void rolltui_content_init(RolltuiContent* c) { memset(c, 0, sizeof *c); /* kind 0 == Text */ }
+void rolltui_content_init(RolltuiContent* c) { memset(c, 0, sizeof *c); /* an empty kind names nothing */ }
 
 void rolltui_content_release(RolltuiContent* c) {
   if (!c) return;
+  rolltui_str_free(&c->kind);
   rolltui_str_free(&c->source);
-  rolltui_str_free(&c->registered_name);
   rolltui_content_init(c);
 }
 
 void rolltui_content_copy(RolltuiContent* to, const RolltuiContent* from) {
   if (to == from) return;
-  to->kind = from->kind;
+  rolltui_str_set(&to->kind, from->kind.p, from->kind.n);
   rolltui_str_set(&to->source, from->source.p, from->source.n);
-  rolltui_str_set(&to->registered_name, from->registered_name.p, from->registered_name.n);
 }
 
 int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b) {
-  return a->kind == b->kind && rolltui_str_eq(&a->source, b->source.p, b->source.n) &&
-         rolltui_str_eq(&a->registered_name, b->registered_name.p, b->registered_name.n);
+  return rolltui_str_eq(&a->kind, b->kind.p, b->kind.n) && rolltui_str_eq(&a->source, b->source.p, b->source.n);
 }
 
 /* ---- names: anchors and borders — Layout's OWN vocabulary, unlike Role ------------------------- */
@@ -1440,13 +1441,14 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
        * and this loader runs before a host has necessarily registered anything; `Windows`
        * reports it, by name, with the error panel drawn. Every other problem is a fact
        * about the STRING and is the loader's to name. */
-      unsigned char ordinal = 0, problem = ROLLTUI_CONTENT_PROBLEM_NONE;
+      unsigned char problem = ROLLTUI_CONTENT_PROBLEM_NONE;
+      size_t row = 0;
       int is_host = 0;
       const char *cname = NULL, *csrc = NULL;
       size_t cnamelen = 0, csrclen = 0;
       RolltuiStr why = {0};
       const int ok =
-          rolltui_content_parse(n->content.p, n->content.n, &ordinal, &is_host, &cname, &cnamelen, &csrc, &csrclen,
+          rolltui_content_parse(n->content.p, n->content.n, &row, &is_host, &cname, &cnamelen, &csrc, &csrclen,
                                 &problem, &why);
       if (!ok && problem != ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND) {
         RolltuiStr msg = {0};

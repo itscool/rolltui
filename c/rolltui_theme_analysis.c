@@ -158,7 +158,8 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out) {
 /* =========================================================================================
  * THE REPORT AND THE AUTO-FIX (Phase 17 m5) — ported verbatim from
  * `rolltui::analyse`/`report_text`/`check_claims`/`fix_contrast`/`fix_confusable`/
- * `propose_fixes`/`apply_fix` (`rolltui/ThemeAnalysis.cpp`, now a thin C++ shim over this).
+ * `propose_fixes`/`apply_fix` (`rolltui/ThemeAnalysis.cpp`, deleted at Phase 17 m2c — this
+ * file is the only implementation now).
  * ========================================================================================= */
 
 /* A literal C string plus its length via `strlen` — this file's own copy of
@@ -169,29 +170,79 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out) {
  * nothing this library's budget covers. */
 #define K(s) (s), strlen(s)
 
-/* ---- role ORDINALS, LOCAL to this file's report/auto-fix only (mirrors `rolltui_theme.c`'s
- * own `R_*` table for its built-in themes — same reasoning, independently duplicated: a
- * `static` table has no external linkage to share, and each copy is guarded on its own by a
- * `role_count` check before being trusted). Their ORDER must agree with `rolltui::Role`'s
- * declaration order (Style.hpp); every entry point below that takes `role_count` checks it
- * against `ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_` first. */
-enum {
-  R_text, R_text_muted, R_background, R_panel_background, R_border, R_border_active, R_title,
-  R_label, R_value, R_accent_1, R_accent_2, R_accent_3, R_accent_4, R_prompt, R_note, R_warning, R_error,
-  R_md_heading, R_md_emphasis, R_md_strong, R_md_code_inline, R_md_code_block, R_md_code_label,
-  R_md_link, R_md_link_url, R_md_quote, R_md_list_marker, R_md_table_border, R_md_table_header,
-  R_md_rule, R_md_strikethrough,
-  R_diff_added, R_diff_removed, R_diff_context, R_diff_added_word, R_diff_removed_word,
-  R_input_text, R_input_cursor, R_input_placeholder, R_scroll_marker, R_selection, R_overlay,
-  R_menu_item, R_menu_selected, R_menu_breadcrumb, R_menu_shortcut,
-  R_find_match, R_find_current,
-  R_scrollbar,
-  ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_
-};
+/* ---- role ordinals: `R_<name>` is a file-local ALIAS of `ROLLTUI_ROLE_<NAME>`, generated
+ * from `ROLLTUI_ROLE_LIST` (rolltui_style.h), the one spelling of the role vocabulary. Until
+ * Phase 18 m1 this was a HAND-WRITTEN COPY of that list, with a comment saying its order "must
+ * agree with rolltui::Role's declaration order (Style.hpp)" — a file that had been deleted
+ * the day before. A copy can drift; an alias generated from the owner's list cannot. The
+ * short form is kept only so the table below reads as pairs of roles rather than pairs of
+ * numbers. Every entry point that takes `role_count` still checks it against
+ * `ROLLTUI_ROLE_COUNT` before trusting a caller's array. */
+#define ROLLTUI_R_ALIAS_(lower, UPPER) R_##lower = ROLLTUI_ROLE_##UPPER,
+enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
+#undef ROLLTUI_R_ALIAS_
 
-/* The must-differ pairs (Style.hpp's `kMustDiffer`), as this file's own local ordinals.
- * Sized `[ROLLTUI_MUST_DIFFER_COUNT]` on purpose: a count that drifted from the eleven
- * initialisers below would be a COMPILE ERROR, not a silent truncation. */
+/* =========================================================================================
+ * THE MUST-DIFFER PAIRS — A LIBRARY RULE, CLOSED ON PURPOSE (Phase 18 m1, 2026-09-05).
+ *
+ * THE DECISION: which role pairs must be visually distinct is the LIBRARY's rule, not a
+ * theme's, and this table is its one home. A theme file that states a `must_differ` key is
+ * reported as an unknown key (`theme_test.cpp` asserts it), and `theme_analysis_test.cpp`
+ * asserts these eleven BY NAME, so a change here is a decision recorded in a test rather than
+ * an edit nothing notices.
+ *
+ * WHY THE LIBRARY AND NOT THE THEME — two reasons, and the second is decisive:
+ *   1. Membership is a fact about RENDERING, which a theme cannot change. A pair is here
+ *      because a library widget draws the two roles in the same place to mean different
+ *      things, and the style is the cue a reader tells them apart by. A theme author can move
+ *      every colour; they cannot make the menu draw a marker beside its selected row.
+ *   2. The BADGES are claims checked against this set. `cvd-safe` means "every pair here is
+ *      distinct under all three simulations", and `rolltui_check_claims` exists to catch a
+ *      theme claiming a badge it did not earn. A pair set the theme writes is a test the
+ *      claimant writes: a theme could declare zero pairs and be cvd-safe by construction, and
+ *      `check_claims` would check nothing. CLAUDE.md opens with that self-satisfying shape
+ *      (route everything to the fallback and "falls back when local can't" is satisfied);
+ *      this is it one level down.
+ *
+ * WHAT A THEME AUTHOR CAN REACH: every pair, with its ΔE and per-CVD numbers, through
+ * `rolltui_theme_analyse` (`RolltuiPairCheck.a`/`.b` are role ordinals; `rolltui_role_name`
+ * spells them) and in `rolltui_theme_report_text`'s "must-differ pairs" section, which the
+ * theme editor's `--check` popup prints verbatim. The rule is VISIBLE and not EDITABLE, and
+ * that asymmetry is the decision — not an accident of where an array happened to live.
+ *
+ * THE REJECTED ALTERNATIVE: a theme-file `must_differ` array, with these eleven as the
+ * default. It would let an author ADD a pair (a stricter self-check) or DROP one (declare a
+ * widget's only cue unimportant). Dropping is reason 2 above. Adding is a bug report: a pair
+ * an author needs is a widget drawing two roles with no other cue, which is this table
+ * missing a row, not one theme's business. The one place a pair could legitimately come from
+ * OUTSIDE the library is a HOST's registered widget, and no host has one — roll's
+ * `approval`/`details` and paint's `canvas` draw no such pair — so that variant is deferred
+ * with its trigger in `CONSIDERED.md` ("Host-declared must-differ pairs").
+ *
+ * MEMBERSHIP, one line per pair, naming what makes it load-bearing:
+ *   diff_added / diff_removed        `rolltui_diff.c`: a line's role is its meaning.
+ *   warning / error                  a transcript entry's severity is its role (roll maps
+ *                                    `EntryKind::Warning`/`Error` to exactly these).
+ *   accent_1..4, pairwise (six)      four accents exist to be four distinguishable classes;
+ *                                    `rolltui_diff.c` and roll's escalation entry take one
+ *                                    each, and a highlighter assigns them to token classes.
+ *   menu_item / menu_selected        `rolltui_menu.c`: the selected row's style is the ONLY
+ *                                    selection cue; no marker glyph is drawn.
+ *   input_text / input_placeholder   `rolltui_input.c`: the placeholder is drawn where the
+ *                                    text goes; style is the only cue.
+ *   find_match / find_current        `rolltui_transcript.c`: the current match differs from
+ *                                    the others by style alone.
+ *   NOT a pair, by the same criterion: diff_added_word / diff_added — the word role is an
+ *   emphasis ON its line (same hue, bold; `studio_golden_test.cpp` asserts the rendering).
+ *
+ * THE RULE FOR A NEW ROLE (it used to stand beside `Style.hpp`'s `kMustDiffer` and was lost
+ * in the port): every role appended to `ROLLTUI_ROLE_LIST` decides its membership HERE — a
+ * row, or a line saying "none" and why — before its addition is done. `rolltui_style.h` says
+ * so at the list, which is where a new role is written.
+ *
+ * Sized `[ROLLTUI_MUST_DIFFER_COUNT]` on purpose: a count that drifted from the initialisers
+ * below is a COMPILE ERROR, not a silent truncation.
+ * ========================================================================================= */
 typedef struct RolePairLocal { unsigned char a, b; } RolePairLocal;
 static const RolePairLocal kMustDiffer[ROLLTUI_MUST_DIFFER_COUNT] = {
     {R_diff_added, R_diff_removed}, {R_warning, R_error},
@@ -362,7 +413,7 @@ int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, Rolltui
   int distinct = 1, cvd_all = 1, per[3], redundant = 1, s16 = 1, s256 = 1, any_pair_known = 0;
   RolltuiLin bglin;
   if (!styles || !out_roles || !out_pairs || !out_badges) return 0;
-  if (role_count != ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_) return 0;
+  if (role_count != ROLLTUI_ROLE_COUNT) return 0;
   per[0] = per[1] = per[2] = 1;
   memset(out_badges, 0, sizeof *out_badges);
 
@@ -618,7 +669,7 @@ int rolltui_fix_contrast(const RolltuiStyle* styles, size_t role_count, unsigned
   size_t rnlen;
   rolltui_fix_release(out);
   if (!styles || !out) return 0;
-  if (role_count != ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_ || role >= role_count) return 0;
+  if (role_count != ROLLTUI_ROLE_COUNT || role >= role_count) return 0;
   before = styles[role];
   if (!rolltui_to_linear(before.fg, &f)) return 0;
   eb = effective_bg(styles, role);
@@ -676,7 +727,7 @@ int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsign
   size_t bnlen;
   rolltui_fix_release(out);
   if (!styles || !out) return 0;
-  if (role_count != ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_ || a >= role_count || b >= role_count) return 0;
+  if (role_count != ROLLTUI_ROLE_COUNT || a >= role_count || b >= role_count) return 0;
   sa = styles[a];
   sb = styles[b];
   if (!rolltui_to_linear(sa.fg, &fa) || !rolltui_to_linear(sb.fg, &fb)) return 0;
@@ -764,12 +815,12 @@ static void fix_array_add(RolltuiFixArray* a, RolltuiFix* f) {
 
 void rolltui_propose_fixes(const RolltuiStyle* styles, size_t role_count, const RolltuiThemeVocab* vocab,
                            RolltuiFixArray* out) {
-  RolltuiRoleCheck roles[ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_];
+  RolltuiRoleCheck roles[ROLLTUI_ROLE_COUNT];
   RolltuiPairCheck pairs[ROLLTUI_MUST_DIFFER_COUNT];
   RolltuiBadges badges;
   size_t i;
   rolltui_fix_array_release(out);
-  if (role_count != ROLLTUI_THEME_ANALYSIS_ROLE_COUNT_) return;
+  if (role_count != ROLLTUI_ROLE_COUNT) return;
   if (!rolltui_theme_analyse(styles, role_count, roles, pairs, &badges)) return;
   for (i = 0; i < role_count; ++i) {
     if (roles[i].text && !roles[i].unknown && !roles[i].readable) {
