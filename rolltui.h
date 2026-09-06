@@ -23,6 +23,29 @@
  * `public_header_test`, and this file is written FROM that table — the public and tool-facing
  * rows and the types their signatures need — never as a prediction of it.
  *
+ * ---- AND WHAT KEEPS THAT TABLE HONEST, because it has been got wrong three times ------------
+ *
+ * **REACH IS THE INPUT; A STATED REASON IS THE DECISION. DON'T use "who reaches it" as the
+ * criterion** — it is the cheapest signal available, which is why this repo has reached for it
+ * three times and had to retract it three times:
+ *   1. **Phase 17 m4** derived the public HEADER set from what consumers reached for → 37 of 39
+ *      headers public → retracted by m4b: *"measuring reach cannot tell an entry point from
+ *      plumbing, because a consumer reaching THROUGH a bad API looks identical to one reaching
+ *      FOR a good one."*
+ *   2. **Phase 17 m5(f)** asked *"is anything dead?"* counting the library's own `.c` as a
+ *      consumer → 2 symbols → corrected when Phase 19 was scoped: the question was whether a
+ *      CONSUMER needs it, not whether anything at all touches it.
+ *   3. **Phase 19 m1** classified per function with a clause making a thing public when *"a test
+ *      stands in for a host to exercise"* it → **304 of 624 public functions in front of no
+ *      consumer at all** → struck by Phase 20. **A TEST'S REACH IS NEVER A REASON: a test exists
+ *      to reach things.**
+ * **DO let a PUBLIC-ONLY SUITE's reach count** — a program shaped like a CONSUMER, which includes
+ * this header and nothing else (`rolltui/tests/c_consumer_test.c` above all, and every one of
+ * roll's own tests, roll being a host). That is not a test's reach standing in for a consumer's;
+ * it is a consumer-shaped program's. **DO write `KEPT: <why>` on a row that is public for a
+ * reason rather than for reach** — the count is asserted, so adding one is a decision a reader
+ * can audit rather than a comment nobody re-reads.
+ *
  * ============================================================================
  * THE RULES EVERY DECLARATION BELOW OBEYS — as DO/DON'T, because a maxim has to be decoded
  * before it can be acted on and a directive can be followed.
