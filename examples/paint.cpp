@@ -88,6 +88,8 @@ constexpr const char* kToolsMenu = R"({
       "value": "#d8dce2", "hint": "#rrggbb, 0-255 or none" },
     { "id": "size", "label": "Brush size", "kind": "input", "type": "int",
       "min": 1, "max": 5, "step": 1, "value": "1", "hint": "cells across" },
+    { "id": "shape", "label": "Brush shape", "kind": "choice",
+      "items": [ { "id": "square", "label": "square" }, { "id": "round", "label": "round" } ] },
     { "id": "clear", "label": "Clear the sheet" } ] }
 )";
 
@@ -127,6 +129,12 @@ struct Tool {
   int ramp = 0;
   Ink ink;
   int size = 1;
+  // ROUND OR SQUARE, and it is here for the second reason an example's feature can be here:
+  // it probes NOTHING about the API — no public function, no wall, no header growth — and it
+  // makes the app better to use and to read. Those are two independent tests (see
+  // `plan/phase-21.md`), and passing either is enough for pure app-side code. What is never
+  // allowed is app-side polish that grows the PUBLIC surface.
+  bool round = false;
 };
 
 // The app's own screen, for a run with no --layout: one canvas and the palette beside it.
@@ -241,13 +249,16 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
   const K k = e->mouse.kind;
   if (k != K::Press && k != K::Drag && k != K::Release) return 0;
   if (k != K::Release) {
-    // A brush is a SIZE and a SHAPE now, so a drag lays a footprint rather than one cell.
+    // A brush is a SIZE and a SHAPE, so a drag lays a footprint rather than one cell. The
+    // round mask is the ordinary discrete disc: a cell is in when its centre is within the
+    // radius, which at these sizes is the difference between a blunt end and a bevelled one.
     const int cx = e->mouse.x - c->inner.x, cy = e->mouse.y - c->inner.y;
     const int n = c->tool->size < 1 ? 1 : (c->tool->size > 5 ? 5 : c->tool->size);
     const int rad = n / 2;
     for (int dy = -rad; dy <= rad; ++dy)
       for (int dx = -rad; dx <= rad; ++dx) {
         if (n % 2 == 0 && (dx == -rad || dy == -rad)) continue;  // an even brush grows right/down
+        if (c->tool->round && rad > 0 && dx * dx + dy * dy > rad * rad) continue;
         Ink laid = c->tool->ink;
         laid.ramp = c->tool->ramp;  // the cell remembers which ramp drew it
         c->pixels[{cx + dx, cy + dy}] = laid;
@@ -365,7 +376,7 @@ struct App {
           char ink[ROLLTUI_COLOR_STRING_MAX];
           const std::size_t n = rolltui_color_to_string(a.tool.ink.color, ink, sizeof ink);
           rolltui_rows_add(out, "ink", 3, ink, n);
-          const std::string brush = std::to_string(a.tool.size);
+          const std::string brush = std::to_string(a.tool.size) + (a.tool.round ? " round" : " square");
           rolltui_rows_add(out, "brush", 5, brush.data(), brush.size());
           const std::string marks = std::to_string(a.marks());
           rolltui_rows_add(out, "marks", 5, marks.data(), marks.size());
@@ -461,6 +472,7 @@ struct App {
       // makes hard is only that the value is text, which `rolltui_color_parse` now answers.
       if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && ev.value.n != 0) {
         if (view_of(ev.id) == "ramp") tool.ramp = view_of(ev.value) == "blocks" ? 1 : 0;
+        if (view_of(ev.id) == "shape") tool.round = view_of(ev.value) == "round";
       }
       if (ev.kind == ROLLTUI_MENU_EVENT_INPUT && ev.value.n != 0) {
         const std::string v = str_of(ev.value);
@@ -491,7 +503,7 @@ struct App {
       std::string status = " " + str_of(layout.name) + "  " + std::to_string(w) + "x" + std::to_string(h) +
                            "  " + kRamps[tool.ramp % 2].name + "/" + std::to_string(tool.ink.level) + " " +
                            std::string(inkstr, inkn) + " b" + std::to_string(tool.size) +
-                           "  marks " + std::to_string(marks()) + "  focus:" +
+                           (tool.round ? "r" : "s") + "  marks " + std::to_string(marks()) + "  focus:" +
                            (focused ? str_of(focused->id) : std::string("-"));
       if (!note.empty()) status += "  [" + note + "]";
       rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0,
@@ -555,7 +567,7 @@ RolltuiAppProfile* paint_profile() {
   rolltui_app_profile_row_add_sample(p, row, "shading", 7, "ascii", 5);
   rolltui_app_profile_row_add_sample(p, row, "level", 5, "4", 1);
   rolltui_app_profile_row_add_sample(p, row, "ink", 3, "#d8dce2", 7);
-  rolltui_app_profile_row_add_sample(p, row, "brush", 5, "1", 1);
+  rolltui_app_profile_row_add_sample(p, row, "brush", 5, "1 square", 8);
   rolltui_app_profile_row_add_sample(p, row, "marks", 5, "0", 1);
   // the same list this binary hands its own Windows
   for (const std::string& s : App::help_scopes()) rolltui_app_profile_add_help_scope(p, s.data(), s.size());
@@ -693,7 +705,7 @@ int main(int argc, char** argv) {
     else if (a == "--present") present_depth = next();
     else if (a == "--ambiguous-wide") ambiguous = true;
     else if (a == "--stroke" || a == "--ramp" || a == "--level" || a == "--ink" || a == "--size" ||
-             a == "--dot")
+             a == "--shape" || a == "--dot")
       script.emplace_back(a, next());
     else if (a == "--profile") { want_profile = true; if (i + 1 < argc && argv[i + 1][0] != '-') profile_path = next(); }
     else return usage();
@@ -764,6 +776,7 @@ int main(int argc, char** argv) {
       if (flag == "--ramp") app.tool.ramp = val == "blocks" ? 1 : 0;
       else if (flag == "--level") app.tool.ink.level = std::atoi(val.c_str());
       else if (flag == "--size") app.tool.size = std::atoi(val.c_str());
+      else if (flag == "--shape") app.tool.round = val == "round";
       else if (flag == "--ink") rolltui_color_parse(val.data(), val.size(), &app.tool.ink.color);
       else if (flag == "--dot") {
         int x = 0, y = 0;
