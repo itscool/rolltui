@@ -460,6 +460,52 @@ int main() {
       static const std::regex kept_re(R"(ROLLTUI_API\(\s*(rolltui_[a-z0-9_]+)\s*,[^)]*\)\s*/\*\s*KEPT:)");
       for (std::sregex_iterator it(tbl.begin(), tbl.end(), kept_re), end; it != end; ++it) kept.insert((*it)[1].str());
     }
+    // ---- PHASE 20 m4: THE NOT-OPTED-IN GUARD ------------------------------------------------
+    // Moving a function INTERNAL costs a suite an opt-in, so `ROLLTUI_INTERNAL_TESTS` only grows;
+    // if nearly every suite ends up on it, section 3's exact zero stops saying anything. **The
+    // instrument is the set that stays OUT.** These four assertions are what keep it meaningful:
+    // the set is non-empty, every name in it is a real file (a typo would shrink it silently —
+    // the reports-zero shape aimed at this very check), the pure-C consumer is in it, and at
+    // least one whole-host suite is. Both lists are printed under ROLLTUI_CENSUS so a re-record
+    // is a copy-paste rather than arithmetic.
+    {
+      auto join = [](const std::vector<std::string>& v) { std::string t; for (const std::string& x : v) t += "\n      " + x; return t; };
+      std::vector<std::string> missing;
+      for (const std::string& n : public_only_files)
+        if (!n.empty() && read(root + "/tests/" + n).empty()) missing.push_back(n);
+      std::set<std::string> optin_now;
+      {
+        std::string list = ROLLTUI_INTERNAL_TESTS;
+        std::size_t at = 0;
+        while (at <= list.size()) {
+          const std::size_t comma = list.find(',', at);
+          optin_now.insert(list.substr(at, comma == std::string::npos ? std::string::npos : comma - at));
+          if (comma == std::string::npos) break;
+          at = comma + 1;
+        }
+      }
+      std::vector<std::string> both;
+      for (const std::string& n : public_only_files)
+        if (optin_now.count(n)) both.push_back(n);
+      static const char* kWholeHost[] = {"authored_screen_test.cpp", "files_only_test.cpp", "studio_golden_test.cpp"};
+      int whole_host = 0;
+      for (const char* n : kWholeHost) whole_host += public_only_files.count(n) ? 1 : 0;
+      check(!public_only_files.empty() && public_only_files.size() >= 6,
+            "THE PUBLIC-ONLY SET IS NON-EMPTY (" + std::to_string(public_only_files.size()) +
+                ") — it is the instrument, not the opt-in list beside it");
+      check(missing.empty(), "every name in ROLLTUI_PUBLIC_ONLY_TESTS is a real file — a typo would shrink the set in silence" + join(missing));
+      check(public_only_files.count("c_consumer_test.c") == 1,
+            "the pure-C consumer is in the public-only set, and can never leave it: it is the proof that the public API alone builds a screen, draws a frame and drives a preset store");
+      check(whole_host >= 1, "at least one WHOLE-HOST suite is public-only, so the set covers a real app's path (" + std::to_string(whole_host) + " of 3)");
+      check(both.empty(), "no suite is in both lists — a suite either reaches internals or proves the public API is enough" + join(both));
+      if (std::getenv("ROLLTUI_CENSUS")) {
+        std::printf("        PUBLIC-ONLY (%zu):", public_only_files.size());
+        for (const std::string& n : public_only_files) std::printf(" %s", n.c_str());
+        std::printf("\n        OPTED IN (%zu):", optin_now.size());
+        for (const std::string& n : optin_now) std::printf(" %s", n.c_str());
+        std::printf("\n");
+      }
+    }
     check(kept.size() == 15,
           "the KEPT rows — PUBLIC for a stated reason, not for a consumer's reach — are the recorded " +
               std::to_string(kept.size()) + "; a new one is a decision that re-records this number");
