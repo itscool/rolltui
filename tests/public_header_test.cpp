@@ -17,6 +17,10 @@
 #include <sstream>
 #include <string>
 #include <algorithm>
+#include <cstdlib>
+#include <map>
+#include <regex>
+#include <set>
 #include <vector>
 
 #include <dirent.h>
@@ -47,6 +51,64 @@ bool is_declaration(const std::string& raw) {
   if (s.rfind("#ifndef", 0) == 0 || s.rfind("#define ROLLTUI_H", 0) == 0 || s.rfind("#endif", 0) == 0)
     return false;
   return true;
+}
+
+// ---- section 6's instruments: a literal-aware comment stripper, a recursive lister, and the
+// identifier scan the class table is checked against (Phase 19 m1) ---------------------------
+// Comments are stripped RESPECTING string and char literals — a "/*" inside a JSON string or a
+// "//" inside a URL would otherwise eat real code, which is how the first census of this
+// surface under-counted the library's own reach by a third.
+std::string strip_all_comments(const std::string& src) {
+  std::string out;
+  out.reserve(src.size());
+  for (size_t i = 0; i < src.size();) {
+    const char c = src[i];
+    if (c == '"' || c == '\'') {
+      size_t j = i + 1;
+      while (j < src.size() && src[j] != c) j += (src[j] == '\\') ? 2 : 1;
+      out.append(src, i, std::min(j + 1, src.size()) - i);
+      i = j + 1;
+    } else if (src.compare(i, 2, "/*") == 0) {
+      const size_t j = src.find("*/", i + 2);
+      out += ' ';
+      i = (j == std::string::npos) ? src.size() : j + 2;
+    } else if (src.compare(i, 2, "//") == 0) {
+      const size_t j = src.find('\n', i);
+      i = (j == std::string::npos) ? src.size() : j;
+    } else {
+      out += c;
+      ++i;
+    }
+  }
+  return out;
+}
+
+void list_files(const std::string& dir, const std::vector<std::string>& exts, std::vector<std::string>& out) {
+  DIR* d = opendir(dir.c_str());
+  if (!d) return;
+  while (dirent* e = readdir(d)) {
+    const std::string name = e->d_name;
+    if (name == "." || name == "..") continue;
+    const std::string path = dir + "/" + name;
+    if (e->d_type == DT_DIR) { list_files(path, exts, out); continue; }
+    for (const std::string& x : exts)
+      if (name.size() > x.size() && name.compare(name.size() - x.size(), x.size(), x) == 0) out.push_back(path);
+  }
+  closedir(d);
+}
+
+// Every `rolltui_*` identifier in `text` (comments already stripped), counted.
+void count_idents(const std::string& text, std::map<std::string, int>& out) {
+  static const std::regex re(R"(\brolltui_[a-z0-9_]+\b)");
+  for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) ++out[it->str()];
+}
+// A function DEFINITION in a .c file: a line starting at column 0 with a type, the name, a
+// parameter list and an opening brace — the one mention of a function that is not a use of it.
+std::set<std::string> definitions_in(const std::string& text) {
+  static const std::regex re(R"((?:^|\n)[A-Za-z_][^\n;{}]*?\b(rolltui_[a-z0-9_]+)\s*\([^;{}]*\)\s*\{)");
+  std::set<std::string> out;
+  for (std::sregex_iterator it(text.begin(), text.end(), re), end; it != end; ++it) out.insert((*it)[1].str());
+  return out;
 }
 
 std::vector<std::string> declarations(const std::string& text) {
@@ -299,6 +361,115 @@ int main() {
     check(offenders.empty(),
           "no public function hands a RESULT back through a callback — it takes the caller's "
           "RolltuiStr* (one string), RolltuiStrList* (many) or typed list instead" + joined);
+  }
+
+  // ---- 6. THE CLASS TABLE: every public function has ONE class, and the classes are what
+  //         `rolltui.h` is written from (Phase 19 m1) ------------------------------------------
+  // `api_classes.inc` is the "intentional public API design" the user asked for, as data: every
+  // function declared in a public header carries PUBLIC, TOOL_FACING, INTERNAL or DELETE, with
+  // the reason where it is not the module's default. This section measures REACH — who outside
+  // the library mentions each function — and holds the table to it, so a class cannot drift from
+  // the evidence and a new function cannot arrive unclassified.
+  {
+    struct Row { const char* fn; const char* cls; };
+    static const Row kApi[] = {
+#define ROLLTUI_API(name, cls) {#name, #cls},
+#include "api_classes.inc"
+#undef ROLLTUI_API
+    };
+    const std::string root = std::string(ROLLTUI_SOURCE_DIR);   // rolltui/
+    const std::string repo = root + "/..";
+    // Declared in a public header: any `rolltui_x(` mention in a header that is not internal.
+    std::set<std::string> declared;
+    for (const std::string& h : headers) {
+      bool internal = false;
+      for (const char* i : kInternal) internal = internal || h == i;
+      if (internal) continue;
+      static const std::regex decl_re(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
+      const std::string t = strip_all_comments(read(root + "/c/" + h));
+      for (std::sregex_iterator it(t.begin(), t.end(), decl_re), end; it != end; ++it) declared.insert((*it)[1].str());
+    }
+    // Reach, four consumers and the library, each a set of mentioned identifiers.
+    auto mentions_in = [&](const std::vector<std::string>& dirs, const std::vector<std::string>& exts) {
+      std::vector<std::string> files;
+      for (const std::string& d : dirs) list_files(d, exts, files);
+      std::map<std::string, int> counts;
+      for (const std::string& f : files) count_idents(strip_all_comments(read(f)), counts);
+      std::set<std::string> out;
+      for (const auto& [k, v] : counts) out.insert(k);
+      return out;
+    };
+    const std::set<std::string> roll = mentions_in({repo + "/src", repo + "/include"}, {".cpp", ".hpp"});
+    const std::set<std::string> tools = mentions_in({root + "/tools"}, {".cpp", ".hpp"});
+    const std::set<std::string> tests = mentions_in({root + "/tests", repo + "/tests"}, {".cpp", ".hpp", ".c"});
+    std::set<std::string> lib;  // mentioned in a .c beyond its own definition
+    {
+      std::vector<std::string> cs;
+      list_files(root + "/c", {".c"}, cs);
+      for (const std::string& f : cs) {
+        const std::string t = strip_all_comments(read(f));
+        const std::set<std::string> defs = definitions_in(t);
+        std::map<std::string, int> counts;
+        count_idents(t, counts);
+        for (const auto& [k, v] : counts)
+          if (defs.count(k) ? v > 1 : true) lib.insert(k);
+      }
+    }
+    std::set<std::string> hdr;  // mentioned in a header's inline C++ member: reached by every C++ consumer
+    for (const std::string& h : headers) {
+      const std::string t = strip_all_comments(read(root + "/c/" + h));
+      static const std::regex decl_stmt(R"([^\n;{}]*?\b(rolltui_[a-z0-9_]+)\s*\([^;{}]*\)\s*;)");
+      std::set<std::string> decls;
+      for (std::sregex_iterator it(t.begin(), t.end(), decl_stmt), end; it != end; ++it) decls.insert((*it)[1].str());
+      std::map<std::string, int> counts;
+      count_idents(t, counts);
+      for (const auto& [k, v] : counts)
+        if (declared.count(k) && (decls.count(k) ? v > 1 : true)) hdr.insert(k);
+    }
+    auto reach_of = [&](const std::string& f) -> const char* {
+      return roll.count(f) ? "roll" : tools.count(f) ? "tools" : tests.count(f) ? "tests" : lib.count(f) ? "lib" : hdr.count(f) ? "hdr" : "nothing";
+    };
+    // The instruments are proved armed before any zero is believed.
+    check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_window_stack_push_popup") &&
+              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH"),
+          "the class census sees declarations (" + std::to_string(declared.size()) + "), roll's reach, the tools' reach and the library's own");
+    std::map<std::string, std::string> cls;
+    for (const Row& r : kApi) cls[r.fn] = r.cls;
+    std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached;
+    for (const std::string& f : declared)
+      if (!cls.count(f)) unclassified.push_back(f);
+    for (const Row& r : kApi) {
+      if (!declared.count(r.fn)) { stale.push_back(r.fn); continue; }
+      const std::string c = r.cls, reach = reach_of(r.fn);
+      if (reach == "roll" && c != "PUBLIC") roll_not_public.push_back(std::string(r.fn) + " (" + c + ")");
+      if (reach == "tools" && (c == "INTERNAL" || c == "DELETE")) tool_internal.push_back(std::string(r.fn) + " (" + c + ")");
+      if (c == "DELETE" && reach != "nothing") deleted_but_reached.push_back(std::string(r.fn) + " (" + reach + ")");
+      if (c == "INTERNAL" && (reach == "roll" || reach == "tools")) internal_reached.push_back(std::string(r.fn) + " (" + reach + ")");
+    }
+    auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
+    check(unclassified.empty(), "every function declared in a public header has a class in api_classes.inc — a new one is a DECISION, not an arrival" + join(unclassified));
+    check(stale.empty(), "every row of api_classes.inc names a declared function (a deleted one takes its row with it)" + join(stale));
+    check(roll_not_public.empty(), "a function roll reaches is PUBLIC" + join(roll_not_public));
+    check(tool_internal.empty(), "a function a tool reaches is PUBLIC or TOOL_FACING" + join(tool_internal));
+    check(internal_reached.empty(), "an INTERNAL function is reached by no host and no tool" + join(internal_reached));
+    check(deleted_but_reached.empty(), "a DELETE row is reached by nothing, anywhere" + join(deleted_but_reached));
+    // THE TOTALS, RECORDED: a class that moves is a decision and re-records this line.
+    std::map<std::string, int> totals;
+    for (const Row& r : kApi) ++totals[r.cls];
+    // MEASURED 2026-09-06 (Phase 19 m1): 851 functions in 37 public headers.
+    const int kPublic = 577, kTool = 42, kInternal_ = 184, kDelete = 48;
+    check(totals["PUBLIC"] == kPublic && totals["TOOL_FACING"] == kTool && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete,
+          "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", TOOL_FACING " + std::to_string(totals["TOOL_FACING"]) +
+              ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) + ") — a moved class re-records them deliberately");
+    if (std::getenv("ROLLTUI_CENSUS")) {
+      std::map<std::string, std::map<std::string, int>> reach_by_class;
+      for (const Row& r : kApi) ++reach_by_class[r.cls][reach_of(r.fn)];
+      for (const auto& [c, m] : reach_by_class) {
+        std::printf("        %-12s", c.c_str());
+        for (const auto& [rch, n] : m) std::printf(" %s=%d", rch.c_str(), n);
+        std::printf("\n");
+      }
+    }
   }
 
   return report("public_header_test");
