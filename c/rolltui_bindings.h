@@ -139,6 +139,46 @@ size_t rolltui_library_action_count(void);
 const char* rolltui_library_action_name(size_t i, size_t* len);
 const char* rolltui_library_action_description(size_t i, size_t* len);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap);
+size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
+
+RolltuiBindings* rolltui_bindings_new(void);
+
+int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b);
+
+size_t rolltui_bindings_action_count(const RolltuiBindings* b);
+
+const char* rolltui_bindings_action_at(const RolltuiBindings* b, size_t i, size_t* len);
+
+size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action, size_t len);
+
+void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out);
+
+int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out);
+
+int rolltui_bindings_unbind(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
+
+void rolltui_bindings_clear(RolltuiBindings* b, const char* action, size_t len);
+
+/* The scope of an action name: "input" of "input.submit", the whole name when there is no
+ * dot. A BORROW of the caller's own bytes. */
+const char* rolltui_bindings_scope_of(const char* action, size_t len, size_t* out_len);
+
+int rolltui_bindings_report_clean(const RolltuiBindingsReport* r);
+
+/* `RolltuiReasonFn`-shaped, over `rolltui_key_undeliverable_reason`/`_text` (rolltui_keys.h) —
+ * the same story one function over: the reason text has been C since Phase 15, and the only
+ * thing keeping a host from passing it to the domain init was that nobody had written it in
+ * this shape. Truncates at `cap`, like every other bounded writer here. */
+size_t rolltui_undeliverable_reason_fn(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out,
+                                       size_t cap);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

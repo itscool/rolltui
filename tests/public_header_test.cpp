@@ -92,17 +92,34 @@ std::string strip_all_comments(const std::string& src) {
 // reported both as consumers of an internal function. Comments already went; literals had to go
 // too, and this is general rather than a special case for the meta-tests: nothing anywhere calls
 // a function by naming it in a string.
+// ONE PASS, because comments and literals cannot be stripped in either order — and the census
+// this feeds is what every class in `api_classes.inc` is held to, so an under-count here is a
+// wrong CLASS, silently. Measured 2026-09-06 (Phase 20 m6), three ways to get it wrong:
+//   - literals first: an apostrophe in prose ("don't") opens a bogus char literal.
+//   - comments first, which is what this function did: **roll's own commands are the string
+//     literals "//status", "//set" and "//theme"**, so the line-comment rule truncated them and
+//     the dangling quote paired with a later one — eating most of `src/main.cpp` and making roll,
+//     the primary consumer, appear not to reach seven preset functions it plainly calls.
+//   - treating a backslash-newline as not an escape (a `#error "... \<newline>"` continuation).
+// A scanner has no order to get wrong. The control below plants all three shapes.
 std::string strip_comments_and_literals(const std::string& src) {
-  const std::string t = strip_all_comments(src);
   std::string out;
-  out.reserve(t.size());
-  for (size_t i = 0; i < t.size();) {
-    const char c = t[i];
-    if (c == '"' || c == '\'') {
-      size_t j = i + 1;
-      while (j < t.size() && t[j] != c) j += (t[j] == '\\') ? 2 : 1;
+  out.reserve(src.size());
+  for (size_t i = 0; i < src.size();) {
+    const char c = src[i];
+    if (c == '/' && i + 1 < src.size() && src[i + 1] == '*') {
+      const size_t j = src.find("*/", i + 2);
+      i = (j == std::string::npos) ? src.size() : j + 2;
       out += ' ';
-      i = j + 1;
+    } else if (c == '/' && i + 1 < src.size() && src[i + 1] == '/') {
+      const size_t j = src.find('\n', i);
+      i = (j == std::string::npos) ? src.size() : j;
+      out += ' ';
+    } else if (c == '"' || c == '\'') {
+      size_t j = i + 1;
+      while (j < src.size() && src[j] != c) j += (src[j] == '\\') ? 2 : 1;
+      out += ' ';
+      i = (j >= src.size()) ? src.size() : j + 1;
     } else {
       out += c;
       ++i;
@@ -205,7 +222,11 @@ int main() {
   // 24 -> 27 (Phase 20 m3): `rolltui_lifetime.h`, `rolltui_render.h` and `rolltui_wrap.h` were
   // RE-CREATED. m3's rule ran in reverse — a header exists because a `.c` needs a declaration
   // from it, and moving those modules' steps out of the definition gave each a declaration again.
-  const std::size_t kInternalHeaders = 27;
+  // 39 -> 24 (Phase 19 m3, headers left with nothing deleted) -> 27 (Phase 20 m3, three
+  // re-created when their module's steps went internal) -> 33 (Phase 20 m6/m7: six more, for
+  // the same reason and by the same rule — a header exists because a `.c` needs a declaration
+  // from it). The six are style, document, frame_ops, json, diff and undo.
+  const std::size_t kInternalHeaders = 33;
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -266,8 +287,14 @@ int main() {
     for (const std::string& f : files) {
       if (strip_all_comments(read(f)).find("#include \"rolltui/c/") == std::string::npos) continue;
       const std::string base = f.substr(f.find_last_of('/') + 1);
-      const bool is_test = f.find(std::string(ROLLTUI_SOURCE_DIR) + "/tests/") != std::string::npos;
-      if (is_test && optin.count(base)) { ++opted; continue; }
+      // PHASE 20 m6: the opt-in list is no longer only tests. The studio and its three editors
+      // are on it — rolltui's OWN authoring tool, which the user's call removed from the
+      // consumer set — so a listed file may live under `tests/` OR under `rolltui/tools/`.
+      // `rolltui-paint` is deliberately NOT on the list: it is a consumer and must keep
+      // building from the definition alone, which is what makes this zero mean something.
+      const bool listed_dir = f.find(std::string(ROLLTUI_SOURCE_DIR) + "/tests/") != std::string::npos ||
+                              f.find(std::string(ROLLTUI_SOURCE_DIR) + "/tools/") != std::string::npos;
+      if (listed_dir && optin.count(base)) { ++opted; continue; }
       offenders.push_back(f.substr(f.find("/tui/") == std::string::npos ? 0 : f.find("/tui/") + 5));
     }
     std::string joined;
@@ -383,6 +410,18 @@ int main() {
     check(depth0("void a(void);\nstruct S {\n  void m() { b(); }\n};\nextern \"C\" {\nvoid c(void);\n}\n").find("b()") == std::string::npos &&
               depth0("extern \"C\" {\nvoid c(void);\n}\n").find("c(void)") != std::string::npos,
           "the depth-zero filter drops a member body and keeps a declaration under extern \"C\"");
+    // THE STRIPPER, PROVED ON THE THREE SHAPES THAT BROKE IT (Phase 20 m6). Each of these made
+    // the census UNDER-report a consumer's reach, which is a wrong class rather than a loud
+    // failure — the reports-zero shape aimed at the instrument the whole table is held to.
+    check(strip_comments_and_literals("const char* k = \"//status\";\nrolltui_kept_after_a_slash_slash_string();\n")
+                  .find("rolltui_kept_after_a_slash_slash_string") != std::string::npos &&
+              strip_comments_and_literals("/* don't */\nrolltui_kept_after_an_apostrophe_in_prose();\n")
+                  .find("rolltui_kept_after_an_apostrophe_in_prose") != std::string::npos &&
+              strip_comments_and_literals("#error \"a \\\n continuation\"\nrolltui_kept_after_a_continued_literal();\n")
+                  .find("rolltui_kept_after_a_continued_literal") != std::string::npos &&
+              strip_comments_and_literals("rolltui_gone_inside(\"rolltui_gone_inside_a_literal\");\n")
+                  .find("rolltui_gone_inside_a_literal") == std::string::npos,
+          "the census stripper keeps code after a \"//\"-string, after an apostrophe in prose and after a continued literal, and still drops what is inside a literal");
     std::set<std::string> declared;
     declared.insert(in_def.begin(), in_def.end());
     declared.insert(in_internal.begin(), in_internal.end());
@@ -395,8 +434,21 @@ int main() {
       for (const auto& [k, v] : counts) out.insert(k);
       return out;
     };
-    const std::set<std::string> roll = mentions_in({repo + "/src", repo + "/include"}, {".cpp", ".hpp"});
-    const std::set<std::string> tools = mentions_in({root + "/tools"}, {".cpp", ".hpp"});
+    // PHASE 20 m6: `roll` gains its own bench tools — they build frames the way a host does.
+    const std::set<std::string> roll = mentions_in({repo + "/src", repo + "/include", repo + "/tools/bench"}, {".cpp", ".hpp"});
+    // THE STUDIO IS NOT A CONSUMER (the user's call, 2026-09-06): it and its three editors are
+    // rolltui's OWN authoring tool for rolltui's OWN files, nobody outside this repo builds one,
+    // and it opts in to internal headers like a test. `rolltui-paint` IS a consumer and is the
+    // only thing left in `tools/` that counts — a generic painting app is the closest thing in
+    // this tree to what an outsider would write, which is why Phase 11 built it.
+    std::set<std::string> paint_reach;
+    {
+      std::map<std::string, int> counts;
+      for (const char* f : {"/tools/paint.cpp", "/tools/tool_str.hpp"})
+        count_idents(strip_comments_and_literals(read(root + f)), counts);
+      for (const auto& [k, v] : counts) paint_reach.insert(k);
+    }
+    const std::set<std::string> tools = paint_reach;
     const std::set<std::string> tests = mentions_in({root + "/tests", repo + "/tests"}, {".cpp", ".hpp", ".c"});
     // PHASE 20 m1: the PUBLIC-ONLY suites — programs shaped like a CONSUMER, which include
     // `rolltui/rolltui.h` and nothing else. What one of them reaches is PUBLIC because a
@@ -446,8 +498,8 @@ int main() {
     auto reach_of = [&](const std::string& f) -> const char* {
       return roll.count(f) ? "roll" : tools.count(f) ? "tools" : tests.count(f) ? "tests" : lib.count(f) ? "lib" : mentioned_in_def.count(f) ? "hdr" : "nothing";
     };
-    check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_window_stack_push_popup") &&
-              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 400 && in_internal.size() > 300,
+    check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_windows_register_kind") /* paint registers its canvas kind */ &&
+              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 300 && in_internal.size() > 400,
           "the class census sees the definition (" + std::to_string(in_def.size()) + " named), the internal headers (" + std::to_string(in_internal.size()) + "), roll's reach, the tools' reach and the library's own");
     std::map<std::string, std::string> cls;
     for (const Row& r : kApi) cls[r.fn] = r.cls;
@@ -506,7 +558,13 @@ int main() {
         std::printf("\n");
       }
     }
-    check(kept.size() == 15,
+    // 15 -> 57 (Phase 20 m6/m7). The new ones are not new exceptions, they are the SAME rule
+    // written down where it applies: 37 functions a public C++ member in the definition calls
+    // (found by COMPILING the definition — no reach bucket can see a member body, which is why
+    // the loop that found them iterated until it compiled), four the sufficiency check in
+    // section 1 needs, and `rolltui_rect_intersect`, whose declaration never moved so the
+    // compile loop could not flag it. Each carries its sentence in the table.
+    check(kept.size() == 57,
           "the KEPT rows — PUBLIC for a stated reason, not for a consumer's reach — are the recorded " +
               std::to_string(kept.size()) + "; a new one is a decision that re-records this number");
     std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached, misplaced, public_for_a_test;
@@ -515,9 +573,9 @@ int main() {
     for (const Row& r : kApi) {
       if (!declared.count(r.fn)) { stale.push_back(r.fn); continue; }
       const std::string c = r.cls, reach = reach_of(r.fn);
-      const bool pub_cls = (c == "PUBLIC" || c == "TOOL_FACING");
+      const bool pub_cls = (c == "PUBLIC");
       if (reach == "roll" && c != "PUBLIC") roll_not_public.push_back(std::string(r.fn) + " (" + c + ")");
-      if (reach == "tools" && (c == "INTERNAL" || c == "DELETE")) tool_internal.push_back(std::string(r.fn) + " (" + c + ")");
+      if (reach == "tools" && (c == "INTERNAL" || c == "DELETE")) tool_internal.push_back(std::string(r.fn) + " (" + c + ")");  /* `tools` is PAINT now */
       if (c == "DELETE" && reach != "nothing") deleted_but_reached.push_back(std::string(r.fn) + " (" + reach + ")");
       if (c == "INTERNAL" && (reach == "roll" || reach == "tools")) internal_reached.push_back(std::string(r.fn) + " (" + reach + ")");
       if (c == "INTERNAL" && public_only.count(r.fn)) internal_reached.push_back(std::string(r.fn) + " (a public-only suite)");
@@ -535,24 +593,29 @@ int main() {
     check(unclassified.empty(), "every declared function has a class in api_classes.inc — a new one is a DECISION, not an arrival" + join(unclassified));
     check(stale.empty(), "every row of api_classes.inc names a declared function (a deleted one takes its row with it)" + join(stale));
     check(roll_not_public.empty(), "a function roll reaches is PUBLIC" + join(roll_not_public));
-    check(tool_internal.empty(), "a function a tool reaches is PUBLIC or TOOL_FACING" + join(tool_internal));
+    check(tool_internal.empty(), "a function rolltui-paint reaches is PUBLIC — paint is a CONSUMER, the studio is not" + join(tool_internal));
     check(internal_reached.empty(), "an INTERNAL function is reached by no host, no tool and no public-only suite" + join(internal_reached));
     check(deleted_but_reached.empty(), "a DELETE row is reached by nothing, anywhere" + join(deleted_but_reached));
     check(public_for_a_test.empty(), "NO ROW IS PUBLIC FOR A TEST'S SAKE: a function only a test reaches is reached by a PUBLIC-ONLY suite" + join(public_for_a_test));
-    check(misplaced.empty(), "THE DEFINITION IS WRITTEN FROM THE TABLE: every PUBLIC and TOOL_FACING function is declared in rolltui.h and every INTERNAL one only under c/" + join(misplaced));
+    check(misplaced.empty(), "THE DEFINITION IS WRITTEN FROM THE TABLE: every PUBLIC function is declared in rolltui.h and every INTERNAL one only under c/" + join(misplaced));
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];
     // MEASURED 2026-09-06 (Phase 19 m1), re-recorded in m2 for the four functions a public
     // C++ member calls, the one the C consumer reaches, and the 19 allocator/map rows the
     // widened census (every header under c/) added as INTERNAL; DELETE 48 -> 0 in m3, the functions gone.
-    // PHASE 20 m1/m2: 582/42/199 -> 454/26/343. 146 functions moved PUBLIC or TOOL_FACING ->
-    // INTERNAL: a test's reach is no longer a reason, and a type's lifecycle is public only when a
-    // CONSUMER holds the type. What is left public is reached by a host, a tool or a public-only
-    // suite, or carries a KEPT reason (15 of those, counted above).
-    const int kPublic = 454, kTool = 26, kInternal_ = 343, kDelete = 0;
-    check(totals["PUBLIC"] == kPublic && totals["TOOL_FACING"] == kTool && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete,
-          "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", TOOL_FACING " + std::to_string(totals["TOOL_FACING"]) +
-              ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) + ") — a moved class re-records them deliberately");
+    // PHASE 20 m1/m2: 582/42/199 -> 454/26/343. PHASE 20 m6/m7: 454/26/343 -> 345/0/478.
+    // 135 more moved to INTERNAL on two user decisions — the STUDIO is not a consumer (it is
+    // rolltui's own authoring tool and opts in like a test) and a UNIT or META test's reach is
+    // not a reason either — and TOOL_FACING was retired with them. What is left PUBLIC is
+    // reached by roll, by paint, by the pure-C consumer or by a whole-host suite, or carries a
+    // KEPT reason: the leak gauge and the named rungs, the 37 a public C++ member in the
+    // definition calls (found by COMPILING it, which no reach bucket can do), and the four the
+    // sufficiency check in section 1 needs.
+    const int kPublic = 346, kInternal_ = 477, kDelete = 0;
+    check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
+          "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
+              ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
+              ", TOOL_FACING " + std::to_string(totals["TOOL_FACING"]) + ") — a moved class re-records them deliberately");
     if (std::getenv("ROLLTUI_CENSUS")) {
       std::map<std::string, std::map<std::string, int>> reach_by_class;
       for (const Row& r : kApi) ++reach_by_class[r.cls][reach_of(r.fn)];
@@ -600,73 +663,55 @@ int main() {
     check(offenders.empty(), "no __cplusplus member names a std:: container or view — rolltui's own types and the C standard's only" + joined);
   }
 
-  // ---- 8. THE TOOL-FACING SET HAS A HOME: sections of THIS header, marked (Phase 19 m4) ----
-  // m1 decided one header with marked sections over a second `rolltui_tools.h`; this holds the
-  // marking to the class table in both directions. A section is the text between two
-  // `/* ====` banners, and it is tool-facing when its banner line carries `[TOOL-FACING]`.
+  // ---- 8. THE TOOL-FACING CLASS IS RETIRED, AND CANNOT COME BACK BY DRIFT (Phase 20 m6) ----
+  // Phase 19 m4 gave the class a home: three `[TOOL-FACING]` sections of this header. The class
+  // is GONE, and the reason is the vocabulary error the user found by asking **"isn't a tool a
+  // host?"** — it is. There are THREE HOSTS: roll, the studio and paint (the last two are the
+  // only files under `tools/` with a `main`). The genuine third category is the EDITORS, models
+  // with no terminal that the studio mounts inside itself. `TOOL_FACING` was measuring the
+  // DIRECTORY `rolltui/tools/`, not a concept — and of its 26 rows, EIGHT were reached by
+  // `studio.cpp`, a host, which the class said roll never reaches.
+  //
+  // With the studio reclassified as rolltui's own tool rather than a consumer, every one of
+  // those 26 is reached only by the studio or an editor, so all of them are INTERNAL and the
+  // class has nothing left to name. A returning banner would be a DECISION and must be made in
+  // the open, not arrive with a section nobody re-read.
   {
-    struct Row { const char* fn; const char* cls; };
-    static const Row kApi[] = {
-#define ROLLTUI_API(name, cls) {#name, #cls},
-#include "api_classes.inc"
-#undef ROLLTUI_API
-    };
-    std::map<std::string, std::string> cls;
-    for (const Row& r : kApi) cls[r.fn] = r.cls;
-    static const std::regex decl_re(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
-    std::vector<std::pair<std::string, bool>> sections;  // (raw text, tool-facing)
+    // BANNER lines only: a section banner's middle line sits between two `====` rules. The
+    // paragraph at the top of the definition names the marker in prose to say it is retired,
+    // and prose is not a banner — a scan that cannot tell them apart would fail on its own
+    // explanation, which is a check that cannot be satisfied rather than one that holds.
+    std::vector<std::string> marked;
     {
-      std::size_t at = 0;
-      std::size_t pos = text.find("/* =====");
-      while (pos != std::string::npos) {
-        const std::size_t next = text.find("/* =====", pos + 8);
-        const std::string chunk = text.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
-        const std::size_t eol = chunk.find('\n');
-        const std::string banner = chunk.substr(0, chunk.find('\n', eol + 1));
-        sections.emplace_back(chunk, banner.find("[TOOL-FACING]") != std::string::npos);
-        pos = next;
-        (void)at;
+      std::vector<std::string> lines;
+      for (std::size_t a = 0, b; a <= text.size(); a = b + 1) {
+        b = text.find('\n', a);
+        if (b == std::string::npos) b = text.size();
+        lines.push_back(text.substr(a, b - a));
+        if (b == text.size()) break;
       }
-    }
-    int marked = 0, located_tool = 0;
-    std::vector<std::string> tool_outside, public_inside;
-    for (const auto& [raw, tool] : sections) {
-      marked += tool ? 1 : 0;
-      const std::string t = strip_all_comments(raw);
-      // depth zero, as in section 6: a member body's mention is not a declaration
-      std::string d0;
-      {
-        std::vector<bool> counted;
-        int depth = 0;
-        for (std::size_t i = 0; i < t.size(); ++i) {
-          const char ch = t[i];
-          if (ch == '{') {
-            const std::string before = t.substr(i >= 40 ? i - 40 : 0, i >= 40 ? 40 : i);
-            const bool linkage = std::regex_search(before, std::regex(R"((extern\s+"C"|namespace\s+\w+)\s*$)"));
-            counted.push_back(!linkage);
-            if (!linkage) ++depth;
-            continue;
-          }
-          if (ch == '}') { if (!counted.empty()) { if (counted.back()) --depth; counted.pop_back(); } continue; }
-          if (depth == 0) d0 += ch;
-        }
-      }
-      for (std::sregex_iterator it(d0.begin(), d0.end(), decl_re), end; it != end; ++it) {
-        const std::string f = (*it)[1].str();
-        const auto c = cls.find(f);
-        if (c == cls.end()) continue;
-        if (c->second == "TOOL_FACING") { if (tool) ++located_tool; else tool_outside.push_back(f); }
-        if (c->second == "PUBLIC" && tool) public_inside.push_back(f);
-      }
+      for (std::size_t i = 1; i < lines.size(); ++i)
+        if (lines[i].find("[TOOL-FACING]") != std::string::npos && lines[i - 1].find("====") != std::string::npos)
+          marked.push_back(lines[i]);
     }
     auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
-    // 40 -> 26 (Phase 20 m1): sixteen theme-analysis steps went INTERNAL, so the three
-    // [TOOL-FACING] sections declare 26 — every one of them reached by a tool.
-    check(sections.size() > 20 && marked == 3 && located_tool >= 26,
-          "the section scanner sees the banners (" + std::to_string(sections.size()) + "), the three marked [TOOL-FACING], and " +
-              std::to_string(located_tool) + " tool-facing declarations under them");
-    check(tool_outside.empty(), "every TOOL_FACING function is declared under a [TOOL-FACING] banner" + join(tool_outside));
-    check(public_inside.empty(), "no PUBLIC function is declared under a [TOOL-FACING] banner — a host never needs one from there" + join(public_inside));
+    check(marked.empty(),
+          "no [TOOL-FACING] banner remains in the definition — the class is retired, and a tool is a HOST" + join(marked));
+    // The scanner is proved on a planted marker, so an empty result is a reading and not a miss.
+    {  // the scanner proved on a planted banner, so an empty result is a reading and not a miss
+      const std::string planted = "/* ====\n * theme_analysis [TOOL-FACING] — a returning class\n * ==== */\n";
+      std::vector<std::string> lines;
+      for (std::size_t a = 0, b; a <= planted.size(); a = b + 1) {
+        b = planted.find('\n', a);
+        if (b == std::string::npos) b = planted.size();
+        lines.push_back(planted.substr(a, b - a));
+        if (b == planted.size()) break;
+      }
+      int seen = 0;
+      for (std::size_t i = 1; i < lines.size(); ++i)
+        if (lines[i].find("[TOOL-FACING]") != std::string::npos && lines[i - 1].find("====") != std::string::npos) ++seen;
+      check(seen == 1, "…and the banner scanner sees a planted one, so the empty result above is a reading");
+    }
   }
 
   return report("public_header_test");

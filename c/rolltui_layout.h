@@ -230,6 +230,42 @@ RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const 
 size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s);
 const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out);
+
+size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap);
+
+int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out);
+size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap);
+
+/* Lays out one tree inside `box` (a layer's resolved placement). Hidden nodes are omitted,
+ * and a hidden ROOT emits nothing at all. */
+void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
+                          RolltuiResolvedSink emit, void* ctx);
+
+const char* rolltui_widget_kind_name(size_t row, size_t* len);
+
+const char* rolltui_anchor_name(unsigned char a, size_t* len); /* "" when `a` is out of range */
+int rolltui_anchor_from_name(const char* name, size_t len, unsigned char* out);
+const char* rolltui_border_name(unsigned char b, size_t* len);
+int rolltui_border_from_name(const char* name, size_t len, unsigned char* out);
+
+/* Why `name` cannot be declared as an action ("" when it can) — Layout.hpp's three rules, as
+ * ONE function, so the loader and the design editor refuse exactly the same names with
+ * exactly the same words. REPLACES `*out`. Calls back through `hooks->is_library_scope` for
+ * "which scopes are the library's" — that stays Bindings' vocabulary (rolltui_bindings.h's
+ * own rule), never duplicated here. */
+void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayoutHooks* hooks, RolltuiStr* out);
+
+void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* from);
+
+RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

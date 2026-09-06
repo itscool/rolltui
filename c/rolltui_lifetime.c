@@ -23,6 +23,7 @@
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* The process-wide releasers. Zero-initialised by static storage duration, so there is no
  * init to call — the whole point of this module (see the header). */

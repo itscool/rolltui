@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_theme.h"
+#include "rolltui/c/rolltui_screen.h"
 
 static void put_lit(RolltuiStr* out, const char* s) { rolltui_str_append(out, s, strlen(s)); }
 

@@ -2,6 +2,8 @@
  * generate() itself. See rolltui_theme_gen.h for the boundary's rules and the full
  * reasoning for why `generate()` moved here. */
 #include "rolltui/c/rolltui_theme_gen.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_theme_analysis.h"
 
 #include <math.h>
 #include <stdio.h>

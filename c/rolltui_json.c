@@ -5,6 +5,8 @@
  * this port. Every allocation goes through `rolltui_alloc.h`'s closed set, named at the site. */
 #include "rolltui/rolltui.h"
 
+#include "rolltui/c/rolltui_json.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +14,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* ---- construction -------------------------------------------------------------------- */
 

@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/unicode_tables.h"
 
 /* ---- the caller's working memory --------------------------------------------------------- */

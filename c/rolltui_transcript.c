@@ -11,6 +11,11 @@
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_document.h"
+#include "rolltui/c/rolltui_markdown.h"
+#include "rolltui/c/rolltui_md_lines.h"
+#include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }

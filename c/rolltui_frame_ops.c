@@ -2,11 +2,14 @@
  * configurations: one implementation of the three loops, not one per language. */
 #include "rolltui/rolltui.h"
 
+#include "rolltui/c/rolltui_frame_ops.h"
+
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 struct RolltuiDrawScratch {
   RolltuiUnicodeScratch* u;       /* the Unicode module's own working memory — its role */

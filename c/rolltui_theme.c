@@ -25,6 +25,10 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_effects.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_style.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* ---- parsing and printing --------------------------------------------------------------- */
 

@@ -108,6 +108,36 @@ int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const Rollt
 int rolltui_preset_looks_like_path(const char* s, size_t len);
 int rolltui_preset_valid_name(const char* name, size_t len);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+void rolltui_preset_domain_release(RolltuiPresetDomain* d);
+
+void rolltui_preset_store_set_working(RolltuiPresetStore* s, void* v, int persist);
+
+/* Fills `out` with the Theme domain's mechanics — nothing here is a paraphrase of
+ * `rolltui_theme_preset_parse`/`_parse_partial`, it is those functions with the walk they
+ * already do. `vocab`/`mode_valid`/`depth_valid` are BORROWED for the process's life: a host
+ * calls this once, at startup, with process-lifetime tables — the same assumption
+ * `rolltui_windows_set_builtin_roles` already makes of ITS caller. */
+void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThemeVocab* vocab,
+                                      RolltuiThemePresetValidFn mode_valid, RolltuiThemePresetValidFn depth_valid);
+
+/* `default_actions`/`_n` are BORROWED for the process's life, same as `hooks` — a host passes
+ * `shipped_default_actions()`'s C form (the shipped "default" layout's own "actions" list). */
+void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLayoutHooks* hooks,
+                                       const RolltuiLayoutAction* default_actions, size_t default_actions_n);
+
+/* `is_library_scope`/`reason` are BORROWED for the process's life, the same two
+ * callbacks `rolltui_bindings_load_json` already takes — this keeps a copy to hand over on
+ * every call instead of threading them through the generic mechanics. */
+void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
+                                         RolltuiReasonFn reason,
+                                         void* reason_ctx);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

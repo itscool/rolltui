@@ -12,6 +12,14 @@
 #include <string>
 
 #include "../tools/undo_stack.hpp"
+
+/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
+ * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
+ * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_style.h"
+#include "rolltui/c/rolltui_theme.h"
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
 

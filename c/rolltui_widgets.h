@@ -177,6 +177,19 @@ RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, s
 RolltuiInput* rolltui_windows_input_at(const RolltuiWindows* w, const char* window, size_t len);
 RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const char* window, size_t len);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+void rolltui_note_clear(RolltuiNote* n); /* text = "", state = None, since_ms = 0; keeps the buffer */
+
+const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len);
+
+size_t rolltui_windows_host_menu_count(const RolltuiWindows* w);
+const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

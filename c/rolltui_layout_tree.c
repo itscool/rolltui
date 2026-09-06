@@ -6,6 +6,8 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* ---- the child list ---------------------------------------------------------------------- */
 

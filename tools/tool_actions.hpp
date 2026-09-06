@@ -22,6 +22,11 @@
 // while a layout must not.
 //
 #include "rolltui/rolltui.h"
+
+/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
+ * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
+ * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+#include "rolltui/c/rolltui_lifetime.h"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <span>

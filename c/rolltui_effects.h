@@ -145,6 +145,17 @@ const char* rolltui_effect_kind_name(size_t i, size_t* len);
 int rolltui_effect_kind_resolves(const char* name, size_t len);
 int rolltui_effect_is_builtin(const char* name, size_t len);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+RolltuiEffectMap* rolltui_effect_map_new(size_t states, unsigned char fallback_role);
+
+/* The state of that name, or -1 when there is none — what a theme LOADER needs. */
+int rolltui_effect_state_from_name(const char* name, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

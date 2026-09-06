@@ -1,5 +1,11 @@
 // rolltui/tools/keys_editor.cpp — see keys_editor.hpp.
 #include "tool_str.hpp"
+
+/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
+ * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
+ * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+#include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_menu.h"
 #include "keys_editor.hpp"
 
 #include <algorithm>

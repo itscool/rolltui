@@ -75,6 +75,41 @@ size_t rolltui_theme_builtin_count(void);
  * count. */
 const char* rolltui_theme_builtin_name(size_t i);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* BORROWS a static literal; `*len` may be NULL. An out-of-range depth reads back as "mono"
+ * and an out-of-range mode as "dark", which is what the C++ `color_depth_name` did and what a
+ * zeroed byte means. */
+const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
+
+/* "#rrggbb" | "none" | "0".."255". 1 on success, 0 when it is not a colour. */
+int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
+
+size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
+
+/* ---- the dumper ----------------------------------------------------------------------------
+ * Builds a fresh, OWNED tree (caller frees with `rolltui_json_free`) with a "roles" object
+ * and, when anything is marked, an "effects" object — mirrors `style_to_json`+
+ * `effect_to_json`+`effects_to_json`+the "roles"/"effects" halves of
+ * `theme_to_json_value`/`theme_pair_to_json_value` exactly. Neither "name" nor "meta" is set
+ * here (see this header's top comment); the C++ shim pulls "roles"/"effects" out of the
+ * result to set them, in order, after both.
+ *
+ * `light_styles`/`light_effects` NULL together dump ONE variant plainly
+ * (`style_to_json(s, nullptr)`); non-NULL dumps BOTH as one object, a role or attribute
+ * written as {"dark":..,"light":..} only where the two differ. `light_effects` is accepted
+ * but never consulted: motion is the THEME's, not the terminal background's (`Theme.hpp`),
+ * so "effects" is always `dark_effects` alone — the same asymmetry
+ * `theme_pair_to_json_value` already has by taking a whole light `Theme` and reading only
+ * its `.styles`. */
+RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const RolltuiEffectMap* dark_effects,
+                                     const RolltuiStyle* light_styles, const RolltuiEffectMap* light_effects,
+                                     const RolltuiThemeVocab* vocab);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

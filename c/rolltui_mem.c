@@ -9,6 +9,7 @@
  * module is the BOTTOM of the allocation-strategy stack (see rolltui_mem.h), and nothing
  * here calls anything `rolltui_alloc.c` provides. */
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/rolltui.h"
 
 #include <stdatomic.h>

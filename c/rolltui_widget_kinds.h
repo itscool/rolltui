@@ -124,6 +124,16 @@ void rolltui_menu_widget_ctx_refresh(void* ctx);
 const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len);
 
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w);
+
+const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

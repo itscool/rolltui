@@ -15,6 +15,8 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_md_lines.h"
+#include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/third_party/md4c/md4c.h"
 
 #define NONE ((size_t)-1)

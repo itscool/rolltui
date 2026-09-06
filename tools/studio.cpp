@@ -175,6 +175,30 @@
 #include <unistd.h>
 
 #include "rolltui/rolltui.h"
+
+/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
+ * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
+ * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+#include "rolltui/c/rolltui_app_profile.h"
+#include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_diff.h"
+#include "rolltui/c/rolltui_effects.h"
+#include "rolltui/c/rolltui_frame_ops.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_presets.h"
+#include "rolltui/c/rolltui_render.h"
+#include "rolltui/c/rolltui_style.h"
+#include "rolltui/c/rolltui_theme.h"
+#include "rolltui/c/rolltui_theme_analysis.h"
+#include "rolltui/c/rolltui_theme_gen.h"
+#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_widget_kinds.h"
+#include "rolltui/c/rolltui_widgets.h"
 #include "tool_str.hpp"
 #include "keys_editor.hpp"
 #include "layout_editor.hpp"

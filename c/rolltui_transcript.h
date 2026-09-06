@@ -117,6 +117,21 @@ void rolltui_transcript_stats(const RolltuiTranscript* t, RolltuiTranscriptStats
 const RolltuiEntryLayout* rolltui_transcript_layout_of(const RolltuiTranscript* t, size_t entry);
 void rolltui_transcript_text_area(const RolltuiTranscript* t, RolltuiRect* out);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+void rolltui_transcript_scroll(const RolltuiTranscript* t, RolltuiScrollAnchor* out);
+size_t rolltui_transcript_total_lines(const RolltuiTranscript* t);
+size_t rolltui_transcript_top_line(const RolltuiTranscript* t);
+
+const char* rolltui_transcript_query(const RolltuiTranscript* t, size_t* len);
+size_t rolltui_transcript_match_count(const RolltuiTranscript* t);
+
+size_t rolltui_transcript_current_match_number(const RolltuiTranscript* t);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -11,6 +11,15 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_theme.h"
+#include "rolltui/c/rolltui_unicode.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_bindings.c` and
  * `rolltui_app_profile.c` each name locally rather than share — a menu loads once per file,

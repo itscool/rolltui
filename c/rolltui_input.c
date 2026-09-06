@@ -7,6 +7,8 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* How long an open "ordinary editing" group stays open with no further edit before the next
  * one is treated as a fresh group instead of a continuation (Input.hpp's UNDO). */

@@ -12,6 +12,9 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_theme.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* std::clamp/min/max have no C equivalent; three small helpers stand in for them
  * everywhere below (Phase 17 m1's own instance of the rule `rolltui_alloc.h` states for

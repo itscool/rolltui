@@ -59,6 +59,23 @@ void rolltui_node_list_push(RolltuiNodeList* l, RolltuiLayoutNode* n);
 
 void rolltui_layer_list_remove(RolltuiLayerList* l, size_t i); /* frees it, shifts the rest down */
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+void rolltui_layout_node_release(RolltuiLayoutNode* n);
+
+void rolltui_layout_node_free(RolltuiLayoutNode* n);
+
+void rolltui_node_list_copy(RolltuiNodeList* to, const RolltuiNodeList* from);
+
+void rolltui_layer_init(RolltuiLayer* l);
+void rolltui_layer_release(RolltuiLayer* l);
+
+void rolltui_layer_list_copy(RolltuiLayerList* to, const RolltuiLayerList* from);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

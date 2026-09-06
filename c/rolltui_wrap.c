@@ -22,6 +22,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* Where one line's slice of the two shared buffers is. Owns nothing. */
 typedef struct {

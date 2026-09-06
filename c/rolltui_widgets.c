@@ -9,6 +9,12 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
+#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_screen.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_transcript.h"
 
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 

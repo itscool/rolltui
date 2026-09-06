@@ -224,16 +224,26 @@ add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
 # the public declarations live in `rolltui/rolltui.h` — by naming it in its source and being listed
 # here. `public_header_test` asserts that every other consumer (hosts, tools, every unlisted test)
 # includes none: the count is an exact zero, not a ratchet.
+# PHASE 20 m6: RENAMED IN MEANING — this is no longer only tests. The STUDIO and its three
+# editors are on it: they are rolltui's OWN authoring tool for rolltui's OWN files (themes,
+# layouts, bindings), nobody outside this repo builds one, and the user's call is that the
+# studio "doesn't count as having public functions ... it can include private headers." So its
+# reach stops justifying PUBLIC, exactly as a test's does. `rolltui-paint` is NOT here: a
+# generic painting app is the closest thing in this tree to what an outsider would write.
 set(ROLLTUI_INTERNAL_TESTS
+  # the studio and its editors — rolltui's own tool, not a consumer
+  studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
+  layout_editor.cpp layout_editor.hpp tool_actions.hpp undo_stack.hpp
+  # suites that test an implementation
   bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
-  input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp markdown_test.cpp
-  md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
+  input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
+  markdown_test.cpp md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp
-  # Phase 20 m3: four suites joined the list because their module's own steps went INTERNAL —
-  # the frame's cell accessors, the transcript widget's steps, a theme's loading steps and the
-  # colour-space primitives under the analysis. Each is a suite that tests an implementation,
-  # which is what the list is for; the set that stays OUT is `ROLLTUI_PUBLIC_ONLY_TESTS` below.
-  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp)
+  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp
+  # PHASE 20 m6: the two EDITOR unit tests joined. They were in the public-only set, and an
+  # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
+  # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
+  keys_editor_test.cpp theme_editor_test.cpp)
 list(JOIN ROLLTUI_INTERNAL_TESTS "," ROLLTUI_INTERNAL_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_TESTS="${ROLLTUI_INTERNAL_TESTS_JOINED}")
 
@@ -248,11 +258,17 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_T
 #     are a HOST's, and roll builds from the one header.
 # `public_header_test` asserts this set is non-empty, contains the C consumer and at least one
 # whole-host suite, and that no function it reaches is INTERNAL.
+# THE INSTRUMENT, and it is this list rather than the one above: the programs that build
+# against `rolltui/rolltui.h` ALONE. Moving a function INTERNAL costs a suite an opt-in, so the
+# list above only grows; if everything ended up on it, the exact-zero bypass check would stop
+# saying anything. What keeps it meaningful is that these stay OUT — and they are CONSUMER-SHAPED
+# (Phase 20 m6, decision 2): the pure-C consumer, which is the proof that the public API alone
+# builds a screen, draws a frame and drives a preset store; the three suites that drive whole
+# host binaries; and the two meta-tests, which scan sources rather than call the library.
 set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp
-  public_header_test.cpp ownership_test.cpp
-  keys_editor_test.cpp theme_editor_test.cpp)
+  public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
 

@@ -40,6 +40,22 @@ size_t rolltui_menu_list_count(const RolltuiMenuItemList* l);
 RolltuiMenuItem* rolltui_menu_list_at(const RolltuiMenuItemList* l, size_t i);
 
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+void rolltui_input_spec_init(RolltuiInputSpec* s);
+void rolltui_input_spec_release(RolltuiInputSpec* s);
+
+void rolltui_menu_item_release(RolltuiMenuItem* it); /* everything below and inside; leaves it clean */
+
+RolltuiMenuItem* rolltui_menu_item_new(void);
+void rolltui_menu_item_free(RolltuiMenuItem* it); /* a no-op on NULL */
+
+void rolltui_menu_list_copy(RolltuiMenuItemList* to, const RolltuiMenuItemList* from);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

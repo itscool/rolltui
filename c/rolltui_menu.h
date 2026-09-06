@@ -126,6 +126,36 @@ int rolltui_menu_palette(const RolltuiMenu* m);
 void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* ctx);
 void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+RolltuiMenu* rolltui_menu_new(void);
+
+/* The menu's editor, BORROWED, valid for the menu's life. */
+RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m);
+void rolltui_menu_free(RolltuiMenu* m);
+
+void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root); /* by COPY; also resets */
+
+int rolltui_menu_set_checked(RolltuiMenu* m, const char* id, size_t len, int checked);
+
+const RolltuiMenuItem* rolltui_menu_level(const RolltuiMenu* m);
+const RolltuiMenuItem* rolltui_menu_selected_item(const RolltuiMenu* m);
+
+void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out);
+int rolltui_menu_editing(const RolltuiMenu* m);
+const char* rolltui_menu_edit_reason(const RolltuiMenu* m, size_t* len);
+
+void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o);
+void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area);
+
+void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
+                       const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
+                       const RolltuiInputRoles* input_roles, int focused);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

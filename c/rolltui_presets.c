@@ -20,6 +20,13 @@
 #include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_theme.h"
 #include "rolltui/rolltui.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */

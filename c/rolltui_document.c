@@ -3,10 +3,13 @@
  * this is the DATA a HOST fills and both implementations of the transcript walk. */
 #include "rolltui/rolltui.h"
 
+#include "rolltui/c/rolltui_document.h"
+
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 void rolltui_doc_entry_init(RolltuiDocEntry* e) {
   memset(e, 0, sizeof *e);

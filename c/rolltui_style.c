@@ -6,6 +6,8 @@
  * rather than loudly). */
 #include "rolltui/rolltui.h"
 
+#include "rolltui/c/rolltui_style.h"
+
 #include <string.h>
 
 static const char* const kRoleNames[] = {

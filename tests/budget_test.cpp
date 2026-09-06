@@ -77,6 +77,11 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+
+/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
+ * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
+ * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+#include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_alloc.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 // …AND ONE DELIBERATE REACH PAST IT, which is not a gap (Phase 17 m3). `rolltui_mem_realloc`

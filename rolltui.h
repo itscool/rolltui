@@ -73,16 +73,22 @@
  *      only a DECISION into the library. DON'T ship a lambda bridge from here.
  *
  * ============================================================================
- * TOOL-FACING SECTIONS (Phase 19 m4). Three sections below carry `[TOOL-FACING]` in their
- * banner — theme_analysis, theme_gen, undo — and hold the 42 functions only an EDITOR reaches:
- * the studio's theme checks, the generator, the undo stack. They are in THIS file and not in a
- * second one, because a second public header is a second include list and the phase declined
- * one twice. DO include this header for an editor exactly as for a host. DON'T reach for a
- * function in a marked section from a host — a host that needs one has found a gap, and the
- * fix is to move the function out (its class changes with it). DON'T declare a function a
- * host reaches inside a marked section. `public_header_test` section 8 holds both directions:
- * every TOOL_FACING row of the class table is declared under a marked banner, and no PUBLIC
- * row is.
+ * THERE IS NO TOOL-FACING CLASS, and its retirement is worth the paragraph its existence had
+ * (Phase 19 m4 created it; Phase 20 m6 retired it). It named "what only a tool reaches" and
+ * gave theme_analysis, theme_gen and undo marked sections here. The user's question — **"isn't
+ * a tool a host?"** — is what ended it: IT IS. There are THREE HOSTS, roll, the studio and
+ * rolltui-paint, and the last two are simply the files under `tools/` with a `main`. The class
+ * was measuring that DIRECTORY rather than a concept, and eight of its twenty-six functions
+ * were reached by `studio.cpp` itself — a host — while the class asserted no host reached them.
+ * The genuine third category is not "tools" but the EDITORS: models with no terminal that the
+ * studio mounts inside itself.
+ *   - DO treat the studio as rolltui's OWN authoring tool rather than a consumer. Nobody
+ *     outside this repo builds rolltui's theme, layout and keys editors, so it includes
+ *     internal headers by name, exactly as a suite that tests implementation does.
+ *   - DO treat `rolltui-paint` as a CONSUMER. A generic painting app is the closest thing in
+ *     this tree to what an outsider would write, which is why Phase 11 built it.
+ *   - DON'T re-introduce a class for "the tools". `public_header_test` section 8 asserts no
+ *     `[TOOL-FACING]` banner returns, and proves its own scanner on a planted marker.
  *
  * C++ consumers
  * ============================================================================
@@ -192,7 +198,6 @@ void rolltui_str_set(RolltuiStr* s, const char* text, size_t len);
 /* Appends. GROWING EXACT is still the right strategy: a name is built from a handful of
  * pieces, not a stream (that is what the markdown store's pools are for). */
 void rolltui_str_append(RolltuiStr* s, const char* text, size_t len);
-void rolltui_str_append_str(RolltuiStr* s, const RolltuiStr* o);
 /* Empties WITHOUT releasing — `clear()` as a reset was shipped four times in Phase 13 and
  * is the one this file will not repeat (CLAUDE.md's design lens). */
 void rolltui_str_clear(RolltuiStr* s);
@@ -244,8 +249,6 @@ typedef struct RolltuiStrList {
 } RolltuiStrList;
 
 void rolltui_str_list_release(RolltuiStrList* l);
-void rolltui_str_list_clear(RolltuiStrList* l); /* n = 0; every entry's buffer is KEPT for reuse */
-RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len);
 
 /* THE BRIDGE from the sink shape to the buffer shape, so a caller who wants a `RolltuiStr`
  * out of a function that still takes a `RolltuiPutFn` writes no lambda: pass this as `put`
@@ -356,10 +359,6 @@ inline RolltuiStr& RolltuiStr::operator=(RolltuiStr&& o) noexcept {
   X("space", CHAR,     ' ')
 
 
-/* The key of that DISPLAY name ("PageUp"), or -1. Case-insensitive, because `studio.cpp`'s
- * `--keys` scripts are typed by a person. The FILE-name direction already exists inside
- * `rolltui_chord_parse`, which is where a whole chord is spelled. */
-int rolltui_key_from_display_name(const char* name, size_t len);
 
 typedef enum RolltuiKey {
 #define ROLLTUI_KEY_ENUM_(UPPER, Title, file) ROLLTUI_KEY_##UPPER,
@@ -444,9 +443,6 @@ unsigned char rolltui_key_active_protocol(void);
 #define ROLLTUI_KEY_ENCODE_MAX 16
 
 
-
-
-
 /* ========================================================================================
  * bindings — a host holds a bindings table and its report
  * ======================================================================================== */
@@ -459,8 +455,6 @@ int rolltui_chord_parse(const char* text, size_t len, RolltuiChord* out);
  * produces is three modifiers plus the longest key name, so thirty-two is past every one of
  * them and the cap is a constraint on this file rather than on a caller's data. */
 #define ROLLTUI_CHORD_STRING_MAX 32
-size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap);
-size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
 
 /* ---- the table --------------------------------------------------------------------------- */
 /* OWNED, LONG-LIVED (CLAUDE.md's strategy 4): one per `rolltui::Bindings`, which frees it.
@@ -471,20 +465,16 @@ size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
  * action is KEPT and inert (Bindings.hpp), which is only expressible if "has a row" and "is
  * declared" are two questions. */
 typedef struct RolltuiBindings RolltuiBindings;
-RolltuiBindings* rolltui_bindings_new(void);
 void rolltui_bindings_free(RolltuiBindings* b);
 RolltuiBindings* rolltui_bindings_clone(const RolltuiBindings* b);
 /* Equal by the ROWS alone, which is what the C++ `operator==` compared: a declaration is
  * this screen's, a row is the user's file, and only the second is the domain's content. */
-int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b);
 
 
 /* A no-op when the action is already declared. Creates an empty ROW when there is none —
  * and never touches a row that exists, because declaring is what makes a kept row live and
  * must not throw its chords away. */
-size_t rolltui_bindings_action_count(const RolltuiBindings* b);
 /* A BORROW, valid until the table next changes. */
-const char* rolltui_bindings_action_at(const RolltuiBindings* b, size_t i, size_t* len);
 int rolltui_bindings_has(const RolltuiBindings* b, const char* action, size_t len);
 
 /* Answers whether a scope is one the library defines — the caller's fact, asked for by
@@ -492,16 +482,12 @@ int rolltui_bindings_has(const RolltuiBindings* b, const char* action, size_t le
 typedef int (*RolltuiScopeFn)(void* ctx, const char* scope, size_t len);
 
 
-size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action, size_t len);
-
 /* The HELP spelling: every chord bound to `action` that THIS TERMINAL can deliver, in display
  * form ("Ctrl-W, Alt-Backspace"), comma-separated. CLEARS `out`. The undeliverable filter is
  * what makes this the library's and not a loop a caller writes — it had three independent
  * implementations before Phase 17 m2a, the third written by an agent that could reach neither
  * of the other two. */
-void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out);
 /* Chord `i` of the row, into `out`. 0 when there is none. */
-int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out);
 /* The action of `scope` this chord serves, or NULL: a row that nothing declares never
  * answers, and neither does a chord the ACTIVE protocol cannot deliver — both are kept in
  * the table and written back, so neither may claim a key. A BORROW, as above. */
@@ -513,16 +499,11 @@ const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiC
  * undeclared action and for a chord the Enter rule protects. */
 int rolltui_bindings_bind(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord,
                           const char** moved_from, size_t* moved_len);
-int rolltui_bindings_unbind(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
 /* Pushes a chord onto a row with NO rule checking, creating the row if there is none. The
  * loader's own, and separate from `bind` on purpose: a file's conflicts, its Enter rule and
  * its undeliverable chords are all REPORTED with a message before anything lands, so the
  * loader has already decided and needs a put rather than a policy. */
-void rolltui_bindings_clear(RolltuiBindings* b, const char* action, size_t len);
 
-/* The scope of an action name: "input" of "input.submit", the whole name when there is no
- * dot. A BORROW of the caller's own bytes. */
-const char* rolltui_bindings_scope_of(const char* action, size_t len, size_t* out_len);
 
 /* THE REPORT, transparent like `RolltuiAppProfileReport`: exactly `RolltuiStr` values in
  * GROWING AMORTISED arrays, one per `BindingsLoadReport` field. Zero-initialise before use. */
@@ -544,17 +525,10 @@ typedef struct RolltuiBindingsReport {
 } RolltuiBindingsReport;
 
 void rolltui_bindings_report_release(RolltuiBindingsReport* r); /* frees everything; zeroes it */
-int rolltui_bindings_report_clean(const RolltuiBindingsReport* r);
 /* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
  * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
  * that order. Replaces `*out`. */
 
-/* `RolltuiReasonFn`-shaped, over `rolltui_key_undeliverable_reason`/`_text` (rolltui_keys.h) —
- * the same story one function over: the reason text has been C since Phase 15, and the only
- * thing keeping a host from passing it to the domain init was that nobody had written it in
- * this shape. Truncates at `cap`, like every other bounded writer here. */
-size_t rolltui_undeliverable_reason_fn(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out,
-                                       size_t cap);
 
 /* The English for why a chord cannot be delivered, into a caller buffer of at least
  * ROLLTUI_UNDELIVERABLE_REASON_MAX bytes — deliberately not duplicated here (see the header
@@ -720,15 +694,6 @@ typedef enum RolltuiRole {
 #define ROLLTUI_ROLE_DEFAULT_BACKGROUND ROLLTUI_ROLE_BACKGROUND
 #define ROLLTUI_ROLE_DEFAULT_PROMPT ROLLTUI_ROLE_PROMPT
 
-/* The role's name, as the themes and layout files spell it ("md_code_block"). BORROWS a
- * static literal, valid for the life of the process; `*len` may be NULL. Returns "" for an
- * out-of-range value rather than reading past the table. */
-const char* rolltui_role_name(unsigned char role, size_t* len);
-
-/* The role of that name, or -1 when there is none. This is what a theme LOADER needs and had
- * no way to ask for in C — `rolltui_theme_load` was handed a vocabulary by its caller for
- * exactly this reason, and can now be handed the library's own. */
-int rolltui_role_from_name(const char* name, size_t len);
 
 typedef struct RolltuiStyleColor {
 #ifdef __cplusplus
@@ -828,7 +793,6 @@ typedef struct RolltuiDocEntry {
 #endif
 } RolltuiDocEntry;
 
-void rolltui_doc_entry_init(RolltuiDocEntry* e);
 void rolltui_doc_entry_release(RolltuiDocEntry* e);
 void rolltui_doc_entry_copy(RolltuiDocEntry* to, const RolltuiDocEntry* from);
 
@@ -891,8 +855,6 @@ typedef struct RolltuiDocument {
 #endif
 } RolltuiDocument;
 
-size_t rolltui_document_count(const RolltuiDocument* d);
-RolltuiDocEntry* rolltui_document_at(const RolltuiDocument* d, size_t i);
 /* Appends an EMPTY entry and returns it — the C's `emplace_back`. */
 RolltuiDocEntry* rolltui_document_add(RolltuiDocument* d);
 void rolltui_document_clear(RolltuiDocument* d);   /* releases every entry, keeps the array */
@@ -1081,7 +1043,6 @@ int rolltui_frame_height(const RolltuiFrame* f);
  * shape. A caller's buffer was already the rule (rolltui_geom.h), and it costs one line. */
 
 
-
 /* ---- marks (the widget's whole vocabulary for motion) ------------------------------ */
 /* `state` is rolltui::EffectState as an int; the C side stores it and never interprets it,
  * which is what keeps the effects vocabulary in one place (Effects.hpp) rather than two.
@@ -1093,7 +1054,6 @@ size_t rolltui_frame_mark_count(const RolltuiFrame* f);
 
 /* ---- cursor ------------------------------------------------------------------------ */
 void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible);
-
 
 
 /* ========================================================================================
@@ -1112,10 +1072,6 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
  * width. */
 void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, RolltuiStyle style,
                         const char* glyph, size_t glyph_len);
-
-/* Amends every cell's style in `r` (clipped): a set colour replaces, an attribute bit is
- * OR'd in. Needs no scratch — it reads and writes styles and never looks at text. */
-void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
 
 
 /* ========================================================================================
@@ -1189,8 +1145,6 @@ void rolltui_input_set_copy(RolltuiInput* in, RolltuiCopyFn fn, void* ctx);
 const char* rolltui_input_text(const RolltuiInput* in, size_t* len);
 void rolltui_input_clear(RolltuiInput* in);
 /* The selected bytes, a BORROW into the text; `*len` 0 when there is no selection. */
-
-
 
 
 /* THE THIRTY ACTION NAMES, in command order, handed over by the shim. This file knows what
@@ -1338,8 +1292,6 @@ typedef struct RolltuiInputSpec {
 #endif
 } RolltuiInputSpec;
 
-void rolltui_input_spec_init(RolltuiInputSpec* s);
-void rolltui_input_spec_release(RolltuiInputSpec* s);
 void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from);
 int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* b);
 
@@ -1456,16 +1408,12 @@ void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* 
                            size_t label_len, const char* shortcut, size_t shortcut_len);
 
 void rolltui_menu_item_init(RolltuiMenuItem* it);
-void rolltui_menu_item_release(RolltuiMenuItem* it); /* everything below and inside; leaves it clean */
 void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from);
 int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b);
-RolltuiMenuItem* rolltui_menu_item_new(void);
-void rolltui_menu_item_free(RolltuiMenuItem* it); /* a no-op on NULL */
 
 RolltuiMenuItem* rolltui_menu_list_add(RolltuiMenuItemList* l); /* an EMPTY child, appended */
 void rolltui_menu_list_clear(RolltuiMenuItemList* l);           /* frees every child */
 void rolltui_menu_list_release(RolltuiMenuItemList* l);         /* …and the array */
-void rolltui_menu_list_copy(RolltuiMenuItemList* to, const RolltuiMenuItemList* from);
 
 #ifdef __cplusplus
 /* ---- the C++ special members of the structs above (Phase 17 m3) ---------------------------
@@ -1642,7 +1590,6 @@ typedef struct RolltuiEffectSpec {
  *
  * OWNED, LONG-LIVED (CLAUDE.md's strategy 4): one map per `rolltui::Theme`, which frees it. */
 typedef struct RolltuiEffectMap RolltuiEffectMap;
-RolltuiEffectMap* rolltui_effect_map_new(size_t states, unsigned char fallback_role);
 void rolltui_effect_map_free(RolltuiEffectMap* m);
 int rolltui_effect_map_empty(const RolltuiEffectMap* m);
 /* A BORROW, valid until the map next changes. NULL for an index past the state's specs. */
@@ -1690,15 +1637,11 @@ typedef enum RolltuiEffectState {
 } RolltuiEffectState;
 
 
-/* The state of that name, or -1 when there is none — what a theme LOADER needs. */
-int rolltui_effect_state_from_name(const char* name, size_t len);
-
 #define ROLLTUI_EFFECT_OK 0
 #define ROLLTUI_EFFECT_NO_NAME 1
 #define ROLLTUI_EFFECT_NO_FN 2
 #define ROLLTUI_EFFECT_IS_BUILTIN 3 /* rung 1 is never shadowed */
 #define ROLLTUI_EFFECT_DUPLICATE 4
-
 
 
 /* ---- working memory -------------------------------------------------------------------- */
@@ -1779,36 +1722,25 @@ struct RolltuiJsonValue {
 /* ---- construction: each an OWNED, LONG-LIVED node the caller frees (directly, or by
  * handing it to `rolltui_json_set`/`_array_push`, which then own it). ---------------------- */
 RolltuiJsonValue* rolltui_json_null(void);
-RolltuiJsonValue* rolltui_json_bool(int b);
-RolltuiJsonValue* rolltui_json_number(double n);
 RolltuiJsonValue* rolltui_json_string(const char* s, size_t len);
 RolltuiJsonValue* rolltui_json_array(void);
-RolltuiJsonValue* rolltui_json_object(void);
 
 void rolltui_json_free(RolltuiJsonValue* v); /* recursive; a no-op on NULL */
 /* A deep copy the caller owns; NULL in, NULL out (mirrors `Value`'s copy constructor). */
 RolltuiJsonValue* rolltui_json_clone(const RolltuiJsonValue* v);
 /* Deep, order-sensitive structural equality (mirrors `Value`'s defaulted `operator==`, which
  * compares every member unconditionally rather than only the ones `kind` says are live). */
-int rolltui_json_equal(const RolltuiJsonValue* a, const RolltuiJsonValue* b);
 
-int rolltui_json_is_null(const RolltuiJsonValue* v);
 int rolltui_json_is_bool(const RolltuiJsonValue* v);
 int rolltui_json_is_number(const RolltuiJsonValue* v);
-int rolltui_json_is_string(const RolltuiJsonValue* v);
-int rolltui_json_is_array(const RolltuiJsonValue* v);
-int rolltui_json_is_object(const RolltuiJsonValue* v);
 
 /* Typed reads with defaults; never fail. A BORROW valid as long as `v` (or `def`) is. */
-const char* rolltui_json_as_string(const RolltuiJsonValue* v, const char* def, size_t def_len, size_t* out_len);
-double rolltui_json_as_number(const RolltuiJsonValue* v, double def);
 int rolltui_json_as_bool(const RolltuiJsonValue* v, int def);
 
 /* Object lookup; a BORROW, and never NULL — a static Null (also a BORROW, valid forever)
  * when `v` is not an object or the key is absent, the same "missing keys are Null and
  * chainable" rule `Value::get` states. */
 const RolltuiJsonValue* rolltui_json_get(const RolltuiJsonValue* v, const char* key, size_t key_len);
-int rolltui_json_has(const RolltuiJsonValue* v, const char* key, size_t key_len);
 /* Object insert-or-replace. ALWAYS turns `v` into an object (matches `Value::set` exactly,
  * including on a `v` that was something else — nothing is cleared, which is safe here only
  * because free/clone/equal above never gate on `kind`). TAKES OWNERSHIP of `child`; a
@@ -1829,11 +1761,6 @@ RolltuiJsonValue* rolltui_json_array_at(const RolltuiJsonValue* v, size_t i); /*
  * — no coercion, matching `.arr.push_back()` on the C++ side never touching `.kind` either. */
 void rolltui_json_array_push(RolltuiJsonValue* v, RolltuiJsonValue* child);
 
-/* Generic object iteration (unordered lookup by key is `get`/`has` above; this is for a
- * caller that must see every member, e.g. AppProfile's "unknown key" scan). BORROWS. */
-size_t rolltui_json_object_size(const RolltuiJsonValue* v);
-const char* rolltui_json_object_key_at(const RolltuiJsonValue* v, size_t i, size_t* len);
-RolltuiJsonValue* rolltui_json_object_value_at(const RolltuiJsonValue* v, size_t i);
 
 /* Parses `text`. Returns an OWNED value the caller frees, or NULL on failure. `error` may be
  * NULL when the caller does not care; otherwise it is cleared on entry and set to
@@ -1906,10 +1833,6 @@ typedef enum RolltuiThemeMode {
   ROLLTUI_MODE_COUNT
 } RolltuiThemeMode;
 
-/* BORROWS a static literal; `*len` may be NULL. An out-of-range depth reads back as "mono"
- * and an out-of-range mode as "dark", which is what the C++ `color_depth_name` did and what a
- * zeroed byte means. */
-const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
 
 /* The depth/mode of that name, or -1 when there is none. Neither accepts "auto" (that is the
  * SETTING layer below, not a depth) and neither accepts the env alias above. */
@@ -1929,13 +1852,10 @@ int rolltui_theme_mode_setting_valid(const char* s, size_t len);
  * argument may be NULL. `rolltui::detect_color_depth`'s port, verbatim. */
 unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term, const char* force);
 
-/* "#rrggbb" | "none" | "0".."255". 1 on success, 0 when it is not a colour. */
-int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
 
 /* The colour in the same spelling. "#rrggbb" is the longest, so seven bytes plus nothing —
  * the result is NOT terminated and the length is returned. */
 #define ROLLTUI_COLOR_STRING_MAX 8
-size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
 
 
 /* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset,
@@ -2044,25 +1964,6 @@ void rolltui_theme_report_release(RolltuiThemeReport* r);
 RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, const RolltuiThemeVocab* vocab,
                                      RolltuiStyle* out_styles, RolltuiStr* out_name, RolltuiThemeReport* report);
 
-/* ---- the dumper ----------------------------------------------------------------------------
- * Builds a fresh, OWNED tree (caller frees with `rolltui_json_free`) with a "roles" object
- * and, when anything is marked, an "effects" object — mirrors `style_to_json`+
- * `effect_to_json`+`effects_to_json`+the "roles"/"effects" halves of
- * `theme_to_json_value`/`theme_pair_to_json_value` exactly. Neither "name" nor "meta" is set
- * here (see this header's top comment); the C++ shim pulls "roles"/"effects" out of the
- * result to set them, in order, after both.
- *
- * `light_styles`/`light_effects` NULL together dump ONE variant plainly
- * (`style_to_json(s, nullptr)`); non-NULL dumps BOTH as one object, a role or attribute
- * written as {"dark":..,"light":..} only where the two differ. `light_effects` is accepted
- * but never consulted: motion is the THEME's, not the terminal background's (`Theme.hpp`),
- * so "effects" is always `dark_effects` alone — the same asymmetry
- * `theme_pair_to_json_value` already has by taking a whole light `Theme` and reading only
- * its `.styles`. */
-RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const RolltuiEffectMap* dark_effects,
-                                     const RolltuiStyle* light_styles, const RolltuiEffectMap* light_effects,
-                                     const RolltuiThemeVocab* vocab);
-
 
 /* ========================================================================================
  * unicode — the library's Unicode algorithms; three functions a host reaches are public, the rest are the wrap engine's
@@ -2096,15 +1997,6 @@ typedef struct RolltuiUnicodeScratch RolltuiUnicodeScratch;
 RolltuiUnicodeScratch* rolltui_u_scratch_new(void);
 void rolltui_u_scratch_free(RolltuiUnicodeScratch* s);
 
-/* Decodes into three parallel caller arrays, each of which must hold at least `len` entries —
- * decoding is total and a malformed byte is one scalar of length 1, so the count can never
- * exceed the byte count. Returns the number of scalars. Kept as parallel arrays rather than an
- * array of `RolltuiDecodedChar` because the wrap engine wants a contiguous code-point array
- * and building one out of an array of structs was a copy loop it no longer has (m3). */
-size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, size_t* offset, size_t* length);
-/* The same, into an array of structs, which is what a caller wanting `valid` needs. `out` must
- * hold at least `len` entries. Returns the number of scalars. */
-size_t rolltui_u_decode_utf8_chars(const char* s, size_t len, RolltuiDecodedChar* out);
 
 int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide);
 
@@ -2112,7 +2004,6 @@ int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t l
 /* Removes terminal control sequences from text that will be RENDERED. `out` must hold at least
  * `len` bytes — stripping only ever removes. Returns the bytes written. */
 size_t rolltui_u_strip_escape_sequences(const char* s, size_t len, char* out);
-
 
 
 #define ROLLTUI_MENU_EVENT_NONE 0
@@ -2135,14 +2026,9 @@ typedef struct RolltuiMenu RolltuiMenu;
 /* `editor` is BORROWED and must outlive the menu — `rolltui::Menu` owns it. */
 /* The menu OWNS its editor (Phase 17): the typed-field editing a menu does is not optional,
  * and every caller was constructing one to hand in. `rolltui_menu_editor` borrows it back. */
-RolltuiMenu* rolltui_menu_new(void);
 
-/* The menu's editor, BORROWED, valid for the menu's life. */
-RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m);
-void rolltui_menu_free(RolltuiMenu* m);
 
 /* ---- the tree ---------------------------------------------------------------------------------- */
-void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root); /* by COPY; also resets */
 RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m);
 /* Depth-first, any level; NULL when absent. */
 RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
@@ -2155,20 +2041,14 @@ int rolltui_menu_set_options(RolltuiMenu* m, const char* id, size_t len, const R
  * `RolltuiMenu*`, BOTH hosts write the same three-line wrapper, which is the tell that the API
  * is wrong rather than the consumers (Phase 17 m1c). */
 int rolltui_menu_set_value(RolltuiMenu* m, const char* id, size_t len, const char* value, size_t value_len);
-int rolltui_menu_set_checked(RolltuiMenu* m, const char* id, size_t len, int checked);
 int rolltui_menu_set_enabled(RolltuiMenu* m, const char* id, size_t len, int enabled);
 
 /* ---- navigation state --------------------------------------------------------------------------- */
 void rolltui_menu_reset(RolltuiMenu* m);
 /* The path from the root down, as a BORROW valid until the menu next navigates. */
-const RolltuiMenuItem* rolltui_menu_level(const RolltuiMenu* m);
-const RolltuiMenuItem* rolltui_menu_selected_item(const RolltuiMenu* m);
 /* The current level's children passing the filter (indices into the level's children), or in
  * palette mode indices into the flattened list. A BORROW, valid until the menu next changes. */
 /* "settings › theme", into a caller's string. */
-void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out);
-int rolltui_menu_editing(const RolltuiMenu* m);
-const char* rolltui_menu_edit_reason(const RolltuiMenu* m, size_t* len);
 void rolltui_menu_set_palette(RolltuiMenu* m, int on);
 
 /* THE THIRTEEN ACTION NAMES this widget's two tables are keyed by, handed over once. */
@@ -2262,8 +2142,6 @@ typedef struct RolltuiMenuOptions {
 #endif
 } RolltuiMenuOptions;
 
-void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o);
-void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area);
 
 /* THE SEVEN ROLES A DRAW NEEDS, handed in as bytes. Plus the input widget's three, which the
  * editor's own draw takes. */
@@ -2277,9 +2155,6 @@ typedef struct RolltuiMenuRoles {
   unsigned char scroll_marker;
 } RolltuiMenuRoles;
 
-void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
-                       const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
-                       const RolltuiInputRoles* input_roles, int focused);
 
 /* THE REPORT, transparent like `RolltuiAppProfileReport` and `RolltuiBindingsReport`: exactly
  * `RolltuiStr` values in GROWING AMORTISED arrays, one per `MenuLoadReport` field.
@@ -2402,7 +2277,6 @@ typedef struct RolltuiTranscript RolltuiTranscript;
 void rolltui_transcript_set_copy(RolltuiTranscript* t, RolltuiCopyFn fn, void* ctx);
 
 
-
 /* THE ELEVEN ACTION NAMES, handed over once. This file knows the RULES and none of the words. */
 typedef struct RolltuiTranscriptActions {
   const char* line_up;
@@ -2432,9 +2306,6 @@ void rolltui_transcript_tick(RolltuiTranscript* t);
 void rolltui_transcript_scroll_page(RolltuiTranscript* t, int direction);
 void rolltui_transcript_scroll_to_top(RolltuiTranscript* t);
 void rolltui_transcript_scroll_to_bottom(RolltuiTranscript* t);
-void rolltui_transcript_scroll(const RolltuiTranscript* t, RolltuiScrollAnchor* out);
-size_t rolltui_transcript_total_lines(const RolltuiTranscript* t);
-size_t rolltui_transcript_top_line(const RolltuiTranscript* t);
 
 /* ---- folding ------------------------------------------------------------------------------------------ */
 int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const RolltuiDocument* doc);
@@ -2442,10 +2313,7 @@ int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const Rollt
 /* ---- find -------------------------------------------------------------------------------------------- */
 /* "" clears. Never scrolls: the reveal it asks for happens in layout(). 1 when it CHANGED. */
 int rolltui_transcript_set_query(RolltuiTranscript* t, const char* q, size_t len);
-const char* rolltui_transcript_query(const RolltuiTranscript* t, size_t* len);
-size_t rolltui_transcript_match_count(const RolltuiTranscript* t);
 /* The current match's 1-BASED position, for "3/17"; 0 when there is none. */
-size_t rolltui_transcript_current_match_number(const RolltuiTranscript* t);
 int rolltui_transcript_find_next(RolltuiTranscript* t);
 int rolltui_transcript_find_prev(RolltuiTranscript* t);
 
@@ -2453,7 +2321,6 @@ int rolltui_transcript_find_prev(RolltuiTranscript* t);
 /* The logical position under screen cell (x, y). 0 only for an empty document or a row above
  * the area. */
 int rolltui_transcript_copy_selection(RolltuiTranscript* t);
-
 
 
 /* ========================================================================================
@@ -2662,7 +2529,6 @@ typedef struct RolltuiLayoutNode {
 void rolltui_layout_node_init(RolltuiLayoutNode* n);
 /* Releases everything BELOW and INSIDE `n`, leaving it zeroed. Does not free `n` itself —
  * a root lives in its layer, a child in the list that owns it. */
-void rolltui_layout_node_release(RolltuiLayoutNode* n);
 /* Deep copy: `to` is released first, then filled from `from`. */
 void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* from);
 /* Deep equality, including every child in order. */
@@ -2671,7 +2537,6 @@ int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNod
 /* A node on the heap, initialised. The child lists own these. */
 RolltuiLayoutNode* rolltui_layout_node_new(void);
 /* Releases and frees. A no-op on NULL. */
-void rolltui_layout_node_free(RolltuiLayoutNode* n);
 
 /* Appends an EMPTY child and returns it — the C's `emplace_back`, so a caller never builds a
  * node on the stack and copies it in. */
@@ -2680,7 +2545,6 @@ void rolltui_node_list_insert(RolltuiNodeList* l, size_t i, RolltuiLayoutNode* n
 void rolltui_node_list_remove(RolltuiNodeList* l, size_t i); /* frees it */
 void rolltui_node_list_clear(RolltuiNodeList* l);            /* frees every child */
 void rolltui_node_list_release(RolltuiNodeList* l);          /* …and the array */
-void rolltui_node_list_copy(RolltuiNodeList* to, const RolltuiNodeList* from);
 
 typedef struct RolltuiLayer {
   RolltuiStr id; /* a popup's name in the layout file; "" for the base */
@@ -2704,8 +2568,6 @@ typedef struct RolltuiLayer {
 #endif
 } RolltuiLayer;
 
-void rolltui_layer_init(RolltuiLayer* l);
-void rolltui_layer_release(RolltuiLayer* l);
 void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from);
 /* Takes `from`'s buffers and leaves it empty — the move, written down for C. */
 void rolltui_layer_move(RolltuiLayer* to, RolltuiLayer* from);
@@ -2760,7 +2622,6 @@ typedef struct RolltuiLayerList {
 
 void rolltui_layer_list_release(RolltuiLayerList* l);          /* frees every layer + the array */
 void rolltui_layer_list_clear(RolltuiLayerList* l);             /* frees every layer, keeps the array */
-void rolltui_layer_list_copy(RolltuiLayerList* to, const RolltuiLayerList* from);
 /* Appends an EMPTY layer and returns it — the C's `emplace_back`. */
 RolltuiLayer* rolltui_layer_list_add(RolltuiLayerList* l);
 void rolltui_layer_list_remove_id(RolltuiLayerList* l, const char* id, size_t len); /* no-op if absent */
@@ -2943,22 +2804,14 @@ void rolltui_placement_resolve(const RolltuiPlacement* p, RolltuiRect parent, Ro
  * keystroke as a prefix of a valid value and then canonicalises it, so the C menu widget has
  * to be able to parse and print a Dim. They are pure text, and putting them anywhere but
  * beside the type would have been a second definition of what a dim looks like. */
-int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out);
 /* "32" | "50%" | "100% - 32", into a caller's buffer. */
 #define ROLLTUI_DIM_STRING_MAX 64
-size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap);
 /* The same, plus a bare integer as cells — a size as TYPED. */
-int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out);
-size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap);
 
 /* Called once per node, in TREE ORDER (a container precedes its children). The caller
  * decides where they go — a vector, a filter, a single hit test. */
 typedef void (*RolltuiResolvedSink)(void* ctx, const RolltuiResolvedNode* rn);
 
-/* Lays out one tree inside `box` (a layer's resolved placement). Hidden nodes are omitted,
- * and a hidden ROOT emits nothing at all. */
-void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
-                          RolltuiResolvedSink emit, void* ctx);
 
 /* THE THREE ROLES A COMPOSE NEEDS, handed in as bytes. This file names none of them. */
 typedef struct RolltuiLayoutRoles {
@@ -3021,7 +2874,6 @@ int rolltui_widget_kind_resolve(const char* name, size_t len, size_t* row, unsig
  * "" / REQUIRED / NAME rather than past either table. */
 size_t rolltui_widget_kind_count(void);
 size_t rolltui_widget_kind_library_count(void);
-const char* rolltui_widget_kind_name(size_t row, size_t* len);
 unsigned char rolltui_widget_kind_source_shape(size_t row);
 
 /* Why a registration was refused, so the shim can say it in words. 0 is accepted. */
@@ -3070,10 +2922,6 @@ int rolltui_content_parse(const char* text, size_t len, size_t* row, int* is_hos
 void rolltui_content_format(const char* kind_name, size_t kind_name_len, const char* source, size_t source_len,
                             unsigned char rule, RolltuiStr* out);
 
-const char* rolltui_anchor_name(unsigned char a, size_t* len); /* "" when `a` is out of range */
-int rolltui_anchor_from_name(const char* name, size_t len, unsigned char* out);
-const char* rolltui_border_name(unsigned char b, size_t* len);
-int rolltui_border_from_name(const char* name, size_t len, unsigned char* out);
 
 /* Role names: ask back rather than carry a table (see above). `role_from_name` returns 1
  * and fills `*out` on a recognised name; `role_name` returns the name's length, writing at
@@ -3115,12 +2963,6 @@ typedef struct RolltuiLayoutHooks {
  * kinds). This is the default, not a policy. BORROWS static storage. */
 const RolltuiLayoutHooks* rolltui_layout_default_hooks(void);
 
-/* Why `name` cannot be declared as an action ("" when it can) — Layout.hpp's three rules, as
- * ONE function, so the loader and the design editor refuse exactly the same names with
- * exactly the same words. REPLACES `*out`. Calls back through `hooks->is_library_scope` for
- * "which scopes are the library's" — that stays Bindings' vocabulary (rolltui_bindings.h's
- * own rule), never duplicated here. */
-void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayoutHooks* hooks, RolltuiStr* out);
 
 /* ---- the report: unknown keys / bad values are problems, notes are not (Layout.hpp's
  * `LayoutLoadReport::clean()`). Transparent, the same shape `rolltui_app_profile.h`'s own
@@ -3206,7 +3048,6 @@ typedef struct RolltuiActionList {
 
 void rolltui_action_list_release(RolltuiActionList* l);
 void rolltui_action_list_clear(RolltuiActionList* l);
-void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* from);
 /* Appends an EMPTY action and returns it — the C's `emplace_back`. */
 RolltuiLayoutAction* rolltui_action_list_add(RolltuiActionList* l);
 void rolltui_action_list_remove_name(RolltuiActionList* l, const char* name, size_t len); /* no-op if absent */
@@ -3326,7 +3167,6 @@ void rolltui_window_stack_free(RolltuiWindowStack* s);
 /* Replaces the base layer by COPY. Popup layers stay; the base's focus id is kept when a
  * window with that id still exists. */
 void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* base);
-RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s);
 /* Takes `popup` BY MOVE and leaves the caller's empty — the ownership `push(Layer)` was
  * doing twice by value. */
 void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup);
@@ -3698,7 +3538,6 @@ typedef struct RolltuiNote {
 #endif
 } RolltuiNote;
 
-void rolltui_note_clear(RolltuiNote* n); /* text = "", state = None, since_ms = 0; keeps the buffer */
 
 /* note: `out` is the caller's `RolltuiNote`, already cleared, filled in place. */
 typedef void (*RolltuiNoteFn)(void* ctx, RolltuiNote* out);
@@ -3708,14 +3547,11 @@ void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, 
 /* the preset directory: `file:`, `menu:`'s user rung and `menus/<name>.json` resolve against
  * this. A BORROW out, "" (never NULL) until `set_dir` is first called. */
 void rolltui_windows_set_dir(RolltuiWindows* w, const char* dir, size_t len);
-const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len);
 
 /* a menu file the HOST carries in its own binary — `menu:<name>`'s middle rung (the order is
  * `Widgets.hpp`'s). The text is copied in; the borrow out is valid until that name is bound
  * again or `w` is freed. `_count`/`_name_at` enumerate every host menu for `Windows::menu_names`. */
 void rolltui_windows_add_menu(RolltuiWindows* w, const char* name, size_t len, const char* json, size_t json_len);
-size_t rolltui_windows_host_menu_count(const RolltuiWindows* w);
-const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len);
 
 /* what a `help` window renders (Phase 15 m5, moved to the boundary so the `help` kind can be
  * a plugin like the rest): an optional lead line, the scopes to list in order, an optional
@@ -3889,37 +3725,6 @@ const char* rolltui_app_profile_menu_json(const RolltuiAppProfile* p, size_t i, 
 size_t rolltui_app_profile_help_scope_count(const RolltuiAppProfile* p);
 const char* rolltui_app_profile_help_scope_at(const RolltuiAppProfile* p, size_t i, size_t* len);
 
-/* ---- what a layout may NAME in this app, and MOUNTING it (Phase 17 m3) ---------------------
- * Both were `AppProfile.cpp`'s, left behind by m1 because they touch `Windows` rather than the
- * profile's own serialising algorithm. They are here because they are the profile's MEANING —
- * the answer to "what may a screen for this app say?" — and the alternative to moving them was
- * not a C++ home but no home at all.
- *
- * `_content_count`/`_content_at` enumerate the contents an authoring tool may OFFER: one per
- * document ("transcript:NAME"), submit ("input:NAME"), row source ("rows:NAME") and menu
- * ("menu:NAME"), then bare "help", one "help:SCOPE" per declared scope, and one per registered
- * kind. `*out` is REPLACED and the caller owns it.
- *
- * DELIBERATELY NOT `rolltui_content_format`: a kind that takes a source is offered as
- * "NAME:" — a template with the source left for the author to type — for BOTH Required and
- * Optional, where the join rule would drop the colon on an Optional kind with no source. These
- * are two different questions ("what does this resolved content spell as?" versus "what should
- * a picker put in the field?") and collapsing them would silently offer an Optional kind with
- * no way to see it takes a source. */
-size_t rolltui_app_profile_content_count(const RolltuiAppProfile* p);
-void rolltui_app_profile_content_at(const RolltuiAppProfile* p, size_t i, RolltuiStr* out);
-
-/* Mounts the profile into a window table so a tool renders as the TARGET app: its kinds as
- * PLACEHOLDER widgets (never an error panel — the window is correct, this tool simply is not
- * the app that can build it), its documents as sample content the table owns, its row sources
- * as their recorded samples, its submits and notes as no-ops, its menu files verbatim, and its
- * help scopes in place of the tool's own when it declared any.
- *
- * ONE CALL, so a tool's wiring cannot half-apply a profile — which is the whole property the
- * function exists for and the reason it is not six calls a host makes in an order it chooses.
- * `w` must outlive nothing in `p`: everything crossing here is COPIED. */
-void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w);
-
 
 /* ========================================================================================
  * diff — diff highlighting a host draws
@@ -3975,9 +3780,6 @@ typedef struct RolltuiDiffScratch RolltuiDiffScratch;
 RolltuiDiffScratch* rolltui_diff_scratch_new(void);
 void rolltui_diff_scratch_free(RolltuiDiffScratch* s);
 
-/* True for the info strings this colouriser answers to: "diff", "patch", "udiff". The
- * FENCE decides; content is never sniffed (Diff.hpp). */
-int rolltui_diff_is_language(const char* lang, size_t lang_len);
 
 /* The spans of `block[index]`, into `out` (capacity `out_cap`, at least
  * ROLLTUI_DIFF_MAX_SPANS). Returns how many were written: 0 for a language this does not
@@ -4022,14 +3824,6 @@ const char* rolltui_embedded_text(const RolltuiEmbeddedFile* table, size_t count
                                   size_t name_len);
 
 
-/* ========================================================================================
- * lifetime — the release point
- * ======================================================================================== */
-/* Registers a releaser to run at `rolltui_shutdown()`, in reverse order of registration.
- * Registering the same function twice registers it twice; register once, where the thing
- * is made. */
-void rolltui_on_shutdown(void (*fn)(void));
-
 /* Releases everything the library retains: every registered process-wide releaser (most
  * recently registered first), then every thread's own scratch via `rolltui_release_thread`
  * (which here can only release the CALLING thread's — the same limit `release_thread()`
@@ -4039,13 +3833,6 @@ void rolltui_on_shutdown(void (*fn)(void));
  * on next use, which is what makes this safe to call at any time rather than only at the
  * very end. */
 void rolltui_shutdown(void);
-
-/* Releases just the calling thread's scratch buffers — the reused storage the draw path
- * lends (`rolltui/Scratch.hpp`). This is the explicit path for a long-lived thread that
- * wants to hand back its high-water mark, and for a leak check that needs the number to
- * be knowable BEFORE the process ends. A thread that is about to exit need not call it. */
-void rolltui_release_thread(void);
-
 
 
 /* ========================================================================================
@@ -4198,7 +3985,6 @@ void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrList* out);
 /* Releases the parsed cache. A domain descriptor is a process-wide static on the other
  * side, so this is what it hands back at `rolltui::shutdown()`; the cache rebuilds on next
  * use, which is what makes shutdown callable at any moment. */
-void rolltui_preset_domain_release(RolltuiPresetDomain* d);
 
 /* ---- the store ------------------------------------------------------------------------------ */
 /* OWNED, LONG-LIVED: one per `rolltui::PresetStore<D>`, which frees it. Every method takes
@@ -4249,7 +4035,6 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out);
 unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
 
 /* The only write anyone does (rule 2): replace the working copy. TAKES OWNERSHIP of `v`. */
-void rolltui_preset_store_set_working(RolltuiPresetStore* s, void* v, int persist);
 /* An in-place edit under the lock. */
 void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, void* ctx), void* ctx, int persist);
 
@@ -4434,13 +4219,6 @@ typedef struct RolltuiThemePresetValue {
 
 void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v); /* frees `colours`; zeroes */
 
-/* Fills `out` with the Theme domain's mechanics — nothing here is a paraphrase of
- * `rolltui_theme_preset_parse`/`_parse_partial`, it is those functions with the walk they
- * already do. `vocab`/`mode_valid`/`depth_valid` are BORROWED for the process's life: a host
- * calls this once, at startup, with process-lifetime tables — the same assumption
- * `rolltui_windows_set_builtin_roles` already makes of ITS caller. */
-void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThemeVocab* vocab,
-                                      RolltuiThemePresetValidFn mode_valid, RolltuiThemePresetValidFn depth_valid);
 
 /* ---- the Layout domain ----------------------------------------------------------------------
  * The Value is `RolltuiLayout` itself (rolltui_layout.h): the shipped presets ARE the
@@ -4458,10 +4236,6 @@ typedef struct RolltuiLayoutPresetReport {
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r); /* frees everything; zeroes */
 
-/* `default_actions`/`_n` are BORROWED for the process's life, same as `hooks` — a host passes
- * `shipped_default_actions()`'s C form (the shipped "default" layout's own "actions" list). */
-void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLayoutHooks* hooks,
-                                       const RolltuiLayoutAction* default_actions, size_t default_actions_n);
 
 /* ---- the Bindings domain --------------------------------------------------------------------
  * The Value is `RolltuiBindings*` itself (rolltui_bindings.h) — already fully C, so this
@@ -4503,12 +4277,6 @@ void rolltui_layout_preset_report_summary(const RolltuiLayoutPresetReport* r, Ro
 int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r);
 void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out);
 
-/* `is_library_scope`/`reason` are BORROWED for the process's life, the same two
- * callbacks `rolltui_bindings_load_json` already takes — this keeps a copy to hand over on
- * every call instead of threading them through the generic mechanics. */
-void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
-                                         RolltuiReasonFn reason,
-                                         void* reason_ctx);
 
 /* Which of the three a thing belongs to — a setting (`RolltuiPresetSettingSpec` below), or a
  * store. Distinct from `RolltuiPresetDomain` above (that struct is the MECHANICS for one
@@ -4589,12 +4357,6 @@ int rolltui_preset_setting_index(const char* key, size_t len);
 inline RolltuiPresetList::~RolltuiPresetList() { rolltui_preset_list_release(this); }
 
 #endif
-
-/* ========================================================================================
- * render — the grid to bytes
- * ======================================================================================== */
-/* The whole frame, from a cleared screen. Appends to `out`; never clears it. */
-void rolltui_render_full(const RolltuiFrame* next, unsigned char depth, RolltuiStr* out);
 
 
 /* The frame as plain text, one row per line with trailing spaces trimmed. The golden-frame
@@ -4711,9 +4473,8 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
 int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out);
 
 
-
 /* ========================================================================================
- * theme_analysis [TOOL-FACING] — the studio and the theme editor check themes; roll never does
+ * theme_analysis — the studio and the theme editor check themes; roll never does
  * ======================================================================================== */
 /* ---- the three colour spaces, defined ONCE and compiled by both languages ------------- */
 /* `rolltui::Lin`, `rolltui::OkLab` and `rolltui::OkLch` ARE these structs (ThemeAnalysis.hpp
@@ -4739,13 +4500,6 @@ typedef struct RolltuiOkLch {
 #define ROLLTUI_CVD_COUNT 3
 
 
-/* 1 on success, 0 for `Color::none()` (the terminal's own colour — unknown, not assumed). */
-int rolltui_to_linear(RolltuiStyleColor c, RolltuiLin* out);
-/* Clamped, encoded to an Rgb colour. */
-
-
-
-
 /* ---- badges: a fixed, closed set of 13 names — this module's OWN vocabulary, never a
  * Role's, so nothing below needs a vocab table to print or check one. --------------------- */
 typedef struct RolltuiBadges {
@@ -4765,14 +4519,7 @@ typedef struct RolltuiStrArray {
   size_t n ROLLTUI_DEFAULT(0), cap ROLLTUI_DEFAULT(0);
 } RolltuiStrArray;
 /* Frees every element and the array; zeroes. Safe on a zeroed array and on repeated calls. */
-void rolltui_str_array_release(RolltuiStrArray* a);
 
-/* Resets `out` first. Appends the names of the badges that are set, in the fixed order
- * `rolltui::badge_names` always used ("dark", "light", "high-contrast", "readable",
- * "cvd-safe", "protan-safe", "deutan-safe", "tritan-safe", "mono", "16-safe", "256-safe",
- * "transparent", "attribute-redundant"). */
-void rolltui_badge_names(const RolltuiBadges* b, RolltuiStrArray* out);
-/* 1 iff `name` is one of `b`'s set badges. */
 
 /* ---- thresholds. `rolltui::kReadableRatio` etc. are `= ROLLTUI_*` aliases of these, so the
  * number is written down once. ------------------------------------------------------------ */
@@ -4787,7 +4534,6 @@ void rolltui_badge_names(const RolltuiBadges* b, RolltuiStrArray* out);
  * fills, and the pairs come back IN it (`RolltuiPairCheck.a`/`.b`), which is how a theme author
  * sees the rule — by analysing a theme, never by editing the rule. */
 #define ROLLTUI_MUST_DIFFER_COUNT 11
-size_t rolltui_must_differ_count(void); /* returns ROLLTUI_MUST_DIFFER_COUNT */
 
 /* ---- the per-role / per-pair check ------------------------------------------------------- */
 typedef struct RolltuiRoleCheck {
@@ -4809,29 +4555,6 @@ typedef struct RolltuiPairCheck {
   unsigned char collapses_16 ROLLTUI_DEFAULT(0), collapses_256 ROLLTUI_DEFAULT(0);
 } RolltuiPairCheck;
 
-/* CALLER-FILLED: out_roles[0..role_count), out_pairs[0..rolltui_must_differ_count()). Both
- * arrays and `*out_badges` are written positionally in full on success. Returns 0 (nothing
- * written) when `role_count` does not match this file's own role table (the same defensive
- * shape `rolltui_theme_builtin_fill` already takes). Mirrors `rolltui::analyse` exactly,
- * MINUS the notes — see this section's top comment for why those are the consumer's to
- * build from the `unknown`/`text`/`readable` flags and `*out_badges` this already returns. */
-int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, RolltuiRoleCheck* out_roles,
-                          RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges);
-
-/* Composes the full report exactly as `rolltui::report_text` did: "badges: ...\n", each of
- * `notes` as "note: ...\n" (the caller's own, already built; see this section's top comment
- * for why those live in the consumer), a blank line and a line per TEXT
- * role, a blank line and a line per pair. APPENDS to `*out` (rolltui.h's UNBOUNDED text
- * shape) rather than clearing it first — a fresh caller passes a zero-initialised `RolltuiStr`. */
-void rolltui_theme_report_text(const RolltuiRoleCheck* roles, size_t role_count, const RolltuiPairCheck* pairs,
-                               size_t pair_count, const RolltuiBadges* badges, const RolltuiStr* notes,
-                               size_t notes_n, const RolltuiThemeVocab* vocab, RolltuiStr* out);
-
-/* A theme's claimed badges ("meta": {"badges": [...]}) against the computed ones: appends
- * each claim that does NOT hold, in claim order, to `out` (RESET first). `meta` may be NULL
- * or lack a "badges" array (or a "badges" that is not an array) — either way, nothing is
- * appended. */
-void rolltui_check_claims(const RolltuiJsonValue* meta, const RolltuiBadges* badges, RolltuiStrArray* out);
 
 /* ---- auto-fix proposals ------------------------------------------------------------------ */
 typedef struct RolltuiFix {
@@ -4850,24 +4573,10 @@ typedef struct RolltuiFixArray {
 } RolltuiFixArray;
 /* Releases every element's `what`, then the array; zeroes. Safe on a zeroed array and on
  * repeated calls. */
-void rolltui_fix_array_release(RolltuiFixArray* a);
-
-/* Every failing role and pair, in report order (`rolltui_theme_analyse`'s own role and pair
- * order): a `rolltui_fix_contrast` for each TEXT role that is known and not yet readable, a
- * `rolltui_fix_confusable` for each pair that is known, not already (distinct AND
- * cvd_distinct), and not already attribute-redundant (the fix of last resort, applied). A
- * fix that turns out unavailable for a qualifying role/pair (e.g. an unknown colour slipping
- * through) is simply not appended. `out` is RESET first. */
-void rolltui_propose_fixes(const RolltuiStyle* styles, size_t role_count, const RolltuiThemeVocab* vocab,
-                           RolltuiFixArray* out);
-
-/* `styles[role] = *after`. A no-op when `role` is out of range. Mirrors
- * `rolltui::apply_fix` (`theme.style(fix.role) = fix.after`) exactly. */
-void rolltui_apply_fix(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* after);
 
 
 /* ========================================================================================
- * theme_gen [TOOL-FACING] — the theme generator is the editor's
+ * theme_gen — the theme generator is the editor's
  * ======================================================================================== */
 /* ---- the ruleset, as a byte (the same order as `rolltui::Ruleset`) --------------------- */
 #define ROLLTUI_RULESET_ANALOGOUS 0
@@ -4880,52 +4589,9 @@ void rolltui_apply_fix(RolltuiStyle* styles, size_t role_count, unsigned char ro
 #define ROLLTUI_RULESET_EARTH 7
 #define ROLLTUI_RULESET_COUNT 8
 
-/* A BORROW of a string literal; never NULL, `*len` 0 for an out-of-range ruleset. `len`
- * may be NULL. */
-const char* rolltui_ruleset_name(unsigned char ruleset, size_t* len);
-/* 1 and `*out` set on a match, 0 (leaving `*out` untouched) otherwise. */
-int rolltui_ruleset_from_name(const char* name, size_t len, unsigned char* out);
-
-/* ---- generate() (Phase 17 m5) ------------------------------------------------------------
- *
- * Builds a whole theme positionally into `out_styles[0..role_count)` (CALLER-FILLED, the
- * same convention `rolltui_theme_builtin_fill` already uses) and runs the repair loop
- * (`rolltui_theme_analyse` / `rolltui_propose_fixes` / `rolltui_apply_fix`,
- * `rolltui_theme_analysis.h`) until the promised badges hold or it gives up. Mirrors
- * `rolltui::generate` exactly (same hue/lightness picks per ruleset, same jitter/chance
- * draws off the same PRNG sequence, same repair loop shape), so the SAME (seed, ruleset,
- * chaos) still yields the SAME theme — `theme_gen_test.cpp`'s determinism check is the
- * oracle for this.
- *
- * `has_dark`/`dark_value` stand in for `GenOptions::dark` (a `std::optional<bool>` — one bit
- * needs no struct): `has_dark` 0 means "let the seed decide" (nullopt), matching
- * `opts.dark ? *opts.dark : rng.unit() < 0.6`. `max_repair_passes` is `GenOptions`'s field of
- * the same name verbatim. `vocab` is forwarded to `rolltui_propose_fixes` only — see this
- * header's top comment for why `generate()`'s own "broken" list is not built here.
- *
- * Returns 0 (nothing written) when `role_count` does not match this file's own role table
- * (the same defensive shape `rolltui_theme_builtin_fill` already takes). On success:
- *   out_styles[0..role_count)   the generated theme's styles, CALLER-FILLED
- *   *out_name                   "gen-<ruleset>-<seed>-<chaos>" (OWNED — free with
- *                                `rolltui_str_free`, or hand it straight to a `Theme::name`)
- *   *out_meta                   a fresh OWNED tree: {"generator": {"ruleset","seed","chaos"},
- *                                "badges": [...]} (free with `rolltui_json_free`, or adopt it
- *                                into `Theme::meta` directly)
- *   *out_repairs                fixes applied by the repair loop
- *   out_roles / out_pairs       the FINAL, post-repair `rolltui_theme_analyse` snapshot —
- *                                sized exactly as that function's own out-params
- *                                (role_count, `rolltui_must_differ_count()`) — for the
- *                                shim's "broken" list
- *   *out_badges                 the final computed badges (same as `out_meta`'s "badges",
- *                                as bits rather than names) */
-int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, int has_dark, int dark_value,
-                           int max_repair_passes, const RolltuiThemeVocab* vocab, RolltuiStyle* out_styles,
-                           size_t role_count, RolltuiStr* out_name, RolltuiJsonValue** out_meta, int* out_repairs,
-                           RolltuiRoleCheck* out_roles, RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges);
-
 
 /* ========================================================================================
- * undo [TOOL-FACING] — the editors' undo stack
+ * undo — the editors' undo stack
  * ======================================================================================== */
 /* Releases one snapshot the stack no longer holds — T's own destructor, generated once
  * per T by the C++ side (rolltui/tools/undo_stack.hpp). Fixed for the life of a stack:
@@ -4934,39 +4600,6 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
 typedef void (*RolltuiUndoFreeFn)(void* snapshot);
 
 typedef struct RolltuiUndoStack RolltuiUndoStack;
-
-/* Starts EMPTY — nothing to undo or redo until reset() seeds a baseline, the same state
- * `rolltui::UndoStack<T>`'s default constructor left. `limit` bounds how many snapshots
- * are kept; past it, commit() drops the OLDEST rather than refusing the newest (0 is a
- * degenerate but well-defined bound: every commit evicts back down to one entry). */
-RolltuiUndoStack* rolltui_undo_new(size_t limit, RolltuiUndoFreeFn free_fn);
-void rolltui_undo_free(RolltuiUndoStack* u); /* no-op on NULL (rule 1) */
-
-/* Restarts from a new baseline (a load, a reset): every existing snapshot is freed and
- * `baseline` becomes the sole entry, at position 0. TAKES OWNERSHIP of `baseline`. */
-void rolltui_undo_reset(RolltuiUndoStack* u, void* baseline);
-/* Records a new current value: the redo branch (if any) is freed and dropped, and the
- * OLDEST entry is freed too if this push carries the stack past its limit. TAKES
- * OWNERSHIP of `value`. */
-void rolltui_undo_commit(RolltuiUndoStack* u, void* value);
-/* Overwrites the CURRENT snapshot in place: no new step, the redo branch untouched (the
- * caret-move case `rolltui/Undo.hpp` was written for — a move must not become its own
- * undo step, yet must be what the next real edit's "before" snapshot restores to). TAKES
- * OWNERSHIP of `value`; the snapshot it replaces is freed. */
-void rolltui_undo_replace_current(RolltuiUndoStack* u, void* value);
-
-int rolltui_undo_undo(RolltuiUndoStack* u); /* 0/1: false at the baseline */
-int rolltui_undo_redo(RolltuiUndoStack* u); /* 0/1: false with nothing committed since */
-int rolltui_undo_can_undo(const RolltuiUndoStack* u);
-int rolltui_undo_can_redo(const RolltuiUndoStack* u);
-size_t rolltui_undo_undo_depth(const RolltuiUndoStack* u); /* steps back to the baseline */
-size_t rolltui_undo_redo_depth(const RolltuiUndoStack* u); /* steps forward to the newest commit */
-int rolltui_undo_empty(const RolltuiUndoStack* u);         /* true only before the first reset() */
-
-/* The snapshot at the current position — the value before the last commit, once undo()
- * has walked back. BORROWED (rule 3c): valid until the next reset/commit/
- * replace_current/undo/redo/free call on THIS stack, and NULL only when empty(). */
-const void* rolltui_undo_current(const RolltuiUndoStack* u);
 
 
 /* ========================================================================================
@@ -4992,7 +4625,6 @@ typedef struct RolltuiScrollTextActions {
   const char *line_up, *line_down, *page_up, *page_down, *top, *bottom;
 } RolltuiScrollTextActions;
 
-const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w);
 /* The LIBRARY'S OWN six (Phase 17 m2a) — the same list `RolltuiTranscriptActions` draws from,
  * minus the five that need a transcript. BORROWS static storage. */
 const RolltuiScrollTextActions* rolltui_scroll_text_default_actions(void);
@@ -5045,8 +4677,6 @@ typedef struct RolltuiCodeFold {
   int fold_over_lines, cap_lines;
 } RolltuiCodeFold;
 void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
-
-const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w);
 
 
 /* ========================================================================================

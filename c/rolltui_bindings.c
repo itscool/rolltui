@@ -18,6 +18,10 @@
  * needs the definition, and a .c has no such constraint. */
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_app_profile.c`
  * and `rolltui_json.c` each name locally rather than share — a load happens once per file,

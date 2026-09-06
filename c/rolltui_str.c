@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* GROWING, EXACT (rolltui_alloc.h strategy 3): a name's size is known at the assign, and a
  * name is not appended to a byte at a time. `+ 1` is the NUL, which this type guarantees so

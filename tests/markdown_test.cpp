@@ -39,6 +39,11 @@
 #include <dirent.h>
 
 #include "rolltui/rolltui.h"
+
+/* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
+ * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
+ * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+#include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui/third_party/md4c/md4c.h"

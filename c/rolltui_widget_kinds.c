@@ -17,6 +17,13 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widgets.h"
 
 /* ============================================================================================
  * SHARED: a scrolled, wrapped, marker-carrying text view — `text`/`file`/`help`'s one engine

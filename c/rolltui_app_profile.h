@@ -58,6 +58,43 @@ void rolltui_app_profile_report_set_error(RolltuiAppProfileReport* r, const char
 void rolltui_app_profile_report_add_unknown_key(RolltuiAppProfileReport* r, const char* s, size_t len);
 void rolltui_app_profile_report_add_bad_value(RolltuiAppProfileReport* r, const char* s, size_t len);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- what a layout may NAME in this app, and MOUNTING it (Phase 17 m3) ---------------------
+ * Both were `AppProfile.cpp`'s, left behind by m1 because they touch `Windows` rather than the
+ * profile's own serialising algorithm. They are here because they are the profile's MEANING —
+ * the answer to "what may a screen for this app say?" — and the alternative to moving them was
+ * not a C++ home but no home at all.
+ *
+ * `_content_count`/`_content_at` enumerate the contents an authoring tool may OFFER: one per
+ * document ("transcript:NAME"), submit ("input:NAME"), row source ("rows:NAME") and menu
+ * ("menu:NAME"), then bare "help", one "help:SCOPE" per declared scope, and one per registered
+ * kind. `*out` is REPLACED and the caller owns it.
+ *
+ * DELIBERATELY NOT `rolltui_content_format`: a kind that takes a source is offered as
+ * "NAME:" — a template with the source left for the author to type — for BOTH Required and
+ * Optional, where the join rule would drop the colon on an Optional kind with no source. These
+ * are two different questions ("what does this resolved content spell as?" versus "what should
+ * a picker put in the field?") and collapsing them would silently offer an Optional kind with
+ * no way to see it takes a source. */
+size_t rolltui_app_profile_content_count(const RolltuiAppProfile* p);
+void rolltui_app_profile_content_at(const RolltuiAppProfile* p, size_t i, RolltuiStr* out);
+
+/* Mounts the profile into a window table so a tool renders as the TARGET app: its kinds as
+ * PLACEHOLDER widgets (never an error panel — the window is correct, this tool simply is not
+ * the app that can build it), its documents as sample content the table owns, its row sources
+ * as their recorded samples, its submits and notes as no-ops, its menu files verbatim, and its
+ * help scopes in place of the tool's own when it declared any.
+ *
+ * ONE CALL, so a tool's wiring cannot half-apply a profile — which is the whole property the
+ * function exists for and the reason it is not six calls a host makes in an order it chooses.
+ * `w` must outlive nothing in `p`: everything crossing here is COPIED. */
+void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

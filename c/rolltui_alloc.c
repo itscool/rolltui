@@ -8,6 +8,7 @@
  * same reasoning as `UnicodeSeam.cpp`: a file only one build links is a file only one build
  * can find a defect in. */
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 #include <stddef.h>
 #include <string.h>

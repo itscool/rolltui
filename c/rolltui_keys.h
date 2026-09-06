@@ -134,6 +134,11 @@ int rolltui_key_undeliverable_reason(const RolltuiChord* k, unsigned char p);
  * deliverable) and any out-of-range code read back as "" — there is nothing to say. */
 const char* rolltui_key_undeliverable_text(int code, size_t* len);
 
+/* The key of that DISPLAY name ("PageUp"), or -1. Case-insensitive, because `studio.cpp`'s
+ * `--keys` scripts are typed by a person. The FILE-name direction already exists inside
+ * `rolltui_chord_parse`, which is where a whole chord is spelled. */
+int rolltui_key_from_display_name(const char* name, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

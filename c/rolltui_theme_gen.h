@@ -72,6 +72,18 @@ inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
 
 #endif
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* A BORROW of a string literal; never NULL, `*len` 0 for an out-of-range ruleset. `len`
+ * may be NULL. */
+const char* rolltui_ruleset_name(unsigned char ruleset, size_t* len);
+/* 1 and `*out` set on a match, 0 (leaving `*out` untouched) otherwise. */
+int rolltui_ruleset_from_name(const char* name, size_t len, unsigned char* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

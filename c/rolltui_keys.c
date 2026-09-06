@@ -13,6 +13,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* ---- the decoder's own storage --------------------------------------------------------- */
 

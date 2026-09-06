@@ -103,6 +103,103 @@ int rolltui_fix_contrast(const RolltuiStyle* styles, size_t role_count, unsigned
 int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsigned char a, unsigned char b,
                            const RolltuiThemeVocab* vocab, RolltuiFix* out);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* 1 on success, 0 for `Color::none()` (the terminal's own colour — unknown, not assumed). */
+int rolltui_to_linear(RolltuiStyleColor c, RolltuiLin* out);
+/* Clamped, encoded to an Rgb colour. */
+
+void rolltui_str_array_release(RolltuiStrArray* a);
+
+/* Resets `out` first. Appends the names of the badges that are set, in the fixed order
+ * `rolltui::badge_names` always used ("dark", "light", "high-contrast", "readable",
+ * "cvd-safe", "protan-safe", "deutan-safe", "tritan-safe", "mono", "16-safe", "256-safe",
+ * "transparent", "attribute-redundant"). */
+void rolltui_badge_names(const RolltuiBadges* b, RolltuiStrArray* out);
+/* 1 iff `name` is one of `b`'s set badges. */
+
+size_t rolltui_must_differ_count(void); /* returns ROLLTUI_MUST_DIFFER_COUNT */
+
+/* CALLER-FILLED: out_roles[0..role_count), out_pairs[0..rolltui_must_differ_count()). Both
+ * arrays and `*out_badges` are written positionally in full on success. Returns 0 (nothing
+ * written) when `role_count` does not match this file's own role table (the same defensive
+ * shape `rolltui_theme_builtin_fill` already takes). Mirrors `rolltui::analyse` exactly,
+ * MINUS the notes — see this section's top comment for why those are the consumer's to
+ * build from the `unknown`/`text`/`readable` flags and `*out_badges` this already returns. */
+int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, RolltuiRoleCheck* out_roles,
+                          RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges);
+
+/* Composes the full report exactly as `rolltui::report_text` did: "badges: ...\n", each of
+ * `notes` as "note: ...\n" (the caller's own, already built; see this section's top comment
+ * for why those live in the consumer), a blank line and a line per TEXT
+ * role, a blank line and a line per pair. APPENDS to `*out` (rolltui.h's UNBOUNDED text
+ * shape) rather than clearing it first — a fresh caller passes a zero-initialised `RolltuiStr`. */
+void rolltui_theme_report_text(const RolltuiRoleCheck* roles, size_t role_count, const RolltuiPairCheck* pairs,
+                               size_t pair_count, const RolltuiBadges* badges, const RolltuiStr* notes,
+                               size_t notes_n, const RolltuiThemeVocab* vocab, RolltuiStr* out);
+
+/* A theme's claimed badges ("meta": {"badges": [...]}) against the computed ones: appends
+ * each claim that does NOT hold, in claim order, to `out` (RESET first). `meta` may be NULL
+ * or lack a "badges" array (or a "badges" that is not an array) — either way, nothing is
+ * appended. */
+void rolltui_check_claims(const RolltuiJsonValue* meta, const RolltuiBadges* badges, RolltuiStrArray* out);
+
+void rolltui_fix_array_release(RolltuiFixArray* a);
+
+/* Every failing role and pair, in report order (`rolltui_theme_analyse`'s own role and pair
+ * order): a `rolltui_fix_contrast` for each TEXT role that is known and not yet readable, a
+ * `rolltui_fix_confusable` for each pair that is known, not already (distinct AND
+ * cvd_distinct), and not already attribute-redundant (the fix of last resort, applied). A
+ * fix that turns out unavailable for a qualifying role/pair (e.g. an unknown colour slipping
+ * through) is simply not appended. `out` is RESET first. */
+void rolltui_propose_fixes(const RolltuiStyle* styles, size_t role_count, const RolltuiThemeVocab* vocab,
+                           RolltuiFixArray* out);
+
+/* `styles[role] = *after`. A no-op when `role` is out of range. Mirrors
+ * `rolltui::apply_fix` (`theme.style(fix.role) = fix.after`) exactly. */
+void rolltui_apply_fix(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* after);
+
+/* ---- generate() (Phase 17 m5) ------------------------------------------------------------
+ *
+ * Builds a whole theme positionally into `out_styles[0..role_count)` (CALLER-FILLED, the
+ * same convention `rolltui_theme_builtin_fill` already uses) and runs the repair loop
+ * (`rolltui_theme_analyse` / `rolltui_propose_fixes` / `rolltui_apply_fix`,
+ * `rolltui_theme_analysis.h`) until the promised badges hold or it gives up. Mirrors
+ * `rolltui::generate` exactly (same hue/lightness picks per ruleset, same jitter/chance
+ * draws off the same PRNG sequence, same repair loop shape), so the SAME (seed, ruleset,
+ * chaos) still yields the SAME theme — `theme_gen_test.cpp`'s determinism check is the
+ * oracle for this.
+ *
+ * `has_dark`/`dark_value` stand in for `GenOptions::dark` (a `std::optional<bool>` — one bit
+ * needs no struct): `has_dark` 0 means "let the seed decide" (nullopt), matching
+ * `opts.dark ? *opts.dark : rng.unit() < 0.6`. `max_repair_passes` is `GenOptions`'s field of
+ * the same name verbatim. `vocab` is forwarded to `rolltui_propose_fixes` only — see this
+ * header's top comment for why `generate()`'s own "broken" list is not built here.
+ *
+ * Returns 0 (nothing written) when `role_count` does not match this file's own role table
+ * (the same defensive shape `rolltui_theme_builtin_fill` already takes). On success:
+ *   out_styles[0..role_count)   the generated theme's styles, CALLER-FILLED
+ *   *out_name                   "gen-<ruleset>-<seed>-<chaos>" (OWNED — free with
+ *                                `rolltui_str_free`, or hand it straight to a `Theme::name`)
+ *   *out_meta                   a fresh OWNED tree: {"generator": {"ruleset","seed","chaos"},
+ *                                "badges": [...]} (free with `rolltui_json_free`, or adopt it
+ *                                into `Theme::meta` directly)
+ *   *out_repairs                fixes applied by the repair loop
+ *   out_roles / out_pairs       the FINAL, post-repair `rolltui_theme_analyse` snapshot —
+ *                                sized exactly as that function's own out-params
+ *                                (role_count, `rolltui_must_differ_count()`) — for the
+ *                                shim's "broken" list
+ *   *out_badges                 the final computed badges (same as `out_meta`'s "badges",
+ *                                as bits rather than names) */
+int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, int has_dark, int dark_value,
+                           int max_repair_passes, const RolltuiThemeVocab* vocab, RolltuiStyle* out_styles,
+                           size_t role_count, RolltuiStr* out_name, RolltuiJsonValue** out_meta, int* out_repairs,
+                           RolltuiRoleCheck* out_roles, RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

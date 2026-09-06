@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_theme.h" /* rolltui_parse_osc11_reply */
 
 /* ---- process-wide restore state, readable from a signal handler ------------------------

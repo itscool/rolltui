@@ -27,6 +27,26 @@ extern "C" {
  * else". Registering the same (fn, target) pair twice registers it twice. */
 void rolltui_thread_on_release(void (*fn)(void*), void* target);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* ========================================================================================
+ * lifetime — the release point
+ * ======================================================================================== */
+/* Registers a releaser to run at `rolltui_shutdown()`, in reverse order of registration.
+ * Registering the same function twice registers it twice; register once, where the thing
+ * is made. */
+void rolltui_on_shutdown(void (*fn)(void));
+
+/* Releases just the calling thread's scratch buffers — the reused storage the draw path
+ * lends (`rolltui/Scratch.hpp`). This is the explicit path for a long-lived thread that
+ * wants to hand back its high-water mark, and for a leak check that needs the number to
+ * be knowable BEFORE the process ends. A thread that is about to exit need not call it. */
+void rolltui_release_thread(void);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

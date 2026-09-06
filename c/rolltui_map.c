@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 static size_t find_index(const RolltuiMap* m, const char* key, size_t len) {
   size_t i;

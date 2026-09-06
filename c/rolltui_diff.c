@@ -8,10 +8,13 @@
  * colouring two blocks share nothing. */
 #include "rolltui/rolltui.h"
 
+#include "rolltui/c/rolltui_diff.h"
+
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_terminal.h"
 
 /* What one line of a diff IS, for the pairing rule. The file headers are tested BEFORE the
  * markers because "+++ b/x" starts with '+' and is not an added line — an order that looks

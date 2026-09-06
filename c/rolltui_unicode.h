@@ -91,6 +91,22 @@ void rolltui_u_word_range(RolltuiUnicodeScratch* s, const char* utf8, size_t len
 void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
                                         unsigned char* out);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* Decodes into three parallel caller arrays, each of which must hold at least `len` entries —
+ * decoding is total and a malformed byte is one scalar of length 1, so the count can never
+ * exceed the byte count. Returns the number of scalars. Kept as parallel arrays rather than an
+ * array of `RolltuiDecodedChar` because the wrap engine wants a contiguous code-point array
+ * and building one out of an array of structs was a copy loop it no longer has (m3). */
+size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, size_t* offset, size_t* length);
+/* The same, into an array of structs, which is what a caller wanting `valid` needs. `out` must
+ * hold at least `len` entries. Returns the number of scalars. */
+size_t rolltui_u_decode_utf8_chars(const char* s, size_t len, RolltuiDecodedChar* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

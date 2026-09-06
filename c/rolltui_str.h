@@ -60,6 +60,17 @@ void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller o
  * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
 void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns the elements */
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+void rolltui_str_append_str(RolltuiStr* s, const RolltuiStr* o);
+
+void rolltui_str_list_clear(RolltuiStrList* l); /* n = 0; every entry's buffer is KEPT for reuse */
+RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

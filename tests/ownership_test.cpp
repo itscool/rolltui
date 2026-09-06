@@ -272,11 +272,15 @@ int main() {
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
         {"rolltui.h", 118},
+        {"c/rolltui_style.h", 0},
+        {"c/rolltui_diff.h", 0},
+        {"c/rolltui_json.h", 0},
         {"c/rolltui_widgets.h", 0},
         {"c/rolltui_str.h", 0},
         {"c/rolltui_layout.h", 0},
         {"c/rolltui_input.h", 0},
         {"c/rolltui_theme.h", 0},
+        {"c/rolltui_undo.h", 0},
         {"c/rolltui_menu.h", 0},
         {"c/rolltui_theme_analysis.h", 0},
         {"c/rolltui_app_profile.h", 0},
@@ -285,6 +289,7 @@ int main() {
         {"c/rolltui_screen.h", 0},
         {"c/rolltui_render.h", 0},
         {"c/rolltui_wrap.h", 0},
+        {"c/rolltui_frame_ops.h", 0},
         {"c/rolltui_layout_tree.h", 0},
         {"c/rolltui_keys.h", 0},
         {"c/rolltui_markdown.h", 0},
@@ -295,6 +300,7 @@ int main() {
         {"c/rolltui_bindings.h", 0},
         {"c/rolltui_alloc.h", 0},
         {"c/rolltui_map.h", 2},
+        {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
         {"c/rolltui_unicode.h", 0},
         {"c/rolltui_menu_tree.h", 0},
@@ -388,6 +394,11 @@ int main() {
     // line as a member — 68 of the 193 were `const char* name, size_t len);`-shaped second lines
     // of prototypes, 53 of them in the definition. Every row re-recorded from the printed table;
     // no pointer was added or removed.
+    // 125 (Phase 20 m1-m5, after the scanner stopped counting wrapped-declaration continuation
+    // lines) -> 125 with the rows redistributed (Phase 20 m6/m7): 135 declarations moved from
+    // the definition into their modules' internal headers and six headers were re-created, so
+    // pointers moved BETWEEN rows without any being added or removed. Re-recorded whole from the
+    // printed table, which is why the total is unchanged and the rows are not.
     check(total == 125, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&

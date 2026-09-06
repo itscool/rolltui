@@ -25,6 +25,18 @@ extern "C" {
 void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, unsigned char depth,
                          RolltuiStr* out);
 
+/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
+ * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
+ * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
+ * suite that tests implementation. A test's reach is never a reason and neither is the
+ * studio's. The code and its tests are unchanged; what changed is that the library no longer
+ * PROMISES these, so their shape can move without breaking a consumer. */
+/* ========================================================================================
+ * render — the grid to bytes
+ * ======================================================================================== */
+/* The whole frame, from a cleared screen. Appends to `out`; never clears it. */
+void rolltui_render_full(const RolltuiFrame* next, unsigned char depth, RolltuiStr* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
