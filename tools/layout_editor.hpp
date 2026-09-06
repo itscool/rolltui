@@ -186,6 +186,9 @@ class LayoutEditor {
   Outcome end_drag();               // commits
   bool dragging() const { return drag_.has_value(); }
 
+  // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
+  // open (2026-09-06). The returning form is one copy over it, for a test that reads it.
+  void status_line(std::string& out) const;
   std::string status_line() const;
   // What the selected node IS, in words: "selected: input  size 3  border single
   // input:prompt". The editor composes it because it is the one place that reads a

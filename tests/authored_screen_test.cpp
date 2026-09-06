@@ -198,6 +198,16 @@ int main() {
   bool ok = false;
   const std::string saved = read_file(scratch + "/with/layouts/easel.json", ok);
   check(ok, "layouts/easel.json exists — the artifact the target app reads");
+  // The save-as goes through the Layout store since 2026-09-06 (it hand-built the path and wrote
+  // the file itself before), so the store LEARNS the save: the working copy records the new
+  // origin — a manual save writes even under --frame, exactly as the theme save-as does and
+  // `studio_golden_test` asserts — while nothing else under --frame wrote one.
+  {
+    bool wok = false;
+    const std::string wc = read_file(scratch + "/with/layout.working.json", wok);
+    check(wok && wc.find("\"preset\": \"easel\"") != std::string::npos && !fs::exists(scratch + "/with/theme.working.json"),
+          "…and the Layout store recorded the save-as as its origin ('easel'), with no other working copy written under --frame");
+  }
   {
     RolltuiLoadedLayout l;
     RolltuiLayoutReport rep{};

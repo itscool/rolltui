@@ -3,6 +3,7 @@
 // studio, paint and the three editors ship together); it is not the library's and must not
 // become a second one.
 #pragma once
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,6 +29,14 @@ inline RolltuiMenuItem choice_of(const char* id, const char* label, std::vector<
   RolltuiMenuItem it = RolltuiMenuItem::choice(id, label, value);
   for (RolltuiMenuItem& c : options) it.children.push_back(std::move(c));
   return it;
+}
+// A count appended in place — `std::to_string`'s temporary without the temporary. The studio's
+// status line and the editors' status lines refill one held string per frame with it.
+template <typename T>
+inline void append_count(std::string& s, T v) {
+  char b[24];
+  const int n = std::snprintf(b, sizeof b, "%lld", static_cast<long long>(v));
+  if (n > 0) s.append(b, static_cast<std::size_t>(n) < sizeof b ? static_cast<std::size_t>(n) : sizeof b - 1);
 }
 inline std::vector<RolltuiMenuItem> clone_items(const std::vector<RolltuiMenuItem>& v) {
   std::vector<RolltuiMenuItem> out;

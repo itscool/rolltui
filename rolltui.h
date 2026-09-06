@@ -4563,6 +4563,9 @@ const char* rolltui_preset_save_result_text(int result, size_t* len);
  * one string for any refusal. Until Phase 18 m3 only WRITE_FAILED filled it, and three
  * consumers folded the sentence in afterwards by hand, identically, while the pure-C consumer
  * had to know to make the second call: a composed call the API could make and did not. */
+/* Always autosaves the working copy afterwards, unlike `_load`/`_set_working`/`_edit`: a save-as
+ * is an explicit write and the working copy records its new origin. Decided and asserted
+ * (`studio_golden_test`); a `persist` parameter was tried and removed 2026-09-06. */
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
 
 /* The two paths. Both REPLACE `*out` — text out, rule 3(b), the same shape

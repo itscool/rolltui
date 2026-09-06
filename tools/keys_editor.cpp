@@ -190,13 +190,28 @@ bool KeysEditor::redo() {
   return true;
 }
 
-std::string KeysEditor::status_line() const {
+void KeysEditor::status_line(std::string& out) const {
   // While capturing, a refusal (an unnameable key) is shown WITH the prompt, so the
   // reason and what to do next are both on the line.
-  const std::string prompt = capture_ ? "press the chord for " + *capture_ + " (Esc cancels)" : "";
-  std::string s = capture_ ? (status_.empty() ? prompt : status_ + " \xE2\x80\x94 " + prompt)
-                           : (status_.empty() ? "Enter on an action: add, remove or clear its chords" : status_);
-  s += " \xC2\xB7 undo " + std::to_string(undo_.undo_depth()) + " \xC2\xB7 redo " + std::to_string(undo_.redo_depth());
+  out.clear();
+  if (capture_) {
+    if (!status_.empty()) { out += status_; out += " \xE2\x80\x94 "; }
+    out += "press the chord for ";
+    out += *capture_;
+    out += " (Esc cancels)";
+  } else if (status_.empty()) {
+    out += "Enter on an action: add, remove or clear its chords";
+  } else {
+    out += status_;
+  }
+  out += " \xC2\xB7 undo ";
+  append_count(out, undo_.undo_depth());
+  out += " \xC2\xB7 redo ";
+  append_count(out, undo_.redo_depth());
+}
+std::string KeysEditor::status_line() const {
+  std::string s;
+  status_line(s);
   return s;
 }
 

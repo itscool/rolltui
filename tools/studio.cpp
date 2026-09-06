@@ -219,12 +219,6 @@ std::string_view depth_name(unsigned char d) {
   return std::string_view(p, n);
 }
 // A number appended in place — std::to_string's temporary, without the temporary.
-template <typename T>
-void append_num(std::string& s, T v) {
-  char b[24];
-  const int n = std::snprintf(b, sizeof b, "%lld", static_cast<long long>(v));
-  if (n > 0) s.append(b, static_cast<std::size_t>(n) < sizeof b ? static_cast<std::size_t>(n) : sizeof b - 1);
-}
 std::optional<unsigned char> mode_from_setting(std::string_view s) {
   const int m = rolltui_theme_mode_from_name(s.data(), s.size());
   return m < 0 ? std::nullopt : std::optional<unsigned char>(static_cast<unsigned char>(m));
@@ -556,7 +550,7 @@ struct App {
   // Per-frame text, held and REFILLED rather than rebuilt: the status line, the editors'
   // "preset:" line, the rows' layout cell and the two store labels, so a warm frame allocates
   // nothing for them (the finding of 2026-09-06, measured on roll's status panel first).
-  std::string status_line, editor_line, layout_row;
+  std::string status_line, editor_line, layout_row, editor_status;
   RolltuiStr theme_label_str, keys_label_str;
   RolltuiStyle theme_styles[ROLLTUI_ROLE_COUNT]{};     // what this frame draws with (resolved, or the editor's preview)
   RolltuiEffectMap* effects_map = nullptr;             // OWNED: the resolved theme's effects
@@ -1068,7 +1062,7 @@ struct App {
       editor_line += " \xC2\xB7 Enter on an action, then press the chord";
       put_text(f, r.x, y++, editor_line, label, r.w);
     }
-    if (y < r.y + r.h) put_text(f, r.x, y++, keditor.status_line(), keditor.capturing() ? style(ROLLTUI_ROLE_WARNING) : value, r.w);
+    if (y < r.y + r.h) { keditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, keditor.capturing() ? style(ROLLTUI_ROLE_WARNING) : value, r.w); }
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
   }
   void toggle_layout_editor() {
@@ -1159,25 +1153,30 @@ struct App {
         lstore->set_working(leditor.committed(), persist);
         break;
       case K::SaveAs: {
+        // Through the Layout store, as the theme and keys editors already save: the store learns
+        // the new origin (its label reads the new name, the working copy records it, as a manual
+        // save does even under --frame) and the path rule stays the library's. Until 2026-09-06
+        // this hand-built the path from the THEME store's options and wrote the file itself, so
+        // the Layout store never learned the save happened.
         if (o.value.empty()) { hint = "a layout file needs a name"; break; }
-        const std::string path = store->options().dir + "/layouts/" + o.value + ".json";
-        std::error_code ec;
-        std::filesystem::create_directories(store->options().dir + "/layouts", ec);
         RolltuiLayout l = (leditor.committed()).clone();
         set_str(l.name, o.value);
-        RolltuiStr text{};
-        rolltui_layout_to_json_text(l.name.p, l.name.n, l.min_width, l.min_height, l.actions.v, l.actions.n, &l.base,
-                                    l.popups.v, l.popups.n, rolltui_layout_default_hooks(), &text);
-        std::ofstream out_f(path, std::ios::binary | std::ios::trunc);
-        if (!out_f) { hint = "cannot write " + path; rolltui_str_free(&text); break; }
-        out_f << std::string_view(text.p ? text.p : "", text.n) << "\n";
-        rolltui_str_free(&text);
-        hint = "saved layout file " + path;
-        std::vector<std::string> names;
-        RolltuiPresetList pl;
-        lstore->list(pl);
-        for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));
-        leditor.set_layouts(names);
+        lstore->set_working(l, persist);
+        RolltuiStr err;
+        const int r = lstore->save_as(o.value, pending_save == o.value, err);
+        if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save = o.value; hint = "layout '" + o.value + "' exists; Enter the same name again to overwrite"; }
+        else if (r != ROLLTUI_SAVE_SAVED) { pending_save.clear(); hint = str_of(err); }
+        else {
+          pending_save.clear();
+          RolltuiStr path;
+          rolltui_preset_store_preset_path(lstore->handle(), o.value.data(), o.value.size(), &path);
+          hint = "saved layout file " + str_of(path);
+          std::vector<std::string> names;
+          RolltuiPresetList pl;
+          lstore->list(pl);
+          for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));
+          leditor.set_layouts(names);
+        }
         break;
       }
       case K::LoadLayout: {
@@ -1357,7 +1356,7 @@ struct App {
     const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
     if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h) put_text(f, r.x, y++, line, label, r.w);
     if (y < r.y + r.h) put_text(f, r.x, y++, "Tab next node \xC2\xB7 click selects \xC2\xB7 drag an edge resizes \xC2\xB7 Alt+arrows nudge", value, r.w);
-    if (y < r.y + r.h) put_text(f, r.x, y++, leditor.status_line(), value, r.w);
+    if (y < r.y + r.h) { leditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
   }
   void draw_editor(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
@@ -1408,7 +1407,7 @@ struct App {
       if (y < r.y + r.h) put_text(f, r.x, y++, "Roles âº a role âº fg âº a colour; the transcript is the preview", value, r.w);
       if (y < r.y + r.h) put_text(f, r.x, y++, "type to filter Â· Enter commits Â· Esc cancels Â· Ctrl-Z / Ctrl-Y", value, r.w);
     }
-    if (y < r.y + r.h) put_text(f, r.x, y++, teditor.status_line(), value, r.w);
+    if (y < r.y + r.h) { teditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h) put_text(f, r.x, y++, hint.empty() ? teditor.badges_line() : hint, hint.empty() ? label : style(ROLLTUI_ROLE_WARNING), r.w);
   }
   void draw_confirm(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
@@ -1653,32 +1652,32 @@ struct App {
       status += view_of(effective_layout().name);
       if (lstore && lstore->modified()) status += " (modified)";
       status += "  ";
-      append_num(status, w);
+      append_count(status, w);
       status += 'x';
-      append_num(status, h);
+      append_count(status, h);
       status += "  line ";
-      append_num(status, total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1);
+      append_count(status, total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1);
       status += '/';
-      append_num(status, total);
+      append_count(status, total);
       if (anchor.follow) status += "  follow";
       status += "  ";
       status += depth_name(depth);
       status += "  focus:";
       if (focused) status += view_of(focused->id); else status += '-';
-      if (with_timing) { status += "  "; append_num(status, last_frame_us); status += " us"; }
+      if (with_timing) { status += "  "; append_count(status, last_frame_us); status += " us"; }
       // The match count and position: the widget owns finding, a host owns saying so.
       if (query_len != 0) {
         status += "  find ";
-        append_num(status, rolltui_transcript_current_match_number(transcript()));
+        append_count(status, rolltui_transcript_current_match_number(transcript()));
         status += '/';
-        append_num(status, rolltui_transcript_match_count(transcript()));
+        append_count(status, rolltui_transcript_match_count(transcript()));
       }
-      if (copied_any) { status += "  copied "; append_num(status, copied.size()); status += 'B'; }
+      if (copied_any) { status += "  copied "; append_count(status, copied.size()); status += 'B'; }
       if (stacked_fallback) {
         status += "  [stacked: below ";
-        append_num(status, layout.min_width);
+        append_count(status, layout.min_width);
         status += 'x';
-        append_num(status, layout.min_height);
+        append_count(status, layout.min_height);
         status += ']';
       }
       if (!theme_note.empty()) { status += "  ["; status += theme_note; status += ']'; }

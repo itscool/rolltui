@@ -838,6 +838,11 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
     buf_set(&s->origin, name, len);
     s->d->destroy(s->origin_content);
     s->origin_content = s->d->clone(s->working);
+    /* ALWAYS persists, unlike load/set_working/edit — on purpose, and asserted. A save-as is an
+     * explicit write: the working copy records its new origin so the next start knows it, and
+     * the studio's --frame mode (which suppresses EDIT autosaves) relies on exactly that
+     * (`studio_golden_test`: "a manual save writes even under --frame"). A `persist` parameter
+     * was added and removed on 2026-09-06: no caller wanted 0. */
     touch_locked(s, 1);
   }
   buf_free(&path);
@@ -1956,13 +1961,18 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, 
   }
   if (!(s->d->kind_len == 5 && memcmp(s->d->kind, "theme", 5) == 0)) return; /* only Theme has non-identity settings */
   {
-    RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(s);
-    if (!w) return;
-    if (key_len == 10 && memcmp(key, "theme_mode", 10) == 0)
-      rolltui_str_append(out, w->mode.p ? w->mode.p : "", w->mode.n);
-    else if (key_len == 11 && memcmp(key, "color_depth", 11) == 0)
-      rolltui_str_append(out, w->depth.p ? w->depth.p : "", w->depth.n);
-    rolltui_preset_store_value_free(s, w);
+    /* Read in place, under the lock. Until 2026-09-06 this CLONED the whole working theme — a
+     * JSON tree — to read one short string, then freed it: a copy that existed for no reason. */
+    const RolltuiThemePresetValue* w;
+    pthread_mutex_lock((pthread_mutex_t*)&s->mu);
+    w = (const RolltuiThemePresetValue*)s->working;
+    if (w != NULL) {
+      if (key_len == 10 && memcmp(key, "theme_mode", 10) == 0)
+        rolltui_str_append(out, w->mode.p ? w->mode.p : "", w->mode.n);
+      else if (key_len == 11 && memcmp(key, "color_depth", 11) == 0)
+        rolltui_str_append(out, w->depth.p ? w->depth.p : "", w->depth.n);
+    }
+    pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
   }
 }
 

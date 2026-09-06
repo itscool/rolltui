@@ -271,18 +271,18 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 171},
+        {"rolltui.h", 118},
         {"c/rolltui_widgets.h", 0},
         {"c/rolltui_str.h", 0},
-        {"c/rolltui_layout.h", 3},
+        {"c/rolltui_layout.h", 0},
         {"c/rolltui_input.h", 0},
         {"c/rolltui_theme.h", 0},
-        {"c/rolltui_menu.h", 1},
+        {"c/rolltui_menu.h", 0},
         {"c/rolltui_theme_analysis.h", 0},
         {"c/rolltui_app_profile.h", 0},
-        {"c/rolltui_presets.h", 2},
-        {"c/rolltui_md_lines.h", 6},
-        {"c/rolltui_screen.h", 1},
+        {"c/rolltui_presets.h", 0},
+        {"c/rolltui_md_lines.h", 5},
+        {"c/rolltui_screen.h", 0},
         {"c/rolltui_layout_tree.h", 0},
         {"c/rolltui_keys.h", 0},
         {"c/rolltui_markdown.h", 0},
@@ -290,12 +290,35 @@ int main() {
         {"c/rolltui_theme_gen.h", 0},
         {"c/rolltui_transcript.h", 0},
         {"c/rolltui_effects.h", 0},
-        {"c/rolltui_bindings.h", 2},
+        {"c/rolltui_bindings.h", 0},
         {"c/rolltui_alloc.h", 0},
         {"c/rolltui_map.h", 2},
         {"c/rolltui_terminal.h", 0},
-        {"c/rolltui_unicode.h", 5},
+        {"c/rolltui_unicode.h", 0},
         {"c/rolltui_menu_tree.h", 0},
+    };
+    // A continuation line of a WRAPPED declaration (`const char* name, size_t len);`) has no
+    // `(` and ends in `;`, so `is_stored_pointer` alone counts it as a member — found 2026-09-06
+    // when a re-record moved by one for a reason the rule could not state. Parentheses are
+    // tracked across lines; a line that starts inside an open one is a continuation, never a
+    // member. Both halves are asserted below on literal snippets.
+    auto count_stored = [](const std::string& text) {
+      std::istringstream in(text);
+      std::string line;
+      int n = 0, depth = 0;
+      while (std::getline(in, line)) {
+        if (is_comment(line)) continue;
+        const std::string code = strip_comments(line);
+        const bool continuation = depth > 0;
+        for (const char c : code) {
+          if (c == '(') ++depth;
+          else if (c == ')' && depth > 0) --depth;
+        }
+        if (continuation) continue;
+        if (!is_stored_pointer(code)) continue;
+        ++n;
+      }
+      return n;
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -306,19 +329,9 @@ int main() {
       // the moment they moved one directory down.
       if (rel.rfind("tools/", 0) == 0) continue;
       if (rel.find('/') != std::string::npos && rel.rfind("c/", 0) != 0) continue;
-      int n = 0;
-      const std::string text = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/" + rel);
-      std::istringstream in(text);
-      std::string line;
-      while (std::getline(in, line)) {
-        if (is_comment(line)) continue;
-        // Comments stripped, not merely skipped — the C headers document pointers in prose
-        // far more than the C++ ones did, and `/* a BORROW of `RolltuiStr* p` */` is not a
-        // declaration. Same fix as the new/delete scan above, and found the same way.
-        const std::string code = strip_comments(line);
-        if (!is_stored_pointer(code)) continue;
-        ++n;
-      }
+      // Comments stripped, not merely skipped — the C headers document pointers in prose far
+      // more than the C++ ones did, and `/* a BORROW of `RolltuiStr* p` */` is not a declaration.
+      const int n = count_stored(read_file(std::string(ROLLTUI_SOURCE_DIR) + "/" + rel));
       total += n;
       // The table above is PRINTED on a failure run, so re-recording is a copy-paste:
       // set ROLLTUI_CENSUS=1 to see it.
@@ -366,7 +379,16 @@ int main() {
     // `rolltui_menu_flat_path`, a DELETE row (reached by nothing) whose declaration left
     // `c/rolltui_menu.h` with the function; the fifteen headers left with nothing (every row a 0)
     // left the table with them.
-    check(total == 193, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // 193 -> 125 (2026-09-06): the scanner stopped counting a wrapped declaration's continuation
+    // line as a member — 68 of the 193 were `const char* name, size_t len);`-shaped second lines
+    // of prototypes, 53 of them in the definition. Every row re-recorded from the printed table;
+    // no pointer was added or removed.
+    check(total == 125, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
+    check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
+              count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
+              count_stored("void g(int a,\n       RolltuiStr* out);\nstruct T { RolltuiStr* q; };\n") == 1,
+          "the scanner counts a stored member and NOT a wrapped declaration's continuation line");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

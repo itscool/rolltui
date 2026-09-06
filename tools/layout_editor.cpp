@@ -606,14 +606,23 @@ LayoutEditor::Outcome LayoutEditor::end_drag() {
   return commit_current();
 }
 
-std::string LayoutEditor::status_line() const {
+void LayoutEditor::status_line(std::string& out) const {
   std::size_t reason_len = 0;
   const char* reason = rolltui_menu_edit_reason(menu_, &reason_len);
   const bool has_reason = rolltui_menu_editing(menu_) && reason_len > 0;
-  std::string s = has_reason                ? "refused: " + std::string(reason, reason_len)
-                  : preview_                 ? "previewing \xE2\x80\x94 Enter commits, Esc cancels"
-                                             : (status_.empty() ? "Enter commits, Esc cancels" : status_);
-  s += " \xC2\xB7 undo " + std::to_string(undo_.undo_depth()) + " \xC2\xB7 redo " + std::to_string(undo_.redo_depth());
+  out.clear();
+  if (has_reason) { out += "refused: "; out.append(reason, reason_len); }
+  else if (preview_) out += "previewing \xE2\x80\x94 Enter commits, Esc cancels";
+  else if (status_.empty()) out += "Enter commits, Esc cancels";
+  else out += status_;
+  out += " \xC2\xB7 undo ";
+  append_count(out, undo_.undo_depth());
+  out += " \xC2\xB7 redo ";
+  append_count(out, undo_.redo_depth());
+}
+std::string LayoutEditor::status_line() const {
+  std::string s;
+  status_line(s);
   return s;
 }
 

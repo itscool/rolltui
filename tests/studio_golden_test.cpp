@@ -416,6 +416,13 @@ int main(int argc, char** argv) {
     int rc = 0;
     const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/" + c.fixture;
     std::string cmd = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' " + c.args;
+    // THE LAYOUT AXIS IS PINNED THE WAY THE THEME AXIS IS. Every case names `--theme`; none
+    // named `--layout`, so each case's layout was whatever the SHARED scratch working copy held
+    // — stable only while no case wrote one. 2026-09-06: the layout editor's save-as goes through
+    // the Layout store and records its origin (a manual save writes even under --frame, the rule
+    // the theme save-as already follows and this file asserts), and seventeen later frames
+    // inherited "two" through the shared directory. A case that names its layout keeps it.
+    if (std::strstr(c.args, "--layout") == nullptr) cmd += " --layout default";
     // THE SCRATCH PRESET DIRECTORY GOES TO EVERY CASE, not just the editor ones.
     // Until Phase 12 m4 it went only to the editor and bindings cases, so every other
     // golden ran against WHATEVER PRESET DIRECTORY THE DEVELOPER HAPPENED TO HAVE — and

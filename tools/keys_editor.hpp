@@ -103,6 +103,9 @@ class KeysEditor {
   std::size_t redo_depth() const { return undo_.redo_depth(); }
   void replace(RolltuiBindings* b);  // ADOPTS: takes ownership, as KeyTable's owning ctor does
 
+  // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
+  // open (2026-09-06). The returning form is one copy over it, for a test that reads it.
+  void status_line(std::string& out) const;
   std::string status_line() const;
 
  private:
