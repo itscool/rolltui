@@ -621,6 +621,31 @@ RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s);
 /* Takes `popup` BY MOVE and leaves the caller's empty — the ownership `push(Layer)` was
  * doing twice by value. */
 void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup);
+
+/* PUSHES A POPUP THE LAYOUT DECLARED, BY ID — deep-copies it and pushes the copy. 1 when the
+ * layout declares one of that id, 0 when it does not (nothing is pushed). A layer a HOST built
+ * itself still goes through `_push` above; this is only the by-id case.
+ *
+ * ADDED Phase 16 m6, and it is rule 5's tell firing for the fourth time
+ * (`rolltui/rolltui.h`): two hosts had hand-written this at SIX call sites — and in two
+ * different spellings, which is what makes it worse than the usual duplication. `studio.cpp`
+ * wrote three of them as
+ *
+ *     RolltuiLayer copy = *p;  rolltui_window_stack_push(stack, &copy);
+ *
+ * **and that line is a different operation in the two languages.** Under `__cplusplus` it runs
+ * `RolltuiLayer`'s copy constructor, which is a DEEP copy through `rolltui_layer_copy`. In C it
+ * is a shallow struct assignment: the copy aliases the layout's own `RolltuiStr` buffers and
+ * child arrays, `_push` moves those pointers into the stack, and freeing the stack then frees
+ * storage the layout still holds. Measured, not reasoned — a five-line pure-C program doing
+ * exactly the studio's line aborts on `AddressSanitizer: attempting double-free` inside
+ * `rolltui_shutdown`'s release of the built-in layout cache.
+ *
+ * So the C++ special members were ABSORBING a missing operation — Phase 17 m5's own verdict,
+ * one level further out than the binding it was written about: you cannot see a wall from
+ * behind it, and until `c_consumer_test.c` existed nothing in this repository stood in front
+ * of this one. The fix is the API, never the wrapper. */
+int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* layout, const char* id, size_t len);
 int rolltui_window_stack_pop(RolltuiWindowStack* s); /* 0 when only the base remains */
 size_t rolltui_window_stack_depth(const RolltuiWindowStack* s);
 const RolltuiLayer* rolltui_window_stack_layer(const RolltuiWindowStack* s, size_t i);

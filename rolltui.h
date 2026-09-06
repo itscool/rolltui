@@ -134,10 +134,22 @@
  * directly.
  *   - DO write a RAII holder or a lambda bridge in your own file when you want one.
  *   - DON'T ship it from here. If two consumers write the SAME wrapper, the API is wrong,
- *     not the consumers. That has now fired THREE times: three hosts had hand-written the same
- *     double buffer (hence `c/rolltui_swap.h`), four had hand-copied the action table, and
+ *     not the consumers. That has now fired FOUR times: three hosts had hand-written the same
+ *     double buffer (hence `c/rolltui_swap.h`), four had hand-copied the action table,
  *     three had written `struct PresetInfo` (hence `RolltuiPresetInfo`, and the sink rule
- *     above that made it necessary). Each time the fix was the API, never the wrapper.
+ *     above that made it necessary), and two had written "open the popup this layout declared"
+ *     at six call sites (hence `rolltui_window_stack_push_popup`). Each time the fix was the
+ *     API, never the wrapper.
+ *   - AND THE FOURTH ONE CARRIES A WARNING THE FIRST THREE DID NOT. Its two spellings were
+ *     `RolltuiLayer copy = *p;` and `RolltuiLayer copy{}; rolltui_layer_copy(&copy, p);`, and
+ *     **those are the same operation only in C++.** The first relies on a copy constructor
+ *     these headers declare under `__cplusplus`; compiled as C it is a shallow struct
+ *     assignment and the push double-frees (measured under ASan — the declaration of
+ *     `rolltui_window_stack_push_popup` has the trace). **So a C++ consumer's `=` on any
+ *     owning struct here is doing work a C consumer cannot ask for**, and where that work is
+ *     the missing half of an operation, the special members are ABSORBING an API gap rather
+ *     than serving a host. `rolltui/tests/c_consumer_test.c` is what stands in front of that
+ *     wall now; it found this one on its first run.
  */
 
 /* ---- vocabulary: the types the rest of the API speaks ------------------------------- */

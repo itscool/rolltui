@@ -824,10 +824,7 @@ struct App {
     refresh_menu();  // presets and layout files may have changed
     rolltui_menu_reset(menu());
     rolltui_menu_set_palette(menu(), palette ? 1 : 0);
-    if (const RolltuiLayer* p = rolltui_layout_popup(&effective_layout(), "menu", 4)) {
-      RolltuiLayer copy = *p;
-      rolltui_window_stack_push(stack, &copy);
-    }
+    rolltui_window_stack_push_popup(stack, &effective_layout(), "menu", 4);
   }
   void close_popup(const std::string& id) {
     while (rolltui_window_stack_depth(stack) > 1) {
@@ -1539,10 +1536,7 @@ struct App {
       rolltui_window_stack_pop(stack);
       return;
     }
-    if (const RolltuiLayer* p = rolltui_layout_popup(&effective_layout(), "help", 4)) {
-      RolltuiLayer copy = *p;
-      rolltui_window_stack_push(stack, &copy);
-    }
+    rolltui_window_stack_push_popup(stack, &effective_layout(), "help", 4);
   }
 
   // The find bar (Phase 12 m4). It is an ordinary `input:` window in an ordinary popup —
@@ -1568,11 +1562,8 @@ struct App {
       rolltui_transcript_set_query(transcript(), "", 0);
       return;
     }
-    if (const RolltuiLayer* p = rolltui_layout_popup(&effective_layout(), "find", 4)) {
-      RolltuiLayer copy = *p;
-      rolltui_window_stack_push(stack, &copy);
+    if (rolltui_window_stack_push_popup(stack, &effective_layout(), "find", 4))
       rolltui_window_stack_focus(stack, "find", 4);
-    }
   }
 
   // ---- the sources the studio binds ----

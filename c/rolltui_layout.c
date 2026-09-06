@@ -1994,6 +1994,19 @@ void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup) {
   ++s->n;
 }
 
+/* The copy is made straight into the stack's own new slot rather than into a local that is
+ * then moved out of: there is no intermediate to get the ownership of wrong, which is the
+ * whole point of the call existing (see the header). */
+int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* layout, const char* id, size_t len) {
+  const RolltuiLayer* p = layout != NULL ? rolltui_layout_popup(layout, id, len) : NULL;
+  if (p == NULL) return 0;
+  s->layers = (RolltuiLayer*)rolltui_grow_zeroed(s->layers, &s->cap, s->n + 1, sizeof *s->layers);
+  rolltui_layer_init(&s->layers[s->n]);
+  rolltui_layer_copy(&s->layers[s->n], p);
+  ++s->n;
+  return 1;
+}
+
 int rolltui_window_stack_pop(RolltuiWindowStack* s) {
   if (s->n <= 1) return 0;
   rolltui_layer_release(&s->layers[--s->n]);

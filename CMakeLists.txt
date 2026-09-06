@@ -352,3 +352,20 @@ add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
 add_dependencies(rolltui-files-only-test rolltui-studio)
+
+# Phase 16 m6: THE PURE-C CONSUMER — the claim this library had never executed once. Not
+# `add_rolltui_test`, because that function's `target_include_directories(… tests)` would put
+# the C++ harness on the path and this file must not be able to reach it: it includes
+# `rolltui/rolltui.h` and nothing else of the library's, which is the property under test.
+#
+# **THE TARGET'S LANGUAGE IS THE CHECK.** A C++ compiler accepting a `.c` file proves nothing —
+# under `__cplusplus` every struct in these headers gains constructors and `RolltuiStr` gains
+# conversions, so a missing C-callable entry point is silently supplied by a method. CMake
+# already infers C from the extension; `LANGUAGE C` says it rather than relying on the
+# inference, and the `#error` at the top of the file is the second, independent guard.
+add_executable(rolltui-c-consumer-test tests/c_consumer_test.c)
+set_source_files_properties(tests/c_consumer_test.c PROPERTIES LANGUAGE C)
+set_target_properties(rolltui-c-consumer-test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(rolltui-c-consumer-test PRIVATE rolltui)
+target_compile_options(rolltui-c-consumer-test PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME rolltui-c-consumer-test COMMAND rolltui-c-consumer-test)

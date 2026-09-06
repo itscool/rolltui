@@ -457,12 +457,23 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
  * a store's `void*` from one to the other crashes. "two strings, which is already all-C" was
  * true of the CONCEPT and false of the TYPE, and the sentence collapsed the two.
  *
- * **The consequence is bigger than the wording.** There are two Theme preset DOMAINS in the
- * tree: `PresetStore<ThemeDomain>`'s C++ descriptor (whose values are `ThemePreset`) and
- * `rolltui_theme_preset_domain_init`'s (whose values are these). Every live store uses the
- * first; the second has NO production caller — only six `presets_test` assertions that its
- * function pointers are non-NULL. Ported but unreachable, the shape m1c named. Switching the
- * stores over is m2c's, and it changes the value type at every preset call site. */
+ * ~~**The consequence is bigger than the wording.** There are two Theme preset DOMAINS in the
+ * tree … the second has NO production caller — only six `presets_test` assertions that its
+ * function pointers are non-NULL. Ported but unreachable … switching the stores over is
+ * m2c's.~~ **DONE, AND THIS PARAGRAPH WAS THEN FALSE FOR A DAY (corrected 2026-09-05, Phase
+ * 16 m6).** m2c did switch them: `Presets.hpp`, `PresetStore.hpp` and `rolltui::ThemePreset`
+ * are deleted, there is no C++ header left in `rolltui/` at all, and **`rolltui_theme_preset_domain_init`
+ * is now the only Theme domain there is** — `studio.cpp` and `src/frontends/TuiFrontend.cpp`
+ * both build their store from it. So there is ONE domain, and this struct IS its value type.
+ *
+ * **WHY THE CORRECTION IS RECORDED RATHER THAN JUST MADE, and it is the same lesson one level
+ * up.** The struck text told a reader that this API is unreachable and has no production
+ * caller. The only reader who believes a public header over the call sites is one who cannot
+ * see the call sites — which is exactly the non-C++ consumer this vocabulary exists for, and
+ * exactly who `plan/phase-16.md` m6 built to stand in for. A stale comment about a struct's
+ * identity is what produced the segfault struck above; a stale comment about its REACHABILITY
+ * is the same failure aimed at whoever comes next. **A milestone that deletes a thing owns
+ * every sentence that described it.** */
 typedef struct RolltuiThemePresetValue {
   RolltuiJsonValue* colours ROLLTUI_DEFAULT(nullptr); /* OWNED */
   RolltuiStr mode;                                     /* "auto" | "dark" | "light" */

@@ -1223,6 +1223,24 @@ int main() {
     check(rolltui_window_stack_focused(s.s)->id == "input", "focus returns to the base layer's window");
     check(!rolltui_window_stack_pop(s.s), "pop() on the base alone is false");
 
+    // Phase 16 m6: the same push, BY ID out of the layout — the operation two hosts had each
+    // hand-written and a pure-C consumer could not write at all (the copy above is a deep one
+    // only because C++ synthesises it; see `rolltui_window_stack_push_popup`'s declaration).
+    // The layout is BORROWED and must be unchanged by the push, which is what the second
+    // check is for: a move out of the layout's own popup would leave the second call failing.
+    const RolltuiLayout* dflt = builtin_layout_c("default");
+    check(rolltui_window_stack_push_popup(s.s, dflt, "help", 4) &&
+              rolltui_window_stack_depth(s.s) == 2 && has_popup_c(s.s, "help"),
+          "push_popup() pushes the popup the layout declares, by id");
+    check(rolltui_window_stack_push_popup(s.s, dflt, "help", 4) && rolltui_window_stack_depth(s.s) == 3,
+          "…by COPY: the layout still declares it after a push");
+    check(!rolltui_window_stack_push_popup(s.s, dflt, "nosuch", 6) && rolltui_window_stack_depth(s.s) == 3,
+          "…and an id the layout does not declare pushes nothing and says so");
+    rolltui_window_stack_pop(s.s);
+    rolltui_window_stack_pop(s.s);
+    check(rolltui_window_stack_depth(s.s) == 1 && rolltui_window_stack_focused(s.s)->id == "input",
+          "…both pop cleanly and focus returns");
+
     // A non-focusable, non-modal notice above the base.
     RolltuiLayer notice;
     notice.id = "notice";
