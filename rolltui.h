@@ -50,6 +50,17 @@
  *      only a DECISION into the library. DON'T ship a lambda bridge from here.
  *
  * ============================================================================
+ * TOOL-FACING SECTIONS (Phase 19 m4). Three sections below carry `[TOOL-FACING]` in their
+ * banner — theme_analysis, theme_gen, undo — and hold the 42 functions only an EDITOR reaches:
+ * the studio's theme checks, the generator, the undo stack. They are in THIS file and not in a
+ * second one, because a second public header is a second include list and the phase declined
+ * one twice. DO include this header for an editor exactly as for a host. DON'T reach for a
+ * function in a marked section from a host — a host that needs one has found a gap, and the
+ * fix is to move the function out (its class changes with it). DON'T declare a function a
+ * host reaches inside a marked section. `public_header_test` section 8 holds both directions:
+ * every TOOL_FACING row of the class table is declared under a marked banner, and no PUBLIC
+ * row is.
+ *
  * C++ consumers
  * ============================================================================
  * roll, the studio, paint and the editors are C++ and call this header directly. The structs
@@ -4938,7 +4949,7 @@ const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* le
 
 
 /* ========================================================================================
- * theme_analysis — the studio and the theme editor check themes; roll never does
+ * theme_analysis [TOOL-FACING] — the studio and the theme editor check themes; roll never does
  * ======================================================================================== */
 /* ---- the three colour spaces, defined ONCE and compiled by both languages ------------- */
 /* `rolltui::Lin`, `rolltui::OkLab` and `rolltui::OkLch` ARE these structs (ThemeAnalysis.hpp
@@ -5127,7 +5138,7 @@ void rolltui_apply_fix(RolltuiStyle* styles, size_t role_count, unsigned char ro
 
 
 /* ========================================================================================
- * theme_gen — the theme generator is the editor's
+ * theme_gen [TOOL-FACING] — the theme generator is the editor's
  * ======================================================================================== */
 /* ---- the ruleset, as a byte (the same order as `rolltui::Ruleset`) --------------------- */
 #define ROLLTUI_RULESET_ANALOGOUS 0
@@ -5185,7 +5196,7 @@ int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, i
 
 
 /* ========================================================================================
- * undo — the editors' undo stack
+ * undo [TOOL-FACING] — the editors' undo stack
  * ======================================================================================== */
 /* Releases one snapshot the stack no longer holds — T's own destructor, generated once
  * per T by the C++ side (rolltui/tools/undo_stack.hpp). Fixed for the life of a stack:

@@ -470,5 +470,72 @@ int main() {
     check(offenders.empty(), "no __cplusplus member names a std:: container or view — rolltui's own types and the C standard's only" + joined);
   }
 
+  // ---- 8. THE TOOL-FACING SET HAS A HOME: sections of THIS header, marked (Phase 19 m4) ----
+  // m1 decided one header with marked sections over a second `rolltui_tools.h`; this holds the
+  // marking to the class table in both directions. A section is the text between two
+  // `/* ====` banners, and it is tool-facing when its banner line carries `[TOOL-FACING]`.
+  {
+    struct Row { const char* fn; const char* cls; };
+    static const Row kApi[] = {
+#define ROLLTUI_API(name, cls) {#name, #cls},
+#include "api_classes.inc"
+#undef ROLLTUI_API
+    };
+    std::map<std::string, std::string> cls;
+    for (const Row& r : kApi) cls[r.fn] = r.cls;
+    static const std::regex decl_re(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
+    std::vector<std::pair<std::string, bool>> sections;  // (raw text, tool-facing)
+    {
+      std::size_t at = 0;
+      std::size_t pos = text.find("/* =====");
+      while (pos != std::string::npos) {
+        const std::size_t next = text.find("/* =====", pos + 8);
+        const std::string chunk = text.substr(pos, next == std::string::npos ? std::string::npos : next - pos);
+        const std::size_t eol = chunk.find('\n');
+        const std::string banner = chunk.substr(0, chunk.find('\n', eol + 1));
+        sections.emplace_back(chunk, banner.find("[TOOL-FACING]") != std::string::npos);
+        pos = next;
+        (void)at;
+      }
+    }
+    int marked = 0, located_tool = 0;
+    std::vector<std::string> tool_outside, public_inside;
+    for (const auto& [raw, tool] : sections) {
+      marked += tool ? 1 : 0;
+      const std::string t = strip_all_comments(raw);
+      // depth zero, as in section 6: a member body's mention is not a declaration
+      std::string d0;
+      {
+        std::vector<bool> counted;
+        int depth = 0;
+        for (std::size_t i = 0; i < t.size(); ++i) {
+          const char ch = t[i];
+          if (ch == '{') {
+            const std::string before = t.substr(i >= 40 ? i - 40 : 0, i >= 40 ? 40 : i);
+            const bool linkage = std::regex_search(before, std::regex(R"((extern\s+"C"|namespace\s+\w+)\s*$)"));
+            counted.push_back(!linkage);
+            if (!linkage) ++depth;
+            continue;
+          }
+          if (ch == '}') { if (!counted.empty()) { if (counted.back()) --depth; counted.pop_back(); } continue; }
+          if (depth == 0) d0 += ch;
+        }
+      }
+      for (std::sregex_iterator it(d0.begin(), d0.end(), decl_re), end; it != end; ++it) {
+        const std::string f = (*it)[1].str();
+        const auto c = cls.find(f);
+        if (c == cls.end()) continue;
+        if (c->second == "TOOL_FACING") { if (tool) ++located_tool; else tool_outside.push_back(f); }
+        if (c->second == "PUBLIC" && tool) public_inside.push_back(f);
+      }
+    }
+    auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
+    check(sections.size() > 20 && marked == 3 && located_tool >= 40,
+          "the section scanner sees the banners (" + std::to_string(sections.size()) + "), the three marked [TOOL-FACING], and " +
+              std::to_string(located_tool) + " tool-facing declarations under them");
+    check(tool_outside.empty(), "every TOOL_FACING function is declared under a [TOOL-FACING] banner" + join(tool_outside));
+    check(public_inside.empty(), "no PUBLIC function is declared under a [TOOL-FACING] banner — a host never needs one from there" + join(public_inside));
+  }
+
   return report("public_header_test");
 }
