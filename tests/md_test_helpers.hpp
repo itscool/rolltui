@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_md_lines.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 
 inline std::span<const RolltuiMdLine> lines_of(const RolltuiEntryLayout& e) {
   const RolltuiMdLine* p = e.store ? rolltui_md_lines_all(e.store) : nullptr;

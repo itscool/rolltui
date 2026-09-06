@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_MARKDOWN_H
 #define ROLLTUI_C_MARKDOWN_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_markdown.h — THE MARKDOWN CONTRACT (Phase 15 m4).
  *
@@ -49,15 +52,14 @@
  * than a diff's six, and that is the honest price of keeping one vocabulary rather than
  * two — a table in `RolltuiMdRenderOptions` and no enum here.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_md_lines.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 /* ---- block kinds, as bytes ------------------------------------------------------------- */
 /* The same order as `rolltui::markdown::BlockKind`, asserted on the C++ side. */
 #define ROLLTUI_MD_BLOCK_PARAGRAPH 0
@@ -69,8 +71,6 @@ extern "C" {
 #define ROLLTUI_MD_BLOCK_ITEM 6
 #define ROLLTUI_MD_BLOCK_TABLE 7
 #define ROLLTUI_MD_BLOCK_RULE 8
-
-/* ---- the parsed document ---------------------------------------------------------------- */
 
 typedef struct RolltuiMdDoc RolltuiMdDoc;
 
@@ -100,8 +100,6 @@ unsigned rolltui_md_parser_flags(void);
  * zeros in a numeric reference — decoding the same on both sides of the flag rather than
  * falling off a cap that only one of them happens to have. */
 size_t rolltui_md_decode_entity(const char* ent, size_t n, char* out, size_t cap);
-
-/* ---- rendering --------------------------------------------------------------------------- */
 
 /* The styling vocabulary this renderer tags its output with, handed in rather than named
  * here (see above). Every field is a `rolltui::Role` byte. */
@@ -139,26 +137,6 @@ typedef struct RolltuiMdHighlightSpan {
   unsigned char role;
 } RolltuiMdHighlightSpan;
 
-/* One verbatim line of a code block, as a borrow. */
-typedef struct RolltuiMdCodeLine {
-  const char* p;
-  size_t n;
-} RolltuiMdCodeLine;
-
-/* Where a highlighter puts one span. Supplied by the renderer; valid for the call only. */
-typedef void (*RolltuiMdSpanSink)(void* sink, size_t begin, size_t end, unsigned char role);
-
-/* THE SYNTAX-HIGHLIGHTING SEAM (plan/phase-12.md m2), as a function pointer.
- *
- * Emits the spans of `lines[index]` through `sink`, in any order and any number. It emits
- * DATA, never a painter — the renderer alone decides how those bytes wrap and land in the
- * cell grid, and a span that overlaps a prior one, runs backwards or exceeds the line is
- * clamped and NAMED in the store's report rather than corrupting a frame. Called ONCE per
- * code line of every Code block, and never for an HTML block. */
-typedef void (*RolltuiMdHighlightFn)(void* ctx, const char* lang, size_t lang_n,
-                                     const RolltuiMdCodeLine* lines, size_t line_count, size_t index,
-                                     RolltuiMdSpanSink emit, void* sink);
-
 typedef struct RolltuiMdRenderOptions {
   int width ROLLTUI_DEFAULT(80);
   int ambiguous_wide ROLLTUI_DEFAULT(0);
@@ -188,8 +166,9 @@ void rolltui_md_render(RolltuiMdLines* out, const RolltuiMdDoc* doc, const Rollt
 size_t rolltui_md_code_block_summary(const char* lang, size_t lang_n, size_t lines, size_t bytes, char* out,
                                      size_t cap);
 
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_MARKDOWN_H */
+#endif /* {guard} */

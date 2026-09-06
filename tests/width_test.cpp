@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui/unicode_tables.h"  // ROLLTUI_GENERALCATEGORY_Cn: the C constants, not the C++ enum
 #include "rolltui_test.hpp"
 

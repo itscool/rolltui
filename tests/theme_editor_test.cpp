@@ -12,8 +12,6 @@
 #include <string>
 
 #include "../tools/undo_stack.hpp"
-#include "rolltui/c/rolltui_embedded.h"
-#include "rolltui/c/rolltui_json.h"
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
 

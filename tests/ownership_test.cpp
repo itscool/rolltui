@@ -271,46 +271,46 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 0},
-        {"c/rolltui_mem.h", 1},
+        {"rolltui.h", 171},
+        {"c/rolltui_mem.h", 0},
         {"c/rolltui_style.h", 0},
-        {"c/rolltui_diff.h", 1},
+        {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},
-        {"c/rolltui_widgets.h", 4},
+        {"c/rolltui_widgets.h", 0},
         {"c/rolltui_str.h", 0},
         {"c/rolltui_abi.h", 0},
-        {"c/rolltui_layout.h", 24},
-        {"c/rolltui_input.h", 32},
-        {"c/rolltui_theme.h", 7},
+        {"c/rolltui_layout.h", 3},
+        {"c/rolltui_input.h", 0},
+        {"c/rolltui_theme.h", 0},
         {"c/rolltui_undo.h", 0},
-        {"c/rolltui_menu.h", 23},
-        {"c/rolltui_theme_analysis.h", 5},
-        {"c/rolltui_app_profile.h", 4},
-        {"c/rolltui_presets.h", 23},
+        {"c/rolltui_menu.h", 2},
+        {"c/rolltui_theme_analysis.h", 0},
+        {"c/rolltui_app_profile.h", 0},
+        {"c/rolltui_presets.h", 2},
         {"c/rolltui_md_lines.h", 6},
         {"c/rolltui_screen.h", 1},
         {"c/rolltui_geom.h", 0},
-        {"c/rolltui_render.h", 1},
-        {"c/rolltui_wrap.h", 1},
-        {"c/rolltui_frame_ops.h", 1},
-        {"c/rolltui_layout_tree.h", 2},
-        {"c/rolltui_keys.h", 1},
-        {"c/rolltui_markdown.h", 2},
-        {"c/rolltui_widget_kinds.h", 4},
-        {"c/rolltui_theme_gen.h", 1},
+        {"c/rolltui_render.h", 0},
+        {"c/rolltui_wrap.h", 0},
+        {"c/rolltui_frame_ops.h", 0},
+        {"c/rolltui_layout_tree.h", 0},
+        {"c/rolltui_keys.h", 0},
+        {"c/rolltui_markdown.h", 0},
+        {"c/rolltui_widget_kinds.h", 0},
+        {"c/rolltui_theme_gen.h", 0},
         {"c/rolltui_swap.h", 0},
-        {"c/rolltui_transcript.h", 14},
-        {"c/rolltui_effects.h", 6},
+        {"c/rolltui_transcript.h", 0},
+        {"c/rolltui_effects.h", 0},
         {"c/rolltui_marker.h", 0},
-        {"c/rolltui_bindings.h", 15},
+        {"c/rolltui_bindings.h", 2},
         {"c/rolltui_alloc.h", 0},
         {"c/rolltui_map.h", 2},
-        {"c/rolltui_document.h", 2},
-        {"c/rolltui_terminal.h", 1},
+        {"c/rolltui_document.h", 0},
+        {"c/rolltui_terminal.h", 0},
         {"c/rolltui_unicode.h", 5},
-        {"c/rolltui_menu_tree.h", 3},
+        {"c/rolltui_menu_tree.h", 0},
         {"c/rolltui_lifetime.h", 0},
-        {"c/rolltui_embedded.h", 2},
+        {"c/rolltui_embedded.h", 0},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -372,6 +372,11 @@ int main() {
     // `rolltui_menu_item_set` (its second line `size_t label_len, const char* shortcut, …);` has no
     // `(` and ends in `;`). Nothing new is STORED; the row rises by one for the same reason
     // `rolltui_presets.h`'s fell by two the day before. Still noted, still not repaired here.
+    // RE-RECORDED WHOLE 2026-09-06 (Phase 19 m2): the public declarations moved into `rolltui.h`,
+    // the definition, so its row went 0 -> 171 and every `c/` row fell to what the library keeps
+    // for itself; the total is unchanged at 194, which is the check that nothing was invented
+    // or lost in the move. Every one of the 171 is a BORROW or an OWNED member whose lifetime
+    // the struct's own comment states, exactly as it did in the header it came from.
     check(total == 194, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.

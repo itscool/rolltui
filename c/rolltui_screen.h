@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_SCREEN_H
 #define ROLLTUI_C_SCREEN_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_screen.h — THE FRAME, as C (Phase 14 m2).
  *
@@ -53,118 +56,19 @@
  *     calls it, and an entry point no host uses would inflate m6's count of the API surface
  *     with something that was never really part of it.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_style.h"
-
-#ifdef __cplusplus
-#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ---- plain data, defined once and compiled by both languages --------------------- */
-
-/* One cell: a grapheme cluster, its style, its width and its hyperlink id.
- *
- * A GRAPHEME CLUSTER HAS NO MAXIMUM LENGTH, so the long case is handled rather than assumed
- * away: ten bytes covers ASCII, accented Latin, CJK, an emoji with a variation selector, a
- * flag and an emoji with a skin-tone modifier, and anything longer — a family ZWJ sequence
- * is 25+ bytes, and a user can paste one — SPILLS into a table the frame owns, with its
- * index kept where the bytes would have been (`len` reads ROLLTUI_CELL_SPILLED). That is
- * exactly the shape `link` already has, which is why it is the shape used: one mechanism,
- * twice. Spilling is Phase 13's "an allocation may happen, but it has a NAME" case. */
-#define ROLLTUI_CELL_INLINE_GLYPH 10
-#define ROLLTUI_CELL_SPILLED 0xFF
-typedef struct RolltuiCell {
-  unsigned int link ROLLTUI_DEFAULT(0); /* 0: none; else an id from rolltui_frame_link_id */
-  RolltuiStyle style;
-  char bytes[ROLLTUI_CELL_INLINE_GLYPH] ROLLTUI_DEFAULT({' '}); /* the cluster, or its spill index */
-  unsigned char len ROLLTUI_DEFAULT(1);   /* bytes in `bytes`; 0 on a continuation cell */
-  unsigned char width ROLLTUI_DEFAULT(1); /* 1 or 2; 0 on a continuation cell */
-  unsigned char continuation ROLLTUI_DEFAULT(0); /* the right half of a 2-cell glyph */
-
-#ifdef __cplusplus
-  static constexpr unsigned char kInlineGlyph = ROLLTUI_CELL_INLINE_GLYPH;
-  static constexpr unsigned char kSpilled = ROLLTUI_CELL_SPILLED;
-
-  bool spilled() const { return len == kSpilled; }
-  bool operator==(const RolltuiCell&) const = default;
-#endif
-} RolltuiCell;
-/* THE CELL HAS NO PADDING, and that is asserted rather than hoped: `rolltui_frame_equal`
- * compares cells with `memcmp`, which is only right when every byte of the struct is a
- * byte somebody wrote. A field added without thought would break this line before it could
- * make equality read uninitialised padding and call two identical frames different. */
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCell) == 4 + 15 + ROLLTUI_CELL_INLINE_GLYPH + 3,
-                      "RolltuiCell has padding; memcmp equality would compare bytes nobody wrote");
-
-typedef struct RolltuiFrame RolltuiFrame;
-
-/* ---- lifetime -------------------------------------------------------------------- */
-/* OWNED by the caller. `new` never returns NULL: an allocation failure aborts inside
- * rolltui::mem, because a half-built frame is worse than a clean death. */
-RolltuiFrame* rolltui_frame_new(int w, int h, RolltuiStyle fill);
-RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src);
-void rolltui_frame_free(RolltuiFrame* f);
-/* Reuses every buffer it can (Phase 13 m5): the cells, the link table's strings and the
- * spill table's. A steady frame allocates nothing through here. */
-void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill);
-void rolltui_frame_clear(RolltuiFrame* f, RolltuiStyle fill);
-
-/* ---- geometry and cells ----------------------------------------------------------- */
-int rolltui_frame_width(const RolltuiFrame* f);
-int rolltui_frame_height(const RolltuiFrame* f);
-/* A COPY of the cell, into `out`, WHICH THE CALLER OWNS. Out of bounds writes a zeroed cell
- * with width 0.
- *
- * WHY A CALLER'S BUFFER AND NOT A RETURN VALUE, since a POD may cross this boundary (m1's
- * rule, revised for m2): a struct PARAMETER by value has one answer every ABI agrees on for
- * a trivially-copyable type, and a struct RETURN does not — Clang says so itself, with
- * `-Wreturn-type-c-linkage` on an `extern "C"` function returning a class that is not a
- * C++98 POD, which `RolltuiCell` stopped being the moment it gained the methods and default
- * initializers that make one definition possible. Suppressing that warning would be
- * asserting an ABI the compiler declines to promise, which is this project's exact failure
- * shape. A caller's buffer was already the rule (rolltui_geom.h), and it costs one line. */
-void rolltui_frame_cell(const RolltuiFrame* f, int x, int y, RolltuiCell* out);
-void rolltui_frame_set_style(RolltuiFrame* f, int x, int y, RolltuiStyle s);
-
-/* Writes one grapheme of `cells` (1 or 2) at (x, y); returns the cells it occupied. */
-int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t glyph_len,
-                      int cells, RolltuiStyle s, unsigned int link);
-/* The cell's grapheme: a BORROW into the frame, valid until that cell is written again.
- * `*len` receives the byte count. Never NULL; a continuation cell gives length 0. */
-const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len);
-
-/* ---- the link table --------------------------------------------------------------- */
-/* Interns a URL for this frame; the same URL gets the same id. 0 for an empty URL. */
-unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_len);
-/* A BORROW, valid until the next reset. Empty for id 0 or an unknown id. */
-const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* len);
-
-/* ---- marks (the widget's whole vocabulary for motion) ------------------------------ */
-/* `state` is rolltui::EffectState as an int; the C side stores it and never interprets it,
- * which is what keeps the effects vocabulary in one place (Effects.hpp) rather than two.
- * The one exception is that 0 means None and is not recorded, which is the same rule the
- * C++ had — "is anything marked" and "does anything move" stay the same question. */
-void rolltui_frame_mark(RolltuiFrame* f, int x, int y, int cells, int state,
-                        unsigned long long since_ms, double fraction);
-size_t rolltui_frame_mark_count(const RolltuiFrame* f);
 void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int* cells,
                            int* state, unsigned long long* since_ms, double* fraction);
 
-/* ---- cursor ------------------------------------------------------------------------ */
-void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible);
-void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
-
-/* ---- equality ---------------------------------------------------------------------- */
-/* What the frame SHOWS, not what it is holding on to: retained link/spill capacity past a
- * reset is not compared (Phase 13 m5b found that the hard way). */
-int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_SCREEN_H */
+#endif /* {guard} */

@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_UNICODE_H
 #define ROLLTUI_C_UNICODE_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_unicode.h — THE UNICODE ALGORITHMS, as C (Phase 14 m5).
  *
@@ -34,26 +37,13 @@
  * temporary seam could reach the algorithms without allocating; the caller-buffer functions
  * below ARE that, so the C++-only spelling of the same idea had no callers left.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ---- plain data, defined once and compiled by both languages ------------------------- */
-
-/* One decoded scalar. Decoding is TOTAL: a malformed byte becomes U+FFFD with `length` 1 and
- * `valid` 0, so every byte of the input is accounted for exactly once and a byte offset is
- * always recoverable. */
-typedef struct RolltuiDecodedChar {
-  RolltuiCodepoint cp;
-  size_t offset; /* byte offset into the source */
-  size_t length; /* bytes consumed (1 for an invalid byte) */
-  unsigned char valid;
-} RolltuiDecodedChar;
-
 /* One extended grapheme cluster of a UTF-8 string. */
 typedef struct RolltuiUnicodeGrapheme {
   size_t offset; /* byte offset of the cluster in the source */
@@ -66,25 +56,6 @@ typedef struct RolltuiUnicodeGrapheme {
 #define ROLLTUI_BREAK_PROHIBITED 0
 #define ROLLTUI_BREAK_ALLOWED 1
 #define ROLLTUI_BREAK_MANDATORY 2
-
-/* ---- working memory ---------------------------------------------------------------------- */
-/* THE GROWING BUFFERS THESE ALGORITHMS NEED, owned by the caller and reused across calls.
- *
- * The six functions marked below need somewhere to decode into, mark boundaries in, and build
- * line-break units in. There were three ways to give them that and only one is simple:
- *   - hidden per-thread buffers (what the C++ has, twenty-five of them across the library) —
- *     invisible state with a lifetime nobody owns;
- *   - allocate per call — an allocation on the draw path, which Phase 13 spent itself removing;
- *   - **hand them a buffer, which is what every other handle in this port already does.**
- * One handle per thread, made once and reused forever, is all a host needs: after the first
- * few calls it never grows again, so the draw path allocates NOTHING and there is no spill
- * case, no stack-size question and nothing retained that an exit would have to clean up.
- *
- * It holds one buffer per ROLE rather than one shared pool, so a function that calls another
- * (graphemes → boundaries, display_width → graphemes) cannot alias its own scratch. */
-typedef struct RolltuiUnicodeScratch RolltuiUnicodeScratch;
-RolltuiUnicodeScratch* rolltui_u_scratch_new(void);
-void rolltui_u_scratch_free(RolltuiUnicodeScratch* s);
 
 /* ---- property lookups ------------------------------------------------------------------ */
 /* Each returns the property's value byte, which is one of the `ROLLTUI_<PROPERTY>_*` constants
@@ -103,22 +74,12 @@ int rolltui_u_is_default_ignorable(RolltuiCodepoint cp);
 /* ---- UTF-8 ----------------------------------------------------------------------------- */
 /* One scalar at `pos`, into a caller's struct. `pos` must be < `len`. */
 void rolltui_u_decode_one(const char* s, size_t len, size_t pos, RolltuiDecodedChar* out);
-/* Decodes into three parallel caller arrays, each of which must hold at least `len` entries —
- * decoding is total and a malformed byte is one scalar of length 1, so the count can never
- * exceed the byte count. Returns the number of scalars. Kept as parallel arrays rather than an
- * array of `RolltuiDecodedChar` because the wrap engine wants a contiguous code-point array
- * and building one out of an array of structs was a copy loop it no longer has (m3). */
-size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, size_t* offset, size_t* length);
-/* The same, into an array of structs, which is what a caller wanting `valid` needs. `out` must
- * hold at least `len` entries. Returns the number of scalars. */
-size_t rolltui_u_decode_utf8_chars(const char* s, size_t len, RolltuiDecodedChar* out);
 /* Encodes one scalar into `out`, which must hold at least 4 bytes. Returns the bytes written. */
 size_t rolltui_u_append_utf8(RolltuiCodepoint cp, char* out);
 
 /* ---- widths ---------------------------------------------------------------------------- */
 int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide);
 int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous_wide);
-int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide);
 
 /* ---- UAX #29 --------------------------------------------------------------------------- */
 /* `out` holds n + 1 entries: out[i] is 1 when a boundary lies before cps[i], out[n] is the end
@@ -143,13 +104,9 @@ void rolltui_u_word_range(RolltuiUnicodeScratch* s, const char* utf8, size_t len
 void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
                                         unsigned char* out);
 
-/* ---- sanitising ------------------------------------------------------------------------ */
-/* Removes terminal control sequences from text that will be RENDERED. `out` must hold at least
- * `len` bytes — stripping only ever removes. Returns the bytes written. */
-size_t rolltui_u_strip_escape_sequences(const char* s, size_t len, char* out);
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_UNICODE_H */
+#endif /* {guard} */

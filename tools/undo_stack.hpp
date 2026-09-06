@@ -29,10 +29,10 @@
 // the stack never needs to duplicate one of its own — only ever to free one when
 // history moves past it.
 //
+#include "rolltui/rolltui.h"
 #include <cstddef>
 #include <memory>
 
-#include "rolltui/c/rolltui_undo.h"
 
 namespace rolltui::tools {
 

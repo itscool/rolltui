@@ -12,6 +12,7 @@
 //
 // Phase 17 m1d: calls `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
+#include "rolltui/rolltui.h"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <optional>
@@ -19,10 +20,6 @@
 #include <string_view>
 #include <vector>
 
-#include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_menu_tree.h"
 #include "tool_actions.hpp"
 #include "undo_stack.hpp"
 

@@ -21,13 +21,11 @@
 // "DECLARING, SUGGESTING, AND THE SHIPPED TABLE" for why a tool states its keys in code
 // while a layout must not.
 //
+#include "rolltui/rolltui.h"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <span>
 
-#include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_layout.h"
-#include "rolltui/c/rolltui_lifetime.h"
 
 namespace rolltui::tools {
 

@@ -18,6 +18,8 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_md_lines.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;

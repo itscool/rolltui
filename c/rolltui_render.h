@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_RENDER_H
 #define ROLLTUI_C_RENDER_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_render.h — turning a frame into bytes a terminal understands.
  *
@@ -32,8 +35,8 @@
  *      temporary. Phase 14 m2 found it by DESIGNING this boundary, before a line of C
  *      existed. A style is fifteen bytes; there was never a reason for the pointer.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 
@@ -41,20 +44,8 @@
 extern "C" {
 #endif
 
-/* The whole frame, from a cleared screen. Appends to `out`; never clears it. */
-void rolltui_render_full(const RolltuiFrame* next, unsigned char depth, RolltuiStr* out);
-
-/* Only what changed between `prev` and `next`. A NULL `prev`, or one whose dimensions
- * differ, repaints in full (rule 1 above). When nothing changed AND the cursor did not
- * move, nothing is appended — which is what lets an idle screen cost zero bytes. */
-void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, unsigned char depth,
-                         RolltuiStr* out);
-
-/* The frame as plain text, one row per line with trailing spaces trimmed. The golden-frame
- * harness is the caller; no escapes, no styles. */
-void rolltui_frame_to_text(const RolltuiFrame* f, RolltuiStr* out);
-
 #ifdef __cplusplus
-}
+} /* extern "C" */
 #endif
-#endif /* ROLLTUI_C_RENDER_H */
+
+#endif /* {guard} */

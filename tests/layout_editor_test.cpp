@@ -20,6 +20,7 @@
 #include <string>
 
 #include "layout_editor.hpp"
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui_test.hpp"
 
 using namespace rolltui;

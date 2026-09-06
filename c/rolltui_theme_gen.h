@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_THEME_GEN_H
 #define ROLLTUI_C_THEME_GEN_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_theme_gen.h — THE PRNG AND THE RULESET NAMES, as C (Phase 17 m1).
  *
@@ -37,9 +40,8 @@
  * caller-owned storage). A PRNG is eight bytes of state advanced in place, and a ruleset
  * name is a BORROW of a string literal, same as always.
  */
-#include <stddef.h>
-#include <stdint.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_str.h"
@@ -49,24 +51,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ---- the ruleset, as a byte (the same order as `rolltui::Ruleset`) --------------------- */
-#define ROLLTUI_RULESET_ANALOGOUS 0
-#define ROLLTUI_RULESET_COMPLEMENTARY 1
-#define ROLLTUI_RULESET_TRIADIC 2
-#define ROLLTUI_RULESET_TETRADIC 3
-#define ROLLTUI_RULESET_MONOCHROME 4
-#define ROLLTUI_RULESET_PASTEL 5
-#define ROLLTUI_RULESET_NEON 6
-#define ROLLTUI_RULESET_EARTH 7
-#define ROLLTUI_RULESET_COUNT 8
-
-/* A BORROW of a string literal; never NULL, `*len` 0 for an out-of-range ruleset. `len`
- * may be NULL. */
-const char* rolltui_ruleset_name(unsigned char ruleset, size_t* len);
-/* 1 and `*out` set on a match, 0 (leaving `*out` untouched) otherwise. */
-int rolltui_ruleset_from_name(const char* name, size_t len, unsigned char* out);
-
 /* ---- splitmix64, defined ONCE and compiled by both languages --------------------------- */
 /* `rolltui::Rng` IS this struct (ThemeGen.hpp aliases it): eight bytes of state, advanced by
  * the two functions declared right after it. The C++ methods are declared here but DEFINED
@@ -84,48 +68,14 @@ typedef struct RolltuiRng {
 uint64_t rolltui_rng_next(RolltuiRng* r);
 double rolltui_rng_unit(RolltuiRng* r); /* [0, 1) */
 
-/* ---- generate() (Phase 17 m5) ------------------------------------------------------------
- *
- * Builds a whole theme positionally into `out_styles[0..role_count)` (CALLER-FILLED, the
- * same convention `rolltui_theme_builtin_fill` already uses) and runs the repair loop
- * (`rolltui_theme_analyse` / `rolltui_propose_fixes` / `rolltui_apply_fix`,
- * `rolltui_theme_analysis.h`) until the promised badges hold or it gives up. Mirrors
- * `rolltui::generate` exactly (same hue/lightness picks per ruleset, same jitter/chance
- * draws off the same PRNG sequence, same repair loop shape), so the SAME (seed, ruleset,
- * chaos) still yields the SAME theme — `theme_gen_test.cpp`'s determinism check is the
- * oracle for this.
- *
- * `has_dark`/`dark_value` stand in for `GenOptions::dark` (a `std::optional<bool>` — one bit
- * needs no struct): `has_dark` 0 means "let the seed decide" (nullopt), matching
- * `opts.dark ? *opts.dark : rng.unit() < 0.6`. `max_repair_passes` is `GenOptions`'s field of
- * the same name verbatim. `vocab` is forwarded to `rolltui_propose_fixes` only — see this
- * header's top comment for why `generate()`'s own "broken" list is not built here.
- *
- * Returns 0 (nothing written) when `role_count` does not match this file's own role table
- * (the same defensive shape `rolltui_theme_builtin_fill` already takes). On success:
- *   out_styles[0..role_count)   the generated theme's styles, CALLER-FILLED
- *   *out_name                   "gen-<ruleset>-<seed>-<chaos>" (OWNED — free with
- *                                `rolltui_str_free`, or hand it straight to a `Theme::name`)
- *   *out_meta                   a fresh OWNED tree: {"generator": {"ruleset","seed","chaos"},
- *                                "badges": [...]} (free with `rolltui_json_free`, or adopt it
- *                                into `Theme::meta` directly)
- *   *out_repairs                fixes applied by the repair loop
- *   out_roles / out_pairs       the FINAL, post-repair `rolltui_theme_analyse` snapshot —
- *                                sized exactly as that function's own out-params
- *                                (role_count, `rolltui_must_differ_count()`) — for the
- *                                shim's "broken" list
- *   *out_badges                 the final computed badges (same as `out_meta`'s "badges",
- *                                as bits rather than names) */
-int rolltui_theme_generate(uint64_t seed, unsigned char ruleset, double chaos, int has_dark, int dark_value,
-                           int max_repair_passes, const RolltuiThemeVocab* vocab, RolltuiStyle* out_styles,
-                           size_t role_count, RolltuiStr* out_name, RolltuiJsonValue** out_meta, int* out_repairs,
-                           RolltuiRoleCheck* out_roles, RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges);
+#ifdef __cplusplus
+inline uint64_t RolltuiRng::next() { return rolltui_rng_next(this); }
+inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
+
+#endif
 
 #ifdef __cplusplus
 } /* extern "C" */
-
-inline uint64_t RolltuiRng::next() { return rolltui_rng_next(this); }
-inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
 #endif
 
-#endif /* ROLLTUI_C_THEME_GEN_H */
+#endif /* {guard} */

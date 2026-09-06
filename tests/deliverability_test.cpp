@@ -39,7 +39,6 @@
 // the C's own ordinals/codes so neither can drift.
 //
 #include <array>
-#include "rolltui/c/rolltui_embedded.h"
 #include <cstddef>
 #include <cstring>
 #include <memory>
@@ -55,6 +54,8 @@
 #include <util.h>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 
 #include "rolltui_test.hpp"
 

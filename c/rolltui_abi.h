@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_ABI_H
 #define ROLLTUI_C_ABI_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_abi.h — THE THREE DUAL-LANGUAGE SPELLINGS, IN ONE PLACE (Phase 14).
  *
@@ -28,24 +31,17 @@
  *                          same width, and `extern "C"` linkage makes the pointer the same
  *                          pointer. Nothing is ever cast.
  */
-
 /* `static inline` and the null pointer, spelled once — a header that carries a shared
  * definition for both languages needs both, and `NULL` is not `nullptr` in C++'s eyes. */
-#define ROLLTUI_INLINE inline
+
+#include "rolltui/rolltui.h"
 
 #ifdef __cplusplus
-#define ROLLTUI_NULL nullptr
-#define ROLLTUI_DEFAULT(v) = v
-#define ROLLTUI_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-typedef char32_t RolltuiCodepoint;
-#else
-#define ROLLTUI_NULL ((void*)0)
-#define ROLLTUI_DEFAULT(v)
-#define ROLLTUI_STATIC_ASSERT(cond, msg) _Static_assert(cond, msg)
-typedef unsigned int RolltuiCodepoint;
+extern "C" {
 #endif
 
-ROLLTUI_STATIC_ASSERT(sizeof(RolltuiCodepoint) == 4,
-                      "a code point must be the same four-byte unsigned scalar in both languages");
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
-#endif /* ROLLTUI_C_ABI_H */
+#endif /* {guard} */

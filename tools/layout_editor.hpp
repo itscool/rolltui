@@ -90,6 +90,7 @@
 // drag_to / end_drag): the child before the seam takes an absolute size equal to the
 // pointer's distance from its start; the release commits once.
 //
+#include "rolltui/rolltui.h"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <optional>
@@ -97,12 +98,6 @@
 #include <string_view>
 #include <vector>
 
-#include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_layout.h"
-#include "rolltui/c/rolltui_layout_tree.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_menu_tree.h"
 #include "tool_actions.hpp"
 #include "undo_stack.hpp"
 

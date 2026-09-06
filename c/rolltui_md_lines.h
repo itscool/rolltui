@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_MD_LINES_H
 #define ROLLTUI_C_MD_LINES_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_md_lines.h — THE SPAN STORE (Phase 15 m4).
  *
@@ -47,20 +50,13 @@
  * fills it — `MarkdownCpp.cpp` or `c/rolltui_markdown.c` — which is the thing the
  * experiment is measuring. A store with two implementations would measure the store.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_abi.h"
-
-#ifdef __cplusplus
-#include <cstdint>
-#else
-#include <stdint.h>
-#endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 /* The byte offset a drawn grapheme came from in the logical text, or this when it is
  * CHROME — a border, a rule, continuation indentation, a fold header. One value, not a
  * flag beside it, because "this cell is not text" and "this cell came from byte N" are the
@@ -94,10 +90,6 @@ typedef struct RolltuiMdLine {
 
 } RolltuiMdLine;
 
-typedef struct RolltuiMdLines RolltuiMdLines;
-
-/* ---- lifetime -------------------------------------------------------------------------- */
-
 RolltuiMdLines* rolltui_md_lines_new(void);
 void rolltui_md_lines_free(RolltuiMdLines* L); /* a no-op on NULL */
 /* Drops every line, span and byte and KEEPS every buffer. This is the reset that makes a
@@ -105,11 +97,6 @@ void rolltui_md_lines_free(RolltuiMdLines* L); /* a no-op on NULL */
  * storage being reused (CLAUDE.md, Phase 13's mistake-made-four-times), and there is
  * nothing owning left in here to free. */
 void rolltui_md_lines_reset(RolltuiMdLines* L);
-
-/* ---- building --------------------------------------------------------------------------
- *
- * Exactly one line is open at a time; opening a second aborts, the way `Scratch` does,
- * because the alternative is a plausible wrong frame rather than a crash. */
 
 void rolltui_md_lines_open(RolltuiMdLines* L);
 /* Appends a span, COPYING `text` and `href` into the store's pools. `sources` may be NULL,
@@ -131,11 +118,6 @@ void rolltui_md_lines_span_ref(RolltuiMdLines* L, size_t index);
 void rolltui_md_lines_trim_trailing_spaces(RolltuiMdLines* L, int ambiguous_wide);
 /* Closes the open line and returns its index. */
 size_t rolltui_md_lines_close(RolltuiMdLines* L);
-
-/* ---- reading ---------------------------------------------------------------------------
- *
- * `finish` publishes the pointer views; nothing below may be called before it, and every
- * pointer it hands out dies at the next append. */
 
 void rolltui_md_lines_finish(RolltuiMdLines* L);
 size_t rolltui_md_lines_count(const RolltuiMdLines* L);
@@ -168,21 +150,6 @@ const char* rolltui_md_lines_text(const RolltuiMdLines* L); /* never NULL; not t
 /* Drops the last byte — the render's one trailing '\n'. */
 void rolltui_md_lines_text_pop(RolltuiMdLines* L);
 
-/* ---- interned chrome, and a second store for what is laid out only to be poured ---------
- *
- * TWO SMALL THINGS A RENDERER NEEDS THAT ARE NOT LINES, both here because their lifetime is
- * the store's and a second owner would be a second lifetime to reason about.
- *
- * `intern` is a POOL OF ITS OWN, deliberately not the span pool: a renderer holds a block's
- * prefix (a quote bar, a list marker, the padding under it) for as long as the block is open
- * and emits it at the head of every line, and appending those bytes into the span pool
- * between two spans would silently break the tail-merge rule above. Its own pool cannot.
- *
- * `aux` is a whole second store, made on first use, for a caller that must lay something out
- * at one width and then pour it into a line here — a table cell, which is laid out in its
- * column's width and then padded into the row. The alternative was a mark/rewind on the line
- * array, which does not work: the row lines are appended AFTER the cell lines they read. */
-
 size_t rolltui_md_lines_intern(RolltuiMdLines* L, const char* s, size_t n);
 const char* rolltui_md_lines_interned(const RolltuiMdLines* L, size_t off);
 RolltuiMdLines* rolltui_md_lines_aux(RolltuiMdLines* L);
@@ -197,14 +164,6 @@ RolltuiMdLines* rolltui_md_lines_aux(RolltuiMdLines* L);
  * that is rendered into every frame reuses the renderer's scratch along with everything
  * else. `make` and `destroy` must be the same pair on every call for one store. */
 void* rolltui_md_lines_work(RolltuiMdLines* L, void* (*make)(void), void (*destroy)(void*));
-
-/* ---- what the render REPORTED, kept here because its strings are pooled too --------------
- *
- * A code block's `lang` and a clamped highlight span's message are BORROWS like every other
- * string in this store, published by the same `finish()` and dead at the same moment. They
- * live in pools of their OWN rather than in the span pool, so appending one between two
- * spans cannot break the merge rule above — a subtle coupling, and the reason two extra
- * pools are cheaper than one shared one. */
 
 #define ROLLTUI_MD_NO_LINE ((size_t)-1)
 
@@ -241,13 +200,6 @@ void rolltui_md_lines_add_clamped(RolltuiMdLines* L, const char* msg, size_t n);
 size_t rolltui_md_lines_clamped_count(const RolltuiMdLines* L);
 void rolltui_md_lines_clamped_at(const RolltuiMdLines* L, size_t i, const char** p, size_t* n);
 
-/* ---- working memory the store lends its filler ------------------------------------------
- *
- * CLAUDE.md's third strategy covers WORKING memory, not only results: a function that needs
- * somewhere to decode into takes a handle the caller owns. Both implementations of the
- * renderer cluster text constantly, and this is the buffer they do it in — one per store,
- * so a renderer holds no per-thread state of its own. */
-typedef struct RolltuiUnicodeScratch RolltuiUnicodeScratch;
 RolltuiUnicodeScratch* rolltui_md_lines_scratch(RolltuiMdLines* L);
 /* Clusters `text` into the store's own grapheme buffer and reports the count and total
  * width. The buffer is handed back so a caller can walk it; it is valid until the next
@@ -256,8 +208,9 @@ typedef struct RolltuiUnicodeGrapheme RolltuiUnicodeGrapheme;
 const RolltuiUnicodeGrapheme* rolltui_md_lines_clusters(RolltuiMdLines* L, const char* text, size_t n,
                                                         int ambiguous_wide, size_t* count, int* width);
 
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_MD_LINES_H */
+#endif /* {guard} */

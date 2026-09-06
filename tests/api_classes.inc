@@ -447,7 +447,7 @@ ROLLTUI_API(rolltui_layer_list_equal, PUBLIC)  /* rule 1: a public type's lifecy
 ROLLTUI_API(rolltui_layer_list_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layer_list_remove, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_layer_list_remove_id, PUBLIC)
-ROLLTUI_API(rolltui_layer_move, INTERNAL)  /* only the library's own .c reaches it */
+ROLLTUI_API(rolltui_layer_move, PUBLIC)  /* the move, written down for C; the C++ move members call it */
 ROLLTUI_API(rolltui_layer_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layout_node_copy, PUBLIC)
 ROLLTUI_API(rolltui_layout_node_equal, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
@@ -697,7 +697,7 @@ ROLLTUI_API(rolltui_menu_item_init, PUBLIC)
 ROLLTUI_API(rolltui_menu_item_new, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_item_set, PUBLIC)  /* the C form of the item builders every host wrote — added Phase 19 m2 */
 ROLLTUI_API(rolltui_menu_item_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_menu_list_add, INTERNAL)  /* only the library's own .c reaches it */
+ROLLTUI_API(rolltui_menu_list_add, PUBLIC)  /* called from a public C++ member, so every C++ consumer already reaches it; a C consumer needs the same operation */
 ROLLTUI_API(rolltui_menu_list_at, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_menu_list_clear, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_list_copy, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
@@ -708,7 +708,7 @@ ROLLTUI_API(rolltui_menu_list_release, PUBLIC)  /* rule 1: a public type's lifec
 ROLLTUI_API(rolltui_entry_layout_release, INTERNAL)  /* the transcript's own store */
 ROLLTUI_API(rolltui_entry_layout_store, INTERNAL)  /* the transcript's own store */
 ROLLTUI_API(rolltui_selection_range_in, INTERNAL)  /* a step of select */
-ROLLTUI_API(rolltui_text_pos_less, INTERNAL)  /* a step of select */
+ROLLTUI_API(rolltui_text_pos_less, PUBLIC)  /* called from a public C++ member, so every C++ consumer already reaches it; a C consumer needs the same operation */
 ROLLTUI_API(rolltui_transcript_area, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_transcript_clear_selection, PUBLIC)  /* an operation a host performs */
 ROLLTUI_API(rolltui_transcript_copy_selection, PUBLIC)
@@ -910,7 +910,7 @@ ROLLTUI_API(rolltui_preset_valid_name, PUBLIC)  /* a host validates before save_
 ROLLTUI_API(rolltui_preset_working_value, PUBLIC)
 ROLLTUI_API(rolltui_preset_write_file_atomic, PUBLIC)
 ROLLTUI_API(rolltui_theme_preset_domain_init, PUBLIC)  /* the bring-your-own-vocabulary rung */
-ROLLTUI_API(rolltui_theme_preset_parse, INTERNAL)  /* the Theme domain's own parse; the domain is the entry point (a test reaches it: opt-in) */
+ROLLTUI_API(rolltui_theme_preset_parse, PUBLIC)  /* the rung a host that ships its own theme FILES stands on — the C consumer reaches it */
 ROLLTUI_API(rolltui_theme_preset_parse_partial, INTERNAL)  /* the Theme domain's own parse */
 ROLLTUI_API(rolltui_theme_preset_report_clean, PUBLIC)
 ROLLTUI_API(rolltui_theme_preset_report_fns, DELETE)  /* reached by nothing, anywhere */
@@ -947,3 +947,27 @@ ROLLTUI_API(rolltui_terminal_restore_now, INTERNAL)  /* a step of leave */
 ROLLTUI_API(rolltui_terminal_wake, PUBLIC)
 ROLLTUI_API(rolltui_terminal_width, PUBLIC)
 ROLLTUI_API(rolltui_terminal_write, PUBLIC)
+
+/* rolltui_alloc.h + rolltui_map.h — the two headers that were internal BEFORE Phase 19 (the old
+   facade's kInternal list) and so were outside m1's census. m2 widened the census to every
+   header under c/, and these are their rows: INTERNAL by the same measure as the rest — the
+   library's own storage primitives, reached by budget_test only (a test may). */
+ROLLTUI_API(rolltui_fit, INTERNAL)
+ROLLTUI_API(rolltui_grow, INTERNAL)
+ROLLTUI_API(rolltui_grow_zeroed, INTERNAL)
+ROLLTUI_API(rolltui_map_clear, INTERNAL)
+ROLLTUI_API(rolltui_map_count, INTERNAL)
+ROLLTUI_API(rolltui_map_get, INTERNAL)
+ROLLTUI_API(rolltui_map_key_at, INTERNAL)
+ROLLTUI_API(rolltui_map_mark, INTERNAL)
+ROLLTUI_API(rolltui_map_marked_at, INTERNAL)
+ROLLTUI_API(rolltui_map_put, INTERNAL)
+ROLLTUI_API(rolltui_map_release, INTERNAL)
+ROLLTUI_API(rolltui_map_remove_at, INTERNAL)
+ROLLTUI_API(rolltui_map_take, INTERNAL)
+ROLLTUI_API(rolltui_map_unmark_all, INTERNAL)
+ROLLTUI_API(rolltui_map_value_at, INTERNAL)
+ROLLTUI_API(rolltui_mem_realloc, INTERNAL)
+ROLLTUI_API(rolltui_pack_add, INTERNAL)
+ROLLTUI_API(rolltui_pack_alloc, INTERNAL)
+ROLLTUI_API(rolltui_pack_begin, INTERNAL)

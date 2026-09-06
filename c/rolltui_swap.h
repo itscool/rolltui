@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_SWAP_H
 #define ROLLTUI_C_SWAP_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_swap.h — THE DOUBLE BUFFER, as the library's, because three hosts had
  * written it.
@@ -46,8 +49,8 @@
  * and the caller must not free it. The output `RolltuiStr` is the CALLER's, kept across
  * frames and refilled, which is the point of it being a parameter.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 
@@ -55,33 +58,8 @@
 extern "C" {
 #endif
 
-typedef struct RolltuiSwap RolltuiSwap;
-
-/* Both frames at `w` x `h`, filled with `fill`. Never returns NULL: an allocation failure
- * aborts through `rolltui_mem_alloc`, which is the library's stated answer. */
-RolltuiSwap* rolltui_swap_new(int w, int h, RolltuiStyle fill);
-void rolltui_swap_free(RolltuiSwap* s);
-
-/* Resets the back frame to `w` x `h` and LENDS it for drawing. Valid until the next `begin`
- * or `present`; the caller never frees it. A size change here is safe and is handled by
- * `rolltui_render_diff` at present time, so a caller does not have to notice one. */
-RolltuiFrame* rolltui_swap_begin(RolltuiSwap* s, int w, int h, RolltuiStyle fill);
-
-/* Diffs the drawn frame against the previous one, APPENDS the bytes to `out`, and swaps.
- * After this the drawn frame is the baseline and the other is the next `begin`'s target.
- * Appends nothing when nothing changed and the cursor did not move. */
-void rolltui_swap_present(RolltuiSwap* s, unsigned char depth, RolltuiStr* out);
-
-/* "Repaint whole at the next present." THE HOST'S POLICY, and the only half of the old
- * `have_prev` that was ever a host's: a new layout, a new palette, an explicit repaint. A
- * size change needs no call — see the header comment. */
-void rolltui_swap_invalidate(RolltuiSwap* s);
-
-/* The frame most recently presented, for a caller that needs to read it back — the golden
- * harness and `poll_timeout_ms` both do. Borrowed, valid until the next `present`. */
-const RolltuiFrame* rolltui_swap_front(const RolltuiSwap* s);
-
 #ifdef __cplusplus
-}
+} /* extern "C" */
 #endif
-#endif /* ROLLTUI_C_SWAP_H */
+
+#endif /* {guard} */

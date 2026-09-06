@@ -77,6 +77,8 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_alloc.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 // …AND ONE DELIBERATE REACH PAST IT, which is not a gap (Phase 17 m3). `rolltui_mem_realloc`
 // is declared only in the INTERNAL `rolltui/c/rolltui_alloc.h`, on purpose: growth is the thing
 // the closed set exists to stop being invented, and keeping its declaration out of the public
@@ -87,7 +89,6 @@
 // UI API at all — it is the ALLOCATOR'S OWN accounting test, and the assertion below exists to
 // prove that a growing realloc counts as an allocation. Publishing `realloc` to satisfy one
 // test would undo the restriction for every other caller, which is the trade backwards.
-#include "rolltui/c/rolltui_alloc.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;

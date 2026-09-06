@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_WIDGET_KINDS_H
 #define ROLLTUI_C_WIDGET_KINDS_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_widget_kinds.h — THE LIBRARY'S OWN WIDGET KINDS, IN C (Phase 15/17).
  *
@@ -55,8 +58,8 @@
  * `rolltui_layout.h`; a kind's NAME is its identity since Phase 18 m2) and the plugin contract
  * (public, in `rolltui_widgets.h`) already say.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_input.h"
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_transcript.h"
@@ -65,37 +68,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* THE ROLE BYTES these kinds draw with, handed over ONCE at registration — this file names
- * no role, the same rule every other C header in this port states for itself. Role ordinals
- * are process-wide constants (`rolltui/Style.hpp`), so a value copied in at construction
- * never goes stale. */
-typedef struct RolltuiBuiltinRoles {
-  unsigned char text, text_muted, error, scroll_marker, label, value;
-  unsigned char input_text, input_selection, input_placeholder;
-} RolltuiBuiltinRoles;
-
-/* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use ("this file knows the rule and
- * none of the words" — the same trade `rolltui_transcript.h`'s `RolltuiTranscriptActions`
- * makes). `rolltui::scroll_by_action` (Widgets.hpp, unchanged and still used by two hosts
- * directly) hardcodes the identical six strings; this is the same one-file duplication
- * `Input.cpp`'s `kActions` and `Transcript.cpp`'s own action table already are, not a new
- * one — the alternative (an action name crossing the C boundary) is what `rolltui_bindings.h`
- * says not to do. */
-typedef struct RolltuiScrollTextActions {
-  const char *line_up, *line_down, *page_up, *page_down, *top, *bottom;
-} RolltuiScrollTextActions;
-
 /* `w` keeps its own copy of both — set once, read by every kind below through `ctx = w`
  * (rule 5: the library's own kinds are context the same way a host's are). The alternative,
  * a small heap block per kind holding a copy, would leak for `error`/`panel`: `rolltui_
  * windows_set_error_factory`/`set_panel_factory` take no `free_ctx`, because their `ctx` was
  * always `Windows` itself and never this table's to release. */
 void rolltui_windows_set_builtin_roles(RolltuiWindows* w, const RolltuiBuiltinRoles* r);
-const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w);
-/* The LIBRARY'S OWN six (Phase 17 m2a) — the same list `RolltuiTranscriptActions` draws from,
- * minus the five that need a transcript. BORROWS static storage. */
-const RolltuiScrollTextActions* rolltui_scroll_text_default_actions(void);
 void rolltui_windows_set_scroll_text_actions(RolltuiWindows* w, const RolltuiScrollTextActions* a);
 const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w);
 
@@ -112,50 +90,6 @@ const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w
  * `ctx`, which is `w` itself for all of them. */
 void rolltui_widget_kinds_register(RolltuiWindows* w);
 
-/* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL (Phase 17 m2a) — every setter in this file
- * with the library's own defaults, then `rolltui_widget_kinds_register`, in the order that
- * function requires. This is what makes a bare `rolltui_windows_new()` usable by a pure-C
- * host: before it, the five setters were called by `rolltui::Windows`' C++ constructor and a C
- * caller got a table with no kinds and NULL action names. A host with its own words calls the
- * setters after; this is a default, not a policy. Idempotent; NULL is a no-op. */
-void rolltui_windows_set_library_defaults(RolltuiWindows* w);
-
-/* ---- THE FOUR RULES THE KINDS APPLY, public since Phase 17 m2a -----------------------------
- *
- * Each of these was `static` here AND written a second time in C++ (`rolltui::scroll_by_action`,
- * `input_max_rows`, `input_rows`, `help_document`/`help_lines`), and this header called that
- * "the same one-file duplication `Input.cpp`'s `kActions` already is". It was one-file only
- * while the C++ file existed; m2c deletes it, and then two implementations of a rule become one
- * implementation and one deleted copy — or, if a host had reached for it, one implementation
- * and a re-derivation. So the C's is THE one, and the C++ side is one line over each. */
-
-/* line_up/down, page_up/down, top/bottom applied to a `page`-row view of `total` lines, with
- * `*top` clamped to [0, total-page]. 0 when the chord is not one of the six. */
-int rolltui_scroll_by_action(const RolltuiScrollTextActions* actions, const RolltuiBindings* bindings,
-                             const RolltuiChord* k, int page, int total, int* top);
-
-/* The input window's sizing rule: the cap is HALF the parent's extent less the border rows, at
- * least 1; the rows are the text's capped at that, plus one for a note that cannot sit beside a
- * single row. */
-int rolltui_input_max_rows(int parent_extent, int border_rows);
-int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int width, int max_rows);
-
-/* The key list for ONE scope, appended as "<indent><chord-or-(unbound)><pad><description>\n"
- * rows, the chord column aligned to the widest (capped at 22, minimum column 12).
- * Undeliverable chords are left out, which is why this takes the live table rather than names.
- * `actions`/`action_lens`/`actions_n` name the rows and their order when non-empty; otherwise
- * every action of `scope` in table order. `indent` prefixes every row (the help document uses
- * two spaces; `rolltui::help_lines` uses none). */
-void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_t slen, const char* const* actions,
-                              const size_t* action_lens, size_t actions_n, const char* indent, size_t indent_len,
-                              RolltuiStr* out);
-
-/* The whole help document: `lead`, then one "<scope>:\n" section per scope with that scope's
- * rows under it, then `note`. APPENDS to `out`. */
-void rolltui_help_document(const RolltuiBindings* b, const char* lead, size_t lead_len, const char* const* scopes,
-                           const size_t* scope_lens, size_t scopes_n, const char* note, size_t note_len,
-                           RolltuiStr* out);
-
 /* ---- input: the one slot of a built-in kind's ctx a caller still reaches by hand — a host's
  * floor on the window's height regardless of what the text says (roll holds the prompt as tall
  * as the modal placed over it). `ctx` must be one the `input` factory built; a host reaches it
@@ -163,23 +97,6 @@ void rolltui_help_document(const RolltuiBindings* b, const char* lead, size_t le
 void rolltui_input_widget_ctx_set_min_outer(void* ctx, int rows);
 const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void);
 
-/* Shared by the input plugin's own `handle` slot and by a host asking for the action back
- * (`Windows::input_event`): handle `e` against the live bindings, and on Submit either
- * clear-and-push-history or keep the text (`rolltui_windows_on_submit` says which), then call
- * whatever is bound to `source`. Returns one of ROLLTUI_INPUT_IGNORED/HANDLED/SUBMIT/EOF. */
-int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const char* source, size_t source_len,
-                                      const RolltuiEvent* e);
-
-/* ---- transcript/menu-shared: the config `Windows` carries for them (Phase 17 m1c), handed
- * over ONCE and read back through `w` the same way `RolltuiBuiltinRoles`/
- * `RolltuiScrollTextActions` above already are. --------------------------------------------- */
-
-/* The two ints a transcript's code-block folding needs — `Windows::set_code_fold`'s own,
- * mirrored to the boundary so the transcript kind below can read them at layout time. */
-typedef struct RolltuiCodeFold {
-  int fold_over_lines, cap_lines;
-} RolltuiCodeFold;
-void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
 const RolltuiCodeFold* rolltui_windows_code_fold(const RolltuiWindows* w);
 
 /* The eleven action names `rolltui_transcript_handle` needs. */
@@ -190,7 +107,6 @@ const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const Rolltui
  * once, at construction, by `rolltui_transcript_set_roles`), `rolltui_menu_draw` takes them as
  * a per-call parameter, so the menu kind below reads them back through `w` on every draw. */
 void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r);
-const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w);
 
 /* ---- menu: the FILE-resolution half of its ctx, which `rolltui_windows_menu`/`_menu_origin`
  * drive from `rolltui_widgets.c`. The `RolltuiMenu` itself belongs to the window table (one per
@@ -207,8 +123,9 @@ void rolltui_menu_widget_ctx_refresh(void* ctx);
  * BORROW valid until the ctx's next refresh. */
 const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len);
 
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_WIDGET_KINDS_H */
+#endif /* {guard} */

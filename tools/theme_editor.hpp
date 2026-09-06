@@ -24,6 +24,7 @@
 // committed colours into the preset store on Committed; run a save-as, a load, a
 // shipped write or a reset (the last three after confirming) on the matching Outcome.
 //
+#include "rolltui/rolltui.h"
 #include "tool_str.hpp"
 #include <array>
 #include <cstddef>
@@ -32,16 +33,6 @@
 #include <string_view>
 #include <vector>
 
-#include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_effects.h"
-#include "rolltui/c/rolltui_json.h"
-#include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_menu_tree.h"
-#include "rolltui/c/rolltui_style.h"
-#include "rolltui/c/rolltui_theme.h"
-#include "rolltui/c/rolltui_theme_analysis.h"
-#include "rolltui/c/rolltui_theme_gen.h"
 #include "undo_stack.hpp"
 #include "tool_actions.hpp"
 

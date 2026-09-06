@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_FRAME_OPS_H
 #define ROLLTUI_C_FRAME_OPS_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_frame_ops.h — THE THREE DRAWING LOOPS, IN C (Phase 15 m5).
  *
@@ -26,8 +29,8 @@
  * caller's scratch: the cluster array and the Unicode module's own working memory are two
  * fields and not one.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_style.h"
@@ -36,26 +39,8 @@
 extern "C" {
 #endif
 
-typedef struct RolltuiDrawScratch RolltuiDrawScratch;
-RolltuiDrawScratch* rolltui_draw_scratch_new(void);
-void rolltui_draw_scratch_free(RolltuiDrawScratch* s); /* a no-op on NULL */
-
-/* Writes `utf8` at (x, y), cluster by cluster, stopping at `max_cells`, at the frame's right
- * edge, or before a wide glyph that would be cut in half. Returns the cells used. */
-int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
-                           RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link);
-
-/* Fills `r` (clipped) with a repeated grapheme — a space when `glyph` is NULL or has no
- * width. */
-void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, RolltuiStyle style,
-                        const char* glyph, size_t glyph_len);
-
-/* Amends every cell's style in `r` (clipped): a set colour replaces, an attribute bit is
- * OR'd in. Needs no scratch — it reads and writes styles and never looks at text. */
-void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_FRAME_OPS_H */
+#endif /* {guard} */

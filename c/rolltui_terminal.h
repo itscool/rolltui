@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_TERMINAL_H
 #define ROLLTUI_C_TERMINAL_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_terminal.h — THE TERMINAL, as C (Phase 17 m1).
  *
@@ -66,8 +69,8 @@
  * `parse_key_protocol` before crossing over. One string parser, in one language, is the
  * point; duplicating it here would be a second place for the three spellings to drift.
  */
-#include <stddef.h>
 
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_style.h"
@@ -75,72 +78,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* ---- options, defined once and compiled by both languages ------------------------------ */
-/* The attribute bits are `unsigned char` and not `bool` for `rolltui_style.h`'s reason: C's
- * `_Bool` and C++'s `bool` are the same byte on every toolchain this will ever see, and that
- * is exactly the "layout-compatible by fiat" this project keeps being burned by — one type
- * in both languages, nothing to assume. */
-typedef struct RolltuiTerminalOptions {
-  unsigned char alt_screen ROLLTUI_DEFAULT(1);
-  unsigned char mouse ROLLTUI_DEFAULT(1);        /* SGR 1006 + button + drag reporting */
-  unsigned char bracketed_paste ROLLTUI_DEFAULT(1);
-  unsigned char hide_cursor ROLLTUI_DEFAULT(1);
-  unsigned char handle_signals ROLLTUI_DEFAULT(1); /* restore-and-reraise on INT/TERM/HUP/QUIT */
-} RolltuiTerminalOptions;
-
-typedef struct RolltuiTerminal RolltuiTerminal;
-
-/* ---- lifetime --------------------------------------------------------------------------- */
-/* OWNED by the caller. Enters immediately (raw mode, alt screen, the rest of `opts`) and
- * negotiates the keyboard protocol before returning, exactly as the C++ constructor did.
- * Never returns NULL: an allocation failure aborts inside rolltui::mem. */
-RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts);
-/* Restores the terminal (see rolltui_terminal_restore_now) and releases everything `t` holds. */
-void rolltui_terminal_free(RolltuiTerminal* t);
-
-/* ---- geometry --------------------------------------------------------------------------- */
-int rolltui_terminal_is_tty(const RolltuiTerminal* t);
-int rolltui_terminal_width(const RolltuiTerminal* t);
-int rolltui_terminal_height(const RolltuiTerminal* t);
 void rolltui_terminal_refresh_size(RolltuiTerminal* t); /* ioctl; also called on SIGWINCH */
-
-/* ---- events ----------------------------------------------------------------------------- */
-/* The same three kinds `rolltui_keys.h` defines, plus RESIZE — see rule 4 above. */
-#define ROLLTUI_TERM_EVENT_KEY ROLLTUI_EVENT_KEY
-#define ROLLTUI_TERM_EVENT_MOUSE ROLLTUI_EVENT_MOUSE
-#define ROLLTUI_TERM_EVENT_PASTE ROLLTUI_EVENT_PASTE
-#define ROLLTUI_TERM_EVENT_RESIZE 3
-
-/* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's
- * raw bytes (kind KEY, key UNKNOWN) or a paste's contents (kind PASTE). NULL otherwise.
- * `w`/`h` are set only for kind RESIZE. */
-typedef struct RolltuiTermEvent {
-  unsigned char kind;
-  RolltuiChord key;
-  RolltuiMouseEvent mouse;
-  const char* text;
-  size_t text_len;
-  int w, h;
-} RolltuiTermEvent;
-
-/* Called once per event, in order. The C++ side appends to its `std::vector<Event>`, the
- * same shape `RolltuiEventFn` already has one layer down. */
-typedef void (*RolltuiTermEventFn)(void* ctx, const RolltuiTermEvent* e);
-
-/* Waits up to timeout_ms (-1: forever) for input, a resize or rolltui_terminal_wake(); reports
- * whatever decoded (possibly nothing). A lone ESC that nothing follows within the timeout is
- * delivered as Escape. Bytes left over from a `negotiate_keyboard`/`query_background` call
- * that ran before this one are delivered first, before anything this call reads itself. */
-void rolltui_terminal_poll(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn emit, void* ctx);
-
-/* Makes a blocked poll() return now, with whatever events are pending (possibly none).
- * Thread-safe and async-signal-safe: one byte on the self-pipe. A frontend whose view
- * changes on another thread uses it instead of a short poll timeout. */
-void rolltui_terminal_wake(RolltuiTerminal* t);
-
-/* Writes every byte (loops on partial writes and EINTR). */
-void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
 
 /* ---- keyboard protocol (Phase 12 m3) ----------------------------------------------------- */
 /*
@@ -178,22 +116,6 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
  * returning, and returns it as a ROLLTUI_PROTOCOL_* byte.
  */
 unsigned char rolltui_terminal_negotiate_keyboard(RolltuiTerminal* t, int timeout_ms, int forced_protocol);
-unsigned char rolltui_terminal_key_protocol(const RolltuiTerminal* t);
-
-/* ---- background colour (milestone 11's light/dark auto-detect) -------------------------- */
-/* Asks the terminal for its background colour (OSC 11) and waits up to timeout_ms for the
- * reply, writing it to `*out`. Returns 0 on a pipe, on no answer in time (a terminal that
- * does not implement OSC 11 sends nothing), or on an unparseable answer — the caller treats
- * every 0 as "dark". Bytes that arrive and are not the reply (a user already typing) are
- * kept and delivered by the next `rolltui_terminal_poll`; nothing is lost. Call before the
- * event loop, once. */
-int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out);
-
-/* ---- the entered/left sequences ---------------------------------------------------------- */
-/* The bytes that entered/will leave the modes, as BORROWS (rule 3), for tests and for
- * `--frame` tooling that wants to reproduce a session without a tty. */
-const char* rolltui_terminal_enter_sequence(const RolltuiTerminal* t, size_t* len);
-const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* len);
 
 /* ---- signal-safe restore ------------------------------------------------------------------ */
 /* Async-signal-safe: restores whichever terminal most recently entered (if any) — a plain
@@ -202,8 +124,9 @@ const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* le
  * own crash handler can call it too. */
 void rolltui_terminal_restore_now(void);
 
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_TERMINAL_H */
+#endif /* {guard} */

@@ -25,7 +25,6 @@
 // mapping rather than guess at one.
 //
 #include <algorithm>
-#include "rolltui/c/rolltui_embedded.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +37,9 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;

@@ -220,6 +220,17 @@ add_rolltui_test(rolltui-ownership-test tests/ownership_test.cpp)
 # calling the API; that the header declares NOTHING of its own is a grep control which proves
 # itself against a planted declaration first.
 add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
+# Phase 19 m2: THE OPT-IN LIST. A test may include a `rolltui/c/` header — an internal one, since
+# the public declarations live in `rolltui/rolltui.h` — by naming it in its source and being listed
+# here. `public_header_test` asserts that every other consumer (hosts, tools, every unlisted test)
+# includes none: the count is an exact zero, not a ratchet.
+set(ROLLTUI_INTERNAL_TESTS
+  bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
+  input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp markdown_test.cpp
+  md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
+  width_test.cpp word_break_test.cpp wrap_test.cpp)
+list(JOIN ROLLTUI_INTERNAL_TESTS "," ROLLTUI_INTERNAL_TESTS_JOINED)
+target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_TESTS="${ROLLTUI_INTERNAL_TESTS_JOINED}")
 
 # Phase 14 m6a: THE RELEASE POINT, as an assertion — after shutdown() the library holds
 # NOTHING, asserted as a number in both configurations, with a control that proves the gauge

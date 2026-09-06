@@ -1,5 +1,8 @@
 #ifndef ROLLTUI_C_LIFETIME_H
 #define ROLLTUI_C_LIFETIME_H
+/* INTERNAL since Phase 19 m2: the public declarations of this module live in
+ * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
+ * reached by the library's own .c files and by a test that opts in by including this file by name. */
 /*
  * rolltui/c/rolltui_lifetime.h — THE RELEASE POINT, reachable from C (Phase 15 m2; the
  * implementation itself — process-wide AND per-thread releasers — moved here from
@@ -28,41 +31,14 @@
  * safe to never call, safe to call twice, and needs nothing to have happened first.
  */
 
+#include "rolltui/rolltui.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/* Registers a releaser to run at `rolltui_shutdown()`, in reverse order of registration.
- * Registering the same function twice registers it twice; register once, where the thing
- * is made. */
-void rolltui_on_shutdown(void (*fn)(void));
-
-/* Releases everything the library retains: every registered process-wide releaser (most
- * recently registered first), then every thread's own scratch via `rolltui_release_thread`
- * (which here can only release the CALLING thread's — the same limit `release_thread()`
- * has always had, since another thread's `_Thread_local` storage cannot be freed from
- * here). Safe to never call and safe to call twice — the second call finds nothing to do.
- * Nothing is invalidated for a host that carries on afterwards; the caches simply rebuild
- * on next use, which is what makes this safe to call at any time rather than only at the
- * very end. */
-void rolltui_shutdown(void);
-
-/* Releases just the calling thread's scratch buffers — the reused storage the draw path
- * lends (`rolltui/Scratch.hpp`). This is the explicit path for a long-lived thread that
- * wants to hand back its high-water mark, and for a leak check that needs the number to
- * be knowable BEFORE the process ends. A thread that is about to exit need not call it. */
-void rolltui_release_thread(void);
-
-/* Registers one per-thread buffer with `rolltui_release_thread`: `fn` is called with
- * `target` when the calling thread's scratch is released (by an explicit call, or by
- * `rolltui_shutdown`). This is `rolltui::detail::on_thread_release`'s C implementation —
- * declared for C++ in `rolltui/Scratch.hpp`, which keeps its own forward declaration
- * (deliberately not including this header) so that file "stays a template and nothing
- * else". Registering the same (fn, target) pair twice registers it twice. */
-void rolltui_thread_on_release(void (*fn)(void*), void* target);
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_LIFETIME_H */
+#endif /* {guard} */

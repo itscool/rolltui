@@ -75,6 +75,9 @@
 // `WindowsC` RAII fixture, `ROLLTUI_KEY_*`, `RolltuiMouseEvent`, a local `RouteC`) — the same
 // idiom `rolltui-paint` and `authored_screen_test.cpp` already use.
 #include "rolltui/rolltui.h"
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_widgets.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui_test.hpp"
 
 using namespace rolltui;

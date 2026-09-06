@@ -595,9 +595,11 @@ int main() {
   // today, and the copy this replaced agreed for months.
   {
     const std::string dir = ROLLTUI_SOURCE_DIR;
-    const std::string list = read_file(dir + "/c/rolltui_style.h");
+    // Since Phase 19 m2 the list is in `rolltui/rolltui.h`, the definition, where every
+    // vocabulary a public signature speaks lives; `rolltui_style.h` is the library's own.
+    const std::string list = read_file(dir + "/rolltui.h");
     check(list.find("ROLLTUI_ROLE_LIST(X)") != std::string::npos,
-          "the role list lives in the C header, as the one X-macro both languages expand");
+          "the role list lives in the definition, as the one X-macro both languages expand");
     check(list.find("X(md_code_block, MD_CODE_BLOCK)") != std::string::npos,
           "…and it carries the roles by name, so this is the list and not a forward declaration");
     // THERE IS NO SECOND SPELLING TO CHECK ANY MORE, which is a stronger result than the check
@@ -615,7 +617,8 @@ int main() {
       const std::string path = e.path().string();
       const std::string ext = e.path().extension().string();
       if (ext != ".h" && ext != ".hpp" && ext != ".c" && ext != ".cpp") continue;
-      if (path.find("/c/rolltui_style.") != std::string::npos) continue;  // the one home
+      if (path.find("/c/rolltui_style.") != std::string::npos) continue;  // the name table
+      if (path.size() >= 10 && path.compare(path.size() - 10, 10, "/rolltui.h") == 0) continue;  // the one home: the definition
       if (path.find("/third_party/") != std::string::npos) continue;
       const std::string text = read_file(path);
       // WHAT COUNTS AS A SECOND SPELLING IS A BODY, and two false positives taught it. A file
@@ -636,7 +639,7 @@ int main() {
         break;
       }
     }
-    check(restaters.empty(), "no source outside c/rolltui_style.h spells the role list a second time" +
+    check(restaters.empty(), "no source outside the definition (and the name table in rolltui_style.c) spells the role list a second time" +
                                  (restaters.empty() ? "" : " — " + restaters.front()));
     // ARMED: a Role enum that does NOT expand the list is what this is looking for, and the
     // matcher says so about a planted one. Without this the check reads the same whether it is
@@ -653,6 +656,7 @@ int main() {
       const std::string ext = e.path().extension().string();
       if (ext != ".h" && ext != ".hpp" && ext != ".c" && ext != ".cpp") continue;
       if (path.find("/c/rolltui_style.") != std::string::npos) continue;
+      if (path.size() >= 10 && path.compare(path.size() - 10, 10, "/rolltui.h") == 0) continue;
       if (path.find("/third_party/") != std::string::npos || path.find("/tests/") != std::string::npos) continue;
       if (read_file(path).find("\"md_code_block\"") != std::string::npos) namers.push_back(path.substr(dir.size() + 1));
     }
