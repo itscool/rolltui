@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_render.c — see rolltui_render.h. */
-#include "rolltui/c/rolltui_render.h"
+#include "rolltui/rolltui.h"
 
 #include <stdio.h>
 #include <string.h>

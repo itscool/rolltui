@@ -173,7 +173,33 @@ int main() {
     closedir(d);
   }
   std::sort(headers.begin(), headers.end());
-  check(headers.size() >= 34, "the internal header directory was read [" + std::to_string(headers.size()) + " headers]");
+  // RECORDED (Phase 19 m3): 39 headers under c/ before m3, 24 after — the 48 DELETE functions
+  // went, and every header that was left with nothing but its guard went with them (rule: a
+  // header exists because a .c needs a declaration from it; one that declares nothing is a
+  // file with no reason, and the check below keeps it that way).
+  const std::size_t kInternalHeaders = 24;
+  check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
+  {
+    std::vector<std::string> hollow;
+    for (const std::string& h : headers) {
+      const std::string t = strip_all_comments(read(std::string(ROLLTUI_SOURCE_DIR) + "/c/" + h));
+      std::istringstream in(t);
+      std::string line;
+      bool content = false;
+      while (std::getline(in, line)) {
+        const std::size_t at = line.find_first_not_of(" \t");
+        if (at == std::string::npos) continue;
+        const std::string body = line.substr(at);
+        if (body[0] == '#' || body == "extern \"C\" {" || body == "}") continue;
+        content = true;
+        break;
+      }
+      if (!content) hollow.push_back(h);
+    }
+    std::string joined;
+    for (const std::string& h : hollow) joined += " " + h;
+    check(hollow.empty(), "no internal header is left with nothing — a header that declares nothing is a file with no reason" + joined);
+  }
   {
     std::vector<std::string> without;
     for (const std::string& h : headers) {
@@ -392,8 +418,8 @@ int main() {
     for (const Row& r : kApi) ++totals[r.cls];
     // MEASURED 2026-09-06 (Phase 19 m1), re-recorded in m2 for the four functions a public
     // C++ member calls, the one the C consumer reaches, and the 19 allocator/map rows the
-    // widened census (every header under c/) added as INTERNAL.
-    const int kPublic = 582, kTool = 42, kInternal_ = 199, kDelete = 48;
+    // widened census (every header under c/) added as INTERNAL; DELETE 48 -> 0 in m3, the functions gone.
+    const int kPublic = 582, kTool = 42, kInternal_ = 199, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["TOOL_FACING"] == kTool && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", TOOL_FACING " + std::to_string(totals["TOOL_FACING"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) + ") — a moved class re-records them deliberately");

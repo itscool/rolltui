@@ -59,7 +59,6 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_theme.h"
@@ -101,15 +100,8 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
 int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const RolltuiThemeVocab* vocab,
                                        const RolltuiJsonValue** out_colours, RolltuiThemePresetReport* report);
 
-const RolltuiPresetReportFns* rolltui_theme_preset_report_fns(void);
-
-const RolltuiPresetReportFns* rolltui_layout_preset_report_fns(void);
-
-const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void);
-
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_PRESETS_H */

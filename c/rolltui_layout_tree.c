@@ -9,12 +9,6 @@
 
 /* ---- the child list ---------------------------------------------------------------------- */
 
-size_t rolltui_node_list_count(const RolltuiNodeList* l) { return l->n; }
-
-RolltuiLayoutNode* rolltui_node_list_at(const RolltuiNodeList* l, size_t i) {
-  return i < l->n ? l->v[i] : NULL;
-}
-
 /* THE MECHANICS ARE `RolltuiPtrVec`'s (rolltui_str.h), not a second copy of them: this list
  * has that layout by construction and the cast is what says so. Every array in this port
  * holds pointers to things it owns, so one mechanism with typed faces is the C answer to
@@ -194,10 +188,6 @@ int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b) {
 /* GROWING AMORTISED (rolltui_alloc.h strategy 2), exactly as RolltuiWindowStack's own `layers`
  * array already does it: a Layer is trivially relocatable (every owned byte is behind a
  * pointer elsewhere), so `rolltui_grow_zeroed` may move the whole array with one realloc. */
-
-size_t rolltui_layer_list_count(const RolltuiLayerList* l) { return l->n; }
-
-RolltuiLayer* rolltui_layer_list_at(const RolltuiLayerList* l, size_t i) { return i < l->n ? &l->v[i] : NULL; }
 
 RolltuiLayer* rolltui_layer_list_add(RolltuiLayerList* l) {
   l->v = (RolltuiLayer*)rolltui_grow_zeroed(l->v, &l->cap, l->n + 1, sizeof *l->v);

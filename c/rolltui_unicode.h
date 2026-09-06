@@ -39,7 +39,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,19 +56,7 @@ typedef struct RolltuiUnicodeGrapheme {
 #define ROLLTUI_BREAK_ALLOWED 1
 #define ROLLTUI_BREAK_MANDATORY 2
 
-/* ---- property lookups ------------------------------------------------------------------ */
-/* Each returns the property's value byte, which is one of the `ROLLTUI_<PROPERTY>_*` constants
- * in the generated `rolltui/unicode_tables.h`. These are the whole of the Unicode property
- * model a renderer needs; the algorithms below use them internally, so a caller drawing text
- * never crosses this boundary per code point. */
-unsigned char rolltui_u_line_break_class(RolltuiCodepoint cp);
-unsigned char rolltui_u_east_asian_width(RolltuiCodepoint cp);
-unsigned char rolltui_u_grapheme_break(RolltuiCodepoint cp);
-unsigned char rolltui_u_word_break(RolltuiCodepoint cp);
-unsigned char rolltui_u_indic_conjunct_break(RolltuiCodepoint cp);
 unsigned char rolltui_u_general_category(RolltuiCodepoint cp);
-int rolltui_u_is_extended_pictographic(RolltuiCodepoint cp);
-int rolltui_u_is_default_ignorable(RolltuiCodepoint cp);
 
 /* ---- UTF-8 ----------------------------------------------------------------------------- */
 /* One scalar at `pos`, into a caller's struct. `pos` must be < `len`. */
@@ -104,9 +91,8 @@ void rolltui_u_word_range(RolltuiUnicodeScratch* s, const char* utf8, size_t len
 void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
                                         unsigned char* out);
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_UNICODE_H */

@@ -38,7 +38,7 @@
 #define ROLLTUI_UNICODE_TABLES_H
 #include <stddef.h>
 
-#include "rolltui/c/rolltui_abi.h"
+#include "rolltui/rolltui.h"
 
 #ifdef __cplusplus
 extern "C" {

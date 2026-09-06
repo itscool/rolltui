@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_geom.c — the C side of the seam. See rolltui_geom.h. */
-#include "rolltui/c/rolltui_geom.h"
+#include "rolltui/rolltui.h"
 
 
 static int imax(int a, int b) { return a > b ? a : b; }

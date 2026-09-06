@@ -35,7 +35,7 @@
  */
 #include <stddef.h>
 
-#include "rolltui/c/rolltui_abi.h"
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_str.h"
 
 #ifdef __cplusplus

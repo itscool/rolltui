@@ -41,7 +41,6 @@ ROLLTUI_API(rolltui_str_free, PUBLIC)
 ROLLTUI_API(rolltui_str_get, PUBLIC)
 ROLLTUI_API(rolltui_str_list_add, PUBLIC)  /* the list's own API */
 ROLLTUI_API(rolltui_str_list_clear, PUBLIC)  /* the list's own API */
-ROLLTUI_API(rolltui_str_list_put, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_str_list_release, PUBLIC)
 ROLLTUI_API(rolltui_str_move, PUBLIC)  /* the string type's own API */
 ROLLTUI_API(rolltui_str_put, PUBLIC)
@@ -129,11 +128,9 @@ ROLLTUI_API(rolltui_md_lines_free, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_intern, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_interned, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_line, INTERNAL)
-ROLLTUI_API(rolltui_md_lines_mark, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_md_lines_new, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_open, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_reset, INTERNAL)
-ROLLTUI_API(rolltui_md_lines_rewind, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_md_lines_scratch, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_shift_code_blocks, INTERNAL)
 ROLLTUI_API(rolltui_md_lines_span, INTERNAL)
@@ -155,21 +152,14 @@ ROLLTUI_API(rolltui_u_decode_one, INTERNAL)
 ROLLTUI_API(rolltui_u_decode_utf8, PUBLIC)  /* one of the three Unicode functions a host needs (Phase 17 m4) */
 ROLLTUI_API(rolltui_u_decode_utf8_chars, PUBLIC)
 ROLLTUI_API(rolltui_u_display_width, PUBLIC)
-ROLLTUI_API(rolltui_u_east_asian_width, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_u_general_category, INTERNAL)
 ROLLTUI_API(rolltui_u_grapheme_boundaries, INTERNAL)
-ROLLTUI_API(rolltui_u_grapheme_break, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_u_graphemes, INTERNAL)
-ROLLTUI_API(rolltui_u_indic_conjunct_break, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_u_is_default_ignorable, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_u_is_extended_pictographic, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_u_line_break_class, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_u_line_break_opportunities, INTERNAL)
 ROLLTUI_API(rolltui_u_scratch_free, PUBLIC)
 ROLLTUI_API(rolltui_u_scratch_new, PUBLIC)
 ROLLTUI_API(rolltui_u_strip_escape_sequences, PUBLIC)
 ROLLTUI_API(rolltui_u_word_boundaries, INTERNAL)
-ROLLTUI_API(rolltui_u_word_break, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_u_word_range, INTERNAL)
 
 /* ---- rolltui_wrap.h — the wrap engine roll draws with; default PUBLIC ---- */
@@ -229,14 +219,12 @@ ROLLTUI_API(rolltui_theme_default_vocab, PUBLIC)
 ROLLTUI_API(rolltui_theme_dump, PUBLIC)
 ROLLTUI_API(rolltui_theme_load, PUBLIC)
 ROLLTUI_API(rolltui_theme_mode_from_name, PUBLIC)
-ROLLTUI_API(rolltui_theme_mode_name, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_theme_mode_setting_valid, PUBLIC)
 ROLLTUI_API(rolltui_theme_report_add_bad_value, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_report_add_missing_role, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_report_add_unknown_key, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_report_release, PUBLIC)
 ROLLTUI_API(rolltui_theme_report_set_error, INTERNAL)  /* the loader's report builder */
-ROLLTUI_API(rolltui_theme_set_style, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_theme_style, PUBLIC)
 
 /* ---- rolltui_theme_analysis.h — the studio and the theme editor check themes; roll never does; default TOOL_FACING ---- */
@@ -244,7 +232,6 @@ ROLLTUI_API(rolltui_apca_contrast, TOOL_FACING)
 ROLLTUI_API(rolltui_apply_fix, TOOL_FACING)
 ROLLTUI_API(rolltui_badge_names, TOOL_FACING)
 ROLLTUI_API(rolltui_check_claims, TOOL_FACING)
-ROLLTUI_API(rolltui_cvd_name, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_delta_e, TOOL_FACING)
 ROLLTUI_API(rolltui_fix_array_release, TOOL_FACING)
 ROLLTUI_API(rolltui_fix_confusable, TOOL_FACING)
@@ -339,9 +326,7 @@ ROLLTUI_API(rolltui_key_decoder_pending, INTERNAL)  /* the terminal's decoder */
 ROLLTUI_API(rolltui_key_deliverable, PUBLIC)
 ROLLTUI_API(rolltui_key_display_name, PUBLIC)
 ROLLTUI_API(rolltui_key_encode, INTERNAL)  /* the terminal's own (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_key_file_name, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_key_from_display_name, PUBLIC)
-ROLLTUI_API(rolltui_key_protocol_from_name, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_key_protocol_name, PUBLIC)
 ROLLTUI_API(rolltui_key_set_active_protocol, PUBLIC)
 ROLLTUI_API(rolltui_key_undeliverable_reason, PUBLIC)
@@ -350,10 +335,8 @@ ROLLTUI_API(rolltui_key_undeliverable_text, PUBLIC)
 /* ---- rolltui_layout.h — a host holds a RolltuiLayout and a window stack; default PUBLIC ---- */
 ROLLTUI_API(rolltui_action_decl_problem, PUBLIC)
 ROLLTUI_API(rolltui_action_list_add, PUBLIC)
-ROLLTUI_API(rolltui_action_list_at, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_action_list_clear, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_action_list_copy, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_action_list_count, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_action_list_equal, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_action_list_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_action_list_remove, INTERNAL)  /* only the library's own .c reaches it */
@@ -376,9 +359,7 @@ ROLLTUI_API(rolltui_draw_border, PUBLIC)
 ROLLTUI_API(rolltui_inner_rect, INTERNAL)  /* a step of layout */
 ROLLTUI_API(rolltui_layout_actions_free, PUBLIC)
 ROLLTUI_API(rolltui_layout_builtin, PUBLIC)
-ROLLTUI_API(rolltui_layout_builtin_count, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_layout_builtin_json, PUBLIC)
-ROLLTUI_API(rolltui_layout_builtin_name, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_layout_copy, PUBLIC)
 ROLLTUI_API(rolltui_layout_default_hooks, PUBLIC)
 ROLLTUI_API(rolltui_layout_default_roles, PUBLIC)
@@ -439,10 +420,8 @@ ROLLTUI_API(rolltui_layer_copy, PUBLIC)
 ROLLTUI_API(rolltui_layer_equal, PUBLIC)
 ROLLTUI_API(rolltui_layer_init, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layer_list_add, PUBLIC)
-ROLLTUI_API(rolltui_layer_list_at, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_layer_list_clear, PUBLIC)
 ROLLTUI_API(rolltui_layer_list_copy, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_layer_list_count, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_layer_list_equal, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layer_list_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layer_list_remove, INTERNAL)  /* only the library's own .c reaches it */
@@ -456,10 +435,8 @@ ROLLTUI_API(rolltui_layout_node_init, PUBLIC)
 ROLLTUI_API(rolltui_layout_node_new, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layout_node_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_node_list_add, PUBLIC)
-ROLLTUI_API(rolltui_node_list_at, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_node_list_clear, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_node_list_copy, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_node_list_count, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_node_list_insert, PUBLIC)
 ROLLTUI_API(rolltui_node_list_push, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_node_list_release, PUBLIC)  /* rule 1: a public type's lifecycle; only the library reaches it today */
@@ -495,7 +472,6 @@ ROLLTUI_API(rolltui_windows_draw, PUBLIC)
 ROLLTUI_API(rolltui_windows_env, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_free, PUBLIC)
 ROLLTUI_API(rolltui_windows_handle, PUBLIC)
-ROLLTUI_API(rolltui_windows_has_note, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_windows_has_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_has_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_help_lead, INTERNAL)  /* only the library's own .c reaches it */
@@ -571,7 +547,6 @@ ROLLTUI_API(rolltui_document_count, PUBLIC)  /* a public type's read API */
 ROLLTUI_API(rolltui_document_release, PUBLIC)
 
 /* ---- rolltui_input.h — the input widget: a host sets, selects, undoes and reads; default PUBLIC ---- */
-ROLLTUI_API(rolltui_input_area, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_input_can_redo, PUBLIC)
 ROLLTUI_API(rolltui_input_can_undo, PUBLIC)
 ROLLTUI_API(rolltui_input_caret, PUBLIC)
@@ -638,7 +613,6 @@ ROLLTUI_API(rolltui_input_type_from_name, INTERNAL)  /* the menu loader's vocabu
 ROLLTUI_API(rolltui_input_type_name, INTERNAL)  /* the menu loader's vocabulary */
 ROLLTUI_API(rolltui_menu_action_list_release, PUBLIC)
 ROLLTUI_API(rolltui_menu_apply_shortcuts, PUBLIC)
-ROLLTUI_API(rolltui_menu_area, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_menu_breadcrumb, PUBLIC)
 ROLLTUI_API(rolltui_menu_default_actions, PUBLIC)
 ROLLTUI_API(rolltui_menu_draw, PUBLIC)
@@ -651,7 +625,6 @@ ROLLTUI_API(rolltui_menu_filter, PUBLIC)
 ROLLTUI_API(rolltui_menu_find, PUBLIC)
 ROLLTUI_API(rolltui_menu_flat_count, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_menu_flat_label, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_menu_flat_path, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_menu_free, PUBLIC)
 ROLLTUI_API(rolltui_menu_handle, PUBLIC)
 ROLLTUI_API(rolltui_menu_item_actions, PUBLIC)
@@ -669,7 +642,6 @@ ROLLTUI_API(rolltui_menu_parse_json, PUBLIC)
 ROLLTUI_API(rolltui_menu_path, PUBLIC)
 ROLLTUI_API(rolltui_menu_reset, PUBLIC)
 ROLLTUI_API(rolltui_menu_root, PUBLIC)
-ROLLTUI_API(rolltui_menu_rows_for, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_menu_scroll_first, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_scroll_visible, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_selected, PUBLIC)
@@ -682,7 +654,6 @@ ROLLTUI_API(rolltui_menu_set_palette, PUBLIC)
 ROLLTUI_API(rolltui_menu_set_root, PUBLIC)
 ROLLTUI_API(rolltui_menu_set_validator_fn, PUBLIC)
 ROLLTUI_API(rolltui_menu_set_value, PUBLIC)
-ROLLTUI_API(rolltui_menu_unknown_validators, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_menu_visible, PUBLIC)
 
 /* ---- rolltui_menu_tree.h — the menu item tree a host builds and walks; default PUBLIC ---- */
@@ -709,7 +680,6 @@ ROLLTUI_API(rolltui_entry_layout_release, INTERNAL)  /* the transcript's own sto
 ROLLTUI_API(rolltui_entry_layout_store, INTERNAL)  /* the transcript's own store */
 ROLLTUI_API(rolltui_selection_range_in, INTERNAL)  /* a step of select */
 ROLLTUI_API(rolltui_text_pos_less, PUBLIC)  /* called from a public C++ member, so every C++ consumer already reaches it; a C consumer needs the same operation */
-ROLLTUI_API(rolltui_transcript_area, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_transcript_clear_selection, PUBLIC)  /* an operation a host performs */
 ROLLTUI_API(rolltui_transcript_copy_selection, PUBLIC)
 ROLLTUI_API(rolltui_transcript_current_match, PUBLIC)
@@ -743,7 +713,6 @@ ROLLTUI_API(rolltui_transcript_set_copy, PUBLIC)
 ROLLTUI_API(rolltui_transcript_set_folded, PUBLIC)
 ROLLTUI_API(rolltui_transcript_set_highlight, INTERNAL)  /* a step of find */
 ROLLTUI_API(rolltui_transcript_set_query, PUBLIC)
-ROLLTUI_API(rolltui_transcript_set_roles, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_transcript_stats, PUBLIC)
 ROLLTUI_API(rolltui_transcript_text_area, PUBLIC)
 ROLLTUI_API(rolltui_transcript_tick, PUBLIC)
@@ -784,16 +753,11 @@ ROLLTUI_API(rolltui_app_profile_app, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_content_at, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_content_count, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_document_count, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_document_name, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_document_sample, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_app_profile_dump, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_free, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_help_lead, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_help_note, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_app_profile_help_scope_at, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_help_scope_count, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_kind_count, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_kind_describes, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_app_profile_kind_name, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_kind_rule, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_menu_count, PUBLIC)
@@ -803,8 +767,6 @@ ROLLTUI_API(rolltui_app_profile_min_height, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_min_width, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_mount, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_new, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_note_at, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_note_count, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_app_profile_parse, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_report_add_bad_value, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_app_profile_report_add_unknown_key, INTERNAL)  /* the loader's report builder */
@@ -813,15 +775,9 @@ ROLLTUI_API(rolltui_app_profile_report_release, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_report_set_error, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_app_profile_report_summary, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_row_add_sample, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_row_count, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_row_name, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_row_sample_count, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_row_sample_label, DELETE)  /* reached by nothing, anywhere */
-ROLLTUI_API(rolltui_app_profile_row_sample_value, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_app_profile_set_app, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_set_help, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_set_min_size, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_submit_at, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_app_profile_submit_count, PUBLIC)
 
 /* ---- rolltui_embedded.h — the shipped files, by name; default PUBLIC ---- */
@@ -862,12 +818,10 @@ ROLLTUI_API(rolltui_json_string, PUBLIC)
 /* ---- rolltui_presets.h — the preset stores and domains; default PUBLIC ---- */
 ROLLTUI_API(rolltui_bindings_preset_domain_init, PUBLIC)  /* the bring-your-own-vocabulary rung */
 ROLLTUI_API(rolltui_bindings_preset_report_clean, PUBLIC)
-ROLLTUI_API(rolltui_bindings_preset_report_fns, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_bindings_preset_report_release, PUBLIC)
 ROLLTUI_API(rolltui_bindings_preset_report_summary, PUBLIC)
 ROLLTUI_API(rolltui_layout_preset_domain_init, PUBLIC)  /* the bring-your-own-vocabulary rung */
 ROLLTUI_API(rolltui_layout_preset_report_clean, PUBLIC)
-ROLLTUI_API(rolltui_layout_preset_report_fns, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_layout_preset_report_release, PUBLIC)
 ROLLTUI_API(rolltui_layout_preset_report_summary, PUBLIC)
 ROLLTUI_API(rolltui_preset_domain, PUBLIC)
@@ -913,7 +867,6 @@ ROLLTUI_API(rolltui_theme_preset_domain_init, PUBLIC)  /* the bring-your-own-voc
 ROLLTUI_API(rolltui_theme_preset_parse, PUBLIC)  /* the rung a host that ships its own theme FILES stands on — the C consumer reaches it */
 ROLLTUI_API(rolltui_theme_preset_parse_partial, INTERNAL)  /* the Theme domain's own parse */
 ROLLTUI_API(rolltui_theme_preset_report_clean, PUBLIC)
-ROLLTUI_API(rolltui_theme_preset_report_fns, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_theme_preset_report_release, PUBLIC)
 ROLLTUI_API(rolltui_theme_preset_report_summary, PUBLIC)
 ROLLTUI_API(rolltui_theme_preset_to_json, PUBLIC)
@@ -928,7 +881,6 @@ ROLLTUI_API(rolltui_thread_on_release, PUBLIC)  /* rule 1: a public type's lifec
 /* ---- rolltui_mem.h — the leak gauge — public by stated reason: it is how a consumer proves it released everything; default PUBLIC ---- */
 ROLLTUI_API(rolltui_mem_alloc, PUBLIC)
 ROLLTUI_API(rolltui_mem_free, PUBLIC)
-ROLLTUI_API(rolltui_mem_reset_stats, DELETE)  /* reached by nothing, anywhere */
 ROLLTUI_API(rolltui_mem_stats, PUBLIC)
 
 /* ---- rolltui_terminal.h — the one fd; default PUBLIC ---- */

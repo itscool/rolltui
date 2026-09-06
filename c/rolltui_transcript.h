@@ -37,16 +37,12 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_document.h"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_input.h" /* RolltuiCopyFn: one clipboard seam, not two */
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
-#include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -86,15 +82,10 @@ typedef struct RolltuiTranscriptRoles {
   unsigned char text_muted;
 } RolltuiTranscriptRoles;
 
-void rolltui_transcript_set_roles(RolltuiTranscript* t, const RolltuiTranscriptRoles* roles);
-
 int rolltui_transcript_viewport_height(const RolltuiTranscript* t);
-
-void rolltui_transcript_area(const RolltuiTranscript* t, RolltuiRect* out);
-
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_TRANSCRIPT_H */

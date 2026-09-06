@@ -1,8 +1,7 @@
 /* rolltui/c/rolltui_swap.c — see rolltui_swap.h. */
-#include "rolltui/c/rolltui_swap.h"
+#include "rolltui/rolltui.h"
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_render.h"
 
 /* OWNED, LONG-LIVED (CLAUDE.md's fourth strategy): two frames for the whole run, which is
  * the entire point of the type. `have_front` is the old hosts' `have_prev`, kept in one

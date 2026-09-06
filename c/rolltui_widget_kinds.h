@@ -104,7 +104,7 @@ void rolltui_windows_set_transcript_actions(RolltuiWindows* w, const RolltuiTran
 const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const RolltuiWindows* w);
 
 /* The seven roles a menu draw needs. Unlike a transcript's (baked into the `RolltuiTranscript`
- * once, at construction, by `rolltui_transcript_set_roles`), `rolltui_menu_draw` takes them as
+ * once, at construction), `rolltui_menu_draw` takes them as
  * a per-call parameter, so the menu kind below reads them back through `w` on every draw. */
 void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r);
 
@@ -128,4 +128,4 @@ const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len);
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_WIDGET_KINDS_H */

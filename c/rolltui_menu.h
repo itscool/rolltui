@@ -39,9 +39,10 @@
  * two of the three, so without this they would relocate into every consumer that needed
  * them — which is the failure the vocabulary rule names, one level up.
  *
- * The three are below as `rolltui_menu_apply_shortcuts`, `rolltui_menu_item_actions` and
- * `rolltui_menu_unknown_validators`. They take a TREE, not a menu, because that is what they
- * are about; the widget's own one-line versions are beside them.
+ * Two are below as `rolltui_menu_apply_shortcuts` and `rolltui_menu_item_actions` (the third,
+ * `rolltui_menu_unknown_validators`, was reached by nothing and went in Phase 19 m3). They take
+ * a TREE, not a menu, because that is what they are about; the widget's own one-line versions
+ * are beside them.
  *
  * ---- THE BOUNDARY'S RULES, all inherited and none new -----------------------------------
  *
@@ -57,13 +58,10 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_input.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_menu_tree.h"
 #include "rolltui/c/rolltui_screen.h"
-#include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_unicode.h"
 
@@ -97,29 +95,21 @@ int rolltui_menu_scroll_visible(const RolltuiMenu* m);
 /* The flattened list, for the palette. `path` is a BORROW of the entry's index path. */
 size_t rolltui_menu_flat_count(const RolltuiMenu* m);
 const char* rolltui_menu_flat_label(const RolltuiMenu* m, size_t i, size_t* len);
-size_t rolltui_menu_flat_path(const RolltuiMenu* m, size_t i, const size_t** out);
 
 /* The validator names this tree REFERENCES that nothing has registered, de-duplicated in
  * first-seen order. It asks through `RolltuiValidatorFn` — the SAME callback the widget's own
  * registry uses, called with empty text purely for its "is this name registered" answer — so a
  * host answers the question the one way it already answers it, rather than gaining a second
  * registry-shaped thing to keep in step. */
-/* REPLACES `*out`. `is_known` is a DECISION going IN (so it is a callback and stays one);
- * the names coming OUT are a result, so they go into the caller's list — the m4b split. */
-void rolltui_menu_unknown_validators(const RolltuiMenuItem* root, RolltuiValidatorFn is_known, void* ctx,
-                                     RolltuiStrList* out);
 
 const RolltuiMenuOptions* rolltui_menu_options(const RolltuiMenu* m);
-void rolltui_menu_area(const RolltuiMenu* m, RolltuiRect* out);
-int rolltui_menu_rows_for(const RolltuiMenu* m);
 
 void rolltui_menu_load_report_set_error(RolltuiMenuLoadReport* r, const char* s, size_t len);
 void rolltui_menu_load_report_add_unknown_key(RolltuiMenuLoadReport* r, const char* s, size_t len);
 void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char* s, size_t len);
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_MENU_H */

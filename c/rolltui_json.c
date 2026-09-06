@@ -3,7 +3,7 @@
  * exactly: `rolltui/tests/theme_test.cpp` is the oracle for both (round-trip, escapes
  * including `\u` surrogate pairs, the duplicate-key error and its line number), unchanged by
  * this port. Every allocation goes through `rolltui_alloc.h`'s closed set, named at the site. */
-#include "rolltui/c/rolltui_json.h"
+#include "rolltui/rolltui.h"
 
 #include <math.h>
 #include <stdio.h>

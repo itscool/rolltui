@@ -41,12 +41,10 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-const char* rolltui_key_file_name(unsigned char key, size_t* len);
 
 /* Called once per event, in order. The C++ side appends to its `std::vector<Event>`. */
 typedef void (*RolltuiEventFn)(void* ctx, const RolltuiEvent* e);
@@ -66,15 +64,10 @@ void rolltui_key_decoder_flush(RolltuiKeyDecoder* d, RolltuiEventFn emit, void* 
 int rolltui_key_decoder_pending(const RolltuiKeyDecoder* d);
 int rolltui_key_decoder_in_paste(const RolltuiKeyDecoder* d);
 
-/* The protocol of that name, or -1. CASE-INSENSITIVE, because "modifyOtherKeys" is the one
- * name in this library with an interior capital and a config file should not have to know. */
-int rolltui_key_protocol_from_name(const char* name, size_t len);
-
 long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_t cap);
-
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_KEYS_H */

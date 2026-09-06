@@ -87,4 +87,4 @@ void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_BINDINGS_H */

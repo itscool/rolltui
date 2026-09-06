@@ -1,6 +1,6 @@
 /* rolltui/c/rolltui_embedded.c — see rolltui_embedded.h. The tables themselves are
  * generated (cmake/embed_presets.cmake); this is the one lookup over them. */
-#include "rolltui/c/rolltui_embedded.h"
+#include "rolltui/rolltui.h"
 
 #include <string.h>
 

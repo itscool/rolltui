@@ -272,45 +272,30 @@ int main() {
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
         {"rolltui.h", 171},
-        {"c/rolltui_mem.h", 0},
-        {"c/rolltui_style.h", 0},
-        {"c/rolltui_diff.h", 0},
-        {"c/rolltui_json.h", 0},
         {"c/rolltui_widgets.h", 0},
         {"c/rolltui_str.h", 0},
-        {"c/rolltui_abi.h", 0},
         {"c/rolltui_layout.h", 3},
         {"c/rolltui_input.h", 0},
         {"c/rolltui_theme.h", 0},
-        {"c/rolltui_undo.h", 0},
-        {"c/rolltui_menu.h", 2},
+        {"c/rolltui_menu.h", 1},
         {"c/rolltui_theme_analysis.h", 0},
         {"c/rolltui_app_profile.h", 0},
         {"c/rolltui_presets.h", 2},
         {"c/rolltui_md_lines.h", 6},
         {"c/rolltui_screen.h", 1},
-        {"c/rolltui_geom.h", 0},
-        {"c/rolltui_render.h", 0},
-        {"c/rolltui_wrap.h", 0},
-        {"c/rolltui_frame_ops.h", 0},
         {"c/rolltui_layout_tree.h", 0},
         {"c/rolltui_keys.h", 0},
         {"c/rolltui_markdown.h", 0},
         {"c/rolltui_widget_kinds.h", 0},
         {"c/rolltui_theme_gen.h", 0},
-        {"c/rolltui_swap.h", 0},
         {"c/rolltui_transcript.h", 0},
         {"c/rolltui_effects.h", 0},
-        {"c/rolltui_marker.h", 0},
         {"c/rolltui_bindings.h", 2},
         {"c/rolltui_alloc.h", 0},
         {"c/rolltui_map.h", 2},
-        {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
         {"c/rolltui_unicode.h", 5},
         {"c/rolltui_menu_tree.h", 0},
-        {"c/rolltui_lifetime.h", 0},
-        {"c/rolltui_embedded.h", 0},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
@@ -377,7 +362,11 @@ int main() {
     // for itself; the total is unchanged at 194, which is the check that nothing was invented
     // or lost in the move. Every one of the 171 is a BORROW or an OWNED member whose lifetime
     // the struct's own comment states, exactly as it did in the header it came from.
-    check(total == 194, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // 194 -> 193 in Phase 19 m3: the one that went was the `const size_t** out` of
+    // `rolltui_menu_flat_path`, a DELETE row (reached by nothing) whose declaration left
+    // `c/rolltui_menu.h` with the function; the fifteen headers left with nothing (every row a 0)
+    // left the table with them.
+    check(total == 193, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

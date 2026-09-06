@@ -58,7 +58,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,4 +70,4 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_SCREEN_H */

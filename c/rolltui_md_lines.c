@@ -348,14 +348,6 @@ void rolltui_md_lines_span_range(const RolltuiMdLines* L, size_t i, size_t* firs
   if (count) *count = L->lrec[i].count;
 }
 
-size_t rolltui_md_lines_mark(const RolltuiMdLines* L) { return L->lrec_n; }
-
-void rolltui_md_lines_rewind(RolltuiMdLines* L, size_t mark) {
-  if (mark > L->lrec_n) die("rewind past the end");
-  L->lrec_n = mark;
-  L->published = 0;
-}
-
 /* ---- the logical text ---------------------------------------------------------------------- */
 
 void rolltui_md_lines_text_append(RolltuiMdLines* L, const char* s, size_t n) {

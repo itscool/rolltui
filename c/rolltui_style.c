@@ -4,7 +4,7 @@
  * the header, so a role added there gains its name in the same edit. That is the whole reason
  * the list is an X-macro (see the header's own note on why a second spelling drifts silently
  * rather than loudly). */
-#include "rolltui/c/rolltui_style.h"
+#include "rolltui/rolltui.h"
 
 #include <string.h>
 

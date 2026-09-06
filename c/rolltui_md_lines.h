@@ -52,7 +52,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -128,14 +127,6 @@ const RolltuiMdLine* rolltui_md_lines_all(const RolltuiMdLines* L);
  * name another line's spans while appending to the store. */
 void rolltui_md_lines_span_range(const RolltuiMdLines* L, size_t i, size_t* first, size_t* count);
 
-/* ---- the line array's own mark/rewind ---------------------------------------------------
- *
- * Drops lines from `mark` on and KEEPS their spans and bytes, so a line that was built only
- * to be read — a table cell, laid out at the column's width and then poured into the row —
- * can be dropped while the row line that references its spans stays valid. */
-size_t rolltui_md_lines_mark(const RolltuiMdLines* L);
-void rolltui_md_lines_rewind(RolltuiMdLines* L, size_t mark);
-
 /* ---- the logical text ------------------------------------------------------------------
  *
  * The document's text at infinite width — what every `src_p` offset indexes, what a
@@ -208,9 +199,8 @@ typedef struct RolltuiUnicodeGrapheme RolltuiUnicodeGrapheme;
 const RolltuiUnicodeGrapheme* rolltui_md_lines_clusters(RolltuiMdLines* L, const char* text, size_t n,
                                                         int ambiguous_wide, size_t* count, int* width);
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_MD_LINES_H */

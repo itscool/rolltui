@@ -38,32 +38,23 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_effects.h"
-#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_str.h"
-#include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-const char* rolltui_theme_mode_name(unsigned char mode, size_t* len);
 
 /* The RGB an ANSI index shows in xterm's default palette (0-15 the system colours, 16-231
  * the 6x6x6 cube, 232-255 the grey ramp). */
 void rolltui_ansi_index_rgb(unsigned char index, RolltuiStyleColor* out);
-
-/* Writes `*style` into `styles[role]`. A no-op — not a crash — when either pointer is NULL or
- * `role` is out of range, the same defensive shape `rolltui_theme_builtin_fill` already takes
- * for a mismatched count. */
-void rolltui_theme_set_style(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* style);
 
 void rolltui_theme_report_set_error(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_missing_role(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_unknown_key(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, size_t len);
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_THEME_H */

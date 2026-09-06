@@ -49,27 +49,18 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
-#include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_str.h"
-#include "rolltui/c/rolltui_style.h" /* the two role ordinals that cross; see the note there */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* ---- the child list, for C callers ------------------------------------------------------- */
-size_t rolltui_node_list_count(const RolltuiNodeList* l);
-RolltuiLayoutNode* rolltui_node_list_at(const RolltuiNodeList* l, size_t i);
 /* Takes ownership of `n`. */
 void rolltui_node_list_push(RolltuiNodeList* l, RolltuiLayoutNode* n);
 
-size_t rolltui_layer_list_count(const RolltuiLayerList* l);
-RolltuiLayer* rolltui_layer_list_at(const RolltuiLayerList* l, size_t i);
 void rolltui_layer_list_remove(RolltuiLayerList* l, size_t i); /* frees it, shifts the rest down */
-
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_LAYOUT_TREE_H */

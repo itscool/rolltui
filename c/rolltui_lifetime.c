@@ -18,7 +18,7 @@
  *     sharing one `cap` between two independently-allocated buffers would let the second
  *     `rolltui_grow` call see "already big enough" from the FIRST buffer's just-updated
  *     capacity and skip reallocating itself. */
-#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/rolltui.h"
 
 #include <stddef.h>
 

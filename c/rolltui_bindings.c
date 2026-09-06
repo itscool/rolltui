@@ -12,9 +12,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_embedded.h"
-#include "rolltui/c/rolltui_json.h"
-#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/rolltui.h"
 /* For `RolltuiLayoutAction`, which the header can only FORWARD-declare — `rolltui_layout.h`
  * includes this one, so including it back from the header would be a cycle. Dereferencing one
  * needs the definition, and a .c has no such constraint. */

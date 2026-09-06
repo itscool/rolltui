@@ -35,14 +35,10 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
-#include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -77,13 +73,11 @@ int rolltui_input_history_prev(RolltuiInput* in);
 int rolltui_input_history_next(RolltuiInput* in);
 
 int rolltui_input_rows_for(const RolltuiInput* in, int width);
-void rolltui_input_area(const RolltuiInput* in, RolltuiRect* out);
 /* The grapheme under a screen cell as [begin, end). 0 only before any layout(). */
 int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_t* end);
-
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_INPUT_H */

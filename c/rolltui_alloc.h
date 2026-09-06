@@ -51,7 +51,7 @@
 
 /* For `rolltui_mem_stats`, which belongs to the module that owns the counters. Every C
  * translation unit includes THIS header for the strategies, and so still gets it. */
-#include "rolltui/c/rolltui_mem.h"
+#include "rolltui/rolltui.h"
 
 #ifdef __cplusplus
 extern "C" {

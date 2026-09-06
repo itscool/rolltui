@@ -54,7 +54,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_md_lines.h"
 
 #ifdef __cplusplus
@@ -171,4 +170,4 @@ size_t rolltui_md_code_block_summary(const char* lang, size_t lang_n, size_t lin
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_MARKDOWN_H */

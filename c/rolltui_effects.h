@@ -63,9 +63,7 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_screen.h"
-#include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,4 +81,4 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_EFFECTS_H */

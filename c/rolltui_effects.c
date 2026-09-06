@@ -21,7 +21,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_unicode.h"
 
 /* ---- working memory --------------------------------------------------------------------- */

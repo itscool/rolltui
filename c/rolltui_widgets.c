@@ -603,10 +603,6 @@ void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, 
   }
 }
 
-int rolltui_windows_has_note(const RolltuiWindows* w, const char* name, size_t len) {
-  return rolltui_map_get(&w->notes, name, len) != NULL;
-}
-
 int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNote* out) {
   NoteBinding* b = (NoteBinding*)rolltui_map_get(&w->notes, name, len);
   if (!b || !b->fn) return 0;
@@ -1020,7 +1016,6 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
   if (handle_scrollbar(w, window, len, wd, e)) return 1;
   return wd->vt->handle ? wd->vt->handle(wd->ctx, e) : 0;
 }
-
 
 /* ---- the report's one-line form (Phase 17 m2a) --------------------------------------------- */
 void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out) {

@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_json.h"
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_theme.h"
 
 /* std::clamp/min/max have no C equivalent; three small helpers stand in for them
@@ -129,12 +129,6 @@ double rolltui_delta_e(RolltuiOkLab a, RolltuiOkLab b) {
 }
 
 static const char* const kCvdNames[ROLLTUI_CVD_COUNT] = {"protanopia", "deuteranopia", "tritanopia"};
-
-const char* rolltui_cvd_name(unsigned char type, size_t* len) {
-  const char* s = type < ROLLTUI_CVD_COUNT ? kCvdNames[type] : "";
-  if (len) *len = strlen(s);
-  return s;
-}
 
 /* Machado, Oliveira & Fernandes 2009, severity 1.0, in linear RGB. Rows sum to 1, so a grey
  * stays that grey (asserted in theme_analysis_test.cpp). An out-of-range `type` falls

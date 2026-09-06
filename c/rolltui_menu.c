@@ -9,7 +9,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_json.h"
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_layout.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_bindings.c` and
@@ -767,15 +767,6 @@ const char* rolltui_menu_flat_label(const RolltuiMenu* m, size_t i, size_t* len)
   return rolltui_str_get(&m->flat[i].label, len);
 }
 
-size_t rolltui_menu_flat_path(const RolltuiMenu* m, size_t i, const size_t** out) {
-  if (i >= m->flat_n) {
-    if (out) *out = NULL;
-    return 0;
-  }
-  if (out) *out = m->flat[i].path;
-  return m->flat[i].path_n;
-}
-
 /* ---- the visible list ------------------------------------------------------------------------------- */
 
 static int contains_ci(const char* hay, size_t hn, const char* needle, size_t nn) {
@@ -1434,16 +1425,10 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
 
 void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o) { m->opt = *o; }
 const RolltuiMenuOptions* rolltui_menu_options(const RolltuiMenu* m) { return &m->opt; }
-void rolltui_menu_area(const RolltuiMenu* m, RolltuiRect* out) { *out = m->area; }
 
 void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area) {
   m->area = area;
   ensure_visible(m);
-}
-
-int rolltui_menu_rows_for(const RolltuiMenu* m) {
-  const size_t n = build_visible((RolltuiMenu*)m);
-  return 1 + imax(1, (int)n);
 }
 
 /* The row's text, into a caller's string. */
@@ -2030,7 +2015,6 @@ void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out) {
  * (committed value, editing text, preview) are still readable. */
 RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m) { return m->edit; }
 
-
 /* ============================================================================================
  * THE THREE TREE WALKS (Phase 17 m3). See the header for why they are here rather than in the
  * shim: their stated reason for staying — "the C would gain a second place to know what
@@ -2123,14 +2107,3 @@ static void unknown_validators_walk(const RolltuiMenuItem* it, RolltuiValidatorF
     unknown_validators_walk(it->children.v[i], is_known, ctx, out, seen);
 }
 
-void rolltui_menu_unknown_validators(const RolltuiMenuItem* root, RolltuiValidatorFn is_known, void* ctx,
-                                     RolltuiStrList* out) {
-  ValidatorSeen seen;
-  size_t i;
-  if (!out) return;
-  rolltui_str_list_clear(out);
-  memset(&seen, 0, sizeof seen);
-  unknown_validators_walk(root, is_known, ctx, out, &seen);
-  for (i = 0; i < seen.cap; ++i) rolltui_str_free(&seen.seen[i]);
-  rolltui_mem_free(seen.seen);
-}

@@ -8,8 +8,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_embedded.h"
-#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/rolltui.h"
 
 #define ROLLTUI_NODE_WINDOW 0
 #define ROLLTUI_NODE_ROW 1
@@ -106,7 +105,6 @@ static int rect_empty(RolltuiRect r) { return r.w <= 0 || r.h <= 0; }
 static int rect_contains(RolltuiRect r, int x, int y) {
   return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 }
-
 
 /* ---- the text forms ------------------------------------------------------------------------ */
 
@@ -1091,12 +1089,6 @@ void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout*
 /* ---- RolltuiActionList: an owned array of RolltuiLayoutAction values --------------------------- */
 /* GROWING AMORTISED, exactly like RolltuiLayerList right beside it: a RolltuiLayoutAction is
  * two RolltuiStrs and nothing else, so it is trivially relocatable the same way. */
-
-size_t rolltui_action_list_count(const RolltuiActionList* l) { return l->n; }
-
-RolltuiLayoutAction* rolltui_action_list_at(const RolltuiActionList* l, size_t i) {
-  return i < l->n ? &l->v[i] : NULL;
-}
 
 RolltuiLayoutAction* rolltui_action_list_add(RolltuiActionList* l) {
   l->v = (RolltuiLayoutAction*)rolltui_grow_zeroed(l->v, &l->cap, l->n + 1, sizeof *l->v);
@@ -2276,7 +2268,6 @@ const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n) {
   return g_shipped_actions;
 }
 
-
 /* ---- the library's own hooks (Phase 17 m2a) ------------------------------------------------
  * See rolltui_layout.h for why these three questions no longer have to be asked back. */
 
@@ -2323,7 +2314,6 @@ const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
   };
   return &r;
 }
-
 
 /* ============================================================================================
  * THE BUILT-IN LAYOUTS, PARSED AND CACHED (Phase 17 m3) — `Layout.cpp`'s cache, moved. See the
@@ -2414,17 +2404,3 @@ const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len) {
   return NULL;
 }
 
-size_t rolltui_layout_builtin_count(void) {
-  builtin_layouts_fill();
-  return g_builtin_layout_n;
-}
-
-const char* rolltui_layout_builtin_name(size_t i, size_t* out_len) {
-  builtin_layouts_fill();
-  if (i >= g_builtin_layout_n) {
-    if (out_len) *out_len = 0;
-    return "";
-  }
-  if (out_len) *out_len = g_builtin_layouts[i].name_len;
-  return g_builtin_layouts[i].name;
-}

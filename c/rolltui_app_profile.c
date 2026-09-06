@@ -12,9 +12,7 @@
 #include <stdio.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_json.h"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_style.h"
+#include "rolltui/rolltui.h"
 
 /* A literal C string plus its length, computed once here rather than hand-counted at every
  * `rolltui_json_get`/`_set` call site — this file's own version of `rolltui_json.c`'s `JLIT`,
@@ -362,49 +360,10 @@ int rolltui_app_profile_kind_rule(const RolltuiAppProfile* p, size_t i) {
   if (!p || i >= p->kinds_n) return ROLLTUI_APP_PROFILE_SOURCE_FORBIDDEN;
   return p->kinds[i].rule;
 }
-const char* rolltui_app_profile_kind_describes(const RolltuiAppProfile* p, size_t i, size_t* len) {
-  if (!p || i >= p->kinds_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->kinds[i].describes, len);
-}
 
 size_t rolltui_app_profile_document_count(const RolltuiAppProfile* p) { return p ? p->documents_n : 0; }
-const char* rolltui_app_profile_document_name(const RolltuiAppProfile* p, size_t i, size_t* len) {
-  if (!p || i >= p->documents_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->documents[i].name, len);
-}
-const char* rolltui_app_profile_document_sample(const RolltuiAppProfile* p, size_t i, size_t* len) {
-  if (!p || i >= p->documents_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->documents[i].sample, len);
-}
-
-size_t rolltui_app_profile_row_count(const RolltuiAppProfile* p) { return p ? p->rows_n : 0; }
-const char* rolltui_app_profile_row_name(const RolltuiAppProfile* p, size_t i, size_t* len) {
-  if (!p || i >= p->rows_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->rows[i].name, len);
-}
-size_t rolltui_app_profile_row_sample_count(const RolltuiAppProfile* p, size_t i) {
-  return (p && i < p->rows_n) ? p->rows[i].sample_n : 0;
-}
-const char* rolltui_app_profile_row_sample_label(const RolltuiAppProfile* p, size_t i, size_t j, size_t* len) {
-  if (!p || i >= p->rows_n || j >= p->rows[i].sample_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->rows[i].sample[j].label, len);
-}
-const char* rolltui_app_profile_row_sample_value(const RolltuiAppProfile* p, size_t i, size_t j, size_t* len) {
-  if (!p || i >= p->rows_n || j >= p->rows[i].sample_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->rows[i].sample[j].value, len);
-}
 
 size_t rolltui_app_profile_submit_count(const RolltuiAppProfile* p) { return p ? p->submits_n : 0; }
-const char* rolltui_app_profile_submit_at(const RolltuiAppProfile* p, size_t i, size_t* len) {
-  if (!p || i >= p->submits_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->submits[i], len);
-}
-
-size_t rolltui_app_profile_note_count(const RolltuiAppProfile* p) { return p ? p->notes_n : 0; }
-const char* rolltui_app_profile_note_at(const RolltuiAppProfile* p, size_t i, size_t* len) {
-  if (!p || i >= p->notes_n) { if (len) *len = 0; return ""; }
-  return borrow(&p->notes[i], len);
-}
 
 size_t rolltui_app_profile_menu_count(const RolltuiAppProfile* p) { return p ? p->menus_n : 0; }
 const char* rolltui_app_profile_menu_name(const RolltuiAppProfile* p, size_t i, size_t* len) {
@@ -416,14 +375,6 @@ const char* rolltui_app_profile_menu_json(const RolltuiAppProfile* p, size_t i, 
   return borrow(&p->menus[i].json, len);
 }
 
-const char* rolltui_app_profile_help_lead(const RolltuiAppProfile* p, size_t* len) {
-  if (!p) { if (len) *len = 0; return ""; }
-  return borrow(&p->help_lead, len);
-}
-const char* rolltui_app_profile_help_note(const RolltuiAppProfile* p, size_t* len) {
-  if (!p) { if (len) *len = 0; return ""; }
-  return borrow(&p->help_note, len);
-}
 size_t rolltui_app_profile_help_scope_count(const RolltuiAppProfile* p) { return p ? p->help_scopes_n : 0; }
 const char* rolltui_app_profile_help_scope_at(const RolltuiAppProfile* p, size_t i, size_t* len) {
   if (!p || i >= p->help_scopes_n) { if (len) *len = 0; return ""; }

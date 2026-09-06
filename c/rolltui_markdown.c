@@ -13,10 +13,8 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_marker.h"
-#include "rolltui/c/rolltui_style.h" /* the role names this module's default mapping is written in */
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_unicode.h"
-#include "rolltui/c/rolltui_wrap.h"
 #include "rolltui/third_party/md4c/md4c.h"
 
 #define NONE ((size_t)-1)

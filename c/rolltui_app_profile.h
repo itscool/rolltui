@@ -48,7 +48,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_widgets.h"
 
@@ -59,28 +58,8 @@ void rolltui_app_profile_report_set_error(RolltuiAppProfileReport* r, const char
 void rolltui_app_profile_report_add_unknown_key(RolltuiAppProfileReport* r, const char* s, size_t len);
 void rolltui_app_profile_report_add_bad_value(RolltuiAppProfileReport* r, const char* s, size_t len);
 
-const char* rolltui_app_profile_kind_describes(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-const char* rolltui_app_profile_document_name(const RolltuiAppProfile* p, size_t i, size_t* len);
-const char* rolltui_app_profile_document_sample(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-size_t rolltui_app_profile_row_count(const RolltuiAppProfile* p);
-const char* rolltui_app_profile_row_name(const RolltuiAppProfile* p, size_t i, size_t* len);
-size_t rolltui_app_profile_row_sample_count(const RolltuiAppProfile* p, size_t i);
-const char* rolltui_app_profile_row_sample_label(const RolltuiAppProfile* p, size_t i, size_t j, size_t* len);
-const char* rolltui_app_profile_row_sample_value(const RolltuiAppProfile* p, size_t i, size_t j, size_t* len);
-
-const char* rolltui_app_profile_submit_at(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-size_t rolltui_app_profile_note_count(const RolltuiAppProfile* p);
-const char* rolltui_app_profile_note_at(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-const char* rolltui_app_profile_help_lead(const RolltuiAppProfile* p, size_t* len);
-const char* rolltui_app_profile_help_note(const RolltuiAppProfile* p, size_t* len);
-
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_APP_PROFILE_H */

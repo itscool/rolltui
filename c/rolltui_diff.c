@@ -6,7 +6,7 @@
  * Everything allocates through the closed set in `rolltui_alloc.h`, and every buffer lives
  * in the caller's handle: there is no `static` and no thread-local here, so two threads
  * colouring two blocks share nothing. */
-#include "rolltui/c/rolltui_diff.h"
+#include "rolltui/rolltui.h"
 
 #include <string.h>
 

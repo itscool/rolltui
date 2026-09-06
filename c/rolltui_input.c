@@ -768,7 +768,6 @@ void rolltui_input_layout(RolltuiInput* in, RolltuiRect area) {
 }
 
 int rolltui_input_top_row(const RolltuiInput* in) { return in->top; }
-void rolltui_input_area(const RolltuiInput* in, RolltuiRect* out) { *out = in->area; }
 
 void rolltui_input_cell_of(const RolltuiInput* in, size_t offset, int* row, int* col) {
   RolltuiInput* m = (RolltuiInput*)in;

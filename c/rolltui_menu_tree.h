@@ -31,7 +31,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 #include "rolltui/c/rolltui_str.h"
 
 #ifdef __cplusplus
@@ -45,4 +44,4 @@ RolltuiMenuItem* rolltui_menu_list_at(const RolltuiMenuItemList* l, size_t i);
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_MENU_TREE_H */

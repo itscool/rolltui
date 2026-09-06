@@ -42,8 +42,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
-#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_theme_analysis.h"
@@ -78,4 +76,4 @@ inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_THEME_GEN_H */

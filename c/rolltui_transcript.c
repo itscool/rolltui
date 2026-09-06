@@ -9,9 +9,8 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_map.h"
-#include "rolltui/c/rolltui_marker.h"
+#include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_unicode.h"
-#include "rolltui/c/rolltui_wrap.h"
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -931,10 +930,6 @@ static void draw_cell(void* ctx, const RolltuiMdSpan* sp, size_t k, const char* 
   c->x += rolltui_frame_put(c->f, c->x, c->y, text, text_n, width, st, link);
 }
 
-void rolltui_transcript_set_roles(RolltuiTranscript* t, const RolltuiTranscriptRoles* roles) {
-  t->roles_ = *roles;
-}
-
 void rolltui_transcript_draw(const RolltuiTranscript* ct, RolltuiFrame* f, RolltuiDrawScratch* d,
                              const RolltuiStyle* styles) {
   RolltuiTranscript* t = (RolltuiTranscript*)ct;
@@ -1582,7 +1577,6 @@ const RolltuiEntryLayout* rolltui_transcript_layout_of(const RolltuiTranscript* 
   return entry < t->layouts_n ? t->layouts_[entry] : NULL;
 }
 
-void rolltui_transcript_area(const RolltuiTranscript* t, RolltuiRect* out) { *out = t->area_; }
 void rolltui_transcript_text_area(const RolltuiTranscript* t, RolltuiRect* out) { *out = t->text_area_; }
 
 void rolltui_transcript_set_copy(RolltuiTranscript* t, RolltuiCopyFn fn, void* ctx) {
@@ -1613,8 +1607,8 @@ RolltuiTranscript* rolltui_transcript_new(void) {
    * caller right after this call — `rolltui::Transcript`'s constructor and
    * `transcript_test.cpp`'s handle wrote the IDENTICAL six-line table, which is rule 5's tell
    * that the API was wrong rather than the consumers. The role vocabulary is this library's
-   * own C enum now (`rolltui_style.h`), so a transcript can name its own defaults; a caller
-   * that wants different ones still calls `rolltui_transcript_set_roles`. */
+   * own C enum now (`rolltui.h`), so a transcript names its own defaults; the setter that let
+   * a caller choose different ones was reached by nothing and went in Phase 19 m3. */
   t->roles_.background = ROLLTUI_ROLE_BACKGROUND;
   t->roles_.selection = ROLLTUI_ROLE_SELECTION;
   t->roles_.find_match = ROLLTUI_ROLE_FIND_MATCH;

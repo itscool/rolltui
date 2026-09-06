@@ -1,6 +1,6 @@
 /* rolltui/c/rolltui_frame_ops.c — see rolltui_frame_ops.h. Compiled into both
  * configurations: one implementation of the three loops, not one per language. */
-#include "rolltui/c/rolltui_frame_ops.h"
+#include "rolltui/rolltui.h"
 
 #include <string.h>
 

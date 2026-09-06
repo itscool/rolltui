@@ -63,12 +63,9 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_screen.h"
-#include "rolltui/c/rolltui_style.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,8 +86,6 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
 
 void rolltui_widget_kind_clear(void);
 
-size_t rolltui_action_list_count(const RolltuiActionList* l);
-RolltuiLayoutAction* rolltui_action_list_at(const RolltuiActionList* l, size_t i);
 void rolltui_action_list_remove(RolltuiActionList* l, size_t i); /* frees it, shifts the rest down */
 
 /* Reads exactly the "actions" object of an already-parsed tree, APPENDING every string-
@@ -100,9 +95,6 @@ void rolltui_action_list_remove(RolltuiActionList* l, size_t i); /* frees it, sh
  * (one definition site is still the "default" file; this is a direct read of one key of it). */
 void rolltui_layout_read_actions_key(const RolltuiJsonValue* root, RolltuiLayoutAction** actions, size_t* actions_n,
                                     size_t* actions_cap);
-
-size_t rolltui_layout_builtin_count(void);
-const char* rolltui_layout_builtin_name(size_t i, size_t* out_len);
 
 /* Parses one layout file's ALREADY-PARSED JSON tree into `out` (an `out` the caller has run
  * `rolltui_loaded_layout_init` on — its old fields are not released first, matching
@@ -120,9 +112,8 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
 
 void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards);
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_LAYOUT_H */

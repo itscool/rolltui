@@ -1357,11 +1357,6 @@ const RolltuiStyle* rolltui_theme_style(const RolltuiStyle* styles, size_t role_
   return &styles[role];
 }
 
-void rolltui_theme_set_style(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* style) {
-  if (!styles || !style || role >= role_count) return;
-  styles[role] = *style;
-}
-
 /* ---- the mode and depth vocabulary (Phase 17 m2a) ------------------------------------------
  * See rolltui_theme.h for why these names moved here after that header spent a phase saying
  * they would not. The tables expand the X-macros; there is no second list to keep in step. */
@@ -1397,12 +1392,6 @@ static int lit_eq(const char* s, size_t len, const char* lit) {
 
 const char* rolltui_color_depth_name(unsigned char depth, size_t* len) {
   const char* p = kDepthNames[depth < ROLLTUI_DEPTH_COUNT ? depth : ROLLTUI_DEPTH_MONO];
-  if (len) *len = strlen(p);
-  return p;
-}
-
-const char* rolltui_theme_mode_name(unsigned char mode, size_t* len) {
-  const char* p = kModeNames[mode < ROLLTUI_MODE_COUNT ? mode : ROLLTUI_MODE_DARK];
   if (len) *len = strlen(p);
   return p;
 }
@@ -1470,7 +1459,6 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
   if (t[0] == '\0' || lit_eq(t, strlen(t), "dumb")) return ROLLTUI_DEPTH_MONO;
   return ROLLTUI_DEPTH_ANSI16;
 }
-
 
 /* ---- the library's own vocabulary table (Phase 17 m2a) -------------------------------------
  * See rolltui_theme.h for why this can exist now and could not before. */

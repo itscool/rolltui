@@ -20,8 +20,7 @@
 #include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_embedded.h"
-#include "rolltui/c/rolltui_lifetime.h"
+#include "rolltui/rolltui.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
 /* GROWING, AMORTISED (rolltui_alloc.h strategy 2). Not NUL-terminated by construction —
@@ -1130,7 +1129,6 @@ static const RolltuiPresetReportFns kThemePresetReportFns = {
     theme_preset_report_create,
     theme_preset_report_destroy,
 };
-const RolltuiPresetReportFns* rolltui_theme_preset_report_fns(void) { return &kThemePresetReportFns; }
 
 /* The vocab and the two validators, set once by `rolltui_theme_preset_domain_init` and read by
  * every call below — the same "keep a copy, hand it over every call" shape
@@ -1360,7 +1358,6 @@ static const RolltuiPresetReportFns kLayoutPresetReportFns = {
     layout_preset_report_create,
     layout_preset_report_destroy,
 };
-const RolltuiPresetReportFns* rolltui_layout_preset_report_fns(void) { return &kLayoutPresetReportFns; }
 
 /* The hooks and the shipped `default` layout's own actions, set once by
  * `rolltui_layout_preset_domain_init` — the same shape the Theme domain's vocab/validators
@@ -1579,7 +1576,6 @@ static const RolltuiPresetReportFns kBindingsPresetReportFns = {
     bindings_preset_report_create,
     bindings_preset_report_destroy,
 };
-const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void) { return &kBindingsPresetReportFns; }
 
 /* The three vocabulary hooks, set once by `rolltui_bindings_preset_domain_init` — the same
  * three `rolltui_bindings_load_json` itself already takes as parameters. */
@@ -1863,7 +1859,6 @@ int rolltui_preset_setting_index(const char* key, size_t len) {
   return -1;
 }
 
-
 /* ---- the save-as sentences (Phase 17 m2a) --------------------------------------------------
  * Indexed by ROLLTUI_SAVE_*; `rolltui::to_string(SaveResult)`'s four, moved with them. */
 static const char* const kSaveResultText[] = {
@@ -1880,7 +1875,6 @@ const char* rolltui_preset_save_result_text(int result, size_t* len) {
   if (len) *len = strlen(s);
   return s;
 }
-
 
 /* ---- the store's one-line problem sentence (Phase 17 m2a) ---------------------------------- */
 
@@ -1942,7 +1936,6 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
   rolltui_str_append(out, origin, len);
   if (rolltui_preset_store_modified(s)) rolltui_str_append(out, " (modified)", 11);
 }
-
 
 /* ============================================================================================
  * A SETTING'S VALUE IN THE WORKING COPY (Phase 17 m3). See the header for why

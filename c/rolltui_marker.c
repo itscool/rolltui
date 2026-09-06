@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_marker.c — the "▼ N more" marker. Contract in rolltui_marker.h. */
-#include "rolltui/c/rolltui_marker.h"
+#include "rolltui/rolltui.h"
 
 #include <stdio.h>
 #include <string.h>

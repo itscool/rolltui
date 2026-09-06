@@ -124,14 +124,7 @@ static int is_ignorable(RolltuiCodepoint cp) {
   return lookup(rolltui_u_table_default_ignorable, ROLLTUI_U_TABLE_DEFAULT_IGNORABLE_COUNT, cp, 0) != 0;
 }
 
-unsigned char rolltui_u_line_break_class(RolltuiCodepoint cp) { return lb_class(cp); }
-unsigned char rolltui_u_east_asian_width(RolltuiCodepoint cp) { return ea_width(cp); }
-unsigned char rolltui_u_grapheme_break(RolltuiCodepoint cp) { return gb_class(cp); }
-unsigned char rolltui_u_word_break(RolltuiCodepoint cp) { return wb_class(cp); }
-unsigned char rolltui_u_indic_conjunct_break(RolltuiCodepoint cp) { return incb_class(cp); }
 unsigned char rolltui_u_general_category(RolltuiCodepoint cp) { return gc_class(cp); }
-int rolltui_u_is_extended_pictographic(RolltuiCodepoint cp) { return is_pict(cp); }
-int rolltui_u_is_default_ignorable(RolltuiCodepoint cp) { return is_ignorable(cp); }
 
 /* ---- UTF-8 ------------------------------------------------------------------------------ */
 

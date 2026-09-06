@@ -107,9 +107,6 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_document.h"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_geom.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_input.h"
 #include "rolltui/c/rolltui_markdown.h"
@@ -157,7 +154,6 @@ int rolltui_windows_call_submit(RolltuiWindows* w, const char* name, size_t len,
 /* 0 (SendAndClear) when nothing is bound to `name` — `Windows::on_submit_for`'s own default. */
 int rolltui_windows_on_submit(const RolltuiWindows* w, const char* name, size_t len);
 
-int rolltui_windows_has_note(const RolltuiWindows* w, const char* name, size_t len);
 int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, RolltuiNote* out);
 
 const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name, size_t len, size_t* out_len);
@@ -172,9 +168,8 @@ const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w);
 
 const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w);
 
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_WIDGETS_H */

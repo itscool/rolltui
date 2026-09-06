@@ -49,10 +49,7 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
-#include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_str.h"
-#include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_theme.h"
 
 #ifdef __cplusplus
@@ -65,13 +62,8 @@ extern "C" {
  * `okl`) and one is enough here. */
 void rolltui_into_gamut(RolltuiOkLch c, RolltuiLin* out);
 
-/* A BORROW of a string literal; never NULL, `*len` 0 for an out-of-range type. `len` may
- * be NULL. */
-const char* rolltui_cvd_name(unsigned char type, size_t* len);
-
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_THEME_ANALYSIS_H */

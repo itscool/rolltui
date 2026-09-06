@@ -77,10 +77,6 @@ RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len) {
   return e;
 }
 
-void rolltui_str_list_put(void* ctx, const char* s, size_t len) {
-  if (ctx) rolltui_str_list_add((RolltuiStrList*)ctx, s, len);
-}
-
 void rolltui_str_put(void* ctx, const char* s, size_t len) {
   if (ctx) rolltui_str_append((RolltuiStr*)ctx, s, len);
 }

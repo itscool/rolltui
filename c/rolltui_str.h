@@ -42,7 +42,6 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_abi.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,12 +53,8 @@ void rolltui_ptrvec_insert(RolltuiPtrVec* a, size_t i, void* p);
 void* rolltui_ptrvec_take(RolltuiPtrVec* a, size_t i);
 void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller owns the elements */
 
-/* `RolltuiPutFn`-shaped over `_add`: pass this as `put` and the `RolltuiStrList*` as `ctx`. */
-void rolltui_str_list_put(void* ctx, const char* s, size_t len);
-
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /* {guard} */
+#endif /* ROLLTUI_C_STR_H */

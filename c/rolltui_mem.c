@@ -9,7 +9,7 @@
  * module is the BOTTOM of the allocation-strategy stack (see rolltui_mem.h), and nothing
  * here calls anything `rolltui_alloc.c` provides. */
 #include "rolltui/c/rolltui_alloc.h"
-#include "rolltui/c/rolltui_mem.h"
+#include "rolltui/rolltui.h"
 
 #include <stdatomic.h>
 #include <stddef.h>
@@ -78,17 +78,6 @@ void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_request
    * growing realloc included, so it is no longer `live + frees` — see `rolltui_mem_realloc`
    * below. */
   if (live_blocks) *live_blocks = atomic_load_explicit(&g_live, memory_order_relaxed);
-}
-
-/* Resets the CUMULATIVE counters only. `live_bytes` and `live_blocks` describe storage that
- * still exists and zeroing them would be a lie; `peak_bytes` is re-based to what is currently
- * live, which is the lowest value it could honestly take. */
-void rolltui_mem_reset_stats(void) {
-  atomic_store_explicit(&g_allocations, 0, memory_order_relaxed);
-  atomic_store_explicit(&g_frees, 0, memory_order_relaxed);
-  atomic_store_explicit(&g_bytes, 0, memory_order_relaxed);
-  atomic_store_explicit(&g_peak_bytes, atomic_load_explicit(&g_live_bytes, memory_order_relaxed),
-                        memory_order_relaxed);
 }
 
 void* rolltui_mem_alloc(size_t bytes) {

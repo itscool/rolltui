@@ -16,7 +16,7 @@
  * THE LINE UNDER CONSTRUCTION IS THE TAIL OF THOSE SAME BUFFERS, which is the trick the whole
  * file rests on: emitting a line does not copy its bytes anywhere, it just records where they
  * already are and closes the gap left by the spaces dropped at the break. */
-#include "rolltui/c/rolltui_wrap.h"
+#include "rolltui/rolltui.h"
 
 #include <string.h>
 
