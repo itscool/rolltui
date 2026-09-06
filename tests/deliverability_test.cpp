@@ -36,10 +36,7 @@
 // NAMES ("legacy"/"modifyOtherKeys"/"kitty") and the four undeliverability sentences have
 // no C form at all — Keys.cpp keeps that vocabulary out of the C layer on purpose, for a
 // config file and a `--keys` flag to spell — so this file re-states them locally, tied to
-// the C's own ordinals/codes so neither can drift. `library_actions()` and
-// `migrated_action()` are the same kind of vocabulary one level up (Bindings.cpp keeps
-// them out of rolltui_bindings.h for the same reason), so this file copies that table too
-// — the same trade tests/input_test.cpp already made for its own action table.
+// the C's own ordinals/codes so neither can drift.
 //
 #include <array>
 #include "rolltui/c/rolltui_embedded.h"
@@ -306,29 +303,8 @@ bool library_scope(std::string_view scope) {
     if (scope_of(a.name) == scope) return true;
   return false;
 }
-// THE MIGRATION TABLE, copied verbatim from Bindings.cpp — the one place any source
-// still carries the old `rolltui-playground` action names.
-constexpr std::pair<const char*, const char*> kLegacyActions[] = {
-    {"playground.cycle_theme", "studio.cycle_theme"},
-    {"playground.reload", "studio.reload"},
-    {"playground.quit", "studio.quit"},
-};
-std::optional<std::string> migrated_action(std::string_view legacy) {
-  for (const auto& [from, to] : kLegacyActions)
-    if (legacy == from) return std::string(to);
-  return std::nullopt;
-}
-
 int is_library_scope_cb(void*, const char* scope, std::size_t len) {
   return library_scope(std::string_view(scope, len)) ? 1 : 0;
-}
-int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
-  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
-  if (!to) return 0;
-  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
-  std::memcpy(out, to->data(), n);
-  *out_len = n;
-  return 1;
 }
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
   const std::string r = undeliverable_reason(*k, static_cast<KeyProtocol>(protocol));
@@ -345,7 +321,6 @@ struct BindingsLoadReport {
   std::vector<std::string> conflicts;
   std::vector<std::string> bad_values;
   std::vector<std::string> unknown_keys;
-  std::vector<std::string> migrated;
   bool clean() const {
     return error.empty() && unknown_actions.empty() && bad_chords.empty() && conflicts.empty() && bad_values.empty() &&
            unknown_keys.empty() && undeliverable.empty();
@@ -381,7 +356,6 @@ void copy_report(BindingsLoadReport& out, const RolltuiBindingsReport& in) {
   out.conflicts = copy(in.conflicts, in.conflicts_n);
   out.bad_values = copy(in.bad_values, in.bad_values_n);
   out.unknown_keys = copy(in.unknown_keys, in.unknown_keys_n);
-  out.migrated = copy(in.migrated, in.migrated_n);
 }
 
 // ---- the table: OWNED, an explicit new/free pair. NULL (rather than std::nullopt) is
@@ -399,8 +373,7 @@ BindingsPtr bindings_from_json(std::string_view text, BindingsLoadReport& report
   BindingsPtr b = new_bindings();  // seeded with library_actions(), exactly as Bindings() did
   RolltuiBindingsReport rep{};
   const int ok = rolltui_bindings_load_json(b.get(), text.data(), text.size(), static_cast<unsigned char>(deliver),
-                                            is_library_scope_cb, nullptr, migrate_cb, nullptr, reason_cb, nullptr,
-                                            &rep);
+                                            is_library_scope_cb, nullptr, reason_cb, nullptr, &rep);
   copy_report(report, rep);
   rolltui_bindings_report_release(&rep);
   if (!ok) b.reset();
@@ -608,14 +581,14 @@ int main() {
           "…and on kitty the very same table answers the key and prints the shortcut");
     set_active_key_protocol(KeyProtocol::Legacy);
 
-    // Neither of the two mercy rungs may become an undeliverability refusal by accident.
+    // The mercy rung may not become an undeliverability refusal by accident.
     BindingsLoadReport other;
     BindingsPtr o = bindings_from_json(
-        R"({"name":"o","bindings":{"input.submit":["enter"],"other.thing":["f9"],"playground.quit":["ctrl+q"]}})",
+        R"({"name":"o","bindings":{"input.submit":["enter"],"other.thing":["f9"],"studio.quit":["ctrl+q"]}})",
         other, KeyProtocol::Legacy);
-    check(o && other.clean() && other.migrated.size() == 1 && chords_for(o.get(), "studio.quit").size() == 1 &&
+    check(o && other.clean() && chords_for(o.get(), "studio.quit").size() == 1 &&
               chords_for(o.get(), "other.thing").size() == 1,
-          "another screen's action is still kept and a renamed one still migrated: deliverability touches neither");
+          "another screen's action is still kept: deliverability does not touch it");
   }
 
   // ---- 5. THE SHIPPED FILE IS DELIVERABLE EVERYWHERE ---------------------------------

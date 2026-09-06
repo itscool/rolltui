@@ -11,8 +11,6 @@
 // too — one declare() takes the layout's actions and the mounted tool's, a tool's
 // suggested chord fills a gap and never overrides, and a file naming an
 // unmounted tool's action still loads clean and keeps its row.
-// Phase 11 m2: the studio rename — a bindings file written before it has its
-// playground.* rows rewritten once, named in `migrated`, with no chord lost.
 // Phase 12 m3: a chord this terminal cannot deliver is refused BY NAME and its row kept
 // anyway — the loader's half of it; the deliverability model itself is measured against
 // the encodings in deliverability_test.
@@ -142,32 +140,9 @@ bool library_scope(std::string_view scope) {
   return false;
 }
 
-// ---- the migration table is `rolltui_migrated_action`'s (Phase 17 m3) --------------------
-// This was a local MIRROR of `Bindings.cpp`'s table, with a local reimplementation beside it,
-// under the comment "the ONLY place any source still carries the pre-rename names". Both
-// halves of that had stopped being true: `Bindings.cpp` is deleted, so it was a copy with no
-// original — and, worse, the assertion below called the LOCAL `migrated_action`, so it checked
-// this file's own three rows against themselves and said nothing whatever about the library.
-// A hollow assertion is this file's own definition of a defect.
-std::optional<std::string> migrated_action(std::string_view legacy) {
-  char buf[ROLLTUI_ACTION_NAME_MAX];
-  std::size_t n = 0;
-  if (!rolltui_migrated_action(nullptr, legacy.data(), legacy.size(), buf, &n)) return std::nullopt;
-  return std::string(buf, n);
-}
-
-// ---- the three vocabulary callbacks rolltui_bindings_load_json asks through, mirroring
-// Bindings.cpp's is_library_scope / migrate_cb / reason_cb exactly. ----
+// ---- the two vocabulary callbacks rolltui_bindings_load_json asks through ----
 int is_library_scope_cb(void*, const char* scope, std::size_t len) {
   return library_scope(std::string_view(scope, len)) ? 1 : 0;
-}
-int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
-  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
-  if (!to) return 0;
-  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
-  std::memcpy(out, to->data(), n);
-  *out_len = n;
-  return 1;
 }
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
   // THE LIBRARY'S SENTENCE (Phase 17 m2a). This was a verbatim copy of the six, made because
@@ -190,7 +165,6 @@ struct BindingsLoadReport {
   std::vector<std::string> conflicts;
   std::vector<std::string> bad_values;
   std::vector<std::string> unknown_keys;
-  std::vector<std::string> migrated;
   bool clean() const {
     return error.empty() && unknown_actions.empty() && bad_chords.empty() && conflicts.empty() && bad_values.empty() &&
            unknown_keys.empty() && undeliverable.empty();
@@ -223,7 +197,6 @@ void copy_report(BindingsLoadReport& out, const RolltuiBindingsReport& in) {
   out.conflicts = copy(in.conflicts, in.conflicts_n);
   out.bad_values = copy(in.bad_values, in.bad_values_n);
   out.unknown_keys = copy(in.unknown_keys, in.unknown_keys_n);
-  out.migrated = copy(in.migrated, in.migrated_n);
 }
 
 constexpr std::string_view kEnterAction = "input.submit";
@@ -378,7 +351,7 @@ RolltuiBindings* bindings_from_json(std::string_view text, BindingsLoadReport& r
   RolltuiBindings* b = bindings_new();
   RolltuiBindingsReport rep{};
   const int ok = rolltui_bindings_load_json(b, text.data(), text.size(), deliver, is_library_scope_cb, nullptr,
-                                            migrate_cb, nullptr, reason_cb, nullptr, &rep);
+                                            reason_cb, nullptr, &rep);
   copy_report(report, rep);
   rolltui_bindings_report_release(&rep);
   if (!ok) {
@@ -716,55 +689,6 @@ int main() {
           "…and UNmounting the tool makes its actions inert again, chords kept: nothing else can advertise them");
     rolltui_bindings_free(p);
   }
-  // ---- Phase 11 m2: an action this library RENAMED is migrated by the loader --------
-  // The rename `rolltui-playground` → `rolltui-studio` took three action names with it,
-  // out from under every bindings file already written. m1's kept-and-inert mercy is
-  // exactly the wrong answer here — the row is not another screen's, it is THIS one's
-  // under its old name — so the loader rewrites it once and says so.
-  {
-    check(migrated_action("playground.quit") == "studio.quit" && migrated_action("playground.reload") == "studio.reload" &&
-              migrated_action("playground.cycle_theme") == "studio.cycle_theme",
-          "the migration table maps all three renamed actions");
-    check(!migrated_action("studio.quit") && !migrated_action("playground.zoom") && !migrated_action("app.help"),
-          "…by NAME, never by scope prefix: a new name is not re-migrated, and a name the table does not carry is left alone");
-
-    const char* pre = R"({"name":"pre","bindings":{"input.submit":["enter"],"app.help":["f1"],
-        "editor.undo":["ctrl+z"],"playground.quit":["ctrl+q"],"playground.reload":["f5"],"playground.cycle_theme":["f3"]}})";
-    BindingsLoadReport mrep;
-    RolltuiBindings* m = bindings_from_json(pre, mrep);
-    check(m && mrep.clean(), "a bindings file written before the rename loads CLEAN [" + mrep.summary() + "]");
-    check(mrep.migrated.size() == 3 && mrep.migrated[0] == "'playground.quit' \xE2\x86\x92 'studio.quit'",
-          "…and every rewrite is NAMED in the report, old name and new [" + (mrep.migrated.empty() ? "" : mrep.migrated[0]) + "]");
-    check(bindings_chords_for(m, "studio.quit").size() == 1 && bindings_chords_for(m, "playground.quit").empty(),
-          "…the chord moved to the new name and nothing is left behind under the old one");
-    bindings_declare(m, {{"app.help", "open help"}}, {{"studio.quit", "quit", "ctrl+q"}});
-    check(bindings_action_for(m, ch('q', true), "studio") == "studio.quit",
-          "…so a pre-rename Ctrl-Q still quits the studio, which is the whole point of the rung");
-    BindingsLoadReport rt2;
-    RolltuiBindings* written = bindings_from_json(bindings_to_json(m, "pre"), rt2);
-    check(written && rt2.migrated.empty() && bindings_chords_for(written, "studio.quit").size() == 1,
-          "…and the next save writes the NEW name: migrated once, not on every load");
-    rolltui_bindings_free(written);
-    rolltui_bindings_free(m);
-
-    // THE CONTROL for this rung, and it is needed: without the migration a pre-rename
-    // Ctrl-Q would still quit — for the wrong reason, because suggest() would fill the
-    // gap left by a `studio.quit` the file never mentions. An EMPTY studio.quit row
-    // closes that gap (a suggestion never overrides one), so this file quits ONLY if
-    // the old row was really migrated onto it.
-    BindingsLoadReport crep;
-    RolltuiBindings* c = bindings_from_json(R"({"name":"c","bindings":{"input.submit":["enter"],"studio.quit":[],"playground.quit":["ctrl+q"]}})", crep);
-    bindings_declare(c, {}, {{"studio.quit", "quit", "ctrl+q"}});
-    check(c && crep.clean() && bindings_chords_for(c, "studio.quit").size() == 1 && bindings_action_for(c, ch('q', true), "studio") == "studio.quit",
-          "a migrated name landing on a row the file already wrote MERGES into it: one row, the chord live");
-    rolltui_bindings_free(c);
-    BindingsLoadReport nrep;
-    RolltuiBindings* n = bindings_from_json(R"({"name":"n","bindings":{"studio.quit":[]}})", nrep);
-    bindings_declare(n, {}, {{"studio.quit", "quit", "ctrl+q"}});
-    check(bindings_action_for(n, ch('q', true), "studio").empty(),
-          "…and the same file WITHOUT the old row leaves Ctrl-Q unbound — so the assertion above is the migration, not the tool's suggestion");
-    rolltui_bindings_free(n);
-  }
   // ---- Phase 12 m3: a chord this terminal cannot deliver is REFUSED, not bound to
   // silence. The MODEL (which chord, under which protocol, and why) is measured against
   // the encodings in deliverability_test; what belongs here is the LOADER's contract —
@@ -799,17 +723,17 @@ int main() {
               (named.empty() ? std::string(" none") : named));
     rolltui_bindings_free(shipped);
 
-    // Neither mercy rung may become an undeliverability refusal by accident: another
-    // screen's action is kept (m1) and a renamed one is rewritten (m2), both under a
-    // protocol that refuses one of the chords in the same file.
+    // The mercy rung may not become an undeliverability refusal by accident: another
+    // screen's action is kept (m1) under a protocol that refuses one of the chords in the
+    // same file.
     BindingsLoadReport mrep;
     RolltuiBindings* m = bindings_from_json(
-        R"({"name":"m","bindings":{"input.submit":["enter"],"other.thing":["f9"],"playground.quit":["ctrl+q"],
+        R"({"name":"m","bindings":{"input.submit":["enter"],"other.thing":["f9"],"studio.quit":["ctrl+q"],
             "app.zoom":["ctrl+shift+z"]}})",
         mrep, ROLLTUI_PROTOCOL_LEGACY);
-    check(m && mrep.undeliverable.size() == 1 && mrep.migrated.size() == 1 && bindings_chords_for(m, "studio.quit").size() == 1 &&
+    check(m && mrep.undeliverable.size() == 1 && bindings_chords_for(m, "studio.quit").size() == 1 &&
               bindings_chords_for(m, "other.thing").size() == 1 && bindings_chords_for(m, "app.zoom").size() == 1,
-          "kept-and-inert and the rename migration are untouched by deliverability — all three rows survive");
+          "kept-and-inert is untouched by deliverability — all three rows survive");
     rolltui_bindings_free(m);
   }
   // ---- the loader's report ----

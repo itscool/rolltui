@@ -543,7 +543,6 @@ void rolltui_bindings_report_release(RolltuiBindingsReport* r) {
   REL(conflicts);
   REL(bad_values);
   REL(unknown_keys);
-  REL(migrated);
 #undef REL
   memset(r, 0, sizeof *r);
 }
@@ -566,11 +565,9 @@ ADD(undeliverable, undeliverable)
 ADD(conflict, conflicts)
 ADD(bad_value, bad_values)
 ADD(unknown_key, unknown_keys)
-ADD(migrated, migrated)
 #undef ADD
 
 int rolltui_bindings_report_clean(const RolltuiBindingsReport* r) {
-  /* `migrated` does not count — a rename is said, never a problem (Bindings.hpp). */
   return r->error.n == 0 && r->unknown_actions_n == 0 && r->bad_chords_n == 0 && r->conflicts_n == 0 &&
          r->bad_values_n == 0 && r->unknown_keys_n == 0 && r->undeliverable_n == 0;
 }
@@ -650,7 +647,7 @@ static const Row* holder_row(const RolltuiBindings* b, const RolltuiChord* k, co
   return NULL;
 }
 
-/* One row of the file: `action` already migrated, `chords_v` its JSON value. Mirrors the body
+/* One row of the file: `action` its name, `chords_v` its JSON value. Mirrors the body
  * of the C++ loader's per-key loop exactly, including the two problems that are reported but
  * do NOT stop the row from loading (an undeliverable chord is kept; the file itself still
  * loads on any per-chord problem). */
@@ -668,9 +665,8 @@ static void load_one_row(RolltuiBindings* b, const char* action, size_t action_l
       rolltui_bindings_report_add_unknown_action(report, action, action_len);
       return;
     }
-    /* Only if there is no row yet — a MIGRATED name can land on one the file already wrote
-     * ("studio.quit": [] beside a "playground.quit"), and a second row for one action would
-     * split what the user sees from what fires. */
+    /* Only if there is no row yet: a file may name one action twice, and a second row for
+     * one action would split what the user sees from what fires. */
     rolltui_bindings_add_row(b, action, action_len);
   }
   if (!rolltui_json_is_array(chords_v)) {
@@ -759,9 +755,8 @@ static void load_one_row(RolltuiBindings* b, const char* action, size_t action_l
 }
 
 int rolltui_bindings_load_json(RolltuiBindings* b, const char* text, size_t len, unsigned char deliver_protocol,
-                               RolltuiScopeFn is_library, void* library_ctx, RolltuiMigrateFn migrate,
-                               void* migrate_ctx, RolltuiReasonFn reason, void* reason_ctx,
-                               RolltuiBindingsReport* report) {
+                               RolltuiScopeFn is_library, void* library_ctx, RolltuiReasonFn reason,
+                               void* reason_ctx, RolltuiBindingsReport* report) {
   RolltuiJsonValue* root;
   RolltuiStr jerr;
   const RolltuiJsonValue* map;
@@ -798,28 +793,7 @@ int rolltui_bindings_load_json(RolltuiBindings* b, const char* text, size_t len,
     size_t klen = 0;
     const char* key = rolltui_json_object_key_at(map, i, &klen);
     const RolltuiJsonValue* chords_v = rolltui_json_object_value_at(map, i);
-    /* A RENAMED action is rewritten once, here, before anything else reads the name — it has
-     * to be before, because the kept-and-inert rule below would otherwise file the OLD name
-     * as some other screen's row (Bindings.hpp). Said in `migrated`, never a problem. */
-    char migrate_buf[ROLLTUI_ACTION_NAME_MAX];
-    const char* action = key;
-    size_t action_len = klen;
-    size_t mlen = 0;
-    if (migrate && migrate(migrate_ctx, key, klen, migrate_buf, &mlen)) {
-      RolltuiStr msg;
-      memset(&msg, 0, sizeof msg);
-      rolltui_str_append(&msg, K("'"));
-      rolltui_str_append(&msg, key, klen);
-      rolltui_str_append(&msg, K("' \xE2\x86\x92 '"));
-      rolltui_str_append(&msg, migrate_buf, mlen);
-      rolltui_str_append(&msg, K("'"));
-      rolltui_bindings_report_add_migrated(report, msg.p, msg.n);
-      rolltui_str_free(&msg);
-      action = migrate_buf;
-      action_len = mlen;
-    }
-    load_one_row(b, action, action_len, chords_v, deliver_protocol, is_library, library_ctx, reason, reason_ctx,
-                report);
+    load_one_row(b, key, klen, chords_v, deliver_protocol, is_library, library_ctx, reason, reason_ctx, report);
   }
   /* The Enter rule, the other half: the rule's subject must have Enter, restored when a file
    * moved it away. The NAME is the vocabulary and was handed over once, at construction
@@ -1000,13 +974,10 @@ const RolltuiBindings* rolltui_bindings_default(void) {
    * WEAKEST model. Checking it against the ACTIVE protocol would let a kitty terminal ship a
    * file a plain xterm cannot press — the same defect one level up.
    *
-   * `migrate` is NULL on purpose and is not an omission: migration rewrites names a file
-   * written before a rename still uses, and THIS file ships with the current ones. A shipped
-   * file that needed migrating would be a build mistake, and passing NULL is what makes it
-   * one instead of quietly rewriting itself. `reason` is NULL because it only supplies English
-   * for a chord that cannot be delivered, and the abort below prints the report either way. */
-  ok = rolltui_bindings_load_json(b, text, tlen, ROLLTUI_PROTOCOL_LEGACY, rolltui_bindings_library_scope, NULL,
-                                  NULL, NULL, NULL, NULL, &rep);
+   * `reason` is NULL because it only supplies English for a chord that cannot be delivered,
+   * and the abort below prints the report either way. */
+  ok = rolltui_bindings_load_json(b, text, tlen, ROLLTUI_PROTOCOL_LEGACY, rolltui_bindings_library_scope, NULL, NULL,
+                                  NULL, &rep);
   if (!ok || !rolltui_bindings_report_clean(&rep)) {
     size_t slen = 0;
     const char* stext;
@@ -1072,57 +1043,6 @@ void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, 
   }
 }
 
-
-/* ============================================================================================
- * THE RENAMED ACTIONS (Phase 17 m3) — see the header for why this table's home is here and not
- * in `Bindings.cpp`, where it was until a host needed to assemble a preset store without C++.
- * ============================================================================================ */
-
-typedef struct {
-  const char* from;
-  size_t from_len;
-  const char* to;
-  size_t to_len;
-} LegacyAction;
-
-#define ROLLTUI_LEGACY(from_, to_) {from_, sizeof(from_) - 1, to_, sizeof(to_) - 1}
-static const LegacyAction kLegacyActions[] = {
-    ROLLTUI_LEGACY("playground.cycle_theme", "studio.cycle_theme"),
-    ROLLTUI_LEGACY("playground.reload", "studio.reload"),
-    ROLLTUI_LEGACY("playground.quit", "studio.quit"),
-};
-#undef ROLLTUI_LEGACY
-
-size_t rolltui_migrated_action_count(void) { return sizeof kLegacyActions / sizeof *kLegacyActions; }
-
-void rolltui_migrated_action_at(size_t i, const char** from, size_t* from_len, const char** to, size_t* to_len) {
-  if (i >= rolltui_migrated_action_count()) {
-    if (from) *from = "";
-    if (from_len) *from_len = 0;
-    if (to) *to = "";
-    if (to_len) *to_len = 0;
-    return;
-  }
-  if (from) *from = kLegacyActions[i].from;
-  if (from_len) *from_len = kLegacyActions[i].from_len;
-  if (to) *to = kLegacyActions[i].to;
-  if (to_len) *to_len = kLegacyActions[i].to_len;
-}
-
-int rolltui_migrated_action(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len) {
-  size_t i;
-  (void)ctx;
-  for (i = 0; i < rolltui_migrated_action_count(); ++i) {
-    const LegacyAction* a = &kLegacyActions[i];
-    size_t n;
-    if (a->from_len != len || memcmp(a->from, legacy, len) != 0) continue;
-    n = a->to_len < ROLLTUI_ACTION_NAME_MAX ? a->to_len : (size_t)ROLLTUI_ACTION_NAME_MAX;
-    memcpy(out, a->to, n);
-    *out_len = n;
-    return 1;
-  }
-  return 0;
-}
 
 size_t rolltui_undeliverable_reason_fn(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out,
                                        size_t cap) {

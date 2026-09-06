@@ -38,12 +38,9 @@
 //   - the three preset domains (`ThemePresets`/`LayoutPresets`/`BindingsPresets::shipped`)
 //     are built straight from `rolltui_{theme,layout,bindings}_preset_domain_init` — which
 //     is real, callable C — as PROCESS-WIDE statics, re-registering their releaser on every
-//     rebuild for the same reason the two caches above do. The bindings domain's `migrate`/
-//     `reason` callbacks are STUBS ("no migration", no reason text): the real ones need
-//     `Bindings.cpp`'s renamed-action table and `Keys.cpp`'s undeliverable-chord English,
-//     neither of which has a C form yet, and copying either into a test would be exactly the
-//     duplicated vocabulary CLAUDE.md's ownership rule forbids. The shipped "default" bindings
-//     preset needs neither (it names no legacy action, and the library aborts its own build if
+//     rebuild for the same reason the two caches above do. The bindings domain's `reason`
+//     callback is a STUB (no reason text): the real one supplies English for an undeliverable
+//     chord, and the shipped "default" bindings preset has none (the library aborts its own build if
 //     the shipped file ever bound an undeliverable chord), so the stubs are observationally
 //     identical to the real callbacks for this one lookup — see the report for the gap.
 //   - `diff_spans`' `RolltuiDiffRoles` is filled with ONE placeholder role for all seven
@@ -175,8 +172,8 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
 }
 
 // ---- the three preset domains, as process-wide statics over rolltui_{theme,layout,bindings}_
-// preset_domain_init — see the file header for why the bindings domain's migrate/reason are
-// stubs rather than a second copy of Bindings.cpp's/Keys.cpp's own tables. --------------------
+// preset_domain_init — see the file header for why the bindings domain's reason is a
+// stub rather than a second copy of the library's own table. ---------------------------------
 //
 // Each domain's OWN `rolltui_{theme,layout,bindings}_preset_report_fns()` is used for
 // `rep_fns` (not a caller-invented generic one): `rolltui_preset_shipped`'s domain-specific
@@ -188,11 +185,10 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
 // dereferences the layout preset report's own `.layout` field regardless of what report_fns
 // says).
 
-// "not a legacy name" / "no reason text" for every input — see the file header: the shipped
-// "default" bindings preset has no legacy action and (by the library's own build-time
-// guarantee) no undeliverable chord, so a stub that always answers "nothing to do" here is
-// observationally identical to the real migrate/reason callbacks for this one lookup.
-int migrate_noop(void*, const char*, std::size_t, char*, std::size_t*) { return 0; }
+// "no reason text" for every input — see the file header: the shipped "default" bindings
+// preset has (by the library's own build-time guarantee) no undeliverable chord, so a stub
+// that always answers "nothing to do" here is
+// observationally identical to the real reason callback for this one lookup.
 std::size_t reason_noop(void*, const RolltuiChord*, unsigned char, char*, std::size_t) { return 0; }
 
 RolltuiPresetDomain& theme_preset_domain() {
@@ -221,7 +217,7 @@ RolltuiPresetDomain& layout_preset_domain() {
 RolltuiPresetDomain& bindings_preset_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain out{};
-    rolltui_bindings_preset_domain_init(&out, rolltui_bindings_library_scope, nullptr, migrate_noop, nullptr,
+    rolltui_bindings_preset_domain_init(&out, rolltui_bindings_library_scope, nullptr,
                                         reason_noop, nullptr);
     return out;
   }();

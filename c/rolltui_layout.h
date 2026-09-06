@@ -225,7 +225,6 @@ void rolltui_widget_kind_clear(void);
 
 /* Phase 9's bare slot names and Phase 10's `custom:` contents → their m3 spelling. A BORROW
  * of a constant; NULL when `legacy` is not one of them. */
-const char* rolltui_migrated_content(const char* legacy, size_t len, size_t* out_len);
 
 /* ---- content: the value type, and parsing/formatting it, with the English (Phase 17 m2/m5).
  * `rolltui::Content` IS `RolltuiContent` below — the Phase 14 one-definition rule, same as
@@ -350,7 +349,7 @@ const RolltuiLayoutHooks* rolltui_layout_default_hooks(void);
  * own rule), never duplicated here. */
 void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayoutHooks* hooks, RolltuiStr* out);
 
-/* ---- the report: unknown keys / bad values are problems, migrations are notes (Layout.hpp's
+/* ---- the report: unknown keys / bad values are problems, notes are not (Layout.hpp's
  * `LayoutLoadReport::clean()`). Transparent, the same shape `rolltui_app_profile.h`'s own
  * report uses: `RolltuiStr` values in GROWING AMORTISED arrays. Zero-initialise before use. */
 typedef struct RolltuiLayoutReport {
@@ -359,8 +358,15 @@ typedef struct RolltuiLayoutReport {
   size_t unknown_keys_n, unknown_keys_cap;
   RolltuiStr* bad_values;
   size_t bad_values_n, bad_values_cap;
-  RolltuiStr* migrated; /* NOT part of "clean" — a note, never a problem */
-  size_t migrated_n, migrated_cap;
+  /* Things the loader DID that the file did not ask for and a host may want to say once —
+   * today exactly one: a file declaring no "actions" is given the shipped default's. NOT part
+   * of "clean", because none of it is a problem.
+   *
+   * It was called `migrated` until 2026-09-05, when the Phase 9 content-name rewrite that was
+   * its first feeder was retired. The name was the FIRST CALLER's, not the field's, and the
+   * surviving caller is not a migration at all — so the field is named for what it holds. */
+  RolltuiStr* notes;
+  size_t notes_n, notes_cap;
 } RolltuiLayoutReport;
 
 void rolltui_layout_report_release(RolltuiLayoutReport* r); /* frees everything; zeroes it */

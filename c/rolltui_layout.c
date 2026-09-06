@@ -651,13 +651,6 @@ static const KindRow kKinds[] = {
 
 /* Phase 9's slot names and Phase 10's `custom:` contents → their m3 form. A closed, one-way
  * table; the five composites are why it is a MAP rather than a rule (Layout.hpp). */
-static const char* const kLegacy[][2] = {
-    {"transcript", "transcript:session"}, {"input", "input:prompt"},       {"status", "rows:status"},
-    {"menu", "menu:main"},                {"custom:approval", "approval"}, {"custom:details", "details"},
-    {"custom:editor", "editor"},          {"custom:confirm", "confirm"},   {"custom:report", "report"},
-};
-#define LEGACY_COUNT (sizeof kLegacy / sizeof kLegacy[0])
-
 /* RUNG 2, and the first thing in this file that is RETAINED: a kind is a program's
  * vocabulary, not one screen's, so a host registers once at startup and every `Windows` in
  * the process parses layout files the same way. Released at `rolltui::shutdown()`. */
@@ -782,16 +775,6 @@ void rolltui_widget_kind_clear(void) {
   g_kind_releaser_registered = 0;
 }
 
-const char* rolltui_migrated_content(const char* legacy, size_t len, size_t* out_len) {
-  size_t i;
-  for (i = 0; i < LEGACY_COUNT; ++i)
-    if (strlen(kLegacy[i][0]) == len && memcmp(kLegacy[i][0], legacy, len) == 0) {
-      if (out_len) *out_len = strlen(kLegacy[i][1]);
-      return kLegacy[i][1];
-    }
-  return NULL;
-}
-
 /* ---- small local helpers shared by content-parsing and the loader below -----------------------
  * `K`/`streq` mirror `rolltui_app_profile.c`'s own (its own copy, not shared: a static helper
  * has no external linkage, and each is a two-line wrapper, not a strategy worth a header). */
@@ -804,7 +787,7 @@ static int streq(const char* s, size_t slen, const char* lit) {
 
 /* Appends a literal / a span to a message being built. Every report sentence below is built
  * with these two into a local `RolltuiStr msg = {0};`, then handed to `add_bad`/`add_unknown`/
- * `add_migrated`, which MOVE it into the report — one allocation per piece appended (GROWING
+ * `add_note`, which MOVE it into the report — one allocation per piece appended (GROWING
  * EXACT, `rolltui_str_append`'s own strategy), no fixed-size buffer to truncate a long content
  * string or file path against. */
 static void app(RolltuiStr* s, const char* lit) { rolltui_str_append(s, lit, strlen(lit)); }
@@ -840,19 +823,11 @@ int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, 
     /* UnknownKind: neither rung. THE RESOLUTION ORDER is the C's (rolltui_widget_kind_
      * resolve already walked it); this is rung 3 failing with a named reason, which is the
      * half that has to be in a language with sentences. */
-    size_t mlen = 0;
-    const char* m = rolltui_migrated_content(text, len, &mlen);
     if (problem) *problem = ROLLTUI_CONTENT_PROBLEM_UNKNOWN_KIND;
     if (source) *source = text + len;
     if (source_len) *source_len = 0;
     if (why) {
-      if (m) {
-        app(why, "'");
-        appn(why, text, len);
-        app(why, "' is an older spelling, not a widget kind; write '");
-        appn(why, m, mlen);
-        app(why, "'");
-      } else {
+      {
         size_t k, kc = rolltui_widget_kind_library_count(), hc = rolltui_widget_kind_host_count();
         app(why, "'");
         appn(why, text, colon);
@@ -896,17 +871,9 @@ int rolltui_content_parse(const char* text, size_t len, unsigned char* ordinal, 
       return 0;
     }
     if (rule == ROLLTUI_SOURCE_REQUIRED && src_len == 0) {
-      size_t mlen = 0;
-      const char* m = rolltui_migrated_content(text, len, &mlen); /* an older name that is also a kind name */
       if (problem) *problem = ROLLTUI_CONTENT_PROBLEM_MISSING_SOURCE;
       if (why) {
-        if (m) {
-          app(why, "'");
-          appn(why, text, len);
-          app(why, "' is an older spelling, not a content; write '");
-          appn(why, m, mlen);
-          app(why, "'");
-        } else {
+        {
           app(why, "'");
           appn(why, text, colon);
           app(why, "' needs a source (");
@@ -1032,13 +999,13 @@ void rolltui_layout_report_release(RolltuiLayoutReport* r) {
   rolltui_mem_free(r->unknown_keys);
   for (i = 0; i < r->bad_values_n; ++i) rolltui_str_free(&r->bad_values[i]);
   rolltui_mem_free(r->bad_values);
-  for (i = 0; i < r->migrated_n; ++i) rolltui_str_free(&r->migrated[i]);
-  rolltui_mem_free(r->migrated);
+  for (i = 0; i < r->notes_n; ++i) rolltui_str_free(&r->notes[i]);
+  rolltui_mem_free(r->notes);
   memset(r, 0, sizeof *r);
 }
 
 int rolltui_layout_report_clean(const RolltuiLayoutReport* r) {
-  /* migrated is deliberately NOT part of "clean" — LayoutLoadReport::clean()'s own rule: the
+  /* notes are deliberately NOT part of "clean" — LayoutLoadReport::clean()'s own rule: the
    * layout loaded, and a migration is a note rather than a problem. */
   return r->error.n == 0 && r->unknown_keys_n == 0 && r->bad_values_n == 0;
 }
@@ -1058,10 +1025,9 @@ static void add_unknown(RolltuiLayoutReport* r, RolltuiStr* msg) {
                                                      sizeof *r->unknown_keys);
   rolltui_str_move(&r->unknown_keys[r->unknown_keys_n++], msg);
 }
-static void add_migrated(RolltuiLayoutReport* r, RolltuiStr* msg) {
-  r->migrated =
-      (RolltuiStr*)rolltui_grow_zeroed(r->migrated, &r->migrated_cap, r->migrated_n + 1, sizeof *r->migrated);
-  rolltui_str_move(&r->migrated[r->migrated_n++], msg);
+static void add_note(RolltuiLayoutReport* r, RolltuiStr* msg) {
+  r->notes = (RolltuiStr*)rolltui_grow_zeroed(r->notes, &r->notes_cap, r->notes_n + 1, sizeof *r->notes);
+  rolltui_str_move(&r->notes[r->notes_n++], msg);
 }
 /* The common "<where><literal suffix>" shape — most report sentences below are exactly this
  * (an empty `where` composes a bare literal, reused for the few messages that have no path
@@ -1466,23 +1432,9 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
     rolltui_str_free(&at);
   }
 
-  /* Content is kind[:source] (Layout.hpp). A Phase 9 slot name is rewritten once and said
-   * so; anything else the table does not know is a bad value that names the fix. */
+  /* Content is kind[:source] (Layout.hpp). Anything the table does not know is a bad value
+   * that names the fix. */
   if (n->kind == ROLLTUI_NODE_WINDOW) {
-    size_t mlen = 0;
-    const char* m = rolltui_migrated_content(n->content.p, n->content.n, &mlen);
-    if (m) {
-      RolltuiStr msg = {0};
-      appn(&msg, where, where_len);
-      app(&msg, ".content: '");
-      appn(&msg, n->content.p, n->content.n);
-      app(&msg, "' \xE2\x86\x92 '");
-      appn(&msg, m, mlen);
-      app(&msg, "'");
-      add_migrated(report, &msg);
-      if (n->id.n == 0) rolltui_str_set(&n->id, n->content.p, n->content.n); /* the id it had before the rewrite */
-      rolltui_str_set(&n->content, m, mlen);
-    }
     {
       /* An UNKNOWN KIND is deliberately NOT a bad value here — rung 2 belongs to the host,
        * and this loader runs before a host has necessarily registered anything; `Windows`
@@ -1614,7 +1566,7 @@ static void strip_leading_dot(RolltuiStr* s) {
   /* The base layer's report paths begin with "." because its keys sit at the top level
    * (`layer_from_json` is called with `where=""`, so its own `at = where + "." + k` starts
    * with the dot) — stripped here so the report reads "root.column[0]...", not
-   * ".root.column[0]...". Deliberately NOT applied to `migrated`: the original C++ only
+   * ".root.column[0]...". Deliberately NOT applied to `notes`: the original C++ only
    * ever strips `unknown_keys`/`bad_values`, so a base window's migration note keeps its
    * leading dot — preserved as-is rather than "fixed", per this port's own rule. */
   if (s->n && s->p[0] == '.') {
@@ -1766,10 +1718,10 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
   layer_from_json(base, "", 0, 0, hooks, report, &out->base);
   rolltui_json_free(base);
 
-  /* A file written before actions existed (Phase 9, and every layout a user has saved
-   * since) declares none — and would silently lose every app key. It is given the shipped
-   * default's, named in `migrated` the way a Phase 9 content string is; the next save
-   * writes them into the file. An explicit "actions": {} means none and is kept. */
+  /* A file that declares no actions — a hand-written one, or any saved before the key
+   * existed — would silently lose every app key. It is given the shipped default's and told
+   * so in `notes`; the next save writes them into the file. An explicit "actions": {} means
+   * none and is kept. */
   if (!have_actions && default_actions_n) {
     RolltuiStr names = {0};
     size_t di;
@@ -1788,7 +1740,7 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
       app(&msg, "actions: none declared; the shipped default's were added (");
       appn(&msg, names.p, names.n);
       app(&msg, ")");
-      add_migrated(report, &msg);
+      add_note(report, &msg);
     }
     rolltui_str_free(&names);
   }

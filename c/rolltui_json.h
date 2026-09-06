@@ -165,10 +165,13 @@ int rolltui_json_has(const RolltuiJsonValue* v, const char* key, size_t key_len)
  * because free/clone/equal above never gate on `kind`). TAKES OWNERSHIP of `child`; a
  * replaced value is freed. Returns a BORROW of the now-stored child. */
 RolltuiJsonValue* rolltui_json_set(RolltuiJsonValue* v, const char* key, size_t key_len, RolltuiJsonValue* child);
-/* Removes `key` if the object has it, freeing the value; 1 when something was removed. The
- * erase-remove over `.obj` this header's own note lists as a C++-only operation — it is not
- * one, it is a missing function, and `rolltui_preset_migrate_theme_layout` is what asked for
- * it (Phase 17 m3). Order-preserving, like the `std::remove_if` it replaces. */
+/* Removes `key` if the object has it, freeing the value; 1 when something was removed.
+ * Order-preserving, like the `std::remove_if` it replaces.
+ *
+ * IT HAS NO CALLER IN THE LIBRARY as of 2026-09-05 — the preset-directory migration that
+ * asked for it was retired — and it is KEPT anyway, on a stated reason rather than inertia:
+ * it is the fourth of `get`/`has`/`set`/`erase`, and an object API that can add a key but
+ * not remove one is a hole a consumer has to work around with a rebuild. */
 int rolltui_json_object_erase(RolltuiJsonValue* v, const char* key, size_t key_len);
 
 size_t rolltui_json_array_size(const RolltuiJsonValue* v);

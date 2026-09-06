@@ -19,8 +19,8 @@
 //      a mouse press under a modal is dropped, a press on a focusable base window
 //      focuses it, set_base keeps focus across a reload when the id survives.
 //   7. Phase 10 m2 — CONTENT AND WIDGETS: the kind table and every way a content
-//      string can be wrong, said by name; the Phase 9 slot names migrated once by the
-//      loader; rolltui::Windows instantiating every kind, drawing each of them, and
+//      string can be wrong, said by name; rolltui::Windows instantiating every kind,
+//      drawing each of them, and
 //      turning every failure (unknown kind, unbound source, unreadable file) into a
 //      named report entry AND a visible error panel; the input sizing its own window;
 //      one widget per content, kept across a layout reload.
@@ -178,7 +178,7 @@ struct RouteC {
 
 // `rolltui::LayoutLoadReport` was a real C++ class (`clean()`, `std::vector<std::string>`
 // fields); `RolltuiLayoutReport` is the transparent C struct those fields now come from
-// directly (`.unknown_keys_n`/`.bad_values_n`/`.migrated_n`, and `RolltuiStr` elements that
+// directly (`.unknown_keys_n`/`.bad_values_n`/`.notes_n`, and `RolltuiStr` elements that
 // already compare equal to a `string_view`/literal). This adds back only the two pieces of
 // sugar every call site here still wants — a zeroing default constructor and `.clean()` — a
 // SHAPE, never a rule: `rolltui_layout_report_clean` is the library's own, called through.
@@ -367,12 +367,6 @@ bool register_widget_kind_c(std::string_view name, unsigned char rule, std::stri
   return refusal == ROLLTUI_REGISTER_OK;
 }
 void clear_registered_widget_kinds_c() { rolltui_widget_kind_clear(); }
-std::optional<std::string> migrated_content_c(std::string_view legacy) {
-  std::size_t n = 0;
-  const char* p = rolltui_migrated_content(legacy.data(), legacy.size(), &n);
-  if (!p) return std::nullopt;
-  return std::string(p, n);
-}
 std::vector<std::string> widget_kind_names_c() {
   std::vector<std::string> out;
   for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) out.emplace_back(widget_kind_name_c(static_cast<WidgetKind>(i)));
@@ -605,12 +599,10 @@ struct BindingsFileReport : RolltuiBindingsReport {
 };
 std::optional<BindingsC> bindings_from_json_c(std::string_view text, BindingsFileReport& report) {
   RolltuiBindings* b = rolltui_bindings_new_seeded();
-  // migrate/reason NULL: the same posture `rolltui_bindings_default()` itself takes for a file
-  // that never needed either (rolltui_bindings.c's own comment on that call) — this suite's
-  // fixtures name no legacy action and no undeliverable chord.
+  // reason NULL: the same posture `rolltui_bindings_default()` itself takes (rolltui_bindings.c's
+  // own comment on that call) — this suite's fixtures name no undeliverable chord.
   const int ok = rolltui_bindings_load_json(b, text.data(), text.size(), rolltui_key_active_protocol(),
-                                            rolltui_bindings_library_scope, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                            &report);
+                                            rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &report);
   if (!ok) {
     rolltui_bindings_free(b);
     return std::nullopt;
@@ -747,9 +739,9 @@ struct WindowsC {
     const char* d = rolltui_windows_dir(w, &n);
     if (d && n) {
       const std::string menus_dir = std::string(d, n) + "/menus";
-      rolltui_preset_json_names_in(
-          menus_dir.data(), menus_dir.size(),
-          [](void* ctx, const char* s, std::size_t len) { static_cast<std::vector<std::string>*>(ctx)->emplace_back(s, len); }, &out);
+      RolltuiStrList names;
+      rolltui_preset_json_names_in(menus_dir.data(), menus_dir.size(), &names);
+      for (const RolltuiStr& s : names) out.push_back(s.str());
     }
     for (std::size_t i = 0; i < rolltui_windows_host_menu_count(w); ++i) {
       std::size_t hn = 0;
@@ -1347,44 +1339,29 @@ int main() {
       const bool bad = !parse_content_c(b.text, &why);
       check(bad && why.find(b.names) != std::string::npos, std::string("'") + b.text + "' is refused: " + why);
     }
+    // A bare kind that needs a source is refused with the SOURCE it needs, and one that is
+    // not a kind at all is refused with the list — no table of older spellings in between.
     std::string why;
-    check(!parse_content_c("transcript", &why) && why.find("transcript:session") != std::string::npos,
-          "a bare Phase 9 slot name that is also a kind name says what to write instead: " + why);
-    check(!parse_content_c("status", &why) && why.find("rows:status") != std::string::npos,
-          "…and one that is not: " + why);
+    check(!parse_content_c("transcript", &why) && why.find("needs a source") != std::string::npos,
+          "a bare kind that needs a source says so: " + why);
+    check(!parse_content_c("status", &why) && why.find("is not a widget kind") != std::string::npos,
+          "…and a name that is no kind at all gets the list: " + why);
     clear_registered_widget_kinds_c();
   }
   {
-    // The Phase 9 slot names, migrated once by the loader.
-    check(migrated_content_c("transcript") == "transcript:session" && migrated_content_c("status") == "rows:status" &&
-              migrated_content_c("input") == "input:prompt" && migrated_content_c("menu") == "menu:main",
-          "every Phase 9 slot name that still needs one has a migration");
-    // Phase 11 m3: `custom:X` became the registered kind `X`. The five composites'
-    // PHASE 9 spelling is now valid again — `approval` is a kind name — so their old
-    // rows are gone from the table rather than pointing at a spelling that no longer
-    // parses, and migrating a valid name would be a rewrite loop.
-    check(migrated_content_c("custom:approval") == "approval" && migrated_content_c("custom:details") == "details" &&
-              migrated_content_c("custom:editor") == "editor" && migrated_content_c("custom:confirm") == "confirm" &&
-              migrated_content_c("custom:report") == "report",
-          "every Phase 10 `custom:` content migrates to the registered kind of the same name");
-    check(!migrated_content_c("approval") && !migrated_content_c("details") && !migrated_content_c("report"),
-          "…and the Phase 9 spelling of those five is NOT migrated: it is the m3 name already");
-    check(!migrated_content_c("help") && !migrated_content_c("transcript:session") && !migrated_content_c("banana"),
-          "help never moved, an m2 content is not re-migrated, and an unknown name has no migration");
-
+    // m4: a file with no "actions" key is given the shipped default's — it must not
+    // silently lose every app key — and the loader says so in `notes`, which is the one
+    // thing that array still carries.
     LayoutReport rep;
     const std::optional<RolltuiLayout> l = load_layout_c(R"({"name":"old","focus":"input","root":{"column":[
-        {"content":"transcript","focusable":true},{"content":"input","size":3,"focusable":true}]}})", rep);
-    check(l && rep.clean(), "a Phase 9 layout still loads, clean");
-    check(rep.migrated_n == 3 && rep.migrated[0].find("'transcript' \xE2\x86\x92 'transcript:session'") != std::string::npos,
-          "…and every rewritten content is named in the report [" + (rep.migrated_n == 0 ? "" : rep.migrated[0]) + "]");
-    // m4: it also declared no actions, so it was given the shipped default's — a Phase 9
-    // layout must not silently lose every app key.
-    check(l && l->actions == shipped_default_actions_c() && rep.migrated[rep.migrated_n - 1].find("actions: none declared") == 0,
-          "…and a file with no \"actions\" key is given the shipped default's, named in the report");
+        {"content":"transcript:session","id":"transcript","focusable":true},
+        {"content":"input:prompt","id":"input","size":3,"focusable":true}]}})", rep);
+    check(l && rep.clean(), "a layout declaring no actions still loads, clean");
+    check(l && l->actions == shipped_default_actions_c() && rep.notes_n == 1 &&
+              rep.notes[0].find("actions: none declared") == 0,
+          "…and it is given the shipped default's, named in the report [" + (rep.notes_n == 0 ? "" : rep.notes[0]) + "]");
     const RolltuiLayoutNode& first = l->base.root.children[0];
-    check(first.id == "transcript" && first.content == "transcript:session",
-          "the window KEEPS its Phase 9 id (host lookups and 'focus' still work) and gains the new content");
+    check(first.id == "transcript" && first.content == "transcript:session", "the window keeps its id and its content");
     check(l->base.focus == "input" && l->base.root.children[1].id == "input", "…so the layout's own focus id still names a window");
 
     LayoutReport rep2;
@@ -1414,7 +1391,7 @@ int main() {
     check(l && rep.clean() && l->actions.size() == 2 && l->actions[0].name == "app.zoom" &&
               l->actions[0].description == "zoom in" && l->actions[1].name == "mine.thing",
           "\"actions\" is an object of name → description, in file order");
-    check(rep.migrated_n == 0, "…and a file that declares actions is not given the shipped default's");
+    check(rep.notes_n == 0, "…and a file that declares actions is not given the shipped default's");
 
     LayoutReport er;
     const std::optional<RolltuiLayout> bad = load_layout_c(R"({"name":"bad","actions":{"app.a":"ok","nodot":"x","app.":"x",
@@ -1433,10 +1410,10 @@ int main() {
           "a non-string description is a bad value [" + v(4) + "]");
 
     // Present-but-empty is a deliberate "none" and must differ from absent, or the
-    // migration above would quietly re-add what someone deliberately removed.
+    // fill-in above would quietly re-add what someone deliberately removed.
     LayoutReport nr;
     const std::optional<RolltuiLayout> none = load_layout_c(R"({"name":"none","actions":{},"root":{"content":"help"}})", nr);
-    check(none && none->actions.empty() && nr.migrated_n == 0, "an explicit \"actions\": {} declares none and is left alone");
+    check(none && none->actions.empty() && nr.notes_n == 0, "an explicit \"actions\": {} declares none and is left alone");
 
     // Round trip, including the empty case (which is why "actions" is always written).
     LayoutReport rr;
@@ -1444,7 +1421,7 @@ int main() {
     check(back && rr.clean() && back->actions == l->actions && *back == *l, "a layout's actions round-trip through layout_to_json");
     LayoutReport rn2;
     const std::optional<RolltuiLayout> none_back = load_layout_c(layout_to_json_c(*none), rn2);
-    check(none_back && none_back->actions.empty() && rn2.migrated_n == 0, "…and so does declaring none");
+    check(none_back && none_back->actions.empty() && rn2.notes_n == 0, "…and so does declaring none");
 
     // Every shipped layout declares the same app scope: switching arrangement must not
     // change which keys work.

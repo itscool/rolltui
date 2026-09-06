@@ -19,12 +19,10 @@
  *
  * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW ------------------------------------------
  *
- * **Which actions exist.** `library_actions()` is a table of names and English
- * descriptions, and `migrated_action()` is three renamed names; both stay in `Bindings.cpp`
- * for the reason m2 kept `Role` out of `rolltui_diff.h` — a vocabulary written down twice
- * is a second thing to drift. `studio_golden_test`'s grep control depends on the second one
- * living in exactly one file, which is a check that would have quietly weakened if the
- * table had been moved down here.
+ * **Which actions exist.** `rolltui_library_actions.c` owns that table — names and English
+ * descriptions — and this file asks it through `RolltuiScopeFn`, for the reason m2 kept
+ * `Role` out of `rolltui_diff.h`: a vocabulary written down twice is a second thing to
+ * drift.
  *
  * **Which SCOPES are the library's.** `declare()` is authoritative over every non-library
  * scope, and "non-library" is a fact about `library_actions()`. So the table is TOLD, by a
@@ -154,14 +152,23 @@ const char* rolltui_bindings_scope_of(const char* action, size_t len, size_t* ou
 
 /* ---- the file format (Phase 17 m1): TEXT across the boundary, never a tree ----------------
  *
- * The loader and its report move here now that `rolltui_json.h` exists; what stays this
- * module's C++ (Bindings.cpp) is exactly what stayed out of THIS file at Phase 15 m3 for the
- * same reason: `library_actions()` and `migrated_action()` are a VOCABULARY (which action
- * names exist; which three were renamed), asked back through callbacks rather than moved,
- * matching `rolltui_bindings_undeclare_others`'s `RolltuiScopeFn` above. A fourth vocabulary
- * joins them for the same reason: the six English sentences for an undeliverable chord live
- * in `Keys.cpp` (`rolltui_keys.h` states why — "the C classifies and never carries a
- * sentence") and must not be copied here either.
+ * The loader and its report live here. `library_actions()` is a VOCABULARY — which action
+ * names exist — asked back through a callback rather than moved, matching
+ * `rolltui_bindings_undeclare_others`'s `RolltuiScopeFn` above. The six English sentences for
+ * an undeliverable chord are a second one, and live in `rolltui_keys.h` (which states why —
+ * "the C classifies and never carries a sentence"); they must not be copied here.
+ *
+ * THERE IS NO MIGRATION RUNG, and that is a decision rather than an omission (2026-09-05).
+ * One shipped when a tool was renamed: three rows of old-name -> new-name, a `RolltuiMigrateFn`
+ * callback threaded through this loader and the preset domain init, and a `migrated` array on
+ * the report that was a note and never a problem. It was retired once measurement said no file
+ * outside its own two test fixtures named a legacy action.
+ *
+ * DON'T reintroduce a rewrite table for a rename. An unknown action is already KEPT AND INERT
+ * with its chords round-tripped, which is the whole behaviour a rename needs — the file keeps
+ * working, and the row means something again the moment anything declares the name.
+ * `studio_golden_test` asserts that NO source names the retired one, which is why this
+ * paragraph does not spell it either.
  */
 
 /* THE REPORT, transparent like `RolltuiAppProfileReport`: exactly `RolltuiStr` values in
@@ -181,10 +188,6 @@ typedef struct RolltuiBindingsReport {
   size_t bad_values_n, bad_values_cap;
   RolltuiStr* unknown_keys;
   size_t unknown_keys_n, unknown_keys_cap;
-  /* A renamed action's rewrite, said once: "'<old>' \xE2\x86\x92 '<new>'" — not a problem
-   * (`rolltui_bindings_report_clean` ignores it), so a host says it once, never asked to. */
-  RolltuiStr* migrated;
-  size_t migrated_n, migrated_cap;
 } RolltuiBindingsReport;
 
 void rolltui_bindings_report_release(RolltuiBindingsReport* r); /* frees everything; zeroes it */
@@ -195,45 +198,12 @@ void rolltui_bindings_report_add_undeliverable(RolltuiBindingsReport* r, const c
 void rolltui_bindings_report_add_conflict(RolltuiBindingsReport* r, const char* s, size_t len);
 void rolltui_bindings_report_add_bad_value(RolltuiBindingsReport* r, const char* s, size_t len);
 void rolltui_bindings_report_add_unknown_key(RolltuiBindingsReport* r, const char* s, size_t len);
-void rolltui_bindings_report_add_migrated(RolltuiBindingsReport* r, const char* s, size_t len);
-int rolltui_bindings_report_clean(const RolltuiBindingsReport* r); /* `migrated` does not count */
+int rolltui_bindings_report_clean(const RolltuiBindingsReport* r);
 /* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
  * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
- * that order (never `migrated` — it is not a problem). Replaces `*out`. */
+ * that order. Replaces `*out`. */
 void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
 
-/* Whether `legacy` (an action name) was renamed; when 1, the new name has been written into
- * `out` (a caller buffer of at least ROLLTUI_ACTION_NAME_MAX bytes) with `*out_len` set. The
- * three-row table itself stays in Bindings.cpp — this is only how the loader asks it, once
- * per key, exactly as the C++ loop already did. */
-#define ROLLTUI_ACTION_NAME_MAX 64
-typedef int (*RolltuiMigrateFn)(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len);
-
-/* THE RENAMED ACTIONS, and this is the library's own table rather than a host's (Phase 17 m3).
- * Three rows, from when the studio was renamed. It is a table of NAMES and not a prefix
- * rewrite — a bindings file is the user's, and rewriting by scope prefix would also rename an
- * action belonging to some other host's tool that happens to share it.
- *
- * THIS COMMENT DOES NOT SPELL THE OLD NAMES, and that is the point rather than coyness: the
- * rule is that exactly ONE source says them, and `studio_golden_test`'s grep enforces it. The
- * first draft of this paragraph named them and turned that control red — which is the second
- * time it has caught exactly this, the first being the note in `Presets.cpp` it replaced.
- *
- * It lived in `Bindings.cpp` on the stated ground that a renamed name should survive in exactly
- * one source. That was right about the RULE and wrong about the HOME, in the shape this phase
- * keeps finding: `rolltui_bindings_preset_domain_init` takes a `RolltuiMigrateFn`, and while the
- * only implementation of one lived in C++, no host could assemble a bindings preset store
- * without the binding being present. And the rule was not holding anyway —
- * `rolltui/tests/bindings_test.cpp` carries a second verbatim copy of the same three rows, which
- * the control does not count; whether that exclusion is deliberate is a question for whoever
- * owns it, not something to quietly fix here.
- *
- * `rolltui_migrated_action` has the `RolltuiMigrateFn` shape exactly, so it is passed straight
- * to the domain init with a NULL ctx; `_at` is for whoever wants to enumerate the rows rather
- * than query one (a test, a report) instead of writing the table out again. */
-size_t rolltui_migrated_action_count(void);
-void rolltui_migrated_action_at(size_t i, const char** from, size_t* from_len, const char** to, size_t* to_len);
-int rolltui_migrated_action(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len);
 
 /* `RolltuiReasonFn`-shaped, over `rolltui_key_undeliverable_reason`/`_text` (rolltui_keys.h) —
  * the same story one function over: the reason text has been C since Phase 15, and the only
@@ -252,8 +222,8 @@ typedef size_t (*RolltuiReasonFn)(void* ctx, const RolltuiChord* k, unsigned cha
  * the library's own actions before calling this, exactly as the original C++ loop started
  * from `Bindings b;`) — so an action the caller already declared is never re-added, and its
  * row, if the file has one, simply gains chords. `deliver` is the protocol every chord in the
- * file is checked against. `is_library`/`migrate`/`reason` are the three vocabulary questions
- * above, asked back through callbacks.
+ * file is checked against. `is_library`/`reason` are the two vocabulary questions above,
+ * asked back through callbacks.
  *
  * Returns 0 only when the file is fundamentally unusable (not a JSON object, or no "bindings"
  * object) — `report->error` says which, and `b` is left exactly as it was passed in. A lesser
@@ -261,9 +231,8 @@ typedef size_t (*RolltuiReasonFn)(void* ctx, const RolltuiChord* k, unsigned cha
  * original's "a file with problems still loads" contract. `report` is reset (as if freshly
  * zero-initialised) on every call, success or failure. */
 int rolltui_bindings_load_json(RolltuiBindings* b, const char* text, size_t len, unsigned char deliver_protocol,
-                               RolltuiScopeFn is_library, void* library_ctx, RolltuiMigrateFn migrate,
-                               void* migrate_ctx, RolltuiReasonFn reason, void* reason_ctx,
-                               RolltuiBindingsReport* report);
+                               RolltuiScopeFn is_library, void* library_ctx, RolltuiReasonFn reason,
+                               void* reason_ctx, RolltuiBindingsReport* report);
 
 /* Serialises to TEXT: {"name", "bindings": {action: [chord, ...], ...}}, 2-space indented with
  * a trailing newline (matches `json::dump(v, 2) + "\n"`). REPLACES `*out`. Every row is

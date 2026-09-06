@@ -154,6 +154,48 @@ void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller o
  * duplication rule firing. `s` is a BORROW valid for the call only. */
 typedef void (*RolltuiPutFn)(void* ctx, const char* s, size_t len);
 
+/* MANY STRINGS OUT, into a buffer the caller owns and reuses — the same shape `RolltuiStr` is
+ * for ONE string, one dimension up, and the answer to the question `rolltui.h` rule 3 had for
+ * text and did not have for lists (Phase 17 m4b). Zero-initialise; `_release` frees everything
+ * and zeroes it; in C++ the destructor does that. `_add` appends a copy and returns a BORROW of
+ * the stored entry, valid until the next `_add`. */
+typedef struct RolltuiStrList {
+  RolltuiStr* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0);
+  size_t cap ROLLTUI_DEFAULT(0);
+
+#ifdef __cplusplus
+  RolltuiStrList() = default;
+  RolltuiStrList(const RolltuiStrList&) = delete;
+  RolltuiStrList& operator=(const RolltuiStrList&) = delete;
+  ~RolltuiStrList();
+  const RolltuiStr* begin() const { return v; }
+  const RolltuiStr* end() const { return v + n; }
+  size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  const RolltuiStr& operator[](size_t i) const { return v[i]; }
+#endif
+} RolltuiStrList;
+
+void rolltui_str_list_release(RolltuiStrList* l);
+void rolltui_str_list_clear(RolltuiStrList* l); /* n = 0; every entry's buffer is KEPT for reuse */
+RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len);
+/* `RolltuiPutFn`-shaped over `_add`: pass this as `put` and the `RolltuiStrList*` as `ctx`. */
+void rolltui_str_list_put(void* ctx, const char* s, size_t len);
+
+/* THE BRIDGE from the sink shape to the buffer shape, so a caller who wants a `RolltuiStr`
+ * out of a function that still takes a `RolltuiPutFn` writes no lambda: pass this as `put`
+ * and the `RolltuiStr*` as `ctx`. APPENDS (it does not clear), so a multi-`put` walk
+ * concatenates; clear the target first if that is not what you want.
+ *
+ * IT IS A BRIDGE AND NOT A BLESSING OF THE SINK SHAPE (Phase 17 m4b): a function whose result
+ * the library ALREADY HAS takes the `RolltuiStr*` (one string) or the `RolltuiStrList*` (many)
+ * directly, and every public one that took a sink was converted. `RolltuiPutFn` survives as an
+ * INTERNAL plumbing shape — the library streams into its own `Buf` through it — and as the
+ * type of the descriptor hooks a DOMAIN supplies, which is a decision going IN and not a result
+ * coming out. `public_header_test` asserts no public function hands a result back through it. */
+void rolltui_str_put(void* ctx, const char* s, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 
@@ -184,6 +226,7 @@ inline std::string operator+(const RolltuiStr& a, const char* b) {
 }
 
 inline RolltuiStr::~RolltuiStr() { rolltui_str_free(this); }
+inline RolltuiStrList::~RolltuiStrList() { rolltui_str_list_release(this); }
 inline void RolltuiStr::assign(std::string_view s) { rolltui_str_set(this, s.data(), s.size()); }
 inline RolltuiStr& RolltuiStr::operator+=(std::string_view s) {
   rolltui_str_append(this, s.data(), s.size());

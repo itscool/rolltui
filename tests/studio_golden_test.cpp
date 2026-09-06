@@ -144,13 +144,13 @@ inline int display_width(std::string_view s, bool ambiguous_wide) {
 }
 }  // namespace unicode
 
-// ---- Layout: one round-trip check (a saved file loads back clean, with nothing migrated
+// ---- Layout: one round-trip check (a saved file loads back clean, with no loader notes
 // and no actions/popups). Mirrors layout_test.cpp's `load_layout_c` over the same C calls,
 // trimmed to the four answers this suite reads instead of a full `Layout` value. ----
 struct LoadedLayoutCheck {
   bool ok = false;
   bool clean = false;
-  bool migrated_empty = false;
+  bool no_notes = false;
   bool actions_empty = false;
   bool popups_empty = false;
   std::string error;
@@ -166,7 +166,7 @@ LoadedLayoutCheck load_layout_check(std::string_view json_text) {
   LoadedLayoutCheck result;
   result.ok = ok != 0;
   result.clean = rolltui_layout_report_clean(&rep) != 0;
-  result.migrated_empty = rep.migrated_n == 0;
+  result.no_notes = rep.notes_n == 0;
   result.error.assign(rep.error.p ? rep.error.p : "", rep.error.n);
   if (ok) {
     RolltuiLayout out;
@@ -191,16 +191,15 @@ std::string_view default_bindings_text() {
 // A fresh, mutable copy of the shipped default table, loaded exactly as
 // `rolltui::Bindings::from_json(default_bindings_json(), report)` did: seeded with the
 // library's own actions, then the shipped file's rows loaded onto it against the terminal's
-// ACTIVE protocol. `migrate`/`reason` are NULL for the same reason `rolltui_bindings_default`'s
-// own loader call (rolltui_bindings.c) passes them NULL: this text is the CURRENT shipped
-// file, never a legacy one, so migration can never fire on it, and neither call site below
-// reads the undeliverable-reason text.
+// ACTIVE protocol. `reason` is NULL for the same reason `rolltui_bindings_default`'s own
+// loader call (rolltui_bindings.c) passes it NULL: neither call site below reads the
+// undeliverable-reason text.
 RolltuiBindings* load_default_bindings() {
   RolltuiBindings* b = rolltui_bindings_new_seeded();
   RolltuiBindingsReport rep{};
   const std::string_view text = default_bindings_text();
   rolltui_bindings_load_json(b, text.data(), text.size(), rolltui_key_active_protocol(), rolltui_bindings_library_scope,
-                             nullptr, nullptr, nullptr, nullptr, nullptr, &rep);
+                             nullptr, nullptr, nullptr, &rep);
   rolltui_bindings_report_release(&rep);
   return b;
 }
@@ -845,8 +844,8 @@ int main(int argc, char** argv) {
             "what it DOES have is one window naming nothing a host must have bound, and the focus on it");
       // It is a layout, not just a file: the loader takes it back clean.
       const LoadedLayoutCheck back = load_layout_check(saved);
-      check(back.ok && back.clean && back.migrated_empty && back.actions_empty && back.popups_empty,
-            "…and it loads clean with nothing migrated in — a fill-in would have shown up here as five actions [" + back.error + "]");
+      check(back.ok && back.clean && back.no_notes && back.actions_empty && back.popups_empty,
+            "…and it loads clean with nothing filled in — a fill-in would have shown up here as five actions [" + back.error + "]");
     }
     {
       // THE ONE PLACE INHERITING IS RIGHT, and it inherits from the TARGET: a profile's
@@ -1051,78 +1050,41 @@ int main(int argc, char** argv) {
       const std::string app_scope = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter Down Down Down Down Down Enter\"", rc);
       check(app_scope.find("Actions by scope \xE2\x80\xBA app") != std::string::npos && app_scope.find("help  F1, ?") != std::string::npos,
             "…and the app scope is REBINDABLE at last: the editor now edits the live table, not the store's undeclared copy");
-      // A bindings file written before this phase — every one of the eight rows in it —
-      // loads clean and still drives the studio. Which side of the table the scope sits
-      // on is what decides this: a library scope would have made every row an unknown
+      // A USER'S OWN bindings file — every one of the eleven rows in it — loads clean and
+      // still drives the studio. Which side of the table the scope sits on is what decides
+      // this: a library scope would have made every `studio.*`/`editor.*` row an unknown
       // action and thrown the user's keys away.
       const std::string p10 = " --bindings '" + std::string(ROLLTUI_FIXTURE_DIR) + "/bindings/vim-ish.json'";
       const std::string old_quit = run(base + p10 + " --keys \"CtrlQ F1\"", rc);
       const std::string old_none = run(base + p10, rc);
       check(rc == 0 && old_quit == old_none && old_none.find("bindings:") == std::string::npos,
-            "a pre-phase bindings file loads with no complaint and its Ctrl-Q still quits");
+            "a user's own bindings file loads with no complaint and its Ctrl-Q still quits");
       check(run(base + p10 + " --keys \"F7\"", rc).find("[keys editor]") != std::string::npos, "…and its F7 still opens the keys editor");
-      // ---- Phase 11 m2: THAT file says `playground.quit`, and this is why it works ----
-      // The milestone's Done-when. The quit above is not by itself proof of the
-      // migration: with the old row merely kept-and-inert, suggest() would still fill the
-      // gap left by a `studio.quit` the file never mentions, and Ctrl-Q would quit for
-      // the wrong reason. Two things make it proof — the rewrite is NAMED, and the
-      // control below closes that gap.
-      const std::string said = run(base + p10 + " 2>&1 >/dev/null", rc);
-      check(said.find("bindings: action 'playground.quit' \xE2\x86\x92 'studio.quit'") != std::string::npos,
-            "the loader NAMES the rename in `migrated`, old name and new, on stderr where it cannot move a frame");
-      // The control: the same old row, plus an EMPTY studio.quit that a suggestion may
-      // never override. Ctrl-Q here quits ONLY because the old row was migrated onto it.
-      {
-        const std::string dir = scratch + "/p11m2";
-        std::filesystem::create_directories(dir + "/bindings");
-        RolltuiBindings* b = load_default_bindings();
-        const std::string dumped = bindings_to_json_text(b, "renamed");
-        rolltui_bindings_free(b);
-        RolltuiJsonValue* v = rolltui_json_parse(dumped.data(), dumped.size(), nullptr);
-        RolltuiJsonValue* map = rolltui_json_clone(json_get_v(v, "bindings"));
-        json_set_v(map, "studio.quit", rolltui_json_array());
-        RolltuiJsonValue* q = rolltui_json_array();
-        rolltui_json_array_push(q, json_string_v("ctrl+q"));
-        json_set_v(map, "playground.quit", q);
-        json_set_v(v, "bindings", map);
-        std::ofstream(dir + "/bindings/renamed.json", std::ios::binary) << json_dump_text(v, 2);
-        // …and the same file with the old row taken out: the gap stays closed, so this
-        // one must NOT quit. The pair is what makes the assertion above mean something.
-        // `map` is still a live pointer into `v`'s tree (rolltui_json_set above stored it,
-        // never copied it), so erasing through it needs no re-fetch.
-        json_erase_v(map, "playground.quit");
-        std::ofstream(dir + "/bindings/nomig.json", std::ios::binary) << json_dump_text(v, 2);
-        rolltui_json_free(v);
-        const std::string mb = bin + " --frame 80x24 --theme default-dark --presets '" + dir + "'";
-        const std::string mig_help = run(mb + " --bindings renamed --keys \"F1\"", rc);
-        const std::string mig_quit = run(mb + " --bindings renamed --keys \"CtrlQ F1\"", rc);
-        const std::string no_help = run(mb + " --bindings nomig --keys \"F1\"", rc);
-        const std::string no_quit = run(mb + " --bindings nomig --keys \"CtrlQ F1\"", rc);
-        check(mig_quit != mig_help && mig_help.find("focus:help") != std::string::npos,
-              "a migrated playground.quit quits even where an EMPTY studio.quit row blocks the tool's suggestion");
-        check(no_quit == no_help && no_help.find("focus:help") != std::string::npos,
-              "…and without that old row the very same file leaves Ctrl-Q unbound — the quit above IS the migration");
-      }
     }
-    // ---- Phase 11 m2's other half: THE MIGRATION TABLE IS THE ONLY PLACE LEFT --------
-    // "No source outside the migration table says playground." The word is the whole
-    // assertion: one grep answers whether the rename actually happened or whether it was
-    // done in the places a reader would look and left in the places they would not. Every
-    // source either binary is built from is scanned — the library, its tools, roll's own
-    // — plus the shipped preset FILES, which are compiled into the binary as bytes and
-    // are exactly where an action name would survive unnoticed (menus/main.json named two).
+    // ---- THE RENAME IS FINISHED: NO SOURCE SAYS `playground` AT ALL -----------------
+    // One grep answers whether a rename actually happened or whether it was done in the
+    // places a reader would look and left in the places they would not. Every source either
+    // binary is built from is scanned — the library, its tools, roll's own — plus the
+    // shipped preset FILES, which are compiled into the binary as bytes and are exactly
+    // where an action name would survive unnoticed (menus/main.json named two).
     //
-    // PHASE 17 m3: the table itself moved to rolltui/c/rolltui_bindings.c (Bindings.cpp is
-    // now a shim calling `rolltui_migrated_action`), so this control now (a) scans `.c`
-    // sources too — it never had to before, since nothing the C port produced was in scope
-    // for this check until the table itself became one — and (b) expects the table's three
-    // rows in the C file, not the C++ one. THE RULE THAT MOVED WITH IT: this is still "exactly
-    // ONE source names them", not "the library's C source or its C++ shim, either is fine" —
-    // a stray hit in Bindings.cpp is exactly as much a finding as one anywhere else.
+    // PHASE 17 m4b (2026-09-05): THE THRESHOLD IS NOW ZERO, and this control got STRICTLY
+    // STRONGER rather than going quiet when its subject was deleted. It used to permit the
+    // three-row migration table in `rolltui/c/rolltui_bindings.c` and required it to be
+    // there (`table >= 3`), which was what armed it. That table is retired, so the exemption
+    // is gone and the expected count is 0 everywhere.
+    //
+    // A CONTROL THAT EXPECTS ZERO MUST PROVE IT CAN SEE, which is this repo's most-repeated
+    // failure and the reason the second word below exists: the same walk, the same
+    // `getline`, the same `find` counts a word that MUST be everywhere. If the scanner
+    // silently reads nothing — a wrong root, a bad extension filter, an unreadable file —
+    // `sentinel` collapses to 0 and this fails, instead of `playground` reporting a clean 0
+    // because nothing was ever looked at.
     {
       namespace fs = std::filesystem;
       const std::string root = std::string(ROLLTUI_SOURCE_DIR) + "/..";
       std::vector<std::string> scanned, hits;
+      int sentinel = 0;  // the arming word: `rolltui` appears in every source here
       for (const fs::directory_entry& e : fs::recursive_directory_iterator(root)) {
         const std::string rel = fs::relative(e.path(), root).string();
         if (rel.rfind("build", 0) == 0 || rel.rfind(".git", 0) == 0 || rel.rfind("plan/", 0) == 0 ||
@@ -1140,18 +1102,16 @@ int main(int argc, char** argv) {
         while (std::getline(in, line)) {
           ++ln;
           if (line.find("playground") != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln));
+          if (line.find("rolltui") != std::string::npos) ++sentinel;
         }
       }
       check(scanned.size() >= 60, "scanned every source and shipped preset both binaries are built from (" +
                                       std::to_string(scanned.size()) + " files)");
-      // Not "no hits" — "no hits anywhere else". The table must still be there, or this
-      // control would pass most loudly on the build that deleted the migration.
-      std::vector<std::string> stray;
-      int table = 0;
-      for (const std::string& h : hits) (h.rfind("rolltui/c/rolltui_bindings.c:", 0) == 0 ? ++table : (stray.push_back(h), 0));
-      check(table >= 3,
-            "the migration table is still in rolltui/c/rolltui_bindings.c, all three renamed actions (" + std::to_string(table) + " lines)");
-      check(stray.empty(), "…and it is the ONLY place any source still says it" + (stray.empty() ? "" : ": " + stray.front()));
+      // THE ARMING CHECK, and it runs before the one it arms: this same walk found the word
+      // `rolltui` on thousands of lines, so a zero below is an absence and not a blindness.
+      check(sentinel > 500, "the scanner can see: the same pass matched `rolltui` on " + std::to_string(sentinel) + " lines");
+      check(hits.empty(), "no source says `playground` anywhere — the rename is finished and nothing keeps a table of it" +
+                              (hits.empty() ? "" : ": " + hits.front()));
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +

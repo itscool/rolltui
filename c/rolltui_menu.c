@@ -2052,13 +2052,39 @@ void rolltui_menu_apply_shortcuts(RolltuiMenuItem* root, const RolltuiBindings* 
   for (i = 0; i < root->children.n; ++i) rolltui_menu_apply_shortcuts(root->children.v[i], b);
 }
 
-void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionFn put, void* ctx) {
+void rolltui_menu_action_list_release(RolltuiMenuActionList* l) {
+  size_t i;
+  if (!l) return;
+  for (i = 0; i < l->cap; ++i) {
+    rolltui_str_free(&l->v[i].id);
+    rolltui_str_free(&l->v[i].action);
+  }
+  rolltui_mem_free(l->v);
+  l->v = NULL;
+  l->n = 0;
+  l->cap = 0;
+}
+
+static void item_actions_walk(const RolltuiMenuItem* root, RolltuiMenuActionList* out) {
   size_t i;
   if (!root) return;
-  if (root->action_name.n != 0)
-    put(ctx, root->id.p ? root->id.p : "", root->id.n, root->action_name.p ? root->action_name.p : "",
-        root->action_name.n);
-  for (i = 0; i < root->children.n; ++i) rolltui_menu_item_actions(root->children.v[i], put, ctx);
+  if (root->action_name.n != 0) {
+    RolltuiMenuAction* e;
+    if (out->n == out->cap) {
+      const size_t want = out->cap ? out->cap * 2 : 8;
+      out->v = (RolltuiMenuAction*)rolltui_grow_zeroed(out->v, &out->cap, want, sizeof *out->v);
+    }
+    e = &out->v[out->n++];
+    rolltui_str_set(&e->id, root->id.p ? root->id.p : "", root->id.n);
+    rolltui_str_set(&e->action, root->action_name.p ? root->action_name.p : "", root->action_name.n);
+  }
+  for (i = 0; i < root->children.n; ++i) item_actions_walk(root->children.v[i], out);
+}
+
+void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionList* out) {
+  if (!out) return;
+  out->n = 0; /* REPLACES: the entries' buffers stay, to be refilled */
+  item_actions_walk(root, out);
 }
 
 /* The de-duplication is O(n^2) over the names SEEN so far, deliberately: a menu tree has a
@@ -2078,7 +2104,7 @@ static int validator_seen(ValidatorSeen* v, const char* s, size_t len) {
 }
 
 static void unknown_validators_walk(const RolltuiMenuItem* it, RolltuiValidatorFn is_known, void* ctx,
-                                    RolltuiPutFn put, void* put_ctx, ValidatorSeen* seen) {
+                                    RolltuiStrList* out, ValidatorSeen* seen) {
   size_t i;
   if (!it) return;
   if (it->kind == ROLLTUI_MENU_INPUT && it->spec.validator.n != 0) {
@@ -2089,20 +2115,22 @@ static void unknown_validators_walk(const RolltuiMenuItem* it, RolltuiValidatorF
       memset(&why, 0, sizeof why);
       /* Empty text: this call is asked ONLY for its registered/not answer, which is the same
        * question `handle` asks before consulting a validator at commit. */
-      if (!is_known || !is_known(ctx, name, len, "", 0, &why)) put(put_ctx, name, len);
+      if (!is_known || !is_known(ctx, name, len, "", 0, &why)) rolltui_str_list_add(out, name, len);
       rolltui_str_free(&why);
     }
   }
   for (i = 0; i < it->children.n; ++i)
-    unknown_validators_walk(it->children.v[i], is_known, ctx, put, put_ctx, seen);
+    unknown_validators_walk(it->children.v[i], is_known, ctx, out, seen);
 }
 
 void rolltui_menu_unknown_validators(const RolltuiMenuItem* root, RolltuiValidatorFn is_known, void* ctx,
-                                     RolltuiPutFn put, void* put_ctx) {
+                                     RolltuiStrList* out) {
   ValidatorSeen seen;
   size_t i;
+  if (!out) return;
+  rolltui_str_list_clear(out);
   memset(&seen, 0, sizeof seen);
-  unknown_validators_walk(root, is_known, ctx, put, put_ctx, &seen);
+  unknown_validators_walk(root, is_known, ctx, out, &seen);
   for (i = 0; i < seen.cap; ++i) rolltui_str_free(&seen.seen[i]);
   rolltui_mem_free(seen.seen);
 }

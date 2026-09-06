@@ -245,12 +245,6 @@ void collect_resolved(void* ctx, const RolltuiResolvedNode* rn) {
 // `rolltui/tests/presets_test.cpp` drives all three domains with no C++ in the chain. What
 // follows is that same pattern, trimmed to the calls this file actually makes.
 
-struct PresetInfo {
-  std::string name;
-  bool shipped = false;
-  std::string path;
-};
-
 RolltuiPresetDomain& theme_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain x{};
@@ -273,7 +267,7 @@ RolltuiPresetDomain& layout_domain() {
 RolltuiPresetDomain& bindings_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain x{};
-    rolltui_bindings_preset_domain_init(&x, rolltui_bindings_library_scope, nullptr, rolltui_migrated_action, nullptr,
+    rolltui_bindings_preset_domain_init(&x, rolltui_bindings_library_scope, nullptr,
                                         rolltui_undeliverable_reason_fn, nullptr);
     return x;
   }();
@@ -348,24 +342,13 @@ class PresetStoreBase {
     return v;
   }
   std::uint64_t version() const { return rolltui_preset_store_version(s_); }
-  std::vector<PresetInfo> list() const {
-    std::vector<PresetInfo> out;
-    rolltui_preset_store_list(
-        s_,
-        [](void* ctx, const char* name, std::size_t nlen, int shipped, const char* path, std::size_t plen) {
-          static_cast<std::vector<PresetInfo>*>(ctx)->push_back(
-              {std::string(name, nlen), shipped != 0, std::string(path, plen)});
-        },
-        &out);
-    return out;
-  }
-  int save_as(std::string_view name, bool overwrite, std::string& error) {
-    error.clear();
-    const int code = rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, put_str, &error);
+  void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
+  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
+    const int code = rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
     if (code != ROLLTUI_SAVE_SAVED && code != ROLLTUI_SAVE_WRITE_FAILED) {
       std::size_t n = 0;
       const char* p = rolltui_preset_save_result_text(code, &n);
-      error.assign(p, n);
+      rolltui_str_set(&error, p, n);
     }
     return code;
   }
@@ -426,11 +409,10 @@ class ThemeStore : public PresetStoreBase {
     return rolltui_preset_is_shipped(&theme_domain(), name.data(), name.size()) != 0;
   }
   static std::vector<std::string> shipped_names() {
+    RolltuiStrList names;
+    rolltui_preset_shipped_names(&theme_domain(), &names);
     std::vector<std::string> out;
-    rolltui_preset_shipped_names(
-        &theme_domain(),
-        [](void* ctx, const char* n, std::size_t len) { static_cast<std::vector<std::string>*>(ctx)->emplace_back(n, len); },
-        &out);
+    for (const RolltuiStr& n : names) out.push_back(n.str());
     return out;
   }
 };
@@ -508,11 +490,10 @@ class BindingsStore : public PresetStoreBase {
   }
 
   static std::vector<std::string> shipped_names() {
+    RolltuiStrList names;
+    rolltui_preset_shipped_names(&bindings_domain(), &names);
     std::vector<std::string> out;
-    rolltui_preset_shipped_names(
-        &bindings_domain(),
-        [](void* ctx, const char* n, std::size_t len) { static_cast<std::vector<std::string>*>(ctx)->emplace_back(n, len); },
-        &out);
+    for (const RolltuiStr& n : names) out.push_back(n.str());
     return out;
   }
 };
@@ -828,8 +809,9 @@ struct App {
   // hold — the options that are runtime facts (which presets exist) and the current values.
   void refresh_menu() {
     RolltuiMenuItemList themes, layouts;
-    if (store) for (const PresetInfo& p : store->list()) themes.push_back(RolltuiMenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
-    if (lstore) for (const PresetInfo& p : lstore->list()) layouts.push_back(RolltuiMenuItem::action(p.name, p.name + (p.shipped ? "" : "  (yours)")));
+    RolltuiPresetList tl, ll;
+    if (store) { store->list(tl); for (const RolltuiPresetInfo& p : tl) themes.push_back(RolltuiMenuItem::action(p.name.str(), p.name.str() + (p.shipped ? "" : "  (yours)"))); }
+    if (lstore) { lstore->list(ll); for (const RolltuiPresetInfo& p : ll) layouts.push_back(RolltuiMenuItem::action(p.name.str(), p.name.str() + (p.shipped ? "" : "  (yours)"))); }
     rolltui_menu_set_options(menu(), "theme", 5, &themes);
     rolltui_menu_set_options(menu(), "layout", 6, &layouts);
     set_menu_value("theme", store ? store->label() : "");
@@ -971,19 +953,9 @@ struct App {
     if (bindings_arg.empty()) return true;
     BindingsPresetReport rep;
     if (!bstore->load(bindings_arg, rep, /*persist=*/false)) { hint = rep.error.str(); return false; }
-    say_migrations(rep);
     if (!rep.clean()) hint = "bindings: " + rep.summary();
     return true;
   }
-  // A renamed action rewritten by the loader (Phase 11 m2). Said on stderr rather than
-  // in the status line, for the same reason the layout loader's contents are: it is not
-  // a problem, the file still works, and a golden frame must not move because a user's
-  // key file is one phase old.
-  static void say_migrations(const BindingsPresetReport& rep) {
-    for (std::size_t i = 0; i < rep.bindings.migrated_n; ++i)
-      std::fprintf(stderr, "rolltui: bindings: action %s\n", str_of(rep.bindings.migrated[i]).c_str());
-  }
-
   // ---- the theme editor (milestone 14) ----
   static RolltuiLayer editor_popup(const char* title) {
     RolltuiLayer l;
@@ -1043,7 +1015,9 @@ struct App {
     { ThemeValueHandle wc = store->working(); teditor.load(wc->colours, &rep); }
     rolltui_theme_report_release(&rep);
     std::vector<std::string> names, shipped;
-    for (const PresetInfo& p : store->list()) names.push_back(p.name);
+    RolltuiPresetList pl;
+    store->list(pl);
+    for (const RolltuiPresetInfo& p : pl) names.push_back(p.name.str());
     for (const std::string& n : ThemeStore::shipped_names()) shipped.push_back(n);
     teditor.set_presets(names);
     teditor.set_shipped(shipped, store->options().may_write_shipped);
@@ -1060,7 +1034,9 @@ struct App {
     // something declared it. What this hands over is what the studio is actually running.
     keditor.load(bindings);
     std::vector<std::string> names, shipped;
-    for (const PresetInfo& p : bstore->list()) names.push_back(p.name);
+    RolltuiPresetList pl;
+    bstore->list(pl);
+    for (const RolltuiPresetInfo& p : pl) names.push_back(p.name.str());
     for (const std::string& n : BindingsStore::shipped_names()) shipped.push_back(n);
     keditor.set_presets(names);
     keditor.set_shipped(shipped, bstore->options().may_write_shipped);
@@ -1077,17 +1053,17 @@ struct App {
         bstore->set_working(rolltui_bindings_clone(keditor.committed()), persist);
         break;
       case K::SaveAs: {
-        std::string err;
+        RolltuiStr err;
         const int r = bstore->save_as(o.value, pending_save == o.value, err);
         if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save = o.value; hint = "bindings preset '" + o.value + "' exists; Enter the same name again to overwrite"; }
-        else { pending_save.clear(); hint = r == ROLLTUI_SAVE_SAVED ? "saved bindings preset '" + o.value + "'" : err; }
-        if (r == ROLLTUI_SAVE_SAVED) { std::vector<std::string> names; for (const PresetInfo& p : bstore->list()) names.push_back(p.name); keditor.set_presets(names); }
+        else { pending_save.clear(); hint = r == ROLLTUI_SAVE_SAVED ? "saved bindings preset '" + o.value + "'" : err.str(); }
+        if (r == ROLLTUI_SAVE_SAVED) { std::vector<std::string> names; RolltuiPresetList pl; bstore->list(pl); for (const RolltuiPresetInfo& p : pl) names.push_back(p.name.str()); keditor.set_presets(names); }
         break;
       }
       case K::WriteShipped:
         ask("Write the SHIPPED bindings preset '" + o.value + "' into " + bstore->options().shipped_dir + "? (y/n)", [this, name = o.value] {
-          std::string err;
-          hint = bstore->save_as(name, true, err) == ROLLTUI_SAVE_SAVED ? "wrote shipped bindings preset '" + name + "' (rebuild to embed it)" : err;
+          RolltuiStr err;
+          hint = bstore->save_as(name, true, err) == ROLLTUI_SAVE_SAVED ? "wrote shipped bindings preset '" + name + "' (rebuild to embed it)" : err.str();
         });
         break;
       case K::LoadPreset: {
@@ -1130,7 +1106,9 @@ struct App {
     close_editor();
     leditor.load(lstore->working());
     std::vector<std::string> names;
-    for (const PresetInfo& p : lstore->list()) names.push_back(p.name);  // shipped first, then the user's
+    RolltuiPresetList pl;
+    lstore->list(pl);
+    for (const RolltuiPresetInfo& p : pl) names.push_back(p.name.str());  // shipped first, then the user's
     leditor.set_layouts(names);
     // Under a profile the offered contents are the TARGET APP's, which is what turns the
     // design editor's Source from a guess into a fact (Phase 11 m4). Without one they are
@@ -1226,7 +1204,9 @@ struct App {
         rolltui_str_free(&text);
         hint = "saved layout file " + path;
         std::vector<std::string> names;
-        for (const PresetInfo& p : lstore->list()) names.push_back(p.name);
+        RolltuiPresetList pl;
+        lstore->list(pl);
+        for (const RolltuiPresetInfo& p : pl) names.push_back(p.name.str());
         leditor.set_layouts(names);
         break;
       }
@@ -1315,17 +1295,17 @@ struct App {
         store->set_colours(teditor.colours_json(store->origin()), persist);
         break;
       case K::SaveAs: {
-        std::string err;
+        RolltuiStr err;
         const int r = store->save_as(o.value, pending_save == o.value, err);
         if (r == ROLLTUI_SAVE_EXISTS_ASK) { pending_save = o.value; hint = "preset '" + o.value + "' exists; Enter the same name again to overwrite"; }
-        else { pending_save.clear(); hint = r == ROLLTUI_SAVE_SAVED ? "saved preset '" + o.value + "'" : err; }
-        if (r == ROLLTUI_SAVE_SAVED) { std::vector<std::string> names; for (const PresetInfo& p : store->list()) names.push_back(p.name); teditor.set_presets(names); }
+        else { pending_save.clear(); hint = r == ROLLTUI_SAVE_SAVED ? "saved preset '" + o.value + "'" : err.str(); }
+        if (r == ROLLTUI_SAVE_SAVED) { std::vector<std::string> names; RolltuiPresetList pl; store->list(pl); for (const RolltuiPresetInfo& p : pl) names.push_back(p.name.str()); teditor.set_presets(names); }
         break;
       }
       case K::WriteShipped:
         ask("Write the SHIPPED preset '" + o.value + "' into " + store->options().shipped_dir + "? (y/n)", [this, name = o.value] {
-          std::string err;
-          hint = store->save_as(name, true, err) == ROLLTUI_SAVE_SAVED ? "wrote shipped preset '" + name + "' (rebuild to embed it)" : err;
+          RolltuiStr err;
+          hint = store->save_as(name, true, err) == ROLLTUI_SAVE_SAVED ? "wrote shipped preset '" + name + "' (rebuild to embed it)" : err.str();
         });
         break;
       case K::LoadPreset: {
@@ -2424,27 +2404,20 @@ int main(int argc, char** argv) {
   {
     std::size_t default_actions_n = 0;
     const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(&default_actions_n);
-    RolltuiMigrationReport mig{};
-    rolltui_preset_migrate_theme_layout(presets_dir.data(), presets_dir.size(), rolltui_layout_default_hooks(),
-                                        default_actions, default_actions_n, &mig);  // Phase 10 m1, once
-    for (std::size_t i = 0; i < mig.notes_n; ++i) std::fprintf(stderr, "rolltui: %s\n", str_of(mig.notes[i]).c_str());
-    if (!mig.error.empty()) std::fprintf(stderr, "rolltui: %s\n", str_of(mig.error).c_str());
-    rolltui_migration_report_release(&mig);
-
     ThemePresetReport start_rep;
     app.store->start(start_rep);
     if (!start_rep.error.empty()) app.theme_note = start_rep.error.str();
     LayoutPresetReport lstart_rep;
     app.lstore->start(lstart_rep);
     if (!lstart_rep.error.empty()) app.layout_note = lstart_rep.error.str();
-    // A Phase 9 layout's contents rewritten to kind[:source] (Phase 10 m2) is a note,
-    // not a problem — said once, on stderr, so it never moves a golden frame.
-    for (std::size_t i = 0; i < lstart_rep.layout.migrated_n; ++i)
-      std::fprintf(stderr, "rolltui: %s\n", str_of(lstart_rep.layout.migrated[i]).c_str());
+    // What the loader DID that the file did not ask for (today: a file declaring no actions
+    // gets the shipped default's) is a note, not a problem — said once, on stderr, so it
+    // never moves a golden frame.
+    for (std::size_t i = 0; i < lstart_rep.layout.notes_n; ++i)
+      std::fprintf(stderr, "rolltui: %s\n", str_of(lstart_rep.layout.notes[i]).c_str());
     BindingsPresetReport bstart_rep;
     app.bstore->start(bstart_rep);
     if (!bstart_rep.error.empty()) app.hint = bstart_rep.error.str();
-    App::say_migrations(bstart_rep);  // a renamed action in the user's own working copy, rewritten once
   }
   app.load_theme_arg();
   app.load_bindings_arg();

@@ -163,8 +163,8 @@ int main() {
     // which is what Bindings::from_json used to seed itself with before the C port.
     RolltuiBindings* back = rolltui_bindings_new_seeded();
     RolltuiBindingsReport rep{};
-    const int ok = rolltui_bindings_load_json(back, dumped.p ? dumped.p : "", dumped.n, ROLLTUI_PROTOCOL_LEGACY, rolltui_bindings_library_scope, nullptr,
-                                              nullptr, nullptr, nullptr, nullptr, &rep);
+    const int ok = rolltui_bindings_load_json(back, dumped.p ? dumped.p : "", dumped.n, ROLLTUI_PROTOCOL_LEGACY,
+                                              rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &rep);
     check(ok != 0 && rolltui_bindings_report_clean(&rep) != 0 && rolltui_bindings_equal(back, ed.committed()) != 0,
           "the edited table round-trips through the file format");
     rolltui_bindings_report_release(&rep);

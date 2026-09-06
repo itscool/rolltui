@@ -286,7 +286,7 @@ int main() {
         {"c/rolltui_menu.h", 23},
         {"c/rolltui_theme_analysis.h", 5},
         {"c/rolltui_app_profile.h", 4},
-        {"c/rolltui_presets.h", 28},
+        {"c/rolltui_presets.h", 24},
         {"c/rolltui_md_lines.h", 6},
         {"c/rolltui_screen.h", 1},
         {"c/rolltui_geom.h", 0},
@@ -302,7 +302,7 @@ int main() {
         {"c/rolltui_transcript.h", 14},
         {"c/rolltui_effects.h", 6},
         {"c/rolltui_marker.h", 0},
-        {"c/rolltui_bindings.h", 16},
+        {"c/rolltui_bindings.h", 15},
         {"c/rolltui_alloc.h", 0},
         {"c/rolltui_map.h", 2},
         {"c/rolltui_document.h", 2},
@@ -360,7 +360,7 @@ int main() {
     // 122 -> 199 (Phase 17 m3): a different measurement of a different set — STORED pointers
     // in `c/*.h`, where the old figure was every declaration in `rolltui/*.hpp`. Not comparable,
     // and deliberately not presented as a delta.
-    check(total == 199, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 194, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");

@@ -71,15 +71,17 @@ extern "C" {
  * duplication rule firing, so the type moved instead of being written twice. The NAME did not
  * change, so no call site did either. */
 
-/* Reads a whole file through `put`. 0 when it cannot be opened. */
+/* Reads a whole file. 0 when it cannot be opened. `put`/`ctx` rather than a `RolltuiStr*`
+ * because the library's own three callers stream into their internal `Buf`; a consumer that
+ * wants the bytes passes `rolltui_str_put` and a `RolltuiStr*`. */
 int rolltui_preset_read_file(const char* path, size_t path_len, RolltuiPutFn put, void* ctx);
 /* Writes to a sibling temp file, then renames — a reader sees the old complete file or the
  * new complete file, never a mix (the state-file rule from ResilientModelManager). On
- * failure, 0, and the reason goes through `err`. */
+ * failure, 0, and the reason REPLACES `*err` (which may be NULL). */
 int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const char* bytes, size_t len,
-                                     RolltuiPutFn err, void* err_ctx);
-/* The stem of every "*.json" in `dir`, sorted, one `put` call each. */
-void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiPutFn put, void* ctx);
+                                     RolltuiStr* err);
+/* The stem of every "*.json" in `dir`, sorted. REPLACES `*out`. */
+void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrList* out);
 int rolltui_preset_looks_like_path(const char* s, size_t len);
 int rolltui_preset_valid_name(const char* name, size_t len);
 
@@ -143,9 +145,17 @@ typedef struct RolltuiPresetDomain {
 const void* rolltui_preset_shipped(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns, void* scratch_report,
                                    const char* name, size_t len);
 int rolltui_preset_is_shipped(RolltuiPresetDomain* d, const char* name, size_t len);
+/* The shipped preset's FILE TEXT, verbatim — a BORROW of the embedded bytes, valid for the
+ * process's life; NULL (and `*out_len` 0) when `name` is not shipped.
+ *
+ * ADDED Phase 17 m4b, because its absence was being paid for: `shipped_count`/`shipped_at`
+ * gave every index but no way to ask by NAME, so roll and the studio each hand-wrote the same
+ * linear search over them. A lookup the API can do and does not offer is a lookup every
+ * consumer writes. */
+const char* rolltui_preset_shipped_text(RolltuiPresetDomain* d, const char* name, size_t len, size_t* out_len);
 /* The shipped names, "default" FIRST and the rest in table order — the order a chooser
- * offers them in. */
-void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiPutFn put, void* ctx);
+ * offers them in. REPLACES `*out`. */
+void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrList* out);
 /* Releases the parsed cache. A domain descriptor is a process-wide static on the other
  * side, so this is what it hands back at `rolltui::shutdown()`; the cache rebuilds on next
  * use, which is what makes shutdown callable at any moment. */
@@ -190,11 +200,61 @@ void rolltui_preset_store_set_working(RolltuiPresetStore* s, void* v, int persis
 /* An in-place edit under the lock. */
 void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, void* ctx), void* ctx, int persist);
 
-/* Every preset: the shipped ones first, then the user's "*.json" that do not shadow one.
- * `shipped` is 1 or 0; `path` is empty for a shipped preset. */
-typedef void (*RolltuiPresetInfoFn)(void* ctx, const char* name, size_t name_len, int shipped, const char* path,
-                                    size_t path_len);
-void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetInfoFn put, void* ctx);
+/* ---- ONE PRESET IN A LISTING, and the shape every "N things out" uses ---------------------
+ *
+ * THIS TYPE EXISTS BECAUSE ITS ABSENCE WAS BEING PAID FOR THREE TIMES (Phase 17 m4b,
+ * 2026-09-05). `rolltui_preset_store_list` took a SINK — `(void* ctx, const char* name,
+ * size_t, int shipped, const char* path, size_t)` — and that parameter list IS a struct
+ * definition the library declined to write down. So every consumer wrote it instead:
+ * `roll::PresetInfo` in `include/TuiFrontend.hpp`, `PresetInfo` in `rolltui/tools/studio.cpp`
+ * and `PresetInfo` in `rolltui/tests/presets_test.cpp` — three byte-identical structs, each
+ * with a lambda, a `static_cast<std::vector<PresetInfo>*>` and a collector around it.
+ *
+ * That is rule 5 of `rolltui.h` firing ("if two consumers write the same wrapper, the API is
+ * wrong, not the consumers"), and the fix is not a C++ layer over the sink — it is naming the
+ * thing the sink was spelling out.
+ *
+ * THE RULE THIS SETTLES, and it is the one `rolltui.h` had for TEXT OUT and not for N THINGS
+ * OUT: a result the library ALREADY HAS goes into a buffer the CALLER owns and reuses —
+ * `RolltuiStr*` for text, a growing list like this for many things — and is REPLACED on every
+ * call. A callback is for a DECISION the library cannot make (`RolltuiScopeFn`,
+ * `RolltuiRowsFn`, `RolltuiEffectFn`), never for handing back an answer. The two are told
+ * apart by one question: does the callback carry a decision IN, or a result OUT?
+ *
+ * The shipped ones come first, "default" ahead of the rest — the order a chooser offers them
+ * in — then the user's "*.json" that do not shadow a shipped name. `path` is empty for a
+ * shipped preset. */
+typedef struct RolltuiPresetInfo {
+  RolltuiStr name;
+  RolltuiStr path; /* "" for a shipped preset */
+  int shipped ROLLTUI_DEFAULT(0);
+} RolltuiPresetInfo;
+
+/* A caller-owned, reusable list of them. Zero-initialise before first use; `_release` frees
+ * everything and zeroes it (a no-op on a zeroed list, and on NULL). In C++ the destructor
+ * does that, so a plain local needs no release call at all. */
+typedef struct RolltuiPresetList {
+  RolltuiPresetInfo* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0);
+  size_t cap ROLLTUI_DEFAULT(0);
+
+#ifdef __cplusplus
+  RolltuiPresetList() = default;
+  RolltuiPresetList(const RolltuiPresetList&) = delete;
+  RolltuiPresetList& operator=(const RolltuiPresetList&) = delete;
+  ~RolltuiPresetList();
+  const RolltuiPresetInfo* begin() const { return v; }
+  const RolltuiPresetInfo* end() const { return v + n; }
+  size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+  const RolltuiPresetInfo& operator[](size_t i) const { return v[i]; }
+#endif
+} RolltuiPresetList;
+
+void rolltui_preset_list_release(RolltuiPresetList* l);
+
+/* REPLACES `*out` (its capacity, and each entry's string buffers, are reused). */
+void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* out);
 
 /* A preset by name or path, as a value the caller OWNS; NULL with the report saying why. */
 void* rolltui_preset_store_get(const RolltuiPresetStore* s, const char* name, size_t len, void* report);
@@ -230,14 +290,16 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
                                    const RolltuiThemeReport* colours, const RolltuiLayoutReport* layout,
                                    const RolltuiBindingsReport* bindings, RolltuiStr* out);
 
-/* Save-as. Only WRITE_FAILED has a reason of its own, which goes through `err`. */
-int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiPutFn err,
-                                 void* err_ctx);
+/* Save-as. Only WRITE_FAILED has a reason of its own; it REPLACES `*err` (which may be NULL
+ * when the caller does not want it). Every other outcome's sentence is
+ * `rolltui_preset_save_result_text` above. */
+int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
 
-/* The two paths, through `put`. */
-void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiPutFn put, void* ctx);
-void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiPutFn put,
-                                      void* ctx);
+/* The two paths. Both REPLACE `*out` — text out, rule 3(b), the same shape
+ * `rolltui_preset_store_label` beside them already used. They took a `RolltuiPutFn` until
+ * Phase 17 m4b, which is why every consumer had a lambda-and-append around them. */
+void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiStr* out);
+void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiStr* out);
 
 /* ---- the Theme domain's preset FILE FORMAT (this task; everything above is domain-agnostic
  * mechanics, and this is the one domain whose OWN parse/to_json moved here with it) ----------
@@ -384,7 +446,7 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
  * already write their OWN `error` field on the nested report; the mechanics' own failures — "no
  * preset 'x'", "unreadable (...)" — land on the outer one), and a growing `notes` array the
  * mechanics' own `add_note`/`prefix_notes` write into alongside whatever the domain's own parse
- * appended to it (a migrated action, a rewritten layout slot). Zero-initialise before use, and
+ * appended to it. Zero-initialise before use, and
  * release with the matching `_release` below (its own `reset` in the report_fns already does).
  */
 
@@ -426,9 +488,9 @@ void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThe
 typedef struct RolltuiLayoutPresetReport {
   RolltuiStr error; /* the PRESET-level error: a copy of `layout.error` on failure, or the
                      * mechanics' own ("no layout preset 'x' ...") */
-  RolltuiLayoutReport layout; /* the file's own: error, unknown_keys, bad_values, migrated */
-  RolltuiStr* notes;          /* "layout: content X" (one per `layout.migrated` entry) plus
-                               * whatever the mechanics itself adds */
+  RolltuiLayoutReport layout; /* the file's own: error, unknown_keys, bad_values, notes */
+  RolltuiStr* notes;          /* one per `layout.notes` entry, plus whatever the mechanics
+                               * itself adds */
   size_t notes_n, notes_cap;
 } RolltuiLayoutPresetReport;
 
@@ -447,15 +509,13 @@ typedef struct RolltuiBindingsPresetReport {
   RolltuiStr error; /* the PRESET-level error: a copy of `bindings.error` on failure, or the
                      * mechanics' own */
   RolltuiBindingsReport bindings; /* the file's own: unknown_actions/bad_chords/undeliverable/
-                                   * conflicts/bad_values/unknown_keys (its "bindings" object)/
-                                   * migrated */
+                                   * conflicts/bad_values/unknown_keys (its "bindings" object) */
   RolltuiStr* unknown_keys; /* the PRESET file's own top-level keys other than "name" /
                              * "bindings" / "preset" — `rolltui_bindings_load_json` only ever
                              * looks at its "bindings" object, so this level's unknown keys are
                              * this domain's own to find */
   size_t unknown_keys_n, unknown_keys_cap;
-  RolltuiStr* notes; /* "bindings: action X" (one per `bindings.migrated` entry) plus whatever
-                      * the mechanics itself adds */
+  RolltuiStr* notes; /* whatever the mechanics itself adds */
   size_t notes_n, notes_cap;
 } RolltuiBindingsPresetReport;
 
@@ -483,11 +543,11 @@ int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r);
 void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out);
 
 const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void);
-/* `is_library_scope`/`migrate`/`reason` are BORROWED for the process's life, the same three
+/* `is_library_scope`/`reason` are BORROWED for the process's life, the same two
  * callbacks `rolltui_bindings_load_json` already takes — this keeps a copy to hand over on
  * every call instead of threading them through the generic mechanics. */
 void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
-                                         RolltuiMigrateFn migrate, void* migrate_ctx, RolltuiReasonFn reason,
+                                         RolltuiReasonFn reason,
                                          void* reason_ctx);
 
 /* ---- settings and precedence (Presets.hpp; Phase 17 m2) -------------------------------------
@@ -511,7 +571,7 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeF
  * rolltui_preset_domain_name(domain)` rather than "theme"/"layout"/"bindings" spelled again.
  */
 
-/* `rolltui_preset_working_value` and the migration are declared below, after
+/* `rolltui_preset_working_value` is declared below, after
  * `RolltuiPresetDomainId` — the type the first of them takes. */
 
 typedef enum RolltuiPresetRung {
@@ -558,29 +618,6 @@ const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
 void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDomainId domain, const char* key,
                                   size_t key_len, RolltuiStr* out);
 
-/* ---- the Phase 9 -> Phase 10 migration, once per preset directory --------------------------
- * A Phase 9 theme working copy carried the layout inside it; Phase 10 made Layout its own
- * preset domain. This moves it across ONCE: copy first, strip second, and strip only after the
- * copy is safely on disk — the other order loses the layout if the write fails.
- *
- * Zero-initialise the report and release it with `_release`. `moved`/`rewrote_theme` are what
- * HAPPENED; `notes` are said on stderr by every host (never in a status line, so a golden frame
- * cannot move because a user's config is one phase old); a non-empty `error` means the theme
- * file was left exactly as it was. A fresh install with no theme working copy is silent. */
-typedef struct RolltuiMigrationReport {
-  int moved;         /* the layout was written to its own file */
-  int rewrote_theme; /* ...and the theme file was rewritten without its "layout" part */
-  RolltuiStr layout_name;
-  RolltuiStr error;
-  RolltuiStr* notes;
-  size_t notes_n, notes_cap;
-} RolltuiMigrationReport;
-
-void rolltui_migration_report_release(RolltuiMigrationReport* r); /* frees everything; zeroes */
-void rolltui_preset_migrate_theme_layout(const char* dir, size_t dir_len, const RolltuiLayoutHooks* hooks,
-                                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
-                                         RolltuiMigrationReport* out);
-
 /* One row of `kSettings` (Presets.hpp): a setting's key, which domain/store it belongs to, its
  * environment-variable suffix ("THEME" joined to a host's own prefix), its built-in default,
  * and help text for its legal values. BORROWED fields throughout — every string is a literal
@@ -609,6 +646,10 @@ int rolltui_preset_setting_index(const char* key, size_t len);
 
 #ifdef __cplusplus
 } /* extern "C" */
+
+/* The one method that cannot be inline in the struct: it calls a function declared after it.
+ * Same placement, and same reason, as `RolltuiStr::~RolltuiStr` in `rolltui_str.h`. */
+inline RolltuiPresetList::~RolltuiPresetList() { rolltui_preset_list_release(this); }
 #endif
 
 #endif /* ROLLTUI_C_PRESETS_H */

@@ -211,16 +211,45 @@ void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* 
  * PAIR per item, which is why it has its own two-string sink rather than `RolltuiPutFn`. */
 void rolltui_menu_apply_shortcuts(RolltuiMenuItem* root, const RolltuiBindings* b);
 
-typedef void (*RolltuiMenuActionFn)(void* ctx, const char* id, size_t id_len, const char* action, size_t action_len);
-void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionFn put, void* ctx);
+/* One (item id -> action name) pair, and a caller-owned list of them. The m4b shape: a result
+ * the library already has goes into the caller's buffer, never through a sink — this took a
+ * `RolltuiMenuActionFn` until 2026-09-05, and its one consumer had a struct, a lambda and a
+ * `static_cast` around it. Zero-initialise; the C++ destructor releases it. */
+typedef struct RolltuiMenuAction {
+  RolltuiStr id;
+  RolltuiStr action;
+} RolltuiMenuAction;
+
+typedef struct RolltuiMenuActionList {
+  RolltuiMenuAction* v ROLLTUI_DEFAULT(nullptr);
+  size_t n ROLLTUI_DEFAULT(0);
+  size_t cap ROLLTUI_DEFAULT(0);
+
+#ifdef __cplusplus
+  RolltuiMenuActionList() = default;
+  RolltuiMenuActionList(const RolltuiMenuActionList&) = delete;
+  RolltuiMenuActionList& operator=(const RolltuiMenuActionList&) = delete;
+  ~RolltuiMenuActionList();
+  const RolltuiMenuAction* begin() const { return v; }
+  const RolltuiMenuAction* end() const { return v + n; }
+  size_t size() const { return n; }
+  bool empty() const { return n == 0; }
+#endif
+} RolltuiMenuActionList;
+
+void rolltui_menu_action_list_release(RolltuiMenuActionList* l);
+/* REPLACES `*out` (reusing its buffers). Depth-first, the tree's own order. */
+void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionList* out);
 
 /* The validator names this tree REFERENCES that nothing has registered, de-duplicated in
  * first-seen order. It asks through `RolltuiValidatorFn` — the SAME callback the widget's own
  * registry uses, called with empty text purely for its "is this name registered" answer — so a
  * host answers the question the one way it already answers it, rather than gaining a second
  * registry-shaped thing to keep in step. */
+/* REPLACES `*out`. `is_known` is a DECISION going IN (so it is a callback and stays one);
+ * the names coming OUT are a result, so they go into the caller's list — the m4b split. */
 void rolltui_menu_unknown_validators(const RolltuiMenuItem* root, RolltuiValidatorFn is_known, void* ctx,
-                                     RolltuiPutFn put, void* put_ctx);
+                                     RolltuiStrList* out);
 
 
 /* The LIBRARY'S OWN fifteen (plus the input table they point at), so a consumer can call
@@ -301,6 +330,8 @@ void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out);
 
 #ifdef __cplusplus
 } /* extern "C" */
+
+inline RolltuiMenuActionList::~RolltuiMenuActionList() { rolltui_menu_action_list_release(this); }
 #endif
 
 #endif /* ROLLTUI_C_MENU_H */

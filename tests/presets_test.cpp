@@ -3,10 +3,7 @@
 // domains: the five rules in Presets.hpp, the shipped files against the built-in themes
 // and layouts, the four-rung precedence table (every combination of present/absent
 // rungs), the file format's report, and the OSC 11 reply parser with the light/dark
-// rule. Phase 10 m1 adds the Layout domain and the once-only migration that carries a
-// Phase 9 theme.working.json's layout part across — the section named THE MIGRATION
-// below, whose control (a build that does not copy the part) must fail before the code
-// exists, because losing it would be silent.
+// rule. Phase 10 m1 adds the Layout domain.
 // Runs in a scratch directory under $TMPDIR it creates and removes.
 //
 // PHASE 17 m2c: this file calls the C directly (`rolltui/c/rolltui_presets.h`) instead of
@@ -17,14 +14,10 @@
 // (`rolltui_theme_preset_domain_init`/`rolltui_layout_preset_domain_init`/
 // `rolltui_bindings_preset_domain_init`), using ONLY pure-C vocabulary sources
 // (`rolltui_theme_default_vocab()`, `rolltui_layout_default_hooks()`,
-// `rolltui_bindings_library_scope`) — never a table copied into this file. The two Bindings
-// callbacks the C deliberately keeps out of itself (a renamed-action table and the six
-// undeliverable-chord sentences — `rolltui_presets.h`'s own header comment says why) are
-// passed as NULL, exactly as the library's OWN `rolltui_bindings_default()` already does for
-// the identical reason ("a shipped file that needed migrating would be a build mistake, and
-// passing NULL is what makes it one instead of quietly rewriting itself") — this suite's
-// bindings fixtures never touch a renamed name or an undeliverable chord, so NULL changes
-// nothing this file asserts.
+// `rolltui_bindings_library_scope`) — never a table copied into this file. The Bindings
+// `reason` callback (the six undeliverable-chord sentences) is passed as NULL, exactly as the
+// library's OWN `rolltui_bindings_default()` already does — this suite's bindings fixtures
+// never touch an undeliverable chord, so NULL changes nothing this file asserts.
 #include <unistd.h>
 
 #include <algorithm>
@@ -105,10 +98,9 @@ RolltuiPresetDomain& layout_domain() {
 RolltuiPresetDomain& bindings_domain() {
   static RolltuiPresetDomain d = [] {
     RolltuiPresetDomain x{};
-    // migrate/reason NULL: see the header note above — the exact posture rolltui_bindings_c's
-    // own rolltui_bindings_default() takes for the same reason.
-    rolltui_bindings_preset_domain_init(&x, rolltui_bindings_library_scope, nullptr, nullptr, nullptr, nullptr,
-                                        nullptr);
+    // reason NULL: see the header note above — the exact posture the library's own
+    // rolltui_bindings_default() takes for the same reason.
+    rolltui_bindings_preset_domain_init(&x, rolltui_bindings_library_scope, nullptr, nullptr, nullptr);
     return x;
   }();
   return d;
@@ -164,13 +156,6 @@ struct BindingsPresetReport : RolltuiBindingsPresetReport {
   }
 };
 
-// ---- PresetInfo / SaveResult: mechanics vocabulary, not role/action/key names — a plain
-// local shape over what `rolltui_preset_store_list`/`_save_as` already hand back. ------------
-struct PresetInfo {
-  std::string name;
-  bool shipped = false;
-  std::string path;
-};
 // `rolltui::default_bindings_json()`'s own port: the embedded table, scanned directly —
 // independent of `bindings_domain()`'s own `shipped_at` walk, so the two-code-paths check
 // below is not comparing a value to itself.
@@ -207,32 +192,22 @@ class StoreBase {
     return std::string(p, n);
   }
   std::string working_path() const {
-    std::string out;
-    rolltui_preset_store_working_path(s_, put_str, &out);
-    return out;
+    RolltuiStr out;
+    rolltui_preset_store_working_path(s_, &out);
+    return out.str();
   }
   std::string preset_path(std::string_view name) const {
-    std::string out;
-    rolltui_preset_store_preset_path(s_, name.data(), name.size(), put_str, &out);
-    return out;
+    RolltuiStr out;
+    rolltui_preset_store_preset_path(s_, name.data(), name.size(), &out);
+    return out.str();
   }
-  std::vector<PresetInfo> list() const {
-    std::vector<PresetInfo> out;
-    rolltui_preset_store_list(
-        s_,
-        [](void* ctx, const char* name, std::size_t nlen, int shipped, const char* path, std::size_t plen) {
-          static_cast<std::vector<PresetInfo>*>(ctx)->push_back({std::string(name, nlen), shipped != 0, std::string(path, plen)});
-        },
-        &out);
-    return out;
-  }
-  int save_as(std::string_view name, bool overwrite, std::string& error) {
-    error.clear();
-    const int code = rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, put_str, &error);
+  void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
+  int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
+    const int code = rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
     if (code != ROLLTUI_SAVE_SAVED && code != ROLLTUI_SAVE_WRITE_FAILED) {
       std::size_t n = 0;
       const char* p = rolltui_preset_save_result_text(code, &n);
-      error.assign(p, n);
+      rolltui_str_set(&error, p, n);
     }
     return code;
   }
@@ -313,10 +288,10 @@ class ThemeStore : public StoreBase {
   std::string working_value(std::string_view key) const { return StoreBase::working_value(ROLLTUI_PRESET_DOMAIN_THEME, key); }
 
   static std::vector<std::string> shipped_names() {
+    RolltuiStrList names;
+    rolltui_preset_shipped_names(&theme_domain(), &names);
     std::vector<std::string> out;
-    rolltui_preset_shipped_names(&theme_domain(),
-                                 [](void* ctx, const char* n, std::size_t len) { static_cast<std::vector<std::string>*>(ctx)->emplace_back(n, len); },
-                                 &out);
+    for (const RolltuiStr& n : names) out.push_back(n.str());
     return out;
   }
   static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(&theme_domain(), name.data(), name.size()) != 0; }
@@ -383,10 +358,10 @@ class LayoutStore : public StoreBase {
   std::string working_value(std::string_view key) const { return StoreBase::working_value(ROLLTUI_PRESET_DOMAIN_LAYOUT, key); }
 
   static std::vector<std::string> shipped_names() {
+    RolltuiStrList names;
+    rolltui_preset_shipped_names(&layout_domain(), &names);
     std::vector<std::string> out;
-    rolltui_preset_shipped_names(&layout_domain(),
-                                 [](void* ctx, const char* n, std::size_t len) { static_cast<std::vector<std::string>*>(ctx)->emplace_back(n, len); },
-                                 &out);
+    for (const RolltuiStr& n : names) out.push_back(n.str());
     return out;
   }
   static std::string shipped_json(std::string_view name) {
@@ -652,15 +627,16 @@ int main() {
   }
   // ---- save as (rule 3) ----
   {
-    std::string err;
-    check(store.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over a shipped name is refused by name (rule 5): " + err);
+    RolltuiStr err;
+    check(store.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over a shipped name is refused by name (rule 5): " + err.str());
     check(store.save_as("../evil", false, err) == ROLLTUI_SAVE_BAD_NAME && store.save_as(".hidden", false, err) == ROLLTUI_SAVE_BAD_NAME, "a path-like or dot name is refused");
     check(store.save_as("mine", false, err) == ROLLTUI_SAVE_SAVED && err.empty(), "save-as 'mine' saves");
     check(store.label() == "mine" && store.origin() == "mine" && !store.modified(), "…and the working copy is now 'mine', unmodified");
     check(fs::exists(store.preset_path("mine")), "the preset file exists at " + store.preset_path("mine"));
-    std::vector<PresetInfo> list = store.list();
+    RolltuiPresetList list;
+    store.list(list);
     bool has_mine = false, shipped_first = !list.empty() && list[0].shipped && list[0].name == "default";
-    for (const PresetInfo& p : list) if (p.name == "mine" && !p.shipped && p.path == store.preset_path("mine")) has_mine = true;
+    for (const RolltuiPresetInfo& p : list) if (p.name == "mine" && !p.shipped && p.path == store.preset_path("mine")) has_mine = true;
     check(shipped_first && has_mine, "list() has the shipped presets first and the user preset with its path");
     store.set_depth("256");
     check(store.label() == "mine (modified)", "an edit after saving reads 'mine (modified)'");
@@ -697,7 +673,7 @@ int main() {
     ThemePresetReport rep0;
     editor.start(rep0);
     editor.set_mode("light");
-    std::string err;
+    RolltuiStr err;
     check(editor.save_as("default", false, err) == ROLLTUI_SAVE_SAVED && fs::exists(fs::path(shipped_dir) / "default.json"),
           "with may_write_shipped the editor writes 'default' into the shipped directory: " + err);
     RolltuiStr e2{};
@@ -761,7 +737,9 @@ int main() {
     // A user preset saved under a shipped name's file is never listed as a user preset.
     write_file(fs::path(d2) / "themes" / "default.json", "{}");
     bool dup = false;
-    for (const PresetInfo& p : s.list()) if (p.name == "default" && !p.shipped) dup = true;
+    RolltuiPresetList sl;
+    s.list(sl);
+    for (const RolltuiPresetInfo& p : sl) if (p.name == "default" && !p.shipped) dup = true;
     check(!dup, "a user file named like a shipped preset does not shadow or duplicate it");
   }
   // ---- the file format, round trip ----
@@ -794,8 +772,10 @@ int main() {
     RolltuiJsonValue* whole = rolltui_theme_preset_to_json(rolltui_json_clone(d->colours), d->mode.data(), d->mode.size(),
                                                            d->depth.data(), d->depth.size(), "x", 1);
     check(!rolltui_json_has(whole, "layout", 6), "a written theme preset carries no layout (Phase 10 m1)");
-    // A Phase 9 preset file: its layout part is IGNORED, by name, and the file is still
-    // clean — the part was valid, it just is not the Theme's any more.
+    // A theme file carrying a "layout" key: since 2026-09-05 it is an ORDINARY UNKNOWN
+    // KEY, not a special case. The Theme domain used to name it and pass the file clean, on
+    // the strength of a Phase 9 -> Phase 10 migration that has since been retired; with the
+    // migration gone there is nothing that key can mean, so it is reported like any other.
     const RolltuiLayout* stacked = builtin_layout_c("stacked");
     RolltuiJsonValue* stacked_json =
         rolltui_layout_to_json_value(stacked->name.data(), stacked->name.size(), stacked->min_width, stacked->min_height,
@@ -806,10 +786,9 @@ int main() {
     RolltuiStr mode3{}, depth3{};
     ok = rolltui_theme_preset_parse(whole, rolltui_theme_default_vocab(), rolltui_theme_mode_setting_valid,
                                     rolltui_color_depth_setting_valid, &mode3, &depth3, &colours3, &rep);
-    check(ok && rolltui_json_equal(colours3, d->colours) && mode3 == d->mode && depth3 == d->depth && rep.clean() && rep.notes_n == 1 &&
-              str_of(rep.notes[0]).find("\"layout\": ignored") == 0,
-          "a Phase 9 preset file loads its colours and reports the layout part as ignored, by name [" +
-              (rep.notes_n ? str_of(rep.notes[0]) : rep.summary()) + "]");
+    check(ok && rolltui_json_equal(colours3, d->colours) && mode3 == d->mode && depth3 == d->depth && !rep.clean() &&
+              rep.unknown_keys_n == 1 && str_of(rep.unknown_keys[0]) == "layout" && rep.notes_n == 0,
+          "a theme file carrying a \"layout\" key still loads its colours and reports the key as unknown [" + rep.summary() + "]");
     rolltui_str_free(&mode3);
     rolltui_str_free(&depth3);
     rolltui_json_free(whole);
@@ -894,7 +873,7 @@ int main() {
     check(rep2.clean() && layout_eq(again.working(), wide) && again.label() == "default (modified)",
           "a restart loads the autosaved working copy exactly, with its label [" + rep2.summary() + "]");
     // Rules 3 and 5.
-    std::string err;
+    RolltuiStr err;
     check(ls.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over a shipped layout name is refused (rule 5)");
     check(ls.save_as("wide", false, err) == ROLLTUI_SAVE_SAVED && ls.label() == "wide" && fs::exists(ls.preset_path("wide")), "save-as 'wide' saves and becomes the origin");
     check(ls.load("stacked", rep) && layout_eq(ls.working(), *builtin_layout_c("stacked")) && ls.label() == "stacked", "load copies a shipped layout back whole (rule 1)");
@@ -909,7 +888,9 @@ int main() {
     write_file(fs::path(ldir) / "layouts" / "two.json", str_of(np_text));
     rolltui_str_free(&np_text);
     bool has_two = false;
-    for (const PresetInfo& p : ls.list()) if (p.name == "two" && !p.shipped) has_two = true;
+    RolltuiPresetList ll;
+    ls.list(ll);
+    for (const RolltuiPresetInfo& p : ll) if (p.name == "two" && !p.shipped) has_two = true;
     check(has_two, "a layout file dropped into <dir>/layouts is listed as a preset by name");
     std::optional<RolltuiLayout> l = ls.get("two", rep);
     check(l && rep.clean() && l->name == "no-panel", "…and loads (its own \"name\" and the file name may differ)");
@@ -917,107 +898,12 @@ int main() {
     check(!ls.get("nothing", rep) && str_of(rep.error).find("no layout preset 'nothing'") == 0, "an unknown name is a named error [" + str_of(rep.error) + "]");
     check(!ls.load("nothing", rep) && ls.label() == "wide", "…and leaves the working copy alone");
     // A layout file's own problems are reported through the layout sub-report.
-    write_file(fs::path(ldir) / "layouts" / "odd.json", R"({"name":"odd","colour":"blue","root":{"content":"transcript","border":"triple"}})");
+    write_file(fs::path(ldir) / "layouts" / "odd.json", R"({"name":"odd","colour":"blue","root":{"content":"transcript:session","border":"triple"}})");
     check(ls.load("odd", rep) && !rep.clean() && rep.layout.unknown_keys_n == 1 && rep.layout.unknown_keys[0] == "colour" && rep.layout.bad_values_n == 1 &&
               ls.working().base.root.border == rolltui::Border::None,
           "a layout with an unknown key and a bad value loads, reports both, and keeps the default [" + rep.summary() + "]");
     check(ls.working_value("layout") == "odd" && ls.working_value("theme").empty(), "working_value on the Layout store is its origin, and nothing else's");
     rolltui_layout_release(&wide);
-  }
-  // ---- THE MIGRATION (Phase 10 m1): the layout leaves the Theme domain, once ----
-  // The failure guarded here is silent: a Phase 9 install keeps the user's layout inside
-  // theme.working.json, and a Theme domain that no longer parses the part would drop it
-  // on the very first autosave with nothing said and nothing to see. The control for
-  // this section is a build whose migrate_theme_layout() does not copy the part: the
-  // three checks named "THE LAYOUT SURVIVED", "…and it is the EDITED one" and "the theme
-  // file no longer carries a layout" must fail there.
-  {
-    auto migrate = [](const std::string& d) {
-      RolltuiMigrationReport r{};
-      std::size_t n = 0;
-      const RolltuiLayoutAction* actions = rolltui_layout_shipped_default_actions(&n);
-      rolltui_preset_migrate_theme_layout(d.data(), d.size(), rolltui_layout_default_hooks(), actions, n, &r);
-      return r;
-    };
-    const std::string m = (world / "migrate").string();
-    // A Phase 9 working copy: the shipped 'mono' colours plus an EDITED layout — a
-    // panel-left with a 20-cell status window, which is no shipped layout, so "the
-    // layout survived" cannot pass by landing on a default.
-    RolltuiLayout edited;
-    rolltui_layout_copy(&edited, builtin_layout_c("panel-left"));
-    edited.base.root.children[0].size = RolltuiSplitSize::fixed(RolltuiDim::abs(20));
-    const RolltuiThemePresetValue* mono_shipped = ThemeStore::shipped("mono");
-    RolltuiJsonValue* phase9 = rolltui_theme_preset_to_json(rolltui_json_clone(mono_shipped->colours), mono_shipped->mode.data(),
-                                                            mono_shipped->mode.size(), mono_shipped->depth.data(),
-                                                            mono_shipped->depth.size(), "mono", 4);
-    rolltui_json_set(phase9, "preset", 6, rolltui_json_string("mono", 4));
-    RolltuiJsonValue* edited_json = rolltui_layout_to_json_value(edited.name.data(), edited.name.size(), edited.min_width, edited.min_height,
-                                                                 edited.actions.data(), edited.actions.size(), &edited.base, edited.popups.data(),
-                                                                 edited.popups.size(), rolltui_layout_default_hooks());
-    rolltui_json_set(phase9, "layout", 6, edited_json);
-    RolltuiStr phase9_text{};
-    rolltui_json_dump(phase9, 2, &phase9_text);
-    write_file(fs::path(m) / "theme.working.json", str_of(phase9_text) + "\n");
-
-    RolltuiMigrationReport mr = migrate(m);
-    check(mr.error.empty() && mr.moved && mr.rewrote_theme && mr.layout_name == "panel-left" && mr.notes_n != 0,
-          "a theme working copy carrying a layout: the part is moved out and the theme file rewritten, and it says so [" +
-              (mr.notes_n ? str_of(mr.notes[0]) : str_of(mr.error)) + "]");
-    rolltui_migration_report_release(&mr);
-    LayoutStore ls(m, false, "");
-    LayoutPresetReport lrep;
-    ls.start(lrep);
-    check(lrep.clean() && ls.origin() == "panel-left" && ls.modified(), "THE LAYOUT SURVIVED: a layout working copy exists, labelled 'panel-left (modified)' [" + lrep.summary() + "]");
-    check(layout_eq(ls.working(), edited), "…and it is the EDITED one, window for window, not a shipped layout that merely looks plausible");
-    ThemeStore ts(m, false, "");
-    ThemePresetReport trep;
-    ts.start(trep);
-    check(trep.clean() && ts.origin() == "mono" && theme_value_eq(ts.working().v, ThemeStore::shipped("mono")),
-          "…and the theme working copy is otherwise untouched: still 'mono', unmodified [" + trep.summary() + "]");
-    RolltuiStr perr{};
-    const std::string theme_text = read_file(fs::path(m) / "theme.working.json");
-    RolltuiJsonValue* reparsed = rolltui_json_parse(theme_text.data(), theme_text.size(), &perr);
-    check(reparsed && !rolltui_json_has(reparsed, "layout", 6) && perr.empty(),
-          "the theme file no longer carries a layout — so nothing reports it ignored, run after run");
-    rolltui_json_free(reparsed);
-    rolltui_str_free(&perr);
-    RolltuiMigrationReport twice = migrate(m);
-    check(!twice.moved && !twice.rewrote_theme && twice.notes_n == 0 && twice.error.empty(), "running it again has nothing to do");
-    rolltui_migration_report_release(&twice);
-    // The other direction: a layout working copy ALREADY exists. The stale part must
-    // never overwrite it — this is the once-only half of the rule.
-    const std::string m2 = (world / "migrate2").string();
-    write_file(fs::path(m2) / "theme.working.json", str_of(phase9_text) + "\n");
-    LayoutStore mine(m2, false, "");
-    LayoutPresetReport mlrep;
-    mine.load("stacked", mlrep);  // the user has since chosen their own
-    RolltuiMigrationReport mr2 = migrate(m2);
-    check(!mr2.moved && mr2.rewrote_theme && mr2.notes_n == 1 && str_of(mr2.notes[0]).find("already exists") != std::string::npos,
-          "an existing layout working copy is NOT overwritten; the stale part is dropped and the reason said [" + (mr2.notes_n ? str_of(mr2.notes[0]) : "") + "]");
-    rolltui_migration_report_release(&mr2);
-    LayoutStore mine2(m2, false, "");
-    LayoutPresetReport mine2_rep;
-    mine2.start(mine2_rep);
-    check(layout_eq(mine2.working(), *builtin_layout_c("stacked")) && mine2.label() == "stacked", "…and the user's own layout is still theirs");
-    // A fresh Phase 10 install, and a theme working copy whose layout part is junk.
-    RolltuiMigrationReport fresh = migrate((world / "nothing-here").string());
-    check(!fresh.moved, "a fresh install has nothing to migrate and says nothing");
-    rolltui_migration_report_release(&fresh);
-    const std::string m3 = (world / "migrate3").string();
-    RolltuiJsonValue* junk = rolltui_json_clone(phase9);
-    rolltui_json_set(junk, "layout", 6, rolltui_json_string("not a layout", 12));
-    RolltuiStr junk_text{};
-    rolltui_json_dump(junk, 2, &junk_text);
-    write_file(fs::path(m3) / "theme.working.json", str_of(junk_text) + "\n");
-    rolltui_json_free(junk);
-    rolltui_str_free(&junk_text);
-    RolltuiMigrationReport mr3 = migrate(m3);
-    check(!mr3.error.empty() && !mr3.moved && !mr3.rewrote_theme && fs::exists(fs::path(m3) / "theme.working.json") && !fs::exists(fs::path(m3) / "layout.working.json"),
-          "an unusable layout part is an error and NOTHING is changed — the user still has the bytes [" + str_of(mr3.error) + "]");
-    rolltui_migration_report_release(&mr3);
-    rolltui_str_free(&phase9_text);
-    rolltui_json_free(phase9);
-    rolltui_layout_release(&edited);
   }
   // ---- the Bindings domain (milestone 17): the same five rules on the second domain ----
   {
@@ -1039,7 +925,7 @@ int main() {
     BindingsPresetReport rep2;
     again.start(rep2);
     check(rep2.clean() && bindings_eq(again.working().get(), bs.working().get()) && again.label() == "default (modified)", "a restart loads the autosaved working copy with its label [" + rep2.summary() + "]");
-    std::string err;
+    RolltuiStr err;
     check(bs.save_as("default", false, err) == ROLLTUI_SAVE_REFUSED_SHIPPED, "save-as over the shipped name is refused (rule 5)");
     check(bs.save_as("vim-ish", false, err) == ROLLTUI_SAVE_SAVED && bs.label() == "vim-ish" && fs::exists(bs.preset_path("vim-ish")), "save-as 'vim-ish' saves (rule 3) and becomes the origin");
     check(bs.load("default", rep) && bindings_eq(bs.working().get(), rolltui_bindings_default()) && bs.label() == "default", "load copies the shipped default back (rule 1: the whole domain)");

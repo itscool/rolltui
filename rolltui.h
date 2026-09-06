@@ -14,46 +14,79 @@
  * the layering claim becomes false without anything failing.
  *
  * ============================================================================
- * HOW THE PUBLIC SET WAS CHOSEN — derived, not asserted
+ * HOW THE PUBLIC SET IS CHOSEN — DECIDED, and this replaces a DERIVATION
  * ============================================================================
- * Two measurements, on 2026-09-04, rather than a judgement about what "feels" public:
+ * This paragraph used to say "derived, not asserted", and describe two measurements taken on
+ * 2026-09-04: what consumers reached for, and which headers were leaves of the include graph.
+ * THAT METHOD IS RETRACTED (Phase 17 m4b, 2026-09-05). Two things were wrong with it:
  *
- *   1. **What consumers actually reach for.** The four suites already ported to the C API
- *      (`layout`, `markdown`, `transcript`, `input`) include twelve of these headers between
- *      them. That is observed fact — and it already contradicted a guess: `rolltui_md_lines.h`
- *      and `rolltui_layout_tree.h` read like internal data structures and are reached
- *      directly by consumers, so they are public.
- *   2. **The include graph.** A header nothing else includes is a LEAF — an entry point a
- *      consumer reaches for on purpose (`transcript`, `widgets`, `menu`, `terminal`, `swap`,
- *      `presets`, `app_profile`, `diff`, `render`, `wrap`, the two theme tools). A header
- *      many others include is VOCABULARY — `style`, `geom`, `keys`, `screen`, `str`, `abi` —
- *      and is public because the leaves' own signatures speak it.
+ *   1. **Measuring reach cannot tell an entry point from plumbing**, because a consumer
+ *      reaching THROUGH a bad API looks identical to one reaching FOR a good one. The old
+ *      text says so without noticing: `md_lines.h` and `layout_tree.h` "read like internal
+ *      data structures" and were made public anyway, on the strength of four suites naming
+ *      them. The result was 37 of 39 headers public — not a curated surface, the whole
+ *      library with an include list on top.
+ *   2. **Its instrument went blind.** Once consumers include only this file, "who names this
+ *      header" stops reflecting who USES it, so the measurement is not even repeatable.
  *
- * **TWO are kept out** — the ones neither measurement reaches, each machinery a consumer
- * never names:
- *   - `c/rolltui_alloc.h`  — the CLOSED SET of allocation strategies (`rolltui_grow`,
- *                            `rolltui_fit`, the pack builder). Internal by construction:
- *                            `ownership_test` asserts that only the library grows a buffer.
+ * WHAT THE HONEST MEASUREMENT SAYS, taken at symbol level instead (2026-09-05): the library
+ * declares **1,295 symbols across 40 headers. 439 are reached by a host. 296 only by a test.
+ * 560 have no caller anywhere in this repository** — 43% of the surface. A number like that is
+ * not an argument for a different include list; it is the evidence that "which headers are
+ * public" was never the interesting question.
+ *
+ * SO THE RULE IS A DECISION, AND IT IS THIS: a header is public because a STATED REASON says
+ * it is an entry point or the vocabulary an entry point's signatures speak. Nothing is public
+ * because someone reached for it. **A gap is evidence; a usage is not** — when a consumer
+ * cannot do its job, that argues for opening something, and each such argument is made and
+ * recorded one at a time.
+ *
+ * **TWO are internal**, and `public_header_test`'s `kInternal` is the enforced list:
+ *   - `c/rolltui_alloc.h`  — the CLOSED SET of allocation strategies. Internal by
+ *                            construction: `ownership_test` asserts only the library grows a
+ *                            buffer.
  *   - `c/rolltui_map.h`    — the string-keyed table the library builds its registries from.
  *
- * It was THREE until Phase 17 m2c: `c/rolltui_marker.h` left the internal list when
- * `transcript_test.cpp` began asserting the "▼ N more" rule directly, so a consumer reaches
- * it and measurement 1 makes it public. This prose said three and listed marker while line 120
- * included it — corrected 2026-09-05. `public_header_test`'s `kInternal` is the enforced
- * list; this paragraph is commentary on it and can drift, which it did.
- *
- * **`rolltui_str.h` is IN, and it is the one genuinely awkward case.** It was written as an
- * internal container and it appears in public signatures anyway — in the ~15 functions of
- * rule 3(b) below, the ones whose output has no bound. That makes it vocabulary whether or
- * not it was meant to be. It is included here rather than hidden, because a header a
- * consumer must include to call the API is public by definition, and pretending otherwise
- * would be the "documented one way, used another" split this library refuses everywhere
- * else. **If that ever feels wrong, the fix is not hiding the header — it is giving those
- * fifteen functions a bound, which would move them to rule 3(a) and retire the type from the
- * public set honestly.**
+ * `rolltui_str.h` is IN, and it is the one genuinely awkward case. It was written as an
+ * internal container and it appears in public signatures anyway — the ~15 functions of rule
+ * 3(b), and now `RolltuiStrList` under rule 4. That makes it vocabulary whether or not it was
+ * meant to be, and a header a consumer must include to call the API is public by definition.
  *
  * ============================================================================
- * THE FIVE RULES EVERY HEADER BELOW OBEYS
+ * WHAT A CONSUMER SHOULD NEVER HAVE TO WRITE, and how that is checked
+ * ============================================================================
+ * The user's framing, 2026-09-05: *"if I'm using MFC I don't expect to build a bunch of
+ * scaffolding around it for my C++ projects"* — and the question that follows it, *"what is
+ * there we even need to provide?"* The answer turned out to be **nothing new**: the wrappers
+ * existed because the API had two shapes for one job, and one of them forces a wrapper.
+ *
+ * It was NOT a string problem, which was the first hypothesis and is worth recording as
+ * disconfirmed: `RolltuiStr` has had `operator std::string_view()` all along, so a C++ host
+ * pays nothing to read one. The wrappers were about RESULTS ARRIVING THROUGH CALLBACKS.
+ *
+ * **THE RULE, and it is checkable rather than a matter of taste: does a callback carry a
+ * DECISION going IN, or a RESULT coming OUT?**
+ *   - **A DECISION going in is what a callback is FOR** and stays one. `RolltuiScopeFn` (is
+ *     this a library scope?), `RolltuiRowsFn`, `RolltuiEffectFn`, `RolltuiValidatorFn`,
+ *     `RolltuiSlotFn`, `RolltuiEventFn`. A host WANTS to write that lambda; it is the payload.
+ *   - **A RESULT coming out goes into a buffer the CALLER owns and reuses**, replaced on every
+ *     call — `RolltuiStr*` for one string, `RolltuiStrList*` for many, a typed list
+ *     (`RolltuiPresetList`, `RolltuiMenuActionList`) for many of something structured.
+ *   - The tell that this was wrong was measured, not felt: `rolltui_preset_store_list` was
+ *     wrapped at **7 of 7** call sites while count/at-shaped APIs were wrapped at **0 of 32**,
+ *     and `struct PresetInfo` had been written out **three times, byte for byte**, in roll, the
+ *     studio and `presets_test.cpp`. **A sink's parameter list IS a struct definition the
+ *     library declined to write down, so every consumer wrote it instead.**
+ *   - `rolltui_preset_shipped_text` was added for the same reason one level down: a lookup the
+ *     API could do and did not offer is a lookup every consumer hand-writes, and two had.
+ *
+ * **ENFORCED, not remembered:** `public_header_test` asserts that no public function hands a
+ * result back through a callback, proves its own scanner armed on every run, and fails on a
+ * planted violation by name. Retiring the sink shape deleted far more consumer code than it
+ * added library code — the numbers are in `plan/phase-17.md` m4b.
+ *
+ * ============================================================================
+ * THE RULES EVERY HEADER BELOW OBEYS
  * ============================================================================
  * Stated once here so a consumer learns them once rather than per module:
  *
@@ -85,9 +118,14 @@
  *   4. **Working memory is a HANDLE the caller owns**, not storage the callee invents:
  *      `RolltuiDrawScratch`, `RolltuiWrapScratch`, `RolltuiDiffScratch`. Make one per thread,
  *      reuse it, free it.
- *   5. **A callback crosses as {function pointer, void* ctx, void (*free_ctx)(void*)}.**
- *      The library calls `free_ctx` exactly once when it drops the entry. That is how a C++
- *      lambda reaches a C API — and that bridge belongs in the consumer, not here.
+ *   4b. **MANY THINGS OUT HAS ONE SHAPE, the same one rule 3(b) has for text:** a list the
+ *      CALLER owns and reuses, REPLACED on every call — `RolltuiStrList` for strings,
+ *      `RolltuiPresetList` / `RolltuiMenuActionList` for structured rows. Never a sink
+ *      callback; see the section above for why, and `public_header_test` for the check.
+ *   5. **A callback crosses as {function pointer, void* ctx, void (*free_ctx)(void*)}, and
+ *      only ever carries a DECISION INTO the library.** The library calls `free_ctx` exactly
+ *      once when it drops the entry. That is how a C++ lambda reaches a C API — and that
+ *      bridge belongs in the consumer, not here.
  *
  * ============================================================================
  * C++ consumers
@@ -96,8 +134,10 @@
  * directly.
  *   - DO write a RAII holder or a lambda bridge in your own file when you want one.
  *   - DON'T ship it from here. If two consumers write the SAME wrapper, the API is wrong,
- *     not the consumers. That has fired twice: three hosts had hand-written the same double
- *     buffer (hence `c/rolltui_swap.h`), and four had hand-copied the action table.
+ *     not the consumers. That has now fired THREE times: three hosts had hand-written the same
+ *     double buffer (hence `c/rolltui_swap.h`), four had hand-copied the action table, and
+ *     three had written `struct PresetInfo` (hence `RolltuiPresetInfo`, and the sink rule
+ *     above that made it necessary). Each time the fix was the API, never the wrapper.
  */
 
 /* ---- vocabulary: the types the rest of the API speaks ------------------------------- */

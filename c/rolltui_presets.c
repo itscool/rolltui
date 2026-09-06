@@ -107,8 +107,8 @@ static int make_parents(const char* path, size_t len, RolltuiPutFn err, void* er
   return ok;
 }
 
-int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const char* bytes, size_t len,
-                                     RolltuiPutFn err, void* err_ctx) {
+static int write_file_atomic_put(const char* path, size_t path_len, const char* bytes, size_t len, RolltuiPutFn err,
+                                 void* err_ctx) {
   Buf p = {NULL, 0, 0}, tmp = {NULL, 0, 0};
   char pid[32];
   FILE* f;
@@ -150,6 +150,12 @@ int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const ch
   buf_free(&p);
   buf_free(&tmp);
   return ok;
+}
+
+int rolltui_preset_write_file_atomic(const char* path, size_t path_len, const char* bytes, size_t len,
+                                     RolltuiStr* err) {
+  if (err) rolltui_str_clear(err);
+  return write_file_atomic_put(path, path_len, bytes, len, rolltui_str_put, err);
 }
 
 /* A tiny sorted list of names, which is what `json_names_in` builds before it hands them
@@ -200,11 +206,13 @@ static void collect_json_names(const char* dir, size_t dir_len, NameList* out) {
   if (out->count > 1) qsort(out->names, out->count, sizeof *out->names, name_cmp);
 }
 
-void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiPutFn put, void* ctx) {
+void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrList* out) {
   NameList list = {NULL, 0, 0};
   size_t i;
+  if (!out) return;
+  rolltui_str_list_clear(out);
   collect_json_names(dir, dir_len, &list);
-  for (i = 0; i < list.count; ++i) put(ctx, list.names[i].p, list.names[i].len);
+  for (i = 0; i < list.count; ++i) rolltui_str_list_add(out, list.names[i].p, list.names[i].len);
   name_list_free(&list);
 }
 
@@ -305,16 +313,33 @@ int rolltui_preset_is_shipped(RolltuiPresetDomain* d, const char* name, size_t l
   return 0;
 }
 
-void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiPutFn put, void* ctx) {
+const char* rolltui_preset_shipped_text(RolltuiPresetDomain* d, const char* name, size_t len, size_t* out_len) {
+  const size_t n = d->shipped_count();
+  size_t i;
+  if (out_len) *out_len = 0;
+  for (i = 0; i < n; ++i) {
+    const char *nm = NULL, *text = NULL;
+    size_t nlen = 0, tlen = 0;
+    d->shipped_at(i, &nm, &nlen, &text, &tlen);
+    if (nlen != len || memcmp(nm, name, len) != 0) continue;
+    if (out_len) *out_len = tlen;
+    return text;
+  }
+  return NULL;
+}
+
+void rolltui_preset_shipped_names(RolltuiPresetDomain* d, RolltuiStrList* out) {
   const size_t n = d->shipped_count();
   size_t i, pass;
+  if (!out) return;
+  rolltui_str_list_clear(out);
   for (pass = 0; pass < 2; ++pass)
     for (i = 0; i < n; ++i) {
       const char* nm = NULL;
       const char* text = NULL;
       size_t nlen = 0, tlen = 0;
       const int is_default = (d->shipped_at(i, &nm, &nlen, &text, &tlen), nlen == 7 && memcmp(nm, "default", 7) == 0);
-      if ((pass == 0) == (is_default != 0)) put(ctx, nm, nlen);
+      if ((pass == 0) == (is_default != 0)) rolltui_str_list_add(out, nm, nlen);
     }
 }
 
@@ -364,18 +389,17 @@ static void store_preset_path(const RolltuiPresetStore* s, const char* name, siz
   buf_add(out, ".json", 5);
 }
 
-void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiPutFn put, void* ctx) {
+void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiStr* out) {
   Buf p = {NULL, 0, 0};
   store_working_path(s, &p);
-  put(ctx, p.p, p.len);
+  rolltui_str_set(out, p.p ? p.p : "", p.len);
   buf_free(&p);
 }
 
-void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiPutFn put,
-                                      void* ctx) {
+void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiStr* out) {
   Buf p = {NULL, 0, 0};
   store_preset_path(s, name, len, &p);
-  put(ctx, p.p, p.len);
+  rolltui_str_set(out, p.p ? p.p : "", p.len);
   buf_free(&p);
 }
 
@@ -416,7 +440,7 @@ static int autosave_locked(RolltuiPresetStore* s) {
   int ok;
   store_working_path(s, &path);
   s->d->to_json_with_origin(s->working, s->origin.p, s->origin.len, buf_put, &bytes);
-  ok = rolltui_preset_write_file_atomic(path.p, path.len, bytes.p, bytes.len, buf_put, &err);
+  ok = write_file_atomic_put(path.p, path.len, bytes.p, bytes.len, buf_put, &err);
   if (ok) s->last_error.len = 0;
   else buf_set(&s->last_error, err.p, err.len);
   buf_free(&path);
@@ -630,11 +654,36 @@ void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, vo
   pthread_mutex_unlock(&s->mu);
 }
 
-void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetInfoFn put, void* ctx) {
+void rolltui_preset_list_release(RolltuiPresetList* l) {
+  size_t i;
+  if (!l) return;
+  for (i = 0; i < l->cap; ++i) {
+    rolltui_str_free(&l->v[i].name);
+    rolltui_str_free(&l->v[i].path);
+  }
+  rolltui_mem_free(l->v);
+  l->v = NULL;
+  l->n = 0;
+  l->cap = 0;
+}
+
+/* One entry appended, REUSING the string buffers a previous call left in `cap` — which is the
+ * whole reason this list is the caller's rather than a fresh vector per call. */
+static RolltuiPresetInfo* list_add(RolltuiPresetList* l) {
+  if (l->n == l->cap) {
+    const size_t want = l->cap ? l->cap * 2 : 8;
+    l->v = (RolltuiPresetInfo*)rolltui_grow_zeroed(l->v, &l->cap, want, sizeof *l->v);
+  }
+  return &l->v[l->n++];
+}
+
+void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* out) {
   Buf dir = {NULL, 0, 0}, path = {NULL, 0, 0};
   NameList list = {NULL, 0, 0};
   const size_t n = s->d->shipped_count();
   size_t i, pass;
+  if (!out) return;
+  out->n = 0; /* REPLACES: the entries' buffers stay, to be refilled */
   /* The shipped ones first, "default" ahead of the rest — the order a chooser offers them
    * in, and the same order `shipped_names()` gave. */
   for (pass = 0; pass < 2; ++pass)
@@ -643,22 +692,30 @@ void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetInfoFn 
       const char* text = NULL;
       size_t nlen = 0, tlen = 0;
       int is_default;
+      RolltuiPresetInfo* e;
       s->d->shipped_at(i, &nm, &nlen, &text, &tlen);
       is_default = nlen == 7 && memcmp(nm, "default", 7) == 0;
       if ((pass == 0) != (is_default != 0)) continue;
-      put(ctx, nm, nlen, 1, "", 0);
+      e = list_add(out);
+      rolltui_str_set(&e->name, nm, nlen);
+      rolltui_str_set(&e->path, "", 0);
+      e->shipped = 1;
     }
   buf_add(&dir, s->dir.p, s->dir.len);
   buf_add(&dir, "/", 1);
   buf_add(&dir, s->d->subdir, s->d->subdir_len);
   collect_json_names(dir.p, dir.len, &list);
   for (i = 0; i < list.count; ++i) {
+    RolltuiPresetInfo* e;
     /* A user file that shadows a shipped name is never listed as a user preset: the
      * shipped one is what `get` will answer with, so offering both would be two entries
      * for one thing. */
     if (rolltui_preset_is_shipped(s->d, list.names[i].p, list.names[i].len)) continue;
     store_preset_path(s, list.names[i].p, list.names[i].len, &path);
-    put(ctx, list.names[i].p, list.names[i].len, 0, path.p, path.len);
+    e = list_add(out);
+    rolltui_str_set(&e->name, list.names[i].p, list.names[i].len);
+    rolltui_str_set(&e->path, path.p ? path.p : "", path.len);
+    e->shipped = 0;
   }
   name_list_free(&list);
   buf_free(&dir);
@@ -705,10 +762,10 @@ int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t le
   return 1;
 }
 
-int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiPutFn err,
-                                 void* err_ctx) {
+int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err) {
   Buf path = {NULL, 0, 0}, bytes = {NULL, 0, 0};
   int result = ROLLTUI_SAVE_SAVED;
+  if (err) rolltui_str_clear(err);
   pthread_mutex_lock(&s->mu);
   if (!rolltui_preset_valid_name(name, len)) {
     pthread_mutex_unlock(&s->mu);
@@ -733,7 +790,7 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
     }
   }
   s->d->to_json(s->working, name, len, buf_put, &bytes);
-  if (!rolltui_preset_write_file_atomic(path.p, path.len, bytes.p, bytes.len, err, err_ctx)) {
+  if (!write_file_atomic_put(path.p, path.len, bytes.p, bytes.len, rolltui_str_put, err)) {
     result = ROLLTUI_SAVE_WRITE_FAILED;
   } else {
     buf_set(&s->origin, name, len);
@@ -890,14 +947,6 @@ int rolltui_theme_preset_parse(const RolltuiJsonValue* root, const RolltuiThemeV
       }
     } else if (tp_streq(k, klen, "colours")) {
       *out_colours = x;
-    } else if (tp_streq(k, klen, "layout")) {
-      /* A Phase 9 preset file. Not an unknown key and not a bad value — the part was valid,
-       * it simply is not the Theme's any more — so it is a NOTE naming it, and the file
-       * still loads clean. (The working copy is moved across once instead;
-       * `migrate_theme_layout()`, which stays C++ in `Presets.cpp`.) */
-      RolltuiStr msg = {0};
-      rolltui_str_append(&msg, K("\"layout\": ignored — a layout is its own preset now (layouts/)"));
-      tp_add_note(report, &msg);
     } else {
       RolltuiStr msg = {0};
       rolltui_str_append(&msg, k, klen);
@@ -1313,11 +1362,11 @@ static void* layout_domain_parse(const char* text, size_t len, void* rep) {
     rolltui_loaded_layout_release(&loaded);
     return NULL;
   }
-  for (i = 0; i < r->layout.migrated_n; ++i) {
+  for (i = 0; i < r->layout.notes_n; ++i) {
     RolltuiStr* n = layout_preset_note_add(r);
     rolltui_str_clear(n);
-    rolltui_str_append(n, K("layout: content "));
-    rolltui_str_append_str(n, &r->layout.migrated[i]);
+    rolltui_str_append(n, K("layout: "));
+    rolltui_str_append_str(n, &r->layout.notes[i]);
   }
   out = (RolltuiLayout*)rolltui_mem_alloc(sizeof *out);
   rolltui_layout_init(out);
@@ -1452,8 +1501,6 @@ const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void) { return 
  * three `rolltui_bindings_load_json` itself already takes as parameters. */
 static RolltuiScopeFn g_bindings_is_library_scope;
 static void* g_bindings_scope_ctx;
-static RolltuiMigrateFn g_bindings_migrate;
-static void* g_bindings_migrate_ctx;
 static RolltuiReasonFn g_bindings_reason;
 static void* g_bindings_reason_ctx;
 
@@ -1509,7 +1556,7 @@ static void* bindings_domain_parse(const char* text, size_t len, void* rep) {
    * the tree anyway, and there is no tree-taking overload to hand it this one instead — a real
    * but minor cost paid once per load, never once per frame. */
   ok = rolltui_bindings_load_json(b, text, len, rolltui_key_active_protocol(), g_bindings_is_library_scope,
-                                 g_bindings_scope_ctx, g_bindings_migrate, g_bindings_migrate_ctx,
+                                 g_bindings_scope_ctx,
                                  g_bindings_reason, g_bindings_reason_ctx, &r->bindings);
   if (!ok) {
     rolltui_str_set(&r->error, r->bindings.error.p ? r->bindings.error.p : "", r->bindings.error.n);
@@ -1527,12 +1574,6 @@ static void* bindings_domain_parse(const char* text, size_t len, void* rep) {
         rolltui_str_set(n, k, klen);
       }
     }
-  }
-  for (i = 0; i < r->bindings.migrated_n; ++i) {
-    RolltuiStr* n = bindings_preset_note_add(r);
-    rolltui_str_clear(n);
-    rolltui_str_append(n, K("bindings: action "));
-    rolltui_str_append_str(n, &r->bindings.migrated[i]);
   }
   rolltui_json_free(root);
   return b;
@@ -1572,12 +1613,10 @@ static int bindings_domain_equal(const void* a, const void* b) {
 }
 
 void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
-                                         RolltuiMigrateFn migrate, void* migrate_ctx, RolltuiReasonFn reason,
+                                         RolltuiReasonFn reason,
                                          void* reason_ctx) {
   g_bindings_is_library_scope = is_library_scope;
   g_bindings_scope_ctx = scope_ctx;
-  g_bindings_migrate = migrate;
-  g_bindings_migrate_ctx = migrate_ctx;
   g_bindings_reason = reason;
   g_bindings_reason_ctx = reason_ctx;
   memset(out, 0, sizeof *out);
@@ -1783,8 +1822,7 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
 
 
 /* ============================================================================================
- * A SETTING'S VALUE IN THE WORKING COPY, and the Phase 9 -> Phase 10 migration — the two
- * pieces of `Presets.cpp` that had no C form (Phase 17 m3). See the header for why
+ * A SETTING'S VALUE IN THE WORKING COPY (Phase 17 m3). See the header for why
  * `working_value`'s stated blocker was already false when it was written down.
  * ============================================================================================ */
 
@@ -1814,157 +1852,6 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDoma
     rolltui_mem_free(w);
   }
 }
-
-/* ---- the migration -------------------------------------------------------------------------- */
-
-static void migration_add_note(RolltuiMigrationReport* r, const char* s, size_t n) {
-  /* GROWING, AMORTISED (rolltui_alloc.h strategy 2) — through `rolltui_grow_zeroed`, which is
-   * growth's ONE home. Written first as a hand-rolled double-and-realloc, and `ownership_test`
-   * failed on it by name: the closed set is only closed if every growth goes through it. This
-   * is the same line the three report types above already have. */
-  r->notes = (RolltuiStr*)rolltui_grow_zeroed(r->notes, &r->notes_cap, r->notes_n + 1, sizeof *r->notes);
-  rolltui_str_set(&r->notes[r->notes_n++], s, n);
-}
-
-void rolltui_migration_report_release(RolltuiMigrationReport* r) {
-  size_t i;
-  if (!r) return;
-  rolltui_str_free(&r->layout_name);
-  rolltui_str_free(&r->error);
-  for (i = 0; i < r->notes_cap; ++i) rolltui_str_free(&r->notes[i]);
-  rolltui_mem_free(r->notes);
-  memset(r, 0, sizeof *r);
-}
-
-static void migration_path(Buf* b, const char* dir, size_t dir_len, const char* file, size_t file_len) {
-  b->len = 0;
-  buf_add(b, dir, dir_len);
-  buf_add(b, "/", 1);
-  buf_add(b, file, file_len);
-}
-
-void rolltui_preset_migrate_theme_layout(const char* dir, size_t dir_len, const RolltuiLayoutHooks* hooks,
-                                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
-                                         RolltuiMigrationReport* out) {
-  Buf theme_path, layout_path, text, msg;
-  RolltuiJsonValue* v = NULL;
-  const RolltuiJsonValue* layout_part;
-  RolltuiStr perr;
-  memset(&theme_path, 0, sizeof theme_path);
-  memset(&layout_path, 0, sizeof layout_path);
-  memset(&text, 0, sizeof text);
-  memset(&msg, 0, sizeof msg);
-  memset(&perr, 0, sizeof perr);
-  migration_path(&theme_path, dir, dir_len, "theme.working.json", sizeof("theme.working.json") - 1);
-  migration_path(&layout_path, dir, dir_len, "layout.working.json", sizeof("layout.working.json") - 1);
-  /* A fresh install: nothing to move, and nothing to say about it. */
-  if (!rolltui_preset_read_file(theme_path.p, theme_path.len, buf_put, &text)) goto done;
-  v = rolltui_json_parse(text.p ? text.p : "", text.len, &perr);
-  /* Unreadable, or already Phase 10 — either way the file is left exactly as it is. */
-  if (perr.n != 0 || !rolltui_json_is_object(v) || !rolltui_json_has(v, "layout", 6)) goto done;
-
-  {
-    /* `read_file` on the layout path is the existence check: a file we cannot read is one we
-     * must not overwrite either, so the two questions have the same answer here. */
-    Buf probe;
-    memset(&probe, 0, sizeof probe);
-    if (rolltui_preset_read_file(layout_path.p, layout_path.len, buf_put, &probe)) {
-      buf_free(&probe);
-      msg.len = 0;
-      buf_add(&msg, "the theme working copy still carried a layout; ", 46);
-      buf_add(&msg, layout_path.p, layout_path.len);
-      buf_add(&msg, " already exists, so it was left alone", 36);
-      migration_add_note(out, msg.p, msg.len);
-    } else {
-      RolltuiLoadedLayout l;
-      RolltuiLayoutReport lrep;
-      buf_free(&probe);
-      rolltui_loaded_layout_init(&l);
-      memset(&lrep, 0, sizeof lrep);
-      layout_part = rolltui_json_get(v, "layout", 6);
-      if (!rolltui_load_layout(layout_part, &l, default_actions, default_actions_n, hooks, &lrep)) {
-        msg.len = 0;
-        buf_add(&msg, theme_path.p, theme_path.len);
-        buf_add(&msg, ": its \"layout\" part is unusable (", 33);
-        buf_add(&msg, lrep.error.p ? lrep.error.p : "", lrep.error.n);
-        buf_add(&msg, "); it was left in place", 23);
-        rolltui_str_set(&out->error, msg.p, msg.len);
-        rolltui_layout_report_release(&lrep);
-        rolltui_loaded_layout_release(&l);
-        goto done;
-      }
-      {
-        /* The layout's own name, or "default" when it calls itself nothing. */
-        const char* origin = l.name.n ? l.name.p : "default";
-        const size_t origin_n = l.name.n ? l.name.n : sizeof("default") - 1;
-        RolltuiJsonValue* lv = rolltui_layout_to_json_value(origin, origin_n, l.min_width, l.min_height, l.actions,
-                                                           l.actions_n, &l.base, l.popups, l.popups_n, hooks);
-        RolltuiStr dump;
-        Buf werr;
-        int wrote;
-        memset(&dump, 0, sizeof dump);
-        memset(&werr, 0, sizeof werr);
-        rolltui_json_set(lv, "preset", 6, rolltui_json_string(origin, origin_n));
-        rolltui_json_dump(lv, 2, &dump);
-        rolltui_str_append(&dump, "\n", 1);
-        wrote = rolltui_preset_write_file_atomic(layout_path.p, layout_path.len, dump.p ? dump.p : "", dump.n, buf_put,
-                                                 &werr);
-        if (!wrote) rolltui_str_set(&out->error, werr.p ? werr.p : "", werr.len);
-        else {
-          out->moved = 1;
-          rolltui_str_set(&out->layout_name, origin, origin_n);
-          msg.len = 0;
-          buf_add(&msg, "moved the layout '", 18);
-          buf_add(&msg, origin, origin_n);
-          buf_add(&msg, "' out of the theme working copy into ", 37);
-          buf_add(&msg, layout_path.p, layout_path.len);
-          buf_add(&msg, " (it is its own preset domain now)", 34);
-          migration_add_note(out, msg.p, msg.len);
-        }
-        rolltui_str_free(&dump);
-        buf_free(&werr);
-        rolltui_json_free(lv);
-        rolltui_layout_report_release(&lrep);
-        rolltui_loaded_layout_release(&l);
-        if (!wrote) goto done;
-      }
-    }
-  }
-
-  /* Strip second, and only now — the layout is safely on disk (or was already there). */
-  rolltui_json_object_erase(v, "layout", 6);
-  {
-    RolltuiStr dump;
-    Buf werr;
-    memset(&dump, 0, sizeof dump);
-    memset(&werr, 0, sizeof werr);
-    rolltui_json_dump(v, 2, &dump);
-    rolltui_str_append(&dump, "\n", 1);
-    if (!rolltui_preset_write_file_atomic(theme_path.p, theme_path.len, dump.p ? dump.p : "", dump.n, buf_put, &werr)) {
-      /* The layout is already safe: say what did NOT happen rather than claim success. */
-      msg.len = 0;
-      buf_add(&msg, "could not rewrite ", 18);
-      buf_add(&msg, theme_path.p, theme_path.len);
-      buf_add(&msg, " without its layout part (", 26);
-      buf_add(&msg, werr.p ? werr.p : "", werr.len);
-      buf_add(&msg, "); it is ignored on load", 24);
-      migration_add_note(out, msg.p, msg.len);
-    } else {
-      out->rewrote_theme = 1;
-    }
-    rolltui_str_free(&dump);
-    buf_free(&werr);
-  }
-
-done:
-  rolltui_json_free(v);
-  rolltui_str_free(&perr);
-  buf_free(&theme_path);
-  buf_free(&layout_path);
-  buf_free(&text);
-  buf_free(&msg);
-}
-
 
 /* ---- per-domain report judgement (Phase 17 m3) — see the header for why these are the
  * library's and the store wrappers around them are not. --------------------------------------- */

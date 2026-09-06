@@ -232,24 +232,6 @@ bool library_scope(std::string_view scope) {
 int is_library_scope_cb(void*, const char* scope, std::size_t len) {
   return library_scope(std::string_view(scope, len)) ? 1 : 0;
 }
-constexpr std::pair<const char*, const char*> kLegacyActions[] = {
-    {"playground.cycle_theme", "studio.cycle_theme"},
-    {"playground.reload", "studio.reload"},
-    {"playground.quit", "studio.quit"},
-};
-std::optional<std::string> migrated_action(std::string_view legacy) {
-  for (const auto& [from, to] : kLegacyActions)
-    if (legacy == from) return std::string(to);
-  return std::nullopt;
-}
-int migrate_cb(void*, const char* legacy, std::size_t len, char* out, std::size_t* out_len) {
-  const std::optional<std::string> to = migrated_action(std::string_view(legacy, len));
-  if (!to) return 0;
-  const std::size_t n = std::min(to->size(), static_cast<std::size_t>(ROLLTUI_ACTION_NAME_MAX));
-  std::memcpy(out, to->data(), n);
-  *out_len = n;
-  return 1;
-}
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
   // THE LIBRARY'S SENTENCE (Phase 17 m2a). This was a verbatim copy of the six, made because
   // they lived in `Keys.cpp` and a C consumer could not reach them; there were three.
@@ -329,7 +311,7 @@ RolltuiBindings* default_bindings() {
   RolltuiBindings* d = bindings_new();
   RolltuiBindingsReport rep{};
   const int ok = rolltui_bindings_load_json(d, default_bindings_json().data(), default_bindings_json().size(),
-                                            ROLLTUI_PROTOCOL_LEGACY, is_library_scope_cb, nullptr, migrate_cb, nullptr,
+                                            ROLLTUI_PROTOCOL_LEGACY, is_library_scope_cb, nullptr,
                                             reason_cb, nullptr, &rep);
   if (!ok || !rolltui_bindings_report_clean(&rep)) {
     RolltuiStr summary;

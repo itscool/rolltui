@@ -66,8 +66,8 @@
     "editor.theme": ["f4"],
     "editor.layout": ["f6"],
     "editor.keys": ["f7"],
-    "playground.cycle_theme": ["f3"],
-    "playground.reload": ["f5"],
-    "playground.quit": ["ctrl+q"]
+    "studio.cycle_theme": ["f3"],
+    "studio.reload": ["f5"],
+    "studio.quit": ["ctrl+q"]
   }
 }
