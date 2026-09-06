@@ -136,11 +136,28 @@ extern "C" {
  * `RolltuiStr`, `RolltuiRect`, `RolltuiStyle`, `RolltuiEvent` and `RolltuiFrame`, with the
  * operations on them declared here beside their types rather than in either part.
  *
- * AND THE TABLES HERE HAVE A THIRD READER WHO CALLS NOTHING. A layout, theme, menu or
- * bindings file is written by a person who never compiles anything, and every name they must
- * spell — a role, a widget kind, an action, a chord — is one of these tables. A name a file
- * author types is a public interface even though it is not a function; the tables that are
- * one say so on their own line, and name the shipped directory their files live in.
+ * AND THE TABLES HERE HAVE A THIRD READER WHO CALLS NOTHING: the FILE AUTHOR. A name they type
+ * into a file is a public interface even though it is not a function, so the tables that are one
+ * say so on their own line and name the shipped directory their files live in.
+ *
+ * BUT THE FOUR FILE FORMATS ARE NOT ONE AUDIENCE, and the difference is not taste — it is
+ * whether a file can BREAK the app that reads it (decided 2026-09-06):
+ *   - **A THEME and a BINDINGS file are a USER's.** Neither can break a host. An unknown role is
+ *     reported and ignored; a chord bound to an action nothing declares is KEPT AND INERT, which
+ *     is what lets one personal key file survive every screen. These tables carry the note.
+ *   - **A LAYOUT is the APP's to SHIP, not a user's to author** — and the evidence is in this
+ *     repo rather than in principle: HOST CODE NAMES THE FILE'S CONTENTS. roll names the windows
+ *     `session`, `status`, `prompt` and `details` in `src/frontends/TuiFrontend.cpp`; the explorer
+ *     names `details` and `help`. Rename or drop one in a hand-written layout and the app is
+ *     quietly broken in a way no theme can manage. A user SELECTS among the layouts an app ships
+ *     (roll offers four); AUTHORING one is a developer act, and `rolltui-studio` is the tool for
+ *     it. The registry note below says that rather than inviting a user in.
+ *   - **A MENU is the app's too, for a different reason.** It cannot break a host either — an item
+ *     naming an undeclared action is a named bad value with no shortcut — so this is not a safety
+ *     line. It is that NOBODY HAS ASKED, and a gap is evidence while a usage is not. The shadowing
+ *     RUNG still works, because it is the same preset resolution everything else uses and costs
+ *     nothing; it is simply not promised as a user-facing format. The trigger for promising it is
+ *     a real request, or a test app that needs it.
  * ======================================================================================== */
 
 /* ========================================================================================
@@ -4822,12 +4839,19 @@ int rolltui_widget_kind_resolve(const char* name, size_t len, size_t* row, unsig
 /* The one enumeration. Rows [0, library_count) are the library's closed table, in table order;
  * rows [library_count, count) are a host's, in registration order. A row past the end reads as
  * "" / REQUIRED / NAME rather than past either table. */
-/* FOR THE FOURTH READER: the NAMES in this registry are what a LAYOUT FILE writes as a window's
- * `content` — `transcript`, `input:prompt`, `rows:status`, and any kind a host registered, such as
- * the explorer's `browser` or paint's `canvas`. A name no kind answers to is a NAMED problem and a
- * visible error panel, never a blank window, so a layout may name a kind a host has not written
- * yet and be told so. Shipped files: `rolltui/presets/layouts/` and `rolltui/presets/menus/`; the
- * two example apps carry their own under `rolltui/examples/presets/`. */
+/* FOR THE FOURTH READER, AND THIS ONE IS AN APP AUTHOR RATHER THAN A USER: the NAMES in this
+ * registry are what a LAYOUT FILE writes as a window's `content` — `transcript`, `input:prompt`,
+ * `rows:status`, and any kind a host registered, such as the explorer's `browser` or paint's
+ * `canvas`. A name no kind answers to is a NAMED problem and a visible error panel, never a blank
+ * window, so a layout may name a kind a host has not written yet and be told so.
+ * **A LAYOUT IS SHIPPED BY THE APP, NOT HAND-WRITTEN BY ITS USER** (decided 2026-09-06; the case
+ * is at PART 1's opening). A host BINDS these sources and NAMES these windows in its own code —
+ * roll names `session`, `status`, `prompt` and `details`; the explorer names `details` and `help`
+ * — so a renamed or dropped window breaks the app silently, which is not true of a theme or a
+ * bindings file. A user PICKS among the layouts an app ships; authoring a new one is a developer
+ * act and `rolltui-studio` is the tool for it. Shipped files: `rolltui/presets/layouts/` and
+ * `rolltui/presets/menus/`; the two example apps carry their own under
+ * `rolltui/examples/presets/`. */
 size_t rolltui_widget_kind_count(void);
 
 size_t rolltui_widget_kind_library_count(void);
