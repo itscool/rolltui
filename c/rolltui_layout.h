@@ -112,6 +112,124 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
 
 void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* Draws one border with NO joining — for a widget that boxes its own content. `title` may
+ * be NULL when `title_n` is 0. */
+void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
+                         RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
+                         int ambiguous_wide);
+unsigned char rolltui_widget_kind_rule(size_t row);
+const char* rolltui_widget_kind_source_is(size_t row, size_t* len);
+/* A C caller's pair, for the same reason every owned type here has one — both strings empty
+ * either way. C++ needs neither (see above) but they exist so a pure C caller has the same
+ * capability. */
+void rolltui_content_init(RolltuiContent* c);
+void rolltui_content_release(RolltuiContent* c);
+void rolltui_content_copy(RolltuiContent* to, const RolltuiContent* from);
+int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b);
+int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b);
+/* Releases an array `rolltui_layout_read_actions_key` filled (or any array of this shape) —
+ * so a caller need not reach past this header for `rolltui_alloc.h`'s raw `rolltui_mem_free`
+ * just to hand one back. */
+void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
+/* ---- the built-in layouts, PARSED and cached (Phase 17 m3) ---------------------------------
+ * `_builtin_json` above hands back the TEXT, which is the right shape for a caller that wants
+ * to load it once. Both hosts want the LAYOUT, and want it on paths that run per resize and
+ * per frame (`effective_layout()`, the `stacked` fallback), so parsing on every call would put
+ * a JSON parse inside the frame — a thing `budget_test` exists to make impossible.
+ *
+ * So the cache is the library's, exactly as `Layout.cpp`'s was. Two properties of that C++ one
+ * are carried over deliberately, both of which cost it a defect first:
+ *   - it FILLS WHEN EMPTY rather than in a static initializer, because `rolltui_shutdown()`
+ *     releases it and a once-only fill would leave this answering NULL forever after. Releasing
+ *     a cache is only safe if the cache rebuilds.
+ *   - it REGISTERS ITS RELEASER AT FILL TIME, not once per process, because `shutdown()` clears
+ *     its own registry as it runs — so a register-once cache survives the second shutdown.
+ * `_names` is in shipped order: "default" first (what a fresh install runs), then the table's.
+ *
+ * The result is a BORROW the library keeps until `rolltui_shutdown()`; NULL for a name that is
+ * not a built-in. A built-in that does not parse cleanly is a programming error and aborts
+ * rather than serving half a layout — the same call the C++ made. */
+const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len);
+/* Builds the JSON tree (an OWNED value the caller frees) — `layout_to_json_value`'s port.
+ * `base`/`popups` are BORROWS (read-only: this never copies a tree merely to serialise it). */
+RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height,
+                                               const RolltuiLayoutAction* actions, size_t actions_n,
+                                               const RolltuiLayer* base, const RolltuiLayer* popups,
+                                               size_t popups_n, const RolltuiLayoutHooks* hooks);
+/* Dumps straight to TEXT, indent 2, REPLACING `*out` — `layout_to_json`'s port. */
+void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height,
+                                const RolltuiLayoutAction* actions, size_t actions_n, const RolltuiLayer* base,
+                                const RolltuiLayer* popups, size_t popups_n, const RolltuiLayoutHooks* hooks,
+                                RolltuiStr* out);
+/* Any layer, any node; NULL when absent. A BORROW valid until the tree is edited. */
+RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len);
+size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s);
+const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len);
+
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* Draws one border with NO joining — for a widget that boxes its own content. `title` may
+ * be NULL when `title_n` is 0. */
+void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
+                         RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
+                         int ambiguous_wide);
+unsigned char rolltui_widget_kind_rule(size_t row);
+const char* rolltui_widget_kind_source_is(size_t row, size_t* len);
+/* A C caller's pair, for the same reason every owned type here has one — both strings empty
+ * either way. C++ needs neither (see above) but they exist so a pure C caller has the same
+ * capability. */
+void rolltui_content_init(RolltuiContent* c);
+void rolltui_content_release(RolltuiContent* c);
+void rolltui_content_copy(RolltuiContent* to, const RolltuiContent* from);
+int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b);
+int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b);
+/* Releases an array `rolltui_layout_read_actions_key` filled (or any array of this shape) —
+ * so a caller need not reach past this header for `rolltui_alloc.h`'s raw `rolltui_mem_free`
+ * just to hand one back. */
+void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
+/* ---- the built-in layouts, PARSED and cached (Phase 17 m3) ---------------------------------
+ * `_builtin_json` above hands back the TEXT, which is the right shape for a caller that wants
+ * to load it once. Both hosts want the LAYOUT, and want it on paths that run per resize and
+ * per frame (`effective_layout()`, the `stacked` fallback), so parsing on every call would put
+ * a JSON parse inside the frame — a thing `budget_test` exists to make impossible.
+ *
+ * So the cache is the library's, exactly as `Layout.cpp`'s was. Two properties of that C++ one
+ * are carried over deliberately, both of which cost it a defect first:
+ *   - it FILLS WHEN EMPTY rather than in a static initializer, because `rolltui_shutdown()`
+ *     releases it and a once-only fill would leave this answering NULL forever after. Releasing
+ *     a cache is only safe if the cache rebuilds.
+ *   - it REGISTERS ITS RELEASER AT FILL TIME, not once per process, because `shutdown()` clears
+ *     its own registry as it runs — so a register-once cache survives the second shutdown.
+ * `_names` is in shipped order: "default" first (what a fresh install runs), then the table's.
+ *
+ * The result is a BORROW the library keeps until `rolltui_shutdown()`; NULL for a name that is
+ * not a built-in. A built-in that does not parse cleanly is a programming error and aborts
+ * rather than serving half a layout — the same call the C++ made. */
+const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len);
+/* Builds the JSON tree (an OWNED value the caller frees) — `layout_to_json_value`'s port.
+ * `base`/`popups` are BORROWS (read-only: this never copies a tree merely to serialise it). */
+RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height,
+                                               const RolltuiLayoutAction* actions, size_t actions_n,
+                                               const RolltuiLayer* base, const RolltuiLayer* popups,
+                                               size_t popups_n, const RolltuiLayoutHooks* hooks);
+/* Dumps straight to TEXT, indent 2, REPLACING `*out` — `layout_to_json`'s port. */
+void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_width, int min_height,
+                                const RolltuiLayoutAction* actions, size_t actions_n, const RolltuiLayer* base,
+                                const RolltuiLayer* popups, size_t popups_n, const RolltuiLayoutHooks* hooks,
+                                RolltuiStr* out);
+/* Any layer, any node; NULL when absent. A BORROW valid until the tree is edited. */
+RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len);
+size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s);
+const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -83,6 +83,62 @@ const char* rolltui_bindings_holder(const RolltuiBindings* b, const RolltuiChord
 void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools, size_t n);
 
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* The bare-Enter rule's subject, handed over once — see the note above. Passing a zero
+ * length turns the rule off. */
+void rolltui_bindings_set_enter_rule(RolltuiBindings* b, const char* action, size_t len);
+void rolltui_bindings_add_action(RolltuiBindings* b, const char* action, size_t alen, const char* desc, size_t dlen);
+const char* rolltui_bindings_description(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len);
+size_t rolltui_bindings_row_count(const RolltuiBindings* b);
+const char* rolltui_bindings_row_at(const RolltuiBindings* b, size_t i, size_t* len);
+int rolltui_bindings_has_row(const RolltuiBindings* b, const char* action, size_t len);
+/* Creates an empty row for an action nothing has declared — the kept-and-inert case. A
+ * no-op when a row already exists. */
+void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len);
+void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
+void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
+/* ---- THE LIBRARY'S CLOSED ACTION TABLE (Phase 17) ---------------------------------------
+ * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
+ * used to live only in `Bindings.cpp` on the rule that the C is TOLD which scopes are the
+ * library's rather than storing the table — right about SCOPES, wrong about the TABLE: with
+ * the shim gone, four consumers had each copied all 59 rows verbatim. Both accessors BORROW
+ * into static storage, valid for the life of the process. */
+size_t rolltui_library_action_count(void);
+const char* rolltui_library_action_name(size_t i, size_t* len);
+const char* rolltui_library_action_description(size_t i, size_t* len);
+
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* The bare-Enter rule's subject, handed over once — see the note above. Passing a zero
+ * length turns the rule off. */
+void rolltui_bindings_set_enter_rule(RolltuiBindings* b, const char* action, size_t len);
+void rolltui_bindings_add_action(RolltuiBindings* b, const char* action, size_t alen, const char* desc, size_t dlen);
+const char* rolltui_bindings_description(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len);
+size_t rolltui_bindings_row_count(const RolltuiBindings* b);
+const char* rolltui_bindings_row_at(const RolltuiBindings* b, size_t i, size_t* len);
+int rolltui_bindings_has_row(const RolltuiBindings* b, const char* action, size_t len);
+/* Creates an empty row for an action nothing has declared — the kept-and-inert case. A
+ * no-op when a row already exists. */
+void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len);
+void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
+void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
+/* ---- THE LIBRARY'S CLOSED ACTION TABLE (Phase 17) ---------------------------------------
+ * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
+ * used to live only in `Bindings.cpp` on the rule that the C is TOLD which scopes are the
+ * library's rather than storing the table — right about SCOPES, wrong about the TABLE: with
+ * the shim gone, four consumers had each copied all 59 rows verbatim. Both accessors BORROW
+ * into static storage, valid for the life of the process. */
+size_t rolltui_library_action_count(void);
+const char* rolltui_library_action_name(size_t i, size_t* len);
+const char* rolltui_library_action_description(size_t i, size_t* len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

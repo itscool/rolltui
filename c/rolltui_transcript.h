@@ -84,6 +84,39 @@ typedef struct RolltuiTranscriptRoles {
 
 int rolltui_transcript_viewport_height(const RolltuiTranscript* t);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+RolltuiTranscript* rolltui_transcript_new(void);
+void rolltui_transcript_free(RolltuiTranscript* t);
+/* ---- per frame ------------------------------------------------------------------------------------ */
+void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocument* doc, RolltuiRect area,
+                               const RolltuiTranscriptOptions* opt);
+void rolltui_transcript_draw(const RolltuiTranscript* t, RolltuiFrame* f, RolltuiDrawScratch* draw,
+                             const RolltuiStyle* styles);
+void rolltui_transcript_scroll_by(RolltuiTranscript* t, long lines);
+size_t rolltui_transcript_lines_below(const RolltuiTranscript* t);
+int rolltui_transcript_is_folded(const RolltuiTranscript* t, const RolltuiDocEntry* e);
+void rolltui_transcript_set_folded(RolltuiTranscript* t, const char* id, size_t len, int folded);
+void rolltui_transcript_set_code_folded(RolltuiTranscript* t, const char* id, size_t len, size_t block,
+                                        int folded);
+void rolltui_transcript_set_code_uncapped(RolltuiTranscript* t, const char* id, size_t len, size_t block,
+                                          int uncapped);
+int rolltui_transcript_match_at(const RolltuiTranscript* t, size_t i, RolltuiFindMatch* out);
+int rolltui_transcript_current_match(const RolltuiTranscript* t, RolltuiFindMatch* out);
+void rolltui_transcript_selection(const RolltuiTranscript* t, RolltuiSelection* out);
+void rolltui_transcript_clear_selection(RolltuiTranscript* t);
+void rolltui_transcript_select(RolltuiTranscript* t, RolltuiTextPos anchor, RolltuiTextPos head);
+int rolltui_transcript_hit(const RolltuiTranscript* t, int x, int y, RolltuiTextPos* out);
+void rolltui_transcript_selected_text(const RolltuiTranscript* t, RolltuiStr* out);
+/* ---- introspection ------------------------------------------------------------------------------------- */
+void rolltui_transcript_stats(const RolltuiTranscript* t, RolltuiTranscriptStats* out);
+/* A BORROW, valid until the next layout(). */
+const RolltuiEntryLayout* rolltui_transcript_layout_of(const RolltuiTranscript* t, size_t entry);
+void rolltui_transcript_text_area(const RolltuiTranscript* t, RolltuiRect* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

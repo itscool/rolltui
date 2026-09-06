@@ -168,6 +168,15 @@ const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w);
 
 const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, size_t len);
+RolltuiInput* rolltui_windows_input_at(const RolltuiWindows* w, const char* window, size_t len);
+RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const char* window, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

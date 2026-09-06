@@ -62,6 +62,47 @@ extern "C" {
  * `okl`) and one is enough here. */
 void rolltui_into_gamut(RolltuiOkLch c, RolltuiLin* out);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* ---- sRGB <-> linear ------------------------------------------------------------------- */
+double rolltui_srgb_channel_to_linear(double c); /* c in 0..1 */
+double rolltui_linear_channel_to_srgb(double v);
+void rolltui_from_linear(RolltuiLin l, RolltuiStyleColor* out);
+/* ---- linear <-> OKLab <-> OKLCH (Björn Ottosson, 2020) --------------------------------- */
+void rolltui_linear_to_oklab(RolltuiLin l, RolltuiOkLab* out);
+void rolltui_oklab_to_linear(RolltuiOkLab lab, RolltuiLin* out);
+void rolltui_oklab_to_oklch(RolltuiOkLab lab, RolltuiOkLch* out);
+void rolltui_oklch_to_oklab(RolltuiOkLch lch, RolltuiOkLab* out);
+/* ---- contrast and distance -------------------------------------------------------------- */
+double rolltui_relative_luminance(RolltuiLin l);       /* Y, Rec. 709 weights */
+double rolltui_wcag_contrast(RolltuiLin a, RolltuiLin b);   /* (L1 + 0.05) / (L2 + 0.05), >= 1 */
+double rolltui_apca_contrast(RolltuiLin text, RolltuiLin bg); /* Lc, signed */
+double rolltui_delta_e(RolltuiOkLab a, RolltuiOkLab b);     /* Euclidean in OKLab */
+/* Machado, Oliveira & Fernandes 2009, severity 1.0. `type` one of the ROLLTUI_CVD_* above;
+ * an out-of-range value is treated as Tritanopia, exactly as the original's `? : ?:` chain
+ * fell through — see the .c file. */
+void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out);
+int rolltui_has_badge(const RolltuiBadges* b, const char* name, size_t len);
+void rolltui_fix_release(RolltuiFix* f);
+/* Returns 1 and fills `*out` (RESET first) when `role`'s own fg is below `target` against
+ * its effective background (its own bg, else the theme's `background` role) and moving its
+ * OKLCH lightness away from the background's reaches a higher contrast; 0 (`*out` left
+ * RESET) when either colour is the terminal's own, or the role already meets `target`.
+ * Mirrors `rolltui::fix_contrast` exactly — same 100-step search, same gamut clamp. */
+int rolltui_fix_contrast(const RolltuiStyle* styles, size_t role_count, unsigned char role, double target,
+                         const RolltuiThemeVocab* vocab, RolltuiFix* out);
+/* Same shape, for a confusable PAIR: rotates `b`'s hue in twelve 30-degree steps looking for
+ * one whose OKLab ΔE against `a` clears `ROLLTUI_DISTINCT_DELTA_E` under every CVD
+ * simulation too; keeps the best rotation found when none fully passes; when NO rotation
+ * helps at all, proposes adding underline, else bold, else italic to `b` instead (0 when
+ * even that is unavailable, or either foreground is the terminal's own). Mirrors
+ * `rolltui::fix_confusable` exactly. */
+int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsigned char a, unsigned char b,
+                           const RolltuiThemeVocab* vocab, RolltuiFix* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

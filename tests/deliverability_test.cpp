@@ -58,6 +58,7 @@
 #include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 
 #include "rolltui_test.hpp"
+#include "rolltui/c/rolltui_terminal.h"  // INTERNAL: this test opts in
 
 // The shipped bindings preset text, generated at build time and linked into `rolltui`
 // (rolltui/cmake/embed_presets.cmake); Bindings.cpp reads it through this exact

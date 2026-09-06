@@ -39,6 +39,8 @@
 #include "rolltui/rolltui.h"
 
 #include "rolltui_test.hpp"
+#include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
+#include "rolltui/c/rolltui_theme_analysis.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
 

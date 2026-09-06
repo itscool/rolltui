@@ -23,6 +23,8 @@
 #include "rolltui/rolltui.h"
 
 #include "rolltui_test.hpp"
+#include "rolltui/c/rolltui_render.h"  // INTERNAL: this test opts in
+#include "rolltui/c/rolltui_screen.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
 

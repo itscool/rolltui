@@ -53,6 +53,13 @@ void rolltui_ptrvec_insert(RolltuiPtrVec* a, size_t i, void* p);
 void* rolltui_ptrvec_take(RolltuiPtrVec* a, size_t i);
 void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller owns the elements */
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns the elements */
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

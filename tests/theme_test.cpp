@@ -21,6 +21,7 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
+#include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
 
 namespace fs = std::filesystem;
 

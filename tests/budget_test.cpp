@@ -90,6 +90,7 @@
 // prove that a growing realloc counts as an allocation. Publishing `realloc` to satisfy one
 // test would undo the restriction for every other caller, which is the trade backwards.
 #include "rolltui_test.hpp"
+#include "rolltui/c/rolltui_layout.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
 

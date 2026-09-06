@@ -228,9 +228,33 @@ set(ROLLTUI_INTERNAL_TESTS
   bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp markdown_test.cpp
   md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
-  width_test.cpp word_break_test.cpp wrap_test.cpp)
+  width_test.cpp word_break_test.cpp wrap_test.cpp
+  # Phase 20 m3: four suites joined the list because their module's own steps went INTERNAL —
+  # the frame's cell accessors, the transcript widget's steps, a theme's loading steps and the
+  # colour-space primitives under the analysis. Each is a suite that tests an implementation,
+  # which is what the list is for; the set that stays OUT is `ROLLTUI_PUBLIC_ONLY_TESTS` below.
+  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp)
 list(JOIN ROLLTUI_INTERNAL_TESTS "," ROLLTUI_INTERNAL_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_TESTS="${ROLLTUI_INTERNAL_TESTS_JOINED}")
+
+# Phase 20 m1/m4: THE OTHER HALF OF THE LIST, AND THE ONE THAT IS THE INSTRUMENT. Moving a
+# function INTERNAL costs a suite an opt-in, so the opt-in list only grows — and if nearly every
+# suite is on it, the exact-zero above stops saying anything. What keeps it meaningful is the set
+# that stays OUT: programs shaped like a CONSUMER, which include `rolltui/rolltui.h` and nothing
+# else. What one of these reaches is PUBLIC for that reason, not because a test reaches it.
+#   - `c_consumer_test.c` is MANDATORY and can never be moved: it is the pure-C proof that the
+#     public API alone builds a screen, draws a frame and drives a preset store.
+#   - the whole-host suites run the real binaries; the meta-tests scan sources; roll's own tests
+#     are a HOST's, and roll builds from the one header.
+# `public_header_test` asserts this set is non-empty, contains the C consumer and at least one
+# whole-host suite, and that no function it reaches is INTERNAL.
+set(ROLLTUI_PUBLIC_ONLY_TESTS
+  c_consumer_test.c
+  authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp
+  public_header_test.cpp ownership_test.cpp
+  keys_editor_test.cpp theme_editor_test.cpp)
+list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
+target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
 
 # Phase 14 m6a: THE RELEASE POINT, as an assertion — after shutdown() the library holds
 # NOTHING, asserted as a number in both configurations, with a control that proves the gauge

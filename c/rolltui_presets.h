@@ -100,6 +100,14 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
 int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const RolltuiThemeVocab* vocab,
                                        const RolltuiJsonValue** out_colours, RolltuiThemePresetReport* report);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+int rolltui_preset_looks_like_path(const char* s, size_t len);
+int rolltui_preset_valid_name(const char* name, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

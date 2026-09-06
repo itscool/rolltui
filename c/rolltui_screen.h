@@ -66,6 +66,33 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
                            int* state, unsigned long long* since_ms, double* fraction);
 
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src);
+void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill);
+void rolltui_frame_clear(RolltuiFrame* f, RolltuiStyle fill);
+void rolltui_frame_cell(const RolltuiFrame* f, int x, int y, RolltuiCell* out);
+void rolltui_frame_set_style(RolltuiFrame* f, int x, int y, RolltuiStyle s);
+/* Writes one grapheme of `cells` (1 or 2) at (x, y); returns the cells it occupied. */
+int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t glyph_len,
+                      int cells, RolltuiStyle s, unsigned int link);
+/* The cell's grapheme: a BORROW into the frame, valid until that cell is written again.
+ * `*len` receives the byte count. Never NULL; a continuation cell gives length 0. */
+const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len);
+/* ---- the link table --------------------------------------------------------------- */
+/* Interns a URL for this frame; the same URL gets the same id. 0 for an empty URL. */
+unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_len);
+/* A BORROW, valid until the next reset. Empty for id 0 or an unknown id. */
+const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* len);
+void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
+/* ---- equality ---------------------------------------------------------------------- */
+/* What the frame SHOWS, not what it is holding on to: retained link/spill capacity past a
+ * reset is not compared (Phase 13 m5b found that the hard way). */
+int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

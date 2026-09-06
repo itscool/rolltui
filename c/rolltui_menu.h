@@ -108,6 +108,24 @@ void rolltui_menu_load_report_set_error(RolltuiMenuLoadReport* r, const char* s,
 void rolltui_menu_load_report_add_unknown_key(RolltuiMenuLoadReport* r, const char* s, size_t len);
 void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char* s, size_t len);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* ========================================================================================
+ * menu — the menu widget
+ * ======================================================================================== */
+/* "1..100", "0.0..1.0 (2 digits)", "#rrggbb | 0-255 | none", … into a caller's string. */
+void rolltui_input_hint(const RolltuiInputSpec* spec, RolltuiStr* out);
+size_t rolltui_menu_path(const RolltuiMenu* m, const size_t** out);
+size_t rolltui_menu_selected(const RolltuiMenu* m);
+size_t rolltui_menu_visible(const RolltuiMenu* m, const size_t** out);
+const char* rolltui_menu_filter(const RolltuiMenu* m, size_t* len);
+int rolltui_menu_palette(const RolltuiMenu* m);
+void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* ctx);
+void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

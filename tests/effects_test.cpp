@@ -57,6 +57,7 @@
 #include "rolltui/c/rolltui_effects.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 
 #include "rolltui_test.hpp"
+#include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
 

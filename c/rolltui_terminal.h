@@ -123,6 +123,18 @@ unsigned char rolltui_terminal_negotiate_keyboard(RolltuiTerminal* t, int timeou
 void rolltui_terminal_restore_now(void);
 
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+unsigned char rolltui_terminal_key_protocol(const RolltuiTerminal* t);
+/* ---- the entered/left sequences ---------------------------------------------------------- */
+/* The bytes that entered/will leave the modes, as BORROWS (rule 3), for tests and for
+ * `--frame` tooling that wants to reproduce a session without a tty. */
+const char* rolltui_terminal_enter_sequence(const RolltuiTerminal* t, size_t* len);
+const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

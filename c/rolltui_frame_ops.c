@@ -6,6 +6,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "rolltui/c/rolltui_screen.h"
 
 struct RolltuiDrawScratch {
   RolltuiUnicodeScratch* u;       /* the Unicode module's own working memory — its role */

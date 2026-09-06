@@ -53,6 +53,28 @@ void rolltui_theme_report_add_missing_role(RolltuiThemeReport* r, const char* s,
 void rolltui_theme_report_add_unknown_key(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, size_t len);
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+/* Pure colour reduction: TrueColor keeps everything, Ansi256 maps rgb to the nearest of the
+ * cube and the grey ramp, Ansi16 to the nearest of the 16 system colours, Mono drops colour. */
+void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth);
+/* An OSC 11 reply ("\x1b]11;rgb:1414/1616/1a1a\x1b\\" or BEL-terminated; 1-4 hex digits per
+ * channel, scaled to 8 bits). 1 on success. */
+int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* out);
+/* ---- the built-in themes ------------------------------------------------------------------
+ * "default-dark", "default-light", "mono", compiled in: this library's own TASTE, not its
+ * algorithm (`rolltui::Theme.cpp`'s own words, kept). Enumerated by index like every other
+ * closed table a sibling file exposes (`rolltui_widget_kind_name`,
+ * `rolltui_effect_kind_name`). */
+#define ROLLTUI_THEME_BUILTIN_COUNT 3
+size_t rolltui_theme_builtin_count(void);
+/* A BORROW, valid for the process's life (a compiled-in literal, never freed). NULL past the
+ * count. */
+const char* rolltui_theme_builtin_name(size_t i);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

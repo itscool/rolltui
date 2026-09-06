@@ -77,6 +77,74 @@ void rolltui_effect_clear_registered(void);
 int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
 
 
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
+void rolltui_effect_map_clear(RolltuiEffectMap* m);
+int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);
+size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state);
+const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i);
+/* Appends a spec to `state` and returns its index; the two adders then fill it in. A spec
+ * is built rather than handed over whole because its three arrays are variable-length, and
+ * a builder is what keeps them the MAP's allocations instead of a caller's. */
+size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
+                              int width, int steps, int backward);
+void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len);
+void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role);
+/* BORROWS a static literal. An out-of-range state reads back as "none", which is what the
+ * C++ `effect_state_name` did and what a mark of an unknown state means. */
+const char* rolltui_effect_state_name(unsigned char state, size_t* len);
+/* Registers a kind. The registry COPIES the name and takes ownership of `ctx`, releasing
+ * it with `free_ctx` at `clear` or at `rolltui::shutdown()`. On any refusal it takes
+ * nothing: `ctx` is still the caller's, and `free_ctx` is not called. */
+int rolltui_effect_register(const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
+                            void (*free_ctx)(void*));
+/* Every kind name that resolves right now, in RESOLUTION ORDER: the library's closed seven
+ * first and never shadowed, then the host's. `name` is a BORROW, valid until the registry
+ * next changes. */
+size_t rolltui_effect_kind_count(void);
+const char* rolltui_effect_kind_name(size_t i, size_t* len);
+/* Whether anything answers for `name` — a HOST fact, never a theme error. */
+int rolltui_effect_kind_resolves(const char* name, size_t len);
+int rolltui_effect_is_builtin(const char* name, size_t len);
+
+
+/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
+ * A test's reach is never a reason to be public, and nothing but a suite that tests this
+ * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
+void rolltui_effect_map_clear(RolltuiEffectMap* m);
+int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);
+size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state);
+const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i);
+/* Appends a spec to `state` and returns its index; the two adders then fill it in. A spec
+ * is built rather than handed over whole because its three arrays are variable-length, and
+ * a builder is what keeps them the MAP's allocations instead of a caller's. */
+size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
+                              int width, int steps, int backward);
+void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len);
+void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role);
+/* BORROWS a static literal. An out-of-range state reads back as "none", which is what the
+ * C++ `effect_state_name` did and what a mark of an unknown state means. */
+const char* rolltui_effect_state_name(unsigned char state, size_t* len);
+/* Registers a kind. The registry COPIES the name and takes ownership of `ctx`, releasing
+ * it with `free_ctx` at `clear` or at `rolltui::shutdown()`. On any refusal it takes
+ * nothing: `ctx` is still the caller's, and `free_ctx` is not called. */
+int rolltui_effect_register(const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
+                            void (*free_ctx)(void*));
+/* Every kind name that resolves right now, in RESOLUTION ORDER: the library's closed seven
+ * first and never shadowed, then the host's. `name` is a BORROW, valid until the registry
+ * next changes. */
+size_t rolltui_effect_kind_count(void);
+const char* rolltui_effect_kind_name(size_t i, size_t* len);
+/* Whether anything answers for `name` — a HOST fact, never a theme error. */
+int rolltui_effect_kind_resolves(const char* name, size_t len);
+int rolltui_effect_is_builtin(const char* name, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

@@ -283,6 +283,8 @@ int main() {
         {"c/rolltui_presets.h", 0},
         {"c/rolltui_md_lines.h", 5},
         {"c/rolltui_screen.h", 0},
+        {"c/rolltui_render.h", 0},
+        {"c/rolltui_wrap.h", 0},
         {"c/rolltui_layout_tree.h", 0},
         {"c/rolltui_keys.h", 0},
         {"c/rolltui_markdown.h", 0},
@@ -296,6 +298,7 @@ int main() {
         {"c/rolltui_terminal.h", 0},
         {"c/rolltui_unicode.h", 0},
         {"c/rolltui_menu_tree.h", 0},
+        {"c/rolltui_lifetime.h", 0},
     };
     // A continuation line of a WRAPPED declaration (`const char* name, size_t len);`) has no
     // `(` and ends in `;`, so `is_stored_pointer` alone counts it as a member — found 2026-09-06
@@ -379,6 +382,8 @@ int main() {
     // `rolltui_menu_flat_path`, a DELETE row (reached by nothing) whose declaration left
     // `c/rolltui_menu.h` with the function; the fifteen headers left with nothing (every row a 0)
     // left the table with them.
+    // 125 -> 125 (Phase 20 m3): three internal headers were RE-CREATED (`render`, `wrap`,
+    // `lifetime`), each declaring functions and storing no pointer, so they enter the census at 0.
     // 193 -> 125 (2026-09-06): the scanner stopped counting a wrapped declaration's continuation
     // line as a member — 68 of the 193 were `const char* name, size_t len);`-shaped second lines
     // of prototypes, 53 of them in the definition. Every row re-recorded from the printed table;

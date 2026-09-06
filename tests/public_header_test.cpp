@@ -86,6 +86,31 @@ std::string strip_all_comments(const std::string& src) {
   return out;
 }
 
+// PHASE 20 m1: for REACH, a string literal's CONTENTS are blanked as well. An identifier inside
+// a literal is DATA, never a call — `ownership_test.cpp` names `rolltui_mem_realloc` inside a
+// regex and `budget_test.cpp` names it in prose, and the first run of the public-only rule below
+// reported both as consumers of an internal function. Comments already went; literals had to go
+// too, and this is general rather than a special case for the meta-tests: nothing anywhere calls
+// a function by naming it in a string.
+std::string strip_comments_and_literals(const std::string& src) {
+  const std::string t = strip_all_comments(src);
+  std::string out;
+  out.reserve(t.size());
+  for (size_t i = 0; i < t.size();) {
+    const char c = t[i];
+    if (c == '"' || c == '\'') {
+      size_t j = i + 1;
+      while (j < t.size() && t[j] != c) j += (t[j] == '\\') ? 2 : 1;
+      out += ' ';
+      i = j + 1;
+    } else {
+      out += c;
+      ++i;
+    }
+  }
+  return out;
+}
+
 void list_files(const std::string& dir, const std::vector<std::string>& exts, std::vector<std::string>& out) {
   DIR* d = opendir(dir.c_str());
   if (!d) return;
@@ -177,7 +202,10 @@ int main() {
   // went, and every header that was left with nothing but its guard went with them (rule: a
   // header exists because a .c needs a declaration from it; one that declares nothing is a
   // file with no reason, and the check below keeps it that way).
-  const std::size_t kInternalHeaders = 24;
+  // 24 -> 27 (Phase 20 m3): `rolltui_lifetime.h`, `rolltui_render.h` and `rolltui_wrap.h` were
+  // RE-CREATED. m3's rule ran in reverse — a header exists because a `.c` needs a declaration
+  // from it, and moving those modules' steps out of the definition gave each a declaration again.
+  const std::size_t kInternalHeaders = 27;
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -362,7 +390,7 @@ int main() {
       std::vector<std::string> files;
       for (const std::string& d : dirs) list_files(d, exts, files);
       std::map<std::string, int> counts;
-      for (const std::string& f : files) count_idents(strip_all_comments(read(f)), counts);
+      for (const std::string& f : files) count_idents(strip_comments_and_literals(read(f)), counts);
       std::set<std::string> out;
       for (const auto& [k, v] : counts) out.insert(k);
       return out;
@@ -370,12 +398,44 @@ int main() {
     const std::set<std::string> roll = mentions_in({repo + "/src", repo + "/include"}, {".cpp", ".hpp"});
     const std::set<std::string> tools = mentions_in({root + "/tools"}, {".cpp", ".hpp"});
     const std::set<std::string> tests = mentions_in({root + "/tests", repo + "/tests"}, {".cpp", ".hpp", ".c"});
+    // PHASE 20 m1: the PUBLIC-ONLY suites — programs shaped like a CONSUMER, which include
+    // `rolltui/rolltui.h` and nothing else. What one of them reaches is PUBLIC because a
+    // consumer-shaped program reaches it, NOT because a test does; a test's reach is never a
+    // reason (see api_classes.inc's header). roll's own tests are all in the set implicitly:
+    // roll is a host, and its tests build the way roll builds.
+    std::set<std::string> public_only_files;
+    {
+      std::string list = ROLLTUI_PUBLIC_ONLY_TESTS;
+      std::size_t at = 0;
+      while (at <= list.size()) {
+        const std::size_t comma = list.find(',', at);
+        public_only_files.insert(list.substr(at, comma == std::string::npos ? std::string::npos : comma - at));
+        if (comma == std::string::npos) break;
+        at = comma + 1;
+      }
+    }
+    std::set<std::string> public_only;
+    {
+      std::vector<std::string> files;
+      list_files(root + "/tests", {".cpp", ".hpp", ".c"}, files);
+      std::vector<std::string> roll_tests;
+      list_files(repo + "/tests", {".cpp", ".hpp"}, roll_tests);
+      for (const std::string& f : roll_tests) files.push_back(f);
+      std::map<std::string, int> counts;
+      for (const std::string& f : files) {
+        const std::string base = f.substr(f.find_last_of('/') + 1);
+        const bool rolls = f.find("/rolltui/tests/") == std::string::npos;
+        if (!rolls && !public_only_files.count(base)) continue;
+        count_idents(strip_comments_and_literals(read(f)), counts);
+      }
+      for (const auto& [k, v] : counts) public_only.insert(k);
+    }
     std::set<std::string> lib;
     {
       std::vector<std::string> cs;
       list_files(root + "/c", {".c"}, cs);
       for (const std::string& f : cs) {
-        const std::string t = strip_all_comments(read(f));
+        const std::string t = strip_comments_and_literals(read(f));
         const std::set<std::string> defs = definitions_in(t);
         std::map<std::string, int> counts;
         count_idents(t, counts);
@@ -387,21 +447,40 @@ int main() {
       return roll.count(f) ? "roll" : tools.count(f) ? "tools" : tests.count(f) ? "tests" : lib.count(f) ? "lib" : mentioned_in_def.count(f) ? "hdr" : "nothing";
     };
     check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_window_stack_push_popup") &&
-              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 500 && in_internal.size() > 100,
+              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 400 && in_internal.size() > 300,
           "the class census sees the definition (" + std::to_string(in_def.size()) + " named), the internal headers (" + std::to_string(in_internal.size()) + "), roll's reach, the tools' reach and the library's own");
     std::map<std::string, std::string> cls;
     for (const Row& r : kApi) cls[r.fn] = r.cls;
-    std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached, misplaced;
+    // A row PUBLIC for a stated reason rather than for a consumer's reach carries `KEPT: <why>`
+    // in the table itself, so the exception is machine-readable and countable — writing one is a
+    // DECISION a reader can audit, not a comment nobody re-reads. Their number is recorded.
+    std::set<std::string> kept;
+    {
+      const std::string tbl = read(root + "/tests/api_classes.inc");
+      static const std::regex kept_re(R"(ROLLTUI_API\(\s*(rolltui_[a-z0-9_]+)\s*,[^)]*\)\s*/\*\s*KEPT:)");
+      for (std::sregex_iterator it(tbl.begin(), tbl.end(), kept_re), end; it != end; ++it) kept.insert((*it)[1].str());
+    }
+    check(kept.size() == 15,
+          "the KEPT rows — PUBLIC for a stated reason, not for a consumer's reach — are the recorded " +
+              std::to_string(kept.size()) + "; a new one is a decision that re-records this number");
+    std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached, misplaced, public_for_a_test;
     for (const std::string& f : declared)
       if (!cls.count(f)) unclassified.push_back(f);
     for (const Row& r : kApi) {
       if (!declared.count(r.fn)) { stale.push_back(r.fn); continue; }
       const std::string c = r.cls, reach = reach_of(r.fn);
+      const bool pub_cls = (c == "PUBLIC" || c == "TOOL_FACING");
       if (reach == "roll" && c != "PUBLIC") roll_not_public.push_back(std::string(r.fn) + " (" + c + ")");
       if (reach == "tools" && (c == "INTERNAL" || c == "DELETE")) tool_internal.push_back(std::string(r.fn) + " (" + c + ")");
       if (c == "DELETE" && reach != "nothing") deleted_but_reached.push_back(std::string(r.fn) + " (" + reach + ")");
       if (c == "INTERNAL" && (reach == "roll" || reach == "tools")) internal_reached.push_back(std::string(r.fn) + " (" + reach + ")");
-      const bool pub = (c == "PUBLIC" || c == "TOOL_FACING");
+      if (c == "INTERNAL" && public_only.count(r.fn)) internal_reached.push_back(std::string(r.fn) + " (a public-only suite)");
+      // PHASE 20 m1, THE DONE-WHEN: a row whose ONLY justification would be a test's reach fails.
+      // If nothing but a test reaches a PUBLIC function, that test must be a PUBLIC-ONLY suite —
+      // a program shaped like a consumer — because a test's reach is never itself a reason.
+      if (pub_cls && reach == "tests" && !public_only.count(r.fn) && !kept.count(r.fn))
+        public_for_a_test.push_back(std::string(r.fn) + " (" + c + ")");
+      const bool pub = pub_cls;
       if (pub && !in_def.count(r.fn)) misplaced.push_back(std::string(r.fn) + " (" + c + ", not in rolltui.h)");
       if (!pub && in_def.count(r.fn)) misplaced.push_back(std::string(r.fn) + " (" + c + ", but in rolltui.h)");
       if (!pub && !in_internal.count(r.fn)) misplaced.push_back(std::string(r.fn) + " (" + c + ", not in any c/ header)");
@@ -411,15 +490,20 @@ int main() {
     check(stale.empty(), "every row of api_classes.inc names a declared function (a deleted one takes its row with it)" + join(stale));
     check(roll_not_public.empty(), "a function roll reaches is PUBLIC" + join(roll_not_public));
     check(tool_internal.empty(), "a function a tool reaches is PUBLIC or TOOL_FACING" + join(tool_internal));
-    check(internal_reached.empty(), "an INTERNAL function is reached by no host and no tool" + join(internal_reached));
+    check(internal_reached.empty(), "an INTERNAL function is reached by no host, no tool and no public-only suite" + join(internal_reached));
     check(deleted_but_reached.empty(), "a DELETE row is reached by nothing, anywhere" + join(deleted_but_reached));
+    check(public_for_a_test.empty(), "NO ROW IS PUBLIC FOR A TEST'S SAKE: a function only a test reaches is reached by a PUBLIC-ONLY suite" + join(public_for_a_test));
     check(misplaced.empty(), "THE DEFINITION IS WRITTEN FROM THE TABLE: every PUBLIC and TOOL_FACING function is declared in rolltui.h and every INTERNAL one only under c/" + join(misplaced));
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];
     // MEASURED 2026-09-06 (Phase 19 m1), re-recorded in m2 for the four functions a public
     // C++ member calls, the one the C consumer reaches, and the 19 allocator/map rows the
     // widened census (every header under c/) added as INTERNAL; DELETE 48 -> 0 in m3, the functions gone.
-    const int kPublic = 582, kTool = 42, kInternal_ = 199, kDelete = 0;
+    // PHASE 20 m1/m2: 582/42/199 -> 454/26/343. 146 functions moved PUBLIC or TOOL_FACING ->
+    // INTERNAL: a test's reach is no longer a reason, and a type's lifecycle is public only when a
+    // CONSUMER holds the type. What is left public is reached by a host, a tool or a public-only
+    // suite, or carries a KEPT reason (15 of those, counted above).
+    const int kPublic = 454, kTool = 26, kInternal_ = 343, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["TOOL_FACING"] == kTool && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) + ", TOOL_FACING " + std::to_string(totals["TOOL_FACING"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) + ") — a moved class re-records them deliberately");
@@ -530,7 +614,9 @@ int main() {
       }
     }
     auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
-    check(sections.size() > 20 && marked == 3 && located_tool >= 40,
+    // 40 -> 26 (Phase 20 m1): sixteen theme-analysis steps went INTERNAL, so the three
+    // [TOOL-FACING] sections declare 26 — every one of them reached by a tool.
+    check(sections.size() > 20 && marked == 3 && located_tool >= 26,
           "the section scanner sees the banners (" + std::to_string(sections.size()) + "), the three marked [TOOL-FACING], and " +
               std::to_string(located_tool) + " tool-facing declarations under them");
     check(tool_outside.empty(), "every TOOL_FACING function is declared under a [TOOL-FACING] banner" + join(tool_outside));
