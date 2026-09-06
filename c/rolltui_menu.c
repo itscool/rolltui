@@ -2071,39 +2071,3 @@ void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionLis
   item_actions_walk(root, out);
 }
 
-/* The de-duplication is O(n^2) over the names SEEN so far, deliberately: a menu tree has a
- * handful of validators, and a set would be a container to own for nothing. */
-typedef struct {
-  RolltuiStr* seen;
-  size_t n, cap;
-} ValidatorSeen;
-
-static int validator_seen(ValidatorSeen* v, const char* s, size_t len) {
-  size_t i;
-  for (i = 0; i < v->n; ++i)
-    if (rolltui_str_eq(&v->seen[i], s, len)) return 1;
-  v->seen = (RolltuiStr*)rolltui_grow_zeroed(v->seen, &v->cap, v->n + 1, sizeof *v->seen);
-  rolltui_str_set(&v->seen[v->n++], s, len);
-  return 0;
-}
-
-static void unknown_validators_walk(const RolltuiMenuItem* it, RolltuiValidatorFn is_known, void* ctx,
-                                    RolltuiStrList* out, ValidatorSeen* seen) {
-  size_t i;
-  if (!it) return;
-  if (it->kind == ROLLTUI_MENU_INPUT && it->spec.validator.n != 0) {
-    const char* name = it->spec.validator.p ? it->spec.validator.p : "";
-    const size_t len = it->spec.validator.n;
-    if (!validator_seen(seen, name, len)) {
-      RolltuiStr why;
-      memset(&why, 0, sizeof why);
-      /* Empty text: this call is asked ONLY for its registered/not answer, which is the same
-       * question `handle` asks before consulting a validator at commit. */
-      if (!is_known || !is_known(ctx, name, len, "", 0, &why)) rolltui_str_list_add(out, name, len);
-      rolltui_str_free(&why);
-    }
-  }
-  for (i = 0; i < it->children.n; ++i)
-    unknown_validators_walk(it->children.v[i], is_known, ctx, out, seen);
-}
-

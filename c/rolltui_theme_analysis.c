@@ -128,8 +128,6 @@ double rolltui_delta_e(RolltuiOkLab a, RolltuiOkLab b) {
   return sqrt(dl * dl + da * da + db * db);
 }
 
-static const char* const kCvdNames[ROLLTUI_CVD_COUNT] = {"protanopia", "deuteranopia", "tritanopia"};
-
 /* Machado, Oliveira & Fernandes 2009, severity 1.0, in linear RGB. Rows sum to 1, so a grey
  * stays that grey (asserted in theme_analysis_test.cpp). An out-of-range `type` falls
  * through to the tritanopia matrix, exactly as the original C++'s `?:` chain did (it tested
