@@ -240,39 +240,9 @@ void collect_resolved(void* ctx, const RolltuiResolvedNode* rn) {
 
 // ---- the preset stores studio builds directly from the C API (Phase 17 m3) ----------------
 // `rolltui::PresetStore<Domain>` and `Presets.hpp`'s three domain traits are the C++ ADAPTER
-// this file no longer needs: `rolltui_preset_store_new` already takes a `RolltuiPresetDomain`
-// descriptor built from pure-C vocabulary sources, exactly the way
-// `rolltui/tests/presets_test.cpp` drives all three domains with no C++ in the chain. What
-// follows is that same pattern, trimmed to the calls this file actually makes.
-
-RolltuiPresetDomain& theme_domain() {
-  static RolltuiPresetDomain d = [] {
-    RolltuiPresetDomain x{};
-    rolltui_theme_preset_domain_init(&x, rolltui_theme_default_vocab(), rolltui_theme_mode_setting_valid,
-                                     rolltui_color_depth_setting_valid);
-    return x;
-  }();
-  return d;
-}
-RolltuiPresetDomain& layout_domain() {
-  static RolltuiPresetDomain d = [] {
-    RolltuiPresetDomain x{};
-    std::size_t n = 0;
-    const RolltuiLayoutAction* actions = rolltui_layout_shipped_default_actions(&n);
-    rolltui_layout_preset_domain_init(&x, rolltui_layout_default_hooks(), actions, n);
-    return x;
-  }();
-  return d;
-}
-RolltuiPresetDomain& bindings_domain() {
-  static RolltuiPresetDomain d = [] {
-    RolltuiPresetDomain x{};
-    rolltui_bindings_preset_domain_init(&x, rolltui_bindings_library_scope, nullptr,
-                                        rolltui_undeliverable_reason_fn, nullptr);
-    return x;
-  }();
-  return d;
-}
+// this file no longer needs. The three domain descriptors are the LIBRARY's since Phase 18 m3
+// (`rolltui_preset_domain`): this file had assembled them itself, identically to roll and to
+// three tests, and — unlike roll — never released their parsed cache.
 
 // ---- the three domain-specific report shapes, as RAII over the transparent C structs -------
 struct ThemePresetReport : RolltuiThemePresetReport {
@@ -344,13 +314,7 @@ class PresetStoreBase {
   std::uint64_t version() const { return rolltui_preset_store_version(s_); }
   void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
   int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
-    const int code = rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
-    if (code != ROLLTUI_SAVE_SAVED && code != ROLLTUI_SAVE_WRITE_FAILED) {
-      std::size_t n = 0;
-      const char* p = rolltui_preset_save_result_text(code, &n);
-      rolltui_str_set(&error, p, n);
-    }
-    return code;
+    return rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
   }
   const PresetStoreOptions& options() const { return opt_; }
   RolltuiPresetStore* handle() const { return s_; }
@@ -363,33 +327,28 @@ class PresetStoreBase {
 // A move-only borrow of a Theme domain value: the store hands back a fresh CLONE on every
 // `working()`/`get()`, and this is what frees it.
 struct ThemeValueHandle {
+  const RolltuiPresetStore* s;
   RolltuiThemePresetValue* v;
-  explicit ThemeValueHandle(void* p) : v(static_cast<RolltuiThemePresetValue*>(p)) {}
+  ThemeValueHandle(const RolltuiPresetStore* store, void* p) : s(store), v(static_cast<RolltuiThemePresetValue*>(p)) {}
   ThemeValueHandle(const ThemeValueHandle&) = delete;
-  ThemeValueHandle(ThemeValueHandle&& o) noexcept : v(o.v) { o.v = nullptr; }
-  ~ThemeValueHandle() {
-    if (v) theme_domain().destroy(v);
-  }
+  ThemeValueHandle(ThemeValueHandle&& o) noexcept : s(o.s), v(o.v) { o.v = nullptr; }
+  ~ThemeValueHandle() { rolltui_preset_store_value_free(s, v); }
   const RolltuiThemePresetValue* operator->() const { return v; }
   explicit operator bool() const { return v != nullptr; }
 };
 
 class ThemeStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    ThemePresetReport scratch;
-    return rolltui_preset_store_new(&theme_domain(), rolltui_theme_preset_report_fns(), dir.data(), dir.size(),
-                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size(), &scratch);
+    return rolltui_preset_store_new(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
+                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
  public:
   ThemeStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
       : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {dir, may_write_shipped, shipped_dir}) {}
 
-  void start(ThemePresetReport& rep) {
-    ThemePresetReport scratch;
-    rolltui_preset_store_start(s_, &rep, &scratch);
-  }
-  ThemeValueHandle working() const { return ThemeValueHandle(rolltui_preset_store_working(s_)); }
+  void start(ThemePresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
+  ThemeValueHandle working() const { return ThemeValueHandle(s_, rolltui_preset_store_working(s_)); }
   void set_colours(RolltuiJsonValue* colours, bool persist = true) {
     ThemeValueHandle v = working();
     RolltuiThemePresetValue* raw = v.v;
@@ -399,18 +358,18 @@ class ThemeStore : public PresetStoreBase {
     rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
   }
   ThemeValueHandle get(std::string_view name, ThemePresetReport& rep) const {
-    return ThemeValueHandle(rolltui_preset_store_get(s_, name.data(), name.size(), &rep));
+    return ThemeValueHandle(s_, rolltui_preset_store_get(s_, name.data(), name.size(), &rep));
   }
   bool load(std::string_view name, ThemePresetReport& rep, bool persist = true) {
     return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
   static bool is_shipped(std::string_view name) {
-    return rolltui_preset_is_shipped(&theme_domain(), name.data(), name.size()) != 0;
+    return rolltui_preset_is_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()) != 0;
   }
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(&theme_domain(), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(n.str());
     return out;
@@ -419,23 +378,19 @@ class ThemeStore : public PresetStoreBase {
 
 class LayoutStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    LayoutPresetReport scratch;
-    return rolltui_preset_store_new(&layout_domain(), rolltui_layout_preset_report_fns(), dir.data(), dir.size(),
-                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size(), &scratch);
+    return rolltui_preset_store_new(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), dir.data(), dir.size(),
+                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
  public:
   LayoutStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
       : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {dir, may_write_shipped, shipped_dir}) {}
 
-  void start(LayoutPresetReport& rep) {
-    LayoutPresetReport scratch;
-    rolltui_preset_store_start(s_, &rep, &scratch);
-  }
+  void start(LayoutPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
   RolltuiLayout working() const {
     void* v = rolltui_preset_store_working(s_);
     RolltuiLayout out = *static_cast<RolltuiLayout*>(v);
-    layout_domain().destroy(v);
+    rolltui_preset_store_value_free(s_, v);
     return out;
   }
   void set_working(const RolltuiLayout& l, bool persist = true) {
@@ -448,7 +403,7 @@ class LayoutStore : public PresetStoreBase {
   }
 
   static bool is_shipped(std::string_view name) {
-    return rolltui_preset_is_shipped(&layout_domain(), name.data(), name.size()) != 0;
+    return rolltui_preset_is_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), name.data(), name.size()) != 0;
   }
 };
 
@@ -465,19 +420,15 @@ struct BindingsHandle {
 
 class BindingsStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    BindingsPresetReport scratch;
-    return rolltui_preset_store_new(&bindings_domain(), rolltui_bindings_preset_report_fns(), dir.data(), dir.size(),
-                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size(), &scratch);
+    return rolltui_preset_store_new(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS), dir.data(), dir.size(),
+                                    may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
  public:
   BindingsStore(std::string dir, bool may_write_shipped = false, std::string shipped_dir = "")
       : PresetStoreBase(make(dir, may_write_shipped, shipped_dir), {dir, may_write_shipped, shipped_dir}) {}
 
-  void start(BindingsPresetReport& rep) {
-    BindingsPresetReport scratch;
-    rolltui_preset_store_start(s_, &rep, &scratch);
-  }
+  void start(BindingsPresetReport& rep) { rolltui_preset_store_start(s_, &rep); }
   BindingsHandle working() const { return BindingsHandle(static_cast<RolltuiBindings*>(rolltui_preset_store_working(s_))); }
   void set_working(RolltuiBindings* b, bool persist = true) { rolltui_preset_store_set_working(s_, b, persist ? 1 : 0); }
   std::optional<BindingsHandle> get(std::string_view name, BindingsPresetReport& rep) const {
@@ -491,7 +442,7 @@ class BindingsStore : public PresetStoreBase {
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(&bindings_domain(), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(n.str());
     return out;

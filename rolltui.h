@@ -134,12 +134,16 @@
  * directly.
  *   - DO write a RAII holder or a lambda bridge in your own file when you want one.
  *   - DON'T ship it from here. If two consumers write the SAME wrapper, the API is wrong,
- *     not the consumers. That has now fired FOUR times: three hosts had hand-written the same
+ *     not the consumers. That has now fired FIVE times: three hosts had hand-written the same
  *     double buffer (hence `c/rolltui_swap.h`), four had hand-copied the action table,
  *     three had written `struct PresetInfo` (hence `RolltuiPresetInfo`, and the sink rule
- *     above that made it necessary), and two had written "open the popup this layout declared"
- *     at six call sites (hence `rolltui_window_stack_push_popup`). Each time the fix was the
- *     API, never the wrapper.
+ *     above that made it necessary), two had written "open the popup this layout declared"
+ *     at six call sites (hence `rolltui_window_stack_push_popup`), and five had assembled the
+ *     same three preset domains while four freed a store's value through the domain and three
+ *     folded the same save-as sentence (hence `rolltui_preset_domain`,
+ *     `rolltui_preset_store_value_free` and `err` carrying the sentence — Phase 18 m3, found
+ *     by the pure-C consumer opening a store). Each time the fix was the API, never the
+ *     wrapper.
  *   - AND THE FOURTH ONE CARRIES A WARNING THE FIRST THREE DID NOT. Its two spellings were
  *     `RolltuiLayer copy = *p;` and `RolltuiLayer copy{}; rolltui_layer_copy(&copy, p);`, and
  *     **those are the same operation only in C++.** The first relies on a copy constructor

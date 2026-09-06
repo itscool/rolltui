@@ -35,14 +35,12 @@
 //     `rolltui_layout_builtin_json` (hands back unparsed embedded TEXT) — so a caller that
 //     wants the ORIGINAL property under test ("this cache empties at shutdown() and rebuilds
 //     on next use") has to hold it, the same way any future C host would.
-//   - the three preset domains (`ThemePresets`/`LayoutPresets`/`BindingsPresets::shipped`)
-//     are built straight from `rolltui_{theme,layout,bindings}_preset_domain_init` — which
-//     is real, callable C — as PROCESS-WIDE statics, re-registering their releaser on every
-//     rebuild for the same reason the two caches above do. The bindings domain's `reason`
-//     callback is a STUB (no reason text): the real one supplies English for an undeliverable
-//     chord, and the shipped "default" bindings preset has none (the library aborts its own build if
-//     the shipped file ever bound an undeliverable chord), so the stubs are observationally
-//     identical to the real callbacks for this one lookup — see the report for the gap.
+//   - the three preset domains are the library's own (`rolltui_preset_domain`, Phase 18 m3),
+//     which registers their releaser at cache-build time for the same reason the two caches
+//     above do. Until then this file built its own three, with a STUB `reason` callback; the
+//     library's carries the real one, and the shipped "default" bindings preset has no
+//     undeliverable chord (the library aborts its own build if it ever did), so the two are
+//     observationally identical for this one lookup.
 //   - `diff_spans`' `RolltuiDiffRoles` is filled with ONE placeholder role for all seven
 //     slots, not the theme's real added/removed/context/... mapping: the assertion below only
 //     counts spans, never inspects which role one carries, and the real mapping
@@ -171,59 +169,12 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
   return cache ? &*cache : nullptr;
 }
 
-// ---- the three preset domains, as process-wide statics over rolltui_{theme,layout,bindings}_
-// preset_domain_init — see the file header for why the bindings domain's reason is a
-// stub rather than a second copy of the library's own table. ---------------------------------
-//
-// Each domain's OWN `rolltui_{theme,layout,bindings}_preset_report_fns()` is used for
-// `rep_fns` (not a caller-invented generic one): `rolltui_preset_shipped`'s domain-specific
-// `parse` callback writes into `scratch_report` DIRECTLY, as its own typed report struct, not
-// only through the five generic fn-table calls — so `scratch_report` must be a real, zeroed
-// `RolltuiThemePresetReport`/`RolltuiLayoutPresetReport`/`RolltuiBindingsPresetReport`, never
-// nullptr and never a generically-shaped stand-in (confirmed the hard way: a generic no-op
-// report_fns paired with a null scratch_report segfaulted inside `rolltui_load_layout`, which
-// dereferences the layout preset report's own `.layout` field regardless of what report_fns
-// says).
-
-// "no reason text" for every input — see the file header: the shipped "default" bindings
-// preset has (by the library's own build-time guarantee) no undeliverable chord, so a stub
-// that always answers "nothing to do" here is
-// observationally identical to the real reason callback for this one lookup.
-std::size_t reason_noop(void*, const RolltuiChord*, unsigned char, char*, std::size_t) { return 0; }
-
-RolltuiPresetDomain& theme_preset_domain() {
-  static RolltuiPresetDomain d = [] {
-    RolltuiPresetDomain out{};
-    rolltui_theme_preset_domain_init(&out, rolltui_theme_default_vocab(), rolltui_theme_mode_setting_valid,
-                                     rolltui_color_depth_setting_valid);
-    return out;
-  }();
-  if (d.cache == nullptr) rolltui_on_shutdown([] { rolltui_preset_domain_release(&theme_preset_domain()); });
-  return d;
-}
-
-RolltuiPresetDomain& layout_preset_domain() {
-  static RolltuiPresetDomain d = [] {
-    RolltuiPresetDomain out{};
-    std::size_t n = 0;
-    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&n);
-    rolltui_layout_preset_domain_init(&out, rolltui_layout_default_hooks(), defaults, n);
-    return out;
-  }();
-  if (d.cache == nullptr) rolltui_on_shutdown([] { rolltui_preset_domain_release(&layout_preset_domain()); });
-  return d;
-}
-
-RolltuiPresetDomain& bindings_preset_domain() {
-  static RolltuiPresetDomain d = [] {
-    RolltuiPresetDomain out{};
-    rolltui_bindings_preset_domain_init(&out, rolltui_bindings_library_scope, nullptr,
-                                        reason_noop, nullptr);
-    return out;
-  }();
-  if (d.cache == nullptr) rolltui_on_shutdown([] { rolltui_preset_domain_release(&bindings_preset_domain()); });
-  return d;
-}
+// ---- the three preset domains are the LIBRARY's (`rolltui_preset_domain`, Phase 18 m3) --------
+// This file had built its own three as function-local statics — with a `reason_noop` stub in
+// place of the library's own reason table, and its own `rolltui_on_shutdown` registration — as
+// had four other consumers. The release at shutdown is the library's now, which is exactly what
+// the zero this test measures after `rolltui_shutdown()` proves: the caches this scene populates
+// through `rolltui_preset_shipped` below are let go of by a hook the library registered itself.
 
 // ---- painting a real scene: the caches, registries and per-call scratch this test is about
 // are all actually populated rather than assumed to be. -------------------------------------
@@ -364,19 +315,13 @@ void use_the_ported_modules(const char* when) {
         std::string("…and the shipped default bindings parsed — ") + when);
 
   constexpr std::string_view kDefaultPreset = "default";
-  RolltuiThemePresetReport theme_rep{};
-  RolltuiLayoutPresetReport layout_rep{};
-  RolltuiBindingsPresetReport bindings_rep{};
   const bool presets_ok =
-      rolltui_preset_shipped(&theme_preset_domain(), rolltui_theme_preset_report_fns(), &theme_rep,
-                             kDefaultPreset.data(), kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(&layout_preset_domain(), rolltui_layout_preset_report_fns(), &layout_rep,
-                             kDefaultPreset.data(), kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(&bindings_preset_domain(), rolltui_bindings_preset_report_fns(), &bindings_rep,
-                             kDefaultPreset.data(), kDefaultPreset.size()) != nullptr;
-  rolltui_theme_preset_report_release(&theme_rep);
-  rolltui_layout_preset_report_release(&layout_rep);
-  rolltui_bindings_preset_report_release(&bindings_rep);
+      rolltui_preset_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), kDefaultPreset.data(),
+                             kDefaultPreset.size()) != nullptr &&
+      rolltui_preset_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), kDefaultPreset.data(),
+                             kDefaultPreset.size()) != nullptr &&
+      rolltui_preset_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS), kDefaultPreset.data(),
+                             kDefaultPreset.size()) != nullptr;
   check(presets_ok, std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 
   constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";

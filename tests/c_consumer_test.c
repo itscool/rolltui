@@ -25,8 +25,10 @@
  *      independent guards, because a build property that has never been violated is exactly
  *      the reports-zero shape CLAUDE.md keeps recording.
  *
- *   2. **IT INCLUDES `rolltui/rolltui.h` AND NOTHING ELSE OF THE LIBRARY'S.** `<stdio.h>` and
- *      `<string.h>` are the C standard library, not rolltui, and printing is how a test speaks.
+ *   2. **IT INCLUDES `rolltui/rolltui.h` AND NOTHING ELSE OF THE LIBRARY'S.** `<stdio.h>`,
+ *      `<stdlib.h>` and `<string.h>` are the C standard library and `<unistd.h>` is POSIX —
+ *      not rolltui; printing is how a test speaks, and `mkdtemp`/`rmdir` are how section 4b
+ *      gets a directory of its own for a preset store and proves what the store left in it.
  *      It does NOT include `rolltui/tests/rolltui_test.hpp` — that harness is C++ (it is built
  *      out of `std::string`), so the fifteen lines below are this file's own. When Phase 16 m1
  *      extracts the shared testing module, its control-point core is C by design and this file
@@ -47,7 +49,9 @@ which is precisely the padding this file exists to run without."
 #endif
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "rolltui/rolltui.h"
 
@@ -123,6 +127,14 @@ static void on_submit(void* ctx, const char* text, size_t len) {
 static void draw_slot(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   App* a = (App*)ctx;
   rolltui_windows_draw(a->windows, rn, f, a->styles, rolltui_windows_default_roles());
+}
+
+/* The in-place edit section 4b makes under the store's lock: `rolltui_preset_store_edit`
+ * hands the working value to a C callback, which is the shape both hosts' `set_mode` wrap. */
+static void set_mode_light(void* value, void* ctx) {
+  RolltuiThemePresetValue* v = (RolltuiThemePresetValue*)value;
+  (void)ctx;
+  rolltui_str_set(&v->mode, "light", 5);
 }
 
 static RolltuiRect screen_rect(const App* a) {
@@ -367,6 +379,295 @@ int main(void) {
     rolltui_swap_free(swap);
   }
 
+  /* ---- 4b. A PRESET STORE, OPENED FROM C (Phase 18 m3) ------------------------------------ *
+   * THE EVIDENCE THIS MILESTONE HAD NONE OF. Section 1 reaches the shipped theme through
+   * `rolltui_theme_builtin_fill` and the embedded bytes — a different rung of the same domain
+   * — and `plan/phase-18.md` m3 recorded that this file therefore said NOTHING about the thing
+   * m3 is about: a `RolltuiPresetStore`, the stateful handle roll and the studio each wrap in
+   * an adapter with twelve identical method names. A control that exists but does not reach
+   * its guarantee is indistinguishable from one that does, so this section opens one.
+   *
+   * What it does is what a HOST does, in the order a host does it, with no C++ anywhere in
+   * the chain: take the three domains; open a store on a directory with nothing in it; start
+   * it; read the working copy and USE it (its colours fill a style table, which is what a
+   * host draws from); list; edit in place and watch the autosave land; save-as, with each of
+   * the four refusals; get; load; then open a SECOND store on the same directory and see the
+   * working copy come back through the file. Then a Layout and a Bindings store, each compared
+   * against a rung this file already stood on, so the two paths are proved to agree.
+   *
+   * THE WALLS THIS SECTION HIT ON ITS FIRST RUN (2026-09-06) — five, each counted across every
+   * consumer before anything was designed, and each moved INTO the C API rather than into a
+   * sixth wrapper (`rolltui_presets.h` carries the case at each declaration):
+   *   - the three domain descriptors were assembled BY EVERY CONSUMER from the same
+   *     library-owned arguments (five consumers, fifteen `_init` calls, two never releasing
+   *     the cache) — `rolltui_preset_domain(id)` is the library's own assembly;
+   *   - `_new` and `_start` each took a SECOND report the caller had to make and throw away
+   *     (twenty-six call sites) — the domain makes its own (`RolltuiPresetReportFns::create`);
+   *   - a value from `_working`/`_get` could only be freed through the DOMAIN's `destroy`
+   *     (sixteen call sites reaching past the store) — `rolltui_preset_store_value_free`;
+   *   - `save_as` answered a refusal with a CODE and left `err` empty, so three consumers
+   *     folded `rolltui_preset_save_result_text` in by hand, identically — `err` carries it;
+   *   - `working_value` had to be TOLD which domain the store is, in an enum every caller
+   *     kept in step with the store — the store's own `kind` is the name.
+   * What did NOT move, and why, is the milestone's other half: everything a C++ host still
+   * wraps is `std::string` in and out, of which this file needs none. */
+  {
+    char dir[512];
+    size_t dir_len = 0;
+    RolltuiPresetDomain* theme_dom = rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME);
+    RolltuiPresetDomain* layout_dom = rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT);
+    RolltuiPresetDomain* bindings_dom = rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS);
+
+    /* A scratch directory of this file's own. `mkdtemp` is POSIX, not rolltui; the store
+     * takes a directory it did not create and creates the files under it itself. */
+    {
+      const char* tmp = getenv("TMPDIR");
+      snprintf(dir, sizeof dir, "%s/rolltui-c-consumer-XXXXXX", tmp != NULL && tmp[0] != '\0' ? tmp : "/tmp");
+      check(mkdtemp(dir) != NULL, "a scratch directory for the store");
+      dir_len = strlen(dir);
+    }
+
+    /* THE THREE DOMAINS, the library's own. Nothing to assemble and nothing to pair them with:
+     * each carries its report ops, and each is released at `rolltui_shutdown()` by the library
+     * — which section 5's zero now measures for a C consumer. */
+    check(theme_dom != NULL && layout_dom != NULL && bindings_dom != NULL && theme_dom->parse != NULL &&
+              layout_dom->parse != NULL && bindings_dom->parse != NULL && theme_dom->report != NULL &&
+              layout_dom->report != NULL && bindings_dom->report != NULL,
+          "the library's own three preset domains are reachable from C, assembled by the library, each carrying its report ops");
+    check(rolltui_preset_domain((RolltuiPresetDomainId)3) == NULL, "…and an id that is not one of the three is NULL");
+    {
+      size_t nl = 0;
+      const char* nm = rolltui_preset_domain_name(ROLLTUI_PRESET_DOMAIN_THEME, &nl);
+      check(nl == theme_dom->kind_len && memcmp(nm, theme_dom->kind, nl) == 0,
+            "…and a domain's `kind` IS its name, in the one spelling `rolltui_preset_domain_name` gives");
+    }
+
+    /* ---- the Theme store, through its whole life ---- */
+    {
+      RolltuiThemePresetReport rep;
+      RolltuiPresetStore* ts;
+      RolltuiStr label = {0};
+      RolltuiStr val = {0};
+      RolltuiStr err = {0};
+      RolltuiPresetList list = {0};
+      unsigned long long v0;
+      memset(&rep, 0, sizeof rep);
+
+      ts = rolltui_preset_store_new(theme_dom, dir, dir_len, /*may_write_shipped=*/0, "", 0);
+      check(ts != NULL, "a Theme store opens from C on a directory with nothing in it, with no report to supply");
+      rolltui_preset_store_start(ts, &rep);
+      check(rolltui_theme_preset_report_clean(&rep) != 0 && rep.notes_n == 1,
+            "…starts clean, with one note saying it began from the shipped 'default'");
+      {
+        size_t n = 0;
+        const char* o = rolltui_preset_store_origin(ts, &n);
+        check(n == 7 && memcmp(o, "default", 7) == 0, "…its origin is 'default'");
+      }
+      check(rolltui_preset_store_modified(ts) == 0, "…and it is not modified");
+      rolltui_preset_store_label(ts, &label);
+      check(rolltui_str_eq(&label, "default", 7) != 0, "…so its label is the origin alone");
+      v0 = rolltui_preset_store_version(ts);
+
+      /* THE WORKING COPY, read and USED: a clone the caller casts to the domain's value type
+       * and frees through the STORE that gave it. */
+      {
+        void* w = rolltui_preset_store_working(ts);
+        RolltuiThemePresetValue* tv = (RolltuiThemePresetValue*)w;
+        check(w != NULL && tv->colours != NULL && rolltui_str_eq(&tv->mode, "auto", 4) != 0 &&
+                  rolltui_str_eq(&tv->depth, "auto", 4) != 0,
+              "the working copy is a value a C caller can read: colours, mode, depth");
+        if (w != NULL) {
+          RolltuiStyle table[ROLLTUI_ROLE_COUNT];
+          RolltuiStr name = {0};
+          RolltuiThemeReport tr = {0};
+          RolltuiEffectMap* fx =
+              rolltui_theme_load(tv->colours, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), table, &name, &tr);
+          check(fx != NULL && tr.missing_roles_n == 0,
+                "…and its colours fill a style table with every role defined: the store's value is the loader's input");
+          rolltui_effect_map_free(fx);
+          rolltui_theme_report_release(&tr);
+          rolltui_str_free(&name);
+          rolltui_preset_store_value_free(ts, w);
+        }
+      }
+
+      /* THE LISTING: the library's own list type, replaced per call. */
+      rolltui_preset_store_list(ts, &list);
+      {
+        size_t i = 0;
+        int all_shipped = list.n != 0;
+        for (; i < list.n; ++i)
+          if (!list.v[i].shipped || list.v[i].path.n != 0) all_shipped = 0;
+        check(list.n == theme_dom->shipped_count() && all_shipped && rolltui_str_eq(&list.v[0].name, "default", 7) != 0,
+              "the listing is exactly the shipped themes, 'default' first, each shipped and pathless");
+      }
+
+      /* AN EDIT IN PLACE, from a C callback, under the store's lock. */
+      rolltui_preset_store_edit(ts, set_mode_light, NULL, /*persist=*/1);
+      check(rolltui_preset_store_modified(ts) != 0 && rolltui_preset_store_version(ts) > v0,
+            "an in-place edit from a C callback marks the store modified and bumps its version");
+      rolltui_str_clear(&label);
+      rolltui_preset_store_label(ts, &label);
+      check(rolltui_str_eq(&label, "default (modified)", 18) != 0, "…and the label says so, in the library's one spelling");
+      rolltui_preset_working_value(ts, "theme_mode", 10, &val);
+      check(rolltui_str_eq(&val, "light", 5) != 0, "…'theme_mode' reads back the edit, the store knowing its own domain");
+      rolltui_str_clear(&val);
+      rolltui_preset_working_value(ts, "theme", 5, &val);
+      check(rolltui_str_eq(&val, "default", 7) != 0, "…while 'theme', the identity key — the domain's own `kind` — is still the origin");
+      rolltui_str_clear(&val);
+      rolltui_preset_working_value(ts, "layout", 6, &val);
+      check(val.n == 0, "…and another domain's key is not this store's to answer");
+      {
+        RolltuiStr path = {0};
+        RolltuiStr text = {0};
+        rolltui_preset_store_working_path(ts, &path);
+        check(rolltui_preset_read_file(path.p, path.n, rolltui_str_put, &text) != 0 && text.n != 0,
+              "…and the edit AUTOSAVED: the working file is on disk at the path the store names");
+        rolltui_str_free(&path);
+        rolltui_str_free(&text);
+      }
+
+      /* SAVE-AS, and its four refusals — each a CODE and, since Phase 18 m3, its SENTENCE. */
+      check(rolltui_preset_store_save_as(ts, "mine", 4, /*overwrite=*/0, &err) == ROLLTUI_SAVE_SAVED && err.n == 0,
+            "save-as a user name from C: SAVED, with nothing in `err`");
+      {
+        size_t n = 0;
+        const char* o = rolltui_preset_store_origin(ts, &n);
+        check(n == 4 && memcmp(o, "mine", 4) == 0 && rolltui_preset_store_modified(ts) == 0,
+              "…the saved preset is the origin now, so nothing is modified");
+      }
+      {
+        const int code = rolltui_preset_store_save_as(ts, "default", 7, /*overwrite=*/1, &err);
+        size_t sl = 0;
+        const char* sentence = rolltui_preset_save_result_text(code, &sl);
+        check(code == ROLLTUI_SAVE_REFUSED_SHIPPED && err.n != 0 && sl != 0 && rolltui_str_eq(&err, sentence, sl) != 0,
+              "…a shipped name is refused as a CODE, and `err` carries the table's own sentence for it — one call, not two");
+      }
+      check(rolltui_preset_store_save_as(ts, "mine", 4, /*overwrite=*/0, &err) == ROLLTUI_SAVE_EXISTS_ASK && err.n != 0,
+            "…an existing name without overwrite ASKS, in words");
+      check(rolltui_preset_store_save_as(ts, "../mine", 7, /*overwrite=*/0, &err) == ROLLTUI_SAVE_BAD_NAME && err.n != 0,
+            "…and a path-shaped name is a BAD NAME, in words");
+      rolltui_preset_store_list(ts, &list);
+      {
+        const RolltuiPresetInfo* last = list.n != 0 ? &list.v[list.n - 1] : NULL;
+        RolltuiStr path = {0};
+        rolltui_preset_store_preset_path(ts, "mine", 4, &path);
+        check(last != NULL && list.n == theme_dom->shipped_count() + 1 && rolltui_str_eq(&last->name, "mine", 4) != 0 &&
+                  !last->shipped && last->path.n != 0 && rolltui_str_eq(&last->path, path.p, path.n) != 0,
+              "…the listing now ends with 'mine', unshipped, at the path the store names for it");
+        rolltui_str_free(&path);
+      }
+
+      /* GET by name, and the value it returns is the working copy it was saved from. */
+      {
+        void* g = rolltui_preset_store_get(ts, "mine", 4, &rep);
+        void* w = rolltui_preset_store_working(ts);
+        check(g != NULL && rolltui_theme_preset_report_clean(&rep) != 0, "get by name returns the saved value, clean");
+        check(g != NULL && w != NULL && theme_dom->equal(g, w) != 0, "…equal to the working copy it was saved from");
+        rolltui_preset_store_value_free(ts, g);
+        rolltui_preset_store_value_free(ts, w);
+        g = rolltui_preset_store_get(ts, "nosuch", 6, &rep);
+        check(g == NULL && rep.error.n != 0, "…and a name neither shipped nor saved is NULL, with the report saying why");
+        rolltui_preset_store_value_free(ts, g); /* NULL: a no-op, as the pair promises */
+      }
+
+      /* LOAD a shipped preset into the working copy: the origin follows it. */
+      check(rolltui_preset_store_load(ts, "default-dark", 12, &rep, /*persist=*/1) != 0 &&
+                rolltui_theme_preset_report_clean(&rep) != 0 && rolltui_preset_store_modified(ts) == 0,
+            "load a shipped preset from C: the working copy is replaced whole, unmodified");
+      {
+        size_t n = 0;
+        const char* o = rolltui_preset_store_origin(ts, &n);
+        check(n == 12 && memcmp(o, "default-dark", 12) == 0, "…and the origin followed it");
+      }
+
+      /* THE ROUND TRIP: a second store on the same directory starts from what the first one
+       * autosaved — the origin included — with no C++ anywhere between the write and the read. */
+      {
+        RolltuiPresetStore* again = rolltui_preset_store_new(theme_dom, dir, dir_len, 0, "", 0);
+        size_t n = 0;
+        const char* o;
+        rolltui_preset_store_start(again, &rep);
+        o = rolltui_preset_store_origin(again, &n);
+        if (rolltui_theme_preset_report_clean(&rep) == 0 || n != 12 || memcmp(o, "default-dark", 12) != 0 ||
+            rolltui_preset_store_modified(again) != 0) {
+          RolltuiStr why = {0};
+          rolltui_theme_preset_report_summary(&rep, &why);
+          printf("  note: second store: origin '%.*s', modified %d, report '%.*s', %zu note(s)\n", (int)n, o,
+                 rolltui_preset_store_modified(again), (int)why.n, why.p != NULL ? why.p : "", rep.notes_n);
+          rolltui_str_free(&why);
+        }
+        check(rolltui_theme_preset_report_clean(&rep) != 0 && n == 12 && memcmp(o, "default-dark", 12) == 0 &&
+                  rolltui_preset_store_modified(again) == 0,
+              "a SECOND store on the same directory starts from the autosaved working copy, origin included");
+        rolltui_preset_store_free(again);
+      }
+
+      rolltui_preset_store_free(ts);
+      rolltui_preset_list_release(&list);
+      rolltui_str_free(&label);
+      rolltui_str_free(&val);
+      rolltui_str_free(&err);
+      rolltui_theme_preset_report_release(&rep);
+    }
+
+    /* ---- the Layout store: its working copy IS the layout section 2 loaded by hand ---- */
+    {
+      RolltuiLayoutPresetReport rep;
+      RolltuiPresetStore* ls;
+      RolltuiPresetList list = {0};
+      void* w;
+      memset(&rep, 0, sizeof rep);
+      ls = rolltui_preset_store_new(layout_dom, dir, dir_len, 0, "", 0);
+      rolltui_preset_store_start(ls, &rep);
+      w = rolltui_preset_store_working(ls);
+      check(ls != NULL && w != NULL && rolltui_layout_preset_report_clean(&rep) != 0 &&
+                layout_dom->equal(w, &app.layout) != 0,
+            "a Layout store opens from C, and its working copy EQUALS the shipped screen section 2 loaded through the standalone loader");
+      rolltui_preset_store_value_free(ls, w);
+      rolltui_preset_store_list(ls, &list);
+      check(list.n == layout_dom->shipped_count() && list.n != 0 && rolltui_str_eq(&list.v[0].name, "default", 7) != 0,
+            "…and it lists the shipped layouts, 'default' first");
+      rolltui_preset_list_release(&list);
+      rolltui_preset_store_free(ls);
+      rolltui_layout_preset_report_release(&rep);
+    }
+
+    /* ---- the Bindings store: its working copy IS the library's default table ---- */
+    {
+      RolltuiBindingsPresetReport rep;
+      RolltuiPresetStore* bs;
+      void* w;
+      memset(&rep, 0, sizeof rep);
+      bs = rolltui_preset_store_new(bindings_dom, dir, dir_len, 0, "", 0);
+      rolltui_preset_store_start(bs, &rep);
+      w = rolltui_preset_store_working(bs);
+      check(bs != NULL && w != NULL && rolltui_bindings_preset_report_clean(&rep) != 0 &&
+                bindings_dom->equal(w, rolltui_bindings_default()) != 0,
+            "a Bindings store opens from C, and its working copy EQUALS the library's own default table");
+      rolltui_preset_store_value_free(bs, w);
+      rolltui_preset_store_free(bs);
+      rolltui_bindings_preset_report_release(&rep);
+    }
+
+    /* THE DIRECTORY HELD EXACTLY WHAT THIS FILE CAUSED — `rmdir` refuses a directory with
+     * anything left in it, so a store that wrote something unexpected fails here by name. */
+    {
+      char path[600];
+      int ok = 1;
+      snprintf(path, sizeof path, "%s/themes/mine.json", dir);
+      ok = remove(path) == 0 && ok;
+      snprintf(path, sizeof path, "%s/themes", dir);
+      ok = rmdir(path) == 0 && ok;
+      snprintf(path, sizeof path, "%s/theme.working.json", dir);
+      ok = remove(path) == 0 && ok;
+      ok = rmdir(dir) == 0 && ok;
+      check(ok, "…and the directory held exactly the two files this section caused, and nothing else");
+    }
+    /* No domain release here: the three are the library's, and section 5's zero after
+     * `rolltui_shutdown()` is what says the library let go of what it built for this section. */
+  }
+
   /* ---- 5. RELEASE, BY HAND, AND THE NUMBER THAT SAYS THE HAND WAS RIGHT -------------------- */
   rolltui_compose_scratch_free(app.compose_scratch);
   rolltui_window_stack_free(app.stack);
@@ -376,6 +677,8 @@ int main(void) {
   rolltui_effect_map_free(app.effects);
 
   rolltui_shutdown();
+  /* Since Phase 18 m3 this zero also covers the three preset domains' parsed caches, which
+   * section 4b populated and never released: they are the library's, and the library did. */
   {
     const size_t b = live_bytes();
     const size_t n = live_blocks();

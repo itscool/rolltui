@@ -21,6 +21,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_embedded.h"
+#include "rolltui/c/rolltui_lifetime.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
 /* GROWING, AMORTISED (rolltui_alloc.h strategy 2). Not NUL-terminated by construction —
@@ -233,6 +234,18 @@ int rolltui_preset_valid_name(const char* name, size_t len) {
   return 1;
 }
 
+/* ---- the library's own three descriptors (`rolltui_preset_domain`, Phase 18 m3) -------------
+ * Named here, above the cache, because `build_cache` is where their release hook is
+ * registered — at cache-build time, the built-in layouts' rule — and a shutdown hook carries
+ * no ctx, so the hook has to find them by name. Pointer EQUALITY against the three, never a
+ * range compare: a host's own descriptor is an unrelated object. */
+static RolltuiPresetDomain g_library_domains[3];
+static int g_library_domain_built[3];
+static void library_domains_release(void);
+static int is_library_domain(const RolltuiPresetDomain* d) {
+  return d == &g_library_domains[0] || d == &g_library_domains[1] || d == &g_library_domains[2];
+}
+
 /* ---- the shipped cache -------------------------------------------------------------------- */
 
 struct RolltuiPresetShippedCache {
@@ -242,10 +255,14 @@ struct RolltuiPresetShippedCache {
   RolltuiPresetDomain* owner; /* whose `destroy` frees the values */
 };
 
-static void build_cache(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns, void* scratch_report) {
+static void build_cache(RolltuiPresetDomain* d) {
   const size_t n = d->shipped_count();
   size_t i;
   int have_default = 0;
+  /* OWNED, short-lived: the report every shipped preset is parsed into and nobody reads —
+   * a shipped preset loads cleanly or the process aborts below. Made by the domain, which
+   * is the one thing that can name its type; until Phase 18 m3 every caller supplied one. */
+  void* scratch = d->report->create();
   RolltuiPresetShippedCache* c =
       (RolltuiPresetShippedCache*)rolltui_mem_alloc(sizeof(RolltuiPresetShippedCache));
   memset(c, 0, sizeof *c);
@@ -263,13 +280,13 @@ static void build_cache(RolltuiPresetDomain* d, const RolltuiPresetReportFns* re
     size_t nlen = 0, tlen = 0;
     void* v;
     d->shipped_at(i, &name, &nlen, &text, &tlen);
-    rep_fns->reset(scratch_report);
-    v = d->parse(text, tlen, scratch_report);
+    d->report->reset(scratch);
+    v = d->parse(text, tlen, scratch);
     if (!v) {
       /* A shipped preset that does not load cleanly is a programming error (the layout
        * loader's standard); say so and stop rather than run half of one. */
       Buf why = {NULL, 0, 0};
-      rep_fns->get_error(scratch_report, buf_put, &why);
+      d->report->get_error(scratch, buf_put, &why);
       fprintf(stderr, "rolltui: shipped %.*s preset '%.*s' is broken: %.*s\n", (int)d->kind_len, d->kind, (int)nlen,
               name, (int)why.len, why.p ? why.p : "");
       abort();
@@ -282,17 +299,21 @@ static void build_cache(RolltuiPresetDomain* d, const RolltuiPresetReportFns* re
     fprintf(stderr, "rolltui: no shipped %.*s preset named 'default' (rule 5)\n", (int)d->kind_len, d->kind);
     abort();
   }
+  d->report->destroy(scratch);
   d->cache = c;
+  /* AT BUILD TIME, not once per process (`rolltui_layout.c`'s `builtin_layouts_fill` states
+   * why): `rolltui_shutdown()` clears its own registry as it runs, so a hook registered once
+   * would miss the second shutdown. A host's own descriptor is the host's to release. */
+  if (is_library_domain(d)) rolltui_on_shutdown(library_domains_release);
 }
 
-static void ensure_cache(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns, void* scratch_report) {
-  if (!d->cache) build_cache(d, rep_fns, scratch_report);
+static void ensure_cache(RolltuiPresetDomain* d) {
+  if (!d->cache) build_cache(d);
 }
 
-const void* rolltui_preset_shipped(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns,
-                                   void* scratch_report, const char* name, size_t len) {
+const void* rolltui_preset_shipped(RolltuiPresetDomain* d, const char* name, size_t len) {
   size_t i;
-  ensure_cache(d, rep_fns, scratch_report);
+  ensure_cache(d);
   for (i = 0; i < d->cache->count; ++i)
     if (buf_eq(&d->cache->names[i], name, len)) return d->cache->values[i];
   return NULL;
@@ -403,20 +424,19 @@ void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* n
   buf_free(&p);
 }
 
-RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns,
-                                             const char* dir, size_t dir_len, int may_write_shipped,
-                                             const char* shipped_dir, size_t shipped_dir_len, void* scratch_report) {
+RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const char* dir, size_t dir_len,
+                                             int may_write_shipped, const char* shipped_dir, size_t shipped_dir_len) {
   RolltuiPresetStore* s = (RolltuiPresetStore*)rolltui_mem_alloc(sizeof(RolltuiPresetStore));
   const void* def;
   memset(s, 0, sizeof *s);
   s->d = d;
-  s->rep = rep_fns;
+  s->rep = d->report;
   buf_set(&s->dir, dir, dir_len);
   buf_set(&s->shipped_dir, shipped_dir, shipped_dir_len);
   s->may_write_shipped = may_write_shipped;
   pthread_mutex_init(&s->mu, NULL);
   s->version = 1;
-  def = rolltui_preset_shipped(d, rep_fns, scratch_report, "default", 7);
+  def = rolltui_preset_shipped(d, "default", 7);
   s->working = d->clone(def);
   s->origin_content = d->clone(def);
   buf_set(&s->origin, "default", 7);
@@ -462,7 +482,7 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
   const void* shipped;
   s->rep->reset(report);
   if (partial) *partial = 0;
-  shipped = rolltui_preset_shipped(self->d, s->rep, report, name, len);
+  shipped = rolltui_preset_shipped(self->d, name, len);
   if (shipped) {
     s->rep->reset(report);
     return s->d->clone(shipped);
@@ -539,7 +559,11 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
   return v;
 }
 
-void rolltui_preset_store_start(RolltuiPresetStore* s, void* report, void* scratch_report) {
+void rolltui_preset_store_value_free(const RolltuiPresetStore* s, void* v) {
+  if (s && v) s->d->destroy(v);
+}
+
+void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
   Buf path = {NULL, 0, 0}, text = {NULL, 0, 0}, msg = {NULL, 0, 0};
   void* parsed;
   pthread_mutex_lock(&s->mu);
@@ -581,7 +605,11 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report, void* scrat
   s->d->origin_of(text.p, text.len, buf_put, &s->origin);
   if (s->origin.len == 0) buf_set(&s->origin, "default", 7);
   {
-    void* oc = get_locked(s, s->origin.p, s->origin.len, scratch_report, NULL);
+    /* OWNED, short-lived: the origin preset is re-read for its CONTENT (to say "(modified)"
+     * by comparison); what its report says was already said when it was loaded. */
+    void* scratch = s->rep->create();
+    void* oc = get_locked(s, s->origin.p, s->origin.len, scratch, NULL);
+    s->rep->destroy(scratch);
     s->d->destroy(s->origin_content);
     s->origin_content = oc ? oc : s->d->clone(s->working);
     if (!oc) {
@@ -762,6 +790,17 @@ int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t le
   return 1;
 }
 
+/* The outcome, with its sentence in `err` for every refusal that has a fixed one — so the
+ * three early returns below and the composed result at the end say it the same way. */
+static int save_result(int code, RolltuiStr* err) {
+  if (err && code != ROLLTUI_SAVE_SAVED && code != ROLLTUI_SAVE_WRITE_FAILED) {
+    size_t n = 0;
+    const char* text = rolltui_preset_save_result_text(code, &n);
+    rolltui_str_set(err, text, n);
+  }
+  return code;
+}
+
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err) {
   Buf path = {NULL, 0, 0}, bytes = {NULL, 0, 0};
   int result = ROLLTUI_SAVE_SAVED;
@@ -769,12 +808,12 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
   pthread_mutex_lock(&s->mu);
   if (!rolltui_preset_valid_name(name, len)) {
     pthread_mutex_unlock(&s->mu);
-    return ROLLTUI_SAVE_BAD_NAME;
+    return save_result(ROLLTUI_SAVE_BAD_NAME, err);
   }
   if (rolltui_preset_is_shipped(s->d, name, len)) {
     if (!s->may_write_shipped) {
       pthread_mutex_unlock(&s->mu);
-      return ROLLTUI_SAVE_REFUSED_SHIPPED;
+      return save_result(ROLLTUI_SAVE_REFUSED_SHIPPED, err);
     }
     buf_add(&path, s->shipped_dir.p, s->shipped_dir.len);
     buf_add(&path, "/", 1);
@@ -786,7 +825,7 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
     if (!overwrite && stat(cstr(&path), &st) == 0) {
       buf_free(&path);
       pthread_mutex_unlock(&s->mu);
-      return ROLLTUI_SAVE_EXISTS_ASK;
+      return save_result(ROLLTUI_SAVE_EXISTS_ASK, err);
     }
   }
   s->d->to_json(s->working, name, len, buf_put, &bytes);
@@ -1067,12 +1106,25 @@ static void theme_preset_report_prefix_notes(void* r, const char* p, size_t len)
     rolltui_str_move(&t->notes[i], &n);
   }
 }
+/* OWNED, short-lived, through the library's entry point: a report the mechanics make for
+ * a parse whose outcome they do not keep. `reset` is the domain's own `_release`. */
+static void* theme_preset_report_create(void) {
+  RolltuiThemePresetReport* r = (RolltuiThemePresetReport*)rolltui_mem_alloc(sizeof *r);
+  memset(r, 0, sizeof *r);
+  return r;
+}
+static void theme_preset_report_destroy(void* r) {
+  rolltui_theme_preset_report_release((RolltuiThemePresetReport*)r);
+  rolltui_mem_free(r);
+}
 static const RolltuiPresetReportFns kThemePresetReportFns = {
     theme_preset_report_reset,
     theme_preset_report_set_error,
     theme_preset_report_get_error,
     theme_preset_report_add_note,
     theme_preset_report_prefix_notes,
+    theme_preset_report_create,
+    theme_preset_report_destroy,
 };
 const RolltuiPresetReportFns* rolltui_theme_preset_report_fns(void) { return &kThemePresetReportFns; }
 
@@ -1242,6 +1294,7 @@ void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThe
   out->clone = theme_domain_clone;
   out->destroy = theme_domain_destroy;
   out->equal = theme_domain_equal;
+  out->report = &kThemePresetReportFns;
 }
 
 /* ---- the Layout domain ----------------------------------------------------------------------- */
@@ -1283,12 +1336,25 @@ static void layout_preset_report_prefix_notes(void* r, const char* p, size_t len
     rolltui_str_move(&l->notes[i], &n);
   }
 }
+/* OWNED, short-lived, through the library's entry point: a report the mechanics make for
+ * a parse whose outcome they do not keep. `reset` is the domain's own `_release`. */
+static void* layout_preset_report_create(void) {
+  RolltuiLayoutPresetReport* r = (RolltuiLayoutPresetReport*)rolltui_mem_alloc(sizeof *r);
+  memset(r, 0, sizeof *r);
+  return r;
+}
+static void layout_preset_report_destroy(void* r) {
+  rolltui_layout_preset_report_release((RolltuiLayoutPresetReport*)r);
+  rolltui_mem_free(r);
+}
 static const RolltuiPresetReportFns kLayoutPresetReportFns = {
     layout_preset_report_reset,
     layout_preset_report_set_error,
     layout_preset_report_get_error,
     layout_preset_report_add_note,
     layout_preset_report_prefix_notes,
+    layout_preset_report_create,
+    layout_preset_report_destroy,
 };
 const RolltuiPresetReportFns* rolltui_layout_preset_report_fns(void) { return &kLayoutPresetReportFns; }
 
@@ -1439,6 +1505,7 @@ void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLa
   out->clone = layout_domain_clone;
   out->destroy = layout_domain_destroy;
   out->equal = layout_domain_equal;
+  out->report = &kLayoutPresetReportFns;
 }
 
 /* ---- the Bindings domain --------------------------------------------------------------------- */
@@ -1488,12 +1555,25 @@ static void bindings_preset_report_prefix_notes(void* r, const char* p, size_t l
     rolltui_str_move(&b->notes[i], &n);
   }
 }
+/* OWNED, short-lived, through the library's entry point: a report the mechanics make for
+ * a parse whose outcome they do not keep. `reset` is the domain's own `_release`. */
+static void* bindings_preset_report_create(void) {
+  RolltuiBindingsPresetReport* r = (RolltuiBindingsPresetReport*)rolltui_mem_alloc(sizeof *r);
+  memset(r, 0, sizeof *r);
+  return r;
+}
+static void bindings_preset_report_destroy(void* r) {
+  rolltui_bindings_preset_report_release((RolltuiBindingsPresetReport*)r);
+  rolltui_mem_free(r);
+}
 static const RolltuiPresetReportFns kBindingsPresetReportFns = {
     bindings_preset_report_reset,
     bindings_preset_report_set_error,
     bindings_preset_report_get_error,
     bindings_preset_report_add_note,
     bindings_preset_report_prefix_notes,
+    bindings_preset_report_create,
+    bindings_preset_report_destroy,
 };
 const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void) { return &kBindingsPresetReportFns; }
 
@@ -1636,6 +1716,44 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeF
   out->clone = bindings_domain_clone;
   out->destroy = bindings_domain_destroy;
   out->equal = bindings_domain_equal;
+  out->report = &kBindingsPresetReportFns;
+}
+
+/* ---- the library's own three domains (Phase 18 m3; the case is at the header) ------------- */
+static void library_domains_release(void) {
+  size_t i;
+  for (i = 0; i < 3; ++i) {
+    rolltui_preset_domain_release(&g_library_domains[i]);
+    /* Rebuilt by the next `rolltui_preset_domain` call rather than left standing: the Layout
+     * domain holds `rolltui_layout_shipped_default_actions()`'s pointer, and that cache is
+     * itself released by this same shutdown. */
+    g_library_domain_built[i] = 0;
+  }
+}
+
+RolltuiPresetDomain* rolltui_preset_domain(RolltuiPresetDomainId id) {
+  const size_t i = (size_t)id;
+  if (i >= 3) return NULL;
+  if (!g_library_domain_built[i]) {
+    switch (id) {
+      case ROLLTUI_PRESET_DOMAIN_THEME:
+        rolltui_theme_preset_domain_init(&g_library_domains[i], rolltui_theme_default_vocab(),
+                                         rolltui_theme_mode_setting_valid, rolltui_color_depth_setting_valid);
+        break;
+      case ROLLTUI_PRESET_DOMAIN_LAYOUT: {
+        size_t n = 0;
+        const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&n);
+        rolltui_layout_preset_domain_init(&g_library_domains[i], rolltui_layout_default_hooks(), defaults, n);
+        break;
+      }
+      case ROLLTUI_PRESET_DOMAIN_BINDINGS:
+        rolltui_bindings_preset_domain_init(&g_library_domains[i], rolltui_bindings_library_scope, NULL,
+                                            rolltui_undeliverable_reason_fn, NULL);
+        break;
+    }
+    g_library_domain_built[i] = 1;
+  }
+  return &g_library_domains[i];
 }
 
 /* ---- settings and precedence (rolltui_presets.h has the why) -------------------------------
@@ -1826,21 +1944,19 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
  * `working_value`'s stated blocker was already false when it was written down.
  * ============================================================================================ */
 
-void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDomainId domain, const char* key,
-                                  size_t key_len, RolltuiStr* out) {
-  size_t dn = 0;
-  const char* dname;
+void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out) {
   if (!s) return;
-  dname = rolltui_preset_domain_name(domain, &dn);
-  /* The IDENTITY key — the one whose value IS the preset name — is the domain's own name.
-   * One rule for all three domains, which is what stopped it being three string literals. */
-  if (key_len == dn && memcmp(key, dname, dn) == 0) {
+  /* The IDENTITY key — the one whose value IS the preset name — is the domain's own name,
+   * which the store carries as its domain's `kind`. One rule for all three domains, which is
+   * what stopped it being three string literals; one SOURCE for the name (Phase 18 m3), which
+   * is what stopped every caller carrying an id in step with the store. */
+  if (key_len == s->d->kind_len && memcmp(key, s->d->kind, key_len) == 0) {
     size_t on = 0;
     const char* o = rolltui_preset_store_origin(s, &on);
     rolltui_str_append(out, o ? o : "", on);
     return;
   }
-  if (domain != ROLLTUI_PRESET_DOMAIN_THEME) return; /* only Theme has non-identity settings */
+  if (!(s->d->kind_len == 5 && memcmp(s->d->kind, "theme", 5) == 0)) return; /* only Theme has non-identity settings */
   {
     RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(s);
     if (!w) return;
@@ -1848,8 +1964,7 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDoma
       rolltui_str_append(out, w->mode.p ? w->mode.p : "", w->mode.n);
     else if (key_len == 11 && memcmp(key, "color_depth", 11) == 0)
       rolltui_str_append(out, w->depth.p ? w->depth.p : "", w->depth.n);
-    rolltui_theme_preset_value_release(w);
-    rolltui_mem_free(w);
+    rolltui_preset_store_value_free(s, w);
   }
 }
 

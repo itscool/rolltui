@@ -26,14 +26,18 @@
  *   `D::parse(json, report)`                  `parse`, over TEXT rather than a parsed tree
  *   `D::to_json(v, name)`                     `to_json`, appending through a callback
  *   `D::kind` / `working_file` / `subdir`     four (pointer, length) pairs
- *   `PresetLoadReport&`                       an opaque pointer and FIVE more callbacks
+ *   `PresetLoadReport&`                       an opaque pointer and SEVEN more callbacks
  *
  * The last row is the one that surprises. The report is not the domain's VALUE — it is the
  * mechanics' own output — and in C++ it is simply a reference to a struct with vectors on
- * it. Here every one of the four things the mechanics do to a report (reset it, set its
+ * it. Here every one of the five things the mechanics do to a report (reset it, set its
  * error, read its error back to wrap a path around, add a note, prefix the notes with a
  * path) has to be a function pointer, because the words are `std::string`s and the store
- * cannot make one.
+ * cannot make one. The sixth and seventh — MAKE one and UNMAKE it — were missing until
+ * Phase 18 m3, and their absence was paid for at every call site: the store needed a report
+ * of its own for two throwaway parses (the shipped cache, the origin re-read at start) and,
+ * unable to make one, took a SECOND report from the caller. Twenty-six call sites in five
+ * consumers wrote that second one; the pure-C consumer was the fifth.
  *
  * **WHAT IS NOT TOLD IS AS INTERESTING AS WHAT IS.** The JSON never crosses: `parse` takes
  * TEXT and hands back an owned value, so `json::Value` — a whole module that has not ported
@@ -98,6 +102,11 @@ typedef struct RolltuiPresetReportFns {
   /* Every note gets `prefix` in front of it — `parse_partial` says what it kept, and the
    * store says which file it was. */
   void (*prefix_notes)(void* report, const char* prefix, size_t len);
+  /* A report of THIS domain's type, made and unmade by the domain (Phase 18 m3) — OWNED,
+   * short-lived, through the library's entry point. What lets the mechanics parse into a
+   * report of their own instead of asking every caller for a second one it throws away. */
+  void* (*create)(void);
+  void (*destroy)(void* report);
 } RolltuiPresetReportFns;
 
 /* One domain: its four names, its embedded shipped table, and what can be done to a value.
@@ -135,15 +144,21 @@ typedef struct RolltuiPresetDomain {
   void (*destroy)(void* value);
   int (*equal)(const void* a, const void* b);
 
+  /* The ops for this domain's REPORT type — BORROWED, a library static, set by the domain's
+   * `_init`. Until Phase 18 m3 this travelled as a separate parameter beside the domain at
+   * every `_new` and `_shipped` call, and no caller ever paired a domain with any table but
+   * its own: two things that always travel together are one thing. */
+  const RolltuiPresetReportFns* report;
+
   RolltuiPresetShippedCache* cache;
 } RolltuiPresetDomain;
 
-/* The shipped presets, parsed once per domain. A shipped preset that does not load cleanly
- * is a programming error (the layout loader's standard): it says so and aborts, and so does
- * a domain with no preset named "default" (rule 5). Returns a BORROW, valid until the
- * domain is released. NULL for a name that is not shipped. */
-const void* rolltui_preset_shipped(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns, void* scratch_report,
-                                   const char* name, size_t len);
+/* The shipped presets, parsed once per domain, into a report the domain makes for itself. A
+ * shipped preset that does not load cleanly is a programming error (the layout loader's
+ * standard): it says so and aborts, and so does a domain with no preset named "default"
+ * (rule 5). Returns a BORROW, valid until the domain is released. NULL for a name that is not
+ * shipped. */
+const void* rolltui_preset_shipped(RolltuiPresetDomain* d, const char* name, size_t len);
 int rolltui_preset_is_shipped(RolltuiPresetDomain* d, const char* name, size_t len);
 /* The shipped preset's FILE TEXT, verbatim — a BORROW of the embedded bytes, valid for the
  * process's life; NULL (and `*out_len` 0) when `name` is not shipped.
@@ -167,19 +182,25 @@ void rolltui_preset_domain_release(RolltuiPresetDomain* d);
  * from another. */
 typedef struct RolltuiPresetStore RolltuiPresetStore;
 
-RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const RolltuiPresetReportFns* rep_fns,
-                                             const char* dir, size_t dir_len, int may_write_shipped,
-                                             const char* shipped_dir, size_t shipped_dir_len, void* scratch_report);
+RolltuiPresetStore* rolltui_preset_store_new(RolltuiPresetDomain* d, const char* dir, size_t dir_len,
+                                             int may_write_shipped, const char* shipped_dir, size_t shipped_dir_len);
 void rolltui_preset_store_free(RolltuiPresetStore* s);
 
-/* Startup: the autosaved working copy when present and loadable, else "default".
- * `scratch_report` is a SECOND report the store reads the origin preset into and throws
- * away — the C++ had `PresetLoadReport ignore;` as a local, and a local of a type this file
- * cannot name is exactly the thing a caller has to supply. */
-void rolltui_preset_store_start(RolltuiPresetStore* s, void* report, void* scratch_report);
+/* Startup: the autosaved working copy when present and loadable, else "default". `report`
+ * says what happened to the working file; the origin preset it names is re-read into a
+ * report the domain makes for itself (`RolltuiPresetReportFns::create`), which until Phase
+ * 18 m3 was a second report every caller had to supply and could — with no guard — pass the
+ * same report for, which reset the first one mid-way. */
+void rolltui_preset_store_start(RolltuiPresetStore* s, void* report);
 
-/* A CLONE the caller owns and destroys with `domain->destroy`. */
+/* A CLONE the caller owns and frees with `rolltui_preset_store_value_free`. */
 void* rolltui_preset_store_working(const RolltuiPresetStore* s);
+/* Frees a value `_working` or `_get` handed back: the store's own domain's `destroy`, so a
+ * caller holding the store alone can release what the store gave it. Sixteen call sites in
+ * four consumers had reached past the store to the domain descriptor for this (Phase 18 m3)
+ * — `rolltui.h` rule 1 says a handle is created and released IN A PAIR, and `_working` had
+ * no partner. NULL is a no-op. */
+void rolltui_preset_store_value_free(const RolltuiPresetStore* s, void* v);
 /* BORROWS of the store's own bytes, valid until it next changes. */
 const char* rolltui_preset_store_origin(const RolltuiPresetStore* s, size_t* len);
 const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t* len);
@@ -256,7 +277,8 @@ void rolltui_preset_list_release(RolltuiPresetList* l);
 /* REPLACES `*out` (its capacity, and each entry's string buffers, are reused). */
 void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* out);
 
-/* A preset by name or path, as a value the caller OWNS; NULL with the report saying why. */
+/* A preset by name or path, as a value the caller OWNS and frees with
+ * `rolltui_preset_store_value_free`; NULL with the report saying why. */
 void* rolltui_preset_store_get(const RolltuiPresetStore* s, const char* name, size_t len, void* report);
 /* …and the same, into the working copy. 0 when it could not be read. */
 int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t len, void* report, int persist);
@@ -290,9 +312,12 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
                                    const RolltuiThemeReport* colours, const RolltuiLayoutReport* layout,
                                    const RolltuiBindingsReport* bindings, RolltuiStr* out);
 
-/* Save-as. Only WRITE_FAILED has a reason of its own; it REPLACES `*err` (which may be NULL
- * when the caller does not want it). Every other outcome's sentence is
- * `rolltui_preset_save_result_text` above. */
+/* Save-as. REPLACES `*err` (which may be NULL when the caller does not want it) with the
+ * outcome's SENTENCE for every result but SAVED — WRITE_FAILED's own reason, and
+ * `rolltui_preset_save_result_text`'s fixed sentence for the other three — so a caller reads
+ * one string for any refusal. Until Phase 18 m3 only WRITE_FAILED filled it, and three
+ * consumers folded the sentence in afterwards by hand, identically, while the pure-C consumer
+ * had to know to make the second call: a composed call the API could make and did not. */
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
 
 /* The two paths. Both REPLACE `*out` — text out, rule 3(b), the same shape
@@ -420,9 +445,11 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
  * anywhere in the call chain. Two independent sessions reached for this and found nothing —
  * that is the signal this exists to close.
  *
- * WHAT EACH STILL TAKES FROM C++, ONCE, AT INIT — the SAME "domain supplies the policy" shape
- * this header already uses for Theme's `mode_valid`/`depth_valid` above, extended to the two
- * new domains rather than invented for them:
+ * WHAT EACH TAKES, ONCE, AT INIT — the SAME "domain supplies the policy" shape this header
+ * already uses for Theme's `mode_valid`/`depth_valid` above, extended to the two new domains
+ * rather than invented for them. (This paragraph said "still takes from C++" when it was
+ * written; every one of these is the library's own C since Phase 17, which is what lets
+ * `rolltui_preset_domain` below assemble all three itself.)
  *   Theme     the role/state VOCAB (`rolltui_style.h`: "a C file names no role") and the two
  *             mode/depth validators — exactly what `rolltui_theme_preset_parse` already took
  *             as parameters; this section only keeps a copy to hand over on every call.
@@ -434,8 +461,8 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
  *             callback parameters, unchanged.
  * None of these is a vocabulary this section invents: each is a call site further down the
  * SAME file that already had to be told the identical thing, now told ONCE at process start
- * (by whichever caller — C++ today, since that is where the tables still live — builds the
- * descriptor) instead of on every call. A caller that never calls the matching `_init`
+ * (by `rolltui_preset_domain` below for the library's three; by a host, through these `_init`
+ * functions, only for a vocabulary of its own) instead of on every call. A caller that never calls the matching `_init`
  * function gets a domain with no vocabulary to check against: every scope reads as
  * non-library and no chord is ever undeliverable, which is a wrong but LOUD answer (a role or
  * scope this host actually has will misbehave immediately and visibly), never a silent one.
@@ -561,6 +588,52 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeF
                                          RolltuiReasonFn reason,
                                          void* reason_ctx);
 
+/* ---- THE LIBRARY'S OWN THREE DOMAINS (Phase 18 m3) -----------------------------------------
+ *
+ * Every argument the three `_init` functions above take is the library's own C:
+ * `rolltui_theme_default_vocab()` and the two setting validators; `rolltui_layout_default_hooks()`
+ * and the shipped screen's actions; `rolltui_bindings_library_scope` and
+ * `rolltui_undeliverable_reason_fn`. FIVE consumers had assembled the same three descriptors
+ * from those same arguments — roll, the studio, `presets_test`, `lifetime_test` and the pure-C
+ * consumer — each as its own function-local static, and TWO of the five never released the
+ * parsed cache, which nothing measured. That is `rolltui.h` rule 5 and CLAUDE.md's one-spelling
+ * rule firing together, so the assembly is the library's.
+ *
+ * `rolltui_preset_domain(id)` is the descriptor for one of the three: built on the first call
+ * from the arguments above, its parsed cache released at `rolltui_shutdown()` by a hook the
+ * library registers itself AT CACHE-BUILD TIME (the built-in layouts' own rule: a hook
+ * registered once per process misses the second shutdown). A BORROW of a library static, with
+ * a stated window: valid until `rolltui_shutdown()`, after which it is rebuilt by the next
+ * call — so a store made before a shutdown and used after it asks for its domain again first.
+ * Built from the thread that first asks; every store's own methods are locked, and the
+ * library's other process-wide caches take the same posture. NULL for an id that is not one
+ * of the three.
+ *
+ * The `_init` functions stay public as the BRING-YOUR-OWN-VOCABULARY rung — the same two-rung
+ * shape a widget kind has — with one limit stated rather than discovered: a domain's
+ * vocabulary is process-wide (file-scope statics in `rolltui_presets.c`), so the last `_init`
+ * of a domain is what EVERY store of that domain parses with, this library's own descriptor
+ * included. No host has a second vocabulary for a domain; the trigger for moving the
+ * vocabulary into the descriptor is that host. */
+
+/* Which of the three a thing belongs to — a setting (`RolltuiPresetSettingSpec` below), or a
+ * store. Distinct from `RolltuiPresetDomain` above (that struct is the MECHANICS for one
+ * domain — parse/to_json/clone/...; this is a tag naming one of the library's three), hence
+ * the `Id` suffix. The library's own closed set, like `Anchor` and `Border`: a host domain
+ * built through `_init` has no id and needs none — a store knows its domain by its `kind`. */
+typedef enum RolltuiPresetDomainId {
+  ROLLTUI_PRESET_DOMAIN_THEME = 0,
+  ROLLTUI_PRESET_DOMAIN_LAYOUT,
+  ROLLTUI_PRESET_DOMAIN_BINDINGS,
+} RolltuiPresetDomainId;
+
+/* A BORROW of a static string literal: "theme" | "layout" | "bindings" — and, not by
+ * coincidence, exactly the key that is each domain's own IDENTITY setting (`kSettings`
+ * below) AND each library domain's `kind`: one spelling of the name, three readers. */
+const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
+
+RolltuiPresetDomain* rolltui_preset_domain(RolltuiPresetDomainId id);
+
 /* ---- settings and precedence (Presets.hpp; Phase 17 m2) -------------------------------------
  *
  * ONE LEVEL ABOVE the store: a HOST's own setting vocabulary ("theme", "theme_mode", "layout",
@@ -605,29 +678,18 @@ void rolltui_preset_resolve_setting(const char* flag, size_t flag_len, const cha
                                     size_t builtin_len, const char** out_value, size_t* out_value_len,
                                     RolltuiPresetRung* out_rung);
 
-/* Which STORE a setting lives in — "theme_mode" is the Theme domain's even though it is not
- * the Theme domain's IDENTITY key ("theme" is). Distinct from `RolltuiPresetDomain` above
- * (that struct is the MECHANICS for one domain — parse/to_json/clone/...; this is a tag
- * saying which of the three a setting belongs to), hence the `Id` suffix. */
-typedef enum RolltuiPresetDomainId {
-  ROLLTUI_PRESET_DOMAIN_THEME = 0,
-  ROLLTUI_PRESET_DOMAIN_LAYOUT,
-  ROLLTUI_PRESET_DOMAIN_BINDINGS,
-} RolltuiPresetDomainId;
-
-/* A BORROW of a static string literal: "theme" | "layout" | "bindings" — and, not by
- * coincidence, exactly the key that is each domain's own IDENTITY setting (`kSettings`
- * below): `working_value`'s "is this key the whole preset name" case is `key ==
- * domain_name(store's domain)`, which is what `presets_test.cpp`'s "setting(...)->domain ==
- * Domain::X" checks holding for every row make true. */
-const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
+/* `RolltuiPresetDomainId` and `rolltui_preset_domain_name` are declared above, beside
+ * `rolltui_preset_domain` (Phase 18 m3), which is what they name. "theme_mode" is the Theme
+ * domain's setting even though it is not the Theme domain's IDENTITY key ("theme" is). */
 
 /* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not
- * this domain's). `domain` says which store `s` is — the caller knows, and the store does not
- * carry its own tag. The identity key ("theme"/"layout"/"bindings") answers with the origin;
- * the Theme domain additionally answers "theme_mode" and "color_depth". */
-void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDomainId domain, const char* key,
-                                  size_t key_len, RolltuiStr* out);
+ * this domain's). The identity key — the store's own domain's `kind`, "theme"/"layout"/
+ * "bindings" — answers with the origin; a Theme store additionally answers "theme_mode" and
+ * "color_depth". Until Phase 18 m3 this took a `RolltuiPresetDomainId` beside the store,
+ * with the comment "the caller knows, and the store does not carry its own tag" — it does:
+ * `kind` IS the name, and the id was a second spelling of it that every caller had to keep
+ * in step (roll, once per store class; the C consumer, at every call). */
+void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out);
 
 /* One row of `kSettings` (Presets.hpp): a setting's key, which domain/store it belongs to, its
  * environment-variable suffix ("THEME" joined to a host's own prefix), its built-in default,
