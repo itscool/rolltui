@@ -409,8 +409,11 @@ int main(void) {
    *     folded `rolltui_preset_save_result_text` in by hand, identically — `err` carries it;
    *   - `working_value` had to be TOLD which domain the store is, in an enum every caller
    *     kept in step with the store — the store's own `kind` is the name.
-   * What did NOT move, and why, is the milestone's other half: everything a C++ host still
-   * wraps is `std::string` in and out, of which this file needs none. */
+   * What did NOT move is the milestone's other half, and the reason is NOT the language: what a
+   * C++ host still wraps is the conversion of a borrow or a caller-filled buffer into an owning
+   * `std::string`, which this file needs none of — and neither does C++, since `RolltuiStr` is
+   * the C++ type already. That residue is a host DEFAULT, judged per call site: on an event a
+   * choice, on a frame an allocation (`plan/phase-18.md` m3 has the count). */
   {
     char dir[512];
     size_t dir_len = 0;
