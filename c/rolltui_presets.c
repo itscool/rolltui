@@ -391,6 +391,7 @@ struct RolltuiPresetStore {
   Buf origin;
   Buf last_error;
   unsigned long long version;
+  int modified; /* working != origin_content, computed at every change (touch_locked, start) */
 };
 
 static void store_working_path(const RolltuiPresetStore* s, Buf* out) {
@@ -470,6 +471,8 @@ static int autosave_locked(RolltuiPresetStore* s) {
 }
 
 static void touch_locked(RolltuiPresetStore* s, int persist) {
+  /* The one deep compare, at the one place the answer can change — never on a read. */
+  s->modified = !s->d->equal(s->working, s->origin_content);
   ++s->version;
   if (persist) autosave_locked(s);
 }
@@ -623,7 +626,8 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
   msg.len = 0;
   buf_add(&msg, "loaded the working copy (", 25);
   buf_add(&msg, s->origin.p, s->origin.len);
-  if (!s->d->equal(s->working, s->origin_content)) buf_add(&msg, " (modified)", 11);
+  s->modified = !s->d->equal(s->working, s->origin_content);
+  if (s->modified) buf_add(&msg, " (modified)", 11);
   buf_add(&msg, ")", 1);
   s->rep->add_note(report, msg.p, msg.len);
   ++s->version;
@@ -654,7 +658,7 @@ const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t*
 int rolltui_preset_store_modified(const RolltuiPresetStore* s) {
   int m;
   pthread_mutex_lock((pthread_mutex_t*)&s->mu);
-  m = !s->d->equal(s->working, s->origin_content);
+  m = s->modified;
   pthread_mutex_unlock((pthread_mutex_t*)&s->mu);
   return m;
 }
@@ -1933,6 +1937,7 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
   size_t len = 0;
   const char* origin;
   if (!out) return;
+  rolltui_str_clear(out); /* REPLACES; the buffer is kept for the next frame */
   origin = rolltui_preset_store_origin(s, &len);
   rolltui_str_append(out, origin, len);
   if (rolltui_preset_store_modified(s)) rolltui_str_append(out, " (modified)", 11);

@@ -204,6 +204,11 @@ void rolltui_preset_store_value_free(const RolltuiPresetStore* s, void* v);
 /* BORROWS of the store's own bytes, valid until it next changes. */
 const char* rolltui_preset_store_origin(const RolltuiPresetStore* s, size_t* len);
 const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t* len);
+/* "(modified)" is BY COMPARISON (rule 4) — and the comparison runs when the store CHANGES,
+ * never when this is read: a read is one flag under the lock. Until 2026-09-06 it ran the
+ * domain's deep `equal` over the whole working copy on every call, and roll's status panel
+ * reached it twice per frame through `label` below — found by the first instrument pointed at
+ * roll's own frame (`tests/status_budget_test.cpp`), not by reading. */
 int rolltui_preset_store_modified(const RolltuiPresetStore* s);
 
 /* "<origin>", or "<origin> (modified)" once the working copy differs from what it was loaded
@@ -212,7 +217,10 @@ int rolltui_preset_store_modified(const RolltuiPresetStore* s);
  * sweep for unported English read every `.cpp` and no `.hpp`, and `PresetStore.hpp` is a
  * template header where the whole store lives inline). `studio.cpp:1173` already spells
  * " (modified)" a second time, for a LAYOUT's own name rather than for a store's origin — one
- * word, two spellings, exactly the shape this phase keeps finding. APPENDS to `out`. */
+ * word, two spellings, exactly the shape this phase keeps finding. REPLACES `*out`, reusing its
+ * buffer — the shape every other "text out" in this header has (`_working_path`,
+ * `_preset_path`); it APPENDED until 2026-09-06, which made it the one a caller holding a
+ * buffer for its frame could not call twice. */
 void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out);
 unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
 

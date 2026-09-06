@@ -211,10 +211,19 @@ std::string color_to_string(RolltuiStyleColor c) {
   const std::size_t n = rolltui_color_to_string(c, buf, sizeof buf);
   return std::string(buf, n);
 }
-std::string depth_name(unsigned char d) {
+// A BORROW of the library's literal, which is what the C hands back; it was copied into a
+// std::string per call until 2026-09-06, on the status line and the rows source every frame.
+std::string_view depth_name(unsigned char d) {
   std::size_t n = 0;
   const char* p = rolltui_color_depth_name(d, &n);
-  return std::string(p, n);
+  return std::string_view(p, n);
+}
+// A number appended in place — std::to_string's temporary, without the temporary.
+template <typename T>
+void append_num(std::string& s, T v) {
+  char b[24];
+  const int n = std::snprintf(b, sizeof b, "%lld", static_cast<long long>(v));
+  if (n > 0) s.append(b, static_cast<std::size_t>(n) < sizeof b ? static_cast<std::size_t>(n) : sizeof b - 1);
 }
 std::optional<unsigned char> mode_from_setting(std::string_view s) {
   const int m = rolltui_theme_mode_from_name(s.data(), s.size());
@@ -312,6 +321,8 @@ class PresetStoreBase {
     return v;
   }
   std::uint64_t version() const { return rolltui_preset_store_version(s_); }
+  // A frame's form: REPLACED into a buffer the caller keeps. `label()` above is an event's.
+  void label(RolltuiStr& out) const { rolltui_preset_store_label(s_, &out); }
   void list(RolltuiPresetList& out) const { rolltui_preset_store_list(s_, &out); }
   int save_as(std::string_view name, bool overwrite, RolltuiStr& error) {
     return rolltui_preset_store_save_as(s_, name.data(), name.size(), overwrite ? 1 : 0, &error);
@@ -542,6 +553,11 @@ struct App {
   std::uint64_t store_seen = 0;
   RolltuiStyle resolved_styles[ROLLTUI_ROLE_COUNT]{};  // the working copy's colours at `mode`
   std::string resolved_name;
+  // Per-frame text, held and REFILLED rather than rebuilt: the status line, the editors'
+  // "preset:" line, the rows' layout cell and the two store labels, so a warm frame allocates
+  // nothing for them (the finding of 2026-09-06, measured on roll's status panel first).
+  std::string status_line, editor_line, layout_row;
+  RolltuiStr theme_label_str, keys_label_str;
   RolltuiStyle theme_styles[ROLLTUI_ROLE_COUNT]{};     // what this frame draws with (resolved, or the editor's preview)
   RolltuiEffectMap* effects_map = nullptr;             // OWNED: the resolved theme's effects
   std::uint64_t lstore_seen = 0;
@@ -1045,7 +1061,13 @@ struct App {
     if (m.h > 0) draw_raw_menu(keditor.menu(), f, rn.focused != 0);
     int y = r.y + m.h;
     const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
-    if (y < r.y + r.h) put_text(f, r.x, y++, "preset: " + bstore->label() + " \xC2\xB7 Enter on an action, then press the chord", label, r.w);
+    if (y < r.y + r.h) {
+      editor_line.assign("preset: ");
+      bstore->label(keys_label_str);
+      editor_line += keys_label_str.view();
+      editor_line += " \xC2\xB7 Enter on an action, then press the chord";
+      put_text(f, r.x, y++, editor_line, label, r.w);
+    }
     if (y < r.y + r.h) put_text(f, r.x, y++, keditor.status_line(), keditor.capturing() ? style(ROLLTUI_ROLE_WARNING) : value, r.w);
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
   }
@@ -1377,7 +1399,12 @@ struct App {
         ++y;
       }
     } else {
-      if (y < r.y + r.h) put_text(f, r.x, y++, "preset: " + store->label(), label, r.w);
+      if (y < r.y + r.h) {
+        editor_line.assign("preset: ");
+        store->label(theme_label_str);
+        editor_line += theme_label_str.view();
+        put_text(f, r.x, y++, editor_line, label, r.w);
+      }
       if (y < r.y + r.h) put_text(f, r.x, y++, "Roles âº a role âº fg âº a colour; the transcript is the preview", value, r.w);
       if (y < r.y + r.h) put_text(f, r.x, y++, "type to filter Â· Enter commits Â· Esc cancels Â· Ctrl-Z / Ctrl-Y", value, r.w);
     }
@@ -1521,20 +1548,28 @@ struct App {
   // `rows:status`: the studio's own facts. The widget draws them — this says only what
   // they are.
   void status_rows(RolltuiRows& out) {
+    // Formatted on the stack or refilled into held strings; the rows copy once into their own
+    // reused buffers. Built from std::string temporaries per frame until 2026-09-06.
     const std::size_t total = rolltui_transcript_total_lines(transcript());
-    out.add("theme", store ? store->label() : resolved_name);
-    out.add("keys", bstore ? bstore->label() : std::string("default"));
-    out.add("layout", effective_layout().name.str() + (stacked_fallback ? " (fallback)" : ""));
-    out.add("size", std::to_string(w) + "x" + std::to_string(h));
-    out.add("line", std::to_string(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1) + "/" + std::to_string(total));
+    char b[64];
+    if (store) { store->label(theme_label_str); out.add("theme", theme_label_str.view()); } else out.add("theme", resolved_name);
+    if (bstore) { bstore->label(keys_label_str); out.add("keys", keys_label_str.view()); } else out.add("keys", "default");
+    layout_row.assign(effective_layout().name.view());
+    if (stacked_fallback) layout_row += " (fallback)";
+    out.add("layout", layout_row);
+    std::snprintf(b, sizeof b, "%dx%d", w, h);
+    out.add("size", b);
+    std::snprintf(b, sizeof b, "%llu/%llu", static_cast<unsigned long long>(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1),
+                  static_cast<unsigned long long>(total));
+    out.add("line", b);
     RolltuiScrollAnchor anchor{};
     rolltui_transcript_scroll(transcript(), &anchor);
     out.add("follow", anchor.follow ? "yes" : "no");
     out.add("depth", depth_name(depth));
     const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
-    out.add("focus", focused ? focused->id.str() : std::string("-"));
-    if (show_timing) out.add("frame", std::to_string(last_frame_us) + " us");
-    if (copied_any) out.add("copied", std::to_string(copied.size()) + " bytes");
+    out.add("focus", focused ? focused->id.view() : std::string_view("-"));
+    if (show_timing) { std::snprintf(b, sizeof b, "%lld us", static_cast<long long>(last_frame_us)); out.add("frame", b); }
+    if (copied_any) { std::snprintf(b, sizeof b, "%llu bytes", static_cast<unsigned long long>(copied.size())); out.add("copied", b); }
   }
 
   // `input:prompt`: a submitted line becomes a user entry at the end of the document,
@@ -1600,26 +1635,55 @@ struct App {
       std::size_t query_len = 0;
       rolltui_transcript_query(transcript(), &query_len);
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
-      std::string status = " " + (store ? store->label() : resolved_name) +
-                           (editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "") +
-                           "  " + effective_layout().name.str() + (lstore && lstore->modified() ? " (modified)" : "") + "  " + std::to_string(w) + "x" + std::to_string(h) +
-                           "  line " + std::to_string(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1) + "/" + std::to_string(total) +
-                           (anchor.follow ? "  follow" : "") + "  " + depth_name(depth) +
-                           "  focus:" + (focused ? focused->id.str() : std::string("-"));
-      if (with_timing) status += "  " + std::to_string(last_frame_us) + " us";
+      // The status line is REFILLED into a string this struct keeps, piece by piece, with the
+      // numbers formatted on the stack: a warm frame allocates nothing for it. It was rebuilt
+      // by `+` per frame until 2026-09-06 — a dozen temporaries — and read the Theme store's
+      // label through a deep compare each time.
+      std::string& status = status_line;
+      status.clear();
+      status += ' ';
+      if (store) { store->label(theme_label_str); status += theme_label_str.view(); } else status += resolved_name;
+      status += editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "";
+      status += "  ";
+      status += effective_layout().name.view();
+      if (lstore && lstore->modified()) status += " (modified)";
+      status += "  ";
+      append_num(status, w);
+      status += 'x';
+      append_num(status, h);
+      status += "  line ";
+      append_num(status, total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1);
+      status += '/';
+      append_num(status, total);
+      if (anchor.follow) status += "  follow";
+      status += "  ";
+      status += depth_name(depth);
+      status += "  focus:";
+      if (focused) status += focused->id.view(); else status += '-';
+      if (with_timing) { status += "  "; append_num(status, last_frame_us); status += " us"; }
       // The match count and position: the widget owns finding, a host owns saying so.
-      if (query_len != 0)
-        status += "  find " + std::to_string(rolltui_transcript_current_match_number(transcript())) + "/" + std::to_string(rolltui_transcript_match_count(transcript()));
-      if (copied_any) status += "  copied " + std::to_string(copied.size()) + "B";
-      if (stacked_fallback) status += "  [stacked: below " + std::to_string(layout.min_width) + "x" + std::to_string(layout.min_height) + "]";
-      if (!theme_note.empty()) status += "  [" + theme_note + "]";
-      if (!layout_note.empty()) status += "  [" + layout_note + "]";
-      if (!window_note.empty()) status += "  [" + window_note + "]";
+      if (query_len != 0) {
+        status += "  find ";
+        append_num(status, rolltui_transcript_current_match_number(transcript()));
+        status += '/';
+        append_num(status, rolltui_transcript_match_count(transcript()));
+      }
+      if (copied_any) { status += "  copied "; append_num(status, copied.size()); status += 'B'; }
+      if (stacked_fallback) {
+        status += "  [stacked: below ";
+        append_num(status, layout.min_width);
+        status += 'x';
+        append_num(status, layout.min_height);
+        status += ']';
+      }
+      if (!theme_note.empty()) { status += "  ["; status += theme_note; status += ']'; }
+      if (!layout_note.empty()) { status += "  ["; status += layout_note; status += ']'; }
+      if (!window_note.empty()) { status += "  ["; status += window_note; status += ']'; }
       // m6: an effect kind no host registered is SAID. It cannot draw an error panel —
       // an effect has no window — so the status line is where it surfaces. One frame
       // stale, on purpose: it reads the PREVIOUS frame's `rolltui_effects_apply` result,
       // updated again below only after this line is drawn.
-      if (!effects_unknown_kinds.empty()) status += "  [no effect kind '" + effects_unknown_kinds[0] + "']";
+      if (!effects_unknown_kinds.empty()) { status += "  [no effect kind '"; status += effects_unknown_kinds[0]; status += "']"; }
       put_text(f, 0, h - 1, status, style(ROLLTUI_ROLE_LABEL), w);
       // The hints come from the live table too.
       auto hk = [&](const char* action) {

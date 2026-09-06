@@ -469,6 +469,9 @@ int main(void) {
       check(rolltui_preset_store_modified(ts) == 0, "…and it is not modified");
       rolltui_preset_store_label(ts, &label);
       check(rolltui_str_eq(&label, "default", 7) != 0, "…so its label is the origin alone");
+      rolltui_preset_store_label(ts, &label); /* again, into the same buffer, with no clear */
+      check(rolltui_str_eq(&label, "default", 7) != 0,
+            "…and a second call into the same buffer REPLACES it — a host's frame can refill one buffer");
       v0 = rolltui_preset_store_version(ts);
 
       /* THE WORKING COPY, read and USED: a clone the caller casts to the domain's value type
@@ -509,7 +512,6 @@ int main(void) {
       rolltui_preset_store_edit(ts, set_mode_light, NULL, /*persist=*/1);
       check(rolltui_preset_store_modified(ts) != 0 && rolltui_preset_store_version(ts) > v0,
             "an in-place edit from a C callback marks the store modified and bumps its version");
-      rolltui_str_clear(&label);
       rolltui_preset_store_label(ts, &label);
       check(rolltui_str_eq(&label, "default (modified)", 18) != 0, "…and the label says so, in the library's one spelling");
       rolltui_preset_working_value(ts, "theme_mode", 10, &val);
