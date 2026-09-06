@@ -133,6 +133,13 @@
  * roll, the studio, paint and the editors are C++ and stay C++, and they call this header
  * directly.
  *   - DO write a RAII holder or a lambda bridge in your own file when you want one.
+ *   - DON'T add a `__cplusplus` member here that names a `std::` container or view (`std::string`,
+ *     `std::string_view`, `std::vector`, `std::span`). Decided 2026-09-06, the user's rule: a
+ *     member exists to support C++ AS A LANGUAGE, maybe; a member that binds this library to one
+ *     C++ API a consumer may not want is lock-in of another kind, and makes every other binding
+ *     harder. rolltui's own layer is refined instead (`RolltuiStr`, `RolltuiStrList`, `RolltuiRows`),
+ *     and a consumer that wants `std::string` converts in its own file. The 117 such lines that
+ *     exist today go in Phase 19 m2 (`plan/phase-19.md`).
  *   - DON'T ship it from here. If two consumers write the SAME wrapper, the API is wrong,
  *     not the consumers. That has now fired FIVE times: three hosts had hand-written the same
  *     double buffer (hence `c/rolltui_swap.h`), four had hand-copied the action table,
