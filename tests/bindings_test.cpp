@@ -142,17 +142,18 @@ bool library_scope(std::string_view scope) {
   return false;
 }
 
-// ---- mirrors the migration table (Bindings.cpp): the ONLY place any source still carries
-// the pre-rename names, same as the file it is copied from. ----
-constexpr std::pair<const char*, const char*> kLegacyActions[] = {
-    {"playground.cycle_theme", "studio.cycle_theme"},
-    {"playground.reload", "studio.reload"},
-    {"playground.quit", "studio.quit"},
-};
+// ---- the migration table is `rolltui_migrated_action`'s (Phase 17 m3) --------------------
+// This was a local MIRROR of `Bindings.cpp`'s table, with a local reimplementation beside it,
+// under the comment "the ONLY place any source still carries the pre-rename names". Both
+// halves of that had stopped being true: `Bindings.cpp` is deleted, so it was a copy with no
+// original — and, worse, the assertion below called the LOCAL `migrated_action`, so it checked
+// this file's own three rows against themselves and said nothing whatever about the library.
+// A hollow assertion is this file's own definition of a defect.
 std::optional<std::string> migrated_action(std::string_view legacy) {
-  for (const auto& [from, to] : kLegacyActions)
-    if (legacy == from) return std::string(to);
-  return std::nullopt;
+  char buf[ROLLTUI_ACTION_NAME_MAX];
+  std::size_t n = 0;
+  if (!rolltui_migrated_action(nullptr, legacy.data(), legacy.size(), buf, &n)) return std::nullopt;
+  return std::string(buf, n);
 }
 
 // ---- the three vocabulary callbacks rolltui_bindings_load_json asks through, mirroring

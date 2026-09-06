@@ -285,14 +285,11 @@ struct ThemePresetReport : RolltuiThemePresetReport {
   ThemePresetReport() : RolltuiThemePresetReport{} {}
   ThemePresetReport(const ThemePresetReport&) = delete;
   ~ThemePresetReport() { rolltui_theme_preset_report_release(this); }
-  bool clean() const {
-    return error.empty() && bad_values_n == 0 && unknown_keys_n == 0 && colours.error.empty() &&
-           colours.missing_roles_n == 0 && colours.unknown_keys_n == 0 && colours.bad_values_n == 0;
-  }
+  // Phase 17 m3: the JUDGEMENT is the library's — roll had written the identical six.
+  bool clean() const { return rolltui_theme_preset_report_clean(this) != 0; }
   std::string summary() const {
     RolltuiStr out{};
-    rolltui_preset_report_summary(&error, bad_values, bad_values_n, unknown_keys, unknown_keys_n, &colours, nullptr,
-                                  nullptr, &out);
+    rolltui_theme_preset_report_summary(this, &out);
     std::string s = str_of(out);
     rolltui_str_free(&out);
     return s;
@@ -302,10 +299,10 @@ struct LayoutPresetReport : RolltuiLayoutPresetReport {
   LayoutPresetReport() : RolltuiLayoutPresetReport{} {}
   LayoutPresetReport(const LayoutPresetReport&) = delete;
   ~LayoutPresetReport() { rolltui_layout_preset_report_release(this); }
-  bool clean() const { return error.empty() && rolltui_layout_report_clean(&layout) != 0; }
+  bool clean() const { return rolltui_layout_preset_report_clean(this) != 0; }
   std::string summary() const {
     RolltuiStr out{};
-    rolltui_preset_report_summary(&error, nullptr, 0, nullptr, 0, nullptr, &layout, nullptr, &out);
+    rolltui_layout_preset_report_summary(this, &out);
     std::string s = str_of(out);
     rolltui_str_free(&out);
     return s;
@@ -315,11 +312,10 @@ struct BindingsPresetReport : RolltuiBindingsPresetReport {
   BindingsPresetReport() : RolltuiBindingsPresetReport{} {}
   BindingsPresetReport(const BindingsPresetReport&) = delete;
   ~BindingsPresetReport() { rolltui_bindings_preset_report_release(this); }
-  bool clean() const { return error.empty() && unknown_keys_n == 0 && rolltui_bindings_report_clean(&bindings) != 0; }
+  bool clean() const { return rolltui_bindings_preset_report_clean(this) != 0; }
   std::string summary() const {
     RolltuiStr out{};
-    rolltui_preset_report_summary(&error, nullptr, 0, unknown_keys, unknown_keys_n, nullptr, nullptr, &bindings,
-                                  &out);
+    rolltui_bindings_preset_report_summary(this, &out);
     std::string s = str_of(out);
     rolltui_str_free(&out);
     return s;

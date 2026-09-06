@@ -461,6 +461,27 @@ typedef struct RolltuiBindingsPresetReport {
 
 void rolltui_bindings_preset_report_release(RolltuiBindingsPresetReport* r); /* frees everything; zeroes */
 
+/* ---- IS THIS REPORT CLEAN, AND WHAT DOES IT SAY — per domain (Phase 17 m3) -----------------
+ * `rolltui_preset_report_summary` above is the generic COMPOSER: it takes the pieces and joins
+ * them in order. What it does not know is which pieces each domain has, so every caller wired
+ * its own fields in — and `clean()` was re-derived outright, three times per host.
+ *
+ * Both hosts wrote all six independently in one session (roll's `TuiFrontend.hpp`, the
+ * studio's `studio.cpp`), which is `rolltui.h` rule 5's tell: two consumers writing the same
+ * thing means the API is wrong, not the consumers. Unlike the store wrappers around them —
+ * which are marshalling, and a language-boundary cost this phase deliberately pushed onto
+ * hosts — this is a JUDGEMENT about the library's own data ("does a missing role make a theme
+ * preset unclean?"), and two hosts answering it separately is two answers waiting to differ.
+ *
+ * `_clean` returns 1 when the report has nothing to report. `_summary` APPENDS the same
+ * sentence the composer would, with that domain's fields already wired. */
+int rolltui_theme_preset_report_clean(const RolltuiThemePresetReport* r);
+void rolltui_theme_preset_report_summary(const RolltuiThemePresetReport* r, RolltuiStr* out);
+int rolltui_layout_preset_report_clean(const RolltuiLayoutPresetReport* r);
+void rolltui_layout_preset_report_summary(const RolltuiLayoutPresetReport* r, RolltuiStr* out);
+int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r);
+void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out);
+
 const RolltuiPresetReportFns* rolltui_bindings_preset_report_fns(void);
 /* `is_library_scope`/`migrate`/`reason` are BORROWED for the process's life, the same three
  * callbacks `rolltui_bindings_load_json` already takes — this keeps a copy to hand over on

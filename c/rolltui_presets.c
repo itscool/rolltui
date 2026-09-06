@@ -1964,3 +1964,39 @@ done:
   buf_free(&text);
   buf_free(&msg);
 }
+
+
+/* ---- per-domain report judgement (Phase 17 m3) — see the header for why these are the
+ * library's and the store wrappers around them are not. --------------------------------------- */
+
+int rolltui_theme_preset_report_clean(const RolltuiThemePresetReport* r) {
+  if (!r) return 1;
+  return r->error.n == 0 && r->bad_values_n == 0 && r->unknown_keys_n == 0 && r->colours.error.n == 0 &&
+         r->colours.missing_roles_n == 0 && r->colours.unknown_keys_n == 0 && r->colours.bad_values_n == 0;
+}
+
+void rolltui_theme_preset_report_summary(const RolltuiThemePresetReport* r, RolltuiStr* out) {
+  if (!r) return;
+  rolltui_preset_report_summary(&r->error, r->bad_values, r->bad_values_n, r->unknown_keys, r->unknown_keys_n,
+                                &r->colours, NULL, NULL, out);
+}
+
+int rolltui_layout_preset_report_clean(const RolltuiLayoutPresetReport* r) {
+  if (!r) return 1;
+  return r->error.n == 0 && rolltui_layout_report_clean(&r->layout) != 0;
+}
+
+void rolltui_layout_preset_report_summary(const RolltuiLayoutPresetReport* r, RolltuiStr* out) {
+  if (!r) return;
+  rolltui_preset_report_summary(&r->error, NULL, 0, NULL, 0, NULL, &r->layout, NULL, out);
+}
+
+int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r) {
+  if (!r) return 1;
+  return r->error.n == 0 && r->unknown_keys_n == 0 && rolltui_bindings_report_clean(&r->bindings) != 0;
+}
+
+void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out) {
+  if (!r) return;
+  rolltui_preset_report_summary(&r->error, NULL, 0, r->unknown_keys, r->unknown_keys_n, NULL, NULL, &r->bindings, out);
+}
