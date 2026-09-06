@@ -7,14 +7,19 @@
 // the cell-wrap layout (full rows, a wide glyph at the edge, tabs, newlines), the
 // caret's scroll, hit-testing, and what a frame shows.
 //
-// PHASE 17: calls the C API (rolltui/c/rolltui_input.h, rolltui/c/rolltui_keys.h) directly
-// rather than through the rolltui::Input / rolltui::KeyEvent C++ binding layer
-// (Input.hpp, Keys.hpp, and their shim Input.cpp) that this file used to include — those
-// are the files being deleted. Frame, Theme, Rect, Role and unicode:: are NOT part of that
-// layer and are unchanged: Screen.hpp/Theme.hpp/Style.hpp/Unicode.hpp are either
-// one-definition aliases of the C structs already (Rect, Cell, Style, Color,
-// RolltuiMouseEvent, DecodedChar) or permanent C++-only vocabulary with no C
-// counterpart (Role's names), not sugar this test needs to stop depending on.
+// PHASE 17 m2c: calls the C API (rolltui/rolltui.h) directly rather than through ANY C++
+// binding header. An earlier pass here argued Screen.hpp/Theme.hpp/Unicode.hpp/Bindings.hpp
+// were "not part of that layer" because Frame/Theme/RolltuiRect/Role/unicode:: are either
+// one-definition aliases of C structs already or permanent C++-only vocabulary — true of each
+// TYPE, and irrelevant to the actual rule: the task is "no rolltui/*.hpp", full stop, and
+// those four are rolltui/*.hpp files regardless of how thin their contents are. `RolltuiRect`/
+// `RolltuiStyle`/`RolltuiStyleColor`/`RolltuiMouseEvent`/`RolltuiDecodedChar` are reachable as
+// their bare `Rolltui*` names straight from the C headers already included; `Frame` and
+// `Theme` were real C++ wrapper CLASSES with no header alias (Screen.hpp's `Frame`,
+// Theme.hpp's `Theme` struct) and get a small fixture each, same idiom as `rolltui-paint`'s
+// and `layout_test.cpp`'s; `Role`'s NAMED enumerators are Style.hpp-only (rolltui_layout_tree.h
+// forward-declares the type but not its values) and become `ROLLTUI_ROLE_*`; `unicode::
+// decode_utf8` becomes `rolltui_u_decode_utf8_chars` into a caller-owned buffer.
 //
 #include <cstddef>
 #include <cstdint>
@@ -24,19 +29,69 @@
 #include <string_view>
 #include <vector>
 
-#include "rolltui/Bindings.hpp"
-#include "rolltui/Screen.hpp"
-#include "rolltui/Theme.hpp"
-#include "rolltui/Unicode.hpp"
-#include "rolltui/c/rolltui_frame_ops.h"
-#include "rolltui/c/rolltui_input.h"
-#include "rolltui/c/rolltui_keys.h"
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using rolltui_test::check;
 
 namespace {
+
+// `rolltui::Frame` (Screen.hpp) was a thin `unique_ptr<RolltuiFrame, Handle>` RAII wrapper;
+// this is that same wrapper, written here (rolltui.h rule 5).
+struct FrameC {
+  RolltuiFrame* f;
+  explicit FrameC(int w, int h, RolltuiStyle fill = {}) : f(rolltui_frame_new(w, h, fill)) {}
+  FrameC(const FrameC&) = delete;
+  ~FrameC() { rolltui_frame_free(f); }
+  operator RolltuiFrame*() const { return f; }
+  RolltuiCell at(int x, int y) const {
+    RolltuiCell c{};
+    rolltui_frame_cell(f, x, y, &c);
+    return c;
+  }
+  std::string_view glyph(int x, int y) const {
+    std::size_t n = 0;
+    const char* p = rolltui_frame_glyph(f, x, y, &n);
+    return {p, n};
+  }
+  struct Cursor {
+    int x = 0, y = 0;
+    bool visible = false;
+  };
+  Cursor cursor() const {
+    int x = 0, y = 0, visible = 0;
+    rolltui_frame_cursor(f, &x, &y, &visible);
+    return {x, y, visible != 0};
+  }
+};
+
+// `rolltui::Theme` (Theme.hpp) bundled a style table with an effect map, a name and meta;
+// none of that is ported (rolltui_json.h's own note on why). This test only ever reads
+// styles, so the fixture is just the table `rolltui_theme_builtin_fill` fills.
+struct ThemeFixture {
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiEffectMap* effects = nullptr;
+  ThemeFixture() = default;
+  ThemeFixture(const ThemeFixture&) = delete;
+  ~ThemeFixture() { rolltui_effect_map_free(effects); }
+  const RolltuiStyle& style(unsigned char role) const { return *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, role); }
+};
+bool builtin_theme_c(std::string_view name, ThemeFixture& out) {
+  out.effects = rolltui_theme_builtin_fill(name.data(), name.size(), out.styles, ROLLTUI_ROLE_COUNT);
+  return out.effects != nullptr;
+}
+
+// `unicode::decode_utf8(s)` (Unicode.hpp) returned a freshly built `std::vector<DecodedChar>`;
+// `rolltui_u_decode_utf8_chars` fills a caller-owned buffer instead (rolltui.h rule 4) — `out`
+// must hold at least `len` entries because decoding is total (a malformed byte is one scalar
+// of length 1), so a buffer this test builds fresh per call is the direct, if not per-frame,
+// translation of that contract.
+std::vector<RolltuiDecodedChar> decode_utf8_c(std::string_view s) {
+  std::vector<RolltuiDecodedChar> out(s.size());
+  const std::size_t n = rolltui_u_decode_utf8_chars(s.data(), s.size(), out.data());
+  out.resize(n);
+  return out;
+}
 
 // ---- the widget handle: OWNED, an explicit new/free pair (CLAUDE.md's "owned handles
 // get explicit _new/_free pairs"). A unique_ptr rather than a hand-rolled try/finally, so
@@ -66,9 +121,9 @@ void init_options(RolltuiInputOptions& o) {
 const RolltuiInputActions& kActions_ref() { return *rolltui_input_default_actions(); }
 // The three roles a draw needs — copied from Input.cpp's `kRoles`.
 constexpr RolltuiInputRoles kRoles = {
-    static_cast<unsigned char>(Role::input_text),
-    static_cast<unsigned char>(Role::selection),
-    static_cast<unsigned char>(Role::input_placeholder),
+    ROLLTUI_ROLE_INPUT_TEXT,
+    ROLLTUI_ROLE_SELECTION,
+    ROLLTUI_ROLE_INPUT_PLACEHOLDER,
 };
 
 // The one draw scratch this test binary needs (Input.cpp kept one per thread; this binary
@@ -88,7 +143,7 @@ enum class InputAction : unsigned char {
 };
 
 InputAction handle(RolltuiInput* in, const RolltuiEvent& e, std::uint64_t now_ms = 0) {
-  return static_cast<InputAction>(rolltui_input_handle(in, &e, default_bindings().handle(), &kActions_ref(), now_ms));
+  return static_cast<InputAction>(rolltui_input_handle(in, &e, rolltui_bindings_default(), &kActions_ref(), now_ms));
 }
 
 // A BORROW of the C's buffer, valid until the text next changes — same contract
@@ -198,7 +253,7 @@ RolltuiEvent paste(std::string_view text) {
 // Types a string one code point at a time, as the decoder would deliver it.
 InputAction type(RolltuiInput* in, std::string_view s) {
   InputAction last = InputAction::Ignored;
-  for (const unicode::DecodedChar& d : unicode::decode_utf8(s)) last = handle(in, chr(d.cp));
+  for (const RolltuiDecodedChar& d : decode_utf8_c(s)) last = handle(in, chr(d.cp));
   return last;
 }
 
@@ -661,7 +716,8 @@ void test_mouse() {
 }
 
 void test_frame() {
-  const Theme& th = *builtin_theme("default-dark");
+  ThemeFixture th;
+  builtin_theme_c("default-dark", th);
   InputPtr in = fresh(12, 1);
   RolltuiInputOptions o;
   init_options(o);
@@ -669,34 +725,34 @@ void test_frame() {
   rolltui_input_set_options(in.get(), &o);
   rolltui_input_options_release(&o);
   rolltui_input_layout(in.get(), {0, 0, 12, 1});
-  Frame f(12, 1);
-  rolltui_input_draw(in.get(), f.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
-  check(f.glyph(0, 0) == ">" && f.glyph(2, 0) == "t" && f.at(2, 0).style == th.style(Role::input_placeholder),
+  FrameC f(12, 1);
+  rolltui_input_draw(in.get(), f, draw_scratch(), th.styles, &kRoles, true);
+  check(f.glyph(0, 0) == ">" && f.glyph(2, 0) == "t" && f.at(2, 0).style == th.style(ROLLTUI_ROLE_INPUT_PLACEHOLDER),
         "empty: the prompt, then the placeholder in its role");
   check(f.cursor().visible && f.cursor().x == 2 && f.cursor().y == 0, "the cursor sits after the prompt");
   set_text(in.get(), "hi");
   rolltui_input_layout(in.get(), {0, 0, 12, 1});
-  Frame g(12, 1);
-  rolltui_input_draw(in.get(), g.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
-  check(g.glyph(2, 0) == "h" && g.glyph(3, 0) == "i" && g.glyph(4, 0) == " " && g.at(2, 0).style == th.style(Role::input_text),
+  FrameC g(12, 1);
+  rolltui_input_draw(in.get(), g, draw_scratch(), th.styles, &kRoles, true);
+  check(g.glyph(2, 0) == "h" && g.glyph(3, 0) == "i" && g.glyph(4, 0) == " " && g.at(2, 0).style == th.style(ROLLTUI_ROLE_INPUT_TEXT),
         "the text is drawn after the prompt in input_text; the placeholder is gone");
   check(g.cursor().visible && g.cursor().x == 4, "the cursor is after the text");
-  Frame u(12, 1);
-  rolltui_input_draw(in.get(), u.handle(), draw_scratch(), th.styles.data(), &kRoles, false);
+  FrameC u(12, 1);
+  rolltui_input_draw(in.get(), u, draw_scratch(), th.styles, &kRoles, false);
   check(!u.cursor().visible, "an unfocused input shows no cursor");
   rolltui_input_select_all(in.get());
-  Frame s(12, 1);
-  rolltui_input_draw(in.get(), s.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
-  check(s.at(2, 0).style == th.style(Role::selection) && s.at(3, 0).style == th.style(Role::selection) &&
-            s.at(0, 0).style == th.style(Role::prompt),
+  FrameC s(12, 1);
+  rolltui_input_draw(in.get(), s, draw_scratch(), th.styles, &kRoles, true);
+  check(s.at(2, 0).style == th.style(ROLLTUI_ROLE_SELECTION) && s.at(3, 0).style == th.style(ROLLTUI_ROLE_SELECTION) &&
+            s.at(0, 0).style == th.style(ROLLTUI_ROLE_PROMPT),
         "selected glyphs are in the selection role; the prompt is not");
   InputPtr nl = fresh(12, 2);
   set_text(nl.get(), "a\nb");
   rolltui_input_select_all(nl.get());
   rolltui_input_layout(nl.get(), {0, 0, 12, 2});
-  Frame n(12, 2);
-  rolltui_input_draw(nl.get(), n.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
-  check(n.at(3, 0).style == th.style(Role::selection) && n.glyph(3, 0) == " " && n.glyph(2, 1) == "b",
+  FrameC n(12, 2);
+  rolltui_input_draw(nl.get(), n, draw_scratch(), th.styles, &kRoles, true);
+  check(n.at(3, 0).style == th.style(ROLLTUI_ROLE_SELECTION) && n.glyph(3, 0) == " " && n.glyph(2, 1) == "b",
         "a selected newline shows as one highlighted cell; the next line starts at the indent");
   // Inset and a scrolled view.
   InputPtr sc = fresh(10, 1);
@@ -707,24 +763,24 @@ void test_frame() {
   rolltui_input_options_release(&io);
   set_text(sc.get(), "abcdefghijklmnop");  // 8 wide inside the inset: 6 per row → 3 rows
   rolltui_input_layout(sc.get(), {0, 0, 10, 1});
-  Frame v(10, 1);
-  rolltui_input_draw(sc.get(), v.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
+  FrameC v(10, 1);
+  rolltui_input_draw(sc.get(), v, draw_scratch(), th.styles, &kRoles, true);
   check(rolltui_input_rows(sc.get()) == 3 && rolltui_input_top_row(sc.get()) == 2 && v.glyph(3, 0) == "m" &&
             v.glyph(0, 0) == " " && v.glyph(1, 0) == " ",
         "with inset 1 and one row the last row is shown one cell in, under the hanging indent (the prompt lives on row 0 only)");
   InputPtr wide = fresh(6, 2);
   set_text(wide.get(), "ab\xE6\xBC\xA2");
   rolltui_input_layout(wide.get(), {0, 0, 6, 2});
-  Frame w(6, 2);
-  rolltui_input_draw(wide.get(), w.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
+  FrameC w(6, 2);
+  rolltui_input_draw(wide.get(), w, draw_scratch(), th.styles, &kRoles, true);
   check(w.glyph(4, 0) == "\xE6\xBC\xA2" && w.at(5, 0).continuation, "a 2-cell glyph is drawn whole at the row's end");
   check(rolltui_input_rows(wide.get()) == 2 && w.cursor().x == 2 && w.cursor().y == 1,
         "and, the row being full, the caret is on the next row");
   InputPtr one = fresh(6, 1);
   set_text(one.get(), "ab\xE6\xBC\xA2");
   rolltui_input_layout(one.get(), {0, 0, 6, 1});
-  Frame o1(6, 1);
-  rolltui_input_draw(one.get(), o1.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
+  FrameC o1(6, 1);
+  rolltui_input_draw(one.get(), o1, draw_scratch(), th.styles, &kRoles, true);
   check(rolltui_input_top_row(one.get()) == 1 && o1.glyph(0, 0) == " " && o1.cursor().x == 2,
         "a one-row window after a full row shows the caret's (empty) row — the host grows the window instead");
 }
@@ -907,8 +963,9 @@ void test_degenerate_sizes() {
   // A window can shrink to 1 or 0 cells in either dimension (the user, 2026-09-01):
   // every operation still works, nothing is written outside the area, and the text is
   // untouched by the geometry.
-  const Theme& th = *builtin_theme("default-dark");
-  for (Rect a : {Rect{0, 0, 0, 0}, Rect{0, 0, 1, 0}, Rect{0, 0, 0, 1}, Rect{0, 0, 1, 1}, Rect{3, 2, 0, 5}, Rect{3, 2, 5, 0}}) {
+  ThemeFixture th;
+  builtin_theme_c("default-dark", th);
+  for (RolltuiRect a : {RolltuiRect{0, 0, 0, 0}, RolltuiRect{0, 0, 1, 0}, RolltuiRect{0, 0, 0, 1}, RolltuiRect{0, 0, 1, 1}, RolltuiRect{3, 2, 0, 5}, RolltuiRect{3, 2, 5, 0}}) {
     const std::string name = std::to_string(a.w) + "x" + std::to_string(a.h);
     InputPtr in = new_input();
     rolltui_input_layout(in.get(), a);
@@ -924,8 +981,8 @@ void test_degenerate_sizes() {
     handle(in.get(), mouse(RolltuiMouseEvent::Kind::Drag, a.x + 3, a.y + 4), 1100);
     handle(in.get(), mouse(RolltuiMouseEvent::Kind::Release, a.x + 3, a.y + 4), 1200);
     rolltui_input_layout(in.get(), a);
-    Frame f(8, 8);
-    rolltui_input_draw(in.get(), f.handle(), draw_scratch(), th.styles.data(), &kRoles, true);
+    FrameC f(8, 8);
+    rolltui_input_draw(in.get(), f, draw_scratch(), th.styles, &kRoles, true);
     check(text_of(in.get()) == "hello\nwor\xE6\xBC\xA2ld" && rolltui_input_rows(in.get()) >= 2,
           name + ": the text and its rows survive a degenerate area");
     bool outside = false;

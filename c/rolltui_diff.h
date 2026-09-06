@@ -38,6 +38,8 @@
  */
 #include <stddef.h>
 
+#include "rolltui/c/rolltui_style.h" /* the role names this module's default mapping is written in */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,6 +64,22 @@ typedef struct RolltuiDiffSpan {
 typedef struct RolltuiDiffRoles {
   unsigned char added, removed, context, file_header, hunk, added_word, removed_word;
 } RolltuiDiffRoles;
+
+/* THE MAPPING ITSELF, as a BORROW of a static table — the tenth vocabulary this phase has
+ * brought home, and it arrived the way the other nine did: by converting a consumer.
+ *
+ * It lived in `Diff.cpp`'s anonymous namespace under this reason: *"`Role` is the styling
+ * vocabulary of a layer that has not been ported, and mirroring the enum in a C header would be
+ * a second definition of it."* **That was true when written and is not now.** `Role` IS ported
+ * — `ROLLTUI_ROLE_LIST` in `rolltui_style.h`, whose own note reads "ONE SPELLING, and it is this
+ * list. Both languages DERIVE from it" — so naming a role here mirrors nothing.
+ *
+ * And the tell had already fired: `rolltui/tests/markdown_test.cpp` carried a verbatim second
+ * copy, and `lifetime_test`'s conversion was about to make a third before it stopped and
+ * reported instead. Two consumers writing the same table means the API is wrong, not the
+ * consumers. A caller that wants a DIFFERENT mapping still passes its own — this is the
+ * default, not a replacement for the parameter. */
+const RolltuiDiffRoles* rolltui_diff_default_roles(void);
 
 /* The block's lines, read on demand. Returns a BORROW of line `i`, valid for the duration
  * of the call; `*len` receives its length. A zero-length line gives a valid pointer. */

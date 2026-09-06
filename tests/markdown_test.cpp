@@ -99,15 +99,10 @@ struct HighlightSpan {
 // THE ROLE TABLE, exactly Diff.cpp's kRoles: the C names no role at all, so the mapping
 // lives in this one initializer, and markdown_test's own per-line-kind assertions are its
 // oracle (swap two fields and they fail).
-constexpr RolltuiDiffRoles kDiffRoles = {
-    /*added=*/static_cast<unsigned char>(Role::diff_added),
-    /*removed=*/static_cast<unsigned char>(Role::diff_removed),
-    /*context=*/static_cast<unsigned char>(Role::diff_context),
-    /*file_header=*/static_cast<unsigned char>(Role::text_muted),
-    /*hunk=*/static_cast<unsigned char>(Role::accent_1),
-    /*added_word=*/static_cast<unsigned char>(Role::diff_added_word),
-    /*removed_word=*/static_cast<unsigned char>(Role::diff_removed_word),
-};
+// PHASE 17 m3: this was a verbatim copy of `Diff.cpp`'s private table — two consumers writing
+// the same thing, which means the API was wrong rather than the consumers. Both now read the
+// library's `rolltui_diff_default_roles()`, so a changed mapping is one edit and this suite
+// still fails on it (its per-line-kind assertions are the oracle either way).
 // The block, read on demand: a BORROW of one line, never a copy (Diff.cpp's line_at).
 const char* diff_line_at(const void* block, std::size_t i, std::size_t* len) {
   const std::string_view s = (*static_cast<const std::span<const std::string_view>*>(block))[i];
@@ -125,7 +120,7 @@ std::vector<HighlightSpan> diff_spans(std::string_view lang, std::span<const std
   // splits into line / word / line.
   RolltuiDiffSpan buf[ROLLTUI_DIFF_MAX_SPANS];
   const std::size_t n = rolltui_diff_spans(diff_scratch(), lang.data(), lang.size(), &lines, lines.size(),
-                                           diff_line_at, index, &kDiffRoles, buf, ROLLTUI_DIFF_MAX_SPANS);
+                                           diff_line_at, index, rolltui_diff_default_roles(), buf, ROLLTUI_DIFF_MAX_SPANS);
   std::vector<HighlightSpan> out;
   out.reserve(n);
   for (std::size_t i = 0; i < n; ++i) out.push_back({buf[i].begin, buf[i].end, static_cast<Role>(buf[i].role)});

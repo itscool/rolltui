@@ -57,12 +57,24 @@
 extern "C" {
 #endif
 
-/* ---- the library's one entry point, declared for every C translation unit ------------- */
-/* An allocation failure ABORTS rather than returning NULL, so nothing below can fail and
- * no caller checks. */
-void* rolltui_mem_alloc(size_t bytes);
+/* ---- the library's one entry point ----------------------------------------------------- */
+/* `rolltui_mem_alloc` and `rolltui_mem_free` MOVED to the public `rolltui_mem.h` (included
+ * above, so every C translation unit still gets them here) on 2026-09-05, Phase 17 m3. The
+ * paragraph at the top of this file already said they "stay available everywhere" while this
+ * header — which the umbrella deliberately excludes — was the only place they were declared, so
+ * a consumer wanting a handle-and-release pair could not reach one. `lifetime_test`'s
+ * conversion is what found it, exactly as a test found `rolltui_mem_stats` in the same position
+ * one day earlier.
+ *
+ * `rolltui_mem_realloc` STAYS HERE, and that is the whole point of splitting them: growth is
+ * the thing that got invented eight times, and keeping its declaration in an internal header
+ * makes the restriction STRUCTURAL rather than a grep control's promise. The grep stays as
+ * well — it catches a `rolltui_alloc.h` includer inside the library, which the header boundary
+ * cannot.
+ *
+ * An allocation failure ABORTS rather than returning NULL, so nothing below can fail and no
+ * caller checks. */
 void* rolltui_mem_realloc(void* p, size_t bytes);
-void rolltui_mem_free(void* p);
 
 /* ---- 2. GROWING, AMORTISED ------------------------------------------------------------ */
 /* Ensures `p` holds at least `need` elements of `elem` bytes, doubling from a small floor.

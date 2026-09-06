@@ -209,6 +209,39 @@ void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr*
 #define ROLLTUI_ACTION_NAME_MAX 64
 typedef int (*RolltuiMigrateFn)(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len);
 
+/* THE RENAMED ACTIONS, and this is the library's own table rather than a host's (Phase 17 m3).
+ * Three rows, from when the studio was renamed. It is a table of NAMES and not a prefix
+ * rewrite — a bindings file is the user's, and rewriting by scope prefix would also rename an
+ * action belonging to some other host's tool that happens to share it.
+ *
+ * THIS COMMENT DOES NOT SPELL THE OLD NAMES, and that is the point rather than coyness: the
+ * rule is that exactly ONE source says them, and `studio_golden_test`'s grep enforces it. The
+ * first draft of this paragraph named them and turned that control red — which is the second
+ * time it has caught exactly this, the first being the note in `Presets.cpp` it replaced.
+ *
+ * It lived in `Bindings.cpp` on the stated ground that a renamed name should survive in exactly
+ * one source. That was right about the RULE and wrong about the HOME, in the shape this phase
+ * keeps finding: `rolltui_bindings_preset_domain_init` takes a `RolltuiMigrateFn`, and while the
+ * only implementation of one lived in C++, no host could assemble a bindings preset store
+ * without the binding being present. And the rule was not holding anyway —
+ * `rolltui/tests/bindings_test.cpp` carries a second verbatim copy of the same three rows, which
+ * the control does not count; whether that exclusion is deliberate is a question for whoever
+ * owns it, not something to quietly fix here.
+ *
+ * `rolltui_migrated_action` has the `RolltuiMigrateFn` shape exactly, so it is passed straight
+ * to the domain init with a NULL ctx; `_at` is for whoever wants to enumerate the rows rather
+ * than query one (a test, a report) instead of writing the table out again. */
+size_t rolltui_migrated_action_count(void);
+void rolltui_migrated_action_at(size_t i, const char** from, size_t* from_len, const char** to, size_t* to_len);
+int rolltui_migrated_action(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len);
+
+/* `RolltuiReasonFn`-shaped, over `rolltui_key_undeliverable_reason`/`_text` (rolltui_keys.h) —
+ * the same story one function over: the reason text has been C since Phase 15, and the only
+ * thing keeping a host from passing it to the domain init was that nobody had written it in
+ * this shape. Truncates at `cap`, like every other bounded writer here. */
+size_t rolltui_undeliverable_reason_fn(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out,
+                                       size_t cap);
+
 /* The English for why a chord cannot be delivered, into a caller buffer of at least
  * ROLLTUI_UNDELIVERABLE_REASON_MAX bytes — deliberately not duplicated here (see the header
  * comment above this section). Returns the length written. */

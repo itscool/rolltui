@@ -2029,3 +2029,80 @@ void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out) {
  * and the reason owning the input costs a caller nothing: the three states a typed field has
  * (committed value, editing text, preview) are still readable. */
 RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m) { return m->edit; }
+
+
+/* ============================================================================================
+ * THE THREE TREE WALKS (Phase 17 m3). See the header for why they are here rather than in the
+ * shim: their stated reason for staying — "the C would gain a second place to know what
+ * `Bindings::chords_text` means" — expired when `chords_text` itself moved to C.
+ * ============================================================================================ */
+
+void rolltui_menu_apply_shortcuts(RolltuiMenuItem* root, const RolltuiBindings* b) {
+  size_t i;
+  if (!root) return;
+  if (root->action_name.n != 0) {
+    /* INERT means NO shortcut, not "its chords anyway": an action nothing declares keeps its
+     * rows in the table and can never be emitted, so printing a key for it promises one that
+     * cannot fire — the exact lie this walk exists to remove. */
+    rolltui_str_clear(&root->shortcut);
+    if (rolltui_bindings_has(b, root->action_name.p ? root->action_name.p : "", root->action_name.n))
+      rolltui_bindings_chords_text(b, root->action_name.p ? root->action_name.p : "", root->action_name.n,
+                                   &root->shortcut);
+  }
+  for (i = 0; i < root->children.n; ++i) rolltui_menu_apply_shortcuts(root->children.v[i], b);
+}
+
+void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionFn put, void* ctx) {
+  size_t i;
+  if (!root) return;
+  if (root->action_name.n != 0)
+    put(ctx, root->id.p ? root->id.p : "", root->id.n, root->action_name.p ? root->action_name.p : "",
+        root->action_name.n);
+  for (i = 0; i < root->children.n; ++i) rolltui_menu_item_actions(root->children.v[i], put, ctx);
+}
+
+/* The de-duplication is O(n^2) over the names SEEN so far, deliberately: a menu tree has a
+ * handful of validators, and a set would be a container to own for nothing. */
+typedef struct {
+  RolltuiStr* seen;
+  size_t n, cap;
+} ValidatorSeen;
+
+static int validator_seen(ValidatorSeen* v, const char* s, size_t len) {
+  size_t i;
+  for (i = 0; i < v->n; ++i)
+    if (rolltui_str_eq(&v->seen[i], s, len)) return 1;
+  v->seen = (RolltuiStr*)rolltui_grow_zeroed(v->seen, &v->cap, v->n + 1, sizeof *v->seen);
+  rolltui_str_set(&v->seen[v->n++], s, len);
+  return 0;
+}
+
+static void unknown_validators_walk(const RolltuiMenuItem* it, RolltuiValidatorFn is_known, void* ctx,
+                                    RolltuiPutFn put, void* put_ctx, ValidatorSeen* seen) {
+  size_t i;
+  if (!it) return;
+  if (it->kind == ROLLTUI_MENU_INPUT && it->spec.validator.n != 0) {
+    const char* name = it->spec.validator.p ? it->spec.validator.p : "";
+    const size_t len = it->spec.validator.n;
+    if (!validator_seen(seen, name, len)) {
+      RolltuiStr why;
+      memset(&why, 0, sizeof why);
+      /* Empty text: this call is asked ONLY for its registered/not answer, which is the same
+       * question `handle` asks before consulting a validator at commit. */
+      if (!is_known || !is_known(ctx, name, len, "", 0, &why)) put(put_ctx, name, len);
+      rolltui_str_free(&why);
+    }
+  }
+  for (i = 0; i < it->children.n; ++i)
+    unknown_validators_walk(it->children.v[i], is_known, ctx, put, put_ctx, seen);
+}
+
+void rolltui_menu_unknown_validators(const RolltuiMenuItem* root, RolltuiValidatorFn is_known, void* ctx,
+                                     RolltuiPutFn put, void* put_ctx) {
+  ValidatorSeen seen;
+  size_t i;
+  memset(&seen, 0, sizeof seen);
+  unknown_validators_walk(root, is_known, ctx, put, put_ctx, &seen);
+  for (i = 0; i < seen.cap; ++i) rolltui_str_free(&seen.seen[i]);
+  rolltui_mem_free(seen.seen);
+}

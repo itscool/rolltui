@@ -5,6 +5,7 @@
 // SGR golden strings, depth detection, the dump/load round trip — and the grep
 // control: no colour literal exists in the library outside Theme.cpp's built-ins.
 //
+#include <filesystem>
 #include <array>
 #include <fstream>
 #include <cstring>
@@ -20,6 +21,8 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
+
+namespace fs = std::filesystem;
 
 using namespace rolltui_test;
 
@@ -587,13 +590,64 @@ int main() {
           "the role list lives in the C header, as the one X-macro both languages expand");
     check(list.find("X(md_code_block, MD_CODE_BLOCK)") != std::string::npos,
           "…and it carries the roles by name, so this is the list and not a forward declaration");
-    // The C++ spelling must EXPAND that list, never restate it. Style.hpp naming a role
-    // literally would be the second spelling coming back.
-    const std::string style_hpp = read_file(dir + "/Style.hpp");
-    check(style_hpp.find("ROLLTUI_ROLE_LIST(ROLLTUI_ROLE_CPP_)") != std::string::npos,
-          "Style.hpp's enum EXPANDS the list rather than restating it");
-    check(style_hpp.find("\"md_code_block\"") == std::string::npos,
-          "…and names no role in a literal of its own, which is what a second spelling looks like");
+    // THERE IS NO SECOND SPELLING TO CHECK ANY MORE, which is a stronger result than the check
+    // this replaces (Phase 17 m3). It used to read `Style.hpp`'s `enum class Role` and assert
+    // that it EXPANDED the X-macro rather than restating the roles — the best available answer
+    // while two languages each needed a name for a role. `Style.hpp` was deleted with the C++
+    // binding and `rolltui::Role` with it, so every consumer now writes `ROLLTUI_ROLE_*` and
+    // the list above is the only place a role is named at all.
+    //
+    // The check therefore becomes: nothing outside this one header declares a role enum. That
+    // is what the old assertion was protecting, stated directly instead of through the one
+    // file that was allowed to have a second copy.
+    std::vector<std::string> restaters;
+    for (const fs::directory_entry& e : fs::recursive_directory_iterator(dir)) {
+      const std::string path = e.path().string();
+      const std::string ext = e.path().extension().string();
+      if (ext != ".h" && ext != ".hpp" && ext != ".c" && ext != ".cpp") continue;
+      if (path.find("/c/rolltui_style.") != std::string::npos) continue;  // the one home
+      if (path.find("/third_party/") != std::string::npos) continue;
+      const std::string text = read_file(path);
+      // WHAT COUNTS AS A SECOND SPELLING IS A BODY, and two false positives taught it. A file
+      // may name the TYPE freely; what it may not do is enumerate the roles.
+      //   - `markdown_test.cpp` DEFINES one and expands `ROLLTUI_ROLE_LIST` inside it. That is
+      //     exactly the shape the old `Style.hpp` assertion demanded — flagged by the first
+      //     draft, which looked only for the words "enum class Role".
+      //   - `c/rolltui_input.h` FORWARD-DECLARES one (`enum class Role : unsigned char;`) so a
+      //     C++ field can be a typed byte. An opaque enum has no enumerators to drift.
+      // So: find a definition (a `{` before the `;`) and require the list inside it.
+      for (std::size_t at = text.find("enum class Role"); at != std::string::npos;
+           at = text.find("enum class Role", at + 1)) {
+        const std::size_t semi = text.find(';', at), brace = text.find('{', at);
+        if (brace == std::string::npos || (semi != std::string::npos && semi < brace)) continue;  // opaque
+        const std::size_t close = text.find('}', brace);
+        const std::string body = text.substr(brace, close == std::string::npos ? 400 : close - brace);
+        if (body.find("ROLLTUI_ROLE_LIST(") == std::string::npos) restaters.push_back(path.substr(dir.size() + 1));
+        break;
+      }
+    }
+    check(restaters.empty(), "no source outside c/rolltui_style.h spells the role list a second time" +
+                                 (restaters.empty() ? "" : " — " + restaters.front()));
+    // ARMED: a Role enum that does NOT expand the list is what this is looking for, and the
+    // matcher says so about a planted one. Without this the check reads the same whether it is
+    // working or has quietly stopped matching anything.
+    check(std::string("enum class Role : unsigned char { text, prompt };").find("ROLLTUI_ROLE_LIST(") ==
+              std::string::npos,
+          "…and the matcher would flag a restatement: a Role enum with no expansion in it");
+    // …and no role NAME literal outside the one home either, which is the other way a second
+    // spelling shows up. `rolltui_style.c` holds the name table (it expands the same X-macro),
+    // and this test file names one deliberately to arm the matcher below.
+    std::vector<std::string> namers;
+    for (const fs::directory_entry& e : fs::recursive_directory_iterator(dir)) {
+      const std::string path = e.path().string();
+      const std::string ext = e.path().extension().string();
+      if (ext != ".h" && ext != ".hpp" && ext != ".c" && ext != ".cpp") continue;
+      if (path.find("/c/rolltui_style.") != std::string::npos) continue;
+      if (path.find("/third_party/") != std::string::npos || path.find("/tests/") != std::string::npos) continue;
+      if (read_file(path).find("\"md_code_block\"") != std::string::npos) namers.push_back(path.substr(dir.size() + 1));
+    }
+    check(namers.empty(), "…and no source outside it names a role in a literal of its own" +
+                              (namers.empty() ? "" : " — " + namers.front()));
     // The control: the matcher finds a role name literal when there IS one, so the assertion
     // above is a real absence rather than a pattern that never matches.
     check(read_file(dir + "/tests/theme_test.cpp").find("\"md_code_block\"") != std::string::npos,

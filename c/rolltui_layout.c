@@ -2356,3 +2356,108 @@ const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
   };
   return &r;
 }
+
+
+/* ============================================================================================
+ * THE BUILT-IN LAYOUTS, PARSED AND CACHED (Phase 17 m3) — `Layout.cpp`'s cache, moved. See the
+ * header for the two properties it carries over and the defect each one cost first.
+ * ============================================================================================ */
+
+typedef struct {
+  const char* name; /* BORROWED: the embedded table's own literal */
+  size_t name_len;
+  RolltuiLayout layout;
+} BuiltinLayout;
+
+static BuiltinLayout* g_builtin_layouts;
+static size_t g_builtin_layout_n;
+
+static void builtin_layouts_release(void) {
+  size_t i;
+  for (i = 0; i < g_builtin_layout_n; ++i) rolltui_layout_release(&g_builtin_layouts[i].layout);
+  rolltui_mem_free(g_builtin_layouts);
+  g_builtin_layouts = NULL;
+  g_builtin_layout_n = 0;
+}
+
+/* Shipped order: "default" first — it is what a fresh install runs — then the table's own. */
+static const char* builtin_name_at(size_t i) {
+  size_t k, seen = 0;
+  for (k = 0; k < rolltui_kLayoutPresetCount; ++k)
+    if (strcmp(rolltui_kLayoutPresets[k].name, "default") == 0) {
+      if (i == 0) return rolltui_kLayoutPresets[k].name;
+      break;
+    }
+  if (i == 0) return rolltui_kLayoutPresetCount ? rolltui_kLayoutPresets[0].name : NULL;
+  for (k = 0; k < rolltui_kLayoutPresetCount; ++k) {
+    if (strcmp(rolltui_kLayoutPresets[k].name, "default") == 0) continue;
+    if (++seen == i) return rolltui_kLayoutPresets[k].name;
+  }
+  return NULL;
+}
+
+static void builtin_layouts_fill(void) {
+  size_t i;
+  size_t n = rolltui_kLayoutPresetCount;
+  if (g_builtin_layout_n != 0) return;
+  if (n == 0) return;
+  /* AT FILL TIME, not once per process: `rolltui_shutdown()` clears its own registry as it
+   * runs, so a register-once cache survives the second shutdown holding what it meant to
+   * release. `Layout.cpp` and `Theme.cpp` both shipped that defect. */
+  rolltui_on_shutdown(builtin_layouts_release);
+  g_builtin_layouts = (BuiltinLayout*)rolltui_mem_alloc(n * sizeof *g_builtin_layouts);
+  memset(g_builtin_layouts, 0, n * sizeof *g_builtin_layouts);
+  for (i = 0; i < n; ++i) {
+    const char* name = builtin_name_at(i);
+    size_t json_len = 0;
+    const char* json;
+    RolltuiLoadedLayout loaded;
+    RolltuiLayoutReport rep;
+    size_t na = 0;
+    const RolltuiLayoutAction* da = rolltui_layout_shipped_default_actions(&na);
+    if (!name) break;
+    json = rolltui_layout_builtin_json(name, strlen(name), &json_len);
+    rolltui_loaded_layout_init(&loaded);
+    memset(&rep, 0, sizeof rep);
+    if (!rolltui_load_layout_text(json, json_len, &loaded, da, na, rolltui_layout_default_hooks(), &rep) ||
+        !rolltui_layout_report_clean(&rep)) {
+      /* A built-in that does not load cleanly is a PROGRAMMING ERROR: say so loudly rather
+       * than serve half a layout. The C++ did the same, and its test asserts clean() per name. */
+      fprintf(stderr, "rolltui: built-in layout '%s' is broken: %s\n", name,
+              rep.error.n ? rep.error.p : "(unclean report)");
+      abort();
+    }
+    rolltui_layout_report_release(&rep);
+    g_builtin_layouts[i].name = name;
+    g_builtin_layouts[i].name_len = strlen(name);
+    rolltui_layout_init(&g_builtin_layouts[i].layout);
+    rolltui_loaded_layout_to_layout(&loaded, &g_builtin_layouts[i].layout);
+    ++g_builtin_layout_n;
+  }
+}
+
+const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len) {
+  size_t i;
+  /* FILLED WHEN EMPTY, never in a static initializer — `shutdown()` releases this, and a
+   * once-only fill would leave every later call answering NULL. */
+  builtin_layouts_fill();
+  for (i = 0; i < g_builtin_layout_n; ++i)
+    if (g_builtin_layouts[i].name_len == len && memcmp(g_builtin_layouts[i].name, name, len) == 0)
+      return &g_builtin_layouts[i].layout;
+  return NULL;
+}
+
+size_t rolltui_layout_builtin_count(void) {
+  builtin_layouts_fill();
+  return g_builtin_layout_n;
+}
+
+const char* rolltui_layout_builtin_name(size_t i, size_t* out_len) {
+  builtin_layouts_fill();
+  if (i >= g_builtin_layout_n) {
+    if (out_len) *out_len = 0;
+    return "";
+  }
+  if (out_len) *out_len = g_builtin_layouts[i].name_len;
+  return g_builtin_layouts[i].name;
+}

@@ -128,7 +128,12 @@ int main() {
       names += " " + h;
     }
   }
-  check(missing == 0, "every public header is named by the umbrella —" + (missing ? names : " all " + std::to_string(headers.size() - 3)));
+  // The count is derived from `kInternal`, never a literal: it read `- 3` while `kInternal`
+  // held 2, so the label printed one fewer public header than there were. A wrong number in a
+  // PASSING check is the quietest kind — nothing fails, and the figure gets quoted onward.
+  const std::size_t internal_n = sizeof kInternal / sizeof *kInternal;
+  check(missing == 0, "every public header is named by the umbrella —" +
+                          (missing ? names : " all " + std::to_string(headers.size() - internal_n)));
 
   for (const char* h : kInternal)
     check(text.find(std::string("rolltui/c/") + h) == std::string::npos,

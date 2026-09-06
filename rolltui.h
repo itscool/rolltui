@@ -29,14 +29,18 @@
  *      many others include is VOCABULARY — `style`, `geom`, `keys`, `screen`, `str`, `abi` —
  *      and is public because the leaves' own signatures speak it.
  *
- * **THREE are kept out** — the ones neither measurement reaches, each machinery a consumer
+ * **TWO are kept out** — the ones neither measurement reaches, each machinery a consumer
  * never names:
  *   - `c/rolltui_alloc.h`  — the CLOSED SET of allocation strategies (`rolltui_grow`,
  *                            `rolltui_fit`, the pack builder). Internal by construction:
  *                            `ownership_test` asserts that only the library grows a buffer.
  *   - `c/rolltui_map.h`    — the string-keyed table the library builds its registries from.
- *   - `c/rolltui_marker.h` — the "▼ N more" rule, one definition, called from two places
- *                            inside the library.
+ *
+ * It was THREE until Phase 17 m2c: `c/rolltui_marker.h` left the internal list when
+ * `transcript_test.cpp` began asserting the "▼ N more" rule directly, so a consumer reaches
+ * it and measurement 1 makes it public. This prose said three and listed marker while line 120
+ * included it — corrected 2026-09-05. `public_header_test`'s `kInternal` is the enforced
+ * list; this paragraph is commentary on it and can drift, which it did.
  *
  * **`rolltui_str.h` is IN, and it is the one genuinely awkward case.** It was written as an
  * internal container and it appears in public signatures anyway — in the ~15 functions of
@@ -86,13 +90,14 @@
  *      lambda reaches a C API — and that bridge belongs in the consumer, not here.
  *
  * ============================================================================
- * THE C++ CONSUMER'S QUESTION, answered once
+ * C++ consumers
  * ============================================================================
- * roll, the studio, paint and the editors are C++ and stay C++. They call this header
- * directly. If a consumer wants RAII or a lambda, it writes that wrapper in its own file —
- * **and if two consumers write the SAME wrapper, that is evidence this API is wrong, not
- * evidence for shipping the wrapper.** That rule already paid once: three hosts had written
- * the same double buffer by hand, which is why `c/rolltui_swap.h` exists.
+ * roll, the studio, paint and the editors are C++ and stay C++, and they call this header
+ * directly.
+ *   - DO write a RAII holder or a lambda bridge in your own file when you want one.
+ *   - DON'T ship it from here. If two consumers write the SAME wrapper, the API is wrong,
+ *     not the consumers. That has fired twice: three hosts had hand-written the same double
+ *     buffer (hence `c/rolltui_swap.h`), and four had hand-copied the action table.
  */
 
 /* ---- vocabulary: the types the rest of the API speaks ------------------------------- */

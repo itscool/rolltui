@@ -238,3 +238,15 @@ size_t rolltui_diff_spans(RolltuiDiffScratch* s, const char* lang, size_t lang_l
   out[0].role = line_role;
   return 1;
 }
+
+/* See the header: the mapping's one home, now that `Role` is C. `file_header` is the `---`/`+++`
+ * pair (not a change) and `hunk` is `@@` (a position, not a change), which is why neither is
+ * `added` or `removed`. */
+const RolltuiDiffRoles* rolltui_diff_default_roles(void) {
+  static const RolltuiDiffRoles kRoles = {
+      ROLLTUI_ROLE_DIFF_ADDED,      ROLLTUI_ROLE_DIFF_REMOVED, ROLLTUI_ROLE_DIFF_CONTEXT,
+      ROLLTUI_ROLE_TEXT_MUTED,      ROLLTUI_ROLE_ACCENT_1,     ROLLTUI_ROLE_DIFF_ADDED_WORD,
+      ROLLTUI_ROLE_DIFF_REMOVED_WORD,
+  };
+  return &kRoles;
+}

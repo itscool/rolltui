@@ -65,7 +65,11 @@ extern "C" {
 
 /* Appends bytes somewhere the caller owns — how every string longer than a name leaves this
  * file. A `std::string` on the other side; a growing buffer on this one. */
-typedef void (*RolltuiPutFn)(void* ctx, const char* s, size_t len);
+/* `RolltuiPutFn` MOVED to `rolltui_str.h` (Phase 17 m3) — the string module owns the string
+ * sink. It was declared here because presets happened to need one first, and `rolltui_menu.h`
+ * then needed the same shape for its tree walks: a second spelling of one thing is the
+ * duplication rule firing, so the type moved instead of being written twice. The NAME did not
+ * change, so no call site did either. */
 
 /* Reads a whole file through `put`. 0 when it cannot be opened. */
 int rolltui_preset_read_file(const char* path, size_t path_len, RolltuiPutFn put, void* ctx);
@@ -385,8 +389,18 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
  */
 
 /* ---- the Theme domain ----------------------------------------------------------------------
- * `rolltui::ThemePreset` (Presets.hpp) IS this struct — "colours" is a `RolltuiJsonValue*`
- * there today (Phase 17 m2) and "mode"/"depth" are two strings, which is already all-C. */
+ * ~~`rolltui::ThemePreset` (Presets.hpp) IS this struct~~ — **FALSE, and a segfault is what
+ * found it (Phase 17 m3, 2026-09-05).** `ThemePreset` holds `std::string mode/depth`; this
+ * holds `RolltuiStr`. They are two different structs that describe the same thing, and casting
+ * a store's `void*` from one to the other crashes. "two strings, which is already all-C" was
+ * true of the CONCEPT and false of the TYPE, and the sentence collapsed the two.
+ *
+ * **The consequence is bigger than the wording.** There are two Theme preset DOMAINS in the
+ * tree: `PresetStore<ThemeDomain>`'s C++ descriptor (whose values are `ThemePreset`) and
+ * `rolltui_theme_preset_domain_init`'s (whose values are these). Every live store uses the
+ * first; the second has NO production caller — only six `presets_test` assertions that its
+ * function pointers are non-NULL. Ported but unreachable, the shape m1c named. Switching the
+ * stores over is m2c's, and it changes the value type at every preset call site. */
 typedef struct RolltuiThemePresetValue {
   RolltuiJsonValue* colours ROLLTUI_DEFAULT(nullptr); /* OWNED */
   RolltuiStr mode;                                     /* "auto" | "dark" | "light" */
@@ -463,17 +477,21 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeF
  * implementation before this: nothing else in this file ever called it, so nothing forced it
  * out of `Presets.hpp`.
  *
- * WHAT DID NOT MOVE, AND STAYS AT `Presets.hpp`: `working_value(const ThemePresets&, key)` /
- * `(const LayoutPresets&, ...)` / `(const BindingsPresets&, ...)` read a setting out of a
- * store's WORKING COPY. For "theme"/"layout"/"bindings" that is just `store.origin()`
- * (already this boundary's own `rolltui_preset_store_origin`), but "theme_mode"/"color_depth"
- * read `ThemePreset::mode`/`::depth` — `std::string` MEMBERS of a C++-only struct (only its
- * `colours` field is a `RolltuiJsonValue*` today). `ThemePreset` itself is not this task's to
- * move, so those two fields have no C form to read them from. What DID move out of
- * `working_value`'s own dispatch: which key is a domain's IDENTITY setting (the one whose
- * value is the whole preset name) is now `key == rolltui_preset_domain_name(domain)` rather
- * than "theme"/"layout"/"bindings" repeated as three more C++ string literals.
+ * ~~WHAT DID NOT MOVE, AND STAYS AT `Presets.hpp`: `working_value(...)` ... "theme_mode"/
+ * "color_depth" read `ThemePreset::mode`/`::depth` — `std::string` MEMBERS of a C++-only
+ * struct ... so those two fields have no C form to read them from.~~
+ * **RETRACTED IN PLACE 2026-09-05 (Phase 17 m3), because it was already false when written.**
+ * `RolltuiThemePresetValue` — sixty lines below in this same header — holds `mode` and `depth`
+ * as `RolltuiStr`, and its own comment says *"'mode'/'depth' are two strings, which is already
+ * all-C"*. The two sentences contradicted each other across one file. `working_value` had no
+ * blocker; it had a reason nobody re-read, and `rolltui_preset_working_value` below is the
+ * whole of it. What DID move out of its dispatch back in m2: which key is a domain's IDENTITY
+ * setting (the one whose value is the whole preset name) is `key ==
+ * rolltui_preset_domain_name(domain)` rather than "theme"/"layout"/"bindings" spelled again.
  */
+
+/* `rolltui_preset_working_value` and the migration are declared below, after
+ * `RolltuiPresetDomainId` — the type the first of them takes. */
 
 typedef enum RolltuiPresetRung {
   ROLLTUI_PRESET_RUNG_FLAG = 0,
@@ -511,6 +529,36 @@ typedef enum RolltuiPresetDomainId {
  * domain_name(store's domain)`, which is what `presets_test.cpp`'s "setting(...)->domain ==
  * Domain::X" checks holding for every row make true. */
 const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
+
+/* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not
+ * this domain's). `domain` says which store `s` is — the caller knows, and the store does not
+ * carry its own tag. The identity key ("theme"/"layout"/"bindings") answers with the origin;
+ * the Theme domain additionally answers "theme_mode" and "color_depth". */
+void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDomainId domain, const char* key,
+                                  size_t key_len, RolltuiStr* out);
+
+/* ---- the Phase 9 -> Phase 10 migration, once per preset directory --------------------------
+ * A Phase 9 theme working copy carried the layout inside it; Phase 10 made Layout its own
+ * preset domain. This moves it across ONCE: copy first, strip second, and strip only after the
+ * copy is safely on disk — the other order loses the layout if the write fails.
+ *
+ * Zero-initialise the report and release it with `_release`. `moved`/`rewrote_theme` are what
+ * HAPPENED; `notes` are said on stderr by every host (never in a status line, so a golden frame
+ * cannot move because a user's config is one phase old); a non-empty `error` means the theme
+ * file was left exactly as it was. A fresh install with no theme working copy is silent. */
+typedef struct RolltuiMigrationReport {
+  int moved;         /* the layout was written to its own file */
+  int rewrote_theme; /* ...and the theme file was rewritten without its "layout" part */
+  RolltuiStr layout_name;
+  RolltuiStr error;
+  RolltuiStr* notes;
+  size_t notes_n, notes_cap;
+} RolltuiMigrationReport;
+
+void rolltui_migration_report_release(RolltuiMigrationReport* r); /* frees everything; zeroes */
+void rolltui_preset_migrate_theme_layout(const char* dir, size_t dir_len, const RolltuiLayoutHooks* hooks,
+                                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                                         RolltuiMigrationReport* out);
 
 /* One row of `kSettings` (Presets.hpp): a setting's key, which domain/store it belongs to, its
  * environment-variable suffix ("THEME" joined to a host's own prefix), its built-in default,

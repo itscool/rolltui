@@ -14,6 +14,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_marker.h"
+#include "rolltui/c/rolltui_style.h" /* the role names this module's default mapping is written in */
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_wrap.h"
 #include "rolltui/third_party/md4c/md4c.h"
@@ -1735,4 +1736,36 @@ void rolltui_md_render(RolltuiMdLines* out, const RolltuiMdDoc* doc, const Rollt
   if (n > 0 && rolltui_md_lines_text(out)[n - 1] == '\n') rolltui_md_lines_text_pop(out);
   rolltui_md_lines_finish(out);
   w->busy = 0;
+}
+
+
+/* ============================================================================================
+ * THE STYLING VOCABULARY (Phase 17 m3) — moved from `Markdown.cpp`, where it was a C symbol
+ * (`extern "C" rolltui_md_roles`) defined in a C++ file that a C file already called
+ * (`rolltui_transcript.c`). The C library could not link without it.
+ *
+ * Its stated reason for living there was the same one `Diff.cpp`'s role table had:
+ * *"`rolltui/Style.hpp` is the one place these names exist ... the reason neither
+ * implementation names a role."* True when written, and false once `ROLLTUI_ROLE_LIST` made
+ * Role the C's own — at which point naming a role here mirrors nothing.
+ *
+ * A caller that wants a DIFFERENT mapping still hands one in; this is the default, not a
+ * replacement for the parameter.
+ * ============================================================================================ */
+
+/* The no-override sentinel must not be able to collide with a real Role — the same assertion
+ * `Markdown.cpp` carried, in the C's spelling. */
+ROLLTUI_STATIC_ASSERT(ROLLTUI_ROLE_COUNT < ROLLTUI_MD_NO_ROLE,
+                      "the no-override sentinel must not collide with a real Role");
+
+const RolltuiMdRoles* rolltui_md_roles(void) {
+  static const RolltuiMdRoles kRoles = {
+      ROLLTUI_ROLE_TEXT_MUTED,        ROLLTUI_ROLE_MD_HEADING,     ROLLTUI_ROLE_MD_EMPHASIS,
+      ROLLTUI_ROLE_MD_STRONG,         ROLLTUI_ROLE_MD_STRIKETHROUGH, ROLLTUI_ROLE_MD_CODE_INLINE,
+      ROLLTUI_ROLE_MD_CODE_BLOCK,     ROLLTUI_ROLE_MD_CODE_LABEL,  ROLLTUI_ROLE_MD_LINK,
+      ROLLTUI_ROLE_MD_LINK_URL,       ROLLTUI_ROLE_MD_QUOTE,       ROLLTUI_ROLE_MD_LIST_MARKER,
+      ROLLTUI_ROLE_MD_TABLE_BORDER,   ROLLTUI_ROLE_MD_TABLE_HEADER, ROLLTUI_ROLE_MD_RULE,
+      ROLLTUI_ROLE_SCROLL_MARKER,
+  };
+  return &kRoles;
 }

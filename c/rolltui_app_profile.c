@@ -13,6 +13,8 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_json.h"
+#include "rolltui/c/rolltui_frame_ops.h"
+#include "rolltui/c/rolltui_style.h"
 
 /* A literal C string plus its length, computed once here rather than hand-counted at every
  * `rolltui_json_get`/`_set` call site — this file's own version of `rolltui_json.c`'s `JLIT`,
@@ -771,4 +773,258 @@ void rolltui_app_profile_dump(const RolltuiAppProfile* p, int indent, RolltuiStr
 
   rolltui_json_dump(root, indent, out);
   rolltui_json_free(root);
+}
+
+/* ============================================================================================
+ * WHAT A LAYOUT MAY NAME IN THIS APP, and mounting it — the two halves of `AppProfile.cpp`
+ * that touch `Windows` rather than the profile's own serialisation (Phase 17 m3).
+ * ============================================================================================ */
+
+static void content_join(RolltuiStr* out, const char* prefix, size_t prefix_len, const char* name, size_t name_len) {
+  rolltui_str_clear(out);
+  rolltui_str_append(out, prefix, prefix_len);
+  rolltui_str_append(out, name, name_len);
+}
+
+size_t rolltui_app_profile_content_count(const RolltuiAppProfile* p) {
+  if (!p) return 0;
+  /* documents + submits + rows + menus + the bare "help" + one per help scope + one per kind */
+  return p->documents_n + p->submits_n + p->rows_n + p->menus_n + 1 + p->help_scopes_n + p->kinds_n;
+}
+
+void rolltui_app_profile_content_at(const RolltuiAppProfile* p, size_t i, RolltuiStr* out) {
+  rolltui_str_clear(out);
+  if (!p) return;
+  if (i < p->documents_n) {
+    content_join(out, "transcript:", 11, p->documents[i].name.p ? p->documents[i].name.p : "", p->documents[i].name.n);
+    return;
+  }
+  i -= p->documents_n;
+  if (i < p->submits_n) {
+    content_join(out, "input:", 6, p->submits[i].p ? p->submits[i].p : "", p->submits[i].n);
+    return;
+  }
+  i -= p->submits_n;
+  if (i < p->rows_n) {
+    content_join(out, "rows:", 5, p->rows[i].name.p ? p->rows[i].name.p : "", p->rows[i].name.n);
+    return;
+  }
+  i -= p->rows_n;
+  if (i < p->menus_n) {
+    content_join(out, "menu:", 5, p->menus[i].name.p ? p->menus[i].name.p : "", p->menus[i].name.n);
+    return;
+  }
+  i -= p->menus_n;
+  if (i == 0) {
+    rolltui_str_set(out, "help", 4);
+    return;
+  }
+  --i;
+  if (i < p->help_scopes_n) {
+    content_join(out, "help:", 5, p->help_scopes[i].p ? p->help_scopes[i].p : "", p->help_scopes[i].n);
+    return;
+  }
+  i -= p->help_scopes_n;
+  if (i < p->kinds_n) {
+    /* A kind that takes a source is offered as "NAME:" — a TEMPLATE for the author to finish —
+     * for Required and Optional alike. See the header: this is not the join rule. */
+    rolltui_str_set(out, p->kinds[i].name.p ? p->kinds[i].name.p : "", p->kinds[i].name.n);
+    if (p->kinds[i].rule != ROLLTUI_APP_PROFILE_SOURCE_FORBIDDEN) rolltui_str_append(out, ":", 1);
+  }
+}
+
+/* ---- the placeholder kind ------------------------------------------------------------------
+ * A widget PLUGIN like any other, with the label as its only data. It draws "[name]" centred
+ * vertically in the window's content rect, in `text_muted` — never an error panel, because the
+ * window IS correct and only this binary cannot build it (Phase 11 m4's finding).
+ *
+ * `problem` is deliberately NULL: a placeholder has nothing to report. That is a decision and
+ * not an omission — the four other NULLs are `note_at`, `desired_outer`, `handle` (a preview
+ * takes no input) and the two scroll slots (nothing to scroll). */
+typedef struct PlaceholderCtx {
+  RolltuiWindows* w; /* BORROWED: where `draw` asks for this frame's style table */
+  RolltuiStr text;   /* "[name]", built ONCE at construction, never per frame */
+  RolltuiDrawScratch* draw;
+} PlaceholderCtx;
+
+static void placeholder_destroy(void* ctx) {
+  PlaceholderCtx* pc = (PlaceholderCtx*)ctx;
+  rolltui_str_free(&pc->text);
+  rolltui_draw_scratch_free(pc->draw);
+  rolltui_mem_free(pc);
+}
+static void placeholder_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  (void)ctx;
+  (void)rn;
+}
+static void placeholder_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  PlaceholderCtx* pc = (PlaceholderCtx*)ctx;
+  const RolltuiStyle* styles = rolltui_windows_styles(pc->w);
+  RolltuiRect r;
+  rolltui_content_rect(rn, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  rolltui_frame_put_text(f, pc->draw, r.x, r.y + r.h / 2, pc->text.p ? pc->text.p : "", pc->text.n,
+                         styles[ROLLTUI_ROLE_TEXT_MUTED], r.w, 0, 0);
+}
+
+static const RolltuiWidgetPlugin kPlaceholderPlugin = {
+    placeholder_destroy, placeholder_layout, placeholder_draw, NULL, NULL, NULL, NULL, NULL, NULL,
+};
+
+/* The factory's ctx: the kind's NAME, owned for as long as the table is (a kind registration's
+ * `free_ctx` is what releases it), plus the window table each widget borrows. */
+typedef struct PlaceholderFactoryCtx {
+  RolltuiStr label;
+  RolltuiWindows* w;
+} PlaceholderFactoryCtx;
+
+static void placeholder_factory_free(void* ctx) {
+  PlaceholderFactoryCtx* fc = (PlaceholderFactoryCtx*)ctx;
+  rolltui_str_free(&fc->label);
+  rolltui_mem_free(fc);
+}
+
+static RolltuiWidget placeholder_factory(void* ctx, const char* content, size_t len) {
+  PlaceholderFactoryCtx* fc = (PlaceholderFactoryCtx*)ctx;
+  PlaceholderCtx* pc;
+  RolltuiWidget out;
+  (void)content;
+  (void)len;
+  memset(&out, 0, sizeof out);
+  pc = (PlaceholderCtx*)rolltui_mem_alloc(sizeof *pc);
+  memset(pc, 0, sizeof *pc);
+  pc->w = fc->w;
+  pc->draw = rolltui_draw_scratch_new();
+  rolltui_str_set(&pc->text, "[", 1);
+  rolltui_str_append(&pc->text, fc->label.p ? fc->label.p : "", fc->label.n);
+  rolltui_str_append(&pc->text, "]", 1);
+  out.vt = &kPlaceholderPlugin;
+  out.ctx = pc;
+  return out;
+}
+
+/* No-ops for the target's submits and notes: a preview must accept the binding (an unbound
+ * source is a NAMED problem and an error panel) without doing anything with it. */
+static void mount_submit_noop(void* ctx, const char* text, size_t len) {
+  (void)ctx;
+  (void)text;
+  (void)len;
+}
+static void mount_note_noop(void* ctx, RolltuiNote* out) {
+  (void)ctx;
+  (void)out;
+}
+
+/* A row source's recorded sample, refilled into the caller's buffer each frame rather than a
+ * fresh vector being built per frame from it (Phase 11 m5b).
+ *
+ * IT OWNS ITS COPY OF THE SAMPLE, and that is the whole point rather than a detail. Written
+ * first as {profile pointer, row index} — two words instead of a copy, and the profile is
+ * right there. It segfaulted on the first frame: a caller mounts a profile and then frees it
+ * (`mount_app_profile` does exactly that, in one statement), so the binding outlives what it
+ * borrowed. This file's own header already said "everything crossing here is COPIED"; the
+ * borrow was the one thing that made that sentence false. A binding that survives its call
+ * owns what it reads. */
+typedef struct MountedRowCtx {
+  RolltuiStr* label;
+  RolltuiStr* value;
+  size_t n;
+} MountedRowCtx;
+
+static void mount_rows_free(void* ctx) {
+  MountedRowCtx* rc = (MountedRowCtx*)ctx;
+  size_t j;
+  for (j = 0; j < rc->n; ++j) {
+    rolltui_str_free(&rc->label[j]);
+    rolltui_str_free(&rc->value[j]);
+  }
+  rolltui_mem_free(rc->label);
+  rolltui_mem_free(rc->value);
+  rolltui_mem_free(rc);
+}
+
+static void mount_rows_fill(void* ctx, RolltuiRows* out) {
+  const MountedRowCtx* rc = (const MountedRowCtx*)ctx;
+  size_t j;
+  for (j = 0; j < rc->n; ++j)
+    rolltui_rows_add(out, rc->label[j].p ? rc->label[j].p : "", rc->label[j].n,
+                     rc->value[j].p ? rc->value[j].p : "", rc->value[j].n);
+}
+
+void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w) {
+  size_t i;
+  if (!p || !w) return;
+  for (i = 0; i < p->kinds_n; ++i) {
+    const char* name = p->kinds[i].name.p ? p->kinds[i].name.p : "";
+    const size_t name_len = p->kinds[i].name.n;
+    PlaceholderFactoryCtx* fc;
+    unsigned char rule;
+    /* The two source-rule vocabularies are numbered alike and that is a DOCUMENTED fact,
+     * converted through an explicit switch and never a cast — this header's own note on why
+     * `ROLLTUI_APP_PROFILE_SOURCE_*` is spelled separately from `ROLLTUI_SOURCE_*`. */
+    switch (p->kinds[i].rule) {
+      case ROLLTUI_APP_PROFILE_SOURCE_FORBIDDEN: rule = ROLLTUI_SOURCE_FORBIDDEN; break;
+      case ROLLTUI_APP_PROFILE_SOURCE_OPTIONAL: rule = ROLLTUI_SOURCE_OPTIONAL; break;
+      default: rule = ROLLTUI_SOURCE_REQUIRED; break;
+    }
+    /* THE VOCABULARY HALF FIRST, and the factory only if it took — the order
+     * `Windows::register_kind` had, and it is load-bearing: rung 1 is never shadowed, so a
+     * profile naming a LIBRARY kind must not get a placeholder factory installed over it. The
+     * other order would leave the name resolving to the library's rule and the widget built by
+     * this placeholder, which is the wrong-branch-with-full-confidence shape exactly. */
+    /* `ROLLTUI_REGISTER_OK` is 0 and every refusal is non-zero — a reason code, not a
+     * success flag. Written as `!register(...)` first, which skipped every kind that
+     * registered fine and installed a factory for every one that was refused. */
+    if (rolltui_widget_kind_register(name, name_len, rule, p->kinds[i].describes.p ? p->kinds[i].describes.p : "",
+                                     p->kinds[i].describes.n) != ROLLTUI_REGISTER_OK)
+      continue;
+    fc = (PlaceholderFactoryCtx*)rolltui_mem_alloc(sizeof *fc);
+    memset(fc, 0, sizeof *fc);
+    rolltui_str_set(&fc->label, name, name_len);
+    fc->w = w;
+    rolltui_windows_register_kind(w, name, name_len, placeholder_factory, fc, placeholder_factory_free);
+  }
+  for (i = 0; i < p->documents_n; ++i)
+    rolltui_windows_bind_sample_document(w, p->documents[i].name.p ? p->documents[i].name.p : "",
+                                         p->documents[i].name.n,
+                                         p->documents[i].sample.p ? p->documents[i].sample.p : "",
+                                         p->documents[i].sample.n);
+  for (i = 0; i < p->rows_n; ++i) {
+    const PRowSource* src = &p->rows[i];
+    MountedRowCtx* rc = (MountedRowCtx*)rolltui_mem_alloc(sizeof *rc);
+    size_t j;
+    memset(rc, 0, sizeof *rc);
+    rc->n = src->sample_n;
+    if (rc->n != 0) {
+      rc->label = (RolltuiStr*)rolltui_mem_alloc(rc->n * sizeof *rc->label);
+      rc->value = (RolltuiStr*)rolltui_mem_alloc(rc->n * sizeof *rc->value);
+      memset(rc->label, 0, rc->n * sizeof *rc->label);
+      memset(rc->value, 0, rc->n * sizeof *rc->value);
+      for (j = 0; j < rc->n; ++j) {
+        rolltui_str_set(&rc->label[j], src->sample[j].label.p ? src->sample[j].label.p : "", src->sample[j].label.n);
+        rolltui_str_set(&rc->value[j], src->sample[j].value.p ? src->sample[j].value.p : "", src->sample[j].value.n);
+      }
+    }
+    rolltui_windows_bind_rows(w, src->name.p ? src->name.p : "", src->name.n, mount_rows_fill, rc, mount_rows_free);
+  }
+  for (i = 0; i < p->submits_n; ++i)
+    /* 0 == Windows::OnSubmit::SendAndClear, the default a host gets — a preview's input
+     * clears on Enter exactly as the target app's would. */
+    rolltui_windows_bind_submit(w, p->submits[i].p ? p->submits[i].p : "", p->submits[i].n, mount_submit_noop, NULL,
+                                NULL, 0);
+  for (i = 0; i < p->notes_n; ++i)
+    rolltui_windows_bind_note(w, p->notes[i].p ? p->notes[i].p : "", p->notes[i].n, mount_note_noop, NULL, NULL);
+  for (i = 0; i < p->menus_n; ++i)
+    rolltui_windows_add_menu(w, p->menus[i].name.p ? p->menus[i].name.p : "", p->menus[i].name.n,
+                             p->menus[i].json.p ? p->menus[i].json.p : "", p->menus[i].json.n);
+  /* The app's help, not the tool's — the scope LIST included, since that is what a
+   * `help:<scope>` window is judged against (Phase 11 m5b). A profile that names none leaves
+   * the tool's own, which is the honest answer for an app that published nothing. */
+  if (p->help_scopes_n != 0) {
+    rolltui_windows_set_help(w, p->help_lead.p ? p->help_lead.p : "", p->help_lead.n,
+                             p->help_note.p ? p->help_note.p : "", p->help_note.n);
+    rolltui_windows_clear_help_scopes(w);
+    for (i = 0; i < p->help_scopes_n; ++i)
+      rolltui_windows_add_help_scope(w, p->help_scopes[i].p ? p->help_scopes[i].p : "", p->help_scopes[i].n);
+  }
 }

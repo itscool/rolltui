@@ -461,8 +461,18 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
     return NULL;
   }
   /* PARTIAL FIRST: a colours-only theme file fills part of the working copy and says what
-   * it kept (Presets.hpp). Its notes get the path in front of them. */
-  v = s->d->parse_partial(text.p, text.len, s->working, report);
+   * it kept (Presets.hpp). Its notes get the path in front of them.
+   *
+   * THE NULL CHECK IS NOT DEFENSIVE — `parse_partial` is a slot a domain may legitimately
+   * leave empty, and two of the three do: `rolltui_layout_preset_domain_init` and
+   * `rolltui_bindings_preset_domain_init` both set it NULL with the comment "a layout/bindings
+   * file is always whole". Calling it unconditionally therefore segfaulted the FIRST time a
+   * pure-C Layout or Bindings store loaded a user-saved preset by name. Nothing caught it
+   * because `PresetStore<D>`'s C++ descriptor always installs a real lambda in that slot even
+   * when the wrapped `D::parse_partial` only ever returns nullopt — so the C++ path could not
+   * reach the branch, and until this milestone there was no other path. Found 2026-09-05 by
+   * converting `presets_test`, which is the only way any of these has been found. */
+  v = s->d->parse_partial ? s->d->parse_partial(text.p, text.len, s->working, report) : NULL;
   if (v) {
     Buf prefix = {NULL, 0, 0};
     if (partial) *partial = 1;
@@ -1769,4 +1779,188 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
   origin = rolltui_preset_store_origin(s, &len);
   rolltui_str_append(out, origin, len);
   if (rolltui_preset_store_modified(s)) rolltui_str_append(out, " (modified)", 11);
+}
+
+
+/* ============================================================================================
+ * A SETTING'S VALUE IN THE WORKING COPY, and the Phase 9 -> Phase 10 migration — the two
+ * pieces of `Presets.cpp` that had no C form (Phase 17 m3). See the header for why
+ * `working_value`'s stated blocker was already false when it was written down.
+ * ============================================================================================ */
+
+void rolltui_preset_working_value(const RolltuiPresetStore* s, RolltuiPresetDomainId domain, const char* key,
+                                  size_t key_len, RolltuiStr* out) {
+  size_t dn = 0;
+  const char* dname;
+  if (!s) return;
+  dname = rolltui_preset_domain_name(domain, &dn);
+  /* The IDENTITY key — the one whose value IS the preset name — is the domain's own name.
+   * One rule for all three domains, which is what stopped it being three string literals. */
+  if (key_len == dn && memcmp(key, dname, dn) == 0) {
+    size_t on = 0;
+    const char* o = rolltui_preset_store_origin(s, &on);
+    rolltui_str_append(out, o ? o : "", on);
+    return;
+  }
+  if (domain != ROLLTUI_PRESET_DOMAIN_THEME) return; /* only Theme has non-identity settings */
+  {
+    RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(s);
+    if (!w) return;
+    if (key_len == 10 && memcmp(key, "theme_mode", 10) == 0)
+      rolltui_str_append(out, w->mode.p ? w->mode.p : "", w->mode.n);
+    else if (key_len == 11 && memcmp(key, "color_depth", 11) == 0)
+      rolltui_str_append(out, w->depth.p ? w->depth.p : "", w->depth.n);
+    rolltui_theme_preset_value_release(w);
+    rolltui_mem_free(w);
+  }
+}
+
+/* ---- the migration -------------------------------------------------------------------------- */
+
+static void migration_add_note(RolltuiMigrationReport* r, const char* s, size_t n) {
+  /* GROWING, AMORTISED (rolltui_alloc.h strategy 2) — through `rolltui_grow_zeroed`, which is
+   * growth's ONE home. Written first as a hand-rolled double-and-realloc, and `ownership_test`
+   * failed on it by name: the closed set is only closed if every growth goes through it. This
+   * is the same line the three report types above already have. */
+  r->notes = (RolltuiStr*)rolltui_grow_zeroed(r->notes, &r->notes_cap, r->notes_n + 1, sizeof *r->notes);
+  rolltui_str_set(&r->notes[r->notes_n++], s, n);
+}
+
+void rolltui_migration_report_release(RolltuiMigrationReport* r) {
+  size_t i;
+  if (!r) return;
+  rolltui_str_free(&r->layout_name);
+  rolltui_str_free(&r->error);
+  for (i = 0; i < r->notes_cap; ++i) rolltui_str_free(&r->notes[i]);
+  rolltui_mem_free(r->notes);
+  memset(r, 0, sizeof *r);
+}
+
+static void migration_path(Buf* b, const char* dir, size_t dir_len, const char* file, size_t file_len) {
+  b->len = 0;
+  buf_add(b, dir, dir_len);
+  buf_add(b, "/", 1);
+  buf_add(b, file, file_len);
+}
+
+void rolltui_preset_migrate_theme_layout(const char* dir, size_t dir_len, const RolltuiLayoutHooks* hooks,
+                                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                                         RolltuiMigrationReport* out) {
+  Buf theme_path, layout_path, text, msg;
+  RolltuiJsonValue* v = NULL;
+  const RolltuiJsonValue* layout_part;
+  RolltuiStr perr;
+  memset(&theme_path, 0, sizeof theme_path);
+  memset(&layout_path, 0, sizeof layout_path);
+  memset(&text, 0, sizeof text);
+  memset(&msg, 0, sizeof msg);
+  memset(&perr, 0, sizeof perr);
+  migration_path(&theme_path, dir, dir_len, "theme.working.json", sizeof("theme.working.json") - 1);
+  migration_path(&layout_path, dir, dir_len, "layout.working.json", sizeof("layout.working.json") - 1);
+  /* A fresh install: nothing to move, and nothing to say about it. */
+  if (!rolltui_preset_read_file(theme_path.p, theme_path.len, buf_put, &text)) goto done;
+  v = rolltui_json_parse(text.p ? text.p : "", text.len, &perr);
+  /* Unreadable, or already Phase 10 — either way the file is left exactly as it is. */
+  if (perr.n != 0 || !rolltui_json_is_object(v) || !rolltui_json_has(v, "layout", 6)) goto done;
+
+  {
+    /* `read_file` on the layout path is the existence check: a file we cannot read is one we
+     * must not overwrite either, so the two questions have the same answer here. */
+    Buf probe;
+    memset(&probe, 0, sizeof probe);
+    if (rolltui_preset_read_file(layout_path.p, layout_path.len, buf_put, &probe)) {
+      buf_free(&probe);
+      msg.len = 0;
+      buf_add(&msg, "the theme working copy still carried a layout; ", 46);
+      buf_add(&msg, layout_path.p, layout_path.len);
+      buf_add(&msg, " already exists, so it was left alone", 36);
+      migration_add_note(out, msg.p, msg.len);
+    } else {
+      RolltuiLoadedLayout l;
+      RolltuiLayoutReport lrep;
+      buf_free(&probe);
+      rolltui_loaded_layout_init(&l);
+      memset(&lrep, 0, sizeof lrep);
+      layout_part = rolltui_json_get(v, "layout", 6);
+      if (!rolltui_load_layout(layout_part, &l, default_actions, default_actions_n, hooks, &lrep)) {
+        msg.len = 0;
+        buf_add(&msg, theme_path.p, theme_path.len);
+        buf_add(&msg, ": its \"layout\" part is unusable (", 33);
+        buf_add(&msg, lrep.error.p ? lrep.error.p : "", lrep.error.n);
+        buf_add(&msg, "); it was left in place", 23);
+        rolltui_str_set(&out->error, msg.p, msg.len);
+        rolltui_layout_report_release(&lrep);
+        rolltui_loaded_layout_release(&l);
+        goto done;
+      }
+      {
+        /* The layout's own name, or "default" when it calls itself nothing. */
+        const char* origin = l.name.n ? l.name.p : "default";
+        const size_t origin_n = l.name.n ? l.name.n : sizeof("default") - 1;
+        RolltuiJsonValue* lv = rolltui_layout_to_json_value(origin, origin_n, l.min_width, l.min_height, l.actions,
+                                                           l.actions_n, &l.base, l.popups, l.popups_n, hooks);
+        RolltuiStr dump;
+        Buf werr;
+        int wrote;
+        memset(&dump, 0, sizeof dump);
+        memset(&werr, 0, sizeof werr);
+        rolltui_json_set(lv, "preset", 6, rolltui_json_string(origin, origin_n));
+        rolltui_json_dump(lv, 2, &dump);
+        rolltui_str_append(&dump, "\n", 1);
+        wrote = rolltui_preset_write_file_atomic(layout_path.p, layout_path.len, dump.p ? dump.p : "", dump.n, buf_put,
+                                                 &werr);
+        if (!wrote) rolltui_str_set(&out->error, werr.p ? werr.p : "", werr.len);
+        else {
+          out->moved = 1;
+          rolltui_str_set(&out->layout_name, origin, origin_n);
+          msg.len = 0;
+          buf_add(&msg, "moved the layout '", 18);
+          buf_add(&msg, origin, origin_n);
+          buf_add(&msg, "' out of the theme working copy into ", 37);
+          buf_add(&msg, layout_path.p, layout_path.len);
+          buf_add(&msg, " (it is its own preset domain now)", 34);
+          migration_add_note(out, msg.p, msg.len);
+        }
+        rolltui_str_free(&dump);
+        buf_free(&werr);
+        rolltui_json_free(lv);
+        rolltui_layout_report_release(&lrep);
+        rolltui_loaded_layout_release(&l);
+        if (!wrote) goto done;
+      }
+    }
+  }
+
+  /* Strip second, and only now — the layout is safely on disk (or was already there). */
+  rolltui_json_object_erase(v, "layout", 6);
+  {
+    RolltuiStr dump;
+    Buf werr;
+    memset(&dump, 0, sizeof dump);
+    memset(&werr, 0, sizeof werr);
+    rolltui_json_dump(v, 2, &dump);
+    rolltui_str_append(&dump, "\n", 1);
+    if (!rolltui_preset_write_file_atomic(theme_path.p, theme_path.len, dump.p ? dump.p : "", dump.n, buf_put, &werr)) {
+      /* The layout is already safe: say what did NOT happen rather than claim success. */
+      msg.len = 0;
+      buf_add(&msg, "could not rewrite ", 18);
+      buf_add(&msg, theme_path.p, theme_path.len);
+      buf_add(&msg, " without its layout part (", 26);
+      buf_add(&msg, werr.p ? werr.p : "", werr.len);
+      buf_add(&msg, "); it is ignored on load", 24);
+      migration_add_note(out, msg.p, msg.len);
+    } else {
+      out->rewrote_theme = 1;
+    }
+    rolltui_str_free(&dump);
+    buf_free(&werr);
+  }
+
+done:
+  rolltui_json_free(v);
+  rolltui_str_free(&perr);
+  buf_free(&theme_path);
+  buf_free(&layout_path);
+  buf_free(&text);
+  buf_free(&msg);
 }

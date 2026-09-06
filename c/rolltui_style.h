@@ -50,9 +50,10 @@ extern "C" {
  * cannot reach it*. It had already started: a host converting off the C++ had to invent the
  * role bytes for eight entries and a 49-long style array with no count to size it by.
  *
- * ONE SPELLING, and it is this list. Both languages DERIVE from it — the C enum below, the
- * C++ `enum class Role` in `Style.hpp` while that file exists, and the name table in
- * `rolltui_style.c`. An X-macro rather than three parallel lists because the rule this
+ * ONE SPELLING, and since Phase 17 m3 that is now literally true rather than a rule two
+ * spellings obeyed: the C++ `enum class Role` was deleted with `Style.hpp`, so what derives
+ * from this list is the C enum below and the name table in `rolltui_style.c`, and every
+ * consumer — C and C++ alike — writes `ROLLTUI_ROLE_*`. An X-macro rather than three parallel lists because the rule this
  * library keeps re-learning is that a vocabulary written down twice is a second thing to
  * drift, and here the drift would be silent: a role added in one place and not the other
  * draws in the wrong colour rather than failing to build.

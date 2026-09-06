@@ -153,6 +153,11 @@ struct RolltuiWindows {
 
   /* ---- what a host BOUND, by name (Phase 15 m6) ------------------------------------------ */
   RolltuiMap documents;  /* name -> BORROWED doc pointer, opaque to C; never freed by this table */
+  /* …and the OWNED half (Phase 17 m3, from `rolltui::Windows::owned_documents_`): name ->
+   * RolltuiDocument*, OWNED. A sample a tool binds from an app profile has no live document to
+   * point at, so this table keeps one; `documents` above then carries the borrow of it, which is
+   * why the two maps are separate rather than one map with an ownership flag. */
+  RolltuiMap owned_documents;
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
@@ -228,8 +233,16 @@ void rolltui_windows_free(RolltuiWindows* w) {
   rolltui_str_free(&w->scratch);
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
-  /* the host-binding surface (m6): `documents` is BORROWS only, nothing to free per entry. */
+  /* the host-binding surface (m6): `documents` is BORROWS only, nothing to free per entry —
+   * but `owned_documents` holds the samples those borrows may point INTO, so it is released
+   * after it rather than before. */
   rolltui_map_release(&w->documents);
+  for (i = 0; i < rolltui_map_count(&w->owned_documents); ++i) {
+    RolltuiDocument* d = (RolltuiDocument*)rolltui_map_value_at(&w->owned_documents, i);
+    rolltui_document_release(d);
+    rolltui_mem_free(d);
+  }
+  rolltui_map_release(&w->owned_documents);
   for (i = 0; i < rolltui_map_count(&w->rows); ++i) {
     RowsBinding* b = (RowsBinding*)rolltui_map_value_at(&w->rows, i);
     free_binding_ctx(b->ctx, b->free_ctx);
@@ -497,6 +510,26 @@ void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t l
 
 const RolltuiDocument* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len) {
   return (const RolltuiDocument*)rolltui_map_get(&w->documents, name, len);
+}
+
+void rolltui_windows_bind_sample_document(RolltuiWindows* w, const char* name, size_t len, const char* markdown,
+                                          size_t markdown_len) {
+  RolltuiDocument* d = (RolltuiDocument*)rolltui_map_get(&w->owned_documents, name, len);
+  RolltuiDocEntry* e;
+  if (!d) {
+    /* STRATEGY 5 (GROWING HEAP): one document per named sample, for the table's life — the
+     * borrow below needs an address that survives every later bind of another name. */
+    d = (RolltuiDocument*)rolltui_mem_alloc(sizeof *d);
+    memset(d, 0, sizeof *d);
+    rolltui_map_put(&w->owned_documents, name, len, d);
+  }
+  /* Rebinding the same name REPLACES the sample; `clear` keeps the array, which is the whole
+   * of why this is not a release-and-new. */
+  rolltui_document_clear(d);
+  e = rolltui_document_add(d);
+  rolltui_str_set(&e->id, "sample", 6);
+  rolltui_str_set(&e->text, markdown, markdown_len);
+  rolltui_windows_bind_document(w, name, len, d);
 }
 
 void rolltui_windows_bind_rows(RolltuiWindows* w, const char* name, size_t len, RolltuiRowsFn fn, void* ctx,

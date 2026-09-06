@@ -1071,3 +1071,66 @@ void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, 
     rolltui_str_append(out, buf, len);
   }
 }
+
+
+/* ============================================================================================
+ * THE RENAMED ACTIONS (Phase 17 m3) — see the header for why this table's home is here and not
+ * in `Bindings.cpp`, where it was until a host needed to assemble a preset store without C++.
+ * ============================================================================================ */
+
+typedef struct {
+  const char* from;
+  size_t from_len;
+  const char* to;
+  size_t to_len;
+} LegacyAction;
+
+#define ROLLTUI_LEGACY(from_, to_) {from_, sizeof(from_) - 1, to_, sizeof(to_) - 1}
+static const LegacyAction kLegacyActions[] = {
+    ROLLTUI_LEGACY("playground.cycle_theme", "studio.cycle_theme"),
+    ROLLTUI_LEGACY("playground.reload", "studio.reload"),
+    ROLLTUI_LEGACY("playground.quit", "studio.quit"),
+};
+#undef ROLLTUI_LEGACY
+
+size_t rolltui_migrated_action_count(void) { return sizeof kLegacyActions / sizeof *kLegacyActions; }
+
+void rolltui_migrated_action_at(size_t i, const char** from, size_t* from_len, const char** to, size_t* to_len) {
+  if (i >= rolltui_migrated_action_count()) {
+    if (from) *from = "";
+    if (from_len) *from_len = 0;
+    if (to) *to = "";
+    if (to_len) *to_len = 0;
+    return;
+  }
+  if (from) *from = kLegacyActions[i].from;
+  if (from_len) *from_len = kLegacyActions[i].from_len;
+  if (to) *to = kLegacyActions[i].to;
+  if (to_len) *to_len = kLegacyActions[i].to_len;
+}
+
+int rolltui_migrated_action(void* ctx, const char* legacy, size_t len, char* out, size_t* out_len) {
+  size_t i;
+  (void)ctx;
+  for (i = 0; i < rolltui_migrated_action_count(); ++i) {
+    const LegacyAction* a = &kLegacyActions[i];
+    size_t n;
+    if (a->from_len != len || memcmp(a->from, legacy, len) != 0) continue;
+    n = a->to_len < ROLLTUI_ACTION_NAME_MAX ? a->to_len : (size_t)ROLLTUI_ACTION_NAME_MAX;
+    memcpy(out, a->to, n);
+    *out_len = n;
+    return 1;
+  }
+  return 0;
+}
+
+size_t rolltui_undeliverable_reason_fn(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out,
+                                       size_t cap) {
+  const int code = rolltui_key_undeliverable_reason(k, protocol);
+  size_t n = 0;
+  const char* text = rolltui_key_undeliverable_text(code, &n);
+  (void)ctx;
+  if (n > cap) n = cap;
+  if (n != 0) memcpy(out, text, n);
+  return n;
+}

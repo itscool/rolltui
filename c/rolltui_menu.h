@@ -24,10 +24,21 @@
  * headers), a menu FILE has no sibling algorithm on the other side of a boundary to entangle
  * it, so the whole walk moves.
  *
- * **Which tree items name an action, and what a chord is called.** `item_actions()`,
- * `unknown_validators()` and `apply_shortcuts()` are TREE WALKS with no widget state in
- * them, so the shim does them over the same C tree — the C would gain nothing but a second
- * place to know what `Bindings::chords_text` means.
+ * ~~**Which tree items name an action, and what a chord is called.** `item_actions()`,
+ * `unknown_validators()` and `apply_shortcuts()` are TREE WALKS with no widget state in them,
+ * so the shim does them over the same C tree — the C would gain nothing but a second place to
+ * know what `Bindings::chords_text` means.~~
+ * **RETRACTED 2026-09-05 (Phase 17 m3), and the reason is that its premise expired.**
+ * `chords_text` moved to C in m2a — it is `rolltui_bindings_chords_text` one header over — so
+ * the C gains no second place to know anything; it already knows. What the sentence was
+ * actually protecting was a home for three walks, and *"the shim does them"* stops being an
+ * answer the moment the shim is the thing being deleted. `tests/tui_frontend_test.cpp` calls
+ * two of the three, so without this they would relocate into every consumer that needed
+ * them — which is the failure the vocabulary rule names, one level up.
+ *
+ * The three are below as `rolltui_menu_apply_shortcuts`, `rolltui_menu_item_actions` and
+ * `rolltui_menu_unknown_validators`. They take a TREE, not a menu, because that is what they
+ * are about; the widget's own one-line versions are beside them.
  *
  * ---- THE BOUNDARY'S RULES, all inherited and none new -----------------------------------
  *
@@ -185,6 +196,32 @@ typedef struct RolltuiMenuActions {
 typedef int (*RolltuiValidatorFn)(void* ctx, const char* name, size_t nlen, const char* text, size_t tlen,
                                   RolltuiStr* why);
 void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* ctx);
+
+/* ---- the three tree walks (Phase 17 m3) ----------------------------------------------------
+ * Pure over a `RolltuiMenuItem` tree, with no widget state in them — which is why they take the
+ * ROOT rather than a `RolltuiMenu*`, and why a host can call them on a tree it has not mounted.
+ *
+ * `apply_shortcuts` fills each item's `shortcut` from the live table. An action NO layout
+ * declares is INERT — the table keeps its chords but nothing can emit it — so it gets an EMPTY
+ * shortcut rather than its chords: printing them would promise a key that cannot fire, which is
+ * the exact lie this function exists to remove.
+ *
+ * `item_actions` and `unknown_validators` ENUMERATE through a sink, so the caller owns whatever
+ * it collects into (rule 1) and nothing is returned by value (rule 2). `item_actions` reports a
+ * PAIR per item, which is why it has its own two-string sink rather than `RolltuiPutFn`. */
+void rolltui_menu_apply_shortcuts(RolltuiMenuItem* root, const RolltuiBindings* b);
+
+typedef void (*RolltuiMenuActionFn)(void* ctx, const char* id, size_t id_len, const char* action, size_t action_len);
+void rolltui_menu_item_actions(const RolltuiMenuItem* root, RolltuiMenuActionFn put, void* ctx);
+
+/* The validator names this tree REFERENCES that nothing has registered, de-duplicated in
+ * first-seen order. It asks through `RolltuiValidatorFn` — the SAME callback the widget's own
+ * registry uses, called with empty text purely for its "is this name registered" answer — so a
+ * host answers the question the one way it already answers it, rather than gaining a second
+ * registry-shaped thing to keep in step. */
+void rolltui_menu_unknown_validators(const RolltuiMenuItem* root, RolltuiValidatorFn is_known, void* ctx,
+                                     RolltuiPutFn put, void* put_ctx);
+
 
 /* The LIBRARY'S OWN fifteen (plus the input table they point at), so a consumer can call
  * `handle` without spelling them (Phase 17 m2a). This table used to be in an ANONYMOUS

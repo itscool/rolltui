@@ -546,6 +546,28 @@ const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n);
  * not each scan the embedded table their own way. */
 const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* out_len);
 
+/* ---- the built-in layouts, PARSED and cached (Phase 17 m3) ---------------------------------
+ * `_builtin_json` above hands back the TEXT, which is the right shape for a caller that wants
+ * to load it once. Both hosts want the LAYOUT, and want it on paths that run per resize and
+ * per frame (`effective_layout()`, the `stacked` fallback), so parsing on every call would put
+ * a JSON parse inside the frame — a thing `budget_test` exists to make impossible.
+ *
+ * So the cache is the library's, exactly as `Layout.cpp`'s was. Two properties of that C++ one
+ * are carried over deliberately, both of which cost it a defect first:
+ *   - it FILLS WHEN EMPTY rather than in a static initializer, because `rolltui_shutdown()`
+ *     releases it and a once-only fill would leave this answering NULL forever after. Releasing
+ *     a cache is only safe if the cache rebuilds.
+ *   - it REGISTERS ITS RELEASER AT FILL TIME, not once per process, because `shutdown()` clears
+ *     its own registry as it runs — so a register-once cache survives the second shutdown.
+ * `_names` is in shipped order: "default" first (what a fresh install runs), then the table's.
+ *
+ * The result is a BORROW the library keeps until `rolltui_shutdown()`; NULL for a name that is
+ * not a built-in. A built-in that does not parse cleanly is a programming error and aborts
+ * rather than serving half a layout — the same call the C++ made. */
+const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len);
+size_t rolltui_layout_builtin_count(void);
+const char* rolltui_layout_builtin_name(size_t i, size_t* out_len);
+
 
 /* Parses one layout file's ALREADY-PARSED JSON tree into `out` (an `out` the caller has run
  * `rolltui_loaded_layout_init` on — its old fields are not released first, matching
@@ -645,5 +667,49 @@ const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* l
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
+
+#ifdef __cplusplus
+/* ---- `RolltuiActionList`'s C++ special members (Phase 17 m3) --------------------------------
+ * Each is a CALLER of a C function declared above, so "release this list" has exactly one
+ * implementation. They were out-of-line in `rolltui/Layout.cpp` for a stated reason that still
+ * holds and that this placement satisfies: an inline body INSIDE the struct is parsed in a
+ * complete-class context for member names, but an ordinary name like
+ * `rolltui_action_list_release` must already be declared at that point — and it is declared
+ * AFTER the struct. Down here, after every declaration, that is no longer true of anything.
+ *
+ * They are not part of the deleted binding: they are what makes "the C++ type IS the C struct"
+ * true (Phase 14's one-definition rule). */
+inline RolltuiActionList::~RolltuiActionList() { rolltui_action_list_release(this); }
+
+inline void RolltuiActionList::copy_from(const RolltuiActionList& o) { rolltui_action_list_copy(this, &o); }
+
+inline RolltuiActionList& RolltuiActionList::operator=(RolltuiActionList&& o) noexcept {
+  if (this != &o) {
+    rolltui_action_list_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+
+inline void RolltuiActionList::push_back(const RolltuiLayoutAction& a) {
+  RolltuiLayoutAction* p = rolltui_action_list_add(this);
+  rolltui_str_set(&p->name, a.name.p, a.name.n);
+  rolltui_str_set(&p->description, a.description.p, a.description.n);
+}
+
+inline void RolltuiActionList::erase_name(std::string_view name) {
+  rolltui_action_list_remove_name(this, name.data(), name.size());
+}
+
+inline void RolltuiActionList::clear() { rolltui_action_list_clear(this); }
+
+inline bool RolltuiActionList::operator==(const RolltuiActionList& o) const {
+  return rolltui_action_list_equal(this, &o) != 0;
+}
+#endif /* __cplusplus */
 
 #endif /* ROLLTUI_C_LAYOUT_H */

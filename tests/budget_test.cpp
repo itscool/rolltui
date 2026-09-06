@@ -48,6 +48,25 @@
 // phase — but 203 µs is 1.2% of a terminal frame, so nothing here is a performance
 // emergency and no milestone may claim otherwise (plan/phase-13.md).
 //
+// PHASE 17 m2c: THIS FILE CALLS THE C DIRECTLY. `Document.hpp`, `Layout.hpp`,
+// `Markdown.hpp`, `Screen.hpp`, `Theme.hpp` and `Widgets.hpp` are deleted; the idiom below
+// (an app-lifetime fixture with plain members released in one destructor, `rolltui_swap`
+// in place of a per-frame `Frame`, a host widget as a `RolltuiWidgetPlugin` table) is the
+// one `rolltui/tools/paint.cpp` established as Phase 17 m3's first host.
+//
+// **ONE GAP, NAMED RATHER THAN WORKED AROUND**: `rolltui_mem_realloc` — the growing-heap
+// strategy's realloc half, which `rolltui::mem::realloc` wraps — has no public declaration.
+// `rolltui_mem_alloc`/`rolltui_mem_free` moved from the internal `rolltui/c/rolltui_alloc.h`
+// to the public `rolltui_mem.h` on 2026-09-05 (Phase 17 m3, concurrent with this file's own
+// conversion) precisely so a consumer could reach a handle and its release; that same change
+// deliberately did NOT move `rolltui_mem_realloc` — its own header comment says why: "growth
+// is the thing the closed set exists to stop being invented, and leaving its declaration in
+// an internal header makes that structural rather than a grep control's promise." This
+// file's exact-accounting check needs to trigger a GROWING realloc specifically (the
+// assertion right below is about how a grow is counted), so it is the one call this file
+// cannot get from `rolltui.h` — `rolltui_mem_alloc`/`rolltui_mem_free` are public and used
+// directly below, and `rolltui_mem_realloc` is reached through the internal
+// `rolltui/c/rolltui_alloc.h`, deliberately and for one call. See the include for why.
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -57,16 +76,20 @@
 #include <utility>
 #include <vector>
 
-#include "rolltui/Document.hpp"
-#include "rolltui/Layout.hpp"
-#include "rolltui/Markdown.hpp"
-#include "rolltui/Memory.hpp"
-#include "rolltui/Screen.hpp"
-#include "rolltui/Theme.hpp"
-#include "rolltui/Widgets.hpp"
+#include "rolltui/rolltui.h"
+// …AND ONE DELIBERATE REACH PAST IT, which is not a gap (Phase 17 m3). `rolltui_mem_realloc`
+// is declared only in the INTERNAL `rolltui/c/rolltui_alloc.h`, on purpose: growth is the thing
+// the closed set exists to stop being invented, and keeping its declaration out of the public
+// header makes that restriction STRUCTURAL rather than a grep control's promise
+// (`rolltui_mem_alloc`/`_free` moved to the public `rolltui_mem.h` and are used directly below).
+//
+// This file is the one consumer entitled to reach for it, because it is not a consumer of the
+// UI API at all — it is the ALLOCATOR'S OWN accounting test, and the assertion below exists to
+// prove that a growing realloc counts as an allocation. Publishing `realloc` to satisfy one
+// test would undo the restriction for every other caller, which is the trade backwards.
+#include "rolltui/c/rolltui_alloc.h"
 #include "rolltui_test.hpp"
 
-using namespace rolltui;
 using namespace rolltui_test;
 
 // ---- the counter ----------------------------------------------------------------------
@@ -118,6 +141,18 @@ void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); 
 
 namespace {
 
+// `rolltui::mem::Stats`'s SHAPE, not its rule: `Memory.hpp` stays included only for the one
+// `rolltui::mem::realloc` call the header comment names, so every READ of the counters goes
+// through the public `rolltui_mem_stats` into a plain local struct instead.
+struct MemStats {
+  std::size_t allocations = 0, frees = 0, bytes_requested = 0, live_bytes = 0, peak_bytes = 0, live_blocks = 0;
+};
+MemStats mem_stats() {
+  MemStats s;
+  rolltui_mem_stats(&s.allocations, &s.frees, &s.bytes_requested, &s.live_bytes, &s.peak_bytes, &s.live_blocks);
+  return s;
+}
+
 struct Cost {
   long allocs = 0;
   long long bytes = 0;
@@ -133,19 +168,18 @@ struct Cost {
 // and it became a HOLE IN THE INSTRUMENT the moment the port put the Frame's cells,
 // links and spilled glyphs behind `rolltui_mem_alloc`. A budget that reports zero because it
 // cannot see the allocator is exactly the failure this file's header is built around, aimed
-// at its own counter, so `mem::stats()` is read across the same window and the deltas are
-// summed. In the C++ build nothing on the frame path called `rolltui::mem`, so the
-// second term is 0 and every recorded number below means what it did before.
+// at its own counter, so `mem_stats()` is read across the same window and the deltas are
+// summed.
 template <typename F>
 Cost measure(F&& fn) {
   const auto t0 = std::chrono::steady_clock::now();
   g_allocs = 0;
   g_bytes = 0;
-  const mem::Stats m0 = mem::stats();
+  const MemStats m0 = mem_stats();
   g_on = true;
   fn();
   g_on = false;
-  const mem::Stats m1 = mem::stats();
+  const MemStats m1 = mem_stats();
   Cost c;
   c.allocs = g_allocs + static_cast<long>(m1.allocations - m0.allocations);
   c.bytes = g_bytes + static_cast<long long>(m1.bytes_requested - m0.bytes_requested);
@@ -164,54 +198,109 @@ std::string entry_text(int i) {
   return s;
 }
 
+// windows.prepare(stack, box)'s three steps, done directly — there is no single
+// `rolltui_windows_prepare`; a host composes sync + autosize + layout itself
+// (`rolltui/tools/paint.cpp`'s `App::prepare` is the worked example).
+void windows_prepare(RolltuiWindows* w, RolltuiWindowStack* s, RolltuiRect box) {
+  rolltui_windows_sync(w, s);
+  rolltui_windows_autosize(w, s, box);
+  rolltui_windows_layout(w, s, box);
+}
+
 // The scene: a 40-entry document in the shipped `default` layout, with every source a
 // host binds actually bound. Deliberately NOT a preset store — no file is read, so the
 // numbers cannot depend on the machine running them.
 struct Scene {
-  Document doc;
-  Windows windows;
-  WindowStack stack;
-  Theme theme = *builtin_theme("default-dark");
+  RolltuiDocument doc{};
+  RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+  RolltuiEffectMap* effects = nullptr;
+  RolltuiWindows* windows = rolltui_windows_new();
+  RolltuiWindowStack* stack = rolltui_window_stack_new();
+  RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
+  // PHASE 17 m2c, per this file's own note below at `paint()`: the scene calls the SWAP
+  // rather than resetting an owned Frame directly, which is what makes "exactly as a host
+  // paints it" true of the code as well as the comment (`rolltui-paint` adopted the swap
+  // first, Phase 17 m3). `rolltui_swap_begin` IS `rolltui_frame_reset` plus lending the
+  // pointer back (`rolltui/c/rolltui_swap.c`), so this is not a new allocation shape.
+  RolltuiSwap* swap = rolltui_swap_new(0, 0, RolltuiStyle{});
 
-  Scene() : stack(*builtin_layout("default")) {
+  Scene() {
+    rolltui_windows_set_library_defaults(windows);
+    effects = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
+
+    std::size_t json_n = 0;
+    const char* json = rolltui_layout_builtin_json("default", 7, &json_n);
+    RolltuiLoadedLayout loaded{};
+    rolltui_loaded_layout_init(&loaded);
+    std::size_t defaults_n = 0;
+    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+    RolltuiLayoutReport rep{};
+    rolltui_load_layout_text(json, json_n, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(), &rep);
+    RolltuiLayout layout{};
+    rolltui_layout_init(&layout);
+    rolltui_loaded_layout_to_layout(&loaded, &layout);
+    rolltui_loaded_layout_release(&loaded);
+    rolltui_layout_report_release(&rep);
+    rolltui_window_stack_set_base(stack, &layout.base);  // COPIES; `layout` need not outlive this
+    rolltui_layout_release(&layout);
+
     for (int i = 0; i < 40; ++i) {
-      DocEntry e;
-      e.id = "e" + std::to_string(i);
-      e.markdown = true;
-      e.text = entry_text(i);
-      doc.entries.push_back(std::move(e));
+      RolltuiDocEntry* e = rolltui_document_add(&doc);
+      e->id = "e" + std::to_string(i);
+      e->markdown = 1;
+      e->text = entry_text(i);
     }
-    windows.bind_document("session", &doc);
-    windows.bind_rows("status", [](Rows& out) {
-      out.add("theme", "default-dark");
-      out.add("layout", "default");
-      out.add("size", "120x40");
-      out.add("depth", "truecolor");
-    });
-    windows.bind_submit("prompt", [](const std::string&) {});
-    WidgetEnv env;
-    env.now_ms = 1;
-    windows.set_env(env);
+    rolltui_windows_bind_document(windows, "session", 7, &doc);
+    rolltui_windows_bind_rows(
+        windows, "status", 6,
+        [](void*, RolltuiRows* out) {
+          rolltui_rows_add(out, "theme", 5, "default-dark", 12);
+          rolltui_rows_add(out, "layout", 6, "default", 7);
+          rolltui_rows_add(out, "size", 4, "120x40", 6);
+          rolltui_rows_add(out, "depth", 5, "truecolor", 9);
+        },
+        nullptr, nullptr);
+    rolltui_windows_bind_submit(
+        windows, "prompt", 6, [](void*, const char*, std::size_t) {}, nullptr, nullptr, /*on_submit=*/0);
+
+    rolltui_windows_set_bindings(windows, rolltui_bindings_default());
+    const RolltuiWidgetEnv env{0, 1};
+    rolltui_windows_set_env(windows, &env);
+  }
+  Scene(const Scene&) = delete;
+  Scene& operator=(const Scene&) = delete;
+  ~Scene() {
+    rolltui_swap_free(swap);
+    rolltui_compose_scratch_free(compose_scratch);
+    rolltui_window_stack_free(stack);
+    rolltui_windows_free(windows);
+    rolltui_effect_map_free(effects);
+    rolltui_document_release(&doc);
   }
 
   // One frame, exactly as a host paints it: prepare (instantiate, autosize, lay out),
-  // then compose into a fresh Frame.
-  void paint(int w, int h, Frame& into) {
-    const Rect box{0, 0, w, h};
-    windows.prepare(stack, box);
-    // m5's REUSE path. **NOT what a host did — corrected 2026-09-04, when the comment claimed
-    // it was and `Frame::reset` had zero callers outside this file: all three hosts built
-    // `Frame f(w, h, fill)` fresh every repaint and `prev = std::move(f)`, so each allocated and
-    // freed a whole frame per paint (~153 KB at 120x40) while this budget reported zero.**
-    //
-    // ONE HOST DOES IT NOW (Phase 17 m3): `rolltui-paint` presents through `rolltui_swap`,
-    // whose `begin` calls `rolltui_frame_reset`, so its repaint lands inside this measurement
-    // rather than beside it. The studio and `TuiFrontend` are m3's remainder and still build a
-    // frame per repaint, which is why this note stays until they follow. When this suite is
-    // converted (m2c), the scene below should call the SWAP rather than `reset` directly —
-    // that is what makes "exactly as a host paints it" true of the sentence AND the code.
-    into.reset(w, h, theme.style(Role::background));
-    stack.compose(into, box, theme, [&](const ResolvedNode& rn, Frame& f) { windows.draw(rn, f, theme); });
+  // then compose into the frame the SWAP lends.
+  //
+  // CORRECTED 2026-09-04, when the C++ shim still carried this scene: the comment used to
+  // claim `Frame::reset` was "exactly as a host does it" while `Frame::reset` had zero
+  // callers outside this file — all three hosts built a fresh frame every repaint and threw
+  // it away (~153 KB at 120x40) while this budget reported zero. `rolltui-paint` closed that
+  // gap for itself by adopting `rolltui_swap` (Phase 17 m3); this file adopting it too
+  // (m2c) is what makes the sentence true of the INSTRUMENT as well. `rolltui_swap_present`
+  // — which turns a frame into the bytes a terminal would receive — is never called here:
+  // this suite measures the draw path, and diffing/output is a different (and differently
+  // measured) concern.
+  void paint(int w, int h) {
+    const RolltuiRect box{0, 0, w, h};
+    windows_prepare(windows, stack, box);
+    RolltuiFrame* f = rolltui_swap_begin(swap, w, h, styles[ROLLTUI_ROLE_BACKGROUND]);
+    rolltui_window_stack_compose(stack, f, box, styles, rolltui_layout_default_roles(), draw_slot, this,
+                                 /*ambiguous_wide=*/0, compose_scratch);
+  }
+
+  static void draw_slot(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+    Scene* s = static_cast<Scene*>(ctx);
+    rolltui_windows_draw(s->windows, rn, f, s->styles, rolltui_windows_default_roles());
   }
 };
 
@@ -219,24 +308,52 @@ struct Scene {
 // allocations, so the measured cost of a layout containing it must exceed the same
 // layout's without it by at least that much. It runs on every ctest run: the counter
 // cannot come unarmed without this failing.
+//
+// PHASE 17 m2c: `Widget` is deleted along with `Widgets.hpp`, so the control is a
+// `RolltuiWidgetPlugin` — the same nine-slot table `rolltui/tools/paint.cpp`'s `Canvas`
+// fills — rather than a C++ subclass. `ctx` carries its own draw scratch (CLAUDE.md's
+// caller-owns-working-memory rule) and a BORROW of the `Windows` it was built for, which is
+// how a plugin reaches the live style table at draw time (`rolltui_windows_styles`, the same
+// call `Canvas::draw` makes).
 constexpr int kWasted = 500;
 bool g_waste = false;  // the control's one variable: the SAME scene, measured twice
 
-class WastefulWidget : public Widget {
- public:
-  void layout(const ResolvedNode&) override {}
-  void draw(const ResolvedNode& rn, Frame& f, const Theme& theme) override {
-    if (!g_waste) return;
-    // Heap-allocated, escaping any small-buffer optimisation, and used — so no compiler
-    // may fold it away. A control that gets optimised out is a control that lies.
-    std::string sink;
-    for (int i = 0; i < kWasted; ++i) {
-      std::vector<int> v(8, i);  // one allocation each, unambiguously
-      sink += static_cast<char>('a' + (v[0] % 26));
-    }
-    f.put_text(rn.inner.x, rn.inner.y, sink.substr(0, 8), theme.style(Role::text), rn.inner.w);
-  }
+struct WastefulCtx {
+  RolltuiWindows* windows;  // BORROWED
+  RolltuiDrawScratch* draw_scratch;
 };
+
+void wasteful_destroy(void* ctx) {
+  WastefulCtx* c = static_cast<WastefulCtx*>(ctx);
+  rolltui_draw_scratch_free(c->draw_scratch);
+  delete c;
+}
+void wasteful_layout(void*, const RolltuiResolvedNode*) {}
+void wasteful_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  if (!g_waste) return;
+  // Heap-allocated, escaping any small-buffer optimisation, and used — so no compiler
+  // may fold it away. A control that gets optimised out is a control that lies.
+  WastefulCtx* c = static_cast<WastefulCtx*>(ctx);
+  std::string sink;
+  for (int i = 0; i < kWasted; ++i) {
+    std::vector<int> v(8, i);  // one allocation each, unambiguously
+    sink += static_cast<char>('a' + (v[0] % 26));
+  }
+  const std::string glyph = sink.substr(0, 8);
+  const RolltuiStyle* styles = rolltui_windows_styles(c->windows);
+  const RolltuiStyle text_style = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
+  rolltui_frame_put_text(f, c->draw_scratch, rn->inner.x, rn->inner.y, glyph.data(), glyph.size(), text_style,
+                         rn->inner.w, 0, 0);
+}
+
+constexpr RolltuiWidgetPlugin kWastefulPlugin = {
+    wasteful_destroy, wasteful_layout, wasteful_draw, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+};
+
+RolltuiWidget wasteful_factory(void* ctx, const char*, std::size_t) {
+  RolltuiWindows* windows = static_cast<RolltuiWindows*>(ctx);
+  return RolltuiWidget{&kWastefulPlugin, new WastefulCtx{windows, rolltui_draw_scratch_new()}};
+}
 
 std::string fmt(const Cost& c) {
   return std::to_string(c.allocs) + " allocs / " + std::to_string(c.bytes / 1024) + " KB / " + std::to_string(c.micros) + " us";
@@ -269,8 +386,8 @@ int main() {
     // however much the C allocated. It ran in both configurations, so the day the addition
     // is dropped the test fails whichever way the flag is set.
     const Cost owned = measure([] {
-      void* p = mem::alloc(4096);
-      mem::free(p);
+      void* p = rolltui_mem_alloc(4096);
+      rolltui_mem_free(p);
     });
     check(owned.allocs == 1 && owned.bytes >= 4096,
           "…and the counter sees rolltui::mem too, which operator new cannot [" + std::to_string(owned.allocs) +
@@ -284,26 +401,25 @@ int main() {
   // allocation cannot hide. Re-record DELIBERATELY, with a journal entry saying which
   // milestone moved which number and by how much — that is the whole point of the phase.
   Scene scene;
-  Frame frame;
   // Warm: the transcript's layout cache is a memo, and measuring a cold cache would be
   // measuring the cache and not the draw path (plan/phase-13.md: "the layout cache is
   // already doing its job — this phase must not touch it").
-  for (int i = 0; i < 3; ++i) scene.paint(120, 40, frame);
+  for (int i = 0; i < 3; ++i) scene.paint(120, 40);
 
-  const Cost steady = measure([&] { scene.paint(120, 40, frame); });
+  const Cost steady = measure([&] { scene.paint(120, 40); });
   std::printf("  steady-state 120x40 : %s\n", fmt(steady).c_str());
 
   // A streaming frame: the last entry grows, so exactly one entry re-lays.
-  scene.doc.entries.back().text += "\nanother streamed line arrives.\n";
-  scene.doc.entries.back().version++;
-  const Cost streaming = measure([&] { scene.paint(120, 40, frame); });
+  scene.doc.back().text += "\nanother streamed line arrives.\n";
+  scene.doc.back().version++;
+  const Cost streaming = measure([&] { scene.paint(120, 40); });
   std::printf("  streaming    120x40 : %s\n", fmt(streaming).c_str());
 
   // A resize: every entry re-wraps at the new width. The most expensive frame there is,
   // and the one a user makes by dragging a corner.
-  const Cost resize = measure([&] { scene.paint(100, 40, frame); });
+  const Cost resize = measure([&] { scene.paint(100, 40); });
   std::printf("  resize       →100x40: %s\n", fmt(resize).c_str());
-  for (int i = 0; i < 3; ++i) scene.paint(120, 40, frame);  // back to the baseline width
+  for (int i = 0; i < 3; ++i) scene.paint(120, 40);  // back to the baseline width
 
   // MEASURED 2026-09-03, Apple Clang / macOS / Release. **The bands are ±2%, and that
   // number is evidence rather than caution.** Three consecutive runs gave 887 / 2772 /
@@ -472,24 +588,26 @@ int main() {
   // unarmed, or has stopped measuring the DRAW path specifically, this cannot move.
   //
   // The factory is registered on THIS Windows, not on any other. That is not a detail:
-  // `register_kind` puts the NAME in the process-wide layout vocabulary and the FACTORY in
-  // one Windows, so registering on the wrong instance leaves the layout naming a kind that
+  // `rolltui_widget_kind_register` puts the NAME in the process-wide layout vocabulary and
+  // `rolltui_windows_register_kind` puts the FACTORY in one Windows, so registering the name
+  // and pointing the factory at the wrong instance leaves the layout naming a kind that
   // instance cannot build — which draws an error panel and measures LOWER. The first draft
   // of this control did exactly that and read 887 → 815, i.e. it "failed" by getting
   // cheaper. Worth keeping in the comment: a control that moves the wrong way is still
   // telling you something.
   {
     Scene control;
-    std::string why;
-    check(control.windows.register_kind("wasteful", [] { return std::make_unique<WastefulWidget>(); },
-                                        SourceRule::Forbidden, "", &why),
-          "registered a deliberately wasteful widget kind on the Windows that will draw it [" + why + "]");
-    Node* status = control.stack.find("status");
+    const int verdict = rolltui_widget_kind_register("wasteful", 8, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
+    check(verdict == ROLLTUI_REGISTER_OK,
+          "registered a deliberately wasteful widget kind on the Windows that will draw it [verdict " +
+              std::to_string(verdict) + "]");
+    if (verdict == ROLLTUI_REGISTER_OK)
+      rolltui_windows_register_kind(control.windows, "wasteful", 8, wasteful_factory, control.windows, nullptr);
+    RolltuiLayoutNode* status = rolltui_window_stack_find(control.stack, "status", 6);
     check(status != nullptr, "the shipped layout has the window the control draws into");
     if (status) status->content = "wasteful";
-    Frame f;
-    for (int i = 0; i < 3; ++i) control.paint(120, 40, f);
-    const Cost before = measure([&] { control.paint(120, 40, f); });
+    for (int i = 0; i < 3; ++i) control.paint(120, 40);
+    const Cost before = measure([&] { control.paint(120, 40); });
 
     // THE SAME SCENE, MEASURED TWICE, with one boolean between the runs. The first draft
     // swapped a window's CONTENT instead, which meant the replaced widget's own cost came
@@ -497,8 +615,8 @@ int main() {
     // worth 139 of them). A control whose arithmetic has two unknowns in it is not a
     // control — so the waste is a switch on one widget, and the delta is only the waste.
     g_waste = true;
-    for (int i = 0; i < 3; ++i) control.paint(120, 40, f);
-    const Cost after = measure([&] { control.paint(120, 40, f); });
+    for (int i = 0; i < 3; ++i) control.paint(120, 40);
+    const Cost after = measure([&] { control.paint(120, 40); });
     g_waste = false;
     std::printf("  control      120x40 : %ld allocs → %ld with a kind that wastes %d\n", before.allocs, after.allocs, kWasted);
     check(after.allocs - before.allocs >= kWasted,
@@ -521,11 +639,11 @@ int main() {
   // which only a TEST can do. `rolltui::mem` is the same counting in the LIBRARY, readable
   // by a host at runtime — one pipeline, two consumers.
   {
-    const mem::Stats before = mem::stats();
-    void* a = mem::alloc(128);
-    void* b = mem::realloc(a, 256);
-    mem::free(b);
-    const mem::Stats after = mem::stats();
+    const MemStats before = mem_stats();
+    void* a = rolltui_mem_alloc(128);
+    void* b = rolltui_mem_realloc(a, 256);
+    rolltui_mem_free(b);
+    const MemStats after = mem_stats();
     // RE-RECORDED by Phase 14 m3, and the change is the point: a GROWING REALLOC counts as
     // an allocation now, because it hands out new storage and copies into it. It used to
     // count as neither, which made the C implementation — where every buffer grows through
@@ -533,12 +651,12 @@ int main() {
     // `operator new`. `live_blocks` is tracked separately, so it still says one block.
     check(after.allocations == before.allocations + 2 && after.frees == before.frees + 1,
           "rolltui::mem counts alloc→realloc→free as two allocations and one free (a grow IS new storage)");
-    check(after.live_blocks == before.live_blocks && mem::stats().live_blocks == before.live_blocks,
+    check(after.live_blocks == before.live_blocks && mem_stats().live_blocks == before.live_blocks,
           "…and live_blocks says the grow was not a new BLOCK, which is the other half of the same fact");
     check(after.bytes_requested == before.bytes_requested + 128 + 256, "…and accumulates the bytes requested");
-    check(mem::alloc(0) == nullptr, "a zero-byte request is a nullptr, not a one-byte block");
-    mem::free(nullptr);  // must be a no-op
-    check(mem::stats().frees == after.frees, "…and freeing nullptr counts nothing");
+    check(rolltui_mem_alloc(0) == nullptr, "a zero-byte request is a nullptr, not a one-byte block");
+    rolltui_mem_free(nullptr);  // must be a no-op
+    check(mem_stats().frees == after.frees, "…and freeing nullptr counts nothing");
     // ---- MEMORY USAGE, QUERYABLE AT RUNTIME (Phase 14 m4) -----------------------------
     // `bytes_requested` is cumulative and answers "how much did we churn"; it CANNOT answer
     // "how much are we holding", which is the question a status pane asks. These three
@@ -546,15 +664,15 @@ int main() {
     // being a gauge stuck at zero, which would look exactly like a library that allocates
     // nothing.
     {
-      const mem::Stats base = mem::stats();
-      void* big = mem::alloc(64 * 1024);
-      const mem::Stats held = mem::stats();
+      const MemStats base = mem_stats();
+      void* big = rolltui_mem_alloc(64 * 1024);
+      const MemStats held = mem_stats();
       check(held.live_bytes >= base.live_bytes + 64 * 1024,
             "live_bytes RISES by at least what was asked for [" + std::to_string(base.live_bytes) + " → " +
                 std::to_string(held.live_bytes) + "]");
       check(held.peak_bytes >= held.live_bytes, "…and peak_bytes is never below what is live right now");
-      mem::free(big);
-      const mem::Stats after_free = mem::stats();
+      rolltui_mem_free(big);
+      const MemStats after_free = mem_stats();
       check(after_free.live_bytes == base.live_bytes,
             "…and FALLS back exactly on free, which is what makes it a gauge and not a counter");
       check(after_free.peak_bytes >= held.live_bytes, "…while peak_bytes REMEMBERS the high-water mark");
@@ -586,25 +704,28 @@ int main() {
       check(base.live_bytes > 100000, "the gauge reports REAL occupancy for the painted scene [" +
                                           std::to_string(base.live_bytes) + " B]");
       {
-        const mem::Stats before_parse = mem::stats();
-        markdown::Document parsed = markdown::parse(
+        const MemStats before_parse = mem_stats();
+        static constexpr char kMd[] =
             "# A heading\n\nA paragraph with *emphasis* and a [link](https://example.com/some/path).\n\n"
-            "- one\n- two\n- three\n\n```cpp\nint x = 1;\nint y = 2;\n```\n\n> a quote\n");
-        const mem::Stats after_parse = mem::stats();
+            "- one\n- two\n- three\n\n```cpp\nint x = 1;\nint y = 2;\n```\n\n> a quote\n";
+        RolltuiMdDoc* parsed = rolltui_md_doc_new();
+        rolltui_md_parse(parsed, kMd, sizeof(kMd) - 1);
+        const MemStats after_parse = mem_stats();
         const long long delta =
             static_cast<long long>(after_parse.live_bytes) - static_cast<long long>(before_parse.live_bytes);
-        check(parsed.block_count() > 0, "…the control's own subject exists: the parse produced blocks");
+        check(rolltui_md_doc_block_count(parsed) > 0, "…the control's own subject exists: the parse produced blocks");
         check(delta > 0, "the gauge SEES the whole parse tree [" + std::to_string(delta) +
                              " B] — in C every allocation is an explicit call, so the entry point is TOTAL");
+        rolltui_md_doc_free(parsed);
       }
     }
     // THE HONEST LIMIT, asserted rather than only documented: std::string and std::vector
     // do NOT route through this in C++, so these figures cover the library's own explicit
     // allocations and no more. A test that pretended otherwise would be the exact
     // "instrument that under-reports while looking healthy" failure this file exists for.
-    const mem::Stats s0 = mem::stats();
+    const MemStats s0 = mem_stats();
     { std::vector<int> v(1000, 7); (void)v; }
-    check(mem::stats().allocations == s0.allocations,
+    check(mem_stats().allocations == s0.allocations,
           "a std::vector allocates WITHOUT touching rolltui::mem — in C++ this entry point is partial by "
           "construction, and Phase 14's verdict is what reports how partial");
   }

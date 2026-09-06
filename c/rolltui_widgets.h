@@ -79,6 +79,29 @@
  * table keyed by content, the kind registry, the per-window routing table, and the
  * scrollbar's memo of where each track was drawn.
  */
+
+/* ---- OWNERSHIP HAS THREE SHAPES AND NO FOURTH -----------------------------------------------
+ * Stated here, beside the type that does the owning, because that is where a reader (and a
+ * model) meets it — `ownership_test` checks that this header carries it, and CLAUDE.md carries
+ * the same rule for every session. It lived in `rolltui/Widgets.hpp` until Phase 17 m3 and came
+ * across with the type: half of it had already arrived (three uses of OWNED) and the BORROWED
+ * half had not, which the test caught by name.
+ *
+ *   OWNED     one owner. `RolltuiWindows` owns every widget it builds (keyed by content, and
+ *             destroyed only with the table); `RolltuiWindowStack` owns its layers by value;
+ *             a `RolltuiFrame` owns its cells. In C that owner is a `_new`/`_free` pair, and
+ *             `rolltui_shutdown`'s `live_bytes == 0` is what catches a missed release.
+ *   BORROWED  every raw `T*` and every (pointer, length) pair crossing this API. A borrow
+ *             never owns and never frees: `rolltui_windows_bind_document` takes the HOST's
+ *             document and the host keeps it alive; `RolltuiWidgetEnv`'s bindings point at
+ *             the table for THIS frame; `rolltui_windows_widget_for` hands back a widget this
+ *             table still owns. Each one's window is stated on its own line.
+ *   VALUE     everything else — `RolltuiContent`, `RolltuiStyle`, `RolltuiRect`, `RolltuiRow`.
+ *             Copied, not referenced.
+ *
+ * **THERE IS NO SHARED OWNERSHIP, and a test fails if one appears.** Shared ownership makes a
+ * lifetime a runtime question and every lifetime here is structural. Every `shared_ptr` in the
+ * repository belongs to a HOST — which is the right place for one, and outside this library. */
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_bindings.h"
@@ -288,6 +311,23 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
  * before a pure-C kind needed to read one (Phase 17 m1c). */
 void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocument* doc);
 const RolltuiDocument* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
+
+/* …and the OWNED half: one entry of verbatim markdown that this table keeps, for a tool
+ * previewing ANOTHER app's sample content with no live document to point at (an app profile's
+ * `documents`, `rolltui_app_profile_mount` below). Binding the same name twice replaces the
+ * sample. STRATEGY 5 (GROWING HEAP): the `RolltuiDocument` is heap-held for the table's life,
+ * because the borrow above needs a stable address and a sample outlives the call that set it.
+ *
+ * PHASE 17 m3: this used to be `Windows::owned_documents_`, the last C++ map left in that
+ * class, kept there on the stated argument that moving it "would need either a fragile
+ * reinterpret through `RolltuiDocument` or a second owner — neither pays for itself". That
+ * argument was written while the C++ class was staying; the reinterpret is not needed at all
+ * once the map is on this side, and the alternative to moving it is not a C++ map but NO
+ * sample documents, since the class holding it is being deleted. It is the same sentence
+ * shape as the two layout-hook comments that stopped being true the moment their subject
+ * became the thing being removed. */
+void rolltui_windows_bind_sample_document(RolltuiWindows* w, const char* name, size_t len, const char* markdown,
+                                          size_t markdown_len);
 
 /* Forward declarations: `RolltuiRows`' own inline C++ methods below call these before their
  * full declarations (right after the struct) would otherwise be seen. */

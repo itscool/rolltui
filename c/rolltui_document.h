@@ -159,4 +159,94 @@ void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from);
 } /* extern "C" */
 #endif
 
+#ifdef __cplusplus
+/* ---- the C++ special members of the structs above (Phase 17 m3) ---------------------------
+ * Each one is a CALLER of a C function declared above it, so "release this subtree" has one
+ * implementation and a destructor reaches it rather than being a second mechanism.
+ *
+ * They were out-of-line in `rolltui/DocumentCpp.cpp` until the C++ binding was deleted. They are not
+ * part of that binding — they are what makes "the C++ type IS the C struct" true (Phase 14's
+ * one-definition rule), so they had to keep a home; `inline`, beside the declarations they
+ * implement, is that home and removes the last C++ translation unit from the library. */
+inline RolltuiDocEntry::RolltuiDocEntry() = default;
+inline RolltuiDocEntry::~RolltuiDocEntry() = default;
+
+inline RolltuiDocEntry::RolltuiDocEntry(const RolltuiDocEntry& o) { rolltui_doc_entry_copy(this, &o); }
+
+inline RolltuiDocEntry::RolltuiDocEntry(RolltuiDocEntry&& o) noexcept
+    : id(std::move(o.id)),
+      version(o.version),
+      text(std::move(o.text)),
+      markdown(o.markdown),
+      role(o.role),
+      prefix(std::move(o.prefix)),
+      prefix_role(o.prefix_role),
+      foldable(o.foldable),
+      summary(std::move(o.summary)),
+      folded(o.folded),
+      state(o.state),
+      progress(o.progress),
+      state_since_ms(o.state_since_ms) {}
+
+inline RolltuiDocEntry& RolltuiDocEntry::operator=(const RolltuiDocEntry& o) {
+  if (this != &o) rolltui_doc_entry_copy(this, &o);
+  return *this;
+}
+
+inline RolltuiDocEntry& RolltuiDocEntry::operator=(RolltuiDocEntry&& o) noexcept {
+  if (this != &o) {
+    id = std::move(o.id);
+    version = o.version;
+    text = std::move(o.text);
+    markdown = o.markdown;
+    role = o.role;
+    prefix = std::move(o.prefix);
+    prefix_role = o.prefix_role;
+    foldable = o.foldable;
+    summary = std::move(o.summary);
+    folded = o.folded;
+    state = o.state;
+    progress = o.progress;
+    state_since_ms = o.state_since_ms;
+  }
+  return *this;
+}
+
+// ---- the list ---------------------------------------------------------------------------
+
+inline RolltuiDocument::RolltuiDocument(const RolltuiDocument& o) { rolltui_document_copy(this, &o); }
+
+inline RolltuiDocument::~RolltuiDocument() { rolltui_document_release(this); }
+
+inline RolltuiDocument& RolltuiDocument::operator=(const RolltuiDocument& o) {
+  if (this != &o) rolltui_document_copy(this, &o);
+  return *this;
+}
+
+inline RolltuiDocument& RolltuiDocument::operator=(RolltuiDocument&& o) noexcept {
+  if (this != &o) {
+    rolltui_document_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+
+inline void RolltuiDocument::push_back(RolltuiDocEntry&& e) { *rolltui_document_add(this) = std::move(e); }
+
+inline void RolltuiDocument::push_back(const RolltuiDocEntry& e) {
+  rolltui_doc_entry_copy(rolltui_document_add(this), &e);
+}
+
+inline void RolltuiDocument::clear() { rolltui_document_clear(this); }
+
+inline void RolltuiDocument::resize(std::size_t k) {
+  while (n > k) rolltui_doc_entry_release(v[--n]);
+  while (n < k) rolltui_document_add(this);
+}
+#endif /* __cplusplus */
+
 #endif /* ROLLTUI_C_DOCUMENT_H */

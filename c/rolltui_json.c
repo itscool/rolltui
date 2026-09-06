@@ -152,6 +152,24 @@ int rolltui_json_has(const RolltuiJsonValue* v, const char* key, size_t key_len)
   return 0;
 }
 
+int rolltui_json_object_erase(RolltuiJsonValue* v, const char* key, size_t key_len) {
+  size_t i, j;
+  if (!v || v->kind != ROLLTUI_JSON_OBJECT) return 0;
+  for (i = 0; i < v->obj_n; ++i) {
+    if (!rolltui_str_eq(&v->obj[i]->key, key, key_len)) continue;
+    rolltui_str_free(&v->obj[i]->key);
+    rolltui_json_free(v->obj[i]->value);
+    rolltui_mem_free(v->obj[i]);
+    /* Order-preserving: shift the tail down, exactly as the `std::remove_if` + `erase` this
+     * replaces did. An object's key order is what `dump` writes, so a swap-with-last would
+     * silently reorder every file this touches. */
+    for (j = i + 1; j < v->obj_n; ++j) v->obj[j - 1] = v->obj[j];
+    --v->obj_n;
+    return 1;
+  }
+  return 0;
+}
+
 RolltuiJsonValue* rolltui_json_set(RolltuiJsonValue* v, const char* key, size_t key_len, RolltuiJsonValue* child) {
   size_t i;
   v->kind = ROLLTUI_JSON_OBJECT;

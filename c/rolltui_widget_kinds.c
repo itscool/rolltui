@@ -882,6 +882,17 @@ void rolltui_windows_set_library_defaults(RolltuiWindows* w) {
       /*scroll_marker=*/ROLLTUI_ROLE_SCROLL_MARKER,
   };
   if (!w) return;
+  /* THE LIVE TABLE, and it belongs in this function for the same reason the roles and the kinds
+   * do (Phase 17 m3). `rolltui_windows_bindings()` was NULL until a host called
+   * `set_bindings`, and the `help` kind's sizing pass reads it unguarded — so a pure-C host
+   * that registered the built-in kinds and then laid out a `help` window segfaulted before
+   * drawing anything. `rolltui::Windows`' C++ constructor had always defaulted it, which is
+   * exactly why nothing caught it: the C path had no caller until this milestone. Found
+   * 2026-09-05 by converting `layout_test`.
+   *
+   * A default, not a policy — a host with its own table calls `set_bindings` afterwards, and
+   * this is a BORROW of the library's shipped table, which lives for the process. */
+  rolltui_windows_set_bindings(w, rolltui_bindings_default());
   rolltui_windows_set_builtin_roles(w, &kRoles);
   rolltui_windows_set_menu_roles(w, &kMenuRoles);
   rolltui_windows_set_scroll_text_actions(w, rolltui_scroll_text_default_actions());

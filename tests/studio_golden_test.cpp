@@ -47,12 +47,18 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
-#include "rolltui/Bindings.hpp"
-#include "rolltui/Json.hpp"
-#include "rolltui/Layout.hpp"
-#include "rolltui/Unicode.hpp"
+// PHASE 17 m2c: the C API, through the umbrella alone. This suite drives the REAL
+// rolltui-studio binary as a subprocess and mostly matches its stdout as text, so the only
+// library calls left are: a display-width check on each frame's rows, one layout round-trip
+// (load a saved file back and ask what it has), and building two small bindings/JSON fixture
+// files on disk for the studio to load. Small local helpers below stand in for the deleted
+// `rolltui::unicode`/`rolltui::Layout`/`rolltui::Bindings`/`rolltui::json` shims — each mirrors
+// that shim's own body over the C, the same idiom `layout_test.cpp` and `transcript_test.cpp`
+// already use.
+#include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -124,6 +130,104 @@ std::string role_part(const std::string& out) {
   if (!s.empty() && s.back() == '\n') s.pop_back();
   return s;
 }
+
+// ---- Unicode: the one per-row width check below. Identical local wrapper to
+// transcript_test.cpp's — a scratch handle this binary owns for its life, CLAUDE.md's
+// CALLER-FILLED working-memory strategy. ----
+RolltuiUnicodeScratch* u_scratch() {
+  static RolltuiUnicodeScratch* u = rolltui_u_scratch_new();
+  return u;
+}
+namespace unicode {
+inline int display_width(std::string_view s, bool ambiguous_wide) {
+  return rolltui_u_display_width(u_scratch(), s.data(), s.size(), ambiguous_wide ? 1 : 0);
+}
+}  // namespace unicode
+
+// ---- Layout: one round-trip check (a saved file loads back clean, with nothing migrated
+// and no actions/popups). Mirrors layout_test.cpp's `load_layout_c` over the same C calls,
+// trimmed to the four answers this suite reads instead of a full `Layout` value. ----
+struct LoadedLayoutCheck {
+  bool ok = false;
+  bool clean = false;
+  bool migrated_empty = false;
+  bool actions_empty = false;
+  bool popups_empty = false;
+  std::string error;
+};
+LoadedLayoutCheck load_layout_check(std::string_view json_text) {
+  std::size_t default_actions_n = 0;
+  const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(&default_actions_n);
+  RolltuiLoadedLayout loaded;
+  RolltuiLayoutReport rep{};
+  rolltui_loaded_layout_init(&loaded);
+  const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, default_actions,
+                                          default_actions_n, rolltui_layout_default_hooks(), &rep);
+  LoadedLayoutCheck result;
+  result.ok = ok != 0;
+  result.clean = rolltui_layout_report_clean(&rep) != 0;
+  result.migrated_empty = rep.migrated_n == 0;
+  result.error.assign(rep.error.p ? rep.error.p : "", rep.error.n);
+  if (ok) {
+    RolltuiLayout out;
+    rolltui_layout_init(&out);
+    rolltui_loaded_layout_to_layout(&loaded, &out);
+    result.actions_empty = out.actions.empty();
+    result.popups_empty = out.popups.empty();
+    rolltui_layout_release(&out);
+  }
+  rolltui_layout_report_release(&rep);
+  rolltui_loaded_layout_release(&loaded);
+  return result;
+}
+
+// ---- Bindings + JSON: the shipped default table, and the two fixture files built below by
+// editing its dumped JSON directly — no `rolltui::json::Value` (rolltui_json.h's own header
+// comment: "there is no json::Value on the C side and there does not need to be one"). ----
+std::string_view default_bindings_text() {
+  const char* t = rolltui_embedded_text(rolltui_kBindingsPresets, rolltui_kBindingsPresetCount, "default", 7);
+  return t ? std::string_view(t) : std::string_view();
+}
+// A fresh, mutable copy of the shipped default table, loaded exactly as
+// `rolltui::Bindings::from_json(default_bindings_json(), report)` did: seeded with the
+// library's own actions, then the shipped file's rows loaded onto it against the terminal's
+// ACTIVE protocol. `migrate`/`reason` are NULL for the same reason `rolltui_bindings_default`'s
+// own loader call (rolltui_bindings.c) passes them NULL: this text is the CURRENT shipped
+// file, never a legacy one, so migration can never fire on it, and neither call site below
+// reads the undeliverable-reason text.
+RolltuiBindings* load_default_bindings() {
+  RolltuiBindings* b = rolltui_bindings_new_seeded();
+  RolltuiBindingsReport rep{};
+  const std::string_view text = default_bindings_text();
+  rolltui_bindings_load_json(b, text.data(), text.size(), rolltui_key_active_protocol(), rolltui_bindings_library_scope,
+                             nullptr, nullptr, nullptr, nullptr, nullptr, &rep);
+  rolltui_bindings_report_release(&rep);
+  return b;
+}
+std::string bindings_to_json_text(const RolltuiBindings* b, std::string_view name) {
+  RolltuiStr out{};
+  rolltui_bindings_dump_json(b, name.data(), name.size(), &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return s;
+}
+// string_view-friendly spellings of the four calls below, so no call site counts bytes by
+// hand (rolltui_json.h's own functions take a length because C has no `std::string_view`).
+const RolltuiJsonValue* json_get_v(const RolltuiJsonValue* v, std::string_view key) {
+  return rolltui_json_get(v, key.data(), key.size());
+}
+RolltuiJsonValue* json_set_v(RolltuiJsonValue* v, std::string_view key, RolltuiJsonValue* child) {
+  return rolltui_json_set(v, key.data(), key.size(), child);
+}
+RolltuiJsonValue* json_string_v(std::string_view s) { return rolltui_json_string(s.data(), s.size()); }
+std::string json_dump_text(const RolltuiJsonValue* v, int indent) {
+  RolltuiStr out{};
+  rolltui_json_dump(v, indent, &out);
+  std::string s(out.p ? out.p : "", out.n);
+  rolltui_str_free(&out);
+  return s;
+}
+int json_erase_v(RolltuiJsonValue* v, std::string_view key) { return rolltui_json_object_erase(v, key.data(), key.size()); }
 
 }  // namespace
 
@@ -333,7 +437,7 @@ int main(int argc, char** argv) {
     std::string row;
     while (std::getline(in, row)) {
       ++rows;
-      int cw = rolltui::unicode::display_width(row, std::strstr(c.args, "--ambiguous-wide") != nullptr);
+      int cw = unicode::display_width(row, std::strstr(c.args, "--ambiguous-wide") != nullptr);
       if (cw > w) { fits = false; check(false, std::string(c.name) + ": row wider than " + std::to_string(w) + ": [" + row + "]"); }
     }
     int h = std::atoi(std::strchr(c.args, 'x') + 1);
@@ -740,10 +844,9 @@ int main(int argc, char** argv) {
       check(ok && saved.find("\"content\": \"text:\"") != std::string::npos && saved.find("\"focus\": \"main\"") != std::string::npos,
             "what it DOES have is one window naming nothing a host must have bound, and the focus on it");
       // It is a layout, not just a file: the loader takes it back clean.
-      rolltui::LayoutLoadReport rep;
-      const std::optional<rolltui::Layout> back = rolltui::load_layout(saved, rep);
-      check(back && rep.clean() && rep.migrated.empty() && back->actions.empty() && back->popups.empty(),
-            "…and it loads clean with nothing migrated in — a fill-in would have shown up here as five actions [" + rep.error + "]");
+      const LoadedLayoutCheck back = load_layout_check(saved);
+      check(back.ok && back.clean && back.migrated_empty && back.actions_empty && back.popups_empty,
+            "…and it loads clean with nothing migrated in — a fill-in would have shown up here as five actions [" + back.error + "]");
     }
     {
       // THE ONE PLACE INHERITING IS RIGHT, and it inherits from the TARGET: a profile's
@@ -824,15 +927,15 @@ int main(int argc, char** argv) {
       const std::string checked = run(bin + " --check '" + scratch + "/gen.json'" + presets, rc);
       check(rc == 0 && checked.find("every claimed badge holds") != std::string::npos, "--check on it: every badge the generator claimed holds");
       // A false claim fails the check.
-      std::string err;
-      rolltui::json::Value lying = rolltui::json::parse(g1, err);
-      rolltui::json::Value claims = rolltui::json::Value::array();
-      claims.arr.push_back(rolltui::json::Value::string("high-contrast"));
-      claims.arr.push_back(rolltui::json::Value::string("mono"));
-      rolltui::json::Value meta = lying.get("meta");
-      meta.set("badges", claims);
-      lying.set("meta", meta);
-      std::ofstream(scratch + "/lying.json", std::ios::binary) << rolltui::json::dump(lying, 2);
+      RolltuiJsonValue* lying = rolltui_json_parse(g1.data(), g1.size(), nullptr);
+      RolltuiJsonValue* claims = rolltui_json_array();
+      rolltui_json_array_push(claims, json_string_v("high-contrast"));
+      rolltui_json_array_push(claims, json_string_v("mono"));
+      RolltuiJsonValue* meta = rolltui_json_clone(json_get_v(lying, "meta"));
+      json_set_v(meta, "badges", claims);
+      json_set_v(lying, "meta", meta);
+      std::ofstream(scratch + "/lying.json", std::ios::binary) << json_dump_text(lying, 2);
+      rolltui_json_free(lying);
       const std::string liar = run(bin + " --check '" + scratch + "/lying.json'" + presets, rc);
       check(rc != 0 && liar.find("CLAIM FAILED: mono") != std::string::npos, "a file claiming a badge it does not have fails --check with the claim named");
     }
@@ -886,11 +989,16 @@ int main(int argc, char** argv) {
       // is the whole domain, so it names both — and neither the library nor the
       // studio has ever heard of app.zoom.
       {
-        rolltui::BindingsLoadReport br;
-        std::optional<rolltui::Bindings> b = rolltui::Bindings::from_json(rolltui::default_bindings_json(), br);
-        b->declare({{"app.zoom", "zoom the transcript"}});
-        b->bind("app.zoom", *rolltui::parse_chord("ctrl+g"));
-        std::ofstream(p + "/bindings/decl.json", std::ios::binary) << rolltui::json::dump(b->to_json("decl"), 2);
+        RolltuiBindings* b = load_default_bindings();
+        RolltuiLayoutAction zoom_action{};
+        zoom_action.name = "app.zoom";
+        zoom_action.description = "zoom the transcript";
+        rolltui_bindings_declare(b, &zoom_action, 1, nullptr, 0);
+        RolltuiChord chord{};
+        rolltui_chord_parse("ctrl+g", 6, &chord);
+        rolltui_bindings_bind(b, "app.zoom", 8, &chord, nullptr, nullptr);
+        std::ofstream(p + "/bindings/decl.json", std::ios::binary) << bindings_to_json_text(b, "decl");
+        rolltui_bindings_free(b);
       }
       std::ofstream(scratch + "/declared-layout.json", std::ios::binary) << R"({"name":"declared",
         "actions":{"app.help":"open help","app.zoom":"zoom the transcript"},
@@ -967,22 +1075,24 @@ int main(int argc, char** argv) {
       {
         const std::string dir = scratch + "/p11m2";
         std::filesystem::create_directories(dir + "/bindings");
-        rolltui::BindingsLoadReport br;
-        std::optional<rolltui::Bindings> b = rolltui::Bindings::from_json(rolltui::default_bindings_json(), br);
-        rolltui::json::Value v = b->to_json("renamed");
-        rolltui::json::Value map = v.get("bindings");
-        map.set("studio.quit", rolltui::json::Value::array());
-        rolltui::json::Value q = rolltui::json::Value::array();
-        q.arr.push_back(rolltui::json::Value::string("ctrl+q"));
-        map.set("playground.quit", q);
-        v.set("bindings", map);
-        std::ofstream(dir + "/bindings/renamed.json", std::ios::binary) << rolltui::json::dump(v, 2);
+        RolltuiBindings* b = load_default_bindings();
+        const std::string dumped = bindings_to_json_text(b, "renamed");
+        rolltui_bindings_free(b);
+        RolltuiJsonValue* v = rolltui_json_parse(dumped.data(), dumped.size(), nullptr);
+        RolltuiJsonValue* map = rolltui_json_clone(json_get_v(v, "bindings"));
+        json_set_v(map, "studio.quit", rolltui_json_array());
+        RolltuiJsonValue* q = rolltui_json_array();
+        rolltui_json_array_push(q, json_string_v("ctrl+q"));
+        json_set_v(map, "playground.quit", q);
+        json_set_v(v, "bindings", map);
+        std::ofstream(dir + "/bindings/renamed.json", std::ios::binary) << json_dump_text(v, 2);
         // …and the same file with the old row taken out: the gap stays closed, so this
         // one must NOT quit. The pair is what makes the assertion above mean something.
-        map.obj.erase(std::remove_if(map.obj.begin(), map.obj.end(), [](const auto& kv) { return kv.first == "playground.quit"; }),
-                      map.obj.end());
-        v.set("bindings", map);
-        std::ofstream(dir + "/bindings/nomig.json", std::ios::binary) << rolltui::json::dump(v, 2);
+        // `map` is still a live pointer into `v`'s tree (rolltui_json_set above stored it,
+        // never copied it), so erasing through it needs no re-fetch.
+        json_erase_v(map, "playground.quit");
+        std::ofstream(dir + "/bindings/nomig.json", std::ios::binary) << json_dump_text(v, 2);
+        rolltui_json_free(v);
         const std::string mb = bin + " --frame 80x24 --theme default-dark --presets '" + dir + "'";
         const std::string mig_help = run(mb + " --bindings renamed --keys \"F1\"", rc);
         const std::string mig_quit = run(mb + " --bindings renamed --keys \"CtrlQ F1\"", rc);
@@ -1001,6 +1111,14 @@ int main(int argc, char** argv) {
     // source either binary is built from is scanned — the library, its tools, roll's own
     // — plus the shipped preset FILES, which are compiled into the binary as bytes and
     // are exactly where an action name would survive unnoticed (menus/main.json named two).
+    //
+    // PHASE 17 m3: the table itself moved to rolltui/c/rolltui_bindings.c (Bindings.cpp is
+    // now a shim calling `rolltui_migrated_action`), so this control now (a) scans `.c`
+    // sources too — it never had to before, since nothing the C port produced was in scope
+    // for this check until the table itself became one — and (b) expects the table's three
+    // rows in the C file, not the C++ one. THE RULE THAT MOVED WITH IT: this is still "exactly
+    // ONE source names them", not "the library's C source or its C++ shim, either is fine" —
+    // a stray hit in Bindings.cpp is exactly as much a finding as one anywhere else.
     {
       namespace fs = std::filesystem;
       const std::string root = std::string(ROLLTUI_SOURCE_DIR) + "/..";
@@ -1013,7 +1131,8 @@ int main(int argc, char** argv) {
           continue;
         const std::string ext = e.path().extension().string();
         const bool preset = rel.rfind("rolltui/presets/", 0) == 0 && ext == ".json";
-        if (!preset && ext != ".cpp" && ext != ".hpp" && ext != ".h" && e.path().filename() != "CMakeLists.txt") continue;
+        if (!preset && ext != ".cpp" && ext != ".hpp" && ext != ".h" && ext != ".c" && e.path().filename() != "CMakeLists.txt")
+          continue;
         scanned.push_back(rel);
         std::ifstream in(e.path(), std::ios::binary);
         std::string line;
@@ -1029,8 +1148,9 @@ int main(int argc, char** argv) {
       // control would pass most loudly on the build that deleted the migration.
       std::vector<std::string> stray;
       int table = 0;
-      for (const std::string& h : hits) (h.rfind("rolltui/Bindings.cpp:", 0) == 0 ? ++table : (stray.push_back(h), 0));
-      check(table >= 3, "the migration table is still in rolltui/Bindings.cpp, all three renamed actions (" + std::to_string(table) + " lines)");
+      for (const std::string& h : hits) (h.rfind("rolltui/c/rolltui_bindings.c:", 0) == 0 ? ++table : (stray.push_back(h), 0));
+      check(table >= 3,
+            "the migration table is still in rolltui/c/rolltui_bindings.c, all three renamed actions (" + std::to_string(table) + " lines)");
       check(stray.empty(), "…and it is the ONLY place any source still says it" + (stray.empty() ? "" : ": " + stray.front()));
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,

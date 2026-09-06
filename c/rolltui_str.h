@@ -146,6 +146,14 @@ void* rolltui_ptrvec_take(RolltuiPtrVec* a, size_t i);
 void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns the elements */
 void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller owns the elements */
 
+
+/* ---- the string SINK, for any function whose result is N strings ---------------------------
+ * One `put` call per string, into whatever the caller is collecting. It lives here because
+ * this is the string module; it was declared in `rolltui_presets.h` until Phase 17 m3, when
+ * `rolltui_menu.h`'s tree walks needed the same shape and writing it twice would have been the
+ * duplication rule firing. `s` is a BORROW valid for the call only. */
+typedef void (*RolltuiPutFn)(void* ctx, const char* s, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 

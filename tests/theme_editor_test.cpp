@@ -17,11 +17,9 @@
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
 
-// See theme_editor.hpp's identical forward-declaration comment: Theme.cpp's theme_vocab()
-// has external linkage for exactly this (Presets.cpp's own precedent).
-namespace rolltui {
-const RolltuiThemeVocab& theme_vocab();
-}
+// PHASE 17 m3: the forward declaration of `rolltui::theme_vocab()` that stood here is gone with
+// `Theme.cpp`. `rolltui_theme_default_vocab()` is the same table and always was — the C++ one
+// only forwarded to it, which is why nothing but the spelling changes below.
 
 using namespace rolltui::tools;
 using namespace rolltui_test;
@@ -243,9 +241,9 @@ int main() {
     RolltuiThemeReport r2{};
     std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> d{}, l{};
     RolltuiStr d_name{}, l_name{};
-    RolltuiEffectMap* d_eff = rolltui_theme_load(pair, ROLLTUI_MODE_DARK, &rolltui::theme_vocab(), d.data(), &d_name, &r2);
+    RolltuiEffectMap* d_eff = rolltui_theme_load(pair, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), d.data(), &d_name, &r2);
     RolltuiThemeReport r3{};
-    RolltuiEffectMap* l_eff = rolltui_theme_load(pair, ROLLTUI_MODE_LIGHT, &rolltui::theme_vocab(), l.data(), &l_name, &r3);
+    RolltuiEffectMap* l_eff = rolltui_theme_load(pair, ROLLTUI_MODE_LIGHT, rolltui_theme_default_vocab(), l.data(), &l_name, &r3);
     check(d_eff && l_eff && styles_equal(d.data(), ed.committed().dark.data()) && styles_equal(l.data(), ed.committed().light.data()),
           "the written-back pair object loads to both variants exactly (bold was set in dark only: an attribute pair)");
     rolltui_str_free(&d_name);

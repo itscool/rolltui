@@ -244,4 +244,13 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
 } /* extern "C" */
 #endif
 
+#ifdef __cplusplus
+/* `RolltuiInputOptions`' one special member (Phase 17 m3): the default prompt, which is a
+ * VALUE the struct must start with and not something a caller should have to know. It was
+ * out-of-line in `rolltui/Input.cpp` for the reason `RolltuiActionList`'s were — an inline body
+ * inside the struct cannot see `rolltui_str_set` yet — and, like those, it is not part of the
+ * deleted binding but part of what makes the C++ type BE the C struct. */
+inline RolltuiInputOptions::RolltuiInputOptions() { rolltui_str_set(&prompt, "> ", 2); }
+#endif /* __cplusplus */
+
 #endif /* ROLLTUI_C_INPUT_H */

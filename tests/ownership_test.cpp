@@ -55,9 +55,15 @@ std::string read_file(const std::string& path) {
   return ss.str();
 }
 
-// Every source the library is BUILT from: its own .hpp/.cpp and its tools'. Tests,
-// vendored code and the generated Unicode tables are excluded by directory — a test may
-// hold a `shared_ptr` (the hosts do, legitimately), and md4c is not ours to rule on.
+// Every source the library is BUILT from, which since Phase 17 m3 means `c/*.h` and `c/*.c`:
+// the C++ binding it used to also mean was deleted with that milestone, and an enumerator
+// still filtering on `.hpp`/`.cpp` matched NOTHING — this suite reported "scanned 0 files" and
+// four passing checks about an empty set. A control whose subject is deleted does not fail
+// loudly; it goes quiet, which is the shape this file exists to catch one level down.
+//
+// Tools stay in the non-headers-only pass (a tool is a host, excluded below); tests, vendored
+// code and the generated Unicode tables are excluded by directory — a test may hold a
+// `shared_ptr` (the hosts do, legitimately), and md4c is not ours to rule on.
 std::vector<std::string> library_sources(bool headers_only) {
   std::vector<std::string> out;
   for (const fs::directory_entry& e : fs::recursive_directory_iterator(ROLLTUI_SOURCE_DIR)) {
@@ -70,9 +76,31 @@ std::vector<std::string> library_sources(bool headers_only) {
     // below already skips them; the name check stays as the statement of intent.
     if (rel == "unicode_tables.h" || rel == "unicode_tables.c") continue;  // generated
     const std::string ext = e.path().extension().string();
-    if (headers_only ? ext != ".hpp" : (ext != ".hpp" && ext != ".cpp")) continue;
+    const bool is_header = ext == ".hpp" || ext == ".h";
+    const bool is_source = ext == ".cpp" || ext == ".c";
+    if (headers_only ? !is_header : !(is_header || is_source)) continue;
     if (!headers_only && rel.rfind("tools/", 0) == 0) continue;  // a TOOL is a host, not the library
     out.push_back(rel);
+  }
+  return out;
+}
+
+// Everything on the line that is not a comment: cut at `//`, and remove every `/* ... */`
+// span (including an unterminated one, which runs to end of line for this purpose). Used by
+// the scans that match CODE, so English inside a comment cannot trip them.
+std::string strip_comments(const std::string& line) {
+  std::string out = line;
+  const std::size_t slashes = out.find("//");
+  if (slashes != std::string::npos) out.resize(slashes);
+  for (;;) {
+    const std::size_t open = out.find("/*");
+    if (open == std::string::npos) break;
+    const std::size_t close = out.find("*/", open + 2);
+    if (close == std::string::npos) {
+      out.resize(open);
+      break;
+    }
+    out.erase(open, close + 2 - open);
   }
   return out;
 }
@@ -83,6 +111,26 @@ std::vector<std::string> library_sources(bool headers_only) {
 const std::regex& pointer_decl() {
   static const std::regex r(R"(\b[A-Za-z_][A-Za-z0-9_:]*\*+\s+[a-z_][A-Za-z0-9_]*)");
   return r;
+}
+
+// A STORED raw pointer — a struct MEMBER — as opposed to a parameter.
+//
+// **THE CENSUS'S PREMISE DID NOT SURVIVE THE PORT, and this is the repair rather than a
+// re-record** (Phase 17 m3). Counting every raw-pointer declaration meant something while the
+// public headers were C++: a raw `T*` was unusual there, the total was 122, and each new one
+// was worth a sentence. In C every parameter is a pointer — the same scan over `c/*.h` counts
+// **1,139**, and a check that fires on every ordinary API addition is churn with no signal,
+// which is worse than no check because it trains people to edit the number.
+//
+// What the census actually claimed is narrower and still true: **a pointer the library STORES
+// is a lifetime question; a pointer it is merely HANDED is not.** A member ends the statement
+// (`RolltuiStr* p;`); a declaration takes an argument list. That is the distinction, and it is
+// checkable rather than a matter of taste — the two controls below plant one of each.
+bool is_stored_pointer(const std::string& code) {
+  if (!std::regex_search(code, pointer_decl())) return false;
+  if (code.find('(') != std::string::npos) return false;  // a function declaration, not a member
+  const std::size_t end = code.find_last_not_of(" \t");
+  return end != std::string::npos && code[end] == ';';
 }
 
 bool is_comment(const std::string& line) {
@@ -130,12 +178,19 @@ int main() {
       while (std::getline(in, line)) {
         ++ln;
         if (is_comment(line)) continue;
+        // COMMENTS ARE STRIPPED BEFORE MATCHING, not merely skipped when a line IS one. The
+        // regex's own `(?!.*//)` guard covers a trailing `//` and knew nothing about `/* */`,
+        // which is a C spelling this scan never saw until the library became C (Phase 17 m3):
+        // `unsigned char checked ROLLTUI_DEFAULT(0); /* Toggle: the new state */` matched on
+        // the English word "new". A matcher that reads prose reports defects that are not
+        // there, which costs exactly as much trust as one that misses defects that are.
+        const std::string code = strip_comments(line);
         // `new` inside a make_unique is the sanctioned form; `operator new` is a
         // declaration, not a use.
-        if (line.find("make_unique") != std::string::npos || line.find("operator new") != std::string::npos ||
-            line.find("operator delete") != std::string::npos || line.find("= delete") != std::string::npos)
+        if (code.find("make_unique") != std::string::npos || code.find("operator new") != std::string::npos ||
+            code.find("operator delete") != std::string::npos || code.find("= delete") != std::string::npos)
           continue;
-        if (std::regex_search(line, manual)) hits.push_back(rel + ":" + std::to_string(ln) + ":" + line);
+        if (std::regex_search(code, manual)) hits.push_back(rel + ":" + std::to_string(ln) + ":" + line);
       }
     }
     check(hits.empty(), "…and no hand-rolled new/delete either: OWNED means unique_ptr or a value" +
@@ -203,317 +258,81 @@ int main() {
     // MEASURED 2026-09-03 by this test's own scanner (it prints the table it wants, so a
     // re-record is a copy-paste and never arithmetic). Terminal.hpp is 0 because m2 turned
     // its one hand-rolled owner into a `unique_ptr`.
+    // THE CENSUS, RE-RECORDED WHOLE 2026-09-05 (Phase 17 m3), because its subject moved: the
+    // public headers are `c/*.h` now, and every `rolltui/*.hpp` row named a deleted file. Two
+    // things changed with it, both enforced above rather than promised here:
+    //   - it counts STORED pointers (struct members), not every declaration. Counting all of
+    //     them gives 1,139 against the C++ era's 122 — in C every parameter is a pointer, so
+    //     the old rule would fire on every ordinary API addition and mean nothing. What the
+    //     census actually claimed is narrower and survives: a pointer the library STORES is a
+    //     lifetime question; one it is merely HANDED is not.
+    //   - comments are stripped before matching, because the C headers describe pointers in
+    //     prose far more than the C++ ones did.
+    // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
+    // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        // Bindings.hpp 1 → 2, RE-RECORDED 2026-09-04 by Phase 15 m3, when the binding table
-        // became a handle to storage the C owns. The new one is `RolltuiBindings* p` in
-        // `Bindings::Handle` — the deleter of that OWNED handle, a `unique_ptr`'s deleter
-        // rather than a member, the same sanctioned shape `Frame::Handle` uses. The one
-        // that was already here is `std::string* moved_from`, the optional out-parameter on
-        // `bind()`.
-        // Bindings.hpp 2 → 3, RE-RECORDED 2026-09-04 by Phase 15 m5. The new one is
-        // `const RolltuiBindings* handle() const` — a BORROW of the table this object owns,
-        // handed to `rolltui_window_stack_route` for the length of one call and never
-        // stored. It exists because the stack's Escape/Tab rules are behind the C boundary
-        // now and have to ask the live table what the `stack` scope binds; the words those
-        // three actions are called stay in `Layout.cpp` and are handed over with them.
-        // Bindings.hpp 3 -> 4, RE-RECORDED 2026-09-05 by Phase 17, and the new one is NOT a
-        // borrow — it is the one shape this census has not held before, so it is written down
-        // rather than folded into the count. `Bindings::adopt(RolltuiBindings* owned)` TAKES
-        // OWNERSHIP: the pointer goes straight into the `unique_ptr` and the caller must not
-        // free it or touch it again. It exists because `default_bindings()`'s logic moved to
-        // C, where `rolltui_bindings_default()` holds the shipped table and hands out a
-        // BORROW; the C++ view of it is therefore a clone, and `adopt` is how a clone becomes
-        // a `Bindings` without a second copy. The name is the documentation: `adopt`, never
-        // `wrap` or `from`, because those read like the borrow this is not.
-        {"AppProfile.hpp", 0},   {"Bindings.hpp", 4},      {"Diff.hpp", 0},        {"Document.hpp", 0},
-        // Effects.hpp 2 → 1, RE-RECORDED 2026-09-04 by Phase 15 m2, and this is the census
-        // catching a REMOVAL, which it is meant to do just as loudly as an addition. The
-        // pointer was `const EffectFn* effect_kind(std::string_view)`. A resolved kind is a
-        // function and a context inside the registry now, not an object with an address, so
-        // there is nothing to hand back a pointer TO — and every caller only ever asked
-        // whether it resolved, which `effect_kind_resolves` answers with a bool. The one
-        // left is `std::string* why`, the optional reason-out on `register_effect_kind`.
-        //
-        // Effects.hpp 1 → 3, RE-RECORDED 2026-09-04 by Phase 15 m3, when `EffectMap` became
-        // a handle to storage the C owns (the m2 seam closing). Both new ones are that
-        // handle and neither is a borrow:
-        //   - `RolltuiEffectMap* p` in `EffectMap::Handle` — the deleter of the OWNED C
-        //     map, a `unique_ptr`'s deleter rather than a member, the same sanctioned shape
-        //     `Frame::Handle` and `KeyDecoder::Handle` already use.
-        //   - `const RolltuiEffectMap* handle() const` — what `apply_effects` hands the
-        //     applier. A BORROW of the map this object owns, valid for the call and never
-        //     stored; it exists because the applier reads the theme's specs directly now
-        //     instead of being handed views rebuilt from them every frame.
-        // Keys.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m3. The one pointer is
-        // `RolltuiKeyDecoder* p` in `KeyDecoder::Handle` — the deleter of the decoder's
-        // OWNED C handle, the same sanctioned shape `Frame::Handle` already uses, and a
-        // `unique_ptr`'s deleter rather than a member. It borrows nothing.
-        // Input.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m5. The one pointer is
-        // `RolltuiInput* p` in `Input::Handle` — the deleter of the widget's OWNED C handle,
-        // a `unique_ptr`'s deleter rather than a member, the same sanctioned shape
-        // `Frame::Handle` and four others already use. It borrows nothing. The header's
-        // other change is not a pointer at all: `text()` and `editing_text()` hand back a
-        // `std::string_view` where they used to hand back a `const std::string&`, which is
-        // the borrow the boundary forces and states its window for.
-        // Input.hpp 1 → 4 (Phase 15 m5, second pass): the three new ones all BORROW and none
-        // owns. `RolltuiInput* handle()` and its const overload hand the editor's OWNED
-        // handle to the one other widget that embeds one — a menu's typed field — so there
-        // is one owner and not two; `const RolltuiInputActions* input_actions()` is a BORROW
-        // of the thirty action names, so the menu boundary is handed a pointer to the
-        // library's one table rather than a copy of it.
-// Effects.hpp 3 → 4, RE-RECORDED 2026-09-04 when Theme's built-in construction and
-        // its JSON loader moved to C (rolltui_theme.c). The new one is `RolltuiEffectMap*
-        // adopt` in `explicit EffectMap(RolltuiEffectMap* adopt)` — NOT a borrow: the C
-        // builder (`rolltui_theme_builtin_fill`, `rolltui_theme_load`) fills a map spec by
-        // spec through the same `rolltui_effect_map_add`/`_add_frame`/`_add_role` this
-        // class's own methods call, and hands the finished map back OWNED; this constructor
-        // is where that ownership crosses into the `unique_ptr` rather than being replayed
-        // one call at a time from C++.
-        // Keys.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m3. The one pointer is
-        // `RolltuiKeyDecoder* p` in `KeyDecoder::Handle` — the deleter of the decoder's
-        // OWNED C handle, the same sanctioned shape `Frame::Handle` already uses, and a
-        // `unique_ptr`'s deleter rather than a member. It borrows nothing.
-        // Input.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m5. The one pointer is
-        // `RolltuiInput* p` in `Input::Handle` — the deleter of the widget's OWNED C handle,
-        // a `unique_ptr`'s deleter rather than a member, the same sanctioned shape
-        // `Frame::Handle` and four others already use. It borrows nothing. The header's
-        // other change is not a pointer at all: `text()` and `editing_text()` hand back a
-        // `std::string_view` where they used to hand back a `const std::string&`, which is
-        // the borrow the boundary forces and states its window for.
-        // Input.hpp 1 → 4 (Phase 15 m5, second pass): the three new ones all BORROW and none
-        // owns. `RolltuiInput* handle()` and its const overload hand the editor's OWNED
-        // handle to the one other widget that embeds one — a menu's typed field — so there
-        // is one owner and not two; `const RolltuiInputActions* input_actions()` is a BORROW
-        // of the thirty action names, so the menu boundary is handed a pointer to the
-        // library's one table rather than a copy of it.
-        // Input.hpp 4 -> 5, RE-RECORDED 2026-09-05 by Phase 17 m1c. The new one is
-        // `input_handle(RolltuiInput* in, …)`: the handle-taking form of `Input::handle`, which
-        // BORROWS the editor for the length of the call and owns nothing. It exists because
-        // `Windows::input()` hands back the library's own handle now, so a host driving the
-        // prompt has no `Input&` to call a method on — and the two things it cannot do for
-        // itself (the Event conversion, the thirty action names) are this library's.
-        {"Effects.hpp", 4},      {"Input.hpp", 5},         {"Json.hpp", 0},        {"Keys.hpp", 1},
-        // Markdown.hpp 0 → 10, RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the census
-        // recording the milestone's whole shape change: a `Span` used to OWN a
-        // `std::string` and two vectors, so the header needed no pointer to say so. Every
-        // line, span and byte lives in the caller's store now, and the parsed document is a
-        // handle too. The ten are what that costs a reader:
-        //   - `RolltuiMdLines* p` in `Rendered::Handle` — the deleter of the OWNED store, a
-        //     `unique_ptr`'s deleter rather than a member, the same sanctioned shape
-        //     `Frame::Handle`, `KeyDecoder::Handle` and `EffectMap::Handle` already use.
-        //   - `RolltuiMdLines* store()` and `const RolltuiMdLines* store() const` — a BORROW
-        //     of the store this object owns, for the one caller that builds lines of its own
-        //     behind the rendered ones (the transcript's prefix). Never stored.
-        //   - `const RolltuiMdLine* p` in `lines()` and `const RolltuiMdCodeBlock* p` in
-        //     `code_blocks()` — the arrays those two `std::span`s are made of, BORROWED from
-        //     the store and valid until the next render into it.
-        //   - `const char* p` in `clamped()` — the same, for one report string.
-        //   - `char* out` on `code_block_summary` — the CALLER'S buffer, filled and not
-        //     returned, which is why that function stopped handing back a `std::string`.
-        //   - `RolltuiMdDoc* p` in `Document::Handle` — the third of these deleters, for the
-        //     OWNED parse tree, which became a handle when the block tree left this header.
-        //   - `const RolltuiMdDoc* handle() const` — a BORROW of the tree this object owns,
-        //     for `Rendered::render` and nothing else. Never stored.
-        //   - `const char* p` in `Document::block_code` — a BORROW of one Code block's
-        //     verbatim text, valid until the document is parsed into again.
-        // Marker.hpp 0 → 1, RE-RECORDED 2026-09-04 by Phase 15 m4. The one pointer is
-        // `char* out` on `scroll_marker_text_into` — the CALLER'S buffer. The marker's rule
-        // moved to `rolltui/c/rolltui_marker.h` (its third caller became C, and the note on
-        // it has always said the rule must have exactly one definition), and this header is
-        // the C++ spelling over it: the `std::string` form for the callers that want one,
-        // and the buffer form for a draw path that must not build one per frame.
-        // Menu.hpp 7 → 4, RE-RECORDED 2026-09-04 by Phase 15 m5, and this is the census
-        // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
-        // three that LEFT were `const MenuItem*` and `MenuItem*` accessors returning into a
-        // `std::vector<MenuItem>` the widget owned; the tree is a C tree now and those same
-        // accessors hand back a node whose address is STABLE, which is the property the
-        // vector could not promise. The four left are `RolltuiMenu* p` in `Menu::Handle`
-        // (the deleter of the OWNED widget) and three `MenuItem*`/`const MenuItem*`
-        // borrows — `find()` twice and `selected_item()`.
-        // Layout.hpp 8 → 10 (Phase 15 m5, second pass): `RolltuiWindowStack* handle()` and
-        // its const overload, a BORROW of the stack this object owns. `Windows` syncs,
-        // autosizes and lays out against it from behind its own C boundary, so the two
-        // modules meet at the handle instead of at a `std::vector<Layer>&`.
-        // Markdown.hpp 10 → 11 (Phase 15 m5e): `const RolltuiMdRoles* md_roles()` — a BORROW
-        // of the styling vocabulary as the boundary carries it, exposed because the
-        // TRANSCRIPT renders entries through `rolltui_md_render` directly. One table of those
-        // bytes in the library, handed over by pointer rather than copied a second time.
-        // Layout.hpp 10 → 9 (Phase 17, this task): a REMOVAL, which this census is meant to
-        // catch just as loudly as an addition. `const Layer* popup(std::string_view id)
-        // const;` left this file's TEXT — `Layout` is `RolltuiLayout` now (one definition,
-        // the Node/Layer rule), and `popup()` is a member of that C struct declared inline in
-        // `rolltui/c/rolltui_layout.h`, which this census does not scan (headers_only(true)
-        // is `.hpp` files only). The borrow itself did not go away — it is stated at that
-        // struct's own definition instead — only its address in this text did.
-        // Menu.hpp 5 -> 6, RE-RECORDED 2026-09-05 by Phase 17. The new one is a BORROW and the
-        // ownership it reflects moved the RIGHT way: this class used to OWN an `Input edit_`
-        // member and lend its handle to `rolltui_menu_new`, and both callers in the tree did
-        // exactly that — the two-consumers-one-wrapper tell. The C menu owns its editor now,
-        // and `rolltui_menu_editor(m_.get())` borrows it back for the menu's life. A member
-        // that owned became a call that borrows, which is why the count went UP while the
-        // ownership got simpler.
-        // Menu.hpp 6 -> 7, RE-RECORDED 2026-09-05 by Phase 17 m1c: `menu_handle(RolltuiMenu* m,
-        // …)`, the handle-taking form of `Menu::handle`, BORROWING for the call. Same reason as
-        // `input_handle` above, and three hosts reach for it (roll, the studio, paint). The two
-        // tree walks added beside it — `apply_shortcuts(MenuItem&)` and
-        // `item_actions(const MenuItem&)` — take a REFERENCE, so they add no pointer at all.
-        {"Layout.hpp", 9},       {"Markdown.hpp", 11},     {"Marker.hpp", 1},      {"Memory.hpp", 3},       {"Menu.hpp", 7},
-        // Lifetime.hpp, NEW 2026-09-04 (Phase 14 m6a). Zero raw pointers: `shutdown()` and
-        // `release_thread()` take nothing and return nothing, and `on_shutdown` takes a
-        // FUNCTION pointer, which the scanner's pattern does not match and which borrows
-        // nothing — a releaser names a static its own module already owns.
-        {"Lifetime.hpp", 0},
-        // Screen.hpp 1 → 4, RE-RECORDED 2026-09-04 by Phase 14 m2, which is what this row
-        // is FOR: the number moved, so somebody had to say what each new pointer is.
-        //   - `RolltuiFrame* p` in `Frame::Handle` — the deleter of the frame's OWNED
-        //     handle. The only one here that is not a borrow, and it is a `unique_ptr`'s
-        //     deleter rather than a member, which is the sanctioned shape for OWNED.
-        //   - `const char* p` twice, in `glyph()` and `link()` — BORROWS from the frame,
-        //     turned into a `string_view` in the same expression and never stored. The
-        //     window is stated at the C header: valid until that cell is written again.
-        // Scratch.hpp 4 → 6, RE-RECORDED 2026-09-04 by Phase 14 m6a. Both new ones are the
-        // per-thread release registration, and neither owns anything:
-        //   - `void (*fn)(void*), void* target` on `detail::on_thread_release` — a releaser
-        //     and the buffer it releases, BORROWED for the life of the thread's registry,
-        //     which is cleared by `release_thread()` before any of them could dangle.
-        //   - `void* p` in the captureless lambda that casts it back to the Scratch — the
-        //     same borrow, one frame later.
-        // Scratch.hpp 6 → 9 and Screen.hpp 4 → 6, RE-RECORDED 2026-09-04 by Phase 15 m2.
-        // Scratch.hpp's three are all `ThreadHandle`, the per-thread C handle the ported
-        // modules' working memory lives in (`Unicode.cpp` hand-wrote this for Phase 14 m5;
-        // `Diff.cpp` and `Effects.cpp` were about to be copies two and three):
-        //   - `T* p_` — the one pointer here that OWNS. It is a `unique_ptr` in spirit and
-        //     not in fact because the boundary's free is a C function taken as a template
-        //     parameter; the class is move-less, copy-less and its destructor is the only
-        //     other way out, which is the same guarantee with the deleter named up front.
-        //   - `T* get()` — a BORROW of that handle, handed to the boundary for one call.
-        //   - `void* h` in the captureless release lambda — the same borrow one frame
-        //     later, cast back to the handle, exactly as `Scratch`'s already is.
-        // Screen.hpp's two are `RolltuiFrame* handle()` and its const overload: a BORROW of
-        // the handle the Frame OWNS, so that `Effects.cpp` can hand the frame to an applier
-        // written in the other language. Never stored; the window is the Frame's lifetime.
-// Presets.hpp 1 → 3, RE-RECORDED 2026-09-04 by Phase 17 m2, when `ThemePreset::colours`
-        // became a `RolltuiJsonValue*` instead of a `json::Value` (Theme.hpp's row, below, has
-        // the same milestone's other half). Neither new pointer owns two ways:
-        //   - `RolltuiJsonValue* p` in `ThemePreset::ColoursDeleter::operator()` — the deleter
-        //     of `colours`'s OWNED tree, a `unique_ptr`'s deleter rather than a member, the
-        //     same sanctioned shape `Frame::Handle`/`Terminal::Handle` already use.
-        //   - `RolltuiJsonValue* colours` in `ThemePresets::set_colours` — TAKES OWNERSHIP,
-        //     adopted into the working copy's `colours` member; the same contract
-        //     `rolltui_theme_preset_to_json`/`rolltui_json_set` already have for a tree handed
-        //     across this boundary.
-        {"Presets.hpp", 3},      // PresetStore.hpp 3 → 25, RE-RECORDED 2026-09-04 by Phase 15 m3, and this row is the
-        // milestone's own measurement rather than an accounting chore. The template became
-        // an ADAPTER onto `rolltui/c/rolltui_presets.h`, and a C boundary over a generic
-        // container is nothing BUT pointers: twenty-two of the twenty-five are parameters
-        // of the captureless lambdas that make up one `RolltuiPresetDomain` — `const char*
-        // text` and `void* report` on `parse`, `const void* value` on `clone`/`equal`,
-        // `void* ctx` on every `put` sink. Every one of them BORROWS for the duration of
-        // its call and none is stored; the two that are not parameters are
-        // `RolltuiPresetStore* p` in `Handle` (the OWNED store's deleter) and the
-        // `RolltuiPresetDomain&`-returning accessors' internals. The C++ template got all
-        // of this from `Value` and `PresetLoadReport&` and cost three.
-        {"PresetStore.hpp", 25},   {"Scratch.hpp", 9},     {"Screen.hpp", 6},
-        {"Style.hpp", 0},
-        // Terminal.hpp 0 → 4, RE-RECORDED 2026-09-04 by Phase 17 m1, when the terminal's
-        // implementation moved behind rolltui/c/rolltui_terminal.h and the class shrank to
-        // one handle. None of the four owns:
-        //   - `RolltuiTerminal* p` in `Terminal::Handle` — the deleter of the OWNED C
-        //     handle, a `unique_ptr`'s deleter rather than a member, the same sanctioned
-        //     shape `Frame::Handle` and `KeyDecoder::Handle` already use.
-        //   - `const char* p`, twice, in `enter_sequence()` and `leave_sequence()` — a
-        //     BORROW out of the handle, turned into a `string_view` in the same expression
-        //     and never stored. The window is stated at the C header: valid until the
-        //     Terminal is destroyed or `negotiate_keyboard()` runs again.
-        //   - `const char* env` in `negotiate_keyboard()` — `std::getenv`'s own return, read
-        //     once to resolve `ROLLTUI_KEY_PROTOCOL` and never stored past that call.
-        {"Terminal.hpp", 4},
-        // Theme.hpp 3 → 4, RE-RECORDED 2026-09-04 by Phase 17 m5, when `Theme::meta` became a
-        // `RolltuiJsonValue*` instead of a `json::Value` — the other half of Presets.hpp's own
-        // milestone above (`ThemePreset::colours`), same precedent followed exactly. The one
-        // new pointer does not own two ways either:
-        //   - `RolltuiJsonValue* p` in `Theme::MetaDeleter::operator()` — the deleter of
-        //     `meta`'s OWNED tree, a `unique_ptr`'s deleter rather than a member, the same
-        //     sanctioned shape `ThemePreset::ColoursDeleter` (Presets.hpp) already uses.
-        {"Theme.hpp", 4},        {"ThemeAnalysis.hpp", 0}, {"ThemeGen.hpp", 0},
-        // Widgets.hpp 10 → 12 (Phase 15 m5): `RolltuiWindows* p` in `Windows::Handle` — the
-        // deleter of the OWNED widget table, which is this milestone's named lifetime — and
-        // `RolltuiWindows* handle()`, a BORROW for the shim's own factories. The ten that
-        // were already here are unchanged; what left the header is four `std::map`s, one of
-        // which owned every widget in the program.
-        // Transcript.hpp 3 → 2, RE-RECORDED 2026-09-04 by Phase 15 m5e, and this is the
-        // census catching a REMOVAL alongside an addition. What LEFT were the accessors
-        // returning into the widget's own `std::vector`s and `unordered_map`s; what is here
-        // is `RolltuiTranscript* p` in `Transcript::Handle` (the deleter of the OWNED widget)
-        // and `const EntryLayout* layout_of()`, a BORROW valid until the next layout().
-        // Widgets.hpp 12 → 11 (Phase 17, this task): a REMOVAL with nothing to replace it —
-        // `Note(const char* t)`'s declaration moved to `rolltui/c/rolltui_widgets.h` (a `.h`
-        // this census does not scan, headers_only(true) filters `.hpp` only) when `Note`
-        // became `using Note = RolltuiNote`, the one-definition C/C++ struct the `input`
-        // plugin now fills across. The eleven that remain are unchanged.
-        // Transcript.hpp 2 -> 3 and Menu.hpp 4 -> 5, RE-RECORDED 2026-09-05: each gained a
-        // `handle()` returning its own `Rolltui*` — a BORROW of the object's own C state,
-        // valid while the object is, so a C widget plugin and a host's reference are the SAME
-        // state rather than two. `Input::handle()` already had one, which is precisely why the
-        // `input` kind could port to C and these two could not (plan/phase-17.md m1c).
-        // Transcript.hpp 3 -> 4 and Widgets.hpp 11 -> 14, RE-RECORDED 2026-09-05 by Phase 17
-        // m1c — the milestone that moved `inputs_`/`transcripts_`/`menus_` out of `Windows`
-        // and into `RolltuiWindows`. **The census went UP by four while three C++ maps that
-        // OWNED every input, transcript and menu in the program went away**, which is exactly
-        // the trade this ratchet exists to make visible rather than to prevent.
-        //   Transcript.hpp: `transcript_handle(RolltuiTranscript* t, …)`, the handle-taking
-        //     form of `Transcript::handle` — the same shape as `input_handle`/`menu_handle`.
-        //   Widgets.hpp: `transcript(source)`, `input(source)` and `menu(source)` hand back
-        //     `RolltuiTranscript*`/`RolltuiInput*`/`RolltuiMenu*` where they used to hand back
-        //     a `Transcript&`/`Input&`/`Menu&` into maps this class owned. Every one is a
-        //     BORROW of an object the WINDOW TABLE owns for its whole life, and it is the same
-        //     object the window draws — which is the property the milestone is for, and the
-        //     reason a C-side map beside the C++ one was refused as a second owner.
-        //   The three `_at(window)` accessors changed TYPE without changing count.
-        {"Transcript.hpp", 4},          {"Widgets.hpp", 14},
-        // Unicode.hpp 1 → 0, RE-RECORDED 2026-09-04 by Phase 14 m5, and this is the census
-        // catching a REMOVAL — which it is meant to do just as loudly as an addition. The
-        // pointer was `const Range* table` on `lookup()`, the binary search the inline
-        // property accessors used. The accessors go through the boundary now, so `lookup`
-        // had no callers and left with them; the header no longer hands out a pointer at all.
-        {"Unicode.hpp", 0},
-        // Wrap.hpp 2 → 5, RE-RECORDED 2026-09-04 by Phase 14 m3, same as Screen.hpp above:
-        // the number moved, so somebody had to say what each new pointer is. The two that
-        // LEFT were `const Line* begin()/end()` — a line is built on read now, so the
-        // iterator is an index rather than a pointer into an array that no longer exists.
-        //   - `RolltuiWrapLines* p` in `WrapLines::Handle` — the deleter of the OWNED
-        //     handle, a `unique_ptr`'s deleter rather than a member, which is the
-        //     sanctioned shape for OWNED and the only non-borrow here.
-        //   - `const char* text` and `const WrapGrapheme* graphemes` in `operator[]` —
-        //     BORROWS out of the handle, turned into a `string_view` and a `span` in the
-        //     same expression and never stored. The window is stated at the C header:
-        //     valid until that handle is wrapped into again, reset or destroyed.
-        //   - `const WrapLines* w` / `w_` in the iterator (one declaration each, the
-        //     parameter and the member) — a BORROW of the container being iterated, which
-        //     by construction outlives the iterator.
-        //   - `RolltuiWrapLines* owned` in the private constructor — the one pointer here
-        //     whose name is the whole point: it TAKES OWNERSHIP of a handle the boundary
-        //     just minted, and hands it straight to the `unique_ptr`. It is private so that
-        //     the only way to get one is `clone()`, which is the only place a raw handle
-        //     ever exists as a value in this header.
-        //   - 6 → 7, 2026-09-04 (Phase 14 m6a): `RolltuiWrapLines* handle() const`, the
-        //     make-on-first-use accessor. A BORROW of the handle this object owns, handed
-        //     out only inside the class — the handle exists lazily so that a default-
-        //     constructed WrapLines holds nothing, which is what lets `Scratch` release its
-        //     storage to actually zero.
-        {"Wrap.hpp", 7},
+        {"rolltui.h", 0},
+        {"c/rolltui_mem.h", 1},
+        {"c/rolltui_style.h", 0},
+        {"c/rolltui_diff.h", 1},
+        {"c/rolltui_json.h", 0},
+        {"c/rolltui_widgets.h", 4},
+        {"c/rolltui_str.h", 0},
+        {"c/rolltui_abi.h", 0},
+        {"c/rolltui_layout.h", 24},
+        {"c/rolltui_input.h", 32},
+        {"c/rolltui_theme.h", 7},
+        {"c/rolltui_undo.h", 0},
+        {"c/rolltui_menu.h", 23},
+        {"c/rolltui_theme_analysis.h", 5},
+        {"c/rolltui_app_profile.h", 4},
+        {"c/rolltui_presets.h", 28},
+        {"c/rolltui_md_lines.h", 6},
+        {"c/rolltui_screen.h", 1},
+        {"c/rolltui_geom.h", 0},
+        {"c/rolltui_render.h", 1},
+        {"c/rolltui_wrap.h", 1},
+        {"c/rolltui_frame_ops.h", 1},
+        {"c/rolltui_layout_tree.h", 2},
+        {"c/rolltui_keys.h", 1},
+        {"c/rolltui_markdown.h", 2},
+        {"c/rolltui_widget_kinds.h", 4},
+        {"c/rolltui_theme_gen.h", 1},
+        {"c/rolltui_swap.h", 0},
+        {"c/rolltui_transcript.h", 14},
+        {"c/rolltui_effects.h", 6},
+        {"c/rolltui_marker.h", 0},
+        {"c/rolltui_bindings.h", 16},
+        {"c/rolltui_alloc.h", 0},
+        {"c/rolltui_map.h", 2},
+        {"c/rolltui_document.h", 2},
+        {"c/rolltui_terminal.h", 1},
+        {"c/rolltui_unicode.h", 5},
+        {"c/rolltui_menu_tree.h", 2},
+        {"c/rolltui_lifetime.h", 0},
+        {"c/rolltui_embedded.h", 2},
     };
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
     for (const std::string& rel : library_sources(/*headers_only=*/true)) {
-      if (rel.find('/') != std::string::npos) continue;  // tools/ headers are a host's
+      // The public headers are `c/*.h` plus the umbrella since Phase 17 m3; `tools/` headers
+      // are a HOST's and stay out. This used to read "no slash at all", which was the same set
+      // back when the public headers were `rolltui/*.hpp` — and silently became the empty set
+      // the moment they moved one directory down.
+      if (rel.rfind("tools/", 0) == 0) continue;
+      if (rel.find('/') != std::string::npos && rel.rfind("c/", 0) != 0) continue;
       int n = 0;
       const std::string text = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/" + rel);
       std::istringstream in(text);
       std::string line;
       while (std::getline(in, line)) {
         if (is_comment(line)) continue;
-        if (std::regex_search(line, pointer_decl())) ++n;
+        // Comments stripped, not merely skipped — the C headers document pointers in prose
+        // far more than the C++ ones did, and `/* a BORROW of `RolltuiStr* p` */` is not a
+        // declaration. Same fix as the new/delete scan above, and found the same way.
+        const std::string code = strip_comments(line);
+        if (!is_stored_pointer(code)) continue;
+        ++n;
       }
       total += n;
       // The table above is PRINTED on a failure run, so re-recording is a copy-paste:
@@ -537,11 +356,19 @@ int main() {
     // 115 -> 121 (Phase 17 m1c): +1 each for `input_handle`/`menu_handle`/`transcript_handle`
     // and +3 for `Windows`' three typed accessors handing back the library's own handles. Every
     // one is a BORROW; what left in the same change is three C++ maps that OWNED widgets.
-    check(total == 121, "the census counted the library's borrows (" + std::to_string(total) + " raw pointers in public headers)");
+    // 121 -> 122 (Phase 17 m3): `PresetStore.hpp`'s `handle()`, above.
+    // 122 -> 199 (Phase 17 m3): a different measurement of a different set — STORED pointers
+    // in `c/*.h`, where the old figure was every declaration in `rolltui/*.hpp`. Not comparable,
+    // and deliberately not presented as a delta.
+    check(total == 199, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 2: the pointer scanner actually matches a declaration, and does NOT match
     // arithmetic or a comment.
     check(std::regex_search(std::string("void f(const Document* doc);"), pointer_decl()), "the pointer scanner matches a declaration");
     check(!std::regex_search(std::string("  int n = a * b;"), pointer_decl()), "…and not a multiplication");
+    // …and the STORED/HANDED split the census now turns on, planted both ways.
+    check(is_stored_pointer("  RolltuiStr* notes;"), "a stored pointer is a member: it ends the statement");
+    check(!is_stored_pointer("void f(const RolltuiDocument* doc);"), "…and a parameter is not one, however many it takes");
+    check(!is_stored_pointer("  RolltuiStr* p = f(x);"), "…nor is a local initialised from a call");
     check(is_comment("  // const Document* doc"), "…and comment lines are skipped, so prose about a pointer is not a pointer");
   }
 
@@ -554,9 +381,13 @@ int main() {
     check(claude.find("OWNED") != std::string::npos && claude.find("BORROWED") != std::string::npos &&
               claude.find("shared_ptr") != std::string::npos,
           "CLAUDE.md carries the ownership rule, where every session reads it");
-    const std::string widgets = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/Widgets.hpp");
+    // `rolltui/Widgets.hpp` until Phase 17 m3; the type that does the owning is
+    // `RolltuiWindows` in `c/rolltui_widgets.h` now, and the rule went with it. Repointed
+    // rather than dropped: this check exists because a convention nobody meets is not one, and
+    // that is as true of the C header as it was of the C++ one.
+    const std::string widgets = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/c/rolltui_widgets.h");
     check(widgets.find("OWNED") != std::string::npos && widgets.find("BORROWED") != std::string::npos,
-          "…and Widgets.hpp states it beside the type that does the owning");
+          "…and c/rolltui_widgets.h states it beside the type that does the owning");
   }
 
   return report("rolltui ownership_test");

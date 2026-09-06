@@ -85,6 +85,20 @@ void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_request
 
 void rolltui_mem_reset_stats(void);
 
+/* ---- the library's one entry point, and the only two halves of it a CONSUMER may name -----
+ * Moved here from `rolltui/c/rolltui_alloc.h` on 2026-09-05 (Phase 17 m3): that header is
+ * internal and the umbrella excludes it, so a consumer that wanted a handle and its release
+ * could not reach one — while `rolltui_alloc.h`'s own text said they "stay available
+ * everywhere". `rolltui_mem_realloc` deliberately did NOT come with them: growth is the thing
+ * the closed set exists to stop being invented, and leaving its declaration in an internal
+ * header makes that structural rather than a grep control's promise.
+ *
+ * An allocation failure ABORTS rather than returning NULL, so neither can fail and no caller
+ * checks. Every allocation in the library goes through these two — CLAUDE.md's rule, and the
+ * reason `rolltui_mem_stats` above can be believed. */
+void* rolltui_mem_alloc(size_t bytes);
+void rolltui_mem_free(void* p);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

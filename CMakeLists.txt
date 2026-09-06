@@ -12,7 +12,7 @@
 # pays for a component once at link time rather than at every include (measured
 # 2026-09-01: a translation unit that merely included the header-only Markdown.hpp
 # cost 0.8 s and a 197 KB object; that is what this layout removes). The include
-# directory is the REPO ROOT so consumers write `#include "rolltui/Wrap.hpp"` — and
+# directory is the REPO ROOT so consumers write `#include "rolltui/rolltui.h"` — and
 # nothing else: roll's own `include/` is never on this target's path, and the tests
 # below build with only this directory and rolltui/tests. That is the whole of
 # phase 9's Done-when (g).
@@ -112,7 +112,6 @@ add_library(rolltui STATIC
                               #   file compiled by both languages (Phase 14 m5), so the
                               #   two algorithm implementations share the data rather
                               #   than each carrying 9,800 lines that could disagree.
-  Unicode.cpp
   c/rolltui_alloc.c           # Phase 14 m4: the C side's CLOSED SET of allocation
                               #   strategies. Compiled into BOTH configurations for the same
                               #   reason as UnicodeSeam.cpp below — a file only one build
@@ -129,14 +128,11 @@ add_library(rolltui STATIC
   c/rolltui_layout_tree.c     # Phase 15 m5: THE SPLIT TREE, as data. Both configurations,
                               #   for the span store's reason — the flag chooses the
                               #   placement ALGORITHM, never the shape of a node.
-  LayoutTree.cpp              #   …and its five special members, which are callers of it.
   c/rolltui_menu_tree.c       # Phase 15 m5: THE MENU TREE, the second recursive owning tree,
                               #   also in both configurations and for the same reason.
-  MenuTree.cpp                #   …and its C++ half.
   c/rolltui_document.c        # Phase 15 m5e: THE DOCUMENT MODEL, as data. Both
                               #   configurations, and for a second reason: a HOST fills it,
                               #   so two shapes of an entry would be two things to disagree.
-  DocumentCpp.cpp             #   …and its C++ half.
   c/rolltui_undo.c            # Phase 17: opaque-snapshot undo, the C form of the last
                               #   pure-C++ template. The editors keep a C++ adapter of
                               #   their own under tools/, which is a HOST's business.
@@ -159,35 +155,15 @@ add_library(rolltui STATIC
                               #   DATA both implementations of the renderer fill, and two
                               #   copies of a data structure is two things that can disagree
                               #   about what a span is. The flag chooses the ALGORITHM.
-  Wrap.cpp
-  Markdown.cpp
-  Diff.cpp
-  Json.cpp
-  Theme.cpp
   ${ROLLTUI_SLICE}            # the library proper, in C (Phase 14 + Phase 15)
   c/rolltui_mem.c             # Phase 13, moved to C at Phase 17 m1: the library's ONE entry
                               #   point for memory. Memory.hpp is a thin forwarding shim now.
   c/rolltui_lifetime.c        # Phase 14 m6a, moved to C at Phase 17 m1: shutdown(), and no
                               #   init — the release point that makes "did we leak?"
                               #   answerable. Lifetime.hpp is a thin forwarding shim now.
-  Lifetime.cpp                #   …and the one piece that stayed C++: `detail::on_thread_
                               #   release`, whose only declaration (rolltui/Scratch.hpp,
                               #   out of scope here) is deliberately not `inline`, so it
                               #   needs an ordinary out-of-line definition somewhere.
-  Effects.cpp                 # Phase 12 m6: motion is the theme's, a state is the widget's
-  Screen.cpp
-  Keys.cpp
-  Terminal.cpp                # the one unit that touches a file descriptor
-  Transcript.cpp
-  Layout.cpp
-  Widgets.cpp                 # Phase 10 m2: widgets by kind, sources by name
-  Input.cpp
-  Menu.cpp
-  Presets.cpp
-  ThemeAnalysis.cpp
-  ThemeGen.cpp
-  Bindings.cpp
-  AppProfile.cpp              # Phase 11 m4: what a layout may name inside one app
   ${ROLLTUI_EMBEDDED_PRESETS}
   ${ROLLTUI_EMBEDDED_LAYOUTS}
   ${ROLLTUI_EMBEDDED_MENUS}

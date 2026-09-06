@@ -403,4 +403,170 @@ typedef struct RolltuiResolvedNode {
 } /* extern "C" */
 #endif
 
+#ifdef __cplusplus
+/* ---- the C++ special members of the structs above (Phase 17 m3) ---------------------------
+ * Each one is a CALLER of a C function declared above it, so "release this subtree" has one
+ * implementation and a destructor reaches it rather than being a second mechanism.
+ *
+ * They were out-of-line in `rolltui/LayoutTree.cpp` until the C++ binding was deleted. They are not
+ * part of that binding — they are what makes "the C++ type IS the C struct" true (Phase 14's
+ * one-definition rule), so they had to keep a home; `inline`, beside the declarations they
+ * implement, is that home and removes the last C++ translation unit from the library. */
+inline RolltuiNodeList::~RolltuiNodeList() { rolltui_node_list_release(this); }
+
+inline void RolltuiNodeList::copy_from(const RolltuiNodeList& o) { rolltui_node_list_copy(this, &o); }
+
+inline RolltuiNodeList& RolltuiNodeList::operator=(const RolltuiNodeList& o) {
+  if (this != &o) rolltui_node_list_copy(this, &o);
+  return *this;
+}
+
+inline RolltuiNodeList& RolltuiNodeList::operator=(RolltuiNodeList&& o) noexcept {
+  if (this != &o) {
+    rolltui_node_list_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+
+inline void RolltuiNodeList::push_back(RolltuiLayoutNode&& c) {
+  RolltuiLayoutNode* p = rolltui_node_list_add(this);
+  *p = std::move(c);
+}
+
+inline void RolltuiNodeList::push_back(const RolltuiLayoutNode& c) {
+  RolltuiLayoutNode* p = rolltui_node_list_add(this);
+  rolltui_layout_node_copy(p, &c);
+}
+
+inline void RolltuiNodeList::insert(const_iterator at, RolltuiLayoutNode&& c) {
+  RolltuiLayoutNode* p = rolltui_layout_node_new();
+  *p = std::move(c);
+  rolltui_node_list_insert(this, static_cast<std::size_t>(at.p - v), p);
+}
+
+inline void RolltuiNodeList::erase(const_iterator at) {
+  rolltui_node_list_remove(this, static_cast<std::size_t>(at.p - v));
+}
+
+inline void RolltuiNodeList::clear() { rolltui_node_list_clear(this); }
+
+inline bool RolltuiNodeList::operator==(const RolltuiNodeList& o) const {
+  if (n != o.n) return false;
+  for (std::size_t i = 0; i < n; ++i)
+    if (!rolltui_layout_node_equal(v[i], o.v[i])) return false;
+  return true;
+}
+
+// ---- the node -------------------------------------------------------------------------------
+
+inline RolltuiLayoutNode RolltuiLayoutNode::window(std::string content, RolltuiSplitSize size) {
+  RolltuiLayoutNode n;
+  n.kind = Kind::Window;
+  n.id = content;
+  n.content = std::move(content);
+  n.size = size;
+  return n;
+}
+
+inline RolltuiLayoutNode RolltuiLayoutNode::window_id(std::string id, std::string content, RolltuiSplitSize size) {
+  RolltuiLayoutNode n = window(std::move(content), size);
+  n.id = std::move(id);
+  return n;
+}
+
+inline RolltuiLayoutNode RolltuiLayoutNode::row(std::vector<RolltuiLayoutNode> children, RolltuiSplitSize size) {
+  RolltuiLayoutNode n;
+  n.kind = Kind::Row;
+  for (RolltuiLayoutNode& c : children) n.children.push_back(std::move(c));
+  n.size = size;
+  return n;
+}
+
+inline RolltuiLayoutNode RolltuiLayoutNode::column(std::vector<RolltuiLayoutNode> children, RolltuiSplitSize size) {
+  RolltuiLayoutNode n = row(std::move(children), size);
+  n.kind = Kind::Column;
+  return n;
+}
+
+inline bool RolltuiLayoutNode::operator==(const RolltuiLayoutNode& o) const {
+  return rolltui_layout_node_equal(this, &o) != 0;
+}
+
+// ---- a layer ---------------------------------------------------------------------------------
+// The five members are written out rather than defaulted because `placement` has to start at
+// "the whole of the parent" and a defaulted constructor would start it at nothing — the same
+// three fields `rolltui_layer_init` names, in the one place both languages can reach.
+
+inline RolltuiLayer::RolltuiLayer() {
+  placement.w = RolltuiDim::rel(1);
+  placement.h = RolltuiDim::rel(1);
+  placement.clamp = 1;
+}
+
+inline RolltuiLayer::RolltuiLayer(const RolltuiLayer& o) : RolltuiLayer() { rolltui_layer_copy(this, &o); }
+
+inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
+    : id(std::move(o.id)),
+      placement(o.placement),
+      root(std::move(o.root)),
+      modal(o.modal),
+      focus(std::move(o.focus)) {
+  o.modal = 0;
+}
+
+inline RolltuiLayer& RolltuiLayer::operator=(const RolltuiLayer& o) {
+  if (this != &o) rolltui_layer_copy(this, &o);
+  return *this;
+}
+
+inline RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
+  if (this != &o) {
+    id = std::move(o.id);
+    placement = o.placement;
+    root = std::move(o.root);
+    modal = o.modal;
+    focus = std::move(o.focus);
+    o.modal = 0;
+  }
+  return *this;
+}
+
+inline RolltuiLayer::~RolltuiLayer() = default;
+
+inline bool RolltuiLayer::operator==(const RolltuiLayer& o) const { return rolltui_layer_equal(this, &o) != 0; }
+
+// ---- popups: an owned array of Layer values ---------------------------------------------------
+
+inline RolltuiLayerList::~RolltuiLayerList() { rolltui_layer_list_release(this); }
+
+inline void RolltuiLayerList::copy_from(const RolltuiLayerList& o) { rolltui_layer_list_copy(this, &o); }
+
+inline RolltuiLayerList& RolltuiLayerList::operator=(RolltuiLayerList&& o) noexcept {
+  if (this != &o) {
+    rolltui_layer_list_release(this);
+    v = o.v;
+    n = o.n;
+    cap = o.cap;
+    o.v = nullptr;
+    o.n = o.cap = 0;
+  }
+  return *this;
+}
+
+inline void RolltuiLayerList::push_back(RolltuiLayer&& l) { rolltui_layer_move(rolltui_layer_list_add(this), &l); }
+
+inline void RolltuiLayerList::push_back(const RolltuiLayer& l) { rolltui_layer_copy(rolltui_layer_list_add(this), &l); }
+
+inline void RolltuiLayerList::erase_id(std::string_view id) { rolltui_layer_list_remove_id(this, id.data(), id.size()); }
+
+inline void RolltuiLayerList::clear() { rolltui_layer_list_clear(this); }
+
+inline bool RolltuiLayerList::operator==(const RolltuiLayerList& o) const { return rolltui_layer_list_equal(this, &o) != 0; }
+#endif /* __cplusplus */
+
 #endif /* ROLLTUI_C_LAYOUT_TREE_H */
