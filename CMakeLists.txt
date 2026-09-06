@@ -230,7 +230,11 @@ add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
 # studio "doesn't count as having public functions ... it can include private headers." So its
 # reach stops justifying PUBLIC, exactly as a test's does. `rolltui-paint` is NOT here: a
 # generic painting app is the closest thing in this tree to what an outsider would write.
-set(ROLLTUI_INTERNAL_TESTS
+# RENAMED from ROLLTUI_INTERNAL_TESTS in Phase 22: it lists the studio and its three editors,
+# which are not tests, and a name that misdescribes its own contents is how the tools/ directory
+# came to hold two hosts under one word. It names what it does: the files that may opt in to an
+# internal header.
+set(ROLLTUI_INTERNAL_OPT_IN
   # the studio and its editors — rolltui's own tool, not a consumer
   studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
   layout_editor.cpp layout_editor.hpp tool_actions.hpp undo_stack.hpp
@@ -244,8 +248,8 @@ set(ROLLTUI_INTERNAL_TESTS
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
   keys_editor_test.cpp theme_editor_test.cpp)
-list(JOIN ROLLTUI_INTERNAL_TESTS "," ROLLTUI_INTERNAL_TESTS_JOINED)
-target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_TESTS="${ROLLTUI_INTERNAL_TESTS_JOINED}")
+list(JOIN ROLLTUI_INTERNAL_OPT_IN "," ROLLTUI_INTERNAL_OPT_IN_JOINED)
+target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_OPT_IN="${ROLLTUI_INTERNAL_OPT_IN_JOINED}")
 
 # Phase 20 m1/m4: THE OTHER HALF OF THE LIST, AND THE ONE THAT IS THE INSTRUMENT. Moving a
 # function INTERNAL costs a suite an opt-in, so the opt-in list only grows — and if nearly every

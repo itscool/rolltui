@@ -220,6 +220,8 @@ ROLLTUI_API(rolltui_u_decode_one, INTERNAL)
 ROLLTUI_API(rolltui_u_decode_utf8, INTERNAL)  /* one of the three Unicode functions a host needs (Phase 17 m4) */
 ROLLTUI_API(rolltui_u_decode_utf8_chars, INTERNAL)
 ROLLTUI_API(rolltui_u_display_width, PUBLIC)
+ROLLTUI_API(rolltui_u_fit, PUBLIC)  /* the explorer's wall E2: a widget that truncates needs
+                                     the cut offset; every list/tree/table/column view does */
 ROLLTUI_API(rolltui_u_general_category, INTERNAL)
 ROLLTUI_API(rolltui_u_grapheme_boundaries, INTERNAL)
 ROLLTUI_API(rolltui_u_graphemes, INTERNAL)

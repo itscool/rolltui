@@ -79,40 +79,21 @@ struct Entry {
 };
 
 // ---- text measured and cut to a column's width ---------------------------------------------
-// WALL 2 (phase file): the public API has THREE Unicode functions and none of them answers
-// "how many bytes of this fit in N cells". `rolltui_frame_put_text` clips correctly, but a
-// name that is cut needs an ellipsis, and to place one you must know where the cut falls. The
-// wrap engine is used as a grapheme iterator here — `rolltui_wrap` to a very wide line, then
-// its per-grapheme offsets and widths — which is public, correct and indirect.
+// WALL 2, FIXED IN PHASE 22. This asked "how many bytes of this fit in N cells", and the public
+// API had no answer: `rolltui_frame_put_text` computes exactly that offset to honour `max_cells`
+// and returned only the count, so placing an ellipsis where a name is cut meant finding the cut
+// some other way. This drove the WRAP ENGINE as a grapheme iterator to get it — public, correct
+// and indirect. `rolltui_u_fit` is that offset, in the library's own vocabulary, because every
+// list, tree, table and column view truncates and would have written this loop.
 struct Measure {
-  RolltuiWrapLines* w = rolltui_wrap_new();
   RolltuiUnicodeScratch* u = rolltui_u_scratch_new();
-  ~Measure() {
-    rolltui_wrap_free(w);
-    rolltui_u_scratch_free(u);
-  }
+  ~Measure() { rolltui_u_scratch_free(u); }
   int width(const std::string& s) { return rolltui_u_display_width(u, s.data(), s.size(), 0); }
   // The longest prefix of `s` that fits in `cells`, as a byte count.
   std::size_t prefix_bytes(const std::string& s, int cells) {
-    if (cells <= 0) return 0;
-    RolltuiWrapOptions opt{};
-    rolltui_wrap(w, s.data(), s.size(), 1 << 20, opt);
-    if (rolltui_wrap_line_count(w) == 0) return 0;
-    const char* text = nullptr;
-    std::size_t text_len = 0;
-    const RolltuiWrapGrapheme* g = nullptr;
-    std::size_t gn = 0;
-    int lw = 0, indent = 0, hard = 0;
-    rolltui_wrap_line(w, 0, &text, &text_len, &g, &gn, &lw, &indent, &hard);
-    int used = 0;
-    std::size_t bytes = 0;
-    for (std::size_t i = 0; i < gn; ++i) {
-      if (used + g[i].width > cells) break;
-      used += g[i].width;
-      bytes = g[i].source_offset + g[i].length;
-    }
-    return bytes > s.size() ? s.size() : bytes;
+    return rolltui_u_fit(u, s.data(), s.size(), cells, 0, nullptr);
   }
+
   // `s`, or a prefix of it with a single-cell ellipsis, fitting `cells`.
   std::string fit(const std::string& s, int cells) {
     if (cells <= 0) return std::string();

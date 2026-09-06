@@ -205,7 +205,7 @@ int main() {
   // Enumerated from the directory. Each includes the definition FIRST (one definition per
   // type holds by construction), and none is included by a host or a tool. A TEST may include
   // one — by naming it, with the comment the opt-in carries, and by being listed in
-  // rolltui/CMakeLists.txt's ROLLTUI_INTERNAL_TESTS. The count outside that list is 0, asserted.
+  // rolltui/CMakeLists.txt's ROLLTUI_INTERNAL_OPT_IN. The count outside that list is 0, asserted.
   std::vector<std::string> headers;
   if (DIR* d = opendir((std::string(ROLLTUI_SOURCE_DIR) + "/c").c_str())) {
     while (dirent* e = readdir(d)) {
@@ -265,7 +265,7 @@ int main() {
   {
     std::set<std::string> optin;
     {
-      std::string list = ROLLTUI_INTERNAL_TESTS;
+      std::string list = ROLLTUI_INTERNAL_OPT_IN;
       std::size_t at = 0;
       while (at <= list.size()) {
         const std::size_t comma = list.find(',', at);  // comma-joined: a ';' would be a shell separator in the compile line
@@ -522,7 +522,7 @@ int main() {
       for (std::sregex_iterator it(tbl.begin(), tbl.end(), kept_re), end; it != end; ++it) kept.insert((*it)[1].str());
     }
     // ---- PHASE 20 m4: THE NOT-OPTED-IN GUARD ------------------------------------------------
-    // Moving a function INTERNAL costs a suite an opt-in, so `ROLLTUI_INTERNAL_TESTS` only grows;
+    // Moving a function INTERNAL costs a suite an opt-in, so `ROLLTUI_INTERNAL_OPT_IN` only grows;
     // if nearly every suite ends up on it, section 3's exact zero stops saying anything. **The
     // instrument is the set that stays OUT.** These four assertions are what keep it meaningful:
     // the set is non-empty, every name in it is a real file (a typo would shrink it silently —
@@ -536,7 +536,7 @@ int main() {
         if (!n.empty() && read(root + "/tests/" + n).empty()) missing.push_back(n);
       std::set<std::string> optin_now;
       {
-        std::string list = ROLLTUI_INTERNAL_TESTS;
+        std::string list = ROLLTUI_INTERNAL_OPT_IN;
         std::size_t at = 0;
         while (at <= list.size()) {
           const std::size_t comma = list.find(',', at);
@@ -625,7 +625,10 @@ int main() {
     // because the menu's typed `"type": "color"` field hands a host TEXT and there was no public
     // way to use it — a public input type whose value cannot be parsed is a contradiction in the
     // surface, and it holds independently of the consumer that found it.
-    const int kPublic = 348, kInternal_ = 475, kDelete = 0;
+    /* 348 -> 349 (Phase 22): `rolltui_u_fit`, the explorer's wall E2 — the cut offset
+     * `rolltui_frame_put_text` computes and did not share, which every list, tree, table and
+     * column widget would otherwise write for itself. */
+    const int kPublic = 349, kInternal_ = 475, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -726,6 +729,94 @@ int main() {
         if (lines[i].find("[TOOL-FACING]") != std::string::npos && lines[i - 1].find("====") != std::string::npos) ++seen;
       check(seen == 1, "…and the banner scanner sees a planted one, so the empty result above is a reading");
     }
+  }
+
+  // ---- 9. WHICH READER IS IT FOR — and the header SECTIONED by the answer (Phase 22 m1/m2) --
+  // `api_classes.inc` says WHETHER a function is public. `api_roles.inc` says WHO IT IS FOR, and
+  // this section holds `rolltui.h`'s physical layout to it. Without the placement check the roles
+  // would be a comment nobody re-reads and the parts would drift back into module order.
+  //
+  // The three parts are found by their own banners, so RENAMING one fails here loudly rather than
+  // silently emptying a bucket — the same reason section 6 looks for declarations at brace depth
+  // zero instead of mentions.
+  {
+    struct RoleRow { const char* fn; const char* role; };
+    static const RoleRow kRoles[] = {
+#define ROLLTUI_ROLE(name, role) {#name, #role},
+#include "api_roles.inc"
+#undef ROLLTUI_ROLE
+    };
+    struct ClsRow { const char* fn; const char* cls; };
+    static const ClsRow kCls[] = {
+#define ROLLTUI_API(name, cls) {#name, #cls},
+#include "api_classes.inc"
+#undef ROLLTUI_API
+    };
+    const std::string hdr = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui.h");
+    const std::size_t p1 = hdr.find("PART 1 — THE NOUNS");
+    const std::size_t p2 = hdr.find("PART 2 — THE HOST AUTHOR");
+    const std::size_t p3 = hdr.find("PART 3 — THE WIDGET AUTHOR");
+    check(p1 != std::string::npos && p2 != std::string::npos && p3 != std::string::npos && p1 < p2 && p2 < p3,
+          "rolltui.h is in three parts, in reader order: the nouns, the host author, the widget author");
+    auto d0 = [](const std::string& t) {
+      std::string out; std::vector<bool> counted; int depth = 0;
+      for (std::size_t i = 0; i < t.size(); ++i) {
+        const char ch = t[i];
+        if (ch == '{') {
+          const std::string before = t.substr(i >= 40 ? i - 40 : 0, i >= 40 ? 40 : i);
+          const bool linkage = std::regex_search(before, std::regex(R"((extern\s+"C"|namespace\s+\w+)\s*$)"));
+          counted.push_back(!linkage); if (!linkage) ++depth; continue;
+        }
+        if (ch == '}') { if (!counted.empty()) { if (counted.back()) --depth; counted.pop_back(); } continue; }
+        if (depth == 0) out += ch;
+      }
+      return out;
+    };
+    std::set<std::string> part[3];
+    if (p1 != std::string::npos && p2 != std::string::npos && p3 != std::string::npos) {
+      const std::string chunk[3] = {hdr.substr(p1, p2 - p1), hdr.substr(p2, p3 - p2), hdr.substr(p3)};
+      static const std::regex dre(R"(\b(rolltui_[a-z0-9_]+)\s*\()");
+      for (int k = 0; k < 3; ++k) {
+        const std::string t = d0(strip_all_comments(chunk[k]));
+        for (std::sregex_iterator it(t.begin(), t.end(), dre), end; it != end; ++it) part[k].insert((*it)[1].str());
+      }
+    }
+    std::map<std::string, std::string> role_of;
+    for (const RoleRow& r : kRoles) role_of[r.fn] = r.role;
+    std::vector<std::string> no_role, stale_role, misplaced_role, neither;
+    std::map<std::string, std::string> cls_of;
+    for (const ClsRow& r : kCls) cls_of[r.fn] = r.cls;
+    for (const ClsRow& r : kCls)
+      if (std::string(r.cls) == "PUBLIC" && !role_of.count(r.fn)) no_role.push_back(r.fn);
+    for (const RoleRow& r : kRoles) {
+      if (!cls_of.count(r.fn) || cls_of[r.fn] != "PUBLIC") { stale_role.push_back(r.fn); continue; }
+      const std::string role = r.role;
+      if (role == "NEITHER") { neither.push_back(r.fn); continue; }
+      const int want = role == "VOCAB" ? 0 : role == "WIDGET" ? 2 : 1;
+      if (!part[want].count(r.fn)) {
+        int found = -1;
+        for (int k = 0; k < 3; ++k) if (part[k].count(r.fn)) found = k;
+        misplaced_role.push_back(std::string(r.fn) + " (" + role + ", declared in part " +
+                                 (found < 0 ? std::string("none") : std::to_string(found + 1)) + ")");
+      }
+    }
+    auto join = [](const std::vector<std::string>& v) { std::string s; for (const std::string& x : v) s += "\n      " + x; return s; };
+    check(no_role.empty(), "every PUBLIC function has a ROLE — who is it for is a DECISION, not an arrival" + join(no_role));
+    check(stale_role.empty(), "every role row names a PUBLIC function" + join(stale_role));
+    check(neither.empty(), "NO PUBLIC FUNCTION FITS NO READER: NEITHER is a candidate for internal, not a resting place" + join(neither));
+    check(misplaced_role.empty(), "THE HEADER IS SECTIONED BY THE ROLE: VOCAB in part 1, a host's in part 2, WIDGET in part 3" + join(misplaced_role));
+    std::map<std::string, int> rt;
+    for (const RoleRow& r : kRoles) ++rt[r.role];
+    // MEASURED 2026-09-06 (Phase 22 m1). Moving a role re-records these, which is the point: the
+    // SHAPE of the surface becomes a number a reader can audit rather than an impression.
+    check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 121 && rt["HOST_BIND"] == 87 && rt["HOST_RUN"] == 77 &&
+              rt["HOST_RELEASE"] == 4 && rt["WIDGET"] == 27,
+          "the roles are the recorded shape — vocab 33, host load 121 / bind 87 / run 77 / release 4, widget 27 (got " +
+              std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_BIND"]) + "/" +
+              std::to_string(rt["HOST_RUN"]) + "/" + std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["WIDGET"]) + ")");
+    check(part[0].size() > 20 && part[1].size() > 200 && part[2].size() > 15,
+          "…and the three parts are non-empty as read from the file (" + std::to_string(part[0].size()) + "/" +
+              std::to_string(part[1].size()) + "/" + std::to_string(part[2].size()) + " declarations)");
   }
 
   return report("public_header_test");

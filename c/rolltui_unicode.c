@@ -379,6 +379,29 @@ int rolltui_u_display_width(RolltuiUnicodeScratch* sc, const char* utf8, size_t 
   return w;
 }
 
+/* PHASE 22 (wall E2): the byte offset `rolltui_frame_put_text` computes to honour `max_cells`
+ * and did not share. The explorer's column view needed it to place an ellipsis where a name is
+ * cut, and every list, tree, table and column widget needs the same thing — so it is the
+ * library's, in the library's own vocabulary, rather than each widget's grapheme loop. Stops
+ * BEFORE a glyph that would be cut in half, which is put_text's own rule. */
+size_t rolltui_u_fit(RolltuiUnicodeScratch* sc, const char* utf8, size_t len, int max_cells,
+                     int ambiguous_wide, int* out_cells) {
+  RolltuiUnicodeGrapheme* g;
+  size_t n, i, bytes = 0;
+  int w = 0;
+  if (out_cells) *out_cells = 0;
+  if (len == 0 || max_cells <= 0) return 0;
+  g = sc->gr = rolltui_grow(sc->gr, &sc->gr_cap, len, sizeof *sc->gr);
+  n = rolltui_u_graphemes(sc, utf8, len, ambiguous_wide, g);
+  for (i = 0; i < n; ++i) {
+    if (w + g[i].width > max_cells) break;
+    w += g[i].width;
+    bytes = g[i].offset + g[i].length;
+  }
+  if (out_cells) *out_cells = w;
+  return bytes > len ? len : bytes;
+}
+
 /* ---- UAX #29: words ---------------------------------------------------------------------- */
 
 #define WB_NONE ((size_t) - 1)
