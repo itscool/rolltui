@@ -158,26 +158,23 @@ struct LoadedLayoutCheck {
 LoadedLayoutCheck load_layout_check(std::string_view json_text) {
   std::size_t default_actions_n = 0;
   const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(&default_actions_n);
-  RolltuiLoadedLayout loaded;
   RolltuiLayoutReport rep{};
-  rolltui_loaded_layout_init(&loaded);
-  const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, default_actions,
-                                          default_actions_n, rolltui_layout_default_hooks(), &rep);
+  // Phase 23: one call, an OWNED layout back, and the counts through the public doors.
+  RolltuiLayout* out = rolltui_load_layout_text(json_text.data(), json_text.size(), default_actions,
+                                                default_actions_n, rolltui_layout_default_hooks(), &rep);
   LoadedLayoutCheck result;
-  result.ok = ok != 0;
+  result.ok = out != nullptr;
   result.clean = rolltui_layout_report_clean(&rep) != 0;
   result.no_notes = rep.notes_n == 0;
   result.error.assign(rep.error.p ? rep.error.p : "", rep.error.n);
-  if (ok) {
-    RolltuiLayout out;
-    rolltui_layout_init(&out);
-    rolltui_loaded_layout_to_layout(&loaded, &out);
-    result.actions_empty = out.actions.empty();
-    result.popups_empty = out.popups.empty();
-    rolltui_layout_release(&out);
+  if (out) {
+    std::size_t an = 0;
+    rolltui_layout_actions(out, &an);
+    result.actions_empty = an == 0;
+    result.popups_empty = rolltui_layout_popup(out, "menu", 4) == nullptr;
+    rolltui_layout_free(out);
   }
   rolltui_layout_report_release(&rep);
-  rolltui_loaded_layout_release(&loaded);
   return result;
 }
 

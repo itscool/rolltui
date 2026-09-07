@@ -402,7 +402,7 @@ std::optional<RolltuiLayout> load_layout_c(std::string_view json_text, RolltuiLa
   rolltui_loaded_layout_init(&loaded);
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-  const int ok = rolltui_load_layout_text(json_text.data(), json_text.size(), &loaded, defaults, defaults_n,
+  const int ok = rolltui_load_layout_text_into(json_text.data(), json_text.size(), &loaded, defaults, defaults_n,
                                           rolltui_layout_default_hooks(), &report);
   if (!ok) {
     rolltui_loaded_layout_release(&loaded);

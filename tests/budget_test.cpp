@@ -242,7 +242,7 @@ struct Scene {
     std::size_t defaults_n = 0;
     const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
     RolltuiLayoutReport rep{};
-    rolltui_load_layout_text(json, json_n, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(), &rep);
+    rolltui_load_layout_text_into(json, json_n, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(), &rep);
     RolltuiLayout layout{};
     rolltui_layout_init(&layout);
     rolltui_loaded_layout_to_layout(&loaded, &layout);

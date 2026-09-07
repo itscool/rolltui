@@ -209,23 +209,29 @@ int main() {
           "…and the Layout store recorded the save-as as its origin ('easel'), with no other working copy written under --frame");
   }
   {
-    RolltuiLoadedLayout l;
     RolltuiLayoutReport rep{};
-    rolltui_loaded_layout_init(&l);
     std::size_t defaults_n = 0;
     const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-    const int ok_l = rolltui_load_layout_text(saved.data(), saved.size(), &l, defaults, defaults_n,
-                                              rolltui_layout_default_hooks(), &rep);
+    RolltuiLayout* l = rolltui_load_layout_text(saved.data(), saved.size(), defaults, defaults_n,
+                                                rolltui_layout_default_hooks(), &rep);
+    const int ok_l = l != nullptr;
     check(ok_l && rolltui_layout_report_clean(&rep), "…it loads clean [" + std::string(rep.error.p ? rep.error.p : "", rep.error.n) + "]");
     if (ok_l) {
-      check(view_of(l.name) == "easel" && l.min_width == 20 && l.min_height == 6,
+      std::size_t ln = 0;
+      const char* lname = rolltui_layout_name(l, &ln);
+      int lw = 0, lh = 0;
+      rolltui_layout_min_size(l, &lw, &lh);
+      std::size_t an = 0;
+      const RolltuiLayoutAction* av = rolltui_layout_actions(l, &an);
+      check(std::string_view(lname, ln) == "easel" && lw == 20 && lh == 6,
             "…named as typed, with the thresholds inherited from the PROFILE (m5's one right inheritance)");
-      check(l.actions_n == 1 && view_of(l.actions[0].name) == "app.easel" &&
-                view_of(l.actions[0].description) == "clear the easel sheet",
+      check(an == 1 && view_of(av[0].name) == "app.easel" &&
+                view_of(av[0].description) == "clear the easel sheet",
             "…declaring exactly the one action a person typed, with the description they gave it");
-      check(l.popups_n == 0, "…and no popup: it was created from the skeleton, not from the screen that was open");
+      check(rolltui_layout_popup(l, "menu", 4) == nullptr,
+            "…and no popup: it was created from the skeleton, not from the screen that was open");
     }
-    rolltui_loaded_layout_release(&l);
+    rolltui_layout_free(l);
     rolltui_layout_report_release(&rep);
     check(has(saved, "\"content\": \"canvas:sheet\"") && has(saved, "\"content\": \"menu:tools\"") && has(saved, "\"content\": \"help\""),
           "…and the three contents are the app's kind, the app's menu, and a library kind");

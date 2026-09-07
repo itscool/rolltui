@@ -404,21 +404,21 @@ ROLLTUI_API(rolltui_key_undeliverable_text, INTERNAL)  /* a deliverability primi
 
 /* ---- rolltui_layout.h — a host holds a RolltuiLayout and a window stack; default PUBLIC ---- */
 ROLLTUI_API(rolltui_action_decl_problem, INTERNAL)
-ROLLTUI_API(rolltui_action_list_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_action_list_add, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
-ROLLTUI_API(rolltui_action_list_clear, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_action_list_clear, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_action_list_copy, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_action_list_equal, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_action_list_equal, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_action_list_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_action_list_release, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_action_list_remove, INTERNAL)  /* only the library's own .c reaches it */
-ROLLTUI_API(rolltui_action_list_remove_name, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_action_list_remove_name, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
 ROLLTUI_API(rolltui_anchor_from_name, INTERNAL)
@@ -440,14 +440,14 @@ ROLLTUI_API(rolltui_inner_rect, INTERNAL)  /* a step of layout */
 ROLLTUI_API(rolltui_layout_actions_free, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_layout_builtin, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_layout_builtin_json, PUBLIC)
-ROLLTUI_API(rolltui_layout_copy, PUBLIC)
+ROLLTUI_API(rolltui_layout_copy, INTERNAL)
 ROLLTUI_API(rolltui_layout_default_hooks, PUBLIC)
 ROLLTUI_API(rolltui_layout_default_roles, PUBLIC)
 ROLLTUI_API(rolltui_layout_equal, INTERNAL)  /* a step of loading, saving or resolving a layout */
-ROLLTUI_API(rolltui_layout_init, PUBLIC)
+ROLLTUI_API(rolltui_layout_init, INTERNAL)
 ROLLTUI_API(rolltui_layout_popup, PUBLIC)
 ROLLTUI_API(rolltui_layout_read_actions_key, INTERNAL)  /* a step of the layout loader (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_layout_release, PUBLIC)
+ROLLTUI_API(rolltui_layout_release, INTERNAL)
 ROLLTUI_API(rolltui_layout_report_clean, PUBLIC)
 ROLLTUI_API(rolltui_layout_report_release, PUBLIC)
 ROLLTUI_API(rolltui_layout_shipped_default_actions, PUBLIC)
@@ -455,9 +455,9 @@ ROLLTUI_API(rolltui_layout_to_json_text, INTERNAL)  /* a step of loading, saving
 ROLLTUI_API(rolltui_layout_to_json_value, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_load_layout, INTERNAL)  /* the loader over a parsed tree; the text form is the entry point */
 ROLLTUI_API(rolltui_load_layout_text, PUBLIC)
-ROLLTUI_API(rolltui_loaded_layout_init, PUBLIC)
-ROLLTUI_API(rolltui_loaded_layout_release, PUBLIC)
-ROLLTUI_API(rolltui_loaded_layout_to_layout, PUBLIC)
+ROLLTUI_API(rolltui_loaded_layout_init, INTERNAL)
+ROLLTUI_API(rolltui_loaded_layout_release, INTERNAL)
+ROLLTUI_API(rolltui_loaded_layout_to_layout, INTERNAL)
 ROLLTUI_API(rolltui_parse_dim, INTERNAL)
 ROLLTUI_API(rolltui_parse_size_text, INTERNAL)
 ROLLTUI_API(rolltui_parse_split_size, INTERNAL)  /* a step of the layout loader (a test reaches it: opt-in) */
@@ -489,62 +489,62 @@ ROLLTUI_API(rolltui_window_stack_has_popup, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_layer, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_new, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_pop, PUBLIC)
-ROLLTUI_API(rolltui_window_stack_push, PUBLIC)
+ROLLTUI_API(rolltui_window_stack_push, INTERNAL)
 ROLLTUI_API(rolltui_window_stack_push_popup, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_resolve, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_route, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_set_base, PUBLIC)
 
 /* ---- rolltui_layout_tree.h — the tree inside RolltuiLayout: a public type, so its lifecycle is public; default PUBLIC ---- */
-ROLLTUI_API(rolltui_layer_copy, PUBLIC)
-ROLLTUI_API(rolltui_layer_equal, PUBLIC)
+ROLLTUI_API(rolltui_layer_copy, INTERNAL)
+ROLLTUI_API(rolltui_layer_equal, INTERNAL)
 ROLLTUI_API(rolltui_layer_init, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_layer_list_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layer_list_add, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
-ROLLTUI_API(rolltui_layer_list_clear, PUBLIC)
+ROLLTUI_API(rolltui_layer_list_clear, INTERNAL)
 ROLLTUI_API(rolltui_layer_list_copy, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_layer_list_equal, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layer_list_equal, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_layer_list_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layer_list_release, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layer_list_remove, INTERNAL)  /* only the library's own .c reaches it */
-ROLLTUI_API(rolltui_layer_list_remove_id, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layer_list_remove_id, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
-ROLLTUI_API(rolltui_layer_move, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layer_move, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* the move, written down for C; the C++ move members call it */
 ROLLTUI_API(rolltui_layer_release, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_layout_node_copy, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layout_node_copy, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
-ROLLTUI_API(rolltui_layout_node_equal, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layout_node_equal, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layout_node_free, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_layout_node_init, PUBLIC)  /* KEPT: rule 1's pair: a consumer builds node trees */
-ROLLTUI_API(rolltui_layout_node_new, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_layout_node_init, INTERNAL)  /* KEPT: rule 1's pair: a consumer builds node trees */
+ROLLTUI_API(rolltui_layout_node_new, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_layout_node_release, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_node_list_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_node_list_add, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
-ROLLTUI_API(rolltui_node_list_clear, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_node_list_clear, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_node_list_copy, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_node_list_insert, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_node_list_insert, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
 ROLLTUI_API(rolltui_node_list_push, INTERNAL)  /* only the library's own .c reaches it */
-ROLLTUI_API(rolltui_node_list_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_node_list_release, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_node_list_remove, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
+ROLLTUI_API(rolltui_node_list_remove, INTERNAL)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
 
@@ -1061,3 +1061,17 @@ ROLLTUI_API(rolltui_mem_realloc, INTERNAL)
 ROLLTUI_API(rolltui_pack_add, INTERNAL)
 ROLLTUI_API(rolltui_pack_alloc, INTERNAL)
 ROLLTUI_API(rolltui_pack_begin, INTERNAL)
+
+/* ---- PHASE 23: the layout family's opaque handle and its seven doors ---------------------- */
+ROLLTUI_API(rolltui_layout_new, PUBLIC)
+ROLLTUI_API(rolltui_layout_free, PUBLIC)
+ROLLTUI_API(rolltui_layout_clone, PUBLIC)
+ROLLTUI_API(rolltui_layout_base, PUBLIC)
+ROLLTUI_API(rolltui_layout_actions, PUBLIC)
+ROLLTUI_API(rolltui_layout_min_size, PUBLIC)
+ROLLTUI_API(rolltui_layout_name, PUBLIC)
+ROLLTUI_API(rolltui_layer_placement, PUBLIC)
+ROLLTUI_API(rolltui_layer_id, PUBLIC)
+ROLLTUI_API(rolltui_layout_node_id, PUBLIC)
+ROLLTUI_API(rolltui_layout_node_is_window, PUBLIC)
+ROLLTUI_API(rolltui_load_layout_text_into, INTERNAL)

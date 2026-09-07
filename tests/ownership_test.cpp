@@ -276,7 +276,7 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 118},
+        {"rolltui.h", 114},
         {"c/rolltui_style.h", 0},
         {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},
@@ -295,7 +295,7 @@ int main() {
         {"c/rolltui_render.h", 0},
         {"c/rolltui_wrap.h", 0},
         {"c/rolltui_frame_ops.h", 0},
-        {"c/rolltui_layout_tree.h", 0},
+        {"c/rolltui_layout_tree.h", 4},
         {"c/rolltui_keys.h", 0},
         {"c/rolltui_markdown.h", 0},
         {"c/rolltui_widget_kinds.h", 0},
@@ -404,6 +404,9 @@ int main() {
     // the definition into their modules' internal headers and six headers were re-created, so
     // pointers moved BETWEEN rows without any being added or removed. Re-recorded whole from the
     // printed table, which is why the total is unchanged and the rows are not.
+    // 125 -> 125 (Phase 23): four STORED borrows moved from `rolltui.h` to
+    // `c/rolltui_layout_tree.h` with the layout family's structures. The total is unchanged
+    // because nothing was added or removed — the same pointers are simply behind the handle now.
     check(total == 125, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&

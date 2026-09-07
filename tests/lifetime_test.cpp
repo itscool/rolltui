@@ -166,7 +166,7 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
       std::size_t defaults_n = 0;
       const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
       RolltuiLayoutReport rep{};
-      if (rolltui_load_layout_text(text, text_len, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(),
+      if (rolltui_load_layout_text_into(text, text_len, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(),
                                     &rep) != 0) {
         RolltuiLayout l{};
         rolltui_layout_init(&l);

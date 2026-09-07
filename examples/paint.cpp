@@ -316,7 +316,7 @@ struct App {
   RolltuiWindows* windows = rolltui_windows_new();
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
-  RolltuiLayout layout{};
+  RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
   CanvasFactoryCtx factory_ctx{};
   int w = 80, h = 24;
   Tool tool;
@@ -326,7 +326,7 @@ struct App {
   std::uint64_t effect_ms = 0;
 
   App() {
-    rolltui_layout_init(&layout);
+    layout = rolltui_layout_new();
     // The eight built-in kinds and the five vocabularies they draw with. A bare
     // `rolltui_windows_new()` has neither (m1c's recorded gap, closed in m2a) — this is the
     // one line that makes a pure-C window table usable, and every host calls it.
@@ -335,7 +335,7 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
-    rolltui_layout_release(&layout);
+    rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_window_stack_free(stack);
     rolltui_windows_free(windows);
@@ -383,7 +383,7 @@ struct App {
         },
         this, nullptr);
     set_help_scopes();
-    rolltui_window_stack_set_base(stack, &layout.base);
+    rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
     declare_actions();  // the SCREEN says what this app can do (Phase 10 m4)
   }
 
@@ -408,7 +408,11 @@ struct App {
   }
   // `RolltuiLayout::actions` is already the flat array `rolltui_bindings_declare` takes, so
   // the `action_decls()` conversion the C++ shim needed has no counterpart here at all.
-  void declare_actions() { rolltui_bindings_declare(bindings, layout.actions.v, layout.actions.n, nullptr, 0); }
+  void declare_actions() {
+    std::size_t n = 0;
+    const RolltuiLayoutAction* a = rolltui_layout_actions(layout, &n);
+    rolltui_bindings_declare(bindings, a, n, nullptr, 0);
+  }
 
   // The app's own widget, by the CONTENT the library would key it under — composed by
   // `rolltui_content_format` from the same two words registered above rather than spelled a
@@ -429,10 +433,10 @@ struct App {
     return c ? c->pixels.size() : 0;
   }
 
-  void set_layout(RolltuiLayout l) {
-    rolltui_layout_release(&layout);
-    layout = std::move(l);  // MOVED: `l` was filled by `rolltui_loaded_layout_to_layout` and is left empty
-    rolltui_window_stack_set_base(stack, &layout.base);
+  void set_layout(RolltuiLayout* l) {  // TAKES OWNERSHIP
+    rolltui_layout_free(layout);
+    layout = l;
+    rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
     declare_actions();
   }
 
@@ -500,11 +504,13 @@ struct App {
       // COMPACT ON PURPOSE: the tool grew from one glyph to a ramp, a level, an ink and a size,
       // and a status line that pushes the window REPORT off the right edge hides the one thing
       // that must never be hidden. `ascii/4 #d8dce2 b1` says all four in a third of the width.
-      std::string status = " " + str_of(layout.name) + "  " + std::to_string(w) + "x" + std::to_string(h) +
+      std::size_t lname_n = 0;
+      const char* lname = rolltui_layout_name(layout, &lname_n);
+      std::string status = " " + std::string(lname, lname_n) + "  " + std::to_string(w) + "x" + std::to_string(h) +
                            "  " + kRamps[tool.ramp % 2].name + "/" + std::to_string(tool.ink.level) + " " +
                            std::string(inkstr, inkn) + " b" + std::to_string(tool.size) +
                            (tool.round ? "r" : "s") + "  marks " + std::to_string(marks()) + "  focus:" +
-                           (focused ? str_of(focused->id) : std::string("-"));
+                           (focused ? std::string(rolltui_layout_node_id(focused, nullptr)) : std::string("-"));
       if (!note.empty()) status += "  [" + note + "]";
       rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0,
                              0);
@@ -542,23 +548,20 @@ struct App {
 RolltuiAppProfile* paint_profile() {
   RolltuiAppProfile* p = rolltui_app_profile_new();
   rolltui_app_profile_set_app(p, "paint", 5);
-  RolltuiLoadedLayout loaded{};
   RolltuiLayoutReport rep{};
-  rolltui_loaded_layout_init(&loaded);
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-  if (rolltui_load_layout_text(kDefaultLayout, std::strlen(kDefaultLayout), &loaded, defaults, defaults_n,
-                               rolltui_layout_default_hooks(), &rep)) {
-    RolltuiLayout own{};
-    rolltui_layout_init(&own);
-    rolltui_loaded_layout_to_layout(&loaded, &own);
-    rolltui_app_profile_set_min_size(p, own.min_width, own.min_height);
-    for (std::size_t i = 0; i < own.actions.n; ++i)
-      rolltui_app_profile_add_action(p, own.actions.v[i].name.p, own.actions.v[i].name.n,
-                                     own.actions.v[i].description.p, own.actions.v[i].description.n);
-    rolltui_layout_release(&own);
+  if (RolltuiLayout* own = rolltui_load_layout_text(kDefaultLayout, std::strlen(kDefaultLayout), defaults,
+                                                    defaults_n, rolltui_layout_default_hooks(), &rep)) {
+    int mw = 0, mh = 0;
+    rolltui_layout_min_size(own, &mw, &mh);
+    rolltui_app_profile_set_min_size(p, mw, mh);
+    std::size_t an = 0;
+    const RolltuiLayoutAction* av = rolltui_layout_actions(own, &an);
+    for (std::size_t i = 0; i < an; ++i)
+      rolltui_app_profile_add_action(p, av[i].name.p, av[i].name.n, av[i].description.p, av[i].description.n);
+    rolltui_layout_free(own);
   }
-  rolltui_loaded_layout_release(&loaded);
   rolltui_layout_report_release(&rep);
 
   rolltui_app_profile_add_kind(p, kCanvasKind, std::strlen(kCanvasKind), ROLLTUI_SOURCE_REQUIRED, kCanvasDescribes,
@@ -597,16 +600,11 @@ bool parse_size(const std::string& s, int& w, int& h) {
 // One load, from TEXT, to the enduring `RolltuiLayout` a host holds. The report is the
 // caller's to read and release; the loaded carrier is never retained past the call, which is
 // `rolltui_loaded_layout_to_layout`'s own contract.
-bool load_layout_text(std::string_view text, RolltuiLayout* out, RolltuiLayoutReport* rep) {
-  RolltuiLoadedLayout loaded{};
-  rolltui_loaded_layout_init(&loaded);
+RolltuiLayout* load_layout_text(std::string_view text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-  const bool ok = rolltui_load_layout_text(text.data(), text.size(), &loaded, defaults, defaults_n,
-                                           rolltui_layout_default_hooks(), rep) != 0;
-  if (ok) rolltui_loaded_layout_to_layout(&loaded, out);
-  rolltui_loaded_layout_release(&loaded);
-  return ok;
+  return rolltui_load_layout_text(text.data(), text.size(), defaults, defaults_n,
+                                  rolltui_layout_default_hooks(), rep);
 }
 
 int usage() {
@@ -739,8 +737,7 @@ int main(int argc, char** argv) {
   rolltui_windows_set_dir(app.windows, presets_dir.data(), presets_dir.size());
 
   RolltuiLayoutReport rep{};
-  RolltuiLayout loaded{};
-  rolltui_layout_init(&loaded);
+  RolltuiLayout* loaded = nullptr;  // OWNED
   bool have = false;
   if (!layout_arg.empty()) {
     const bool path = layout_arg.find('/') != std::string::npos || layout_arg.find(".json") != std::string::npos;
@@ -748,22 +745,24 @@ int main(int argc, char** argv) {
     bool ok = false;
     const std::string text = read_file(file, ok);
     if (ok) {
-      have = load_layout_text(text, &loaded, &rep);
+      loaded = load_layout_text(text, &rep);
+      have = loaded != nullptr;
     } else {
       std::size_t n = 0;
       if (const char* builtin = rolltui_layout_builtin_json(layout_arg.data(), layout_arg.size(), &n))
-        if (n != 0) have = load_layout_text(std::string_view(builtin, n), &loaded, &rep);
+        if (n != 0) { loaded = load_layout_text(std::string_view(builtin, n), &rep); have = loaded != nullptr; }
     }
     if (!have) {
       std::fprintf(stderr, "rolltui-paint: no layout '%s' (%s)\n", layout_arg.c_str(), rep.error.c_str());
-      rolltui_layout_release(&loaded);
+      rolltui_layout_free(loaded);
       rolltui_layout_report_release(&rep);
       return 1;
     }
   } else {
-    have = load_layout_text(kDefaultLayout, &loaded, &rep);
+    loaded = load_layout_text(kDefaultLayout, &rep);
+    have = loaded != nullptr;
   }
-  app.set_layout(loaded.clone());
+  app.set_layout(loaded);  // TAKES OWNERSHIP
   app.mount();
   for (std::size_t i = 0; i < rep.bad_values_n; ++i)
     std::fprintf(stderr, "rolltui-paint: %s\n", rep.bad_values[i].c_str());

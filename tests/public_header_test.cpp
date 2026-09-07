@@ -628,7 +628,12 @@ int main() {
     /* 348 -> 349 (Phase 22): `rolltui_u_fit`, the explorer's wall E2 — the cut offset
      * `rolltui_frame_put_text` computes and did not share, which every list, tree, table and
      * column widget would otherwise write for itself. */
-    const int kPublic = 349, kInternal_ = 475, kDelete = 0;
+    /* PHASE 23: 349 → 331. THIRTY-TWO functions went INTERNAL — the seven types no consumer
+     * names (node/layer/action lists, content, the two reports, the input spec) plus the layout
+     * family's by-value lifecycle — and the loader's carrier retired outright. ELEVEN arrived:
+     * the handle's `new`/`free`/`clone` and the eight doors, one of which (`rolltui_layer_id`)
+     * the BUILD found rather than the survey. Re-recorded deliberately. */
+    const int kPublic = 331, kInternal_ = 505, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -809,9 +814,12 @@ int main() {
     for (const RoleRow& r : kRoles) ++rt[r.role];
     // MEASURED 2026-09-06 (Phase 22 m1). Moving a role re-records these, which is the point: the
     // SHAPE of the surface becomes a number a reader can audit rather than an impression.
-    check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 121 && rt["HOST_BIND"] == 87 && rt["HOST_RUN"] == 77 &&
-              rt["HOST_RELEASE"] == 4 && rt["WIDGET"] == 27,
-          "the roles are the recorded shape — vocab 33, host load 121 / bind 87 / run 77 / release 4, widget 27 (got " +
+    /* PHASE 23: load 121 → 104 and bind 87 → 83 as the layout family's lifecycle went internal;
+     * vocab 33 → 35 (the `RolltuiInputSpec` pair, pinned public by `RolltuiMenuItem`'s C++
+     * members); release 4 → 5 (`rolltui_layout_free`). */
+    check(rt["VOCAB"] == 35 && rt["HOST_LOAD"] == 104 && rt["HOST_BIND"] == 83 && rt["HOST_RUN"] == 77 &&
+              rt["HOST_RELEASE"] == 5 && rt["WIDGET"] == 27,
+          "the roles are the recorded shape — vocab 35, host load 104 / bind 83 / run 77 / release 5, widget 27 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_BIND"]) + "/" +
               std::to_string(rt["HOST_RUN"]) + "/" + std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["WIDGET"]) + ")");
     check(part[0].size() > 20 && part[1].size() > 200 && part[2].size() > 15,

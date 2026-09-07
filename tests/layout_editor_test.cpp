@@ -104,7 +104,7 @@ std::optional<Layout> parse_layout(std::string_view text, bool* clean) {
   RolltuiLayoutReport rep{};
   std::size_t dn = 0;
   const RolltuiLayoutAction* dflt = rolltui_layout_shipped_default_actions(&dn);
-  const int ok = rolltui_load_layout_text(text.data(), text.size(), &loaded, dflt, dn, rolltui_layout_default_hooks(), &rep);
+  const int ok = rolltui_load_layout_text_into(text.data(), text.size(), &loaded, dflt, dn, rolltui_layout_default_hooks(), &rep);
   if (clean) *clean = ok && rolltui_layout_report_clean(&rep);
   std::optional<Layout> result;
   if (ok) {

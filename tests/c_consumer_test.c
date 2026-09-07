@@ -101,7 +101,7 @@ typedef struct App {
   RolltuiWindowStack* stack;
   RolltuiBindings* bindings;
   RolltuiComposeScratch* compose_scratch;
-  RolltuiLayout layout;
+  RolltuiLayout* layout; /* OWNED: a handle since Phase 23 */
   int w, h;
 } App;
 
@@ -209,29 +209,26 @@ int main(void) {
   }
 
   /* ---- 2. A SHIPPED LAYOUT, through the loader a host walks ------------------------------- */
-  rolltui_layout_init(&app.layout);
   {
     size_t text_len = 0;
     const char* text = rolltui_layout_builtin_json("default", 7, &text_len);
-    check(text != NULL && text_len != 0, "the shipped `default` layout's bytes are reachable from C");
-
-    RolltuiLoadedLayout loaded;
     RolltuiLayoutReport rep;
     size_t defaults_n = 0;
     const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-    int ok = 0;
+    size_t actions_n = 0;
+    check(text != NULL && text_len != 0, "the shipped `default` layout's bytes are reachable from C");
     memset(&rep, 0, sizeof rep);
-    rolltui_loaded_layout_init(&loaded);
     check(defaults != NULL && defaults_n != 0, "the shipped screen's own actions are reachable from C");
-    ok = rolltui_load_layout_text(text != NULL ? text : "", text_len, &loaded, defaults, defaults_n,
-                                  rolltui_layout_default_hooks(), &rep);
-    check(ok != 0, "it loads");
+    /* PHASE 23: one call, and the layout comes back OWNED. It used to be four — a carrier to
+     * init, the load, an unpack and a release — written identically by all three examples. */
+    app.layout = rolltui_load_layout_text(text != NULL ? text : "", text_len, defaults, defaults_n,
+                                          rolltui_layout_default_hooks(), &rep);
+    check(app.layout != NULL, "it loads, and the loader hands back an OWNED layout");
     check(rolltui_layout_report_clean(&rep) != 0, "…with a clean report");
-    if (ok != 0) rolltui_loaded_layout_to_layout(&loaded, &app.layout);
-    rolltui_loaded_layout_release(&loaded);
     rolltui_layout_report_release(&rep);
+    rolltui_layout_actions(app.layout, &actions_n);
+    check(actions_n != 0, "the layout a C host holds carries the screen's declared actions");
   }
-  check(app.layout.actions.n != 0, "the layout a C host holds carries the screen's declared actions");
 
   /* ---- 3. THE WINDOW STACK ---------------------------------------------------------------- */
   app.windows = rolltui_windows_new();
@@ -240,8 +237,12 @@ int main(void) {
   app.bindings = rolltui_bindings_clone(rolltui_bindings_default());
   app.compose_scratch = rolltui_compose_scratch_new();
 
-  rolltui_window_stack_set_base(app.stack, &app.layout.base);
-  rolltui_bindings_declare(app.bindings, app.layout.actions.v, app.layout.actions.n, NULL, 0);
+  rolltui_window_stack_set_base(app.stack, rolltui_layout_base(app.layout));
+  {
+    size_t an = 0;
+    const RolltuiLayoutAction* av = rolltui_layout_actions(app.layout, &an);
+    rolltui_bindings_declare(app.bindings, av, an, NULL, 0);
+  }
 
   /* The three sources the shipped screen names. Unbound, each is a NAMED problem and a visible
    * error panel, which is the library working as designed — this file binds them so that the
@@ -284,10 +285,14 @@ int main(void) {
    * contract of a function it had no reason to read. */
   {
     const size_t before = rolltui_window_stack_depth(app.stack);
-    check(rolltui_window_stack_push_popup(app.stack, &app.layout, "help", 4) != 0,
+    check(rolltui_window_stack_push_popup(app.stack, app.layout, "help", 4) != 0,
           "a C host can open a popup the SCREEN declared");
     check(rolltui_window_stack_depth(app.stack) == before + 1, "…the stack is one deeper");
-    check(rolltui_window_stack_push_popup(app.stack, &app.layout, "nosuch", 6) == 0,
+    /* A DOOR TAKES A HANDLE, AND A HANDLE MAY BE NULL. Every accessor guards; this asserts the
+     * one that did not until Phase 23 — a failed load handed straight to `_popup` segfaulted a
+     * host test, and the guard was added without a check until this line. */
+    check(rolltui_layout_popup(NULL, "help", 4) == NULL, "a door takes a NULL handle and answers NULL");
+    check(rolltui_window_stack_push_popup(app.stack, app.layout, "nosuch", 6) == 0,
           "…and an id the screen does not declare pushes nothing");
     check(rolltui_window_stack_depth(app.stack) == before + 1, "…the stack is unchanged by that");
     check(rolltui_window_stack_pop(app.stack) != 0, "…and it pops again");
@@ -627,7 +632,7 @@ int main(void) {
       rolltui_preset_store_start(ls, &rep);
       w = rolltui_preset_store_working(ls);
       check(ls != NULL && w != NULL && rolltui_layout_preset_report_clean(&rep) != 0 &&
-                layout_dom->equal(w, &app.layout) != 0,
+                layout_dom->equal(w, app.layout) != 0,
             "a Layout store opens from C, and its working copy EQUALS the shipped screen section 2 loaded through the standalone loader");
       rolltui_preset_store_value_free(ls, w);
       rolltui_preset_store_list(ls, &list);
@@ -678,7 +683,7 @@ int main(void) {
   rolltui_window_stack_free(app.stack);
   rolltui_windows_free(app.windows);
   rolltui_bindings_free(app.bindings);
-  rolltui_layout_release(&app.layout);
+  rolltui_layout_free(app.layout);
   rolltui_effect_map_free(app.effects);
 
   rolltui_shutdown();

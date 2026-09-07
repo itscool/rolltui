@@ -1231,6 +1231,13 @@ struct RolltuiMenuItem;
 
 /* An item's OWNED children (a Submenu's items, a Choice's options). Pointers, for the reason
  * `RolltuiNodeList` holds pointers: a child's address never moves. */
+/* PINNED PUBLIC BY A PUBLIC STRUCT'S C++ MEMBERS (Phase 23): `RolltuiMenuItem` holds a
+ * `RolltuiInputSpec` by value and its `clone()`/`operator==` call these, so they must be
+ * declared in the definition even though no consumer calls either directly. That is the same
+ * FORCED category Phase 22 recorded for 37 others — kept, and kept visible as forced. */
+void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from);
+int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* b);
+
 typedef struct RolltuiMenuItemList {
   struct RolltuiMenuItem** v ROLLTUI_DEFAULT(nullptr);
   size_t n ROLLTUI_DEFAULT(0);
@@ -1338,8 +1345,6 @@ typedef struct RolltuiMenuItem {
 } RolltuiMenuItem;
 
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
-void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from);
-int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* b);
 void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from);
 int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b);
 void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* id, size_t id_len, const char* label,
@@ -2203,145 +2208,45 @@ struct RolltuiLayoutNode;
  * exists to make visible: a child's address never moves, so a `const RolltuiLayoutNode*`
  * handed out by `place()` or `find()` stays valid across an edit. The C++ vector could not
  * promise that and nobody had noticed it was promising nothing. */
-typedef struct RolltuiNodeList {
-  struct RolltuiLayoutNode** v ROLLTUI_DEFAULT(nullptr);
-  size_t n ROLLTUI_DEFAULT(0);
-  size_t cap ROLLTUI_DEFAULT(0);
+/* ---- THE LAYOUT FAMILY IS OPAQUE (Phase 23) -------------------------------------------------
+ *
+ * A layout, the layers placed on it, the nodes in its split tree and the three lists that hold
+ * them are HANDLES here and structures in `rolltui/c/rolltui_layout_tree.h`, which is the
+ * library's own. **The reason is a reader's, not an implementer's** (the user, 2026-09-06): a
+ * public function is a standing question — *"do I need this, and when?"* — and thirty-two of
+ * them were answered "no" by every consumer in the tree, while a reader still had to carry them
+ * just in case. **The direction is what settles it: opaque now with one door opened later is
+ * REVERSIBLE; transparent now and opaque later is a BREAK.**
+ *
+ * **THE SEVEN DOORS BELOW ARE THE WHOLE OF WHAT FOUR CONSUMERS DO WITH A LAYOUT** — measured,
+ * not guessed, across roll, `rolltui-paint`, `rolltui-explorer` and the pure-C consumer. Hand
+ * the base to a window stack; declare the actions; show the name and the minimum size; read an
+ * id off a node or a layer the library just handed back. **If a real need appears, add the
+ * eighth door and say who forced it** — that is the same rule the rest of this header keeps.
+ *
+ * The one consumer that genuinely WALKS and MUTATES a tree is the studio's layout editor, and
+ * it reaches the structures through the internal header by name, exactly as a test that opts in
+ * does. A host does not. */
+typedef struct RolltuiNodeList RolltuiNodeList;
+typedef struct RolltuiLayoutNode RolltuiLayoutNode;
+typedef struct RolltuiLayer RolltuiLayer;
+typedef struct RolltuiLayerList RolltuiLayerList;
+typedef struct RolltuiContent RolltuiContent;
+typedef struct RolltuiActionList RolltuiActionList;
+typedef struct RolltuiLayout RolltuiLayout;
 
-#ifdef __cplusplus
-  // A pointer-of-pointers iterator that dereferences one level, so `for (const Node& c :
-  // n.children)` still says what it said. Written twice rather than as a template because a
-  // template at namespace scope may not appear inside `extern "C"`, and thirty lines here is
-  // cheaper than moving the type out of the file its data lives in.
-  struct iterator {
-    RolltuiLayoutNode** p;
-    RolltuiLayoutNode& operator*() const { return **p; }
-    RolltuiLayoutNode* operator->() const { return *p; }
-    iterator& operator++() {
-      ++p;
-      return *this;
-    }
-    iterator operator+(std::ptrdiff_t d) const { return {p + d}; }
-    std::ptrdiff_t operator-(const iterator& o) const { return p - o.p; }
-    bool operator==(const iterator& o) const { return p == o.p; }
-  };
-  struct const_iterator {
-    RolltuiLayoutNode* const* p;
-    const_iterator() : p(nullptr) {}
-    const_iterator(RolltuiLayoutNode* const* q) : p(q) {}  // NOLINT(google-explicit-constructor)
-    const_iterator(iterator i) : p(i.p) {}                 // NOLINT(google-explicit-constructor)
-    const RolltuiLayoutNode& operator*() const { return **p; }
-    const RolltuiLayoutNode* operator->() const { return *p; }
-    const_iterator& operator++() {
-      ++p;
-      return *this;
-    }
-    const_iterator operator+(std::ptrdiff_t d) const { return {p + d}; }
-    std::ptrdiff_t operator-(const const_iterator& o) const { return p - o.p; }
-    bool operator==(const const_iterator& o) const { return p == o.p; }
-  };
-  using value_type = RolltuiLayoutNode;
+/* The seven doors are declared in PART 2 (a host's own section), where their roles put them. */
 
-  RolltuiNodeList() = default;
-  RolltuiNodeList(const RolltuiNodeList&) = delete;  /* Phase 19 m2: copy is `rolltui_node_list_copy`, spelled */
-  RolltuiNodeList(RolltuiNodeList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  RolltuiNodeList& operator=(const RolltuiNodeList&) = delete;
-  RolltuiNodeList& operator=(RolltuiNodeList&& o) noexcept;
-  ~RolltuiNodeList();
-
-  std::size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  RolltuiLayoutNode& operator[](std::size_t i) { return *v[i]; }
-  const RolltuiLayoutNode& operator[](std::size_t i) const { return *v[i]; }
-  RolltuiLayoutNode& front() { return *v[0]; }
-  const RolltuiLayoutNode& front() const { return *v[0]; }
-  RolltuiLayoutNode& back() { return *v[n - 1]; }
-  const RolltuiLayoutNode& back() const { return *v[n - 1]; }
-  iterator begin() { return {v}; }
-  iterator end() { return {v + n}; }
-  const_iterator begin() const { return {v}; }
-  const_iterator end() const { return {v + n}; }
-  void push_back(RolltuiLayoutNode&& c);
-  void push_back(const RolltuiLayoutNode& c);
-  void insert(const_iterator at, RolltuiLayoutNode&& c);
-  void erase(const_iterator at);
-  void clear();
-  bool operator==(const RolltuiNodeList& o) const;
-
- private:
-#endif
-} RolltuiNodeList;
 
 /* A window (a content slot) or a split (a row/column of children). ONE struct for both,
  * exactly as the C++ had, because a split that could not be given a border and a title
  * would need a second one. */
-typedef struct RolltuiLayoutNode {
-#ifdef __cplusplus
-  enum class Kind : unsigned char { Window = 0, Row, Column };
-  Kind kind = Kind::Window;
-#else
-  unsigned char kind; /* 0 window, 1 row, 2 column */
-#endif
-  RolltuiStr id;      /* defaults to `content` for windows; optional on splits */
-  RolltuiStr content; /* windows: "kind[:source]" */
-#ifdef __cplusplus
-  rolltui::Border border = rolltui::Border::None;
-#else
-  unsigned char border;
-#endif
-  RolltuiStr title;
-  unsigned char focusable ROLLTUI_DEFAULT(0);
-  unsigned char visible ROLLTUI_DEFAULT(1); /* hidden: takes no space, draws nothing */
-#ifdef __cplusplus
-  rolltui::Role background = static_cast<rolltui::Role>(ROLLTUI_ROLE_DEFAULT_BACKGROUND);
-#else
-  unsigned char background;
-#endif
-  RolltuiSplitSize size;
-  RolltuiNodeList children;
-
-#ifdef __cplusplus
-  bool is_window() const { return kind == Kind::Window; }
-  bool operator==(const RolltuiLayoutNode& o) const;
-  RolltuiLayoutNode clone() const;
-  // The builders the editor and the tests write trees with — C strings in, fields set
-  // (Phase 19 m2). A container node takes its children by `children.push_back(std::move(c))`.
-  static RolltuiLayoutNode window(const char* content, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode window_id(const char* id, const char* content, RolltuiSplitSize size = {});
-  static RolltuiLayoutNode row(RolltuiSplitSize size = {});
-  static RolltuiLayoutNode column(RolltuiSplitSize size = {});
-#endif
-} RolltuiLayoutNode;
 
 /* Releases and frees. A no-op on NULL. */
 
 /* Appends an EMPTY child and returns it — the C's `emplace_back`, so a caller never builds a
  * node on the stack and copies it in. */
 
-typedef struct RolltuiLayer {
-  RolltuiStr id; /* a popup's name in the layout file; "" for the base */
-  RolltuiPlacement placement;
-  RolltuiLayoutNode root;
-  unsigned char modal ROLLTUI_DEFAULT(0);
-  RolltuiStr focus; /* the focused window id; "" → first focusable in tree order */
-
-#ifdef __cplusplus
-  RolltuiLayer();
-  // COPY IS DELETED (Phase 19 m2): `RolltuiLayer copy = *p;` was a deep copy here and a shallow
-  // alias in C — the double-free Phase 16 m6 measured. The spelling is `clone()`, which is
-  // `rolltui_layer_copy`. The destructor calls the named `rolltui_layer_release` and stays.
-  RolltuiLayer(const RolltuiLayer&) = delete;
-  RolltuiLayer(RolltuiLayer&& o) noexcept;
-  RolltuiLayer& operator=(const RolltuiLayer&) = delete;
-  RolltuiLayer& operator=(RolltuiLayer&& o) noexcept;
-  ~RolltuiLayer();
-  RolltuiLayer clone() const;
-  bool operator==(const RolltuiLayer& o) const;
-#endif
-} RolltuiLayer;
 
 /* ---- popups: an OWNED, growable array of Layer VALUES (Phase 17) --------------------------- */
 /* `Layout::popups`' storage. A FLAT array of values, not individually-heap-boxed pointers like
@@ -2351,44 +2256,6 @@ typedef struct RolltuiLayer {
  * safe: a Layer is trivially relocatable (every byte it owns is behind a pointer elsewhere), so
  * growing this array with `rolltui_grow_zeroed` and shifting on removal is exactly that same,
  * already-proven pattern one level up. */
-typedef struct RolltuiLayerList {
-  RolltuiLayer* v ROLLTUI_DEFAULT(nullptr);
-  size_t n ROLLTUI_DEFAULT(0);
-  size_t cap ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  RolltuiLayerList() = default;
-  RolltuiLayerList(const RolltuiLayerList&) = delete;  /* Phase 19 m2 */
-  RolltuiLayerList(RolltuiLayerList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  RolltuiLayerList& operator=(const RolltuiLayerList&) = delete;
-  RolltuiLayerList& operator=(RolltuiLayerList&& o) noexcept;
-  ~RolltuiLayerList();
-
-  std::size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  RolltuiLayer* data() { return v; }
-  const RolltuiLayer* data() const { return v; }
-  RolltuiLayer& operator[](std::size_t i) { return v[i]; }
-  const RolltuiLayer& operator[](std::size_t i) const { return v[i]; }
-  RolltuiLayer& back() { return v[n - 1]; }
-  const RolltuiLayer& back() const { return v[n - 1]; }
-  RolltuiLayer* begin() { return v; }
-  RolltuiLayer* end() { return v + n; }
-  const RolltuiLayer* begin() const { return v; }
-  const RolltuiLayer* end() const { return v + n; }
-  void push_back(RolltuiLayer&& l);
-  // Removes the layer whose id matches (a no-op when none does) — Layout.hpp's
-  // "remove this popup", the one mutation a host ever asks of this list by name.
-  void erase_id(const char* id, std::size_t len);
-  void clear();
-  bool operator==(const RolltuiLayerList& o) const;
-
- private:
-#endif
-} RolltuiLayerList;
 
 /* PLAIN DATA, and deliberately so: it is emitted per node per frame, it borrows the node it
  * describes, and it is what a host reads to draw. `node` is a BORROW valid as long as the
@@ -2400,173 +2267,6 @@ typedef struct RolltuiResolvedNode {
   unsigned char focused ROLLTUI_DEFAULT(0);
   size_t layer ROLLTUI_DEFAULT(0);
 } RolltuiResolvedNode;
-
-/* ---- forward declarations the C++ members just below call ----------------------------------*/
-void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from);
-int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b);
-RolltuiLayer* rolltui_layer_list_add(RolltuiLayerList* l);
-void rolltui_layer_list_clear(RolltuiLayerList* l);
-int rolltui_layer_list_equal(const RolltuiLayerList* a, const RolltuiLayerList* b);
-void rolltui_layer_list_release(RolltuiLayerList* l);
-void rolltui_layer_list_remove_id(RolltuiLayerList* l, const char* id, size_t len);
-void rolltui_layer_move(RolltuiLayer* to, RolltuiLayer* from);
-void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* from);
-int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNode* b);
-RolltuiLayoutNode* rolltui_layout_node_new(void);
-RolltuiLayoutNode* rolltui_node_list_add(RolltuiNodeList* l);
-void rolltui_node_list_clear(RolltuiNodeList* l);
-void rolltui_node_list_insert(RolltuiNodeList* l, size_t i, RolltuiLayoutNode* n);
-void rolltui_node_list_release(RolltuiNodeList* l);
-void rolltui_node_list_remove(RolltuiNodeList* l, size_t i);
-
-#ifdef __cplusplus
-/* ---- the C++ special members of the structs above (Phase 17 m3) ---------------------------
- * Each one is a CALLER of a C function declared above it, so "release this subtree" has one
- * implementation and a destructor reaches it rather than being a second mechanism.
- *
- * They were out-of-line in `rolltui/LayoutTree.cpp` until the C++ binding was deleted. They are not
- * part of that binding — they are what makes "the C++ type IS the C struct" true (Phase 14's
- * one-definition rule), so they had to keep a home; `inline`, beside the declarations they
- * implement, is that home and removes the last C++ translation unit from the library. */
-inline RolltuiNodeList::~RolltuiNodeList() { rolltui_node_list_release(this); }
-
-inline RolltuiNodeList& RolltuiNodeList::operator=(RolltuiNodeList&& o) noexcept {
-  if (this != &o) {
-    rolltui_node_list_release(this);
-    v = o.v;
-    n = o.n;
-    cap = o.cap;
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  return *this;
-}
-
-inline void RolltuiNodeList::push_back(RolltuiLayoutNode&& c) {
-  RolltuiLayoutNode* p = rolltui_node_list_add(this);
-  *p = std::move(c);
-}
-
-inline void RolltuiNodeList::push_back(const RolltuiLayoutNode& c) {
-  RolltuiLayoutNode* p = rolltui_node_list_add(this);
-  rolltui_layout_node_copy(p, &c);
-}
-
-inline void RolltuiNodeList::insert(const_iterator at, RolltuiLayoutNode&& c) {
-  RolltuiLayoutNode* p = rolltui_layout_node_new();
-  *p = std::move(c);
-  rolltui_node_list_insert(this, static_cast<std::size_t>(at.p - v), p);
-}
-
-inline void RolltuiNodeList::erase(const_iterator at) {
-  rolltui_node_list_remove(this, static_cast<std::size_t>(at.p - v));
-}
-
-inline void RolltuiNodeList::clear() { rolltui_node_list_clear(this); }
-
-inline bool RolltuiNodeList::operator==(const RolltuiNodeList& o) const {
-  if (n != o.n) return false;
-  for (std::size_t i = 0; i < n; ++i)
-    if (!rolltui_layout_node_equal(v[i], o.v[i])) return false;
-  return true;
-}
-
-inline bool RolltuiLayoutNode::operator==(const RolltuiLayoutNode& o) const {
-  return rolltui_layout_node_equal(this, &o) != 0;
-}
-inline RolltuiLayoutNode RolltuiLayoutNode::clone() const {
-  RolltuiLayoutNode out;
-  rolltui_layout_node_copy(&out, this);
-  return out;
-}
-inline RolltuiLayoutNode RolltuiLayoutNode::window(const char* content, RolltuiSplitSize size) {
-  RolltuiLayoutNode n;
-  n.kind = Kind::Window;
-  n.id = content;
-  n.content = content;
-  n.size = size;
-  return n;
-}
-inline RolltuiLayoutNode RolltuiLayoutNode::window_id(const char* id, const char* content, RolltuiSplitSize size) {
-  RolltuiLayoutNode n = window(content, size);
-  n.id = id;
-  return n;
-}
-inline RolltuiLayoutNode RolltuiLayoutNode::row(RolltuiSplitSize size) {
-  RolltuiLayoutNode n;
-  n.kind = Kind::Row;
-  n.size = size;
-  return n;
-}
-inline RolltuiLayoutNode RolltuiLayoutNode::column(RolltuiSplitSize size) {
-  RolltuiLayoutNode n = row(size);
-  n.kind = Kind::Column;
-  return n;
-}
-
-inline RolltuiLayer::RolltuiLayer() {
-  placement.w = RolltuiDim::rel(1);
-  placement.h = RolltuiDim::rel(1);
-  placement.clamp = 1;
-}
-
-inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
-    : id(std::move(o.id)),
-      placement(o.placement),
-      root(std::move(o.root)),
-      modal(o.modal),
-      focus(std::move(o.focus)) {
-  o.modal = 0;
-}
-inline RolltuiLayer RolltuiLayer::clone() const {
-  RolltuiLayer out;
-  rolltui_layer_copy(&out, this);
-  return out;
-}
-
-inline RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
-  if (this != &o) {
-    id = std::move(o.id);
-    placement = o.placement;
-    root = std::move(o.root);
-    modal = o.modal;
-    focus = std::move(o.focus);
-    o.modal = 0;
-  }
-  return *this;
-}
-
-inline RolltuiLayer::~RolltuiLayer() = default;
-
-inline bool RolltuiLayer::operator==(const RolltuiLayer& o) const { return rolltui_layer_equal(this, &o) != 0; }
-
-inline RolltuiLayerList::~RolltuiLayerList() { rolltui_layer_list_release(this); }
-
-inline RolltuiLayerList& RolltuiLayerList::operator=(RolltuiLayerList&& o) noexcept {
-  if (this != &o) {
-    rolltui_layer_list_release(this);
-    v = o.v;
-    n = o.n;
-    cap = o.cap;
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  return *this;
-}
-
-inline void RolltuiLayerList::push_back(RolltuiLayer&& l) { rolltui_layer_move(rolltui_layer_list_add(this), &l); }
-
-inline void RolltuiLayerList::erase_id(const char* id, std::size_t len) { rolltui_layer_list_remove_id(this, id, len); }
-
-inline void RolltuiLayerList::clear() { rolltui_layer_list_clear(this); }
-
-inline bool RolltuiLayerList::operator==(const RolltuiLayerList& o) const { return rolltui_layer_list_equal(this, &o) != 0; }
-
-#endif
-
-/* ========================================================================================
- * layout — a host holds a RolltuiLayout and a window stack
- * ======================================================================================== */
 
 /* ---- the text forms ---------------------------------------------------------------------------- */
 /* "50%" | "100% - 32" | "25%+2" — NOT a bare "32". 1 on success.
@@ -2641,13 +2341,6 @@ typedef struct RolltuiComposeScratch RolltuiComposeScratch;
  * up — this type declares NO constructor, destructor or assignment of its own, and `operator==`
  * needs only `= default`. An EMPTY `kind` names nothing: `rolltui_content_parse` fills one and
  * `rolltui_widget_kind_resolve` answers for one; neither invents a default kind. */
-typedef struct RolltuiContent {
-  RolltuiStr kind;   /* the kind's name — its identity, whichever rung it resolves at */
-  RolltuiStr source; /* the part after the first ':' — a bound name, a literal, a path */
-#ifdef __cplusplus
-  bool operator==(const RolltuiContent&) const = default;
-#endif
-} RolltuiContent;
 
 #define ROLLTUI_CONTENT_PROBLEM_NONE 0
 
@@ -2720,44 +2413,6 @@ typedef struct RolltuiLayoutAction {
  * reason: nothing holds an `Action*` across a mutation (a caller reads one, or appends, or
  * removes by index), so there is no address-stability property worth an extra indirection
  * for, and each element is two `RolltuiStr`s — already trivially relocatable. */
-typedef struct RolltuiActionList {
-  RolltuiLayoutAction* v ROLLTUI_DEFAULT(nullptr);
-  size_t n ROLLTUI_DEFAULT(0);
-  size_t cap ROLLTUI_DEFAULT(0);
-
-#ifdef __cplusplus
-  RolltuiActionList() = default;
-  RolltuiActionList(const RolltuiActionList&) = delete;  /* Phase 19 m2: copy is `rolltui_action_list_copy`, spelled */
-  RolltuiActionList(RolltuiActionList&& o) noexcept : v(o.v), n(o.n), cap(o.cap) {
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  RolltuiActionList& operator=(const RolltuiActionList&) = delete;
-  RolltuiActionList& operator=(RolltuiActionList&& o) noexcept;
-  ~RolltuiActionList();
-
-  std::size_t size() const { return n; }
-  bool empty() const { return n == 0; }
-  RolltuiLayoutAction* data() { return v; }
-  const RolltuiLayoutAction* data() const { return v; }
-  RolltuiLayoutAction& operator[](std::size_t i) { return v[i]; }
-  const RolltuiLayoutAction& operator[](std::size_t i) const { return v[i]; }
-  RolltuiLayoutAction& back() { return v[n - 1]; }
-  const RolltuiLayoutAction& back() const { return v[n - 1]; }
-  RolltuiLayoutAction* begin() { return v; }
-  RolltuiLayoutAction* end() { return v + n; }
-  const RolltuiLayoutAction* begin() const { return v; }
-  const RolltuiLayoutAction* end() const { return v + n; }
-  void push_back(const RolltuiLayoutAction& a);
-  // Removes the action named `name` (a no-op when none is) — the editor's "remove this
-  // action", the one mutation a host ever asks of this list by name rather than by index.
-  void erase_name(const char* name, std::size_t len);
-  void clear();
-  bool operator==(const RolltuiActionList& o) const;
-
- private:
-#endif
-} RolltuiActionList;
 
 /* The parsed layout: a TRANSIENT carrier, never retained past one load. Phase 17 gave
  * `rolltui::Layout` this same shape (`RolltuiLayout` below shares `RolltuiStr name` and
@@ -2768,15 +2423,6 @@ typedef struct RolltuiActionList {
  * `RolltuiLayout`'s API. The shim converts once, right after a load (`Layout.cpp`'s
  * `loaded_to_layout`): `base`/`popups` already ARE `RolltuiLayer`/`RolltuiLayer*`, so that
  * conversion MOVES rather than copies a tree it is about to release anyway. */
-typedef struct RolltuiLoadedLayout {
-  RolltuiStr name;
-  int min_width, min_height;
-  RolltuiLayoutAction* actions;
-  size_t actions_n, actions_cap;
-  RolltuiLayer base;
-  RolltuiLayer* popups;
-  size_t popups_n, popups_cap;
-} RolltuiLoadedLayout;
 
 /* ---- the layout itself: the ENDURING value a host holds (Phase 17) -------------------------
  *
@@ -2787,26 +2433,6 @@ typedef struct RolltuiLoadedLayout {
  * the compiler-generated ones already do the right thing by recursively using each member's.
  * `popup()` is the one convenience worth a member function (a host reaches for it by name at
  * ~a dozen call sites): a linear scan needs nothing this header does not already have. */
-typedef struct RolltuiLayout {
-  RolltuiStr name;
-  int min_width ROLLTUI_DEFAULT(0);
-  int min_height ROLLTUI_DEFAULT(0);
-  RolltuiActionList actions; /* the actions this screen emits, in file order */
-  RolltuiLayer base;
-  RolltuiLayerList popups; /* declared placements a host pushes by id */
-
-#ifdef __cplusplus
-  const RolltuiLayer* popup(const char* id, std::size_t len) const {
-    for (std::size_t i = 0; i < popups.size(); ++i)
-      if (popups[i].id.eq(id, len)) return &popups[i];
-    return nullptr;
-  }
-  bool operator==(const RolltuiLayout&) const = default;
-  // The explicit copy (Phase 19 m2): `rolltui_layout_copy`, spelled at the call site. Copying
-  // by `=` is deleted through every member, which is the point.
-  RolltuiLayout clone() const;
-#endif
-} RolltuiLayout;
 
 typedef struct RolltuiWindowStack RolltuiWindowStack;
 
@@ -2827,62 +2453,6 @@ typedef struct RolltuiStackActions {
 
 /* The window a press captured the pointer for, until its release ("" when none). */
 
-#ifdef __cplusplus
-/* ---- `RolltuiActionList`'s C++ special members (Phase 17 m3) --------------------------------
- * Each is a CALLER of a C function declared above, so "release this list" has exactly one
- * implementation. They were out-of-line in `rolltui/Layout.cpp` for a stated reason that still
- * holds and that this placement satisfies: an inline body INSIDE the struct is parsed in a
- * complete-class context for member names, but an ordinary name like
- * `rolltui_action_list_release` must already be declared at that point — and it is declared
- * AFTER the struct. Down here, after every declaration, that is no longer true of anything.
- *
- * They are not part of the deleted binding: they are what makes "the C++ type IS the C struct"
- * true (Phase 14's one-definition rule). */
-
-/* ---- forward declarations the C++ members just below call ----------------------------------*/
-RolltuiLayoutAction* rolltui_action_list_add(RolltuiActionList* l);
-void rolltui_action_list_clear(RolltuiActionList* l);
-int rolltui_action_list_equal(const RolltuiActionList* a, const RolltuiActionList* b);
-void rolltui_action_list_release(RolltuiActionList* l);
-void rolltui_action_list_remove_name(RolltuiActionList* l, const char* name, size_t len);
-void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from);
-
-inline RolltuiActionList::~RolltuiActionList() { rolltui_action_list_release(this); }
-inline RolltuiLayout RolltuiLayout::clone() const {
-  RolltuiLayout out;
-  rolltui_layout_copy(&out, this);
-  return out;
-}
-
-inline RolltuiActionList& RolltuiActionList::operator=(RolltuiActionList&& o) noexcept {
-  if (this != &o) {
-    rolltui_action_list_release(this);
-    v = o.v;
-    n = o.n;
-    cap = o.cap;
-    o.v = nullptr;
-    o.n = o.cap = 0;
-  }
-  return *this;
-}
-
-inline void RolltuiActionList::push_back(const RolltuiLayoutAction& a) {
-  RolltuiLayoutAction* p = rolltui_action_list_add(this);
-  rolltui_str_set(&p->name, a.name.p, a.name.n);
-  rolltui_str_set(&p->description, a.description.p, a.description.n);
-}
-
-inline void RolltuiActionList::erase_name(const char* name, std::size_t len) {
-  rolltui_action_list_remove_name(this, name, len);
-}
-
-inline void RolltuiActionList::clear() { rolltui_action_list_clear(this); }
-
-inline bool RolltuiActionList::operator==(const RolltuiActionList& o) const {
-  return rolltui_action_list_equal(this, &o) != 0;
-}
-
-#endif
 
 /* ========================================================================================
  * widgets — the window registry and the plugin-facing half a host kind reaches its sources through
@@ -3740,6 +3310,50 @@ typedef struct RolltuiWrapLines RolltuiWrapLines;
  * A host reads them; it does not build them in code. What a file may name is Part 1's tables.
  * ======================================================================================== */
 
+/* ---- the layout handle and its doors (Phase 23) --------------------------------------- */
+/* OWNED: `_new` makes an empty one, `_free` is a no-op on NULL, `_clone` deep-copies.
+ * A layout also arrives OWNED from `rolltui_load_layout_text`, and BORROWED from
+ * `rolltui_layout_builtin` and the Layout preset store. */
+RolltuiLayout* rolltui_layout_new(void);
+void rolltui_layout_free(RolltuiLayout* l);
+RolltuiLayout* rolltui_layout_clone(const RolltuiLayout* l);
+
+/* DOOR 1 — the base layer, to hand to `rolltui_window_stack_set_base`. Forced by all four
+ * consumers; it is the first thing every one of them does with a layout. BORROWED. */
+const RolltuiLayer* rolltui_layout_base(const RolltuiLayout* l);
+
+/* DOOR 2 — the screen's declared actions, for `rolltui_bindings_declare` and an app profile.
+ * Forced by all four consumers. BORROWED; `*n` is the count. */
+const RolltuiLayoutAction* rolltui_layout_actions(const RolltuiLayout* l, size_t* n);
+
+/* DOOR 3 — the minimum terminal size this screen states. Forced by roll (its narrow-terminal
+ * fallback picks another layout below it) and by paint (its app profile publishes it). */
+void rolltui_layout_min_size(const RolltuiLayout* l, int* w, int* h);
+
+/* DOOR 4 — the screen's name. Forced by paint, which draws it in its status line. BORROWED. */
+const char* rolltui_layout_name(const RolltuiLayout* l, size_t* len);
+
+/* DOOR 5 — a declared popup by id, or NULL. Public before Phase 23 and unchanged; roll reads
+ * one to size the input above an approval, and `rolltui_window_stack_push_popup` takes the
+ * layout and the id directly, so pushing one needs no layer of your own. BORROWED. */
+const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len);
+
+/* DOOR 8 — a layer's id. FOUND BY COMPILING, not by the survey that produced doors 1-7, and
+ * kept as evidence that "the smallest set that compiles all four consumers" is a build result
+ * rather than a reading: roll's `close_popup` pops until the top layer is the one it named.
+ * BORROWED. */
+const char* rolltui_layer_id(const RolltuiLayer* layer, size_t* len);
+
+/* DOOR 6 — where a layer is placed. Forced by roll: `rolltui_placement_resolve` turns it into
+ * the rectangle the approval popup will take, so the input below can size itself. BORROWED. */
+const RolltuiPlacement* rolltui_layer_placement(const RolltuiLayer* layer);
+
+/* DOOR 7 — a node's id, and whether it is a window rather than a row or a column. Forced by
+ * paint and the pure-C consumer (`rolltui_window_stack_focused` hands back a node) and by roll
+ * (a `RolltuiResolvedNode` in its draw slot). BORROWED. */
+const char* rolltui_layout_node_id(const RolltuiLayoutNode* n, size_t* len);
+int rolltui_layout_node_is_window(const RolltuiLayoutNode* n);
+
 /* ---- theme ---------------------------------------------------------------------------------*/
 
 /* COLORTERM=truecolor|24bit -> TrueColor; TERM containing "256color" -> Ansi256; TERM=dumb or
@@ -3807,46 +3421,29 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
 /* Zeroes and defaults a node the caller owns the storage of. Every C caller starts here;
  * `RolltuiLayoutNode n = {0}` would give a window with `visible` 0 and no background, which
  * is exactly the kind of "the language answered a question nobody asked" this port removes. */
-void rolltui_layout_node_init(RolltuiLayoutNode* n);
 
 /* Releases everything BELOW and INSIDE `n`, leaving it zeroed. Does not free `n` itself —
  * a root lives in its layer, a child in the list that owns it. */
 /* Deep copy: `to` is released first, then filled from `from`. */
-void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* from);
 
 /* Deep equality, including every child in order. */
-int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNode* b);
 
 /* A node on the heap, initialised. The child lists own these. */
-RolltuiLayoutNode* rolltui_layout_node_new(void);
 
-RolltuiLayoutNode* rolltui_node_list_add(RolltuiNodeList* l);
 
-void rolltui_node_list_insert(RolltuiNodeList* l, size_t i, RolltuiLayoutNode* n);
 
-void rolltui_node_list_remove(RolltuiNodeList* l, size_t i); /* frees it */
 
-void rolltui_node_list_clear(RolltuiNodeList* l);            /* frees every child */
 
-void rolltui_node_list_release(RolltuiNodeList* l);          /* …and the array */
 
-void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from);
 
 /* Takes `from`'s buffers and leaves it empty — the move, written down for C. */
-void rolltui_layer_move(RolltuiLayer* to, RolltuiLayer* from);
 
-int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b);
 
-void rolltui_layer_list_release(RolltuiLayerList* l);          /* frees every layer + the array */
 
-void rolltui_layer_list_clear(RolltuiLayerList* l);             /* frees every layer, keeps the array */
 
 /* Appends an EMPTY layer and returns it — the C's `emplace_back`. */
-RolltuiLayer* rolltui_layer_list_add(RolltuiLayerList* l);
 
-void rolltui_layer_list_remove_id(RolltuiLayerList* l, const char* id, size_t len); /* no-op if absent */
 
-int rolltui_layer_list_equal(const RolltuiLayerList* a, const RolltuiLayerList* b);
 
 /* ---- layout --------------------------------------------------------------------------------*/
 
@@ -3903,36 +3500,8 @@ const RolltuiLayoutHooks* rolltui_layout_default_hooks(void);
 
 void rolltui_layout_report_release(RolltuiLayoutReport* r); /* frees everything; zeroes it */
 
-void rolltui_action_list_release(RolltuiActionList* l);
 
-int rolltui_action_list_equal(const RolltuiActionList* a, const RolltuiActionList* b);
 
-void rolltui_layout_init(RolltuiLayout* l);    /* zeroes; inits `base` */
-
-void rolltui_layout_release(RolltuiLayout* l); /* frees name/actions/base/popups; zeroes */
-
-void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from);
-
-void rolltui_loaded_layout_init(RolltuiLoadedLayout* l);    /* zeroes; inits `base` */
-
-void rolltui_loaded_layout_release(RolltuiLoadedLayout* l); /* frees name/actions/base/popups; zeroes */
-
-/* Unpacks a filled `RolltuiLoadedLayout` into a fresh `RolltuiLayout`, ONCE, right after a
- * load — the loaded carrier is never retained past this call (rolltui_load_layout[_text]'s
- * contract). `out` is a caller-owned `RolltuiLayout` this fills (run `rolltui_layout_init`
- * on it first, or hand in a freshly zeroed one); its previous contents, if any, are NOT
- * released first. MOVES `name`, `actions` and `popups` (whole-array field adoption — the two
- * structs share `name`/`actions`(list)/`base`/`popups`(list) byte for byte, this file's own
- * comment on `RolltuiLayout` states why) and `base` (`rolltui_layer_move`); `loaded` is left
- * with empty actions/popups/base and must still be released by the caller (its `name` is
- * untouched by the move above and would otherwise leak).
- *
- * THIS IS THE ONE HOME for a conversion that existed twice before it: `rolltui::Layout.cpp`'s
- * `loaded_to_layout` (anonymous-namespace-private, one push_back per action/popup) and
- * `rolltui_presets.c`'s `loaded_layout_move` (file-static, this same field-adopt shape). Both
- * predate this accessor; this is the version to reach for from anywhere else, including a
- * pure-C caller, which neither of those was. */
-void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout* out);
 
 /* ---- THE SHIPPED SCREEN'S OWN ACTIONS (Phase 17) ----------------------------------------
  * The "actions" object of the embedded `default` layout, parsed ONCE and cached for the life
@@ -3955,11 +3524,17 @@ const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n);
  * not each scan the embedded table their own way. */
 const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* out_len);
 
-/* The same over TEXT: parses it first, and a JSON syntax error also becomes `report->error`
- * (0 returned) rather than reaching the loader at all. */
-int rolltui_load_layout_text(const char* text, size_t len, RolltuiLoadedLayout* out,
-                             const RolltuiLayoutAction* default_actions, size_t default_actions_n,
-                             const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);
+/* Parses TEXT into a layout. A JSON syntax error becomes `report->error` (NULL returned)
+ * rather than reaching the loader at all.
+ *
+ * **OWNED: the caller frees the result with `rolltui_layout_free`.** Until Phase 23 this filled
+ * a caller-supplied `RolltuiLoadedLayout` carrier which then had to be unpacked with
+ * `rolltui_loaded_layout_to_layout` and released separately — four lines and a stack temporary,
+ * written IDENTICALLY by all three example consumers, which is `rolltui.h` rule 5's tell for the
+ * sixth time. The carrier is the loader's own business and is internal now. */
+RolltuiLayout* rolltui_load_layout_text(const char* text, size_t len,
+                                        const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                                        const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);
 
 /* The library's own three, expanded from the SAME closed list the other four per-widget
  * tables come from (`rolltui_library_actions.c`) — the fifth expansion of one vocabulary,
@@ -4464,9 +4039,7 @@ const RolltuiInputOptions* rolltui_input_options(const RolltuiInput* in);
 
 /* ---- menu_tree -----------------------------------------------------------------------------*/
 
-void rolltui_input_spec_copy(RolltuiInputSpec* to, const RolltuiInputSpec* from);
 
-int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* b);
 
 /* Sets an item's kind, id and label in one call, releasing whatever they held — the C form of
  * the builders above, so a C host builds an item the way a C++ one does. `shortcut` may be
@@ -4873,12 +4446,9 @@ int rolltui_widget_kind_register(const char* name, size_t len, unsigned char rul
 
 int rolltui_layout_report_clean(const RolltuiLayoutReport* r);
 
-void rolltui_action_list_clear(RolltuiActionList* l);
 
 /* Appends an EMPTY action and returns it — the C's `emplace_back`. */
-RolltuiLayoutAction* rolltui_action_list_add(RolltuiActionList* l);
 
-void rolltui_action_list_remove_name(RolltuiActionList* l, const char* name, size_t len); /* no-op if absent */
 
 /* The C-callable form of `RolltuiLayout::popup()`, for a pure C caller. */
 const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len);
@@ -4894,7 +4464,6 @@ void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* ba
 
 /* Takes `popup` BY MOVE and leaves the caller's empty — the ownership `push(Layer)` was
  * doing twice by value. */
-void rolltui_window_stack_push(RolltuiWindowStack* s, RolltuiLayer* popup);
 
 /* PUSHES A POPUP THE LAYOUT DECLARED, BY ID — deep-copies it and pushes the copy. 1 when the
  * layout declares one of that id, 0 when it does not (nothing is pushed). A layer a HOST built

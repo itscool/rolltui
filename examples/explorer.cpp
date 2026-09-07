@@ -520,7 +520,7 @@ struct App {
   RolltuiWindows* windows = rolltui_windows_new();
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
-  RolltuiLayout layout{};
+  RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
   Options opt;
   BrowserFactoryCtx factory_ctx{};
   std::string root;
@@ -530,13 +530,13 @@ struct App {
   bool quit = false;
 
   App() {
-    rolltui_layout_init(&layout);
+    layout = rolltui_layout_new();
     rolltui_windows_set_library_defaults(windows);
   }
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
-    rolltui_layout_release(&layout);
+    rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_window_stack_free(stack);
     rolltui_windows_free(windows);
@@ -587,8 +587,10 @@ struct App {
     rolltui_windows_set_help(windows, "", 0, "", 0);
     rolltui_windows_clear_help_scopes(windows);
     for (const std::string& s : help_scopes()) rolltui_windows_add_help_scope(windows, s.data(), s.size());
-    rolltui_window_stack_set_base(stack, &layout.base);
-    rolltui_bindings_declare(bindings, layout.actions.v, layout.actions.n, nullptr, 0);
+    rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
+    std::size_t an = 0;
+    const RolltuiLayoutAction* av = rolltui_layout_actions(layout, &an);
+    rolltui_bindings_declare(bindings, av, an, nullptr, 0);
   }
 
   // `rows:entry` — what is known about the selection. A popup the LAYOUT declares, filled by
@@ -688,7 +690,7 @@ struct App {
   void toggle_popup(const char* id) {
     const std::size_t len = std::strlen(id);
     if (rolltui_window_stack_depth(stack) > 1) { rolltui_window_stack_pop(stack); return; }
-    rolltui_window_stack_push_popup(stack, &layout, id, len);
+    rolltui_window_stack_push_popup(stack, layout, id, len);
   }
 
   void run_action(const std::string& action) {
@@ -763,16 +765,11 @@ std::string read_file(const std::string& path, bool& ok) {
   return ss.str();
 }
 
-bool load_layout_text(const std::string& text, RolltuiLayout* out, RolltuiLayoutReport* rep) {
-  RolltuiLoadedLayout loaded{};
-  rolltui_loaded_layout_init(&loaded);
+RolltuiLayout* load_layout_text(const std::string& text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-  const bool ok = rolltui_load_layout_text(text.data(), text.size(), &loaded, defaults, defaults_n,
-                                           rolltui_layout_default_hooks(), rep) != 0;
-  if (ok) rolltui_loaded_layout_to_layout(&loaded, out);
-  rolltui_loaded_layout_release(&loaded);
-  return ok;
+  return rolltui_load_layout_text(text.data(), text.size(), defaults, defaults_n,
+                                  rolltui_layout_default_hooks(), rep);
 }
 
 bool parse_size(const std::string& s, int& w, int& h) {
@@ -852,8 +849,7 @@ int main(int argc, char** argv) {
   }
 
   RolltuiLayoutReport rep{};
-  RolltuiLayout loaded{};
-  rolltui_layout_init(&loaded);
+  RolltuiLayout* loaded = nullptr;  // OWNED
   bool have = false;
   {
     const std::string name = layout_arg.empty() ? std::string("explorer") : layout_arg;
@@ -861,16 +857,16 @@ int main(int argc, char** argv) {
     const std::string file = path ? name : presets_dir + "/layouts/" + name + ".json";
     bool ok = false;
     const std::string text = read_file(file, ok);
-    if (ok) have = load_layout_text(text, &loaded, &rep);
+    if (ok) { loaded = load_layout_text(text, &rep); have = loaded != nullptr; }
   }
   if (!have) {
     std::fprintf(stderr, "rolltui-explorer: no layout (%s)\n", rep.error.c_str());
-    rolltui_layout_release(&loaded);
+    rolltui_layout_free(loaded);
     rolltui_layout_report_release(&rep);
     return 1;
   }
-  rolltui_layout_release(&app.layout);
-  app.layout = std::move(loaded);
+  rolltui_layout_free(app.layout);
+  app.layout = loaded;  // TAKES OWNERSHIP
   app.mount();
   rolltui_layout_report_release(&rep);
 

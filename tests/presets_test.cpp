@@ -335,7 +335,7 @@ bool load_layout_text_c(std::string_view text, RolltuiLayout* out, RolltuiLayout
   rolltui_loaded_layout_init(&loaded);
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
-  const bool ok = rolltui_load_layout_text(text.data(), text.size(), &loaded, defaults, defaults_n,
+  const bool ok = rolltui_load_layout_text_into(text.data(), text.size(), &loaded, defaults, defaults_n,
                                            rolltui_layout_default_hooks(), rep) != 0;
   if (ok) rolltui_loaded_layout_to_layout(&loaded, out);
   rolltui_loaded_layout_release(&loaded);

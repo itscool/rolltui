@@ -150,7 +150,7 @@ Layout builtin_layout(std::string_view name) {
   RolltuiLoadedLayout loaded;
   rolltui_loaded_layout_init(&loaded);
   RolltuiLayoutReport rep{};
-  rolltui_load_layout_text(text, text_len, &loaded, default_actions, default_n, rolltui_layout_default_hooks(), &rep);
+  rolltui_load_layout_text_into(text, text_len, &loaded, default_actions, default_n, rolltui_layout_default_hooks(), &rep);
   Layout out{};
   rolltui_loaded_layout_to_layout(&loaded, &out);
   rolltui_loaded_layout_release(&loaded);

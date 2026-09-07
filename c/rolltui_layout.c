@@ -1192,9 +1192,86 @@ int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b) {
 
 const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len) {
   size_t i;
+  if (!l) return NULL; /* Phase 23: a door takes a handle, and a handle may be NULL — every
+                        * other accessor guards, and this one segfaulted a test that passed a
+                        * failed load straight in. */
   for (i = 0; i < l->popups.n; ++i)
     if (rolltui_str_eq(&l->popups.v[i].id, id, len)) return &l->popups.v[i];
   return NULL;
+}
+
+/* ---- PHASE 23: the opaque handle's lifecycle, and the seven doors -------------------------- */
+
+RolltuiLayout* rolltui_layout_new(void) {
+  RolltuiLayout* l = (RolltuiLayout*)rolltui_mem_alloc(sizeof *l);  /* OWNED, LONG-LIVED */
+  memset(l, 0, sizeof *l);
+  rolltui_layout_init(l);
+  return l;
+}
+
+void rolltui_layout_free(RolltuiLayout* l) {
+  if (!l) return;
+  rolltui_layout_release(l);
+  rolltui_mem_free(l);
+}
+
+RolltuiLayout* rolltui_layout_clone(const RolltuiLayout* l) {
+  RolltuiLayout* out;
+  if (!l) return NULL;
+  out = rolltui_layout_new();
+  rolltui_layout_copy(out, l);
+  return out;
+}
+
+const RolltuiLayer* rolltui_layout_base(const RolltuiLayout* l) { return l ? &l->base : NULL; }
+
+const RolltuiLayoutAction* rolltui_layout_actions(const RolltuiLayout* l, size_t* n) {
+  if (n) *n = l ? l->actions.n : 0;
+  return l ? l->actions.v : NULL;
+}
+
+void rolltui_layout_min_size(const RolltuiLayout* l, int* w, int* h) {
+  if (w) *w = l ? l->min_width : 0;
+  if (h) *h = l ? l->min_height : 0;
+}
+
+const char* rolltui_layout_name(const RolltuiLayout* l, size_t* len) {
+  if (len) *len = l ? l->name.n : 0;
+  return l && l->name.p ? l->name.p : "";
+}
+
+const RolltuiPlacement* rolltui_layer_placement(const RolltuiLayer* layer) { return layer ? &layer->placement : NULL; }
+
+const char* rolltui_layer_id(const RolltuiLayer* layer, size_t* len) {
+  if (len) *len = layer ? layer->id.n : 0;
+  return layer && layer->id.p ? layer->id.p : "";
+}
+
+const char* rolltui_layout_node_id(const RolltuiLayoutNode* n, size_t* len) {
+  if (len) *len = n ? n->id.n : 0;
+  return n && n->id.p ? n->id.p : "";
+}
+
+int rolltui_layout_node_is_window(const RolltuiLayoutNode* n) {
+  return n && n->kind == ROLLTUI_NODE_WINDOW;
+}
+
+/* The public loader: parses, unpacks and hands back an OWNED layout. The carrier is the
+ * library's own business now (Phase 23) — three consumers wrote the four-line dance. */
+RolltuiLayout* rolltui_load_layout_text(const char* text, size_t len,
+                                        const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                                        const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report) {
+  RolltuiLoadedLayout loaded;
+  RolltuiLayout* out;
+  rolltui_loaded_layout_init(&loaded);
+  if (!rolltui_load_layout_text_into(text, len, &loaded, default_actions, default_actions_n, hooks, report)) {
+    rolltui_loaded_layout_release(&loaded);
+    return NULL;
+  }
+  out = rolltui_layout_new();
+  rolltui_loaded_layout_to_layout(&loaded, out);
+  rolltui_loaded_layout_release(&loaded);
+  return out;
 }
 
 void rolltui_layout_read_actions_key(const RolltuiJsonValue* root, RolltuiLayoutAction** actions, size_t* actions_n,
@@ -1753,9 +1830,9 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
   return 1;
 }
 
-int rolltui_load_layout_text(const char* text, size_t len, RolltuiLoadedLayout* out,
-                             const RolltuiLayoutAction* default_actions, size_t default_actions_n,
-                             const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report) {
+int rolltui_load_layout_text_into(const char* text, size_t len, RolltuiLoadedLayout* out,
+                                  const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                                  const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report) {
   RolltuiStr jerr = {0};
   RolltuiJsonValue* root = rolltui_json_parse(text, len, &jerr);
   int ok;
@@ -2384,7 +2461,7 @@ static void builtin_layouts_fill(void) {
     json = rolltui_layout_builtin_json(name, strlen(name), &json_len);
     rolltui_loaded_layout_init(&loaded);
     memset(&rep, 0, sizeof rep);
-    if (!rolltui_load_layout_text(json, json_len, &loaded, da, na, rolltui_layout_default_hooks(), &rep) ||
+    if (!rolltui_load_layout_text_into(json, json_len, &loaded, da, na, rolltui_layout_default_hooks(), &rep) ||
         !rolltui_layout_report_clean(&rep)) {
       /* A built-in that does not load cleanly is a PROGRAMMING ERROR: say so loudly rather
        * than serve half a layout. The C++ did the same, and its test asserts clean() per name. */

@@ -266,6 +266,22 @@ void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* fr
 
 RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s);
 
+/* ---- MOVED HERE BY PHASE 23: the loader's own carrier and the value lifecycle ---------------
+ * `rolltui/rolltui.h` publishes `rolltui_load_layout_text` returning an OWNED `RolltuiLayout*`
+ * and `rolltui_layout_new/_free/_clone`. What is below is how the library builds one: the
+ * carrier the parser fills, and the by-value init/release/copy the opaque handle wraps. A test
+ * or the studio's layout editor may include this header by name; a host may not. */
+void rolltui_layout_init(RolltuiLayout* l);    /* zeroes; inits `base` */
+void rolltui_layout_release(RolltuiLayout* l); /* frees name/actions/base/popups; zeroes */
+void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from);
+void rolltui_loaded_layout_init(RolltuiLoadedLayout* l);
+void rolltui_loaded_layout_release(RolltuiLoadedLayout* l);
+void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout* out);
+/* The pre-Phase-23 loader, still the implementation: fills a carrier the caller supplies. */
+int rolltui_load_layout_text_into(const char* text, size_t len, RolltuiLoadedLayout* out,
+                                  const RolltuiLayoutAction* default_actions, size_t default_actions_n,
+                                  const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
