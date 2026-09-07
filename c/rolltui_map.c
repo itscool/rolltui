@@ -2,6 +2,7 @@
  * C++ implementation existed, like the
  * two trees and the span store: it is DATA, and the flag chooses algorithms. */
 #include "rolltui/c/rolltui_map.h"
+#include "rolltui/c/rolltui_str.h"
 
 #include <string.h>
 

@@ -75,10 +75,14 @@
 // `WindowsC` RAII fixture, `ROLLTUI_KEY_*`, `RolltuiMouseEvent`, a local `RouteC`) — the same
 // idiom `rolltui-paint` and `authored_screen_test.cpp` already use.
 #include "rolltui/rolltui.h"
+// INTERNAL: this test opts in. `rolltui_input_max_rows`/`_window_rows` are the input
+// window's sizing rules, applied by `Windows`; Phase 24 moved them internal because no
+// consumer applies them, and this suite asserts the rule itself.
+#include "rolltui/c/rolltui_widget_kinds.h"
 
 /* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
- * opts in by listing itself in ROLLTUI_INTERNAL_TESTS (rolltui/CMakeLists.txt). */
+ * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_input.h"
 #include "rolltui/c/rolltui_screen.h"

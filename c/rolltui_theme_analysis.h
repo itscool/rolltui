@@ -66,7 +66,7 @@ void rolltui_into_gamut(RolltuiOkLch c, RolltuiLin* out);
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 /* ---- sRGB <-> linear ------------------------------------------------------------------- */
 double rolltui_srgb_channel_to_linear(double c); /* c in 0..1 */
 double rolltui_linear_channel_to_srgb(double v);

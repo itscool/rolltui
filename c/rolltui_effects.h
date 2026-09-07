@@ -81,7 +81,7 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
 void rolltui_effect_map_clear(RolltuiEffectMap* m);
 int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);
@@ -115,7 +115,7 @@ int rolltui_effect_is_builtin(const char* name, size_t len);
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
 void rolltui_effect_map_clear(RolltuiEffectMap* m);
 int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);

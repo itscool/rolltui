@@ -57,7 +57,7 @@ void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, si
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 /* Pure colour reduction: TrueColor keeps everything, Ansi256 maps rgb to the nearest of the
  * cube and the grey ramp, Ansi16 to the nearest of the 16 system colours, Mono drops colour. */
 void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth);
@@ -112,6 +112,11 @@ const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
 RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const RolltuiEffectMap* dark_effects,
                                      const RolltuiStyle* light_styles, const RolltuiEffectMap* light_effects,
                                      const RolltuiThemeVocab* vocab);
+
+
+/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
+ * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, size_t cap);
 
 #ifdef __cplusplus
 } /* extern "C" */

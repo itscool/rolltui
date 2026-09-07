@@ -1,6 +1,7 @@
 /* rolltui/c/rolltui_layout.c — the C side of placement, composition and the stack. See
  * rolltui_layout.h; the rules are rolltui/Layout.hpp's. */
 #include "rolltui/c/rolltui_layout.h"
+#include "rolltui/c/rolltui_str.h"
 
 #include <math.h>
 #include <stdio.h>

@@ -112,7 +112,7 @@ void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 /* ========================================================================================
  * menu — the menu widget
  * ======================================================================================== */

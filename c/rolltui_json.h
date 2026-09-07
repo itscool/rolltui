@@ -11,7 +11,7 @@
  * implementation — so the `.c` needs its declarations again and the rule re-creates it.
  *
  * A suite that needs one includes this header BY NAME and lists itself in
- * `ROLLTUI_INTERNAL_TESTS` (rolltui/CMakeLists.txt). */
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 #include "rolltui/rolltui.h"
 
 #ifdef __cplusplus

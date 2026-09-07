@@ -18,7 +18,7 @@ extern "C" {
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 /* Only what changed between `prev` and `next`. A NULL `prev`, or one whose dimensions
  * differ, repaints in full (rule 1 above). When nothing changed AND the cursor did not
  * move, nothing is appended — which is what lets an idle screen cost zero bytes. */

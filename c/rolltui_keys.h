@@ -70,7 +70,7 @@ long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 /* Both spellings, BORROWED from static storage; `*len` may be NULL. An out-of-range ordinal
  * reads back as the CHAR row ("Char" / ""), never past the table. `rolltui_key_file_name`
  * returns "" (len 0) for `Char` and `Unknown`, which is what "this key has no chord name"
@@ -104,7 +104,7 @@ const char* rolltui_key_undeliverable_text(int code, size_t* len);
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 /* Both spellings, BORROWED from static storage; `*len` may be NULL. An out-of-range ordinal
  * reads back as the CHAR row ("Char" / ""), never past the table. `rolltui_key_file_name`
  * returns "" (len 0) for `Char` and `Unknown`, which is what "this key has no chord name"

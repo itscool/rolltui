@@ -1,6 +1,7 @@
 /* rolltui/c/rolltui_input.c — the C side of the input widget. See rolltui_input.h; the
  * rules are rolltui/Input.hpp's. */
 #include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_str.h"
 
 #include <stdlib.h>
 #include <string.h>

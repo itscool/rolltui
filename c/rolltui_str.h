@@ -57,7 +57,7 @@ void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller o
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns the elements */
 
 /* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
@@ -70,6 +70,13 @@ void rolltui_str_append_str(RolltuiStr* s, const RolltuiStr* o);
 
 void rolltui_str_list_clear(RolltuiStrList* l); /* n = 0; every entry's buffer is KEPT for reuse */
 RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len);
+
+
+/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
+ * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+/* A BORROW of the bytes, never NULL: the empty string reads back as "" with `*len` 0, so a
+ * caller never branches on NULL to print a name. */
+const char* rolltui_str_get(const RolltuiStr* s, size_t* len);
 
 #ifdef __cplusplus
 } /* extern "C" */

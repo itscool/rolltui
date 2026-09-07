@@ -70,7 +70,7 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src);
 void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill);
 void rolltui_frame_clear(RolltuiFrame* f, RolltuiStyle fill);
@@ -92,6 +92,19 @@ void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
 /* What the frame SHOWS, not what it is holding on to: retained link/spill capacity past a
  * reset is not compared (Phase 13 m5b found that the hard way). */
 int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
+
+
+/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
+ * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+void rolltui_frame_free(RolltuiFrame* f);
+
+int rolltui_frame_height(const RolltuiFrame* f);
+
+/* OWNED by the caller. `new` never returns NULL: an allocation failure aborts inside
+ * rolltui::mem, because a half-built frame is worse than a clean death. */
+RolltuiFrame* rolltui_frame_new(int w, int h, RolltuiStyle fill);
+
+int rolltui_frame_width(const RolltuiFrame* f);
 
 #ifdef __cplusplus
 } /* extern "C" */

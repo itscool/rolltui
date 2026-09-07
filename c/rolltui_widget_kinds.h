@@ -134,6 +134,16 @@ const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w
 
 const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w);
 
+
+/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
+ * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+/* The input window's sizing rule: the cap is HALF the parent's extent less the border rows, at
+ * least 1; the rows are the text's capped at that, plus one for a note that cannot sit beside a
+ * single row. */
+int rolltui_input_max_rows(int parent_extent, int border_rows);
+
+int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int width, int max_rows);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

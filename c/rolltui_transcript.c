@@ -1,6 +1,7 @@
 /* rolltui/c/rolltui_transcript.c — the C side of the transcript widget. See
  * rolltui_transcript.h; the rules are rolltui/Transcript.hpp's. */
 #include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_str.h"
 
 #include <stdio.h>
 #include <stdlib.h>

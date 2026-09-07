@@ -35,7 +35,7 @@
  *                yet, ARGUED PER FUNCTION and never per family.
  *   INTERNAL     everything else: only the library's own `.c` reaches it, or only the studio and
  *                its editors, or only a suite that tests implementation. Those all opt in by name
- *                (`ROLLTUI_INTERNAL_TESTS` in CMake). INTERNAL IS A PROMISE BOUNDARY, NOT A
+ *                (`ROLLTUI_INTERNAL_OPT_IN` in CMake). INTERNAL IS A PROMISE BOUNDARY, NOT A
  *                GRAVEYARD — the code and its tests are unchanged; what changes is that the
  *                library no longer promises the shape.
  *   DELETE       reached by nothing, anywhere, and not a public type's lifecycle.
@@ -94,9 +94,7 @@ ROLLTUI_API(rolltui_str_append_str, INTERNAL)  /* the string type's own API */
 ROLLTUI_API(rolltui_str_clear, PUBLIC)
 ROLLTUI_API(rolltui_str_eq, PUBLIC)
 ROLLTUI_API(rolltui_str_free, PUBLIC)
-ROLLTUI_API(rolltui_str_get, PUBLIC)  /* KEPT: `public_header_test` section 1 builds a frame from the umbrella alone and renders
-   it — a consumer's first five minutes, and the proof that the definition is SUFFICIENT.
-   That suite must never opt in to an internal header, so what it needs is public. */
+ROLLTUI_API(rolltui_str_get, INTERNAL)  /* Phase 24: RolltuiStr is TRANSPARENT: a consumer reads `.p`/`.n` directly, so there is no hole to fill. Its old KEPT reason was `public_header_test` section 1 — a META-test, which Phase 20 struck as a reason */
 ROLLTUI_API(rolltui_str_list_add, INTERNAL)  /* the list's own API */
 ROLLTUI_API(rolltui_str_list_clear, INTERNAL)  /* the list's own API */
 ROLLTUI_API(rolltui_str_list_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
@@ -105,9 +103,7 @@ ROLLTUI_API(rolltui_str_list_release, PUBLIC)  /* KEPT: a public C++ member in t
 ROLLTUI_API(rolltui_str_move, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* the string type's own API */
-ROLLTUI_API(rolltui_str_put, PUBLIC)
-
-/* ---- rolltui_style.h — RolltuiStyle and the role list; default PUBLIC ---- */
+ROLLTUI_API(rolltui_str_put, PUBLIC)  /* KEPT: matching part — `rolltui_preset_read_file` is consumer-used and takes a `RolltuiPutFn`; without the library's own sink over its own string type every consumer writes the same adapter */
 ROLLTUI_API(rolltui_role_from_name, INTERNAL)
 ROLLTUI_API(rolltui_role_name, INTERNAL)
 
@@ -129,26 +125,20 @@ ROLLTUI_API(rolltui_frame_clear, INTERNAL)  /* a cell-level frame primitive; a h
 ROLLTUI_API(rolltui_frame_clone, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_cursor, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_equal, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
-ROLLTUI_API(rolltui_frame_free, PUBLIC)  /* KEPT: `public_header_test` section 1 builds a frame from the umbrella alone and renders
-   it — a consumer's first five minutes, and the proof that the definition is SUFFICIENT.
-   That suite must never opt in to an internal header, so what it needs is public. */
+ROLLTUI_API(rolltui_frame_free, INTERNAL)  /* Phase 24: the pair of `_new`, and it went with it */
 ROLLTUI_API(rolltui_frame_glyph, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
-ROLLTUI_API(rolltui_frame_height, PUBLIC)  /* KEPT: the pair of frame_width; a host that sizes anything reads both */
+ROLLTUI_API(rolltui_frame_height, INTERNAL)  /* Phase 24: the pair of `_width`, and it went with it */
 ROLLTUI_API(rolltui_frame_link, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_link_id, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
-ROLLTUI_API(rolltui_frame_mark, PUBLIC)  /* KEPT: the widget contract — a widget MARKS a span and stops; frame_mark_count is already public */
+ROLLTUI_API(rolltui_frame_mark, PUBLIC)  /* KEPT: matching part — `rolltui_effects_apply` is consumer-used, and this is the WIDGET half of that contract — motion is the theme's, a state is the widget's */
 ROLLTUI_API(rolltui_frame_mark_at, INTERNAL)  /* a step of mark */
 ROLLTUI_API(rolltui_frame_mark_count, PUBLIC)
-ROLLTUI_API(rolltui_frame_new, PUBLIC)  /* KEPT: `public_header_test` section 1 builds a frame from the umbrella alone and renders
-   it — a consumer's first five minutes, and the proof that the definition is SUFFICIENT.
-   That suite must never opt in to an internal header, so what it needs is public. */
+ROLLTUI_API(rolltui_frame_new, INTERNAL)  /* Phase 24: a host gets its frame from `rolltui_swap_begin`, never by building one. Old KEPT reason was a meta-test's reach */
 ROLLTUI_API(rolltui_frame_put, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_reset, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
 ROLLTUI_API(rolltui_frame_set_cursor, PUBLIC)
 ROLLTUI_API(rolltui_frame_set_style, INTERNAL)  /* a cell-level frame primitive; a host draws through rolltui_frame_ops.h */
-ROLLTUI_API(rolltui_frame_width, PUBLIC)  /* KEPT: `public_header_test` section 1 builds a frame from the umbrella alone and renders
-   it — a consumer's first five minutes, and the proof that the definition is SUFFICIENT.
-   That suite must never opt in to an internal header, so what it needs is public. */
+ROLLTUI_API(rolltui_frame_width, INTERNAL)  /* Phase 24: a widget is handed a resolved node's rect and the library clips; nothing needs the frame's own bounds. Old KEPT reason was a meta-test's reach */
 
 /* ---- rolltui_swap.h — the double buffer, the newest entry point; default PUBLIC ---- */
 ROLLTUI_API(rolltui_swap_begin, PUBLIC)
@@ -281,7 +271,7 @@ ROLLTUI_API(rolltui_color_to_string, PUBLIC) /* KEPT: the other half of that rou
 ROLLTUI_API(rolltui_detect_color_depth, PUBLIC)
 ROLLTUI_API(rolltui_mode_for_background, PUBLIC)
 ROLLTUI_API(rolltui_parse_osc11_reply, INTERNAL)  /* a theme-loading step */
-ROLLTUI_API(rolltui_sgr, PUBLIC)  /* KEPT: one of rule 3(a)'s eight bounded text-out functions, named in the header's own rules */
+ROLLTUI_API(rolltui_sgr, INTERNAL)  /* Phase 24: no consumer writes an escape sequence; `rolltui_swap_present` produces the bytes. Rule 3(a)'s prose is amended rather than a function kept to illustrate it */
 ROLLTUI_API(rolltui_theme_builtin_count, INTERNAL)  /* a theme-loading step */
 ROLLTUI_API(rolltui_theme_builtin_fill, PUBLIC)
 ROLLTUI_API(rolltui_theme_builtin_name, INTERNAL)  /* a theme-loading step */
@@ -353,10 +343,10 @@ ROLLTUI_API(rolltui_bindings_description, INTERNAL)  /* a step of loading or bui
 ROLLTUI_API(rolltui_bindings_dump_json, PUBLIC)
 ROLLTUI_API(rolltui_bindings_equal, INTERNAL)
 ROLLTUI_API(rolltui_bindings_free, PUBLIC)
-ROLLTUI_API(rolltui_bindings_has, PUBLIC)
+ROLLTUI_API(rolltui_bindings_has, PUBLIC)  /* KEPT: matching part — `rolltui_bindings_declare` is consumer-used, and this is how a host tells a LIVE shortcut from a kept-but-inert row */
 ROLLTUI_API(rolltui_bindings_has_row, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_holder, INTERNAL)  /* a step of bind */
-ROLLTUI_API(rolltui_bindings_library_scope, PUBLIC)  /* the vocabulary callback a host passes */
+ROLLTUI_API(rolltui_bindings_library_scope, PUBLIC)  /* KEPT: stated reason — the bring-your-own-vocabulary rung a host passes to the bindings loader */
 ROLLTUI_API(rolltui_bindings_load_json, PUBLIC)
 ROLLTUI_API(rolltui_bindings_new, INTERNAL)
 ROLLTUI_API(rolltui_bindings_new_seeded, PUBLIC)
@@ -596,7 +586,7 @@ ROLLTUI_API(rolltui_windows_input_at, INTERNAL)  /* a hit-test the stack already
 ROLLTUI_API(rolltui_windows_layout, PUBLIC)
 ROLLTUI_API(rolltui_windows_menu, PUBLIC)
 ROLLTUI_API(rolltui_windows_menu_at, PUBLIC)
-ROLLTUI_API(rolltui_windows_menu_origin, PUBLIC)
+ROLLTUI_API(rolltui_windows_menu_origin, PUBLIC)  /* KEPT: matching part — `rolltui_windows_add_menu` is consumer-used, and without the origin a host cannot tell whether its own file or a user's shadow won the three-rung resolution */
 ROLLTUI_API(rolltui_windows_new, PUBLIC)
 ROLLTUI_API(rolltui_windows_on_submit, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_register_kind, PUBLIC)
@@ -621,10 +611,10 @@ ROLLTUI_API(rolltui_windows_widget_for, PUBLIC)
 ROLLTUI_API(rolltui_help_document, PUBLIC)
 ROLLTUI_API(rolltui_help_scope_lines, PUBLIC)
 ROLLTUI_API(rolltui_input_kind_process_event, PUBLIC)
-ROLLTUI_API(rolltui_input_max_rows, PUBLIC)  /* KEPT: the input window's sizing rule, which a host applies too */
+ROLLTUI_API(rolltui_input_max_rows, INTERNAL)  /* Phase 24: its old KEPT reason said "a host applies it too" and no host does — measured 0 consumer files */
 ROLLTUI_API(rolltui_input_widget_ctx_set_min_outer, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_input_widget_plugin, INTERNAL)  /* the built-in kinds' own */
-ROLLTUI_API(rolltui_input_window_rows, PUBLIC)  /* KEPT: the input window's sizing rule, which a host applies too */
+ROLLTUI_API(rolltui_input_window_rows, INTERNAL)  /* Phase 24: its old KEPT reason said "a host applies it too" and no host does — measured 0 consumer files */
 ROLLTUI_API(rolltui_menu_widget_ctx_origin, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_menu_widget_ctx_refresh, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_menu_widget_plugin, INTERNAL)  /* the built-in kinds' own */
@@ -653,7 +643,7 @@ ROLLTUI_API(rolltui_doc_entry_init, INTERNAL)  /* rule 1: a public type's lifecy
 ROLLTUI_API(rolltui_doc_entry_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_document_add, PUBLIC)
+ROLLTUI_API(rolltui_document_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to as well */
 ROLLTUI_API(rolltui_document_at, INTERNAL)  /* a public type's read API */
 ROLLTUI_API(rolltui_document_clear, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
@@ -732,7 +722,7 @@ ROLLTUI_API(rolltui_input_type_name, INTERNAL)  /* the menu loader's vocabulary 
 ROLLTUI_API(rolltui_menu_action_list_release, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* a public C++ member calls it (~RolltuiMenuActionList); a C consumer must be able to do the same */
-ROLLTUI_API(rolltui_menu_apply_shortcuts, PUBLIC)
+ROLLTUI_API(rolltui_menu_apply_shortcuts, PUBLIC)  /* KEPT: matching part — `rolltui_bindings_declare` is consumer-used — a menu shows an action's LIVE chords, and this is how a host refreshes them after the table changes */
 ROLLTUI_API(rolltui_menu_breadcrumb, INTERNAL)
 ROLLTUI_API(rolltui_menu_default_actions, PUBLIC)
 ROLLTUI_API(rolltui_menu_draw, INTERNAL)
@@ -747,21 +737,21 @@ ROLLTUI_API(rolltui_menu_flat_count, INTERNAL)  /* the palette's own flattening 
 ROLLTUI_API(rolltui_menu_flat_label, INTERNAL)  /* the palette's own flattening (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_menu_free, INTERNAL)
 ROLLTUI_API(rolltui_menu_handle, PUBLIC)
-ROLLTUI_API(rolltui_menu_item_actions, PUBLIC)
+ROLLTUI_API(rolltui_menu_item_actions, PUBLIC)  /* KEPT: matching part — `rolltui_menu_parse_json` fills an item tree, and this is how a host checks the action ids in the tree it just parsed */
 ROLLTUI_API(rolltui_menu_layout, INTERNAL)
 ROLLTUI_API(rolltui_menu_level, INTERNAL)
 ROLLTUI_API(rolltui_menu_load_report_add_bad_value, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_menu_load_report_add_unknown_key, INTERNAL)  /* the loader's report builder */
-ROLLTUI_API(rolltui_menu_load_report_clean, PUBLIC)
-ROLLTUI_API(rolltui_menu_load_report_release, PUBLIC)
+ROLLTUI_API(rolltui_menu_load_report_clean, PUBLIC)  /* KEPT: matching part — the report of `rolltui_menu_parse_json`, which is kept for the same reason as `rolltui_layout_report_clean` */
+ROLLTUI_API(rolltui_menu_load_report_release, PUBLIC)  /* KEPT: matching part — rule 1's pair for the report `rolltui_menu_parse_json` fills */
 ROLLTUI_API(rolltui_menu_load_report_set_error, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_menu_new, INTERNAL)
 ROLLTUI_API(rolltui_menu_options, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_palette, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
-ROLLTUI_API(rolltui_menu_parse_json, PUBLIC)
+ROLLTUI_API(rolltui_menu_parse_json, PUBLIC)  /* KEPT: matching part — `rolltui_load_layout_text` + `rolltui_layout_report_clean` are consumer-used and let a host validate the LAYOUT file it ships; a host that ships a MENU file and cannot validate it is the same hole, and roll's own test does exactly this */
 ROLLTUI_API(rolltui_menu_path, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 ROLLTUI_API(rolltui_menu_reset, PUBLIC)
-ROLLTUI_API(rolltui_menu_root, PUBLIC)
+ROLLTUI_API(rolltui_menu_root, PUBLIC)  /* KEPT: matching part — `rolltui_windows_menu` is consumer-used and hands back a RolltuiMenu*; a menu you can obtain but whose tree you cannot reach is a hole, and `_find` only answers "is this id present" */
 ROLLTUI_API(rolltui_menu_scroll_first, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_scroll_visible, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_selected, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
@@ -792,7 +782,7 @@ ROLLTUI_API(rolltui_menu_item_equal, PUBLIC)  /* KEPT: a public C++ member in th
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_item_free, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_menu_item_init, PUBLIC)
+ROLLTUI_API(rolltui_menu_item_init, PUBLIC)  /* KEPT: matching part — `rolltui_menu_item_set` is kept, and a C caller must init before set or the struct is garbage */
 ROLLTUI_API(rolltui_menu_item_new, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_item_set, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
@@ -876,9 +866,9 @@ ROLLTUI_API(rolltui_undo_undo, INTERNAL)
 ROLLTUI_API(rolltui_undo_undo_depth, INTERNAL)
 
 /* ---- rolltui_app_profile.h — what a layout may name in an app: written by one host, read by another; default PUBLIC ---- */
-ROLLTUI_API(rolltui_app_profile_action_count, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_action_description, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_action_name, PUBLIC)
+ROLLTUI_API(rolltui_app_profile_action_count, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_action` is consumer-used and `_parse`/`_kind_count` are host-suite-reached — a profile you can parse but whose actions you cannot read is a hole */
+ROLLTUI_API(rolltui_app_profile_action_description, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_action` is consumer-used and `_parse`/`_kind_name` are host-suite-reached */
+ROLLTUI_API(rolltui_app_profile_action_name, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_action` is consumer-used and `_parse`/`_kind_name` are host-suite-reached */
 ROLLTUI_API(rolltui_app_profile_add_action, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_add_document, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_add_help_scope, PUBLIC)
@@ -893,8 +883,8 @@ ROLLTUI_API(rolltui_app_profile_content_count, INTERNAL)
 ROLLTUI_API(rolltui_app_profile_document_count, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_dump, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_free, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_help_scope_at, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_help_scope_count, PUBLIC)
+ROLLTUI_API(rolltui_app_profile_help_scope_at, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_help_scope` is consumer-used and `_parse` is host-suite-reached */
+ROLLTUI_API(rolltui_app_profile_help_scope_count, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_help_scope` is consumer-used and `_parse` is host-suite-reached */
 ROLLTUI_API(rolltui_app_profile_kind_count, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_kind_name, PUBLIC)
 ROLLTUI_API(rolltui_app_profile_kind_rule, PUBLIC)
@@ -923,10 +913,10 @@ ROLLTUI_API(rolltui_embedded_text, PUBLIC)
 
 /* ---- rolltui_json.h — RolltuiJsonValue: a public type (a theme preset holds one), so its API is public; default PUBLIC ---- */
 ROLLTUI_API(rolltui_json_array, PUBLIC)
-ROLLTUI_API(rolltui_json_array_at, PUBLIC)  /* KEPT: JSON is a public vocabulary; a value API with holes cannot be used */
+ROLLTUI_API(rolltui_json_array_at, PUBLIC)  /* KEPT: matching part — `rolltui_json_array_push` is host-suite-reached — an array you can build and not read back is a hole */
 ROLLTUI_API(rolltui_json_array_push, PUBLIC)
-ROLLTUI_API(rolltui_json_array_size, PUBLIC)  /* KEPT: JSON is a public vocabulary; a value API with holes cannot be used */
-ROLLTUI_API(rolltui_json_as_bool, PUBLIC)  /* KEPT: JSON is a public vocabulary; a value API with holes cannot be used */
+ROLLTUI_API(rolltui_json_array_size, PUBLIC)  /* KEPT: matching part — `rolltui_json_array_push` is host-suite-reached — an array you can build and not read back is a hole */
+ROLLTUI_API(rolltui_json_as_bool, PUBLIC)  /* KEPT: matching part — `rolltui_json_get` is host-suite-reached and returns a value only an `_as_*` can read */
 ROLLTUI_API(rolltui_json_as_number, INTERNAL)
 ROLLTUI_API(rolltui_json_as_string, INTERNAL)
 ROLLTUI_API(rolltui_json_bool, INTERNAL)  /* the JSON API's constructors */
@@ -937,12 +927,12 @@ ROLLTUI_API(rolltui_json_free, PUBLIC)
 ROLLTUI_API(rolltui_json_get, PUBLIC)
 ROLLTUI_API(rolltui_json_has, INTERNAL)
 ROLLTUI_API(rolltui_json_is_array, INTERNAL)
-ROLLTUI_API(rolltui_json_is_bool, PUBLIC)  /* KEPT: JSON is a public vocabulary; a value API with holes cannot be used */
+ROLLTUI_API(rolltui_json_is_bool, PUBLIC)  /* KEPT: matching part — `rolltui_json_get` is host-suite-reached and returns a value only an `_is_*` can type-test */
 ROLLTUI_API(rolltui_json_is_null, INTERNAL)
-ROLLTUI_API(rolltui_json_is_number, PUBLIC)  /* KEPT: JSON is a public vocabulary; a value API with holes cannot be used */
+ROLLTUI_API(rolltui_json_is_number, PUBLIC)  /* KEPT: matching part — `rolltui_json_get` is host-suite-reached and returns a value only an `_is_*` can type-test */
 ROLLTUI_API(rolltui_json_is_object, INTERNAL)
 ROLLTUI_API(rolltui_json_is_string, INTERNAL)
-ROLLTUI_API(rolltui_json_null, PUBLIC)  /* KEPT: JSON is a public vocabulary; a value API with holes cannot be used */
+ROLLTUI_API(rolltui_json_null, PUBLIC)  /* KEPT: matching part — `rolltui_json_string`/`_array` are host-suite-reached makers; a value set without null is a hole */
 ROLLTUI_API(rolltui_json_number, INTERNAL)  /* the JSON API's constructors */
 ROLLTUI_API(rolltui_json_object, INTERNAL)
 ROLLTUI_API(rolltui_json_object_erase, PUBLIC)
@@ -957,11 +947,11 @@ ROLLTUI_API(rolltui_json_string, PUBLIC)
 ROLLTUI_API(rolltui_bindings_preset_domain_init, INTERNAL)  /* the bring-your-own-vocabulary rung */
 ROLLTUI_API(rolltui_bindings_preset_report_clean, PUBLIC)
 ROLLTUI_API(rolltui_bindings_preset_report_release, PUBLIC)
-ROLLTUI_API(rolltui_bindings_preset_report_summary, PUBLIC)
+ROLLTUI_API(rolltui_bindings_preset_report_summary, PUBLIC)  /* KEPT: matching part — its own `_clean` and `rolltui_theme_preset_report_summary` are consumer-used — asking whether a file is clean but not WHAT is wrong, for one domain of three, is a hole (Phase 21 wall E5/E6) */
 ROLLTUI_API(rolltui_layout_preset_domain_init, INTERNAL)  /* the bring-your-own-vocabulary rung */
 ROLLTUI_API(rolltui_layout_preset_report_clean, PUBLIC)
 ROLLTUI_API(rolltui_layout_preset_report_release, PUBLIC)
-ROLLTUI_API(rolltui_layout_preset_report_summary, PUBLIC)
+ROLLTUI_API(rolltui_layout_preset_report_summary, PUBLIC)  /* KEPT: matching part — its own `_clean` and `rolltui_theme_preset_report_summary` are consumer-used — same hole, same set of three domains */
 ROLLTUI_API(rolltui_preset_domain, PUBLIC)
 ROLLTUI_API(rolltui_preset_domain_name, PUBLIC)
 ROLLTUI_API(rolltui_preset_domain_release, INTERNAL)  /* rule 1: the pair */
@@ -984,7 +974,7 @@ ROLLTUI_API(rolltui_preset_store_edit, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_free, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_get, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_label, PUBLIC)
-ROLLTUI_API(rolltui_preset_store_last_error, PUBLIC)  /* KEPT: the only way a host sees an autosave failure */
+ROLLTUI_API(rolltui_preset_store_last_error, PUBLIC)  /* KEPT: matching part — `rolltui_preset_store_edit` is consumer-used, persists, and cannot report a failed autosave any other way */
 ROLLTUI_API(rolltui_preset_store_list, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_load, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_modified, PUBLIC)

@@ -80,7 +80,7 @@ int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 void rolltui_input_options_init(RolltuiInputOptions* o);
 RolltuiInput* rolltui_input_new(void);
 void rolltui_input_free(RolltuiInput* in); /* a no-op on NULL */
@@ -120,7 +120,7 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
 /* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
  * A test's reach is never a reason to be public, and nothing but a suite that tests this
  * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_TESTS`. */
+ * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
 void rolltui_input_options_init(RolltuiInputOptions* o);
 RolltuiInput* rolltui_input_new(void);
 void rolltui_input_free(RolltuiInput* in); /* a no-op on NULL */

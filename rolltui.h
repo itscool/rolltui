@@ -58,8 +58,11 @@
  *      buffer the caller owns and reuses.
  *   3. TEXT OUT has exactly three shapes. DO pick by the rule, not by taste:
  *        (a) BOUNDED — `size_t f(…, char* out, size_t cap)` when the maximum is known and
- *            NAMED (`ROLLTUI_SGR_MAX`, `ROLLTUI_CHORD_STRING_MAX`, …): a caller declares
- *            `char buf[ROLLTUI_SGR_MAX]` and allocates nothing.
+ *            NAMED, so a caller declares `char buf[THE_MAX]` and allocates nothing. **Every
+ *            function of this shape is INTERNAL as of Phase 24** — `rolltui_sgr` was the last
+ *            public one and no consumer writes an escape sequence — so the shape is documented
+ *            here for the internal headers rather than shown by a public example. A new public
+ *            function with a known maximum still takes it.
  *        (b) UNBOUNDED — `void f(…, RolltuiStr* out)`, REPLACING a growing buffer the caller
  *            owns and reuses, when no maximum exists.
  *        (c) BORROWED — `const char* f(…, size_t* len)`, memory the library keeps, with the
@@ -245,9 +248,6 @@ void rolltui_str_move(RolltuiStr* to, RolltuiStr* from);
 
 int rolltui_str_eq(const RolltuiStr* s, const char* text, size_t len);
 
-/* A BORROW of the bytes, never NULL: the empty string reads back as "" with `*len` 0, so a
- * caller never branches on NULL to print a name. */
-const char* rolltui_str_get(const RolltuiStr* s, size_t* len);
 
 typedef struct RolltuiPtrVec {
   void** v ROLLTUI_DEFAULT(nullptr);
@@ -1800,7 +1800,6 @@ size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
  * constraint on this file rather than on a caller's data. */
 #define ROLLTUI_SGR_MAX 64
 
-size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, size_t cap);
 
 /* A role or effect-state NAME TABLE, handed to the loader/dumper once per call — see this
  * header's comment above for why a table crosses instead of the vocabulary moving in.
@@ -4190,12 +4189,7 @@ void rolltui_windows_set_library_defaults(RolltuiWindows* w);
 int rolltui_scroll_by_action(const RolltuiScrollTextActions* actions, const RolltuiBindings* bindings,
                              const RolltuiChord* k, int page, int total, int* top);
 
-/* The input window's sizing rule: the cap is HALF the parent's extent less the border rows, at
- * least 1; the rows are the text's capped at that, plus one for a note that cannot sit beside a
- * single row. */
-int rolltui_input_max_rows(int parent_extent, int border_rows);
 
-int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int width, int max_rows);
 
 /* The key list for ONE scope, appended as "<indent><chord-or-(unbound)><pad><description>\n"
  * rows, the chord column aligned to the widest (capped at 22, minimum column 12).
@@ -4232,11 +4226,7 @@ void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
 /* ---- screen --------------------------------------------------------------------------------*/
 
 /* ---- lifetime -------------------------------------------------------------------- */
-/* OWNED by the caller. `new` never returns NULL: an allocation failure aborts inside
- * rolltui::mem, because a half-built frame is worse than a clean death. */
-RolltuiFrame* rolltui_frame_new(int w, int h, RolltuiStyle fill);
 
-void rolltui_frame_free(RolltuiFrame* f);
 
 /* ---- effects -------------------------------------------------------------------------------*/
 
@@ -4629,9 +4619,7 @@ void rolltui_mem_free(void* p);
 
 /* ---- screen --------------------------------------------------------------------------------*/
 
-int rolltui_frame_width(const RolltuiFrame* f);
 
-int rolltui_frame_height(const RolltuiFrame* f);
 
 /* `state` is rolltui::EffectState as an int; the C side stores it and never interprets it,
  * which is what keeps the effects vocabulary in one place (Effects.hpp) rather than two.

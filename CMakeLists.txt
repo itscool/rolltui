@@ -247,7 +247,10 @@ set(ROLLTUI_INTERNAL_OPT_IN
   # PHASE 20 m6: the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
-  keys_editor_test.cpp theme_editor_test.cpp)
+  keys_editor_test.cpp theme_editor_test.cpp
+  # PHASE 24: the frame-allocation bench. It builds a bare frame to measure that frame's own
+  # allocations; the swap would measure reuse instead. An instrument is not a consumer.
+  frame_allocs.cpp)
 list(JOIN ROLLTUI_INTERNAL_OPT_IN "," ROLLTUI_INTERNAL_OPT_IN_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_OPT_IN="${ROLLTUI_INTERNAL_OPT_IN_JOINED}")
 

@@ -6,6 +6,7 @@
  * and holds nothing process-wide, so nothing here registers a shutdown releaser; the report
  * likewise owns nothing beyond one call's arrays. */
 #include "rolltui/c/rolltui_bindings.h"
+#include "rolltui/c/rolltui_str.h"
 
 #include <stdio.h>
 #include <stdlib.h>
