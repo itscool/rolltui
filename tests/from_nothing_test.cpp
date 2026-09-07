@@ -2,8 +2,9 @@
 // from_nothing_test.cpp — BUILD AN APP FROM NOTHING, the third and last
 // of this family, and the one that finally says the whole sentence.
 //
-// The user, 2026-09-07: *"studio shoukd let me build an app from nothing minus the custom
-// buildings and widgets being properly previews"*. The two tests before it each proved half:
+// The claim: a person can build an app's whole screen in the designer, starting from an empty
+// directory, with only custom widgets and custom bindings falling short of a true preview. The
+// two tests before it each proved half:
 //
 //   files_only_test      A SCREEN CAN BE FILES. Six files a person hand-wrote; no source names
 //                        them; the binary is not rebuilt.

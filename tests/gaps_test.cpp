@@ -2,15 +2,14 @@
 // gaps_test.cpp — THE GAP REPORT: what a screen NAMES that an app does not
 // PROVIDE, reported to the app's own DEVELOPER and never fatal.
 //
-// The framing this suite exists to hold, in the user's words: *"its feedback on
-// the right place — 'the app was designed like this and your code doesn't support it properly
-// yet.'"* So every assertion below is one of two shapes:
+// The framing this suite exists to hold: a gap is feedback in the right place — the app was
+// designed this way and the code does not support it yet. So every assertion below is one of
+// two shapes:
 //
 //   1. **The report SAYS the right thing** — by name, in the screen's own vocabulary, so a
 //      developer can find the window in a file and the missing thing in their own code.
 //   2. **THE APP STILL RUNS.** Every gap case composes a real frame afterwards. A gap report
-//      that stopped an app would be validation wearing a new name, which is the thing this
-//      phase set out to remove.
+//      that stopped an app would be validation wearing a new name.
 //
 // AND THE ONE ASSERTION THAT IS THE WHOLE REASON THIS IS NOT `rolltui_windows_sync`: a gap
 // inside a popup the layout DECLARES and nobody has PUSHED. `sync` walks the stack and cannot

@@ -3,11 +3,9 @@
  *
  * ---- WHO THIS IS FOR, which decides everything else about it --------------------------------
  *
- * The DEVELOPER, not the person who wrote the layout. The user's framing, 2026-09-06, and it
- * is the whole reason this file exists rather than a validator:
- *
- *     "I don't think that's feedback slower. its feedback on the right place. 'the app was
- *      designed like this and your code doesn't support it properly yet.'"
+ * The DEVELOPER, not the person who wrote the layout. That is what makes this a gap report
+ * rather than a validator: the message is "the screen was designed this way and the code does
+ * not support it yet", which is addressed to whoever can close the gap.
  *
  * A screen is the INTENT and the code catches up. So this REPORTS and never fails: it hands a
  * host a list and the host decides whether any of it is fatal, exactly as
@@ -16,8 +14,8 @@
  *
  * ---- WHY IT IS NOT `rolltui_windows_sync`, WHICH ALREADY DOES HALF OF IT --------------------
  *
- * `sync` collects the same per-widget `problem()` strings, and Phase 26 m1 judged it CORRECT
- * and kept it. What it cannot do is this job, for two reasons that are both about WHEN:
+ * `sync` collects the same per-widget `problem()` strings and is correct for what it does.
+ * What it cannot do is this job, for two reasons that are both about WHEN:
  *
  *   1. **It sees the STACK, not the SCREEN.** `sync` walks the layers currently pushed, so a
  *      popup the layout DECLARES and the host has not opened is invisible to it. A developer

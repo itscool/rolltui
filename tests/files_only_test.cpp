@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
       // The VERIFY rung: a layout declaring nothing. The menu item's action is reported
       // by name in the status line and its shortcut is gone.
       {"files-only.100x14.silent", "--frame 100x14 --layout kettle-silent --bindings kettle"},
-      // The standing rule (the user, 2026-09-01): every view shrinks to 1 or 0 cells in
+      // THE STANDING RULE: every view shrinks to 1 or 0 cells in
       // either dimension and stays graceful — with the menu driven.
       // Phase 12 m7: the four capabilities, on the same screen and from the same files.
       // `--tick 240` fixes the effect clock so the marked span records deterministically;

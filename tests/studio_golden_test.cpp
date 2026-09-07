@@ -634,7 +634,7 @@ int main(int argc, char** argv) {
               row(capped, 21).rfind("\xE2\x94\x82   l14", 0) == 0 && row(capped, 3).find("\xE2\x94\x82") == 0,
           "fourteen pasted lines: the input caps at half its 23-row parent (11 outer rows, 9 of text, top border on row 12), scrolled so l6..l14 show with the caret's line last; the transcript keeps the top half");
     // Degenerate sizes: every case above already asserted "ran, h rows, each within w
-    // cells" — for the tiny frames that is the whole point (the user, 2026-09-01:
+    // cells" — for the tiny frames that is the whole point (
     // views can shrink to 1 or even 0 in either dimension; it must be graceful).
     check(!tiny_failed, "the 1x1, 2x2, 6x1, 1x6, 20x3 and 80x2 frames render (typed text, a paste, the help popup and Tab included) without a row out of bounds");
     // ---- milestone 11: the menu, asserted beyond the bytes ----

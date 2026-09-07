@@ -289,7 +289,7 @@ int main() {
       if (strip_all_comments(read(f)).find("#include \"rolltui/c/") == std::string::npos) continue;
       const std::string base = f.substr(f.find_last_of('/') + 1);
       // PHASE 20 m6: the opt-in list is no longer only tests. The studio and its three editors
-      // are on it — rolltui's OWN authoring tool, which the user's call removed from the
+      // are on it — rolltui's OWN authoring tool, which is removed from the
       // consumer set — so a listed file may live under `tests/` OR under `rolltui/tools/`.
       // `rolltui-paint` is deliberately NOT on the list: it is a consumer and must keep
       // building from the definition alone, which is what makes this zero mean something.
@@ -426,7 +426,7 @@ int main() {
     // and would have held them public for an instrument's sake, which is the same shape as
     // holding one public for a test's sake. It is on the opt-in list instead.
     const std::set<std::string> roll = mentions_in({repo + "/src", repo + "/include"}, {".cpp", ".hpp"});
-    // THE STUDIO IS NOT A CONSUMER (the user's call, 2026-09-06): it and its three editors are
+    // THE STUDIO IS NOT A CONSUMER (by decision): it and its three editors are
     // rolltui's OWN authoring tool for rolltui's OWN files, nobody outside this repo builds one,
     // and it opts in to internal headers like a test. `rolltui-paint` IS a consumer and is the
     // only thing left in `tools/` that counts — a generic painting app is the closest thing in
@@ -671,7 +671,7 @@ int main() {
   }
 
   // ---- 7. NO std:: CONTAINER OR VIEW UNDER __cplusplus, in the definition or under c/ ------
-  // The user's rule, 2026-09-06: a C++ member may name rolltui's own types and the C standard's,
+  // A C++ member may name rolltui's own types and the C standard's,
   // never a std:: container or view. 117 such lines were cut in m2; this keeps the count at zero.
   {
     static const std::regex std_view(R"(\bstd::(string|string_view|vector|span|optional|map|set|function|unique_ptr|shared_ptr)\b)");
@@ -708,7 +708,7 @@ int main() {
 
   // ---- 8. THE TOOL-FACING CLASS IS RETIRED, AND CANNOT COME BACK BY DRIFT ----
   // Phase 19 m4 gave the class a home: three `[TOOL-FACING]` sections of this header. The class
-  // is GONE, and the reason is the vocabulary error the user found by asking **"isn't a tool a
+  // is GONE, and the reason is the vocabulary error behind the question **"isn\'t a tool a
   // host?"** — it is. There are THREE HOSTS: roll, the studio and paint (the last two are the
   // only files under `tools/` with a `main`). The genuine third category is the EDITORS, models
   // with no terminal that the studio mounts inside itself. `TOOL_FACING` was measuring the

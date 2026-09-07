@@ -2,13 +2,12 @@
  * rolltui/tests/globals.inc — EVERY PIECE OF MUTABLE PROCESS-WIDE STATE IN THE LIBRARY, and what
  * it is.
  *
- * THE USER'S PARENTHESIS IS THE PHASE: `RolltuiContext` should be *"a real single rolltui session
- * hopefully proving nothing is global"*. **It was FALSE when this file was written** — 44 mutable
- * statics across 9 files — and a split that left them where they were would have been cosmetic.
- * This file is the boundary: every one of them is named, with a DISPOSITION and a reason.
+ * A `RolltuiContext` is a single rolltui session, and the claim that nothing in the library is
+ * global is only as true as this list. Every mutable process-wide static is named here with a
+ * DISPOSITION and a reason; a static that is not on this list fails the test that reads it.
  *
  *   CONTEXT   session state. A second `RolltuiContext` in the same process must NOT see it, and
- *             `rolltui_context_free()` must let it go. These move in m2.
+ *             `rolltui_context_free()` must let it go.
  *   PROCESS   legitimately one per process, and the reason is written on the row. **A row here
  *             is a claim, not a shrug** — "it was already global" is not a reason.
  *
@@ -19,8 +18,7 @@
  *      standing exception is `RolltuiPresetStore`, which carries its own mutex so a host may edit
  *      from one thread and render from another.
  *   2. **ANY NUMBER OF CONTEXTS** — same thread or different, configured alike or differently.
- *      They share nothing a context owns; after m2 that is every registry and cache, which is
- *      the user's parenthesis made true.
+ *      They share nothing a context owns — every registry and cache belongs to one.
  *   3. **LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA AND PORTABLE BETWEEN CONTEXTS**, and
  *      this is the property that makes several contexts USEFUL rather than merely possible. A
  *      `RolltuiLayout` is parsed data; kind resolution happens at `rolltui_windows_sync`, not at

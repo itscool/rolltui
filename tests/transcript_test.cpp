@@ -749,7 +749,7 @@ int main() {
   }
 
   // ---- the "▼ N more" marker -------------------------------------------
-  // KEPT alongside the scrollbar, not replaced by it (the user, 2026-09-03): the marker
+  // KEPT alongside the scrollbar, not replaced by it : the marker
   // is the NON-GRAPHICAL signal and the bar is the positional one. What the bar buys is
   // permission for the marker to get cheaper when narrow.
   {

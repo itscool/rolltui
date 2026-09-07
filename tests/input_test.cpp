@@ -967,7 +967,7 @@ void test_undo_group_closes_on_select_all_and_mouse() {
 }
 
 void test_degenerate_sizes() {
-  // A window can shrink to 1 or 0 cells in either dimension (the user, 2026-09-01):
+  // A window can shrink to 1 or 0 cells in either dimension :
   // every operation still works, nothing is written outside the area, and the text is
   // untouched by the geometry.
   ThemeFixture th;
@@ -1003,7 +1003,7 @@ void test_degenerate_sizes() {
     set_caret(in.get(), 0);
     rolltui_input_layout(in.get(), a);
     check(rolltui_input_top_row(in.get()) == 0, name + ": the scroll follows the caret back to the top");
-    // Undo/redo survive a degenerate area too (the user, 2026-09-01's rule, extended
+    // Undo/redo survive a degenerate area too (extended
     // to Phase 12 m1): nothing crashes, and redo restores the paste byte-for-byte.
     const std::string full(text_of(in.get()));
     check(rolltui_input_can_undo(in.get()) != 0, name + ": there is something to undo after editing a degenerate area");

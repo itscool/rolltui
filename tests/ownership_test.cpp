@@ -16,7 +16,7 @@
 // **THERE IS NO THIRD OWNERSHIP SHAPE, and in particular there is no shared one.** A
 // `shared_ptr` makes a lifetime a runtime question, and every lifetime in this library is
 // structural: a widget outlives every layout that names it, a document belongs to the
-// host, a layer is a value inside a stack. The user put it as "shared_ptr webs are a no
+// host, a layer is a value inside a stack. Stated as "shared_ptr webs are a no
 // no"; the finding that made it cheap to adopt is that the library already
 // had none, so this file freezes a property rather than demanding a migration.
 //

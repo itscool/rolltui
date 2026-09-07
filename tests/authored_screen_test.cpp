@@ -264,7 +264,7 @@ int main() {
     check(has(said, "this screen declares 'app.easel': no chord reaches it"),
           "…naming the one thing, in the screen's own vocabulary");
 
-    // The standing rule (the user, 2026-09-01): every view shrinks to 1 or 0 cells in
+    // THE STANDING RULE: every view shrinks to 1 or 0 cells in
     // either dimension and stays graceful. An authored screen is not exempt.
     for (const char* size : {"1x1", "20x4", "8x30"}) {
       int rc3 = 0;
