@@ -17,10 +17,9 @@
 // the C API, through the umbrella alone. What this file gained is the FIXTURE
 // below — a `Frame` with the five accessors this suite reads, a `Theme` that is a styles array
 // with a name, and a `Role` expanded from the library's own list. That fixture is deliberately
-// private and deliberately small: the plan m1 extracts a shared test module, and
-// Phase 17 runs first so that 16 moves suites that have already been rewritten once. The
-// standing condition is that a mirror may hold a SHAPE and never a rule or a word — every rule
-// here (the wrap, the marker, the action names, the role names) is a call, not a copy.
+// private and deliberately small. The standing condition on a mirror like it is that it may
+// hold a SHAPE and never a rule or a word — every rule here (the wrap, the marker, the action
+// names, the role names) is a call, not a copy.
 #include "rolltui/rolltui.h"
 #include "md_test_helpers.hpp"
 #include "rolltui_test.hpp"
@@ -55,9 +54,8 @@ enum class Role : unsigned char {
 };
 constexpr std::size_t kRoleCount = static_cast<std::size_t>(Role::count_);
 // `RolltuiDocEntry::role`/`prefix_role` are typed `rolltui::Role` in C++ and `unsigned char`
-// in C (rolltui_document.h), so a converted consumer needs this one cast. Worth noting for m3:
-// that field names a C++ type for a vocabulary that has been C since m2a, and every host will
-// hit it.
+// in C (rolltui_document.h), so a consumer needs this one cast. A KNOWN WART: that field
+// names a C++ type for a vocabulary that is C, and every host hits it.
 constexpr rolltui::Role as_role(Role r) { return static_cast<rolltui::Role>(r); }
 using Color = RolltuiStyleColor;
 using Style = RolltuiStyle;
@@ -239,18 +237,14 @@ std::string lines(int n) {
   return s;
 }
 
-// ---- PHASE 17 m2: rolltui/Transcript.hpp and its shim rolltui/Transcript.cpp are going
-// away with the rest of the C++ binding. Everything below is that shim's own mapping —
-// the six roles and eleven action names handed over once, the clipboard trampoline in
-// place of a `std::function`, the KeyEvent/MouseEvent -> RolltuiEvent conversion
-// `handle()` did inline, and one free function per method — copied here (not invented)
-// because a test that calls the C API directly has nowhere else for the mapping to live.
-
-// THE SIX ROLES A DRAW NEEDS are the transcript's own defaults — this
-// file carried Transcript.cpp's `kRoles` verbatim, and being the SECOND copy is exactly what
-// moved them into `rolltui_transcript_new`. Nothing here names a role now.
-// THE ELEVEN ACTION NAMES (Transcript.cpp's kActions, verbatim). The C knows the rules
-// and none of the words.
+// ---- what a C++ caller of the C transcript writes for itself -------------------------------
+// The clipboard trampoline in place of a `std::function`, the KeyEvent/MouseEvent ->
+// RolltuiEvent conversion, and one free function per method. A suite that calls the C API
+// directly has nowhere else for this mapping to live.
+//
+// IT NAMES NO ROLE AND NO ACTION. The six roles a draw needs are the transcript's own
+// defaults, installed by `rolltui_transcript_new`; the eleven action names are the C's. A copy
+// of either here would be the SECOND copy, which is what moved them into the library.
 
 // OWNED, through the same "unique_ptr-shaped" deleter every owned handle in this library
 // uses (Frame::Handle, the deleted Transcript::Handle) — here a plain struct instead of a
@@ -766,8 +760,8 @@ int main() {
         if (unicode::display_width(scroll_marker_text(below, w, false), false) > w) fits = false;
     check(fits, "over every (below, width): the marker never exceeds the width it was given");
 
-    // A click on it scrolls to the bottom and re-engages follow. Until m5 this started a
-    // drag-SELECT: a control-shaped thing doing something unrelated.
+    // A click on it scrolls to the bottom and re-engages follow, rather than starting a
+    // drag-SELECT: a control-shaped thing does the control's job.
     RolltuiDocument doc;
     for (int i = 0; i < 40; ++i) doc.push_back(verbatim(("m" + std::to_string(i)).c_str(), "line " + std::to_string(i)));
     TranscriptHandle tr;
@@ -993,8 +987,8 @@ int main() {
           "…and the opened block is still CAPPED, with 6 of its 12 lines behind the marker");
     check(selection(tr).empty(), "…and it selected nothing: a control does its own job, not a drag");
 
-    // Click 2: the "▼ N more" row lifts the cap for THAT block — the same reasoning that
-    // made the transcript's own marker clickable in m5, one rung down.
+    // Click 2: the "▼ N more" row lifts the cap for THAT block — the transcript's own marker
+    // rule, one rung down.
     const std::size_t marker = code_blocks_of(*open)[0].marker_line;
     handle(tr, mouse(MouseEvent::Kind::Press, 5, static_cast<int>(marker)), doc, 2000);
     layout(tr, doc, {0, 0, 40, 24}, fold);

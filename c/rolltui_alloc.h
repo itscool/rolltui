@@ -8,16 +8,14 @@
  * invention**. It also says that in C the rule can be TOTAL, because every allocation is an
  * explicit call — which is one of the concrete things this phase is here to test.
  *
- * **WE HAD THE ENTRY POINT AND NOT THE SET, and it cost exactly what Phase 13 said it would.**
- * By the end of m3 the two ported C files had invented the same growing buffer EIGHT times
- * between them, with two different policies: `rolltui_screen.c` grew a `Str` to exactly the
+ * **AN ENTRY POINT WITHOUT THE SET IS NOT ENOUGH.** Two C files once invented the same
+ * growing buffer EIGHT times between them, with two different policies: `rolltui_screen.c` grew a `Str` to exactly the
  * bytes asked for (so a buffer that gains one byte reallocs every single time) and hand-wrote
  * `cap = cap ? cap * 2 : 4` at five more sites; `rolltui_wrap.c` had one `reserve()` helper
  * that doubled from 16 and hand-wrote two more paired-growth blocks beside it. Nobody was
- * careless — each site was written by someone with no reason to look at the others, which is
- * the finding verbatim ("seven independently invented ad-hoc allocations, each needing
- * its own discovery"). The entry point made every allocation VISIBLE; only a closed set makes
- * it a DECISION.
+ * careless — each site was written by someone with no reason to look at the others, and each
+ * needed its own discovery. The entry point makes every allocation VISIBLE; only a closed set
+ * makes it a DECISION.
  *
  * THE SET. Four of CLAUDE.md's six need code here; the other two are API shapes and need
  * none — LENT is `Scratch` one level up, and CALLER-FILLED is a parameter.
@@ -58,12 +56,12 @@ extern "C" {
 #endif
 
 /* ---- the library's one entry point ------------------------------------------------------- */
-/* `rolltui_mem_alloc` and `rolltui_mem_free` MOVED to the public `rolltui_mem.h` (included
- * above, so every C translation unit still gets them here) on 2026-09-05, Phase 17 m3. The
- * paragraph at the top of this file already said they "stay available everywhere" while this
- * header — which the umbrella deliberately excludes — was the only place they were declared, so
- * a consumer wanting a handle-and-release pair could not reach one. `lifetime_test`'s
- * conversion is what found it, exactly as a test found `rolltui_mem_stats` in the same position
+/* `rolltui_mem_alloc` and `rolltui_mem_free` are declared in the PUBLIC `rolltui_mem.h`,
+ * included above so every C translation unit still gets them here. Declaring them only in this
+ * header would contradict the paragraph at the top of this file — they "stay available
+ * everywhere" — because the umbrella deliberately excludes it, so a consumer wanting a
+ * handle-and-release pair could not reach one. A test found that, exactly as one found
+ * `rolltui_mem_stats` in the same position
  * one day earlier.
  *
  * `rolltui_mem_realloc` STAYS HERE, and that is the whole point of splitting them: growth is

@@ -2,10 +2,9 @@
 // designable_test.cpp — WHAT A PERSON CAN DESIGN WITHOUT WRITING JSON,
 // as a check rather than a sentence.
 //
-// m4 asks the phase to close by stating what a person can and cannot design in the tool, "as
-// the two permanent exceptions and nothing else". That claim is worth nothing written down,
-// because the way it goes wrong is silent: a loader grows a key, no editor grows a field, and
-// the sentence in the plan file goes on being true-looking. Phase 27 m3 found FOUR such keys by
+// WHAT A PERSON CAN AND CANNOT DESIGN IN THE TOOL is worth nothing written down as a
+// sentence, because the way it goes wrong is silent: a loader grows a key, no editor grows a
+// field, and the sentence goes on being true-looking. Four such keys have been found by
 // accident, while doing something else.
 //
 // SO THE CLAIM IS MECHANISED. This file reads the two loaders' own source for every JSON key

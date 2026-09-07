@@ -58,7 +58,7 @@
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_style.h"
-#include "rolltui/c/rolltui_effects.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_effects.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 
 #include "rolltui_test.hpp"
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in

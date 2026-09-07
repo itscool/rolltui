@@ -1,10 +1,9 @@
 //
 // authored_screen_test.cpp — THE PROOF THAT A SCREEN CAN BE AUTHORED FOR AN APP THE TOOL IS
-// NOT (Phase 11 m6, rewritten ), the sibling of the files-only test
-// one level up.
+// NOT — the sibling of the files-only test, one level up.
 //
-// Phase 10 proved a screen can be FILES: a layout, a menu, a bindings file and a document that
-// a host has never heard of. This proves the step after it — that the FILES CAN BE AUTHORED in
+// The files-only suite proves a screen can be FILES: a layout, a menu, a bindings file and a
+// document that a host has never heard of. This proves the step after it — that the FILES CAN BE AUTHORED in
 // a tool that is not the app they are for. Two processes, in order:
 //
 //   1. `rolltui-studio …`          the AUTHORING tool, driven through its own design editor by
@@ -17,13 +16,11 @@
 //                                  lists an action that exists only because a person typed it
 //                                  into the studio.
 //
-// WHAT PHASE 26 CHANGED, AND WHY THE TEST IS STRONGER FOR IT. Until 2026-09-07 there was a
-// process 0: `rolltui-paint --profile` published an APP PROFILE — what a layout was allowed to
-// name inside paint — and the studio was mounted with it. The kind picker then offered exactly
-// the target's kinds and refused anything else, and that is the whole thing this phase reversed:
-// the app bounding the design. The author is now free and the tool reports its own limits, so
-// the chain is one process shorter and the claim is bigger. The studio no longer has to be told
-// what paint can build; it does not need to know, and it does not ask.
+// THE STUDIO IS NEVER TOLD WHAT PAINT CAN BUILD. It does not need to know, and it does not
+// ask. A process 0 in which the target published what a layout may name inside it — with the
+// picker then offering exactly those kinds and refusing anything else — is the app bounding
+// the design. The author is free and the TOOL reports its own limits, which makes the chain
+// one process shorter and the claim bigger.
 //
 // THE PROOF APP IS DELIBERATELY NOT CHAT-SHAPED — no transcript, no input — because a proof
 // built on another transcript-and-prompt screen would only re-test the shape roll already has.
@@ -35,7 +32,7 @@
 //   refuses the content nor quietly rewrites it to something it can draw — and the SAVED file
 //   still says `canvas:sheet`. The artifact records the intent, not the previewer's ability.
 //
-//   THE GAP-REPORT CONTROL, three screens through one binary. Paint prints the Phase 26 report
+//   THE GAP-REPORT CONTROL, three screens through one binary. Paint prints its gap report
 //   at end of init and runs the screen either way: the authored screen reports exactly the one
 //   thing it names that paint cannot reach (an action with no chord); paint's OWN default
 //   screen reports nothing at all; a screen naming a source paint does not have reports that
@@ -189,9 +186,8 @@ int main() {
   bool ok = false;
   const std::string saved = read_file(scratch + "/with/layouts/easel.json", ok);
   check(ok, "layouts/easel.json exists — the artifact the target app reads");
-  // The save-as goes through the Layout store since 2026-09-06 (it hand-built the path and wrote
-  // the file itself before), so the store LEARNS the save: the working copy records the new
-  // origin — a manual save writes even under --frame, exactly as the theme save-as does and
+  // The save-as goes through the Layout store rather than hand-building a path and writing the
+  // file directly, so the store LEARNS the save: the working copy records the new origin — a manual save writes even under --frame, exactly as the theme save-as does and
   // `studio_golden_test` asserts — while nothing else under --frame wrote one.
   {
     bool wok = false;
@@ -278,9 +274,8 @@ int main() {
   // ---- the host's own kind is not exempt from the library's rules -------------------------
   // `paint.cpp`'s header claims it: *"a source this app does not have is a NAMED problem and
   // an error panel, exactly as an unbound `rows:` source is — a host's own kind is not exempt
-  // from the rule."* Nothing checked that, in the C++ host or the C one — found in Phase 17
-  // m3 by NULLing the plugin's `problem` slot and watching all 51 suites stay green. A claim
-  // in a comment that no assertion covers is this repo's own definition of a defect.
+  // from the rule."* A CLAIM IN A COMMENT THAT NO ASSERTION COVERS IS A DEFECT. NULLing the
+  // plugin's `problem` slot is the control: without this case, every suite stays green.
   {
     fs::create_directories(scratch + "/wrong/layouts");
     std::ofstream(scratch + "/wrong/layouts/wrong.json", std::ios::binary | std::ios::trunc)

@@ -79,12 +79,11 @@ struct Entry {
 };
 
 // ---- text measured and cut to a column's width ---------------------------------------------
-// WALL 2, FIXED IN PHASE 22. This asked "how many bytes of this fit in N cells", and the public
-// API had no answer: `rolltui_frame_put_text` computes exactly that offset to honour `max_cells`
-// and returned only the count, so placing an ellipsis where a name is cut meant finding the cut
-// some other way. This drove the WRAP ENGINE as a grapheme iterator to get it — public, correct
-// and indirect. `rolltui_u_fit` is that offset, in the library's own vocabulary, because every
-// list, tree, table and column view truncates and would have written this loop.
+// "HOW MANY BYTES OF THIS FIT IN N CELLS" is `rolltui_u_fit`, and it is public because every
+// list, tree, table and column view truncates and would otherwise write this loop itself.
+// `rolltui_frame_put_text` computes exactly that offset to honour `max_cells`; returning only
+// the count leaves a caller placing an ellipsis at a cut it has to find some other way — by
+// driving the WRAP ENGINE as a grapheme iterator, which is public, correct and indirect.
 struct Measure {
   RolltuiUnicodeScratch* u = rolltui_u_scratch_new();
   ~Measure() { rolltui_u_scratch_free(u); }
@@ -892,10 +891,9 @@ int main(int argc, char** argv) {
       // silently does nothing. `ctrl+h` and `ctrl+l` were exactly that — the shipped input
       // bindings hold them — and the app looked broken rather than configured.
       //
-      // WALL 6, CLOSED IN PHASE 26. This was six loops over the report's arrays — the wrapper
-      // `rolltui_bindings_report_summary` exists to prevent — because that function was INTERNAL
-      // on a reason ("a host loads a file or clones the default") that named this exact case and
-      // then concluded the opposite. It is public now and the six loops are one call.
+      // ONE CALL, not six loops over the report's arrays. `rolltui_bindings_report_summary` is
+      // public precisely so a host that loads its own bindings file does not hand-write them —
+      // an INTERNAL summary makes every such host write the wrapper the library already has.
       RolltuiStr why{};
       rolltui_bindings_report_summary(&brep, &why);
       if (why.size() != 0)

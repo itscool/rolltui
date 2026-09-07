@@ -12,12 +12,11 @@
 // (Screen.hpp/Theme.hpp) are NOT part of that layer and are unchanged — they are either
 // one-definition aliases of the C structs already, or permanent C++-only vocabulary with
 // no C counterpart, the same finding `input_test.cpp` recorded for its own conversion.
-// `MenuItem`/`InputSpec` likewise ARE `RolltuiMenuItem`/`RolltuiInputSpec` (one
-// definition, Phase 15 m5), so the aliases below reproduce exactly what Menu.hpp's own
-// `using` declarations gave every call site — `MenuItem::toggle(...)`,
-// `it.children.push_back(...)` and the rest are unchanged text below for that reason.
-// The shim's own composition (the widget class, the action vocabulary,
-// `default_bindings()`'s assembly) has no home yet on the C side, so it is reproduced
+// `MenuItem`/`InputSpec` likewise ARE `RolltuiMenuItem`/`RolltuiInputSpec` — one definition —
+// so the aliases below let `MenuItem::toggle(...)` and `it.children.push_back(...)` read the
+// way a C++ caller writes them.
+// The composition a C++ caller does for itself (the widget class, the action vocabulary,
+// `default_bindings()`'s assembly) has no home on the C side, so it is reproduced
 // here as local fixture code mirroring `Menu.cpp`/`Bindings.cpp` line for line, per the
 // instruction to treat the shim as the mapping rather than guess at one.
 //
@@ -44,9 +43,9 @@
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_theme.h"
-#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_menu.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_menu.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -57,9 +56,9 @@ using namespace rolltui_test;
 
 namespace {
 
-// ---- PHASE 15 m5: MenuItem/InputSpec ARE the C structs (one definition) — the same
-// aliases Menu.hpp declared, reproduced here so every `MenuItem::toggle(...)`,
-// `spec.precision = ...` and `it.children.push_back(...)` below is unchanged text. ----
+// ---- MenuItem/InputSpec ARE the C structs (one definition), aliased here so that every
+// `MenuItem::toggle(...)`, `spec.precision = ...` and `it.children.push_back(...)` below
+// reads the way a C++ caller writes it. ----
 using MenuItem = RolltuiMenuItem;
 using InputSpec = RolltuiInputSpec;
 // `rolltui::InputType` is a genuine permanent C++ enum (rolltui/c/rolltui_menu_tree.h,
@@ -208,9 +207,9 @@ class Frame {
 };
 
 // ---- the library's 59 actions, READ FROM THE C rather than copied ----------------------
-// One table, in `c/rolltui_library_actions.c`. This file carried a verbatim duplicate until
-// 2026-09-04; it was the fourth. The accessors BORROW into static literals, so a
-// string_view onto them is correct and a std::string in between would dangle.
+// One table, in `c/rolltui_library_actions.c`. A duplicate here would be the fourth copy of
+// it. The accessors BORROW into static literals, so a string_view onto them is correct and a
+// std::string in between would dangle.
 struct ActionInfo {
   std::string_view name, description;
 };

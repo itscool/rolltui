@@ -36,7 +36,7 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_unicode.h"
-#include "rolltui/c/rolltui_input.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_input.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using rolltui_test::check;

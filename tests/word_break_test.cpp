@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 #include "ucd_test_file.hpp"
 

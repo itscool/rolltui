@@ -1,13 +1,11 @@
 #ifndef ROLLTUI_C_LIFETIME_H
 #define ROLLTUI_C_LIFETIME_H
 /*
- * rolltui/c/rolltui_lifetime.h — INTERNAL (Phase 20 m1/m3, 2026-09-06).
+ * rolltui/c/rolltui_lifetime.h — INTERNAL.
  *
- * RE-CREATED. Phase 19 m3 deleted this header under the rule "a header exists because a .c
- * needs a declaration from it; one that declares nothing is deleted" — at that point every
- * declaration here was public and lived in the definition. Phase 20 moved it
- * back to INTERNAL, so the .c needs a declaration again and the same rule re-creates the
- * file. Its subject: the per-thread scratch registration the library does for itself.
+ * A header exists because a `.c` needs a declaration from it. One that declares nothing is a
+ * file with no reason and is deleted; a module whose declarations go internal earns one back
+ * by the same rule. Its subject: the per-thread scratch registration the library does for itself.
  */
 #include "rolltui/rolltui.h"
 

@@ -44,8 +44,8 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_md_lines.h"
-#include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_unicode.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/third_party/md4c/md4c.h"
 #include "md_test_helpers.hpp"
 #include "rolltui_test.hpp"

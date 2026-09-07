@@ -13,12 +13,11 @@
  * `rolltui/tests/effects_test.cpp`; none of it is repeated here, because the rules are the
  * same in both languages and a second copy is a second thing to drift.
  *
- * THIS IS THE OWNERSHIP-HEAVY HALF OF m2, and the reason it and `Diff` were ported
- * together. the plan predicts the port's cost tracks how much of a module is
- * ownership work rather than algorithm — Phase 14 measured +12% for Unicode against +55%
- * for Wrap. `Diff` is a pure function; this is **a process-wide registry that OWNS a name
- * and a host's callable per entry, is guarded by a mutex, and must hand everything back at
- * `rolltui::shutdown()`.** If the prior is right, these two land on opposite sides of it.
+ * THIS MODULE IS OWNERSHIP-HEAVY, which is what makes it expensive to express in C and
+ * worth the friction: a registry that OWNS a name and a host's callable per entry, and must
+ * hand everything back at release. Measured against a pure function like `Diff`, the cost of
+ * writing a module in C tracks how much of it is ownership rather than algorithm (+12% of
+ * lines for Unicode, +55% for Wrap) — and so does the benefit.
  *
  * THE BOUNDARY'S RULES:
  *   1. **THE CALLER OWNS EVERY BUFFER**, working memory included, through a handle
@@ -28,18 +27,11 @@
  *      same bytes the applier does.
  *   3. **NOTHING IS RETURNED BY VALUE** from an `extern "C"` function.
  *
- * ---- THE VIEW BECAME THE DEFINITION, WHICH IS THE m2 SEAM CLOSING ---------------------------
+ * ---- THE SPEC IS THE DEFINITION, NOT A VIEW OF ONE ------------------------------------------
  *
- * In m2 `RolltuiEffectSpec` was a VIEW of one `rolltui::EffectSpec`, because the spec was
- * the THEME's data — `std::string kind`, `std::vector<std::string> frames`,
- * `std::vector<Role> roles` — and `Theme` had not ported. That header said, in as many
- * words: **"when `Theme` ports in m3 the view becomes the definition and `fill_view` is
- * deleted — that deletion is the evidence m6 should read, not this paragraph."**
- *
- * This is that. `RolltuiEffectMap` below OWNS every spec a theme carries, in C, and
- * `rolltui::EffectMap` is a handle to one. Three things went with the change and none of
- * them is a rewrite anybody chose — each was a piece of machinery that existed ONLY to
- * bridge two owners:
+ * `RolltuiEffectMap` below OWNS every spec a theme carries, and a C++ `EffectMap` is a handle
+ * to one. A VIEW over some other owner's spec costs three pieces of machinery that exist ONLY
+ * to bridge the two owners, and every one of them disappears when there is a single owner:
  *   - `fill_view`, the one place a `std::vector<Role>` was reinterpreted as bytes and a
  *     fallback role substituted (the map is told its fallback once, at construction);
  *   - `SpecViews`, twelve inline views with a heap spill, rebuilt on every `apply_effects`

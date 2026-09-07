@@ -3,8 +3,8 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  * rolltui/tests/api_roles.inc — WHICH READER EACH PUBLIC FUNCTION IS FOR.
  *
  * `api_classes.inc` answers WHETHER a function is public. This answers WHO IT IS FOR, and the
- * two are different questions on purpose. Phase 20 proved three times over that "who calls it"
- * cannot decide a surface; this asks the question a reader actually has — *I am writing an app,
+ * two are different questions on purpose. "Who calls it" cannot decide a surface; this asks
+ * the question a reader actually has — *I am writing an app,
  * what do I need?* / *I am writing a widget, what do I need?* — and `rolltui.h` is SECTIONED by
  * the answer, with `public_header_test` section 9 holding the file to this table.
  *
@@ -12,9 +12,9 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  *   VOCAB         a noun both roles speak, and the operations on it: RolltuiStr, RolltuiRect,
  *                 RolltuiStyle, RolltuiEvent, RolltuiFrame, JSON, chords. PART 1 of the header.
  *   HOST_LOAD     a host reads a screen, a theme or a bindings table, and starts a session.
- *                 PART 2. **RE-CUT IN PHASE 25 m4** — it had been the stage anything to do with
- *                 a file landed in, which made it a CATCH-ALL at 106 of 326 functions and told a
- *                 reader nothing. The two subsystems filed there that are not loading left.
+ *                 PART 2, and it is kept NARROW. Letting it hold anything to do with a file
+ *                 makes it a CATCH-ALL — at one point 106 of 326 functions — which tells a
+ *                 reader nothing. A subsystem that is not loading does not belong here.
  *   HOST_SETTINGS the preset store: reading, changing and saving a theme, layout or bindings
  *                 preset. **Its own stage because it SPANS load and run and is neither** — a
  *                 host opens a store at startup and the store is what a `//theme` at runtime
@@ -22,23 +22,21 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  *   HOST_BIND     a host supplies what only it can: sources, submits, its own widget kinds.
  *   HOST_RUN      the terminal, the event loop, the double buffer, compose.
  *   HOST_RELEASE  the pair half, and the number that proves it (there is no RAII in C).
- *   TOOL_INTEROP  RETIRED AT PHASE 26 m3, AND THE STAGE IS KEPT AS A NAMED EMPTY ONE rather
- *                 than deleted, because what emptied it is the finding. It held the app
- *                 profile's 35 functions: what an app PUBLISHED about itself so a tool could
- *                 author screens for an app it is not — written by a CLI mode of `roll` and
- *                 `rolltui-paint`, read by `rolltui-studio`, and called by no host author at
- *                 any point in running a screen. That it was not a STAGE was the tell, and the
- *                 review under m1 named what it really was: the app bounding the design. A
- *                 designer now names what a screen needs and the app REPORTS what it cannot
- *                 provide (`rolltui_gaps_collect`) — one direction, four functions, no file.
- *                 A new row here needs the same question asked: whose limits does it encode?
+ *   TOOL_INTEROP  EMPTY, AND KEPT AS A NAMED EMPTY STAGE rather than deleted, because what
+ *                 emptied it is the finding. It held 35 functions by which an app PUBLISHED
+ *                 what a layout may name inside it, so a tool could author screens for an app
+ *                 it is not — and no host author called one at any point in running a screen.
+ *                 THAT IT WAS NOT A STAGE WAS THE TELL: what it really encoded was the app
+ *                 bounding the design. A designer names what a screen needs and the app REPORTS
+ *                 what it cannot provide (`rolltui_gaps_collect`) — one direction, four
+ *                 functions, no file. A new row here needs the same question asked: whose
+ *                 limits does it encode?
  *   WIDGET        what implementing a `RolltuiWidgetPlugin` slot needs. PART 3.
  *
  * AND THE POINT OF DOING IT AT ALL: **a function that fits NO role is a candidate for internal.**
- * That is the instrument aimed at a better question. Phase 22 found ZERO — every public
- * function is describable by a reader — which is not a null result: it says the three cuts that
- * took the surface 624 -> 346 had already removed everything no reader could be named for, and
- * this table is what keeps that true for the next function somebody adds.
+ * That is the instrument aimed at a better question. It currently finds ZERO, which is not a
+ * null result: every public function is describable by a reader it exists for, and this table
+ * is what keeps that true for the next function somebody adds.
  *
  * THE FOURTH READER GETS NO ROWS. A layout, theme, menu or bindings FILE is written by someone
  * who compiles nothing and calls nothing — but every name they must spell (a role, a widget kind,
@@ -328,7 +326,7 @@ ROLLTUI_ROLE(rolltui_wrap_line, WIDGET)
 ROLLTUI_ROLE(rolltui_wrap_line_count, WIDGET)
 ROLLTUI_ROLE(rolltui_wrap_new, WIDGET)
 
-/* ---- PHASE 23: the layout family is a HANDLE, and these are its seven doors -----------------
+/* ---- the layout family is a HANDLE, and these are its seven doors --------------------------
  * All of them are HOST_LOAD: a host gets a layout, hands its base to the stack, declares its
  * actions and shows its name — the shape `load → bind → run → release` already had. The two
  * node accessors are HOST_RUN: a host reads them off a node the library hands back mid-frame
@@ -357,7 +355,7 @@ ROLLTUI_ROLE(rolltui_menu_load_report_release, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_menu_parse_json, HOST_BIND)
 ROLLTUI_ROLE(rolltui_menu_root, HOST_BIND)
 
-/* Phase 25 m2: a session is the FIRST thing a host makes. */
+/* A session is the FIRST thing a host makes. */
 ROLLTUI_ROLE(rolltui_context_new, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_context_free, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_windows_context, HOST_LOAD)  /* declared beside `rolltui_windows_new` */

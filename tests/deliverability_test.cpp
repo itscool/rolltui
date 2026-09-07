@@ -54,8 +54,8 @@
 #include <util.h>
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 
 #include "rolltui_test.hpp"
 #include "rolltui/c/rolltui_terminal.h"  // INTERNAL: this test opts in
@@ -269,10 +269,9 @@ KeyProtocol negotiated_with(const std::string& reply) {
 }
 
 // ---- the library's 59 actions, READ FROM THE C rather than copied ----------------------
-// This file used to carry a verbatim duplicate of the whole table. It moved into
-// `c/rolltui_library_actions.c` on 2026-09-04 precisely because four consumers had each
-// grown one — the vocabulary a "written down twice drifts" rule was protecting had become
-// quintuple. Now there is one table and this reads it.
+// A duplicate of the table here would be one more copy of a vocabulary that four consumers
+// had each already grown independently. There is ONE table, in
+// `c/rolltui_library_actions.c`, and this reads it.
 struct ActionInfo {
   std::string_view name, description;  // BORROWS into the C's static literals
 };

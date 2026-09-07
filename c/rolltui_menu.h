@@ -26,17 +26,12 @@
  * algorithm on the other side of a boundary to entangle
  * it, so the whole walk moves.
  *
- * ~~**Which tree items name an action, and what a chord is called.** `item_actions()`,
+ * **WHICH TREE ITEMS NAME AN ACTION, AND WHAT A CHORD IS CALLED, ARE HERE.** `item_actions()`,
  * `unknown_validators()` and `apply_shortcuts()` are TREE WALKS with no widget state in them,
- * so the shim does them over the same C tree — the C would gain nothing but a second place to
- * know what `Bindings::chords_text` means.~~
- * **RETRACTED 2026-09-05, and the reason is that its premise expired.**
- * `chords_text` moved to C in m2a — it is `rolltui_bindings_chords_text` one header over — so
- * the C gains no second place to know anything; it already knows. What the sentence was
- * actually protecting was a home for three walks, and *"the shim does them"* stops being an
- * answer the moment the shim is the thing being deleted. `tests/tui_frontend_test.cpp` calls
- * two of the three, so without this they would relocate into every consumer that needed
- * them — which is the failure the vocabulary rule names, one level up.
+ * which makes them look like something a caller could do over the same tree. They are not: the
+ * C already knows what a chord is called (`rolltui_bindings_chords_text`, one header over), so
+ * a caller doing the walk gains nothing and every consumer that needs one writes it again.
+ * `tests/tui_frontend_test.cpp` calls two of the three.
  *
  * Two are below as `rolltui_menu_apply_shortcuts` and `rolltui_menu_item_actions` (the third,
  * `rolltui_menu_unknown_validators`, was reached by nothing and went ). They take

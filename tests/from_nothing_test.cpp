@@ -40,11 +40,10 @@
 //   than a test of four editors in a row. The IDENTICAL keystrokes run against a designer that
 //   did not mount one (`ROLLTUI_NO_MENU_EDITOR`, which drops `editor.menu` from the tools it
 //   declares — the library's own mounting mechanism, not a test hook) produce THREE files, and
-//   the screen then says `[no menu file 'sundial']` where the menu was. Before Phase 27 m2 that
-//   was the only outcome available, and the fourth file had to be hand-written JSON.
+//   the screen then says `[no menu file 'sundial']` where the menu was. Without a mounted menu
+//   editor the fourth file has to be hand-written JSON, which is not designing from nothing.
 //
-//   THE NO-DOCUMENT CONTROL. The studio is started with no fixture at all, which it refused to
-//   do until this milestone (`if (app.fixture_path.empty()) return usage();`). A design tool
+//   THE NO-DOCUMENT CONTROL. The studio is started with no fixture at all. A design tool
 //   whose job is building an app from nothing could not itself start from nothing.
 //
 #include <unistd.h>
@@ -270,8 +269,8 @@ int main() {
           rel.rfind("presets/", 0) == 0)
         continue;
       const std::string ext = e.path().extension().string();
-      // `.c` IS SCANNED, and it is most of the library since the Phase 15 port. A control that
-      // greps only the C++ would now be looking at the shell rather than the thing.
+      // `.c` IS SCANNED. The library is C, so a control that greps only the C++ would be
+      // looking at the shell rather than at the thing.
       if (ext != ".c" && ext != ".cpp" && ext != ".hpp" && ext != ".h") continue;
       scanned.push_back(rel);
       bool fok = false;

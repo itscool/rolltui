@@ -22,14 +22,12 @@
  *
  * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW ----------------------------------------------
  *
- * ~~**The DEPTH and MODE names.**~~ **RETRACTED 2026-09-05 — see the mode and
- * depth vocabulary below.** This entry read: *"`ColorDepth` crosses as a byte and the strings
- * "truecolor", "256", "16", "mono" stay in `Theme.cpp` ... a vocabulary written down twice is
- * a second thing to drift. So `detect_color_depth` stays one level up, and this file is handed
- * the answer."* Right while the library was C++ with a C core; wrong once the library IS the
- * C, because `Theme.cpp` is deleted in m2c and the vocabulary would go with it. The rule it
- * cites is the reason it is retracted, not the reason it stood: the names had reached FOUR
- * spellings by the time anyone counted.
+ * **THE DEPTH AND MODE NAMES ARE HERE, and that is the duplication rule applied rather than
+ * broken.** Keeping "truecolor", "256", "16", "mono" one level up — with `ColorDepth`
+ * crossing as a byte and this file handed the answer — reads like avoiding a second copy. It
+ * produces one: a vocabulary the C refuses to carry does not disappear, it relocates into
+ * every caller that cannot reach it. These names had reached FOUR spellings before anyone
+ * counted. The library owns them, once.
  *
  * **What "none" means to a renderer.** It parses and prints the word because that is this
  * module's own FILE FORMAT, which is the thing being ported; it never decides what a

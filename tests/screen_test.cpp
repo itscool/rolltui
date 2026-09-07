@@ -209,7 +209,7 @@ int main() {
                  render_diff(wide.get(), wide2.get(), depth), "\x1b[?25l\x1b[1;3H\x1b[0;31m z\x1b[0m\x1b[1;1H");
 
     // THE BACKUP RULE, and it needs a case the one above does NOT provide — found
-    // 2026-09-04 by a negative control that failed NOTHING when the rule was disabled.
+    // by a negative control that failed NOTHING when the rule was disabled.
     //
     // The assertion above used to be named "a run that begins on the continuation cell
     // starts one cell earlier", which is the rule's own words, and it never exercised it:
@@ -255,7 +255,7 @@ int main() {
     expect_bytes("depth downgrade flows into the emitted SGR", render_diff(blank.get(), mono.get(), ROLLTUI_DEPTH_MONO),
                  "\x1b[?25l\x1b[1;1H\x1b[0mm\x1b[0m\x1b[1;1H");
   }
-  // ---- Phase 13 m4: a cluster too long to sit in a Cell ------------------------------
+  // ---- a cluster too long to sit in a Cell -------------------------------------------
   // The overflow case is a NAMED test with a REAL cluster, not a hypothetical: a family
   // ZWJ sequence is 25 bytes, a user can paste one, and `Cell` holds ten. Everything below
   // is about it behaving exactly like a short glyph from the outside.
@@ -300,7 +300,7 @@ int main() {
     check(glyph_at(f.get(), 1, 0) == family, "…and the table is reusable afterwards, not poisoned by the reset");
   }
 
-  // ---- Phase 13 m5: reuse the Frame, and the ghosting control ------------------------
+  // ---- reuse the Frame, and the ghosting control -------------------------------------
   // The failure mode of a hand-written reset is not a crash — it is a STALE FIELD that
   // renders as a perfectly well-formed frame. So the control is equivalence: a reused
   // frame must be indistinguishable from a freshly constructed one, cell for cell,
@@ -364,12 +364,7 @@ int main() {
     check(frame_eq(loop.get(), control.get()), "…and twenty-five paints with resizes among them leave exactly what one paint would");
   }
 
-  // ---- Phase 14 m1: the seam, and proof the flag SELECTS ----------------------------
-  // Both implementations satisfy this file. What is asserted here is that the one the build
-  // asked for is the one that linked — because a flag that silently fails to select would
-  // leave the whole experiment testing C++ twice and reporting success, which is this
-  // project's characteristic failure aimed at its own instrument (Phase 13 m1 had to prove
-  // its counter armed for exactly the same reason).
+  // ---- rectangle intersection, at the edges -----------------------------------------
   {
     // The frame diff's goldens above already exercise `intersect` in anger; these are the
     // edges worth naming.
@@ -381,7 +376,7 @@ int main() {
     check(a.intersect({0, 0, 0, 0}) == RolltuiRect{0, 0, 0, 0}, "…and a zero-sized one stays zero-sized");
   }
 
-  // ---- THE DOUBLE BUFFER (Phase 17 m4, first called in m3) ---------------------------
+  // ---- THE DOUBLE BUFFER --------------------------------------------------------------
   // `rolltui_swap` exists because THREE hosts had hand-written the same `Frame prev; bool
   // have_prev; … render_diff(have_prev ? &prev : nullptr, f); prev = std::move(f);`. Until
   // now the only thing asserted about it was that `_new`/`_free` link (public_header_test),

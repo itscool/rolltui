@@ -277,8 +277,8 @@ static int edge_bordered(const RolltuiLayoutNode* n, int side) {
   if (n->border != ROLLTUI_BORDER_NONE) return 1;
   if (n->kind == ROLLTUI_NODE_WINDOW) return 0;
   /* Only ever the FIRST visible child, the LAST, or a walk over all of them — none of which
-   * is a reason to build a list (Phase 13 m5b, and this function is recursive AND called
-   * O(children²) from the shared-edge pass below). */
+   * is a reason to build a list. This function is recursive AND called O(children²) from the
+   * shared-edge pass below. */
   for (i = 0; i < n->children.n; ++i) {
     RolltuiLayoutNode* c = n->children.v[i];
     if (!c->visible) continue;
@@ -601,8 +601,9 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
   memset(scratch->map, 0, cells);
   memset(scratch->before, 0, cells);
 
-  /* TWO PASSES: every node's ground and border first, then every window's CONTENT (Phase 12
-   * m7 — the reason is in Layout.cpp's own comment and in the phase file). */
+  /* TWO PASSES: every node's ground and border first, then every window's CONTENT. A single
+   * pass lets a sibling's border overwrite content already drawn into a SHARED edge column —
+   * which is how a scrollbar thumb becomes invisible next to a bordered neighbour. */
   for (i = 0; i < count; ++i) {
     const RolltuiResolvedNode* rn = &nodes[i];
     const RolltuiLayoutNode* n = rn->node;
@@ -643,9 +644,9 @@ typedef struct KindRow {
 
 /* THE TABLE. One definition site AND THE ONLY NUMBERING: the names, the source rule, the
  * source shape and what a source means all come from here, and a kind's row IS its position
- * in this array. Until Phase 18 m2 the order was "rolltui::WidgetKind's, asserted on the C++
- * side" — a C table pinned by a C++ enum. Nothing in any language numbers these a second
- * time now (the header's registry section has the decision). */
+ * in this array. NOTHING IN ANY LANGUAGE NUMBERS THESE A SECOND TIME — an enum beside this
+ * table would be a C table pinned by something outside it (the header's registry section has
+ * the decision). */
 static const KindRow kKinds[] = {
     {"transcript", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "a document the host binds"},
     {"input", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_NAME, "the target a submitted line goes to"},
@@ -657,8 +658,8 @@ static const KindRow kKinds[] = {
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 
-/* the slot names and the `custom:` contents → their m3 form. A closed, one-way
- * table; the five composites are why it is a MAP rather than a rule (Layout.hpp). */
+/* the old slot names and `custom:` contents, mapped to their current form. A closed, one-way
+ * table; the five composites are why it is a MAP rather than a rule. */
 /* RUNG 2: a kind is a SESSION's vocabulary, not one screen's — a host registers once at startup
  * and every `Windows` sharing that context parses layout files the same way. Released by
  * `rolltui_context_free`, by name. */
@@ -1232,7 +1233,7 @@ const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id,
   return NULL;
 }
 
-/* ---- PHASE 23: the opaque handle's lifecycle, and the seven doors ------------------------ */
+/* ---- the opaque handle's lifecycle, and the seven doors ---------------------------------- */
 
 RolltuiLayout* rolltui_layout_new(void) {
   RolltuiLayout* l = (RolltuiLayout*)rolltui_mem_alloc(sizeof *l);  /* OWNED, LONG-LIVED */
@@ -2338,8 +2339,8 @@ const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* l
 }
 
 /* ---- THE SHIPPED SCREEN'S OWN ACTIONS AND THE BUILT-IN LAYOUTS — see the header -------------
- * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S rather than the process's since
- * Phase 25 m2. Both are parsed once from the same embedded `const` bytes, so every context
+ * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S rather than the process's.
+ * Both are parsed once from the same embedded `const` bytes, so every context
  * ends up with identical CONTENT and its own STORAGE — which is contract point 4: a cached
  * built-in belongs to the context that cached it, and a `RolltuiLayout*` handed out here must
  * not outlive the session that parsed it. The shutdown hooks both used to register went with
