@@ -159,7 +159,7 @@ int main() {
   // re-created when their module's steps went internal) -> 33 (Phase 20 m6/m7: six more, for
   // the same reason and by the same rule — a header exists because a `.c` needs a declaration
   // from it). The six are style, document, frame_ops, json, diff and undo.
-  const std::size_t kInternalHeaders = 34;  /* +rolltui_context.h (Phase 25 m2) */
+  const std::size_t kInternalHeaders = 33;  /* +rolltui_context.h (Phase 25 m2); -rolltui_app_profile.h (Phase 26 m3) */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -492,8 +492,12 @@ int main() {
     auto reach_of = [&](const std::string& f) -> const char* {
       return roll.count(f) ? "roll" : tools.count(f) ? "tools" : tests.count(f) ? "tests" : lib.count(f) ? "lib" : mentioned_in_def.count(f) ? "hdr" : "nothing";
     };
+    /* The floors say the census PARSED something, never what the surface should be — so the
+     * definition's fell 300 -> 250 when Phase 26 m3 took the public surface to 296. A floor that
+     * has to be edited every time the surface shrinks is measuring the wrong thing; this one is
+     * armed at any plausible size and dead only if the parser returns nothing. */
     check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_context_register_kind") /* paint registers its canvas kind */ &&
-              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 300 && in_internal.size() > 400,
+              lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 250 && in_internal.size() > 400,
           "the class census sees the definition (" + std::to_string(in_def.size()) + " named), the internal headers (" + std::to_string(in_internal.size()) + "), roll's reach, the tools' reach and the library's own");
     std::map<std::string, std::string> cls;
     for (const Row& r : kApi) cls[r.fn] = r.cls;
@@ -559,7 +563,11 @@ int main() {
     // section 1 needs, and `rolltui_rect_intersect`, whose declaration never moved so the
     // compile loop could not flag it. Each carries its sentence in the table.
     // 57 -> 59 (Phase 21): the two colour functions above, each carrying its KEPT reason.
-    check(kept.size() == 70,
+    // 70 -> 65 (Phase 26 m3): five went with the app profile. Each had been kept as the MATCHING
+    // PART of a pair — an accessor whose sibling a consumer reached, so that "a profile you can
+    // parse but whose actions you cannot read is a hole". The pairs are whole because the module
+    // is gone, which is the cheapest way a kept row ever resolves.
+    check(kept.size() == 65,
           "the KEPT rows — PUBLIC for a stated reason, not for a consumer's reach — are the recorded " +
               std::to_string(kept.size()) + "; a new one is a decision that re-records this number");
     std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached, misplaced, public_for_a_test;
@@ -635,7 +643,18 @@ int main() {
      * default" — naming the case and then concluding the opposite. `rolltui/examples/explorer.cpp`
      * loads its own bindings file, could not reach the summary, and hand-wrote six loops over the
      * report's arrays: rule 5's tell, recorded there as Phase 21's wall 6 and closed here. */
-    const int kPublic = 331, kInternal_ = 523, kDelete = 0;
+    /* PHASE 26 m3: 331 -> 296 and 523 -> 518. THE APP PROFILE IS RETIRED — 35 public and 7
+     * internal rows gone with the module, the largest single removal since Phase 22's cuts and
+     * the only one so far where what went was not redundant but WRONG-DIRECTIONED. It let an
+     * app publish what a layout was ALLOWED to name inside it, and the design tool then refused
+     * anything else; the direction is now one-way (the screen names what it needs, the app
+     * reports what it cannot provide) and there is nothing left for a profile to carry. Two of
+     * the 42 rows survive under other names — nothing does, in fact: `_mount`'s sample-document
+     * binding was already `rolltui_windows_bind_sample_document`, which stays because a C
+     * consumer and the gap suite both use it for their own reasons. The internal six are the
+     * profile's loader-report builders, its `_mount` and the two `_content_*` accessors the
+     * studio's kind picker read. */
+    const int kPublic = 296, kInternal_ = 517, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -839,11 +858,17 @@ int main() {
      * coming public with them (wall 6). It closes the BIND stage — an app has
      * registered its kinds and bound its sources, and this is what says which of them the screen
      * asked for and did not get. */
+    /* PHASE 26 m3: TOOL INTEROP 35 -> 0, AND THE STAGE STAYS IN THE TABLE AS A NAMED EMPTY ONE.
+     * It held one module, the app profile, and the m1 review found that module was the whole
+     * of what this phase set out to reverse: an app publishing what a layout was ALLOWED to
+     * name inside it. That the stage was never a stage of RUNNING a screen — it sat outside
+     * the load / settings / bind / run / release sequence entirely — is what made it visible
+     * as a category rather than as 35 separate rows, which is the argument for this table. */
     check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 26 && rt["HOST_SETTINGS"] == 45 &&
               rt["HOST_BIND"] == 86 && rt["HOST_RUN"] == 75 && rt["HOST_RELEASE"] == 6 &&
-              rt["TOOL_INTEROP"] == 35 && rt["WIDGET"] == 25,
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 25,
           "the roles are the recorded shape — vocab 33, host load 26 / settings 45 / bind 86 / run 75 / "
-          "release 6, tool interop 35, widget 25 (got " +
+          "release 6, tool interop 0, widget 25 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
               std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +

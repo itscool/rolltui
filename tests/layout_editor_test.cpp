@@ -297,35 +297,47 @@ int main() {
           "on a transcript the Source field is the one that owns the source, the Menu file choice is off");
     check(find(ed.menu(), "source") && find(ed.menu(), "source")->spec.type == InputType::Name && find(ed.menu(), "source")->spec.hint == "session",
           "…typed Name, hinted with the contents the host offers for that kind");
-    // The kind choice, previewed and committed.
+    // PHASE 26 m4: THE KIND IS AN INPUT, NOT A CHOICE. Every claim below is the one this block
+    // has always made — the preview is live, the source carries over, `help` drops it, Escape
+    // puts the whole content back — driven by typing a name instead of stepping a closed list.
+    // What changed is what the field ACCEPTS, and that is asserted at the end of this file.
+    auto retype_kind = [&](const std::string& name) {
+      act(ed, "widget kind");
+      for (int i = 0; i < 12; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
+      type(ed, name);
+    };
     act(ed, "widget kind");
-    check(rolltui_menu_level(ed.menu())->id == "kind" && rolltui_menu_selected_item(ed.menu()) && rolltui_menu_selected_item(ed.menu())->id == "transcript",
-          "the Widget kind choice opens on the current kind");
-    for (int i = 0; i < 3; ++i) handle(ed, key(ROLLTUI_KEY_DOWN));  // transcript → input → menu → rows
-    check(ed.previewing() && content_of(ed, "transcript") == "rows:session", "moving down the kind list previews the new kind and KEEPS the source [" + content_of(ed, "transcript") + "]");
-    handle(ed, key(ROLLTUI_KEY_DOWN));
-    handle(ed, key(ROLLTUI_KEY_DOWN));
-    handle(ed, key(ROLLTUI_KEY_DOWN));  // rows → text → file → help
+    check(rolltui_menu_editing(ed.menu()) && editing_text_of(ed) == "transcript",
+          "the Widget kind input opens on the current kind [" + editing_text_of(ed) + "]");
+    check(find(ed.menu(), "kind") && str_of(find(ed.menu(), "kind")->spec.hint).find("this tool previews:") == 0,
+          "…with what this binary can preview as its HINT, which is all a design tool honestly knows");
+    for (int i = 0; i < 12; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
+    type(ed, "rows");
+    check(ed.previewing() && content_of(ed, "transcript") == "rows:session", "typing a kind previews it live and KEEPS the source [" + content_of(ed, "transcript") + "]");
+    for (int i = 0; i < 4; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
+    type(ed, "help");
     check(content_of(ed, "transcript") == "help", "…and `help`, which takes no source, drops it");
-    handle(ed, key(ROLLTUI_KEY_UP));
-    check(content_of(ed, "transcript") == "file:session", "…stepping back off `help` restores the source from before the preview, not from the previewed content");
+    for (int i = 0; i < 4; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
+    type(ed, "file");
+    check(content_of(ed, "transcript") == "file:session", "…typing off `help` again restores the source from before the preview, not from the previewed content");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     check(!ed.previewing() && content_of(ed, "transcript") == "transcript:session", "Escape puts the whole content back");
     // Commit `menu`, and the two source fields swap places.
-    act(ed, "widget kind");
-    for (int i = 0; i < 2; ++i) handle(ed, key(ROLLTUI_KEY_DOWN));
+    retype_kind("menu");
     LayoutEditor::Outcome o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && content_of(ed, "transcript") == "menu:session", "Enter commits the menu kind, source kept");
     check(!enabled_of(ed, "source") && enabled_of(ed, "menu_file"),
-          "on a `menu` the Menu file choice owns the source and the Source input is off \xE2\x80\x94 exactly one of the two, always");
+          "on a `menu` the Menu file field owns the source and the Source input is off \xE2\x80\x94 exactly one of the two, always");
+    check(str_of(find(ed.menu(), "menu_file")->spec.hint) == "resolves here: main | extra",
+          "…hinted with the menu files that RESOLVE, which is again what this binary knows and not what the target has");
     check(ed.selection_line().find("selected: transcript") != std::string::npos, "the selection line names the node");
     act(ed, "menu file");
-    handle(ed, key(ROLLTUI_KEY_END));
+    for (int i = 0; i < 12; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
+    type(ed, "extra");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == O::Committed && content_of(ed, "transcript") == "menu:extra", "the Menu file choice writes the source [" + content_of(ed, "transcript") + "]");
+    check(o.kind == O::Committed && content_of(ed, "transcript") == "menu:extra", "the Menu file field writes the source [" + content_of(ed, "transcript") + "]");
     // Back to a transcript, and the source typed by hand.
-    act(ed, "widget kind");
-    handle(ed, key(ROLLTUI_KEY_HOME));
+    retype_kind("transcript");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     act(ed, "source");
     for (int i = 0; i < 8; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
@@ -339,9 +351,7 @@ int main() {
           "a '/' is refused in a Name source at the keystroke, the text kept [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     // A `file:` source is a path, so the same key is accepted there.
-    act(ed, "widget kind");
-    handle(ed, key(ROLLTUI_KEY_HOME));
-    for (int i = 0; i < 5; ++i) handle(ed, key(ROLLTUI_KEY_DOWN));  // file
+    retype_kind("file");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     check(find(ed.menu(), "source") && find(ed.menu(), "source")->spec.type == InputType::Text, "a `file` source is Text, not Name: a path has slashes in it");
     act(ed, "source");
@@ -357,8 +367,7 @@ int main() {
           "an empty source for a kind that requires one is refused with the reason [" + ed.status_line() + "]");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     // Put it back where the rest of the test expects it.
-    act(ed, "widget kind");
-    handle(ed, key(ROLLTUI_KEY_HOME));
+    retype_kind("transcript");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     act(ed, "source");
     for (int i = 0; i < 12; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
@@ -481,24 +490,26 @@ int main() {
     LayoutEditor te{target};
     te.load(builtin_layout(target, "default"));
     te.select("transcript");
-    auto options = [](LayoutEditor& e) {
+    auto kind_hint = [](LayoutEditor& e) {
       const MenuItem* it = find(e.menu(), "kind");
-      std::string s;
-      if (!it) return std::string("(no item 'kind')");
-      for (const MenuItem& o : it->children) s += (s.empty() ? "" : " ") + str_of(o.id);
-      return s;
+      return it ? str_of(it->spec.hint) : std::string("(no item 'kind')");
     };
-    check(options(te) == "transcript input menu rows text file help",
-          "told nothing about a target, the picker is the library's own table [" + options(te) + "]");
-    // What the studio does under --app: the library's, then the profile's.
+    auto retype = [&](LayoutEditor& e, const char* field, const std::string& name) {
+      act(e, field);
+      for (int i = 0; i < 14; ++i) handle(e, key(ROLLTUI_KEY_BACKSPACE));
+      type(e, name);
+    };
+    check(kind_hint(te) == "this tool previews: transcript | input | menu | rows | text | file | help",
+          "told nothing about a target, the HINT is this binary's own table [" + kind_hint(te) + "]");
+    // A host that has registered kinds of its own says so, and the hint grows — it is a list of
+    // what can be PREVIEWED here, never a list of what may be named.
     te.set_kinds({"transcript", "input", "menu", "rows", "text", "file", "help", "canvas", "approval"});
     te.set_sources({"transcript:session", "canvas:main"});
-    check(options(te).find("canvas approval") != std::string::npos,
-          "under a profile the app's own kinds are offered after the library's [" + options(te) + "]");
-    // Choosing one writes a content the LOADER accepts — the registered name, not
+    check(kind_hint(te).find("canvas | approval") != std::string::npos,
+          "a host's own registered kinds join the hint after the library's [" + kind_hint(te) + "]");
+    // Typing one writes a content the LOADER accepts — the registered name, not
     // "registered", which is what a Content field assembled by hand would have said.
-    act(te, "widget kind");
-    type(te, "canvas");
+    retype(te, "widget kind", "canvas");
     LayoutEditor::Outcome o = handle(te, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && content_of(te, "transcript") == "canvas:session",
           "a registered kind commits like any other, keeping the source [" + content_of(te, "transcript") + "]");
@@ -508,33 +519,51 @@ int main() {
               (find(te.menu(), "source") ? str_of(find(te.menu(), "source")->spec.hint) : std::string("(none)")) + "]");
     // A registered kind that takes no source disables the field exactly as `help` does,
     // and DROPS the source rather than writing a content the loader would refuse.
-    act(te, "widget kind");
-    type(te, "approval");
+    retype(te, "widget kind", "approval");
     o = handle(te, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && content_of(te, "transcript") == "approval" && !enabled_of(te, "source"),
           "a registered kind whose source is forbidden drops it, like `help` [" + content_of(te, "transcript") + "]");
     bool clean = false;
     std::optional<Layout> back = parse_layout(dump_layout(te.current()), &clean);
     check(back && clean && *back == te.current(), "the layout the picker wrote round-trips through the loader clean");
-    // The hint for a kind the profile gave no sample content for is the app's OWN words.
+    // The hint for a kind with no sample content offered for it is the app's OWN words.
     te.set_sources({});
-    act(te, "widget kind");
-    type(te, "canvas");
+    retype(te, "widget kind", "canvas");
     handle(te, key(ROLLTUI_KEY_ENTER));
     check(find(te.menu(), "source") && find(te.menu(), "source")->spec.hint == "a surface this app paints",
           "…and with no sample content the hint is what the app said its source names");
-    // The picker is a list of what EXISTS, never a way to invent a kind. A profile
-    // naming a kind its binary does not actually register is the drift this whole file
-    // format exists to remove one level down, so it is refused by name rather than
-    // written into a layout that would draw an error panel in the real app.
-    te.set_kinds({"transcript", "canvas", "sundial"});
-    const std::string before_bogus = content_of(te, "transcript");
-    act(te, "widget kind");
-    type(te, "sundial");
+
+    // ---- PHASE 26 m4: A KIND IN NEITHER RUNG IS WRITTEN DOWN, AND SAID -----------------------
+    // This is the milestone, and it is the exact reversal of what this block asserted until
+    // 2026-09-07: *"the picker is a list of what EXISTS, never a way to invent a kind"*, with a
+    // refusal — "'sundial' is not a widget kind this app can build" — and nothing written. The
+    // reason given was drift: a name no binary registers would draw an error panel in the real
+    // app. That reasoning has one app in it. A design tool is authoring for ANOTHER app, and the
+    // kinds it can resolve are its own, so refusing a name it does not know is refusing every
+    // kind the target has and this tool does not. The screen names what it needs; the app
+    // REPORTS what it cannot provide (`rolltui_gaps_collect`), where the answer actually is.
+    te.set_kinds({"transcript", "canvas"});
+    retype(te, "source", "session");  // so the assertion below is about the KIND and not about a carried source
+    handle(te, key(ROLLTUI_KEY_ENTER));
+    retype(te, "widget kind", "sundial");
     o = handle(te, key(ROLLTUI_KEY_ENTER));
-    check(content_of(te, "transcript") == before_bogus &&
-              te.status_line().find("not a widget kind this app can build") != std::string::npos,
-          "a kind in neither rung is refused by name and writes nothing [" + te.status_line() + "]");
+    check(o.kind == O::Committed && content_of(te, "transcript") == "sundial:session",
+          "a kind in neither rung is WRITTEN, source and all [" + content_of(te, "transcript") + "]");
+    check(te.status_line().find("not a kind this tool can build") != std::string::npos &&
+              te.status_line().find("previews as a placeholder") != std::string::npos,
+          "…and what is said is about this TOOL, not about the screen [" + te.status_line() + "]");
+    check(enabled_of(te, "source") && find(te.menu(), "source") &&
+              str_of(find(te.menu(), "source")->spec.hint) == "what 'sundial' is given in the app this screen is for",
+          "…its source field stays usable, hinted at the app that owns the answer [" +
+              (find(te.menu(), "source") ? str_of(find(te.menu(), "source")->spec.hint) : std::string("(none)")) + "]");
+    check(te.selection_line().find("not previewable here") != std::string::npos,
+          "…and the selection line says the same thing in the same direction [" + te.selection_line() + "]");
+    {
+      bool clean2 = false;
+      std::optional<Layout> back2 = parse_layout(dump_layout(te.current()), &clean2);
+      check(back2 && clean2 && *back2 == te.current(),
+            "…and a screen naming a kind nobody here has round-trips through the loader clean: it is a file, not a claim");
+    }
     rolltui_context_free(target);  // and with it the two kinds — no clearing to remember
   }
   rolltui_context_free(ctx);

@@ -179,7 +179,6 @@
 /* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
-#include "rolltui/c/rolltui_app_profile.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_diff.h"
 #include "rolltui/c/rolltui_effects.h"
@@ -561,6 +560,7 @@ struct App;
 RolltuiWidget editor_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
 RolltuiWidget confirm_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
 RolltuiWidget report_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
+RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
 
 struct App {
   RolltuiContext* ctx = studio_ctx();  // BORROWED: the binary's one session (see studio_ctx)
@@ -632,10 +632,6 @@ struct App {
   }
   int submitted = 0;        // entries the input added to the document
   std::string copied;       // the last copy (the studio has no clipboard)
-  // The TARGET app being authored for (Phase 11 m4), or nullptr: the studio previews as
-  // itself. It is the studio's own state and never the library's — a profile describes an
-  // app, and only a tool that is authoring FOR one has any use for it.
-  RolltuiAppProfile* profile = nullptr;  // OWNED, nullable
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
   // m6: the clock EFFECTS are applied at, kept apart from clock_ms on purpose — the
@@ -679,7 +675,6 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
-    rolltui_app_profile_free(profile);
     rolltui_layout_release(&layout);
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_diff_scratch_free(diff_scratch);
@@ -775,6 +770,13 @@ struct App {
     rolltui_context_register_kind(ctx, "confirm", 7, confirm_factory, this, nullptr);
     rolltui_widget_kind_register(ctx, "report", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     rolltui_context_register_kind(ctx, "report", 6, report_factory, this, nullptr);
+    // PHASE 26: A CONTENT THIS BINARY CANNOT BUILD PREVIEWS AS A LABELLED PLACEHOLDER, and
+    // that is this tool's decision rather than the library's. roll and paint want the error
+    // panel: a window naming a kind they never registered is their own bug. A DESIGN TOOL is
+    // the one host for which it is not a bug at all — a screen for another app names that
+    // app's kinds by definition, and the studio replacing the library's error factory is how
+    // it says "this window is correct and I am the one who cannot draw it".
+    rolltui_context_set_error_factory(ctx, placeholder_factory, this);
     // Diff colouring (Phase 12 m5b): this host DECLARING that a ```diff fence in its
     // documents means a diff — never a sniff of what a block holds.
     rolltui_windows_set_highlight(windows, diff_highlight, diff_scratch, nullptr);
@@ -1116,46 +1118,24 @@ struct App {
     lstore->list(pl);
     for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));  // shipped first, then the user's
     leditor.set_layouts(names);
-    // Under a profile the offered contents are the TARGET APP's, which is what turns the
-    // design editor's Source from a guess into a fact (Phase 11 m4). Without one they are
-    // the studio's own, exactly as before.
-    if (profile) {
-      std::vector<std::string> contents;
-      const std::size_t cn = rolltui_app_profile_content_count(profile);
-      for (std::size_t i = 0; i < cn; ++i) {
-        RolltuiStr s{};
-        rolltui_app_profile_content_at(profile, i, &s);
-        contents.push_back(str_of(s));
-        rolltui_str_free(&s);
-      }
-      leditor.set_sources(contents);
-    } else {
-      leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
-    }
-    // …and so are the offered KINDS. Under a profile they are the library's plus the
-    // TARGET's registered ones — never the studio's own `editor`/`confirm`/`report`,
-    // which the app being authored for cannot build.
+    // PHASE 26: what this list is has changed, and the change is the milestone. It used to be
+    // the set of contents the author was ALLOWED to name — the target app's under `--app`, the
+    // studio's own without one. It is now what this binary can PREVIEW, offered as a hint under
+    // a field that accepts anything: a designer names what the screen needs, and a name this
+    // tool cannot build previews as a labelled placeholder instead of being refused.
+    leditor.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane", "editor"});
     std::vector<std::string> kinds;
     for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
       std::size_t n = 0;
       const char* p = rolltui_widget_kind_name(ctx, i, &n);
       kinds.emplace_back(p, n);
     }
-    if (profile) {
-      const std::size_t kn = rolltui_app_profile_kind_count(profile);
-      for (std::size_t i = 0; i < kn; ++i) {
-        std::size_t n = 0;
-        const char* p = rolltui_app_profile_kind_name(profile, i, &n);
-        kinds.emplace_back(p, n);
-      }
-    } else {
-      for (const char* own : {"editor", "confirm", "report"}) kinds.emplace_back(own);
-    }
+    for (const char* own : {"editor", "confirm", "report"}) kinds.emplace_back(own);
     leditor.set_kinds(std::move(kinds));
+    // The menu files that RESOLVE right now — the preset directory the target app and this
+    // tool share, this binary's own embedded menus, and the library's shipped ones. A name
+    // outside all three is still typeable, because the target may embed a menu of its own.
     leditor.set_menus(menu_names());
-    // The only thing a NEW layout inherits (Phase 11 m5): the TARGET's thresholds, which
-    // are a fact about the app being designed for — never the open screen's.
-    leditor.set_default_min(profile ? rolltui_app_profile_min_width(profile) : 0, profile ? rolltui_app_profile_min_height(profile) : 0);
     editor_open = true;
     editor_mode = EditorMode::Layout;
     { RolltuiLayer popup = editor_popup("layout editor"); rolltui_window_stack_push(stack, &popup); }
@@ -1480,8 +1460,8 @@ struct App {
   }
   // The `app.*` actions are the LAYOUT's (Phase 10 m4): whatever the loaded file
   // declares, however it was loaded. `editor.*` and `studio.*` are the TOOLS' this
-  // binary mounts (Phase 11 m1). Under a profile, the actions a MENU ITEM may name are
-  // the target app's as well as this layout's.
+  // binary mounts (Phase 11 m1). Nothing else: an action the TARGET app declares is a
+  // thing the target's own layout says, and this tool has no business asserting it.
   void declare_actions() {
     std::vector<RolltuiLayoutAction> declared;
     const RolltuiLayout& lay = effective_layout();
@@ -1490,17 +1470,6 @@ struct App {
       a.name.assign(lay.actions[i].name);
       a.description.assign(lay.actions[i].description);
       declared.push_back(std::move(a));
-    }
-    if (profile) {
-      const std::size_t n = rolltui_app_profile_action_count(profile);
-      for (std::size_t i = 0; i < n; ++i) {
-        std::size_t nlen = 0, dlen = 0;
-        const char* name = rolltui_app_profile_action_name(profile, i, &nlen);
-        const char* desc = rolltui_app_profile_action_description(profile, i, &dlen);
-        const std::string_view name_sv(name, nlen);
-        const bool exists = std::any_of(declared.begin(), declared.end(), [&](const RolltuiLayoutAction& d) { return view_of(d.name) == name_sv; });
-        if (!exists) { RolltuiLayoutAction a{}; set_str(a.name, name_sv); a.description.assign(desc, dlen); declared.push_back(std::move(a)); }
-      }
     }
     const std::vector<RolltuiToolAction>& tools = mounted_tools();
     rolltui_bindings_declare(bindings, declared.data(), declared.size(), tools.data(), tools.size());
@@ -2001,6 +1970,40 @@ constexpr RolltuiWidgetPlugin kReportPlugin = {
 };
 RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
 
+// ---- the placeholder: a foreign kind, drawn as what it is ---------------------------------
+//
+// Installed as the CONTEXT's error factory (see `bind_windows`), so it stands in for exactly
+// the case the library leaves to the host: a content whose kind matched no row of either rung.
+// A known kind with an unbound source is NOT this — it builds, and says what it is missing
+// through its own `problem()`, which is where that sentence belongs.
+//
+// It draws `[kind:source]`, centred vertically, muted. The whole content and not just the kind,
+// because the source is half of what the author typed and a preview that silently dropped it
+// would be lying about the screen. `problem` is deliberately NULL: a placeholder has nothing
+// to report — the gap report is where a MISSING kind gets said, in the app that lacks it.
+struct PlaceholderCtx {
+  App* app;              // BORROWED: outlives every widget in its own table
+  std::string label;     // "[content]", built once at construction
+};
+void placeholder_destroy(void* ctx) { delete static_cast<PlaceholderCtx*>(ctx); }
+void placeholder_layout(void*, const RolltuiResolvedNode*) {}
+void placeholder_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  PlaceholderCtx* pc = static_cast<PlaceholderCtx*>(ctx);
+  RolltuiRect r{};
+  rolltui_content_rect(rn, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  pc->app->put_text(f, r.x, r.y + r.h / 2, pc->label, pc->app->style(ROLLTUI_ROLE_TEXT_MUTED), r.w);
+}
+constexpr RolltuiWidgetPlugin kPlaceholderPlugin = {
+    /*destroy=*/placeholder_destroy, /*layout=*/placeholder_layout, /*draw=*/placeholder_draw,
+    /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
+    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+};
+RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* content, std::size_t len) {
+  PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), "[" + std::string(content, len) + "]"};
+  return RolltuiWidget{&kPlaceholderPlugin, pc};
+}
+
 bool parse_size(const std::string& s, int& w, int& h) {
   std::size_t x = s.find('x');
   if (x == std::string::npos) return false;
@@ -2182,7 +2185,6 @@ int usage() {
   std::fprintf(stderr,
                "usage: rolltui-studio --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
                "       rolltui-studio FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
-               "                                [--app PROFILE.json]  preview AS that app: its sources, samples, menus, actions and kinds\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
                "       [--dump-role ROLE] [--tick MS] [--dump-tick] [--code-fold FOLD,CAP]\n"
                "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
@@ -2253,7 +2255,7 @@ int main(int argc, char** argv) {
   std::string frame_spec, keys_spec, dump_role, check_arg, generate_arg, seed_arg = "1", chaos_arg = "0";
   std::uint64_t tick_ms = 0;   // milestone 6: the elapsed time --frame renders at
   bool dump_tick = false;
-  std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR, app_profile_path;
+  std::string presets_dir = default_presets_dir(), shipped_dir = ROLLTUI_SHIPPED_DIR;
   bool frame_sgr = false;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -2263,7 +2265,6 @@ int main(int argc, char** argv) {
     else if (a == "--presets") presets_dir = next();
     else if (a == "--shipped") shipped_dir = next();
     else if (a == "--bindings") app.bindings_arg = next();
-    else if (a == "--app") app_profile_path = next();
     else if (a == "--dump-role") dump_role = next();
     else if (a == "--check") check_arg = next();
     else if (a == "--generate") generate_arg = next();
@@ -2421,39 +2422,6 @@ int main(int argc, char** argv) {
   // AFTER the flags: this is the one Windows setting --code-fold can change, and
   // bind_windows() runs in App's constructor, before argv has been looked at.
   { const RolltuiCodeFold cf{app.code_fold_over, app.code_cap}; rolltui_context_set_code_fold(app.ctx, &cf); }
-  // --app: preview AS the target app (Phase 11 m4). Mounted BEFORE the studio binds its
-  // own sources, so a name the profile supplies wins. With no --app the studio previews
-  // as itself, exactly as before.
-  if (!app_profile_path.empty()) {
-    bool ok = false;
-    const std::string text = read_file(app_profile_path, ok);
-    if (!ok) {
-      std::fprintf(stderr, "rolltui: cannot read app profile %s\n", app_profile_path.c_str());
-      return 1;
-    }
-    RolltuiAppProfileReport prep{};
-    RolltuiAppProfile* profile = rolltui_app_profile_parse(text.data(), text.size(), &prep);
-    if (!profile) {
-      RolltuiStr s{};
-      rolltui_app_profile_report_summary(&prep, &s);
-      std::fprintf(stderr, "rolltui: app profile %s: %s\n", app_profile_path.c_str(), s.p ? s.p : "");
-      rolltui_str_free(&s);
-      rolltui_app_profile_report_release(&prep);
-      return 1;
-    }
-    if (!rolltui_app_profile_report_clean(&prep)) {
-      RolltuiStr s{};
-      rolltui_app_profile_report_summary(&prep, &s);
-      std::fprintf(stderr, "rolltui: app profile %s loaded with problems: %s\n", app_profile_path.c_str(), s.p ? s.p : "");
-      rolltui_str_free(&s);
-    }
-    rolltui_app_profile_report_release(&prep);
-    rolltui_app_profile_mount(profile, app.windows);
-    app.profile = profile;
-    std::size_t alen = 0;
-    const char* an = rolltui_app_profile_app(app.profile, &alen);
-    std::fprintf(stderr, "rolltui: previewing as '%s'\n", std::string(an, alen).c_str());
-  }
   {
     ThemePresetReport start_rep;
     app.store->start(start_rep);

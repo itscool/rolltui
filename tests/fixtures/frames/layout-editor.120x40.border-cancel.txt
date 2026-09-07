@@ -9,9 +9,9 @@
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [x] Visible                                    │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Border                                single ▸ │
 │ │ mouse mode)                      │             │                  │ Title: transcript                              │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ Widget kind                       transcript ▸ │
+│ │ Key + mouse decoding             │ build       │ single header, pu│ Widget kind: transcript                        │
 │ │                                  │             │ Event, table-test│ Source: session                                │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Menu file                                    ▸ │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Menu file:                                     │
 │ │ colour downgrade                 │             │ tested           │ Size (Alt+arrows nudge): fill                  │
 │ │ Wrap engine                      │ build       │ single header ove│ [x] Focusable                                  │
 │ │                                  │             │ header           │ Delete this node                               │

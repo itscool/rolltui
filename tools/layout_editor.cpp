@@ -92,6 +92,13 @@ std::optional<Content> parse_content(const RolltuiContext* ctx, std::string_view
   set_str(c.source, std::string_view(source_p, source_len));
   return c;
 }
+// The offered names as one line, for a field's hint. Every list here is short (the library's
+// seven kinds, a preset directory's menus), so a plain join is the whole of it.
+std::string joined(const std::vector<std::string>& names) {
+  std::string out;
+  for (const std::string& n : names) out += (out.empty() ? "" : " | ") + n;
+  return out;
+}
 std::string action_decl_problem(std::string_view name) {
   RolltuiStr out{};
   rolltui_action_decl_problem(name.data(), name.size(), rolltui_layout_default_hooks(), &out);
@@ -228,20 +235,32 @@ void LayoutEditor::set_sources(std::vector<std::string> contents) {
   sync_content_fields();
 }
 
+// PHASE 26: these two lists became HINTS under a field that accepts anything, and that is the
+// milestone rather than a detail of it. Both were closed CHOICES: a kind or a menu file this
+// binary could resolve, or nothing. That made the tool the authority on what an app may be
+// asked for — a designer working on a screen for another app could not name that app's canvas
+// at all. What they can name is now unbounded; what this tool can PREVIEW is what the hint
+// says, and everything else previews as a labelled placeholder.
 void LayoutEditor::set_kinds(std::vector<std::string> names) {
   kinds_ = std::move(names);
-  std::vector<MenuItem> opts;
-  for (const std::string& n : kinds_) opts.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
-  set_options(menu_, "kind", std::move(opts));
+  sync_hints();
   sync_content_fields();
 }
 
 void LayoutEditor::set_menus(std::vector<std::string> names) {
   menus_ = std::move(names);
-  std::vector<MenuItem> opts;
-  for (const std::string& n : menus_) opts.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
-  set_options(menu_, "menu_file", std::move(opts));
+  sync_hints();
   sync_content_fields();
+}
+
+// Both hints, from one place, called by the two setters AND by `rebuild_menu` — which rebuilds
+// the items from scratch, so a hint set only in a setter would vanish on the next split and
+// never come back. The constructor fills `kinds_` directly and reaches this the same way.
+void LayoutEditor::sync_hints() {
+  if (MenuItem* it = find(menu_, "kind"))
+    set_str(it->spec.hint, kinds_.empty() ? "any widget kind the target app registers" : "this tool previews: " + joined(kinds_));
+  if (MenuItem* it = find(menu_, "menu_file"))
+    set_str(it->spec.hint, menus_.empty() ? "a menus/<name>.json the app can resolve" : "resolves here: " + joined(menus_));
 }
 
 void LayoutEditor::set_default_min(int width, int height) {
@@ -317,11 +336,9 @@ std::vector<MenuItem> LayoutEditor::action_items() const {
 }
 
 void LayoutEditor::rebuild_menu() {
-  std::vector<MenuItem> borders, anchors, kinds, menus, loads;
+  std::vector<MenuItem> borders, anchors, loads;
   for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
-  for (const std::string& n : kinds_) kinds.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
-  for (const std::string& n : menus_) menus.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
   for (const std::string& n : layouts_) loads.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
   InputSpec dim, size, name, text, threshold;
   dim.type = InputType::Dim;
@@ -357,9 +374,9 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::toggle("visible", "Visible", true));
   top.push_back(choice_of("border", "Border", std::move(borders), "single"));
   top.push_back(MenuItem::input("title", "Title", text.clone()));
-  top.push_back(choice_of("kind", "Widget kind", std::move(kinds), "transcript"));
+  top.push_back(MenuItem::input("kind", "Widget kind", name.clone()));
   top.push_back(MenuItem::input("source", "Source", text.clone()));
-  top.push_back(choice_of("menu_file", "Menu file", std::move(menus), ""));
+  top.push_back(MenuItem::input("menu_file", "Menu file", name.clone()));
   top.push_back(MenuItem::input("size", "Size (Alt+arrows nudge)", size.clone()));
   top.push_back(MenuItem::toggle("focusable", "Focusable", false));
   top.push_back(MenuItem::action("delete", "Delete this node"));
@@ -376,6 +393,7 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6"));
   MenuItem root = submenu_of("root", "layout editor", std::move(top));
   rolltui_menu_set_root(menu_, &root);
+  sync_hints();
   sync_values();
 }
 
@@ -384,12 +402,17 @@ LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) const {
   if (!n || !n->is_window()) return p;
   const std::string_view content = view_of(n->content);
   const std::size_t colon = content.find(':');
+  p.window = true;
   p.kind_text = content.substr(0, colon);
   if (colon != std::string_view::npos) p.source = content.substr(colon + 1);
-  // Through the registry's own two rungs, and deliberately not through parse_content: a
-  // window whose source is missing or forbidden is exactly what this editor exists to
-  // repair, and it cannot repair what it refuses to hold (Layout.hpp, content_for_kind).
-  p.content = content_for_kind(ctx_, p.kind_text, p.source);
+  // PHASE 26: the split is unconditional and `known` is a separate answer. It used to be a
+  // `std::optional<Content>` that went empty for a kind neither rung of the registry had,
+  // which made every field below inert — the tool refusing to hold a screen it could not
+  // build. A screen is the intent; whether THIS binary can preview it is a different
+  // question, asked here and answered in the hint rather than by disabling the field.
+  p.known = content_for_kind(ctx_, p.kind_text).has_value();
+  set_str(p.content.kind, p.kind_text);
+  set_str(p.content.source, p.source);
   return p;
 }
 
@@ -413,17 +436,21 @@ std::string LayoutEditor::carried_source(std::string_view kind_name) const {
 
 // A kind NAME and a source in, `kind[:source]` out — through content_to_string, so the
 // one rule about which kinds carry a colon lives in one place, not here as well.
-// A name in neither rung of the registry writes nothing and says so: the picker offers
-// what a target can build, and a kind that does not exist is not one of them.
+//
+// PHASE 26: A NAME IN NEITHER RUNG IS WRITTEN, AND SAID. Until now this refused it outright
+// ("'canvas' is not a widget kind this app can build") — the design tool deciding what the
+// app is allowed to be asked for, which is the exact direction this phase reverses. What a
+// screen names is the DEVELOPER's to answer; all this tool knows is whether it can draw a
+// preview, so that is all it says.
 bool LayoutEditor::set_content(const std::string& kind_name, const std::string& source) {
   Node* n = sel_node();
   if (!n || !n->is_window()) return false;
-  const std::optional<Content> c = content_for_kind(ctx_, kind_name, source);
-  if (!c) {
-    status_ = "'" + kind_name + "' is not a widget kind this app can build";
-    return false;
-  }
-  set_str(n->content, content_to_string(ctx_, *c));
+  Content c;
+  set_str(c.kind, kind_name);
+  set_str(c.source, source);
+  set_str(n->content, content_to_string(ctx_, c));
+  if (!content_for_kind(ctx_, kind_name))
+    status_ = "'" + kind_name + "' is not a kind this tool can build — it previews as a placeholder";
   return true;
 }
 
@@ -431,30 +458,33 @@ bool LayoutEditor::set_content(const std::string& kind_name, const std::string& 
 // header comment's table). Disabled is drawn muted, so exactly one of Source / Menu
 // file is offered at a time and neither is a second spelling of the other.
 void LayoutEditor::sync_content_fields() {
-  const Node* n = selected_node();
-  const bool window = n && n->is_window();
   const ContentParts p = content_parts();
-  const bool is_menu = p.content && p.content->kind == "menu";
+  const bool window = p.window;
+  const bool is_menu = p.kind_text == "menu";
   set_value(menu_, "kind", p.kind_text);
   set_value(menu_, "source", p.source);
   set_value(menu_, "menu_file", is_menu ? p.source : std::string());
   set_enabled(menu_, "kind", window);
   set_enabled(menu_, "menu_file", window && is_menu);
-  // The rule is the KIND's, whichever rung it came from — a registered kind that takes no
-  // source disables the field exactly as `help` does, because its host said so.
-  const unsigned char rule = p.content ? content_source_rule(ctx_, *p.content) : ROLLTUI_SOURCE_REQUIRED;
-  const bool source_field = window && p.content && !is_menu && rule != ROLLTUI_SOURCE_FORBIDDEN;
+  // The rule is the KIND's, whichever rung it came from. A kind this binary does not know is
+  // the REQUIRED default: it is the only answer that keeps the field usable, and a foreign
+  // kind that turns out to take no source loses nothing — `rolltui_content_format` drops a
+  // source the kind may not have, in the app that owns the rule.
+  const unsigned char rule = content_source_rule(ctx_, p.content);
+  const bool source_field = window && !is_menu && rule != ROLLTUI_SOURCE_FORBIDDEN;
   set_enabled(menu_, "source", source_field);
   if (MenuItem* it = find(menu_, "source"); it && source_field) {
     // A path is not a Name; a literal is anything and may be empty — the kind's SHAPE, read
     // from its registry row whichever rung it came from (Phase 18 m2).
-    it->spec.type = content_source_shape(ctx_, *p.content) == ROLLTUI_SOURCE_SHAPE_TEXT ? InputType::Text : InputType::Name;
+    it->spec.type = content_source_shape(ctx_, p.content) == ROLLTUI_SOURCE_SHAPE_TEXT ? InputType::Text : InputType::Name;
     it->spec.optional = rule == ROLLTUI_SOURCE_OPTIONAL;
     it->spec.hint.clear();
     for (const std::string& c : sources_)
       if (std::optional<Content> oc = parse_content(ctx_, c); oc && content_kind_name(*oc) == p.kind_text && !oc->source.empty())
         set_str(it->spec.hint, str_of(it->spec.hint) + (it->spec.hint.empty() ? "" : " | ") + str_of(oc->source));
-    if (it->spec.hint.empty()) set_str(it->spec.hint, content_source_describes(ctx_, *p.content));
+    if (it->spec.hint.empty())
+      set_str(it->spec.hint, p.known ? content_source_describes(ctx_, p.content)
+                                     : "what '" + p.kind_text + "' is given in the app this screen is for");
   }
 }
 
@@ -641,10 +671,11 @@ std::string LayoutEditor::selection_line() const {
   std::string s = "selected: " + str_of(n->id) + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
                   (n->visible ? "" : "  hidden") +
                   (n->is_window() ? "  " + str_of(n->content) : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
-  // A content that does not parse is said HERE as well as in the window's error panel:
-  // the editor is where it gets repaired, so the reason belongs beside the fields.
+  // A content this binary cannot resolve is said HERE as well as drawn as a placeholder,
+  // and the wording is about the TOOL: under Phase 26 a foreign kind is not a fault in the
+  // screen, it is a thing this preview cannot show.
   if (n->is_window())
-    if (std::string why; !parse_content(ctx_, view_of(n->content), &why)) s += " \xE2\x80\x94 " + why;
+    if (std::string why; !parse_content(ctx_, view_of(n->content), &why)) s += " \xE2\x80\x94 not previewable here: " + why;
   return s;
 }
 
@@ -745,16 +776,6 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       if (auto b = border_from_name(value)) { begin_preview(); if (Node* n = sel_node()) n->border = *b; }
       return commit_current();
     }
-    if (id == "kind") {
-      begin_preview();
-      if (!set_content(value, carried_source(value))) cancel_preview();
-      return commit_current();
-    }
-    if (id == "menu_file") {
-      begin_preview();
-      set_content("menu", value);
-      return commit_current();
-    }
     if (id == "focus") {
       begin_preview();
       set_str(current_.base.focus, value);  // "" is a real answer: the first focusable in tree order
@@ -789,9 +810,18 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       return commit_current();
     }
     if (id == "title") { begin_preview(); if (Node* n = sel_node()) set_str(n->title, value); return commit_current(); }
+    // The kind carries the source over (`carried_source`), so retyping a kind does not silently
+    // drop the name beside it — the one exception is `help`, whose source is a key scope.
+    if (id == "kind") {
+      if (value.empty()) { status_ = "a window needs a widget kind"; return {O::Changed, {}}; }
+      begin_preview();
+      set_content(value, carried_source(value));
+      return commit_current();
+    }
+    if (id == "menu_file") { begin_preview(); set_content("menu", value); return commit_current(); }
     if (id == "source") {
       const ContentParts p = content_parts();
-      if (!p.content) { status_ = "'" + p.kind_text + "' is not a widget kind \xE2\x80\x94 set the kind first"; return {O::Changed, {}}; }
+      if (!p.window) return {O::Changed, {}};
       begin_preview();
       set_content(p.kind_text, value);
       return commit_current();
@@ -874,25 +904,20 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
   if (sel && !editing && level == "border") {
     if (auto b = border_from_name(view_of(sel->id))) { begin_preview(); if (Node* n = sel_node()) n->border = *b; return {O::Changed, {}}; }
   }
-  if (sel && !editing && level == "kind") {
-    begin_preview();
-    if (!set_content(str_of(sel->id), carried_source(str_of(sel->id)))) cancel_preview();
-    return {O::Changed, {}};
-  }
-  if (sel && !editing && level == "menu_file") {
-    begin_preview();
-    set_content("menu", str_of(sel->id));
-    return {O::Changed, {}};
-  }
   if (editing && sel) {
     // The editing text, never the item's value: that is the committed one.
     std::size_t etext_len = 0;
     const char* etext_p = rolltui_input_text(rolltui_menu_editor(menu_), &etext_len);
     const std::string_view editing_text(etext_p, etext_len);
     if (sel->id == "title") { begin_preview(); if (Node* n = sel_node()) set_str(n->title, editing_text); return {O::Changed, {}}; }
+    if (sel->id == "kind") {
+      if (!editing_text.empty()) { begin_preview(); set_content(std::string(editing_text), carried_source(editing_text)); }
+      return {O::Changed, {}};
+    }
+    if (sel->id == "menu_file") { begin_preview(); set_content("menu", std::string(editing_text)); return {O::Changed, {}}; }
     if (sel->id == "source") {
       const ContentParts p = parts_of(find_node((preview_ ? *preview_ : current_).base.root, sel_));
-      if (p.content) {
+      if (p.window) {
         begin_preview();
         set_content(p.kind_text, std::string(editing_text));
       }

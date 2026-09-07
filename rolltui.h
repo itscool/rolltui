@@ -511,8 +511,9 @@ typedef struct RolltuiBindings RolltuiBindings;
 typedef int (*RolltuiScopeFn)(void* ctx, const char* scope, size_t len);
 
 
-/* THE REPORT, transparent like `RolltuiAppProfileReport`: exactly `RolltuiStr` values in
- * GROWING AMORTISED arrays, one per `BindingsLoadReport` field. Zero-initialise before use. */
+/* THE REPORT, transparent like every other report on this boundary: exactly `RolltuiStr`
+ * values in GROWING AMORTISED arrays, one per `BindingsLoadReport` field. Zero-initialise
+ * before use. */
 
 typedef struct RolltuiBindingsReport {
   RolltuiStr error; /* non-empty: unusable, and rolltui_bindings_load_json leaves `b` untouched */
@@ -1971,7 +1972,7 @@ typedef struct RolltuiMenuRoles {
   unsigned char scroll_marker;
 } RolltuiMenuRoles;
 
-/* THE REPORT, transparent like `RolltuiAppProfileReport` and `RolltuiBindingsReport`: exactly
+/* THE REPORT, transparent like `RolltuiBindingsReport` and `RolltuiLayoutReport`: exactly
  * `RolltuiStr` values in GROWING AMORTISED arrays, one per `MenuLoadReport` field.
  * Zero-initialise before use. */
 typedef struct RolltuiMenuLoadReport {
@@ -2330,8 +2331,8 @@ typedef struct RolltuiLayoutHooks {
 } RolltuiLayoutHooks;
 
 /* ---- the report: unknown keys / bad values are problems, notes are not (Layout.hpp's
- * `LayoutLoadReport::clean()`). Transparent, the same shape `rolltui_app_profile.h`'s own
- * report uses: `RolltuiStr` values in GROWING AMORTISED arrays. Zero-initialise before use. */
+ * `LayoutLoadReport::clean()`). Transparent, the same shape every report here uses:
+ * `RolltuiStr` values in GROWING AMORTISED arrays. Zero-initialise before use. */
 typedef struct RolltuiLayoutReport {
   RolltuiStr error; /* non-empty: the file was unusable */
   RolltuiStr* unknown_keys;
@@ -2608,39 +2609,6 @@ typedef struct RolltuiWindowRoles {
 } RolltuiWindowRoles;
 
 /* ========================================================================================
- * app_profile — what a layout may name in an app: written by one host, read by another
- * ======================================================================================== */
-
-/* The three-way source rule a registered kind states (`AppProfile.hpp`'s `Kind::rule`,
- * `rolltui::SourceRule` in `Layout.hpp`). Named separately from `rolltui_layout.h`'s
- * `ROLLTUI_SOURCE_*` rather than reusing them, the same way `AppProfile.cpp`'s original
- * `rule_name`/`rule_from_name` table was already self-contained rather than reaching into
- * Layout for one: nothing here needs the rest of `rolltui_layout.h`'s (much larger) surface,
- * and the numeric VALUES matching is a documented fact the C++ shim converts through an
- * explicit switch, never a `static_cast` relying on the two staying numbered alike. */
-#define ROLLTUI_APP_PROFILE_SOURCE_REQUIRED 0
-
-#define ROLLTUI_APP_PROFILE_SOURCE_OPTIONAL 1
-
-#define ROLLTUI_APP_PROFILE_SOURCE_FORBIDDEN 2
-
-typedef struct RolltuiAppProfile RolltuiAppProfile; /* opaque; see the header comment */
-
-/* ---- the report: unknown keys and bad values are warnings, not failures ---------------
- * Transparent (unlike `RolltuiAppProfile`) because nothing about it needs hiding — it is
- * exactly `RolltuiStr` values in GROWING AMORTISED arrays, the same shape
- * `rolltui_presets.c`'s own `NameList` uses for "an array of small owned strings". Zero-
- * initialise before use (`RolltuiAppProfileReport r = {0};`), the same rule `RolltuiStr`
- * itself states. */
-typedef struct RolltuiAppProfileReport {
-  RolltuiStr error; /* non-empty: unusable, and `rolltui_app_profile_parse` returns NULL */
-  RolltuiStr* unknown_keys;
-  size_t unknown_keys_n, unknown_keys_cap;
-  RolltuiStr* bad_values;
-  size_t bad_values_n, bad_values_cap;
-} RolltuiAppProfileReport;
-
-/* ========================================================================================
  * diff — diff highlighting a host draws
  * ======================================================================================== */
 
@@ -2901,7 +2869,7 @@ typedef struct RolltuiPresetList {
 #define ROLLTUI_SAVE_WRITE_FAILED 4
 
 /* Mirrors `rolltui::ThemeLoadReport`/`PresetLoadReport`'s Theme-relevant fields, transparent
- * like `RolltuiThemeReport`/`RolltuiAppProfileReport` one file over — nothing about a
+ * like `RolltuiThemeReport` one file over — nothing about a
  * diagnostic list needs hiding, and nothing outside `rolltui_presets.c` ever writes one; a
  * caller only reads it after a parse call, then releases it. */
 typedef struct RolltuiThemePresetReport {
@@ -3405,7 +3373,7 @@ RolltuiEffectMap* rolltui_theme_builtin_fill(const char* name, size_t name_len, 
                                              size_t role_count);
 
 /* Frees everything and zeroes the struct — safe on an already-zeroed one and on repeated
- * calls, the same "reset, not just release" contract `rolltui_app_profile_report_release`
+ * calls, the same "reset, not just release" contract every `_release` on this boundary
  * states. Zero-initialise a fresh one (`RolltuiThemeReport r = {0};`) before first use. */
 void rolltui_theme_report_release(RolltuiThemeReport* r);
 
@@ -3418,7 +3386,7 @@ void rolltui_theme_report_release(RolltuiThemeReport* r);
  * outside.
  *
  * `report` is RESET by this call (as if freshly zero-initialised) whether it succeeds or
- * fails, the same contract `rolltui_app_profile_parse` states. Returns NULL only when `root`
+ * fails, the same contract `rolltui_load_layout_text` states. Returns NULL only when `root`
  * is not a usable theme object at all (`report->error` explains: not a JSON object, or no
  * "roles" object) — `out_styles`/`out_name` are untouched in that case. Every other problem
  * still produces a usable theme: `out_styles[0..vocab->role_count)` is filled in full (the
@@ -3536,102 +3504,6 @@ RolltuiLayout* rolltui_load_layout_text(const char* text, size_t len,
  * were `Layout.cpp`'s `kStackActions` and all three hosts call `rolltui_window_stack_route`.
  * BORROWS static storage; a host with its own words still passes its own struct. */
 const RolltuiStackActions* rolltui_stack_default_actions(void);
-
-/* ---- app_profile ---------------------------------------------------------------------------*/
-
-void rolltui_app_profile_report_release(RolltuiAppProfileReport* r); /* frees everything; zeroes it */
-
-int rolltui_app_profile_report_clean(const RolltuiAppProfileReport* r);
-
-/* Mirrors `AppProfileReport::summary()` exactly: empty when clean; otherwise the error, or
- * "bad: x; unknown: y" joined the same way. Replaces `*out`. */
-void rolltui_app_profile_report_summary(const RolltuiAppProfileReport* r, RolltuiStr* out);
-
-/* Parses a profile from its file's TEXT. Returns an OWNED profile the caller frees with
- * `rolltui_app_profile_free`, or NULL when it is unusable (a JSON syntax error, the JSON is
- * not an object, or it has no "app" name) — `report->error` says which. A profile with
- * unknown keys or malformed entries is still returned; those go into `report` as warnings,
- * the same non-fatal/fatal split `load_app_profile` already made. `report` is reset by this
- * call (as if freshly zero-initialised) whether it succeeds or fails. */
-RolltuiAppProfile* rolltui_app_profile_parse(const char* text, size_t len, RolltuiAppProfileReport* report);
-
-void rolltui_app_profile_free(RolltuiAppProfile* p); /* a no-op on NULL */
-
-/* Serialises to TEXT, REPLACING `*out` — never a `RolltuiJsonValue*` handed back for the
- * caller to dump itself, which is the fix this module makes (see the header comment).
- * indent = 0 -> single line, matching `rolltui_json_dump`. */
-void rolltui_app_profile_dump(const RolltuiAppProfile* p, int indent, RolltuiStr* out);
-
-/* ---- building one from scratch: what `AppProfile.cpp`'s shim calls when a C++ host has
- * already built a `rolltui::AppProfile` by hand (`TuiFrontend.cpp`'s `roll_app_profile()`,
- * `paint.cpp`'s `paint_profile()`) and needs a `RolltuiAppProfile*` to hand to `_dump`.
- * `rolltui_app_profile_parse` above is built out of these same primitives while walking
- * parsed JSON, so there is exactly one way a profile's fields get set, read by two callers
- * rather than duplicated for each. ---------------------------------------------------------- */
-RolltuiAppProfile* rolltui_app_profile_new(void);
-
-void rolltui_app_profile_set_app(RolltuiAppProfile* p, const char* s, size_t len);
-
-void rolltui_app_profile_set_min_size(RolltuiAppProfile* p, int width, int height);
-
-void rolltui_app_profile_add_action(RolltuiAppProfile* p, const char* name, size_t name_len, const char* desc,
-                                    size_t desc_len);
-
-void rolltui_app_profile_add_kind(RolltuiAppProfile* p, const char* name, size_t name_len, int rule,
-                                  const char* describes, size_t describes_len);
-
-void rolltui_app_profile_add_document(RolltuiAppProfile* p, const char* name, size_t name_len, const char* sample,
-                                      size_t sample_len);
-
-/* Returns the new row's index, so its samples can be added with `_row_add_sample`. */
-size_t rolltui_app_profile_add_row(RolltuiAppProfile* p, const char* name, size_t name_len);
-
-void rolltui_app_profile_row_add_sample(RolltuiAppProfile* p, size_t row_i, const char* label, size_t label_len,
-                                       const char* value, size_t value_len);
-
-void rolltui_app_profile_add_submit(RolltuiAppProfile* p, const char* s, size_t len);
-
-void rolltui_app_profile_add_note(RolltuiAppProfile* p, const char* s, size_t len);
-
-void rolltui_app_profile_add_menu(RolltuiAppProfile* p, const char* name, size_t name_len, const char* json,
-                                  size_t json_len);
-
-void rolltui_app_profile_set_help(RolltuiAppProfile* p, const char* lead, size_t lead_len, const char* note,
-                                  size_t note_len);
-
-void rolltui_app_profile_add_help_scope(RolltuiAppProfile* p, const char* s, size_t len);
-
-const char* rolltui_app_profile_app(const RolltuiAppProfile* p, size_t* len);
-
-int rolltui_app_profile_min_width(const RolltuiAppProfile* p);
-
-int rolltui_app_profile_min_height(const RolltuiAppProfile* p);
-
-size_t rolltui_app_profile_action_count(const RolltuiAppProfile* p);
-
-const char* rolltui_app_profile_action_name(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-const char* rolltui_app_profile_action_description(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-size_t rolltui_app_profile_kind_count(const RolltuiAppProfile* p);
-
-const char* rolltui_app_profile_kind_name(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-int rolltui_app_profile_kind_rule(const RolltuiAppProfile* p, size_t i); /* ROLLTUI_APP_PROFILE_SOURCE_* */
-
-size_t rolltui_app_profile_document_count(const RolltuiAppProfile* p);
-
-size_t rolltui_app_profile_submit_count(const RolltuiAppProfile* p);
-
-size_t rolltui_app_profile_menu_count(const RolltuiAppProfile* p);
-
-const char* rolltui_app_profile_menu_name(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-const char* rolltui_app_profile_menu_json(const RolltuiAppProfile* p, size_t i, size_t* len);
-
-size_t rolltui_app_profile_help_scope_count(const RolltuiAppProfile* p);
-
-const char* rolltui_app_profile_help_scope_at(const RolltuiAppProfile* p, size_t i, size_t* len);
 
 /* ---- embedded ------------------------------------------------------------------------------*/
 
@@ -4195,10 +4067,10 @@ void rolltui_windows_set_input_min_outer(RolltuiWindows* w, const char* source, 
  * before a pure-C kind needed to read one (Phase 17 m1c). */
 void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocument* doc);
 
-/* …and the OWNED half: one entry of verbatim markdown that this table keeps, for a tool
- * previewing ANOTHER app's sample content with no live document to point at (an app profile's
- * `documents`, `rolltui_app_profile_mount` below). Binding the same name twice replaces the
- * sample. STRATEGY 5 (GROWING HEAP): the `RolltuiDocument` is heap-held for the table's life,
+/* …and the OWNED half: one entry of verbatim markdown that this table keeps, for a host with
+ * no live `RolltuiDocument` to point at — sample content in a preview, a fixed page of help,
+ * a C consumer that would otherwise have to own a document to show one line. Binding the same
+ * name twice replaces the sample. STRATEGY 5 (GROWING HEAP): the `RolltuiDocument` is heap-held for the table's life,
  * because the borrow above needs a stable address and a sample outlives the call that set it.
  *
  * PHASE 17 m3: this used to be `Windows::owned_documents_`, the last C++ map left in that

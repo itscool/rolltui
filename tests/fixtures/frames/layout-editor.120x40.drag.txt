@@ -9,9 +9,9 @@
 │ │ rer   │        │ wrap   │ │ │ abs/rel per       │             │ , │ [x] Visible                                    │
 │ │ (bloc │        │        │ │ │ axis), focus      │             │ is│ Border                                single ▸ │
 │ │ ks →  │        │        │ │ │                   │             │ fu│ Title: transcript                              │
-│ │ style │        │        │ │ │ Menu widget       │ build       │ si│ Widget kind                       transcript ▸ │
+│ │ style │        │        │ │ │ Menu widget       │ build       │ si│ Widget kind: transcript                        │
 │ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ Source: session                                │
-│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ Menu file                                    ▸ │
+│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ Menu file:                                     │
 │ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Size (Alt+arrows nudge): 31                    │
 │ │ lines │        │        │ │ │                   │             │ sm│ [x] Focusable                                  │
 │ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Delete this node                               │

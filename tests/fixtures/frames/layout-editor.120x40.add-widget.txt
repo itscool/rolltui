@@ -9,9 +9,9 @@
 │ │ Layout     │ build      │ reuses the  │ │   Delete                │ [x] Visible                                    │
 │ │ files      │            │ theme       │ │ caret (or the selection)│ Border                                single ▸ │
 │ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ Title: transcript-2                            │
-│ │ windows +  │            │ hand        │ │ before the caret        │ Widget kind                             help ▸ │
+│ │ windows +  │            │ hand        │ │ before the caret        │ Widget kind: help                              │
 │ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ Source:                                        │
-│ │ + content  │            │ hot-        │ │ after the caret         │ Menu file                                    ▸ │
+│ │ + content  │            │ hot-        │ │ after the caret         │ Menu file:                                     │
 │ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Size (Alt+arrows nudge): fill                  │
 │ │ Markdown   │ build      │ single      │ │ start of the line       │ [x] Focusable                                  │
 │ │ block      │            │ header over │ │   Ctrl-K                │ Delete this node                               │

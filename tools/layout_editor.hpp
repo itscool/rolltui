@@ -21,12 +21,12 @@
 //   hide / show                    a hidden node takes no space (Layout.hpp)
 //   border                         choice: none | single | rounded | double | heavy (live)
 //   title                          input (live as typed)
-//   widget kind                    choice over the kinds THE TARGET can build (live) —
-//                                 the library's closed table by default, and under an app
-//                                 profile the library's PLUS that app's registered ones
-//                                 (Phase 11 m4: set_kinds)
+//   widget kind                    input: ANY kind name (live as typed). The kinds this
+//                                 binary can preview are the field's HINT (set_kinds); a
+//                                 name outside them is written and previews as a labelled
+//                                 placeholder (Phase 26 m4)
 //   source                         input, TYPED BY THE KIND (below)
-//   menu file                      choice over the menu files that resolve (below)
+//   menu file                      input: any menu name, the resolvable ones as its hint
 //   size                           input: fill | fill N | N% | N cells (live as typed);
 //                                 Alt+arrows nudge the size by one cell (a fill becomes
 //                                 its current extent first), each nudge a commit
@@ -53,9 +53,11 @@
 // `no-panel` down to one window and saving it as `myapp` produced a file carrying roll's
 // five `app.*` actions, four popups pointing at roll's own composites, and `no-panel`'s
 // min sizes — none of which the author chose, and all of which the target app then reads.
-// THE ONE THING A NEW LAYOUT DOES INHERIT is the TARGET's min sizes (set_default_min,
-// which the host fills from an app profile), because those are a fact about the app being
-// designed for rather than about whatever screen happened to be open.
+// NOTHING ELSE IS INHERITED, INCLUDING THE THRESHOLDS. A new layout takes the host's
+// `set_default_min` and nothing more; Phase 11 filled that from an app profile, and Phase 26
+// retired the profile, so a designer states the size their screen needs the way they state
+// everything else about it — by typing it. That is one field against a whole mechanism whose
+// only job was to answer it, and the screen is the place the answer belongs.
 //
 // CONTENT IS TWO FIELDS, AND EXACTLY ONE WRITES THE SOURCE (Phase 10 m5). A window's
 // content is `kind[:source]`, so the editor shows the kind as a choice over the offered
@@ -86,6 +88,12 @@
 // draws its error panel and the status line names it — rather than the editor inventing
 // a name that happens to bind. The host's own offered contents (set_sources) are the
 // source field's HINT, never a substitute for what is typed.
+//
+// AND NEITHER FIELD IS BOUNDED BY WHAT THIS BINARY CAN BUILD (Phase 26 m4). The kind was a
+// closed choice and `set_content` refused a name outside it, which made the tool the
+// authority on what an app may be asked to provide. A screen is the intent: it names what it
+// needs, this tool previews what it can, and the app REPORTS the rest at start-up
+// (`rolltui_gaps_collect`).
 // DRAGGING A SHARED EDGE (the host maps the pointer to a seam and calls begin_drag /
 // drag_to / end_drag): the child before the seam takes an absolute size equal to the
 // pointer's distance from its start; the release commits once.
@@ -156,15 +164,14 @@ class LayoutEditor {
   // beside the source field for the selected kind. A hint, not a menu: a source the
   // host has not bound is still typeable, and reports itself in the window.
   void set_sources(std::vector<std::string> contents);
-  // The kinds the TARGET can build (Phase 11 m4): the library's closed table by default,
-  // and under an app profile the library's plus that app's registered ones. A name here
-  // that is in neither rung of the registry is refused when chosen, by name — the picker
-  // is a list of what exists, never a way to invent a kind.
+  // The kinds THIS BINARY can preview — the widget-kind field's hint (Phase 26 m4), and
+  // nothing more than that. Until Phase 26 it was the field's closed option list and a name
+  // outside it was refused, which is a design tool deciding what an app may be asked for.
   void set_kinds(std::vector<std::string> names);
-  void set_menus(std::vector<std::string> names);      // the Menu file choice's options (Windows::menu_names())
+  void set_menus(std::vector<std::string> names);      // the menu names that RESOLVE, as that field's hint
   void set_layouts(std::vector<std::string> names);    // the Load choice's options
-  // The TARGET's min sizes — the only thing "New layout" inherits, and only because they
-  // describe the app being designed for. 0/0 (the default) means the app states none.
+  // What "New layout" starts its thresholds at. 0/0 (the default) means the screen states
+  // none, and a designer types the size their screen needs — see the header.
   void set_default_min(int width, int height);
   // The minimal skeleton "New layout" starts from, exposed so a test can assert what it
   // is rather than what it renders as.
@@ -210,13 +217,18 @@ class LayoutEditor {
   static Node* parent_of(Node& root, std::string_view id, std::size_t* index = nullptr);
   static std::vector<std::string> ids_in_order(const Node& root);  // every node id, tree order
 
-  // The selected window's content split at the first ':' — WITHOUT requiring it to
-  // parse, so a content typed by hand into a file can be shown and repaired here.
-  // `content` is nullopt when the text before the colon names no kind in either rung of
-  // the registry; when it is set, `content->kind` is the kind's NAME whichever rung it came
-  // from, and `content_source_rule(*content)` is that kind's rule whichever it is.
+  // The selected window's content split at the first ':' — WITHOUT requiring it to parse, so
+  // a content typed by hand into a file can be shown and repaired here.
+  //
+  // PHASE 26: `content` is no longer optional and `known` is the separate answer. It went
+  // empty for a kind neither rung of the registry had, and every field that read it then went
+  // inert — the tool refusing to hold a screen it could not preview. `known` says whether THIS
+  // binary can build the kind, which is all this tool ever knew; whether the app being designed
+  // for can is the developer's answer, and the gap report is where they get asked for it.
   struct ContentParts {
-    std::optional<Content> content;
+    Content content;    // the kind name and source as typed, always
+    bool known = false; // …and whether either rung of THIS binary's registry has that kind
+    bool window = false;
     std::string kind_text, source;
   };
   ContentParts content_parts() const;
@@ -231,6 +243,7 @@ class LayoutEditor {
   void rebuild_menu();
   void sync_values();
   void sync_content_fields();  // the kind/source/menu-file values, specs and enabled-ness
+  void sync_hints();           // the kind and menu-file hints: what this binary can preview
   // Writes kind[:source] into the selected window. By NAME, because a kind's name is the
   // only thing that identifies it (Phase 18 m2 retired the enum whose `Registered` value used
   // to say so for the host half). A name in neither rung writes nothing and is reported.

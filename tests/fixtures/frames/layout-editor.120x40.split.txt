@@ -9,9 +9,9 @@
 │ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ [x] Visible                                    │
 │ │ files      │            │ theme       │ │ │ files      │          │ Border                                single ▸ │
 │ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Title: transcript                              │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Widget kind                       transcript ▸ │
+│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Widget kind: transcript                        │
 │ │ placements │            │ parser;     │ │ │ placements │          │ Source: session                                │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ Menu file                                    ▸ │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ Menu file:                                     │
 │ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Size (Alt+arrows nudge): fill                  │
 │ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ [x] Focusable                                  │
 │ │ block      │            │ header over │ │ │ block      │          │ Delete this node                               │

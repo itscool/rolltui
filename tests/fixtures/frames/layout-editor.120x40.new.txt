@@ -9,9 +9,9 @@
 │                                                                     │ [x] Visible                                    │
 │                                                                     │ Border                                single ▸ │
 │                                                                     │ Title:                                         │
-│                                                                     │ Widget kind                             text ▸ │
+│                                                                     │ Widget kind: text                              │
 │                                                                     │ Source:                                        │
-│                                                                     │ Menu file                                    ▸ │
+│                                                                     │ Menu file:                                     │
 │                                                                     │ Size (Alt+arrows nudge): fill                  │
 │                                                                     │ [x] Focusable                                  │
 │                                                                     │ Delete this node                               │

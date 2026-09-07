@@ -17,12 +17,13 @@
 //     drags that leave the window, because a press captures the pointer (Phase 11 m3).
 //   - NOTHING ELSE. There is no name switch, no `custom_at`, and no line anywhere below
 //     that knows what the studio is. The screen this app runs in the proof was authored
-//     in the studio, by a person who had only this app's PROFILE — and the word for that
-//     screen appears in no source file, which `files_only_test`'s grep asserts.
+//     in the studio, by a person who never had to be told what this app can build — and the
+//     word for that screen appears in no source file, which `files_only_test`'s grep asserts.
 //
-// `--profile` is how it publishes itself: the same generated-never-hand-maintained rule
-// `roll profile` follows. Its kinds, its menus and its min sizes are read from the same
-// places this binary reads them, so a profile cannot drift from the app it describes.
+// PHASE 26 RETIRED `--profile`. It published what a layout may name inside this app so a
+// designer could be limited to it, which is the app bounding the design. The direction is
+// one-way now: a designer names what a screen needs and the app REPORTS what it cannot yet
+// provide, at end of init (`rolltui_gaps_collect`).
 //
 // `--frame WxH` prints one frame and exits (the studio's convention, and what the tests
 // read); `--stroke x,y-x,y` synthesises a press, the drags between the two points and a
@@ -45,10 +46,10 @@
 //      ONE place; a missed release leaks once and `rolltui_shutdown`'s `live_bytes == 0` is
 //      what catches it (m4: app lifetime is "the easy 90% and it needs no machinery").
 //   3. **NO JSON TYPE ANYWHERE.** `--profile` used to be `json::dump(app_profile_to_json(p))`
-//      — the cleanest evidence in the phase that `json::Value` was leaking through the C++
+//      — the cleanest evidence in that phase that `json::Value` was leaking through the C++
 //      surface, since paint depended on the parser only because a profile came back as a
-//      tree. `rolltui_app_profile_dump` hands back TEXT, so the dependency is gone by
-//      construction rather than by a decision.
+//      tree. The dump took TEXT after Phase 17, and Phase 26 retired the flag entirely; the
+//      dependency is gone twice over.
 //
 #include <unistd.h>
 
@@ -70,8 +71,9 @@
 namespace {
 
 // The tool palette. A MENU FILE the app carries in its own binary — the middle of Phase
-// 10 m3's three rungs — so a user can shadow it with menus/tools.json and the studio can
-// preview it verbatim from the profile.
+// 10 m3's three rungs — so a user can shadow it with menus/tools.json. A DESIGNER working on
+// a screen for this app sees `menu:tools` as a labelled placeholder, the same honest answer it
+// already gives for a foreign widget kind: the tool is not this app and cannot build one.
 // PHASE 21: the palette is the app's own FILE, and every tool a person picks now comes out of
 // it — the ramp, the ink, the brush size and its shape. Two of them are the menu's TYPED input
 // fields (`"kind": "input"`, `"type": "int"` with a range and `"type": "color"`), which NOTHING
@@ -138,8 +140,8 @@ struct Tool {
 };
 
 // The app's own screen, for a run with no --layout: one canvas and the palette beside it.
-// A file, in the sense that matters — it is parsed by the same loader as any other, and
-// the profile's min sizes are read back OUT of it rather than restated.
+// A file, in the sense that matters — it is parsed by the same loader as any other, so this
+// app's minimum size is stated once, here, rather than in a second place that could drift.
 constexpr const char* kDefaultLayout = R"({
   "name": "paint", "min_width": 20, "min_height": 6, "focus": "sheet",
   "actions": {},
@@ -391,9 +393,8 @@ struct App {
   }
 
   // The kind table belongs to a CONTEXT since Phase 25, so this takes the session it registers
-  // into. Registering twice in one context (the app, and the profile writer) is still
-  // idempotent — `rolltui_widget_kind_register` refuses only a name already registered with
-  // ANOTHER source rule.
+  // into. Registering the same name twice in one context is idempotent —
+  // `rolltui_widget_kind_register` refuses only a name already registered with ANOTHER rule.
   static void register_canvas_kind(RolltuiContext* ctx) {
     rolltui_widget_kind_register(ctx, kCanvasKind, std::strlen(kCanvasKind), ROLLTUI_SOURCE_REQUIRED, kCanvasDescribes,
                                  std::strlen(kCanvasDescribes));
@@ -543,46 +544,6 @@ struct App {
   }
 };
 
-// ---- the profile: generated, never hand-maintained ----------------------------------------
-// Every part is read from where this binary reads it — the kinds it registers, the menu it
-// embeds, and the min sizes of its own screen. The samples are the one thing written here,
-// because sample content is the only thing a running app cannot supply.
-//
-// The caller OWNS what this returns.
-RolltuiAppProfile* paint_profile(RolltuiContext* ctx) {
-  RolltuiAppProfile* p = rolltui_app_profile_new();
-  rolltui_app_profile_set_app(p, "paint", 5);
-  RolltuiLayoutReport rep{};
-  std::size_t defaults_n = 0;
-  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
-  if (RolltuiLayout* own = rolltui_load_layout_text(kDefaultLayout, std::strlen(kDefaultLayout), defaults,
-                                                    defaults_n, rolltui_layout_default_hooks(), &rep)) {
-    int mw = 0, mh = 0;
-    rolltui_layout_min_size(own, &mw, &mh);
-    rolltui_app_profile_set_min_size(p, mw, mh);
-    std::size_t an = 0;
-    const RolltuiLayoutAction* av = rolltui_layout_actions(own, &an);
-    for (std::size_t i = 0; i < an; ++i)
-      rolltui_app_profile_add_action(p, av[i].name.p, av[i].name.n, av[i].description.p, av[i].description.n);
-    rolltui_layout_free(own);
-  }
-  rolltui_layout_report_release(&rep);
-
-  rolltui_app_profile_add_kind(p, kCanvasKind, std::strlen(kCanvasKind), ROLLTUI_SOURCE_REQUIRED, kCanvasDescribes,
-                               std::strlen(kCanvasDescribes));
-  const std::size_t row = rolltui_app_profile_add_row(p, "brush", 5);
-  rolltui_app_profile_row_add_sample(p, row, "shading", 7, "ascii", 5);
-  rolltui_app_profile_row_add_sample(p, row, "level", 5, "4", 1);
-  rolltui_app_profile_row_add_sample(p, row, "ink", 3, "#d8dce2", 7);
-  rolltui_app_profile_row_add_sample(p, row, "brush", 5, "1 square", 8);
-  rolltui_app_profile_row_add_sample(p, row, "marks", 5, "0", 1);
-  // the same list this binary hands its own Windows
-  for (const std::string& s : App::help_scopes()) rolltui_app_profile_add_help_scope(p, s.data(), s.size());
-
-  rolltui_app_profile_add_menu(p, "tools", 5, kToolsMenu, std::strlen(kToolsMenu));
-  return p;
-}
-
 // ---- plumbing ------------------------------------------------------------------------------
 
 std::string read_file(const std::string& path, bool& ok) {
@@ -618,7 +579,7 @@ int usage() {
                "                     [--ramp ascii|blocks] [--level 0-9] [--ink #rrggbb] [--size N]\n"
                "                     [--stroke X,Y-X,Y] [--dot X,Y]\n"
                "                     tool flags and strokes are applied IN THE ORDER WRITTEN\n"
-               "       rolltui-paint --profile [PATH]     write this app's profile (what a layout may name in it)\n");
+               "\n");
   return 2;
 }
 
@@ -691,8 +652,8 @@ RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, profile_path, present_depth;
-  bool want_profile = false, ambiguous = false;
+  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth;
+  bool ambiguous = false;
   // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
   // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
   // flags and the strokes are collected as an ordered list and replayed after the app is built.
@@ -709,33 +670,7 @@ int main(int argc, char** argv) {
     else if (a == "--stroke" || a == "--ramp" || a == "--level" || a == "--ink" || a == "--size" ||
              a == "--shape" || a == "--dot")
       script.emplace_back(a, next());
-    else if (a == "--profile") { want_profile = true; if (i + 1 < argc && argv[i + 1][0] != '-') profile_path = next(); }
     else return usage();
-  }
-
-  if (want_profile) {
-    // The kind registry is what a profile's `kinds` list is READ from, so it has to be
-    // registered before one is written — the same "generated from where the binary reads it"
-    // rule the rest of `paint_profile` follows.
-    // A session of its own for the profile run: the registry is what a profile's `kinds` list
-    // is READ from, so it has to be registered before one is written.
-    RolltuiContext* pctx = rolltui_context_new();
-    App::register_canvas_kind(pctx);
-    RolltuiAppProfile* p = paint_profile(pctx);
-    RolltuiStr dumped{};
-    rolltui_app_profile_dump(p, 2, &dumped);
-    const std::string text = std::string(dumped.p ? dumped.p : "", dumped.n) + "\n";
-    rolltui_str_free(&dumped);
-    rolltui_app_profile_free(p);
-    rolltui_context_free(pctx);
-    if (profile_path.empty()) {
-      std::fwrite(text.data(), 1, text.size(), stdout);
-      return 0;
-    }
-    std::ofstream out(profile_path, std::ios::binary | std::ios::trunc);
-    if (!out) { std::fprintf(stderr, "rolltui-paint: cannot write %s\n", profile_path.c_str()); return 1; }
-    out << text;
-    return 0;
   }
 
   App app;
@@ -775,6 +710,24 @@ int main(int argc, char** argv) {
   for (std::size_t i = 0; i < rep.bad_values_n; ++i)
     std::fprintf(stderr, "rolltui-paint: %s\n", rep.bad_values[i].c_str());
   rolltui_layout_report_release(&rep);
+
+  // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE (Phase 26) --------
+  // `mount()` has registered the canvas kind and bound this app's sources, and the layout is
+  // in place, so this is the first moment the question can be answered — and the last one
+  // before a frame is drawn. It REPORTS. A screen that names something this app has not built
+  // yet is a design that ran ahead of the code, which is allowed and is the point: nothing
+  // below branches on the answer, and paint draws the screen either way.
+  {
+    RolltuiGapReport gaps{};
+    rolltui_gaps_collect(app.windows, app.layout, app.bindings, &gaps);
+    if (!rolltui_gap_report_clean(&gaps)) {
+      RolltuiStr say{};
+      rolltui_gap_report_summary(&gaps, &say);
+      std::fprintf(stderr, "rolltui-paint: %s\n", say.p ? say.p : "");
+      rolltui_str_free(&say);
+    }
+    rolltui_gap_report_release(&gaps);
+  }
 
   if (!frame_spec.empty()) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();

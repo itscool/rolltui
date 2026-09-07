@@ -277,7 +277,8 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 119},  /* +5: `RolltuiPresetDomain`'s configuration block — each BORROWED from whoever ran the domain's `_init` */
+        {"rolltui.h", 117},  /* -2 (Phase 26 m3): `RolltuiAppProfileReport`'s two array members went with the app profile.
+                              +4 before that (Phase 26 m2): none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
         {"c/rolltui_style.h", 0},
         {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},
@@ -289,7 +290,6 @@ int main() {
         {"c/rolltui_undo.h", 0},
         {"c/rolltui_menu.h", 0},
         {"c/rolltui_theme_analysis.h", 0},
-        {"c/rolltui_app_profile.h", 0},
         {"c/rolltui_presets.h", 0},
         {"c/rolltui_md_lines.h", 5},
         {"c/rolltui_screen.h", 0},
@@ -409,7 +409,8 @@ int main() {
     // 125 -> 125 (Phase 23): four STORED borrows moved from `rolltui.h` to
     // `c/rolltui_layout_tree.h` with the layout family's structures. The total is unchanged
     // because nothing was added or removed — the same pointers are simply behind the handle now.
-    check(total == 136, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    // 136 -> 134 (Phase 26 m3): the app profile's report took its two array members with it.
+    check(total == 134, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

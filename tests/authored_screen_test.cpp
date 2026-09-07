@@ -1,42 +1,50 @@
 //
-// authored_screen_test.cpp — THE PHASE 11 PROOF (plan/phase-11.md, milestone 6), the
-// sibling of Phase 10 m6's files-only test one level up.
+// authored_screen_test.cpp — THE PROOF THAT A SCREEN CAN BE AUTHORED FOR AN APP THE TOOL IS
+// NOT (Phase 11 m6, rewritten at Phase 26 m4), the sibling of Phase 10 m6's files-only test
+// one level up.
 //
-// Phase 10 proved a screen can be FILES: a layout, a menu, a bindings file and a document
-// that a host has never heard of. This proves the step after it — that the FILES CAN BE
-// AUTHORED, in a tool that is not the app they are for, from nothing but a profile the app
-// publishes about itself. Three processes, in order:
+// Phase 10 proved a screen can be FILES: a layout, a menu, a bindings file and a document that
+// a host has never heard of. This proves the step after it — that the FILES CAN BE AUTHORED in
+// a tool that is not the app they are for. Two processes, in order:
 //
-//   1. `rolltui-paint --profile`   the target app publishes what a layout may name in it:
-//                                  its `canvas` kind, its `tools` menu file, its samples,
-//                                  its min sizes. Generated from where the binary reads
-//                                  them, never hand-written.
-//   2. `rolltui-studio --app …`    the AUTHORING tool, driven through its own design
-//                                  editor by keystrokes alone, builds a three-window
-//                                  screen for an app it is not and saves layouts/easel.json.
-//   3. `rolltui-paint --layout …`  the target app runs that file and finds it clean: the
-//                                  canvas takes a drag, the palette draws, and `help`
-//                                  lists an action that exists only because a person typed
-//                                  it into the studio.
+//   1. `rolltui-studio …`          the AUTHORING tool, driven through its own design editor by
+//                                  keystrokes alone, builds a three-window screen for an app it
+//                                  is not and saves layouts/easel.json. It names `canvas:sheet`
+//                                  — a kind it cannot build — and `menu:tools`, a menu file it
+//                                  cannot resolve, and writes both down anyway.
+//   2. `rolltui-paint --layout …`  the target app runs that file: the canvas takes a drag, the
+//                                  palette draws from the app's OWN embedded menu, and `help`
+//                                  lists an action that exists only because a person typed it
+//                                  into the studio.
 //
-// THE PROOF APP IS DELIBERATELY NOT CHAT-SHAPED — no transcript, no input — because a
-// proof built on another transcript-and-prompt screen would only re-test the shape roll
-// already has, and the profile's whole claim is that the studio can author for an app it
-// knows nothing about.
+// WHAT PHASE 26 CHANGED, AND WHY THE TEST IS STRONGER FOR IT. Until 2026-09-07 there was a
+// process 0: `rolltui-paint --profile` published an APP PROFILE — what a layout was allowed to
+// name inside paint — and the studio was mounted with it. The kind picker then offered exactly
+// the target's kinds and refused anything else, and that is the whole thing this phase reversed:
+// the app bounding the design. The author is now free and the tool reports its own limits, so
+// the chain is one process shorter and the claim is bigger. The studio no longer has to be told
+// what paint can build; it does not need to know, and it does not ask.
 //
-// THE CONTROLS ARE WHAT CARRY THE WEIGHT, both of them kept from Phase 10 m6:
+// THE PROOF APP IS DELIBERATELY NOT CHAT-SHAPED — no transcript, no input — because a proof
+// built on another transcript-and-prompt screen would only re-test the shape roll already has.
 //
-//   THE PROFILE CONTROL. The identical key sequence is run with --app REMOVED. The kind
-//   picker then does not offer `canvas` and the menu-file choice does not offer `tools`,
-//   so the author cannot build the screen at all: the saved file is two empty `text:`
-//   windows with no title, no action and no threshold, and the paint app draws nothing
-//   from it. The profile is what made the authoring possible, not a decoration on it.
+// THE CONTROLS ARE WHAT CARRY THE WEIGHT:
 //
-//   THE SOURCE CONTROL. The word "easel" — the layout's name, all three window titles and
-//   the action — appears in NO source the library or its hosts are built from. `canvas`,
-//   `sheet` and `tools` DO appear in paint.cpp, and must: those are the app's own
-//   vocabulary, which is exactly what a profile publishes. What no source may know is the
-//   SCREEN.
+//   THE PREVIEW CONTROL. `[canvas:sheet]` appears in the authoring frame and no painted mark
+//   does. The studio draws a labelled placeholder for a kind it cannot build — it neither
+//   refuses the content nor quietly rewrites it to something it can draw — and the SAVED file
+//   still says `canvas:sheet`. The artifact records the intent, not the previewer's ability.
+//
+//   THE GAP-REPORT CONTROL, three screens through one binary. Paint prints the Phase 26 report
+//   at end of init and runs the screen either way: the authored screen reports exactly the one
+//   thing it names that paint cannot reach (an action with no chord); paint's OWN default
+//   screen reports nothing at all; a screen naming a source paint does not have reports that
+//   instead. A report that says something on every screen would say nothing.
+//
+//   THE SOURCE CONTROL. The word "easel" — the layout's name, all three window titles and the
+//   action — appears in NO source the library or its hosts are built from. `canvas`, `sheet`
+//   and `tools` DO appear in paint.cpp, and must: those are the app's own vocabulary. What no
+//   source may know is the SCREEN.
 //
 #include <unistd.h>
 
@@ -48,11 +56,9 @@
 #include <string>
 #include <vector>
 
-// PHASE 17 m2c: the C API, through the umbrella alone. This suite reads two files back —
-// the app profile `rolltui-paint --profile` wrote, and the layout the studio saved — and
-// both loaders are C: `rolltui_app_profile_parse` and `rolltui_load_layout_text`. The
-// hooks the second one wants are the library's own now (`rolltui_layout_default_hooks`),
-// which is what made this conversion two lines rather than a copied table.
+// PHASE 17 m2c: the C API, through the umbrella alone. This suite reads the layout the studio
+// saved back through the library's own loader, `rolltui_load_layout_text`, with the hooks the
+// library itself supplies (`rolltui_layout_default_hooks`) rather than a copied table.
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
@@ -95,9 +101,6 @@ std::string read_file(const std::string& path, bool& ok) {
 }
 
 bool has(const std::string& haystack, const std::string& needle) { return haystack.find(needle) != std::string::npos; }
-// A `const char*` the library BORROWS back, as a string this file can compare. Valid only
-// while the profile is — which is the whole of the borrow rule, stated at each accessor.
-std::string borrowed(const char* p) { return p ? std::string(p) : std::string(); }
 
 std::string status_line(const std::string& frame) {
   std::vector<std::string> rows;
@@ -113,23 +116,33 @@ std::string status_line(const std::string& frame) {
 // Escape follows each INPUT commit and no CHOICE, because a choice clears the menu's
 // filter on its way back up and an input does not — an Escape with no filter to clear
 // would close the editor instead.
+// PHASE 26: every one of `widget kind`, `source` and `menu file` is now an INPUT, so each
+// commit is followed by an Escape (a choice clears the menu's filter on its way back up and an
+// input does not — an Escape with no filter to clear would close the editor instead). The kind
+// was a closed CHOICE until this phase, which is why `canvas` had to be offered to be typed at
+// all; it is typed here exactly as `sheet` and `tools` always were.
+//
+// AND THE THRESHOLDS ARE TYPED TOO, which used to be the profile's one legitimate inheritance:
+// the minimum size a screen needs is a fact about the screen, so its author states it.
 const char* kAuthor =
     "F6 "
     "Type:new_layout Enter Type:easel Enter "
     "Type:split_into_a_row Enter "
-    "Type:widget_kind Enter Type:canvas Enter "
+    "Type:widget_kind Enter Type:canvas Enter Escape "
     "Type:source Enter Type:sheet Enter Escape "
     "Type:title Enter Type:easel_sheet Enter Escape "
     "Tab "
     "Type:split_into_a_column Enter "
-    "Type:widget_kind Enter Type:menu Enter "
-    "Type:menu_file Enter Type:tools Enter "
+    "Type:widget_kind Enter Type:menu Enter Escape "
+    "Type:menu_file Enter Type:tools Enter Escape "
     "Type:title Enter Type:easel_tools Enter Escape "
     "Tab "
-    "Type:widget_kind Enter Type:help Enter "
+    "Type:widget_kind Enter Type:help Enter Escape "
     "Type:title Enter Type:easel_keys Enter Escape "
     "Type:actions Enter End Enter Type:app.easel Enter "
     "Type:app.easel Enter Enter Type:clear_the_easel_sheet Enter Escape Escape "
+    "Type:minimum_width Enter Type:20 Enter Escape "
+    "Type:minimum_height Enter Type:6 Enter Escape "
     "Type:save Enter Type:easel Enter";
 
 }  // namespace
@@ -139,61 +152,39 @@ int main() {
   const std::string scratch = std::string(tmp && *tmp ? tmp : "/tmp") + "/rolltui_authored_" + std::to_string(::getpid());
   fs::remove_all(scratch);
   fs::create_directories(scratch + "/with");
-  fs::create_directories(scratch + "/without");
-  const std::string profile = scratch + "/paint.json";
   const std::string fixture = std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md";
-  const std::string err = " 2>>'" + scratch + "/stderr.txt'";
-
-  // ---- 1. the target app publishes itself ----------------------------------------------
-  {
-    int rc = 0;
-    run(std::string("'") + ROLLTUI_PAINT_BIN + "' --profile '" + profile + "'" + err, rc);
+  const std::string stderr_path = scratch + "/stderr.txt";
+  const std::string err = " 2>>'" + stderr_path + "'";
+  auto stderr_since = [&](std::size_t from) {
     bool ok = false;
-    const std::string text = read_file(profile, ok);
-    check(rc == 0 && ok, "`rolltui-paint --profile` wrote the app's profile");
-    RolltuiAppProfileReport rep{};
-    RolltuiAppProfile* p = rolltui_app_profile_parse(text.data(), text.size(), &rep);
-    RolltuiStr sum{};
-    rolltui_app_profile_report_summary(&rep, &sum);
-    check(p && rolltui_app_profile_report_clean(&rep),
-          "…and it loads clean [" + std::string(sum.p ? sum.p : "", sum.n) + "]");
-    rolltui_str_free(&sum);
-    if (p) {
-      check(borrowed(rolltui_app_profile_app(p, nullptr)) == "paint" && rolltui_app_profile_kind_count(p) == 1 &&
-                borrowed(rolltui_app_profile_kind_name(p, 0, nullptr)) == "canvas" &&
-                rolltui_app_profile_kind_rule(p, 0) == ROLLTUI_APP_PROFILE_SOURCE_REQUIRED,
-            "…naming the one kind this app registers, and that it takes a source");
-      check(rolltui_app_profile_menu_count(p) == 1 && borrowed(rolltui_app_profile_menu_name(p, 0, nullptr)) == "tools" &&
-                has(borrowed(rolltui_app_profile_menu_json(p, 0, nullptr)), "Clear the sheet"),
-            "…and carrying its tool palette VERBATIM, so the studio resolves `menu:tools` as this app does");
-      check(rolltui_app_profile_document_count(p) == 0 && rolltui_app_profile_submit_count(p) == 0 &&
-                rolltui_app_profile_min_width(p) == 20 && rolltui_app_profile_min_height(p) == 6,
-            "…with no document and no submit target: this app has no transcript and no input");
-    }
-    rolltui_app_profile_free(p);
-    rolltui_app_profile_report_release(&rep);
-  }
-
-  // ---- 2. the studio authors the screen, knowing only that file --------------------------
-  auto author = [&](const std::string& dir, const std::string& app_flag) {
-    int rc = 0;
-    const std::string out = run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' --theme default-dark --presets '" +
-                                    dir + "' " + app_flag + " --frame 150x34 --keys \"" + kAuthor + "\"" + err,
-                                rc);
-    check(rc == 0 && !out.empty(), "the studio ran the authoring script (rc " + std::to_string(rc) + ")");
-    return out;
+    const std::string all = read_file(stderr_path, ok);
+    return from < all.size() ? all.substr(from) : std::string();
   };
-  const std::string authoring = author(scratch + "/with", "--app '" + profile + "'");
-  {
-    check(has(authoring, "[canvas]"),
-          "while authoring, the app's own kind previews as a labelled placeholder — the studio cannot build a canvas and does not pretend to");
-    // Wide enough that the two left-hand windows show their titles beside the editor's
-    // own popup — the third is behind it, and is asserted where it matters, in the app.
-    check(has(authoring, "easel sheet") && has(authoring, "easel tools"),
-          "…the windows carry the titles that were typed");
-    check(has(authoring, "Clear the sheet"), "…and `menu:tools` resolves to the TARGET's palette, from the profile");
-    check(has(authoring, "saved layout file"), "…and the save-as wrote the file");
-  }
+  auto stderr_size = [&]() -> std::size_t {
+    bool ok = false;
+    return read_file(stderr_path, ok).size();
+  };
+
+  // ---- 1. the studio authors the screen, knowing nothing about the app -------------------
+  int rc = 0;
+  const std::string authoring =
+      run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' --theme default-dark --presets '" + scratch +
+              "/with' --frame 150x34 --keys \"" + kAuthor + "\"" + err,
+          rc);
+  check(rc == 0 && !authoring.empty(), "the studio ran the authoring script (rc " + std::to_string(rc) + ")");
+  // THE PREVIEW CONTROL. The studio has no canvas and does not pretend to: the window draws
+  // `[canvas:sheet]`, the whole content and not just the kind, and nothing paints in it.
+  check(has(authoring, "[canvas:sheet]"),
+        "a kind this tool cannot build previews as a labelled placeholder — not an error panel, and not a refusal");
+  check(!has(authoring, "==="), "…and nothing is drawn in it: a placeholder is a preview, never a substitute widget");
+  // The menu window is a LIBRARY kind, so it builds and says what it is missing in its own
+  // words. Two different honest answers to two different questions, which is the split the
+  // gap report is built on: a kind that does not exist here, a file that is not there.
+  check(has(authoring, "no menu file 'tools'"),
+        "…and a menu file this tool cannot resolve says so, in the menu widget's own words");
+  check(has(authoring, "easel sheet") && has(authoring, "easel tools"),
+        "…the windows carry the titles that were typed");
+  check(has(authoring, "saved layout file"), "…and the save-as wrote the file");
 
   bool ok = false;
   const std::string saved = read_file(scratch + "/with/layouts/easel.json", ok);
@@ -224,7 +215,7 @@ int main() {
       std::size_t an = 0;
       const RolltuiLayoutAction* av = rolltui_layout_actions(l, &an);
       check(std::string_view(lname, ln) == "easel" && lw == 20 && lh == 6,
-            "…named as typed, with the thresholds inherited from the PROFILE (m5's one right inheritance)");
+            "…named as typed, with the thresholds the author typed rather than any inherited from a tool");
       check(an == 1 && view_of(av[0].name) == "app.easel" &&
                 view_of(av[0].description) == "clear the easel sheet",
             "…declaring exactly the one action a person typed, with the description they gave it");
@@ -233,17 +224,19 @@ int main() {
     }
     rolltui_layout_free(l);
     rolltui_layout_report_release(&rep);
+    // THE PREVIEW CONTROL, second half: what the studio could not draw, it still wrote down.
     check(has(saved, "\"content\": \"canvas:sheet\"") && has(saved, "\"content\": \"menu:tools\"") && has(saved, "\"content\": \"help\""),
-          "…and the three contents are the app's kind, the app's menu, and a library kind");
+          "…and the file names all three contents, INCLUDING the two this tool could not build or resolve");
   }
 
-  // ---- 3. the target app runs it ---------------------------------------------------------
+  // ---- 2. the target app runs it ---------------------------------------------------------
   {
-    int rc = 0;
+    const std::size_t before = stderr_size();
+    int rc2 = 0;
     const std::string frame = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch +
                                       "/with' --layout easel --frame 76x22 --stroke 3,2-24,9" + err,
-                                  rc);
-    check(rc == 0 && !frame.empty(), "rolltui-paint rendered the authored screen (rc " + std::to_string(rc) + ")");
+                                  rc2);
+    check(rc2 == 0 && !frame.empty(), "rolltui-paint rendered the authored screen (rc " + std::to_string(rc2) + ")");
     check(has(frame, "easel sheet") && has(frame, "easel tools") && has(frame, "easel keys"),
           "…all three windows, titled as the author titled them");
     // The canvas is a REAL widget: it received the press, every drag between the two
@@ -252,20 +245,33 @@ int main() {
     // the single `#` the one-glyph brush used to.
     check(has(frame, "===") && has(status_line(frame), "marks 22"),
           "…the canvas took the whole drag — press, drags and release — and painted it [" + status_line(frame) + "]");
+    // The studio could not resolve `menu:tools` at all. The app it was authored for embeds
+    // that file, so the window the designer placed fills with a palette they never saw.
     check(has(frame, "Clear the sheet") && has(frame, "Brush"),
-          "…the palette is the app's own menu file, drawn in a window a person placed");
+          "…and `menu:tools` resolves to the app's OWN embedded palette, which the studio never had");
     check(has(frame, "app:") && has(frame, "(unbound)") && has(frame, "clear the easel sheet"),
           "…and `help` lists an action this binary has never named, described in the words typed in the studio");
     check(!has(status_line(frame), "[") && has(status_line(frame), " easel "),
           "…with no window reporting a problem [" + status_line(frame) + "]");
+
+    // THE GAP REPORT (Phase 26 m2), on a real screen and a real miss. `app.easel` exists
+    // because a person typed it into a design tool; paint has no chord for it and says so, by
+    // name, at end of init — and draws every window above regardless. That is the phase's whole
+    // claim in one line of output: the screen is the intent, the code catches up.
+    const std::string said = stderr_since(before);
+    check(has(said, "this screen names 4 things this app must provide and 1 is missing"),
+          "…and the app REPORTS what the screen names that it cannot provide [" + said + "]");
+    check(has(said, "this screen declares 'app.easel': no chord reaches it"),
+          "…naming the one thing, in the screen's own vocabulary");
+
     // The standing rule (the user, 2026-09-01): every view shrinks to 1 or 0 cells in
     // either dimension and stays graceful. An authored screen is not exempt.
     for (const char* size : {"1x1", "20x4", "8x30"}) {
-      int rc2 = 0;
+      int rc3 = 0;
       const std::string small = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch + "/with' --layout easel --frame " +
                                         size + " --stroke 0,0-3,3" + err,
-                                    rc2);
-      check(rc2 == 0 && !small.empty(), std::string("…and at ") + size + " it still renders");
+                                    rc3);
+      check(rc3 == 0 && !small.empty(), std::string("…and at ") + size + " it still renders");
     }
   }
 
@@ -280,36 +286,39 @@ int main() {
     std::ofstream(scratch + "/wrong/layouts/wrong.json", std::ios::binary | std::ios::trunc)
         << R"({"name":"wrong","min_width":0,"min_height":0,"focus":"s","actions":{},
                "root":{"row":[{"id":"s","content":"canvas:nope","border":"single","title":"s","focusable":true}]}})";
-    int rc = 0;
+    const std::size_t before = stderr_size();
+    int rc2 = 0;
     const std::string frame = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch +
                                       "/wrong' --layout wrong --frame 120x10" + err,
-                                  rc);
-    check(rc == 0 && has(frame, "nothing is bound to 'nope'"),
+                                  rc2);
+    check(rc2 == 0 && has(frame, "nothing is bound to 'nope'"),
           "a canvas whose source the app does not have draws the panel, in the host's own words");
     check(has(status_line(frame), "nothing is bound to 'nope'"),
           "…and it is NAMED in the report, not merely drawn [" + status_line(frame) + "]");
+    // THE GAP-REPORT CONTROL, second of three screens: a DIFFERENT screen, a DIFFERENT gap,
+    // the same one line of code — and the app still renders the window.
+    const std::string said = stderr_since(before);
+    check(has(said, "window 's' wants 'canvas:nope': nothing is bound to 'nope'"),
+          "…and the gap report says it too, at end of init, naming the window and the content [" + said + "]");
   }
 
-  // ---- CONTROL: the profile is what made the authoring possible ---------------------------
+  // ---- CONTROL: the gap report is not decoration ------------------------------------------
+  // Third screen, same binary: paint's OWN default layout, which names only what paint has.
+  // A report that printed on every screen would carry no information at all; this is what
+  // makes the two lines above mean something.
   {
-    const std::string blind = author(scratch + "/without", "");
-    check(!has(blind, "[canvas]") && !has(blind, "Clear the sheet"),
-          "with no --app the studio offers neither the app's kind nor its menu file");
-    bool ok2 = false;
-    const std::string other = read_file(scratch + "/without/layouts/easel.json", ok2);
-    check(ok2 && !has(other, "canvas") && !has(other, "menu:tools") && !has(other, "easel sheet") && !has(other, "app.easel"),
-          "…so the identical keystrokes save a file with none of it: no canvas, no palette, no title, no action");
-    check(ok2 && !has(other, "min_width"), "…and no thresholds, because there was no app to take them from");
-    int rc = 0;
-    const std::string frame = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch + "/without' --layout easel --frame 60x12" + err, rc);
-    check(rc == 0 && !has(frame, "###") && !has(frame, "Brush"),
-          "…and the app draws nothing from it: two empty windows");
+    const std::size_t before = stderr_size();
+    int rc2 = 0;
+    const std::string frame = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch + "/with' --frame 60x12" + err, rc2);
+    const std::string said = stderr_since(before);
+    check(rc2 == 0 && !frame.empty() && !has(said, "this screen names"),
+          "on this app's own screen the gap report says nothing at all [" + said + "]");
   }
 
   // ---- CONTROL: no source knows this screen ------------------------------------------------
   // "easel" is the layout name, all three window titles and the action. The app's own
-  // vocabulary (canvas / sheet / tools) is deliberately NOT part of this control: those
-  // are what a profile exists to publish, and paint.cpp must name them.
+  // vocabulary (canvas / sheet / tools) is deliberately NOT part of this control: those are
+  // paint's, and paint.cpp must name them.
   {
     std::vector<std::string> scanned, hits;
     for (const fs::directory_entry& e : fs::recursive_directory_iterator(ROLLTUI_SOURCE_DIR)) {

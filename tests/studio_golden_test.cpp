@@ -359,7 +359,11 @@ int main(int argc, char** argv) {
       // Phase 10 m5 (the design editor). `add-widget` is the milestone's Done-when: a
       // window that did not exist, holding a widget of a kind this layout never had,
       // through the kind picker alone — and DRAWN in the same frame.
-      {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter\""},
+      // The trailing Escape is Phase 26 m4's: the widget kind is an INPUT now, not a choice, and
+      // an input's commit leaves the menu's typed filter standing (a choice clears it on the way
+      // back up). Without it this golden would show the field being edited rather than the window
+      // it produced, which is the thing the case exists to show.
+      {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter Escape\""},
       {"layout-editor.120x40.actions", "--frame 120x40 --theme default-dark --keys \"F6 Type:actions Enter End Enter Type:app.zoom Enter Escape Type:save Enter Type:three Enter Escape Type:actions Enter\""},
       // Phase 11 m5: CREATING a layout, not inheriting one. Started from the shipped
       // `default` — five actions, four popups, min 60x8 — so what the skeleton does NOT
@@ -804,9 +808,11 @@ int main(int argc, char** argv) {
     // The seam is `┬` and not `┌` since m7: the layout editor's selection outline used to
     // redraw the selected window's border UNJOINED and win, which broke the join it sits
     // on. This assertion was pinned to that broken glyph.
+    // "Widget kind: help" rather than "help ▸" since Phase 26 m4 — the field is an input the
+    // author types into, not a closed list they step through.
     check(le_widget.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
-              le_widget.find("help \xE2\x96\xB8") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
-          "a `help` widget added by the kind picker alone draws in the next frame, with the Source field emptied and disabled");
+              le_widget.find("Widget kind: help") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
+          "a `help` widget typed into the kind field alone draws in the next frame, with the Source field emptied and disabled");
     check(le_actions.find("app.zoom") != std::string::npos && le_actions.find("add an action (name)") != std::string::npos,
           "the Actions level lists the shipped layout's declarations and the one just added");
     {
@@ -852,22 +858,22 @@ int main(int argc, char** argv) {
             "…and it loads clean with nothing filled in — a fill-in would have shown up here as five actions [" + back.error + "]");
     }
     {
-      // THE ONE PLACE INHERITING IS RIGHT, and it inherits from the TARGET: a profile's
-      // min sizes are a fact about the app being designed for. Written here by hand rather
-      // than generated, because the library has no host to ask — that is the whole point
-      // of the format.
+      // PHASE 26 m3 REPLACED THIS CASE, and what it used to assert is worth keeping written
+      // down: under `--app PROFILE.json` a new layout started at the TARGET APP's thresholds,
+      // "the one place inheriting is right". The profile is retired, and the thresholds a
+      // screen needs are a fact about the SCREEN — so the author types them, and this case now
+      // checks that a typed threshold is what reaches the file. Nothing is inherited at all.
       std::filesystem::create_directories(scratch + "/p7");
-      std::ofstream(scratch + "/app.json", std::ios::binary)
-          << R"({"app":"kiosk-app","min_width":40,"min_height":12,"actions":{},"kinds":[],"sources":{},"menus":[]})";
       int rc = 0;
       run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
-              "/session/demo.md' --frame 100x28 --theme default-dark --presets '" + scratch + "/p7' --app '" + scratch +
-              "/app.json' --keys \"F6 Type:new_layout Enter Type:kiosk Enter Type:save Enter Type:kiosk Enter\" 2>/dev/null",
+              "/session/demo.md' --frame 100x28 --theme default-dark --presets '" + scratch + "/p7'" +
+              " --keys \"F6 Type:new_layout Enter Type:kiosk Enter Type:minimum_width Enter Type:40 Enter Escape"
+              " Type:minimum_height Enter Type:12 Enter Escape Type:save Enter Type:kiosk Enter\" 2>/dev/null",
           rc);
       bool ok = false;
       const std::string saved = read_file(scratch + "/p7/layouts/kiosk.json", ok);
       check(rc == 0 && ok && saved.find("\"min_width\": 40") != std::string::npos && saved.find("\"min_height\": 12") != std::string::npos,
-            "under --app a new layout starts at the APP's thresholds — the one thing it inherits, and from the target");
+            "a new layout takes the thresholds its author typed, and takes them from nowhere else");
       check(ok && saved.find("\"actions\": {}") != std::string::npos && saved.find("\"popups\"") == std::string::npos,
             "…and nothing else came with them");
     }

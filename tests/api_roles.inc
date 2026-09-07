@@ -22,12 +22,16 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  *   HOST_BIND     a host supplies what only it can: sources, submits, its own widget kinds.
  *   HOST_RUN      the terminal, the event loop, the double buffer, compose.
  *   HOST_RELEASE  the pair half, and the number that proves it (there is no RAII in C).
- *   TOOL_INTEROP  the app profile: what an app PUBLISHES about itself so a tool can author
- *                 screens for an app it is not. **Not a stage of running a screen at all** —
- *                 it is written by a CLI mode of `roll` and `rolltui-paint` and read by
- *                 `rolltui-studio`, so a host author never calls one. **Phase 26 RETIRES the
- *                 app profile entirely** (the design leads and the app reports gaps at
- *                 end-of-init), which is why this stage is expected to empty rather than grow.
+ *   TOOL_INTEROP  RETIRED AT PHASE 26 m3, AND THE STAGE IS KEPT AS A NAMED EMPTY ONE rather
+ *                 than deleted, because what emptied it is the finding. It held the app
+ *                 profile's 35 functions: what an app PUBLISHED about itself so a tool could
+ *                 author screens for an app it is not — written by a CLI mode of `roll` and
+ *                 `rolltui-paint`, read by `rolltui-studio`, and called by no host author at
+ *                 any point in running a screen. That it was not a STAGE was the tell, and the
+ *                 review under m1 named what it really was: the app bounding the design. A
+ *                 designer now names what a screen needs and the app REPORTS what it cannot
+ *                 provide (`rolltui_gaps_collect`) — one direction, four functions, no file.
+ *                 A new row here needs the same question asked: whose limits does it encode?
  *   WIDGET        what implementing a `RolltuiWidgetPlugin` slot needs. PART 3.
  *
  * AND THE POINT OF DOING IT AT ALL: **a function that fits NO role is a candidate for internal.**
@@ -40,7 +44,6 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  * who compiles nothing and calls nothing — but every name they must spell (a role, a widget kind,
  * an action, a chord) is a table in PART 1, and those tables say so on their own line.
  */
-
 
 /* ---- VOCAB (33) ------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_color_depth_from_name, VOCAB)
@@ -76,38 +79,6 @@ ROLLTUI_ROLE(rolltui_theme_mode_from_name, VOCAB)
 ROLLTUI_ROLE(rolltui_theme_mode_setting_valid, VOCAB)
 
 /* ---- HOST_LOAD (121) --------------------------------------------------- */
-ROLLTUI_ROLE(rolltui_app_profile_action_count, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_action_description, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_action_name, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_action, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_document, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_help_scope, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_kind, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_menu, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_note, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_row, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_add_submit, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_app, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_document_count, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_dump, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_free, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_help_scope_at, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_help_scope_count, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_kind_count, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_kind_name, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_kind_rule, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_menu_count, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_menu_json, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_menu_name, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_min_height, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_min_width, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_new, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_parse, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_row_add_sample, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_set_app, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_set_help, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_set_min_size, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_submit_count, TOOL_INTEROP)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_clean, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_release, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_summary, HOST_SETTINGS)
@@ -373,9 +344,6 @@ ROLLTUI_ROLE(rolltui_layer_placement, HOST_RUN)
 ROLLTUI_ROLE(rolltui_layer_id, HOST_RUN)
 ROLLTUI_ROLE(rolltui_layout_node_id, HOST_RUN)
 ROLLTUI_ROLE(rolltui_layout_node_is_window, HOST_RUN)
-ROLLTUI_ROLE(rolltui_app_profile_report_clean, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_report_release, TOOL_INTEROP)
-ROLLTUI_ROLE(rolltui_app_profile_report_summary, TOOL_INTEROP)
 /* PINNED PUBLIC by `RolltuiMenuItem`'s C++ members (Phase 23) — VOCAB: they belong to a type
  * Part 1 defines, and no consumer calls either directly. */
 ROLLTUI_ROLE(rolltui_input_spec_copy, VOCAB)

@@ -50,12 +50,12 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   that an app does not PROVIDE, walked over the
                                          #   WHOLE layout once rather than the pushed stack
                                          #   per frame. Reports; never fails.
-                  c/rolltui_json.c c/rolltui_app_profile.c
-                                         # Phase 17 m1: the parser, and the app profile on
-                                         #   top of it. The profile's C boundary takes and
-                                         #   returns TEXT — a JSON tree never crosses it,
-                                         #   which is the leak `rolltui-paint` demonstrated
-                                         #   by including Json.hpp for a single dump call.
+                  c/rolltui_json.c
+                                         # Phase 17 m1: the parser. `c/rolltui_app_profile.c`
+                                         #   sat beside it until Phase 26 RETIRED the app
+                                         #   profile: the design leads and an app reports its
+                                         #   gaps at end of init, so a format in which an app
+                                         #   publishes what may be asked of it has no job.
                   c/rolltui_theme_analysis.c c/rolltui_theme_gen.c
                                          # Phase 17 m1: the colour maths and the generator's
                                          #   PRNG/ruleset lookup — the parts of

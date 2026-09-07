@@ -9,9 +9,9 @@
 │ │ , filterable) │             │ widget set is │ │ focus   editor    │ [x] Visible                                    │
 │ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
 │ │ widgets       │             │ this small    │ │                   │ Title: status                                  │
-│ │ Layout files  │ build       │ reuses the    │ │                   │ Widget kind                             rows ▸ │
+│ │ Layout files  │ build       │ reuses the    │ │                   │ Widget kind: rows                              │
 │ │ (JSON:        │             │ theme         │ │                   │ Source: status                                 │
-│ │ windows +     │             │ loader's hand │ │                   │ Menu file                                    ▸ │
+│ │ windows +     │             │ loader's hand │ │                   │ Menu file:                                     │
 │ │ placements +  │             │ parser; hot-  │ │                   │ Size (Alt+arrows nudge): 70                    │
 │ │ content       │             │ reloaded      │ │                   │ [ ] Focusable                                  │
 │ │ slots)        │             │               │ │                   │ Delete this node                               │

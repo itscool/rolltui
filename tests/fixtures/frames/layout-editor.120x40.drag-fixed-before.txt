@@ -9,9 +9,9 @@
 │ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
 │ focus   editor    │ │                                       │       │ Border                                single ▸ │
 │                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Title: status                                  │
-│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Widget kind                             rows ▸ │
+│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Widget kind: rows                              │
 │                   │ │ mode)                                 │       │ Source: status                                 │
-│                   │ │ Key + mouse decoding                  │ build │ Menu file                                    ▸ │
+│                   │ │ Key + mouse decoding                  │ build │ Menu file:                                     │
 │                   │ │                                       │       │ Size (Alt+arrows nudge): 21                    │
 │                   │ │ Cell grid + frame diff + SGR/colour   │ build │ [ ] Focusable                                  │
 │                   │ │ downgrade                             │       │ Delete this node                               │

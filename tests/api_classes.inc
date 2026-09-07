@@ -877,49 +877,6 @@ ROLLTUI_API(rolltui_undo_reset, INTERNAL)
 ROLLTUI_API(rolltui_undo_undo, INTERNAL)
 ROLLTUI_API(rolltui_undo_undo_depth, INTERNAL)
 
-/* ---- rolltui_app_profile.h — what a layout may name in an app: written by one host, read by another; default PUBLIC ---- */
-ROLLTUI_API(rolltui_app_profile_action_count, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_action` is consumer-used and `_parse`/`_kind_count` are host-suite-reached — a profile you can parse but whose actions you cannot read is a hole */
-ROLLTUI_API(rolltui_app_profile_action_description, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_action` is consumer-used and `_parse`/`_kind_name` are host-suite-reached */
-ROLLTUI_API(rolltui_app_profile_action_name, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_action` is consumer-used and `_parse`/`_kind_name` are host-suite-reached */
-ROLLTUI_API(rolltui_app_profile_add_action, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_document, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_help_scope, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_kind, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_menu, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_note, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_row, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_add_submit, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_app, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_content_at, INTERNAL)
-ROLLTUI_API(rolltui_app_profile_content_count, INTERNAL)
-ROLLTUI_API(rolltui_app_profile_document_count, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_dump, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_free, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_help_scope_at, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_help_scope` is consumer-used and `_parse` is host-suite-reached */
-ROLLTUI_API(rolltui_app_profile_help_scope_count, PUBLIC)  /* KEPT: matching part — `rolltui_app_profile_add_help_scope` is consumer-used and `_parse` is host-suite-reached */
-ROLLTUI_API(rolltui_app_profile_kind_count, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_kind_name, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_kind_rule, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_menu_count, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_menu_json, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_menu_name, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_min_height, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_min_width, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_mount, INTERNAL)
-ROLLTUI_API(rolltui_app_profile_new, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_parse, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_report_add_bad_value, INTERNAL)  /* the loader's report builder */
-ROLLTUI_API(rolltui_app_profile_report_add_unknown_key, INTERNAL)  /* the loader's report builder */
-ROLLTUI_API(rolltui_app_profile_report_clean, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_report_release, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_report_set_error, INTERNAL)  /* the loader's report builder */
-ROLLTUI_API(rolltui_app_profile_report_summary, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_row_add_sample, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_set_app, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_set_help, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_set_min_size, PUBLIC)
-ROLLTUI_API(rolltui_app_profile_submit_count, PUBLIC)
-
 /* ---- rolltui_embedded.h — the shipped files, by name; default PUBLIC ---- */
 ROLLTUI_API(rolltui_embedded_text, PUBLIC)
 
