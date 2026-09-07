@@ -1,4 +1,4 @@
-# rolltui — a small terminal-UI library of our own .
+# rolltui — a small terminal-UI library of our own.
 #
 # WHAT "SMALL" AND "LIGHTWEIGHT" MEAN HERE IS MEASURED, NOT ASSERTED. A real
 # 120x40 render of a 40-entry document costs 108 allocations, 7 KB and ~250 us — down from

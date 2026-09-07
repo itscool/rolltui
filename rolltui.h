@@ -2093,7 +2093,7 @@ enum class Anchor : unsigned char {
   TopLeft, Top, TopRight, Left, Center, Right, BottomLeft, Bottom, BottomRight
 };
 // Declared, not defined: the vocabulary lives in `rolltui/Style.hpp`, and this file names
-// no role — the m2 rule at `rolltui_diff.h`. An opaque enum declaration is a complete type
+// no role — the same rule `rolltui_diff.h` states. An opaque enum declaration is a complete type
 // because the underlying type is fixed, which is all a member needs.
 enum class Role : unsigned char;
 
@@ -2175,7 +2175,7 @@ struct RolltuiLayoutNode;
  *
  * A layout, the layers placed on it, the nodes in its split tree and the three lists that hold
  * them are HANDLES here and structures in `rolltui/c/rolltui_layout_tree.h`, which is the
- * library's own. **The reason is a reader's, not an implementer's** (the user, 2026-09-06): a
+ * library's own. **The reason is a reader's, not an implementer's**: a
  * public function is a standing question — *"do I need this, and when?"* — and thirty-two of
  * them were answered "no" by every consumer in the tree, while a reader still had to carry them
  * just in case. **The direction is what settles it: opaque now with one door opened later is
@@ -2246,8 +2246,8 @@ typedef void (*RolltuiSlotFn)(void* ctx, const RolltuiResolvedNode* rn, RolltuiF
 /* WORKING MEMORY THE CALLER OWNS (CLAUDE.md strategy 3). Two screen-sized arm maps — the
  * joins written so far, and what was under the ring before this window cleared it — plus the
  * draw scratch a title needs. The C++ had the maps as `thread_local` in `compose_layer`,
- * which is the "nobody decided the scratch's lifetime" shape Phase 14's design lens names;
- * here the caller says how long they live. One buffer per ROLE, so the compose's maps and
+ * a `thread_local` here would be the "nobody decided the scratch's lifetime" shape; the caller
+ * says how long they live. One buffer per ROLE, so the compose's maps and
  * the text walk's clusters cannot alias. */
 typedef struct RolltuiComposeScratch RolltuiComposeScratch;
 
@@ -2281,8 +2281,8 @@ typedef struct RolltuiComposeScratch RolltuiComposeScratch;
 #define ROLLTUI_REGISTER_RULE_DIFFERS 4  /* already registered, with another source rule */
 
 /* PLAIN DATA: the kind's NAME and its source — the two halves of `kind[:source]` and nothing
- * more. Until Phase 18 m2 this carried a C++-only `WidgetKind` enum plus a `registered_name`
- * that was empty for every library kind: two fields to say one name. Every member has correct
+ * more. A `WidgetKind` enum beside a `registered_name` that is empty for every library kind
+ * is two fields saying one name. Every member has correct
  * value semantics on its own (`RolltuiStr`'s), so — exactly like `RolltuiLayoutNode` one level
  * up — this type declares NO constructor, destructor or assignment of its own, and `operator==`
  * needs only `= default`. An EMPTY `kind` names nothing: `rolltui_content_parse` fills one and
@@ -2332,9 +2332,9 @@ typedef struct RolltuiLayoutReport {
    * today exactly one: a file declaring no "actions" is given the shipped default's. NOT part
    * of "clean", because none of it is a problem.
    *
-   * It was called `migrated` until 2026-09-05, when the Phase 9 content-name rewrite that was
-   * its first feeder was retired. The name was the FIRST CALLER's, not the field's, and the
-   * surviving caller is not a migration at all — so the field is named for what it holds. */
+   * NOT called `migrated`: that would be the FIRST CALLER's name rather than the field's, and
+   * it stops being true the moment a second caller is not a migration. A field is named for
+   * what it holds. */
   RolltuiStr* notes;
   size_t notes_n, notes_cap;
 } RolltuiLayoutReport;
@@ -2343,10 +2343,10 @@ typedef struct RolltuiLayoutReport {
  * apart from Bindings' own `ActionDecl` (which this file does not include, keeping the
  * layering the header comment above states: a layout FILE's vocabulary must not depend on
  * Bindings' C++-only vocabulary) — this is the layout FILE's own two strings, "the actions
- * THIS SCREEN emits" (Layout.hpp). Phase 17: it is ALSO now `RolltuiLayout::actions`' own
- * element type (below), not only the loader's transient one — the two structs holding the
- * same two strings was a fact about the file format before it was a shared type, and now it
- * is both without this file ever naming `rolltui::ActionDecl`; the shim (`Layout.cpp`)
+ * THIS SCREEN emits". It is ALSO `RolltuiLayout::actions`' own element type (below), not only
+ * the loader's transient one — two structs holding the same two strings is a fact about the
+ * file format before it is a shared type, and it is both without this file ever naming a
+ * C++-only vocabulary; the C++ side
  * converts to that std::string-based type at the one seam a handful of unported hosts still
  * need it (`action_decls()`). */
 typedef struct RolltuiLayoutAction {
@@ -2355,10 +2355,10 @@ typedef struct RolltuiLayoutAction {
 } RolltuiLayoutAction;
 
 
-/* The parsed layout: a TRANSIENT carrier, never retained past one load. Phase 17 gave
- * `rolltui::Layout` this same shape (`RolltuiLayout` below shares `RolltuiStr name` and
- * `RolltuiActionList actions` with it byte-for-byte), so the reason this stays a SEPARATE
- * struct is no longer "the fields cannot be shared" — it is that this one is scoped to a
+/* The parsed layout: a TRANSIENT carrier, never retained past one load. It shares `RolltuiStr
+ * name` and `RolltuiActionList actions` with `RolltuiLayout` below byte-for-byte, so the
+ * reason it stays a SEPARATE struct is not that the fields cannot be shared — it is that this
+ * one is scoped to a
  * single `rolltui_load_layout*` call and the loader's own bookkeeping (`actions_cap` growing
  * across a parse that has not decided the file is even usable yet) has no business being
  * `RolltuiLayout`'s API. The shim converts once, right after a load (`Layout.cpp`'s
@@ -2509,8 +2509,8 @@ void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const
 void rolltui_rows_release(RolltuiRows* r);
 void rolltui_rows_reset(RolltuiRows* r);
 
-/* WHAT A HOST FILLS instead of returning a fresh vector every frame (Phase 13 m5b, and
- * CLAUDE.md's per-frame-API rule). `rolltui_rows_reset` keeps the array's capacity AND every
+/* WHAT A HOST FILLS instead of returning a fresh vector every frame (CLAUDE.md's per-frame-API
+ * rule). `rolltui_rows_reset` keeps the array's capacity AND every
  * row's string buffers, so `rolltui_rows_add` on a warm frame assigns into storage that
  * already exists and allocates nothing. `rolltui::Rows` IS this struct. */
 typedef struct RolltuiRows {
@@ -2639,10 +2639,9 @@ typedef struct RolltuiDiffScratch RolltuiDiffScratch;
  * ======================================================================================== */
 
 /* BOTH FIELDS ARE BARE `const char*`, AND A C++ CALLER MUST NOT COMPARE THEM WITH `==`.
- * `table[i].name == "default"` compiles and compares POINTERS. It cost an afternoon on
- * 2026-09-04: Release passed 51/51 because the compiler merged the identical literals so the
- * pointers really were equal, and the RelWithDebInfo sanitizer build — which did not merge
- * them — failed 14 of 31 suites. The green was not stale; it was true and useless.
+ * `table[i].name == "default"` compiles and compares POINTERS. Release passes because the
+ * compiler merges the identical literals so the pointers really are equal; a build that does
+ * not merge them fails half the suite. The green is not stale — it is true and useless.
  *
  * Everywhere else in this library an owned string is `RolltuiStr`, which carries
  * `operator==(const char*)` and does the right thing. This struct cannot be one: it is a
@@ -2758,9 +2757,9 @@ typedef struct RolltuiPresetDomain {
   int (*equal)(const void* a, const void* b);
 
   /* The ops for this domain's REPORT type — BORROWED, a library static, set by the domain's
-   * `_init`. Until Phase 18 m3 this travelled as a separate parameter beside the domain at
-   * every `_new` and `_shipped` call, and no caller ever paired a domain with any table but
-   * its own: two things that always travel together are one thing. */
+   * `_init`. It is a field rather than a parameter beside the domain at every `_new` and
+   * `_shipped` call, because no caller ever pairs a domain with any table but its own: two
+   * things that always travel together are one thing. */
   const RolltuiPresetReportFns* report;
 
   /* ---- THE DOMAIN'S OWN CONFIGURATION -------------------------------------------------
@@ -2798,8 +2797,7 @@ typedef struct RolltuiPresetStore RolltuiPresetStore;
 
 /* ---- ONE PRESET IN A LISTING, and the shape every "N things out" uses ---------------------
  *
- * THIS TYPE EXISTS BECAUSE ITS ABSENCE WAS BEING PAID FOR THREE TIMES (Phase 17 m4b,
- * 2026-09-05). `rolltui_preset_store_list` took a SINK — `(void* ctx, const char* name,
+ * THIS TYPE EXISTS BECAUSE ITS ABSENCE WAS BEING PAID FOR THREE TIMES. A `_list` taking a SINK — `(void* ctx, const char* name,
  * size_t, int shipped, const char* path, size_t)` — and that parameter list IS a struct
  * definition the library declined to write down. So every consumer wrote it instead:
  * `roll::PresetInfo` in `include/TuiFrontend.hpp`, `PresetInfo` in `rolltui/tools/studio.cpp`
@@ -2879,8 +2877,8 @@ typedef struct RolltuiThemePresetReport {
  * ~~**The consequence is bigger than the wording.** There are two Theme preset DOMAINS in the
  * tree … the second has NO production caller — only six `presets_test` assertions that its
  * function pointers are non-NULL. Ported but unreachable … switching the stores over is
- * m2c's.~~ **DONE, AND THIS PARAGRAPH WAS THEN FALSE FOR A DAY (corrected 2026-09-05, Phase
- * 16 m6).** m2c did switch them: `Presets.hpp`, `PresetStore.hpp` and `rolltui::ThemePreset`
+ * to be switched over.~~ **DONE, AND THE STRUCK PARAGRAPH WAS THEN FALSE FOR A DAY.**
+ * `Presets.hpp`, `PresetStore.hpp` and `rolltui::ThemePreset`
  * are deleted, there is no C++ header left in `rolltui/` at all, and **`rolltui_theme_preset_domain_init`
  * is now the only Theme domain there is** — `studio.cpp` and `src/frontends/TuiFrontend.cpp`
  * both build their store from it. So there is ONE domain, and this struct IS its value type.
@@ -2889,7 +2887,7 @@ typedef struct RolltuiThemePresetReport {
  * up.** The struck text told a reader that this API is unreachable and has no production
  * caller. The only reader who believes a public header over the call sites is one who cannot
  * see the call sites — which is exactly the non-C++ consumer this vocabulary exists for, and
- * exactly who `plan/phase-16.md` m6 built to stand in for. A stale comment about a struct's
+ * exactly who the pure-C consumer stands in for. A stale comment about a struct's
  * identity is what produced the segfault struck above; a stale comment about its REACHABILITY
  * is the same failure aimed at whoever comes next. **A milestone that deletes a thing owns
  * every sentence that described it.** */
@@ -3031,7 +3029,7 @@ typedef void (*RolltuiTermEventFn)(void* ctx, const RolltuiTermEvent* e);
 
 /* ---- the three colour spaces, defined ONCE and compiled by both languages ------------- */
 /* `rolltui::Lin`, `rolltui::OkLab` and `rolltui::OkLch` ARE these structs (ThemeAnalysis.hpp
- * aliases them), the same move Phase 14 m2 made for `Color`/`Style`. Linear sRGB, OKLab and
+ * aliases them), the same one-definition rule `Color` and `Style` follow. Linear sRGB, OKLab and
  * OKLCH are each three doubles with a defaulted-to-zero value — no methods, because nothing
  * in either language ever called one. */
 typedef struct RolltuiLin {
@@ -3087,8 +3085,8 @@ typedef struct RolltuiStrArray {
 #define ROLLTUI_DISTINCT_DELTA_E 0.08
 
 /* The must-differ pairs' COUNT. The pairs themselves are a LIBRARY RULE, closed on purpose
- * (Phase 18 m1 — the decision, its reason and every pair's justification are written at the
- * table, `kMustDiffer` in rolltui_theme_analysis.c). Only the count is a constant here because
+ * (the decision, its reason and every pair's justification are written at the table,
+ * `kMustDiffer` in rolltui_theme_analysis.c). Only the count is a constant here because
  * only the count is a caller's business: it sizes the `out_pairs` array `rolltui_theme_analyse`
  * fills, and the pairs come back IN it (`RolltuiPairCheck.a`/`.b`), which is how a theme author
  * sees the rule — by analysing a theme, never by editing the rule. */
@@ -3203,7 +3201,7 @@ typedef struct RolltuiCodeFold {
  * wrap — the wrap engine roll draws with
  * ======================================================================================== */
 
-/* `ambiguous_wide` is `unsigned char` and not `bool` for m2's reason (rolltui_style.h): C's
+/* `ambiguous_wide` is `unsigned char` and not `bool` for the reason `rolltui_style.h` gives: C's
  * `_Bool` and C++'s `bool` are the same byte on every toolchain this will meet, and that is
  * exactly the layout-compatible-by-fiat this project keeps being burned by. The field order
  * is the one the C++ struct had, because two call sites write it as a designated initializer
@@ -3248,8 +3246,8 @@ typedef struct RolltuiWrapLines RolltuiWrapLines;
  * ======================================================================================== */
 
 /* A ROLLTUI SESSION: the registries and caches an app configures, and nothing else. Every one
- * of them was a process-wide static before Phase 25, which meant two apps in one process shared
- * one widget-kind registry and could not have been told apart.
+ * of them as a process-wide static means two apps in one process share one widget-kind registry
+ * and cannot be told apart.
  *
  * ---- THE CONTRACT, six points, and the middle two are the useful ones ----------------------
  *   1. **One thread at a time.** The library locks nothing for you inside a context. The one
@@ -3303,7 +3301,7 @@ void rolltui_layout_min_size(const RolltuiLayout* l, int* w, int* h);
 /* DOOR 4 — the screen's name. Forced by paint, which draws it in its status line. BORROWED. */
 const char* rolltui_layout_name(const RolltuiLayout* l, size_t* len);
 
-/* DOOR 5 — a declared popup by id, or NULL. Public before Phase 23 and unchanged; roll reads
+/* DOOR 5 — a declared popup by id, or NULL. roll reads
  * one to size the input above an approval, and `rolltui_window_stack_push_popup` takes the
  * layout and the id directly, so pushing one needs no layer of your own. BORROWED. */
 const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len);
@@ -3344,7 +3342,7 @@ unsigned char rolltui_mode_for_background(RolltuiStyleColor bg);
  * `ThemeAnalysis.cpp` and `ThemeGen.cpp` and `Presets.cpp` (each forward-declaring
  * `rolltui::theme_vocab()` across a translation unit), `theme_test.cpp` (a private duplicate),
  * and `tools/theme_editor.cpp`, whose conversion forward-declared it too — a `tools/` file
- * reaching into `Theme.cpp`, which m2c deletes.
+ * reaching across into another module's implementation.
  *
  * The PARAMETER stays on every function that takes one: a host with its own roles is what the
  * vocab was for. This is the default, not a policy. BORROWS static storage. */
@@ -3398,9 +3396,8 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
  *
  * The four bytes above lived in `Layout.cpp`'s anonymous namespace, with the note *"handed
  * over as bytes; `rolltui/Style.hpp` is the one place these names exist"*. That note was
- * right while the library was C++ with a C core, and it is the EIGHTH instance of the rule
- * m2a's five were: `Layout.cpp` is deleted, the role names have been C since m2a
- * (`ROLLTUI_ROLE_LIST`), and every one of the three hosts calls
+ * right while the library was C++ with a C core, and it is another instance of the same rule:
+ * the role names are C (`ROLLTUI_ROLE_LIST`), and every host calls
  * `rolltui_window_stack_compose` — so a table with no home does not disappear, it becomes
  * three hand-written copies. Found the way seven of the previous eight were: by converting a
  * consumer (`rolltui-paint`) and hitting the wall.
@@ -3442,9 +3439,8 @@ void rolltui_content_format(const char* kind_name, size_t kind_name_len, const c
  * Two were writing it by hand: `Layout.cpp`'s private `kHooks`, and a VERBATIM copy in
  * `layout_test.cpp` whose own comment justified itself — *"copied because they are not
  * exported (by design: the algorithm is the boundary's, the shim's OWN plumbing is not part
- * of its public surface either)"*. Correct while the shim existed; wrong once the shim is what
- * is being deleted, which is the fifth time this phase that same sentence has had to be
- * reversed. Every host in m3 would have been the third, fourth and fifth copy.
+ * of its public surface either)"*. Correct while a C++ shim owned them; wrong the moment the
+ * shim is what goes, and every host would then have been the third, fourth and fifth copy.
  *
  * The parameter STAYS on every function below rather than being removed: a host with its own
  * role vocabulary is exactly what the hooks were for, and that case is real (an app profile's
@@ -3478,10 +3474,10 @@ const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* ou
 /* Parses TEXT into a layout. A JSON syntax error becomes `report->error` (NULL returned)
  * rather than reaching the loader at all.
  *
- * **OWNED: the caller frees the result with `rolltui_layout_free`.** Until Phase 23 this filled
- * a caller-supplied `RolltuiLoadedLayout` carrier which then had to be unpacked with
- * `rolltui_loaded_layout_to_layout` and released separately — four lines and a stack temporary,
- * written IDENTICALLY by all three example consumers, which is `rolltui.h` rule 5's tell for the
+ * **OWNED: the caller frees the result with `rolltui_layout_free`.** Filling a caller-supplied
+ * `RolltuiLoadedLayout` carrier instead, to be unpacked with `rolltui_loaded_layout_to_layout`
+ * and released separately, is four lines and a stack temporary written IDENTICALLY by every
+ * consumer, which is `rolltui.h` rule 5's tell for the
  * sixth time. The carrier is the loader's own business and is internal now. */
 RolltuiLayout* rolltui_load_layout_text(const char* text, size_t len,
                                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
@@ -3525,9 +3521,9 @@ int rolltui_preset_is_shipped(RolltuiPresetDomain* d, const char* name, size_t l
 /* The shipped preset's FILE TEXT, verbatim — a BORROW of the embedded bytes, valid for the
  * process's life; NULL (and `*out_len` 0) when `name` is not shipped.
  *
- * ADDED Phase 17 m4b, because its absence was being paid for: `shipped_count`/`shipped_at`
- * gave every index but no way to ask by NAME, so roll and the studio each hand-wrote the same
- * linear search over them. A lookup the API can do and does not offer is a lookup every
+ * IT EXISTS BECAUSE ITS ABSENCE WAS BEING PAID FOR: `shipped_count`/`shipped_at` give every
+ * index but no way to ask by NAME, so roll and the studio each hand-write the same linear
+ * search over them. A lookup the API can do and does not offer is a lookup every
  * consumer writes. */
 const char* rolltui_preset_shipped_text(RolltuiPresetDomain* d, const char* name, size_t len, size_t* out_len);
 
@@ -3542,9 +3538,9 @@ void rolltui_preset_store_free(RolltuiPresetStore* s);
 
 /* Startup: the autosaved working copy when present and loadable, else "default". `report`
  * says what happened to the working file; the origin preset it names is re-read into a
- * report the domain makes for itself (`RolltuiPresetReportFns::create`), which until Phase
- * 18 m3 was a second report every caller had to supply and could — with no guard — pass the
- * same report for, which reset the first one mid-way. */
+ * report the domain makes for itself (`RolltuiPresetReportFns::create`) rather than a second
+ * report every caller has to supply and can — with no guard — pass the same report for, which
+ * resets the first one mid-way. */
 void rolltui_preset_store_start(RolltuiPresetStore* s, void* report);
 
 /* A CLONE the caller owns and frees with `rolltui_preset_store_value_free`. */
@@ -3563,22 +3559,18 @@ const char* rolltui_preset_store_origin(const RolltuiPresetStore* s, size_t* len
 const char* rolltui_preset_store_last_error(const RolltuiPresetStore* s, size_t* len);
 
 /* "(modified)" is BY COMPARISON (rule 4) — and the comparison runs when the store CHANGES,
- * never when this is read: a read is one flag under the lock. Until 2026-09-06 it ran the
- * domain's deep `equal` over the whole working copy on every call, and roll's status panel
- * reached it twice per frame through `label` below — found by the first instrument pointed at
- * roll's own frame (`tests/status_budget_test.cpp`), not by reading. */
+ * never when this is read: a read is one flag under the lock. Running the domain's deep
+ * `equal` over the whole working copy on every call instead puts it on the draw path — twice a
+ * frame, through `label` below, on roll's status panel. That is the kind of cost an instrument
+ * finds (`tests/status_budget_test.cpp`) and reading does not. */
 int rolltui_preset_store_modified(const RolltuiPresetStore* s);
 
 /* "<origin>", or "<origin> (modified)" once the working copy differs from what it was loaded
- * from — `rolltui::PresetStore::label()`'s composition, and the SECOND English sentence this
- * module owned that lived one level up (Phase 17 m2a, found while measuring m2c: the first
- * sweep for unported English read every `.cpp` and no `.hpp`, and `PresetStore.hpp` is a
- * template header where the whole store lives inline). `studio.cpp:1173` already spells
- * " (modified)" a second time, for a LAYOUT's own name rather than for a store's origin — one
- * word, two spellings, exactly the shape this phase keeps finding. REPLACES `*out`, reusing its
- * buffer — the shape every other "text out" in this header has (`_working_path`,
- * `_preset_path`); it APPENDED until 2026-09-06, which made it the one a caller holding a
- * buffer for its frame could not call twice. */
+ * from — the store's own composition, and THE LIBRARY OWNS THE WORD "(modified)". A host that
+ * spells it a second time, for a LAYOUT's own name rather than for a store's origin, is one
+ * word with two spellings. REPLACES `*out`, reusing its buffer — the shape every other "text
+ * out" in this header has (`_working_path`, `_preset_path`). It must not APPEND: that makes it
+ * the one text-out a caller holding a buffer for its frame cannot call twice. */
 void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out);
 
 unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
@@ -3600,8 +3592,8 @@ int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t le
 
 /* The SENTENCE for an outcome. The comment below used to end "...is a fixed
  * sentence per outcome and is built one level up, where the words already are" — the same
- * sentence, in the same shape, as the four other places this phase has had to reverse: the
- * words were one level up in `Presets.cpp`, which m2c deletes. A fixed sentence per outcome is
+ * sentence, in the same shape, as every other place this reversal has been needed: the words
+ * lived one level up, in the C++ that goes away. A fixed sentence per outcome is
  * a table, and a table belongs with the constants it is indexed by. BORROWS a static literal;
  * `*len` may be NULL; an out-of-range code reads back as "". WRITE_FAILED's own reason is
  * still the caller's, through `err` below — that one is not fixed. */
@@ -3610,17 +3602,17 @@ const char* rolltui_preset_save_result_text(int result, size_t* len);
 /* Save-as. REPLACES `*err` (which may be NULL when the caller does not want it) with the
  * outcome's SENTENCE for every result but SAVED — WRITE_FAILED's own reason, and
  * `rolltui_preset_save_result_text`'s fixed sentence for the other three — so a caller reads
- * one string for any refusal. Until Phase 18 m3 only WRITE_FAILED filled it, and three
- * consumers folded the sentence in afterwards by hand, identically, while the pure-C consumer
- * had to know to make the second call: a composed call the API could make and did not. */
+ * one string for any refusal. Filling it only for WRITE_FAILED leaves three consumers folding
+ * the sentence in afterwards by hand, identically, and the pure-C consumer having to know to
+ * make a second call: a composed call the API could make and does not. */
 /* Always autosaves the working copy afterwards, unlike `_load`/`_set_working`/`_edit`: a save-as
  * is an explicit write and the working copy records its new origin. Decided and asserted
- * (`studio_golden_test`); a `persist` parameter was tried and removed 2026-09-06. */
+ * (`studio_golden_test`). There is deliberately no `persist` parameter: no caller wants 0. */
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
 
 /* The two paths. Both REPLACE `*out` — text out, rule 3(b), the same shape
- * `rolltui_preset_store_label` beside them already used. They took a `RolltuiPutFn` until
- * Phase 17 m4b, which is why every consumer had a lambda-and-append around them. */
+ * `rolltui_preset_store_label` beside them uses. A `RolltuiPutFn` here costs every consumer a
+ * lambda-and-append around it. */
 void rolltui_preset_store_working_path(const RolltuiPresetStore* s, RolltuiStr* out);
 
 void rolltui_preset_store_preset_path(const RolltuiPresetStore* s, const char* name, size_t len, RolltuiStr* out);
@@ -3635,7 +3627,7 @@ void rolltui_theme_preset_report_release(RolltuiThemePresetReport* r);
  * `out_depth` already held — this file sets both to "auto" first, matching `ThemePreset`'s own
  * member-initialisers — when the key is absent or fails its check), "colours" (required; a
  * bad "preset file must be a JSON object"/"needs a \"colours\" object" `report->error` when
- * `root` itself is not usable, checked BEFORE anything else), "layout" (a Phase 9 leftover:
+ * `root` itself is not usable, checked BEFORE anything else), "layout" (a leftover key:
  * not an error, a NOTE naming it — this format's own vocabulary to own, the same position
  * `rolltui_theme.h` takes for a theme file's structural keys). Unknown keys are reported, not
  * rejected. Colour validation runs at BOTH modes (dark then light) so a role wrong only in one
@@ -3717,10 +3709,9 @@ void rolltui_preset_resolve_setting(const char* flag, size_t flag_len, const cha
 /* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not
  * this domain's). The identity key — the store's own domain's `kind`, "theme"/"layout"/
  * "bindings" — answers with the origin; a Theme store additionally answers "theme_mode" and
- * "color_depth". Until Phase 18 m3 this took a `RolltuiPresetDomainId` beside the store,
- * with the comment "the caller knows, and the store does not carry its own tag" — it does:
- * `kind` IS the name, and the id was a second spelling of it that every caller had to keep
- * in step (roll, once per store class; the C consumer, at every call). */
+ * "color_depth". It takes NO `RolltuiPresetDomainId` beside the store. "The caller knows, and
+ * the store does not carry its own tag" is wrong on the second half: `kind` IS the name, and an
+ * id beside it is a second spelling every caller has to keep in step. */
 void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out);
 
 size_t rolltui_preset_settings_count(void);
@@ -3780,11 +3771,10 @@ void rolltui_bindings_report_release(RolltuiBindingsReport* r); /* frees everyth
  * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
  * that order. Replaces `*out`.
  *
- * PUBLIC as of Phase 26. It was INTERNAL on the reason "a step of loading or building a table;
- * a host loads a file or clones the default" — and a host that loads its own bindings FILE is
- * exactly that case, so the reason argued for the opposite of what it concluded.
- * `rolltui/examples/explorer.cpp` recorded it as Phase 21's wall 6 and hand-wrote six loops over
- * the report's arrays to say what this one call says. **That is `rolltui.h` rule 5's tell** —
+ * PUBLIC, and the INTERNAL reason it once carried — "a step of loading or building a table; a
+ * host loads a file or clones the default" — argued for the opposite of what it concluded, since
+ * a host that loads its own bindings FILE is exactly that case. `rolltui/examples/explorer.cpp`
+ * hand-wrote six loops over the report's arrays to say what this one call says. **That is `rolltui.h` rule 5's tell** —
  * a consumer writing the wrapper an API already has — and it is the same shape as the gap report
  * beside it: a host tells its own developer what a FILE asked for that this app cannot give. */
 void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
@@ -3872,7 +3862,7 @@ void rolltui_document_copy(RolltuiDocument* to, const RolltuiDocument* from);
 /* ---- input ---------------------------------------------------------------------------------*/
 
 /* The defaults, for a C caller — `= {0}` would give a zero tab width and no prompt role,
- * which is Phase 14's design lens exactly. */
+ * which is the language answering a question nobody asked. */
 void rolltui_input_options_release(RolltuiInputOptions* o);
 
 void rolltui_input_options_copy(RolltuiInputOptions* to, const RolltuiInputOptions* from);
@@ -3942,7 +3932,7 @@ RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
 /* A Choice's options / a Submenu's items, by COPY, then the flat list and the selection are
  * rebuilt.
  *
- * **THIS IS WHAT MAKES A MENU DYNAMIC, and the header undersold it until 2026-09-06.** "A menu's
+ * **THIS IS WHAT MAKES A MENU DYNAMIC.** "A menu's
  * structure IS a file" is true of its SKELETON and false of its contents: a file gives the
  * levels, the labels and the action ids, and a host FILLS the parts that depend on what exists at
  * runtime by building `RolltuiMenuItem`s and setting them here. **roll already does exactly
@@ -3954,9 +3944,9 @@ RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
 int rolltui_menu_set_options(RolltuiMenu* m, const char* id, size_t len, const RolltuiMenuItemList* options);
 
 /* THE THREE PLAIN SETTERS, each `find` plus one assignment, 0 when no item has that id. They
- * lived in the shim through Phase 15 on the argument that a caller could write `find` itself —
- * true, and the reason it stopped holding is rule 5: with `Windows::menu()` handing back a
- * `RolltuiMenu*`, BOTH hosts write the same three-line wrapper, which is the tell that the API
+ * are here rather than left to a caller who "could write `find` itself" — true, and beside the
+ * point: with `Windows::menu()` handing back a `RolltuiMenu*`, BOTH hosts write the same
+ * three-line wrapper, which is the tell that the API
  * is wrong rather than the consumers. */
 int rolltui_menu_set_value(RolltuiMenu* m, const char* id, size_t len, const char* value, size_t value_len);
 
@@ -4064,11 +4054,11 @@ void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t l
  * name twice replaces the sample. STRATEGY 5 (GROWING HEAP): the `RolltuiDocument` is heap-held for the table's life,
  * because the borrow above needs a stable address and a sample outlives the call that set it.
  *
- * PHASE 17 m3: this used to be `Windows::owned_documents_`, the last C++ map left in that
- * class, kept there on the stated argument that moving it "would need either a fragile
- * reinterpret through `RolltuiDocument` or a second owner — neither pays for itself". That
- * argument was written while the C++ class was staying; the reinterpret is not needed at all
- * once the map is on this side, and the alternative to moving it is not a C++ map but NO
+ * IT IS NOT A C++ MAP ONE LEVEL UP. The argument for leaving it there — that moving it "would
+ * need either a fragile reinterpret through `RolltuiDocument` or a second owner, neither of
+ * which pays for itself" — holds only while a C++ class is staying. The reinterpret is not
+ * needed at all once the map is on this side, and the alternative to moving it is not a C++
+ * map but NO
  * sample documents, since the class holding it is being deleted. It is the same sentence
  * shape as the two layout-hook comments that stopped being true the moment their subject
  * became the thing being removed. */
@@ -4099,8 +4089,8 @@ void rolltui_context_set_dir(RolltuiContext* ctx, const char* dir, size_t len);
  * again or `w` is freed. `_count`/`_name_at` enumerate every host menu for `Windows::menu_names`. */
 void rolltui_context_add_menu(RolltuiContext* ctx, const char* name, size_t len, const char* json, size_t json_len);
 
-/* what a `help` window renders (Phase 15 m5, moved to the boundary so the `help` kind can be
- * a plugin like the rest): an optional lead line, the scopes to list in order, an optional
+/* what a `help` window renders (at the boundary, so the `help` kind can be a plugin like the
+ * rest): an optional lead line, the scopes to list in order, an optional
  * trailing note. `set_help` REPLACES lead/note; the scope list is built separately
  * (`clear_help_scopes` then `add_help_scope` per entry) because it is a `std::vector` at the
  * one C++ call site (`Windows::set_help`) and this is the same shape `rolltui_windows_add_menu`
@@ -4124,8 +4114,8 @@ void rolltui_context_set_bindings(RolltuiContext* ctx, const RolltuiBindings* b)
 /* ---- THE GAP REPORT: what this screen NAMES that this app does not PROVIDE ------------------
  *
  * **FOR THE DEVELOPER, not for whoever wrote the layout**, and that decides everything else
- * about it. The user's framing, 2026-09-06: *"its feedback on the right place — 'the app was
- * designed like this and your code doesn't support it properly yet.'"* **A screen is the
+ * about it. The message is *"the app was designed like this and your code doesn't support it
+ * properly yet."* **A screen is the
  * INTENT and the code catches up**, so this REPORTS and never fails: it hands you a list and
  * YOU decide whether any of it is fatal, exactly as `rolltui_bindings_load_json` already does
  * with an action nothing declares. Nothing here refuses a layout. **A layout may name a
@@ -4309,7 +4299,7 @@ int rolltui_transcript_copy_selection(RolltuiTranscript* t);
  * gained methods and default initializers the moment it became one definition, which stops
  * it being a C++98 POD, and Clang's `-Wreturn-type-c-linkage` then refuses to promise an ABI
  * for returning one from an `extern "C"` function. `rolltui_screen.h` wrote that rule down
- * for `RolltuiCell` in Phase 14 m2 and it applies here unchanged: suppressing the warning
+ * for `RolltuiCell` and it applies here unchanged: suppressing the warning
  * would be asserting an ABI the compiler declines to promise. A rect PARAMETER by value is
  * fine — that has one answer every ABI agrees on for a trivially-copyable type. */
 void rolltui_placement_resolve(const RolltuiPlacement* p, RolltuiRect parent, RolltuiRect* out);
@@ -4332,8 +4322,8 @@ int rolltui_widget_kind_resolve(const RolltuiContext* c, const char* name, size_
  * `rows:status`, and any kind a host registered, such as the explorer's `browser` or paint's
  * `canvas`. A name no kind answers to is a NAMED problem and a visible error panel, never a blank
  * window, so a layout may name a kind a host has not written yet and be told so.
- * **A LAYOUT IS SHIPPED BY THE APP, NOT HAND-WRITTEN BY ITS USER** (decided 2026-09-06; the case
- * is at PART 1's opening). A host BINDS these sources and NAMES these windows in its own code —
+ * **A LAYOUT IS SHIPPED BY THE APP, NOT HAND-WRITTEN BY ITS USER** (the case is at PART 1's
+ * opening). A host BINDS these sources and NAMES these windows in its own code —
  * roll names `session`, `status`, `prompt` and `details`; the explorer names `details` and `help`
  * — so a renamed or dropped window breaks the app silently, which is not true of a theme or a
  * bindings file. A user PICKS among the layouts an app ships; authoring a new one is a developer
@@ -4366,8 +4356,7 @@ void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* ba
  * layout declares one of that id, 0 when it does not (nothing is pushed). A layer a HOST built
  * itself still goes through `_push` above; this is only the by-id case.
  *
- * ADDED Phase 16 m6, and it is rule 5's tell firing for the fourth time
- * (`rolltui/rolltui.h`): two hosts had hand-written this at SIX call sites — and in two
+ * IT IS RULE 5'S TELL FIRING AGAIN: two hosts had hand-written this at SIX call sites — and in two
  * different spellings, which is what makes it worse than the usual duplication. `studio.cpp`
  * wrote three of them as
  *
@@ -4381,10 +4370,9 @@ void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* ba
  * exactly the studio's line aborts on `AddressSanitizer: attempting double-free` inside
  * `rolltui_shutdown`'s release of the built-in layout cache.
  *
- * So the C++ special members were ABSORBING a missing operation — Phase 17 m5's own verdict,
- * one level further out than the binding it was written about: you cannot see a wall from
- * behind it, and until `c_consumer_test.c` existed nothing in this repository stood in front
- * of this one. The fix is the API, never the wrapper. */
+ * So the C++ special members were ABSORBING a missing operation. You cannot see a wall from
+ * behind it: nothing stands in front of this one until a pure-C consumer does
+ * (`c_consumer_test.c`). The fix is the API, never the wrapper. */
 int rolltui_window_stack_push_popup(RolltuiWindowStack* s, const RolltuiLayout* layout, const char* id, size_t len);
 
 int rolltui_window_stack_pop(RolltuiWindowStack* s); /* 0 when only the base remains */
@@ -4444,8 +4432,7 @@ size_t rolltui_windows_report_count(const RolltuiWindows* w);
 const char* rolltui_windows_report_at(const RolltuiWindows* w, size_t i, size_t* len);
 
 /* The one-line form: the first bad value, plus " (+N more)" when there are others; "" when
- * there are none. `rolltui::WindowsReport::summary()`'s rule, moved here in Phase 17 m2a
- * because the struct that held it is deleted in m2c and every host draws this string.
+ * there are none. The rule lives here, with the report, because every host draws this string.
  * APPENDS to `out`. */
 void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out);
 
@@ -4569,7 +4556,7 @@ void rolltui_shutdown(void);
  * take. For a test that wants a window; never called by the library itself. */
 /* MEMORY USAGE, QUERYABLE AT RUNTIME — the allocator's own counters, in
  * the shape this boundary uses everywhere: out-params, any of which may be NULL, so a caller
- * asks for exactly the numbers it means to show. Phase 13's requirement was that these be
+ * asks for exactly the numbers it means to show. The standing requirement is that these be
  * readable at RUNTIME and not only inside a test binary — one pipeline, two consumers, the
  * human-facing pane and the router's own adaptation reading the same records.
  *
@@ -4584,7 +4571,7 @@ void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_request
                        size_t* live_bytes, size_t* peak_bytes, size_t* live_blocks);
 
 /* ---- the library's one entry point, and the only two halves of it a CONSUMER may name -----
- * Moved here from `rolltui/c/rolltui_alloc.h` on 2026-09-05: that header is
+ * Declared here rather than in `rolltui/c/rolltui_alloc.h`: that header is
  * internal and the umbrella excludes it, so a consumer that wanted a handle and its release
  * could not reach one — while `rolltui_alloc.h`'s own text said they "stay available
  * everywhere". `rolltui_mem_realloc` deliberately did NOT come with them: growth is the thing
@@ -4668,7 +4655,7 @@ void rolltui_u_scratch_free(RolltuiUnicodeScratch* s);
 
 int rolltui_u_display_width(RolltuiUnicodeScratch* s, const char* utf8, size_t len, int ambiguous_wide);
 
-/* THE ONE THING THE EXPLORER'S BROWSER LACKED (Phase 21 wall E2; provided in Phase 22). How many
+/* THE ONE THING A COLUMN BROWSER LACKS WITHOUT IT. How many
  * BYTES of `utf8` fit in `max_cells` columns — the offset `rolltui_frame_put_text` computes
  * internally to honour its own `max_cells` and did not hand back. Returns that byte length and
  * fills `*out_cells` (may be NULL) with the columns they occupy. Stops BEFORE a glyph that would

@@ -95,7 +95,7 @@ constexpr const char* kToolsMenu = R"({
 
 // THE TWO RAMPS, and the second is a deliberate Unicode probe. CLAUDE.md records that U+2588
 // FULL BLOCK is East Asian AMBIGUOUS and overflowed a one-cell column on a wide-ambiguous
-// terminal . A painting app whose best tool is a block ramp should meet that
+// terminal. A painting app whose best tool is a block ramp should meet that
 // rather than avoid it, so `--ambiguous-wide` is a real mode here and a golden frame runs in it.
 struct Ramp {
   const char* name;

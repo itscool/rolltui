@@ -1,7 +1,6 @@
 //
 // studio_golden_test.cpp — golden frames through the studio's `--frame WxH`
-// mode . Runs
-// the REAL rolltui-studio binary on the demo session fixture and compares its
+// mode. Runs the REAL rolltui-studio binary on the demo session fixture and compares its
 // stdout byte-for-byte with rolltui/tests/fixtures/frames/<case>.txt.
 //
 // Re-recording is a deliberate human act — `rolltui-studio-golden-test --record`

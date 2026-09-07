@@ -382,7 +382,7 @@ void LayoutEditor::rebuild_menu() {
     fields.push_back(MenuItem::input((base + ".w").c_str(), "w", dim.clone(), dim_to_string(p.placement.w).c_str()));
     fields.push_back(MenuItem::input((base + ".h").c_str(), "h", dim.clone(), dim_to_string(p.placement.h).c_str()));
     fields.push_back(choice_of((base + ".anchor").c_str(), "anchor", clone_items(anchors), std::string(anchor_name(p.placement.anchor)).c_str()));
-    // THE FOUR OPTIONAL BOUNDS AND THE CLAMP, added . The shipped `default`
+    // THE FOUR OPTIONAL BOUNDS AND THE CLAMP. The shipped `default`
     // layout gives every popup a `min_w` and a `max_w` and the editor could not set either, so
     // a popup authored here spread to whatever `w` said on a 200-column terminal. They are
     // OPTIONAL dims: empty is a real answer and means unbounded, which is why the field is
@@ -408,7 +408,7 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
   top.push_back(MenuItem::toggle("visible", "Visible", true));
   top.push_back(choice_of("border", "Border", std::move(borders), "single"));
-  // THE BACKGROUND ROLE, added . A node has carried one since the layout format
+  // THE BACKGROUND ROLE. A node has carried one for as long as the layout format
   // did, the shipped screens use it (a banner, every popup), and the editor could not set it —
   // so a person who wanted one edited the JSON. A CHOICE over the role table read from the
   // library, never a copy of it: whoever owns a vocabulary owns exactly one spelling of it.

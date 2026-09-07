@@ -23,14 +23,14 @@
 // the Currency Symbols block PR, from the @missing sub-range lines of the
 // Derived* files.
 //
-// PHASE 14 m5 — ONE TABLE FILE, COMPILED BY BOTH LANGUAGES. The data is C and the
+// ONE TABLE FILE, COMPILED BY BOTH LANGUAGES. The data is C and the
 // arrays have C linkage, so the two implementations of the Unicode algorithms
 // share them rather than each carrying a copy: 9,800 lines duplicated would be
 // 9,800 lines that could disagree, and the whole point of the flag is that the two
 // sides answer the SAME tests from the SAME facts.
 //
 // Each property has two spellings, both generated HERE from one list, because each
-// implementation should read naturally in its own language (the m2 rule): plain
+// implementation should read naturally in its own language: plain
 // constants for C, an `enum class` for C++. A `static_assert` per value is emitted
 // below, so a generator that ever emitted them differently would fail to compile
 // rather than silently classify a code point wrong.
