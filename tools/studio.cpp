@@ -197,6 +197,7 @@
 #include <unistd.h>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/selftest/script.hpp"
 
 /* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
@@ -2288,156 +2289,11 @@ bool parse_size(const std::string& s, int& w, int& h) {
 // backs a Paste step's bytes: `RolltuiEvent::text` is a BORROW (rolltui_keys.h's rule),
 // so it is filled in fresh by run_steps() right before dispatch, from THIS stable member
 // — never baked in while the vector holding these steps may still grow and relocate it.
-struct Step {
-  bool tick = false;
-  RolltuiEvent ev{};
-  std::uint64_t ms = 0;
-  std::string owned_text;
-};
-
-std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
-  std::vector<Step> out;
-  std::istringstream in(spec);
-  std::string tok;
-  std::uint64_t clock = 1000;
-  auto key_ev = [](unsigned char k, bool shift = false, bool ctrl = false, bool alt = false) {
-    RolltuiEvent e{};
-    e.kind = ROLLTUI_EVENT_KEY;
-    e.key.key = k;
-    e.key.shift = shift ? 1 : 0;
-    e.key.ctrl = ctrl ? 1 : 0;
-    e.key.alt = alt ? 1 : 0;
-    return e;
-  };
-  auto ctrl_ev = [](char c) { RolltuiEvent e{}; e.kind = ROLLTUI_EVENT_KEY; e.key.key = ROLLTUI_KEY_CHAR; e.key.ch = static_cast<RolltuiCodepoint>(c); e.key.ctrl = 1; return e; };
-  auto alt_ev = [](char c) { RolltuiEvent e{}; e.kind = ROLLTUI_EVENT_KEY; e.key.key = ROLLTUI_KEY_CHAR; e.key.ch = static_cast<RolltuiCodepoint>(c); e.key.alt = 1; return e; };
-  // "Type:hello_world" → h e l l o ␠ w o r l d; "Paste:a\nb" → one paste event.
-  auto unescape = [](std::string s, bool newlines) {
-    std::string out;
-    for (std::size_t i = 0; i < s.size(); ++i) {
-      // `\_` is a LITERAL underscore, the escape that `_`-means-space needs: an identifier is
-      // the thing you most often want to type into a Name field, and without it
-      // `Type:my_window` silently produces `mywindow`, because the Name spec drops the space.
-      if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == '_') { out.push_back('_'); ++i; }
-      else if (s[i] == '_') out.push_back(' ');
-      else if (newlines && s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') { out.push_back('\n'); ++i; }
-      else out.push_back(s[i]);
-    }
-    return out;
-  };
-  // A named key with an optional Shift/Ctrl/Alt prefix: "ShiftLeft", "CtrlHome", "AltEnter".
-  auto named = [&](std::string name, RolltuiEvent& out_ev) {
-    bool shift = false, c = false, a = false;
-    for (;;) {
-      if (name.rfind("Shift", 0) == 0) { shift = true; name.erase(0, 5); }
-      else if (name.rfind("Ctrl", 0) == 0) { c = true; name.erase(0, 4); }
-      else if (name.rfind("Alt", 0) == 0) { a = true; name.erase(0, 3); }
-      else break;
-    }
-    // The name -> Key table is `rolltui_key_from_display_name`, which reads the same
-    // X-macro list the library's own `to_string` and chord parser do, case-insensitively.
-    if (const int k = rolltui_key_from_display_name(name.data(), name.size()); k >= 0) {
-      out_ev = key_ev(static_cast<unsigned char>(k), shift, c, a);
-      return true;
-    }
-    if (name.size() == 1 && (c || a) && name[0] >= 'A' && name[0] <= 'Z') {  // CtrlA, AltC, ...
-      out_ev = c ? ctrl_ev(static_cast<char>(name[0] - 'A' + 'a')) : alt_ev(static_cast<char>(name[0] - 'A' + 'a'));
-      out_ev.key.shift = shift ? 1 : 0;
-      return true;
-    }
-    return false;
-  };
-  auto mouse_ev = [](RolltuiMouseEvent::Kind k, int x, int y, int button = 1, bool shift = false) {
-    RolltuiEvent e{};
-    e.kind = ROLLTUI_EVENT_MOUSE;
-    e.mouse.kind = k;
-    e.mouse.x = x;
-    e.mouse.y = y;
-    e.mouse.button = button;
-    e.mouse.shift = shift ? 1 : 0;
-    return e;
-  };
-  auto push = [&](RolltuiEvent e, bool advance = true) {
-    out.push_back({false, e, clock, ""});
-    if (advance) clock += 1000;
-  };
-  auto xy = [&](int& x, int& y) {
-    std::string pos;
-    if (!(in >> pos)) return false;
-    std::size_t comma = pos.find(',');
-    if (comma == std::string::npos) return false;
-    x = std::atoi(pos.substr(0, comma).c_str());
-    y = std::atoi(pos.substr(comma + 1).c_str());
-    return true;
-  };
-  while (in >> tok) {
-    int x = 0, y = 0;
-    RolltuiEvent k{};
-    if (tok == "Tick") out.push_back({true, {}, clock, ""});
-    else if (tok.rfind("Type:", 0) == 0) {
-      const std::string s = unescape(tok.substr(5), false);
-      std::vector<RolltuiDecodedChar> chars(s.size());
-      const std::size_t n = rolltui_u_decode_utf8_chars(s.data(), s.size(), chars.data());
-      for (std::size_t i = 0; i < n; ++i) {
-        RolltuiEvent e{};
-        e.kind = ROLLTUI_EVENT_KEY;
-        e.key.key = ROLLTUI_KEY_CHAR;
-        e.key.ch = chars[i].cp;
-        push(e, false);
-      }
-      clock += 1000;
-    } else if (tok.rfind("Paste:", 0) == 0) {
-      RolltuiEvent e{};
-      e.kind = ROLLTUI_EVENT_PASTE;
-      out.push_back({false, e, clock, unescape(tok.substr(6), true)});
-      clock += 1000;
-    } else if (named(tok, k)) push(k);
-    else if (tok == "WheelUp" || tok == "WheelDown") {
-      // Over the middle of the screen, which every built-in layout gives to the transcript.
-      push(mouse_ev(tok == "WheelUp" ? RolltuiMouseEvent::Kind::WheelUp : RolltuiMouseEvent::Kind::WheelDown, w / 4, h / 3, 0));
-    } else if (tok == "Click" || tok == "ShiftClick") {
-      if (xy(x, y)) push(mouse_ev(RolltuiMouseEvent::Kind::Press, x, y, 1, tok == "ShiftClick"));
-    } else if (tok == "DblClick" || tok == "TripleClick") {
-      if (xy(x, y)) {
-        const int presses = tok == "DblClick" ? 2 : 3;
-        for (int i = 0; i < presses; ++i) {
-          push(mouse_ev(RolltuiMouseEvent::Kind::Press, x, y), false);
-          if (i + 1 < presses) push(mouse_ev(RolltuiMouseEvent::Kind::Release, x, y), false);
-        }
-        clock += 1000;
-      }
-    } else if (tok == "Drag") {
-      if (xy(x, y)) push(mouse_ev(RolltuiMouseEvent::Kind::Drag, x, y));
-    } else if (tok == "Release") {
-      // Optional position; without one the release lands where the last event was.
-      std::streampos here = in.tellg();
-      std::string maybe;
-      if (in >> maybe && maybe.find(',') != std::string::npos) {
-        x = std::atoi(maybe.substr(0, maybe.find(',')).c_str());
-        y = std::atoi(maybe.substr(maybe.find(',') + 1).c_str());
-      } else {
-        in.clear();
-        in.seekg(here);
-        const RolltuiMouseEvent* last = nullptr;
-        for (const Step& s : out)
-          if (s.ev.kind == ROLLTUI_EVENT_MOUSE) last = &s.ev.mouse;
-        if (last) { x = last->x; y = last->y; }
-      }
-      push(mouse_ev(RolltuiMouseEvent::Kind::Release, x, y));
-    } else {
-      std::vector<RolltuiDecodedChar> chars(tok.size());
-      const std::size_t n = rolltui_u_decode_utf8_chars(tok.data(), tok.size(), chars.data());
-      if (n != 0) {
-        RolltuiEvent e{};
-        e.kind = ROLLTUI_EVENT_KEY;
-        e.key.key = ROLLTUI_KEY_CHAR;
-        e.key.ch = chars[0].cp;
-        push(e);
-      }
-    }
-  }
-  return out;
-}
+// The script vocabulary is the library's self-test header, not this file's: three apps had
+// written three dialects of "drive me with no terminal", and one of them said so in its own
+// comment. It is included only by binaries that drive an app; no product binary sees it.
+using rolltui_selftest::Step;
+using rolltui_selftest::scripted_keys;
 
 // handle() returns false only to QUIT (Ctrl-C, or the studio.quit action), so a
 // script stops there exactly as the interactive loop does.

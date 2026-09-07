@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/selftest/script.hpp"
 
 namespace {
 
@@ -805,40 +806,8 @@ bool parse_size(const std::string& s, int& w, int& h) {
   return w > 0 && h > 0;
 }
 
-// `--keys "Down Down Right CtrlD"` — the studio's convention, so a test drives the app with no
-// terminal. Only the spellings this app's own screen needs.
-RolltuiEvent key_event(const std::string& word) {
-  RolltuiEvent e{};
-  e.kind = ROLLTUI_EVENT_KEY;
-  if (word.rfind("Type:", 0) == 0) {  // a literal string into the focused input
-    e.key.key = ROLLTUI_KEY_CHAR;
-    return e;
-  }
-  struct Named { const char* w; unsigned char k; };
-  static const Named named[] = {{"Up", ROLLTUI_KEY_UP},         {"Down", ROLLTUI_KEY_DOWN},
-                                {"Left", ROLLTUI_KEY_LEFT},     {"Right", ROLLTUI_KEY_RIGHT},
-                                {"Home", ROLLTUI_KEY_HOME},     {"End", ROLLTUI_KEY_END},
-                                {"PageUp", ROLLTUI_KEY_PAGEUP},{"PageDown", ROLLTUI_KEY_PAGEDOWN},
-                                {"Enter", ROLLTUI_KEY_ENTER},   {"Escape", ROLLTUI_KEY_ESCAPE},
-                                {"Tab", ROLLTUI_KEY_TAB},       {"Backspace", ROLLTUI_KEY_BACKSPACE},
-                                {"F1", ROLLTUI_KEY_F1}};
-  for (const Named& n : named)
-    if (word == n.w) { e.key.key = n.k; return e; }
-  if (word.rfind("Ctrl", 0) == 0 && word.size() == 5) {
-    e.key.key = ROLLTUI_KEY_CHAR;
-    e.key.ch = static_cast<unsigned int>(std::tolower(word[4]));
-    e.key.ctrl = 1;
-    return e;
-  }
-  if (word.rfind("Alt", 0) == 0 && word.size() == 4) {
-    e.key.key = ROLLTUI_KEY_CHAR;
-    e.key.ch = static_cast<unsigned int>(std::tolower(word[3]));
-    e.key.alt = 1;
-    return e;
-  }
-  e.key.key = ROLLTUI_KEY_UNKNOWN;
-  return e;
-}
+// The script vocabulary is the shared self-test header's, not this file's. This app used to
+// carry a partial re-implementation of it.
 
 int usage() {
   std::fprintf(stderr,
@@ -976,22 +945,8 @@ int main(int argc, char** argv) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
     app.prepare();
     if (!keys_spec.empty()) {
-      std::istringstream words(keys_spec);
-      std::string word;
-      while (words >> word) {
-        if (word.rfind("Type:", 0) == 0) {
-          const std::string text = word.substr(5);
-          for (char c : text) {
-            RolltuiEvent e{};
-            e.kind = ROLLTUI_EVENT_KEY;
-            e.key.key = ROLLTUI_KEY_CHAR;
-            e.key.ch = static_cast<unsigned int>(c == '_' ? '/' : c);
-            app.handle(e);
-          }
-          continue;
-        }
-        app.handle(key_event(word));
-      }
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
+        if (!st.tick) app.handle(st.ev);
       app.prepare();
     }
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
