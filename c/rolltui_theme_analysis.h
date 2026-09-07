@@ -86,6 +86,7 @@ double rolltui_delta_e(RolltuiOkLab a, RolltuiOkLab b);     /* Euclidean in OKLa
  * fell through — see the .c file. */
 void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out);
 int rolltui_has_badge(const RolltuiBadges* b, const char* name, size_t len);
+/* Frees `what`, zeroes. Safe on a zeroed `RolltuiFix` and on repeated calls. */
 void rolltui_fix_release(RolltuiFix* f);
 /* Returns 1 and fills `*out` (RESET first) when `role`'s own fg is below `target` against
  * its effective background (its own bg, else the theme's `background` role) and moving its

@@ -91,6 +91,9 @@ void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools
 /* The bare-Enter rule's subject, handed over once — see the note above. Passing a zero
  * length turns the rule off. */
 void rolltui_bindings_set_enter_rule(RolltuiBindings* b, const char* action, size_t len);
+/* A no-op when the action is already declared. Creates an empty ROW when there is none —
+ * and never touches a row that exists, because declaring is what makes a kept row live and
+ * must not throw its chords away. */
 void rolltui_bindings_add_action(RolltuiBindings* b, const char* action, size_t alen, const char* desc, size_t dlen);
 const char* rolltui_bindings_description(const RolltuiBindings* b, const char* action, size_t len, size_t* out_len);
 size_t rolltui_bindings_row_count(const RolltuiBindings* b);
@@ -99,7 +102,14 @@ int rolltui_bindings_has_row(const RolltuiBindings* b, const char* action, size_
 /* Creates an empty row for an action nothing has declared — the kept-and-inert case. A
  * no-op when a row already exists. */
 void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len);
+/* Pushes a chord onto a row with NO rule checking, creating the row if there is none. The
+ * loader's own, and separate from `bind` on purpose: a file's conflicts, its Enter rule and
+ * its undeliverable chords are all REPORTED with a message before anything lands, so the
+ * loader has already decided and needs a put rather than a policy. */
 void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
+/* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
+ * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
+ * that order. Replaces `*out`. */
 void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
 /* ---- THE LIBRARY'S CLOSED ACTION TABLE (Phase 17) ---------------------------------------
  * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
@@ -150,6 +160,8 @@ size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
 
 RolltuiBindings* rolltui_bindings_new(void);
 
+/* Equal by the ROWS alone, which is what the C++ `operator==` compared: a declaration is
+ * this screen's, a row is the user's file, and only the second is the domain's content. */
 int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b);
 
 size_t rolltui_bindings_action_count(const RolltuiBindings* b);
@@ -158,8 +170,14 @@ const char* rolltui_bindings_action_at(const RolltuiBindings* b, size_t i, size_
 
 size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action, size_t len);
 
+/* The HELP spelling: every chord bound to `action` that THIS TERMINAL can deliver, in display
+ * form ("Ctrl-W, Alt-Backspace"), comma-separated. CLEARS `out`. The undeliverable filter is
+ * what makes this the library's and not a loop a caller writes — it had three independent
+ * implementations before Phase 17 m2a, the third written by an agent that could reach neither
+ * of the other two. */
 void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out);
 
+/* Chord `i` of the row, into `out`. 0 when there is none. */
 int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out);
 
 int rolltui_bindings_unbind(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);

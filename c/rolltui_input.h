@@ -88,6 +88,7 @@ void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len);
 size_t rolltui_input_caret(const RolltuiInput* in);
 void rolltui_input_set_caret(RolltuiInput* in, size_t byte, int extend);
 void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelection* out);
+/* The selected bytes, a BORROW into the text; `*len` 0 when there is no selection. */
 const char* rolltui_input_selected_text(const RolltuiInput* in, size_t* len);
 void rolltui_input_select_all(RolltuiInput* in);
 void rolltui_input_clear_selection(RolltuiInput* in);
@@ -109,6 +110,8 @@ unsigned char rolltui_input_handle(RolltuiInput* in, const RolltuiEvent* e, cons
 int rolltui_input_rows(const RolltuiInput* in);
 void rolltui_input_layout(RolltuiInput* in, RolltuiRect area);
 int rolltui_input_top_row(const RolltuiInput* in);
+/* Where a position is drawn: a text row (before scrolling) and a column from the area's left
+ * edge, the prompt / indent included. */
 void rolltui_input_cell_of(const RolltuiInput* in, size_t offset, int* row, int* col);
 void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw,
                         const RolltuiStyle* styles, const RolltuiInputRoles* roles, int focused);

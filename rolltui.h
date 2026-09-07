@@ -505,22 +505,10 @@ unsigned char rolltui_key_active_protocol(void);
  * declared" are two questions. */
 typedef struct RolltuiBindings RolltuiBindings;
 
-/* Equal by the ROWS alone, which is what the C++ `operator==` compared: a declaration is
- * this screen's, a row is the user's file, and only the second is the domain's content. */
-
-
-/* A no-op when the action is already declared. Creates an empty ROW when there is none —
- * and never touches a row that exists, because declaring is what makes a kept row live and
- * must not throw its chords away. */
 
 /* Answers whether a scope is one the library defines — the caller's fact, asked for by
  * `rolltui_bindings_undeclare_others` below. */
 typedef int (*RolltuiScopeFn)(void* ctx, const char* scope, size_t len);
-
-/* Pushes a chord onto a row with NO rule checking, creating the row if there is none. The
- * loader's own, and separate from `bind` on purpose: a file's conflicts, its Enter rule and
- * its undeliverable chords are all REPORTED with a message before anything lands, so the
- * loader has already decided and needs a put rather than a policy. */
 
 
 /* THE REPORT, transparent like `RolltuiAppProfileReport`: exactly `RolltuiStr` values in
@@ -542,10 +530,6 @@ typedef struct RolltuiBindingsReport {
   RolltuiStr* unknown_keys;
   size_t unknown_keys_n, unknown_keys_cap;
 } RolltuiBindingsReport;
-
-/* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
- * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
- * that order. Replaces `*out`. */
 
 
 /* The English for why a chord cannot be delivered, into a caller buffer of at least
@@ -1076,8 +1060,6 @@ typedef struct RolltuiInput RolltuiInput;
  * Set once; NULL turns it off. The text is a BORROW for the call. */
 typedef void (*RolltuiCopyFn)(void* ctx, const char* text, size_t len);
 
-/* The selected bytes, a BORROW into the text; `*len` 0 when there is no selection. */
-
 
 /* THE THIRTY ACTION NAMES, in command order, handed over by the shim. This file knows what
  * each command DOES and none of the words; `rolltui/Input.hpp` lists them and
@@ -1116,8 +1098,6 @@ typedef struct RolltuiInputActions {
   const char* redo;
 } RolltuiInputActions;
 
-/* Where a position is drawn: a text row (before scrolling) and a column from the area's left
- * edge, the prompt / indent included. */
 
 /* THE FOUR ROLES A DRAW NEEDS, handed in as bytes. `prompt` is the OPTIONS' role, which is
  * why it is not in here. */
@@ -1913,8 +1893,6 @@ typedef struct RolltuiMenuEvent {
 typedef struct RolltuiMenu RolltuiMenu;
 
 /* `editor` is BORROWED and must outlive the menu — `rolltui::Menu` owns it. */
-/* The menu OWNS its editor (Phase 17): the typed-field editing a menu does is not optional,
- * and every caller was constructing one to hand in. `rolltui_menu_editor` borrows it back. */
 
 
 /* ---- the tree ---------------------------------------------------------------------------------- */
@@ -2237,8 +2215,6 @@ typedef struct RolltuiLayout RolltuiLayout;
  * reading gets close without getting there. */
 
 
-/* Releases and frees. A no-op on NULL. */
-
 /* Appends an EMPTY child and returns it — the C's `emplace_back`, so a caller never builds a
  * node on the stack and copies it in. */
 
@@ -2257,16 +2233,9 @@ typedef struct RolltuiResolvedNode {
 } RolltuiResolvedNode;
 
 /* ---- the text forms ---------------------------------------------------------------------------- */
-/* "50%" | "100% - 32" | "25%+2" — NOT a bare "32". 1 on success.
- *
- * THESE CROSSED BECAUSE THE MENU NEEDED THEM (Phase 15 m5): a `size` or `dim` field checks a
- * keystroke as a prefix of a valid value and then canonicalises it, so the C menu widget has
- * to be able to parse and print a Dim. They are pure text, and putting them anywhere but
- * beside the type would have been a second definition of what a dim looks like. */
 /* "32" | "50%" | "100% - 32", into a caller's buffer. */
 #define ROLLTUI_DIM_STRING_MAX 64
 
-/* The same, plus a bare integer as cells — a size as TYPED. */
 
 /* Called once per node, in TREE ORDER (a container precedes its children). The caller
  * decides where they go — a vector, a filter, a single hit test. */
@@ -3163,8 +3132,6 @@ typedef struct RolltuiFix {
   double before_value ROLLTUI_DEFAULT(0), after_value ROLLTUI_DEFAULT(0);
 } RolltuiFix;
 
-/* Frees `what`, zeroes. Safe on a zeroed `RolltuiFix` and on repeated calls. */
-
 
 /* A growing array of `RolltuiFix` (GROWING AMORTISED); each element owns its own `what`. */
 
@@ -3684,7 +3651,6 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out);
 
 unsigned long long rolltui_preset_store_version(const RolltuiPresetStore* s);
 
-/* The only write anyone does (rule 2): replace the working copy. TAKES OWNERSHIP of `v`. */
 /* An in-place edit under the lock. */
 void rolltui_preset_store_edit(RolltuiPresetStore* s, void (*fn)(void* value, void* ctx), void* ctx, int persist);
 
@@ -3864,12 +3830,6 @@ RolltuiBindings* rolltui_bindings_clone(const RolltuiBindings* b);
 /* A BORROW, valid until the table next changes. */
 int rolltui_bindings_has(const RolltuiBindings* b, const char* action, size_t len);
 
-/* The HELP spelling: every chord bound to `action` that THIS TERMINAL can deliver, in display
- * form ("Ctrl-W, Alt-Backspace"), comma-separated. CLEARS `out`. The undeliverable filter is
- * what makes this the library's and not a loop a caller writes — it had three independent
- * implementations before Phase 17 m2a, the third written by an agent that could reach neither
- * of the other two. */
-/* Chord `i` of the row, into `out`. 0 when there is none. */
 /* The action of `scope` this chord serves, or NULL: a row that nothing declares never
  * answers, and neither does a chord the ACTIVE protocol cannot deliver — both are kept in
  * the table and written back, so neither may claim a key. A BORROW, as above. */
@@ -4058,9 +4018,6 @@ int rolltui_menu_set_enabled(RolltuiMenu* m, const char* id, size_t len, int ena
 /* ---- navigation state --------------------------------------------------------------------------- */
 void rolltui_menu_reset(RolltuiMenu* m);
 
-/* The path from the root down, as a BORROW valid until the menu next navigates. */
-/* The current level's children passing the filter (indices into the level's children), or in
- * palette mode indices into the flattened list. A BORROW, valid until the menu next changes. */
 /* "settings › theme", into a caller's string. */
 void rolltui_menu_set_palette(RolltuiMenu* m, int on);
 

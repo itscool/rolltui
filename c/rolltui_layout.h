@@ -240,6 +240,7 @@ int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out);
 
 size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap);
 
+/* The same, plus a bare integer as cells — a size as TYPED. */
 int rolltui_parse_size_text(const char* text, size_t len, RolltuiSplitSize* out);
 size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap);
 

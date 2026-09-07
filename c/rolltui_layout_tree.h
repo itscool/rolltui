@@ -67,6 +67,7 @@ void rolltui_layer_list_remove(RolltuiLayerList* l, size_t i); /* frees it, shif
  * PROMISES these, so their shape can move without breaking a consumer. */
 void rolltui_layout_node_release(RolltuiLayoutNode* n);
 
+/* Releases and frees. A no-op on NULL. */
 void rolltui_layout_node_free(RolltuiLayoutNode* n);
 
 void rolltui_node_list_copy(RolltuiNodeList* to, const RolltuiNodeList* from);

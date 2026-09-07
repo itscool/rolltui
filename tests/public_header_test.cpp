@@ -874,12 +874,26 @@ int main() {
       }
       ++i;
     }
-    // A RATCHET, measured 2026-09-06 after Phase 23's twelve were removed. It may FALL freely; a
-    // rise means a declaration left and its sentence stayed.
-    check(orphans <= 22, "no NEW orphaned doc comment in rolltui.h — a sentence with no declaration "
-                         "under it (" + std::to_string(orphans) + " of at most 22; first: " + first + ")");
-    // CONTROL: the scanner sees a planted orphan, and does not count a banner as one.
-    check(orphans > 0, "…and the scanner is armed: it still finds the recorded pre-Phase-23 ones");
+    // A RATCHET at 6, measured 2026-09-06 after all 28 scars were cleared. It may FALL freely; a
+    // rise means a declaration left the header and its sentence stayed.
+    //
+    // **THE 22 "PRE-EXISTING" ONES WERE THE SAME DEFECT, and calling them judgement calls about
+    // prose was wrong.** Recovering each comment's subject from the header as it stood at
+    // `9c00c28` (before Phase 20's first removals) showed SIXTEEN described a function that had
+    // gone INTERNAL in Phases 20-23 — its declaration moved to a `c/*.h` and the sentence stayed
+    // behind. Fourteen were MOVED to sit above their declaration in the internal header, which is
+    // where a reader of that header now needs them; two were deleted because the internal
+    // declaration already carried one.
+    //
+    // The SIX that remain are not scars: they are the legitimate pattern of two stacked comments
+    // above one declaration — a general note, then a specific one. `rolltui_preset_store_save_as`
+    // and `rolltui_widget_kind_count` are the clearest, and the "EIGHT doors" note is prose that
+    // introduces the block under it.
+    check(orphans <= 6, "no orphaned doc comment in rolltui.h beyond the six stacked-note pairs — "
+                        "a sentence with no declaration under it (" + std::to_string(orphans) +
+                        " of at most 6; first: " + first + ")");
+    // CONTROL: the scanner is armed — it still finds the six, and a planted one takes it to seven.
+    check(orphans > 0, "…and the scanner is armed: it finds the six stacked-note pairs");
   }
 
 

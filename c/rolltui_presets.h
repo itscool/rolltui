@@ -116,6 +116,7 @@ int rolltui_preset_valid_name(const char* name, size_t len);
  * PROMISES these, so their shape can move without breaking a consumer. */
 void rolltui_preset_domain_release(RolltuiPresetDomain* d);
 
+/* The only write anyone does (rule 2): replace the working copy. TAKES OWNERSHIP of `v`. */
 void rolltui_preset_store_set_working(RolltuiPresetStore* s, void* v, int persist);
 
 /* Fills `out` with the Theme domain's mechanics — nothing here is a paraphrase of

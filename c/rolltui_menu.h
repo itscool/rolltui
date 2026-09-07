@@ -118,8 +118,11 @@ void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char
  * ======================================================================================== */
 /* "1..100", "0.0..1.0 (2 digits)", "#rrggbb | 0-255 | none", … into a caller's string. */
 void rolltui_input_hint(const RolltuiInputSpec* spec, RolltuiStr* out);
+/* The path from the root down, as a BORROW valid until the menu next navigates. */
 size_t rolltui_menu_path(const RolltuiMenu* m, const size_t** out);
 size_t rolltui_menu_selected(const RolltuiMenu* m);
+/* The current level's children passing the filter (indices into the level's children), or in
+ * palette mode indices into the flattened list. A BORROW, valid until the menu next changes. */
 size_t rolltui_menu_visible(const RolltuiMenu* m, const size_t** out);
 const char* rolltui_menu_filter(const RolltuiMenu* m, size_t* len);
 int rolltui_menu_palette(const RolltuiMenu* m);
