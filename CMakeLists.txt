@@ -40,7 +40,7 @@
 set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
                   c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
                   c/rolltui_theme.c c/rolltui_bindings.c
-                  c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
+                  c/rolltui_presets.c c/rolltui_app_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
                   c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
                   c/rolltui_gaps.c
@@ -353,7 +353,23 @@ target_include_directories(rolltui-paint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/too
 # two scroll axes, a content-dependent width), which is what makes it an instrument rather
 # than a demo: what it could NOT do through `rolltui/rolltui.h` alone is the phase's finding.
 # It is a CONSUMER like `rolltui-paint` — it never opts in to an internal header.
-add_executable(rolltui-explorer examples/explorer.cpp)
+# The explorer's OWN default files, compiled in from the very files a user's preset directory
+# would shadow — so the words of its screen stay in JSON and never in its source, and it still
+# runs with no arguments. NAMES maps each file to the KIND an app asks for.
+set(ROLLTUI_EXPLORER_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/layouts/explorer.json
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/bindings/default.json
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/menus/places.json)
+set(ROLLTUI_EXPLORER_EMBEDDED ${CMAKE_CURRENT_BINARY_DIR}/embedded_explorer.c)
+add_custom_command(OUTPUT ${ROLLTUI_EXPLORER_EMBEDDED}
+  COMMAND ${CMAKE_COMMAND} -DOUT=${ROLLTUI_EXPLORER_EMBEDDED} -DTABLE=kAppFiles -DPREFIX=explorer_
+          "-DFILES=${ROLLTUI_EXPLORER_FILES}" "-DNAMES=layout;bindings;menu"
+          -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
+  DEPENDS ${ROLLTUI_EXPLORER_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
+  COMMENT "Embedding the explorer's own files"
+  VERBATIM)
+
+add_executable(rolltui-explorer examples/explorer.cpp ${ROLLTUI_EXPLORER_EMBEDDED})
 target_link_libraries(rolltui-explorer PRIVATE rolltui)
 target_compile_options(rolltui-explorer PRIVATE -Wall -Wextra)
 

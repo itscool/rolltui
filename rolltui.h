@@ -2678,6 +2678,7 @@ extern const RolltuiEmbeddedFile rolltui_kBindingsPresets[];
 
 extern const size_t rolltui_kBindingsPresetCount;
 
+
 /* ========================================================================================
  * marker — the "N more" rule
  * ======================================================================================== */
@@ -3477,6 +3478,30 @@ const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(RolltuiContext
  * for "which file is `default`", so the actions above and a host loading the same screen do
  * not each scan the embedded table their own way. */
 const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* out_len);
+
+/* Where an app's OWN default files live — a different question from "may a user change it",
+ * which the preset store answers through its own rungs. This one is asked first, and what it
+ * returns is what a user's preset directory then shadows.
+ *
+ * An app that keeps its screen in files rather than in its source cannot start until it knows
+ * where those files are, and building that path in each host is what produces a message like
+ * "no layout ()" — an empty directory, a path of "/layouts/x.json", and nothing naming what was
+ * wanted or where it was sought.
+ *
+ * THREE RUNGS, LATER OVERRIDING EARLIER, so an embedded copy is a FLOOR that guarantees the app
+ * runs and a file on disk customises it. Under first-found-wins an app with an embedded default
+ * would never look beside itself, which makes the file useless for exactly the apps that ship one.
+ *   1. `embedded`         — compiled in from the app's own files by cmake/embed_presets.cmake,
+ *                           matched by `kind` as the entry's stem. May be NULL.
+ *   2. beside the binary  — <dir of argv0>/<app>.<kind>.json
+ *   3. the known folder   — <ROLL_CONFIG_DIR|XDG_CONFIG_HOME/roll|$HOME/.config/roll>/rolltui/<app>/<kind>.json
+ *
+ * `out` receives the winning contents. `tried` (may be NULL) receives one line per candidate,
+ * hit or miss, so a host that finds nothing can say what it looked for. Returns 0 when every
+ * rung missed. */
+int rolltui_app_file(const char* argv0, const char* app, const char* kind,
+                     const RolltuiEmbeddedFile* embedded, size_t embedded_n,
+                     RolltuiStr* out, RolltuiStr* tried);
 
 /* Parses TEXT into a layout. A JSON syntax error becomes `report->error` (NULL returned)
  * rather than reaching the loader at all.

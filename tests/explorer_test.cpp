@@ -89,6 +89,24 @@ int main() {
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
   const std::string base = bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
 
+  // ---- 0. it runs BARE, and a miss names every path it tried --------------------------------
+  // The app keeps its screen in files rather than in its source, so with no --presets it has to
+  // ask where its own files are. It used to build "/layouts/explorer.json" from an empty string
+  // and print "no layout ()" — a message naming neither what it wanted nor where it looked.
+  {
+    int brc = 0;
+    const std::string bare = run(bin + " '" + tree.string() + "' --frame 70x10 2>&1", brc);
+    check(!has(bare, "no layout") && !has(bare, "cannot load"),
+          "the explorer runs with NO arguments: it finds its own embedded layout [" + bare.substr(0, 60) + "]");
+    check(has(bare, "columns"), "…and draws its own screen, whose title lives only in its layout file");
+
+    int mrc = 0;
+    const std::string miss = run(bin + " '" + tree.string() + "' --presets '/nonexistent-xyz' --frame 40x6 2>&1", mrc);
+    check(has(miss, "cannot load its layout"), "a miss says what it could not load [" + miss.substr(0, 50) + "]");
+    check(has(miss, "tried:") && has(miss, "/nonexistent-xyz/layouts/explorer.json"),
+          "…and NAMES the path it tried, rather than an empty parenthesis");
+  }
+
   // ---- 1. it renders a directory ------------------------------------------------------------
   int rc = 0;
   const std::string wide = run(base + " --frame 150x30 2>&1", rc);

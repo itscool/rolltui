@@ -782,6 +782,14 @@ std::string read_file(const std::string& path, bool& ok) {
   return ss.str();
 }
 
+// The app's own files, generated at build time from `examples/presets/` by
+// cmake/embed_presets.cmake. Compiled in rather than written here, so the screen's words live in
+// the JSON a user's preset directory shadows and in no hand-written source.
+extern "C" {
+extern const RolltuiEmbeddedFile explorer_kAppFiles[];
+extern const size_t explorer_kAppFileCount;
+}
+
 RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
@@ -868,20 +876,42 @@ int main(int argc, char** argv) {
   RolltuiLayoutReport rep{};
   RolltuiLayout* loaded = nullptr;  // OWNED
   bool have = false;
+  RolltuiStr layout_tried{};
   {
-    const std::string name = layout_arg.empty() ? std::string("explorer") : layout_arg;
-    const bool path = name.find('/') != std::string::npos || name.find(".json") != std::string::npos;
-    const std::string file = path ? name : presets_dir + "/layouts/" + name + ".json";
-    bool ok = false;
-    const std::string text = read_file(file, ok);
-    if (ok) { loaded = load_layout_text(app.ctx, text, &rep); have = loaded != nullptr; }
+    // An explicit --layout or --presets is a direct instruction and is taken as given. With
+    // neither, the app asks the library where its OWN default lives, which is what lets it run bare.
+    const bool named = !layout_arg.empty() || !presets_dir.empty();
+    if (named) {
+      const std::string name = layout_arg.empty() ? std::string("explorer") : layout_arg;
+      const bool path = name.find('/') != std::string::npos || name.find(".json") != std::string::npos;
+      const std::string file = path ? name : presets_dir + "/layouts/" + name + ".json";
+      bool ok = false;
+      const std::string text = read_file(file, ok);
+      if (ok) { loaded = load_layout_text(app.ctx, text, &rep); have = loaded != nullptr; }
+      if (!ok) { rolltui_str_append(&layout_tried, "  missing ", 10);
+                 rolltui_str_append(&layout_tried, file.data(), file.size()); }
+    } else {
+      RolltuiStr text{};
+      if (rolltui_app_file(argv[0], "rolltui-explorer", "layout",
+                           explorer_kAppFiles, explorer_kAppFileCount, &text, &layout_tried)) {
+        loaded = load_layout_text(app.ctx, std::string(text.p ? text.p : "", text.n), &rep);
+        have = loaded != nullptr;
+      }
+      rolltui_str_free(&text);
+    }
   }
   if (!have) {
-    std::fprintf(stderr, "rolltui-explorer: no layout (%s)\n", rep.error.c_str());
+    // NAME WHAT WAS WANTED AND EVERY PLACE IT WAS SOUGHT. "no layout ()" was this message, and
+    // an empty parenthesis is the standard this library enforces on everyone else, failed here.
+    std::fprintf(stderr, "rolltui-explorer: cannot load its layout%s%s\n",
+                 rep.error.empty() ? "" : ": ", rep.error.c_str());
+    if (layout_tried.n) std::fprintf(stderr, "tried:\n%.*s\n", (int)layout_tried.n, layout_tried.p);
+    rolltui_str_free(&layout_tried);
     rolltui_layout_free(loaded);
     rolltui_layout_report_release(&rep);
     return 1;
   }
+  rolltui_str_free(&layout_tried);
   rolltui_layout_free(app.layout);
   app.layout = loaded;  // TAKES OWNERSHIP
   app.mount();
@@ -893,9 +923,17 @@ int main(int argc, char** argv) {
   // first draft loaded the file first and every `app.*` and `browser.*` chord silently vanished:
   // the app ran, the keys did nothing, and no report said why, because the report belonged to a
   // load that had already been released.
-  if (!presets_dir.empty()) {
+  {
     bool ok = false;
-    const std::string text = read_file(presets_dir + "/bindings/default.json", ok);
+    std::string text;
+    if (!presets_dir.empty()) text = read_file(presets_dir + "/bindings/default.json", ok);
+    else {
+      RolltuiStr t{};
+      ok = rolltui_app_file(argv[0], "rolltui-explorer", "bindings",
+                            explorer_kAppFiles, explorer_kAppFileCount, &t, nullptr) != 0;
+      if (ok) text.assign(t.p ? t.p : "", t.n);
+      rolltui_str_free(&t);
+    }
     if (ok) {
       RolltuiBindingsReport brep{};
       rolltui_bindings_load_json(app.bindings, text.data(), text.size(), ROLLTUI_PROTOCOL_LEGACY,
