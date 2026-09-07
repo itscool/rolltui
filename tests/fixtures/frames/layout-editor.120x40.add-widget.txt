@@ -8,25 +8,25 @@
 │ │ widgets    │            │ small       │ │ the caret (or the select│ Swap with the next sibling                     │
 │ │ Layout     │ build      │ reuses the  │ │   Delete                │ [x] Visible                                    │
 │ │ files      │            │ theme       │ │ caret (or the selection)│ Border                                single ▸ │
-│ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ Title: transcript-2                            │
-│ │ windows +  │            │ hand        │ │ before the caret        │ Widget kind: help                              │
-│ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ Source:                                        │
-│ │ + content  │            │ hot-        │ │ after the caret         │ Menu file:                                     │
-│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Size (Alt+arrows nudge): fill                  │
-│ │ Markdown   │ build      │ single      │ │ start of the line       │ [x] Focusable                                  │
-│ │ block      │            │ header over │ │   Ctrl-K                │ Delete this node                               │
-│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Popups                                       ▸ │
-│ │ (blocks →  │            │             │ │   Left                  │ Actions this screen emits                    ▸ │
-│ │ styled     │            │             │ │ grapheme left           │ Minimum width this screen needs: 60            │
-│ │ wrapped    │            │             │ │   Right                 │ Minimum height this screen needs: 8            │
-│ │ lines)     │            │             │ │ grapheme right          │ Focused window                         input ▸ │
-│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Undo                                    Ctrl-Z │
-│ │ (roles →   │            │ header      │ │ left                    │ Redo                                    Ctrl-Y │
-│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ New layout, from an empty screen (name):       │
-│ │ JSON       │            │             │ │ right                   │ Load layout                                  ▸ │
-│ │ loader,    │            │             │ │   Home                  │ Save layout file as (layouts/<name>.json):     │
-│ │ built-ins) │            │             │ │ line (scrolls when empty│ Reset to the loaded layout…                    │
-│ └────────────┴────────────┴─────────────┘ │   End                   │                                                │
+│ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ Node id: transcript-2                          │
+│ │ windows +  │            │ hand        │ │ before the caret        │ Title: transcript-2                            │
+│ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ Widget kind: help                              │
+│ │ + content  │            │ hot-        │ │ after the caret         │ Source:                                        │
+│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Menu file:                                     │
+│ │ Markdown   │ build      │ single      │ │ start of the line       │ Size (Alt+arrows nudge): fill                  │
+│ │ block      │            │ header over │ │   Ctrl-K                │ [x] Focusable                                  │
+│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Delete this node                               │
+│ │ (blocks →  │            │             │ │   Left                  │ Popups                                       ▸ │
+│ │ styled     │            │             │ │ grapheme left           │ Actions this screen emits                    ▸ │
+│ │ wrapped    │            │             │ │   Right                 │ Minimum width this screen needs: 60            │
+│ │ lines)     │            │             │ │ grapheme right          │ Minimum height this screen needs: 8            │
+│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Focused window                         input ▸ │
+│ │ (roles →   │            │ header      │ │ left                    │ Undo                                    Ctrl-Z │
+│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ Redo                                    Ctrl-Y │
+│ │ JSON       │            │             │ │ right                   │ New layout, from an empty screen (name):       │
+│ │ loader,    │            │             │ │   Home                  │ Load layout                                  ▸ │
+│ │ built-ins) │            │             │ │ line (scrolls when empty│ Save layout file as (layouts/<name>.json):     │
+│ └────────────┴────────────┴─────────────┘ │   End                   │ Reset to the loaded layout…                    │
 │                                           │ (scrolls when empty)    │                                                │
 │ Here is the function you asked for:       █   Up                    │                                                │
 │                                           █ the previous history ent│                                                │

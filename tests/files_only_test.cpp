@@ -480,7 +480,9 @@ int main(int argc, char** argv) {
           rel.rfind("presets/", 0) == 0)
         continue;
       const std::string ext = e.path().extension().string();
-      if (ext != ".cpp" && ext != ".hpp" && ext != ".h") continue;
+      // `.c` IS SCANNED. It was not until Phase 27 m3, and after the Phase 15 port that left
+      // the control looking at the C++ shell rather than at most of the library.
+      if (ext != ".c" && ext != ".cpp" && ext != ".hpp" && ext != ".h") continue;
       scanned.push_back(rel);
       bool ok = false;
       const std::string text = read_file(p, ok);
@@ -493,7 +495,7 @@ int main(int argc, char** argv) {
         if (line.find("kettle") != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln) + ":" + line);
       }
     }
-    check(scanned.size() >= 30, "scanned every source the studio binary is built from (" +
+    check(scanned.size() >= 60, "scanned every source the studio binary is built from, C included (" +
                                     std::to_string(scanned.size()) + " files)");
     check(hits.empty(), "no source of the library or its hosts names this screen — it is files all the way down" +
                             (hits.empty() ? "" : ": " + hits.front()));

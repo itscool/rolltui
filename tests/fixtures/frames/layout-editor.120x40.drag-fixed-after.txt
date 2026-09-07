@@ -8,25 +8,25 @@
 │ │ (hierarchical │             │ each; the     │ │ depth   truecolor │ Swap with the next sibling                     │
 │ │ , filterable) │             │ widget set is │ │ focus   editor    │ [x] Visible                                    │
 │ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
-│ │ widgets       │             │ this small    │ │                   │ Title: status                                  │
-│ │ Layout files  │ build       │ reuses the    │ │                   │ Widget kind: rows                              │
-│ │ (JSON:        │             │ theme         │ │                   │ Source: status                                 │
-│ │ windows +     │             │ loader's hand │ │                   │ Menu file:                                     │
-│ │ placements +  │             │ parser; hot-  │ │                   │ Size (Alt+arrows nudge): 70                    │
-│ │ content       │             │ reloaded      │ │                   │ [ ] Focusable                                  │
-│ │ slots)        │             │               │ │                   │ Delete this node                               │
-│ │ Markdown      │ build       │ single header │ │                   │ Popups                                       ▸ │
-│ │ block         │             │ over md4c +   │ │                   │ Actions this screen emits                    ▸ │
-│ │ renderer      │             │ wrap          │ │                   │ Minimum width this screen needs: 60            │
-│ │ (blocks →     │             │               │ │                   │ Minimum height this screen needs: 8            │
-│ │ styled        │             │               │ │                   │ Focused window                         input ▸ │
-│ │ wrapped       │             │               │ │                   │ Undo                                    Ctrl-Z │
-│ │ lines)        │             │               │ │                   │ Redo                                    Ctrl-Y │
-│ │ Theme (roles  │ build       │ single header │ │                   │ New layout, from an empty screen (name):       │
-│ │ → styles,     │             │               │ │                   │ Load layout                                  ▸ │
-│ │ JSON loader,  │             │               │ │                   │ Save layout file as (layouts/<name>.json):     │
-│ │ built-ins)    │             │               │ │                   │ Reset to the loaded layout…                    │
-│ └───────────────┴─────────────┴───────────────┘ │                   │                                                │
+│ │ widgets       │             │ this small    │ │                   │ Node id: status                                │
+│ │ Layout files  │ build       │ reuses the    │ │                   │ Title: status                                  │
+│ │ (JSON:        │             │ theme         │ │                   │ Widget kind: rows                              │
+│ │ windows +     │             │ loader's hand │ │                   │ Source: status                                 │
+│ │ placements +  │             │ parser; hot-  │ │                   │ Menu file:                                     │
+│ │ content       │             │ reloaded      │ │                   │ Size (Alt+arrows nudge): 70                    │
+│ │ slots)        │             │               │ │                   │ [ ] Focusable                                  │
+│ │ Markdown      │ build       │ single header │ │                   │ Delete this node                               │
+│ │ block         │             │ over md4c +   │ │                   │ Popups                                       ▸ │
+│ │ renderer      │             │ wrap          │ │                   │ Actions this screen emits                    ▸ │
+│ │ (blocks →     │             │               │ │                   │ Minimum width this screen needs: 60            │
+│ │ styled        │             │               │ │                   │ Minimum height this screen needs: 8            │
+│ │ wrapped       │             │               │ │                   │ Focused window                         input ▸ │
+│ │ lines)        │             │               │ │                   │ Undo                                    Ctrl-Z │
+│ │ Theme (roles  │ build       │ single header │ │                   │ Redo                                    Ctrl-Y │
+│ │ → styles,     │             │               │ │                   │ New layout, from an empty screen (name):       │
+│ │ JSON loader,  │             │               │ │                   │ Load layout                                  ▸ │
+│ │ built-ins)    │             │               │ │                   │ Save layout file as (layouts/<name>.json):     │
+│ └───────────────┴─────────────┴───────────────┘ │                   │ Reset to the loaded layout…                    │
 │                                                 █                   │                                                │
 │ Here is the function you asked for:             █                   │                                                │
 │                                                 █                   │                                                │

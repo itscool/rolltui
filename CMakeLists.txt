@@ -461,6 +461,15 @@ target_compile_definitions(rolltui-files-only-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
 add_dependencies(rolltui-files-only-test rolltui-studio)
 
+# Phase 27 m3: BUILD AN APP FROM NOTHING. An empty preset directory and no document in, four
+# authored screen files out, and a host that draws them. The third of the family: `files_only`
+# proved a screen can BE files, `authored_screen` proved the files can be authored for an app
+# the tool is not, and this one proves the tool can start from nothing at all.
+add_rolltui_test(rolltui-from-nothing-test tests/from_nothing_test.cpp)
+target_compile_definitions(rolltui-from-nothing-test PRIVATE
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
+add_dependencies(rolltui-from-nothing-test rolltui-studio)
+
 # Phase 16 m6: THE PURE-C CONSUMER — the claim this library had never executed once. Not
 # `add_rolltui_test`, because that function's `target_include_directories(… tests)` would put
 # the C++ harness on the path and this file must not be able to reach it: it includes

@@ -373,6 +373,15 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
   top.push_back(MenuItem::toggle("visible", "Visible", true));
   top.push_back(choice_of("border", "Border", std::move(borders), "single"));
+  // THE WINDOW ID, added at Phase 27 m3 because building an app from nothing found it
+  // missing: every node the editor created was `main`, `main-2`, `main-row`, and a person
+  // who wanted a window named after what it shows had to edit the JSON. That made a THIRD
+  // thing you cannot
+  // design without writing JSON, and m4's claim is that there are exactly two. It is a
+  // Name, not free text: a layout's `focus` names it and a report quotes it. Called a NODE
+  // id and not a window id because a row and a column carry one too, and because every other
+  // tree operation in this menu says node ("Select the next node", "Delete this node").
+  top.push_back(MenuItem::input("id", "Node id", name.clone()));
   top.push_back(MenuItem::input("title", "Title", text.clone()));
   top.push_back(MenuItem::input("kind", "Widget kind", name.clone()));
   top.push_back(MenuItem::input("source", "Source", text.clone()));
@@ -508,6 +517,7 @@ void LayoutEditor::sync_values() {
   if (!n) return;
   set_checked(menu_, "visible", n->visible);
   set_value(menu_, "border", std::string(border_name(n->border)));
+  set_value(menu_, "id", sel_);
   set_value(menu_, "title", str_of(n->title));
   set_value(menu_, "size", split_size_to_string(n->size));
   set_checked(menu_, "focusable", n->focusable);
@@ -807,6 +817,27 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       int& target = id == "min_width" ? current_.min_width : current_.min_height;
       begin_preview();
       target = std::atoi(value.c_str());
+      return commit_current();
+    }
+    if (id == "id") {
+      // A RENAME IS THREE EDITS, AND DOING ONE OF THEM IS THE BUG: the node's id, the
+      // SELECTION (this editor selects by id, so a rename that forgets it deselects the node
+      // you just renamed), and `focus` if it named this node (a dangling focus is silent —
+      // the first focusable window in tree order takes it and nothing says why).
+      Node* n = sel_node();
+      if (!n) return {O::Changed, {}};
+      if (value.empty()) { status_ = "a node needs an id"; return {O::Changed, {}}; }
+      const std::string from = sel_;
+      if (value == from) return {O::Changed, {}};
+      // `unique_id` answers with a suffix rather than refusing, which is what every other id
+      // this editor makes does; say so, because the author typed something else.
+      const std::string to = unique_id(value);
+      begin_preview();
+      set_str(n->id, to);
+      if (view_of(current_.base.focus) == from) set_str(current_.base.focus, to);
+      sel_ = to;
+      status_ = to == value ? "renamed '" + from + "' to '" + to + "'"
+                            : "'" + value + "' was taken; renamed '" + from + "' to '" + to + "'";
       return commit_current();
     }
     if (id == "title") { begin_preview(); if (Node* n = sel_node()) set_str(n->title, value); return commit_current(); }

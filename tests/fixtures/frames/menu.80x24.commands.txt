@@ -8,10 +8,10 @@
 │ │ lines)       │  │ Theme editor                      F4 │uecolor            │
 │ │ Theme (roles │ b│ Layout editor                     F6 │nu                 │
 │ │ → styles,    │  │ Keys editor                       F7 │                   │
-│ │ JSON loader, │  │ Reload the fixture                F5 │                   │
-│ │ built-ins)   │  │ Help                           F1, ? │                   │
-│ └──────────────┴──│ Quit                          Ctrl-Q │                   │
-│                   │                                      │                   │
+│ │ JSON loader, │  │ Menu editor                       F8 │                   │
+│ │ built-ins)   │  │ Reload the fixture                F5 │                   │
+│ └──────────────┴──│ Help                           F1, ? │                   │
+│                   │ Quit                          Ctrl-Q │                   │
 │ Here is the functi│                                      │                   │
 │                   │                                      │                   │
 │ ┌ cpp ────────────│                                      │                   │

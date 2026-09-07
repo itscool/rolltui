@@ -62,6 +62,7 @@
 //     --frame-sgr WxH          the same frame with colours, for a terminal `cat`
 //     --keys "K K K"           scripted input applied before the frame (or before the
 //                              interactive loop): Up Down Left Right PageUp PageDown
+//                              (in Type:/Paste:, `_` is a space and `\_` a literal underscore)
 //                              Home End Tab Escape Enter Backspace Delete, each with
 //                              an optional Shift / Ctrl / Alt prefix (ShiftLeft,
 //                              CtrlHome, AltEnter, AltBackspace, ShiftTab), CtrlA/U/K/
@@ -1051,6 +1052,10 @@ struct App {
   }
   // The menus a `menu:` window could resolve, and the actions this binary knows — both HINTS.
   void toggle_menu_editor() {
+    // The second of two independent guards: an unmounted editor is unreachable by NAME as
+    // well as by chord, so no route (the F2 menu, the palette, a bindings file that binds
+    // `editor.menu` anyway) can open what this binary says it does not have.
+    if (!menu_editor_mounted()) { hint = "this build has no menu editor"; return; }
     if (editor_mode == EditorMode::Menu) { close_editor(); return; }
     close_editor();
     meditor.set_menus(menu_names());
@@ -1598,13 +1603,23 @@ struct App {
     const std::vector<RolltuiToolAction>& tools = mounted_tools();
     rolltui_bindings_declare(bindings, declared.data(), declared.size(), tools.data(), tools.size());
   }
-  // The tools this binary MOUNTS: the three editors, and its own three keys. A host that
+  // The tools this binary MOUNTS: the four editors, and its own three keys. A host that
   // mounted only the theme editor would list only that one.
+  //
+  // AND THAT IS THE CONTROL for plan/phase-27.md m3, expressed in the library's own mounting
+  // mechanism rather than as a test hack. `ROLLTUI_NO_MENU_EDITOR` makes this binary a
+  // designer that did not mount a menu editor: `editor.menu` is not declared, so F8 resolves
+  // to no action at all, the F2 menu shows the item with no shortcut, and `toggle_menu_editor`
+  // refuses independently. The from-nothing test runs the IDENTICAL keystrokes with it set and
+  // gets three files instead of four, which is what proves the fourth file is the menu
+  // editor's doing and not some other path's.
+  static bool menu_editor_mounted() { return std::getenv("ROLLTUI_NO_MENU_EDITOR") == nullptr; }
   static const std::vector<RolltuiToolAction>& mounted_tools() {
     static const std::vector<RolltuiToolAction> all = [] {
       std::vector<RolltuiToolAction> out;
       auto add = [&out](std::span<const RolltuiToolAction> ts) { for (const RolltuiToolAction& a : ts) out.push_back(a); };
-      add(rolltui::tools::editor_actions());
+      for (const RolltuiToolAction& a : rolltui::tools::editor_actions())
+        if (menu_editor_mounted() || std::string_view(a.name) != "editor.menu") out.push_back(a);
       add(rolltui::tools::studio_actions());
       return out;
     }();
@@ -2191,7 +2206,12 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   auto unescape = [](std::string s, bool newlines) {
     std::string out;
     for (std::size_t i = 0; i < s.size(); ++i) {
-      if (s[i] == '_') out.push_back(' ');
+      // `\_` is a LITERAL underscore, the escape `_`-means-space always needed and did not
+      // have: an identifier is the thing you most often want to type into a Name field, and
+      // `Type:my_window` silently produced `mywindow` because the Name spec dropped the
+      // space. Found by Phase 27 m3 authoring a screen whose window ids are identifiers.
+      if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == '_') { out.push_back('_'); ++i; }
+      else if (s[i] == '_') out.push_back(' ');
       else if (newlines && s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') { out.push_back('\n'); ++i; }
       else out.push_back(s[i]);
     }

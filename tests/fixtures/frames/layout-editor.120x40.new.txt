@@ -8,6 +8,7 @@
 │                                                                     │ Swap with the next sibling                     │
 │                                                                     │ [x] Visible                                    │
 │                                                                     │ Border                                single ▸ │
+│                                                                     │ Node id: main                                  │
 │                                                                     │ Title:                                         │
 │                                                                     │ Widget kind: text                              │
 │                                                                     │ Source:                                        │
@@ -26,7 +27,6 @@
 │                                                                     │ Load layout                                  ▸ │
 │                                                                     │ Save layout file as (layouts/<name>.json):     │
 │                                                                     │ Reset to the loaded layout…                    │
-│                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │

@@ -8,25 +8,25 @@
 │ │                                  │             │ block tree is the│ Swap with the next sibling                     │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [x] Visible                                    │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Border                                single ▸ │
-│ │ mouse mode)                      │             │                  │ Title:                                         │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ Widget kind: input                             │
-│ │                                  │             │ Event, table-test│ Source: prompt                                 │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Menu file:                                     │
-│ │ colour downgrade                 │             │ tested           │ Size (Alt+arrows nudge): 3                     │
-│ │ Wrap engine                      │ build       │ single header ove│ [x] Focusable                                  │
-│ │                                  │             │ header           │ Delete this node                               │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ Popups                                       ▸ │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│ Actions this screen emits                    ▸ │
-│ │                                  │             │ Rect is a pure fu│ Minimum width this screen needs: 60            │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│ Minimum height this screen needs: 8            │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ Focused window                         input ▸ │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ Undo                                    Ctrl-Z │
-│ │ placements + content slots)      │             │ parser; hot-reloa│ Redo                                    Ctrl-Y │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ New layout, from an empty screen (name):       │
-│ │ → styled wrapped lines)          │             │                  │ Load layout                                  ▸ │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │ Save layout file as (layouts/<name>.json):     │
-│ │ loader, built-ins)               │             │                  │ Reset to the loaded layout…                    │
-│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
+│ │ mouse mode)                      │             │                  │ Node id: input                                 │
+│ │ Key + mouse decoding             │ build       │ single header, pu│ Title:                                         │
+│ │                                  │             │ Event, table-test│ Widget kind: input                             │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Source: prompt                                 │
+│ │ colour downgrade                 │             │ tested           │ Menu file:                                     │
+│ │ Wrap engine                      │ build       │ single header ove│ Size (Alt+arrows nudge): 3                     │
+│ │                                  │             │ header           │ [x] Focusable                                  │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ Delete this node                               │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ Popups                                       ▸ │
+│ │                                  │             │ Rect is a pure fu│ Actions this screen emits                    ▸ │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ Minimum width this screen needs: 60            │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ Minimum height this screen needs: 8            │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ Focused window                         input ▸ │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ Undo                                    Ctrl-Z │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ Redo                                    Ctrl-Y │
+│ │ → styled wrapped lines)          │             │                  │ New layout, from an empty screen (name):       │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │ Load layout                                  ▸ │
+│ │ loader, built-ins)               │             │                  │ Save layout file as (layouts/<name>.json):     │
+│ └──────────────────────────────────┴─────────────┴──────────────────│ Reset to the loaded layout…                    │
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │

@@ -8,25 +8,25 @@
 │ follow  yes       │ │ grapheme clusters, display width      │       │ Swap with the next sibling                     │
 │ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
 │ focus   editor    │ │                                       │       │ Border                                single ▸ │
-│                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Title: status                                  │
-│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Widget kind: rows                              │
-│                   │ │ mode)                                 │       │ Source: status                                 │
-│                   │ │ Key + mouse decoding                  │ build │ Menu file:                                     │
-│                   │ │                                       │       │ Size (Alt+arrows nudge): 21                    │
-│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ [ ] Focusable                                  │
-│                   │ │ downgrade                             │       │ Delete this node                               │
-│                   │ │ Wrap engine                           │ build │ Popups                                       ▸ │
-│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Actions this screen emits                    ▸ │
-│                   │ │ rel per axis), focus                  │       │ Minimum width this screen needs: 60            │
-│                   │ │ Menu widget (hierarchical,            │ build │ Minimum height this screen needs: 8            │
-│                   │ │ filterable) + list/text widgets       │       │ Focused window                         input ▸ │
-│                   │ │ Layout files (JSON: windows +         │ build │ Undo                                    Ctrl-Z │
-│                   │ │ placements + content slots)           │       │ Redo                                    Ctrl-Y │
-│                   │ │ Markdown block renderer (blocks →     │ build │ New layout, from an empty screen (name):       │
-│                   │ │ styled wrapped lines)                 │       │ Load layout                                  ▸ │
-│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Save layout file as (layouts/<name>.json):     │
-│                   │ │ built-ins)                            │       │ Reset to the loaded layout…                    │
-│                   │ └───────────────────────────────────────┴───────│                                                │
+│                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Node id: status                                │
+│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Title: status                                  │
+│                   │ │ mode)                                 │       │ Widget kind: rows                              │
+│                   │ │ Key + mouse decoding                  │ build │ Source: status                                 │
+│                   │ │                                       │       │ Menu file:                                     │
+│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Size (Alt+arrows nudge): 21                    │
+│                   │ │ downgrade                             │       │ [ ] Focusable                                  │
+│                   │ │ Wrap engine                           │ build │ Delete this node                               │
+│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Popups                                       ▸ │
+│                   │ │ rel per axis), focus                  │       │ Actions this screen emits                    ▸ │
+│                   │ │ Menu widget (hierarchical,            │ build │ Minimum width this screen needs: 60            │
+│                   │ │ filterable) + list/text widgets       │       │ Minimum height this screen needs: 8            │
+│                   │ │ Layout files (JSON: windows +         │ build │ Focused window                         input ▸ │
+│                   │ │ placements + content slots)           │       │ Undo                                    Ctrl-Z │
+│                   │ │ Markdown block renderer (blocks →     │ build │ Redo                                    Ctrl-Y │
+│                   │ │ styled wrapped lines)                 │       │ New layout, from an empty screen (name):       │
+│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Load layout                                  ▸ │
+│                   │ │ built-ins)                            │       │ Save layout file as (layouts/<name>.json):     │
+│                   │ └───────────────────────────────────────┴───────│ Reset to the loaded layout…                    │
 │                   │                                                 │                                                │
 │                   │ Here is the function you asked for:             │                                                │
 │                   │                                                 │                                                │
