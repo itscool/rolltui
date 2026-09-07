@@ -119,7 +119,8 @@ std::optional<Layout> parse_layout(std::string_view text, bool* clean) {
 }  // namespace
 
 int main() {
-  LayoutEditor ed;
+  RolltuiContext* ctx = rolltui_context_new();
+  LayoutEditor ed{ctx};
   ed.load(builtin_layout("default"));
   using O = LayoutEditor::Outcome::Kind;
   check(ed.selected() == "transcript" && ed.selected_node() && ed.selected_node()->is_window(), "loading selects the first window in tree order [" + ed.selected() + "]");
@@ -466,18 +467,18 @@ int main() {
   // ---- Phase 11 m4: the picker offers what the TARGET can build ----
   // The kinds are no longer the library's table read straight out of Layout.hpp — they
   // are what the host offers, which under an app profile is the library's PLUS that app's
-  // registered ones. Last in the file on purpose: it registers process-wide kinds, and
-  // clears them again at the end so nothing after it inherits another app's vocabulary.
+  // registered ones. **Phase 25: a session of its own, so this no longer has to clear a
+  // process-wide table to keep out of another test's way — freeing the context IS that.**
   {
-    rolltui_widget_kind_clear();
+    RolltuiContext* target = rolltui_context_new();
     std::string why;
     (void)why;  // register's refusal reason, C-side (rolltui_widget_kind_register has no `why` out-param)
-    const int ok1 = rolltui_widget_kind_register("canvas", sizeof("canvas") - 1, ROLLTUI_SOURCE_REQUIRED, "a surface this app paints",
-                                                 sizeof("a surface this app paints") - 1);
-    const int ok2 = rolltui_widget_kind_register("approval", sizeof("approval") - 1, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
+    const int ok1 = rolltui_widget_kind_register(target, "canvas", sizeof("canvas") - 1, ROLLTUI_SOURCE_REQUIRED,
+                                                "a surface this app paints", sizeof("a surface this app paints") - 1);
+    const int ok2 = rolltui_widget_kind_register(target, "approval", sizeof("approval") - 1, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     check(ok1 == ROLLTUI_REGISTER_OK && ok2 == ROLLTUI_REGISTER_OK,
           "the target app registers two kinds: one that names a source and one that takes none");
-    LayoutEditor te;
+    LayoutEditor te{target};
     te.load(builtin_layout("default"));
     te.select("transcript");
     auto options = [](LayoutEditor& e) {
@@ -534,7 +535,8 @@ int main() {
     check(content_of(te, "transcript") == before_bogus &&
               te.status_line().find("not a widget kind this app can build") != std::string::npos,
           "a kind in neither rung is refused by name and writes nothing [" + te.status_line() + "]");
-    rolltui_widget_kind_clear();
+    rolltui_context_free(target);  // and with it the two kinds — no clearing to remember
   }
+  rolltui_context_free(ctx);
   return report("rolltui layout_editor_test");
 }

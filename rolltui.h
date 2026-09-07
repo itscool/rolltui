@@ -2385,6 +2385,10 @@ typedef struct RolltuiLayoutAction {
  * `popup()` is the one convenience worth a member function (a host reaches for it by name at
  * ~a dozen call sites): a linear scan needs nothing this header does not already have. */
 
+/* A SESSION's registries and caches — see "THE SESSION" in Part 2 for the six-point contract.
+ * Opaque: a host makes one, hands it to what needs it, and frees it. */
+typedef struct RolltuiContext RolltuiContext;
+
 typedef struct RolltuiWindowStack RolltuiWindowStack;
 
 /* THE THREE ACTION NAMES, handed in — this file knows the RULES and none of the words. */
@@ -3253,6 +3257,38 @@ typedef struct RolltuiWrapLines RolltuiWrapLines;
 
 
 /* ========================================================================================
+ * THE SESSION — make one of these FIRST; everything a host does hangs off it
+ * ======================================================================================== */
+
+/* A ROLLTUI SESSION: the registries and caches an app configures, and nothing else. Every one
+ * of them was a process-wide static before Phase 25, which meant two apps in one process shared
+ * one widget-kind registry and could not have been told apart.
+ *
+ * ---- THE CONTRACT, six points, and the middle two are the useful ones ----------------------
+ *   1. **One thread at a time.** The library locks nothing for you inside a context. The one
+ *      standing exception is `RolltuiPresetStore`, which carries its own mutex so a host may
+ *      edit from one thread and render from another.
+ *   2. **ANY NUMBER OF CONTEXTS** — same thread or different, configured alike or differently.
+ *      A context is a plain owned handle with no thread affinity; it shares nothing with
+ *      another.
+ *   3. **LAYOUTS, THEMES AND BINDINGS TABLES ARE PLAIN DATA AND PORTABLE BETWEEN CONTEXTS.**
+ *      This is what makes several contexts useful rather than merely possible. A `RolltuiLayout`
+ *      is parsed data, and kind resolution happens at `rolltui_windows_sync` rather than at load
+ *      — which is exactly why an unknown kind is a runtime error PANEL and not a load failure.
+ *      So ONE layout may drive TWO contexts, and each resolves kinds against its own registry.
+ *   4. **A CACHED BUILT-IN BELONGS TO THE CONTEXT THAT CACHED IT.** Reading one from another
+ *      context is fine; OUTLIVING its owner is not.
+ *   5. **ONLY ONE CONTEXT MAY DRIVE A TERMINAL** — a process has one controlling terminal, one
+ *      saved `termios` and one signal disposition. Any number may build screens, compose and
+ *      render to TEXT headless, which is what every test and every `--frame` run already does.
+ *   6. **The allocator counters are a process-wide atomic SUM**, not per context: assert
+ *      `live_bytes == 0` after freeing ALL contexts, never per context while several are alive.
+ *
+ * OWNED: `_new` / `_free`, and `_free` is a no-op on NULL. */
+RolltuiContext* rolltui_context_new(void);
+void rolltui_context_free(RolltuiContext* c);
+
+/* ========================================================================================
  * LOAD — a screen, a theme, a bindings table and an app profile are FILES
  * A host reads them; it does not build them in code. What a file may name is Part 1's tables.
  * ======================================================================================== */
@@ -3392,10 +3428,16 @@ const RolltuiLayoutRoles* rolltui_layout_default_roles(void);
  * there was none) are always filled and are BORROWS into `text` — never a copy, because a
  * caller that wants its own string is about to make one anyway (`RolltuiContent`'s shape). On
  * failure (0): `problem` says which of the three ways (never None), and `why` — cleared on
- * entry — gets the exact sentence `rolltui::parse_content` always produced. */
-int rolltui_content_parse(const char* text, size_t len, size_t* row, int* is_host, const char** name,
-                         size_t* name_len, const char** source, size_t* source_len, unsigned char* problem,
-                         RolltuiStr* why);
+ * entry — gets the exact sentence `rolltui::parse_content` always produced.
+ *
+ * `c` may be NULL, and that is the LOADER's case rather than a defensive allowance: it means
+ * "split the string, do not resolve a kind", so every kind reads as unknown. A layout FILE is
+ * parsed before a host has registered anything, which is why an unknown kind is not a load
+ * failure — `rolltui_windows_sync` reports it, with the error panel drawn. That is contract
+ * point 3 (a layout is plain data and portable between contexts) falling out of the signature. */
+int rolltui_content_parse(const RolltuiContext* c, const char* text, size_t len, size_t* row, int* is_host,
+                          const char** name, size_t* name_len, const char** source, size_t* source_len,
+                          unsigned char* problem, RolltuiStr* why);
 
 /* content_to_string's join rule: `kind_name`, then ":" + `source` exactly when `rule` says
  * the colon belongs (Required always; Optional only when `source` is non-empty). REPLACES
@@ -4067,7 +4109,10 @@ int rolltui_menu_parse_json(const char* text, size_t len, RolltuiMenuItem* out, 
 
 /* ---- layout --------------------------------------------------------------------------------*/
 
-RolltuiWindows* rolltui_windows_new(void);
+RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx);
+
+/* The session this Windows was made for — BORROWED, and it must outlive the Windows. */
+RolltuiContext* rolltui_windows_context(const RolltuiWindows* w);
 
 void rolltui_windows_free(RolltuiWindows* w);
 
@@ -4316,8 +4361,8 @@ void rolltui_compose_scratch_free(RolltuiComposeScratch* s);
 /* Resolves a kind NAME. `*row` is its row in the one enumeration, filled for BOTH answering
  * rungs; `rule` and `source_is` (a BORROW valid until the registry changes) likewise. Any
  * out-param may be NULL. */
-int rolltui_widget_kind_resolve(const char* name, size_t len, size_t* row, unsigned char* rule,
-                                const char** source_is, size_t* source_is_len);
+int rolltui_widget_kind_resolve(const RolltuiContext* c, const char* name, size_t len, size_t* row,
+                                unsigned char* rule, const char** source_is, size_t* source_is_len);
 
 /* The one enumeration. Rows [0, library_count) are the library's closed table, in table order;
  * rows [library_count, count) are a host's, in registration order. A row past the end reads as
@@ -4335,14 +4380,14 @@ int rolltui_widget_kind_resolve(const char* name, size_t len, size_t* row, unsig
  * act and `rolltui-studio` is the tool for it. Shipped files: `rolltui/presets/layouts/` and
  * `rolltui/presets/menus/`; the two example apps carry their own under
  * `rolltui/examples/presets/`. */
-size_t rolltui_widget_kind_count(void);
+size_t rolltui_widget_kind_count(const RolltuiContext* c);
 
 size_t rolltui_widget_kind_library_count(void);
 
 unsigned char rolltui_widget_kind_source_shape(size_t row);
 
-int rolltui_widget_kind_register(const char* name, size_t len, unsigned char rule, const char* source_is,
-                                 size_t source_is_len);
+int rolltui_widget_kind_register(RolltuiContext* c, const char* name, size_t len, unsigned char rule,
+                                 const char* source_is, size_t source_is_len);
 
 int rolltui_layout_report_clean(const RolltuiLayoutReport* r);
 

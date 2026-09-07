@@ -296,7 +296,8 @@ RolltuiWidget canvas_factory(void* ctx, const char* content, std::size_t len) {
   unsigned char problem = 0;
   // A content the registry cannot parse is not an error path — a zeroed widget means "I
   // cannot build this", and `Windows` draws the error panel and names it in the report.
-  if (!rolltui_content_parse(content, len, nullptr, nullptr, nullptr, nullptr, &source, &source_len, &problem, &why))
+  if (!rolltui_content_parse(rolltui_windows_context(fc->windows), content, len, nullptr, nullptr, nullptr, nullptr,
+                             &source, &source_len, &problem, &why))
     return RolltuiWidget{};
   Canvas* c = new Canvas{std::string(source, source_len), fc->tool, fc->windows, rolltui_draw_scratch_new(), {}, {}};
   return RolltuiWidget{&kCanvasPlugin, c};
@@ -308,12 +309,13 @@ RolltuiWidget canvas_factory(void* ctx, const char* content, std::size_t len) {
 // created once here and freed once there; none of them is per-frame, which is why no wrapper
 // type is needed for any of them.
 struct App {
+  RolltuiContext* ctx = rolltui_context_new();  // OWNED: this app's session (Phase 25)
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* effects = nullptr;
   RolltuiEffectScratch* effect_scratch = rolltui_effect_scratch_new();
   RolltuiDrawScratch* draw_scratch = rolltui_draw_scratch_new();
   RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default());
-  RolltuiWindows* windows = rolltui_windows_new();
+  RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
   RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
@@ -328,7 +330,7 @@ struct App {
   App() {
     layout = rolltui_layout_new();
     // The eight built-in kinds and the five vocabularies they draw with. A bare
-    // `rolltui_windows_new()` has neither (m1c's recorded gap, closed in m2a) — this is the
+    // `rolltui_windows_new(ctx)` has neither (m1c's recorded gap, closed in m2a) — this is the
     // one line that makes a pure-C window table usable, and every host calls it.
     rolltui_windows_set_library_defaults(windows);
   }
@@ -343,6 +345,7 @@ struct App {
     rolltui_draw_scratch_free(draw_scratch);
     rolltui_effect_scratch_free(effect_scratch);
     rolltui_effect_map_free(effects);
+    rolltui_context_free(ctx);  // LAST: the registries every handle above resolved through
   }
 
   RolltuiRect area() const { return {0, 0, w, h > 1 ? h - 1 : 0}; }
@@ -361,7 +364,7 @@ struct App {
     // window table. After this the library builds `canvas:<source>` like any built-in, and
     // this host never sees a window id again.
     factory_ctx = {&tool, windows};
-    register_canvas_kind();
+    register_canvas_kind(ctx);
     rolltui_windows_register_kind(windows, kCanvasKind, std::strlen(kCanvasKind), canvas_factory, &factory_ctx,
                                   nullptr);
     rolltui_windows_add_menu(windows, "tools", 5, kToolsMenu, std::strlen(kToolsMenu));
@@ -387,11 +390,12 @@ struct App {
     declare_actions();  // the SCREEN says what this app can do (Phase 10 m4)
   }
 
-  // The library's own kind table is process-wide, so registering twice (the app, and the
-  // profile writer) has to be idempotent — `rolltui_widget_kind_register` says so itself by
-  // refusing only a name already registered with ANOTHER source rule.
-  static void register_canvas_kind() {
-    rolltui_widget_kind_register(kCanvasKind, std::strlen(kCanvasKind), ROLLTUI_SOURCE_REQUIRED, kCanvasDescribes,
+  // The kind table belongs to a CONTEXT since Phase 25, so this takes the session it registers
+  // into. Registering twice in one context (the app, and the profile writer) is still
+  // idempotent — `rolltui_widget_kind_register` refuses only a name already registered with
+  // ANOTHER source rule.
+  static void register_canvas_kind(RolltuiContext* ctx) {
+    rolltui_widget_kind_register(ctx, kCanvasKind, std::strlen(kCanvasKind), ROLLTUI_SOURCE_REQUIRED, kCanvasDescribes,
                                  std::strlen(kCanvasDescribes));
   }
 
@@ -713,13 +717,17 @@ int main(int argc, char** argv) {
     // The kind registry is what a profile's `kinds` list is READ from, so it has to be
     // registered before one is written — the same "generated from where the binary reads it"
     // rule the rest of `paint_profile` follows.
-    App::register_canvas_kind();
+    // A session of its own for the profile run: the registry is what a profile's `kinds` list
+    // is READ from, so it has to be registered before one is written.
+    RolltuiContext* pctx = rolltui_context_new();
+    App::register_canvas_kind(pctx);
     RolltuiAppProfile* p = paint_profile();
     RolltuiStr dumped{};
     rolltui_app_profile_dump(p, 2, &dumped);
     const std::string text = std::string(dumped.p ? dumped.p : "", dumped.n) + "\n";
     rolltui_str_free(&dumped);
     rolltui_app_profile_free(p);
+    rolltui_context_free(pctx);
     if (profile_path.empty()) {
       std::fwrite(text.data(), 1, text.size(), stdout);
       return 0;

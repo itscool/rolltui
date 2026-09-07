@@ -158,6 +158,9 @@ add_library(rolltui STATIC
   ${ROLLTUI_SLICE}            # the library proper, in C (Phase 14 + Phase 15)
   c/rolltui_mem.c             # Phase 13, moved to C at Phase 17 m1: the library's ONE entry
                               #   point for memory. Memory.hpp is a thin forwarding shim now.
+  c/rolltui_context.c         # Phase 25 m2: A SESSION'S OWN STATE. The closed set of
+                              #   subsystem registries and caches that used to be process-wide
+                              #   statics, so two contexts in one process share nothing.
   c/rolltui_lifetime.c        # Phase 14 m6a, moved to C at Phase 17 m1: shutdown(), and no
                               #   init — the release point that makes "did we leak?"
                               #   answerable. Lifetime.hpp is a thin forwarding shim now.

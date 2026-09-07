@@ -95,6 +95,7 @@ static size_t live_blocks(void) {
  * every one of these is freed by hand at the bottom of `main`, and `live_bytes == 0` is what
  * says the hand was right. */
 typedef struct App {
+  RolltuiContext* ctx; /* Phase 25: the session every registry hangs off */
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT];
   RolltuiEffectMap* effects;
   RolltuiWindows* windows;
@@ -151,6 +152,7 @@ int main(void) {
   memset(&app, 0, sizeof app);
   app.w = 100;
   app.h = 30;
+  app.ctx = rolltui_context_new();
 
   /* ---- 0. THE GAUGE, ARMED — before any zero below is believed ---------------------------- */
   {
@@ -231,7 +233,7 @@ int main(void) {
   }
 
   /* ---- 3. THE WINDOW STACK ---------------------------------------------------------------- */
-  app.windows = rolltui_windows_new();
+  app.windows = rolltui_windows_new(app.ctx);
   rolltui_windows_set_library_defaults(app.windows); /* the eight kinds and the five vocabularies */
   app.stack = rolltui_window_stack_new();
   app.bindings = rolltui_bindings_clone(rolltui_bindings_default());
@@ -306,15 +308,53 @@ int main(void) {
   {
     size_t row = (size_t)-1;
     unsigned char rule = 0;
-    const size_t rows_before = rolltui_widget_kind_count();
-    check(rolltui_widget_kind_register("transcript", 10, ROLLTUI_SOURCE_REQUIRED, "", 0) == ROLLTUI_REGISTER_IS_LIBRARY,
+    const size_t rows_before = rolltui_widget_kind_count(app.ctx);
+    check(rolltui_widget_kind_register(app.ctx, "transcript", 10, ROLLTUI_SOURCE_REQUIRED, "", 0) ==
+              ROLLTUI_REGISTER_IS_LIBRARY,
           "registering a library kind's name is refused, by name, from C");
-    check(rolltui_widget_kind_resolve("transcript", 10, &row, &rule, NULL, NULL) == ROLLTUI_KIND_LIBRARY &&
+    check(rolltui_widget_kind_resolve(app.ctx, "transcript", 10, &row, &rule, NULL, NULL) == ROLLTUI_KIND_LIBRARY &&
               row < rolltui_widget_kind_library_count() && rule == ROLLTUI_SOURCE_REQUIRED,
           "...and it still resolves at rung 1, as a row inside the library's boundary, with its own rule");
-    check(rolltui_widget_kind_count() == rows_before, "...and the refused registration added no row");
+    check(rolltui_widget_kind_count(app.ctx) == rows_before, "...and the refused registration added no row");
     check(rolltui_widget_kind_source_shape(row) == ROLLTUI_SOURCE_SHAPE_NAME,
           "...and its source SHAPE is a row of the registry, readable from C, not a C++ enum compare");
+  }
+
+  /* ---- 3e. TWO CONTEXTS, AND THEY SHARE NOTHING (Phase 25 m2) ------------------------------ *
+   * The user's parenthesis for `RolltuiContext` was *"a real single rolltui session hopefully
+   * proving nothing is global"*, and until this phase it was FALSE: the widget-kind registry was
+   * four file-scope statics, so two apps in one process shared one table and could not have been
+   * told apart. **This is the assertion that says they can.** It is written from C on purpose —
+   * the same reason 3d is: no C++ special member can absorb the answer.
+   *
+   * WHAT IT DOES NOT ASSERT, and the header says why: not `live_bytes == 0` PER context. The
+   * allocator counters are one process-wide atomic sum (contract point 6), so the zero is taken
+   * after freeing BOTH, at the end of this file — which also proves neither leaked into the
+   * other. Making an allocation carry a context would touch every allocation in the library for
+   * a property nothing needs. */
+  {
+    RolltuiContext* a = rolltui_context_new();
+    RolltuiContext* b = rolltui_context_new();
+    size_t row_a = (size_t)-1, row_b = (size_t)-1;
+    check(a != NULL && b != NULL && a != b, "two contexts in one process");
+    check(rolltui_widget_kind_register(a, "gauge", 5, ROLLTUI_SOURCE_REQUIRED, "a number", 8) == ROLLTUI_REGISTER_OK,
+          "…a host kind registers into the first");
+    check(rolltui_widget_kind_resolve(a, "gauge", 5, &row_a, NULL, NULL, NULL) == ROLLTUI_KIND_HOST &&
+              row_a >= rolltui_widget_kind_library_count(),
+          "…the first resolves it, as a row past the library's boundary");
+    check(rolltui_widget_kind_resolve(b, "gauge", 5, &row_b, NULL, NULL, NULL) == ROLLTUI_KIND_UNKNOWN,
+          "…AND THE SECOND DOES NOT SEE IT AT ALL — the registries are separate");
+    check(rolltui_widget_kind_count(a) == rolltui_widget_kind_library_count() + 1 &&
+              rolltui_widget_kind_count(b) == rolltui_widget_kind_library_count(),
+          "…one row in the first, none in the second");
+    /* And rung 1 is identical in both: a context owns rung 2 and never the library's own. */
+    check(rolltui_widget_kind_resolve(a, "transcript", 10, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_LIBRARY &&
+              rolltui_widget_kind_resolve(b, "transcript", 10, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_LIBRARY,
+          "…and both resolve the library's own rung identically");
+    rolltui_context_free(b);
+    check(rolltui_widget_kind_resolve(a, "gauge", 5, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_HOST,
+          "…freeing one leaves the other's registry intact");
+    rolltui_context_free(a);
   }
 
   /* ---- 3c. AN EVENT, ROUTED AND DELIVERED ------------------------------------------------- */
@@ -679,6 +719,7 @@ int main(void) {
   }
 
   /* ---- 5. RELEASE, BY HAND, AND THE NUMBER THAT SAYS THE HAND WAS RIGHT -------------------- */
+  rolltui_context_free(app.ctx);
   rolltui_compose_scratch_free(app.compose_scratch);
   rolltui_window_stack_free(app.stack);
   rolltui_windows_free(app.windows);

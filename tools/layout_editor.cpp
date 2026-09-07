@@ -35,8 +35,8 @@ MenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m
 // own beyond what that one C call already answers. Phase 18 m2: a kind's NAME is its identity
 // whichever rung it came from, so `Content` holds the name and the source and each helper here
 // is one C call over the name. ------------------------------------------------------------------
-std::optional<Content> content_for_kind(std::string_view kind_name, std::string source = {}) {
-  if (rolltui_widget_kind_resolve(kind_name.data(), kind_name.size(), nullptr, nullptr, nullptr, nullptr) ==
+std::optional<Content> content_for_kind(const RolltuiContext* ctx, std::string_view kind_name, std::string source = {}) {
+  if (rolltui_widget_kind_resolve(ctx, kind_name.data(), kind_name.size(), nullptr, nullptr, nullptr, nullptr) ==
       ROLLTUI_KIND_UNKNOWN)
     return std::nullopt;
   Content c;
@@ -45,40 +45,41 @@ std::optional<Content> content_for_kind(std::string_view kind_name, std::string 
   return c;
 }
 std::string content_kind_name(const Content& c) { return str_of(c.kind); }
-unsigned char content_source_rule(const Content& c) {
+unsigned char content_source_rule(const RolltuiContext* ctx, const Content& c) {
   unsigned char rule = ROLLTUI_SOURCE_REQUIRED;
-  rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), nullptr, &rule, nullptr, nullptr);
+  rolltui_widget_kind_resolve(ctx, c.kind.data(), c.kind.size(), nullptr, &rule, nullptr, nullptr);
   return rule;
 }
 // The kind's source SHAPE — a row of the registry, whichever rung it came from. This was the
 // one per-kind rule the retired enum had been carrying silently (`Text || File`).
-unsigned char content_source_shape(const Content& c) {
+unsigned char content_source_shape(const RolltuiContext* ctx, const Content& c) {
   std::size_t row = 0;
-  if (rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), &row, nullptr, nullptr, nullptr) == ROLLTUI_KIND_UNKNOWN)
+  if (rolltui_widget_kind_resolve(ctx, c.kind.data(), c.kind.size(), &row, nullptr, nullptr, nullptr) ==
+      ROLLTUI_KIND_UNKNOWN)
     return ROLLTUI_SOURCE_SHAPE_NAME;
   return rolltui_widget_kind_source_shape(row);
 }
-std::string content_source_describes(const Content& c) {
+std::string content_source_describes(const RolltuiContext* ctx, const Content& c) {
   const char* source_is = nullptr;
   std::size_t len = 0;
-  rolltui_widget_kind_resolve(c.kind.data(), c.kind.size(), nullptr, nullptr, &source_is, &len);
+  rolltui_widget_kind_resolve(ctx, c.kind.data(), c.kind.size(), nullptr, nullptr, &source_is, &len);
   return source_is ? std::string(source_is, len) : std::string();
 }
-std::string content_to_string(const Content& c) {
+std::string content_to_string(const RolltuiContext* ctx, const Content& c) {
   RolltuiStr out{};
-  rolltui_content_format(c.kind.data(), c.kind.size(), c.source.data(), c.source.size(), content_source_rule(c), &out);
+  rolltui_content_format(c.kind.data(), c.kind.size(), c.source.data(), c.source.size(), content_source_rule(ctx, c), &out);
   const std::string s(out.p ? out.p : "", out.n);
   rolltui_str_free(&out);
   return s;
 }
-std::optional<Content> parse_content(std::string_view text, std::string* why = nullptr) {
+std::optional<Content> parse_content(const RolltuiContext* ctx, std::string_view text, std::string* why = nullptr) {
   std::size_t row = 0;
   int is_host = 0;
   const char *name_p = nullptr, *source_p = nullptr;
   std::size_t name_len = 0, source_len = 0;
   unsigned char problem = 0;
   RolltuiStr why_c{};
-  const int ok = rolltui_content_parse(text.data(), text.size(), &row, &is_host, &name_p, &name_len, &source_p,
+  const int ok = rolltui_content_parse(ctx, text.data(), text.size(), &row, &is_host, &name_p, &name_len, &source_p,
                                        &source_len, &problem, &why_c);
   if (!ok) {
     if (why) why->assign(why_c.p ? why_c.p : "", why_c.n);
@@ -198,12 +199,12 @@ std::string LayoutEditor::unique_id(const std::string& base) const {
 
 // ---- construction ---------------------------------------------------------------------
 
-LayoutEditor::LayoutEditor() {
+LayoutEditor::LayoutEditor(const RolltuiContext* ctx) : ctx_(ctx) {
   // The library's own table until a host says otherwise: a tool that has been told
   // nothing about a target app can only honestly offer the kinds every host has.
   for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
     std::size_t len = 0;
-    const char* name = rolltui_widget_kind_name(i, &len);
+    const char* name = rolltui_widget_kind_name(ctx_, i, &len);
     kinds_.emplace_back(name, len);
   }
   current_ = builtin_layout("default");
@@ -378,7 +379,7 @@ void LayoutEditor::rebuild_menu() {
   sync_values();
 }
 
-LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) {
+LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) const {
   ContentParts p;
   if (!n || !n->is_window()) return p;
   const std::string_view content = view_of(n->content);
@@ -388,7 +389,7 @@ LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) {
   // Through the registry's own two rungs, and deliberately not through parse_content: a
   // window whose source is missing or forbidden is exactly what this editor exists to
   // repair, and it cannot repair what it refuses to hold (Layout.hpp, content_for_kind).
-  p.content = content_for_kind(p.kind_text, p.source);
+  p.content = content_for_kind(ctx_, p.kind_text, p.source);
   return p;
 }
 
@@ -417,12 +418,12 @@ std::string LayoutEditor::carried_source(std::string_view kind_name) const {
 bool LayoutEditor::set_content(const std::string& kind_name, const std::string& source) {
   Node* n = sel_node();
   if (!n || !n->is_window()) return false;
-  const std::optional<Content> c = content_for_kind(kind_name, source);
+  const std::optional<Content> c = content_for_kind(ctx_, kind_name, source);
   if (!c) {
     status_ = "'" + kind_name + "' is not a widget kind this app can build";
     return false;
   }
-  set_str(n->content, content_to_string(*c));
+  set_str(n->content, content_to_string(ctx_, *c));
   return true;
 }
 
@@ -441,19 +442,19 @@ void LayoutEditor::sync_content_fields() {
   set_enabled(menu_, "menu_file", window && is_menu);
   // The rule is the KIND's, whichever rung it came from — a registered kind that takes no
   // source disables the field exactly as `help` does, because its host said so.
-  const unsigned char rule = p.content ? content_source_rule(*p.content) : ROLLTUI_SOURCE_REQUIRED;
+  const unsigned char rule = p.content ? content_source_rule(ctx_, *p.content) : ROLLTUI_SOURCE_REQUIRED;
   const bool source_field = window && p.content && !is_menu && rule != ROLLTUI_SOURCE_FORBIDDEN;
   set_enabled(menu_, "source", source_field);
   if (MenuItem* it = find(menu_, "source"); it && source_field) {
     // A path is not a Name; a literal is anything and may be empty — the kind's SHAPE, read
     // from its registry row whichever rung it came from (Phase 18 m2).
-    it->spec.type = content_source_shape(*p.content) == ROLLTUI_SOURCE_SHAPE_TEXT ? InputType::Text : InputType::Name;
+    it->spec.type = content_source_shape(ctx_, *p.content) == ROLLTUI_SOURCE_SHAPE_TEXT ? InputType::Text : InputType::Name;
     it->spec.optional = rule == ROLLTUI_SOURCE_OPTIONAL;
     it->spec.hint.clear();
     for (const std::string& c : sources_)
-      if (std::optional<Content> oc = parse_content(c); oc && content_kind_name(*oc) == p.kind_text && !oc->source.empty())
+      if (std::optional<Content> oc = parse_content(ctx_, c); oc && content_kind_name(*oc) == p.kind_text && !oc->source.empty())
         set_str(it->spec.hint, str_of(it->spec.hint) + (it->spec.hint.empty() ? "" : " | ") + str_of(oc->source));
-    if (it->spec.hint.empty()) set_str(it->spec.hint, content_source_describes(*p.content));
+    if (it->spec.hint.empty()) set_str(it->spec.hint, content_source_describes(ctx_, *p.content));
   }
 }
 
@@ -643,7 +644,7 @@ std::string LayoutEditor::selection_line() const {
   // A content that does not parse is said HERE as well as in the window's error panel:
   // the editor is where it gets repaired, so the reason belongs beside the fields.
   if (n->is_window())
-    if (std::string why; !parse_content(view_of(n->content), &why)) s += " \xE2\x80\x94 " + why;
+    if (std::string why; !parse_content(ctx_, view_of(n->content), &why)) s += " \xE2\x80\x94 " + why;
   return s;
 }
 

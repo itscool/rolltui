@@ -64,11 +64,12 @@ ROLLTUI_GLOBAL("rolltui_effects.c", "g_count", CONTEXT)
 ROLLTUI_GLOBAL("rolltui_effects.c", "g_cap", CONTEXT)
 ROLLTUI_GLOBAL("rolltui_effects.c", "g_releaser_registered", CONTEXT)
 
-/* THE WIDGET-KIND REGISTRY — the headline case, and what m2's two-context proof registers into. */
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_host_kinds", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_host_count", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_host_cap", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_kind_releaser_registered", CONTEXT)
+/* ~~THE WIDGET-KIND REGISTRY~~ — MOVED 2026-09-06 (m2), the first subsystem across and the one
+ * the two-context proof registers into. It was `g_host_kinds`/`_count`/`_cap` plus a
+ * `g_kind_releaser_registered` flag; it is `RolltuiContext::kinds` now, released by name in
+ * `rolltui_context_free` rather than by a shutdown hook — so the flag went too, along with the
+ * hook it guarded. `c_consumer_test.c` section 3e is the assertion: a kind registered in one
+ * context is UNKNOWN in the other, and both resolve the library's own rung identically. */
 
 /* The shipped screen's own actions, and the built-in layouts: both parsed once from embedded
  * const bytes into OWNED memory. Identical for every context, but the storage is not shared. */
@@ -98,7 +99,21 @@ ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_scope_ctx", CONTEXT)
 ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_reason", CONTEXT)
 ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_reason_ctx", CONTEXT)
 
-/* ---- PROCESS: one per process by nature, each with its reason (15) -------------------------- */
+/* ---- PROCESS: one per process by nature, each with its reason (16) -------------------------- */
+
+/* THE TRANSITIONAL DEFAULT CONTEXT (m2). The one global this phase ADDS, and it is here rather
+ * than hidden precisely because a transitional global nobody is committed to removing is just a
+ * global. Every no-context entry point still in the API forwards to it, which is what lets the
+ * migration land one subsystem at a time in green commits instead of one unverifiable change —
+ * the discipline Phase 14 used with `-DROLLTUI_C`.
+ * **REMOVAL CONDITION, stated so it is checkable:** when the last no-context entry point takes a
+ * context, this goes, `rolltui_shutdown`'s call to `rolltui_context_default_release` goes with
+ * it, and this row goes with both. Its remaining callers today are `rolltui_app_profile_mount`
+ * (which takes a `RolltuiWindows` that carries a context in m3) and two suites whose subject IS
+ * the process-wide shutdown path. */
+ROLLTUI_GLOBAL("rolltui_context.c", "g_default", PROCESS)
+
+/* ---- PROCESS: one per process by nature, each with its reason (15, listed below) -------------------------- */
 
 /* THE KEYBOARD PROTOCOL LEVEL the terminal negotiated. It describes THE TTY, not a session, and
  * a process has one controlling terminal. Two contexts share it because they share the terminal. */

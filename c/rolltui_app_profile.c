@@ -12,6 +12,7 @@
 #include <stdio.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/rolltui.h"
@@ -928,7 +929,13 @@ void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w) {
     /* `ROLLTUI_REGISTER_OK` is 0 and every refusal is non-zero — a reason code, not a
      * success flag. Written as `!register(...)` first, which skipped every kind that
      * registered fine and installed a factory for every one that was refused. */
-    if (rolltui_widget_kind_register(name, name_len, rule, p->kinds[i].describes.p ? p->kinds[i].describes.p : "",
+    /* THE TARGET'S VOCABULARY GOES INTO THE SESSION THAT WILL RESOLVE IT, which is `w`'s and
+     * not the process's. Written against `rolltui_context_default()` for one commit and it
+     * silently registered the target app's kinds into the STUDIO's own session — the studio
+     * then drew its error panel where the target draws its canvas, which is the exact failure
+     * `AppProfile` exists to remove one level down. */
+    if (rolltui_widget_kind_register(rolltui_windows_context(w), name, name_len, rule,
+                                     p->kinds[i].describes.p ? p->kinds[i].describes.p : "",
                                      p->kinds[i].describes.n) != ROLLTUI_REGISTER_OK)
       continue;
     fc = (PlaceholderFactoryCtx*)rolltui_mem_alloc(sizeof *fc);

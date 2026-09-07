@@ -23,6 +23,7 @@
 #include <stddef.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_terminal.h"
 
 /* The process-wide releasers. Zero-initialised by static storage duration, so there is no
@@ -98,5 +99,10 @@ void rolltui_shutdown(void) {
   g_process.fns = NULL;
   g_process.count = 0;
   g_process.cap = 0;
+  /* THE TRANSITIONAL DEFAULT CONTEXT goes too (Phase 25 m2), and this line is why the
+   * `live_bytes == 0` assertion still means what it always did: a no-context entry point
+   * lazily makes one, and a caller that never asked for a context must not be left holding
+   * its storage. When the last no-context entry point goes, so do this line and the default. */
+  rolltui_context_default_release();
   rolltui_release_thread();
 }

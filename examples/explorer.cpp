@@ -494,7 +494,8 @@ RolltuiWidget browser_factory(void* ctx, const char* content, std::size_t len) {
   std::size_t source_len = 0;
   RolltuiStr why{};
   unsigned char problem = 0;
-  if (!rolltui_content_parse(content, len, nullptr, nullptr, nullptr, nullptr, &source, &source_len, &problem, &why))
+  if (!rolltui_content_parse(rolltui_windows_context(fc->windows), content, len, nullptr, nullptr, nullptr, nullptr,
+                             &source, &source_len, &problem, &why))
     return RolltuiWidget{};
   Browser* b = new Browser();
   b->source.assign(source, source_len);
@@ -513,11 +514,12 @@ namespace {
 // is per-frame, so no wrapper type earns its place. A missed release leaks once and
 // `rolltui_shutdown`'s `live_bytes == 0` is what catches it.
 struct App {
+  RolltuiContext* ctx = rolltui_context_new();  // OWNED: this app's session (Phase 25)
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* effects = nullptr;
   RolltuiDrawScratch* draw_scratch = rolltui_draw_scratch_new();
   RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default());
-  RolltuiWindows* windows = rolltui_windows_new();
+  RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
   RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
@@ -543,6 +545,7 @@ struct App {
     rolltui_bindings_free(bindings);
     rolltui_draw_scratch_free(draw_scratch);
     rolltui_effect_map_free(effects);
+    rolltui_context_free(ctx);  // LAST: the registries every handle above resolved through
   }
 
   RolltuiRect area() const { return {0, 0, w, h > 1 ? h - 1 : 0}; }
@@ -554,9 +557,10 @@ struct App {
     effects = rolltui_theme_builtin_fill(name, std::strlen(name), styles, ROLLTUI_ROLE_COUNT);
   }
 
-  static void register_browser_kind() {
-    rolltui_widget_kind_register(kBrowserKind, std::strlen(kBrowserKind), ROLLTUI_SOURCE_REQUIRED, kBrowserDescribes,
-                                 std::strlen(kBrowserDescribes));
+  // Phase 25: the kind table belongs to a CONTEXT, so this registers into this app's session.
+  void register_browser_kind() {
+    rolltui_widget_kind_register(ctx, kBrowserKind, std::strlen(kBrowserKind), ROLLTUI_SOURCE_REQUIRED,
+                                 kBrowserDescribes, std::strlen(kBrowserDescribes));
   }
 
   // WALL 3 (phase file): reaching one's OWN widget means composing the content string the

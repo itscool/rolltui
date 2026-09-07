@@ -548,6 +548,7 @@ RolltuiWidget confirm_factory(void* ctx, const char* content, std::size_t len);
 RolltuiWidget report_factory(void* ctx, const char* content, std::size_t len);
 
 struct App {
+  RolltuiContext* ctx = rolltui_context_new();  // OWNED: the studio's session (Phase 25)
   std::string fixture_path, theme_arg, layout_arg;
   std::optional<unsigned char> mode_flag;   // --mode; else the working copy's mode
   unsigned char mode = ROLLTUI_MODE_DARK;     // the variant in use this frame
@@ -591,7 +592,7 @@ struct App {
   enum class EditorMode { None, Theme, Layout, Keys };
   EditorMode editor_mode = EditorMode::None;
   ThemeEditor teditor;
-  LayoutEditor leditor;
+  LayoutEditor leditor{ctx};  // resolves kinds against this session
   KeysEditor keditor;
   bool editor_open = false;
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
@@ -607,7 +608,7 @@ struct App {
   // Every window's widget comes from its content: the studio binds the fixture document,
   // its status rows, the prompt and its own composites by name, and never asks what a
   // slot means.
-  RolltuiWindows* windows = rolltui_windows_new();
+  RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiTranscript* transcript() { return rolltui_windows_transcript(windows, "session", 7); }
   RolltuiInput* editor() { return rolltui_windows_input(windows, "prompt", 6); }
   RolltuiMenu* menu() { return rolltui_windows_menu(windows, "main", 4); }  // menus/main.json (Phase 10 m3)
@@ -675,6 +676,7 @@ struct App {
     rolltui_draw_scratch_free(draw_scratch);
     rolltui_effect_scratch_free(effect_scratch);
     rolltui_effect_map_free(effects_map);
+    rolltui_context_free(ctx);  // LAST: the registries every handle above resolved through
   }
 
   const RolltuiStyle& style(unsigned char role) const { return *rolltui_theme_style(theme_styles, kRoleCount, role); }
@@ -751,11 +753,11 @@ struct App {
     // The studio's three composites are REGISTERED KINDS (Phase 11 m3), not draw callbacks
     // bound by name: each is a plugin the studio owns, its widget receives its own events,
     // and nothing below dispatches by window name. Each takes no source.
-    rolltui_widget_kind_register("editor", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
+    rolltui_widget_kind_register(ctx, "editor", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     rolltui_windows_register_kind(windows, "editor", 6, editor_factory, this, nullptr);
-    rolltui_widget_kind_register("confirm", 7, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
+    rolltui_widget_kind_register(ctx, "confirm", 7, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     rolltui_windows_register_kind(windows, "confirm", 7, confirm_factory, this, nullptr);
-    rolltui_widget_kind_register("report", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
+    rolltui_widget_kind_register(ctx, "report", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     rolltui_windows_register_kind(windows, "report", 6, report_factory, this, nullptr);
     // Diff colouring (Phase 12 m5b): this host DECLARING that a ```diff fence in its
     // documents means a diff — never a sniff of what a block holds.
@@ -1120,7 +1122,7 @@ struct App {
     std::vector<std::string> kinds;
     for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
       std::size_t n = 0;
-      const char* p = rolltui_widget_kind_name(i, &n);
+      const char* p = rolltui_widget_kind_name(ctx, i, &n);
       kinds.emplace_back(p, n);
     }
     if (profile) {
@@ -1861,7 +1863,8 @@ struct App {
       std::size_t row = 0; int is_host = 0;
       const char *cname = nullptr, *csource = nullptr; std::size_t cname_len = 0, csource_len = 0;
       unsigned char problem = 0; RolltuiStr why{};
-      if (rolltui_content_parse(content_p, content_len, &row, &is_host, &cname, &cname_len, &csource, &csource_len, &problem, &why)) {
+      if (rolltui_content_parse(ctx, content_p, content_len, &row, &is_host, &cname, &cname_len, &csource,
+                                &csource_len, &problem, &why)) {
         const std::string_view kind(cname, cname_len);  // the kind's NAME is its identity (Phase 18 m2)
         if (is_host) { rolltui_windows_handle(windows, target.data(), target.size(), &ev); rolltui_str_free(&why); return true; }
         if (kind == "transcript") {

@@ -143,7 +143,10 @@ class LayoutEditor {
     bool operator==(const Outcome&) const = default;
   };
 
-  LayoutEditor();
+  // Phase 25: the kind registry belongs to a CONTEXT, and this editor types a source field by
+  // asking it what a kind's shape is — so it holds the session it was opened for. BORROWED: the
+  // studio owns it and outlives every editor.
+  explicit LayoutEditor(const RolltuiContext* ctx);
   ~LayoutEditor() { rolltui_menu_free(menu_); }
   LayoutEditor(const LayoutEditor&) = delete;
   LayoutEditor& operator=(const LayoutEditor&) = delete;
@@ -219,7 +222,8 @@ class LayoutEditor {
   ContentParts content_parts() const;
 
  private:
-  static ContentParts parts_of(const Node* n);
+  const RolltuiContext* ctx_;  // BORROWED: the session this editor resolves kinds against
+  ContentParts parts_of(const Node* n) const;  // Phase 25: resolves kinds against `ctx_`
   std::string base_source() const;  // the source before the live preview began
   std::string carried_source(std::string_view kind_name) const;  // …and whether that kind takes it
   enum class Op { SplitRow, SplitColumn, SwapPrev, SwapNext, ToggleVisible, Delete, ToggleFocusable };

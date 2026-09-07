@@ -218,10 +218,11 @@ void windows_prepare(RolltuiWindows* w, RolltuiWindowStack* s, RolltuiRect box) 
 // host binds actually bound. Deliberately NOT a preset store — no file is read, so the
 // numbers cannot depend on the machine running them.
 struct Scene {
+  RolltuiContext* ctx = rolltui_context_new();  // OWNED: this scene's session (Phase 25)
   RolltuiDocument doc{};
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* effects = nullptr;
-  RolltuiWindows* windows = rolltui_windows_new();
+  RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
   // PHASE 17 m2c, per this file's own note below at `paint()`: the scene calls the SWAP
@@ -283,6 +284,7 @@ struct Scene {
     rolltui_windows_free(windows);
     rolltui_effect_map_free(effects);
     rolltui_document_release(&doc);
+    rolltui_context_free(ctx);  // LAST
   }
 
   // One frame, exactly as a host paints it: prepare (instantiate, autosize, lay out),
@@ -595,7 +597,7 @@ int main() {
   // unarmed, or has stopped measuring the DRAW path specifically, this cannot move.
   //
   // The factory is registered on THIS Windows, not on any other. That is not a detail:
-  // `rolltui_widget_kind_register` puts the NAME in the process-wide layout vocabulary and
+  // `rolltui_widget_kind_register` puts the NAME in the CONTEXT's layout vocabulary and
   // `rolltui_windows_register_kind` puts the FACTORY in one Windows, so registering the name
   // and pointing the factory at the wrong instance leaves the layout naming a kind that
   // instance cannot build — which draws an error panel and measures LOWER. The first draft
@@ -604,7 +606,7 @@ int main() {
   // telling you something.
   {
     Scene control;
-    const int verdict = rolltui_widget_kind_register("wasteful", 8, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
+    const int verdict = rolltui_widget_kind_register(control.ctx, "wasteful", 8, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     check(verdict == ROLLTUI_REGISTER_OK,
           "registered a deliberately wasteful widget kind on the Windows that will draw it [verdict " +
               std::to_string(verdict) + "]");

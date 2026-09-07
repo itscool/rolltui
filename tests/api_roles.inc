@@ -370,3 +370,8 @@ ROLLTUI_ROLE(rolltui_menu_load_report_clean, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_menu_load_report_release, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_menu_parse_json, HOST_BIND)
 ROLLTUI_ROLE(rolltui_menu_root, HOST_BIND)
+
+/* Phase 25 m2: a session is the FIRST thing a host makes. */
+ROLLTUI_ROLE(rolltui_context_new, HOST_LOAD)
+ROLLTUI_ROLE(rolltui_context_free, HOST_RELEASE)
+ROLLTUI_ROLE(rolltui_windows_context, HOST_LOAD)  /* declared beside `rolltui_windows_new` */

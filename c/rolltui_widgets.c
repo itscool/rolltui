@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
@@ -137,6 +138,10 @@ typedef struct WindowSlot {
 } WindowSlot;
 
 struct RolltuiWindows {
+  /* BORROWED, and it must outlive this (Phase 25 m2/m3): the session whose widget-kind registry
+   * `sync` resolves a window's `kind[:source]` against. A layout is plain data and portable
+   * between contexts precisely because that resolution happens HERE, per frame, and not at load. */
+  RolltuiContext* ctx;
   RolltuiMap by_content; /* content → RolltuiWidget*, OWNED (this table destroys them) */
   RolltuiMap by_window;  /* window id → WindowSlot*, OWNED */
   KindRow* kinds;
@@ -205,11 +210,15 @@ struct RolltuiWindows {
   const RolltuiInputActions* input_actions; /* BORROWED, process lifetime */
 };
 
-RolltuiWindows* rolltui_windows_new(void) {
+RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx) {
   RolltuiWindows* w = (RolltuiWindows*)rolltui_mem_alloc(sizeof *w);
   memset(w, 0, sizeof *w);
+  w->ctx = ctx;
   return w;
 }
+
+/* The session this was made for — what the built-in kinds resolve a content string against. */
+RolltuiContext* rolltui_windows_context(const RolltuiWindows* w) { return w ? w->ctx : NULL; }
 
 static void widget_destroy(RolltuiWidget* wd) {
   if (!wd) return;
@@ -490,7 +499,7 @@ static void* typed_at(const RolltuiWindows* w, const RolltuiMap* by_source, cons
   void* out = NULL;
   if (!s) return NULL;
   memset(&why, 0, sizeof why);
-  if (rolltui_content_parse(s->content.p ? s->content.p : "", s->content.n, &row, &is_host, &name, &name_len,
+  if (rolltui_content_parse(w->ctx, s->content.p ? s->content.p : "", s->content.n, &row, &is_host, &name, &name_len,
                             &source, &source_len, &problem, &why) &&
       !is_host && name_len == kind_n && memcmp(name, kind, kind_n) == 0)
     out = rolltui_map_get(by_source, source, source_len);

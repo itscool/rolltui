@@ -75,6 +75,11 @@
 #include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 
 #include "rolltui_test.hpp"
+// INTERNAL: this test opts in. Phase 25 made the widget-kind registry a CONTEXT's, and this
+// suite's whole subject is that `rolltui_shutdown()` releases everything and the caches rebuild
+// — shutdown releases the DEFAULT context, so registering into that one is what keeps every
+// assertion below meaning what it meant.
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_effects.h"  // INTERNAL: this test opts in
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
 
@@ -215,7 +220,7 @@ void paint_something() {
                          "\n\nSome prose that is long enough to wrap, with `code` and a "
                          "[link](https://example.invalid/p).\n\n- one\n- two\n");
   }
-  RolltuiWindows* windows = rolltui_windows_new();
+  RolltuiWindows* windows = rolltui_windows_new(rolltui_context_default());
   rolltui_windows_set_library_defaults(windows);
   rolltui_windows_set_bindings(windows, rolltui_bindings_default());
   RolltuiWindowStack* stack = rolltui_window_stack_new();
@@ -336,7 +341,7 @@ void use_the_ported_modules(const char* when) {
   check(presets_ok, std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 
   constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";
-  const int register_ok = rolltui_widget_kind_register(kProbeKind.data(), kProbeKind.size(), ROLLTUI_SOURCE_OPTIONAL,
+  const int register_ok = rolltui_widget_kind_register(rolltui_context_default(), kProbeKind.data(), kProbeKind.size(), ROLLTUI_SOURCE_OPTIONAL,
                                                        kProbeDescribes.data(), kProbeDescribes.size());
   const std::string register_why =
       register_ok == ROLLTUI_REGISTER_OK ? std::string() : ("code " + std::to_string(register_ok));
@@ -351,7 +356,8 @@ void use_the_ported_modules(const char* when) {
   std::size_t name_len = 0, source_len = 0;
   RolltuiStr why{};
   constexpr std::string_view kProbeContent = "lifetime-probe-kind:x";
-  const int parsed = rolltui_content_parse(kProbeContent.data(), kProbeContent.size(), &row, &is_host, &name,
+  const int parsed = rolltui_content_parse(rolltui_context_default(), kProbeContent.data(), kProbeContent.size(),
+                                           &row, &is_host, &name,
                                            &name_len, &source, &source_len, &problem, &why);
   rolltui_str_free(&why);
   check(parsed != 0, std::string("…and a content resolves through it, so rung 2 is really reached — ") + when);
@@ -402,8 +408,9 @@ int main() {
   // is refused, so this succeeding means the table really was handed back.
   {
     constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";
-    const int register_ok = rolltui_widget_kind_register(
-        kProbeKind.data(), kProbeKind.size(), ROLLTUI_SOURCE_REQUIRED, kProbeDescribes.data(), kProbeDescribes.size());
+    const int register_ok =
+        rolltui_widget_kind_register(rolltui_context_default(), kProbeKind.data(), kProbeKind.size(),
+                                     ROLLTUI_SOURCE_REQUIRED, kProbeDescribes.data(), kProbeDescribes.size());
     const std::string why =
         register_ok == ROLLTUI_REGISTER_OK ? std::string() : ("code " + std::to_string(register_ok));
     check(register_ok == ROLLTUI_REGISTER_OK,
@@ -412,7 +419,7 @@ int main() {
               why + "]");
     // …and put it back the way it was found, so the pass below registers into an empty
     // registry rather than into this proof's leftovers.
-    rolltui_widget_kind_clear();
+    rolltui_widget_kind_clear(rolltui_context_default());
   }
   paint_something();
   check(true, "…including painting a whole frame again");

@@ -1065,3 +1065,19 @@ ROLLTUI_API(rolltui_layer_id, PUBLIC)
 ROLLTUI_API(rolltui_layout_node_id, PUBLIC)
 ROLLTUI_API(rolltui_layout_node_is_window, PUBLIC)
 ROLLTUI_API(rolltui_load_layout_text_into, INTERNAL)
+
+/* ---- rolltui_context.h — THE SESSION (Phase 25 m2): the registries and caches an app owns.
+ * Public because a host makes one FIRST and everything else hangs off it. ---- */
+ROLLTUI_API(rolltui_context_new, PUBLIC)
+ROLLTUI_API(rolltui_context_free, PUBLIC)   /* rule 1's pair */
+/* The transitional rung and its release: INTERNAL, and they go when the last no-context entry
+ * point does — the removal condition is on `g_default`'s row in `globals.inc`. */
+ROLLTUI_API(rolltui_context_default, INTERNAL)
+ROLLTUI_API(rolltui_context_default_release, INTERNAL)
+/* The kind registry's own new/free: INTERNAL, and the shape every subsystem the context owns
+ * follows — the type stays private to its `.c`, the context holds only the pointer. */
+ROLLTUI_API(rolltui_kind_registry_new, INTERNAL)
+ROLLTUI_API(rolltui_kind_registry_free, INTERNAL)
+/* The session a Windows was made for — a host that holds a Windows can reach its context
+ * without carrying a second pointer beside it, which is what the built-in widget factories do. */
+ROLLTUI_API(rolltui_windows_context, PUBLIC)

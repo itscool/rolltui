@@ -84,7 +84,7 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
                            const RolltuiStyle* styles, const RolltuiLayoutRoles* roles, RolltuiSlotFn render,
                            void* ctx, int ambiguous_wide, RolltuiComposeScratch* scratch);
 
-void rolltui_widget_kind_clear(void);
+void rolltui_widget_kind_clear(RolltuiContext* c);
 
 void rolltui_action_list_remove(RolltuiActionList* l, size_t i); /* frees it, shifts the rest down */
 
@@ -122,8 +122,8 @@ void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards);
 void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
                          RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
                          int ambiguous_wide);
-unsigned char rolltui_widget_kind_rule(size_t row);
-const char* rolltui_widget_kind_source_is(size_t row, size_t* len);
+unsigned char rolltui_widget_kind_rule(const RolltuiContext* c, size_t row);
+const char* rolltui_widget_kind_source_is(const RolltuiContext* c, size_t row, size_t* len);
 /* A C caller's pair, for the same reason every owned type here has one — both strings empty
  * either way. C++ needs neither (see above) but they exist so a pure C caller has the same
  * capability. */
@@ -181,8 +181,8 @@ const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* l
 void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
                          RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
                          int ambiguous_wide);
-unsigned char rolltui_widget_kind_rule(size_t row);
-const char* rolltui_widget_kind_source_is(size_t row, size_t* len);
+unsigned char rolltui_widget_kind_rule(const RolltuiContext* c, size_t row);
+const char* rolltui_widget_kind_source_is(const RolltuiContext* c, size_t row, size_t* len);
 /* A C caller's pair, for the same reason every owned type here has one — both strings empty
  * either way. C++ needs neither (see above) but they exist so a pure C caller has the same
  * capability. */
@@ -249,7 +249,7 @@ size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap);
 void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, RolltuiRect screen, size_t layer,
                           RolltuiResolvedSink emit, void* ctx);
 
-const char* rolltui_widget_kind_name(size_t row, size_t* len);
+const char* rolltui_widget_kind_name(const RolltuiContext* c, size_t row, size_t* len);
 
 const char* rolltui_anchor_name(unsigned char a, size_t* len); /* "" when `a` is out of range */
 int rolltui_anchor_from_name(const char* name, size_t len, unsigned char* out);

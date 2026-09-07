@@ -698,7 +698,8 @@ static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out; /* rolltui_windows_widget_for falls back to the error factory */
@@ -730,7 +731,8 @@ static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -757,7 +759,8 @@ static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -785,7 +788,8 @@ static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -814,7 +818,8 @@ static RolltuiWidget error_widget_factory(void* c, const char* content, size_t n
   RolltuiWidget out;
   memset(&why, 0, sizeof why);
   memset(&msg, 0, sizeof msg);
-  if (rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                            &name, &name_len, &source, &source_len, &problem,
                             &why)) {
     /* it PARSES, so its kind is in one of the two rungs and nothing built it — a registered
      * kind this host has no factory for. A named panel, never a blank window. */
@@ -1109,7 +1114,8 @@ static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -1238,7 +1244,8 @@ static RolltuiWidget transcript_widget_factory(void* c, const char* content, siz
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;
@@ -1579,7 +1586,8 @@ static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(content, n, &row, &is_host, &name, &name_len, &source, &source_len, &problem,
+  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+                             &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
     return out;

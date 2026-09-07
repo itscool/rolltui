@@ -158,7 +158,7 @@ int main() {
   // re-created when their module's steps went internal) -> 33 (Phase 20 m6/m7: six more, for
   // the same reason and by the same rule — a header exists because a `.c` needs a declaration
   // from it). The six are style, document, frame_ops, json, diff and undo.
-  const std::size_t kInternalHeaders = 33;
+  const std::size_t kInternalHeaders = 34;  /* +rolltui_context.h (Phase 25 m2) */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -581,7 +581,9 @@ int main() {
      * and the input window's two sizing rules. FOUR of those had been kept on a META-TEST's
      * reach — `public_header_test` section 1 itself — which Phase 20 struck as a reason and
      * which this file of all files must not lean on; section 1 uses the swap now. */
-    const int kPublic = 323, kInternal_ = 513, kDelete = 0;
+    /* PHASE 25 m2: +3 PUBLIC (`rolltui_context_new`/`_free`, `rolltui_windows_context`) and
+     * +4 INTERNAL (the transitional default and its release, the kind registry's own new/free). */
+    const int kPublic = 326, kInternal_ = 517, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -768,9 +770,11 @@ int main() {
     /* PHASE 24: vocab 35 → 33 (`rolltui_str_get`, `rolltui_sgr`), bind 83 → 81 (the input
      * window's two sizing rules), run 77 → 75 and widget 27 → 25 (the frame's own lifecycle and
      * bounds — a host is handed a frame by the swap and a widget a resolved node's rect). */
-    check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 104 && rt["HOST_BIND"] == 81 && rt["HOST_RUN"] == 75 &&
-              rt["HOST_RELEASE"] == 5 && rt["WIDGET"] == 25,
-          "the roles are the recorded shape — vocab 33, host load 104 / bind 81 / run 75 / release 5, widget 25 (got " +
+    /* PHASE 25 m2: load 104 → 106 (`rolltui_context_new`, `rolltui_windows_context`),
+     * release 5 → 6 (`rolltui_context_free`). A session is the first thing a host makes. */
+    check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 106 && rt["HOST_BIND"] == 81 && rt["HOST_RUN"] == 75 &&
+              rt["HOST_RELEASE"] == 6 && rt["WIDGET"] == 25,
+          "the roles are the recorded shape — vocab 33, host load 106 / bind 81 / run 75 / release 6, widget 25 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_BIND"]) + "/" +
               std::to_string(rt["HOST_RUN"]) + "/" + std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["WIDGET"]) + ")");
     check(part[0].size() > 20 && part[1].size() > 200 && part[2].size() > 15,
