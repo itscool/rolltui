@@ -677,14 +677,15 @@ int main() {
     check(ev.kind == MenuEvent::Kind::Toggle && !ev.checked, "…and back");
     m.handle(key(Key::Home));
     ev = m.handle(key(Key::Enter));  // theme (choice)
-    check(ev.kind == MenuEvent::Kind::None && m.path() == std::vector<std::size_t>{0} && m.selected() == 0,
+    // Row 0 of a level below the root is the widget's own way back, so the first CHILD is row 1.
+    check(ev.kind == MenuEvent::Kind::None && m.path() == std::vector<std::size_t>{0} && m.selected() == 1,
           "Enter on a choice descends into its options, the current one selected");
     m.handle(key(Key::Down));
     ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::Choose && ev.id == "theme" && ev.value == "mono", "Enter on an option emits Choose{choice, option}");
     check(m.path().empty() && m.find("theme")->value == "mono" && m.selected() == 0, "…sets the choice's value and ascends to the choice");
     m.handle(key(Key::Enter));
-    check(m.selected() == 1, "re-opening the choice selects its current option (mono)");
+    check(m.selected() == 2, "re-opening the choice selects its current option (mono)");
     m.handle(key(Key::Escape));
     for (int i = 0; i < 3; ++i) m.handle(key(Key::Down));  // save (input)
     ev = m.handle(key(Key::Enter));
@@ -735,7 +736,8 @@ int main() {
     m.layout({0, 0, 40, 6});
     m.draw(f, theme, true);
     check(row(f, 0) == "settings \xE2\x80\xBA Layout  /st", "the breadcrumb row shows the filter [" + row(f, 0) + "]");
-    check(row(f, 1) == "stacked                               F2", "the one match is drawn with its shortcut right-aligned [" + row(f, 1) + "]");
+    check(row(f, 1) == "\xE2\x97\x82 Back", "the way back is the first row of a level below the root [" + row(f, 1) + "]");
+    check(row(f, 2) == "stacked                               F2", "the one match is drawn with its shortcut right-aligned [" + row(f, 2) + "]");
   }
   // ---- drawing ----
   {
@@ -1088,6 +1090,80 @@ int main() {
     m.layout({0, 0, 20, 1});
     m.draw(one, theme, true);
     check(row(one, 0).rfind("Layout", 0) == 0, "a one-row area shows the selected item, not the breadcrumb [" + row(one, 0) + "]");
+  }
+  // ---- the way back is the widget's, and no file may omit it ----
+  // A level below the root that offers no visible exit strands whoever is in it, and the one
+  // time a file author forgets to write one is the time somebody is stuck. So the widget puts
+  // it there, as an ITEM rather than only a chord: a key nobody told you about is not an escape
+  // route, because you have to already know it to use it.
+  {
+    Menu m(sample());
+    Frame f(30, 8);
+    m.layout({0, 0, 30, 8});
+    m.draw(f, theme, true);
+    check(row(f, 1).rfind("Theme", 0) == 0, "the ROOT offers no way back — there is nowhere above it [" + row(f, 1) + "]");
+
+    m.handle(key(Key::Down));  // Layout
+    m.handle(key(Key::Enter));
+    Frame down(30, 8);
+    m.draw(down, theme, true);
+    check(row(down, 1).rfind("\xE2\x97\x82 Back", 0) == 0,
+          "one level down, the FIRST row is the way back [" + row(down, 1) + "]");
+    check(m.selected() == 1 && m.selected_item() && view_of(m.selected_item()->id) == "layout.default",
+          "…and descending lands on the first ITEM, not on the way out");
+
+    m.handle(key(Key::Up));
+    check(m.selected() == 0 && m.selected_item() == nullptr,
+          "Up from the first item reaches it, and it stands for no item in anyone's tree");
+    MenuEvent ev = m.handle(key(Key::Enter));
+    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "Enter on it ascends, and emits nothing");
+
+    // AND BY MOUSE, which is the case the complaint was actually about: a person who is stuck
+    // is a person who did not know the chord, so the row has to be clickable.
+    m.handle(key(Key::Enter));  // into Layout again — ascending left the selection on it
+    check(m.path() == std::vector<std::size_t>{1}, "…back in");
+    MouseEvent click;
+    click.kind = MouseEvent::Kind::Press;
+    click.button = 1;
+    click.x = 3;
+    click.y = 1;  // the first item row: breadcrumb at 0, items from 1
+    ev = m.handle(click);
+    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "a CLICK on it ascends too");
+
+    // A FILTER NARROWS WHAT YOU ARE LOOKING FOR, and the way out is not one of those things.
+    m.handle(key(Key::Enter));  // into Layout a third time
+    m.handle(ch('z'));           // matches no child
+    Frame filtered(30, 8);
+    m.draw(filtered, theme, true);
+    check(row(filtered, 1).rfind("\xE2\x97\x82 Back", 0) == 0,
+          "a filter matching NOTHING still leaves the way out [" + row(filtered, 1) + "]");
+    m.handle(key(Key::Escape));
+    m.handle(key(Key::Escape));
+
+    // THE PALETTE IS FLAT: there is no level to go back to, so there is nothing to offer.
+    m.set_palette(true);
+    Frame flat(30, 8);
+    m.draw(flat, theme, true);
+    check(row(flat, 1).rfind("\xE2\x97\x82 Back", 0) != 0,
+          "the palette is flat, so it offers no way back [" + row(flat, 1) + "]");
+    m.set_palette(false);
+  }
+  // AN EMPTY LEVEL IS THE STRANDING CASE, and it is the one a file author is likeliest to
+  // create: a submenu whose items have not been written yet used to draw "(empty)" and nothing
+  // else at all.
+  {
+    std::vector<MenuItem> top;
+    top.push_back(submenu_of("nothing", "Nothing yet", {}));
+    Menu m(submenu_of("root", "app", std::move(top)));
+    m.layout({0, 0, 30, 8});
+    m.handle(key(Key::Enter));
+    Frame f(30, 8);
+    m.draw(f, theme, true);
+    check(row(f, 1).rfind("\xE2\x97\x82 Back", 0) == 0,
+          "an EMPTY submenu still offers the way out, and it is the only thing in it [" + row(f, 1) + "]");
+    check(m.selected() == 0, "…and the selection is on it, because there is nothing else to be on");
+    const MenuEvent ev = m.handle(key(Key::Enter));
+    check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "…so Enter gets out");
   }
   return report("rolltui menu_test");
 }

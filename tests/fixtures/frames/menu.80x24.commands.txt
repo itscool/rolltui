@@ -5,14 +5,14 @@
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
 │ │ wrapped      │  │ settings › Commands                  │s                  │
-│ │ lines)       │  │ Theme editor                      F4 │uecolor            │
-│ │ Theme (roles │ b│ Layout editor                     F6 │nu                 │
-│ │ → styles,    │  │ Keys editor                       F7 │                   │
-│ │ JSON loader, │  │ Menu editor                       F8 │                   │
-│ │ built-ins)   │  │ Reload the fixture                F5 │                   │
-│ └──────────────┴──│ Help                           F1, ? │                   │
-│                   │ Quit                          Ctrl-Q │                   │
-│ Here is the functi│                                      │                   │
+│ │ lines)       │  │ ◂ Back                               │uecolor            │
+│ │ Theme (roles │ b│ Theme editor                      F4 │nu                 │
+│ │ → styles,    │  │ Layout editor                     F6 │                   │
+│ │ JSON loader, │  │ Keys editor                       F7 │                   │
+│ │ built-ins)   │  │ Menu editor                       F8 │                   │
+│ └──────────────┴──│ Reload the fixture                F5 │                   │
+│                   │ Help                           F1, ? │                   │
+│ Here is the functi│ Quit                          Ctrl-Q │                   │
 │                   │                                      │                   │
 │ ┌ cpp ────────────│                                      │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │

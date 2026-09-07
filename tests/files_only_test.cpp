@@ -68,6 +68,7 @@
 #include <unistd.h>
 
 #include <cstdio>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -493,6 +494,34 @@ int main(int argc, char** argv) {
                                     std::to_string(scanned.size()) + " files)");
     check(hits.empty(), "no source of the library or its hosts names this screen — it is files all the way down" +
                             (hits.empty() ? "" : ": " + hits.front()));
+  }
+
+  // ---- AND THE WAY BACK IS NOT IN ANY FILE EITHER ---------------------------------------
+  // Every menu file that ships — the library's, and the one this fixture screen carries — is
+  // read for an item that offers a way out of a level. There is none, and there must be none:
+  // a file author who has to write one is a file author who can forget to, and the time they
+  // forget is the time somebody is stuck in a level with no visible exit. The widget draws it,
+  // which is why the frames above show it on a screen whose menu was written by a person who
+  // never thought about it.
+  {
+    std::vector<std::string> menus, declaring;
+    for (const fs::path& dir : {fs::path(ROLLTUI_SOURCE_DIR) / "presets" / "menus",
+                                fs::path(presets) / "menus"}) {
+      if (!fs::exists(dir)) continue;
+      for (const fs::directory_entry& e : fs::directory_iterator(dir)) {
+        if (e.path().extension() != ".json") continue;
+        menus.push_back(e.path().filename().string());
+        bool ok = false;
+        std::string text = read_file(e.path().string(), ok);
+        if (!ok) continue;
+        for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (text.find("back") != std::string::npos || text.find("\xE2\x97\x82") != std::string::npos)
+          declaring.push_back(e.path().filename().string());
+      }
+    }
+    check(menus.size() >= 2, "read every shipped menu file and this screen's own (" + std::to_string(menus.size()) + ")");
+    check(declaring.empty(), "no menu FILE declares a way back — the widget owns it" +
+                                 (declaring.empty() ? "" : ": " + declaring.front()));
   }
 
   fs::remove_all(scratch);

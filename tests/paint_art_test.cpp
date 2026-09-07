@@ -185,5 +185,16 @@ int main() {
         "a stroke reported in three pieces deepens only where a press LANDS on painted ink (" +
             std::to_string(count(slow, "-")) + " cells)");
 
+  // ---- 6. THE WAY OUT OF A SUBMENU, WITH THE MOUSE --------------------------------------
+  // The palette is a menu FILE and it declares no way back, because no file does: the widget
+  // puts one on every level below the root. A person who has descended into a choice and does
+  // not know the chord is exactly the person this is for, so the assertion clicks.
+  const std::string into = run(base + " --dot 46,2 2>&1", rc);
+  check(rc == 0 && has(into, "tools \xE2\x80\xBA Shading") && has(into, "\xE2\x97\x82 Back"),
+        "clicking a choice descends, and the first row is a visible way back");
+  const std::string out = run(base + " --dot 46,2 --dot 46,2 2>&1", rc);
+  check(rc == 0 && has(out, "Brush size:") && !has(out, "\xE2\x97\x82 Back"),
+        "…and clicking that row returns to the top level, where there is nowhere to go back to");
+
   return report("rolltui paint_art_test");
 }

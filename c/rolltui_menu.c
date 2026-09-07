@@ -790,6 +790,26 @@ static int contains_ci(const char* hay, size_t hn, const char* needle, size_t nn
   return 0;
 }
 
+/* THE WAY BACK IS THE WIDGET'S, NOT EVERY MENU FILE'S. A level below the root that offers no
+ * visible exit strands whoever is in it, and the one time a file author forgets to write one is
+ * the time somebody is stuck — so the widget puts it there and no file can omit it.
+ *
+ * IT IS AN ITEM AND NOT ONLY A CHORD. A key nobody told you about is not an escape route: you
+ * have to already know it to use it, which is precisely what a person who is stuck does not.
+ * So the row is selectable, clickable, and reads as what it does.
+ *
+ * It is a SENTINEL in the visible list rather than an item grafted into the tree, because the
+ * tree is the author's document — it is dumped back to a file, walked for actions and edited by
+ * a tool, and a row that appeared in all of those would be the widget writing into someone
+ * else's file. The visible list is the widget's own, which is where a widget's own row belongs. */
+#define BACK_ROW ((size_t)-1)
+
+static int has_back(const RolltuiMenu* m) { return !m->palette && m->path_n > 0; }
+
+/* Where the FIRST real child sits in the visible list. Every place that computes a selection
+ * from a child index goes through this, so the offset exists once. */
+static size_t first_child_row(const RolltuiMenu* m) { return has_back(m) ? 1 : 0; }
+
 static void vis_push(RolltuiMenu* m, size_t i) {
   m->vis = (size_t*)rolltui_grow(m->vis, &m->vis_cap, m->vis_n + 1, sizeof *m->vis);
   m->vis[m->vis_n++] = i;
@@ -808,6 +828,10 @@ static size_t build_visible(RolltuiMenu* m) {
   }
   {
     const RolltuiMenuItem* lv = rolltui_menu_level(m);
+    /* FIRST, AND UNFILTERED. The filter narrows what you are looking FOR; the way out is not
+     * one of the things you are looking for, and hiding it behind a typed prefix would strand
+     * exactly the person who typed one by mistake. */
+    if (has_back(m)) vis_push(m, BACK_ROW);
     for (i = 0; i < lv->children.n; ++i)
       if (contains_ci(lv->children.v[i]->label.p, lv->children.v[i]->label.n, m->filter.p, m->filter.n))
         vis_push(m, i);
@@ -822,9 +846,12 @@ size_t rolltui_menu_visible(const RolltuiMenu* m, const size_t** out) {
   return n;
 }
 
+/* NULL for the back row: it stands for no item in anyone's tree. Every caller already had to
+ * handle NULL for an out-of-range index, so the row cannot be dereferenced by accident. */
 static RolltuiMenuItem* item_at(RolltuiMenu* m, size_t vis_index) {
   const size_t n = build_visible(m);
   if (vis_index >= n) return NULL;
+  if (m->vis[vis_index] == BACK_ROW) return NULL;
   if (m->palette) {
     const FlatEntry* e = &m->flat[m->vis[vis_index]];
     return by_path(m, e->path, e->path_n);
@@ -1041,16 +1068,19 @@ static void descend(RolltuiMenu* m, size_t child) {
   size_t i;
   path_push(m, child);
   rolltui_str_clear(&m->filter);
-  m->sel = 0;
+  /* The first CHILD, not the first row — entering a level should land on something in it
+   * rather than on the way out of it. An empty level has nothing else, and the clamp below
+   * puts the selection on the way out, which is then the only thing there. */
+  m->sel = first_child_row(m);
   m->top = 0;
   lv = rolltui_menu_level(m);
   if (lv->kind == ROLLTUI_MENU_CHOICE)
     for (i = 0; i < lv->children.n; ++i)
       if (rolltui_str_eq(&lv->children.v[i]->id, lv->value.p, lv->value.n)) {
-        m->sel = i;
+        m->sel = first_child_row(m) + i;
         break;
       }
-  ensure_visible(m);
+  clamp_selection(m);
 }
 
 static int ascend(RolltuiMenu* m) {
@@ -1060,9 +1090,9 @@ static int ascend(RolltuiMenu* m) {
   was = m->path[--m->path_n];
   rolltui_str_clear(&m->filter);
   lv = rolltui_menu_level(m);
-  m->sel = lv->children.n == 0 ? 0 : zmin(was, lv->children.n - 1);
+  m->sel = lv->children.n == 0 ? 0 : first_child_row(m) + zmin(was, lv->children.n - 1);
   m->top = 0;
-  ensure_visible(m);
+  clamp_selection(m);
   return 1;
 }
 
@@ -1233,7 +1263,12 @@ static void handle_edit(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBind
 /* ---- acting ------------------------------------------------------------------------------ */
 
 static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
-  RolltuiMenuItem* it = item_at(m, vis_index);
+  RolltuiMenuItem* it;
+  if (vis_index < build_visible(m) && m->vis[vis_index] == BACK_ROW) {
+    ascend(m);
+    return;
+  }
+  it = item_at(m, vis_index);
   if (!it || !it->enabled) return;
   if (m->palette) {
     const FlatEntry* fe = &m->flat[m->vis[vis_index]];
@@ -1302,9 +1337,11 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
     char buf[4];
     const size_t bn = rolltui_u_append_utf8(k->ch, buf);
     rolltui_str_append(&m->filter, buf, bn);
-    m->sel = 0;
+    /* The first MATCH, not the first row: typing is looking for something, and landing on the
+     * way out would make Enter after a filter leave the level instead of choosing the one hit. */
+    m->sel = first_child_row(m);
     m->top = 0;
-    ensure_visible(m);
+    clamp_selection(m);
     return;
   }
   a = rolltui_bindings_action_for(b, k, "menu", 4, &alen);
@@ -1328,7 +1365,12 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
     return;
   }
   if (action_is(a, alen, A->first)) {
-    move_to(m, 0, n);
+    /* THE FIRST ITEM IN THE LEVEL, not the first row. The way back is the widget's own chrome
+     * rather than one of the level's items, so the gestures that address CONTENT — Home, a
+     * typed filter, descending into a level — address content, and only Up and a click address
+     * the row itself. Home then Enter is how a person picks the first thing; landing it on the
+     * exit would make that gesture leave the level. */
+    move_to(m, first_child_row(m), n);
     return;
   }
   if (action_is(a, alen, A->last)) {
@@ -1561,6 +1603,20 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     RolltuiStyle base;
     RolltuiRect row_rect;
     if (i >= vis_n) break;
+    if (m->vis[i] == BACK_ROW) {
+      RolltuiRect back_rect;
+      const RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut];
+      back_rect.x = x0;
+      back_rect.y = y + r;
+      back_rect.w = w;
+      back_rect.h = 1;
+      rolltui_frame_fill(f, draw, back_rect, back, NULL, 0);
+      /* The mirror of the submenu marker one column over, so descending and returning read as
+       * one pair. A left-pointing triangle is East Asian ambiguous exactly as that one is, and
+       * `put_text` handles the width the same way for both. */
+      rolltui_frame_put_text(f, draw, x0, y + r, "\xE2\x97\x82 Back", 8, back, w, aw, 0);
+      continue;
+    }
     it = item_at(mm, i);
     if (!it) break;
     is_sel = i == m->sel;

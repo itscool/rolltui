@@ -1,7 +1,7 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ theme editor › Fixes (proposals; Enter applies │
-│ │ grapheme property,               │             │ unicode_tables.hp│ (nothing to fix in this variant)               │
-│ │ Extended_Pictographic, InCB)     │             │                  │                                                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
+│ │ Extended_Pictographic, InCB)     │             │                  │ (nothing to fix in this variant)               │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│                                                │
 │ │ grapheme clusters, display width │             │ Unicode conforman│                                                │
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│                                                │

@@ -1,14 +1,14 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ layout editor • transcript › Actions this scre │
-│ │ grapheme property,               │             │ unicode_tables.hp│ app.help                                     ▸ │
-│ │ Extended_Pictographic, InCB)     │             │                  │ app.menu                                     ▸ │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ app.details                                  ▸ │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ app.palette                                  ▸ │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ app.repaint                                  ▸ │
-│ │                                  │             │ block tree is the│ app.find                                     ▸ │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ app.zoom                                     ▸ │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ add an action (name):                          │
-│ │ mouse mode)                      │             │                  │                                                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
+│ │ Extended_Pictographic, InCB)     │             │                  │ app.help                                     ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ app.menu                                     ▸ │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ app.details                                  ▸ │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ app.palette                                  ▸ │
+│ │                                  │             │ block tree is the│ app.repaint                                  ▸ │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ app.find                                     ▸ │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ app.zoom                                     ▸ │
+│ │ mouse mode)                      │             │                  │ add an action (name):                          │
 │ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
 │ │                                  │             │ Event, table-test│                                                │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │

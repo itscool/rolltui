@@ -1,11 +1,11 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ keys editor ───────────────────────────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ keys editor › Actions by scope › input › word_ │
-│ │ grapheme property,               │             │ unicode_tables.hp│ add a chord (press it)…                        │
-│ │ Extended_Pictographic, InCB)     │             │                  │ remove Ctrl-Left                               │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ remove Alt-Left                                │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ remove Alt-D                                   │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ clear every chord                              │
-│ │                                  │             │ block tree is the│                                                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
+│ │ Extended_Pictographic, InCB)     │             │                  │ add a chord (press it)…                        │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ remove Ctrl-Left                               │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ remove Alt-Left                                │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ remove Alt-D                                   │
+│ │                                  │             │ block tree is the│ clear every chord                              │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
 │ │ mouse mode)                      │             │                  │                                                │

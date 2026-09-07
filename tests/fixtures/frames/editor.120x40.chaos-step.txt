@@ -1,10 +1,10 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ editing — 0.00..1.00 (2 digits)                │
-│ │ grapheme property,               │             │ unicode_tables.hp│ Ruleset                            analogous ▸ │
-│ │ Extended_Pictographic, InCB)     │             │                  │ Seed: 1                                        │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Chaos: 0.20                                    │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ Generate (replaces both variants, undoable)    │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│                                                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
+│ │ Extended_Pictographic, InCB)     │             │                  │ Ruleset                            analogous ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Seed: 1                                        │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ Chaos: 0.20                                    │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Generate (replaces both variants, undoable)    │
 │ │                                  │             │ block tree is the│                                                │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │

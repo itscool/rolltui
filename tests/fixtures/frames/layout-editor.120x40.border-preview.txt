@@ -1,11 +1,11 @@
 ╭ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ layout editor • transcript › Border            │
-│ │ grapheme property,               │             │ unicode_tables.hp│ none                                           │
-│ │ Extended_Pictographic, InCB)     │             │                  │ • single                                       │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ rounded                                        │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ double                                         │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ heavy                                          │
-│ │                                  │             │ block tree is the│                                                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
+│ │ Extended_Pictographic, InCB)     │             │                  │ none                                           │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ • single                                       │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ rounded                                        │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ double                                         │
+│ │                                  │             │ block tree is the│ heavy                                          │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
 │ │ mouse mode)                      │             │                  │                                                │
