@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_keys.h"
@@ -685,8 +686,8 @@ static RolltuiWidget make_error_widget(RolltuiWindows* w, unsigned char role_err
  * a host's kind is (rule 5).
  * ============================================================================================ */
 
-static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget rows_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
@@ -698,7 +699,7 @@ static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
@@ -719,8 +720,8 @@ static RolltuiWidget rows_widget_factory(void* c, const char* content, size_t n)
   return out;
 }
 
-static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget text_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
@@ -731,7 +732,7 @@ static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
@@ -747,8 +748,8 @@ static RolltuiWidget text_widget_factory(void* c, const char* content, size_t n)
   return out;
 }
 
-static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget file_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
@@ -759,7 +760,7 @@ static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
@@ -776,8 +777,8 @@ static RolltuiWidget file_widget_factory(void* c, const char* content, size_t n)
   return out;
 }
 
-static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget help_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
@@ -788,7 +789,7 @@ static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
@@ -807,8 +808,8 @@ static RolltuiWidget help_widget_factory(void* c, const char* content, size_t n)
 /* THE TWO FALLBACKS. `error` is given a CONTENT nothing could build and works out the reason;
  * `panel` is given a REASON directly. Mirrors `Windows::register_builtin_kinds()`'s two
  * lambdas exactly, over `rolltui_content_parse` instead of `rolltui::parse_content`. */
-static RolltuiWidget error_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget error_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   size_t row = 0;
   int is_host = 0;
   const char *name = NULL, *source = NULL;
@@ -818,7 +819,7 @@ static RolltuiWidget error_widget_factory(void* c, const char* content, size_t n
   RolltuiWidget out;
   memset(&why, 0, sizeof why);
   memset(&msg, 0, sizeof msg);
-  if (rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                             &name, &name_len, &source, &source_len, &problem,
                             &why)) {
     /* it PARSES, so its kind is in one of the two rungs and nothing built it — a registered
@@ -835,27 +836,30 @@ static RolltuiWidget error_widget_factory(void* c, const char* content, size_t n
   rolltui_str_free(&msg);
   return out;
 }
-static RolltuiWidget panel_widget_factory(void* c, const char* why, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget panel_widget_factory(void* c, RolltuiWindows* w, const char* why, size_t n) {
+  (void)c;
   return make_error_widget(w, rolltui_windows_builtin_roles(w)->error, why, n);
 }
 
 /* The three below are defined further down, with the kinds they build. Declared here so the
  * one registration point stays one function rather than three scattered ones. */
-static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n);
-static RolltuiWidget transcript_widget_factory(void* c, const char* content, size_t n);
-static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n);
+static RolltuiWidget input_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
+static RolltuiWidget transcript_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
+static RolltuiWidget menu_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 
-void rolltui_widget_kinds_register(RolltuiWindows* w) {
-  rolltui_windows_register_kind(w, "rows", 4, rows_widget_factory, w, NULL);
-  rolltui_windows_register_kind(w, "text", 4, text_widget_factory, w, NULL);
-  rolltui_windows_register_kind(w, "file", 4, file_widget_factory, w, NULL);
-  rolltui_windows_register_kind(w, "help", 4, help_widget_factory, w, NULL);
-  rolltui_windows_register_kind(w, "input", 5, input_widget_factory, w, NULL);
-  rolltui_windows_register_kind(w, "transcript", 10, transcript_widget_factory, w, NULL);
-  rolltui_windows_register_kind(w, "menu", 4, menu_widget_factory, w, NULL);
-  rolltui_windows_set_error_factory(w, error_widget_factory, w);
-  rolltui_windows_set_panel_factory(w, panel_widget_factory, w);
+void rolltui_widget_kinds_register(RolltuiContext* ctx) {
+  /* THE LIBRARY'S OWN KINDS REGISTER WITH A NULL CTX, and that is the split working rather than
+   * a shortcut: these factories need the SCREEN, which they are handed as `w`, and they need
+   * nothing that belongs to one registration. A host's kind may still carry its own ctx. */
+  rolltui_context_register_kind(ctx, "rows", 4, rows_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "text", 4, text_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "file", 4, file_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "help", 4, help_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "input", 5, input_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "transcript", 10, transcript_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "menu", 4, menu_widget_factory, NULL, NULL);
+  rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
+  rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
 
 /* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL (Phase 17 m2a).
@@ -869,7 +873,7 @@ void rolltui_widget_kinds_register(RolltuiWindows* w) {
  *
  * A host that wants its OWN words still calls the setters afterwards; this is a default, not a
  * policy. It is idempotent, and `Windows` is now one line over it. */
-void rolltui_windows_set_library_defaults(RolltuiWindows* w) {
+void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
   static const RolltuiBuiltinRoles kRoles = {
       /*text=*/ROLLTUI_ROLE_TEXT,
       /*text_muted=*/ROLLTUI_ROLE_TEXT_MUTED,
@@ -890,7 +894,7 @@ void rolltui_windows_set_library_defaults(RolltuiWindows* w) {
       /*warning=*/ROLLTUI_ROLE_WARNING,
       /*scroll_marker=*/ROLLTUI_ROLE_SCROLL_MARKER,
   };
-  if (!w) return;
+  if (!ctx) return;
   /* THE LIVE TABLE, and it belongs in this function for the same reason the roles and the kinds
    * do (Phase 17 m3). `rolltui_windows_bindings()` was NULL until a host called
    * `set_bindings`, and the `help` kind's sizing pass reads it unguarded — so a pure-C host
@@ -901,13 +905,13 @@ void rolltui_windows_set_library_defaults(RolltuiWindows* w) {
    *
    * A default, not a policy — a host with its own table calls `set_bindings` afterwards, and
    * this is a BORROW of the library's shipped table, which lives for the process. */
-  rolltui_windows_set_bindings(w, rolltui_bindings_default(rolltui_windows_context(w)));
-  rolltui_windows_set_builtin_roles(w, &kRoles);
-  rolltui_windows_set_menu_roles(w, &kMenuRoles);
-  rolltui_windows_set_scroll_text_actions(w, rolltui_scroll_text_default_actions());
-  rolltui_windows_set_transcript_actions(w, rolltui_transcript_default_actions());
-  rolltui_windows_set_input_actions(w, rolltui_input_default_actions());
-  rolltui_widget_kinds_register(w);
+  rolltui_context_set_bindings(ctx, rolltui_bindings_default(ctx));
+  rolltui_context_set_builtin_roles(ctx, &kRoles);
+  rolltui_context_set_menu_roles(ctx, &kMenuRoles);
+  rolltui_context_set_scroll_text_actions(ctx, rolltui_scroll_text_default_actions());
+  rolltui_context_set_transcript_actions(ctx, rolltui_transcript_default_actions());
+  rolltui_context_set_input_actions(ctx, rolltui_input_default_actions());
+  rolltui_widget_kinds_register(ctx);
 }
 
 /* ============================================================================================
@@ -1102,8 +1106,8 @@ const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void) { return &kInputPlu
 
 /* The editor is the window TABLE's, asked for by source (Phase 17 m1c) — the same object
  * `rolltui_windows_input` hands a host, never a second one built here. */
-static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget input_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   unsigned char problem = 0;
   size_t row = 0;
   int is_host = 0;
@@ -1114,7 +1118,7 @@ static RolltuiWidget input_widget_factory(void* c, const char* content, size_t n
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
@@ -1232,8 +1236,8 @@ static const RolltuiWidgetPlugin kTranscriptPlugin = {
 
 static const RolltuiWidgetPlugin* transcript_widget_plugin(void) { return &kTranscriptPlugin; }
 
-static RolltuiWidget transcript_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget transcript_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   unsigned char problem = 0;
   size_t row = 0;
   int is_host = 0;
@@ -1244,7 +1248,7 @@ static RolltuiWidget transcript_widget_factory(void* c, const char* content, siz
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);
@@ -1574,8 +1578,8 @@ const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void) { return &kMenuPlugi
  * table claims the row BEFORE running a factory (rolltui_widgets.c says so at the claim): the
  * re-entrant call sees a zeroed widget, skips the refresh, and hands back the menu object —
  * which is all this factory wants. The outer caller refreshes once this returns. */
-static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n) {
-  RolltuiWindows* w = (RolltuiWindows*)c;
+static RolltuiWidget menu_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  (void)c;
   unsigned char problem = 0;
   size_t row = 0;
   int is_host = 0;
@@ -1586,7 +1590,7 @@ static RolltuiWidget menu_widget_factory(void* c, const char* content, size_t n)
   RolltuiWidget out;
   memset(&out, 0, sizeof out);
   memset(&why, 0, sizeof why);
-  if (!rolltui_content_parse(rolltui_windows_context((const RolltuiWindows*)c), content, n, &row, &is_host,
+  if (!rolltui_content_parse(rolltui_windows_context(w), content, n, &row, &is_host,
                              &name, &name_len, &source, &source_len, &problem,
                              &why)) {
     rolltui_str_free(&why);

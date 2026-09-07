@@ -137,13 +137,21 @@ typedef struct WindowSlot {
   int live; /* this sync found it */
 } WindowSlot;
 
-struct RolltuiWindows {
-  /* BORROWED, and it must outlive this (Phase 25 m2/m3): the session whose widget-kind registry
-   * `sync` resolves a window's `kind[:source]` against. A layout is plain data and portable
-   * between contexts precisely because that resolution happens HERE, per frame, and not at load. */
-  RolltuiContext* ctx;
-  RolltuiMap by_content; /* content → RolltuiWidget*, OWNED (this table destroys them) */
-  RolltuiMap by_window;  /* window id → WindowSlot*, OWNED */
+/* ---- WHAT A SESSION CONFIGURES, ONCE (Phase 25 m3) -------------------------------------------
+ * The half of `RolltuiWindows` that was never about what is on screen: a program's widget-kind
+ * factories, its menus, its key table, its help scopes, its highlighter, and the vocabularies the
+ * built-in kinds read back. Set at startup and identical for every screen the program runs, which
+ * is the definition of a session's rather than a screen's — so it is owned by the CONTEXT and a
+ * `RolltuiWindows` borrows it.
+ *
+ * THE FACTORY HALF OF RUNG 2 IS WHY THIS COULD NOT WAIT. m2 moved a host kind's NAME and source
+ * rule into the context and left its FACTORY here, so one registration was owned by two things —
+ * the "TWO SPELLINGS of one identity" shape CLAUDE.md names, created by a milestone boundary.
+ *
+ * LIFETIME: every widget in `by_content` borrows from here, and `rolltui_windows_free` runs
+ * before `rolltui_context_free` because a context must outlive the windows made against it
+ * (stated at `rolltui_windows_new`). Borrowers die first, which is the order this needs. */
+struct RolltuiWindowConfig {
   KindRow* kinds;
   size_t kind_n, kind_cap;
   RolltuiWidgetFactory error_factory;
@@ -151,6 +159,70 @@ struct RolltuiWindows {
   RolltuiWidgetFactory panel_factory;
   void* panel_ctx;
   RolltuiWidgetEnv env;
+  RolltuiMap host_menus; /* name -> RolltuiStr* (a menu file's text), OWNED */
+  RolltuiStr dir;        /* the preset directory; "" until set_dir */
+
+  /* ---- what a `help` window renders (moved to the boundary so `help` can be a plugin) ----- */
+  RolltuiStr help_lead, help_note;
+  RolltuiStr* help_scopes; /* GROWING AMORTISED, like `report` */
+  size_t help_scopes_n, help_scopes_cap;
+
+  const RolltuiBindings* bindings; /* BORROWED; NULL only before the first set_env */
+
+  /* ---- what rolltui_widget_kinds.c's built-in kinds read back through the Windows --------- */
+  RolltuiBuiltinRoles builtin_roles;
+  RolltuiScrollTextActions scroll_actions;
+  RolltuiCodeFold code_fold;
+  RolltuiTranscriptActions transcript_actions;
+  RolltuiMenuRoles menu_roles;
+  const RolltuiInputActions* input_actions; /* BORROWED, process lifetime */
+};
+
+/* The session's configuration, made on first use — the same shape every other subsystem a
+ * context owns uses, so a host never has to create one. */
+RolltuiWindowConfig* rolltui_context_window_config(RolltuiContext* ctx) {
+  if (ctx->window_config == NULL) ctx->window_config = rolltui_window_config_new();
+  return ctx->window_config;
+}
+
+RolltuiWindowConfig* rolltui_window_config_new(void) {
+  RolltuiWindowConfig* c = (RolltuiWindowConfig*)rolltui_mem_alloc(sizeof *c);
+  memset(c, 0, sizeof *c);
+  return c;
+}
+
+void rolltui_window_config_free(RolltuiWindowConfig* c) {
+  size_t i;
+  if (c == NULL) return;
+  for (i = 0; i < c->kind_n; ++i) {
+    free_binding_ctx(c->kinds[i].ctx, c->kinds[i].free_ctx);
+    rolltui_str_free(&c->kinds[i].name);
+  }
+  rolltui_mem_free(c->kinds);
+  for (i = 0; i < rolltui_map_count(&c->host_menus); ++i) {
+    RolltuiStr* s = (RolltuiStr*)rolltui_map_value_at(&c->host_menus, i);
+    rolltui_str_free(s);
+    rolltui_mem_free(s);
+  }
+  rolltui_map_release(&c->host_menus);
+  rolltui_str_free(&c->dir);
+  rolltui_str_free(&c->help_lead);
+  rolltui_str_free(&c->help_note);
+  for (i = 0; i < c->help_scopes_cap; ++i) rolltui_str_free(&c->help_scopes[i]);
+  rolltui_mem_free(c->help_scopes);
+  rolltui_mem_free(c);
+}
+
+struct RolltuiWindows {
+  /* BORROWED, and it must outlive this (Phase 25 m2/m3): the session whose widget-kind registry
+   * `sync` resolves a window's `kind[:source]` against. A layout is plain data and portable
+   * between contexts precisely because that resolution happens HERE, per frame, and not at load. */
+  RolltuiContext* ctx;
+  /* BORROWED from `ctx`: what this program configured once. See `RolltuiWindowConfig`. */
+  RolltuiWindowConfig* cfg;
+  const RolltuiStyle* styles; /* set at the top of rolltui_windows_draw; NULL outside one */
+  RolltuiMap by_content; /* content → RolltuiWidget*, OWNED (this table destroys them) */
+  RolltuiMap by_window;  /* window id → WindowSlot*, OWNED */
 
   RolltuiStr* report; /* the bad values `sync` collected; BORROWED out */
   size_t report_n, report_cap;
@@ -172,17 +244,6 @@ struct RolltuiWindows {
   RolltuiMap rows;       /* name -> RowsBinding*, OWNED */
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
-  RolltuiMap host_menus; /* name -> RolltuiStr* (a menu file's text), OWNED */
-  RolltuiStr dir;        /* the preset directory; "" until set_dir */
-
-  /* ---- what a `help` window renders (moved to the boundary so `help` can be a plugin) ----- */
-  RolltuiStr help_lead, help_note;
-  RolltuiStr* help_scopes; /* GROWING AMORTISED, like `report` above */
-  size_t help_scopes_n, help_scopes_cap;
-
-  /* ---- the live bindings table and the current frame's styles, both BORROWED -------------- */
-  const RolltuiBindings* bindings; /* set alongside env; NULL only before the first set_env */
-  const RolltuiStyle* styles;      /* set at the top of rolltui_windows_draw; NULL outside one */
 
   /* ---- THE TYPED WIDGETS THIS TABLE OWNS, BY SOURCE (Phase 17 m1c) ------------------------
    * The three maps `rolltui::Windows` used to keep on the C++ side, moved here in the same
@@ -190,30 +251,29 @@ struct RolltuiWindows {
    * why the two halves could not be done separately. Created on demand by the accessors and
    * by those factories alike, and destroyed only with `w`. STRATEGY 5 (GROWING HEAP): each
    * handle is its own module's `_new`/`_free` pair, and the map owns nothing but the keys. */
-  RolltuiMap inputs;      /* source -> RolltuiInput*, OWNED */
-  RolltuiMap transcripts; /* source -> RolltuiTranscript*, OWNED */
-  RolltuiMap menus;       /* source -> RolltuiMenu*, OWNED */
-  /* The highlighter every transcript above renders code blocks through, as {fn, ctx,
-   * free_ctx} — pushed onto the ones that exist and onto each new one, so neither order of
-   * `set_highlight` and `transcript` can lose it (Widgets.hpp's contract). */
+  /* THE HIGHLIGHTER IS A SCREEN'S, NOT A SESSION'S — and the reason is a RULE this milestone
+   * found rather than a judgement (Phase 25 m3): its setter MUTATES LIVE WIDGETS, pushing onto
+   * every transcript that already exists so neither order of `set_highlight` and `transcript`
+   * can lose it. A session-owned setter has no screen to push to, and the context deliberately
+   * does not know its windows. `set_input_min_outer` stayed for exactly the same reason: a
+   * config call that must reach live widgets is a screen's. */
   RolltuiMdHighlightFn highlight_fn;
   void* highlight_ctx;
   void (*highlight_free_ctx)(void*);
 
-  /* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ---------- */
-  RolltuiBuiltinRoles builtin_roles;
-  RolltuiScrollTextActions scroll_actions;
-  /* Phase 17 m1c: the transcript and menu kinds' own config, same shape as the two above. */
-  RolltuiCodeFold code_fold;
-  RolltuiTranscriptActions transcript_actions;
-  RolltuiMenuRoles menu_roles;
-  const RolltuiInputActions* input_actions; /* BORROWED, process lifetime */
+  RolltuiMap inputs;      /* source -> RolltuiInput*, OWNED */
+  RolltuiMap transcripts; /* source -> RolltuiTranscript*, OWNED */
+  RolltuiMap menus;       /* source -> RolltuiMenu*, OWNED */
 };
 
 RolltuiWindows* rolltui_windows_new(RolltuiContext* ctx) {
   RolltuiWindows* w = (RolltuiWindows*)rolltui_mem_alloc(sizeof *w);
   memset(w, 0, sizeof *w);
   w->ctx = ctx;
+  /* The session's configuration, made on first use like every other subsystem it owns. A second
+   * `RolltuiWindows` on the same context gets the SAME one, which is the point of the split:
+   * two screens in one session are configured once, not twice. */
+  w->cfg = rolltui_context_window_config(ctx);
   return w;
 }
 
@@ -238,16 +298,12 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(s);
   }
   rolltui_map_release(&w->by_window);
-  for (i = 0; i < w->kind_n; ++i) {
-    free_binding_ctx(w->kinds[i].ctx, w->kinds[i].free_ctx);
-    rolltui_str_free(&w->kinds[i].name);
-  }
-  rolltui_mem_free(w->kinds);
   for (i = 0; i < w->report_cap; ++i) rolltui_str_free(&w->report[i]);
   rolltui_mem_free(w->report);
   rolltui_str_free(&w->scratch);
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
+  free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
   /* the host-binding surface (m6): `documents` is BORROWS only, nothing to free per entry —
    * but `owned_documents` holds the samples those borrows may point INTO, so it is released
    * after it rather than before. */
@@ -276,17 +332,6 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->notes);
-  for (i = 0; i < rolltui_map_count(&w->host_menus); ++i) {
-    RolltuiStr* s = (RolltuiStr*)rolltui_map_value_at(&w->host_menus, i);
-    rolltui_str_free(s);
-    rolltui_mem_free(s);
-  }
-  rolltui_map_release(&w->host_menus);
-  rolltui_str_free(&w->dir);
-  rolltui_str_free(&w->help_lead);
-  rolltui_str_free(&w->help_note);
-  for (i = 0; i < w->help_scopes_cap; ++i) rolltui_str_free(&w->help_scopes[i]);
-  rolltui_mem_free(w->help_scopes);
   /* The typed widgets (m1c), AFTER `by_content` above: every widget ctx BORROWS one of these,
    * so the borrowers have to be gone before the owners are. */
   for (i = 0; i < rolltui_map_count(&w->inputs); ++i)
@@ -298,42 +343,45 @@ void rolltui_windows_free(RolltuiWindows* w) {
   for (i = 0; i < rolltui_map_count(&w->menus); ++i)
     rolltui_menu_free((RolltuiMenu*)rolltui_map_value_at(&w->menus, i));
   rolltui_map_release(&w->menus);
-  free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
   rolltui_mem_free(w);
 }
 
-void rolltui_windows_register_kind(RolltuiWindows* w, const char* name, size_t len,
-                                   RolltuiWidgetFactory factory, void* ctx, void (*free_ctx)(void*)) {
+void rolltui_context_register_kind(RolltuiContext* ctx, const char* name, size_t len,
+                                   RolltuiWidgetFactory factory, void* kind_ctx, void (*free_ctx)(void*)) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
   size_t i;
-  for (i = 0; i < w->kind_n; ++i)
-    if (rolltui_str_eq(&w->kinds[i].name, name, len)) {
+  for (i = 0; i < cfg->kind_n; ++i)
+    if (rolltui_str_eq(&cfg->kinds[i].name, name, len)) {
       /* REPLACING: release what this name owned before taking the new one. */
-      free_binding_ctx(w->kinds[i].ctx, w->kinds[i].free_ctx);
-      w->kinds[i].factory = factory;
-      w->kinds[i].ctx = ctx;
-      w->kinds[i].free_ctx = free_ctx;
+      free_binding_ctx(cfg->kinds[i].ctx, cfg->kinds[i].free_ctx);
+      cfg->kinds[i].factory = factory;
+      cfg->kinds[i].ctx = ctx;
+      cfg->kinds[i].free_ctx = free_ctx;
       return;
     }
-  w->kinds = (KindRow*)rolltui_grow_zeroed(w->kinds, &w->kind_cap, w->kind_n + 1, sizeof *w->kinds);
-  rolltui_str_set(&w->kinds[w->kind_n].name, name, len);
-  w->kinds[w->kind_n].factory = factory;
-  w->kinds[w->kind_n].ctx = ctx;
-  w->kinds[w->kind_n].free_ctx = free_ctx;
-  ++w->kind_n;
+  cfg->kinds = (KindRow*)rolltui_grow_zeroed(cfg->kinds, &cfg->kind_cap, cfg->kind_n + 1, sizeof *cfg->kinds);
+  rolltui_str_set(&cfg->kinds[cfg->kind_n].name, name, len);
+  cfg->kinds[cfg->kind_n].factory = factory;
+  cfg->kinds[cfg->kind_n].ctx = kind_ctx;
+  cfg->kinds[cfg->kind_n].free_ctx = free_ctx;
+  ++cfg->kind_n;
 }
 
-void rolltui_windows_set_error_factory(RolltuiWindows* w, RolltuiWidgetFactory factory, void* ctx) {
-  w->error_factory = factory;
-  w->error_ctx = ctx;
+void rolltui_context_set_error_factory(RolltuiContext* ctx, RolltuiWidgetFactory factory, void* factory_ctx) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
+  cfg->error_factory = factory;
+  cfg->error_ctx = factory_ctx;
 }
 
-void rolltui_windows_set_panel_factory(RolltuiWindows* w, RolltuiWidgetFactory factory, void* ctx) {
-  w->panel_factory = factory;
-  w->panel_ctx = ctx;
+void rolltui_context_set_panel_factory(RolltuiContext* ctx, RolltuiWidgetFactory factory, void* factory_ctx) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
+  cfg->panel_factory = factory;
+  cfg->panel_ctx = factory_ctx;
 }
 
-void rolltui_windows_set_env(RolltuiWindows* w, const RolltuiWidgetEnv* env) { w->env = *env; }
-const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w) { return &w->env; }
+void rolltui_context_set_env(RolltuiContext* ctx, const RolltuiWidgetEnv* env) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx); cfg->env = *env; }
+const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w) { return &w->cfg->env; }
 
 /* The kind half of a content string, which is everything before the first ':'. */
 static size_t kind_len(const char* content, size_t len) {
@@ -361,14 +409,14 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
   memset(wd, 0, sizeof *wd);
   rolltui_map_put(&w->by_content, content, len, wd);
   memset(&built, 0, sizeof built);
-  for (i = 0; i < w->kind_n; ++i)
-    if (rolltui_str_eq(&w->kinds[i].name, content, kl)) {
-      built = w->kinds[i].factory(w->kinds[i].ctx, content, len);
+  for (i = 0; i < w->cfg->kind_n; ++i)
+    if (rolltui_str_eq(&w->cfg->kinds[i].name, content, kl)) {
+      built = w->cfg->kinds[i].factory(w->cfg->kinds[i].ctx, w, content, len);
       break;
     }
   /* NOTHING BUILT IS NOT AN ERROR PATH: the error factory draws the reason, which is
    * Layout.hpp's "a window is never blank because its content was not understood". */
-  if (!built.vt && w->error_factory) built = w->error_factory(w->error_ctx, content, len);
+  if (!built.vt && w->cfg->error_factory) built = w->cfg->error_factory(w->cfg->error_ctx, w, content, len);
   *wd = built;
   return wd;
 }
@@ -625,22 +673,24 @@ int rolltui_windows_call_note(RolltuiWindows* w, const char* name, size_t len, R
   return 1;
 }
 
-void rolltui_windows_set_dir(RolltuiWindows* w, const char* dir, size_t len) { rolltui_str_set(&w->dir, dir, len); }
+void rolltui_context_set_dir(RolltuiContext* ctx, const char* dir, size_t len) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx); rolltui_str_set(&cfg->dir, dir, len); }
 
-const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->dir, len); }
+const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->cfg->dir, len); }
 
-void rolltui_windows_add_menu(RolltuiWindows* w, const char* name, size_t len, const char* json, size_t json_len) {
-  RolltuiStr* s = (RolltuiStr*)rolltui_map_get(&w->host_menus, name, len);
+void rolltui_context_add_menu(RolltuiContext* ctx, const char* name, size_t len, const char* json, size_t json_len) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
+  RolltuiStr* s = (RolltuiStr*)rolltui_map_get(&cfg->host_menus, name, len);
   if (!s) {
     s = (RolltuiStr*)rolltui_mem_alloc(sizeof *s);
     memset(s, 0, sizeof *s);
-    rolltui_map_put(&w->host_menus, name, len, s);
+    rolltui_map_put(&cfg->host_menus, name, len, s);
   }
   rolltui_str_set(s, json, json_len);
 }
 
 const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name, size_t len, size_t* out_len) {
-  RolltuiStr* s = (RolltuiStr*)rolltui_map_get(&w->host_menus, name, len);
+  RolltuiStr* s = (RolltuiStr*)rolltui_map_get(&w->cfg->host_menus, name, len);
   if (!s) {
     if (out_len) *out_len = 0;
     return NULL;
@@ -648,69 +698,80 @@ const char* rolltui_windows_host_menu(const RolltuiWindows* w, const char* name,
   return rolltui_str_get(s, out_len);
 }
 
-size_t rolltui_windows_host_menu_count(const RolltuiWindows* w) { return rolltui_map_count(&w->host_menus); }
+size_t rolltui_windows_host_menu_count(const RolltuiWindows* w) { return rolltui_map_count(&w->cfg->host_menus); }
 
 const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len) {
-  return rolltui_map_key_at(&w->host_menus, i, len);
+  return rolltui_map_key_at(&w->cfg->host_menus, i, len);
 }
 
 /* ---- help (Phase 15 m5e: moved to the boundary so `help` can be a plugin) ---------------------- */
 
-void rolltui_windows_set_help(RolltuiWindows* w, const char* lead, size_t lead_len, const char* note,
+void rolltui_context_set_help(RolltuiContext* ctx, const char* lead, size_t lead_len, const char* note,
                               size_t note_len) {
-  rolltui_str_set(&w->help_lead, lead, lead_len);
-  rolltui_str_set(&w->help_note, note, note_len);
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
+  rolltui_str_set(&cfg->help_lead, lead, lead_len);
+  rolltui_str_set(&cfg->help_note, note, note_len);
 }
 
-void rolltui_windows_clear_help_scopes(RolltuiWindows* w) { w->help_scopes_n = 0; /* keeps every buffer */ }
+void rolltui_context_clear_help_scopes(RolltuiContext* ctx) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx); cfg->help_scopes_n = 0; /* keeps every buffer */ }
 
-void rolltui_windows_add_help_scope(RolltuiWindows* w, const char* scope, size_t len) {
-  w->help_scopes = (RolltuiStr*)rolltui_grow_zeroed(w->help_scopes, &w->help_scopes_cap, w->help_scopes_n + 1,
-                                                    sizeof *w->help_scopes);
-  rolltui_str_set(&w->help_scopes[w->help_scopes_n++], scope, len);
+void rolltui_context_add_help_scope(RolltuiContext* ctx, const char* scope, size_t len) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
+  cfg->help_scopes = (RolltuiStr*)rolltui_grow_zeroed(cfg->help_scopes, &cfg->help_scopes_cap, cfg->help_scopes_n + 1,
+                                                    sizeof *cfg->help_scopes);
+  rolltui_str_set(&cfg->help_scopes[cfg->help_scopes_n++], scope, len);
 }
 
-size_t rolltui_windows_help_scope_count(const RolltuiWindows* w) { return w->help_scopes_n; }
+size_t rolltui_windows_help_scope_count(const RolltuiWindows* w) { return w->cfg->help_scopes_n; }
 
 const char* rolltui_windows_help_scope_at(const RolltuiWindows* w, size_t i, size_t* len) {
-  if (i >= w->help_scopes_n) {
+  if (i >= w->cfg->help_scopes_n) {
     if (len) *len = 0;
     return "";
   }
-  return rolltui_str_get(&w->help_scopes[i], len);
+  return rolltui_str_get(&w->cfg->help_scopes[i], len);
 }
 
-const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->help_lead, len); }
-const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->help_note, len); }
+const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->cfg->help_lead, len); }
+const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->cfg->help_note, len); }
 
 /* ---- the live bindings table and the current frame's styles ------------------------------------ */
 
-void rolltui_windows_set_bindings(RolltuiWindows* w, const RolltuiBindings* b) { w->bindings = b; }
-const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w) { return w->bindings; }
+void rolltui_context_set_bindings(RolltuiContext* ctx, const RolltuiBindings* b) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx); cfg->bindings = b; }
+const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w) { return w->cfg->bindings; }
 const RolltuiStyle* rolltui_windows_styles(const RolltuiWindows* w) { return w->styles; }
 
 /* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ---------------- */
 
-void rolltui_windows_set_builtin_roles(RolltuiWindows* w, const RolltuiBuiltinRoles* r) { w->builtin_roles = *r; }
-const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w) { return &w->builtin_roles; }
-void rolltui_windows_set_scroll_text_actions(RolltuiWindows* w, const RolltuiScrollTextActions* a) {
-  w->scroll_actions = *a;
+void rolltui_context_set_builtin_roles(RolltuiContext* ctx, const RolltuiBuiltinRoles* r) {
+  rolltui_context_window_config(ctx)->builtin_roles = *r;
+}
+const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w) { return &w->cfg->builtin_roles; }
+void rolltui_context_set_scroll_text_actions(RolltuiContext* ctx, const RolltuiScrollTextActions* a) {
+  rolltui_context_window_config(ctx)->scroll_actions = *a;
 }
 const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w) {
-  return &w->scroll_actions;
+  return &w->cfg->scroll_actions;
 }
-void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c) { w->code_fold = *c; }
-const RolltuiCodeFold* rolltui_windows_code_fold(const RolltuiWindows* w) { return &w->code_fold; }
-void rolltui_windows_set_transcript_actions(RolltuiWindows* w, const RolltuiTranscriptActions* a) {
-  w->transcript_actions = *a;
+void rolltui_context_set_code_fold(RolltuiContext* ctx, const RolltuiCodeFold* c) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx); cfg->code_fold = *c; }
+const RolltuiCodeFold* rolltui_windows_code_fold(const RolltuiWindows* w) { return &w->cfg->code_fold; }
+void rolltui_context_set_transcript_actions(RolltuiContext* ctx, const RolltuiTranscriptActions* a) {
+  rolltui_context_window_config(ctx)->transcript_actions = *a;
 }
 const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const RolltuiWindows* w) {
-  return &w->transcript_actions;
+  return &w->cfg->transcript_actions;
 }
-void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r) { w->menu_roles = *r; }
-const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w) { return &w->menu_roles; }
-void rolltui_windows_set_input_actions(RolltuiWindows* w, const RolltuiInputActions* a) { w->input_actions = a; }
-const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w) { return w->input_actions; }
+void rolltui_context_set_menu_roles(RolltuiContext* ctx, const RolltuiMenuRoles* r) {
+  rolltui_context_window_config(ctx)->menu_roles = *r;
+}
+const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w) { return &w->cfg->menu_roles; }
+void rolltui_context_set_input_actions(RolltuiContext* ctx, const RolltuiInputActions* a) {
+  rolltui_context_window_config(ctx)->input_actions = a;
+}
+const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w) { return w->cfg->input_actions; }
 
 /* The floor a host holds an input's window at whatever its text says — per-WINDOW sizing the
  * `input` plugin's ctx keeps, not part of the edited text `inputs` owns, so this reaches the
@@ -931,7 +992,7 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   if (style.bg.kind == 0 /* Color::Kind::None */) style.bg = ground.bg;
   /* █ (U+2588) is East Asian AMBIGUOUS, exactly like the box-drawing set the border is made
    * of — so it follows the border's rule: with `ambiguous_wide` the thumb is ASCII. */
-  thumb = w->env.ambiguous_wide ? "#" : "\xE2\x96\x88";
+  thumb = w->cfg->env.ambiguous_wide ? "#" : "\xE2\x96\x88";
   for (i = 0; i < t.length; ++i) {
     const int y = rn->outer.y + 1 + t.offset + i;
     if (y >= rn->outer.y + rn->outer.h - 1) break;
@@ -960,8 +1021,8 @@ void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, Roll
   /* A widget that CANNOT draw is replaced by the error panel — the factory's, so there is one
    * definition of what "this window is wrong" looks like. */
   if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) {
-    if (w->panel_factory) {
-      RolltuiWidget err = w->panel_factory(w->panel_ctx, w->scratch.p, w->scratch.n);
+    if (w->cfg->panel_factory) {
+      RolltuiWidget err = w->cfg->panel_factory(w->cfg->panel_ctx, w, w->scratch.p, w->scratch.n);
       if (err.vt) {
         if (err.vt->layout) err.vt->layout(err.ctx, rn);
         err.vt->draw(err.ctx, rn, f);

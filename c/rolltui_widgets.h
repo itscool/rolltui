@@ -140,8 +140,8 @@ size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, in
  *           draw time.
  * Without them an unknown kind draws nothing, which is the one outcome Layout.hpp says must
  * never happen. */
-void rolltui_windows_set_error_factory(RolltuiWindows* w, RolltuiWidgetFactory factory, void* ctx);
-void rolltui_windows_set_panel_factory(RolltuiWindows* w, RolltuiWidgetFactory factory, void* ctx);
+void rolltui_context_set_error_factory(RolltuiContext* ctx, RolltuiWidgetFactory factory, void* factory_ctx);
+void rolltui_context_set_panel_factory(RolltuiContext* ctx, RolltuiWidgetFactory factory, void* factory_ctx);
 
 const RolltuiDocument* rolltui_windows_document(const RolltuiWindows* w, const char* name, size_t len);
 

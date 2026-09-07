@@ -677,12 +677,12 @@ struct WindowsC {
   // pure-C window table is usable after it and not one call short of it (Phase 17 m3 — this
   // suite's conversion is what found the NULL, and deleting the second line here is what proves
   // the library fix rather than the workaround).
-  WindowsC() { rolltui_windows_set_library_defaults(w); }
+  WindowsC() { rolltui_context_set_library_defaults(test_ctx()); }
   WindowsC(const WindowsC&) = delete;
   ~WindowsC() { rolltui_windows_free(w); }
   operator RolltuiWindows*() const { return w; }
 
-  void set_dir(std::string_view dir) { rolltui_windows_set_dir(w, dir.data(), dir.size()); }
+  void set_dir(std::string_view dir) { rolltui_context_set_dir(test_ctx(), dir.data(), dir.size()); }
   void bind_document(std::string_view name, const RolltuiDocument* doc) {
     rolltui_windows_bind_document(w, name.data(), name.size(), doc);
   }
@@ -697,19 +697,19 @@ struct WindowsC {
     rolltui_windows_bind_note(w, name.data(), name.size(), fn, ctx, free_ctx);
   }
   void set_help(std::string_view lead, std::initializer_list<std::string_view> scopes, std::string_view note) {
-    rolltui_windows_set_help(w, lead.data(), lead.size(), note.data(), note.size());
-    rolltui_windows_clear_help_scopes(w);
-    for (std::string_view sc : scopes) rolltui_windows_add_help_scope(w, sc.data(), sc.size());
+    rolltui_context_set_help(test_ctx(), lead.data(), lead.size(), note.data(), note.size());
+    rolltui_context_clear_help_scopes(test_ctx());
+    for (std::string_view sc : scopes) rolltui_context_add_help_scope(test_ctx(), sc.data(), sc.size());
   }
   bool register_kind(std::string_view name, RolltuiWidgetFactory factory, void* ctx,
                      unsigned char rule = ROLLTUI_SOURCE_REQUIRED, std::string_view source_is = "",
                      std::string* why = nullptr) {
     if (!register_widget_kind_c(name, rule, source_is, why)) return false;
-    rolltui_windows_register_kind(w, name.data(), name.size(), factory, ctx, nullptr);
+    rolltui_context_register_kind(test_ctx(), name.data(), name.size(), factory, ctx, nullptr);
     return true;
   }
-  void set_env(const RolltuiWidgetEnv& env) { rolltui_windows_set_env(w, &env); }
-  void set_bindings(const RolltuiBindings* b) { rolltui_windows_set_bindings(w, b); }
+  void set_env(const RolltuiWidgetEnv& env) { rolltui_context_set_env(test_ctx(), &env); }
+  void set_bindings(const RolltuiBindings* b) { rolltui_context_set_bindings(test_ctx(), b); }
   RolltuiWindows* handle() const { return w; }
   RolltuiTranscript* transcript(std::string_view source) const { return rolltui_windows_transcript(w, source.data(), source.size()); }
   RolltuiTranscript* transcript_at(std::string_view win) const { return rolltui_windows_transcript_at(w, win.data(), win.size()); }
@@ -745,7 +745,7 @@ struct WindowsC {
     rolltui_windows_draw(w, &rn, f, theme.styles, rolltui_windows_default_roles());
   }
   void add_menu(std::string_view name, std::string_view json) {
-    rolltui_windows_add_menu(w, name.data(), name.size(), json.data(), json.size());
+    rolltui_context_add_menu(test_ctx(), name.data(), name.size(), json.data(), json.size());
   }
   std::string menu_origin(std::string_view source) const {
     std::size_t n = 0;
@@ -796,7 +796,7 @@ constexpr RolltuiWidgetPlugin kMinePlugin = {
     /*problem=*/nullptr,      /*note_at=*/nullptr,    /*desired_outer=*/nullptr,
     /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
 };
-RolltuiWidget mine_factory(void* ctx, const char*, std::size_t) {
+RolltuiWidget mine_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {
   return RolltuiWidget{&kMinePlugin, new MineCtx(*static_cast<const MineCtx*>(ctx))};
 }
 
@@ -853,7 +853,7 @@ struct CanvasFactoryCtx {
   RolltuiWindows* windows;
   int* built;  // BORROWED: bumped once per real construction
 };
-RolltuiWidget canvas_factory(void* ctx, const char* content, std::size_t len) {
+RolltuiWidget canvas_factory(void* ctx, RolltuiWindows* /*w*/, const char* content, size_t len) {
   const CanvasFactoryCtx* fc = static_cast<const CanvasFactoryCtx*>(ctx);
   const char* source = nullptr;
   std::size_t source_len = 0;

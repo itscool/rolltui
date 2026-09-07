@@ -488,7 +488,7 @@ struct BrowserFactoryCtx {
   const std::string* root;
 };
 
-RolltuiWidget browser_factory(void* ctx, const char* content, std::size_t len) {
+RolltuiWidget browser_factory(void* ctx, RolltuiWindows* /*w*/, const char* content, size_t len) {
   const BrowserFactoryCtx* fc = static_cast<const BrowserFactoryCtx*>(ctx);
   const char* source = nullptr;
   std::size_t source_len = 0;
@@ -533,7 +533,7 @@ struct App {
 
   App() {
     layout = rolltui_layout_new();
-    rolltui_windows_set_library_defaults(windows);
+    rolltui_context_set_library_defaults(ctx);
   }
   App(const App&) = delete;
   App& operator=(const App&) = delete;
@@ -583,14 +583,14 @@ struct App {
     opt.bindings = bindings;
     factory_ctx = {&opt, windows, &root};
     register_browser_kind();
-    rolltui_windows_register_kind(windows, kBrowserKind, std::strlen(kBrowserKind), browser_factory, &factory_ctx,
+    rolltui_context_register_kind(ctx, kBrowserKind, std::strlen(kBrowserKind), browser_factory, &factory_ctx,
                                   nullptr);
     rolltui_windows_bind_rows(windows, "entry", 5, entry_rows, this, nullptr);
     rolltui_windows_bind_submit(windows, "path", 4, on_submit, this, nullptr, /*on_submit=*/0);
     rolltui_windows_bind_note(windows, "path", 4, path_note, this, nullptr);
-    rolltui_windows_set_help(windows, "", 0, "", 0);
-    rolltui_windows_clear_help_scopes(windows);
-    for (const std::string& s : help_scopes()) rolltui_windows_add_help_scope(windows, s.data(), s.size());
+    rolltui_context_set_help(ctx, "", 0, "", 0);
+    rolltui_context_clear_help_scopes(ctx);
+    for (const std::string& s : help_scopes()) rolltui_context_add_help_scope(ctx, s.data(), s.size());
     rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
     std::size_t an = 0;
     const RolltuiLayoutAction* av = rolltui_layout_actions(layout, &an);
@@ -677,8 +677,8 @@ struct App {
 
   void prepare() {
     const RolltuiWidgetEnv env{0, 0};
-    rolltui_windows_set_env(windows, &env);
-    rolltui_windows_set_bindings(windows, bindings);
+    rolltui_context_set_env(ctx, &env);
+    rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
     rolltui_windows_autosize(windows, stack, area());
     rolltui_windows_layout(windows, stack, area());
@@ -845,7 +845,7 @@ int main(int argc, char** argv) {
   App app;
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");
-  rolltui_windows_set_dir(app.windows, presets_dir.data(), presets_dir.size());
+  rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
 
   {
     char cwd[4096];

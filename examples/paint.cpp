@@ -288,7 +288,7 @@ struct CanvasFactoryCtx {
   RolltuiWindows* windows;
 };
 
-RolltuiWidget canvas_factory(void* ctx, const char* content, std::size_t len) {
+RolltuiWidget canvas_factory(void* ctx, RolltuiWindows* /*w*/, const char* content, size_t len) {
   const CanvasFactoryCtx* fc = static_cast<const CanvasFactoryCtx*>(ctx);
   const char* source = nullptr;
   std::size_t source_len = 0;
@@ -332,7 +332,7 @@ struct App {
     // The eight built-in kinds and the five vocabularies they draw with. A bare
     // `rolltui_windows_new(ctx)` has neither (m1c's recorded gap, closed in m2a) — this is the
     // one line that makes a pure-C window table usable, and every host calls it.
-    rolltui_windows_set_library_defaults(windows);
+    rolltui_context_set_library_defaults(ctx);
   }
   App(const App&) = delete;
   App& operator=(const App&) = delete;
@@ -365,9 +365,9 @@ struct App {
     // this host never sees a window id again.
     factory_ctx = {&tool, windows};
     register_canvas_kind(ctx);
-    rolltui_windows_register_kind(windows, kCanvasKind, std::strlen(kCanvasKind), canvas_factory, &factory_ctx,
+    rolltui_context_register_kind(ctx, kCanvasKind, std::strlen(kCanvasKind), canvas_factory, &factory_ctx,
                                   nullptr);
-    rolltui_windows_add_menu(windows, "tools", 5, kToolsMenu, std::strlen(kToolsMenu));
+    rolltui_context_add_menu(ctx, "tools", 5, kToolsMenu, std::strlen(kToolsMenu));
     rolltui_windows_bind_rows(
         windows, "brush", 5,
         [](void* ctx, RolltuiRows* out) {
@@ -406,9 +406,9 @@ struct App {
     return s;
   }
   void set_help_scopes() {
-    rolltui_windows_set_help(windows, "", 0, "", 0);
-    rolltui_windows_clear_help_scopes(windows);
-    for (const std::string& s : help_scopes()) rolltui_windows_add_help_scope(windows, s.data(), s.size());
+    rolltui_context_set_help(ctx, "", 0, "", 0);
+    rolltui_context_clear_help_scopes(ctx);
+    for (const std::string& s : help_scopes()) rolltui_context_add_help_scope(ctx, s.data(), s.size());
   }
   // `RolltuiLayout::actions` is already the flat array `rolltui_bindings_declare` takes, so
   // the `action_decls()` conversion the C++ shim needed has no counterpart here at all.
@@ -446,8 +446,8 @@ struct App {
 
   void prepare() {
     const RolltuiWidgetEnv env{static_cast<unsigned char>(tool.ambiguous), effect_ms};
-    rolltui_windows_set_env(windows, &env);
-    rolltui_windows_set_bindings(windows, bindings);
+    rolltui_context_set_env(ctx, &env);
+    rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
     rolltui_windows_autosize(windows, stack, area());
     rolltui_windows_layout(windows, stack, area());
@@ -742,7 +742,7 @@ int main(int argc, char** argv) {
   app.tool.ambiguous = ambiguous ? 1 : 0;
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");  // an unknown --theme keeps the app's own look
-  rolltui_windows_set_dir(app.windows, presets_dir.data(), presets_dir.size());
+  rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
 
   RolltuiLayoutReport rep{};
   RolltuiLayout* loaded = nullptr;  // OWNED

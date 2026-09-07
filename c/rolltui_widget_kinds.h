@@ -73,22 +73,22 @@ extern "C" {
  * a small heap block per kind holding a copy, would leak for `error`/`panel`: `rolltui_
  * windows_set_error_factory`/`set_panel_factory` take no `free_ctx`, because their `ctx` was
  * always `Windows` itself and never this table's to release. */
-void rolltui_windows_set_builtin_roles(RolltuiWindows* w, const RolltuiBuiltinRoles* r);
-void rolltui_windows_set_scroll_text_actions(RolltuiWindows* w, const RolltuiScrollTextActions* a);
+void rolltui_context_set_builtin_roles(RolltuiContext* ctx, const RolltuiBuiltinRoles* r);
+void rolltui_context_set_scroll_text_actions(RolltuiContext* ctx, const RolltuiScrollTextActions* a);
 const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const RolltuiWindows* w);
 
 /* THE THIRTY ACTION NAMES the `input` kind's own keys use, carried the same way — BORROWED,
  * valid for the process (`rolltui::input_actions()`'s `constexpr` table today). It joins the
  * two above because the `input` FACTORY is this file's now: there is no caller left in the
  * middle to hand them down per construction. */
-void rolltui_windows_set_input_actions(RolltuiWindows* w, const RolltuiInputActions* a);
+void rolltui_context_set_input_actions(RolltuiContext* ctx, const RolltuiInputActions* a);
 const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w);
 
 /* Registers ALL EIGHT built-in kinds — `rows`, `text`, `file`, `help`, `input`, `transcript`,
  * `menu` — and the error/panel fallbacks. Called once, at construction, AFTER every setter in
  * this file: each kind reads the roles and action names back through `w`, not through its own
  * `ctx`, which is `w` itself for all of them. */
-void rolltui_widget_kinds_register(RolltuiWindows* w);
+void rolltui_widget_kinds_register(RolltuiContext* ctx);
 
 /* ---- input: the one slot of a built-in kind's ctx a caller still reaches by hand — a host's
  * floor on the window's height regardless of what the text says (roll holds the prompt as tall
@@ -100,13 +100,13 @@ const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void);
 const RolltuiCodeFold* rolltui_windows_code_fold(const RolltuiWindows* w);
 
 /* The eleven action names `rolltui_transcript_handle` needs. */
-void rolltui_windows_set_transcript_actions(RolltuiWindows* w, const RolltuiTranscriptActions* a);
+void rolltui_context_set_transcript_actions(RolltuiContext* ctx, const RolltuiTranscriptActions* a);
 const RolltuiTranscriptActions* rolltui_windows_transcript_actions(const RolltuiWindows* w);
 
 /* The seven roles a menu draw needs. Unlike a transcript's (baked into the `RolltuiTranscript`
  * once, at construction), `rolltui_menu_draw` takes them as
  * a per-call parameter, so the menu kind below reads them back through `w` on every draw. */
-void rolltui_windows_set_menu_roles(RolltuiWindows* w, const RolltuiMenuRoles* r);
+void rolltui_context_set_menu_roles(RolltuiContext* ctx, const RolltuiMenuRoles* r);
 
 /* ---- menu: the FILE-resolution half of its ctx, which `rolltui_windows_menu`/`_menu_origin`
  * drive from `rolltui_widgets.c`. The `RolltuiMenu` itself belongs to the window table (one per

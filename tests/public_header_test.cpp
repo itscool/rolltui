@@ -492,7 +492,7 @@ int main() {
     auto reach_of = [&](const std::string& f) -> const char* {
       return roll.count(f) ? "roll" : tools.count(f) ? "tools" : tests.count(f) ? "tests" : lib.count(f) ? "lib" : mentioned_in_def.count(f) ? "hdr" : "nothing";
     };
-    check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_windows_register_kind") /* paint registers its canvas kind */ &&
+    check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_context_register_kind") /* paint registers its canvas kind */ &&
               lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 300 && in_internal.size() > 400,
           "the class census sees the definition (" + std::to_string(in_def.size()) + " named), the internal headers (" + std::to_string(in_internal.size()) + "), roll's reach, the tools' reach and the library's own");
     std::map<std::string, std::string> cls;
@@ -626,7 +626,7 @@ int main() {
      * which this file of all files must not lean on; section 1 uses the swap now. */
     /* PHASE 25 m2: +3 PUBLIC (`rolltui_context_new`/`_free`, `rolltui_windows_context`) and
      * +4 INTERNAL (the transitional default and its release, the kind registry's own new/free). */
-    const int kPublic = 326, kInternal_ = 523, kDelete = 0;
+    const int kPublic = 326, kInternal_ = 526, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +

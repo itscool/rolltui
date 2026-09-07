@@ -550,8 +550,8 @@ ROLLTUI_API(rolltui_rows_reset, PUBLIC)  /* KEPT: a public C++ member in the def
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_scroll_first_for_cell, INTERNAL)  /* scrollbar arithmetic (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_scroll_thumb, INTERNAL)  /* scrollbar arithmetic (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_windows_add_help_scope, PUBLIC)
-ROLLTUI_API(rolltui_windows_add_menu, PUBLIC)
+ROLLTUI_API(rolltui_context_add_help_scope, PUBLIC)
+ROLLTUI_API(rolltui_context_add_menu, PUBLIC)
 ROLLTUI_API(rolltui_windows_at, INTERNAL)  /* a hit-test the stack already routes */
 ROLLTUI_API(rolltui_windows_autosize, PUBLIC)
 ROLLTUI_API(rolltui_windows_bind_document, PUBLIC)
@@ -563,7 +563,7 @@ ROLLTUI_API(rolltui_windows_bindings, INTERNAL)  /* only the library's own .c re
 ROLLTUI_API(rolltui_windows_call_note, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_call_rows, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_call_submit, INTERNAL)  /* only the library's own .c reaches it */
-ROLLTUI_API(rolltui_windows_clear_help_scopes, PUBLIC)
+ROLLTUI_API(rolltui_context_clear_help_scopes, PUBLIC)
 ROLLTUI_API(rolltui_windows_content_at, PUBLIC)
 ROLLTUI_API(rolltui_windows_default_roles, PUBLIC)
 ROLLTUI_API(rolltui_windows_dir, INTERNAL)
@@ -589,18 +589,18 @@ ROLLTUI_API(rolltui_windows_menu_at, PUBLIC)
 ROLLTUI_API(rolltui_windows_menu_origin, PUBLIC)  /* KEPT: matching part — `rolltui_windows_add_menu` is consumer-used, and without the origin a host cannot tell whether its own file or a user's shadow won the three-rung resolution */
 ROLLTUI_API(rolltui_windows_new, PUBLIC)
 ROLLTUI_API(rolltui_windows_on_submit, INTERNAL)  /* only the library's own .c reaches it */
-ROLLTUI_API(rolltui_windows_register_kind, PUBLIC)
+ROLLTUI_API(rolltui_context_register_kind, PUBLIC)
 ROLLTUI_API(rolltui_windows_report_at, PUBLIC)
 ROLLTUI_API(rolltui_windows_report_count, PUBLIC)
 ROLLTUI_API(rolltui_windows_report_summary, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_bindings, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_dir, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_env, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_error_factory, INTERNAL)  /* only the library's own .c reaches it */
-ROLLTUI_API(rolltui_windows_set_help, PUBLIC)
+ROLLTUI_API(rolltui_context_set_bindings, PUBLIC)
+ROLLTUI_API(rolltui_context_set_dir, PUBLIC)
+ROLLTUI_API(rolltui_context_set_env, PUBLIC)
+ROLLTUI_API(rolltui_context_set_error_factory, INTERNAL)  /* only the library's own .c reaches it */
+ROLLTUI_API(rolltui_context_set_help, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
+ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
 ROLLTUI_API(rolltui_windows_sync, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript, PUBLIC)
@@ -626,13 +626,13 @@ ROLLTUI_API(rolltui_windows_code_fold, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_windows_input_actions, INTERNAL)  /* the built-in kinds' own */
 ROLLTUI_API(rolltui_windows_menu_roles, INTERNAL)
 ROLLTUI_API(rolltui_windows_scroll_text_actions, INTERNAL)  /* the built-in kinds' own */
-ROLLTUI_API(rolltui_windows_set_builtin_roles, INTERNAL)  /* behind set_library_defaults */
-ROLLTUI_API(rolltui_windows_set_code_fold, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_input_actions, INTERNAL)  /* behind set_library_defaults */
-ROLLTUI_API(rolltui_windows_set_library_defaults, PUBLIC)
-ROLLTUI_API(rolltui_windows_set_menu_roles, INTERNAL)  /* behind set_library_defaults */
-ROLLTUI_API(rolltui_windows_set_scroll_text_actions, INTERNAL)  /* behind set_library_defaults */
-ROLLTUI_API(rolltui_windows_set_transcript_actions, INTERNAL)  /* behind set_library_defaults */
+ROLLTUI_API(rolltui_context_set_builtin_roles, INTERNAL)  /* behind set_library_defaults */
+ROLLTUI_API(rolltui_context_set_code_fold, PUBLIC)
+ROLLTUI_API(rolltui_context_set_input_actions, INTERNAL)  /* behind set_library_defaults */
+ROLLTUI_API(rolltui_context_set_library_defaults, PUBLIC)
+ROLLTUI_API(rolltui_context_set_menu_roles, INTERNAL)  /* behind set_library_defaults */
+ROLLTUI_API(rolltui_context_set_scroll_text_actions, INTERNAL)  /* behind set_library_defaults */
+ROLLTUI_API(rolltui_context_set_transcript_actions, INTERNAL)  /* behind set_library_defaults */
 ROLLTUI_API(rolltui_windows_transcript_actions, INTERNAL)  /* the built-in kinds' own */
 
 /* ---- rolltui_document.h — the transcript document a host appends to; default PUBLIC ---- */
@@ -1084,6 +1084,9 @@ ROLLTUI_API(rolltui_layout_cache_new, INTERNAL)
 ROLLTUI_API(rolltui_layout_cache_free, INTERNAL)
 ROLLTUI_API(rolltui_preset_domains_new, INTERNAL)
 ROLLTUI_API(rolltui_preset_domains_free, INTERNAL)
+ROLLTUI_API(rolltui_window_config_new, INTERNAL)
+ROLLTUI_API(rolltui_window_config_free, INTERNAL)
+ROLLTUI_API(rolltui_context_window_config, INTERNAL)
 /* The session a Windows was made for — a host that holds a Windows can reach its context
  * without carrying a second pointer beside it, which is what the built-in widget factories do. */
 ROLLTUI_API(rolltui_windows_context, PUBLIC)

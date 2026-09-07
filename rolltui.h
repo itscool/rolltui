@@ -2469,8 +2469,16 @@ typedef struct RolltuiWindows RolltuiWindows;
 
 /* Builds a widget for `content` (the whole string, "kind:source"). Returns a widget whose
  * `ctx` the table then OWNS, or a zeroed one to mean "I cannot build this" — which is not an
- * error path: `Windows` draws the error panel and names it in the report. */
-typedef RolltuiWidget (*RolltuiWidgetFactory)(void* ctx, const char* content, size_t len);
+ * error path: `Windows` draws the error panel and names it in the report.
+ *
+ * A KIND IS A SESSION'S; AN INSTANCE IS A SCREEN'S (Phase 25 m3), which is why a factory is
+ * handed BOTH — `ctx` is whatever was registered with the kind, `w` is the screen this instance
+ * is being built for. The second parameter exists because the library's own built-in kinds need
+ * the screen (a `transcript` widget lives in that screen's `transcripts` map) while the kind
+ * itself is registered once for the program. Without it the factory table could not be a
+ * session's at all: a kind's name and rule would live in the context and its factory on one
+ * `RolltuiWindows`, which is one identity with two owners. */
+typedef RolltuiWidget (*RolltuiWidgetFactory)(void* ctx, RolltuiWindows* w, const char* content, size_t len);
 
 /* The widget a WINDOW holds, or NULL — filled by `sync`. */
 
@@ -4145,8 +4153,8 @@ void rolltui_windows_free(RolltuiWindows* w);
  * for the same name) and at `rolltui_windows_free` — the same shape `rolltui_effect_register`
  * uses for a host's effect kinds. The layout vocabulary's half of the registration — and the
  * refusal to shadow a library kind — is `rolltui_widget_kind_register` in `rolltui_layout.h`. */
-void rolltui_windows_register_kind(RolltuiWindows* w, const char* name, size_t len,
-                                   RolltuiWidgetFactory factory, void* ctx, void (*free_ctx)(void*));
+void rolltui_context_register_kind(RolltuiContext* ctx, const char* name, size_t len,
+                                   RolltuiWidgetFactory factory, void* kind_ctx, void (*free_ctx)(void*));
 
 /* THE SYNTAX HIGHLIGHTER every transcript this table owns renders code blocks through — a
  * HOST fact, off until set (`rolltui/Widgets.hpp` states the seam). Pushed straight onto every
@@ -4208,12 +4216,12 @@ void rolltui_windows_bind_note(RolltuiWindows* w, const char* name, size_t len, 
 
 /* the preset directory: `file:`, `menu:`'s user rung and `menus/<name>.json` resolve against
  * this. A BORROW out, "" (never NULL) until `set_dir` is first called. */
-void rolltui_windows_set_dir(RolltuiWindows* w, const char* dir, size_t len);
+void rolltui_context_set_dir(RolltuiContext* ctx, const char* dir, size_t len);
 
 /* a menu file the HOST carries in its own binary — `menu:<name>`'s middle rung (the order is
  * `Widgets.hpp`'s). The text is copied in; the borrow out is valid until that name is bound
  * again or `w` is freed. `_count`/`_name_at` enumerate every host menu for `Windows::menu_names`. */
-void rolltui_windows_add_menu(RolltuiWindows* w, const char* name, size_t len, const char* json, size_t json_len);
+void rolltui_context_add_menu(RolltuiContext* ctx, const char* name, size_t len, const char* json, size_t json_len);
 
 /* what a `help` window renders (Phase 15 m5, moved to the boundary so the `help` kind can be
  * a plugin like the rest): an optional lead line, the scopes to list in order, an optional
@@ -4221,21 +4229,21 @@ void rolltui_windows_add_menu(RolltuiWindows* w, const char* name, size_t len, c
  * (`clear_help_scopes` then `add_help_scope` per entry) because it is a `std::vector` at the
  * one C++ call site (`Windows::set_help`) and this is the same shape `rolltui_windows_add_menu`
  * already uses for a list built one call at a time. */
-void rolltui_windows_set_help(RolltuiWindows* w, const char* lead, size_t lead_len, const char* note,
+void rolltui_context_set_help(RolltuiContext* ctx, const char* lead, size_t lead_len, const char* note,
                               size_t note_len);
 
-void rolltui_windows_clear_help_scopes(RolltuiWindows* w);
+void rolltui_context_clear_help_scopes(RolltuiContext* ctx);
 
-void rolltui_windows_add_help_scope(RolltuiWindows* w, const char* scope, size_t len);
+void rolltui_context_add_help_scope(RolltuiContext* ctx, const char* scope, size_t len);
 
-void rolltui_windows_set_env(RolltuiWindows* w, const RolltuiWidgetEnv* env);
+void rolltui_context_set_env(RolltuiContext* ctx, const RolltuiWidgetEnv* env);
 
 /* THE LIVE BINDINGS TABLE, as a handle (Phase 15 m5e): a widget looks up an action's chords
  * or asks whether a key is one of the transcript scope's without knowing `rolltui::Bindings`
  * exists. A BORROW — `w` never frees it — set once per frame alongside `set_env` from
  * `Bindings::handle()` (the live table, or `default_bindings().handle()`). NULL only before
  * the first `set_env`. */
-void rolltui_windows_set_bindings(RolltuiWindows* w, const RolltuiBindings* b);
+void rolltui_context_set_bindings(RolltuiContext* ctx, const RolltuiBindings* b);
 
 /* ---- widget_kinds --------------------------------------------------------------------------*/
 
@@ -4249,7 +4257,7 @@ const RolltuiScrollTextActions* rolltui_scroll_text_default_actions(void);
  * host: before it, the five setters were called by `rolltui::Windows`' C++ constructor and a C
  * caller got a table with no kinds and NULL action names. A host with its own words calls the
  * setters after; this is a default, not a policy. Idempotent; NULL is a no-op. */
-void rolltui_windows_set_library_defaults(RolltuiWindows* w);
+void rolltui_context_set_library_defaults(RolltuiContext* ctx);
 
 /* line_up/down, page_up/down, top/bottom applied to a `page`-row view of `total` lines, with
  * `*top` clamped to [0, total-page]. 0 when the chord is not one of the six. */
@@ -4281,7 +4289,7 @@ void rolltui_help_document(const RolltuiBindings* b, const char* lead, size_t le
 int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const char* source, size_t source_len,
                                       const RolltuiEvent* e);
 
-void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
+void rolltui_context_set_code_fold(RolltuiContext* ctx, const RolltuiCodeFold* c);
 
 
 /* ========================================================================================

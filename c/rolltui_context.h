@@ -52,12 +52,23 @@ typedef struct RolltuiPresetDomains RolltuiPresetDomains;
 RolltuiPresetDomains* rolltui_preset_domains_new(void);
 void rolltui_preset_domains_free(RolltuiPresetDomains* p); /* a no-op on NULL */
 
+/* What a PROGRAM configures once — its widget-kind factories, menus, key table, help scopes,
+ * highlighter and the vocabularies its built-in kinds read back. It was the half of
+ * `RolltuiWindows` that was never about what is on screen (Phase 25 m3). Every widget a
+ * `RolltuiWindows` owns BORROWS from here, which is why a context must outlive the windows made
+ * against it — borrowers die first. */
+typedef struct RolltuiWindowConfig RolltuiWindowConfig;
+RolltuiWindowConfig* rolltui_window_config_new(void);
+void rolltui_window_config_free(RolltuiWindowConfig* c); /* a no-op on NULL */
+RolltuiWindowConfig* rolltui_context_window_config(RolltuiContext* ctx); /* made on first use */
+
 struct RolltuiContext {
   RolltuiKindRegistry* kinds;     /* rolltui_layout.c   — the host WIDGET kinds, rung 2 */
   RolltuiEffectRegistry* effects; /* rolltui_effects.c  — the host EFFECT kinds, rung 2 */
   RolltuiLayoutCache* layouts;    /* rolltui_layout.c   — the built-ins, parsed once per session */
   RolltuiBindings* bindings;      /* rolltui_bindings.c — the shipped default table */
   RolltuiPresetDomains* presets;  /* rolltui_presets.c  — the library's three descriptors */
+  RolltuiWindowConfig* window_config; /* rolltui_widgets.c — what a program configured once */
 };
 
 /* ---- THE TRANSITIONAL RUNG, and it is the ONE new global this phase adds ---------------------

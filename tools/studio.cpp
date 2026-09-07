@@ -558,9 +558,9 @@ RolltuiDocument parse_fixture(const std::string& text) {
 struct App;
 // Forward declared so `App::bind_windows()` (defined inline, inside the class) can register
 // them; the plugin bodies are defined after `App` since they call its methods.
-RolltuiWidget editor_factory(void* ctx, const char* content, std::size_t len);
-RolltuiWidget confirm_factory(void* ctx, const char* content, std::size_t len);
-RolltuiWidget report_factory(void* ctx, const char* content, std::size_t len);
+RolltuiWidget editor_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
+RolltuiWidget confirm_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
+RolltuiWidget report_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len);
 
 struct App {
   RolltuiContext* ctx = studio_ctx();  // BORROWED: the binary's one session (see studio_ctx)
@@ -668,7 +668,7 @@ struct App {
 
   App() {
     rolltui_layout_init(&layout);
-    rolltui_windows_set_library_defaults(windows);
+    rolltui_context_set_library_defaults(ctx);
     rolltui_transcript_set_copy(transcript(), remember_copy, this);
     rolltui_input_set_copy(editor(), remember_copy, this);
     RolltuiInputOptions o;
@@ -770,11 +770,11 @@ struct App {
     // bound by name: each is a plugin the studio owns, its widget receives its own events,
     // and nothing below dispatches by window name. Each takes no source.
     rolltui_widget_kind_register(ctx, "editor", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
-    rolltui_windows_register_kind(windows, "editor", 6, editor_factory, this, nullptr);
+    rolltui_context_register_kind(ctx, "editor", 6, editor_factory, this, nullptr);
     rolltui_widget_kind_register(ctx, "confirm", 7, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
-    rolltui_windows_register_kind(windows, "confirm", 7, confirm_factory, this, nullptr);
+    rolltui_context_register_kind(ctx, "confirm", 7, confirm_factory, this, nullptr);
     rolltui_widget_kind_register(ctx, "report", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
-    rolltui_windows_register_kind(windows, "report", 6, report_factory, this, nullptr);
+    rolltui_context_register_kind(ctx, "report", 6, report_factory, this, nullptr);
     // Diff colouring (Phase 12 m5b): this host DECLARING that a ```diff fence in its
     // documents means a diff — never a sniff of what a block holds.
     rolltui_windows_set_highlight(windows, diff_highlight, diff_scratch, nullptr);
@@ -783,10 +783,10 @@ struct App {
         "triple-click a line;\n"
         "click a folded block's summary to toggle it; in the layout editor a click selects, a "
         "drag on a seam resizes";
-    rolltui_windows_set_help(windows, "", 0, kMouseHelp, std::strlen(kMouseHelp));
-    rolltui_windows_clear_help_scopes(windows);
+    rolltui_context_set_help(ctx, "", 0, kMouseHelp, std::strlen(kMouseHelp));
+    rolltui_context_clear_help_scopes(ctx);
     for (const char* s : {"input", "transcript", "app", "editor", "studio", "stack"})
-      rolltui_windows_add_help_scope(windows, s, std::strlen(s));
+      rolltui_context_add_help_scope(ctx, s, std::strlen(s));
   }
 
   // A syntax highlighter over `rolltui_diff_spans`, matching `RolltuiMdHighlightFn`'s shape
@@ -1536,8 +1536,8 @@ struct App {
   // an event is hit-tested against exactly the geometry the frame will draw.
   void ensure_layout() {
     RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous ? 1 : 0), clock_ms};
-    rolltui_windows_set_env(windows, &env);
-    rolltui_windows_set_bindings(windows, bindings);
+    rolltui_context_set_env(ctx, &env);
+    rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
     rolltui_windows_autosize(windows, stack, layout_area());
     rolltui_windows_layout(windows, stack, layout_area());
@@ -1960,7 +1960,7 @@ constexpr RolltuiWidgetPlugin kEditorPlugin = {
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
     /*handle=*/editor_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
 };
-RolltuiWidget editor_factory(void* ctx, const char*, std::size_t) { return RolltuiWidget{&kEditorPlugin, ctx}; }
+RolltuiWidget editor_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kEditorPlugin, ctx}; }
 
 void confirm_destroy(void*) {}
 void confirm_layout(void*, const RolltuiResolvedNode*) {}
@@ -1978,7 +1978,7 @@ constexpr RolltuiWidgetPlugin kConfirmPlugin = {
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
     /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
 };
-RolltuiWidget confirm_factory(void* ctx, const char*, std::size_t) { return RolltuiWidget{&kConfirmPlugin, ctx}; }
+RolltuiWidget confirm_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kConfirmPlugin, ctx}; }
 
 void report_destroy(void*) {}
 void report_layout(void*, const RolltuiResolvedNode*) {}
@@ -1999,7 +1999,7 @@ constexpr RolltuiWidgetPlugin kReportPlugin = {
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
     /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
 };
-RolltuiWidget report_factory(void* ctx, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
+RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
 
 bool parse_size(const std::string& s, int& w, int& h) {
   std::size_t x = s.find('x');
@@ -2417,10 +2417,10 @@ int main(int argc, char** argv) {
   app.lstore = std::make_unique<LayoutStore>(presets_dir, true, shipped_dir + "/layouts");
   app.bstore = std::make_unique<BindingsStore>(presets_dir, true, shipped_dir + "/bindings");
   app.persist = frame_spec.empty();
-  rolltui_windows_set_dir(app.windows, presets_dir.data(), presets_dir.size());  // a layout's `file:` paths are relative to the preset directory
+  rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());  // a layout's `file:` paths are relative to the preset directory
   // AFTER the flags: this is the one Windows setting --code-fold can change, and
   // bind_windows() runs in App's constructor, before argv has been looked at.
-  { const RolltuiCodeFold cf{app.code_fold_over, app.code_cap}; rolltui_windows_set_code_fold(app.windows, &cf); }
+  { const RolltuiCodeFold cf{app.code_fold_over, app.code_cap}; rolltui_context_set_code_fold(app.ctx, &cf); }
   // --app: preview AS the target app (Phase 11 m4). Mounted BEFORE the studio binds its
   // own sources, so a name the profile supplies wins. With no --app the studio previews
   // as itself, exactly as before.

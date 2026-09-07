@@ -233,7 +233,7 @@ struct Scene {
   RolltuiSwap* swap = rolltui_swap_new(0, 0, RolltuiStyle{});
 
   Scene() {
-    rolltui_windows_set_library_defaults(windows);
+    rolltui_context_set_library_defaults(ctx);
     effects = rolltui_theme_builtin_fill("default-dark", 12, styles, ROLLTUI_ROLE_COUNT);
 
     std::size_t json_n = 0;
@@ -271,9 +271,9 @@ struct Scene {
     rolltui_windows_bind_submit(
         windows, "prompt", 6, [](void*, const char*, std::size_t) {}, nullptr, nullptr, /*on_submit=*/0);
 
-    rolltui_windows_set_bindings(windows, rolltui_bindings_default(rolltui_test::test_context()));
+    rolltui_context_set_bindings(ctx, rolltui_bindings_default(rolltui_test::test_context()));
     const RolltuiWidgetEnv env{0, 1};
-    rolltui_windows_set_env(windows, &env);
+    rolltui_context_set_env(ctx, &env);
   }
   Scene(const Scene&) = delete;
   Scene& operator=(const Scene&) = delete;
@@ -359,7 +359,7 @@ constexpr RolltuiWidgetPlugin kWastefulPlugin = {
     wasteful_destroy, wasteful_layout, wasteful_draw, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 };
 
-RolltuiWidget wasteful_factory(void* ctx, const char*, std::size_t) {
+RolltuiWidget wasteful_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {
   RolltuiWindows* windows = static_cast<RolltuiWindows*>(ctx);
   return RolltuiWidget{&kWastefulPlugin, new WastefulCtx{windows, rolltui_draw_scratch_new()}};
 }
@@ -611,7 +611,7 @@ int main() {
           "registered a deliberately wasteful widget kind on the Windows that will draw it [verdict " +
               std::to_string(verdict) + "]");
     if (verdict == ROLLTUI_REGISTER_OK)
-      rolltui_windows_register_kind(control.windows, "wasteful", 8, wasteful_factory, control.windows, nullptr);
+      rolltui_context_register_kind(control.ctx, "wasteful", 8, wasteful_factory, control.windows, nullptr);
     RolltuiLayoutNode* status = rolltui_window_stack_find(control.stack, "status", 6);
     check(status != nullptr, "the shipped layout has the window the control draws into");
     if (status) status->content = "wasteful";

@@ -838,7 +838,8 @@ static void placeholder_factory_free(void* ctx) {
   rolltui_mem_free(fc);
 }
 
-static RolltuiWidget placeholder_factory(void* ctx, const char* content, size_t len) {
+static RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows* w, const char* content, size_t len) {
+  (void)w; /* a placeholder draws the same in any screen */
   PlaceholderFactoryCtx* fc = (PlaceholderFactoryCtx*)ctx;
   PlaceholderCtx* pc;
   RolltuiWidget out;
@@ -906,8 +907,13 @@ static void mount_rows_fill(void* ctx, RolltuiRows* out) {
 }
 
 void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w) {
+  RolltuiContext* ctx;
   size_t i;
   if (!p || !w) return;
+  /* THE VOCABULARY HALF GOES TO THE SESSION AND THE BINDINGS TO THE SCREEN (Phase 25 m3), which
+   * is the split this function makes visible: a profile publishes what a layout may NAME in an
+   * app — kinds, menus, help scopes — and separately what a screen has BOUND. */
+  ctx = rolltui_windows_context(w);
   for (i = 0; i < p->kinds_n; ++i) {
     const char* name = p->kinds[i].name.p ? p->kinds[i].name.p : "";
     const size_t name_len = p->kinds[i].name.n;
@@ -942,7 +948,7 @@ void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w) {
     memset(fc, 0, sizeof *fc);
     rolltui_str_set(&fc->label, name, name_len);
     fc->w = w;
-    rolltui_windows_register_kind(w, name, name_len, placeholder_factory, fc, placeholder_factory_free);
+    rolltui_context_register_kind(ctx, name, name_len, placeholder_factory, fc, placeholder_factory_free);
   }
   for (i = 0; i < p->documents_n; ++i)
     rolltui_windows_bind_sample_document(w, p->documents[i].name.p ? p->documents[i].name.p : "",
@@ -975,16 +981,16 @@ void rolltui_app_profile_mount(const RolltuiAppProfile* p, RolltuiWindows* w) {
   for (i = 0; i < p->notes_n; ++i)
     rolltui_windows_bind_note(w, p->notes[i].p ? p->notes[i].p : "", p->notes[i].n, mount_note_noop, NULL, NULL);
   for (i = 0; i < p->menus_n; ++i)
-    rolltui_windows_add_menu(w, p->menus[i].name.p ? p->menus[i].name.p : "", p->menus[i].name.n,
+    rolltui_context_add_menu(ctx, p->menus[i].name.p ? p->menus[i].name.p : "", p->menus[i].name.n,
                              p->menus[i].json.p ? p->menus[i].json.p : "", p->menus[i].json.n);
   /* The app's help, not the tool's — the scope LIST included, since that is what a
    * `help:<scope>` window is judged against (Phase 11 m5b). A profile that names none leaves
    * the tool's own, which is the honest answer for an app that published nothing. */
   if (p->help_scopes_n != 0) {
-    rolltui_windows_set_help(w, p->help_lead.p ? p->help_lead.p : "", p->help_lead.n,
+    rolltui_context_set_help(ctx, p->help_lead.p ? p->help_lead.p : "", p->help_lead.n,
                              p->help_note.p ? p->help_note.p : "", p->help_note.n);
-    rolltui_windows_clear_help_scopes(w);
+    rolltui_context_clear_help_scopes(ctx);
     for (i = 0; i < p->help_scopes_n; ++i)
-      rolltui_windows_add_help_scope(w, p->help_scopes[i].p ? p->help_scopes[i].p : "", p->help_scopes[i].n);
+      rolltui_context_add_help_scope(ctx, p->help_scopes[i].p ? p->help_scopes[i].p : "", p->help_scopes[i].n);
   }
 }

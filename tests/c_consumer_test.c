@@ -234,7 +234,7 @@ int main(void) {
 
   /* ---- 3. THE WINDOW STACK ---------------------------------------------------------------- */
   app.windows = rolltui_windows_new(app.ctx);
-  rolltui_windows_set_library_defaults(app.windows); /* the eight kinds and the five vocabularies */
+  rolltui_context_set_library_defaults(app.ctx); /* the eight kinds and the five vocabularies */
   app.stack = rolltui_window_stack_new();
   app.bindings = rolltui_bindings_clone(rolltui_bindings_default(app.ctx));
   app.compose_scratch = rolltui_compose_scratch_new();
@@ -257,8 +257,8 @@ int main(void) {
     RolltuiWidgetEnv env;
     env.ambiguous_wide = 0;
     env.now_ms = 0;
-    rolltui_windows_set_env(app.windows, &env);
-    rolltui_windows_set_bindings(app.windows, app.bindings);
+    rolltui_context_set_env(app.ctx, &env);
+    rolltui_context_set_bindings(app.ctx, app.bindings);
     rolltui_windows_sync(app.windows, app.stack);
     rolltui_windows_autosize(app.windows, app.stack, screen_rect(&app));
     rolltui_windows_layout(app.windows, app.stack, screen_rect(&app));
@@ -355,6 +355,34 @@ int main(void) {
     check(rolltui_widget_kind_resolve(a, "gauge", 5, NULL, NULL, NULL, NULL) == ROLLTUI_KIND_HOST,
           "…freeing one leaves the other's registry intact");
     rolltui_context_free(a);
+  }
+
+  /* ---- 3f. WHAT THE SPLIT ACTUALLY BUYS (Phase 25 m3) -------------------------------------
+   * A session is CONFIGURED ONCE and every screen it runs sees that configuration. Before m3
+   * the same calls were made against a `RolltuiWindows`, so a second screen in one program was
+   * a second copy of the same setup — and a kind's NAME lived in the context while its FACTORY
+   * lived on one of those screens, which is one identity with two owners. */
+  {
+    RolltuiContext* c = rolltui_context_new();
+    RolltuiWindows* w1;
+    RolltuiWindows* w2;
+    RolltuiWidget* got1;
+    RolltuiWidget* got2;
+    rolltui_context_set_library_defaults(c); /* ONCE, on the session */
+    w1 = rolltui_windows_new(c);
+    w2 = rolltui_windows_new(c);
+    got1 = rolltui_windows_widget_for(w1, "text:hello", 10);
+    got2 = rolltui_windows_widget_for(w2, "text:hello", 10);
+    check(got1 != NULL && got1->vt != NULL,
+          "one session configured ONCE builds a widget on its first screen");
+    check(got2 != NULL && got2->vt != NULL,
+          "…and on a SECOND screen with no second configuration — the kinds are the session's");
+    check(got1 != got2, "…while the two INSTANCES are distinct: a kind is a session's, an instance a screen's");
+    rolltui_windows_free(w2);
+    check(rolltui_windows_widget_for(w1, "text:hello", 10) != NULL,
+          "…and freeing one screen leaves the other's widgets standing, because the table it read is the session's");
+    rolltui_windows_free(w1);
+    rolltui_context_free(c);
   }
 
   /* ---- 3c. AN EVENT, ROUTED AND DELIVERED ------------------------------------------------- */

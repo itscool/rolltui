@@ -221,8 +221,8 @@ void paint_something() {
                          "[link](https://example.invalid/p).\n\n- one\n- two\n");
   }
   RolltuiWindows* windows = rolltui_windows_new(rolltui_context_default());
-  rolltui_windows_set_library_defaults(windows);
-  rolltui_windows_set_bindings(windows, rolltui_bindings_default(rolltui_context_default()));
+  rolltui_context_set_library_defaults(rolltui_context_default());
+  rolltui_context_set_bindings(rolltui_context_default(), rolltui_bindings_default(rolltui_context_default()));
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   rolltui_window_stack_set_base(stack, &builtin_layout("default")->base);
   const Theme* theme = builtin_theme("default-dark");
@@ -230,7 +230,7 @@ void paint_something() {
   rolltui_windows_bind_rows(windows, "status", 6, bind_status_rows, nullptr, nullptr);
   rolltui_windows_bind_submit(windows, "prompt", 6, bind_prompt_submit, nullptr, nullptr, /*SendAndClear=*/0);
   const RolltuiWidgetEnv env{0, 1};
-  rolltui_windows_set_env(windows, &env);
+  rolltui_context_set_env(rolltui_context_default(), &env);
   const RolltuiRect box{0, 0, 100, 30};
   rolltui_windows_sync(windows, stack);
   rolltui_windows_autosize(windows, stack, box);

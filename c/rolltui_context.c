@@ -19,6 +19,7 @@ void rolltui_context_free(RolltuiContext* c) {
   rolltui_layout_cache_free(c->layouts);
   rolltui_bindings_free(c->bindings);
   rolltui_preset_domains_free(c->presets);
+  rolltui_window_config_free(c->window_config);
   rolltui_mem_free(c);
 }
 
