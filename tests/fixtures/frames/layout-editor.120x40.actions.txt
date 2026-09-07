@@ -1,26 +1,26 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ layout editor • transcript › Actions this scre │
-│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
-│ │ Extended_Pictographic, InCB)     │             │                  │ app.help                                     ▸ │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ app.menu                                     ▸ │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ app.details                                  ▸ │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ app.palette                                  ▸ │
-│ │                                  │             │ block tree is the│ app.repaint                                  ▸ │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ app.find                                     ▸ │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ app.zoom                                     ▸ │
-│ │ mouse mode)                      │             │                  │ add an action (name):                          │
-│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
-│ │                                  │             │ Event, table-test│                                                │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
-│ │ colour downgrade                 │             │ tested           │                                                │
-│ │ Wrap engine                      │ build       │ single header ove│                                                │
-│ │                                  │             │ header           │                                                │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
-│ │                                  │             │ Rect is a pure fu│                                                │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ (row) row                                      │
+│ │ grapheme property,               │             │ unicode_tables.hp│   (column) column                              │
+│ │ Extended_Pictographic, InCB)     │             │                  │     transcript transcript:session              │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│     input input:prompt                         │
+│ │ grapheme clusters, display width │             │ Unicode conforman│   status rows:status                           │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ popup find                                     │
+│ │                                  │             │ block tree is the│   find input:find                              │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ popup help                                     │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│   help help                                    │
+│ │ mouse mode)                      │             │                  │ popup approval                                 │
+│ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
+│ │                                  │             │ Event, table-test│ popup menu                                     │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • transcript › This screen › Act │
+│ │ colour downgrade                 │             │ tested           │ ◂ Back                                         │
+│ │ Wrap engine                      │ build       │ single header ove│ app.help                                     ▸ │
+│ │                                  │             │ header           │ app.menu                                     ▸ │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ app.details                                  ▸ │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ app.palette                                  ▸ │
+│ │                                  │             │ Rect is a pure fu│ app.repaint                                  ▸ │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ app.find                                     ▸ │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ app.zoom                                     ▸ │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ add an action (name):                          │
 │ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
 │ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
 │ │ → styled wrapped lines)          │             │                  │                                                │

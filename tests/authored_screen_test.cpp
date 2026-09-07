@@ -121,26 +121,42 @@ std::string status_line(const std::string& frame) {
 //
 // AND THE THRESHOLDS ARE TYPED TOO, which used to be the profile's one legitimate inheritance:
 // the minimum size a screen needs is a fact about the screen, so its author states it.
+// AND THE SCOPES ARE LEVELS NOW, which is what the script shows: creating a layout and saving
+// it are `Layout file` operations, splitting a node is a `Tree` one, and the thresholds and the
+// action list belong to `This screen`. A step that used to be one filter is a filter, an Enter,
+// and a filter — one keystroke more, and the level you are in says what you are changing.
+//
+// AN OPERATION THAT CHANGES THE LAYOUT NEEDS NO ESCAPE AFTER IT: creating, splitting and saving
+// rebuild the menu, which puts it back at the root. An INPUT commit does not, so it keeps the
+// one Escape it always had — and inside a submenu a second Escape is what leaves the level.
 const char* kAuthor =
     "F6 "
-    "Type:new_layout Enter Type:easel Enter "
-    "Type:split_into_a_row Enter "
+    "Type:layout_file Enter Type:new_layout Enter Type:easel Enter "
+    "Type:tree Enter Type:split_into_a_row Enter "
     "Type:widget_kind Enter Type:canvas Enter Escape "
     "Type:source Enter Type:sheet Enter Escape "
     "Type:title Enter Type:easel_sheet Enter Escape "
     "Tab "
-    "Type:split_into_a_column Enter "
+    "Type:tree Enter Type:split_into_a_column Enter "
     "Type:widget_kind Enter Type:menu Enter Escape "
     "Type:menu_file Enter Type:tools Enter Escape "
     "Type:title Enter Type:easel_tools Enter Escape "
     "Tab "
     "Type:widget_kind Enter Type:help Enter Escape "
     "Type:title Enter Type:easel_keys Enter Escape "
+    "Type:this_screen Enter "
     "Type:actions Enter End Enter Type:app.easel Enter "
     "Type:app.easel Enter Enter Type:clear_the_easel_sheet Enter Escape Escape "
     "Type:minimum_width Enter Type:20 Enter Escape "
-    "Type:minimum_height Enter Type:6 Enter Escape "
-    "Type:save Enter Type:easel Enter";
+    "Type:minimum_height Enter Type:6 Enter Escape Escape "
+    "Type:layout_file Enter Type:save Enter Type:easel Enter";
+
+// SELECT THE SHEET AGAIN, WHICH MOVES THE PANEL. The editor floats over the design and goes to
+// whichever side the selected node is not, so the run above — which ends on the rightmost
+// window — has the panel on the LEFT, over the canvas. The two runs differ by these keys alone,
+// which is what makes the pair a control on the panel moving rather than an assertion about one
+// frame's layout.
+const char* kReveal = " Escape Escape Tab Tab";
 
 }  // namespace
 
@@ -169,19 +185,34 @@ int main() {
               "/with' --frame 150x34 --keys \"" + kAuthor + "\"" + err,
           rc);
   check(rc == 0 && !authoring.empty(), "the studio ran the authoring script (rc " + std::to_string(rc) + ")");
+  check(has(authoring, "saved layout file"), "…and the save-as wrote the file");
+
+  // THE SAME SCRIPT, ENDING ON A DIFFERENT NODE — the control on the panel moving.
+  int rc_reveal = 0;
+  const std::string revealed =
+      run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' --theme default-dark --presets '" + scratch +
+              "/with' --frame 150x34 --keys \"" + kAuthor + kReveal + "\"" + err,
+          rc_reveal);
+  // A DESIGN TOOL MAY NOT HIDE WHAT IT IS DESIGNING. The editor floats over the screen, so it
+  // goes to whichever side the selected node is not: ending on the rightmost window puts it on
+  // the left, and selecting the sheet again puts it back on the right. Row 0 says which side.
+  check(rc_reveal == 0 && authoring.rfind("\xE2\x94\x8C layout editor", 0) == 0,
+        "the panel is on the LEFT when the selection is on the right");
+  check(revealed.rfind("\xE2\x94\x8C easel sheet", 0) == 0,
+        "…and selecting the sheet moves it, so the node being edited is never behind the tool editing it");
+
   // THE PREVIEW CONTROL. The studio has no canvas and does not pretend to: the window draws
   // `[canvas:sheet]`, the whole content and not just the kind, and nothing paints in it.
-  check(has(authoring, "[canvas:sheet]"),
+  check(has(revealed, "[canvas:sheet]"),
         "a kind this tool cannot build previews as a labelled placeholder — not an error panel, and not a refusal");
-  check(!has(authoring, "==="), "…and nothing is drawn in it: a placeholder is a preview, never a substitute widget");
+  check(!has(revealed, "==="), "…and nothing is drawn in it: a placeholder is a preview, never a substitute widget");
   // The menu window is a LIBRARY kind, so it builds and says what it is missing in its own
   // words. Two different honest answers to two different questions, which is the split the
   // gap report is built on: a kind that does not exist here, a file that is not there.
-  check(has(authoring, "no menu file 'tools'"),
+  check(has(revealed, "no menu file 'tools'"),
         "…and a menu file this tool cannot resolve says so, in the menu widget's own words");
-  check(has(authoring, "easel sheet") && has(authoring, "easel tools"),
+  check(has(revealed, "easel sheet") && has(revealed, "easel tools"),
         "…the windows carry the titles that were typed");
-  check(has(authoring, "saved layout file"), "…and the save-as wrote the file");
 
   bool ok = false;
   const std::string saved = read_file(scratch + "/with/layouts/easel.json", ok);

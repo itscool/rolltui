@@ -1,40 +1,40 @@
-┌ transcript ─────────────────────────────────────┬ status ───────────┌ layout editor ─────────────────────────────────┐
-│ │ layers,       │             │ header;       │ │ theme   default-da│ layout editor • status                         │
-│ │ placement     │             │ resolve(Place │ │ keys    default   │ Select the next node                       Tab │
-│ │ (Dim abs/rel  │             │ ment, parent) │ │ layout  wide-right│ Select the previous node             Shift-Tab │
-│ │ per axis),    │             │ → Rect is a   │ │ size    120x40    │ Split into a row (side by side)                │
-│ │ focus         │             │ pure function │ │ line    146/180   │ Split into a column (stacked)                  │
-│ │ Menu widget   │ build       │ single header │ │ follow  yes       │ Swap with the previous sibling                 │
-│ │ (hierarchical │             │ each; the     │ │ depth   truecolor │ Swap with the next sibling                     │
-│ │ , filterable) │             │ widget set is │ │ focus   editor    │ [x] Visible                                    │
-│ │ + list/text   │             │ deliberately  │ │                   │ Border                                single ▸ │
-│ │ widgets       │             │ this small    │ │                   │ Background role             panel_background ▸ │
-│ │ Layout files  │ build       │ reuses the    │ │                   │ Node id: status                                │
-│ │ (JSON:        │             │ theme         │ │                   │ Title: status                                  │
-│ │ windows +     │             │ loader's hand │ │                   │ Widget kind: rows                              │
-│ │ placements +  │             │ parser; hot-  │ │                   │ Source: status                                 │
-│ │ content       │             │ reloaded      │ │                   │ Menu file:                                     │
-│ │ slots)        │             │               │ │                   │ Size (Alt+arrows nudge): 70                    │
-│ │ Markdown      │ build       │ single header │ │                   │ [ ] Focusable                                  │
-│ │ block         │             │ over md4c +   │ │                   │ Delete this node                               │
-│ │ renderer      │             │ wrap          │ │                   │ Popups                                       ▸ │
-│ │ (blocks →     │             │               │ │                   │ Actions this screen emits                    ▸ │
-│ │ styled        │             │               │ │                   │ Minimum width this screen needs: 60            │
-│ │ wrapped       │             │               │ │                   │ Minimum height this screen needs: 8            │
-│ │ lines)        │             │               │ │                   │ Focused window                         input ▸ │
-│ │ Theme (roles  │ build       │ single header │ │                   │ Undo                                    Ctrl-Z │
-│ │ → styles,     │             │               │ │                   │ Redo                                    Ctrl-Y │
-│ │ JSON loader,  │             │               │ │                   │ New layout, from an empty screen (name):       │
-│ │ built-ins)    │             │               │ │                   │ Load layout                                  ▸ │
-│ └───────────────┴─────────────┴───────────────┘ │                   │ Save layout file as (layouts/<name>.json):     │
-│                                                 █                   │ Reset to the loaded layout…                    │
-│ Here is the function you asked for:             █                   │                                                │
-│                                                 █                   │                                                │
-│ ┌ cpp ────────────────────────────────────────┐ █                   │                                                │
-│ │ int add(int a, int b) {                     │ █                   │                                                │
-│ │   return a + b;                             │ █                   │ selected: status  size 70  border single  rows │
-│ └─────────────────────────────────────────────┘ █                   │ Tab next node · click selects · drag an edge r │
-├─────────────────────────────────────────────────┤                   │ loaded wide-right · undo 1 · redo 0            │
-│ > type here                                     │                   │                                                │
-└─────────────────────────────────────────────────┴───────────────────└────────────────────────────────────────────────┘
+┌ layout editor ─────────────────────────────────┐┬ status ────────────────────────────────────────────────────────────┐
+│ (row) row                                      ││ theme   default-dark                                               │
+│   (column) column                              ││ keys    default                                                    │
+│     transcript transcript:session              ││ layout  wide-right                                                 │
+│     input input:prompt                         ││ size    120x40                                                     │
+│   status rows:status                           ││ line    146/180                                                    │
+│ layout editor • status                         ││ follow  yes                                                        │
+│ [x] Visible                                    ││ depth   truecolor                                                  │
+│ Border                                single ▸ ││ focus   editor                                                     │
+│ Background role             panel_background ▸ ││                                                                    │
+│ Node id: status                                ││                                                                    │
+│ Title: status                                  ││                                                                    │
+│ Widget kind: rows                              ││                                                                    │
+│ Source: status                                 ││                                                                    │
+│ Menu file:                                     ││                                                                    │
+│ Size (Alt+arrows nudge): 70                    ││                                                                    │
+│ [ ] Focusable                                  ││                                                                    │
+│ Tree                                         ▸ ││                                                                    │
+│ This screen                                  ▸ ││                                                                    │
+│ Layout file                                  ▸ ││                                                                    │
+│ Undo                                    Ctrl-Z ││                                                                    │
+│ Redo                                    Ctrl-Y ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                │█                                                                    │
+│                                                │█                                                                    │
+│                                                │█                                                                    │
+│                                                │█                                                                    │
+│                                                │█                                                                    │
+│ selected: status  size 70  border single  rows │█                                                                    │
+│ Tab next node · click selects · drag an edge r │█                                                                    │
+│ loaded wide-right · undo 1 · redo 0            │┤                                                                    │
+│                                                ││                                                                    │
+└────────────────────────────────────────────────┘┴────────────────────────────────────────────────────────────────────┘
  default-dark [layout editor]  wide-right (modified)  120x40  line 146/180  follow  truecolor  focus:editor

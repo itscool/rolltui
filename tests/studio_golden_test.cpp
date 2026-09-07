@@ -343,14 +343,14 @@ int main(int argc, char** argv) {
       {"editor.120x40.fixes", "--frame 120x40 --theme default-dark --keys \"F4 Type:fixes Enter\""},
       // milestone 16 (the layout editor); the scratch --presets is appended
       {"layout-editor.120x40.open", "--frame 120x40 --theme default-dark --keys \"F6\""},
-      {"layout-editor.120x40.split", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter\""},
-      {"layout-editor.120x40.undo", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter CtrlZ\""},
+      {"layout-editor.120x40.split", "--frame 120x40 --theme default-dark --keys \"F6 Type:tree Enter Type:split_into_a_row Enter\""},
+      {"layout-editor.120x40.undo", "--frame 120x40 --theme default-dark --keys \"F6 Type:tree Enter Type:split_into_a_row Enter CtrlZ\""},
       {"layout-editor.120x40.border-preview", "--frame 120x40 --theme default-dark --keys \"F6 Type:border Enter Down\""},
       {"layout-editor.120x40.border-cancel", "--frame 120x40 --theme default-dark --keys \"F6 Type:border Enter Down Escape\""},
-      {"layout-editor.120x40.drag", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Click 44,10 Drag 30,10 Release\""},
+      {"layout-editor.120x40.drag", "--frame 120x40 --theme default-dark --keys \"F6 Type:tree Enter Type:split_into_a_row Enter Click 44,10 Drag 30,10 Release\""},
       {"layout-editor.120x40.click", "--frame 120x40 --theme default-dark --keys \"F6 Click 30,37\""},
-      {"layout-editor.120x40.save", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Type:title Enter CtrlU Type:chat Enter Escape Type:save Enter Type:two Enter\""},
-      {"tiny.9x4.layout-editor", "--frame 9x4 --theme default-dark --keys \"F6 Tab Type:split Enter Type:x\""},
+      {"layout-editor.120x40.save", "--frame 120x40 --theme default-dark --keys \"F6 Type:tree Enter Type:split_into_a_row Enter Type:title Enter CtrlU Type:chat Enter Escape Type:layout_file Enter Type:save Enter Type:two Enter\""},
+      {"tiny.9x4.layout-editor", "--frame 9x4 --theme default-dark --keys \"F6 Tab Type:tree Enter Type:split Enter Type:x\""},
       // the seam rule: the FIXED side takes the new size — the status before the seam
       // (panel-left) and the status after it (a fixture with a 55-wide right panel), both
       // seams left of the editor's popup
@@ -361,14 +361,14 @@ int main(int argc, char** argv) {
       // an input's commit leaves the menu's typed filter standing (a choice clears it on the way
       // back up). Without it this golden would show the field being edited rather than the window
       // it produced, which is the thing the case exists to show.
-      {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter Escape\""},
-      {"layout-editor.120x40.actions", "--frame 120x40 --theme default-dark --keys \"F6 Type:actions Enter End Enter Type:app.zoom Enter Escape Type:save Enter Type:three Enter Escape Type:actions Enter\""},
+      {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:tree Enter Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter Escape\""},
+      {"layout-editor.120x40.actions", "--frame 120x40 --theme default-dark --keys \"F6 Type:this_screen Enter Type:actions Enter End Enter Type:app.zoom Enter Escape Escape Type:layout_file Enter Type:save Enter Type:three Enter Escape Escape Type:this_screen Enter Type:actions Enter\""},
       // CREATING a layout, not inheriting one. Started from the shipped
       // `default` — five actions, four popups, min 60x8 — so what the skeleton does NOT
       // carry is visible in the same frame that shows what it does.
       // The SAVE is deliberately not in this case: the written file is asserted below in
       // its own run, and a golden that names a scratch path is a golden about the machine.
-      {"layout-editor.120x40.new", "--frame 120x40 --theme default-dark --keys \"F6 Type:new_layout Enter Type:kiosk Enter\""},
+      {"layout-editor.120x40.new", "--frame 120x40 --theme default-dark --keys \"F6 Type:layout_file Enter Type:new_layout Enter Type:kiosk Enter\""},
       {"layout-editor.120x40.drag-fixed-before", "--frame 120x40 --theme default-dark --layout panel-left --keys \"F6 Click 31,10 Drag 20,10 Release\""},
       {"layout-editor.120x40.drag-fixed-after", "--frame 120x40 --theme default-dark --layout '" ROLLTUI_FIXTURE_DIR "/layouts/wide-right.json' --keys \"F6 Click 65,10 Drag 50,10 Release\""},
       // milestone 17 (bindings as data): a vim-ish file, the help rendered from it, the
@@ -835,7 +835,7 @@ int main(int argc, char** argv) {
       int rc = 0;
       run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
               "/session/demo.md' --frame 100x28 --theme default-dark --presets '" + scratch +
-              "/p6' --keys \"F6 Type:new_layout Enter Type:kiosk Enter Type:save Enter Type:kiosk Enter\" 2>/dev/null",
+              "/p6' --keys \"F6 Type:layout_file Enter Type:new_layout Enter Type:kiosk Enter Type:layout_file Enter Type:save Enter Type:kiosk Enter\" 2>/dev/null",
           rc);
       bool ok = false;
       const std::string saved = read_file(scratch + "/p6/layouts/kiosk.json", ok);
@@ -863,8 +863,8 @@ int main(int argc, char** argv) {
       int rc = 0;
       run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
               "/session/demo.md' --frame 100x28 --theme default-dark --presets '" + scratch + "/p7'" +
-              " --keys \"F6 Type:new_layout Enter Type:kiosk Enter Type:minimum_width Enter Type:40 Enter Escape"
-              " Type:minimum_height Enter Type:12 Enter Escape Type:save Enter Type:kiosk Enter\" 2>/dev/null",
+              " --keys \"F6 Type:layout_file Enter Type:new_layout Enter Type:kiosk Enter Type:this_screen Enter Type:minimum_width Enter Type:40 Enter Escape"
+              " Type:minimum_height Enter Type:12 Enter Escape Escape Type:layout_file Enter Type:save Enter Type:kiosk Enter\" 2>/dev/null",
           rc);
       bool ok = false;
       const std::string saved = read_file(scratch + "/p7/layouts/kiosk.json", ok);

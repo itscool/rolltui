@@ -1,33 +1,33 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ layout editor • input                          │
-│ │ grapheme property,               │             │ unicode_tables.hp│ Select the next node                       Tab │
-│ │ Extended_Pictographic, InCB)     │             │                  │ Select the previous node             Shift-Tab │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Split into a row (side by side)                │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ Split into a column (stacked)                  │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Swap with the previous sibling                 │
-│ │                                  │             │ block tree is the│ Swap with the next sibling                     │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [x] Visible                                    │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Border                                single ▸ │
-│ │ mouse mode)                      │             │                  │ Background role                   background ▸ │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ Node id: input                                 │
-│ │                                  │             │ Event, table-test│ Title:                                         │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Widget kind: input                             │
-│ │ colour downgrade                 │             │ tested           │ Source: prompt                                 │
-│ │ Wrap engine                      │ build       │ single header ove│ Menu file:                                     │
-│ │                                  │             │ header           │ Size (Alt+arrows nudge): 3                     │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ [x] Focusable                                  │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│ Delete this node                               │
-│ │                                  │             │ Rect is a pure fu│ Popups                                       ▸ │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│ Actions this screen emits                    ▸ │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ Minimum width this screen needs: 60            │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ Minimum height this screen needs: 8            │
-│ │ placements + content slots)      │             │ parser; hot-reloa│ Focused window                         input ▸ │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ Undo                                    Ctrl-Z │
-│ │ → styled wrapped lines)          │             │                  │ Redo                                    Ctrl-Y │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │ New layout, from an empty screen (name):       │
-│ │ loader, built-ins)               │             │                  │ Load layout                                  ▸ │
-│ └──────────────────────────────────┴─────────────┴──────────────────│ Save layout file as (layouts/<name>.json):     │
-│                                                                     │ Reset to the loaded layout…                    │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ (row) row                                      │
+│ │ grapheme property,               │             │ unicode_tables.hp│   (column) column                              │
+│ │ Extended_Pictographic, InCB)     │             │                  │     transcript transcript:session              │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│     input input:prompt                         │
+│ │ grapheme clusters, display width │             │ Unicode conforman│   status rows:status                           │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ popup find                                     │
+│ │                                  │             │ block tree is the│   find input:find                              │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ popup help                                     │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│   help help                                    │
+│ │ mouse mode)                      │             │                  │ popup approval                                 │
+│ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
+│ │                                  │             │ Event, table-test│ popup menu                                     │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • input                          │
+│ │ colour downgrade                 │             │ tested           │ [x] Visible                                    │
+│ │ Wrap engine                      │ build       │ single header ove│ Border                                single ▸ │
+│ │                                  │             │ header           │ Background role                   background ▸ │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ Node id: input                                 │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ Title:                                         │
+│ │                                  │             │ Rect is a pure fu│ Widget kind: input                             │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ Source: prompt                                 │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ Menu file:                                     │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ Size (Alt+arrows nudge): 3                     │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ [x] Focusable                                  │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ Tree                                         ▸ │
+│ │ → styled wrapped lines)          │             │                  │ This screen                                  ▸ │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │ Layout file                                  ▸ │
+│ │ loader, built-ins)               │             │                  │ Undo                                    Ctrl-Z │
+│ └──────────────────────────────────┴─────────────┴──────────────────│ Redo                                    Ctrl-Y │
+│                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │

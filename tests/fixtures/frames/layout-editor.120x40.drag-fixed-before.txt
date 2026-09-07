@@ -1,33 +1,33 @@
 ┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor ─────────────────────────────────┐
-│ theme   default-  │ │ component                             │ decisi│ layout editor • status                         │
-│         dark      │ ├───────────────────────────────────────┼───────│ Select the next node                       Tab │
-│ keys    default   │ │ Unicode tables (line-break class,     │ genera│ Select the previous node             Shift-Tab │
-│ layout  panel-left│ │ East-Asian width, grapheme property,  │       │ Split into a row (side by side)                │
-│ size    120x40    │ │ Extended_Pictographic, InCB)          │       │ Split into a column (stacked)                  │
-│ line    69/103    │ │ UAX #14 line breaking, UAX #29        │ build │ Swap with the previous sibling                 │
-│ follow  yes       │ │ grapheme clusters, display width      │       │ Swap with the next sibling                     │
-│ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ [x] Visible                                    │
-│ focus   editor    │ │                                       │       │ Border                                single ▸ │
-│                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ Background role             panel_background ▸ │
-│                   │ │ SIGWINCH, bracketed paste, mouse      │       │ Node id: status                                │
-│                   │ │ mode)                                 │       │ Title: status                                  │
-│                   │ │ Key + mouse decoding                  │ build │ Widget kind: rows                              │
-│                   │ │                                       │       │ Source: status                                 │
-│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Menu file:                                     │
-│                   │ │ downgrade                             │       │ Size (Alt+arrows nudge): 21                    │
-│                   │ │ Wrap engine                           │ build │ [ ] Focusable                                  │
-│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Delete this node                               │
-│                   │ │ rel per axis), focus                  │       │ Popups                                       ▸ │
-│                   │ │ Menu widget (hierarchical,            │ build │ Actions this screen emits                    ▸ │
-│                   │ │ filterable) + list/text widgets       │       │ Minimum width this screen needs: 60            │
-│                   │ │ Layout files (JSON: windows +         │ build │ Minimum height this screen needs: 8            │
-│                   │ │ placements + content slots)           │       │ Focused window                         input ▸ │
-│                   │ │ Markdown block renderer (blocks →     │ build │ Undo                                    Ctrl-Z │
-│                   │ │ styled wrapped lines)                 │       │ Redo                                    Ctrl-Y │
-│                   │ │ Theme (roles → styles, JSON loader,   │ build │ New layout, from an empty screen (name):       │
-│                   │ │ built-ins)                            │       │ Load layout                                  ▸ │
-│                   │ └───────────────────────────────────────┴───────│ Save layout file as (layouts/<name>.json):     │
-│                   │                                                 │ Reset to the loaded layout…                    │
+│ theme   default-  │ │ component                             │ decisi│ (row) row                                      │
+│         dark      │ ├───────────────────────────────────────┼───────│   status rows:status                           │
+│ keys    default   │ │ Unicode tables (line-break class,     │ genera│   (column) column                              │
+│ layout  panel-left│ │ East-Asian width, grapheme property,  │       │     transcript transcript:session              │
+│ size    120x40    │ │ Extended_Pictographic, InCB)          │       │     input input:prompt                         │
+│ line    69/103    │ │ UAX #14 line breaking, UAX #29        │ build │ popup find                                     │
+│ follow  yes       │ │ grapheme clusters, display width      │       │   find input:find                              │
+│ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ popup help                                     │
+│ focus   editor    │ │                                       │       │   help help                                    │
+│                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
+│                   │ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
+│                   │ │ mode)                                 │       │ popup menu                                     │
+│                   │ │ Key + mouse decoding                  │ build │ layout editor • status                         │
+│                   │ │                                       │       │ [x] Visible                                    │
+│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Border                                single ▸ │
+│                   │ │ downgrade                             │       │ Background role             panel_background ▸ │
+│                   │ │ Wrap engine                           │ build │ Node id: status                                │
+│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Title: status                                  │
+│                   │ │ rel per axis), focus                  │       │ Widget kind: rows                              │
+│                   │ │ Menu widget (hierarchical,            │ build │ Source: status                                 │
+│                   │ │ filterable) + list/text widgets       │       │ Menu file:                                     │
+│                   │ │ Layout files (JSON: windows +         │ build │ Size (Alt+arrows nudge): 21                    │
+│                   │ │ placements + content slots)           │       │ [ ] Focusable                                  │
+│                   │ │ Markdown block renderer (blocks →     │ build │ Tree                                         ▸ │
+│                   │ │ styled wrapped lines)                 │       │ This screen                                  ▸ │
+│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Layout file                                  ▸ │
+│                   │ │ built-ins)                            │       │ Undo                                    Ctrl-Z │
+│                   │ └───────────────────────────────────────┴───────│ Redo                                    Ctrl-Y │
+│                   │                                                 │                                                │
 │                   │ Here is the function you asked for:             │                                                │
 │                   │                                                 │                                                │
 │                   │ ┌ cpp ──────────────────────────────────────────│                                                │

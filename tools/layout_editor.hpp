@@ -210,6 +210,17 @@ class LayoutEditor {
   // window's content — every other host resolves it through rolltui::Windows.
   std::string selection_line() const;
 
+  // THE TREE, AS ROWS THE CALLER OWNS AND REFILLS. A layout is a tree and the editor was the
+  // one place you could not see it: a list of fields told you what the selected node IS
+  // without ever saying where it sits, so splitting a row and swapping siblings were moves
+  // made blind. `label` is the node indented by its depth, `value` its content or its shape.
+  //
+  // The order is the SAME one `select_next` walks and `all_ids` returns, so the row Tab lands
+  // on is the row that moves — one ordering, not a second one to drift.
+  void tree_rows(RolltuiRows& out) const;
+  // Which row of `tree_rows` is selected, or `tree_rows`' count when nothing is.
+  std::size_t tree_selected() const;
+
   // Tree helpers, exposed for the tests and the host's hit-testing.
   static Node* find_node(Node& root, std::string_view id);
   static const Node* find_node(const Node& root, std::string_view id);

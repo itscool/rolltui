@@ -1,11 +1,6 @@
 ┌─────────────────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+│                                                                     │ main text:                                     │
 │                                                                     │ layout editor • main                           │
-│                                                                     │ Select the next node                       Tab │
-│                                                                     │ Select the previous node             Shift-Tab │
-│                                                                     │ Split into a row (side by side)                │
-│                                                                     │ Split into a column (stacked)                  │
-│                                                                     │ Swap with the previous sibling                 │
-│                                                                     │ Swap with the next sibling                     │
 │                                                                     │ [x] Visible                                    │
 │                                                                     │ Border                                single ▸ │
 │                                                                     │ Background role                   background ▸ │
@@ -16,18 +11,23 @@
 │                                                                     │ Menu file:                                     │
 │                                                                     │ Size (Alt+arrows nudge): fill                  │
 │                                                                     │ [x] Focusable                                  │
-│                                                                     │ Delete this node                               │
-│                                                                     │ Popups                                       ▸ │
-│                                                                     │ Actions this screen emits                    ▸ │
-│                                                                     │ Minimum width this screen needs: 0             │
-│                                                                     │ Minimum height this screen needs: 0            │
-│                                                                     │ Focused window                          main ▸ │
+│                                                                     │ Tree                                         ▸ │
+│                                                                     │ This screen                                  ▸ │
+│                                                                     │ Layout file                                  ▸ │
 │                                                                     │ Undo                                    Ctrl-Z │
 │                                                                     │ Redo                                    Ctrl-Y │
-│                                                                     │ New layout, from an empty screen (name):       │
-│                                                                     │ Load layout                                  ▸ │
-│                                                                     │ Save layout file as (layouts/<name>.json):     │
-│                                                                     │ Reset to the loaded layout…                    │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
+│                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │

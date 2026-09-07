@@ -125,8 +125,8 @@ const char* kMenu =
     "Type:save_menu Enter Type:sundial Enter";
 
 const char* kLayout =
-    "F6 Type:new_layout Enter Type:sundial Enter "
-    "Type:split_into_a_row Enter "
+    "F6 Type:layout_file Enter Type:new_layout Enter Type:sundial Enter "
+    "Type:tree Enter Type:split_into_a_row Enter "
     "Type:node_id Enter CtrlU Type:sundial\\_face Enter Escape "
     "Type:widget_kind Enter Type:text Enter Escape "
     "Type:source Enter Type:the_shadow_falls_where_no_code_was_written Enter Escape "
@@ -136,12 +136,13 @@ const char* kLayout =
     "Type:widget_kind Enter Type:menu Enter Escape "
     "Type:menu_file Enter Type:sundial Enter Escape "
     "Type:title Enter Type:the_tools Enter Escape "
+    "Type:this_screen Enter "
     "Type:actions Enter End Enter Type:app.sundial Enter "
     "Type:app.sundial Enter Enter Type:read_the_shadow Enter Escape Escape "
     "Type:focused_window Enter Type:sundial\\_tools Enter "
     "Type:minimum_width Enter Type:20 Enter Escape "
-    "Type:minimum_height Enter Type:6 Enter Escape "
-    "Type:save Enter Type:sundial Enter";
+    "Type:minimum_height Enter Type:6 Enter Escape Escape "
+    "Type:layout_file Enter Type:save Enter Type:sundial Enter";
 
 // Ctrl-G because no shipped binding uses it, so the chord in the frame can only be this file's.
 const char* kKeys =

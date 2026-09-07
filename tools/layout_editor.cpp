@@ -399,13 +399,35 @@ void LayoutEditor::rebuild_menu() {
     popups.push_back(submenu_of(base.c_str(), id.c_str(), std::move(fields)));
   }
   popups.push_back(MenuItem::input("popup.add", "add a popup (id)", name.clone()));
+  // FIVE SCOPES, AND THE TOP LEVEL IS ONE OF THEM. This was a flat list of twenty-six items in
+  // which "Split into a row", "Title", "Minimum width", "Undo" and "Save layout file as" sat
+  // as peers — tree surgery, a property of one node, a property of the whole screen, history
+  // and a file operation, with nothing saying which was which. A reader had to know the tool
+  // to know what a row would do.
+  //
+  // The top level is THE SELECTED NODE, because that is what an inspector is and what a person
+  // touches on every edit. The other four scopes are named submenus, so the level you are in
+  // says what you are changing. `next`/`prev` left the menu entirely: they are Tab and
+  // Shift-Tab, the hint line says so, and the tree above shows where they land — a menu row
+  // for a chord you can see the effect of is a row that only makes the list longer.
+  std::vector<MenuItem> tree;
+  tree.push_back(MenuItem::action("split_row", "Split into a row (side by side)"));
+  tree.push_back(MenuItem::action("split_column", "Split into a column (stacked)"));
+  tree.push_back(MenuItem::action("swap_prev", "Swap with the previous sibling"));
+  tree.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
+  tree.push_back(MenuItem::action("delete", "Delete this node"));
+  std::vector<MenuItem> screen;
+  screen.push_back(MenuItem::input("min_width", "Minimum width", threshold.clone()));
+  screen.push_back(MenuItem::input("min_height", "Minimum height", threshold.clone()));
+  screen.push_back(MenuItem::choice("focus", "Focused window", ""));
+  screen.push_back(submenu_of("popups", "Popups", std::move(popups)));
+  screen.push_back(submenu_of("actions", "Actions this screen emits", action_items()));
+  std::vector<MenuItem> file;
+  file.push_back(MenuItem::input("new", "New layout, from an empty screen (name)", name.clone()));
+  file.push_back(choice_of("load", "Load layout", std::move(loads), ""));
+  file.push_back(MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name.clone()));
+  file.push_back(MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6"));
   std::vector<MenuItem> top;
-  top.push_back(MenuItem::action("next", "Select the next node", "Tab"));
-  top.push_back(MenuItem::action("prev", "Select the previous node", "Shift-Tab"));
-  top.push_back(MenuItem::action("split_row", "Split into a row (side by side)"));
-  top.push_back(MenuItem::action("split_column", "Split into a column (stacked)"));
-  top.push_back(MenuItem::action("swap_prev", "Swap with the previous sibling"));
-  top.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
   top.push_back(MenuItem::toggle("visible", "Visible", true));
   top.push_back(choice_of("border", "Border", std::move(borders), "single"));
   // THE BACKGROUND ROLE. A node has carried one for as long as the layout format
@@ -431,18 +453,11 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::input("menu_file", "Menu file", name.clone()));
   top.push_back(MenuItem::input("size", "Size (Alt+arrows nudge)", size.clone()));
   top.push_back(MenuItem::toggle("focusable", "Focusable", false));
-  top.push_back(MenuItem::action("delete", "Delete this node"));
-  top.push_back(submenu_of("popups", "Popups", std::move(popups)));
-  top.push_back(submenu_of("actions", "Actions this screen emits", action_items()));
-  top.push_back(MenuItem::input("min_width", "Minimum width this screen needs", threshold.clone()));
-  top.push_back(MenuItem::input("min_height", "Minimum height this screen needs", threshold.clone()));
-  top.push_back(MenuItem::choice("focus", "Focused window", ""));
+  top.push_back(submenu_of("tree", "Tree", std::move(tree)));
+  top.push_back(submenu_of("screen", "This screen", std::move(screen)));
+  top.push_back(submenu_of("file", "Layout file", std::move(file)));
   top.push_back(MenuItem::action("undo", "Undo", "Ctrl-Z"));
   top.push_back(MenuItem::action("redo", "Redo", "Ctrl-Y"));
-  top.push_back(MenuItem::input("new", "New layout, from an empty screen (name)", name.clone()));
-  top.push_back(choice_of("load", "Load layout", std::move(loads), ""));
-  top.push_back(MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name.clone()));
-  top.push_back(MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6"));
   MenuItem root = submenu_of("root", "layout editor", std::move(top));
   rolltui_menu_set_root(menu_, &root);
   sync_hints();
@@ -753,6 +768,51 @@ std::string LayoutEditor::selection_line() const {
   if (n->is_window())
     if (std::string why; !parse_content(ctx_, view_of(n->content), &why)) s += " \xE2\x80\x94 not previewable here: " + why;
   return s;
+}
+
+void LayoutEditor::tree_rows(RolltuiRows& out) const {
+  rolltui_rows_reset(&out);
+  std::string label;
+  auto add = [&](const Node& n, int depth) {
+    label.assign(static_cast<std::size_t>(depth) * 2, ' ');
+    if (n.id.empty()) label += n.kind == Node::Kind::Row ? "(row)" : "(column)";
+    else label += str_of(n.id);
+    // A CONTAINER SAYS WHICH WAY IT DIVIDES, because that is the whole of what it is and it is
+    // the thing a person is about to swap siblings inside. A window says what it shows.
+    const std::string value = n.is_window() ? str_of(n.content)
+                                            : (n.kind == Node::Kind::Row ? "row" : "column");
+    rolltui_rows_add(&out, label.data(), label.size(), value.data(), value.size());
+  };
+  auto walk = [&](auto& self, const Node& n, int depth) -> void {
+    add(n, depth);
+    for (const Node& c : n.children) self(self, c, depth + 1);
+  };
+  walk(walk, current_.base.root, 0);
+  // Each popup's root is a node the editor can select, so it is a row like any other — under
+  // a heading, because a popup is not part of the base tree and a flat list would say it was.
+  for (const RolltuiLayer& p : current_.popups) {
+    rolltui_rows_add(&out, "popup", 5, p.id.p ? p.id.p : "", p.id.n);
+    walk(walk, p.root, 1);
+  }
+}
+
+std::size_t LayoutEditor::tree_selected() const {
+  RolltuiRows rows{};
+  tree_rows(rows);
+  std::size_t found = rows.n;
+  std::size_t i = 0;
+  auto count = [&](auto& self, const Node& n) -> void {
+    if (!n.id.empty() && view_of(n.id) == sel_ && found == rows.n) found = i;
+    ++i;
+    for (const Node& c : n.children) self(self, c);
+  };
+  count(count, current_.base.root);
+  for (const RolltuiLayer& p : current_.popups) {
+    ++i;  // the heading row
+    count(count, p.root);
+  }
+  rolltui_rows_release(&rows);
+  return found;
 }
 
 // ---- events ---------------------------------------------------------------------------

@@ -1,33 +1,33 @@
 ┌ transcript ───────────────────────────────┬ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
-│ │ widget     │            │ header      │ │ input:                  │ layout editor • transcript-2                   │
-│ │ (hierarchi │            │ each; the   │ │   Enter                 │ Select the next node                       Tab │
-│ │ cal,       │            │ widget set  │ │ (always Enter)          │ Select the previous node             Shift-Tab │
-│ │ filterable │            │ is          │ │   Alt-Enter             │ Split into a row (side by side)                │
-│ │ ) + list/  │            │ deliberatel │ │ newline                 │ Split into a column (stacked)                  │
-│ │ text       │            │ y this      │ │   Backspace             │ Swap with the previous sibling                 │
-│ │ widgets    │            │ small       │ │ the caret (or the select│ Swap with the next sibling                     │
-│ │ Layout     │ build      │ reuses the  │ │   Delete                │ [x] Visible                                    │
-│ │ files      │            │ theme       │ │ caret (or the selection)│ Border                                single ▸ │
-│ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ Background role                   background ▸ │
-│ │ windows +  │            │ hand        │ │ before the caret        │ Node id: transcript-2                          │
-│ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ Title: transcript-2                            │
-│ │ + content  │            │ hot-        │ │ after the caret         │ Widget kind: help                              │
-│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Source:                                        │
-│ │ Markdown   │ build      │ single      │ │ start of the line       │ Menu file:                                     │
-│ │ block      │            │ header over │ │   Ctrl-K                │ Size (Alt+arrows nudge): fill                  │
-│ │ renderer   │            │ md4c + wrap │ │ of the line             │ [x] Focusable                                  │
-│ │ (blocks →  │            │             │ │   Left                  │ Delete this node                               │
-│ │ styled     │            │             │ │ grapheme left           │ Popups                                       ▸ │
-│ │ wrapped    │            │             │ │   Right                 │ Actions this screen emits                    ▸ │
-│ │ lines)     │            │             │ │ grapheme right          │ Minimum width this screen needs: 60            │
-│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Minimum height this screen needs: 8            │
-│ │ (roles →   │            │ header      │ │ left                    │ Focused window                         input ▸ │
-│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ Undo                                    Ctrl-Z │
-│ │ JSON       │            │             │ │ right                   │ Redo                                    Ctrl-Y │
-│ │ loader,    │            │             │ │   Home                  │ New layout, from an empty screen (name):       │
-│ │ built-ins) │            │             │ │ line (scrolls when empty│ Load layout                                  ▸ │
-│ └────────────┴────────────┴─────────────┘ │   End                   │ Save layout file as (layouts/<name>.json):     │
-│                                           │ (scrolls when empty)    │ Reset to the loaded layout…                    │
+│ │ widget     │            │ header      │ │ input:                  │ (row) row                                      │
+│ │ (hierarchi │            │ each; the   │ │   Enter                 │   (column) column                              │
+│ │ cal,       │            │ widget set  │ │ (always Enter)          │     transcript-row row                         │
+│ │ filterable │            │ is          │ │   Alt-Enter             │       transcript transcript:session            │
+│ │ ) + list/  │            │ deliberatel │ │ newline                 │       transcript-2 help                        │
+│ │ text       │            │ y this      │ │   Backspace             │     input input:prompt                         │
+│ │ widgets    │            │ small       │ │ the caret (or the select│   status rows:status                           │
+│ │ Layout     │ build      │ reuses the  │ │   Delete                │ popup find                                     │
+│ │ files      │            │ theme       │ │ caret (or the selection)│   find input:find                              │
+│ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ popup help                                     │
+│ │ windows +  │            │ hand        │ │ before the caret        │   help help                                    │
+│ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ popup approval                                 │
+│ │ + content  │            │ hot-        │ │ after the caret         │ layout editor • transcript-2                   │
+│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ [x] Visible                                    │
+│ │ Markdown   │ build      │ single      │ │ start of the line       │ Border                                single ▸ │
+│ │ block      │            │ header over │ │   Ctrl-K                │ Background role                   background ▸ │
+│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Node id: transcript-2                          │
+│ │ (blocks →  │            │             │ │   Left                  │ Title: transcript-2                            │
+│ │ styled     │            │             │ │ grapheme left           │ Widget kind: help                              │
+│ │ wrapped    │            │             │ │   Right                 │ Source:                                        │
+│ │ lines)     │            │             │ │ grapheme right          │ Menu file:                                     │
+│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Size (Alt+arrows nudge): fill                  │
+│ │ (roles →   │            │ header      │ │ left                    │ [x] Focusable                                  │
+│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ Tree                                         ▸ │
+│ │ JSON       │            │             │ │ right                   │ This screen                                  ▸ │
+│ │ loader,    │            │             │ │   Home                  │ Layout file                                  ▸ │
+│ │ built-ins) │            │             │ │ line (scrolls when empty│ Undo                                    Ctrl-Z │
+│ └────────────┴────────────┴─────────────┘ │   End                   │ Redo                                    Ctrl-Y │
+│                                           │ (scrolls when empty)    │                                                │
 │ Here is the function you asked for:       █   Up                    │                                                │
 │                                           █ the previous history ent│                                                │
 │ ┌ cpp ──────────────────────────────────┐ █   Down                  │                                                │

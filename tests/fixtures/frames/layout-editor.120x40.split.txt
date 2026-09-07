@@ -1,33 +1,33 @@
 ┌ transcript ───────────────────────────────┬ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
-│ │ widget     │            │ header      │ │ │ widget     │          │ layout editor • transcript                     │
-│ │ (hierarchi │            │ each; the   │ │ │ (hierarchi │          │ Select the next node                       Tab │
-│ │ cal,       │            │ widget set  │ │ │ cal,       │          │ Select the previous node             Shift-Tab │
-│ │ filterable │            │ is          │ │ │ filterable │          │ Split into a row (side by side)                │
-│ │ ) + list/  │            │ deliberatel │ │ │ ) + list/  │          │ Split into a column (stacked)                  │
-│ │ text       │            │ y this      │ │ │ text       │          │ Swap with the previous sibling                 │
-│ │ widgets    │            │ small       │ │ │ widgets    │          │ Swap with the next sibling                     │
-│ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ [x] Visible                                    │
-│ │ files      │            │ theme       │ │ │ files      │          │ Border                                single ▸ │
-│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Background role                   background ▸ │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Node id: transcript                            │
-│ │ placements │            │ parser;     │ │ │ placements │          │ Title: transcript                              │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ Widget kind: transcript                        │
-│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Source: session                                │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Menu file:                                     │
-│ │ block      │            │ header over │ │ │ block      │          │ Size (Alt+arrows nudge): fill                  │
-│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │ [x] Focusable                                  │
-│ │ (blocks →  │            │             │ │ │ (blocks →  │          │ Delete this node                               │
-│ │ styled     │            │             │ │ │ styled     │          │ Popups                                       ▸ │
-│ │ wrapped    │            │             │ │ │ wrapped    │          │ Actions this screen emits                    ▸ │
-│ │ lines)     │            │             │ │ │ lines)     │          │ Minimum width this screen needs: 60            │
-│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ Minimum height this screen needs: 8            │
-│ │ (roles →   │            │ header      │ │ │ (roles →   │          │ Focused window                         input ▸ │
-│ │ styles,    │            │             │ │ │ styles,    │          │ Undo                                    Ctrl-Z │
-│ │ JSON       │            │             │ │ │ JSON       │          │ Redo                                    Ctrl-Y │
-│ │ loader,    │            │             │ │ │ loader,    │          │ New layout, from an empty screen (name):       │
-│ │ built-ins) │            │             │ │ │ built-ins) │          │ Load layout                                  ▸ │
-│ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│ Save layout file as (layouts/<name>.json):     │
-│                                           │                         │ Reset to the loaded layout…                    │
+│ │ widget     │            │ header      │ │ │ widget     │          │ (row) row                                      │
+│ │ (hierarchi │            │ each; the   │ │ │ (hierarchi │          │   (column) column                              │
+│ │ cal,       │            │ widget set  │ │ │ cal,       │          │     transcript-row row                         │
+│ │ filterable │            │ is          │ │ │ filterable │          │       transcript transcript:session            │
+│ │ ) + list/  │            │ deliberatel │ │ │ ) + list/  │          │       transcript-2 transcript:session          │
+│ │ text       │            │ y this      │ │ │ text       │          │     input input:prompt                         │
+│ │ widgets    │            │ small       │ │ │ widgets    │          │   status rows:status                           │
+│ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ popup find                                     │
+│ │ files      │            │ theme       │ │ │ files      │          │   find input:find                              │
+│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ popup help                                     │
+│ │ windows +  │            │ hand        │ │ │ windows +  │          │   help help                                    │
+│ │ placements │            │ parser;     │ │ │ placements │          │ popup approval                                 │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ layout editor • transcript                     │
+│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ [x] Visible                                    │
+│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Border                                single ▸ │
+│ │ block      │            │ header over │ │ │ block      │          │ Background role                   background ▸ │
+│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │ Node id: transcript                            │
+│ │ (blocks →  │            │             │ │ │ (blocks →  │          │ Title: transcript                              │
+│ │ styled     │            │             │ │ │ styled     │          │ Widget kind: transcript                        │
+│ │ wrapped    │            │             │ │ │ wrapped    │          │ Source: session                                │
+│ │ lines)     │            │             │ │ │ lines)     │          │ Menu file:                                     │
+│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ Size (Alt+arrows nudge): fill                  │
+│ │ (roles →   │            │ header      │ │ │ (roles →   │          │ [x] Focusable                                  │
+│ │ styles,    │            │             │ │ │ styles,    │          │ Tree                                         ▸ │
+│ │ JSON       │            │             │ │ │ JSON       │          │ This screen                                  ▸ │
+│ │ loader,    │            │             │ │ │ loader,    │          │ Layout file                                  ▸ │
+│ │ built-ins) │            │             │ │ │ built-ins) │          │ Undo                                    Ctrl-Z │
+│ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│ Redo                                    Ctrl-Y │
+│                                           │                         │                                                │
 │ Here is the function you asked for:       █ Here is the function you│                                                │
 │                                           █                         │                                                │
 │ ┌ cpp ──────────────────────────────────┐ █ ┌ cpp ──────────────────│                                                │

@@ -1,23 +1,23 @@
 ╭ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ layout editor • transcript › Border            │
-│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
-│ │ Extended_Pictographic, InCB)     │             │                  │ none                                           │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ • single                                       │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ rounded                                        │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ double                                         │
-│ │                                  │             │ block tree is the│ heavy                                          │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
-│ │ mouse mode)                      │             │                  │                                                │
-│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
-│ │                                  │             │ Event, table-test│                                                │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
-│ │ colour downgrade                 │             │ tested           │                                                │
-│ │ Wrap engine                      │ build       │ single header ove│                                                │
-│ │                                  │             │ header           │                                                │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
-│ │                                  │             │ Rect is a pure fu│                                                │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ (row) row                                      │
+│ │ grapheme property,               │             │ unicode_tables.hp│   (column) column                              │
+│ │ Extended_Pictographic, InCB)     │             │                  │     transcript transcript:session              │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│     input input:prompt                         │
+│ │ grapheme clusters, display width │             │ Unicode conforman│   status rows:status                           │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ popup find                                     │
+│ │                                  │             │ block tree is the│   find input:find                              │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ popup help                                     │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│   help help                                    │
+│ │ mouse mode)                      │             │                  │ popup approval                                 │
+│ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
+│ │                                  │             │ Event, table-test│ popup menu                                     │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • transcript › Border            │
+│ │ colour downgrade                 │             │ tested           │ ◂ Back                                         │
+│ │ Wrap engine                      │ build       │ single header ove│ none                                           │
+│ │                                  │             │ header           │ • single                                       │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ rounded                                        │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ double                                         │
+│ │                                  │             │ Rect is a pure fu│ heavy                                          │
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
 │ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
 │ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │

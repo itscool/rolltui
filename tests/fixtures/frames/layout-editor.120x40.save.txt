@@ -1,19 +1,19 @@
 ┌ chat ─────────────────────────────────────┬ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
-│ │ widget     │            │ header      │ │ │ widget     │          │ layout editor • transcript  /save              │
-│ │ (hierarchi │            │ each; the   │ │ │ (hierarchi │          │ Save layout file as (layouts/<name>.json): two │
-│ │ cal,       │            │ widget set  │ │ │ cal,       │          │                                                │
-│ │ filterable │            │ is          │ │ │ filterable │          │                                                │
-│ │ ) + list/  │            │ deliberatel │ │ │ ) + list/  │          │                                                │
-│ │ text       │            │ y this      │ │ │ text       │          │                                                │
-│ │ widgets    │            │ small       │ │ │ widgets    │          │                                                │
-│ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │                                                │
-│ │ files      │            │ theme       │ │ │ files      │          │                                                │
-│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │                                                │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │                                                │
-│ │ placements │            │ parser;     │ │ │ placements │          │                                                │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │                                                │
-│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │                                                │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │                                                │
+│ │ widget     │            │ header      │ │ │ widget     │          │ (row) row                                      │
+│ │ (hierarchi │            │ each; the   │ │ │ (hierarchi │          │   (column) column                              │
+│ │ cal,       │            │ widget set  │ │ │ cal,       │          │     transcript-row row                         │
+│ │ filterable │            │ is          │ │ │ filterable │          │       transcript transcript:session            │
+│ │ ) + list/  │            │ deliberatel │ │ │ ) + list/  │          │       transcript-2 transcript:session          │
+│ │ text       │            │ y this      │ │ │ text       │          │     input input:prompt                         │
+│ │ widgets    │            │ small       │ │ │ widgets    │          │   status rows:status                           │
+│ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ popup find                                     │
+│ │ files      │            │ theme       │ │ │ files      │          │   find input:find                              │
+│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ popup help                                     │
+│ │ windows +  │            │ hand        │ │ │ windows +  │          │   help help                                    │
+│ │ placements │            │ parser;     │ │ │ placements │          │ popup approval                                 │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ layout editor • transcript › Layout file  /sav │
+│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ ◂ Back                                         │
+│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Save layout file as (layouts/<name>.json): two │
 │ │ block      │            │ header over │ │ │ block      │          │                                                │
 │ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │                                                │
 │ │ (blocks →  │            │             │ │ │ (blocks →  │          │                                                │

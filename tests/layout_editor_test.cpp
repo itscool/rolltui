@@ -63,6 +63,24 @@ void act(LayoutEditor& ed, const std::string& filter) {
   type(ed, filter);
   handle(ed, key(ROLLTUI_KEY_ENTER));
 }
+// …and one inside a named scope. The editor's top level is the selected NODE; tree surgery,
+// the screen's own properties and the layout file are levels of their own, so reaching one of
+// those is a filter, an Enter and a filter.
+void act(LayoutEditor& ed, const std::string& scope, const std::string& filter) {
+  act(ed, scope);
+  type(ed, filter);
+  handle(ed, key(ROLLTUI_KEY_ENTER));
+}
+// A NODE THAT IS NOT THERE IS A NAMED ANSWER, NEVER A DEREF. This file has crashed twice on a
+// menu item being renamed out from under it, and a test that dies cannot say what it found —
+// so every lookup a check reads goes through one of these.
+const Node* node_or_null(const LayoutEditor& ed, std::string_view id) {
+  return LayoutEditor::find_node(ed.current().base.root, id);
+}
+bool node_visible(const LayoutEditor& ed, std::string_view id) {
+  const Node* n = node_or_null(ed, id);
+  return n && n->visible;
+}
 MenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m, id.data(), id.size()); }
 // A missing item is a NAMED answer, never a null deref: this file crashed on one.
 std::string value_of(const LayoutEditor& ed, const char* id) {
@@ -138,7 +156,7 @@ int main() {
   }
   // ---- split into a row ----
   {
-    act(ed, "split into a row");
+    act(ed, "tree", "split into a row");
     const Node* t = LayoutEditor::find_node(ed.current().base.root, "transcript");
     const Node* t2 = LayoutEditor::find_node(ed.current().base.root, "transcript-2");
     std::size_t idx = 0;
@@ -152,16 +170,17 @@ int main() {
   }
   // ---- swap, hide, delete with collapse ----
   {
-    act(ed, "swap with the next");
+    act(ed, "tree", "swap with the next");
     std::size_t idx = 9;
     LayoutEditor::parent_of(const_cast<Node&>(ed.current().base.root), "transcript", &idx);
     check(idx == 1 && ed.undo_depth() == 2, "swap with the next sibling moves it to index 1");
-    act(ed, "swap with the next");
+    act(ed, "tree", "swap with the next");
     check(ed.status_line().find("no sibling") != std::string::npos && ed.undo_depth() == 2, "swapping past the end is refused with a reason and commits nothing");
     ed.select("transcript-2");
     act(ed, "visible");
-    check(!LayoutEditor::find_node(ed.current().base.root, "transcript-2")->visible && ed.undo_depth() == 3, "the Visible toggle hides the node");
-    act(ed, "delete");
+    check(node_or_null(ed, "transcript-2") && !node_visible(ed, "transcript-2") && ed.undo_depth() == 3,
+          "the Visible toggle hides the node");
+    act(ed, "tree", "delete");
     const Node* t = LayoutEditor::find_node(ed.current().base.root, "transcript");
     std::size_t tidx = 9;
     const Node* parent = LayoutEditor::parent_of(const_cast<Node&>(ed.current().base.root), "transcript", &tidx);
@@ -230,7 +249,7 @@ int main() {
   }
   // ---- popups ----
   {
-    act(ed, "popups");
+    act(ed, "this screen", "popups");
     const std::size_t before = ed.current().popups.size();
     handle(ed, key(ROLLTUI_KEY_END));  // add a popup
     handle(ed, key(ROLLTUI_KEY_ENTER));
@@ -240,7 +259,7 @@ int main() {
           "adding a popup creates a centred modal one with a text slot");
     check(find(ed.menu(), "popup.note.x") != nullptr, "…and the menu grows a level for it");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
-    act(ed, "popups");
+    act(ed, "this screen", "popups");
     type(ed, "note");
     handle(ed, key(ROLLTUI_KEY_ENTER));  // the note level
     handle(ed, key(ROLLTUI_KEY_DOWN));
@@ -268,21 +287,26 @@ int main() {
     handle(ed, ctrl('y'));
     check(ed.undo_depth() == depth && !ed.current().popup("note", 4), "Ctrl-Y removes it again");
     ed.set_layouts({"default", "stacked", "two"});
-    act(ed, "load layout");
+    act(ed, "layout file", "load layout");
     handle(ed, key(ROLLTUI_KEY_DOWN));
     LayoutEditor::Outcome o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o == LayoutEditor::Outcome{O::LoadLayout, "stacked"}, "Load layout asks the host");
-    act(ed, "save layout");
+    act(ed, "layout file", "save layout");
     type(ed, "two");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o == LayoutEditor::Outcome{O::SaveAs, "two"}, "Save layout file as asks the host with the name");
+    // Reset is a Layout file operation, so reaching it is two filters — and this block reads
+    // the OUTCOME, which `act` does not return, so the keys are spelled out.
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     handle(ed, key(ROLLTUI_KEY_HOME));
+    type(ed, "layout file");
+    handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "reset to the loaded");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::ResetLoaded, "Reset to the loaded layout is an outcome the host confirms, never applied here");
-    handle(ed, key(ROLLTUI_KEY_ESCAPE));
+    handle(ed, key(ROLLTUI_KEY_ESCAPE));  // clears the filter
+    handle(ed, key(ROLLTUI_KEY_ESCAPE));  // leaves the Layout file level
     o = handle(ed, key(ROLLTUI_KEY_ESCAPE));
     check(o.kind == O::Closed, "Escape at the top asks the host to close");
   }
@@ -380,7 +404,7 @@ int main() {
   // ---- the actions level ----
   {
     const std::size_t before = ed.current().actions.size();
-    act(ed, "actions this screen");
+    act(ed, "this screen", "actions this screen");
     handle(ed, key(ROLLTUI_KEY_END));  // add an action
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "app.zoom");
@@ -408,7 +432,7 @@ int main() {
     check(o.kind == O::Changed && ed.status_line().find("already declared") != std::string::npos, "a duplicate is refused [" + ed.status_line() + "]");
     // The description, and the removal.
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
-    act(ed, "actions this screen");
+    act(ed, "this screen", "actions this screen");
     type(ed, "app.zoom");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     handle(ed, key(ROLLTUI_KEY_ENTER));  // "what it does"
@@ -431,17 +455,17 @@ int main() {
     ed.load(builtin_layout(rolltui_test::test_context(), "default"));
     check(value_of(ed, "min_width") == "60" && value_of(ed, "min_height") == "8" && value_of(ed, "focus") == "input",
           "the layout-wide fields show the loaded screen's thresholds and focus [" + value_of(ed, "focus") + "]");
-    act(ed, "minimum width");
+    act(ed, "this screen", "minimum width");
     for (int i = 0; i < 4; ++i) handle(ed, key(ROLLTUI_KEY_BACKSPACE));
     type(ed, "72");
     LayoutEditor::Outcome o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && ed.committed().min_width == 72, "the minimum width commits");
-    act(ed, "focused window");
+    act(ed, "this screen", "focused window");
     handle(ed, key(ROLLTUI_KEY_HOME));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && ed.committed().base.focus.empty() && ed.status_line().find("first focusable") != std::string::npos,
           "the focus choice's first option is \"(none)\", and it is a real answer, not an empty one [" + ed.status_line() + "]");
-    act(ed, "focused window");
+    act(ed, "this screen", "focused window");
     handle(ed, key(ROLLTUI_KEY_END));
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == O::Committed && ed.committed().base.focus == "input",
@@ -450,7 +474,7 @@ int main() {
     const Layout before = ed.current().clone();
     check(before.popups.size() == 5 && before.actions.size() == 6 && before.min_width == 72,
           "the screen it is created FROM has five popups, six actions and a threshold");
-    act(ed, "new layout");
+    act(ed, "layout file", "new layout");
     type(ed, "kiosk");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     const Layout& made = ed.current();
@@ -464,7 +488,7 @@ int main() {
     ed.redo();
     // The one inheritance, and it is the TARGET's.
     ed.set_default_min(40, 12);
-    act(ed, "new layout");
+    act(ed, "layout file", "new layout");
     type(ed, "kiosk2");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     check(ed.current().min_width == 40 && ed.current().min_height == 12 && ed.current().popups.empty(),
@@ -561,6 +585,62 @@ int main() {
     }
     rolltui_context_free(target);  // and with it the two kinds — no clearing to remember
   }
+  // ---- the tree, which is the thing this editor edits and could not show ------------------
+  // A list of fields says what the selected node IS without ever saying where it sits, so
+  // splitting a row and swapping siblings were moves made blind. The rows are in the SAME
+  // order Tab walks, so the row that is highlighted is the row that moves — one ordering, not
+  // a second one to drift out of step with the first.
+  {
+    RolltuiContext* tctx = rolltui_context_new();
+    rolltui_context_set_library_defaults(tctx);
+    LayoutEditor ed(tctx);
+    ed.load(builtin_layout(tctx, "default"));
+    RolltuiRows rows{};
+    ed.tree_rows(rows);
+    std::vector<std::string> labels, values;
+    for (std::size_t i = 0; i < rows.n; ++i) {
+      labels.emplace_back(view_of(rows.v[i].label));
+      values.emplace_back(view_of(rows.v[i].value));
+    }
+    check(rows.n > 3, "the tree has a row per node (" + std::to_string(rows.n) + ")");
+    check(!labels.empty() && labels[0] == "(row)" && values[0] == "row",
+          "a container names the way it divides, which is the whole of what it is [" +
+              (labels.empty() ? "" : labels[0] + " / " + values[0]) + "]");
+    // DEPTH IS THE INDENT, so the shape is readable without a second column for it.
+    bool indented = false;
+    for (const std::string& l : labels)
+      if (l.rfind("    ", 0) == 0) indented = true;
+    check(indented, "a child is indented under its parent");
+    bool named = false;
+    for (std::size_t i = 0; i < labels.size(); ++i)
+      if (labels[i].find("transcript") != std::string::npos && values[i] == "transcript:session") named = true;
+    check(named, "a window says what it shows");
+
+    // THE SAME ORDER TAB WALKS. The selected row is the row that moves, and if these two
+    // walks ever disagreed the highlight would point at a node the operations do not touch.
+    const std::vector<std::string> ids = ed.all_ids();
+    check(ed.tree_selected() < rows.n, "the selection is a row of the tree (" + std::to_string(ed.tree_selected()) + ")");
+    const std::string first_sel = ed.selected();
+    check(labels[ed.tree_selected()].find(first_sel) != std::string::npos,
+          "…and it is the row for the selected node [" + labels[ed.tree_selected()] + " vs " + first_sel + "]");
+    const std::size_t before = ed.tree_selected();
+    handle(ed, key(ROLLTUI_KEY_TAB));
+    ed.tree_rows(rows);
+    check(ed.tree_selected() != before && ed.selected() != first_sel,
+          "Tab moves the highlight, because it is the same walk");
+    check(view_of(rows.v[ed.tree_selected()].label).find(ed.selected()) != std::string::npos,
+          "…and it lands on the row for the node Tab selected");
+
+    // A POPUP'S ROOT IS A NODE THE EDITOR CAN SELECT, so it is a row — under a heading,
+    // because a popup is not part of the base tree and a flat list would say it was.
+    bool heading = false;
+    for (const std::string& l : labels)
+      if (l == "popup") heading = true;
+    check(heading, "each popup is announced, so its root does not read as part of the base tree");
+    rolltui_rows_release(&rows);
+    rolltui_context_free(tctx);
+  }
+
   rolltui_context_free(ctx);
   return report("rolltui layout_editor_test");
 }

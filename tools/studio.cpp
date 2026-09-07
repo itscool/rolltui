@@ -614,6 +614,9 @@ struct App {
   // "preset:" line, the rows' layout cell and the two store labels, so a warm frame allocates
   // nothing for them.
   std::string status_line, editor_line, layout_row, editor_status;
+  // CALLER-FILLED, one per run: the layout editor's tree view, refilled every frame the panel
+  // is drawn so the rows keep their buffers.
+  RolltuiRows tree_rows_{};
   RolltuiStr theme_label_str, keys_label_str;
   RolltuiStyle theme_styles[ROLLTUI_ROLE_COUNT]{};     // what this frame draws with (resolved, or the editor's preview)
   RolltuiEffectMap* effects_map = nullptr;             // OWNED: the resolved theme's effects
@@ -634,6 +637,7 @@ struct App {
   KeysEditor keditor{ctx};
   MenuEditor meditor{ctx};  // Phase 27 m2: the fourth file type
   bool editor_open = false;
+  bool editor_left = false;  // which side the layout editor's panel is on
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
   std::string confirm_text;
   std::function<void()> confirm_action;
@@ -699,6 +703,7 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_rows_release(&tree_rows_);
     rolltui_layout_release(&layout);
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_diff_scratch_free(diff_scratch);
@@ -983,11 +988,21 @@ struct App {
     return true;
   }
   // ---- the theme editor (milestone 14) ----
-  static RolltuiLayer editor_popup(const char* title) {
+  // WIDE ENOUGH FOR WHAT THE EDITORS SAY. Narrowing this was tried and reverted: the keys
+  // editor's status names the action a chord was taken FROM, and at 42 columns that sentence
+  // is cut off — a panel that saves eight columns by hiding the reason for an edit is a bad
+  // trade. Which side it sits on is what keeps the design visible, not how wide it is.
+  static constexpr int kEditorPanelW = 50;
+  // WHICH SIDE, and it is a question because the panel floats over the design. A node under
+  // the panel is a node you are editing blind, which is the one thing a design tool may not
+  // do — so the panel moves rather than the selection being lost behind it.
+  static RolltuiLayer editor_popup(const char* title, bool left = false) {
     RolltuiLayer l;
     l.id = "editor";
-    l.placement = {RolltuiDim::rel(1), RolltuiDim::abs(0), RolltuiDim::abs(50), RolltuiDim::rel(1),
-                   rolltui::Anchor::TopRight, true, RolltuiDim::abs(24), RolltuiDim::abs(6), {}, {}};
+    l.placement = {left ? RolltuiDim::abs(0) : RolltuiDim::rel(1), RolltuiDim::abs(0),
+                   RolltuiDim::abs(kEditorPanelW), RolltuiDim::rel(1),
+                   left ? rolltui::Anchor::TopLeft : rolltui::Anchor::TopRight,
+                   true, RolltuiDim::abs(24), RolltuiDim::abs(6), {}, {}};
     l.modal = false;
     RolltuiLayoutNode n = RolltuiLayoutNode::window_id("editor", "editor");
     n.border = rolltui::Border::Single;
@@ -1254,8 +1269,39 @@ struct App {
     leditor.set_menus(menu_names());
     editor_open = true;
     editor_mode = EditorMode::Layout;
-    { RolltuiLayer popup = editor_popup("layout editor"); rolltui_window_stack_push(stack, &popup); }
+    { RolltuiLayer popup = editor_popup("layout editor", editor_left); rolltui_window_stack_push(stack, &popup); }
+    reposition_editor();
     sync_look();
+  }
+
+  // The panel's rect for a given side, in the same coordinates the base tree resolves into.
+  RolltuiRect editor_rect(bool left) const {
+    const RolltuiRect a = layout_area();
+    const int pw = std::min(kEditorPanelW, a.w);
+    return {left ? a.x : a.x + a.w - pw, a.y, pw, a.h};
+  }
+  // MOVE THE PANEL, NEVER THE SELECTION. Called whenever the selected node changes: if the
+  // node sits under the panel and the other side is clear, the panel goes there. A node too
+  // wide to escape either side stays where it is — flipping forever would be worse than
+  // being covered, and the tree view above still says where the selection is.
+  void reposition_editor() {
+    if (editor_mode != EditorMode::Layout || !rolltui_window_stack_has_popup(stack, "editor", 6)) return;
+    std::vector<RolltuiResolvedNode> nodes;
+    rolltui_resolve_tree(&rolltui_window_stack_base(stack)->root, layout_area(), layout_area(), 0, collect_resolved,
+                         &nodes);
+    RolltuiRect sel{};
+    bool found = false;
+    for (const RolltuiResolvedNode& rn : nodes)
+      if (view_of(rn.node->id) == leditor.selected()) { sel = rn.outer; found = true; break; }
+    if (!found) return;
+    if (!sel.intersect(editor_rect(editor_left)).empty()) {
+      if (sel.intersect(editor_rect(!editor_left)).empty()) {
+        editor_left = !editor_left;
+        close_popup("editor");
+        RolltuiLayer popup = editor_popup("layout editor", editor_left);
+        rolltui_window_stack_push(stack, &popup);
+      }
+    }
   }
   // Every menu name a `menu:` window could resolve right now — the union of the preset
   // directory's menus/*.json, the host's own embedded ones, and the library's shipped ones,
@@ -1301,6 +1347,7 @@ struct App {
     return {};
   }
   void layout_outcome(const LayoutEditor::Outcome& o) {
+    reposition_editor();
     using K = LayoutEditor::Outcome::Kind;
     switch (o.kind) {
       case K::None: case K::Changed: break;
@@ -1498,17 +1545,46 @@ struct App {
   void draw_layout_editor(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
     RolltuiRect r = content_rect(rn);
     if (r.w <= 0 || r.h <= 0) return;
-    const int box = std::min(4, r.h);
+    const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
+    // THE TREE FIRST, because a layout IS a tree and this editor was the one place you could
+    // not see it. A list of fields says what the selected node is without ever saying where it
+    // sits, so splitting a row and swapping siblings were moves made blind. It takes at most a
+    // third of the panel and shrinks with it — the fields below are what you came to change.
+    leditor.tree_rows(tree_rows_);
+    const std::size_t sel = leditor.tree_selected();
+    int y = r.y;
+    const int tree_h = std::min(static_cast<int>(tree_rows_.n), std::max(r.h / 3, 1));
+    // Scrolled so the selected row is always on screen: a tree you have to guess the position
+    // of is the thing this replaced.
+    std::size_t first = 0;
+    if (sel < tree_rows_.n && static_cast<int>(sel) >= tree_h) first = sel - static_cast<std::size_t>(tree_h) + 1;
+    for (int i = 0; i < tree_h && first + static_cast<std::size_t>(i) < tree_rows_.n; ++i, ++y) {
+      const std::size_t k = first + static_cast<std::size_t>(i);
+      const RolltuiRow& row = tree_rows_.v[k];
+      const bool is_sel = k == sel;
+      RolltuiStyle nm = is_sel ? style(ROLLTUI_ROLE_MENU_SELECTED) : label;
+      RolltuiStyle vl = is_sel ? nm : value;
+      if (is_sel) rolltui_frame_fill(f, draw_scratch, RolltuiRect{r.x, y, r.w, 1}, nm, nullptr, 0);
+      RolltuiRows one{};
+      rolltui_rows_add(&one, row.label.p ? row.label.p : "", row.label.n, row.value.p ? row.value.p : "", row.value.n);
+      rolltui_frame_put_fields(f, draw_scratch, r.x, y, &one, nm, vl, r.w, ambiguous ? 1 : 0);
+      rolltui_rows_release(&one);
+    }
+    const int box = std::min(4, std::max(r.y + r.h - y, 0));
     RolltuiRect m = r;
-    m.h = r.h - box;
+    m.y = y;
+    m.h = r.y + r.h - y - box;
     RolltuiMenuOptions mo{};
     mo.ambiguous_wide = ambiguous ? 1 : 0;
     rolltui_menu_set_options_struct(leditor.menu(), &mo);
     rolltui_menu_layout(leditor.menu(), m);
     if (m.h > 0) draw_raw_menu(leditor.menu(), f, rn.focused != 0);
-    int y = r.y + m.h;
-    const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
-    if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h) put_text(f, r.x, y++, line, label, r.w);
+    y = m.y + std::max(m.h, 0);
+    // The selected node IN WORDS, which the tree above does not repeat: its size, its border,
+    // whether it is hidden, and — the one thing nothing else says — whether this binary can
+    // preview its content at all.
+    if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h)
+      put_text(f, r.x, y++, line, label, r.w);
     if (y < r.y + r.h) put_text(f, r.x, y++, "Tab next node \xC2\xB7 click selects \xC2\xB7 drag an edge resizes \xC2\xB7 Alt+arrows nudge", value, r.w);
     if (y < r.y + r.h) { leditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
