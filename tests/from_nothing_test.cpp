@@ -1,5 +1,5 @@
 //
-// from_nothing_test.cpp — BUILD AN APP FROM NOTHING (plan/phase-27.md m3), the third and last
+// from_nothing_test.cpp — BUILD AN APP FROM NOTHING, the third and last
 // of this family, and the one that finally says the whole sentence.
 //
 // The user, 2026-09-07: *"studio shoukd let me build an app from nothing minus the custom

@@ -38,7 +38,7 @@ static int imax(int a, int b) { return a > b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static size_t zmin(size_t a, size_t b) { return a < b ? a : b; }
 
-/* ---- small text helpers ------------------------------------------------------------------- */
+/* ---- small text helpers ------------------------------------------------------------------ */
 
 static void str_add(RolltuiStr* s, const char* z) { rolltui_str_append(s, z, strlen(z)); }
 
@@ -130,7 +130,7 @@ static void check_begin(RolltuiInputCheck* c) {
   rolltui_str_clear(&c->canonical);
 }
 
-/* ---- the hint --------------------------------------------------------------------------------- */
+/* ---- the hint ---------------------------------------------------------------------------- */
 
 static void hint_bound(const RolltuiInputSpec* spec, double v, int is_min, RolltuiStr* out) {
   char buf[64];
@@ -198,7 +198,7 @@ int rolltui_input_type_from_name(const char* name, size_t len, unsigned char* ou
   return 0;
 }
 
-/* ---- the seven checks --------------------------------------------------------------------------- */
+/* ---- the seven checks -------------------------------------------------------------------- */
 
 /* Every check builds its reason out of the hint, so the hint is computed once here and lent
  * to whichever branch needs it. */
@@ -598,7 +598,7 @@ void rolltui_check_input(const RolltuiInputSpec* spec, const char* text, size_t 
   }
 }
 
-/* ---- the widget ----------------------------------------------------------------------------------- */
+/* ---- the widget -------------------------------------------------------------------------- */
 
 void rolltui_menu_event_release(RolltuiMenuEvent* e) {
   rolltui_str_free(&e->id);
@@ -638,7 +638,7 @@ struct RolltuiMenu {
   RolltuiUnicodeScratch* u; /* WORKING MEMORY, one role: the checks' cluster walk */
 };
 
-/* ---- paths and levels -------------------------------------------------------------------------------- */
+/* ---- paths and levels -------------------------------------------------------------------- */
 
 static void path_push(RolltuiMenu* m, size_t i) {
   m->path = (size_t*)rolltui_grow(m->path, &m->path_cap, m->path_n + 1, sizeof *m->path);
@@ -667,7 +667,7 @@ size_t rolltui_menu_path(const RolltuiMenu* m, const size_t** out) {
   return m->path_n;
 }
 
-/* ---- the flat list ------------------------------------------------------------------------------------ */
+/* ---- the flat list ----------------------------------------------------------------------- */
 
 /* EMPTIES, KEEPING EVERY BUFFER — and the first cut of this FREED them while leaving the
  * pointers in place, so the next `flat_add` reused a slot holding a dangling `path` and
@@ -776,7 +776,7 @@ const char* rolltui_menu_flat_label(const RolltuiMenu* m, size_t i, size_t* len)
   return rolltui_str_get(&m->flat[i].label, len);
 }
 
-/* ---- the visible list ------------------------------------------------------------------------------- */
+/* ---- the visible list -------------------------------------------------------------------- */
 
 static int contains_ci(const char* hay, size_t hn, const char* needle, size_t nn) {
   size_t i, j;
@@ -896,18 +896,18 @@ void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out) {
   }
 }
 
-/* ---- lifetime ------------------------------------------------------------------------------------------ */
+/* ---- lifetime ---------------------------------------------------------------------------- */
 
 RolltuiMenu* rolltui_menu_new(void) {
   RolltuiMenu* m = (RolltuiMenu*)rolltui_mem_alloc(sizeof *m);
   memset(m, 0, sizeof *m);
   rolltui_menu_item_init(&m->root);
   m->root.kind = ROLLTUI_MENU_SUBMENU;
-  /* OWNED (Phase 17). This used to be a borrowed parameter, and BOTH callers in the tree
+  /* OWNED. This used to be a borrowed parameter, and BOTH callers in the tree
    * created an input for it and passed it — the two-consumers-one-wrapper tell. A menu with no
    * editor cannot edit a typed field, so there was never a menu that wanted a different one. */
   m->edit = rolltui_input_new();
-  /* …AND SHAPED HERE, for the same reason the editor is owned here (Phase 17 m1c). A menu's
+  /* …AND SHAPED HERE, for the same reason the editor is owned here. A menu's
    * typed field is a SINGLE line with no prompt; both remaining callers — `rolltui::Menu`'s
    * constructor and `menu_test.cpp`'s holder — set exactly these two the moment they built
    * one, which is rule 5's tell again. A caller wanting a different editor shape still calls
@@ -1034,7 +1034,7 @@ void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* 
   m->vctx = ctx;
 }
 
-/* ---- navigation ---------------------------------------------------------------------------------------- */
+/* ---- navigation -------------------------------------------------------------------------- */
 
 static void descend(RolltuiMenu* m, size_t child) {
   const RolltuiMenuItem* lv;
@@ -1066,7 +1066,7 @@ static int ascend(RolltuiMenu* m) {
   return 1;
 }
 
-/* ---- editing a typed field ------------------------------------------------------------------------------ */
+/* ---- editing a typed field --------------------------------------------------------------- */
 
 static void refresh_reason(RolltuiMenu* m) {
   RolltuiMenuItem* it = item_at(m, m->sel);
@@ -1230,7 +1230,7 @@ static void handle_edit(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBind
   }
 }
 
-/* ---- acting -------------------------------------------------------------------------------------------- */
+/* ---- acting ------------------------------------------------------------------------------ */
 
 static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
   RolltuiMenuItem* it = item_at(m, vis_index);
@@ -1282,7 +1282,7 @@ static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
   }
 }
 
-/* ---- keys and the mouse --------------------------------------------------------------------------------- */
+/* ---- keys and the mouse ------------------------------------------------------------------ */
 
 static void move_to(RolltuiMenu* m, size_t i, size_t n) {
   if (n == 0) {
@@ -1447,7 +1447,7 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
   }
 }
 
-/* ---- layout and drawing ----------------------------------------------------------------------------------- */
+/* ---- layout and drawing ------------------------------------------------------------------ */
 
 void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o) { m->opt = *o; }
 const RolltuiMenuOptions* rolltui_menu_options(const RolltuiMenu* m) { return &m->opt; }
@@ -1639,7 +1639,7 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
   rolltui_str_free(&line);
 }
 
-/* ---- the file format (Phase 17 m1) --------------------------------------------------------- */
+/* ---- the file format --------------------------------------------------------------------- */
 
 /* ---- the report: mirrors `MenuLoadReport` field-for-field, the same shape
  * `rolltui_bindings.c`'s and `rolltui_layout.c`'s reports use. -------------------------------- */
@@ -2042,7 +2042,7 @@ void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out) {
 RolltuiInput* rolltui_menu_editor(const RolltuiMenu* m) { return m->edit; }
 
 /* ============================================================================================
- * THE THREE TREE WALKS (Phase 17 m3). See the header for why they are here rather than in the
+ * THE THREE TREE WALKS. See the header for why they are here rather than in the
  * shim: their stated reason for staying — "the C would gain a second place to know what
  * `Bindings::chords_text` means" — expired when `chords_text` itself moved to C.
  * ============================================================================================ */

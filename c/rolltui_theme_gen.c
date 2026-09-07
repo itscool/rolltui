@@ -1,4 +1,4 @@
-/* rolltui/c/rolltui_theme_gen.c — the PRNG, the ruleset name table, and (Phase 17 m5)
+/* rolltui/c/rolltui_theme_gen.c — the PRNG, the ruleset name table, and
  * generate() itself. See rolltui_theme_gen.h for the boundary's rules and the full
  * reasoning for why `generate()` moved here. */
 #include "rolltui/c/rolltui_theme_gen.h"
@@ -43,7 +43,7 @@ int rolltui_ruleset_from_name(const char* name, size_t len, unsigned char* out) 
 }
 
 /* =========================================================================================
- * generate() (Phase 17 m5) — ported verbatim from `rolltui::generate` (`rolltui/ThemeGen.cpp`,
+ * generate() — ported verbatim from `rolltui::generate` (`rolltui/ThemeGen.cpp`,
  * now a thin C++ shim over this).
  *
  * RNG-SEQUENCE FIDELITY IS THE WHOLE POINT of this port (theme_gen_test.cpp's determinism

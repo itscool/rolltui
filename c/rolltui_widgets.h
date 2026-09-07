@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_widgets.h — THE WIDGET VTABLE AND THE WINDOW HOST (Phase 15 m5).
+ * rolltui/c/rolltui_widgets.h — THE WIDGET VTABLE AND THE WINDOW HOST.
  *
  * The rules — one widget per CONTENT, a window is never blank, focus and routing are the
  * stack's, a widget may size its window, the scroll's two optional halves — are stated in
@@ -58,7 +58,7 @@
  *
  * ============================================================================================
  *
- * ---- WHAT A HOST BINDS, AND WHY THAT CROSSES NOW TOO (Phase 15 m6) -------------------------
+ * ---- WHAT A HOST BINDS, AND WHY THAT CROSSES NOW TOO ----------------------------------------
  *
  * Through m5 this said a document, a row source, a submit target, a note and a menu file
  * stay in `Widgets.cpp` with the kinds that read them, on the argument that moving a
@@ -169,7 +169,7 @@ const RolltuiWidgetEnv* rolltui_windows_env(const RolltuiWindows* w);
 const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -178,7 +178,7 @@ RolltuiWidget* rolltui_windows_at(const RolltuiWindows* w, const char* window, s
 RolltuiInput* rolltui_windows_input_at(const RolltuiWindows* w, const char* window, size_t len);
 RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const char* window, size_t len);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

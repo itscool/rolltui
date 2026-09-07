@@ -23,7 +23,7 @@ static double clampd(double v, double lo, double hi) { return v < lo ? lo : (v >
 static double maxd(double a, double b) { return a > b ? a : b; }
 static double mind(double a, double b) { return a < b ? a : b; }
 
-/* ---- sRGB <-> linear (IEC 61966-2-1) ---------------------------------------------------- */
+/* ---- sRGB <-> linear (IEC 61966-2-1) ----------------------------------------------------- */
 
 double rolltui_srgb_channel_to_linear(double c) {
   c = clampd(c, 0.0, 1.0);
@@ -56,7 +56,7 @@ void rolltui_from_linear(RolltuiLin l, RolltuiStyleColor* out) {
   out->b = encode_channel(l.b);
 }
 
-/* ---- linear <-> OKLab <-> OKLCH (Björn Ottosson, 2020) ---------------------------------- */
+/* ---- linear <-> OKLab <-> OKLCH (Björn Ottosson, 2020) ----------------------------------- */
 
 void rolltui_linear_to_oklab(RolltuiLin c, RolltuiOkLab* out) {
   const double l = 0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b;
@@ -151,7 +151,7 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out) {
 }
 
 /* =========================================================================================
- * THE REPORT AND THE AUTO-FIX (Phase 17 m5) — ported verbatim from
+ * THE REPORT AND THE AUTO-FIX — ported verbatim from
  * `rolltui::analyse`/`report_text`/`check_claims`/`fix_contrast`/`fix_confusable`/
  * `propose_fixes`/`apply_fix` (`rolltui/ThemeAnalysis.cpp`, deleted at Phase 17 m2c — this
  * file is the only implementation now).
@@ -178,7 +178,7 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
 #undef ROLLTUI_R_ALIAS_
 
 /* =========================================================================================
- * THE MUST-DIFFER PAIRS — A LIBRARY RULE, CLOSED ON PURPOSE (Phase 18 m1, 2026-09-05).
+ * THE MUST-DIFFER PAIRS — A LIBRARY RULE, CLOSED ON PURPOSE.
  *
  * THE DECISION: which role pairs must be visually distinct is the LIBRARY's rule, not a
  * theme's, and this table is its one home. A theme file that states a `must_differ` key is
@@ -352,7 +352,7 @@ static void append_fmt(RolltuiStr* out, double v, int digits) {
   rolltui_str_append(out, buf, (size_t)n);
 }
 
-/* ---- badges -------------------------------------------------------------------------- */
+/* ---- badges ------------------------------------------------------------------------------ */
 
 void rolltui_str_array_release(RolltuiStrArray* a) {
   size_t i;
@@ -399,7 +399,7 @@ int rolltui_has_badge(const RolltuiBadges* b, const char* name, size_t len) {
   return found;
 }
 
-/* ---- analyse() ------------------------------------------------------------------------- */
+/* ---- analyse() --------------------------------------------------------------------------- */
 
 int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, RolltuiRoleCheck* out_roles,
                           RolltuiPairCheck* out_pairs, RolltuiBadges* out_badges) {
@@ -513,7 +513,7 @@ int rolltui_theme_analyse(const RolltuiStyle* styles, size_t role_count, Rolltui
   return 1;
 }
 
-/* ---- report_text() ----------------------------------------------------------------------
+/* ---- report_text() --------------------------------------------------------------------------
  * Composes the WHOLE report in C — see this header's top comment for why (rolltui_layout.c's
  * precedent, not rolltui_keys.h's). Mirrors `rolltui::report_text` line for line. */
 
@@ -643,7 +643,7 @@ void rolltui_check_claims(const RolltuiJsonValue* meta, const RolltuiBadges* bad
   }
 }
 
-/* ---- auto-fix ------------------------------------------------------------------------------ */
+/* ---- auto-fix ---------------------------------------------------------------------------- */
 
 void rolltui_fix_release(RolltuiFix* f) {
   if (!f) return;

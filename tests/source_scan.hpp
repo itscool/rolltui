@@ -1,5 +1,5 @@
 // rolltui/tests/source_scan.hpp — reading the library's OWN SOURCE, for the two meta-tests that
-// do it (Phase 25 m1).
+// do it.
 //
 // `public_header_test` scans the header to hold it to `api_classes.inc`; `ownership_test` scans
 // the `.c` files to hold their process-wide state to `globals.inc`. Both need the same thing —
@@ -47,7 +47,7 @@ inline std::string depth0(const std::string& t) {
 }
 
 // ---- section 6's instruments: a literal-aware comment stripper, a recursive lister, and the
-// identifier scan the class table is checked against (Phase 19 m1) ---------------------------
+// identifier scan the class table is checked against ---------------------------
 // Comments are stripped RESPECTING string and char literals — a "/*" inside a JSON string or a
 // "//" inside a URL would otherwise eat real code, which is how the first census of this
 // surface under-counted the library's own reach by a third.
@@ -84,7 +84,7 @@ std::string strip_all_comments(const std::string& src) {
 // a function by naming it in a string.
 // ONE PASS, because comments and literals cannot be stripped in either order — and the census
 // this feeds is what every class in `api_classes.inc` is held to, so an under-count here is a
-// wrong CLASS, silently. Measured 2026-09-06 (Phase 20 m6), three ways to get it wrong:
+// wrong CLASS, silently. Measured 2026-09-06, three ways to get it wrong:
 //   - literals first: an apostrophe in prose ("don't") opens a bogus char literal.
 //   - comments first, which is what this function did: **roll's own commands are the string
 //     literals "//status", "//set" and "//theme"**, so the line-comment rule truncated them and

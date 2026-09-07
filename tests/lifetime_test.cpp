@@ -147,7 +147,7 @@ const Theme* builtin_theme(std::string_view name) {
   return nullptr;
 }
 
-// ---- THIS SUITE'S SESSION (Phase 25 m5) ---------------------------------------------------
+// ---- THIS SUITE'S SESSION ---------------------------------------------------
 // The transitional default context is GONE — its removal condition was "when the last
 // no-context entry point takes one", and this file was the last caller. So the suite owns a
 // session and swaps it, which is what makes the assertion below a stronger claim than it was:
@@ -279,7 +279,7 @@ const char* diff_line_at(const void* block, std::size_t i, std::size_t* len) {
 }
 
 void use_the_ported_modules(const char* when) {
-  // THE BUILT-IN LAYOUT CACHE, filled HERE and not only after shutdown (Phase 17 m3). It was
+  // THE BUILT-IN LAYOUT CACHE, filled HERE and not only after shutdown. It was
   // touched exactly once in this file — at line ~437, to prove the caches REBUILD — which is
   // after the `live_bytes == 0` assertion, so the cache was never live while anything was
   // measuring. Deleting its releaser left this suite 29/29 green: a leak of it would have
@@ -393,7 +393,7 @@ int main() {
   check(true, "shutdown() on a library that has done nothing does not crash");
 
   // ---- the real thing ----------------------------------------------------------------
-  // TWO RELEASES, and they release different things (Phase 25 m5): `rolltui_context_free`
+  // TWO RELEASES, and they release different things: `rolltui_context_free`
   // hands back what THIS SESSION held — its registries and caches — and `rolltui_shutdown`
   // hands back what the PROCESS holds, which after this phase is a thread's scratch buffers
   // and whatever a HOST put on the hook list. Zero requires both, and that is the honest

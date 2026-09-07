@@ -30,7 +30,7 @@
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-/* ---- parsing and printing --------------------------------------------------------------- */
+/* ---- parsing and printing ---------------------------------------------------------------- */
 
 static int hex_digit(char c) {
   if (c >= '0' && c <= '9') return c - '0';
@@ -111,7 +111,7 @@ size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap) {
   }
 }
 
-/* ---- the palette, and the nearest-colour search -------------------------------------------- */
+/* ---- the palette, and the nearest-colour search ------------------------------------------ */
 
 typedef struct {
   int r, g, b;
@@ -215,7 +215,7 @@ void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth) {
   }
 }
 
-/* ---- the SGR sequence ---------------------------------------------------------------------- */
+/* ---- the SGR sequence -------------------------------------------------------------------- */
 
 static size_t emit_color(char* out, RolltuiStyleColor c, int bg, unsigned char depth) {
   size_t n = 0;
@@ -268,7 +268,7 @@ size_t rolltui_sgr(const RolltuiStyle* style, unsigned char depth, char* out, si
   return n;
 }
 
-/* ---- the terminal's background ---------------------------------------------------------------- */
+/* ---- the terminal's background ----------------------------------------------------------- */
 
 /* The index of `needle` in `hay`, or -1. Neither is NUL-terminated, so there is no `strstr`
  * to reach for and the search is the bytes it is. */
@@ -342,7 +342,7 @@ unsigned char rolltui_mode_for_background(RolltuiStyleColor bg) {
   return y > 0.5 ? ROLLTUI_MODE_LIGHT : ROLLTUI_MODE_DARK;
 }
 
-/* ---- role and effect-state ordinals, as file-local ALIASES of the library's own ------------
+/* ---- role and effect-state ordinals, as file-local ALIASES of the library's own -------------
  * The loader and dumper below never use these: they resolve every role/state through the
  * caller's `RolltuiThemeVocab` table instead, exactly as this header's own comment states.
  * These exist for ONE reason — so the three built-in themes below read as
@@ -363,7 +363,7 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
 enum { ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_ST_ALIAS_) };
 #undef ROLLTUI_ST_ALIAS_
 
-/* ---- small helpers shared by the built-ins and the loader --------------------------------- */
+/* ---- small helpers shared by the built-ins and the loader -------------------------------- */
 
 /* A literal C string plus its length, computed once here rather than hand-counted at every
  * call site — this file's own version of `rolltui_json.c`'s `JLIT` / `rolltui_menu.c`'s
@@ -403,7 +403,7 @@ static void bad(RolltuiThemeReport* r, const char* s) { rolltui_theme_report_add
 static void unk(RolltuiThemeReport* r, const char* s) { rolltui_theme_report_add_unknown_key(r, s, strlen(s)); }
 static void missing(RolltuiThemeReport* r, const char* s) { rolltui_theme_report_add_missing_role(r, s, strlen(s)); }
 
-/* ---- the built-in themes -------------------------------------------------------------------
+/* ---- the built-in themes --------------------------------------------------------------------
  * `rolltui::Theme.cpp`'s own words, kept: this library's TASTE, not its algorithm. Every
  * comment below is that file's, reworded only where the C's shape forced it (`set(Role::x,
  * S(...))` becoming `styles[R_x] = mk(...)`); no reasoning was dropped. */
@@ -437,7 +437,7 @@ static RolltuiStyle mk(RolltuiStyleColor fg, RolltuiStyleColor bg, int bold, int
   return s;
 }
 
-/* ---- motion (Phase 12 m6), moved from Theme.cpp's `fx`/`frames` helpers -------------------
+/* ---- motion, moved from Theme.cpp's `fx`/`frames` helpers -----------------------------------
  * The theme's half of the effects contract: a widget says `waiting`, this says what waiting
  * LOOKS like. Every value below is expressible in a theme file (Theme.hpp's "effects"
  * object) and every one of these two maps is written into the shipped preset files that
@@ -571,7 +571,7 @@ static void fill_default_dark(RolltuiStyle* styles, size_t role_count, RolltuiEf
 
 static void fill_default_light(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap* effects) {
   (void)role_count;
-  // Same story as the dark theme (2026-09-02): the light accents were confusable in
+  // Same story as the dark theme: the light accents were confusable in
   // five pairs under deuteranopia and the muted grey missed 4.5:1 on the panel; these
   // are the grid search's pick at the same hues (a "yellow" readable on white is an
   // olive), min dE 0.12 under every simulation.
@@ -764,7 +764,7 @@ void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, si
   rolltui_str_set(&r->bad_values[r->bad_values_n++], s, len);
 }
 
-/* ---- the JSON loader ----------------------------------------------------------------------
+/* ---- the JSON loader ------------------------------------------------------------------------
  * A direct port of `rolltui::(anonymous namespace)::resolve_color`/`read_role`/`EffectDraft`/
  * `read_effect`/`commit`/`read_effects` and `rolltui::load_theme`, working on
  * `RolltuiJsonValue*` directly (`rolltui/c/rolltui_json.h` — the parser this loader is BUILT
@@ -901,7 +901,7 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
   }
 }
 
-/* ---- "effects": state -> what it looks like while it lasts (Phase 12 m6) -----------------
+/* ---- "effects": state -> what it looks like while it lasts ----------------------------------
  * The KIND is deliberately not judged here either: rung 2 belongs to whoever registered it,
  * and a theme file is read long before a host has registered anything (Effects.hpp). A
  * BORROW of the JSON tree's own bytes (`EffectFrameRef`), not a copy: the tree stays alive
@@ -1215,7 +1215,7 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
   return map;
 }
 
-/* ---- the dumper ----------------------------------------------------------------------------
+/* ---- the dumper -----------------------------------------------------------------------------
  * A direct port of `style_to_json`/`effect_to_json`/`effects_to_json` and the "roles"/
  * "effects" halves of `theme_to_json_value`/`theme_pair_to_json_value`, building a
  * `RolltuiJsonValue*` tree directly instead of a `json::Value` one. */
@@ -1351,7 +1351,7 @@ RolltuiJsonValue* rolltui_theme_dump(const RolltuiStyle* dark_styles, const Roll
   return root;
 }
 
-/* ---- the style table: one role at a time (Phase 17 m2) ------------------------------------
+/* ---- the style table: one role at a time ----------------------------------------------------
  * See this file's header for why these take `(styles, role_count, role)` rather than a
  * `Theme` handle: the table is the caller's own fixed-size storage, never allocated here. */
 
@@ -1360,7 +1360,7 @@ const RolltuiStyle* rolltui_theme_style(const RolltuiStyle* styles, size_t role_
   return &styles[role];
 }
 
-/* ---- the mode and depth vocabulary (Phase 17 m2a) ------------------------------------------
+/* ---- the mode and depth vocabulary ----------------------------------------------------------
  * See rolltui_theme.h for why these names moved here after that header spent a phase saying
  * they would not. The tables expand the X-macros; there is no second list to keep in step. */
 
@@ -1463,9 +1463,9 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
   return ROLLTUI_DEPTH_ANSI16;
 }
 
-/* ---- the library's own vocabulary table (Phase 17 m2a) -------------------------------------
+/* ---- the library's own vocabulary table -----------------------------------------------------
  * See rolltui_theme.h for why this can exist now and could not before. */
-/* A COMPILE-TIME table, not a memoized one (Phase 25 m1). It was four function-local statics
+/* A COMPILE-TIME table, not a memoized one. It was four function-local statics
  * filled on first call behind a `built` flag — correct, idempotent and allocation-free, but
  * still four pieces of mutable process-wide state that the globals boundary would have had to
  * carry a justification for. Both name arrays come from the SAME X-macros `rolltui_style.c`

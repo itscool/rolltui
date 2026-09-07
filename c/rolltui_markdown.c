@@ -136,7 +136,7 @@ static size_t doc_intern(RolltuiMdDoc* d, const char* s, size_t n) {
   return off;
 }
 
-/* ---- entities --------------------------------------------------------------------------- */
+/* ---- entities ---------------------------------------------------------------------------- */
 
 typedef struct Named {
   const char* name;
@@ -204,7 +204,7 @@ unsigned rolltui_md_parser_flags(void) {
          MD_FLAG_PERMISSIVEWWWAUTOLINKS;
 }
 
-/* ---- parsing ------------------------------------------------------------------------------ */
+/* ---- parsing ----------------------------------------------------------------------------- */
 
 typedef struct Href {
   size_t off, n;
@@ -811,7 +811,7 @@ typedef struct Ctx {
   const char* terminator; /* "\t" inside a table row: a row is ONE logical line */
 } Ctx;
 
-/* ---- small helpers ------------------------------------------------------------------------ */
+/* ---- small helpers ----------------------------------------------------------------------- */
 
 static void str_append(char** p, size_t* n, size_t* cap, const char* s, size_t sn) {
   if (sn == 0) return;
@@ -969,7 +969,7 @@ static void blank_line(State* st, Ctx* ctx) {
   rolltui_md_lines_close(st->lines);
 }
 
-/* ---- inline runs -------------------------------------------------------------------------- */
+/* ---- inline runs ------------------------------------------------------------------------- */
 
 /* Fills `w->rv` with a block's or a cell's runs, as borrows into the document. */
 static void collect_runs(State* st, size_t run_first, size_t run_n) {
@@ -1048,7 +1048,7 @@ static void layout_runs(State* st, Ctx* ctx, int first_indent, int hanging_inden
   end_logical_line(st, ctx);
 }
 
-/* ---- code blocks --------------------------------------------------------------------------- */
+/* ---- code blocks ------------------------------------------------------------------------- */
 
 /* A code block's lines as ranges into the document's bytes — no copy, where the C++ side's
  * `split_lines` used to build a whole `std::vector<std::string>` per block per frame. */
@@ -1411,7 +1411,7 @@ static void render_code(State* st, const char* code, size_t code_n, const char* 
   if (numbered) rolltui_md_lines_add_code_block(st->out, &info);
 }
 
-/* ---- tables ------------------------------------------------------------------------------- */
+/* ---- tables ------------------------------------------------------------------------------ */
 
 static void runs_plain(Work* w, const RolltuiMdDoc* d, size_t run_first, size_t run_n) {
   size_t i;
@@ -1571,7 +1571,7 @@ static void render_table(State* st, size_t bi, Ctx* ctx) {
   table_border(st, ctx, t, &first, "\xE2\x94\x94", "\xE2\x94\xB4", "\xE2\x94\x98"); /* └ ┴ ┘ */
 }
 
-/* ---- blocks -------------------------------------------------------------------------------- */
+/* ---- blocks ------------------------------------------------------------------------------ */
 
 static void render_block(State* st, size_t bi, Ctx* ctx) {
   const RolltuiMdDoc* d = st->d;
@@ -1740,7 +1740,7 @@ void rolltui_md_render(RolltuiMdLines* out, const RolltuiMdDoc* doc, const Rollt
 
 
 /* ============================================================================================
- * THE STYLING VOCABULARY (Phase 17 m3) — moved from `Markdown.cpp`, where it was a C symbol
+ * THE STYLING VOCABULARY — moved from `Markdown.cpp`, where it was a C symbol
  * (`extern "C" rolltui_md_roles`) defined in a C++ file that a C file already called
  * (`rolltui_transcript.c`). The C library could not link without it.
  *

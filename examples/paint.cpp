@@ -14,7 +14,7 @@
 //   - ONE REGISTRATION, `register_canvas_kind()`, after which `canvas:sheet` behaves
 //     exactly like `input:prompt`: created on demand, owned by `RolltuiWindows`, keyed
 //     by content, and handed every event the stack routes to its window — INCLUDING the
-//     drags that leave the window, because a press captures the pointer (Phase 11 m3).
+// drags that leave the window, because a press captures the pointer.
 //   - NOTHING ELSE. There is no name switch, no `custom_at`, and no line anywhere below
 //     that knows what the studio is. The screen this app runs in the proof was authored
 //     in the studio, by a person who never had to be told what this app can build — and the
@@ -711,7 +711,7 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "rolltui-paint: %s\n", rep.bad_values[i].c_str());
   rolltui_layout_report_release(&rep);
 
-  // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE (Phase 26) --------
+  // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE --------
   // `mount()` has registered the canvas kind and bound this app's sources, and the layout is
   // in place, so this is the first moment the question can be answered — and the last one
   // before a frame is drawn. It REPORTS. A screen that names something this app has not built

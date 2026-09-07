@@ -1,4 +1,4 @@
-/* rolltui/c/rolltui_bindings.c — the C side of chords, the binding table, and (Phase 17 m1)
+/* rolltui/c/rolltui_bindings.c — the C side of chords, the binding table, and
  * the file format. See rolltui_bindings.h for the boundary's rules and rolltui/Bindings.hpp
  * for the binding rules themselves; `rolltui/tests/bindings_test.cpp` is the oracle.
  *
@@ -72,7 +72,7 @@ static int name_is(const char* s, size_t len, const char* name) {
   return name[len] == '\0';
 }
 
-/* An EMPTY spelling is not a name (Phase 17 m2b): `Char` and `Unknown` are in the shared key
+/* An EMPTY spelling is not a name: `Char` and `Unknown` are in the shared key
  * list with "" in the file column, because a bindings file has no word for either — a Char
  * chord is the character itself and Unknown is undecodable bytes. Both loops over this table
  * skip those rows.
@@ -213,7 +213,7 @@ const char* rolltui_bindings_scope_of(const char* action, size_t len, size_t* ou
   return action;
 }
 
-/* ---- the table ----------------------------------------------------------------------------- */
+/* ---- the table --------------------------------------------------------------------------- */
 
 /* One owned, NUL-free byte string. A name and a description are both this; growing one is a
  * fresh allocation rather than a realloc, because neither is ever appended to. */
@@ -529,7 +529,7 @@ int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) {
   return 1;
 }
 
-/* ---- the file format (Phase 17 m1) --------------------------------------------------------- */
+/* ---- the file format --------------------------------------------------------------------- */
 
 /* ---- the report: a plain `RolltuiStr` array per `BindingsLoadReport` field, the same shape
  * every loader's report on this boundary uses. ------------------------------------------- */
@@ -618,7 +618,7 @@ void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr*
   rolltui_mem_free(b.p);
 }
 
-/* ---- the loader ------------------------------------------------------------------------- */
+/* ---- the loader -------------------------------------------------------------------------- */
 
 /* Builds `action + suffix` into a fresh `RolltuiStr` and hands it to `add`; frees the buffer.
  * The one shape every per-row message below shares, whether the suffix is a fixed literal or
@@ -1016,11 +1016,11 @@ const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c) {
 }
 
 
-/* ---- the HELP spelling of an action's chords (Phase 17 m2a) --------------------------------
+/* ---- the HELP spelling of an action's chords ------------------------------------------------
  * "Ctrl-W, Alt-Backspace": every chord bound to `action` that THIS TERMINAL can actually
  * deliver, in display form, comma-separated. The undeliverable filter is the point and is why
  * this is not a loop a caller writes: a chord the terminal cannot report must not be offered
- * as a shortcut (Phase 12 m3). It had THREE implementations when this was written —
+ * as a shortcut. It had THREE implementations when this was written —
  * `Bindings::chords_text`, `help_chords_text` in `rolltui_widget_kinds.c`, and a fresh one an
  * agent had to write in `tools/keys_editor.cpp` because it could not reach either. Two is the
  * tell (`rolltui/rolltui.h` rule 5); three is not an argument any more.

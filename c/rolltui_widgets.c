@@ -19,7 +19,7 @@
 
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-/* ---- the scrollbar's geometry ------------------------------------------------------------- */
+/* ---- the scrollbar's geometry ------------------------------------------------------------ */
 
 int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out) {
   double frac;
@@ -80,7 +80,7 @@ void rolltui_content_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
   }
 }
 
-/* ---- the host ------------------------------------------------------------------------------- */
+/* ---- the host ---------------------------------------------------------------------------- */
 
 /* One registered kind: a name, a factory and the context it was registered with, plus how to
  * release that context — NULL for the library's own seven, whose `ctx` is the `Windows`
@@ -93,7 +93,7 @@ typedef struct KindRow {
   void (*free_ctx)(void*);
 } KindRow;
 
-/* ---- what a host BOUND, by name (Phase 15 m6) ---------------------------------------------
+/* ---- what a host BOUND, by name -------------------------------------------------------------
  * One heap-allocated binding per bound name, stored as a `RolltuiMap` value (STRATEGY 5:
  * GROWING HEAP, alongside every other per-entry allocation in this file — `WindowSlot`, the
  * report's `RolltuiStr`s). `free_binding_ctx` is shared by all three callback kinds; each
@@ -137,7 +137,7 @@ typedef struct WindowSlot {
   int live; /* this sync found it */
 } WindowSlot;
 
-/* ---- WHAT A SESSION CONFIGURES, ONCE (Phase 25 m3) -------------------------------------------
+/* ---- WHAT A SESSION CONFIGURES, ONCE --------------------------------------------------------
  * The half of `RolltuiWindows` that was never about what is on screen: a program's widget-kind
  * factories, its menus, its key table, its help scopes, its highlighter, and the vocabularies the
  * built-in kinds read back. Set at startup and identical for every screen the program runs, which
@@ -162,14 +162,14 @@ struct RolltuiWindowConfig {
   RolltuiMap host_menus; /* name -> RolltuiStr* (a menu file's text), OWNED */
   RolltuiStr dir;        /* the preset directory; "" until set_dir */
 
-  /* ---- what a `help` window renders (moved to the boundary so `help` can be a plugin) ----- */
+  /* ---- what a `help` window renders (moved to the boundary so `help` can be a plugin) ---- */
   RolltuiStr help_lead, help_note;
   RolltuiStr* help_scopes; /* GROWING AMORTISED, like `report` */
   size_t help_scopes_n, help_scopes_cap;
 
   const RolltuiBindings* bindings; /* BORROWED; NULL only before the first set_env */
 
-  /* ---- what rolltui_widget_kinds.c's built-in kinds read back through the Windows --------- */
+  /* ---- what rolltui_widget_kinds.c's built-in kinds read back through the Windows -------- */
   RolltuiBuiltinRoles builtin_roles;
   RolltuiScrollTextActions scroll_actions;
   RolltuiCodeFold code_fold;
@@ -214,7 +214,7 @@ void rolltui_window_config_free(RolltuiWindowConfig* c) {
 }
 
 struct RolltuiWindows {
-  /* BORROWED, and it must outlive this (Phase 25 m2/m3): the session whose widget-kind registry
+  /* BORROWED, and it must outlive this: the session whose widget-kind registry
    * `sync` resolves a window's `kind[:source]` against. A layout is plain data and portable
    * between contexts precisely because that resolution happens HERE, per frame, and not at load. */
   RolltuiContext* ctx;
@@ -234,7 +234,7 @@ struct RolltuiWindows {
   RolltuiResolvedNode* nodes; /* the per-frame resolve buffer, reused */
   size_t node_n, node_cap;
 
-  /* ---- what a host BOUND, by name (Phase 15 m6) ------------------------------------------ */
+  /* ---- what a host BOUND, by name -------------------------------------------------------- */
   RolltuiMap documents;  /* name -> BORROWED doc pointer, opaque to C; never freed by this table */
   /* …and the OWNED half (Phase 17 m3, from `rolltui::Windows::owned_documents_`): name ->
    * RolltuiDocument*, OWNED. A sample a tool binds from an app profile has no live document to
@@ -245,14 +245,14 @@ struct RolltuiWindows {
   RolltuiMap submits;    /* name -> SubmitBinding*, OWNED */
   RolltuiMap notes;      /* name -> NoteBinding*, OWNED */
 
-  /* ---- THE TYPED WIDGETS THIS TABLE OWNS, BY SOURCE (Phase 17 m1c) ------------------------
+  /* ---- THE TYPED WIDGETS THIS TABLE OWNS, BY SOURCE -----------------------------------------
    * The three maps `rolltui::Windows` used to keep on the C++ side, moved here in the same
    * change that repointed the `input`/`transcript`/`menu` factories at them — the header says
    * why the two halves could not be done separately. Created on demand by the accessors and
    * by those factories alike, and destroyed only with `w`. STRATEGY 5 (GROWING HEAP): each
    * handle is its own module's `_new`/`_free` pair, and the map owns nothing but the keys. */
   /* THE HIGHLIGHTER IS A SCREEN'S, NOT A SESSION'S — and the reason is a RULE this milestone
-   * found rather than a judgement (Phase 25 m3): its setter MUTATES LIVE WIDGETS, pushing onto
+   * found rather than a judgement: its setter MUTATES LIVE WIDGETS, pushing onto
    * every transcript that already exists so neither order of `set_highlight` and `transcript`
    * can lose it. A session-owned setter has no screen to push to, and the context deliberately
    * does not know its windows. `set_input_min_outer` stayed for exactly the same reason: a
@@ -397,7 +397,7 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
   RolltuiWidget built;
   size_t i;
   if (wd) return wd;
-  /* THE ROW IS CLAIMED BEFORE THE FACTORY RUNS (Phase 17 m1c), and that ordering is load-
+  /* THE ROW IS CLAIMED BEFORE THE FACTORY RUNS, and that ordering is load-
    * bearing rather than tidy: a factory may ask this table for the typed object its own
    * content names — `rolltui_windows_menu` does, because resolving a menu's FILE goes through
    * the very widget being built — and without the row already present that call would come
@@ -565,7 +565,7 @@ RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window
   return (RolltuiMenu*)typed_at(w, &w->menus, "menu", 4, window, len);
 }
 
-/* ---- what a host BINDS, by name (Phase 15 m6) ------------------------------------------------ */
+/* ---- what a host BINDS, by name ---------------------------------------------------------- */
 
 void rolltui_windows_bind_document(RolltuiWindows* w, const char* name, size_t len, const RolltuiDocument* doc) {
   /* A BORROW: nothing to release on replace, unlike the callback maps below. */
@@ -704,7 +704,7 @@ const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i,
   return rolltui_map_key_at(&w->cfg->host_menus, i, len);
 }
 
-/* ---- help (Phase 15 m5e: moved to the boundary so `help` can be a plugin) ---------------------- */
+/* ---- help (Phase 15 m5e: moved to the boundary so `help` can be a plugin) ---------------- */
 
 void rolltui_context_set_help(RolltuiContext* ctx, const char* lead, size_t lead_len, const char* note,
                               size_t note_len) {
@@ -736,14 +736,14 @@ const char* rolltui_windows_help_scope_at(const RolltuiWindows* w, size_t i, siz
 const char* rolltui_windows_help_lead(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->cfg->help_lead, len); }
 const char* rolltui_windows_help_note(const RolltuiWindows* w, size_t* len) { return rolltui_str_get(&w->cfg->help_note, len); }
 
-/* ---- the live bindings table and the current frame's styles ------------------------------------ */
+/* ---- the live bindings table and the current frame's styles ------------------------------ */
 
 void rolltui_context_set_bindings(RolltuiContext* ctx, const RolltuiBindings* b) {
   RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx); cfg->bindings = b; }
 const RolltuiBindings* rolltui_windows_bindings(const RolltuiWindows* w) { return w->cfg->bindings; }
 const RolltuiStyle* rolltui_windows_styles(const RolltuiWindows* w) { return w->styles; }
 
-/* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ---------------- */
+/* ---- what rolltui_widget_kinds.c's built-in kinds read back through ctx = this ----------- */
 
 void rolltui_context_set_builtin_roles(RolltuiContext* ctx, const RolltuiBuiltinRoles* r) {
   rolltui_context_window_config(ctx)->builtin_roles = *r;
@@ -788,7 +788,7 @@ void rolltui_windows_set_input_min_outer(RolltuiWindows* w, const char* source, 
   rolltui_str_free(&key);
 }
 
-/* ---- rows (Phase 15 m5e: moved to the boundary so `rows` can be a plugin) ---------------------- */
+/* ---- rows (Phase 15 m5e: moved to the boundary so `rows` can be a plugin) ---------------- */
 
 void rolltui_rows_reset(RolltuiRows* r) { r->n = 0; /* keeps v's storage and every row's buffers */ }
 
@@ -811,7 +811,7 @@ void rolltui_rows_release(RolltuiRows* r) {
   r->cap = 0;
 }
 
-/* ---- note (Phase 15 m5e: moved to the boundary so `input` can be a plugin) --------------------- */
+/* ---- note (Phase 15 m5e: moved to the boundary so `input` can be a plugin) --------------- */
 
 void rolltui_note_clear(RolltuiNote* n) {
   rolltui_str_clear(&n->text); /* keeps the buffer — the reuse this call exists for */
@@ -819,7 +819,7 @@ void rolltui_note_clear(RolltuiNote* n) {
   n->since_ms = 0;
 }
 
-/* ---- sync ------------------------------------------------------------------------------------ */
+/* ---- sync -------------------------------------------------------------------------------- */
 
 static RolltuiStr* report_add(RolltuiWindows* w) {
   w->report = (RolltuiStr*)rolltui_grow_zeroed(w->report, &w->report_cap, w->report_n + 1, sizeof *w->report);
@@ -866,7 +866,7 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
   s->live = 1;
   rolltui_str_set(&s->content, n->content.p, n->content.n);
   /* THE "window 'x' (content 'y'): " PREFIX IS BUILT ONLY WHEN THERE IS SOMETHING TO SAY.
-   * It used to be built for every window of every frame and thrown away (Phase 13 m5). */
+   * It used to be built for every window of every frame and thrown away. */
   if (wd->vt && wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) {
     note_problem(w, n, &w->scratch);
     return;
@@ -893,7 +893,7 @@ void rolltui_windows_sync(RolltuiWindows* w, const RolltuiWindowStack* stack) {
   }
 }
 
-/* ---- the per-frame resolve buffer ---------------------------------------------------------------- */
+/* ---- the per-frame resolve buffer -------------------------------------------------------- */
 
 static void collect(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiWindows* w = (RolltuiWindows*)ctx;
@@ -953,7 +953,7 @@ void rolltui_windows_layout(RolltuiWindows* w, const RolltuiWindowStack* stack, 
   }
 }
 
-/* ---- drawing ------------------------------------------------------------------------------------- */
+/* ---- drawing ----------------------------------------------------------------------------- */
 
 /* The bar lives in the window's RIGHT BORDER COLUMN, which is why the WINDOW draws it and not
  * the widget: a widget is handed a content rect and knows nothing about whether it has a
@@ -1000,7 +1000,7 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   }
 }
 
-/* The three bytes the WINDOW itself paints with, NAMED from the role list (Phase 17 m3) —
+/* The three bytes the WINDOW itself paints with, NAMED from the role list —
  * see the header for why they stopped being `Widgets.cpp`'s. */
 const RolltuiWindowRoles* rolltui_windows_default_roles(void) {
   static const RolltuiWindowRoles r = {
@@ -1035,7 +1035,7 @@ void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, Roll
   draw_scrollbar(w, rn, wd, f, styles, roles);
 }
 
-/* ---- events ---------------------------------------------------------------------------------------- */
+/* ---- events ------------------------------------------------------------------------------ */
 
 /* A press in the track column drives the widget — but ONLY one that accepted `scroll_to`. One
  * that merely reports gets an accurate bar that is not a handle, which is the whole reason the
@@ -1093,7 +1093,7 @@ int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, co
   return wd->vt->handle ? wd->vt->handle(wd->ctx, e) : 0;
 }
 
-/* ---- the report's one-line form (Phase 17 m2a) --------------------------------------------- */
+/* ---- the report's one-line form ---------------------------------------------------------- */
 void rolltui_windows_report_summary(const RolltuiWindows* w, RolltuiStr* out) {
   const size_t n = rolltui_windows_report_count(w);
   size_t flen = 0;

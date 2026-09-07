@@ -3,7 +3,7 @@
 // a fixture transcript in a theme and a layout, so trying a layout or theme idea and
 // asserting it are the same command.
 //
-// WHAT A PERSON CAN DESIGN HERE WITHOUT WRITING JSON (plan/phase-27.md m4): a screen is FOUR
+// WHAT A PERSON CAN DESIGN HERE WITHOUT WRITING JSON: a screen is FOUR
 // files and this tool authors all four — a theme (F4), a layout (F6), a bindings file (F7) and,
 // since Phase 27 m2, a menu (F8). Started with no arguments at all it comes up on the shipped
 // `default` screen with a placeholder in it, so building an app from nothing does not begin by
@@ -19,7 +19,7 @@
 //      quietly rewriting it to something it can draw.
 //   2. AN ACTION NAME CANNOT BE CHECKED, because the action belongs to the app. A menu item's
 //      `action` and an input's `validator` are the same case and not a third exception: they
-//      are typed, written, and the app reports at start-up what nothing reaches (Phase 26).
+// are typed, written, and the app reports at start-up what nothing reaches.
 //
 // Neither is a gap to close. Both are the same rule the library already runs on — the screen is
 // the intent and the code catches up — and the alternative in each case is the tool refusing to
@@ -108,7 +108,7 @@
 // states and an optional fraction — a document saying what is happening, never what it
 // looks like, which is the whole of milestone 6's split written into a file.
 //
-// WIDGETS BY KIND, SOURCES BY NAME (Phase 10 m2): a window's "content" is
+// WIDGETS BY KIND, SOURCES BY NAME: a window's "content" is
 // `kind[:source]` from the library's table, and the library's window table
 // instantiates the widget and draws it — the studio only BINDS what is its own,
 // by name: the fixture document as `session` (transcript:session), its facts as
@@ -118,7 +118,7 @@
 // or the key list on screen with no code here. A window naming something unbound draws
 // the reason and says it in the status line; the studio never asks what a slot means.
 //
-// The settings menu is a FILE (Phase 10 m3): `menu:main` in the layout resolves to
+// The settings menu is a FILE: `menu:main` in the layout resolves to
 // <presets>/menus/main.json if the user has one, else to the library's shipped
 // rolltui/presets/menus/main.json — which IS this menu. The studio only fills the
 // choices whose options are runtime facts (the theme and layout presets it can see) and
@@ -288,7 +288,7 @@ void collect_resolved(void* ctx, const RolltuiResolvedNode* rn) {
   static_cast<std::vector<RolltuiResolvedNode>*>(ctx)->push_back(*rn);
 }
 
-// ---- the preset stores studio builds directly from the C API (Phase 17 m3) ----------------
+// ---- the preset stores studio builds directly from the C API ----------------
 // `rolltui::PresetStore<Domain>` and `Presets.hpp`'s three domain traits are the C++ ADAPTER
 // this file no longer needs. The three domain descriptors are the LIBRARY's since Phase 18 m3
 // (`rolltui_preset_domain`): this file had assembled them itself, identically to roll and to
@@ -389,7 +389,7 @@ struct ThemeValueHandle {
   explicit operator bool() const { return v != nullptr; }
 };
 
-// THE STUDIO'S ONE SESSION (Phase 25). A host owns its context; this binary runs one screen at
+// THE STUDIO'S ONE SESSION. A host owns its context; this binary runs one screen at
 // a time, and the preset-store wrappers below reach it from class statics that exist before
 // `App` does — so it is a function-local static freed at exit rather than an `App` member.
 inline RolltuiContext* studio_ctx() {
@@ -786,7 +786,7 @@ struct App {
           rolltui_transcript_find_next(a->transcript());
         },
         this, nullptr, /*Keep=*/1);
-    // The studio's three composites are REGISTERED KINDS (Phase 11 m3), not draw callbacks
+    // The studio's three composites are REGISTERED KINDS, not draw callbacks
     // bound by name: each is a plugin the studio owns, its widget receives its own events,
     // and nothing below dispatches by window name. Each takes no source.
     rolltui_widget_kind_register(ctx, "editor", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
@@ -802,7 +802,7 @@ struct App {
     // app's kinds by definition, and the studio replacing the library's error factory is how
     // it says "this window is correct and I am the one who cannot draw it".
     rolltui_context_set_error_factory(ctx, placeholder_factory, this);
-    // Diff colouring (Phase 12 m5b): this host DECLARING that a ```diff fence in its
+    // Diff colouring: this host DECLARING that a ```diff fence in its
     // documents means a diff — never a sniff of what a block holds.
     rolltui_windows_set_highlight(windows, diff_highlight, diff_scratch, nullptr);
     constexpr const char* kMouseHelp =
@@ -1609,9 +1609,9 @@ struct App {
     rolltui_window_stack_set_base(stack, &base);
     declare_actions();
   }
-  // The `app.*` actions are the LAYOUT's (Phase 10 m4): whatever the loaded file
+  // The `app.*` actions are the LAYOUT's: whatever the loaded file
   // declares, however it was loaded. `editor.*` and `studio.*` are the TOOLS' this
-  // binary mounts (Phase 11 m1). Nothing else: an action the TARGET app declares is a
+  // binary mounts. Nothing else: an action the TARGET app declares is a
   // thing the target's own layout says, and this tool has no business asserting it.
   void declare_actions() {
     std::vector<RolltuiLayoutAction> declared;
@@ -1655,7 +1655,7 @@ struct App {
     apply_layout();
   }
   // THE TOOL WHOSE JOB IS DESIGNING AN APP FROM NOTHING MUST ITSELF START FROM NOTHING
-  // (Phase 27 m3). Until 2026-09-07 `main` returned usage() when no document was given, a
+  //. Until 2026-09-07 `main` returned usage() when no document was given, a
   // leftover from when this was a fixture previewer — so the first step of "build an app from
   // nothing" was handing the designer a file, and the phase's claim could not honestly be a
   // test. A document argument is still supported and is still how real content is previewed;
@@ -1717,7 +1717,7 @@ struct App {
     rolltui_window_stack_push_popup(stack, &effective_layout(), "help", 4);
   }
 
-  // The find bar (Phase 12 m4). It is an ordinary `input:` window in an ordinary popup —
+  // The find bar. It is an ordinary `input:` window in an ordinary popup —
   // the studio does not implement a find MODE, it opens a layout's popup and pipes that
   // input's text to the transcript. Closing it clears the query, so the highlights go
   // with the bar rather than outliving it invisibly.
@@ -2018,7 +2018,7 @@ struct App {
     if (route_kind == ROLLTUI_ROUTE_CLOSED_POPUP && target == "confirm") { confirm_action = nullptr; return true; }
     if (route_kind != ROLLTUI_ROUTE_DELIVER) return true;
     // The event goes to the window's WIDGET, by kind — never by a window name, so a
-    // layout file may call its windows anything (Phase 10 m2). Since Phase 11 m3 that
+    // layout file may call its windows anything. Since Phase 11 m3 that
     // holds for the studio's OWN three as well: they are registered kinds, so they take
     // their events through the same routing as every built-in.
     if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
@@ -2036,7 +2036,7 @@ struct App {
       unsigned char problem = 0; RolltuiStr why{};
       if (rolltui_content_parse(ctx, content_p, content_len, &row, &is_host, &cname, &cname_len, &csource,
                                 &csource_len, &problem, &why)) {
-        const std::string_view kind(cname, cname_len);  // the kind's NAME is its identity (Phase 18 m2)
+        const std::string_view kind(cname, cname_len); // the kind's NAME is its identity
         if (is_host) { rolltui_windows_handle(windows, target.data(), target.size(), &ev); rolltui_str_free(&why); return true; }
         if (kind == "transcript") {
           rolltui_str_free(&why);

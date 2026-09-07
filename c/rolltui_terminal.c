@@ -26,7 +26,7 @@
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_theme.h" /* rolltui_parse_osc11_reply */
 
-/* ---- process-wide restore state, readable from a signal handler ------------------------
+/* ---- process-wide restore state, readable from a signal handler -----------------------------
  *
  * WHY `_Atomic` AND NOT `volatile sig_atomic_t` FOR THE SCALARS: both are C11-conforming
  * ways to touch a static object from `on_fatal_signal`/`on_winch` (the standard's signal
@@ -91,7 +91,7 @@ void rolltui_terminal_restore_now(void) {
   g_out_fd = -1;
 }
 
-/* ---- the handle --------------------------------------------------------------------------
+/* ---- the handle -----------------------------------------------------------------------------
  *
  * `queued`/`queued_text`: GROWING, AMORTISED (rolltui_alloc.h strategy 2), one buffer per
  * ROLE — events and the text bytes they borrow from, so an Unknown key's raw bytes or a
@@ -192,7 +192,7 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ec->fn(ec->ctx, &ev);
 }
 
-/* ---- enter / leave ------------------------------------------------------------------------ */
+/* ---- enter / leave ----------------------------------------------------------------------- */
 
 static void term_enter(RolltuiTerminal* t, int handle_signals) {
   if (t->entered) return;
@@ -237,7 +237,7 @@ static void term_leave(RolltuiTerminal* t) {
   g_have_tio = 0;
 }
 
-/* ---- lifetime ------------------------------------------------------------------------------ */
+/* ---- lifetime ---------------------------------------------------------------------------- */
 
 RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts) {
   RolltuiTerminal* t = (RolltuiTerminal*)rolltui_mem_alloc(sizeof *t);
@@ -285,7 +285,7 @@ void rolltui_terminal_free(RolltuiTerminal* t) {
   rolltui_mem_free(t);
 }
 
-/* ---- geometry -------------------------------------------------------------------------- */
+/* ---- geometry ---------------------------------------------------------------------------- */
 
 int rolltui_terminal_is_tty(const RolltuiTerminal* t) { return t->tty; }
 int rolltui_terminal_width(const RolltuiTerminal* t) { return t->w; }
@@ -318,7 +318,7 @@ const char* rolltui_terminal_leave_sequence(const RolltuiTerminal* t, size_t* le
   return t->leave_seq;
 }
 
-/* ---- keyboard protocol negotiation -------------------------------------------------------- */
+/* ---- keyboard protocol negotiation ------------------------------------------------------- */
 
 /* One CSI sequence starting at `pos`, or 0 if the bytes there are not a complete one. */
 static size_t csi_span(const char* s, size_t n, size_t pos) {
@@ -442,7 +442,7 @@ unsigned char rolltui_terminal_negotiate_keyboard(RolltuiTerminal* t, int timeou
 
 unsigned char rolltui_terminal_key_protocol(const RolltuiTerminal* t) { return t->protocol; }
 
-/* ---- background colour --------------------------------------------------------------------- */
+/* ---- background colour ------------------------------------------------------------------- */
 
 /* First byte of `needle` in s[from, n), or (size_t)-1. Hand-rolled rather than a libc
  * extension (`memmem` is BSD/Darwin-only and nothing else in this library reaches for it). */
@@ -514,7 +514,7 @@ int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, Rolltu
   return found;
 }
 
-/* ---- poll ------------------------------------------------------------------------------------ */
+/* ---- poll -------------------------------------------------------------------------------- */
 
 void rolltui_terminal_poll(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventFn emit, void* ctx) {
   /* Decoded during a query (negotiate_keyboard/query_background); handed out by the next

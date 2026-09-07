@@ -1,8 +1,8 @@
 //
-// gaps_test.cpp — THE GAP REPORT (Phase 26 m2): what a screen NAMES that an app does not
+// gaps_test.cpp — THE GAP REPORT: what a screen NAMES that an app does not
 // PROVIDE, reported to the app's own DEVELOPER and never fatal.
 //
-// The framing this suite exists to hold, in the user's words (2026-09-06): *"its feedback on
+// The framing this suite exists to hold, in the user's words: *"its feedback on
 // the right place — 'the app was designed like this and your code doesn't support it properly
 // yet.'"* So every assertion below is one of two shapes:
 //

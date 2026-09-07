@@ -1077,7 +1077,7 @@ int main(int argc, char** argv) {
     // shipped preset FILES, which are compiled into the binary as bytes and are exactly
     // where an action name would survive unnoticed (menus/main.json named two).
     //
-    // PHASE 17 m4b (2026-09-05): THE THRESHOLD IS NOW ZERO, and this control got STRICTLY
+    // PHASE 17 m4b: THE THRESHOLD IS NOW ZERO, and this control got STRICTLY
     // STRONGER rather than going quiet when its subject was deleted. It used to permit the
     // three-row migration table in `rolltui/c/rolltui_bindings.c` and required it to be
     // there (`table >= 3`), which was what armed it. That table is retired, so the exemption

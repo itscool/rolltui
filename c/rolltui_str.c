@@ -103,7 +103,7 @@ const char* rolltui_str_get(const RolltuiStr* s, size_t* len) {
   return s->p ? s->p : "";
 }
 
-/* ---- the owned pointer array ------------------------------------------------------------ */
+/* ---- the owned pointer array ------------------------------------------------------------- */
 
 void rolltui_ptrvec_push(RolltuiPtrVec* a, void* p) {
   /* GROWING, AMORTISED (strategy 2): appended to, final size unknown. */

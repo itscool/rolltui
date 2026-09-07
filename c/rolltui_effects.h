@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_effects.h — MOTION, as C (Phase 15 m2).
+ * rolltui/c/rolltui_effects.h — MOTION, as C.
  *
  * A widget MARKS a span of cells with a STATE; the theme maps state → effect as data; an
  * effect is a pure function of (elapsed, cell index, span length, fraction, base style).
@@ -28,7 +28,7 @@
  *      same bytes the applier does.
  *   3. **NOTHING IS RETURNED BY VALUE** from an `extern "C"` function.
  *
- * ---- THE VIEW BECAME THE DEFINITION, WHICH IS THE m2 SEAM CLOSING --------------------
+ * ---- THE VIEW BECAME THE DEFINITION, WHICH IS THE m2 SEAM CLOSING ---------------------------
  *
  * In m2 `RolltuiEffectSpec` was a VIEW of one `rolltui::EffectSpec`, because the spec was
  * the THEME's data — `std::string kind`, `std::vector<std::string> frames`,
@@ -78,7 +78,7 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
 
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -113,7 +113,7 @@ int rolltui_effect_kind_resolves(const RolltuiContext* c, const char* name, size
 int rolltui_effect_is_builtin(const char* name, size_t len);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

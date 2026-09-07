@@ -11,7 +11,7 @@
 // rolltui_json.h, all reached through rolltui/rolltui.h) directly — ThemeAnalysis.hpp,
 // Theme.hpp and Style.hpp are all deleted along with the rest of the C++ binding
 // (plan/phase-17.md milestone 2). `Lin`/`OkLab`/`OkLch`/`Badges` were one-definition
-// aliases over the same C structs (Phase 17 m1) and are reproduced verbatim — there was
+// aliases over the same C structs and are reproduced verbatim — there was
 // never a second definition to convert away from. `Role` (Style.hpp) has no C enum form
 // at all — a C file names no role, so the ordinal crosses a boundary call and the name
 // table stays in every C++ consumer that needs it — reproduced below exactly as
@@ -58,7 +58,7 @@ std::string join(const std::vector<std::string>& v) {
   return s;
 }
 
-// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST` (Phase 17 m2a), not
+// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST`, not
 // reproduced. This was one of SIX verbatim copies of the 49 names IN ORDER, each written when
 // the role vocabulary was still C++ and a converted suite had no way to ask for it. A style
 // table is indexed by this ordinal, so the order is ABI and a copy of it is a copy of ABI.

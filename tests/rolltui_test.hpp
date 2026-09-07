@@ -31,7 +31,7 @@ inline void check_quiet(bool cond, const std::string& name) {
   std::fprintf(stdout, "  [FAIL] %s\n", name.c_str());
 }
 
-// ONE SESSION FOR A SUITE (Phase 25 m2). A registry is a CONTEXT's now, so a suite that
+// ONE SESSION FOR A SUITE. A registry is a CONTEXT's now, so a suite that
 // registers a widget or effect kind needs a session to register it INTO. Two suites had
 // written the same wrapper, which is rule 5 firing, so it lives here once.
 //
@@ -60,7 +60,7 @@ inline int report(const char* suite) {
 
 }  // namespace rolltui_test
 
-// ---- the tests' own bridge to std:: (Phase 19 m2) ----------------------------------------------
+// ---- the tests' own bridge to std:: ----------------------------------------------
 // The library's C++ shape names no std:: container or view; what a test wants as a std::string
 // or string_view it makes HERE, in its own harness, which is what "in your own file" means.
 #ifndef ROLLTUI_STD_BRIDGE_DEFINED

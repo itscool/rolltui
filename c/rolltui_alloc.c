@@ -13,7 +13,7 @@
 #include <stddef.h>
 #include <string.h>
 
-/* ---- ASan: make the sanitizer able to see a LOGICAL overrun ---------------------------
+/* ---- ASan: make the sanitizer able to see a LOGICAL overrun ---------------------------------
  *
  * **WITHOUT THIS, AddressSanitizer IS NEARLY BLIND TO THIS LIBRARY'S C**, and that was m6b's
  * first real finding rather than a guess: a deliberate one-element read past the live length

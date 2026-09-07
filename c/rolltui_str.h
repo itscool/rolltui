@@ -16,7 +16,7 @@
  *   RolltuiPtrVec    an owned array of `void*` slots. GROWING AMORTISED: it is APPENDED to
  *                    (children, layers, rows) and its final size is not known in advance.
  *
- * ---- ONE DEFINITION, TWO LANGUAGES -----------------------------------------------------
+ * ---- ONE DEFINITION, TWO LANGUAGES ----------------------------------------------------------
  *
  * `rolltui::Str` and `rolltui::PtrVec` ARE these structs, so a layout node has one layout and
  * both languages compile it. Under `__cplusplus` they additionally carry the five special
@@ -42,14 +42,14 @@ void* rolltui_ptrvec_take(RolltuiPtrVec* a, size_t i);
 void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller owns the elements */
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns the elements */
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

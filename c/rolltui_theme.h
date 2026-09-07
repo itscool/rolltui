@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_theme.h — THE COLOUR ENGINE, as C (Phase 15 m3).
+ * rolltui/c/rolltui_theme.h — THE COLOUR ENGINE, as C.
  *
  * Parsing and printing a colour in this library's own spelling, reducing one to what a
  * terminal can show, emitting the SGR that selects a style, and reading a terminal's OSC 11
@@ -20,9 +20,9 @@
  *   3. **ONE DEFINITION**: a colour and a style are `rolltui_style.h`'s structs, which is
  *      what lets this file read a theme's own array without converting anything.
  *
- * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW -----------------------------------------
+ * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW ----------------------------------------------
  *
- * ~~**The DEPTH and MODE names.**~~ **RETRACTED 2026-09-05 (Phase 17 m2a) — see the mode and
+ * ~~**The DEPTH and MODE names.**~~ **RETRACTED 2026-09-05 — see the mode and
  * depth vocabulary below.** This entry read: *"`ColorDepth` crosses as a byte and the strings
  * "truecolor", "256", "16", "mono" stay in `Theme.cpp` ... a vocabulary written down twice is
  * a second thing to drift. So `detect_color_depth` stays one level up, and this file is handed
@@ -54,7 +54,7 @@ void rolltui_theme_report_add_unknown_key(RolltuiThemeReport* r, const char* s, 
 void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, size_t len);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -65,7 +65,7 @@ void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth);
 /* An OSC 11 reply ("\x1b]11;rgb:1414/1616/1a1a\x1b\\" or BEL-terminated; 1-4 hex digits per
  * channel, scaled to 8 bits). 1 on success. */
 int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* out);
-/* ---- the built-in themes ------------------------------------------------------------------
+/* ---- the built-in themes --------------------------------------------------------------------
  * "default-dark", "default-light", "mono", compiled in: this library's own TASTE, not its
  * algorithm (`rolltui::Theme.cpp`'s own words, kept). Enumerated by index like every other
  * closed table a sibling file exposes (`rolltui_widget_kind_name`,
@@ -76,7 +76,7 @@ size_t rolltui_theme_builtin_count(void);
  * count. */
 const char* rolltui_theme_builtin_name(size_t i);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
@@ -85,7 +85,7 @@ const char* rolltui_theme_builtin_name(size_t i);
  * zeroed byte means. */
 const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
 
-/* `rolltui_color_parse` and `rolltui_color_to_string` MOVED to `rolltui/rolltui.h` (Phase 21):
+/* `rolltui_color_parse` and `rolltui_color_to_string` MOVED to `rolltui/rolltui.h`:
  * the menu offers a typed `"type": "color"` field whose committed value is TEXT, so a host that
  * lets a person pick a colour could not turn what the field validated into a `RolltuiStyleColor`.
  * A public input type whose value has no public parser is a contradiction inside the surface,
@@ -93,7 +93,7 @@ const char* rolltui_color_depth_name(unsigned char depth, size_t* len);
 
 
 
-/* ---- the dumper ----------------------------------------------------------------------------
+/* ---- the dumper -----------------------------------------------------------------------------
  * Builds a fresh, OWNED tree (caller frees with `rolltui_json_free`) with a "roles" object
  * and, when anything is marked, an "effects" object — mirrors `style_to_json`+
  * `effect_to_json`+`effects_to_json`+the "roles"/"effects" halves of

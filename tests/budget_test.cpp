@@ -46,7 +46,7 @@
 // WHAT THIS TEST DELIBERATELY DOES NOT DO: judge whether the numbers are good. They are
 // not — 946 allocations to repaint an unchanged screen is the finding that scoped this
 // phase — but 203 µs is 1.2% of a terminal frame, so nothing here is a performance
-// emergency and no milestone may claim otherwise (plan/phase-13.md).
+// emergency and no milestone may claim otherwise.
 //
 // PHASE 17 m2c: THIS FILE CALLS THE C DIRECTLY. `Document.hpp`, `Layout.hpp`,
 // `Markdown.hpp`, `Screen.hpp`, `Theme.hpp` and `Widgets.hpp` are deleted; the idiom below
@@ -84,7 +84,7 @@
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_alloc.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
 #include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-// …AND ONE DELIBERATE REACH PAST IT, which is not a gap (Phase 17 m3). `rolltui_mem_realloc`
+// …AND ONE DELIBERATE REACH PAST IT, which is not a gap. `rolltui_mem_realloc`
 // is declared only in the INTERNAL `rolltui/c/rolltui_alloc.h`, on purpose: growth is the thing
 // the closed set exists to stop being invented, and keeping its declaration out of the public
 // header makes that restriction STRUCTURAL rather than a grep control's promise
@@ -294,7 +294,7 @@ struct Scene {
   // claim `Frame::reset` was "exactly as a host does it" while `Frame::reset` had zero
   // callers outside this file — all three hosts built a fresh frame every repaint and threw
   // it away (~153 KB at 120x40) while this budget reported zero. `rolltui-paint` closed that
-  // gap for itself by adopting `rolltui_swap` (Phase 17 m3); this file adopting it too
+  // gap for itself by adopting `rolltui_swap`; this file adopting it too
   // (m2c) is what makes the sentence true of the INSTRUMENT as well. `rolltui_swap_present`
   // — which turns a frame into the bytes a terminal would receive — is never called here:
   // this suite measures the draw path, and diffing/output is a different (and differently
@@ -666,7 +666,7 @@ int main() {
     check(rolltui_mem_alloc(0) == nullptr, "a zero-byte request is a nullptr, not a one-byte block");
     rolltui_mem_free(nullptr);  // must be a no-op
     check(mem_stats().frees == after.frees, "…and freeing nullptr counts nothing");
-    // ---- MEMORY USAGE, QUERYABLE AT RUNTIME (Phase 14 m4) -----------------------------
+    // ---- MEMORY USAGE, QUERYABLE AT RUNTIME -----------------------------
     // `bytes_requested` is cumulative and answers "how much did we churn"; it CANNOT answer
     // "how much are we holding", which is the question a status pane asks. These three
     // assertions are what keep the two from being confused — and what keep `live_bytes` from

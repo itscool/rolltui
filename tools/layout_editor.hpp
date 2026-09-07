@@ -24,7 +24,7 @@
 //   widget kind                    input: ANY kind name (live as typed). The kinds this
 //                                 binary can preview are the field's HINT (set_kinds); a
 //                                 name outside them is written and previews as a labelled
-//                                 placeholder (Phase 26 m4)
+// placeholder
 //   source                         input, TYPED BY THE KIND (below)
 //   menu file                      input: any menu name, the resolvable ones as its hint
 //   size                           input: fill | fill N | N% | N cells (live as typed);
@@ -46,7 +46,7 @@
 //                                 frame
 //   new layout / load layout / save layout as / reset to loaded / undo / redo
 //
-// CREATING A LAYOUT IS NOT INHERITING ONE (Phase 11 m5). "New layout" replaces the whole
+// CREATING A LAYOUT IS NOT INHERITING ONE. "New layout" replaces the whole
 // layout with a STATED MINIMAL SKELETON — one bordered `text:` window (the one kind that
 // names nothing a host must have bound), no popups, no actions, and no thresholds — never
 // the open screen with its parts stripped out. The measurement that scoped this: stripping
@@ -59,7 +59,7 @@
 // everything else about it — by typing it. That is one field against a whole mechanism whose
 // only job was to answer it, and the screen is the place the answer belongs.
 //
-// CONTENT IS TWO FIELDS, AND EXACTLY ONE WRITES THE SOURCE (Phase 10 m5). A window's
+// CONTENT IS TWO FIELDS, AND EXACTLY ONE WRITES THE SOURCE. A window's
 // content is `kind[:source]`, so the editor shows the kind as a choice over the offered
 // kinds and the source beside it. Which field owns the source is a stated function of
 // the kind, never a guess — the other is drawn disabled, so a screen never offers two
@@ -67,7 +67,7 @@
 //   menu                        the MENU FILE choice owns it (the names that actually
 //                               resolve, from the host: Windows::menu_names())
 //   help                        the SOURCE input, Name, OPTIONAL — one key scope, or
-//                               every scope the app has when empty (Phase 11 m5b). It is
+// every scope the app has when empty. It is
 //                               still the one kind that DROPS a source carried over from
 //                               another kind, and now for a stated reason rather than
 //                               because the source was forbidden: every other kind's
@@ -81,7 +81,7 @@
 //                               exactly as `help` does, while a `canvas:main` names a
 //                               source and is hinted with the profile's own words. The
 //                               editor asks the REGISTRY rather than a table of its own
-//                               (Phase 11 m4): which kinds exist is a fact about the
+//: which kinds exist is a fact about the
 //                               target app, and the tool is not the app.
 // Changing the kind KEEPS the source verbatim (the `help` rule above is the one
 // exception): a kind that requires a source and has none is left saying so — the window
@@ -89,7 +89,7 @@
 // a name that happens to bind. The host's own offered contents (set_sources) are the
 // source field's HINT, never a substitute for what is typed.
 //
-// AND NEITHER FIELD IS BOUNDED BY WHAT THIS BINARY CAN BUILD (Phase 26 m4). The kind was a
+// AND NEITHER FIELD IS BOUNDED BY WHAT THIS BINARY CAN BUILD. The kind was a
 // closed choice and `set_content` refused a name outside it, which made the tool the
 // authority on what an app may be asked to provide. A screen is the intent: it names what it
 // needs, this tool previews what it can, and the app REPORTS the rest at start-up
@@ -137,7 +137,7 @@ using InputSpec = RolltuiInputSpec;
 // for every host asking every frame is not worth carrying here; composed from
 // `rolltui_layout_builtin_json` + `rolltui_load_layout_text` +
 // `rolltui_loaded_layout_to_layout` (rolltui/c/rolltui_layout.h) — all three permanent C
-// entry points, the last one promoted for exactly this call (Phase 17 m1d). An unknown
+// entry points, the last one promoted for exactly this call. An unknown
 // name parses the empty string and comes back an empty Layout; every caller here only
 // ever asks for "default", which always exists.
 Layout builtin_layout(RolltuiContext* ctx, std::string_view name);
@@ -164,7 +164,7 @@ class LayoutEditor {
   // beside the source field for the selected kind. A hint, not a menu: a source the
   // host has not bound is still typeable, and reports itself in the window.
   void set_sources(std::vector<std::string> contents);
-  // The kinds THIS BINARY can preview — the widget-kind field's hint (Phase 26 m4), and
+  // The kinds THIS BINARY can preview — the widget-kind field's hint, and
   // nothing more than that. Until Phase 26 it was the field's closed option list and a name
   // outside it was refused, which is a design tool deciding what an app may be asked for.
   void set_kinds(std::vector<std::string> names);
@@ -203,7 +203,7 @@ class LayoutEditor {
   bool dragging() const { return drag_.has_value(); }
 
   // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
-  // open (2026-09-06). The returning form is one copy over it, for a test that reads it.
+  // open. The returning form is one copy over it, for a test that reads it.
   void status_line(std::string& out) const;
   std::string status_line() const;
   // What the selected node IS, in words: "selected: input  size 3  border single

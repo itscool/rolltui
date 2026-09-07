@@ -130,7 +130,7 @@ void rolltui_md_lines_reset(RolltuiMdLines* L) {
   L->chrome_n = 0;
 }
 
-/* ---- working memory --------------------------------------------------------------------- */
+/* ---- working memory ---------------------------------------------------------------------- */
 
 RolltuiUnicodeScratch* rolltui_md_lines_scratch(RolltuiMdLines* L) {
   if (!L->us) L->us = rolltui_u_scratch_new();
@@ -298,7 +298,7 @@ size_t rolltui_md_lines_close(RolltuiMdLines* L) {
   return L->lrec_n - 1;
 }
 
-/* ---- reading ------------------------------------------------------------------------------ */
+/* ---- reading ----------------------------------------------------------------------------- */
 
 void rolltui_md_lines_finish(RolltuiMdLines* L) {
   size_t i;
@@ -349,7 +349,7 @@ void rolltui_md_lines_span_range(const RolltuiMdLines* L, size_t i, size_t* firs
   if (count) *count = L->lrec[i].count;
 }
 
-/* ---- the logical text ---------------------------------------------------------------------- */
+/* ---- the logical text -------------------------------------------------------------------- */
 
 void rolltui_md_lines_text_append(RolltuiMdLines* L, const char* s, size_t n) {
   if (n == 0) return;
@@ -371,7 +371,7 @@ void rolltui_md_lines_text_pop(RolltuiMdLines* L) {
   if (L->text_n) --L->text_n;
 }
 
-/* ---- what the render reported ---------------------------------------------------------------- */
+/* ---- what the render reported ------------------------------------------------------------ */
 
 void rolltui_md_lines_add_code_block(RolltuiMdLines* L, const RolltuiMdCodeBlock* b) {
   RolltuiMdCodeBlock* out;
@@ -426,7 +426,7 @@ void rolltui_md_lines_clamped_at(const RolltuiMdLines* L, size_t i, const char**
   if (n) *n = L->clamp[i].len;
 }
 
-/* ---- interned chrome, and the second store -------------------------------------------------- */
+/* ---- interned chrome, and the second store ----------------------------------------------- */
 
 size_t rolltui_md_lines_intern(RolltuiMdLines* L, const char* s, size_t n) {
   const size_t off = L->chrome_n;

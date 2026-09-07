@@ -1,6 +1,6 @@
 /*
  * rolltui/tests/c_consumer_test.c — THE CLAIM THIS LIBRARY HAD NEVER EXECUTED ONCE
- * (plan/phase-16.md m6).
+ *.
  *
  * THE FINDING THAT PUT THIS FILE HERE, and it was checkable in one command. `plan/phase-17.md`
  * reasons about *"a pure-C host"* five separate times and uses it as the standard for whether
@@ -55,7 +55,7 @@ which is precisely the padding this file exists to run without."
 
 #include "rolltui/rolltui.h"
 
-/* ---- the harness: fifteen lines, and it fails on zero assertions --------------------------
+/* ---- the harness: fifteen lines, and it fails on zero assertions ----------------------------
  * The same rule roll's `tests/test_util.hpp` has and `rolltui/tests/rolltui_test.hpp` does not
  * (measured 2026-09-04, and it is Phase 16 m2's second mechanism): a suite that ran NOTHING
  * must not read as success. It is three lines here, so it is here now rather than after m2 —
@@ -89,7 +89,7 @@ static size_t live_blocks(void) {
   return v;
 }
 
-/* ---- the app: everything a screen needs, held by a plain C struct --------------------------
+/* ---- the app: everything a screen needs, held by a plain C struct ---------------------------
  * `rolltui.h` rule 1 says a handle is created and released in a pair and there is no RAII to
  * lean on. In C there is no RAII to DECLINE either, which is the whole point of running this:
  * every one of these is freed by hand at the bottom of `main`, and `live_bytes == 0` is what
@@ -154,7 +154,7 @@ int main(void) {
   app.h = 30;
   app.ctx = rolltui_context_new();
 
-  /* ---- 0. THE GAUGE, ARMED — before any zero below is believed ---------------------------- */
+  /* ---- 0. THE GAUGE, ARMED — before any zero below is believed --------------------------- */
   {
     const size_t base = live_bytes();
     void* held = rolltui_mem_alloc(64 * 1024);
@@ -163,7 +163,7 @@ int main(void) {
     check(live_bytes() == base, "…and sees it released again, so a zero at the end means something");
   }
 
-  /* ---- 1. A SHIPPED THEME, from the embedded file a fresh install runs --------------------- */
+  /* ---- 1. A SHIPPED THEME, from the embedded file a fresh install runs ------------------- */
   app.effects = rolltui_theme_builtin_fill("default-dark", 12, app.styles, ROLLTUI_ROLE_COUNT);
   check(app.effects != NULL, "a shipped theme fills a C caller's own style table");
 
@@ -210,7 +210,7 @@ int main(void) {
     }
   }
 
-  /* ---- 2. A SHIPPED LAYOUT, through the loader a host walks ------------------------------- */
+  /* ---- 2. A SHIPPED LAYOUT, through the loader a host walks ------------------------------ */
   {
     size_t text_len = 0;
     const char* text = rolltui_layout_builtin_json("default", 7, &text_len);
@@ -232,7 +232,7 @@ int main(void) {
     check(actions_n != 0, "the layout a C host holds carries the screen's declared actions");
   }
 
-  /* ---- 3. THE WINDOW STACK ---------------------------------------------------------------- */
+  /* ---- 3. THE WINDOW STACK --------------------------------------------------------------- */
   app.windows = rolltui_windows_new(app.ctx);
   rolltui_context_set_library_defaults(app.ctx); /* the eight kinds and the five vocabularies */
   app.stack = rolltui_window_stack_new();
@@ -300,7 +300,7 @@ int main(void) {
     check(rolltui_window_stack_pop(app.stack) != 0, "…and it pops again");
   }
 
-  /* ---- 3d. THE GUARD THAT NEEDS NO CLOSED TYPE (Phase 18 m2) ------------------------------- *
+  /* ---- 3d. THE GUARD THAT NEEDS NO CLOSED TYPE ------------------------------- *
    * `enum class WidgetKind` is retired: a kind's NAME is its identity, and the registry is one
    * enumeration with the library's rows first. The safety property — rung 1 is never shadowed —
    * is two guards BY NAME, planted here from C, where no C++ special member can absorb the
@@ -320,7 +320,7 @@ int main(void) {
           "...and its source SHAPE is a row of the registry, readable from C, not a C++ enum compare");
   }
 
-  /* ---- 3e. TWO CONTEXTS, AND THEY SHARE NOTHING (Phase 25 m2) ------------------------------ *
+  /* ---- 3e. TWO CONTEXTS, AND THEY SHARE NOTHING ------------------------------ *
    * The user's parenthesis for `RolltuiContext` was *"a real single rolltui session hopefully
    * proving nothing is global"*, and until this phase it was FALSE: the widget-kind registry was
    * four file-scope statics, so two apps in one process shared one table and could not have been
@@ -357,7 +357,7 @@ int main(void) {
     rolltui_context_free(a);
   }
 
-  /* ---- 3f. WHAT THE SPLIT ACTUALLY BUYS (Phase 25 m3) -------------------------------------
+  /* ---- 3f. WHAT THE SPLIT ACTUALLY BUYS -----------------------------------------------------
    * A session is CONFIGURED ONCE and every screen it runs sees that configuration. Before m3
    * the same calls were made against a `RolltuiWindows`, so a second screen in one program was
    * a second copy of the same setup — and a kind's NAME lived in the context while its FACTORY
@@ -385,7 +385,7 @@ int main(void) {
     rolltui_context_free(c);
   }
 
-  /* ---- 3c. AN EVENT, ROUTED AND DELIVERED ------------------------------------------------- */
+  /* ---- 3c. AN EVENT, ROUTED AND DELIVERED ------------------------------------------------ */
   {
     RolltuiEvent e;
     RolltuiStr window = {0};
@@ -408,7 +408,7 @@ int main(void) {
     rolltui_str_free(&window);
   }
 
-  /* ---- 4. ONE FRAME, THROUGH THE LIBRARY'S OWN DOUBLE BUFFER ------------------------------ */
+  /* ---- 4. ONE FRAME, THROUGH THE LIBRARY'S OWN DOUBLE BUFFER ----------------------------- */
   {
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, *rolltui_theme_style(app.styles, ROLLTUI_ROLE_COUNT,
                                                                            ROLLTUI_ROLE_BACKGROUND));
@@ -452,7 +452,7 @@ int main(void) {
     rolltui_swap_free(swap);
   }
 
-  /* ---- 4b. A PRESET STORE, OPENED FROM C (Phase 18 m3) ------------------------------------ *
+  /* ---- 4b. A PRESET STORE, OPENED FROM C ------------------------------------ *
    * THE EVIDENCE THIS MILESTONE HAD NONE OF. Section 1 reaches the shipped theme through
    * `rolltui_theme_builtin_fill` and the embedded bytes — a different rung of the same domain
    * — and `plan/phase-18.md` m3 recorded that this file therefore said NOTHING about the thing
@@ -468,7 +468,7 @@ int main(void) {
    * working copy come back through the file. Then a Layout and a Bindings store, each compared
    * against a rung this file already stood on, so the two paths are proved to agree.
    *
-   * THE WALLS THIS SECTION HIT ON ITS FIRST RUN (2026-09-06) — five, each counted across every
+   * THE WALLS THIS SECTION HIT ON ITS FIRST RUN — five, each counted across every
    * consumer before anything was designed, and each moved INTO the C API rather than into a
    * sixth wrapper (`rolltui_presets.h` carries the case at each declaration):
    *   - the three domain descriptors were assembled BY EVERY CONSUMER from the same
@@ -518,7 +518,7 @@ int main(void) {
             "…and a domain's `kind` IS its name, in the one spelling `rolltui_preset_domain_name` gives");
     }
 
-    /* ---- the Theme store, through its whole life ---- */
+    /* ---- the Theme store, through its whole life ----------------------------------------- */
     {
       RolltuiThemePresetReport rep;
       RolltuiPresetStore* ts;
@@ -689,7 +689,7 @@ int main(void) {
       rolltui_theme_preset_report_release(&rep);
     }
 
-    /* ---- the Layout store: its working copy IS the layout section 2 loaded by hand ---- */
+    /* ---- the Layout store: its working copy IS the layout section 2 loaded by hand ------- */
     {
       RolltuiLayoutPresetReport rep;
       RolltuiPresetStore* ls;
@@ -711,7 +711,7 @@ int main(void) {
       rolltui_layout_preset_report_release(&rep);
     }
 
-    /* ---- the Bindings store: its working copy IS the library's default table ---- */
+    /* ---- the Bindings store: its working copy IS the library's default table ------------- */
     {
       RolltuiBindingsPresetReport rep;
       RolltuiPresetStore* bs;
@@ -746,7 +746,7 @@ int main(void) {
      * `rolltui_shutdown()` is what says the library let go of what it built for this section. */
   }
 
-  /* ---- 5. RELEASE, BY HAND, AND THE NUMBER THAT SAYS THE HAND WAS RIGHT -------------------- */
+  /* ---- 5. RELEASE, BY HAND, AND THE NUMBER THAT SAYS THE HAND WAS RIGHT ------------------ */
   rolltui_context_free(app.ctx);
   rolltui_compose_scratch_free(app.compose_scratch);
   rolltui_window_stack_free(app.stack);

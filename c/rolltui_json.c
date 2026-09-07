@@ -16,7 +16,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-/* ---- construction -------------------------------------------------------------------- */
+/* ---- construction ------------------------------------------------------------------------ */
 
 static RolltuiJsonValue* value_new(unsigned char kind) {
   /* OWNED, LONG-LIVED (rolltui_alloc.h strategy 4): one node, released by `rolltui_json_free`
@@ -220,7 +220,7 @@ RolltuiJsonValue* rolltui_json_object_value_at(const RolltuiJsonValue* v, size_t
   return (v && i < v->obj_n) ? v->obj[i]->value : NULL;
 }
 
-/* ---- the parser ------------------------------------------------------------------------
+/* ---- the parser -----------------------------------------------------------------------------
  * A direct port of `Json.cpp`'s `Parser`: same fields, same order of operations, same
  * messages. `jp_parse_value` returns the parsed node (owned) or NULL, where the C++ used an
  * out-parameter and a bool — the shape a caller-owned tree wants in C — and every failure
@@ -559,7 +559,7 @@ RolltuiJsonValue* rolltui_json_parse(const char* text, size_t len, RolltuiStr* e
   return v;
 }
 
-/* ---- the dumper --------------------------------------------------------------------------
+/* ---- the dumper -----------------------------------------------------------------------------
  * Builds into a private, GROWING AMORTISED scratch buffer (rolltui_alloc.h strategy 2) —
  * `rolltui_str_append`'s own growth is EXACT (rolltui_str.h), which would realloc once per
  * fragment on a tree of any size — and copies the finished bytes into the caller's `RolltuiStr`

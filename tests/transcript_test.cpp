@@ -748,7 +748,7 @@ int main() {
     check(text_area(tr).x == 1 && text_area(tr).w == 1, "an inset of 1 on a 3-wide area leaves one column");
   }
 
-  // ---- the "▼ N more" marker (Phase 12 m5) -------------------------------------------
+  // ---- the "▼ N more" marker -------------------------------------------
   // KEPT alongside the scrollbar, not replaced by it (the user, 2026-09-03): the marker
   // is the NON-GRAPHICAL signal and the bar is the positional one. What the bar buys is
   // permission for the marker to get cheaper when narrow.
@@ -784,7 +784,7 @@ int main() {
     check(!selection(tr).active, "…and selects nothing — it is a control, not text");
   }
 
-  // ---- FIND (Phase 12 m4) ------------------------------------------------------------
+  // ---- FIND ------------------------------------------------------------
   // Matches live in LOGICAL text, so every assertion below is on the model except the
   // two that are about what a cell got painted — which is the only place the wrap
   // behaviour can actually be read.
@@ -956,7 +956,7 @@ int main() {
     check(match_count(tr6) == 1, "a 0- and a 1-cell area still find, still draw, still step");
   }
 
-  // ---- long code blocks: folded, capped, clicked, and searched (Phase 12 m5b) -------
+  // ---- long code blocks: folded, capped, clicked, and searched -------
   // The mechanism is the RENDERER's (Markdown.hpp); what is asserted here is the part
   // this widget owns — the toggles kept by id, the two click targets, and the property
   // the whole design was chosen for: the find count does not move when a block folds.

@@ -76,7 +76,7 @@ struct RolltuiWrapLines {
   RolltuiUnicodeScratch* uni;
 };
 
-/* ---- lifetime ------------------------------------------------------------------------- */
+/* ---- lifetime ---------------------------------------------------------------------------- */
 
 RolltuiWrapLines* rolltui_wrap_new(void) {
   RolltuiWrapLines* w = (RolltuiWrapLines*)rolltui_mem_alloc(sizeof(RolltuiWrapLines));
@@ -107,7 +107,7 @@ void rolltui_wrap_reset(RolltuiWrapLines* w) {
   w->line_count = 0;
 }
 
-/* ---- the engine ------------------------------------------------------------------------ */
+/* ---- the engine -------------------------------------------------------------------------- */
 
 /* The engine's working state. C has no lambdas, so what `WrapCpp.cpp` writes as six captures
  * is one struct passed to six functions — the port's most visible tax, and small. */
@@ -380,7 +380,7 @@ RolltuiWrapLines* rolltui_wrap_clone(const RolltuiWrapLines* src) {
   return w;
 }
 
-/* ---- reading the lines -------------------------------------------------------------------- */
+/* ---- reading the lines ------------------------------------------------------------------- */
 
 size_t rolltui_wrap_line_count(const RolltuiWrapLines* w) { return w->line_count; }
 

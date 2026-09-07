@@ -54,7 +54,7 @@ void rolltui_node_list_copy(RolltuiNodeList* to, const RolltuiNodeList* from) {
   }
 }
 
-/* ---- the node ----------------------------------------------------------------------------- */
+/* ---- the node ---------------------------------------------------------------------------- */
 
 void rolltui_layout_node_init(RolltuiLayoutNode* n) {
   memset(n, 0, sizeof *n);
@@ -125,7 +125,7 @@ int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNod
   return 1;
 }
 
-/* ---- a layer -------------------------------------------------------------------------------- */
+/* ---- a layer ----------------------------------------------------------------------------- */
 
 void rolltui_layer_init(RolltuiLayer* l) {
   memset(l, 0, sizeof *l);
@@ -186,7 +186,7 @@ int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b) {
   return rolltui_layout_node_equal(&a->root, &b->root);
 }
 
-/* ---- popups: an owned array of Layer values -------------------------------------------------- */
+/* ---- popups: an owned array of Layer values ---------------------------------------------- */
 /* GROWING AMORTISED (rolltui_alloc.h strategy 2), exactly as RolltuiWindowStack's own `layers`
  * array already does it: a Layer is trivially relocatable (every owned byte is behind a
  * pointer elsewhere), so `rolltui_grow_zeroed` may move the whole array with one realloc. */

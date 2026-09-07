@@ -1,13 +1,13 @@
 #pragma once
 //
-// rolltui/tools/menu_editor.hpp — THE MENU EDITOR (plan/phase-27.md m2): the fourth
+// rolltui/tools/menu_editor.hpp — THE MENU EDITOR: the fourth
 // editor, and the one that finishes the tool. The other three author a theme, a layout
 // and a bindings file; a screen is FOUR file types and until this existed the fourth had
 // to be hand-written JSON, so "build an app from nothing" was false by exactly one file.
 //
 // The user, 2026-09-07: "menus should be created by studio. the heck? studio shoukd let me
 // build an app from nothing minus the custom buildings and widgets being properly previews".
-// That also settles what "menu heck no, studio only" (2026-09-06) meant — not *menus are not
+// That also settles what "menu heck no, studio only" meant — not *menus are not
 // a user-editable format* but **menus are the DESIGNER's to author**, the same reason
 // layouts are.
 //

@@ -53,7 +53,7 @@ std::string read_until(int fd, const std::string& want, int ms) {
 // reproduces for RolltuiEvent, plus the RESIZE kind only the terminal ever produces
 // (rolltui/c/rolltui_terminal.h rule 4).
 std::string term_event_to_string(const RolltuiTermEvent& e) {
-  // THE LIBRARY'S TitleCase names (Phase 17 m2b), not a hand-copy of them. There were three
+  // THE LIBRARY'S TitleCase names, not a hand-copy of them. There were three
   // copies of this 28-entry table and no source: the lowercase half was already in C, the
   // TitleCase half was in `Keys.cpp`, and nothing said the two spellings were deliberate.
   static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};

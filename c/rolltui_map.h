@@ -1,7 +1,7 @@
 #ifndef ROLLTUI_C_MAP_H
 #define ROLLTUI_C_MAP_H
 /*
- * rolltui/c/rolltui_map.h — A STRING-KEYED TABLE, ONCE (Phase 15 m5).
+ * rolltui/c/rolltui_map.h — A STRING-KEYED TABLE, ONCE.
  *
  * The last container the port needs, and the one the C++ used most invisibly: SEVEN
  * `std::unordered_map<std::string, T>`s across two modules. The transcript alone has five —
@@ -9,7 +9,7 @@
  * code-fold states — and `Windows` has four more, one of which owns every widget in the
  * program.
  *
- * ---- WHY A LINEAR TABLE AND NOT A HASH MAP ---------------------------------------------
+ * ---- WHY A LINEAR TABLE AND NOT A HASH MAP --------------------------------------------------
  *
  * Because the sizes are known and small, and saying so is worth more than a hash: a
  * transcript's caches are one entry per DOCUMENT ENTRY (forty in the budget's worst case),
@@ -19,14 +19,14 @@
  * says so** — if a caller ever needs thousands of keys, that is the moment to add a hash,
  * with a measurement behind it.
  *
- * ---- OWNERSHIP -------------------------------------------------------------------------
+ * ---- OWNERSHIP ------------------------------------------------------------------------------
  *
  * The table owns its KEYS and nothing else: a value is a `void*` the CALLER owns, because
  * every user of this holds a different type and the freeing of that type must stay visible
  * at the owner (the same reason `RolltuiPtrVec` takes no deleter). `rolltui_map_release`
  * frees the keys and the array; the caller walks the values first.
  *
- * ---- THE SWEEP, WHICH IS WHY THIS IS NOT JUST A LIST ------------------------------------
+ * ---- THE SWEEP, WHICH IS WHY THIS IS NOT JUST A LIST ----------------------------------------
  *
  * Four of the seven maps are CACHES swept per frame: mark what this frame touched, then drop
  * what it did not. That is `rolltui_map_unmark_all` / `rolltui_map_mark` / a walk over the

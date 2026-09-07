@@ -69,7 +69,7 @@ void rolltui_diff_scratch_free(RolltuiDiffScratch* s) {
   rolltui_mem_free(s);
 }
 
-/* ---- the rules ------------------------------------------------------------------------ */
+/* ---- the rules --------------------------------------------------------------------------- */
 
 static int kind_of(const char* line, size_t len) {
   if (len == 0) return kOther;
@@ -166,7 +166,7 @@ static size_t partner_of(const void* block, size_t line_count, RolltuiDiffLineFn
   return k == kRemoved ? as + (index - rs) : rs + (index - as);
 }
 
-/* ---- the boundary --------------------------------------------------------------------- */
+/* ---- the boundary ------------------------------------------------------------------------ */
 
 int rolltui_diff_is_language(const char* lang, size_t lang_len) {
   return (lang_len == 4 && memcmp(lang, "diff", 4) == 0) || (lang_len == 5 && memcmp(lang, "patch", 5) == 0) ||

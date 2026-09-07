@@ -20,7 +20,7 @@
  *   3. **ONE DEFINITION**: a chord is `RolltuiChord` (rolltui_keys.h), the same struct the
  *      decoder produces and the deliverability model classifies.
  *
- * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW ------------------------------------------
+ * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW ----------------------------------------------
  *
  * **Which actions exist.** `rolltui_library_actions.c` owns that table — names and English
  * descriptions — and this file asks it through `RolltuiScopeFn`, for the reason m2 kept
@@ -84,7 +84,7 @@ void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools
 
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -108,7 +108,7 @@ void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len
  * its undeliverable chords are all REPORTED with a message before anything lands, so the
  * loader has already decided and needs a put rather than a policy. */
 void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
-/* ---- THE LIBRARY'S CLOSED ACTION TABLE (Phase 17) ---------------------------------------
+/* ---- THE LIBRARY'S CLOSED ACTION TABLE ------------------------------------------------------
  * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
  * used to live only in `Bindings.cpp` on the rule that the C is TOLD which scopes are the
  * library's rather than storing the table — right about SCOPES, wrong about the TABLE: with
@@ -117,7 +117,7 @@ void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t l
 size_t rolltui_library_action_count(void);
 const char* rolltui_library_action_name(size_t i, size_t* len);
 const char* rolltui_library_action_description(size_t i, size_t* len);
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

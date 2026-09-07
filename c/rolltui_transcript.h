@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_transcript.h — THE TRANSCRIPT WIDGET (Phase 15 m5e).
+ * rolltui/c/rolltui_transcript.h — THE TRANSCRIPT WIDGET.
  *
  * A document laid out into styled lines, scrolled by an ANCHOR rather than a line number,
  * selected in logical coordinates, searched, folded, and drawn. Every rule — why the anchor
@@ -13,7 +13,7 @@
  * is stated in `rolltui/Transcript.hpp` and asserted in `rolltui/tests/transcript_test.cpp`;
  * none of it is repeated here.
  *
- * ---- WHAT THIS MODULE OWNS, WHICH IS WHY IT IS THE LAST ONE -----------------------------
+ * ---- WHAT THIS MODULE OWNS, WHICH IS WHY IT IS THE LAST ONE ---------------------------------
  *
  * **FIVE string-keyed caches.** The parse tree per entry, the laid-out lines per entry, the
  * unfolded text find searches, the fold overrides, and the code-fold states. The C++ spelled
@@ -22,7 +22,7 @@
  * that justify it written down. Four of them are SWEPT per frame, which is why that header
  * has a mark/unmark pair rather than each caller doing it by hand.
  *
- * ---- THE BOUNDARY'S RULES, all inherited and none new -----------------------------------
+ * ---- THE BOUNDARY'S RULES, all inherited and none new ---------------------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER.** The transcript is a handle; the selected text and
  *      the searchable text are filled into a caller's `RolltuiStr`.
@@ -85,14 +85,14 @@ typedef struct RolltuiTranscriptRoles {
 int rolltui_transcript_viewport_height(const RolltuiTranscript* t);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 RolltuiTranscript* rolltui_transcript_new(void);
 void rolltui_transcript_free(RolltuiTranscript* t);
-/* ---- per frame ------------------------------------------------------------------------------------ */
+/* ---- per frame --------------------------------------------------------------------------- */
 void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocument* doc, RolltuiRect area,
                                const RolltuiTranscriptOptions* opt);
 void rolltui_transcript_draw(const RolltuiTranscript* t, RolltuiFrame* f, RolltuiDrawScratch* draw,
@@ -112,13 +112,13 @@ void rolltui_transcript_clear_selection(RolltuiTranscript* t);
 void rolltui_transcript_select(RolltuiTranscript* t, RolltuiTextPos anchor, RolltuiTextPos head);
 int rolltui_transcript_hit(const RolltuiTranscript* t, int x, int y, RolltuiTextPos* out);
 void rolltui_transcript_selected_text(const RolltuiTranscript* t, RolltuiStr* out);
-/* ---- introspection ------------------------------------------------------------------------------------- */
+/* ---- introspection ----------------------------------------------------------------------- */
 void rolltui_transcript_stats(const RolltuiTranscript* t, RolltuiTranscriptStats* out);
 /* A BORROW, valid until the next layout(). */
 const RolltuiEntryLayout* rolltui_transcript_layout_of(const RolltuiTranscript* t, size_t entry);
 void rolltui_transcript_text_area(const RolltuiTranscript* t, RolltuiRect* out);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

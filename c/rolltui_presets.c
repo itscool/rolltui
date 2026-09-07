@@ -294,7 +294,7 @@ void rolltui_preset_domains_free(RolltuiPresetDomains* p) {
   rolltui_mem_free(p);
 }
 
-/* ---- the shipped cache -------------------------------------------------------------------- */
+/* ---- the shipped cache ------------------------------------------------------------------- */
 
 struct RolltuiPresetShippedCache {
   Buf* names;
@@ -424,7 +424,7 @@ void rolltui_preset_domain_release(RolltuiPresetDomain* d) {
   d->cache = NULL;
 }
 
-/* ---- the store ------------------------------------------------------------------------------ */
+/* ---- the store --------------------------------------------------------------------------- */
 
 struct RolltuiPresetStore {
   RolltuiPresetDomain* d;
@@ -899,7 +899,7 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
   return result;
 }
 
-/* ---- the Theme domain's preset FILE FORMAT (this task) -------------------------------------
+/* ---- the Theme domain's preset FILE FORMAT (this task) --------------------------------------
  * See rolltui_presets.h for the boundary this section keeps (the vocab table, and mode/depth
  * value validity, both cross as parameters rather than being re-derived here) and why. */
 
@@ -1129,7 +1129,7 @@ static void generic_preset_origin_of(const char* text, size_t len, RolltuiPutFn 
   rolltui_str_free(&err);
 }
 
-/* ---- the Theme domain ------------------------------------------------------------------------ */
+/* ---- the Theme domain -------------------------------------------------------------------- */
 
 void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v) {
   if (!v) return;
@@ -1353,7 +1353,7 @@ void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThe
   out->report = &kThemePresetReportFns;
 }
 
-/* ---- the Layout domain ----------------------------------------------------------------------- */
+/* ---- the Layout domain ------------------------------------------------------------------- */
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r) {
   size_t i;
@@ -1452,7 +1452,7 @@ static void strip_preset_member(RolltuiJsonValue* root) {
  * either way — `rolltui_loaded_layout_to_layout`. This file had its own file-static copy of
  * that conversion, whose comment said it existed "the same reason `Layout.cpp`'s own
  * `loaded_to_layout` exists"; there were THREE of it, and it took an agent converting
- * `layout_editor.cpp` to need a fourth before anyone counted (Phase 17 m2a). */
+ * `layout_editor.cpp` to need a fourth before anyone counted. */
 static void* layout_domain_parse(const RolltuiPresetDomain* d, const char* text, size_t len, void* rep) {
   RolltuiLayoutPresetReport* r = (RolltuiLayoutPresetReport*)rep;
   RolltuiJsonValue* root;
@@ -1562,7 +1562,7 @@ void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLa
   out->report = &kLayoutPresetReportFns;
 }
 
-/* ---- the Bindings domain --------------------------------------------------------------------- */
+/* ---- the Bindings domain ----------------------------------------------------------------- */
 
 void rolltui_bindings_preset_report_release(RolltuiBindingsPresetReport* r) {
   size_t i;
@@ -1771,7 +1771,7 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out,
   out->report = &kBindingsPresetReportFns;
 }
 
-/* ---- the library's own three domains (Phase 18 m3; the case is at the header) ------------- */
+/* ---- the library's own three domains (Phase 18 m3; the case is at the header) ------------ */
 RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id) {
   const size_t i = (size_t)id;
   RolltuiPresetDomains* p;
@@ -1799,7 +1799,7 @@ RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomai
   return &p->d[i];
 }
 
-/* ---- settings and precedence (rolltui_presets.h has the why) -------------------------------
+/* ---- settings and precedence (rolltui_presets.h has the why) --------------------------------
  * No allocation anywhere below: every string is a literal with static storage duration, and
  * every lookup is a linear scan over a table of four or five rows. */
 
@@ -1902,7 +1902,7 @@ int rolltui_preset_setting_index(const char* key, size_t len) {
   return -1;
 }
 
-/* ---- the save-as sentences (Phase 17 m2a) --------------------------------------------------
+/* ---- the save-as sentences ------------------------------------------------------------------
  * Indexed by ROLLTUI_SAVE_*; `rolltui::to_string(SaveResult)`'s four, moved with them. */
 static const char* const kSaveResultText[] = {
     "saved",
@@ -1919,7 +1919,7 @@ const char* rolltui_preset_save_result_text(int result, size_t* len) {
   return s;
 }
 
-/* ---- the store's one-line problem sentence (Phase 17 m2a) ---------------------------------- */
+/* ---- the store's one-line problem sentence ----------------------------------------------- */
 
 static void sum_add(RolltuiStr* out, size_t* started, const char* prefix, size_t plen, const char* text,
                     size_t tlen) {
@@ -1969,7 +1969,7 @@ void rolltui_preset_report_summary(const RolltuiStr* error, const RolltuiStr* ba
   }
 }
 
-/* ---- the working copy's label (Phase 17 m2a) ----------------------------------------------- */
+/* ---- the working copy's label ------------------------------------------------------------ */
 void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
   size_t len = 0;
   const char* origin;
@@ -1981,7 +1981,7 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
 }
 
 /* ============================================================================================
- * A SETTING'S VALUE IN THE WORKING COPY (Phase 17 m3). See the header for why
+ * A SETTING'S VALUE IN THE WORKING COPY. See the header for why
  * `working_value`'s stated blocker was already false when it was written down.
  * ============================================================================================ */
 
@@ -1989,7 +1989,7 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, 
   if (!s) return;
   /* The IDENTITY key — the one whose value IS the preset name — is the domain's own name,
    * which the store carries as its domain's `kind`. One rule for all three domains, which is
-   * what stopped it being three string literals; one SOURCE for the name (Phase 18 m3), which
+   * what stopped it being three string literals; one SOURCE for the name, which
    * is what stopped every caller carrying an id in step with the store. */
   if (key_len == s->d->kind_len && memcmp(key, s->d->kind, key_len) == 0) {
     size_t on = 0;
@@ -2014,7 +2014,7 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, 
   }
 }
 
-/* ---- per-domain report judgement (Phase 17 m3) — see the header for why these are the
+/* ---- per-domain report judgement — see the header for why these are the
  * library's and the store wrappers around them are not. --------------------------------------- */
 
 int rolltui_theme_preset_report_clean(const RolltuiThemePresetReport* r) {

@@ -1,6 +1,6 @@
 //
 // deliverability_test.cpp — a chord a terminal cannot deliver is REFUSED, not bound to
-// silence (Phase 12 m3).
+// silence.
 //
 // THE DEFECT: `ctrl+shift+p` parses, binds, saves and renders in the help popup, and on
 // an ordinary terminal the bytes that arrive are byte-identical to `ctrl+p`, so it never
@@ -77,7 +77,7 @@ enum class KeyProtocol : unsigned char {
   ModifyOtherKeys = ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS,
   Kitty = ROLLTUI_PROTOCOL_KITTY,
 };
-// THE LIBRARY'S, not a copy (Phase 17 m2a): the three names are `ROLLTUI_PROTOCOL_LIST`'s.
+// THE LIBRARY'S, not a copy: the three names are `ROLLTUI_PROTOCOL_LIST`'s.
 std::string_view protocol_name(KeyProtocol p) {
   std::size_t len = 0;
   const char* s = rolltui_key_protocol_name(static_cast<unsigned char>(p), &len);
@@ -96,7 +96,7 @@ std::optional<std::string> encode_key(const RolltuiChord& k, KeyProtocol p) {
   if (n < 0) return std::nullopt;
   return std::string(buf, static_cast<std::size_t>(n));
 }
-// THE WORDS ARE THE LIBRARY'S NOW (Phase 17 m2a). This was one of THREE hand-copies of the
+// THE WORDS ARE THE LIBRARY'S NOW. This was one of THREE hand-copies of the
 // six sentences, all made because `Keys.cpp` was where they lived and a test asserting on one
 // has to say it. `rolltui_keys.h` carries the retraction.
 std::string undeliverable_reason(const RolltuiChord& k, KeyProtocol p) {

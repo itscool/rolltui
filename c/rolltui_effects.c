@@ -10,7 +10,7 @@
  * `rolltui::shutdown()` for the first time, and the promise it has to keep is a NUMBER:
  * after shutdown, `rolltui::mem::stats().live_bytes == 0`. Three things are retained per
  * host kind — the table slot, a COPY of the name, and the host's context — and all three
- * are released with the CONTEXT that holds them (Phase 25 m2): `rolltui_context_free` releases
+ * are released with the CONTEXT that holds them: `rolltui_context_free` releases
  * the registry by name, so the number is a session's fact and not only the process's.
  *
  * Everything allocates through the closed set in `rolltui_alloc.h`. */
@@ -27,7 +27,7 @@
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-/* ---- working memory --------------------------------------------------------------------- */
+/* ---- working memory ---------------------------------------------------------------------- */
 
 /* What one spec's kind resolved to, for one mark. `builtin` is an index into the closed
  * table below, or -1 for a host kind; both -1 and a NULL `fn` mean "nothing answers". */
@@ -134,7 +134,7 @@ static void set_glyph(RolltuiEffectOut* out, const char* g, size_t len) {
   if (len > 0 && len <= ROLLTUI_EFFECT_GLYPH_MAX) memcpy(out->glyph, g, len);
 }
 
-/* ---- rung 1: the built-in kinds ----------------------------------------------------------- */
+/* ---- rung 1: the built-in kinds ---------------------------------------------------------- */
 /* Each one is the whole of its rule. None of them names a colour: they pick between the base
  * style and a role the theme named (Effects.hpp, "what an effect may not do"). */
 
@@ -238,8 +238,8 @@ static int spec_kind_is(const RolltuiEffectSpec* s, const char* name, size_t len
   return name_eq(s->kind, s->kind_len, name, len);
 }
 
-/* ---- rung 2: the kinds a HOST registered --------------------------------------------------- */
-/* RUNG 2 IS A CONTEXT'S, NOT THE PROCESS'S (Phase 25 m2) — the same move, for the same reason,
+/* ---- rung 2: the kinds a HOST registered ------------------------------------------------- */
+/* RUNG 2 IS A CONTEXT'S, NOT THE PROCESS'S — the same move, for the same reason,
  * as the widget kinds in `rolltui_layout.c`. Three owned things per entry: the slot, a copy of
  * the name, and the host's own context pointer.
  *
@@ -576,7 +576,7 @@ int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* 
   return 1;
 }
 
-/* ---- the pure parts -------------------------------------------------------------------------- */
+/* ---- the pure parts ---------------------------------------------------------------------- */
 
 int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
   if (spec->steps > 0) return spec->steps;
@@ -591,7 +591,7 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
   return len; /* a host's own kind, until its theme row says otherwise */
 }
 
-/* ---- applying, and the tick -------------------------------------------------------------------- */
+/* ---- applying, and the tick -------------------------------------------------------------- */
 
 void rolltui_effects_apply(const RolltuiContext* c, RolltuiFrame* f, RolltuiEffectScratch* sc,
                            const RolltuiStyle* styles, const void* host,

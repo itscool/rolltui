@@ -4,11 +4,11 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_theme_analysis.h — THE COLOUR MATHS, as C (Phase 17 m1).
+ * rolltui/c/rolltui_theme_analysis.h — THE COLOUR MATHS, as C.
  *
  * `rolltui/ThemeAnalysis.hpp` WAS "is this theme readable, and by whom?" in full: colour
  * spaces, WCAG/APCA contrast, colour-vision-deficiency simulation, a per-role/per-pair
- * REPORT, and auto-fix PROPOSALS. It is deleted (Phase 17 m2c) and this file is the whole of
+ * REPORT, and auto-fix PROPOSALS. It is deleted and this file is the whole of
  * it. The first half — sRGB/linear/OKLab/OKLCH conversion, the two contrast formulas, ΔE, and
  * the Machado CVD matrices — has NO Theme, Role or JSON in it. Every formula's reference and
  * every reference value is in the .c file next to the code, and
@@ -63,21 +63,21 @@ extern "C" {
 void rolltui_into_gamut(RolltuiOkLch c, RolltuiLin* out);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
-/* ---- sRGB <-> linear ------------------------------------------------------------------- */
+/* ---- sRGB <-> linear --------------------------------------------------------------------- */
 double rolltui_srgb_channel_to_linear(double c); /* c in 0..1 */
 double rolltui_linear_channel_to_srgb(double v);
 void rolltui_from_linear(RolltuiLin l, RolltuiStyleColor* out);
-/* ---- linear <-> OKLab <-> OKLCH (Björn Ottosson, 2020) --------------------------------- */
+/* ---- linear <-> OKLab <-> OKLCH (Björn Ottosson, 2020) ----------------------------------- */
 void rolltui_linear_to_oklab(RolltuiLin l, RolltuiOkLab* out);
 void rolltui_oklab_to_linear(RolltuiOkLab lab, RolltuiLin* out);
 void rolltui_oklab_to_oklch(RolltuiOkLab lab, RolltuiOkLch* out);
 void rolltui_oklch_to_oklab(RolltuiOkLch lch, RolltuiOkLab* out);
-/* ---- contrast and distance -------------------------------------------------------------- */
+/* ---- contrast and distance --------------------------------------------------------------- */
 double rolltui_relative_luminance(RolltuiLin l);       /* Y, Rec. 709 weights */
 double rolltui_wcag_contrast(RolltuiLin a, RolltuiLin b);   /* (L1 + 0.05) / (L2 + 0.05), >= 1 */
 double rolltui_apca_contrast(RolltuiLin text, RolltuiLin bg); /* Lc, signed */
@@ -105,7 +105,7 @@ int rolltui_fix_contrast(const RolltuiStyle* styles, size_t role_count, unsigned
 int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsigned char a, unsigned char b,
                            const RolltuiThemeVocab* vocab, RolltuiFix* out);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
@@ -163,7 +163,7 @@ void rolltui_propose_fixes(const RolltuiStyle* styles, size_t role_count, const 
  * `rolltui::apply_fix` (`theme.style(fix.role) = fix.after`) exactly. */
 void rolltui_apply_fix(RolltuiStyle* styles, size_t role_count, unsigned char role, const RolltuiStyle* after);
 
-/* ---- generate() (Phase 17 m5) ------------------------------------------------------------
+/* ---- generate() -----------------------------------------------------------------------------
  *
  * Builds a whole theme positionally into `out_styles[0..role_count)` (CALLER-FILLED, the
  * same convention `rolltui_theme_builtin_fill` already uses) and runs the repair loop

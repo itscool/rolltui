@@ -4,13 +4,13 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_md_lines.h — THE SPAN STORE (Phase 15 m4).
+ * rolltui/c/rolltui_md_lines.h — THE SPAN STORE.
  *
  * Styled, wrapped lines and the bytes they are made of, in ONE caller-owned handle that is
  * RESET and refilled rather than rebuilt. Everything the markdown renderer and the
  * transcript's layout produce lives in here; nothing they produce owns a byte of its own.
  *
- * ---- WHY THIS EXISTS, in the numbers m1 measured ---------------------------------------
+ * ---- WHY THIS EXISTS, in the numbers m1 measured --------------------------------------------
  *
  * A resize frame was 10,297 allocations. **4,128 of them were `push_span`** — a
  * `std::string text` and a `std::vector<std::uint32_t> sources` per span, allocated and
@@ -23,7 +23,7 @@
  * a BORROW — an offset and a length into pools this store owns — so there is no per-span
  * buffer to allocate, and copying a span into another line copies a descriptor.
  *
- * ---- THE THREE THINGS THAT MAKE IT SAFE -------------------------------------------------
+ * ---- THE THREE THINGS THAT MAKE IT SAFE -----------------------------------------------------
  *
  * 1. **A published pointer is valid until the next mutation of the store.** `finish()` is
  *    what publishes; `RolltuiMdSpan` and `RolltuiMdLine` carry real pointers and are read
@@ -41,7 +41,7 @@
  *    caller appends while it reads, and an append may grow the pool under a pointer it
  *    took a moment ago.
  *
- * ---- COMPILED INTO BOTH CONFIGURATIONS, and that is a decision -------------------------
+ * ---- COMPILED INTO BOTH CONFIGURATIONS, and that is a decision ------------------------------
  *
  * This file is not one of the ported modules; it was C in the C++ build too, for the
  * same reason `unicode_tables.c` and `rolltui_alloc.c` are: it is the DATA both
@@ -127,7 +127,7 @@ const RolltuiMdLine* rolltui_md_lines_all(const RolltuiMdLines* L);
  * name another line's spans while appending to the store. */
 void rolltui_md_lines_span_range(const RolltuiMdLines* L, size_t i, size_t* first, size_t* count);
 
-/* ---- the logical text ------------------------------------------------------------------
+/* ---- the logical text -----------------------------------------------------------------------
  *
  * The document's text at infinite width — what every `src_p` offset indexes, what a
  * selection copies and what find searches (rolltui/Markdown.hpp, "LOGICAL TEXT"). It lives

@@ -24,7 +24,7 @@ namespace {
 // directly over RolltuiEvent. The COMPOSITION (modifier prefixes, the mouse form) is still
 // this file's; the KEY NAMES are the library's since Phase 17 m2b.
 std::string event_to_string(const RolltuiEvent& e) {
-  // THE LIBRARY'S TitleCase names (Phase 17 m2b), not a hand-copy of them. There were three
+  // THE LIBRARY'S TitleCase names, not a hand-copy of them. There were three
   // copies of this 28-entry table and no source: the lowercase half was already in C, the
   // TitleCase half was in `Keys.cpp`, and nothing said the two spellings were deliberate.
   static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
@@ -113,7 +113,7 @@ int main() {
   table(std::string("\x00", 1), "Ctrl+ ");
   table("\x1f", "Ctrl+_");
   table("\r", "Enter");
-  // LF is Ctrl-J, not Enter (Phase 12 m3). Terminal always runs raw — cfmakeraw clears
+  // LF is Ctrl-J, not Enter. Terminal always runs raw — cfmakeraw clears
   // ICRNL and INLCR — so Enter is CR and the only thing that sends LF is ctrl+j. While
   // both were Enter, `ctrl+j` was a chord that parsed, bound, saved, rendered in the
   // help popup and never fired; the Phase 10 files-only fixture binds exactly that
@@ -155,7 +155,7 @@ int main() {
   table("\x1b" "B", "Alt+Shift+b");
   table("\x1b\x1b[Z", "Escape | Shift+Tab");  // not a letter: ESC still starts a sequence
 
-  // ---- the two ENHANCED forms (Phase 12 m3) ----
+  // ---- the two ENHANCED forms ----
   // kitty: CSI unicode-key-code ; modifiers u, the code ALWAYS the unshifted key, the
   // modifiers 1 + (shift 1 | alt 2 | ctrl 4).  [sw.kovidgoyal.net/kitty/keyboard-protocol]
   table("\x1b[112;6u", "Ctrl+Shift+p");   // the chord the whole milestone is named for

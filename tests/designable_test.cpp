@@ -1,5 +1,5 @@
 //
-// designable_test.cpp — WHAT A PERSON CAN DESIGN WITHOUT WRITING JSON (plan/phase-27.md m4),
+// designable_test.cpp — WHAT A PERSON CAN DESIGN WITHOUT WRITING JSON,
 // as a check rather than a sentence.
 //
 // m4 asks the phase to close by stating what a person can and cannot design in the tool, "as
@@ -25,7 +25,7 @@
 //   1. A FOREIGN WIDGET KIND previews as a labelled placeholder. `content` is fully settable —
 //      you can type `canvas:sheet` and it is SAVED — but this binary cannot draw another app's
 //      canvas, so it draws `[canvas:sheet]` and says so. Not a gap: the artifact records the
-//      intent, and the app reports the gap to its own developer (Phase 26).
+// intent, and the app reports the gap to its own developer.
 //   2. AN ACTION NAME CANNOT BE VERIFIED, because the action belongs to the app. A menu item's
 //      `action` and an input's `validator` are the same case, which is the point: a second
 //      instance of one exception, not a third exception.

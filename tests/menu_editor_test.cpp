@@ -1,5 +1,5 @@
 //
-// menu_editor_test.cpp — the menu editor's model (plan/phase-27.md m2), driven headless the
+// menu_editor_test.cpp — the menu editor's model, driven headless the
 // way its three siblings are: the item tree (add as a child and as a sibling, remove, reorder),
 // the kind and the fields each kind offers, a choice's options, an input's type and range,
 // undo/redo, the outcomes, and — the one that matters — THE TREE ROUND-TRIPPING through the

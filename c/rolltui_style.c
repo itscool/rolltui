@@ -31,7 +31,7 @@ int rolltui_role_from_name(const char* name, size_t len) {
   return -1;
 }
 
-/* ---- the effect-state names, from `ROLLTUI_EFFECT_STATE_LIST` -----------------------------
+/* ---- the effect-state names, from `ROLLTUI_EFFECT_STATE_LIST` -------------------------------
  * Here rather than in `rolltui_effects.c` for one reason: this file is the library's
  * VOCABULARY table, and both lists are the same kind of thing — a closed set of names a theme
  * file is written in. Keeping them together is what stops the next one being invented

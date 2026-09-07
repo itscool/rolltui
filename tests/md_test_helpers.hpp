@@ -1,5 +1,5 @@
 // rolltui/tests/md_test_helpers.hpp — the markdown and transcript tests' own views over the
-// line store's C structs (Phase 19 m2). These were C++ members naming std::span and
+// line store's C structs. These were C++ members naming std::span and
 // std::string_view; the library's shape no longer names either, so the tests that read the
 // store make their views here.
 #pragma once

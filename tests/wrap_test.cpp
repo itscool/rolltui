@@ -116,7 +116,7 @@ Lines wrap_handoff(std::string_view input, int width, RolltuiWrapOptions opt = {
 
 std::vector<std::string> texts(const Lines& lines) {
   std::vector<std::string> v;
-  // `Line::text` is a BORROW now (Phase 14 m3), so a caller that wants a string says so.
+  // `Line::text` is a BORROW now, so a caller that wants a string says so.
   for (const Line& l : lines) v.emplace_back(l.text);
   return v;
 }

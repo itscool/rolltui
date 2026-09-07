@@ -1,7 +1,7 @@
 /*
- * rolltui/c/rolltui_gaps.c — WHAT THIS SCREEN NAMES THAT THIS APP DOES NOT PROVIDE (Phase 26).
+ * rolltui/c/rolltui_gaps.c — WHAT THIS SCREEN NAMES THAT THIS APP DOES NOT PROVIDE.
  *
- * ---- WHO THIS IS FOR, which decides everything else about it ------------------------------
+ * ---- WHO THIS IS FOR, which decides everything else about it --------------------------------
  *
  * The DEVELOPER, not the person who wrote the layout. The user's framing, 2026-09-06, and it
  * is the whole reason this file exists rather than a validator:
@@ -14,7 +14,7 @@
  * `rolltui_bindings_load_json` already does with an action nothing declares. Nothing in here
  * refuses a layout, and nothing in here is a reason not to run.
  *
- * ---- WHY IT IS NOT `rolltui_windows_sync`, WHICH ALREADY DOES HALF OF IT ------------------
+ * ---- WHY IT IS NOT `rolltui_windows_sync`, WHICH ALREADY DOES HALF OF IT --------------------
  *
  * `sync` collects the same per-widget `problem()` strings, and Phase 26 m1 judged it CORRECT
  * and kept it. What it cannot do is this job, for two reasons that are both about WHEN:
@@ -33,7 +33,7 @@
  * says "nothing is bound to 'x'", the error panel says why a content could not be built).
  * Writing those checks again here would be a second spelling of a rule that already has one.
  *
- * ---- THE TWO KINDS OF GAP, and the second one is weaker on purpose ------------------------
+ * ---- THE TWO KINDS OF GAP, and the second one is weaker on purpose --------------------------
  *
  *   A THING THAT DOES NOT EXIST — a window names a kind nobody registered, or a source
  *   nothing is bound to. This is exact: the library resolves both and knows the answer.
@@ -44,7 +44,7 @@
  *   library-visible, because handling is a `switch` in the host's own event loop. What is
  *   visible is the keyboard, and a declared action no key reaches is worth saying.
  *
- * ---- WHAT IS DELIBERATELY NOT CHECKED ----------------------------------------------------
+ * ---- WHAT IS DELIBERATELY NOT CHECKED -------------------------------------------------------
  *
  *   `note_at`. `sync` collects a widget's notes alongside its problem; this does not. A note
  *   is a remark about a window that WORKS (a migration, a fallback that was taken). A gap is
@@ -61,7 +61,7 @@
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_widgets.h"
 
-/* ---- the report ------------------------------------------------------------------------- */
+/* ---- the report -------------------------------------------------------------------------- */
 
 void rolltui_gap_report_release(RolltuiGapReport* r) {
   size_t i;

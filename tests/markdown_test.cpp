@@ -1,6 +1,6 @@
 //
 // markdown_test.cpp — the markdown renderer (rolltui/c/rolltui_markdown.h) over vendored
-// md4c, calling the C API directly ahead of the C++ binding layer's deletion (Phase 17):
+// md4c, calling the C API directly ahead of the C++ binding layer's deletion:
 // `rolltui/Markdown.hpp` and its shim `Markdown.cpp` are gone from this file's includes,
 // and every `rolltui::markdown::` type this test used is now its raw C equivalent, called
 // through `rolltui/c/rolltui_markdown.h` and `rolltui/c/rolltui_md_lines.h`.
@@ -58,7 +58,7 @@ using namespace rolltui_test;
 
 namespace {
 
-// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST` (Phase 17 m2a), not
+// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST`, not
 // reproduced. This was one of SIX verbatim copies of the 49 names IN ORDER, each written when
 // the role vocabulary was still C++ and a converted suite had no way to ask for it. A style
 // table is indexed by this ordinal, so the order is ABI and a copy of it is a copy of ABI.
@@ -466,7 +466,7 @@ int main() {
           "an unterminated fence renders as a code block to the end");
     check(has_role(v, Role::md_code_block, "return 1"), "its last line is code");
   }
-  // ---- highlighter seam (plan/phase-12.md m2) -------------------------------------
+  // ---- highlighter seam -------------------------------------
   {
     int calls = 0;
     RolltuiMdRenderOptions ro{.width = 30};
@@ -507,7 +507,7 @@ int main() {
   {
     // The control: RenderOptions::highlight left UNSET. This is the seam's whole
     // mechanism for "the callback is never called for a line no theme role could
-    // distinguish (a mono theme asks for no spans)" (plan/phase-12.md m2) — the
+    // distinguish (a mono theme asks for no spans)" — the
     // renderer cannot itself see a Theme (Markdown.hpp/Theme.hpp: roles are emitted,
     // never colours), so the guarantee it can make and this asserts is: nothing is
     // called when nothing is registered. A host under a mono theme asks for no spans
@@ -655,7 +655,7 @@ int main() {
           "block tree shape");
     rolltui_md_doc_free(d);
   }
-  // ---- long code blocks: fold and cap (plan/phase-12.md m5b) ------------------------
+  // ---- long code blocks: fold and cap ------------------------
   // THE BYTE-IDENTICAL CONTROL for this feature is the 100-odd assertions above: every
   // one of them renders with RolltuiMdRenderOptions{} defaults — no thresholds — and every
   // one still passes. What is asserted here is that the OFF state is off by construction,

@@ -780,7 +780,7 @@ int main() {
               store.working_value("layout").empty(),
           "working_value reads each of the Theme domain's settings, and none of another domain's");
   }
-  // ---- the Layout domain (Phase 10 m1): the same five rules on the third domain ----
+  // ---- the Layout domain: the same five rules on the third domain ----
   {
     const std::string ldir = (world / "layouts").string();
     LayoutStore ls(ldir, false, "");

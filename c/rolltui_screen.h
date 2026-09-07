@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_screen.h — THE FRAME, as C (Phase 14 m2).
+ * rolltui/c/rolltui_screen.h — THE FRAME, as C.
  *
  * The cell grid: what a widget draws into and what the diff reads. This is the informative
  * half of the experiment, because it is the part where C++ was doing real work — a Frame
@@ -67,7 +67,7 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
 
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -83,13 +83,13 @@ int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t g
 /* The cell's grapheme: a BORROW into the frame, valid until that cell is written again.
  * `*len` receives the byte count. Never NULL; a continuation cell gives length 0. */
 const char* rolltui_frame_glyph(const RolltuiFrame* f, int x, int y, size_t* len);
-/* ---- the link table --------------------------------------------------------------- */
+/* ---- the link table ---------------------------------------------------------------------- */
 /* Interns a URL for this frame; the same URL gets the same id. 0 for an empty URL. */
 unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_len);
 /* A BORROW, valid until the next reset. Empty for id 0 or an unknown id. */
 const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* len);
 void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
-/* ---- equality ---------------------------------------------------------------------- */
+/* ---- equality ---------------------------------------------------------------------------- */
 /* What the frame SHOWS, not what it is holding on to: retained link/spill capacity past a
  * reset is not compared (Phase 13 m5b found that the hard way). */
 int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);

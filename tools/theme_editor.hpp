@@ -198,7 +198,7 @@ class ThemeEditor {
   std::optional<unsigned char> focused_role() const;
   std::optional<Color> highlighted_color() const;
   // REFILLED into a string the caller keeps: the studio draws this every frame an editor is
-  // open (2026-09-06). The returning form is one copy over it, for a test that reads it.
+  // open. The returning form is one copy over it, for a test that reads it.
   void status_line(std::string& out) const;
   std::string status_line() const;
   std::string badges_line() const;   // "badges: dark readable cvd-safe" (computed, never declared)

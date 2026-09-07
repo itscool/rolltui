@@ -30,7 +30,7 @@ static int imax(int a, int b) { return a > b ? a : b; }
 static int imin(int a, int b) { return a < b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-/* ---- placement ------------------------------------------------------------------------------ */
+/* ---- placement --------------------------------------------------------------------------- */
 
 int rolltui_resolve_dim(RolltuiDim d, int extent) {
   return (int)floor(d.fraction * extent + 1e-6) + d.cells;
@@ -112,7 +112,7 @@ static int rect_contains(RolltuiRect r, int x, int y) {
   return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 }
 
-/* ---- the text forms ------------------------------------------------------------------------ */
+/* ---- the text forms ---------------------------------------------------------------------- */
 
 static const char* trim_span(const char* s, size_t len, size_t* out_len) {
   size_t b = 0, e = len;
@@ -262,7 +262,7 @@ size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap) {
   }
 }
 
-/* ---- the split ------------------------------------------------------------------------------- */
+/* ---- the split --------------------------------------------------------------------------- */
 
 #define SIDE_LEFT 0
 #define SIDE_RIGHT 1
@@ -409,7 +409,7 @@ void rolltui_resolve_tree(const RolltuiLayoutNode* root, RolltuiRect box, Rolltu
   if (root->visible) place(root, box, screen, layer, emit, ctx);
 }
 
-/* ---- drawing --------------------------------------------------------------------------------- */
+/* ---- drawing ----------------------------------------------------------------------------- */
 
 /* Box-drawing arms: U D L R. */
 #define ARM_U 1
@@ -536,7 +536,7 @@ void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect 
   draw_border_impl(f, draw, outer, border, line, title, title_n, title_style, ambiguous_wide, NULL, NULL);
 }
 
-/* ---- compose ----------------------------------------------------------------------------------- */
+/* ---- compose ----------------------------------------------------------------------------- */
 
 /* A resolved-node buffer, GROWING AMORTISED. Declared before the scratch because the
  * scratch holds one — a compose collects ONE layer at a time, and the buffer is the
@@ -632,7 +632,7 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     if (nodes[i].node->kind == ROLLTUI_NODE_WINDOW && !rect_empty(nodes[i].inner)) render(ctx, &nodes[i], f);
 }
 
-/* ---- the widget-kind registry --------------------------------------------------------------------- */
+/* ---- the widget-kind registry ------------------------------------------------------------ */
 
 typedef struct KindRow {
   const char* name;
@@ -668,7 +668,7 @@ typedef struct HostKind {
   unsigned char rule;
 } HostKind;
 
-/* RUNG 2 IS A CONTEXT'S, NOT THE PROCESS'S (Phase 25 m2). It was four file-scope statics and a
+/* RUNG 2 IS A CONTEXT'S, NOT THE PROCESS'S. It was four file-scope statics and a
  * shutdown hook; two apps in one process registering different kinds shared one table, and the
  * only reason nothing had noticed is that nothing had ever built two. The type stays private to
  * this file — `rolltui_context.h` knows only the pointer. */
@@ -815,7 +815,7 @@ void rolltui_widget_kind_clear(RolltuiContext* c) {
   c->kinds = NULL;
 }
 
-/* ---- small local helpers shared by content-parsing and the loader below -----------------------
+/* ---- small local helpers shared by content-parsing and the loader below ---------------------
  * `K`/`streq` mirror `rolltui_menu.c`'s own (its own copy, not shared: a static helper
  * has no external linkage, and each is a two-line wrapper, not a strategy worth a header). */
 #define K(s) (s), strlen(s)
@@ -833,7 +833,7 @@ static int streq(const char* s, size_t slen, const char* lit) {
 static void app(RolltuiStr* s, const char* lit) { rolltui_str_append(s, lit, strlen(lit)); }
 static void appn(RolltuiStr* s, const char* p, size_t n) { rolltui_str_append(s, p, n); }
 
-/* ---- content: parsing and formatting, as C (Phase 17 m2) --------------------------------------- */
+/* ---- content: parsing and formatting, as C ----------------------------------------------- */
 
 int rolltui_content_parse(const RolltuiContext* c, const char* text, size_t len, size_t* row, int* is_host,
                           const char** name, size_t* name_len, const char** source, size_t* source_len,
@@ -965,7 +965,7 @@ int rolltui_content_equal(const RolltuiContent* a, const RolltuiContent* b) {
   return rolltui_str_eq(&a->kind, b->kind.p, b->kind.n) && rolltui_str_eq(&a->source, b->source.p, b->source.n);
 }
 
-/* ---- names: anchors and borders — Layout's OWN vocabulary, unlike Role ------------------------- */
+/* ---- names: anchors and borders — Layout's OWN vocabulary, unlike Role ------------------- */
 
 static const char* const kAnchorNames[9] = {"top-left",     "top",    "top-right", "left",   "center",
                                             "right",        "bottom-left", "bottom", "bottom-right"};
@@ -1009,7 +1009,7 @@ int rolltui_border_from_name(const char* name, size_t len, unsigned char* out) {
   return 0;
 }
 
-/* ---- the loader: a layout file's JSON, both directions, as C (Phase 17 m2) --------------------- */
+/* ---- the loader: a layout file's JSON, both directions, as C ----------------------------- */
 
 void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayoutHooks* hooks, RolltuiStr* out) {
   size_t scope_len = 0;
@@ -1028,7 +1028,7 @@ void rolltui_action_decl_problem(const char* name, size_t len, const RolltuiLayo
    * "" return. */
 }
 
-/* ---- the report ---------------------------------------------------------------------------------- */
+/* ---- the report -------------------------------------------------------------------------- */
 
 void rolltui_layout_report_release(RolltuiLayoutReport* r) {
   size_t i;
@@ -1083,7 +1083,7 @@ static void unknown_at(RolltuiLayoutReport* r, const char* where, size_t where_l
   add_unknown(r, &msg);
 }
 
-/* ---- RolltuiLoadedLayout: the transient carrier (see the header comment) ----------------------- */
+/* ---- RolltuiLoadedLayout: the transient carrier (see the header comment) ----------------- */
 
 void rolltui_loaded_layout_init(RolltuiLoadedLayout* l) {
   memset(l, 0, sizeof *l);
@@ -1126,7 +1126,7 @@ void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout*
   loaded->popups_n = loaded->popups_cap = 0;
 }
 
-/* ---- RolltuiActionList: an owned array of RolltuiLayoutAction values --------------------------- */
+/* ---- RolltuiActionList: an owned array of RolltuiLayoutAction values --------------------- */
 /* GROWING AMORTISED, exactly like RolltuiLayerList right beside it: a RolltuiLayoutAction is
  * two RolltuiStrs and nothing else, so it is trivially relocatable the same way. */
 
@@ -1190,7 +1190,7 @@ int rolltui_action_list_equal(const RolltuiActionList* a, const RolltuiActionLis
   return 1;
 }
 
-/* ---- RolltuiLayout: the enduring value (see the header comment) -------------------------------- */
+/* ---- RolltuiLayout: the enduring value (see the header comment) -------------------------- */
 
 void rolltui_layout_init(RolltuiLayout* l) {
   memset(l, 0, sizeof *l);
@@ -1232,7 +1232,7 @@ const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id,
   return NULL;
 }
 
-/* ---- PHASE 23: the opaque handle's lifecycle, and the seven doors -------------------------- */
+/* ---- PHASE 23: the opaque handle's lifecycle, and the seven doors ------------------------ */
 
 RolltuiLayout* rolltui_layout_new(void) {
   RolltuiLayout* l = (RolltuiLayout*)rolltui_mem_alloc(sizeof *l);  /* OWNED, LONG-LIVED */
@@ -1289,7 +1289,7 @@ int rolltui_layout_node_is_window(const RolltuiLayoutNode* n) {
 }
 
 /* The public loader: parses, unpacks and hands back an OWNED layout. The carrier is the
- * library's own business now (Phase 23) — three consumers wrote the four-line dance. */
+ * library's own business now — three consumers wrote the four-line dance. */
 RolltuiLayout* rolltui_load_layout_text(const char* text, size_t len,
                                         const RolltuiLayoutAction* default_actions, size_t default_actions_n,
                                         const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report) {
@@ -1341,7 +1341,7 @@ void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n) {
   rolltui_mem_free(actions);
 }
 
-/* ---- the loader's own JSON walk: node, layer, dim, bool ----------------------------------------- */
+/* ---- the loader's own JSON walk: node, layer, dim, bool ---------------------------------- */
 
 static void set_str_field(RolltuiStr* field, const RolltuiJsonValue* x) {
   size_t sl = 0;
@@ -1878,7 +1878,7 @@ int rolltui_load_layout_text_into(const char* text, size_t len, RolltuiLoadedLay
   return ok;
 }
 
-/* ---- serialising: back to JSON, as C ------------------------------------------------------------- */
+/* ---- serialising: back to JSON, as C ----------------------------------------------------- */
 
 static RolltuiJsonValue* dim_to_json(RolltuiDim d) {
   if (d.fraction == 0) return rolltui_json_number(d.cells);
@@ -2003,7 +2003,7 @@ void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_widt
   rolltui_json_free(v);
 }
 
-/* ---- the stack ------------------------------------------------------------------------------------ */
+/* ---- the stack --------------------------------------------------------------------------- */
 
 struct RolltuiWindowStack {
   RolltuiLayer* layers; /* OWNED; always at least one (the base) */
@@ -2022,7 +2022,7 @@ static const RolltuiLayoutNode* find_in(const RolltuiLayoutNode* n, const char* 
 }
 
 /* No list. This runs once per layer per resolve — three times a frame — and only ever needs
- * the FIRST focusable or the one matching a name (Phase 13 m5b). */
+ * the FIRST focusable or the one matching a name. */
 static const RolltuiLayoutNode* first_focusable(const RolltuiLayoutNode* n) {
   size_t i;
   if (!n->visible) return NULL;
@@ -2337,7 +2337,7 @@ const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* l
   return rolltui_str_get(&s->captured, len);
 }
 
-/* ---- THE SHIPPED SCREEN'S OWN ACTIONS AND THE BUILT-IN LAYOUTS — see the header ---------
+/* ---- THE SHIPPED SCREEN'S OWN ACTIONS AND THE BUILT-IN LAYOUTS — see the header -------------
  * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S rather than the process's since
  * Phase 25 m2. Both are parsed once from the same embedded `const` bytes, so every context
  * ends up with identical CONTENT and its own STORAGE — which is contract point 4: a cached
@@ -2415,7 +2415,7 @@ const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(RolltuiContext
   return lc->actions;
 }
 
-/* ---- the library's own hooks (Phase 17 m2a) ------------------------------------------------
+/* ---- the library's own hooks ----------------------------------------------------------------
  * See rolltui_layout.h for why these three questions no longer have to be asked back. */
 
 static int default_role_from_name(void* ctx, const char* name, size_t len, unsigned char* out) {
@@ -2451,7 +2451,7 @@ const RolltuiLayoutHooks* rolltui_layout_default_hooks(void) {
 }
 
 /* The four bytes a compose paints its chrome with, NAMED from the role list this file can
- * now reach (Phase 17 m3) — see the header for why they stopped being `Layout.cpp`'s. */
+ * now reach — see the header for why they stopped being `Layout.cpp`'s. */
 const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
   static const RolltuiLayoutRoles r = {
       /*border=*/ROLLTUI_ROLE_BORDER,
@@ -2463,7 +2463,7 @@ const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
 }
 
 /* ============================================================================================
- * THE BUILT-IN LAYOUTS, PARSED AND CACHED (Phase 17 m3) — `Layout.cpp`'s cache, moved. See the
+ * THE BUILT-IN LAYOUTS, PARSED AND CACHED — `Layout.cpp`'s cache, moved. See the
  * header for the two properties it carries over and the defect each one cost first.
  * ============================================================================================ */
 

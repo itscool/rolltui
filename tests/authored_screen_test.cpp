@@ -254,7 +254,7 @@ int main() {
     check(!has(status_line(frame), "[") && has(status_line(frame), " easel "),
           "…with no window reporting a problem [" + status_line(frame) + "]");
 
-    // THE GAP REPORT (Phase 26 m2), on a real screen and a real miss. `app.easel` exists
+    // THE GAP REPORT, on a real screen and a real miss. `app.easel` exists
     // because a person typed it into a design tool; paint has no chord for it and says so, by
     // name, at end of init — and draws every window above regardless. That is the phase's whole
     // claim in one line of output: the screen is the intent, the code catches up.

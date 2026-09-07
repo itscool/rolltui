@@ -70,7 +70,7 @@ using namespace rolltui_test;
 
 namespace {
 
-// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST` (Phase 17 m2a), not
+// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST`, not
 // reproduced. This was one of SIX verbatim copies of the 49 names IN ORDER, each written when
 // the role vocabulary was still C++ and a converted suite had no way to ask for it. A style
 // table is indexed by this ordinal, so the order is ABI and a copy of it is a copy of ABI.
@@ -666,7 +666,7 @@ int main() {
     check(effect_kind_names().size() == 9, "both appear after the library's seven, in resolution order");
   }
 
-  // ---- RUNG 2 IS A SESSION'S (Phase 25 m2) ------------------------------------------
+  // ---- RUNG 2 IS A SESSION'S ------------------------------------------
   // The same proof `c_consumer_test` makes for widget kinds, made here because an effect
   // kind is registered through an INTERNAL header that the pure-C consumer does not include.
   // Two contexts, one registration, and the library's own rung answering identically in both.

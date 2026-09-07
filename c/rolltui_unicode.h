@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_unicode.h — THE UNICODE ALGORITHMS, as C (Phase 14 m5).
+ * rolltui/c/rolltui_unicode.h — THE UNICODE ALGORITHMS, as C.
  *
  * UTF-8 decoding, UAX #14 line breaking, UAX #29 grapheme clusters and word boundaries,
  * terminal cell widths, and the escape-sequence stripper. The rules and their justifications
@@ -58,17 +58,17 @@ typedef struct RolltuiUnicodeGrapheme {
 
 unsigned char rolltui_u_general_category(RolltuiCodepoint cp);
 
-/* ---- UTF-8 ----------------------------------------------------------------------------- */
+/* ---- UTF-8 ------------------------------------------------------------------------------- */
 /* One scalar at `pos`, into a caller's struct. `pos` must be < `len`. */
 void rolltui_u_decode_one(const char* s, size_t len, size_t pos, RolltuiDecodedChar* out);
 /* Encodes one scalar into `out`, which must hold at least 4 bytes. Returns the bytes written. */
 size_t rolltui_u_append_utf8(RolltuiCodepoint cp, char* out);
 
-/* ---- widths ---------------------------------------------------------------------------- */
+/* ---- widths ------------------------------------------------------------------------------ */
 int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide);
 int rolltui_u_cluster_width(const RolltuiCodepoint* cps, size_t n, int ambiguous_wide);
 
-/* ---- UAX #29 --------------------------------------------------------------------------- */
+/* ---- UAX #29 ----------------------------------------------------------------------------- */
 /* `out` holds n + 1 entries: out[i] is 1 when a boundary lies before cps[i], out[n] is the end
  * of text. For a non-empty input out[0] and out[n] are 1; for empty input the single entry
  * is 1. */
@@ -85,13 +85,13 @@ size_t rolltui_u_graphemes(RolltuiUnicodeScratch* s, const char* utf8, size_t le
 void rolltui_u_word_range(RolltuiUnicodeScratch* s, const char* utf8, size_t len, size_t offset,
                           size_t* begin, size_t* end);
 
-/* ---- UAX #14 --------------------------------------------------------------------------- */
+/* ---- UAX #14 ----------------------------------------------------------------------------- */
 /* `out` holds n + 1 entries of ROLLTUI_BREAK_*: out[i] is the opportunity before cps[i] and
  * out[n] is end of text, always Mandatory (LB3); out[0] is always Prohibited (LB2). */
 void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* s, const RolltuiCodepoint* cps, size_t n,
                                         unsigned char* out);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

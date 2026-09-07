@@ -4,14 +4,14 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_input.h — THE INPUT WIDGET, AS A STATE MACHINE (Phase 15 m5).
+ * rolltui/c/rolltui_input.h — THE INPUT WIDGET, AS A STATE MACHINE.
  *
  * A multi-line text field with a caret, a selection, undo, history, mouse and paste. Every
  * rule — what may enter the text, where a boundary lies, how a row wraps, what closes an
  * undo group — is stated in `rolltui/Input.hpp` and asserted in
  * `rolltui/tests/input_test.cpp`; none of it is repeated here.
  *
- * ---- WHAT THIS MODULE OWNS, WHICH IS THE WHOLE REASON IT IS IN THIS MILESTONE ----------
+ * ---- WHAT THIS MODULE OWNS, WHICH IS THE WHOLE REASON IT IS IN THIS MILESTONE ---------------
  *
  * Ten buffers, and the C++ named none of them: the text, the grapheme array, the wrap
  * flow's two arrays, the prompt / placeholder, the history and its draft, and an undo stack
@@ -19,7 +19,7 @@
  * is a `std::vector<T>` of those, capped at 200, and a `commit` copies the entire text.
  * Nobody decided any of it; it is what you type.
  *
- * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new --------------------
+ * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER.** The input is a handle the caller makes and frees.
  *   2. **NOTHING IS RETURNED BY VALUE** except plain scalars — and `RolltuiRect` is not one
@@ -77,7 +77,7 @@ int rolltui_input_rows_for(const RolltuiInput* in, int width);
 int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_t* end);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -93,14 +93,14 @@ void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelection* out)
 const char* rolltui_input_selected_text(const RolltuiInput* in, size_t* len);
 void rolltui_input_select_all(RolltuiInput* in);
 void rolltui_input_clear_selection(RolltuiInput* in);
-/* ---- editing primitives --------------------------------------------------------------------- */
+/* ---- editing primitives ------------------------------------------------------------------ */
 void rolltui_input_insert(RolltuiInput* in, const char* utf8, size_t len);
-/* ---- undo / redo ------------------------------------------------------------------------------ */
+/* ---- undo / redo ------------------------------------------------------------------------- */
 int rolltui_input_undo(RolltuiInput* in);
 int rolltui_input_redo(RolltuiInput* in);
 int rolltui_input_can_undo(const RolltuiInput* in);
 int rolltui_input_can_redo(const RolltuiInput* in);
-/* ---- history ---------------------------------------------------------------------------------- */
+/* ---- history ----------------------------------------------------------------------------- */
 void rolltui_input_push_history(RolltuiInput* in, const char* entry, size_t len);
 size_t rolltui_input_history_count(const RolltuiInput* in);
 /* A BORROW, valid until the history next changes. */

@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_presets.h — THE PRESET MECHANICS, as C (Phase 15 m3).
+ * rolltui/c/rolltui_presets.h — THE PRESET MECHANICS, as C.
  *
  * The five rules of `rolltui/Presets.hpp`, once, for every domain: a preset is the whole
  * domain, there is exactly one working copy and it autosaves, a preset is a named read-only
@@ -23,7 +23,7 @@
  * measurement, and it is worth stating exactly:
  *
  *   what the template got for free            what C has to be told
- *   ------------------------------------      ---------------------------------------
+ *   ------------------------------------      -------------------------------------------------
  *   `Value working_` — a member               `void* working` plus `clone` and `destroy`
  *   `working_ == origin_content_`             `equal`
  *   `D::parse(json, report)`                  `parse`, over TEXT rather than a parsed tree
@@ -69,7 +69,7 @@ extern "C" {
 /* The stem of every "*.json" in `dir`, sorted. REPLACES `*out`. */
 void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrList* out);
 
-/* ---- THE STORE'S ONE-LINE PROBLEM SENTENCE (Phase 17 m2a) ----------------------------------
+/* ---- THE STORE'S ONE-LINE PROBLEM SENTENCE --------------------------------------------------
  * `rolltui::PresetLoadReport::summary()`'s composition, moved with the words it composes: the
  * error alone when there is one, else every problem as "<prefix>: <text>" joined with "; ", in
  * a fixed order (this store's own bad values and unknown keys, then the colours part, then the
@@ -101,7 +101,7 @@ int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const Rollt
                                        const RolltuiJsonValue** out_colours, RolltuiThemePresetReport* report);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -109,7 +109,7 @@ int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const Rollt
 int rolltui_preset_looks_like_path(const char* s, size_t len);
 int rolltui_preset_valid_name(const char* name, size_t len);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

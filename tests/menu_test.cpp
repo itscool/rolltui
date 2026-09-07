@@ -120,7 +120,7 @@ struct MenuLoadReport {
   bool clean() const { return error.empty() && unknown_keys.empty() && bad_values.empty(); }
 };
 
-// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST` (Phase 17 m2a), not
+// THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST`, not
 // reproduced. This was one of SIX verbatim copies of the 49 names IN ORDER, each written when
 // the role vocabulary was still C++ and a converted suite had no way to ask for it. A style
 // table is indexed by this ordinal, so the order is ABI and a copy of it is a copy of ABI.
@@ -242,7 +242,7 @@ int is_library_scope_cb(void*, const char* scope, std::size_t len) {
   return library_scope(std::string_view(scope, len)) ? 1 : 0;
 }
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
-  // THE LIBRARY'S SENTENCE (Phase 17 m2a). This was a verbatim copy of the six, made because
+  // THE LIBRARY'S SENTENCE. This was a verbatim copy of the six, made because
   // they lived in `Keys.cpp` and a C consumer could not reach them; there were three.
   const int code = rolltui_key_undeliverable_reason(k, protocol);
   std::size_t rlen = 0;
@@ -419,7 +419,7 @@ constexpr RolltuiInputRoles kInputRoles = {
     /*selection=*/static_cast<unsigned char>(Role::selection),
     /*placeholder=*/static_cast<unsigned char>(Role::input_placeholder),
 };
-// THE LIBRARY'S OWN TABLES, not copies of them (Phase 17 m2a). This block used to hold a
+// THE LIBRARY'S OWN TABLES, not copies of them. This block used to hold a
 // verbatim copy of `Input.cpp`'s thirty action names AND of `Menu.cpp`'s fifteen, with the
 // comment "a caller of the menu has to hand this table over itself" — which was true, and was
 // the defect: `Menu.cpp`'s table was in an ANONYMOUS namespace, so no consumer could reach it
@@ -824,7 +824,7 @@ int main() {
               kinds->children[1].value == "x" && rep.bad_values.size() == 1 && rep.bad_values[0].find("items[2].kind") == 0,
           "kinds load; an unknown kind is a bad value naming its path [" + (rep.bad_values.empty() ? "" : rep.bad_values[0]) + "]");
   }
-  // ---- the shipped menu files (Phase 10 m3) ----
+  // ---- the shipped menu files ----
   // The same standard the built-in layouts are held to: what SHIPS must load clean, and
   // it is embedded from a real file, so nothing here is checking a string in a .cpp.
   {

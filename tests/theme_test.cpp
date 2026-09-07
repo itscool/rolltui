@@ -124,7 +124,7 @@ std::vector<std::string_view> builtin_theme_names() {
   return out;
 }
 
-// THE LIBRARY'S OWN VOCAB TABLE (Phase 17 m2a), not a mirror of it. This block used to open
+// THE LIBRARY'S OWN VOCAB TABLE, not a mirror of it. This block used to open
 // "Mirrors Theme.cpp's theme_vocab()" and build the role- and state-name arrays itself,
 // because the vocab existed precisely so a C file would not have to name a role. Both
 // vocabularies are C now, so the library builds its own and six consumers stopped building
@@ -495,12 +495,12 @@ int main() {
 
   // ---- the grep control: no colour literal outside the theme's own files ------------
   //
-  // WIDENED 2026-09-04 (Phase 15 m3), because the port would otherwise have walked the
+  // WIDENED 2026-09-04, because the port would otherwise have walked the
   // palette out from under it: `rolltui/c/` was never scanned at all, so a colour moved
   // into a C file would have left the check green while meaning less. It scans both now,
   // and the exempt files are named with what each of them is.
   //
-  // NARROWED THE SAME DAY (Phase 15 m5): the three built-in themes' own colours moved from
+  // NARROWED THE SAME DAY: the three built-in themes' own colours moved from
   // `Theme.cpp` into `c/rolltui_theme.c` alongside the colour engine m3 already put there, so
   // `Theme.cpp` is no longer exempted (it carries no colour literal to hide any more — the
   // pattern no longer matches it at all) and the file below stands for BOTH reasons at once,
@@ -530,7 +530,7 @@ int main() {
       if (f == "Style.hpp") continue;  // the constructors themselves (matched only in a comment)
       // c/rolltui_theme.c carries TWO exemptions now, named separately so either going stale
       // is its own failure:
-      //   1. THE COLOUR ENGINE (Phase 15 m3): xterm's published 16-colour palette, which the
+      // 1. THE COLOUR ENGINE: xterm's published 16-colour palette, which the
       //      downgrade measures against, plus the constructors it builds a reduced colour
       //      with — a reference table and computed colours are not a theme naming one. Was
       //      TWO files until 2026-09-04, when the C++ implementation was deleted and the C
@@ -576,7 +576,7 @@ int main() {
     // …and neither exemption is an empty one. Each file must still carry what it is exempt
     // for, so a table quietly moved somewhere unscanned fails here instead of passing
     // everywhere — this is why the c/rolltui_theme.c exemption could not go stale silently
-    // when the second implementation was deleted (2026-09-04): it failed on the first run
+    // when the second implementation was deleted: it failed on the first run
     // afterwards, and the same is now true of the built-ins' own move.
     check(read_file(dir + "/c/rolltui_theme.c").find("kSystem16") != std::string::npos,
           "the colour engine still carries the palette it is exempt for");
@@ -585,7 +585,7 @@ int main() {
   }
 
 
-  // ---- THE ROLE VOCABULARY HAS ONE SPELLING (Phase 17) ------------------------------------
+  // ---- THE ROLE VOCABULARY HAS ONE SPELLING ------------------------------------
   // The 49 roles used to be an `enum class` plus a parallel name array in `rolltui/Style.hpp`,
   // which a C consumer could reach neither of — so a host converting off the C++ had to invent
   // the role bytes, and this very file kept a verbatim copy of the names with the comment
@@ -604,7 +604,7 @@ int main() {
     check(list.find("X(md_code_block, MD_CODE_BLOCK)") != std::string::npos,
           "…and it carries the roles by name, so this is the list and not a forward declaration");
     // THERE IS NO SECOND SPELLING TO CHECK ANY MORE, which is a stronger result than the check
-    // this replaces (Phase 17 m3). It used to read `Style.hpp`'s `enum class Role` and assert
+    // this replaces. It used to read `Style.hpp`'s `enum class Role` and assert
     // that it EXPANDED the X-macro rather than restating the roles — the best available answer
     // while two languages each needed a name for a role. `Style.hpp` was deleted with the C++
     // binding and `rolltui::Role` with it, so every consumer now writes `ROLLTUI_ROLE_*` and

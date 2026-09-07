@@ -530,7 +530,7 @@ void LayoutEditor::sync_content_fields() {
   set_enabled(menu_, "source", source_field);
   if (MenuItem* it = find(menu_, "source"); it && source_field) {
     // A path is not a Name; a literal is anything and may be empty — the kind's SHAPE, read
-    // from its registry row whichever rung it came from (Phase 18 m2).
+    // from its registry row whichever rung it came from.
     it->spec.type = content_source_shape(ctx_, p.content) == ROLLTUI_SOURCE_SHAPE_TEXT ? InputType::Text : InputType::Name;
     it->spec.optional = rule == ROLLTUI_SOURCE_OPTIONAL;
     it->spec.hint.clear();
@@ -745,7 +745,7 @@ std::string LayoutEditor::status_line() const {
 std::string LayoutEditor::selection_line() const {
   const Node* n = selected_node();
   if (!n) return {};
-  // Size and border come first: a content is kind[:source] (Phase 10 m2) and can be
+  // Size and border come first: a content is kind[:source] and can be
   // long, and it is the one field the menu above always shows in full.
   std::string s = "selected: " + str_of(n->id) + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
                   (n->visible ? "" : "  hidden") +

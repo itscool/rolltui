@@ -1,5 +1,5 @@
 //
-// explorer_test.cpp — the FOURTH CONSUMER, driven headlessly (plan/phase-21.md m4).
+// explorer_test.cpp — the FOURTH CONSUMER, driven headlessly.
 //
 // `rolltui-explorer` is a read-only column-view file browser whose custom widget is the first
 // in this repo with internal structure the library does not model. This suite runs the real

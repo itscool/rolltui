@@ -45,7 +45,7 @@ int rolltui_input_spec_equal(const RolltuiInputSpec* a, const RolltuiInputSpec* 
          rolltui_str_eq(&a->hint, b->hint.p, b->hint.n);
 }
 
-/* ---- the child list ------------------------------------------------------------------------ */
+/* ---- the child list ---------------------------------------------------------------------- */
 /* THE MECHANICS ARE `RolltuiPtrVec`'s, not a second copy of them: the two lists have the same
  * layout by construction and the cast is what says so. A C++ template would have made them
  * one type; in C the honest answer is one mechanism with two typed faces. */
@@ -80,7 +80,7 @@ void rolltui_menu_list_copy(RolltuiMenuItemList* to, const RolltuiMenuItemList* 
   for (i = 0; i < from->n; ++i) rolltui_menu_item_copy(rolltui_menu_list_add(to), from->v[i]);
 }
 
-/* ---- the item -------------------------------------------------------------------------------- */
+/* ---- the item ---------------------------------------------------------------------------- */
 
 void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* id, size_t id_len, const char* label,
                            size_t label_len, const char* shortcut, size_t shortcut_len) {

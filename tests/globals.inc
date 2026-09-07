@@ -1,6 +1,6 @@
 /*
  * rolltui/tests/globals.inc — EVERY PIECE OF MUTABLE PROCESS-WIDE STATE IN THE LIBRARY, and what
- * it is (Phase 25 m1, 2026-09-06).
+ * it is.
  *
  * THE USER'S PARENTHESIS IS THE PHASE: `RolltuiContext` should be *"a real single rolltui session
  * hopefully proving nothing is global"*. **It was FALSE when this file was written** — 44 mutable
@@ -12,7 +12,7 @@
  *   PROCESS   legitimately one per process, and the reason is written on the row. **A row here
  *             is a claim, not a shrug** — "it was already global" is not a reason.
  *
- * ---- THE CONTRACT THIS BOUNDARY SERVES, stated in full at `RolltuiContext` itself ------------
+ * ---- THE CONTRACT THIS BOUNDARY SERVES, stated in full at `RolltuiContext` itself -----------
  * **A context is a PLAIN OWNED HANDLE with no thread affinity.** It holds registries and caches
  * and nothing else, which is what makes the six points below true rather than aspirational.
  *   1. **One thread at a time per context.** The library locks nothing for you inside one. The
@@ -37,7 +37,7 @@
  *   6. **The allocator counters are a process-wide atomic SUM**, not per context: assert zero
  *      after freeing ALL contexts, never per context while several are alive.
  *
- * ---- WHAT IS NOT ON THIS LIST, and why it is not an omission -------------------------------
+ * ---- WHAT IS NOT ON THIS LIST, and why it is not an omission --------------------------------
  * A `static const` table is a constant, not state. So is `static const char* const`. What counts
  * is a mutable pointer (`static const T* p` — the POINTER moves) or any mutable object. Two
  * things left the list rather than earning a row, because a constant that merely looked mutable
@@ -50,7 +50,7 @@
  *     COMPILE-TIME table now: the runtime fill, the per-call branch and four rows all went.
  */
 
-/* ---- CONTEXT: session state — EMPTY as of m2, 2026-09-07 (0) --------------------------------------------- */
+/* ---- CONTEXT: session state — EMPTY as of m2, 2026-09-07 (0) ----------------------------- */
 
 /* ~~THE SHIPPED DEFAULT BINDINGS TABLE~~ — MOVED 2026-09-07 (m2). Every caller BORROWS it, so
  * `rolltui_context_free` releasing it is what bounds the borrow. */
@@ -92,7 +92,7 @@
  * silently changed the library's descriptor's behaviour. Configuration belongs to the thing it
  * configures. */
 
-/* ---- PROCESS: one per process by nature, each with its reason (16) -------------------------- */
+/* ---- PROCESS: one per process by nature, each with its reason (16) ----------------------- */
 
 /* ~~THE TRANSITIONAL DEFAULT CONTEXT~~ — ADDED AND REMOVED IN THE SAME PHASE (m2 → m5,
  * 2026-09-07). It was the one global this phase introduced, recorded here with a stated removal

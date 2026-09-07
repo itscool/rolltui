@@ -4,14 +4,14 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_menu_tree.h — THE MENU TREE, AS DATA (Phase 15 m5).
+ * rolltui/c/rolltui_menu_tree.h — THE MENU TREE, AS DATA.
  *
  * An item is an action, a submenu, a toggle, a choice or a typed input field. What each one
  * MEANS is stated in `rolltui/Menu.hpp` and asserted in `rolltui/tests/menu_test.cpp`; none
  * of it is repeated here. Like the split tree (`rolltui_layout_tree.h`) this file is in BOTH
  * configurations, because it is DATA both implementations of the widget walk.
  *
- * ---- WHAT THE C++ LEFT IMPLICIT ---------------------------------------------------------
+ * ---- WHAT THE C++ LEFT IMPLICIT -------------------------------------------------------------
  *
  * A `MenuItem` owns SIX `std::string`s (id, label, action_name, shortcut, value, and the
  * spec's validator and hint make eight) plus a `std::vector<MenuItem>` of children. Its
@@ -20,7 +20,7 @@
  * design editor rebuilds a menu tree on every keystroke, so it is a real per-keystroke cost
  * nobody had a reason to look at.
  *
- * ---- THE SECOND OWNED-POINTER LIST, AND WHY IT IS NOT A THIRD INVENTION ------------------
+ * ---- THE SECOND OWNED-POINTER LIST, AND WHY IT IS NOT A THIRD INVENTION ---------------------
  *
  * `RolltuiMenuItemList` is the same shape as `RolltuiNodeList`: an owned array of pointers to
  * individually allocated items, so a child's address is stable. Both are laid out exactly as
@@ -40,7 +40,7 @@ size_t rolltui_menu_list_count(const RolltuiMenuItemList* l);
 RolltuiMenuItem* rolltui_menu_list_at(const RolltuiMenuItemList* l, size_t i);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

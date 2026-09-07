@@ -1,6 +1,6 @@
 ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
 /*
- * rolltui/tests/api_roles.inc — WHICH READER EACH PUBLIC FUNCTION IS FOR (Phase 22, 2026-09-06).
+ * rolltui/tests/api_roles.inc — WHICH READER EACH PUBLIC FUNCTION IS FOR.
  *
  * `api_classes.inc` answers WHETHER a function is public. This answers WHO IT IS FOR, and the
  * two are different questions on purpose. Phase 20 proved three times over that "who calls it"
@@ -45,7 +45,7 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  * an action, a chord) is a table in PART 1, and those tables say so on their own line.
  */
 
-/* ---- VOCAB (33) ------------------------------------------------------- */
+/* ---- VOCAB (33) -------------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_color_depth_from_name, VOCAB)
 ROLLTUI_ROLE(rolltui_color_depth_setting_valid, VOCAB)
 ROLLTUI_ROLE(rolltui_color_parse, VOCAB)
@@ -78,7 +78,7 @@ ROLLTUI_ROLE(rolltui_str_put, VOCAB)
 ROLLTUI_ROLE(rolltui_theme_mode_from_name, VOCAB)
 ROLLTUI_ROLE(rolltui_theme_mode_setting_valid, VOCAB)
 
-/* ---- HOST_LOAD (121) --------------------------------------------------- */
+/* ---- HOST_LOAD (121) --------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_bindings_preset_report_clean, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_release, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_summary, HOST_SETTINGS)
@@ -141,7 +141,7 @@ ROLLTUI_ROLE(rolltui_theme_preset_to_json, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_theme_preset_value_release, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_theme_report_release, HOST_LOAD)
 
-/* ---- HOST_BIND (87) --------------------------------------------------- */
+/* ---- HOST_BIND (87) ---------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_bindings_action_for, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_bind, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_clone, HOST_BIND)
@@ -224,7 +224,7 @@ ROLLTUI_ROLE(rolltui_windows_set_highlight, HOST_BIND)
 ROLLTUI_ROLE(rolltui_windows_set_input_min_outer, HOST_BIND)
 ROLLTUI_ROLE(rolltui_context_set_library_defaults, HOST_BIND)
 
-/* ---- HOST_RUN (77) ---------------------------------------------------- */
+/* ---- HOST_RUN (77) ----------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_compose_scratch_free, HOST_RUN)
 ROLLTUI_ROLE(rolltui_compose_scratch_new, HOST_RUN)
 ROLLTUI_ROLE(rolltui_effects_apply, HOST_RUN)
@@ -296,13 +296,13 @@ ROLLTUI_ROLE(rolltui_windows_report_summary, HOST_RUN)
 ROLLTUI_ROLE(rolltui_windows_sync, HOST_RUN)
 ROLLTUI_ROLE(rolltui_windows_transcript, HOST_RUN)
 
-/* ---- HOST_RELEASE (4) ------------------------------------------------ */
+/* ---- HOST_RELEASE (4) -------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_mem_alloc, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_mem_free, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_mem_stats, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_shutdown, HOST_RELEASE)
 
-/* ---- WIDGET (27) ------------------------------------------------------ */
+/* ---- WIDGET (27) ------------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_content_rect, WIDGET)
 ROLLTUI_ROLE(rolltui_diff_default_roles, WIDGET)
 ROLLTUI_ROLE(rolltui_diff_scratch_free, WIDGET)
@@ -328,7 +328,7 @@ ROLLTUI_ROLE(rolltui_wrap_line, WIDGET)
 ROLLTUI_ROLE(rolltui_wrap_line_count, WIDGET)
 ROLLTUI_ROLE(rolltui_wrap_new, WIDGET)
 
-/* ---- PHASE 23: the layout family is a HANDLE, and these are its seven doors ------------------
+/* ---- PHASE 23: the layout family is a HANDLE, and these are its seven doors -----------------
  * All of them are HOST_LOAD: a host gets a layout, hands its base to the stack, declares its
  * actions and shows its name — the shape `load → bind → run → release` already had. The two
  * node accessors are HOST_RUN: a host reads them off a node the library hands back mid-frame
@@ -344,7 +344,7 @@ ROLLTUI_ROLE(rolltui_layer_placement, HOST_RUN)
 ROLLTUI_ROLE(rolltui_layer_id, HOST_RUN)
 ROLLTUI_ROLE(rolltui_layout_node_id, HOST_RUN)
 ROLLTUI_ROLE(rolltui_layout_node_is_window, HOST_RUN)
-/* PINNED PUBLIC by `RolltuiMenuItem`'s C++ members (Phase 23) — VOCAB: they belong to a type
+/* PINNED PUBLIC by `RolltuiMenuItem`'s C++ members — VOCAB: they belong to a type
  * Part 1 defines, and no consumer calls either directly. */
 ROLLTUI_ROLE(rolltui_input_spec_copy, VOCAB)
 ROLLTUI_ROLE(rolltui_input_spec_equal, VOCAB)

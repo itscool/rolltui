@@ -122,7 +122,7 @@ int main() {
   rolltui_str_free(&out);
   rolltui_swap_free(s);
 
-  // ---- 2. it DECLARES the public API (Phase 19 m2) ----------------------------------------
+  // ---- 2. it DECLARES the public API ----------------------------------------
   // Until Phase 19 this check read "declares NOTHING of its own", and it enforced a facade the
   // user never chose (the record in plan/phase-19.md). The definition is certified the other
   // way round: this file carries the declarations, every PUBLIC and TOOL_FACING function of
@@ -148,18 +148,18 @@ int main() {
     closedir(d);
   }
   std::sort(headers.begin(), headers.end());
-  // RECORDED (Phase 19 m3): 39 headers under c/ before m3, 24 after — the 48 DELETE functions
+  // RECORDED: 39 headers under c/ before m3, 24 after — the 48 DELETE functions
   // went, and every header that was left with nothing but its guard went with them (rule: a
   // header exists because a .c needs a declaration from it; one that declares nothing is a
   // file with no reason, and the check below keeps it that way).
-  // 24 -> 27 (Phase 20 m3): `rolltui_lifetime.h`, `rolltui_render.h` and `rolltui_wrap.h` were
+  // 24 -> 27: `rolltui_lifetime.h`, `rolltui_render.h` and `rolltui_wrap.h` were
   // RE-CREATED. m3's rule ran in reverse — a header exists because a `.c` needs a declaration
   // from it, and moving those modules' steps out of the definition gave each a declaration again.
   // 39 -> 24 (Phase 19 m3, headers left with nothing deleted) -> 27 (Phase 20 m3, three
   // re-created when their module's steps went internal) -> 33 (Phase 20 m6/m7: six more, for
   // the same reason and by the same rule — a header exists because a `.c` needs a declaration
   // from it). The six are style, document, frame_ops, json, diff and undo.
-  const std::size_t kInternalHeaders = 33;  /* +rolltui_context.h (Phase 25 m2); -rolltui_app_profile.h (Phase 26 m3) */
+  const std::size_t kInternalHeaders = 33; /* +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -182,7 +182,7 @@ int main() {
     for (const std::string& h : hollow) joined += " " + h;
     check(hollow.empty(), "no internal header is left with nothing — a header that declares nothing is a file with no reason" + joined);
   }
-  // ---- NOTHING IS DECLARED TWICE IN ONE HEADER (Phase 25 m2) ------------------------
+  // ---- NOTHING IS DECLARED TWICE IN ONE HEADER ------------------------
   // Found by reading `rolltui_effects.h` while moving its registry: a 33-line block of
   // declarations appeared VERBATIM twice, under two identical "PHASE 20 m1/m3" banners. It
   // was not one file's slip — six headers carried it, 86 functions declared twice, and
@@ -394,7 +394,7 @@ int main() {
     check(depth0("void a(void);\nstruct S {\n  void m() { b(); }\n};\nextern \"C\" {\nvoid c(void);\n}\n").find("b()") == std::string::npos &&
               depth0("extern \"C\" {\nvoid c(void);\n}\n").find("c(void)") != std::string::npos,
           "the depth-zero filter drops a member body and keeps a declaration under extern \"C\"");
-    // THE STRIPPER, PROVED ON THE THREE SHAPES THAT BROKE IT (Phase 20 m6). Each of these made
+    // THE STRIPPER, PROVED ON THE THREE SHAPES THAT BROKE IT. Each of these made
     // the census UNDER-report a consumer's reach, which is a wrong class rather than a loud
     // failure — the reports-zero shape aimed at the instrument the whole table is held to.
     check(strip_comments_and_literals("const char* k = \"//status\";\nrolltui_kept_after_a_slash_slash_string();\n")
@@ -556,14 +556,14 @@ int main() {
         std::printf("\n");
       }
     }
-    // 15 -> 57 (Phase 20 m6/m7). The new ones are not new exceptions, they are the SAME rule
+    // 15 -> 57. The new ones are not new exceptions, they are the SAME rule
     // written down where it applies: 37 functions a public C++ member in the definition calls
     // (found by COMPILING the definition — no reach bucket can see a member body, which is why
     // the loop that found them iterated until it compiled), four the sufficiency check in
     // section 1 needs, and `rolltui_rect_intersect`, whose declaration never moved so the
     // compile loop could not flag it. Each carries its sentence in the table.
-    // 57 -> 59 (Phase 21): the two colour functions above, each carrying its KEPT reason.
-    // 70 -> 65 (Phase 26 m3): five went with the app profile. Each had been kept as the MATCHING
+    // 57 -> 59: the two colour functions above, each carrying its KEPT reason.
+    // 70 -> 65: five went with the app profile. Each had been kept as the MATCHING
     // PART of a pair — an accessor whose sibling a consumer reached, so that "a profile you can
     // parse but whose actions you cannot read is a hole". The pairs are whole because the module
     // is gone, which is the cheapest way a kept row ever resolves.
@@ -603,7 +603,7 @@ int main() {
     check(misplaced.empty(), "THE DEFINITION IS WRITTEN FROM THE TABLE: every PUBLIC function is declared in rolltui.h and every INTERNAL one only under c/" + join(misplaced));
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];
-    // MEASURED 2026-09-06 (Phase 19 m1), re-recorded in m2 for the four functions a public
+    // MEASURED 2026-09-06, re-recorded in m2 for the four functions a public
     // C++ member calls, the one the C consumer reaches, and the 19 allocator/map rows the
     // widened census (every header under c/) added as INTERNAL; DELETE 48 -> 0 in m3, the functions gone.
     // PHASE 20 m1/m2: 582/42/199 -> 454/26/343. PHASE 20 m6/m7: 454/26/343 -> 345/0/478.
@@ -614,11 +614,11 @@ int main() {
     // KEPT reason: the leak gauge and the named rungs, the 37 a public C++ member in the
     // definition calls (found by COMPILING it, which no reach bucket can do), and the four the
     // sufficiency check in section 1 needs.
-    // 346 -> 348 (Phase 21): `rolltui_color_parse` and `rolltui_color_to_string` moved to PUBLIC
+    // 346 -> 348: `rolltui_color_parse` and `rolltui_color_to_string` moved to PUBLIC
     // because the menu's typed `"type": "color"` field hands a host TEXT and there was no public
     // way to use it — a public input type whose value cannot be parsed is a contradiction in the
     // surface, and it holds independently of the consumer that found it.
-    /* 348 -> 349 (Phase 22): `rolltui_u_fit`, the explorer's wall E2 — the cut offset
+    /* 348 -> 349: `rolltui_u_fit`, the explorer's wall E2 — the cut offset
      * `rolltui_frame_put_text` computes and did not share, which every list, tree, table and
      * column widget would otherwise write for itself. */
     /* PHASE 23: 349 → 331. THIRTY-TWO functions went INTERNAL — the seven types no consumer
@@ -706,7 +706,7 @@ int main() {
     check(offenders.empty(), "no __cplusplus member names a std:: container or view — rolltui's own types and the C standard's only" + joined);
   }
 
-  // ---- 8. THE TOOL-FACING CLASS IS RETIRED, AND CANNOT COME BACK BY DRIFT (Phase 20 m6) ----
+  // ---- 8. THE TOOL-FACING CLASS IS RETIRED, AND CANNOT COME BACK BY DRIFT ----
   // Phase 19 m4 gave the class a home: three `[TOOL-FACING]` sections of this header. The class
   // is GONE, and the reason is the vocabulary error the user found by asking **"isn't a tool a
   // host?"** — it is. There are THREE HOSTS: roll, the studio and paint (the last two are the
@@ -757,7 +757,7 @@ int main() {
     }
   }
 
-  // ---- 9. WHICH READER IS IT FOR — and the header SECTIONED by the answer (Phase 22 m1/m2) --
+  // ---- 9. WHICH READER IS IT FOR — and the header SECTIONED by the answer --
   // `api_classes.inc` says WHETHER a function is public. `api_roles.inc` says WHO IT IS FOR, and
   // this section holds `rolltui.h`'s physical layout to it. Without the placement check the roles
   // would be a comment nobody re-reads and the parts would drift back into module order.
@@ -833,7 +833,7 @@ int main() {
     check(misplaced_role.empty(), "THE HEADER IS SECTIONED BY THE ROLE: VOCAB in part 1, a host's in part 2, WIDGET in part 3" + join(misplaced_role));
     std::map<std::string, int> rt;
     for (const RoleRow& r : kRoles) ++rt[r.role];
-    // MEASURED 2026-09-06 (Phase 22 m1). Moving a role re-records these, which is the point: the
+    // MEASURED 2026-09-06. Moving a role re-records these, which is the point: the
     // SHAPE of the surface becomes a number a reader can audit rather than an impression.
     /* PHASE 23: load 121 → 104 and bind 87 → 83 as the layout family's lifecycle went internal;
      * vocab 33 → 35 (the `RolltuiInputSpec` pair, pinned public by `RolltuiMenuItem`'s C++

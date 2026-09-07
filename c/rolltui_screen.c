@@ -21,7 +21,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-/* ---- an owned byte string that reuses its buffer ---------------------------------- */
+/* ---- an owned byte string that reuses its buffer ----------------------------------------- */
 typedef struct {
   char* p;
   size_t len, cap;
@@ -62,7 +62,7 @@ struct RolltuiFrame {
   int cx, cy, cvis;
 };
 
-/* ---- helpers ---------------------------------------------------------------------- */
+/* ---- helpers ----------------------------------------------------------------------------- */
 
 static int in_bounds(const RolltuiFrame* f, int x, int y) {
   return x >= 0 && y >= 0 && x < f->w && y < f->h;
@@ -101,7 +101,7 @@ static void set_glyph(RolltuiFrame* f, RolltuiCell* c, const char* g, size_t n) 
   c->len = ROLLTUI_CELL_SPILLED;
 }
 
-/* ---- lifetime ---------------------------------------------------------------------- */
+/* ---- lifetime ---------------------------------------------------------------------------- */
 
 RolltuiFrame* rolltui_frame_new(int w, int h, RolltuiStyle fill) {
   RolltuiFrame* f = (RolltuiFrame*)rolltui_mem_alloc(sizeof(RolltuiFrame));
@@ -133,7 +133,7 @@ void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill) {
   f->cells = rolltui_fit(f->cells, &f->cell_cap, n, sizeof *f->cells);
   cell_init(&proto, fill);
   for (i = 0; i < n; ++i) f->cells[i] = proto;
-  /* The tables keep their bytes; only the COUNT is reset (Phase 13 m5b). */
+  /* The tables keep their bytes; only the COUNT is reset. */
   f->link_count = 0;
   f->glyph_count = 0;
   f->mark_count = 0;
@@ -176,7 +176,7 @@ RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src) {
   return f;
 }
 
-/* ---- geometry and cells ------------------------------------------------------------ */
+/* ---- geometry and cells ------------------------------------------------------------------ */
 
 int rolltui_frame_width(const RolltuiFrame* f) { return f->w; }
 int rolltui_frame_height(const RolltuiFrame* f) { return f->h; }
@@ -273,7 +273,7 @@ int rolltui_frame_put(RolltuiFrame* f, int x, int y, const char* glyph, size_t g
   return cells;
 }
 
-/* ---- the link table ----------------------------------------------------------------- */
+/* ---- the link table ---------------------------------------------------------------------- */
 
 unsigned int rolltui_frame_link_id(RolltuiFrame* f, const char* url, size_t url_len) {
   size_t i;
@@ -295,7 +295,7 @@ const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* l
   return f->links[id - 1].p;
 }
 
-/* ---- marks --------------------------------------------------------------------------- */
+/* ---- marks ------------------------------------------------------------------------------- */
 
 void rolltui_frame_mark(RolltuiFrame* f, int x, int y, int cells, int state,
                         unsigned long long since_ms, double fraction) {
@@ -327,7 +327,7 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
   *fraction = m->fraction;
 }
 
-/* ---- cursor --------------------------------------------------------------------------- */
+/* ---- cursor ------------------------------------------------------------------------------ */
 
 void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible) {
   f->cx = x;
@@ -340,7 +340,7 @@ void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible) {
   *visible = f->cvis;
 }
 
-/* ---- equality -------------------------------------------------------------------------- */
+/* ---- equality ---------------------------------------------------------------------------- */
 
 int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b) {
   size_t n, i;

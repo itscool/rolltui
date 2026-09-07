@@ -80,7 +80,7 @@ void rolltui_u_scratch_free(RolltuiUnicodeScratch* s) {
   rolltui_mem_free(s);
 }
 
-/* ---- property lookups ------------------------------------------------------------------ */
+/* ---- property lookups -------------------------------------------------------------------- */
 
 /* Binary search over a generated table: the ranges are sorted and disjoint, so the first
  * range whose `last` is >= cp is the only candidate. */
@@ -127,7 +127,7 @@ static int is_ignorable(RolltuiCodepoint cp) {
 
 unsigned char rolltui_u_general_category(RolltuiCodepoint cp) { return gc_class(cp); }
 
-/* ---- UTF-8 ------------------------------------------------------------------------------ */
+/* ---- UTF-8 ------------------------------------------------------------------------------- */
 
 static void decode_at(const char* s, size_t len, size_t pos, RolltuiDecodedChar* d) {
   unsigned char b0 = (unsigned char)s[pos];
@@ -227,7 +227,7 @@ size_t rolltui_u_append_utf8(RolltuiCodepoint cp, char* out) {
   return 4;
 }
 
-/* ---- width ------------------------------------------------------------------------------ */
+/* ---- width ------------------------------------------------------------------------------- */
 
 int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide) {
   unsigned char gc = gc_class(cp), gb, ea;
@@ -539,7 +539,7 @@ void rolltui_u_word_range(RolltuiUnicodeScratch* sc, const char* utf8, size_t le
   *out_end = offs[end - 1] + lens[end - 1];
 }
 
-/* ---- sanitising --------------------------------------------------------------------------- */
+/* ---- sanitising -------------------------------------------------------------------------- */
 
 /* Skips a string sequence's payload up to and including its terminator (BEL, or ESC \, or the
  * C1 ST U+009C); returns the index just past it (n if unterminated). */
@@ -598,7 +598,7 @@ size_t rolltui_u_strip_escape_sequences(const char* text, size_t len, char* out)
   return w;
 }
 
-/* ---- UAX #14 ------------------------------------------------------------------------------- */
+/* ---- UAX #14 ----------------------------------------------------------------------------- */
 
 /* LB9/LB10 are applied structurally: the text is first cut into units — a base character with
  * every CM/ZWJ attached to it (LB9), or a lone CM/ZWJ that had no eligible base and so becomes

@@ -17,7 +17,7 @@
  * counterpart) is deleted along with the other fifteen `*Cpp.cpp` files, and this is now the
  * only implementation, not one side of a flag.
  *
- * ---- THE LIFETIME THIS FILE MAKES EXPLICIT ----------------------------------------------
+ * ---- THE LIFETIME THIS FILE MAKES EXPLICIT --------------------------------------------------
  *
  * **`WindowStack` owns its layers.** In C++ that was `std::vector<Layer> layers_{Layer{}}`,
  * and the ownership was three separate accidents: the vector deep-copied a whole tree on
@@ -27,7 +27,7 @@
  * a layer and leaves the caller's empty, and `base()` is a call rather than a reference kept
  * across a mutation.
  *
- * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new ----------------------
+ * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER**, including working memory: `rolltui_compose_layer`
  *      needs two screen-sized byte maps and takes a SCRATCH handle rather than keeping a
@@ -42,12 +42,12 @@
  *      `rolltui_diff.h` and the m3 rule at `rolltui_bindings.h`'s Enter rule. The C knows
  *      "the focused window's border uses this role" and none of the words.
  *
- * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ---------------------------------------
+ * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------------
  *
  * **(Historical, kept for the reasoning.)** When this was written, `rolltui::Layout`,
  * `rolltui::Content` and `rolltui::ActionDecl` kept `std::string`/`std::vector` fields in
  * `Layout.hpp` and a shim unpacked `RolltuiLoadedLayout` into them once per load. `Layout.hpp`
- * and the shim are deleted (Phase 17 m2c): `RolltuiLayout`, `RolltuiContent` and
+ * and the shim are deleted: `RolltuiLayout`, `RolltuiContent` and
  * `RolltuiLayoutAction` below ARE the types every consumer holds, and since Phase 18 m2 a
  * content's kind is its NAME rather than a C++-only enum (the registry section says why).
  * What crosses is unchanged — the ALGORITHM (JSON in, JSON out, which rung, what rule) and
@@ -113,7 +113,7 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
 void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -137,7 +137,7 @@ int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b);
  * so a caller need not reach past this header for `rolltui_alloc.h`'s raw `rolltui_mem_free`
  * just to hand one back. */
 void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
-/* ---- the built-in layouts, PARSED and cached (Phase 17 m3) ---------------------------------
+/* ---- the built-in layouts, PARSED and cached ------------------------------------------------
  * `_builtin_json` above hands back the TEXT, which is the right shape for a caller that wants
  * to load it once. Both hosts want the LAYOUT, and want it on paths that run per resize and
  * per frame (`effective_layout()`, the `stacked` fallback), so parsing on every call would put
@@ -171,7 +171,7 @@ void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_widt
 RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len);
 size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s);
 const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len);
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

@@ -1,5 +1,5 @@
 // rolltui/tools/tool_str.hpp — the tools' OWN bridge from rolltui's C shapes to the std:: types
-// the studio and the editors compose with (Phase 19 m2). One file for one application (the
+// the studio and the editors compose with. One file for one application (the
 // studio, paint and the three editors ship together); it is not the library's and must not
 // become a second one.
 #pragma once

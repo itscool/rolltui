@@ -30,7 +30,7 @@
 typedef struct { const char* name; const char* desc; } LibAction;
 
 /* GROUP, FIELD, name, description. The group and the field are what let the four
- * per-widget tables below expand this SAME list instead of re-spelling it (Phase 17 m2a);
+ * per-widget tables below expand this SAME list instead of re-spelling it;
  * the field is the one in that group's `Rolltui*Actions` struct — which is why `input.delete`
  * carries the field `del`: these headers are compiled by C++ too, where `delete` is a keyword.
  * The NAME is the vocabulary; the field is only how a struct spells it. */
@@ -120,7 +120,7 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
   return s;
 }
 
-/* ---- THE FOUR PER-WIDGET TABLES, expanded from the ONE list above (Phase 17 m2a) ----------
+/* ---- THE FOUR PER-WIDGET TABLES, expanded from the ONE list above ---------------------------
  *
  * `rolltui_input_handle`, `rolltui_menu_handle`, `rolltui_transcript_handle` and the
  * `scroll_text` kinds each take their action names as a mandatory struct, and each header says

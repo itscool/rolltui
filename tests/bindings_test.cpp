@@ -147,7 +147,7 @@ int is_library_scope_cb(void*, const char* scope, std::size_t len) {
   return library_scope(std::string_view(scope, len)) ? 1 : 0;
 }
 std::size_t reason_cb(void*, const RolltuiChord* k, unsigned char protocol, char* out, std::size_t cap) {
-  // THE LIBRARY'S SENTENCE (Phase 17 m2a). This was a verbatim copy of the six, made because
+  // THE LIBRARY'S SENTENCE. This was a verbatim copy of the six, made because
   // they lived in `Keys.cpp` and a C consumer could not reach them; there were three.
   const int code = rolltui_key_undeliverable_reason(k, protocol);
   std::size_t rlen = 0;
@@ -423,7 +423,7 @@ RolltuiBindings* default_bindings() {
   return d;
 }
 
-// THE LIBRARY'S RULE, not a copy (Phase 17 m2a). This was a verbatim reimplementation of the
+// THE LIBRARY'S RULE, not a copy. This was a verbatim reimplementation of the
 // chord column's width, its 22/12 caps and "(unbound)" — so these checks asserted against the
 // test's own arithmetic, not against the one the help window draws.
 std::vector<std::string> help_lines(const RolltuiBindings* b, std::string_view scope, const std::vector<std::string>& actions = {}) {
@@ -817,7 +817,7 @@ int main() {
           "a chord list longer than the column is followed by two spaces, not padded");
     rolltui_bindings_free(wide);
   }
-  // ---- the four per-widget tables, expanded from the one list (Phase 17 m2a) ------------
+  // ---- the four per-widget tables, expanded from the one list ------------
   // `rolltui_library_actions.c` builds `RolltuiInputActions`, `RolltuiMenuActions`,
   // `RolltuiTranscriptActions` and `RolltuiScrollTextActions` by expanding the 59-row list with
   // DESIGNATED initialisers, so a row whose group or field is wrong leaves that member NULL

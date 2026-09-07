@@ -21,7 +21,7 @@ static int imin(int a, int b) { return a < b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static size_t zmin(size_t a, size_t b) { return a < b ? a : b; }
 
-/* ---- the state ------------------------------------------------------------------------- */
+/* ---- the state --------------------------------------------------------------------------- */
 
 /* One grapheme's place in the wrap. */
 typedef struct FlowCell {
@@ -120,7 +120,7 @@ int rolltui_input_options_equal(const RolltuiInputOptions* a, const RolltuiInput
          rolltui_str_eq(&a->placeholder, b->placeholder.p, b->placeholder.n);
 }
 
-/* ---- snapshots ----------------------------------------------------------------------------- */
+/* ---- snapshots --------------------------------------------------------------------------- */
 
 static void snapshot_of(const RolltuiInput* in, Snapshot* s) {
   rolltui_str_set(&s->text, in->text.p, in->text.n);
@@ -174,7 +174,7 @@ static void undo_release(RolltuiInput* in) {
   in->undo_len = in->undo_cap = in->undo_at = 0;
 }
 
-/* ---- content -------------------------------------------------------------------------------- */
+/* ---- content ----------------------------------------------------------------------------- */
 
 static size_t snap(const RolltuiInput* in, size_t pos) {
   size_t lo = 0, hi = in->g_len;
@@ -373,7 +373,7 @@ void rolltui_input_select_all(RolltuiInput* in) {
 
 void rolltui_input_clear_selection(RolltuiInput* in) { memset(&in->sel, 0, sizeof in->sel); }
 
-/* ---- editing ---------------------------------------------------------------------------------- */
+/* ---- editing ----------------------------------------------------------------------------- */
 
 static void erase_range(RolltuiInput* in, size_t b, size_t e) {
   size_t caret = in->caret;
@@ -434,7 +434,7 @@ static void raw_insert(RolltuiInput* in, const char* utf8, size_t len) {
   in->has_goal = 0;
 }
 
-/* ---- undo (see UNDO in Input.hpp) ---------------------------------------------------------------- */
+/* ---- undo (see UNDO in Input.hpp) -------------------------------------------------------- */
 
 static void close_group(RolltuiInput* in) {
   Snapshot s;
@@ -620,7 +620,7 @@ int rolltui_input_can_redo(const RolltuiInput* in) {
   return !in->undo_pending && in->undo_at + 1 < in->undo_len;
 }
 
-/* ---- motions ------------------------------------------------------------------------------------- */
+/* ---- motions ----------------------------------------------------------------------------- */
 
 void rolltui_input_move_left(RolltuiInput* in, int extend) {
   const size_t b = in->sel.anchor < in->sel.head ? in->sel.anchor : in->sel.head;
@@ -653,7 +653,7 @@ void rolltui_input_move_line_end(RolltuiInput* in, int extend) {
   rolltui_input_set_caret(in, line_end(in, in->caret), extend);
 }
 
-/* ---- the wrap flow -------------------------------------------------------------------------------- */
+/* ---- the wrap flow ----------------------------------------------------------------------- */
 
 static void row_end_push(RolltuiInput* in, size_t v) {
   in->row_end = (size_t*)rolltui_grow(in->row_end, &in->row_end_cap, in->row_end_len + 1, sizeof *in->row_end);
@@ -858,7 +858,7 @@ int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_
   return 1;
 }
 
-/* ---- history --------------------------------------------------------------------------------------- */
+/* ---- history ----------------------------------------------------------------------------- */
 
 void rolltui_input_push_history(RolltuiInput* in, const char* entry, size_t len) {
   if (len && (in->hist_len == 0 || !rolltui_str_eq(&in->hist[in->hist_len - 1], entry, len))) {
@@ -907,7 +907,7 @@ int rolltui_input_history_next(RolltuiInput* in) {
   return 1;
 }
 
-/* ---- events ------------------------------------------------------------------------------------------ */
+/* ---- events ------------------------------------------------------------------------------ */
 
 static void unit_around(const RolltuiInput* in, size_t off, int word, size_t* b, size_t* e) {
   off = zmin(off, in->text.n);
@@ -1125,7 +1125,7 @@ unsigned char rolltui_input_handle(RolltuiInput* in, const RolltuiEvent* e, cons
   return ROLLTUI_INPUT_IGNORED;
 }
 
-/* ---- drawing --------------------------------------------------------------------------------------- */
+/* ---- drawing ----------------------------------------------------------------------------- */
 
 void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw,
                         const RolltuiStyle* styles, const RolltuiInputRoles* roles, int focused) {

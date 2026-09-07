@@ -402,7 +402,7 @@ void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_
   rolltui_mem_free(idx);
 }
 
-/* `rolltui::help_document`'s port (Phase 17 m2a): the lead, one "<scope>:\n" section per
+/* `rolltui::help_document`'s port: the lead, one "<scope>:\n" section per
  * scope with `rolltui_help_scope_lines`'s rows under it, then the note. `help_ctx_build_text`
  * below is the same document over the WINDOW's own scope list, and calls the same two pieces —
  * so the `help` window and a host's own `//help` cannot disagree about a table. */
@@ -862,7 +862,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
 
-/* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL (Phase 17 m2a).
+/* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL.
  *
  * m1c recorded the gap this closes: `rolltui_widget_kinds_register` and the five setters above
  * were called by `rolltui::Windows`' C++ CONSTRUCTOR, so a bare `rolltui_windows_new()` came
@@ -896,7 +896,7 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
   };
   if (!ctx) return;
   /* THE LIVE TABLE, and it belongs in this function for the same reason the roles and the kinds
-   * do (Phase 17 m3). `rolltui_windows_bindings()` was NULL until a host called
+   * do. `rolltui_windows_bindings()` was NULL until a host called
    * `set_bindings`, and the `help` kind's sizing pass reads it unguarded — so a pure-C host
    * that registered the built-in kinds and then laid out a `help` window segfaulted before
    * drawing anything. `rolltui::Windows`' C++ constructor had always defaulted it, which is
@@ -1062,7 +1062,7 @@ int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const 
                                      const RolltuiEvent* e) {
   const RolltuiBindings* b = rolltui_windows_bindings(w);
   const RolltuiWidgetEnv* env = rolltui_windows_env(w);
-  /* The action names are `w`'s (Phase 17 m1c) rather than a parameter: with the `input`
+  /* The action names are `w`'s rather than a parameter: with the `input`
    * FACTORY on this side there is no caller in the middle holding them, and one source beats
    * two ways to say the same thing. */
   int action = (int)rolltui_input_handle(ed, e, b, rolltui_windows_input_actions(w), env->now_ms);
@@ -1104,7 +1104,7 @@ static const RolltuiWidgetPlugin kInputPlugin = {
 
 const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void) { return &kInputPlugin; }
 
-/* The editor is the window TABLE's, asked for by source (Phase 17 m1c) — the same object
+/* The editor is the window TABLE's, asked for by source — the same object
  * `rolltui_windows_input` hands a host, never a second one built here. */
 static RolltuiWidget input_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
   (void)c;
@@ -1142,7 +1142,7 @@ void rolltui_input_widget_ctx_set_min_outer(void* ctx, int rows) { ((RolltuiInpu
 
 /* ============================================================================================
  * transcript:<document> — BORROWS the RolltuiTranscript* Windows' own `transcripts_` map owns
- * (Phase 17 m1c). What still does NOT cross: the syntax highlighter, pushed straight onto the
+ *. What still does NOT cross: the syntax highlighter, pushed straight onto the
  * `RolltuiTranscript` by `Windows::set_highlighter`/`transcript()` in Widgets.cpp, so this ctx
  * never touches it and needs no epoch to poll.
  * ============================================================================================ */

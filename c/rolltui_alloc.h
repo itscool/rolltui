@@ -1,7 +1,7 @@
 #ifndef ROLLTUI_C_ALLOC_H
 #define ROLLTUI_C_ALLOC_H
 /*
- * rolltui/c/rolltui_alloc.h — THE C SIDE'S CLOSED SET OF ALLOCATION STRATEGIES (Phase 14).
+ * rolltui/c/rolltui_alloc.h — THE C SIDE'S CLOSED SET OF ALLOCATION STRATEGIES.
  *
  * CLAUDE.md states the rule for the whole library: every allocation belongs to a NAMED
  * strategy, the set is CLOSED, and **a new allocation is a CHOICE from that set, never an
@@ -57,7 +57,7 @@
 extern "C" {
 #endif
 
-/* ---- the library's one entry point ----------------------------------------------------- */
+/* ---- the library's one entry point ------------------------------------------------------- */
 /* `rolltui_mem_alloc` and `rolltui_mem_free` MOVED to the public `rolltui_mem.h` (included
  * above, so every C translation unit still gets them here) on 2026-09-05, Phase 17 m3. The
  * paragraph at the top of this file already said they "stay available everywhere" while this
@@ -76,7 +76,7 @@ extern "C" {
  * caller checks. */
 void* rolltui_mem_realloc(void* p, size_t bytes);
 
-/* ---- 2. GROWING, AMORTISED ------------------------------------------------------------ */
+/* ---- 2. GROWING, AMORTISED --------------------------------------------------------------- */
 /* Ensures `p` holds at least `need` elements of `elem` bytes, doubling from a small floor.
  * Returns the buffer, which the caller assigns back. `*cap` is in ELEMENTS and is updated.
  * A no-op when the capacity already suffices, which is what makes a reused buffer free.
@@ -90,12 +90,12 @@ void* rolltui_grow(void* p, size_t* cap, size_t need, size_t elem);
  * work the caller is about to overwrite anyway. */
 void* rolltui_grow_zeroed(void* p, size_t* cap, size_t need, size_t elem);
 
-/* ---- 3. GROWING, EXACT ---------------------------------------------------------------- */
+/* ---- 3. GROWING, EXACT ------------------------------------------------------------------- */
 /* Ensures `p` holds at least `need` elements, allocating EXACTLY that many when it must
  * grow. For a buffer whose size the caller already knows and which is not appended to. */
 void* rolltui_fit(void* p, size_t* cap, size_t need, size_t elem);
 
-/* ---- 4. PACKED ------------------------------------------------------------------------ */
+/* ---- 4. PACKED --------------------------------------------------------------------------- */
 /* One allocation for a header and every array belonging to it. Measure, then carve:
  *
  *   RolltuiPack pk;

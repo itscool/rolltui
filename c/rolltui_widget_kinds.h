@@ -17,7 +17,7 @@
  * `rolltui/Widgets.hpp` and asserted in `rolltui/tests/layout_test.cpp`; none of it is
  * repeated here.
  *
- * ---- NOTHING'S CONSTRUCTION CROSSES ANY MORE (Phase 17 m1c, 2026-09-05) -------------------
+ * ---- NOTHING'S CONSTRUCTION CROSSES ANY MORE ------------------------------------------------
  *
  * Through the first half of m1c all eight kinds were C, and three of them — `input`,
  * `transcript`, `menu` — still had their FACTORY in `Widgets.cpp`, because building one meant
@@ -41,7 +41,7 @@
  * one-file duplication `help`'s own chord-joining loop below already is, not a new trade.
  *
  *
- * ---- PUBLIC SINCE PHASE 17 m2a, AND NOBODY CONSTRUCTS THESE BY NAME ------------------------
+ * ---- PUBLIC SINCE PHASE 17 m2a, AND NOBODY CONSTRUCTS THESE BY NAME -------------------------
  *
  * This paragraph used to be headed "INTERNAL: NOT PART OF THE PUBLIC API" and said that
  * `rolltui/rolltui.h` does not include this header and `public_header_test.cpp` does not name
@@ -124,7 +124,7 @@ void rolltui_menu_widget_ctx_refresh(void* ctx);
 const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

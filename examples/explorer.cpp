@@ -1,6 +1,6 @@
 //
 // rolltui/examples/explorer.cpp — `rolltui-explorer`, the library's FOURTH consumer
-// (plan/phase-21.md) and the first host whose widget has INTERNAL STRUCTURE the library does
+// and the first host whose widget has INTERNAL STRUCTURE the library does
 // not already model.
 //
 // It is a READ-ONLY file-system browser in the shape macOS calls column view (Miller
@@ -905,7 +905,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE (Phase 26) --------
+  // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE --------
   // The kinds are registered, the sources are bound and the bindings are loaded, so this is the
   // one moment the question is answerable. It REPORTS: a gap is a to-do for whoever builds this
   // app, never a reason to refuse the screen — so nothing below branches on it. A layout naming

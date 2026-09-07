@@ -17,7 +17,7 @@
 // `shared_ptr` makes a lifetime a runtime question, and every lifetime in this library is
 // structural: a widget outlives every layout that names it, a document belongs to the
 // host, a layer is a value inside a stack. The user put it as "shared_ptr webs are a no
-// no" (2026-09-03); the finding that made it cheap to adopt is that the library already
+// no"; the finding that made it cheap to adopt is that the library already
 // had none, so this file freezes a property rather than demanding a migration.
 //
 // TWO CONTROLS, because an ABSENCE check that has stopped working looks exactly like an
@@ -122,7 +122,7 @@ const std::regex& pointer_decl() {
 // A STORED raw pointer — a struct MEMBER — as opposed to a parameter.
 //
 // **THE CENSUS'S PREMISE DID NOT SURVIVE THE PORT, and this is the repair rather than a
-// re-record** (Phase 17 m3). Counting every raw-pointer declaration meant something while the
+// re-record**. Counting every raw-pointer declaration meant something while the
 // public headers were C++: a raw `T*` was unusual there, the total was 122, and each new one
 // was worth a sentence. In C every parameter is a pointer — the same scan over `c/*.h` counts
 // **1,139**, and a check that fires on every ordinary API addition is churn with no signal,
@@ -186,7 +186,7 @@ int main() {
         if (is_comment(line)) continue;
         // COMMENTS ARE STRIPPED BEFORE MATCHING, not merely skipped when a line IS one. The
         // regex's own `(?!.*//)` guard covers a trailing `//` and knew nothing about `/* */`,
-        // which is a C spelling this scan never saw until the library became C (Phase 17 m3):
+        // which is a C spelling this scan never saw until the library became C:
         // `unsigned char checked ROLLTUI_DEFAULT(0); /* Toggle: the new state */` matched on
         // the English word "new". A matcher that reads prose reports defects that are not
         // there, which costs exactly as much trust as one that misses defects that are.
@@ -264,7 +264,7 @@ int main() {
     // MEASURED 2026-09-03 by this test's own scanner (it prints the table it wants, so a
     // re-record is a copy-paste and never arithmetic). Terminal.hpp is 0 because m2 turned
     // its one hand-rolled owner into a `unique_ptr`.
-    // THE CENSUS, RE-RECORDED WHOLE 2026-09-05 (Phase 17 m3), because its subject moved: the
+    // THE CENSUS, RE-RECORDED WHOLE 2026-09-05, because its subject moved: the
     // public headers are `c/*.h` now, and every `rolltui/*.hpp` row named a deleted file. Two
     // things changed with it, both enforced above rather than promised here:
     //   - it counts STORED pointers (struct members), not every declaration. Counting all of
@@ -277,8 +277,8 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 117},  /* -2 (Phase 26 m3): `RolltuiAppProfileReport`'s two array members went with the app profile.
-                              +4 before that (Phase 26 m2): none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
+        {"rolltui.h", 117}, /* -2: `RolltuiAppProfileReport`'s two array members went with the app profile.
+                              +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
         {"c/rolltui_style.h", 0},
         {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},
@@ -367,14 +367,14 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    // 115 -> 121 (Phase 17 m1c): +1 each for `input_handle`/`menu_handle`/`transcript_handle`
+    // 115 -> 121: +1 each for `input_handle`/`menu_handle`/`transcript_handle`
     // and +3 for `Windows`' three typed accessors handing back the library's own handles. Every
     // one is a BORROW; what left in the same change is three C++ maps that OWNED widgets.
-    // 121 -> 122 (Phase 17 m3): `PresetStore.hpp`'s `handle()`, above.
-    // 122 -> 199 (Phase 17 m3): a different measurement of a different set — STORED pointers
+    // 121 -> 122: `PresetStore.hpp`'s `handle()`, above.
+    // 122 -> 199: a different measurement of a different set — STORED pointers
     // in `c/*.h`, where the old figure was every declaration in `rolltui/*.hpp`. Not comparable,
     // and deliberately not presented as a delta.
-    // 194 -> 193 (Phase 18 m3): +1 `RolltuiPresetDomain::report`, which BORROWS a library static
+    // 194 -> 193: +1 `RolltuiPresetDomain::report`, which BORROWS a library static
     // (the domain's own report ops, set by its `_init`); -2 from two wrapped parameter-list
     // continuation lines that the scanner had been counting as members — `rolltui_preset_shipped`'s
     // and `rolltui_preset_working_value`'s second lines (`const char* name, size_t len);`) became
@@ -382,11 +382,11 @@ int main() {
     // member: the rule above over-counts a wrapped declaration by one. Noted here rather than
     // repaired, because repairing it re-records every row; the trigger is the next re-record
     // that has to explain one of these.
-    // 193 -> 194 (Phase 19 m2): the scanner's wrapped-declaration artefact again, on the new
+    // 193 -> 194: the scanner's wrapped-declaration artefact again, on the new
     // `rolltui_menu_item_set` (its second line `size_t label_len, const char* shortcut, …);` has no
     // `(` and ends in `;`). Nothing new is STORED; the row rises by one for the same reason
     // `rolltui_presets.h`'s fell by two the day before. Still noted, still not repaired here.
-    // RE-RECORDED WHOLE 2026-09-06 (Phase 19 m2): the public declarations moved into `rolltui.h`,
+    // RE-RECORDED WHOLE 2026-09-06: the public declarations moved into `rolltui.h`,
     // the definition, so its row went 0 -> 171 and every `c/` row fell to what the library keeps
     // for itself; the total is unchanged at 194, which is the check that nothing was invented
     // or lost in the move. Every one of the 171 is a BORROW or an OWNED member whose lifetime
@@ -395,21 +395,21 @@ int main() {
     // `rolltui_menu_flat_path`, a DELETE row (reached by nothing) whose declaration left
     // `c/rolltui_menu.h` with the function; the fifteen headers left with nothing (every row a 0)
     // left the table with them.
-    // 125 -> 125 (Phase 20 m3): three internal headers were RE-CREATED (`render`, `wrap`,
+    // 125 -> 125: three internal headers were RE-CREATED (`render`, `wrap`,
     // `lifetime`), each declaring functions and storing no pointer, so they enter the census at 0.
-    // 193 -> 125 (2026-09-06): the scanner stopped counting a wrapped declaration's continuation
+    // 193 -> 125: the scanner stopped counting a wrapped declaration's continuation
     // line as a member — 68 of the 193 were `const char* name, size_t len);`-shaped second lines
     // of prototypes, 53 of them in the definition. Every row re-recorded from the printed table;
     // no pointer was added or removed.
     // 125 (Phase 20 m1-m5, after the scanner stopped counting wrapped-declaration continuation
-    // lines) -> 125 with the rows redistributed (Phase 20 m6/m7): 135 declarations moved from
+    // lines) -> 125 with the rows redistributed: 135 declarations moved from
     // the definition into their modules' internal headers and six headers were re-created, so
     // pointers moved BETWEEN rows without any being added or removed. Re-recorded whole from the
     // printed table, which is why the total is unchanged and the rows are not.
-    // 125 -> 125 (Phase 23): four STORED borrows moved from `rolltui.h` to
+    // 125 -> 125: four STORED borrows moved from `rolltui.h` to
     // `c/rolltui_layout_tree.h` with the layout family's structures. The total is unchanged
     // because nothing was added or removed — the same pointers are simply behind the handle now.
-    // 136 -> 134 (Phase 26 m3): the app profile's report took its two array members with it.
+    // 136 -> 134: the app profile's report took its two array members with it.
     check(total == 134, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
@@ -428,7 +428,7 @@ int main() {
   }
 
 
-  // ---- THE GLOBALS BOUNDARY: every piece of mutable process-wide state is NAMED (Phase 25 m1)
+  // ---- THE GLOBALS BOUNDARY: every piece of mutable process-wide state is NAMED
   // ------------------------------------------------------------------------------------------
   // The user's parenthesis for `RolltuiContext` was *"a real single rolltui session hopefully
   // proving nothing is global"* — and it was FALSE: 44 mutable statics across 9 files. This holds

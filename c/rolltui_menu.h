@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND (Phase 17 m1) THE
+ * rolltui/c/rolltui_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND THE
  * FILE FORMAT (Phase 15 m5 for the rest).
  *
  * Level navigation, a typed filter, a breadcrumb, palette mode, and the seven input TYPES a
@@ -13,7 +13,7 @@
  * `rolltui/Menu.hpp` and asserted in `rolltui/tests/menu_test.cpp`; none of it is repeated
  * here. The TREE it walks and builds is `rolltui_menu_tree.h`.
  *
- * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW --------------------------------------
+ * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------------
  *
  * **The shipped menu files, and the VALIDATOR REGISTRY.** The embedded table (which menus
  * SHIP, the `.json` files under `rolltui/presets/menus`) stays in `Menu.cpp` for the reason
@@ -31,7 +31,7 @@
  * `unknown_validators()` and `apply_shortcuts()` are TREE WALKS with no widget state in them,
  * so the shim does them over the same C tree — the C would gain nothing but a second place to
  * know what `Bindings::chords_text` means.~~
- * **RETRACTED 2026-09-05 (Phase 17 m3), and the reason is that its premise expired.**
+ * **RETRACTED 2026-09-05, and the reason is that its premise expired.**
  * `chords_text` moved to C in m2a — it is `rolltui_bindings_chords_text` one header over — so
  * the C gains no second place to know anything; it already knows. What the sentence was
  * actually protecting was a home for three walks, and *"the shim does them"* stops being an
@@ -44,7 +44,7 @@
  * a TREE, not a menu, because that is what they are about; the widget's own one-line versions
  * are beside them.
  *
- * ---- THE BOUNDARY'S RULES, all inherited and none new -----------------------------------
+ * ---- THE BOUNDARY'S RULES, all inherited and none new ---------------------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER**, including the two results with text in them: an
  *      `InputCheck` and a `MenuEvent` are filled into a caller's struct of `RolltuiStr`s.
@@ -109,7 +109,7 @@ void rolltui_menu_load_report_add_unknown_key(RolltuiMenuLoadReport* r, const ch
 void rolltui_menu_load_report_add_bad_value(RolltuiMenuLoadReport* r, const char* s, size_t len);
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in
@@ -130,7 +130,7 @@ int rolltui_menu_palette(const RolltuiMenu* m);
 void rolltui_menu_set_validator_fn(RolltuiMenu* m, RolltuiValidatorFn fn, void* ctx);
 void rolltui_menu_dump_json(const RolltuiMenuItem* root, RolltuiStr* out);
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

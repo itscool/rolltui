@@ -1,7 +1,7 @@
 #ifndef ROLLTUI_C_CONTEXT_H
 #define ROLLTUI_C_CONTEXT_H
 /*
- * rolltui/c/rolltui_context.h — A SESSION'S OWN STATE (Phase 25 m2). INTERNAL: a consumer sees
+ * rolltui/c/rolltui_context.h — A SESSION'S OWN STATE. INTERNAL: a consumer sees
  * only the opaque `RolltuiContext` and `rolltui_context_new`/`_free` in `rolltui/rolltui.h`.
  *
  * THE STRUCT IS A CLOSED SET OF SUBSYSTEM POINTERS, one per registry or cache that used to be a
@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 
-/* ---- the subsystems, each private to its own translation unit ---- */
+/* ---- the subsystems, each private to its own translation unit ---------------------------- */
 typedef struct RolltuiKindRegistry RolltuiKindRegistry;
 RolltuiKindRegistry* rolltui_kind_registry_new(void);
 void rolltui_kind_registry_free(RolltuiKindRegistry* r); /* a no-op on NULL */
@@ -54,7 +54,7 @@ void rolltui_preset_domains_free(RolltuiPresetDomains* p); /* a no-op on NULL */
 
 /* What a PROGRAM configures once — its widget-kind factories, menus, key table, help scopes,
  * highlighter and the vocabularies its built-in kinds read back. It was the half of
- * `RolltuiWindows` that was never about what is on screen (Phase 25 m3). Every widget a
+ * `RolltuiWindows` that was never about what is on screen. Every widget a
  * `RolltuiWindows` owns BORROWS from here, which is why a context must outlive the windows made
  * against it — borrowers die first. */
 typedef struct RolltuiWindowConfig RolltuiWindowConfig;

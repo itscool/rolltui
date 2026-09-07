@@ -4,14 +4,14 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_theme_gen.h — THE PRNG AND THE RULESET NAMES, as C (Phase 17 m1).
+ * rolltui/c/rolltui_theme_gen.h — THE PRNG AND THE RULESET NAMES, as C.
  *
  * `rolltui/ThemeGen.hpp` is a seeded theme generator: `generate(seed, ruleset, chaos)` picks
  * hues in OKLCH per `Ruleset`, builds a whole `Theme`, then runs `ThemeAnalysis`'s repair
  * loop over it. Originally this whole function stayed C++ in `ThemeGen.cpp`, for the reason
  * `rolltui_theme_analysis.h`'s ORIGINAL note gave for the report it calls: it built a `Theme`
  * (every `Role` set) and a `json::Value` (the "generator"/"badges" meta), and neither had a C
- * representation yet. Two things changed that (Phase 17 m5): `Theme`'s styles table already
+ * representation yet. Two things changed that: `Theme`'s styles table already
  * had one (`rolltui_theme_style`/`_set_style`), and the report/auto-fix it repairs with moved
  * to `rolltui_theme_analysis.h` alongside `RolltuiJsonValue` (`rolltui_json.h`) — so
  * `generate()` moved too, and `ThemeGen.cpp` is now a thin C++ shim over
@@ -49,7 +49,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* ---- splitmix64, defined ONCE and compiled by both languages --------------------------- */
+/* ---- splitmix64, defined ONCE and compiled by both languages ----------------------------- */
 /* `rolltui::Rng` IS this struct (ThemeGen.hpp aliases it): eight bytes of state, advanced by
  * the two functions declared right after it. The C++ methods are declared here but DEFINED
  * out-of-line below, once the free functions they call are themselves declared — the same
@@ -72,7 +72,7 @@ inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
 
 #endif
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */

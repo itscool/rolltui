@@ -15,7 +15,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-/* ---- the decoder's own storage --------------------------------------------------------- */
+/* ---- the decoder's own storage ----------------------------------------------------------- */
 
 /* GROWING, AMORTISED (rolltui_alloc.h strategy 2), one buffer per ROLE: `buf` is what has
  * arrived and not yet been decoded, `paste` is what a bracketed paste has accumulated. Two
@@ -64,7 +64,7 @@ void rolltui_key_decoder_free(RolltuiKeyDecoder* d) {
 int rolltui_key_decoder_pending(const RolltuiKeyDecoder* d) { return d && d->buf_len > 0; }
 int rolltui_key_decoder_in_paste(const RolltuiKeyDecoder* d) { return d && d->in_paste; }
 
-/* ---- the events, built and handed over ------------------------------------------------- */
+/* ---- the events, built and handed over --------------------------------------------------- */
 
 static RolltuiChord chord_key(unsigned char k, int ctrl, int alt, int shift) {
   RolltuiChord c;
@@ -109,7 +109,7 @@ static void emit_paste(RolltuiEventFn emit, void* ctx, const char* text, size_t 
   emit(ctx, &e);
 }
 
-/* ---- the decoding rules ----------------------------------------------------------------- */
+/* ---- the decoding rules ------------------------------------------------------------------ */
 
 /* True when the bytes at `pos` are the start of a UTF-8 sequence that is not yet complete
  * but could still become valid with more input. Anything else is decided now. */
@@ -252,7 +252,7 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
 
   np = csi_params(body, body_len, p);
   mod = np >= 2 ? p[1] : 1;
-  /* The two ENHANCED forms (Phase 12 m3) — see Keys.hpp for both specs. */
+  /* The two ENHANCED forms — see Keys.hpp for both specs. */
   if (final == 'u' && np >= 1) {
     if (enhanced_key(p[0], mod, &e)) {
       emit_key(emit, ctx, e, NULL, 0);
@@ -727,7 +727,7 @@ int rolltui_key_undeliverable_reason(const RolltuiChord* k, unsigned char p) {
   return ROLLTUI_UNDELIVERABLE_NEVER;
 }
 
-/* ---- the protocol names and the undeliverability sentences (Phase 17 m2a) -----------------
+/* ---- the protocol names and the undeliverability sentences ----------------------------------
  * Both tables expand a list in `rolltui_keys.h`; see there for why they moved. */
 
 static const char* const kProtocolNames[] = {
@@ -761,7 +761,7 @@ const char* rolltui_key_undeliverable_text(int code, size_t* len) {
   return s;
 }
 
-/* ---- the key names, both spellings (Phase 17 m2b) ------------------------------------------
+/* ---- the key names, both spellings ----------------------------------------------------------
  * One list in `rolltui_keys.h`, two columns; `rolltui_bindings.c`'s chord parser expands the
  * SAME list for the lowercase half rather than keeping a table of its own. */
 

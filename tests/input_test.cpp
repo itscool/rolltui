@@ -120,7 +120,7 @@ void init_options(RolltuiInputOptions& o) {
   rolltui_input_options_init(&o);
 }
 
-// THE LIBRARY'S THIRTY, not a copy of them (Phase 17 m2a). This block used to hold a verbatim
+// THE LIBRARY'S THIRTY, not a copy of them. This block used to hold a verbatim
 // copy of `Input.cpp`'s table, with the comment "since a caller of `rolltui_input_handle` has
 // to hand this table over itself" — true, and the reason `rolltui_library_actions.c` counted
 // FOUR copies of the 59-row vocabulary. `rolltui_input_default_actions()` is the caller's

@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_terminal.h — THE TERMINAL, as C (Phase 17 m1).
+ * rolltui/c/rolltui_terminal.h — THE TERMINAL, as C.
  *
  * The one place the library touches a file descriptor: raw mode, the alternate screen,
  * mouse mode, bracketed paste, the window size, SIGWINCH, and restore-on-every-exit-path.
@@ -78,7 +78,7 @@ extern "C" {
 #endif
 void rolltui_terminal_refresh_size(RolltuiTerminal* t); /* ioctl; also called on SIGWINCH */
 
-/* ---- keyboard protocol (Phase 12 m3) ----------------------------------------------------- */
+/* ---- keyboard protocol ------------------------------------------------------------------- */
 /*
  * WHICH KEYBOARD PROTOCOL THIS TERMINAL SPEAKS, asked of the terminal rather than assumed of
  * its name. `rolltui_terminal_new` calls this once, so a host gets it for free; a host that
@@ -115,7 +115,7 @@ void rolltui_terminal_refresh_size(RolltuiTerminal* t); /* ioctl; also called on
  */
 unsigned char rolltui_terminal_negotiate_keyboard(RolltuiTerminal* t, int timeout_ms, int forced_protocol);
 
-/* ---- signal-safe restore ------------------------------------------------------------------ */
+/* ---- signal-safe restore ----------------------------------------------------------------- */
 /* Async-signal-safe: restores whichever terminal most recently entered (if any) — a plain
  * process-wide scalar, not a parameter, because a signal handler cannot be handed one.
  * Called by this file's own SIGINT/TERM/HUP/QUIT/WINCH handlers; public so a host with its
@@ -124,7 +124,7 @@ void rolltui_terminal_restore_now(void);
 
 
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached only by the library's own `.c` files and by a suite that tests this module's
  * implementation. The library does not promise these, so their shape can change without
  * breaking a consumer. A suite that needs one includes this header and names itself in

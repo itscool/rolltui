@@ -4,21 +4,21 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_layout_tree.h — THE SPLIT TREE, AS DATA (Phase 15 m5).
+ * rolltui/c/rolltui_layout_tree.h — THE SPLIT TREE, AS DATA.
  *
  * A window, a row, a column, a placed layer. What each one MEANS is stated in
  * `rolltui/Layout.hpp` and asserted in `rolltui/tests/layout_test.cpp`; none of it is
  * repeated here. This file answers one question the C++ never had to: **who owns a
  * child?**
  *
- * ---- WHY THIS IS IN BOTH CONFIGURATIONS ------------------------------------------------
+ * ---- WHY THIS IS IN BOTH CONFIGURATIONS -----------------------------------------------------
  *
- * The same reason `rolltui_md_lines.c` is (Phase 15 m4): **it is DATA both implementations
+ * The same reason `rolltui_md_lines.c` is: **it is DATA both implementations
  * of the placement algorithm fill and read**, and two copies of a data structure are two
  * things that can disagree about what a node is. The flag chooses the ALGORITHM
  * (`rolltui_layout.h`), never the shape of what it walks.
  *
- * ---- THE LIFETIME THE C++ LEFT IMPLICIT, WHICH IS THIS MILESTONE'S SUBJECT --------------
+ * ---- THE LIFETIME THE C++ LEFT IMPLICIT, WHICH IS THIS MILESTONE'S SUBJECT ------------------
  *
  * `std::vector<Node> children` is a recursive owning tree, and nobody ever decided that:
  * it is what you type. Four consequences nobody was asked about either —
@@ -39,7 +39,7 @@
  * address never moves, the list holds pointers, and copying a tree is a function with a
  * name (`rolltui_layout_node_copy`) rather than a `=`.
  *
- * ---- ONE DEFINITION ---------------------------------------------------------------------
+ * ---- ONE DEFINITION -------------------------------------------------------------------------
  *
  * `rolltui::Node`, `rolltui::Layer`, `rolltui::Dim`, `rolltui::Placement` and
  * `rolltui::SplitSize` ARE these structs, the Phase 14 rule. The C++ side adds the five
@@ -59,7 +59,7 @@ void rolltui_node_list_push(RolltuiNodeList* l, RolltuiLayoutNode* n);
 
 void rolltui_layer_list_remove(RolltuiLayerList* l, size_t i); /* frees it, shifts the rest down */
 
-/* ---- INTERNAL: not part of the public API ---------------------------------------------
+/* ---- INTERNAL: not part of the public API ---------------------------------------------------
  * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
@@ -221,7 +221,7 @@ typedef struct RolltuiLayoutNode {
   bool operator==(const RolltuiLayoutNode& o) const;
   RolltuiLayoutNode clone() const;
   // The builders the editor and the tests write trees with — C strings in, fields set
-  // (Phase 19 m2). A container node takes its children by `children.push_back(std::move(c))`.
+  //. A container node takes its children by `children.push_back(std::move(c))`.
   static RolltuiLayoutNode window(const char* content, RolltuiSplitSize size = {});
   static RolltuiLayoutNode window_id(const char* id, const char* content, RolltuiSplitSize size = {});
   static RolltuiLayoutNode row(RolltuiSplitSize size = {});
@@ -238,7 +238,7 @@ typedef struct RolltuiLayer {
 
 #ifdef __cplusplus
   RolltuiLayer();
-  // COPY IS DELETED (Phase 19 m2): `RolltuiLayer copy = *p;` was a deep copy here and a shallow
+  // COPY IS DELETED: `RolltuiLayer copy = *p;` was a deep copy here and a shallow
   // alias in C — the double-free Phase 16 m6 measured. The spelling is `clone()`, which is
   // `rolltui_layer_copy`. The destructor calls the named `rolltui_layer_release` and stays.
   RolltuiLayer(const RolltuiLayer&) = delete;
@@ -290,7 +290,7 @@ typedef struct RolltuiLayerList {
 #endif
 } RolltuiLayerList;
 
-/* ---- forward declarations the C++ members just below call ----------------------------------*/
+/* ---- forward declarations the C++ members just below call ---------------------------------*/
 void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from);
 int rolltui_layer_equal(const RolltuiLayer* a, const RolltuiLayer* b);
 RolltuiLayer* rolltui_layer_list_add(RolltuiLayerList* l);
@@ -309,7 +309,7 @@ void rolltui_node_list_release(RolltuiNodeList* l);
 void rolltui_node_list_remove(RolltuiNodeList* l, size_t i);
 
 #ifdef __cplusplus
-/* ---- the C++ special members of the structs above (Phase 17 m3) ---------------------------
+/* ---- the C++ special members of the structs above -------------------------------------------
  * Each one is a CALLER of a C function declared above it, so "release this subtree" has one
  * implementation and a destructor reaches it rather than being a second mechanism.
  *
@@ -530,7 +530,7 @@ typedef struct RolltuiLayout {
     return nullptr;
   }
   bool operator==(const RolltuiLayout&) const = default;
-  // The explicit copy (Phase 19 m2): `rolltui_layout_copy`, spelled at the call site. Copying
+  // The explicit copy: `rolltui_layout_copy`, spelled at the call site. Copying
   // by `=` is deleted through every member, which is the point.
   RolltuiLayout clone() const;
 #endif

@@ -23,7 +23,7 @@ static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v
 static size_t zmin(size_t a, size_t b) { return a < b ? a : b; }
 static size_t zmax(size_t a, size_t b) { return a > b ? a : b; }
 
-/* ---- the selection model -------------------------------------------------------------------- */
+/* ---- the selection model ----------------------------------------------------------------- */
 
 int rolltui_text_pos_less(const RolltuiTextPos* a, const RolltuiTextPos* b) {
   if (a->entry != b->entry) return a->entry < b->entry;
@@ -54,7 +54,7 @@ int rolltui_selection_range_in(const RolltuiSelection* s, size_t entry, size_t l
   return 1;
 }
 
-/* ---- the state ------------------------------------------------------------------------------- */
+/* ---- the state --------------------------------------------------------------------------- */
 
 typedef struct CacheKey {
   unsigned long long version;
@@ -164,7 +164,7 @@ struct RolltuiTranscript {
   size_t fold_scratch_cap;
 };
 
-/* ---- small helpers ---------------------------------------------------------------------------- */
+/* ---- small helpers ----------------------------------------------------------------------- */
 
 static RolltuiStyle overlay_style(RolltuiStyle base, RolltuiStyle over) {
   if (over.fg.kind != 0) base.fg = over.fg;
@@ -195,7 +195,7 @@ static void chrome(RolltuiMdLines* S, const char* text, size_t n, unsigned char 
   rolltui_md_lines_span(S, text, n, role, amb, NULL, 0, NULL, 0);
 }
 
-/* ---- the per-line cell walk -------------------------------------------------------------------- */
+/* ---- the per-line cell walk -------------------------------------------------------------- */
 /* Visits every drawable grapheme of a line: the span, the grapheme's index within the span,
  * its bytes and its width. Width-0 clusters are skipped exactly as `put_text` skips them, so
  * cell positions agree. A callback rather than a template, and one buffer rather than one per
@@ -218,7 +218,7 @@ static void for_each_cell(RolltuiTranscript* t, const RolltuiMdLine* line, int a
   }
 }
 
-/* ---- the caches -------------------------------------------------------------------------------- */
+/* ---- the caches -------------------------------------------------------------------------- */
 
 static void parsed_free(void* p) {
   Parsed* v = (Parsed*)p;
@@ -279,7 +279,7 @@ static CodeFolds* code_folds_for(RolltuiTranscript* t, const char* id, size_t le
   return f;
 }
 
-/* ---- laying an entry out ------------------------------------------------------------------------ */
+/* ---- laying an entry out ----------------------------------------------------------------- */
 
 static void lay_out(RolltuiTranscript* t, RolltuiEntryLayout* L, const RolltuiDocEntry* e, int width,
                     const RolltuiTranscriptOptions* opt, int folded) {
@@ -405,7 +405,7 @@ static void lay_out(RolltuiTranscript* t, RolltuiEntryLayout* L, const RolltuiDo
   rolltui_md_lines_finish(S);
 }
 
-/* ---- geometry over the laid-out entries ---------------------------------------------------------- */
+/* ---- geometry over the laid-out entries -------------------------------------------------- */
 
 static size_t layout_lines(const RolltuiEntryLayout* L) {
   const size_t n = L->store ? rolltui_md_lines_count(L->store) : 0;
@@ -495,7 +495,7 @@ static void layout_text(const RolltuiEntryLayout* L, const char** p, size_t* n) 
   *n = rolltui_md_lines_text_size(L->store);
 }
 
-/* ---- folding -------------------------------------------------------------------------------------- */
+/* ---- folding ----------------------------------------------------------------------------- */
 
 int rolltui_transcript_is_folded(const RolltuiTranscript* t, const RolltuiDocEntry* e) {
   const int* v = (const int*)rolltui_map_get(&t->fold_over_, e->id.p, e->id.n);
@@ -552,7 +552,7 @@ void rolltui_transcript_set_code_uncapped(RolltuiTranscript* t, const char* id, 
   ++f->epoch;
 }
 
-/* ---- the per-frame build ---------------------------------------------------------------------------- */
+/* ---- the per-frame build ----------------------------------------------------------------- */
 
 static CacheKey key_for(const RolltuiTranscript* t, const RolltuiDocEntry* e, int width, int folded) {
   CacheKey k;
@@ -627,7 +627,7 @@ static void build(RolltuiTranscript* t, const RolltuiDocument* doc, int width) {
   }
 }
 
-/* ---- find ------------------------------------------------------------------------------------------- */
+/* ---- find -------------------------------------------------------------------------------- */
 
 static char lower_ascii(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
 
@@ -848,7 +848,7 @@ int rolltui_transcript_find_prev(RolltuiTranscript* t) {
   return 1;
 }
 
-/* ---- layout ------------------------------------------------------------------------------------------ */
+/* ---- layout ------------------------------------------------------------------------------ */
 
 static unsigned long long now_us(void) {
   struct timespec ts;
@@ -886,7 +886,7 @@ void rolltui_transcript_layout(RolltuiTranscript* t, const RolltuiDocument* doc,
   t->stats_.layout_us = (long)(now_us() - t0);
 }
 
-/* ---- drawing ------------------------------------------------------------------------------------------- */
+/* ---- drawing ----------------------------------------------------------------------------- */
 
 typedef struct DrawCtx {
   RolltuiTranscript* t;
@@ -1037,7 +1037,7 @@ void rolltui_transcript_draw(const RolltuiTranscript* ct, RolltuiFrame* f, Rollt
   }
 }
 
-/* ---- scrolling ------------------------------------------------------------------------------------------ */
+/* ---- scrolling --------------------------------------------------------------------------- */
 
 void rolltui_transcript_scroll_by(RolltuiTranscript* t, long lines) {
   long v = (long)top_line(t) + lines;
@@ -1063,7 +1063,7 @@ size_t rolltui_transcript_top_line(const RolltuiTranscript* t) { return top_line
 size_t rolltui_transcript_lines_below(const RolltuiTranscript* t) { return lines_below(t); }
 int rolltui_transcript_viewport_height(const RolltuiTranscript* t) { return t->area_.h; }
 
-/* ---- hit testing and selection ----------------------------------------------------------------------------- */
+/* ---- hit testing and selection ----------------------------------------------------------- */
 
 typedef struct HitCtx {
   size_t entry;
@@ -1264,7 +1264,7 @@ static void unit_around(RolltuiTranscript* t, const char* text, size_t n, size_t
     }
 }
 
-/* ---- the drag ------------------------------------------------------------------------------------------------ */
+/* ---- the drag ---------------------------------------------------------------------------- */
 
 static void drag_to(RolltuiTranscript* t, int x, int y) {
   RolltuiTextPos pos;
@@ -1473,7 +1473,7 @@ int rolltui_transcript_toggle_fold_nearest_top(RolltuiTranscript* t, const Rollt
   return 0;
 }
 
-/* ---- events ----------------------------------------------------------------------------------------------------- */
+/* ---- events ------------------------------------------------------------------------------ */
 
 static int action_is(const char* a, size_t n, const char* name) {
   return name && strlen(name) == n && memcmp(a, name, n) == 0;
@@ -1552,7 +1552,7 @@ int rolltui_transcript_handle(RolltuiTranscript* t, const RolltuiEvent* e, const
   return 0;
 }
 
-/* ---- find accessors, stats and lifetime ---------------------------------------------------------------------------- */
+/* ---- find accessors, stats and lifetime -------------------------------------------------- */
 
 const char* rolltui_transcript_query(const RolltuiTranscript* t, size_t* len) {
   return rolltui_str_get(&t->query_, len);
@@ -1609,7 +1609,7 @@ RolltuiTranscript* rolltui_transcript_new(void) {
   t->click_.y = -1;
   t->u_ = rolltui_u_scratch_new();
   t->wrap_ = rolltui_wrap_new();
-  /* THE SIX ROLES A DRAW NEEDS, SET HERE (Phase 17 m1c). They used to be handed in by every
+  /* THE SIX ROLES A DRAW NEEDS, SET HERE. They used to be handed in by every
    * caller right after this call — `rolltui::Transcript`'s constructor and
    * `transcript_test.cpp`'s handle wrote the IDENTICAL six-line table, which is rule 5's tell
    * that the API was wrong rather than the consumers. The role vocabulary is this library's

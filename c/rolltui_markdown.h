@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_markdown.h — THE MARKDOWN CONTRACT (Phase 15 m4).
+ * rolltui/c/rolltui_markdown.h — THE MARKDOWN CONTRACT.
  *
  * CommonMark + GFM parsed by vendored md4c into a block tree, then rendered into styled,
  * wrapped lines in the caller's span store (`rolltui_md_lines.h`). Every rule about what
@@ -12,14 +12,14 @@
  * may not do — is stated in `rolltui/Markdown.hpp` and asserted in
  * `rolltui/tests/markdown_test.cpp`; none of it is repeated here.
  *
- * ---- THE ONE PLACE IN THE PORT WHERE C WAS PREDICTED TO WIN -------------------------
+ * ---- THE ONE PLACE IN THE PORT WHERE C WAS PREDICTED TO WIN ---------------------------------
  *
  * **md4c is already C.** The C++ side of this module was a wrapper around a C parser: every
  * callback took `void* ud`, cast it, and moved bytes out of `MD_ATTRIBUTE` into
  * `std::string`s. The C implementation is not wrapping anything — it is the same callbacks
  * writing into its own arrays. `plan/phase-15.md` m4 records what the ratio came out at.
  *
- * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------
+ * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER.** The parsed document is a handle the caller makes,
  *      reuses and frees; so is the store a render fills. Neither is returned by value and
@@ -36,7 +36,7 @@
  *      `markdown_test.cpp` asserts the callback is invoked EXACTLY ONCE per code line —
  *      a seam property, not an implementation detail. A sink has no cap to run out of.
  *
- * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------
+ * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------------
  *
  * **The block tree.** `RolltuiMdDoc` is OPAQUE, and that is the port's one real
  * simplification rather than a cost: `Block`, `Run`, `Align` and the inline-style bits were
@@ -59,7 +59,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* ---- block kinds, as bytes ------------------------------------------------------------- */
+/* ---- block kinds, as bytes --------------------------------------------------------------- */
 /* The same order as `rolltui::markdown::BlockKind`, asserted on the C++ side. */
 #define ROLLTUI_MD_BLOCK_PARAGRAPH 0
 #define ROLLTUI_MD_BLOCK_HEADING 1
@@ -114,7 +114,7 @@ typedef struct RolltuiMdRoles {
 
 /* THE STYLING VOCABULARY AS THIS BOUNDARY CARRIES IT, defined in the shim (`Markdown.cpp`)
  * and readable from C — the TRANSCRIPT renders entries through `rolltui_md_render` directly
- * (Phase 15 m5e), so it needs the same sixteen bytes this file is otherwise handed. One table
+ *, so it needs the same sixteen bytes this file is otherwise handed. One table
  * in the library, borrowed by pointer, never copied a second time. */
 const RolltuiMdRoles* rolltui_md_roles(void);
 

@@ -1,5 +1,5 @@
 //
-// layout_test.cpp — milestone 8 (plan/phase-9.md): placement, the split tree, layout
+// layout_test.cpp — milestone 8: placement, the split tree, layout
 // files, composition with joining borders, and focus routing.
 //
 //   1. resolve(): the table, then the tiling properties at every width 0..300
@@ -61,7 +61,7 @@
 //     counterpart to call: `RolltuiLayout::actions` (a `RolltuiActionList`) already IS the
 //     flat `RolltuiLayoutAction*`+count `rolltui_bindings_declare` takes.
 //   - `Windows`' typed accessors: `rolltui_windows_input`/`_transcript`/`_menu` (and their
-//     `_at` twins) are the library's OWN typed handles now (Phase 17 m1c) — created on
+// `_at` twins) are the library's OWN typed handles now — created on
 //     demand, owned by `RolltuiWindows`, and the SAME object a window's widget draws through,
 //     which is exactly the property the old comment said only `Windows`' C++ maps could give.
 // Every remaining `rolltui::`-namespaced type below (`RolltuiLayoutNode`/`RolltuiLayer`/
@@ -98,7 +98,7 @@ using namespace rolltui_test;
 namespace {
 
 // The input's text as a view. `Windows::input()` hands back the library's own handle now
-// (Phase 17 m1c), and the C's text accessor is pointer+length like every other borrow here.
+//, and the C's text accessor is pointer+length like every other borrow here.
 std::string_view input_text(const RolltuiInput* in) {
   std::size_t n = 0;
   const char* p = rolltui_input_text(in, &n);
@@ -214,7 +214,7 @@ struct StrSpan {
 };
 
 // ---- direct C calls, once mirroring the rolltui::-namespaced free functions Layout.hpp/
-// Layout.cpp defined (Phase 17 m2), kept `_c`-suffixed now that the originals are gone too —
+// Layout.cpp defined, kept `_c`-suffixed now that the originals are gone too —
 // renaming the call sites back to the plain names is left as pure churn, not a behaviour
 // change, so this phase's diff stays about ownership rather than about spelling.
 
@@ -280,7 +280,7 @@ RolltuiLayoutNode win(const char* content, RolltuiSplitSize size = {}, Border b 
 }
 
 // A batch of nodes MOVED into a container, so `row_of({win(...), win(...)})` still reads as it
-// did while a node is no longer copyable by `=` (Phase 19 m2): brace-init picks this variadic
+// did while a node is no longer copyable by `=`: brace-init picks this variadic
 // constructor, and each prvalue child is moved, never copied.
 struct Nodes {
   std::vector<RolltuiLayoutNode> v;
@@ -403,7 +403,7 @@ std::vector<std::string> widget_kind_names_c() {
 // `LayoutLoadReport`, `actions_to_c_c` converting `ActionDecl`s) has nothing left to bridge —
 // `rolltui_load_layout_text` and `rolltui_loaded_layout_to_layout` write directly into the
 // caller's own report/layout now. `rolltui_layout_shipped_default_actions()` is the library's
-// own cached "default" screen's actions (Phase 17), so there is no local copy of that table
+// own cached "default" screen's actions, so there is no local copy of that table
 // either. `report` is NOT reset here, matching `rolltui_load_layout[_text]`'s own convention
 // (the caller starts one fresh per call — every call site below does).
 
@@ -546,7 +546,7 @@ struct StackC {
 
 // ---- direct C calls, continued: RolltuiLayout::actions vs. the shipped default's ------------
 // `rolltui::shipped_default_actions_c()` returned a `std::vector<ActionDecl>`; the library's own
-// cached copy is `rolltui_layout_shipped_default_actions()` now (Phase 17), and
+// cached copy is `rolltui_layout_shipped_default_actions()` now, and
 // `RolltuiLayout::actions` (a `RolltuiActionList`) is already the flat array/count pair that
 // and `rolltui_bindings_declare` both take — there is no `action_decls()` conversion left to
 // call (see the include-comment note at the top of the file).
@@ -1329,7 +1329,7 @@ int main() {
     expect_rect("its buttons at the bottom", by_id(v, "buttons")->outer, {21, 15, 38, 1});
   }
 
-  // ---- 7. content and widgets (Phase 10 m2) --------------------------------------------------
+  // ---- 7. content and widgets --------------------------------------------------
   std::printf("-- content: the kind table\n");
   {
     // Every library kind is in the table under its own name, AT ITS OWN ROW, and nothing
@@ -1935,7 +1935,7 @@ int main() {
   }
 
 
-  // ---- 9. a HOST REGISTERS A KIND (Phase 11 m3) --------------------------------------
+  // ---- 9. a HOST REGISTERS A KIND --------------------------------------
   // The milestone's Done-when, driven through the real Windows. The whole claim is that
   // a host writes ONE CLASS and ONE REGISTRATION and the library then treats its widget
   // exactly like a built-in — so this test writes a real Widget (a two-cell "canvas"
@@ -2044,7 +2044,7 @@ int main() {
     clear_registered_widget_kinds_c();
   }
 
-  // ---- the scrollbar's geometry (Phase 12 m5) ----------------------------------------
+  // ---- the scrollbar's geometry ----------------------------------------
   // A pure function of (first, visible, total) and the track — a TABLE, because the
   // milestone's Done-when asks for one and because every interesting case here is a
   // boundary: the degenerate sizes this project insists on, and the two ends, where
