@@ -1,13 +1,12 @@
-/* THE LIBRARY'S CLOSED ACTION TABLE, moved here 2026-09-04 and the reason is a
- * measurement rather than a preference.
+/* THE LIBRARY'S CLOSED ACTION TABLE, and it lives here because of a measurement rather than
+ * a preference.
  *
- * It lived in `Bindings.cpp` and deliberately never crossed, on the rule that the C is
- * TOLD which scopes are the library's through a callback rather than storing the table.
- * That rule is right about SCOPES and was wrong about the TABLE: with the shim gone,
- * consumers that need to enumerate the library's actions had nowhere to ask, so they
- * copied it. Counted 2026-09-04: FOUR copies (bindings_test, deliverability_test,
- * input_test, tools/tool_actions.hpp), each a verbatim duplicate of 59 rows including
- * their English. The hosts would have made it seven.
+ * The rule that the C is TOLD which scopes are the library's, through a callback rather than
+ * by storing a table, is right about SCOPES and wrong about the TABLE. A consumer that needs
+ * to ENUMERATE the library's actions has nowhere to ask, so it copies them: FOUR copies
+ * accumulated before this file existed (bindings_test, deliverability_test, input_test,
+ * tools/tool_actions.hpp), each a verbatim duplicate of 59 rows including their English, with
+ * the hosts on course to make it seven.
  *
  * **A vocabulary written down twice is a second thing to drift — which is the rule that
  * kept it out, and the rule it broke.** A vocabulary the C refuses to carry does not
@@ -125,12 +124,11 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
  * `rolltui_input_handle`, `rolltui_menu_handle`, `rolltui_transcript_handle` and the
  * `scroll_text` kinds each take their action names as a mandatory struct, and each header says
  * why: "this file knows what each command DOES and none of the words". That trade is right and
- * is untouched — what was wrong is that the words then lived in `Input.cpp`, `Menu.cpp`,
- * `Transcript.cpp` and `Widgets.cpp`, and `Menu.cpp`'s was in an ANONYMOUS namespace. So a C
- * consumer could not call `rolltui_menu_handle` at all, and the tell had already fired:
- * `menu_test.cpp:452` hand-wrote its own copy of both the menu and the input table to get past
- * exactly that. Found 2026-09-05 by an agent converting the three editors, which is the same
- * discovery route as every other gap this phase — a consumer hitting a wall, never a survey.
+ * is untouched — what fails is the words living in a C++ file, one of them in an ANONYMOUS
+ * namespace, where a C consumer cannot reach them and so cannot call `rolltui_menu_handle` at
+ * all. The tell fires before anyone notices: a suite hand-writes its own copy of both the menu
+ * and the input table to get past exactly that. Every gap of this kind has been found by a
+ * consumer hitting a wall, never by a survey.
  *
  * The C now HANDS THE CALLER ITS OWN DEFAULT rather than storing a second copy: one list, four
  * expansions, and a row of the wrong group expands to nothing. Adding an action stays one edit.
@@ -187,10 +185,9 @@ static const RolltuiMenuActions kMenuActions = {ROLLTUI_LIBRARY_ACTION_LIST(ROLL
 #define ROLLTUI_LA_menu(field, name)
 #define ROLLTUI_LA_edit(field, name)
 
-/* The window stack's three — the FIFTH expansion of the one list, added in m3 for the reason
- * the other four were added in m2a. They were `Layout.cpp`'s `kStackActions`, a file m2c
- * deletes, and all three hosts call `rolltui_window_stack_route`: a vocabulary with no home
- * becomes one copy per caller. `ROLLTUI_LA_stack` was already declared (and empty) above
+/* The window stack's three — the FIFTH expansion of the one list, and here for the same reason
+ * as the other four: every host calls `rolltui_window_stack_route`, and a vocabulary with no
+ * home becomes one copy per caller. `ROLLTUI_LA_stack` was already declared (and empty) above
  * because the group exists in the list; this is the target that asks for it. */
 #undef ROLLTUI_LA_stack
 #define ROLLTUI_LA_stack(field, name) .field = name,

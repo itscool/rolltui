@@ -17,7 +17,7 @@
  * **md4c is already C.** The C++ side of this module was a wrapper around a C parser: every
  * callback took `void* ud`, cast it, and moved bytes out of `MD_ATTRIBUTE` into
  * `std::string`s. The C implementation is not wrapping anything — it is the same callbacks
- * writing into its own arrays. the plan m4 records what the ratio came out at.
+ * writing into its own arrays.
  *
  * ---- THE BOUNDARY'S RULES -------------------------
  *
@@ -46,8 +46,8 @@
  * thing a caller can ask is what the block KINDS are, which is what the one test that cared
  * was really asserting.
  *
- * **A `Role`.** This file names no role and never will, the rule m2 fixed at
- * `rolltui_diff.h`: the styling vocabulary is `rolltui/Style.hpp`'s, written down ONCE, and
+ * **A `Role`.** This file names no role and never will, the same rule `rolltui_diff.h`
+ * states: the styling vocabulary is written down ONCE, and
  * a renderer is HANDED the bytes it should tag its output with. Sixteen of them is more
  * than a diff's six, and that is the honest price of keeping one vocabulary rather than
  * two — a table in `RolltuiMdRenderOptions` and no enum here.

@@ -28,10 +28,8 @@
  *   2. **THE FRAME IS AN OPAQUE HANDLE.** Created, cloned, freed. The C++ `Frame` holds one
  *      and does the RAII; C callers do it by hand, which is the trade the experiment is
  *      here to price.
- *   3. **NO ALLOCATION IS HIDDEN.** `rolltui_frame_reset` reuses everything it can, exactly
- *      as Phase 13 m5 made it — a steady frame must still allocate NOTHING with this
- *      implementation linked. That seam (`rolltui_impl_name`) was deleted on 2026-09-04 with
- *      the C++ implementations it existed to tell apart.
+ *   3. **NO ALLOCATION IS HIDDEN.** `rolltui_frame_reset` reuses everything it can, because a
+ *      steady frame must allocate NOTHING (`rolltui-budget-test` asserts that at zero).
  *   4. **TEXT OUT IS A BORROW WITH A STATED WINDOW.** `rolltui_frame_glyph` returns a
  *      pointer into the frame, valid until the next call that mutates that cell. It is the
  *      same contract `Scratch` enforces one level up, and it is why a handle — not a raw
@@ -43,18 +41,14 @@
  * encoder or the Unicode segmenter besides. They read through the accessors here in either
  * configuration, so porting them is its own step and moves no behaviour when it happens.
  *
- * WHAT THE WIRING CHANGED, recorded because an API change the PORT FORCED is evidence for
- * m6's verdict in a way one it merely chose is not:
- *   - `Frame::marks()` returned `const std::vector<Mark>&`, which nothing on this side can
- *     supply without materialising a vector — an allocation, on a path Phase 13 took to
- *     zero. It is `rolltui_frame_mark_count` + `rolltui_frame_mark_at` now, and the two
- *     range-for loops in `Effects.cpp` are index loops.
- *   - `Frame::at()` returns a Cell BY VALUE, which an opaque handle forces. That dangled a
- *     `const Style*` `render_diff` was keeping across loop iterations — a defect found in
- *     the C++ before a line of it was ported.
- *   - `rolltui_frame_clear_marks` was declared in the design draft and is gone: nothing
- *     calls it, and an entry point no host uses would inflate m6's count of the API surface
- *     with something that was never really part of it.
+ * THREE SHAPES THIS BOUNDARY REFUSES, each with the defect it refuses:
+ *   - A `marks()` returning `const std::vector<Mark>&` cannot be supplied without
+ *     materialising a vector, which is an allocation on a path asserted at zero. It is
+ *     `rolltui_frame_mark_count` + `rolltui_frame_mark_at`, and a caller writes an index loop.
+ *   - An `at()` returning a Cell BY VALUE is what an opaque handle forces, and it is the
+ *     honest shape: holding a `const Style*` from one across loop iterations dangles.
+ *   - There is no `rolltui_frame_clear_marks`. Nothing calls it, and an entry point no host
+ *     uses inflates the API surface with something that was never part of it.
  */
 
 #include "rolltui/rolltui.h"
@@ -91,7 +85,7 @@ const char* rolltui_frame_link(const RolltuiFrame* f, unsigned int id, size_t* l
 void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
 /* ---- equality ---------------------------------------------------------------------------- */
 /* What the frame SHOWS, not what it is holding on to: retained link/spill capacity past a
- * reset is not compared (Phase 13 m5b found that the hard way). */
+ * reset is not compared. */
 int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
 
 

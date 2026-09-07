@@ -353,7 +353,7 @@ int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b) {
     if (memcmp(&a->cells[i], &b->cells[i], sizeof(RolltuiCell)) != 0) return 0;
   for (i = 0; i < a->mark_count; ++i)
     if (memcmp(&a->marks[i], &b->marks[i], sizeof(Mark)) != 0) return 0;
-  /* Only the LIVE table entries: retained capacity past a reset is not shown (m5b). */
+  /* Only the LIVE table entries: retained capacity past a reset is not shown. */
   for (i = 0; i < a->link_count; ++i)
     if (a->links[i].len != b->links[i].len || memcmp(a->links[i].p, b->links[i].p, a->links[i].len) != 0) return 0;
   for (i = 0; i < a->glyph_count; ++i)

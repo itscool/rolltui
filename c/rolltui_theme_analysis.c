@@ -166,10 +166,10 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out) {
 #define K(s) (s), strlen(s)
 
 /* ---- role ordinals: `R_<name>` is a file-local ALIAS of `ROLLTUI_ROLE_<NAME>`, generated
- * from `ROLLTUI_ROLE_LIST` (rolltui_style.h), the one spelling of the role vocabulary. Until
- * Phase 18 m1 this was a HAND-WRITTEN COPY of that list, with a comment saying its order "must
- * agree with rolltui::Role's declaration order (Style.hpp)" — a file that had been deleted
- * the day before. A copy can drift; an alias generated from the owner's list cannot. The
+ * from `ROLLTUI_ROLE_LIST` (rolltui_style.h), the one spelling of the role vocabulary. A
+ * HAND-WRITTEN COPY of that list needs a comment asking the next person to keep its order in
+ * agreement with the owner's, which is a promise where this is a guarantee: a copy can drift,
+ * an alias generated from the owner's list cannot. The
  * short form is kept only so the table below reads as pairs of roles rather than pairs of
  * numbers. Every entry point that takes `role_count` still checks it against
  * `ROLLTUI_ROLE_COUNT` before trusting a caller's array. */

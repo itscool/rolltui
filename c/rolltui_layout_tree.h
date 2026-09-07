@@ -42,7 +42,7 @@
  * ---- ONE DEFINITION -------------------------------------------------------------------------
  *
  * `rolltui::Node`, `rolltui::Layer`, `rolltui::Dim`, `rolltui::Placement` and
- * `rolltui::SplitSize` ARE these structs, the Phase 14 rule. The C++ side adds the five
+ * `rolltui::SplitSize` ARE these structs. The C++ side adds the five
  * special members and the two dozen accessors host code already writes, and every one of
  * them calls the C functions below — one implementation of "release this subtree", with the
  * destructor as a caller of it.
@@ -78,7 +78,7 @@ void rolltui_layer_list_copy(RolltuiLayerList* to, const RolltuiLayerList* from)
 #ifdef __cplusplus
 void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from); /* the handle's deep copy */
 
-/* PHASE 23: moved out of the definition with their types. */
+/* Internal, with the types they operate on. */
 void rolltui_layout_node_init(RolltuiLayoutNode* n);
 void rolltui_layout_node_copy(RolltuiLayoutNode* to, const RolltuiLayoutNode* from);
 int rolltui_layout_node_equal(const RolltuiLayoutNode* a, const RolltuiLayoutNode* b);
@@ -108,8 +108,8 @@ int rolltui_layout_equal(const RolltuiLayout* a, const RolltuiLayout* b);
 #endif
 
 /* ==========================================================================================
- * MOVED HERE BY PHASE 23: the layout family's STRUCTURES. `rolltui/rolltui.h` declares these
- * types as opaque handles and publishes seven accessors; everything below is the library's own
+ * THE LAYOUT FAMILY'S STRUCTURES. `rolltui/rolltui.h` declares these types as opaque handles
+ * and publishes seven accessors; everything below is the library's own
  * and the studio's layout editor, which is the only consumer that walks and mutates a tree.
  * ========================================================================================== */
 typedef struct RolltuiNodeList {
@@ -185,8 +185,8 @@ typedef struct RolltuiNodeList {
 } RolltuiNodeList;
 
 /* A node's KIND, spelled once. C++ has `RolltuiLayoutNode::Kind`; C had the bare integers, and
- * three files wrote a literal 0 with the word "Window" in a trailing comment from memory
- * (Phase 26 — the duplication rule firing on a magic number rather than on a word). */
+ * without it three files wrote a literal 0 with the word "Window" in a trailing comment from
+ * memory, which is the duplication rule firing on a magic number rather than on a word. */
 #define ROLLTUI_NODE_WINDOW 0
 #define ROLLTUI_NODE_ROW 1
 #define ROLLTUI_NODE_COLUMN 2
@@ -238,8 +238,8 @@ typedef struct RolltuiLayer {
 
 #ifdef __cplusplus
   RolltuiLayer();
-  // COPY IS DELETED: `RolltuiLayer copy = *p;` was a deep copy here and a shallow
-  // alias in C — the double-free Phase 16 m6 measured. The spelling is `clone()`, which is
+  // COPY IS DELETED: `RolltuiLayer copy = *p;` is a deep copy in C++ and a shallow alias in
+  // C, so the identical line double-frees. The spelling is `clone()`, which is
   // `rolltui_layer_copy`. The destructor calls the named `rolltui_layer_release` and stays.
   RolltuiLayer(const RolltuiLayer&) = delete;
   RolltuiLayer(RolltuiLayer&& o) noexcept;

@@ -251,7 +251,7 @@ static void map_free_all(RolltuiMap* m, void (*fn)(void*)) {
 }
 
 static const RolltuiMdDoc* parsed_doc(RolltuiTranscript* t, const RolltuiDocEntry* e) {
-  /* KEYED ON VERSION AND NOT ON WIDTH, which is the whole finding (m1): `parse` is a pure
+  /* KEYED ON VERSION AND NOT ON WIDTH: `parse` is a pure
    * function of the entry's text, and the layout cache's key carries `width` — so a resize
    * re-parsed forty unchanged strings into an identical tree and threw it away. */
   Parsed* p = (Parsed*)rolltui_map_get(&t->parse_, e->id.p, e->id.n);

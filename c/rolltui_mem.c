@@ -102,14 +102,12 @@ void* rolltui_mem_realloc(void* p, size_t bytes) {
   void* q = realloc(p, bytes);
   if (!q) out_of_memory(bytes);
   add_live(q);
-  /* A GROWING REALLOC COUNTS AS AN ALLOCATION, and this was the other way round until
-   * Phase 14 m3 pointed the instrument at a module that grows buffers. The old rule
-   * ("a realloc that grew an existing block is not a NEW BLOCK, so it counts as neither")
-   * was right about blocks and wrong about work: it made the C implementation, whose every
-   * buffer grows through `realloc`, look free next to a C++ one whose every `std::vector`
-   * growth is a counted `operator new`. A budget that reads a language difference as a cost
-   * difference is the same hole m2 found, one level down — so `allocations` now means what
-   * this header always said it meant, "calls that returned new storage", and `live_blocks`
+  /* A GROWING REALLOC COUNTS AS AN ALLOCATION. The tempting rule — "a realloc that grew an
+   * existing block is not a NEW BLOCK, so it counts as neither" — is right about blocks and
+   * wrong about work: it makes code whose every buffer grows through `realloc` look free next
+   * to code whose every container growth is a counted `operator new`, and a budget that reads
+   * a language difference as a cost difference is measuring the wrong thing. `allocations`
+   * means what this header says it means, "calls that returned new storage", and `live_blocks`
    * is tracked instead of derived. */
   atomic_fetch_add_explicit(&g_allocations, 1, memory_order_relaxed);
   if (!p) atomic_fetch_add_explicit(&g_live, 1, memory_order_relaxed);  /* a grow replaces a block in place */

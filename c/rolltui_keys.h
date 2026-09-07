@@ -86,9 +86,8 @@ int rolltui_key_deliverable(const RolltuiChord* k, unsigned char p);
 /* WHY NOT, as a CODE and as WORDS. The library owns both: the classification AND the sentence
  * that explains it. Splitting them — classifying here and keeping the English elsewhere — makes
  * every caller that wants to explain a refusal hand-copy the wording, and three test files did
- * exactly that before the sentences moved here. The words live where they
- * were and a test asserting on one has to say it. With `Keys.cpp` deleted in m2c they would
- * have had no original at all — three copies and no source. */
+ * exactly that before the sentences lived here. A vocabulary the library refuses to carry
+ * ends up as N copies and no source. */
 #define ROLLTUI_UNDELIVERABLE_NONE 0     /* it is deliverable */
 #define ROLLTUI_UNDELIVERABLE_NOT_A_KEY 1
 #define ROLLTUI_UNDELIVERABLE_SHIFT_ON_CHAR 2

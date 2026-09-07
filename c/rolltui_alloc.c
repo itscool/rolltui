@@ -15,18 +15,18 @@
 
 /* ---- ASan: make the sanitizer able to see a LOGICAL overrun ---------------------------------
  *
- * **WITHOUT THIS, AddressSanitizer IS NEARLY BLIND TO THIS LIBRARY'S C**, and that was m6b's
- * first real finding rather than a guess: a deliberate one-element read past the live length
- * of a grown buffer produced NO report, because `rolltui_grow` doubles — the byte after the
+ * **WITHOUT THIS, AddressSanitizer IS NEARLY BLIND TO THIS LIBRARY'S C**, and that is
+ * measured rather than assumed: a deliberate one-element read past the live length of a grown
+ * buffer produces NO report, because `rolltui_grow` doubles — the byte after the
  * length is still inside the allocation, and ASan guards ALLOCATION boundaries, not logical
  * ones. Every buffer here is over-allocated on purpose, so the mistake C makes easiest —
  * indexing past the live length — was exactly the one the sanitizer could not see.
  *
  * So the slack between the length and the capacity is POISONED, which is the same manual
  * container annotation libc++ uses to make `std::vector` overruns visible. It costs nothing
- * without the sanitizer (the macros compile away) and it is possible at all because m4 put
- * every growth in this one file: annotating twenty hand-written growth sites correctly is not
- * a thing anyone would have finished. */
+ * without the sanitizer (the macros compile away) and it is possible at all because every
+ * growth is in this ONE file: annotating twenty hand-written growth sites correctly is not a
+ * thing anyone would finish. */
 #if defined(__has_feature)
 #if __has_feature(address_sanitizer)
 #define ROLLTUI_ASAN 1

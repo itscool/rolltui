@@ -37,8 +37,7 @@ static void buf_append(char** p, size_t* len, size_t* cap, const char* bytes, si
 }
 
 /* Drops the first `n` bytes. The capacity is KEPT — a decoder is fed a few bytes at a time
- * forever, and freeing the storage being reused is exactly what Phase 13 shipped four
- * times over. */
+ * forever, and `clear()`-as-a-reset frees exactly the storage being reused. */
 static void buf_drop_front(char* p, size_t* len, size_t n) {
   if (n >= *len) {
     *len = 0;

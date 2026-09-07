@@ -841,9 +841,8 @@ static const char* spaces(Work* w, int n, size_t* out_n) {
   /* GROWING, AMORTISED, then filled to `need` AND NO FURTHER. The first cut filled to the
    * CAPACITY on a growth, which is a real logical overrun: `rolltui_grow` doubles, and
    * everything past the length the caller asked for is garbage the buffer does not own yet.
-   * All 50 tests passed over it in both configurations; **ASan's poisoned slack (Phase 14
-   * m6b) named it on the first sanitizer run**, which is the exact case that milestone was
-   * built for and the reason the sanitizers are not optional polish. */
+   * Every functional test passes over that; **ASan's poisoned slack names it on the first
+   * sanitizer run**, which is the case the sanitizer build exists for. */
   w->pad = (char*)rolltui_grow(w->pad, &w->pad_cap, need, 1);
   memset(w->pad, ' ', need);
   return w->pad;

@@ -4,7 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_widget_kinds.h — THE LIBRARY'S OWN WIDGET KINDS, IN C (Phase 15/17).
+ * rolltui/c/rolltui_widget_kinds.h — THE LIBRARY'S OWN WIDGET KINDS.
  *
  * `rows`, `text`, `file`, `help`, `input`, `transcript` and `menu`, and the error/panel
  * fallbacks, fill the plugin contract (`rolltui/c/rolltui_widgets.h`) here, in real C11,
@@ -19,11 +19,10 @@
  *
  * ---- NOTHING'S CONSTRUCTION CROSSES ANY MORE ------------------------------------------------
  *
- * Through the first half of m1c all eight kinds were C, and three of them — `input`,
- * `transcript`, `menu` — still had their FACTORY in `Widgets.cpp`, because building one meant
- * reaching `Windows::inputs_`/`transcripts_`/`menus_`, C++ maps this file could not see. That
- * left those kinds PORTED AND NOT REACHABLE: a pure-C host could draw an `input:prompt` window
- * and had no way to get the `RolltuiInput*` behind it, because the object was owned on the
+ * A KIND WHOSE FACTORY LIVES ON THE OTHER SIDE IS PORTED AND NOT REACHABLE. With `input`,
+ * `transcript` and `menu` built by C++ code reaching C++ maps this file cannot see, a pure-C
+ * host can draw an `input:prompt` window and has no way to get the `RolltuiInput*` behind it,
+ * because the object is owned on the
  * other side of the boundary. Accessors alone would have made a SECOND owner (see
  * `rolltui_widgets.h`'s own note), so the three maps moved into `RolltuiWindows` and these
  * three factories were repointed at them in ONE change. They are ordinary static factories
@@ -41,16 +40,11 @@
  * one-file duplication `help`'s own chord-joining loop below already is, not a new trade.
  *
  *
- * ---- PUBLIC SINCE PHASE 17 m2a, AND NOBODY CONSTRUCTS THESE BY NAME -------------------------
+ * ---- PUBLIC, AND NOBODY CONSTRUCTS THESE BY NAME --------------------------------------------
  *
- * This paragraph used to be headed "INTERNAL: NOT PART OF THE PUBLIC API" and said that
- * `rolltui/rolltui.h` does not include this header and `public_header_test.cpp` does not name
- * it. Both clauses were false by the time Phase 18 m2 read them: the umbrella includes this
- * header (its own comment there says why — the four rules below had C++ twins that m2c
- * deleted, and every host reached for the C ones), and `public_header_test.cpp` enumerates
- * `c/` from disk with only `rolltui_alloc.h` and `rolltui_map.h` internal. Corrected in place
- * rather than deleted, per the rule that a milestone owns every sentence about what it moved.
- * What was true stays true: nobody outside this library ever constructs a `RowsWidget` or a
+ * The umbrella includes this header (its own comment there says why), and
+ * `public_header_test.cpp` enumerates `c/` from disk with only `rolltui_alloc.h` and
+ * `rolltui_map.h` internal. Nobody outside this library ever constructs a `RowsWidget` or a
  * `TextWidget` by name;
  * `rolltui::Windows` builds them from the kind table when a layout names `rows:status` or
  * `text:...`. A consumer binds data (`bind_rows`, `bind_document`, `bind_submit`, `bind_note`)

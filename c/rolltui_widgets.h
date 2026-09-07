@@ -46,8 +46,8 @@
  *   4. **A CAPABILITY SOME WIDGETS HAVE AND OTHERS DO NOT IS TWO SLOTS, NOT ONE WITH A FLAG.**
  *      `scroll_extent` REPORTS and `scroll_to` ACCEPTS, because a menu's scroll is derived
  *      from its selection: it wants an accurate bar that is not a handle. Collapsing them
- *      would force every widget into a behaviour only some of them want — the rule Phase 12
- *      m5 wrote and this shape now enforces rather than asks for.
+ *      would force every widget into a behaviour only some of them want. The shape enforces
+ *      that rather than asking for it.
  *
  *   5. **THE LIBRARY'S OWN SEVEN KINDS FILL THIS PLUGIN EXACTLY AS A HOST'S DOES.** There is
  *      one mechanism and no privileged path: `rolltui::Windows` registers its built-ins
@@ -60,11 +60,10 @@
  *
  * ---- WHAT A HOST BINDS, AND WHY THAT CROSSES NOW TOO ----------------------------------------
  *
- * Through m5 this said a document, a row source, a submit target, a note and a menu file
- * stay in `Widgets.cpp` with the kinds that read them, on the argument that moving a
- * `std::function` map across a C boundary buys nothing when the only code that calls it is
- * on the other side. **That argument stopped holding the moment `Windows` itself became a
- * thin C++ shim over this file: the caller IS the other side now**, so the map belongs at the
+ * The tempting argument is that a document, a row source, a submit target, a note and a menu
+ * file should stay with the C++ kinds that read them, because moving a `std::function` map
+ * across a C boundary buys nothing when the only code that calls it is on the other side.
+ * **It stops holding the moment the caller IS the other side**, so the map belongs at the
  * boundary with the widget table it already shares an owner with. A `std::function` crosses
  * the same way a host's widget kind already did (`rolltui_windows_register_kind`, below) and
  * the way `rolltui_effect_register`'s host kinds do: as {a function pointer, a `void* ctx`,
@@ -78,9 +77,9 @@
  * here would only ever be a second copy behind that same reference, never a `std::function`
  * removed, so it stays a `Widgets.cpp` member beside `Windows`.
  *
- * What crosses regardless of any of this is the ownership Phase 15 m5 was about: the widget
- * table keyed by content, the kind registry, the per-window routing table, and the
- * scrollbar's memo of where each track was drawn.
+ * What crosses regardless of any of this is the OWNERSHIP: the widget table keyed by content,
+ * the kind registry, the per-window routing table, and the scrollbar's memo of where each
+ * track was drawn.
  */
 /* ---- OWNERSHIP HAS THREE SHAPES AND NO FOURTH -----------------------------------------------
  * Stated here, beside the type that does the owning, because that is where a reader (and a

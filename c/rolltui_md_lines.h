@@ -10,17 +10,17 @@
  * RESET and refilled rather than rebuilt. Everything the markdown renderer and the
  * transcript's layout produce lives in here; nothing they produce owns a byte of its own.
  *
- * ---- WHY THIS EXISTS, in the numbers m1 measured --------------------------------------------
+ * ---- WHY THIS EXISTS, in the numbers that produced it --------------------------------------
  *
- * A resize frame was 10,297 allocations. **4,128 of them were `push_span`** — a
+ * A resize frame of 10,297 allocations, measured over an owning span: **4,128 of them were
+ * `push_span`** — a
  * `std::string text` and a `std::vector<std::uint32_t> sources` per span, allocated and
  * freed every frame to hold bytes that had not changed — and **2,283 more were one span
  * being COPIED into another line** (`void append(StyledLine&, Span)`, by value, and the
  * copy constructor allocating both buffers again).
  *
- * Nobody DECIDED that a span should own its bytes; `std::string` is what you type. That is
- * CLAUDE.md's Phase 14 finding word for word, and this file is the answer to it: a span is
- * a BORROW — an offset and a length into pools this store owns — so there is no per-span
+ * Nobody DECIDED that a span should own its bytes; `std::string` is what you type. This file
+ * is the answer to that: a span is a BORROW — an offset and a length into pools this store owns — so there is no per-span
  * buffer to allocate, and copying a span into another line copies a descriptor.
  *
  * ---- THE THREE THINGS THAT MAKE IT SAFE -----------------------------------------------------

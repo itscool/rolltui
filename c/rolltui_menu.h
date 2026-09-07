@@ -4,8 +4,7 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND THE
- * FILE FORMAT (Phase 15 m5 for the rest).
+ * rolltui/c/rolltui_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND THE FILE FORMAT.
  *
  * Level navigation, a typed filter, a breadcrumb, palette mode, and the seven input TYPES a
  * field can be — with the three-state rule that makes them work: the committed value, the
@@ -16,8 +15,8 @@
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------------
  *
  * **The shipped menu files, and the VALIDATOR REGISTRY.** The embedded table (which menus
- * SHIP, the `.json` files under `rolltui/presets/menus`) stays in `Menu.cpp` for the reason
- * m3's `Theme` loader did — it is a table of names, not an algorithm. The validator registry
+ * SHIP, the `.json` files under `rolltui/presets/menus`) is a table of NAMES, not an
+ * algorithm, and stays with the other embedded tables. The validator registry
  * is more interesting: a Text field's host validator is a `std::function` keyed by name, and
  * rather than move that map across, the C ASKS — one callback, "is a validator by this name
  * registered, and does it accept this text". The map stays where the callables are, which is
@@ -77,7 +76,7 @@ void rolltui_input_check_release(RolltuiInputCheck* c);
  * IT TAKES A UNICODE SCRATCH because a Text field's `max_len` counts GRAPHEMES, and the
  * cluster walk needs somewhere to work. CLAUDE.md's strategy 3 as amended: that is a missing
  * handle, not a new strategy, and inventing a stack buffer with a spill here would be the
- * exact mistake Phase 14 m5 made once already. */
+ * exact mistake a stack buffer with a heap spill is. */
 void rolltui_check_input(const RolltuiInputSpec* spec, const char* text, size_t len,
                          RolltuiUnicodeScratch* u, RolltuiInputCheck* out);
 /* The type's name, and the reverse. A BORROW of a constant; NULL for an unknown name. */

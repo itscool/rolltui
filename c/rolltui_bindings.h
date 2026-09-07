@@ -7,8 +7,8 @@
  * rolltui/c/rolltui_bindings.h — chords, the binding table, and the file format that fills it.
  *
  * A chord's spelling ("ctrl+shift+left") and its help form ("Ctrl-Shift-Left"), the table an
- * action's keys live in and every edit to it, and — since m1 — the file format that reads and
- * writes a whole table at once. Every rule is stated in `rolltui/Bindings.hpp` and asserted in
+ * action's keys live in and every edit to it, and the file format that reads and writes a
+ * whole table at once. Every rule is stated in `rolltui/Bindings.hpp` and asserted in
  * `rolltui/tests/bindings_test.cpp`; none of it is repeated here.
  *
  * THE BOUNDARY'S RULES:
@@ -22,9 +22,8 @@
  * ---- WHAT THIS FILE DELIBERATELY DOES NOT KNOW ----------------------------------------------
  *
  * **Which actions exist.** `rolltui_library_actions.c` owns that table — names and English
- * descriptions — and this file asks it through `RolltuiScopeFn`, for the reason m2 kept
- * `Role` out of `rolltui_diff.h`: a vocabulary written down twice is a second thing to
- * drift.
+ * descriptions — and this file asks it through `RolltuiScopeFn`, the same reason `Role` stays
+ * out of `rolltui_diff.h`: a vocabulary written down twice is a second thing to drift.
  *
  * **Which SCOPES are the library's.** `declare()` is authoritative over every non-library
  * scope, and "non-library" is a fact about `library_actions()`. So the table is TOLD, by a

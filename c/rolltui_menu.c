@@ -1,5 +1,5 @@
-/* rolltui/c/rolltui_menu.c — the C side of the menu widget, the typed-field rules and (Phase
- * 17 m1) the file format. See rolltui_menu.h; the rules are rolltui/Menu.hpp's. */
+/* rolltui/c/rolltui_menu.c — the menu widget, the typed-field rules and the file format.
+ * See rolltui_menu.h. */
 #include "rolltui/c/rolltui_menu.h"
 
 #include <ctype.h>
@@ -569,7 +569,7 @@ static void check_text(const RolltuiInputSpec* spec, const char* text, size_t n,
   }
   c->prefix_ok = 1;
   /* The same empty rule as every other type. `min_len` is a length rule, never the
-   * emptiness rule (Menu.hpp, and the Phase 10 m5 defect behind it). */
+   * emptiness rule. */
   if (n == 0) {
     c->valid = spec->optional;
     if (!spec->optional) str_add(&c->reason, "a value is needed");

@@ -366,7 +366,7 @@ static void call_kind(RolltuiEffectScratch* sc, const Resolved* r, const Rolltui
 }
 
 /* ---- what a THEME carries, owned in C ---------------------------------------------------- */
-/* THE m2 SEAM, CLOSED (rolltui_effects.h). A map owns every byte of every spec it holds: the
+/* A MAP OWNS EVERY BYTE OF EVERY SPEC IT HOLDS (rolltui_effects.h): the
  * kind name, each frame, and the role list. Each of those is its OWN allocation, so growing
  * one does not move the others and a spec's pointers stay put — the array of specs itself is
  * the one thing that moves, which is exactly the window `rolltui_effect_map_at` states.

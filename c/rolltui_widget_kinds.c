@@ -864,11 +864,10 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
 
 /* THE FIVE VOCABULARIES AND THE KINDS, IN ONE CALL.
  *
- * m1c recorded the gap this closes: `rolltui_widget_kinds_register` and the five setters above
- * were called by `rolltui::Windows`' C++ CONSTRUCTOR, so a bare `rolltui_windows_new()` came
- * back with no kinds registered and NULL action names — ported but not reachable, which is the
- * distinction that milestone exists to make. It also called that "a move, not a design
- * question, blocked on the vocabularies being C data", and they now all are: the role ordinals
+ * THE GAP THIS CLOSES: with `rolltui_widget_kinds_register` and the five setters above called
+ * only from a C++ CONSTRUCTOR, a bare `rolltui_windows_new()` comes back with no kinds
+ * registered and NULL action names — ported but not REACHABLE, which is the distinction that
+ * matters. What made it possible to close is the vocabularies being C data: the role ordinals
  * from `rolltui_style.h`'s X-macro and the action names from `rolltui_library_actions.c`'s.
  *
  * A host that wants its OWN words still calls the setters afterwards; this is a default, not a
@@ -900,8 +899,8 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
    * `set_bindings`, and the `help` kind's sizing pass reads it unguarded — so a pure-C host
    * that registered the built-in kinds and then laid out a `help` window segfaulted before
    * drawing anything. `rolltui::Windows`' C++ constructor had always defaulted it, which is
-   * exactly why nothing caught it: the C path had no caller until this milestone. Found
-   * 2026-09-05 by converting `layout_test`.
+   * exactly why nothing catches it: a C++ constructor that always defaults it leaves the C
+   * path with no caller to fail.
    *
    * A default, not a policy — a host with its own table calls `set_bindings` afterwards, and
    * this is a BORROW of the library's shipped table, which lives for the process. */

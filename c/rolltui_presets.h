@@ -36,11 +36,11 @@
  * it. Here every one of the five things the mechanics do to a report (reset it, set its
  * error, read its error back to wrap a path around, add a note, prefix the notes with a
  * path) has to be a function pointer, because the words are `std::string`s and the store
- * cannot make one. The sixth and seventh — MAKE one and UNMAKE it — were missing until
- * Phase 18 m3, and their absence was paid for at every call site: the store needed a report
- * of its own for two throwaway parses (the shipped cache, the origin re-read at start) and,
- * unable to make one, took a SECOND report from the caller. Twenty-six call sites in five
- * consumers wrote that second one; the pure-C consumer was the fifth.
+ * cannot make one. The sixth and seventh — MAKE one and UNMAKE it — matter as much as the
+ * five, and their absence is paid for at every call site: the store needs a report of its own
+ * for two throwaway parses (the shipped cache, the origin re-read at start), and without a way
+ * to make one it has to take a SECOND report from the caller. That second parameter reached
+ * twenty-six call sites across five consumers before the pair existed.
  *
  * **WHAT IS NOT TOLD IS AS INTERESTING AS WHAT IS.** The JSON never crosses: `parse` takes
  * TEXT and hands back an owned value, so `json::Value` — a whole module that has not ported
@@ -74,7 +74,7 @@ void rolltui_preset_json_names_in(const char* dir, size_t dir_len, RolltuiStrLis
  * error alone when there is one, else every problem as "<prefix>: <text>" joined with "; ", in
  * a fixed order (this store's own bad values and unknown keys, then the colours part, then the
  * layout part, then the bindings part). Seven call sites in `studio.cpp` and one in
- * `presets_test.cpp` draw it, and `Presets.cpp` — where it lived — is deleted in m2c.
+ * `presets_test.cpp` draw it, so the composition lives here with the words it composes.
  *
  * The three nested reports are the DOMAIN reports the C already defines; any of them may be
  * NULL, meaning "this store has no such part". APPENDS to `out`, and appends nothing when

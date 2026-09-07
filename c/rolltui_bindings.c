@@ -47,7 +47,7 @@ typedef struct {
   RolltuiCodepoint ch;     /* non-zero only for "space", the one alias that names a CHAR chord */
 } KeyName;
 
-/* PHASE 17 m2b: the CANONICAL rows expand `rolltui_keys.h`'s ONE key list — a key with no file
+/* The CANONICAL rows expand `rolltui_keys.h`'s ONE key list — a key with no file
  * spelling (`Char`, `Unknown`) contributes nothing — and only the ALIASES are written here,
  * because an alias is this file's own concern: it is parsed and never printed, so it has no
  * place in the vocabulary the rest of the library reads. */
@@ -996,7 +996,7 @@ const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c) {
   rolltui_bindings_declare(b, actions, n, NULL, 0);
 
   /* A row for an action no shipped layout declares is a key EVERY host advertises and cannot
-   * press — the pre-Phase-11 defect re-created in file form. A mounted tool's chords come from
+   * press. A mounted tool's chords come from
    * the tool, so a tool row in this file stops the build rather than shipping. */
   rows = rolltui_bindings_row_count(b);
   for (i = 0; i < rows; ++i) {

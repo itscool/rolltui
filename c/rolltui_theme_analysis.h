@@ -14,15 +14,14 @@
  * every reference value is in the .c file next to the code, and
  * `rolltui/tests/theme_analysis_test.cpp` is the oracle for both halves.
  *
- * THE REPORT AND THE AUTO-FIX ARE HERE NOW TOO (moved from `rolltui/ThemeAnalysis.cpp`,
- * Phase 17 m5): `Theme`'s styles table (`rolltui_theme_style`/`_set_style`) and `json::Value`
- * (`RolltuiJsonValue`, `rolltui_json.h`) both got C representations after this file's original
- * note above was written, which is what made the move possible — see this header's second
- * section comment below for the full reasoning and for what deliberately still does NOT move
+ * THE REPORT AND THE AUTO-FIX ARE HERE TOO, which a theme's styles table
+ * (`rolltui_theme_style`/`_set_style`) and `RolltuiJsonValue` having C representations is what
+ * makes possible — see this header's second section comment below for the full reasoning and
+ * for what deliberately does NOT live here
  * (`analyse`'s notes, `generate`'s broken list, and anything that would need `Theme`, `Role`'s
  * name table beyond a handed-in vocab, or `std::string`/`std::vector` themselves).
  *
- * THE BOUNDARY'S RULES, inherited from Phase 14/15 and none new:
+ * THE BOUNDARY'S RULES, the library's standing ones and none new:
  *   1. **THE CALLER OWNS EVERY BUFFER.** The colour maths above has none to own: every
  *      result is a handful of doubles or a `RolltuiStyleColor`, so every one of them is an
  *      OUT-PARAM rather than a measure-then-fill round trip. The report/auto-fix below DOES
