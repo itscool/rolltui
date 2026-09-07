@@ -1500,9 +1500,13 @@ void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area) {
 }
 
 /* The row's text, into a caller's string. */
+/* `value_at` is the byte offset in `out` where the row's VALUE half begins, or `out->n` when
+ * the row is all name. The draw uses it to give the two halves different foregrounds without
+ * building two strings, which would be two allocations a row a frame. */
 static void row_text(const RolltuiMenu* m, const RolltuiMenuItem* it, int in_palette, size_t vis_index,
-                     RolltuiStr* out) {
+                     RolltuiStr* out, size_t* value_at) {
   rolltui_str_clear(out);
+  if (value_at) *value_at = 0;
   if (in_palette) {
     if (it->kind == ROLLTUI_MENU_TOGGLE) str_add(out, it->checked ? "[x] " : "[ ] ");
     rolltui_str_append_str(out, &m->flat[m->vis[vis_index]].label);
@@ -1516,6 +1520,7 @@ static void row_text(const RolltuiMenu* m, const RolltuiMenuItem* it, int in_pal
     case ROLLTUI_MENU_INPUT:
       rolltui_str_append_str(out, &it->label);
       str_add(out, ": ");
+      if (value_at) *value_at = out->n;
       rolltui_str_append_str(out, &it->value);
       break;
     default:
@@ -1529,6 +1534,7 @@ static void row_text(const RolltuiMenu* m, const RolltuiMenuItem* it, int in_pal
       memset(&t, 0, sizeof t);
       str_add(&t, "\xE2\x80\xA2 ");
       rolltui_str_append_str(&t, out);
+      if (value_at && *value_at != 0) *value_at += 2;
       rolltui_str_move(out, &t);
     }
   }
@@ -1660,8 +1666,28 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     {
       RolltuiStr right;
       int rw, left_max, used, rx;
+      size_t split = 0;
+      /* A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE, and drawing both in one style
+       * makes a settings list read as a wall. The name goes muted and the answer bright, the
+       * same way the rows widget already draws its two columns — so a menu of fields matches
+       * the panel beside it instead of being the one place the distinction is missing.
+       *
+       * ONLY ROWS THAT HAVE BOTH HALVES. An action or a submenu is a name alone; muting those
+       * would dim the menu rather than structure it, because there is no second half for the
+       * eye to travel to.
+       *
+       * THE ROW KEEPS ITS OWN BACKGROUND — only the foreground and the attributes come from
+       * the role, the same move the border draw makes with `line.bg = ground.bg`. A selected
+       * row is one solid block and must stay one; a role's background would punch a hole in it.
+       */
+      const int two_part = !m->palette && !is_sel && it->value.n != 0 &&
+                           (it->kind == ROLLTUI_MENU_INPUT || it->kind == ROLLTUI_MENU_CHOICE);
+      RolltuiStyle name_style = two_part ? styles[roles->label] : base;
+      RolltuiStyle value_style = styles[roles->value];
+      name_style.bg = base.bg;
+      value_style.bg = base.bg;
       memset(&right, 0, sizeof right);
-      row_text(m, it, m->palette, i, &line);
+      row_text(m, it, m->palette, i, &line, &split);
       if (!m->palette) {
         if (it->kind == ROLLTUI_MENU_CHOICE) {
           rolltui_str_append_str(&right, &it->value);
@@ -1674,13 +1700,23 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
       }
       rw = right.n ? rolltui_u_display_width(mm->u, right.p, right.n, aw) : 0;
       left_max = right.n == 0 ? w : imax(w - rw - 1, 0);
-      used = rolltui_frame_put_text(f, draw, x0, y + r, line.p, line.n, base, left_max, aw, 0);
+      /* A SELECTED ROW IS DRAWN IN ONE STYLE END TO END — `two_part` is false for it. Selection
+       * is the strongest signal this widget has, and splitting its colours would weaken it to
+       * say something a reader can already read off the rows around it. */
+      if (two_part && split != 0 && split < line.n) {
+        used = rolltui_frame_put_text(f, draw, x0, y + r, line.p, split, name_style, left_max, aw, 0);
+        used += rolltui_frame_put_text(f, draw, x0 + used, y + r, line.p + split, line.n - split,
+                                       value_style, imax(left_max - used, 0), aw, 0);
+      } else {
+        used = rolltui_frame_put_text(f, draw, x0, y + r, line.p, line.n, name_style, left_max, aw, 0);
+      }
       if (rw > 0 && rw <= w) {
-        const RolltuiStyle rs =
-            is_sel ? base
-                   : (it->kind == ROLLTUI_MENU_CHOICE || it->kind == ROLLTUI_MENU_SUBMENU
-                          ? base
-                          : styles[roles->shortcut]);
+        /* A CHOICE's right column is its current answer, so it is a value; a submenu's marker
+         * is punctuation and stays the row's own colour. */
+        const RolltuiStyle rs = is_sel ? base
+                                       : (it->kind == ROLLTUI_MENU_CHOICE
+                                              ? value_style
+                                              : (it->kind == ROLLTUI_MENU_SUBMENU ? name_style : styles[roles->shortcut]));
         rx = imax(w - rw, used + 1);
         rolltui_frame_put_text(f, draw, x0 + rx, y + r, right.p, right.n, rs, imax(w - rx, 0), aw, 0);
       }

@@ -548,15 +548,11 @@ static void rows_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   styles = rolltui_windows_styles(rc->w);
   r = rn->inner; /* NOT content_rect: rows draws directly in the inner rect, +1 col itself */
   if (r.h == 1) {
-    rolltui_str_clear(&rc->line);
-    for (i = 0; i < rc->rows.n; ++i) {
-      if (rc->line.n > 0) rolltui_str_append(&rc->line, "  ", 2);
-      rolltui_str_append_str(&rc->line, &rc->rows.v[i].label);
-      rolltui_str_append(&rc->line, " ", 1);
-      rolltui_str_append_str(&rc->line, &rc->rows.v[i].value);
-    }
-    rolltui_frame_put_text(f, rc->draw, r.x + 1, r.y, rc->line.p ? rc->line.p : "", rc->line.n,
-                           styles[rc->role_value], r.w - 1 > 0 ? r.w - 1 : 0, env->ambiguous_wide, 0);
+    /* THE SAME TWO ROLES AS THE TALL CASE. A single-row `rows:` window is the shape a status
+     * line has, and drawing it in one style made the same data read as structure when the
+     * window was tall and as one run of words when it was one row high. */
+    rolltui_frame_put_fields(f, rc->draw, r.x + 1, r.y, &rc->rows, styles[rc->role_label],
+                             styles[rc->role_value], r.w - 1 > 0 ? r.w - 1 : 0, env->ambiguous_wide);
     return;
   }
   {
@@ -892,6 +888,8 @@ void rolltui_context_set_library_defaults(RolltuiContext* ctx) {
       /*text_muted=*/ROLLTUI_ROLE_TEXT_MUTED,
       /*warning=*/ROLLTUI_ROLE_WARNING,
       /*scroll_marker=*/ROLLTUI_ROLE_SCROLL_MARKER,
+      /*label=*/ROLLTUI_ROLE_LABEL,
+      /*value=*/ROLLTUI_ROLE_VALUE,
   };
   if (!ctx) return;
   /* THE LIVE TABLE, and it belongs in this function for the same reason the roles and the kinds

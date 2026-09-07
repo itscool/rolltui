@@ -412,6 +412,8 @@ constexpr RolltuiMenuRoles kMenuRoles = {
     /*text_muted=*/static_cast<unsigned char>(Role::text_muted),
     /*warning=*/static_cast<unsigned char>(Role::warning),
     /*scroll_marker=*/static_cast<unsigned char>(Role::scroll_marker),
+    /*label=*/static_cast<unsigned char>(Role::label),
+    /*value=*/static_cast<unsigned char>(Role::value),
 };
 constexpr RolltuiInputRoles kInputRoles = {
     /*text=*/static_cast<unsigned char>(Role::input_text),
@@ -755,6 +757,40 @@ int main() {
     check(f.at(0, 1).style == theme.style(Role::menu_selected) && f.at(0, 2).style == theme.style(Role::menu_item) &&
               f.at(0, 6).style == theme.style(Role::text_muted),
           "the selected row is menu_selected, others menu_item, a disabled one text_muted");
+
+    // A ROW THAT CARRIES AN ANSWER IS TWO THINGS. `Theme  default ▸` is a name and a value,
+    // and drawing both in one style is what makes a settings list read as a wall — the eye has
+    // nothing to travel to. Only the FOREGROUND comes from the role: the row keeps its own
+    // background, so this stays one continuous row rather than a patch of a different colour.
+    // A field with nothing in it yet is a name alone, so give this one an answer to show.
+    rolltui_str_set(&m.find("save")->value, "notes.md", 8);
+    m.handle(key(Key::Down));  // off the Theme and Layout rows, so both draw as ordinary ones
+    m.handle(key(Key::Down));
+    Frame two(30, 8);
+    m.draw(two, theme, true);
+    RolltuiStyle want_name = theme.style(Role::label);
+    want_name.bg = theme.style(Role::menu_item).bg;
+    RolltuiStyle want_value = theme.style(Role::value);
+    want_value.bg = theme.style(Role::menu_item).bg;
+    check(two.at(0, 1).style == want_name, "an unselected CHOICE draws its name in the label role");
+    check(two.at(21, 1).style == want_value && two.glyph(21, 1) == "d",
+          "…and its current answer in the value role [" + std::string(two.glyph(21, 1)) + "]");
+    check(two.at(0, 1).style.bg == theme.style(Role::menu_item).bg &&
+              two.at(21, 1).style.bg == theme.style(Role::menu_item).bg,
+          "…both on the ROW's background, so the row is one block and not two");
+    check(two.at(0, 2).style == theme.style(Role::menu_item),
+          "a SUBMENU is a name alone, so it keeps the ordinary item style — muting it would dim the "
+          "menu rather than structure it");
+    check(two.at(0, 4).style == want_name && two.at(9, 4).style == want_value,
+          "an unselected INPUT splits at its colon too [" + row(two, 4) + "]");
+    // A FIELD WITH NOTHING IN IT IS A NAME ALONE. Muting a row whose second half is empty
+    // makes it read as disabled, which is the opposite of what the split is for.
+    rolltui_str_clear(&m.find("save")->value);
+    Frame blank(30, 8);
+    m.draw(blank, theme, true);
+    check(blank.at(0, 4).style == theme.style(Role::menu_item),
+          "…and an empty one is a name alone, not a muted row that looks disabled");
+    m.handle(key(Key::Home));
     // Scrolling: three item rows for six items.
     Frame g(30, 4);
     m.layout({0, 0, 30, 4});

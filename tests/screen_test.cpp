@@ -453,5 +453,58 @@ int main() {
     rolltui_swap_free(nullptr);  // free is a no-op on NULL (rolltui.h rule 1)
   }
 
+  // ---- put_fields: a status line is a list of named facts -----------------------------------
+  // A handful of facts read left to right, each with a name. Drawn as one string in one style
+  // it is a run of words in which the names and the answers look like the same kind of thing;
+  // two styles is what lets the eye find the answer it came for. Every host that hand-built
+  // one hand-built the same wall, which is why this is a library call and not each host's loop.
+  {
+    RolltuiStyle name{}, value{};
+    name.fg = RolltuiStyleColor::indexed(8);
+    value.fg = RolltuiStyleColor::indexed(15);
+    RolltuiRows rows{};
+    rows.add("size", "80x24");
+    rows.add("mode", "dark");
+    FramePtr f = new_frame(40, 1);
+    const int used = rolltui_frame_put_fields(f.get(), draw_scratch(), 0, 0, &rows, name, value, 40, 0);
+    std::string line;
+    for (int x = 0; x < used; ++x) line += glyph_at(f.get(), x, 0);
+    check(line == "size 80x24  mode dark", "put_fields draws name value pairs, two spaces between fields [" + line + "]");
+    check(cell_at(f.get(), 0, 0).style.fg.index == 8 && cell_at(f.get(), 5, 0).style.fg.index == 15,
+          "…the NAME is drawn in one style and the VALUE in another");
+    check(cell_at(f.get(), 13, 0).style.fg.index == 8 && cell_at(f.get(), 18, 0).style.fg.index == 15,
+          "…and every field after the first, so a long line stays readable end to end");
+
+    // A BARE FACT AND A BARE FLAG. A title has no name and a flag has no answer; both sit in
+    // the same line as the named fields rather than needing a second draw call.
+    rows.reset();
+    rows.add("", "paint");
+    rows.add("+dotfiles", "");
+    rows.add("marks", "3");
+    FramePtr g = new_frame(40, 1);
+    const int gused = rolltui_frame_put_fields(g.get(), draw_scratch(), 0, 0, &rows, name, value, 40, 0);
+    std::string gline;
+    for (int x = 0; x < gused; ++x) gline += glyph_at(g.get(), x, 0);
+    check(gline == "paint  +dotfiles  marks 3",
+          "…a row with no name draws its value alone, and one with no value draws its name alone [" + gline + "]");
+    check(cell_at(g.get(), 0, 0).style.fg.index == 15 && cell_at(g.get(), 7, 0).style.fg.index == 8,
+          "…each in the style its half belongs to");
+
+    // TRUNCATED FROM THE RIGHT, which is what makes the ORDER a host writes its fields in a
+    // design decision rather than a formality: what must be read goes first.
+    FramePtr narrow = new_frame(40, 1);
+    const int nused = rolltui_frame_put_fields(narrow.get(), draw_scratch(), 0, 0, &rows, name, value, 9, 0);
+    std::string nline;
+    for (int x = 0; x < nused; ++x) nline += glyph_at(narrow.get(), x, 0);
+    check(nused <= 9 && nline == "paint  +d", "…and it stops at max_cells, cutting the last field [" + nline + "]");
+
+    rows.reset();
+    check(rolltui_frame_put_fields(narrow.get(), draw_scratch(), 0, 0, &rows, name, value, 40, 0) == 0,
+          "…no fields draws nothing");
+    check(rolltui_frame_put_fields(narrow.get(), draw_scratch(), 0, 0, nullptr, name, value, 40, 0) == 0,
+          "…and NULL rows is a no-op, not a crash");
+    rolltui_rows_release(&rows);
+  }
+
   return report("rolltui screen_test");
 }

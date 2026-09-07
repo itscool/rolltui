@@ -81,14 +81,14 @@ namespace {
 // this example is for.
 constexpr const char* kToolsMenu = R"({
   "id": "root", "label": "tools", "items": [
-    { "id": "ramp", "label": "Shading", "kind": "choice",
+    { "id": "ramp", "label": "Texture", "kind": "choice", "value": "ascii",
       "items": [ { "id": "ascii", "label": "ascii   .:-=+*#%@" },
                  { "id": "blocks", "label": "blocks  \u2591\u2592\u2593\u2588" } ] },
     { "id": "ink", "label": "Ink", "kind": "input", "type": "color",
       "value": "#d8dce2", "hint": "#rrggbb, 0-255 or none" },
-    { "id": "size", "label": "Brush size", "kind": "input", "type": "int",
+    { "id": "size", "label": "Size", "kind": "input", "type": "int",
       "min": 1, "max": 5, "step": 1, "value": "1", "hint": "cells across" },
-    { "id": "shape", "label": "Brush shape", "kind": "choice",
+    { "id": "shape", "label": "Shape", "kind": "choice", "value": "square",
       "items": [ { "id": "square", "label": "square" }, { "id": "round", "label": "round" } ] },
     { "id": "clear", "label": "Clear the sheet" } ] }
 )";
@@ -414,6 +414,9 @@ struct App {
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
   RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
   CanvasFactoryCtx factory_ctx{};
+  // CALLER-FILLED, one per run: the status line's fields, reset and refilled every frame so
+  // the array and each row's buffer are reused rather than rebuilt.
+  RolltuiRows status_rows{};
   int w = 80, h = 24;
   Tool tool;
   std::string note;
@@ -431,6 +434,7 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_rows_release(&status_rows);
     rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_window_stack_free(stack);
@@ -592,22 +596,39 @@ struct App {
     if (h > 1) {
       rolltui_frame_fill(f, draw_scratch, RolltuiRect{0, h - 1, w, 1}, style(ROLLTUI_ROLE_PANEL_BACKGROUND),
                          nullptr, 0);
+      // A STATUS LINE IS A LIST OF NAMED FACTS, so it is built as rows and drawn as rows: the
+      // names muted, the answers bright, the same two roles the panel above uses. Read as one
+      // string in one colour it was a run of words in which `b1s` and `ascii` looked like the
+      // same kind of thing, and nothing said which was which.
+      //
+      // `status_rows` is a member the app RESETS and refills — the array and every row's
+      // buffer survive, so a frame in which nothing changed allocates nothing to say so.
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
       char inkstr[ROLLTUI_COLOR_STRING_MAX];
       const std::size_t inkn = rolltui_color_to_string(tool.color, inkstr, sizeof inkstr);
-      // COMPACT ON PURPOSE: the tool grew from one glyph to a ramp, an ink and a brush, and a
-      // status line that pushes the window REPORT off the right edge hides the one thing that
-      // must never be hidden. `ascii #d8dce2 b1s` says all three in a quarter of the width.
+      char num[64];
       std::size_t lname_n = 0;
       const char* lname = rolltui_layout_name(layout, &lname_n);
-      std::string status = " " + std::string(lname, lname_n) + "  " + std::to_string(w) + "x" + std::to_string(h) +
-                           "  " + kRamps[tool.ramp % 2].name + " " +
-                           std::string(inkstr, inkn) + " b" + std::to_string(tool.size) +
-                           (tool.round ? "r" : "s") + "  marks " + std::to_string(marks()) + "  focus:" +
-                           (focused ? std::string(rolltui_layout_node_id(focused, nullptr)) : std::string("-"));
-      if (!note.empty()) status += "  [" + note + "]";
-      rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0,
-                             0);
+      // ORDERED BY WHAT A PAINTER NEEDS, because a status line is truncated from the right and
+      // the order therefore decides what survives a narrow window. What the next stroke will
+      // lay down comes first; the screen's own dimensions come last.
+      status_rows.reset();
+      rolltui_rows_add(&status_rows, "", 0, lname, lname_n);
+      // A WINDOW REPORT OUTRANKS EVERY TOOL. An unbound source or an unknown kind is drawn as
+      // an error panel AND said here, and a status line long enough to push it off the right
+      // edge hides the one thing that must never be hidden — so it goes before the brush.
+      if (!note.empty()) rolltui_rows_add(&status_rows, "", 0, note.data(), note.size());
+      status_rows.add("texture", kRamps[tool.ramp % 2].name);
+      rolltui_rows_add(&status_rows, "ink", 3, inkstr, inkn);
+      std::snprintf(num, sizeof num, "%d %s", tool.size, tool.round ? "round" : "square");
+      status_rows.add("brush", num);
+      std::snprintf(num, sizeof num, "%zu", marks());
+      status_rows.add("marks", num);
+      status_rows.add("focus", focused ? rolltui_layout_node_id(focused, nullptr) : "-");
+      std::snprintf(num, sizeof num, "%dx%d", w, h);
+      status_rows.add("size", num);
+      rolltui_frame_put_fields(f, draw_scratch, 1, h - 1, &status_rows, style(ROLLTUI_ROLE_LABEL),
+                               style(ROLLTUI_ROLE_VALUE), w - 1, tool.ambiguous);
     }
     // EFFECTS ARE ONE LINE, and it is the same line roll and the studio have. A paint app
     // marks nothing today, so this frame is unchanged; the point is that a `canvas` that DID

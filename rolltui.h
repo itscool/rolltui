@@ -1959,6 +1959,13 @@ typedef struct RolltuiMenuRoles {
   unsigned char text_muted;
   unsigned char warning;
   unsigned char scroll_marker;
+  /* A ROW THAT CARRIES A VALUE IS TWO THINGS, and drawing it in one style makes it read as
+   * one. `Ink: #d8dce2` and `Shading  ascii` are a name and an answer; the theme already
+   * distinguishes them everywhere else, and without these the menu was the one widget that
+   * could not say which half a reader is looking at. Only the FOREGROUND is taken — the row
+   * keeps its own background, so a selected row stays one solid block. */
+  unsigned char label;
+  unsigned char value;
 } RolltuiMenuRoles;
 
 /* THE REPORT, transparent like `RolltuiBindingsReport` and `RolltuiLayoutReport`: exactly
@@ -4640,6 +4647,25 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
  * width. */
 void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, RolltuiStyle style,
                         const char* glyph, size_t glyph_len);
+
+/* ONE ROW OF NAME/VALUE FIELDS, each name in `name_style` and each value in `value_style`,
+ * separated by two spaces and stopping at `max_cells`. Returns the cells used.
+ *
+ * This is what a status line is: a handful of facts, each with a name, read left to right.
+ * Drawing it as one string in one style is what makes a status line a wall of words — the eye
+ * has nothing to anchor on, and every host that hand-built one hand-built the same wall.
+ *
+ * A row with an EMPTY LABEL draws its value alone, which is how a bare fact (a title, a
+ * bracketed note) sits in the same line as the named ones. An empty VALUE draws the name
+ * alone, for a flag whose presence is the whole message.
+ *
+ * IT TAKES A `RolltuiRows` THE CALLER OWNS AND REFILLS, so a status line costs no allocation
+ * on a warm frame: `rolltui_rows_reset` keeps the array and every row's buffer, and
+ * `rolltui_rows_add` assigns into storage that already fits. Building a string per frame to
+ * describe an unchanged screen is the thing this exists to stop. */
+int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
+                             RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
+                             int ambiguous_wide);
 
 /* ---- theme ---------------------------------------------------------------------------------*/
 

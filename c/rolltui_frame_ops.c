@@ -52,6 +52,31 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
   return used;
 }
 
+int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
+                             RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
+                             int ambiguous_wide) {
+  size_t i;
+  int used = 0;
+  if (!rows) return 0;
+  for (i = 0; i < rows->n; ++i) {
+    const RolltuiRow* row = &rows->v[i];
+    if (used >= max_cells) break;
+    /* The gap belongs to the field that follows, so a line never ends in trailing spaces that
+     * a frame diff would then have to repaint. */
+    if (used > 0)
+      used += rolltui_frame_put_text(f, s, x + used, y, "  ", 2, name_style, max_cells - used, ambiguous_wide, 0);
+    if (row->label.n != 0)
+      used += rolltui_frame_put_text(f, s, x + used, y, row->label.p, row->label.n, name_style,
+                                     max_cells - used, ambiguous_wide, 0);
+    if (row->label.n != 0 && row->value.n != 0)
+      used += rolltui_frame_put_text(f, s, x + used, y, " ", 1, name_style, max_cells - used, ambiguous_wide, 0);
+    if (row->value.n != 0)
+      used += rolltui_frame_put_text(f, s, x + used, y, row->value.p, row->value.n, value_style,
+                                     max_cells - used, ambiguous_wide, 0);
+  }
+  return used;
+}
+
 void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, RolltuiStyle style,
                         const char* glyph, size_t glyph_len) {
   RolltuiRect bounds, c;

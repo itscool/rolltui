@@ -84,8 +84,12 @@ int main() {
                                              std::to_string(count(art, "\xE2\x96\x92")) + " cells)");
   check(has(art, "\xE2\x96\x93"), "…and a third shade, from a band the brush crossed four times");
   // The tool panel is the app's menu FILE, and its typed fields render as fields.
-  check(has(art, "Ink:") && has(art, "Brush size:"),
+  check(has(art, "Ink:") && has(art, "Size:"),
         "the palette's TYPED fields (int with a range, colour) draw as fields — nothing in the tree drove them from a host before");
+  // EVERY TOOL SHOWS WHAT IT IS SET TO. A choice whose value the file never declared drew as a
+  // name and an arrow, so the palette could not answer the first question anyone asks it.
+  check(has(art, "ascii") && has(art, "square"),
+        "…and every choice shows its CURRENT answer, not just that it has options");
   // AND THE FIELD THAT IS GONE. A darkness you set before you can make a mark is a number
   // standing between a person and the picture; drawing over the same place is what a person
   // already does when they want it darker. The palette is one field shorter for it.
@@ -190,10 +194,10 @@ int main() {
   // puts one on every level below the root. A person who has descended into a choice and does
   // not know the chord is exactly the person this is for, so the assertion clicks.
   const std::string into = run(base + " --dot 46,2 2>&1", rc);
-  check(rc == 0 && has(into, "tools \xE2\x80\xBA Shading") && has(into, "\xE2\x97\x82 Back"),
+  check(rc == 0 && has(into, "tools \xE2\x80\xBA Texture") && has(into, "\xE2\x97\x82 Back"),
         "clicking a choice descends, and the first row is a visible way back");
   const std::string out = run(base + " --dot 46,2 --dot 46,2 2>&1", rc);
-  check(rc == 0 && has(out, "Brush size:") && !has(out, "\xE2\x97\x82 Back"),
+  check(rc == 0 && has(out, "Size:") && !has(out, "\xE2\x97\x82 Back"),
         "…and clicking that row returns to the top level, where there is nowhere to go back to");
 
   return report("rolltui paint_art_test");

@@ -112,7 +112,7 @@ int main() {
   // root → alpha → nested and the third column is the deepest one.
   const std::string deep = run(base + " --frame 150x30 --keys \"Right Right\" 2>&1", rc);
   check(rc == 0 && has(deep, "deep.txt"), "…and a third column opens from the second's selection");
-  check(has(deep, "col 3/3"), "…the status line counts the columns it is showing");
+  check(has(deep, "column 3/3"), "…the status line counts the columns it is showing");
 
   // ---- 3. wide, combining and over-long names ------------------------------------------------
   check(has(wide, "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E"), "a CJK name is drawn, and the row it is on is not torn");

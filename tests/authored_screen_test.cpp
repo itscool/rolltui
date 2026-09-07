@@ -243,7 +243,7 @@ int main() {
           "…the canvas took the whole drag — press, drags and release — and painted it [" + status_line(frame) + "]");
     // The studio could not resolve `menu:tools` at all. The app it was authored for embeds
     // that file, so the window the designer placed fills with a palette they never saw.
-    check(has(frame, "Clear the sheet") && has(frame, "Brush"),
+    check(has(frame, "Clear the sheet") && has(frame, "Texture"),
           "…and `menu:tools` resolves to the app's OWN embedded palette, which the studio never had");
     check(has(frame, "app:") && has(frame, "(unbound)") && has(frame, "clear the easel sheet"),
           "…and `help` lists an action this binary has never named, described in the words typed in the studio");

@@ -527,6 +527,9 @@ struct App {
   std::string root;
   std::string note;   // the library's own report for this frame
   std::string hint;   // this app's own last word (a bad path, a jump)
+  // CALLER-FILLED, one per run: the status line's fields, reset and refilled every frame so
+  // the array and each row's buffer are reused rather than rebuilt.
+  RolltuiRows status_rows{};
   int w = 100, h = 30;
   bool quit = false;
 
@@ -537,6 +540,7 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_rows_release(&status_rows);
     rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
     rolltui_window_stack_free(stack);
@@ -745,18 +749,28 @@ struct App {
                                  compose_scratch);
     if (h <= 1) return;
     rolltui_frame_fill(f, draw_scratch, RolltuiRect{0, h - 1, w, 1}, style(ROLLTUI_ROLE_PANEL_BACKGROUND), nullptr, 0);
+    // NAMED FACTS, DRAWN AS FACTS: the names muted and the answers bright, the same two roles
+    // the columns above use. `status_rows` is reset and refilled rather than rebuilt, so a
+    // frame that says nothing new allocates nothing to say it.
     Browser* b = browser();
-    std::string status = " " + root;
+    char num[64];
+    status_rows.reset();
+    rolltui_rows_add(&status_rows, "", 0, root.data(), root.size());
+    // A REPORT OUTRANKS EVERY FACT BELOW IT: the line is truncated from the right, so anything
+    // that must be read goes before anything that is merely useful.
+    if (!note.empty()) rolltui_rows_add(&status_rows, "", 0, note.data(), note.size());
+    if (!hint.empty()) rolltui_rows_add(&status_rows, "", 0, hint.data(), hint.size());
     if (b) {
       const Column* c = b->focused();
-      status += "  " + std::to_string(c ? c->entries.size() : 0) + " entries";
-      status += "  col " + std::to_string(b->focus_col + 1) + "/" + std::to_string(b->cols.size());
-      status += std::string("  ") + (opt.sort == Sort::Name ? "name" : opt.sort == Sort::Size ? "size" : "modified");
-      if (opt.hidden) status += "  +dotfiles";
+      std::snprintf(num, sizeof num, "%zu", c ? c->entries.size() : 0);
+      status_rows.add("entries", num);
+      std::snprintf(num, sizeof num, "%d/%zu", b->focus_col + 1, b->cols.size());
+      status_rows.add("column", num);
+      status_rows.add("sort", opt.sort == Sort::Name ? "name" : opt.sort == Sort::Size ? "size" : "modified");
+      if (opt.hidden) rolltui_rows_add(&status_rows, "", 0, "+dotfiles", 9);
     }
-    if (!hint.empty()) status += "  [" + hint + "]";
-    if (!note.empty()) status += "  [" + note + "]";
-    rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0, 0);
+    rolltui_frame_put_fields(f, draw_scratch, 1, h - 1, &status_rows, style(ROLLTUI_ROLE_LABEL),
+                             style(ROLLTUI_ROLE_VALUE), w - 1, 0);
   }
 };
 
