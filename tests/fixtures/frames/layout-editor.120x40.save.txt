@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │ saved layout file /var/folders/13/ydj6w4yj2xs0 │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [layout editor]  default  120x40  line 181/215  follow  truecolor  focus:editor
+ default-dark [layout editor]  two  120x40  line 181/215  follow  truecolor  focus:editor

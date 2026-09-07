@@ -37,4 +37,4 @@
 │                                                                     │ new layout 'kiosk' — one window, no popups, no │
 │                                                                     │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [layout editor]  kiosk (modified)  120x40  line 75/109  follow  truecolor  focus:editor
+ default-dark [layout editor]  default (modified)  120x40  line 75/109  follow  truecolor  focus:editor

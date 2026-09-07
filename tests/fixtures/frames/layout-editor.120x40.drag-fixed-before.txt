@@ -3,12 +3,12 @@
 │         dark      │ ├───────────────────────────────────────┼───────│   status rows:status                           │
 │ keys    default   │ │ Unicode tables (line-break class,     │ genera│   (column) column                              │
 │ layout  panel-left│ │ East-Asian width, grapheme property,  │       │     transcript transcript:session              │
-│ size    120x40    │ │ Extended_Pictographic, InCB)          │       │     input input:prompt                         │
-│ line    69/103    │ │ UAX #14 line breaking, UAX #29        │ build │ popup find                                     │
-│ follow  yes       │ │ grapheme clusters, display width      │       │   find input:find                              │
-│ depth   truecolor │ │ CommonMark + GFM parsing              │ vendor│ popup help                                     │
-│ focus   editor    │ │                                       │       │   help help                                    │
-│                   │ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
+│         (modified)│ │ Extended_Pictographic, InCB)          │       │     input input:prompt                         │
+│ size    120x40    │ │ UAX #14 line breaking, UAX #29        │ build │ popup find                                     │
+│ line    69/103    │ │ grapheme clusters, display width      │       │   find input:find                              │
+│ follow  yes       │ │ CommonMark + GFM parsing              │ vendor│ popup help                                     │
+│ depth   truecolor │ │                                       │       │   help help                                    │
+│ focus   editor    │ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
 │                   │ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
 │                   │ │ mode)                                 │       │ popup menu                                     │
 │                   │ │ Key + mouse decoding                  │ build │ layout editor • status                         │

@@ -9,4 +9,4 @@ Here is the function you asked for:
 └──────────────────────────────────────┘
  theme default-dark  keys default  layou
 > type here
- default-dark  stacked  40x12  line 208/
+ default-dark  stacked (fallback)  40x12

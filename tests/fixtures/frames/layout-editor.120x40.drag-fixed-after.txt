@@ -1,7 +1,7 @@
 ┌ layout editor ─────────────────────────────────┐┬ status ────────────────────────────────────────────────────────────┐
 │ (row) row                                      ││ theme   default-dark                                               │
 │   (column) column                              ││ keys    default                                                    │
-│     transcript transcript:session              ││ layout  wide-right                                                 │
+│     transcript transcript:session              ││ layout  wide-right (modified)                                      │
 │     input input:prompt                         ││ size    120x40                                                     │
 │   status rows:status                           ││ line    146/180                                                    │
 │ layout editor • status                         ││ follow  yes                                                        │

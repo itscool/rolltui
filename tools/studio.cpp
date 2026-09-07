@@ -617,7 +617,7 @@ struct App {
   // CALLER-FILLED, one per run: the layout editor's tree view, refilled every frame the panel
   // is drawn so the rows keep their buffers.
   RolltuiRows tree_rows_{};
-  RolltuiStr theme_label_str, keys_label_str;
+  RolltuiStr theme_label_str, keys_label_str, layout_label_str;
   RolltuiStyle theme_styles[ROLLTUI_ROLE_COUNT]{};     // what this frame draws with (resolved, or the editor's preview)
   RolltuiEffectMap* effects_map = nullptr;             // OWNED: the resolved theme's effects
   std::uint64_t lstore_seen = 0;
@@ -1816,6 +1816,22 @@ struct App {
       rolltui_window_stack_focus(stack, "find", 4);
   }
 
+  // A layout's state in ONE spelling. The panel and the status line show the same subject and
+  // drew it two different ways: the panel said "(fallback)" and never "(modified)", the line said
+  // "(modified)" and never "(fallback)", so one layout could carry two labels in one frame.
+  // When a fallback is in force the DRAWN layout is not the chosen one, so the chosen one's
+  // modified flag describes something that is not on screen and is left unsaid.
+  // Fills a caller-held string, so a warm frame allocates nothing here.
+  void layout_status(std::string& out) {
+    if (stacked_fallback) {
+      out.assign(view_of(effective_layout().name));
+      out += " (fallback)";
+      return;
+    }
+    if (lstore) { lstore->label(layout_label_str); out.assign(view_of(layout_label_str)); }
+    else out.assign(view_of(effective_layout().name));
+  }
+
   // ---- the sources the studio binds ----
   // `rows:status`: the studio's own facts. The widget draws them — this says only what
   // they are.
@@ -1826,8 +1842,7 @@ struct App {
     char b[64];
     if (store) { store->label(theme_label_str); out.add("theme", theme_label_str); } else out.add("theme", resolved_name.data(), resolved_name.size());
     if (bstore) { bstore->label(keys_label_str); out.add("keys", keys_label_str); } else out.add("keys", "default");
-    layout_row.assign(view_of(effective_layout().name));
-    if (stacked_fallback) layout_row += " (fallback)";
+    layout_status(layout_row);
     out.add("layout", layout_row.data(), layout_row.size());
     std::snprintf(b, sizeof b, "%dx%d", w, h);
     out.add("size", b);
@@ -1921,8 +1936,8 @@ struct App {
               : editor_mode == EditorMode::Menu   ? " [menu editor]"
                                                   : "";
       status += "  ";
-      status += view_of(effective_layout().name);
-      if (lstore && lstore->modified()) status += " (modified)";
+      layout_status(layout_row);
+      status += layout_row;
       status += "  ";
       append_count(status, w);
       status += 'x';
