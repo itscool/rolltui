@@ -373,7 +373,7 @@ static int is_prefix_ci(const char* text, size_t n, const char* word) {
 }
 
 static void check_color(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
-  static const char* kHint = "#rrggbb | 0-255 | none";
+  static const char* const kHint = "#rrggbb | 0-255 | none";
   int prefix = n == 0 || is_prefix_ci(text, n, "none");
   RolltuiStyleColor col;
   if (!prefix && text[0] == '#') {
@@ -449,7 +449,7 @@ static int dim_prefix(const char* t, size_t n, int size) {
 }
 
 static void check_size(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
-  static const char* kHint = "fill | fill N | N% | N% \xC2\xB1 cells | cells";
+  static const char* const kHint = "fill | fill N | N% | N% \xC2\xB1 cells | cells";
   RolltuiSplitSize s;
   if (!dim_prefix(text, n, 1)) {
     str_add(&c->reason, "not the start of a size (");
@@ -480,7 +480,7 @@ static void check_size(const RolltuiInputSpec* spec, const char* text, size_t n,
 }
 
 static void check_dim(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
-  static const char* kHint = "cells | N% | N% \xC2\xB1 cells";
+  static const char* const kHint = "cells | N% | N% \xC2\xB1 cells";
   RolltuiDim d;
   int have = 0;
   if (!dim_prefix(text, n, 0)) {
@@ -518,7 +518,7 @@ static void check_dim(const RolltuiInputSpec* spec, const char* text, size_t n, 
 }
 
 static void check_name(const RolltuiInputSpec* spec, const char* text, size_t n, RolltuiInputCheck* c) {
-  static const char* kHint = "letters, digits, - _ . (no leading dot)";
+  static const char* const kHint = "letters, digits, - _ . (no leading dot)";
   const size_t cap = spec->max_len ? spec->max_len : 64;
   size_t i;
   char buf[64];

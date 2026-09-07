@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "rolltui_test.hpp"
+#include "source_scan.hpp"
 
 using namespace rolltui_test;
 namespace fs = std::filesystem;
@@ -422,6 +423,124 @@ int main() {
     check(!is_stored_pointer("void f(const RolltuiDocument* doc);"), "…and a parameter is not one, however many it takes");
     check(!is_stored_pointer("  RolltuiStr* p = f(x);"), "…nor is a local initialised from a call");
     check(is_comment("  // const Document* doc"), "…and comment lines are skipped, so prose about a pointer is not a pointer");
+  }
+
+
+  // ---- THE GLOBALS BOUNDARY: every piece of mutable process-wide state is NAMED (Phase 25 m1)
+  // ------------------------------------------------------------------------------------------
+  // The user's parenthesis for `RolltuiContext` was *"a real single rolltui session hopefully
+  // proving nothing is global"* — and it was FALSE: 44 mutable statics across 9 files. This holds
+  // the library to `globals.inc`, where each one is named CONTEXT (session state, moving) or
+  // PROCESS (one per process, with its reason on the row).
+  //
+  // **THE POINT IS THE NEW ONE, not the count.** A list alone is a snapshot; without this check
+  // the first cache someone adds is global again and nothing says so. A new static must either
+  // earn a row with a reason or not exist — which is the same shape as the widget-kind table and
+  // the allocation strategies: a closed set plus one explicit way to extend it.
+  //
+  // WHAT COUNTS AS STATE: a mutable object, or a mutable POINTER to const data
+  // (`static const T* p` — the pointer moves). A `static const T x` and a
+  // `static const T* const x` are constants and are not on the list, which is why two things
+  // LEFT it in m1 rather than earning a row (see `globals.inc`'s own header).
+  {
+    struct Row { const char* file; const char* name; const char* disposition; };
+    static const Row kRecorded[] = {
+#define ROLLTUI_GLOBAL(f, n, d) {f, n, #d},
+#include "globals.inc"
+#undef ROLLTUI_GLOBAL
+    };
+    const std::size_t recorded_n = sizeof kRecorded / sizeof kRecorded[0];
+
+    // The same rule the boundary was measured with, in one pass over stripped source.
+    auto statics_in = [](const std::string& text) {
+      std::vector<std::string> names;
+      const std::string code = strip_comments_and_literals(text);
+      std::istringstream in(code);
+      std::string line;
+      while (std::getline(in, line)) {
+        const std::size_t at = line.find_first_not_of(" \t");
+        if (at == std::string::npos) continue;
+        const std::string t = line.substr(at);
+        if (t.rfind("static", 0) != 0) continue;
+        if (t.rfind("static inline", 0) == 0) continue;
+        const std::string head = t.substr(0, t.find_first_of("=;"));
+        if (head.find('(') != std::string::npos) continue;  // a function
+        if (t.rfind("static const", 0) == 0) {
+          const std::size_t star = head.find('*');
+          if (star == std::string::npos) continue;                       // a constant
+          if (head.find("const", star) != std::string::npos) continue;   // a CONST pointer
+        }
+        // every declarator on the line: drop array sizes, take the last identifier before '='
+        std::string decl = t.substr(0, t.find(';'));
+        std::size_t start = 0;
+        for (;;) {
+          const std::size_t comma = decl.find(',', start);
+          std::string part = decl.substr(start, comma - start);
+          part = part.substr(0, part.find('='));
+          for (;;) {
+            const std::size_t ob = part.find('[');
+            if (ob == std::string::npos) break;
+            const std::size_t cb = part.find(']', ob);
+            part.erase(ob, (cb == std::string::npos ? part.size() : cb + 1) - ob);
+          }
+          static const std::regex kIdent(R"([A-Za-z_][A-Za-z0-9_]*)");
+          std::string last;
+          for (std::sregex_iterator it(part.begin(), part.end(), kIdent), e; it != e; ++it) {
+            const std::string w = it->str();
+            if (w == "static" || w == "const" || w == "_Atomic" || w == "_Thread_local" || w == "struct" ||
+                w == "unsigned" || w == "signed" || w == "int" || w == "char" || w == "size_t" || w == "void" ||
+                w == "long" || w == "short" || w == "float" || w == "double" || w == "pthread_mutex_t" ||
+                w == "termios")
+              continue;
+            last = w;
+          }
+          if (!last.empty()) names.push_back(last);
+          if (comma == std::string::npos) break;
+          start = comma + 1;
+        }
+      }
+      return names;
+    };
+
+    // CONTROL FIRST, because a scanner that finds nothing would pass this whole block silently.
+    {
+      const std::vector<std::string> planted =
+          statics_in("static int g_planted;\nstatic const char* g_ptr;\n"
+                     "static const char* const kConst = \"x\";\nstatic int f(void) { return 0; }\n"
+                     "/* static int g_in_a_comment; */\nconst char* s = \"static int g_in_a_literal;\";\n");
+      check(planted.size() == 2 && planted[0] == "g_planted" && planted[1] == "g_ptr",
+            "the globals scanner finds a mutable static and a mutable POINTER, and is not fooled by a "
+            "const table, a function, a comment or a literal (" + std::to_string(planted.size()) + ")");
+    }
+
+    std::vector<std::string> found, missing, unlisted;
+    for (const std::string& rel : library_sources(/*headers_only=*/false)) {
+      if (rel.rfind("c/", 0) != 0 || rel.size() < 2 || rel.substr(rel.size() - 2) != ".c") continue;
+      const std::string base = rel.substr(rel.rfind('/') + 1);
+      for (const std::string& n : statics_in(read_file(std::string(ROLLTUI_SOURCE_DIR) + "/" + rel))) {
+        found.push_back(base + ":" + n);
+        bool listed = false;
+        for (std::size_t i = 0; i < recorded_n; ++i)
+          listed = listed || (base == kRecorded[i].file && n == kRecorded[i].name);
+        if (!listed) unlisted.push_back(base + ":" + n);
+      }
+    }
+    for (std::size_t i = 0; i < recorded_n; ++i) {
+      const std::string key = std::string(kRecorded[i].file) + ":" + kRecorded[i].name;
+      if (std::find(found.begin(), found.end(), key) == found.end()) missing.push_back(key);
+    }
+    check(unlisted.empty(),
+          "every mutable process-wide static in rolltui/c/ is named in globals.inc with a disposition" +
+              (unlisted.empty() ? std::string() : " — NOT LISTED: " + unlisted.front()));
+    check(missing.empty(), "…and every row names a static that exists" +
+                               (missing.empty() ? std::string() : " — GONE: " + missing.front()));
+    int ctx = 0, proc = 0;
+    for (std::size_t i = 0; i < recorded_n; ++i)
+      (std::string(kRecorded[i].disposition) == "CONTEXT" ? ctx : proc)++;
+    // RECORDED, and both numbers move deliberately: m2 drives CONTEXT to 0 as the state moves into
+    // `RolltuiContext`. PROCESS may only fall, or rise with a reason written on the row.
+    check(ctx == 29 && proc == 15,
+          "the boundary is 29 CONTEXT + 15 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

@@ -1466,23 +1466,25 @@ unsigned char rolltui_detect_color_depth(const char* colorterm, const char* term
 
 /* ---- the library's own vocabulary table (Phase 17 m2a) -------------------------------------
  * See rolltui_theme.h for why this can exist now and could not before. */
-const RolltuiThemeVocab* rolltui_theme_default_vocab(void) {
-  static const char* role_names[ROLLTUI_ROLE_COUNT];
-  static const char* state_names[ROLLTUI_EFFECT_STATE_COUNT];
-  static RolltuiThemeVocab v;
-  static int built = 0;
-  if (!built) {
-    size_t i;
-    for (i = 0; i < ROLLTUI_ROLE_COUNT; ++i) role_names[i] = rolltui_role_name((unsigned char)i, NULL);
-    for (i = 0; i < ROLLTUI_EFFECT_STATE_COUNT; ++i)
-      state_names[i] = rolltui_effect_state_name((unsigned char)i, NULL);
-    v.role_names = role_names;
-    v.role_count = ROLLTUI_ROLE_COUNT;
-    v.text_role = ROLLTUI_ROLE_TEXT;
-    v.state_names = state_names;
-    v.state_count = ROLLTUI_EFFECT_STATE_COUNT;
-    v.fallback_effect_role = ROLLTUI_ROLE_ACCENT_1;
-    built = 1;  /* idempotent: every write above is the same value every time */
-  }
-  return &v;
-}
+/* A COMPILE-TIME table, not a memoized one (Phase 25 m1). It was four function-local statics
+ * filled on first call behind a `built` flag — correct, idempotent and allocation-free, but
+ * still four pieces of mutable process-wide state that the globals boundary would have had to
+ * carry a justification for. Both name arrays come from the SAME X-macros `rolltui_style.c`
+ * expands, so they cannot drift from the tables `rolltui_role_name` reads; what goes away is
+ * the runtime fill, the branch on every call, and four entries on the boundary list. */
+static const char* const kVocabRoleNames[] = {
+#define ROLLTUI_VOCAB_ROLE_(lower, UPPER) #lower,
+    ROLLTUI_ROLE_LIST(ROLLTUI_VOCAB_ROLE_)
+#undef ROLLTUI_VOCAB_ROLE_
+};
+static const char* const kVocabStateNames[] = {
+#define ROLLTUI_VOCAB_STATE_(lower, UPPER, Camel) #lower,
+    ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_VOCAB_STATE_)
+#undef ROLLTUI_VOCAB_STATE_
+};
+static const RolltuiThemeVocab kDefaultVocab = {
+    kVocabRoleNames, ROLLTUI_ROLE_COUNT,          ROLLTUI_ROLE_TEXT,
+    kVocabStateNames, ROLLTUI_EFFECT_STATE_COUNT, ROLLTUI_ROLE_ACCENT_1,
+};
+
+const RolltuiThemeVocab* rolltui_theme_default_vocab(void) { return &kDefaultVocab; }
