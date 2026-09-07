@@ -245,7 +245,7 @@ add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
 set(ROLLTUI_INTERNAL_OPT_IN
   # the studio and its editors — rolltui's own tool, not a consumer
   studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
-  layout_editor.cpp layout_editor.hpp tool_actions.hpp undo_stack.hpp
+  layout_editor.cpp layout_editor.hpp menu_editor.cpp menu_editor.hpp tool_actions.hpp undo_stack.hpp
   # suites that test an implementation
   bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
@@ -255,7 +255,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   # PHASE 20 m6: the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
-  keys_editor_test.cpp theme_editor_test.cpp
+  keys_editor_test.cpp theme_editor_test.cpp menu_editor_test.cpp
   # PHASE 24: the frame-allocation bench. It builds a bare frame to measure that frame's own
   # allocations; the swap would measure reuse instead. An instrument is not a consumer.
   frame_allocs.cpp)
@@ -362,7 +362,7 @@ add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 # theme_editor.*), the layout editor, the keys editor. ROLLTUI_SHIPPED_DIR is where the
 # editor's "write a shipped preset" privilege writes — the source tree, for the next
 # build — unless --shipped says otherwise.
-add_executable(rolltui-studio tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp)
+add_executable(rolltui-studio tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp tools/menu_editor.cpp)
 target_link_libraries(rolltui-studio PRIVATE rolltui)
 target_compile_options(rolltui-studio PRIVATE -Wall -Wextra)
 target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
@@ -407,6 +407,15 @@ target_include_directories(rolltui-layout-editor-test PRIVATE ${CMAKE_CURRENT_SO
 add_rolltui_test(rolltui-keys-editor-test tests/keys_editor_test.cpp)
 target_sources(rolltui-keys-editor-test PRIVATE tools/keys_editor.cpp)
 target_include_directories(rolltui-keys-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+
+# Phase 27 m2: the menu editor's model — the FOURTH editor, and the one that makes "build an
+# app from nothing" true: a screen is four file types and until this existed the fourth was
+# hand-written JSON. Add/remove/reorder/nest over the item tree, the kind and its typed
+# fields, a choice's options, an input's type and range, undo/redo, and the tree round-tripping
+# through the library's own writer and loader.
+add_rolltui_test(rolltui-menu-editor-test tests/menu_editor_test.cpp)
+target_sources(rolltui-menu-editor-test PRIVATE tools/menu_editor.cpp)
+target_include_directories(rolltui-menu-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 add_rolltui_test(rolltui-studio-golden-test tests/studio_golden_test.cpp)
 target_compile_definitions(rolltui-studio-golden-test PRIVATE
