@@ -169,7 +169,7 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
       RolltuiLoadedLayout loaded{};
       rolltui_loaded_layout_init(&loaded);
       std::size_t defaults_n = 0;
-      const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+      const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(rolltui_context_default(), &defaults_n);
       RolltuiLayoutReport rep{};
       if (rolltui_load_layout_text_into(text, text_len, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(),
                                     &rep) != 0) {
@@ -222,7 +222,7 @@ void paint_something() {
   }
   RolltuiWindows* windows = rolltui_windows_new(rolltui_context_default());
   rolltui_windows_set_library_defaults(windows);
-  rolltui_windows_set_bindings(windows, rolltui_bindings_default());
+  rolltui_windows_set_bindings(windows, rolltui_bindings_default(rolltui_context_default()));
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   rolltui_window_stack_set_base(stack, &builtin_layout("default")->base);
   const Theme* theme = builtin_theme("default-dark");
@@ -276,7 +276,7 @@ void use_the_ported_modules(const char* when) {
   // measuring. Deleting its releaser left this suite 29/29 green: a leak of it would have
   // shipped. Filling it here puts it inside the window the existing assertions already cover,
   // which is why this adds a CALL and not a check.
-  check(rolltui_layout_builtin("default", 7) != nullptr,
+  check(rolltui_layout_builtin(rolltui_context_default(), "default", 7) != nullptr,
         std::string("the built-in layout cache fills, so the library HOLDS it — ") + when);
 
   constexpr std::string_view kProbeName = "lifetime-probe";
@@ -328,16 +328,16 @@ void use_the_ported_modules(const char* when) {
   check(span_count == 3, std::string("…and a diff line is coloured, which is the other new handle — ") + when);
 
   check(builtin_theme("mono") != nullptr, std::string("…and the built-in themes are built — ") + when);
-  check(rolltui_bindings_action_count(rolltui_bindings_default()) != 0,
+  check(rolltui_bindings_action_count(rolltui_bindings_default(rolltui_context_default())) != 0,
         std::string("…and the shipped default bindings parsed — ") + when);
 
   constexpr std::string_view kDefaultPreset = "default";
   const bool presets_ok =
-      rolltui_preset_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain(rolltui_context_default(), ROLLTUI_PRESET_DOMAIN_THEME), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain(rolltui_context_default(), ROLLTUI_PRESET_DOMAIN_LAYOUT), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain(rolltui_context_default(), ROLLTUI_PRESET_DOMAIN_BINDINGS), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr;
   check(presets_ok, std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 

@@ -135,7 +135,8 @@ void rolltui_layout_preset_domain_init(RolltuiPresetDomain* out, const RolltuiLa
 /* `is_library_scope`/`reason` are BORROWED for the process's life, the same two
  * callbacks `rolltui_bindings_load_json` already takes — this keeps a copy to hand over on
  * every call instead of threading them through the generic mechanics. */
-void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out, RolltuiScopeFn is_library_scope, void* scope_ctx,
+void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out,
+                                        RolltuiScopeFn is_library_scope, void* scope_ctx,
                                          RolltuiReasonFn reason,
                                          void* reason_ctx);
 

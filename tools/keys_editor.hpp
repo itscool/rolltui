@@ -83,7 +83,10 @@ class KeysEditor {
     bool operator==(const Outcome&) const = default;
   };
 
-  KeysEditor();
+  // The session is needed only to CLONE the shipped table here; nothing after construction
+  // reads it, so it is not kept. (Both other editors do keep one: their `handle(e)`
+  // convenience looks a chord up in `editor_bindings`, and this one has no such overload.)
+  explicit KeysEditor(RolltuiContext* ctx);
   ~KeysEditor() { rolltui_menu_free(menu_); }
   KeysEditor(const KeysEditor&) = delete;
   KeysEditor& operator=(const KeysEditor&) = delete;

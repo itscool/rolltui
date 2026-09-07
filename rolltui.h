@@ -2752,6 +2752,13 @@ typedef struct RolltuiPresetReportFns {
  * `rolltui_preset_domain_release`. */
 typedef struct RolltuiPresetShippedCache RolltuiPresetShippedCache;
 
+/* A pure predicate over a "mode"/"depth" string — no context, because `valid_mode_setting`/
+ * `valid_depth_setting` (Presets.hpp) are themselves pure over a `string_view` with nothing to
+ * capture. `Presets.cpp` hands over a captureless-lambda-decayed function pointer, the same
+ * bridge `PresetStore.hpp`'s own `domain_storage<D>()` already builds an entire domain
+ * descriptor out of. */
+typedef int (*RolltuiThemePresetValidFn)(const char* s, size_t len);
+
 typedef struct RolltuiPresetDomain {
   const char* kind;         /* "theme" | "layout" | "bindings" — for messages */
   size_t kind_len;
@@ -2765,14 +2772,17 @@ typedef struct RolltuiPresetDomain {
 
   /* TEXT in, an OWNED value out (NULL on failure, with the report saying why). The JSON
    * never crosses this boundary — see the note at the top. */
-  void* (*parse)(const char* text, size_t len, void* report);
+  void* (*parse)(const struct RolltuiPresetDomain* d, const char* text, size_t len, void* report);
   /* A PARTIAL file (a colours-only theme file): fills part of `working`, notes why; NULL
    * when the file is not partial, and `parse` is then used. */
-  void* (*parse_partial)(const char* text, size_t len, const void* working, void* report);
-  void (*to_json)(const void* value, const char* name, size_t name_len, RolltuiPutFn put, void* ctx);
+  void* (*parse_partial)(const struct RolltuiPresetDomain* d, const char* text, size_t len, const void* working,
+                         void* report);
+  void (*to_json)(const struct RolltuiPresetDomain* d, const void* value, const char* name, size_t name_len,
+                  RolltuiPutFn put, void* ctx);
   /* …and the same, with the working copy's ORIGIN written into it as "preset". One call
    * rather than a second serialiser, because that key is the store's and not the domain's. */
-  void (*to_json_with_origin)(const void* value, const char* name, size_t name_len, RolltuiPutFn put, void* ctx);
+  void (*to_json_with_origin)(const struct RolltuiPresetDomain* d, const void* value, const char* name,
+                              size_t name_len, RolltuiPutFn put, void* ctx);
   /* …and back: the preset name a working-copy file says it came from, "default" when it
    * says nothing. The other half of the same key, and the reason it is a callback rather
    * than something the store reads itself is the same one — the JSON never crosses. */
@@ -2787,6 +2797,25 @@ typedef struct RolltuiPresetDomain {
    * every `_new` and `_shipped` call, and no caller ever paired a domain with any table but
    * its own: two things that always travel together are one thing. */
   const RolltuiPresetReportFns* report;
+
+  /* ---- THE DOMAIN'S OWN CONFIGURATION (Phase 25 m2) -----------------------------------
+   * What each `*_preset_domain_init` was handed. It lived in ten file-scope statics in
+   * `rolltui_presets.c`, which had two consequences nobody had met yet and both are real: two
+   * descriptors of the SAME kind shared one configuration, so the second `_init` silently
+   * changed the first descriptor's behaviour; and the layout row BORROWS a table that is a
+   * context's since this phase, so a static holding it outlived the session that owned it.
+   * Configuration belongs to the thing it configures, which is why the four callbacks above
+   * are handed their descriptor. Only the rows for a descriptor's own kind are ever read. */
+  const RolltuiThemeVocab* theme_vocab;          /* theme */
+  RolltuiThemePresetValidFn theme_mode_valid;    /* theme */
+  RolltuiThemePresetValidFn theme_depth_valid;   /* theme */
+  const RolltuiLayoutHooks* layout_hooks;        /* layout */
+  const RolltuiLayoutAction* layout_actions;     /* layout — BORROWED from a context's cache */
+  size_t layout_actions_n;                       /* layout */
+  RolltuiScopeFn bindings_is_library_scope;      /* bindings */
+  void* bindings_scope_ctx;                      /* bindings */
+  RolltuiReasonFn bindings_reason;               /* bindings */
+  void* bindings_reason_ctx;                     /* bindings */
 
   RolltuiPresetShippedCache* cache;
 } RolltuiPresetDomain;
@@ -2874,13 +2903,6 @@ typedef struct RolltuiThemePresetReport {
   RolltuiStr* notes;        size_t notes_n,        notes_cap;        /* GROWING AMORTISED */
   RolltuiThemeReport colours; /* the "colours" part's own report, verbatim */
 } RolltuiThemePresetReport;
-
-/* A pure predicate over a "mode"/"depth" string — no context, because `valid_mode_setting`/
- * `valid_depth_setting` (Presets.hpp) are themselves pure over a `string_view` with nothing to
- * capture. `Presets.cpp` hands over a captureless-lambda-decayed function pointer, the same
- * bridge `PresetStore.hpp`'s own `domain_storage<D>()` already builds an entire domain
- * descriptor out of. */
-typedef int (*RolltuiThemePresetValidFn)(const char* s, size_t len);
 
 /* ---- the Theme domain ----------------------------------------------------------------------
  * ~~`rolltui::ThemePreset` (Presets.hpp) IS this struct~~ — **FALSE, and a segfault is what
@@ -3481,7 +3503,7 @@ void rolltui_layout_report_release(RolltuiLayoutReport* r); /* frees everything;
  * BORROWS: the array is the library's and is valid until `rolltui_shutdown`. Never freed by
  * the caller. `*n` is the count; the array is NULL only if the embedded file is unparseable,
  * which is a build mistake rather than a runtime one. */
-const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n);
+const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(RolltuiContext* c, size_t* n);
 
 /* The embedded layout file of that name, as TEXT ("" when there is none). One definition site
  * for "which file is `default`", so the actions above and a host loading the same screen do
@@ -3808,7 +3830,7 @@ void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r
  * below) AND each library domain's `kind`: one spelling of the name, three readers. */
 const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
 
-RolltuiPresetDomain* rolltui_preset_domain(RolltuiPresetDomainId id);
+RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id);
 
 /* A BORROW of a static string literal, never freed: "flag" | "environment" | "working copy" |
  * "built-in default". */
@@ -3948,7 +3970,7 @@ void rolltui_bindings_declare(RolltuiBindings* b, const RolltuiLayoutAction* dec
  * needs a table with nothing in it. */
 RolltuiBindings* rolltui_bindings_new_seeded(void);
 
-const RolltuiBindings* rolltui_bindings_default(void);
+const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c);
 
 /* ---- document ------------------------------------------------------------------------------*/
 

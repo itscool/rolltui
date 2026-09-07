@@ -103,7 +103,7 @@ std::optional<Layout> parse_layout(std::string_view text, bool* clean) {
   rolltui_loaded_layout_init(&loaded);
   RolltuiLayoutReport rep{};
   std::size_t dn = 0;
-  const RolltuiLayoutAction* dflt = rolltui_layout_shipped_default_actions(&dn);
+  const RolltuiLayoutAction* dflt = rolltui_layout_shipped_default_actions(rolltui_test::test_context(), &dn);
   const int ok = rolltui_load_layout_text_into(text.data(), text.size(), &loaded, dflt, dn, rolltui_layout_default_hooks(), &rep);
   if (clean) *clean = ok && rolltui_layout_report_clean(&rep);
   std::optional<Layout> result;
@@ -121,7 +121,7 @@ std::optional<Layout> parse_layout(std::string_view text, bool* clean) {
 int main() {
   RolltuiContext* ctx = rolltui_context_new();
   LayoutEditor ed{ctx};
-  ed.load(builtin_layout("default"));
+  ed.load(builtin_layout(rolltui_test::test_context(), "default"));
   using O = LayoutEditor::Outcome::Kind;
   check(ed.selected() == "transcript" && ed.selected_node() && ed.selected_node()->is_window(), "loading selects the first window in tree order [" + ed.selected() + "]");
   // ---- selection ----
@@ -289,7 +289,7 @@ int main() {
   }
   // ---- m5: the kind picker, the source field, the menu-file choice ----
   {
-    ed.load(builtin_layout("default"));  // a fresh baseline: the blocks above left it split about
+    ed.load(builtin_layout(rolltui_test::test_context(), "default"));  // a fresh baseline: the blocks above left it split about
     ed.set_menus({"main", "extra"});
     ed.set_sources({"transcript:session", "rows:status", "input:prompt", "text:pane"});
     ed.select("transcript");
@@ -420,7 +420,7 @@ int main() {
   // split about and carrying an extra action — which is exactly the state the milestone's
   // measurement was taken from, so it is the right thing to create a new layout out of.
   {
-    ed.load(builtin_layout("default"));
+    ed.load(builtin_layout(rolltui_test::test_context(), "default"));
     check(value_of(ed, "min_width") == "60" && value_of(ed, "min_height") == "8" && value_of(ed, "focus") == "input",
           "the layout-wide fields show the loaded screen's thresholds and focus [" + value_of(ed, "focus") + "]");
     act(ed, "minimum width");
@@ -479,7 +479,7 @@ int main() {
     check(ok1 == ROLLTUI_REGISTER_OK && ok2 == ROLLTUI_REGISTER_OK,
           "the target app registers two kinds: one that names a source and one that takes none");
     LayoutEditor te{target};
-    te.load(builtin_layout("default"));
+    te.load(builtin_layout(target, "default"));
     te.select("transcript");
     auto options = [](LayoutEditor& e) {
       const MenuItem* it = find(e.menu(), "kind");

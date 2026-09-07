@@ -211,7 +211,7 @@ int main() {
   {
     RolltuiLayoutReport rep{};
     std::size_t defaults_n = 0;
-    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(rolltui_test::test_context(), &defaults_n);
     RolltuiLayout* l = rolltui_load_layout_text(saved.data(), saved.size(), defaults, defaults_n,
                                                 rolltui_layout_default_hooks(), &rep);
     const int ok_l = l != nullptr;

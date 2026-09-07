@@ -366,9 +366,24 @@ struct ThemeValueHandle {
   explicit operator bool() const { return v != nullptr; }
 };
 
+// THE STUDIO'S ONE SESSION (Phase 25). A host owns its context; this binary runs one screen at
+// a time, and the preset-store wrappers below reach it from class statics that exist before
+// `App` does — so it is a function-local static freed at exit rather than an `App` member.
+inline RolltuiContext* studio_ctx() {
+  struct Holder {
+    RolltuiContext* c = rolltui_context_new();
+    Holder() = default;
+    Holder(const Holder&) = delete;
+    Holder& operator=(const Holder&) = delete;
+    ~Holder() { rolltui_context_free(c); }
+  };
+  static Holder h;
+  return h.c;
+}
+
 class ThemeStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -394,11 +409,11 @@ class ThemeStore : public PresetStoreBase {
   }
 
   static bool is_shipped(std::string_view name) {
-    return rolltui_preset_is_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()) != 0;
+    return rolltui_preset_is_shipped(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()) != 0;
   }
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_THEME), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
@@ -407,7 +422,7 @@ class ThemeStore : public PresetStoreBase {
 
 class LayoutStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_LAYOUT), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -432,7 +447,7 @@ class LayoutStore : public PresetStoreBase {
   }
 
   static bool is_shipped(std::string_view name) {
-    return rolltui_preset_is_shipped(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT), name.data(), name.size()) != 0;
+    return rolltui_preset_is_shipped(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_LAYOUT), name.data(), name.size()) != 0;
   }
 };
 
@@ -449,7 +464,7 @@ struct BindingsHandle {
 
 class BindingsStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_BINDINGS), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -471,7 +486,7 @@ class BindingsStore : public PresetStoreBase {
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_BINDINGS), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
@@ -548,7 +563,7 @@ RolltuiWidget confirm_factory(void* ctx, const char* content, std::size_t len);
 RolltuiWidget report_factory(void* ctx, const char* content, std::size_t len);
 
 struct App {
-  RolltuiContext* ctx = rolltui_context_new();  // OWNED: the studio's session (Phase 25)
+  RolltuiContext* ctx = studio_ctx();  // BORROWED: the binary's one session (see studio_ctx)
   std::string fixture_path, theme_arg, layout_arg;
   std::optional<unsigned char> mode_flag;   // --mode; else the working copy's mode
   unsigned char mode = ROLLTUI_MODE_DARK;     // the variant in use this frame
@@ -565,7 +580,7 @@ struct App {
   std::unique_ptr<ThemeStore> store;
   std::unique_ptr<LayoutStore> lstore;    // the Layout working copy (Phase 10 m1)
   std::unique_ptr<BindingsStore> bstore;  // the Bindings working copy (milestone 17)
-  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default());  // what this frame runs on
+  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));  // what this frame runs on
   std::uint64_t bstore_seen = 0;
   std::string bindings_arg;
   bool persist = true;                  // false under --frame: the working copy is never written
@@ -586,14 +601,14 @@ struct App {
   std::string layout_note;
   long layout_mtime = -1;
   bool stacked_fallback = false;
-  RolltuiLayout stacked_layout_ = builtin_layout("stacked");  // cached: the shipped fallback screen
+  RolltuiLayout stacked_layout_ = builtin_layout(studio_ctx(), "stacked");  // cached: the shipped fallback screen
   // The theme editor (milestone 14) and the layout editor (milestone 16) share the
   // side popup; one is open at a time.
   enum class EditorMode { None, Theme, Layout, Keys };
   EditorMode editor_mode = EditorMode::None;
-  ThemeEditor teditor;
+  ThemeEditor teditor{ctx};
   LayoutEditor leditor{ctx};  // resolves kinds against this session
-  KeysEditor keditor;
+  KeysEditor keditor{ctx};
   bool editor_open = false;
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
   std::string confirm_text;
@@ -676,7 +691,8 @@ struct App {
     rolltui_draw_scratch_free(draw_scratch);
     rolltui_effect_scratch_free(effect_scratch);
     rolltui_effect_map_free(effects_map);
-    rolltui_context_free(ctx);  // LAST: the registries every handle above resolved through
+    // The context is NOT freed here: it is the binary's (see `studio_ctx`), not this App's,
+    // and the store wrappers' statics outlive any one App.
   }
 
   const RolltuiStyle& style(unsigned char role) const { return *rolltui_theme_style(theme_styles, kRoleCount, role); }
@@ -2439,8 +2455,6 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "rolltui: previewing as '%s'\n", std::string(an, alen).c_str());
   }
   {
-    std::size_t default_actions_n = 0;
-    const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(&default_actions_n);
     ThemePresetReport start_rep;
     app.store->start(start_rep);
     if (!start_rep.error.empty()) app.theme_note = str_of(start_rep.error);

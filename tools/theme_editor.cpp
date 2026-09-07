@@ -107,7 +107,7 @@ unsigned char ThemeEditor::default_effect_fallback_role() {
   return r >= 0 ? static_cast<unsigned char>(r) : 0;
 }
 
-ThemeEditor::ThemeEditor() {
+ThemeEditor::ThemeEditor(RolltuiContext* ctx) : ctx_(ctx) {
   rolltui_effect_map_free(dark_effects_);
   dark_effects_ = fill_builtin("default-dark", current_.dark);
   current_.dark_name = "default-dark";

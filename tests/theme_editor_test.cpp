@@ -129,7 +129,7 @@ int main() {
     for (int i = 1; i <= 5; ++i) small.commit(i);
     check(small.undo_depth() == 2 && small.current() == 5, "the limit bounds the history (3 kept of 6)");
   }
-  ThemeEditor ed;
+  ThemeEditor ed{rolltui_test::test_context()};
   RolltuiThemeReport rep{};
   RolltuiJsonValue* shipped = shipped_default_colours();
   check(ed.load(shipped, &rep) && theme_report_clean(rep), "loads the shipped default (both variants)");
@@ -298,7 +298,7 @@ int main() {
   }
   // ---- milestone 15: check, fixes, generate ----
   {
-    ThemeEditor e2;
+    ThemeEditor e2{rolltui_test::test_context()};
     RolltuiThemeReport r{};
     RolltuiJsonValue* broken_shipped = shipped_default_colours();
     e2.load(broken_shipped, &r);

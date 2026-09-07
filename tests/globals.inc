@@ -50,11 +50,10 @@
  *     COMPILE-TIME table now: the runtime fill, the per-call branch and four rows all went.
  */
 
-/* ---- CONTEXT: session state, moving in m2 (20) --------------------------------------------- */
+/* ---- CONTEXT: session state — EMPTY as of m2, 2026-09-07 (0) --------------------------------------------- */
 
-/* The shipped `default` bindings table, parsed from embedded bytes and cached. Owned memory the
- * leak gauge counts, so one context freeing it must not blind another. */
-ROLLTUI_GLOBAL("rolltui_bindings.c", "g_default_bindings", CONTEXT)
+/* ~~THE SHIPPED DEFAULT BINDINGS TABLE~~ — MOVED 2026-09-07 (m2). Every caller BORROWS it, so
+ * `rolltui_context_free` releasing it is what bounds the borrow. */
 
 /* ~~THE EFFECT-KIND REGISTRY~~ — MOVED 2026-09-06 (m2), the second subsystem across, and the
  * same shape as the widget kinds: `g_kinds`/`_count`/`_cap` plus a releaser flag, now
@@ -73,35 +72,27 @@ ROLLTUI_GLOBAL("rolltui_bindings.c", "g_default_bindings", CONTEXT)
  * hook it guarded. `c_consumer_test.c` section 3e is the assertion: a kind registered in one
  * context is UNKNOWN in the other, and both resolve the library's own rung identically. */
 
-/* The shipped screen's own actions, and the built-in layouts: both parsed once from embedded
- * const bytes into OWNED memory. Identical for every context, but the storage is not shared. */
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_shipped_actions", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_shipped_actions_n", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_shipped_actions_cap", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_shipped_actions_done", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_builtin_layouts", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_layout.c", "g_builtin_layout_n", CONTEXT)
+/* ~~THE SHIPPED ACTIONS AND THE BUILT-IN LAYOUTS~~ — MOVED 2026-09-07 (m2), together, as
+ * `RolltuiContext::layouts`. Both are parsed once from the same embedded const bytes, so every
+ * session gets identical CONTENT and its own STORAGE — contract point 4 exactly: a cached
+ * built-in belongs to the context that cached it, and a `RolltuiLayout*` handed out of
+ * `rolltui_layout_builtin` may not outlive the session that parsed it. */
 
-/* The releaser list `rolltui_shutdown()` walks — the very thing becoming `rolltui_context_free()`. */
-ROLLTUI_GLOBAL("rolltui_lifetime.c", "g_process", CONTEXT)
 
-/* THE THREE PRESET DOMAINS and the vocabulary each `_init` stashes. Moving these FIXES a limit
- * Phase 18 m3 recorded and could not fix: *a domain's vocabulary is process-wide, so the last
- * `_init` of a domain is what EVERY store of that domain parses with.* Per context, it is not. */
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_library_domains", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_library_domain_built", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_theme_vocab", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_theme_mode_valid", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_theme_depth_valid", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_layout_hooks", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_layout_default_actions", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_layout_default_actions_n", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_is_library_scope", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_scope_ctx", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_reason", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_reason_ctx", CONTEXT)
+/* ~~THE THREE PRESET DESCRIPTORS AND THEIR CONFIGURATION~~ — MOVED 2026-09-07 (m2), and this
+ * one HAD to move rather than merely could. The Layout descriptor holds
+ * `rolltui_layout_shipped_default_actions()`'s pointer, and that cache is a context's since
+ * this milestone — so a process-wide descriptor outlives the storage it borrows the moment one
+ * session is freed. Contract point 4 stated as a defect instead of a rule.
+ *
+ * The descriptors are `RolltuiContext::presets`. The TEN configuration rows did NOT follow them
+ * into the context: they went onto the `RolltuiPresetDomain` each one configures, and the four
+ * callbacks that read them are handed their descriptor. That fixed a second defect nobody had
+ * met yet — two descriptors of the SAME kind shared one configuration, so a host's own `_init`
+ * silently changed the library's descriptor's behaviour. Configuration belongs to the thing it
+ * configures. */
 
-/* ---- PROCESS: one per process by nature, each with its reason (16) -------------------------- */
+/* ---- PROCESS: one per process by nature, each with its reason (17) -------------------------- */
 
 /* THE TRANSITIONAL DEFAULT CONTEXT (m2). The one global this phase ADDS, and it is here rather
  * than hidden precisely because a transitional global nobody is committed to removing is just a
@@ -115,7 +106,14 @@ ROLLTUI_GLOBAL("rolltui_presets.c", "g_bindings_reason_ctx", CONTEXT)
  * the process-wide shutdown path. */
 ROLLTUI_GLOBAL("rolltui_context.c", "g_default", PROCESS)
 
-/* ---- PROCESS: one per process by nature, each with its reason (15, listed below) -------------------------- */
+/* ~~THE RELEASER LIST~~ — RECLASSIFIED PROCESS 2026-09-07 (m2), which is the milestone's real
+ * result and not a concession. m1 filed it CONTEXT on the assumption that `rolltui_shutdown()`
+ * BECOMES `rolltui_context_free()`. It does not: once every library subsystem moved into a
+ * context and was freed BY NAME, nothing in `rolltui/c/` registers a hook at all. What is left
+ * on the list is what HOSTS and TESTS put there, for things THEY own with process lifetime —
+ * `tool_actions.hpp`'s editor table, the studio's, this suite's. A host facility on a host's
+ * schedule is process state by definition, so the row moves rather than the state. */
+ROLLTUI_GLOBAL("rolltui_lifetime.c", "g_process", PROCESS)
 
 /* THE KEYBOARD PROTOCOL LEVEL the terminal negotiated. It describes THE TTY, not a session, and
  * a process has one controlling terminal. Two contexts share it because they share the terminal. */

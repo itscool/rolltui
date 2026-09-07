@@ -67,12 +67,17 @@ inline RolltuiBindings*& editor_bindings_slot() {
 // A CLONE of rolltui_bindings_default(), because the shipped cache is borrowed and this
 // table is then declared into — freed at rolltui_shutdown() (Lifetime's rule: register a
 // releaser where the retained thing is made), so it never shows as a leak.
-inline const RolltuiBindings* editor_bindings() {
+//
+// PHASE 25: it takes the SESSION whose shipped table it clones. The slot stays one per
+// process because this is a HOST-side convenience over one binary's three editors, and a
+// binary runs one editor set; what changed is that the table it copies is a context's, so
+// the context has to be named rather than assumed.
+inline const RolltuiBindings* editor_bindings(RolltuiContext* c) {
   RolltuiBindings*& slot = detail::editor_bindings_slot();
   if (slot) return slot;
-  slot = rolltui_bindings_clone(rolltui_bindings_default());
+  slot = rolltui_bindings_clone(rolltui_bindings_default(c));
   std::size_t layout_n = 0;
-  const RolltuiLayoutAction* layout_actions = rolltui_layout_shipped_default_actions(&layout_n);
+  const RolltuiLayoutAction* layout_actions = rolltui_layout_shipped_default_actions(c, &layout_n);
   const std::span<const RolltuiToolAction> tools = editor_actions();
   rolltui_bindings_declare(slot, layout_actions, layout_n, tools.data(), tools.size());
   rolltui_on_shutdown([] {

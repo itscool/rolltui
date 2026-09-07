@@ -411,7 +411,7 @@ std::optional<RolltuiLayout> load_layout_c(std::string_view json_text, RolltuiLa
   RolltuiLoadedLayout loaded;
   rolltui_loaded_layout_init(&loaded);
   std::size_t defaults_n = 0;
-  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(test_ctx(), &defaults_n);
   const int ok = rolltui_load_layout_text_into(json_text.data(), json_text.size(), &loaded, defaults, defaults_n,
                                           rolltui_layout_default_hooks(), &report);
   if (!ok) {
@@ -486,7 +486,7 @@ const RolltuiStackActions& kStackActions_c = *rolltui_stack_default_actions();
 
 RouteC route_c(RolltuiWindowStack* s, const RolltuiEvent& e, RolltuiRect screen) {
   Str window;
-  const unsigned char kind = rolltui_window_stack_route(s, &e, screen, rolltui_bindings_default(), &kStackActions_c, &window);
+  const unsigned char kind = rolltui_window_stack_route(s, &e, screen, rolltui_bindings_default(test_ctx()), &kStackActions_c, &window);
   return {kind, str_of(window)};
 }
 std::string_view captured_c(const RolltuiWindowStack* s) {
@@ -557,7 +557,7 @@ struct ShippedActionsC {
 };
 ShippedActionsC shipped_default_actions_c() {
   std::size_t n = 0;
-  const RolltuiLayoutAction* v = rolltui_layout_shipped_default_actions(&n);
+  const RolltuiLayoutAction* v = rolltui_layout_shipped_default_actions(test_ctx(), &n);
   return {v, n};
 }
 bool operator==(const RolltuiActionList& a, const ShippedActionsC& b) {
@@ -602,7 +602,7 @@ struct BindingsC {
   void declare(const RolltuiActionList& actions) { rolltui_bindings_declare(b, actions.data(), actions.size(), nullptr, 0); }
   std::size_t chords_for_count(std::string_view action) const { return rolltui_bindings_chord_count(b, action.data(), action.size()); }
 };
-BindingsC default_bindings_c() { return BindingsC(rolltui_bindings_clone(rolltui_bindings_default())); }
+BindingsC default_bindings_c() { return BindingsC(rolltui_bindings_clone(rolltui_bindings_default(test_ctx()))); }
 std::optional<RolltuiChord> parse_chord_c(std::string_view s) {
   RolltuiChord c{};
   if (rolltui_chord_parse(s.data(), s.size(), &c)) return c;
@@ -617,7 +617,7 @@ struct BindingsFileReport : RolltuiBindingsReport {
 };
 std::optional<BindingsC> bindings_from_json_c(std::string_view text, BindingsFileReport& report) {
   RolltuiBindings* b = rolltui_bindings_new_seeded();
-  // reason NULL: the same posture `rolltui_bindings_default()` itself takes (rolltui_bindings.c's
+  // reason NULL: the same posture `rolltui_bindings_default(test_ctx())` itself takes (rolltui_bindings.c's
   // own comment on that call) — this suite's fixtures name no undeliverable chord.
   const int ok = rolltui_bindings_load_json(b, text.data(), text.size(), rolltui_key_active_protocol(),
                                             rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &report);

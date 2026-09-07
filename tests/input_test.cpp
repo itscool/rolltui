@@ -150,7 +150,7 @@ enum class InputAction : unsigned char {
 };
 
 InputAction handle(RolltuiInput* in, const RolltuiEvent& e, std::uint64_t now_ms = 0) {
-  return static_cast<InputAction>(rolltui_input_handle(in, &e, rolltui_bindings_default(), &kActions_ref(), now_ms));
+  return static_cast<InputAction>(rolltui_input_handle(in, &e, rolltui_bindings_default(rolltui_test::test_context()), &kActions_ref(), now_ms));
 }
 
 // A BORROW of the C's buffer, valid until the text next changes — same contract

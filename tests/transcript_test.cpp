@@ -302,11 +302,11 @@ void draw(const RolltuiTranscript* t, Frame& f, const Theme& theme, RolltuiDrawS
 }
 bool handle(RolltuiTranscript* t, const KeyEvent& k, const RolltuiDocument& doc, std::uint64_t now_ms) {
   RolltuiEvent ev = to_event(k);
-  return rolltui_transcript_handle(t, &ev, &doc, now_ms, rolltui_bindings_default(), rolltui_transcript_default_actions()) != 0;
+  return rolltui_transcript_handle(t, &ev, &doc, now_ms, rolltui_bindings_default(rolltui_test::test_context()), rolltui_transcript_default_actions()) != 0;
 }
 bool handle(RolltuiTranscript* t, const MouseEvent& m, const RolltuiDocument& doc, std::uint64_t now_ms) {
   RolltuiEvent ev = to_event(m);
-  return rolltui_transcript_handle(t, &ev, &doc, now_ms, rolltui_bindings_default(), rolltui_transcript_default_actions()) != 0;
+  return rolltui_transcript_handle(t, &ev, &doc, now_ms, rolltui_bindings_default(rolltui_test::test_context()), rolltui_transcript_default_actions()) != 0;
 }
 std::string selected_text(const RolltuiTranscript* t) {
   RolltuiStr s;

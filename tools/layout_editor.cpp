@@ -143,11 +143,11 @@ std::optional<SplitSize> parse_size_text(std::string_view text) {
 }  // namespace
 
 // See layout_editor.hpp: a fresh, uncached parse of a shipped built-in.
-Layout builtin_layout(std::string_view name) {
+Layout builtin_layout(RolltuiContext* ctx, std::string_view name) {
   std::size_t text_len = 0;
   const char* text = rolltui_layout_builtin_json(name.data(), name.size(), &text_len);
   std::size_t default_n = 0;
-  const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(&default_n);
+  const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(ctx, &default_n);
   RolltuiLoadedLayout loaded;
   rolltui_loaded_layout_init(&loaded);
   RolltuiLayoutReport rep{};
@@ -199,7 +199,7 @@ std::string LayoutEditor::unique_id(const std::string& base) const {
 
 // ---- construction ---------------------------------------------------------------------
 
-LayoutEditor::LayoutEditor(const RolltuiContext* ctx) : ctx_(ctx) {
+LayoutEditor::LayoutEditor(RolltuiContext* ctx) : ctx_(ctx) {
   // The library's own table until a host says otherwise: a tool that has been told
   // nothing about a target app can only honestly offer the kinds every host has.
   for (std::size_t i = 0; i < rolltui_widget_kind_library_count(); ++i) {
@@ -207,7 +207,7 @@ LayoutEditor::LayoutEditor(const RolltuiContext* ctx) : ctx_(ctx) {
     const char* name = rolltui_widget_kind_name(ctx_, i, &len);
     kinds_.emplace_back(name, len);
   }
-  current_ = builtin_layout("default");
+  current_ = builtin_layout(ctx_, "default");
   undo_.reset(current_.clone());
   select_next();
   rebuild_menu();

@@ -51,12 +51,12 @@ RolltuiEvent key_event(const RolltuiChord& k) {
 void type(KeysEditor& ed, const std::string& s) {
   for (char c : s) {
     const RolltuiEvent e = key_event(ch(static_cast<char32_t>(c)));
-    ed.handle(&e, editor_bindings());
+    ed.handle(&e, editor_bindings(rolltui_test::test_context()));
   }
 }
 KeysEditor::Outcome go(KeysEditor& ed, const RolltuiChord& k) {
   const RolltuiEvent e = key_event(k);
-  return ed.handle(&e, editor_bindings());
+  return ed.handle(&e, editor_bindings(rolltui_test::test_context()));
 }
 std::string action_for(const RolltuiBindings* b, const RolltuiChord& k, std::string_view scope) {
   std::size_t len = 0;
@@ -76,8 +76,8 @@ RolltuiMenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu
 }  // namespace
 
 int main() {
-  KeysEditor ed;
-  ed.load(rolltui_bindings_default());
+  KeysEditor ed{rolltui_test::test_context()};
+  ed.load(rolltui_bindings_default(rolltui_test::test_context()));
   using O = KeysEditor::Outcome::Kind;
   check(find(ed.menu(), "scope.input") && find(ed.menu(), "action.input.word_left") && find(ed.menu(), "bind.input.word_left") &&
             find(ed.menu(), "unbind.input.word_left.ctrl+left"),
@@ -163,7 +163,7 @@ int main() {
     RolltuiStr dumped{};
     rolltui_bindings_dump_json(ed.committed(), "edited", 6, &dumped);
     // Seeded (the 59 library actions declared, no chords yet) — NOT a clone of
-    // rolltui_bindings_default(), which already carries the shipped file's real chords:
+    // rolltui_bindings_default(rolltui_test::test_context()), which already carries the shipped file's real chords:
     // starting there would let the loader's ADD semantics double up every untouched
     // chord. This is rolltui::Bindings::Bindings()'s own starting point (Bindings.cpp),
     // which is what Bindings::from_json used to seed itself with before the C port.

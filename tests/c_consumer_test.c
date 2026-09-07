@@ -216,7 +216,7 @@ int main(void) {
     const char* text = rolltui_layout_builtin_json("default", 7, &text_len);
     RolltuiLayoutReport rep;
     size_t defaults_n = 0;
-    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(app.ctx, &defaults_n);
     size_t actions_n = 0;
     check(text != NULL && text_len != 0, "the shipped `default` layout's bytes are reachable from C");
     memset(&rep, 0, sizeof rep);
@@ -236,7 +236,7 @@ int main(void) {
   app.windows = rolltui_windows_new(app.ctx);
   rolltui_windows_set_library_defaults(app.windows); /* the eight kinds and the five vocabularies */
   app.stack = rolltui_window_stack_new();
-  app.bindings = rolltui_bindings_clone(rolltui_bindings_default());
+  app.bindings = rolltui_bindings_clone(rolltui_bindings_default(app.ctx));
   app.compose_scratch = rolltui_compose_scratch_new();
 
   rolltui_window_stack_set_base(app.stack, rolltui_layout_base(app.layout));
@@ -462,9 +462,9 @@ int main(void) {
   {
     char dir[512];
     size_t dir_len = 0;
-    RolltuiPresetDomain* theme_dom = rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_THEME);
-    RolltuiPresetDomain* layout_dom = rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_LAYOUT);
-    RolltuiPresetDomain* bindings_dom = rolltui_preset_domain(ROLLTUI_PRESET_DOMAIN_BINDINGS);
+    RolltuiPresetDomain* theme_dom = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_THEME);
+    RolltuiPresetDomain* layout_dom = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_LAYOUT);
+    RolltuiPresetDomain* bindings_dom = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_BINDINGS);
 
     /* A scratch directory of this file's own. `mkdtemp` is POSIX, not rolltui; the store
      * takes a directory it did not create and creates the files under it itself. */
@@ -482,7 +482,7 @@ int main(void) {
               layout_dom->parse != NULL && bindings_dom->parse != NULL && theme_dom->report != NULL &&
               layout_dom->report != NULL && bindings_dom->report != NULL,
           "the library's own three preset domains are reachable from C, assembled by the library, each carrying its report ops");
-    check(rolltui_preset_domain((RolltuiPresetDomainId)3) == NULL, "…and an id that is not one of the three is NULL");
+    check(rolltui_preset_domain(app.ctx, (RolltuiPresetDomainId)3) == NULL, "…and an id that is not one of the three is NULL");
     {
       size_t nl = 0;
       const char* nm = rolltui_preset_domain_name(ROLLTUI_PRESET_DOMAIN_THEME, &nl);
@@ -693,7 +693,7 @@ int main(void) {
       rolltui_preset_store_start(bs, &rep);
       w = rolltui_preset_store_working(bs);
       check(bs != NULL && w != NULL && rolltui_bindings_preset_report_clean(&rep) != 0 &&
-                bindings_dom->equal(w, rolltui_bindings_default()) != 0,
+                bindings_dom->equal(w, rolltui_bindings_default(app.ctx)) != 0,
             "a Bindings store opens from C, and its working copy EQUALS the library's own default table");
       rolltui_preset_store_value_free(bs, w);
       rolltui_preset_store_free(bs);

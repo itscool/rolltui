@@ -241,7 +241,7 @@ struct Scene {
     RolltuiLoadedLayout loaded{};
     rolltui_loaded_layout_init(&loaded);
     std::size_t defaults_n = 0;
-    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+    const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(rolltui_test::test_context(), &defaults_n);
     RolltuiLayoutReport rep{};
     rolltui_load_layout_text_into(json, json_n, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(), &rep);
     RolltuiLayout layout{};
@@ -271,7 +271,7 @@ struct Scene {
     rolltui_windows_bind_submit(
         windows, "prompt", 6, [](void*, const char*, std::size_t) {}, nullptr, nullptr, /*on_submit=*/0);
 
-    rolltui_windows_set_bindings(windows, rolltui_bindings_default());
+    rolltui_windows_set_bindings(windows, rolltui_bindings_default(rolltui_test::test_context()));
     const RolltuiWidgetEnv env{0, 1};
     rolltui_windows_set_env(windows, &env);
   }

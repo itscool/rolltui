@@ -901,7 +901,7 @@ void rolltui_windows_set_library_defaults(RolltuiWindows* w) {
    *
    * A default, not a policy — a host with its own table calls `set_bindings` afterwards, and
    * this is a BORROW of the library's shipped table, which lives for the process. */
-  rolltui_windows_set_bindings(w, rolltui_bindings_default());
+  rolltui_windows_set_bindings(w, rolltui_bindings_default(rolltui_windows_context(w)));
   rolltui_windows_set_builtin_roles(w, &kRoles);
   rolltui_windows_set_menu_roles(w, &kMenuRoles);
   rolltui_windows_set_scroll_text_actions(w, rolltui_scroll_text_default_actions());

@@ -277,7 +277,7 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 114},
+        {"rolltui.h", 119},  /* +5: `RolltuiPresetDomain`'s configuration block — each BORROWED from whoever ran the domain's `_init` */
         {"c/rolltui_style.h", 0},
         {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},
@@ -305,7 +305,7 @@ int main() {
         {"c/rolltui_effects.h", 0},
         {"c/rolltui_bindings.h", 0},
         {"c/rolltui_alloc.h", 0},
-        {"c/rolltui_context.h", 2},  /* `RolltuiContext::kinds` and `::effects` — OWNED by the context, freed by name */
+        {"c/rolltui_context.h", 5},  /* the five subsystems a context OWNS, each freed by name in `rolltui_context_free` */
         {"c/rolltui_map.h", 2},
         {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
@@ -409,7 +409,7 @@ int main() {
     // 125 -> 125 (Phase 23): four STORED borrows moved from `rolltui.h` to
     // `c/rolltui_layout_tree.h` with the layout family's structures. The total is unchanged
     // because nothing was added or removed — the same pointers are simply behind the handle now.
-    check(total == 127, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 135, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&
@@ -540,13 +540,19 @@ int main() {
       (std::string(kRecorded[i].disposition) == "CONTEXT" ? ctx : proc)++;
     // RECORDED, and both numbers move deliberately: m2 drives CONTEXT to 0 as the state moves into
     // `RolltuiContext`. PROCESS may only fall, or rise with a reason written on the row.
-    // m1 recorded 29 + 15. m2 moved the widget-kind registry's four and the effect-kind
-    // registry's five into `RolltuiContext`, and added ONE PROCESS row — the transitional
-    // default, which carries its removal condition on its own row. The effects mutex is one of
-    // the nine: it was not moved, it was DELETED, because a context is entered by one thread at
-    // a time and it guarded nothing a caller was still permitted to do.
-    check(ctx == 20 && proc == 16,
-          "the boundary is 20 CONTEXT + 16 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // m1 recorded 29 + 15. m2 DROVE CONTEXT TO ZERO, which is the milestone: every registry and
+    // cache the library holds is a session's, released by name in `rolltui_context_free`.
+    // PROCESS rose by two and both are stated on their rows — the transitional default context,
+    // which carries its removal condition, and the shutdown-hook list, which m1 had filed
+    // CONTEXT on the assumption that `rolltui_shutdown()` BECOMES `rolltui_context_free()`. It
+    // does not: nothing in `rolltui/c/` registers a hook any more, so what is left on that list
+    // is what HOSTS and TESTS put there for things they own with process lifetime.
+    // Three statics were DELETED rather than moved: the effects mutex (a context is entered by
+    // one thread at a time, so it guarded nothing a caller was still permitted to do) and, one
+    // level along, the ten preset-domain configuration rows went ONTO the descriptor each one
+    // configures rather than into the context — configuration belongs to the thing it configures.
+    check(ctx == 0 && proc == 17,
+          "the boundary is 0 CONTEXT + 17 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

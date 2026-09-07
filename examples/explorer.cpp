@@ -518,7 +518,7 @@ struct App {
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* effects = nullptr;
   RolltuiDrawScratch* draw_scratch = rolltui_draw_scratch_new();
-  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default());
+  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));
   RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
@@ -769,9 +769,9 @@ std::string read_file(const std::string& path, bool& ok) {
   return ss.str();
 }
 
-RolltuiLayout* load_layout_text(const std::string& text, RolltuiLayoutReport* rep) {
+RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
-  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
   return rolltui_load_layout_text(text.data(), text.size(), defaults, defaults_n,
                                   rolltui_layout_default_hooks(), rep);
 }
@@ -861,7 +861,7 @@ int main(int argc, char** argv) {
     const std::string file = path ? name : presets_dir + "/layouts/" + name + ".json";
     bool ok = false;
     const std::string text = read_file(file, ok);
-    if (ok) { loaded = load_layout_text(text, &rep); have = loaded != nullptr; }
+    if (ok) { loaded = load_layout_text(app.ctx, text, &rep); have = loaded != nullptr; }
   }
   if (!have) {
     std::fprintf(stderr, "rolltui-explorer: no layout (%s)\n", rep.error.c_str());

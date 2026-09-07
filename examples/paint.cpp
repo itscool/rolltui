@@ -314,7 +314,7 @@ struct App {
   RolltuiEffectMap* effects = nullptr;
   RolltuiEffectScratch* effect_scratch = rolltui_effect_scratch_new();
   RolltuiDrawScratch* draw_scratch = rolltui_draw_scratch_new();
-  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default());
+  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));
   RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
@@ -549,12 +549,12 @@ struct App {
 // because sample content is the only thing a running app cannot supply.
 //
 // The caller OWNS what this returns.
-RolltuiAppProfile* paint_profile() {
+RolltuiAppProfile* paint_profile(RolltuiContext* ctx) {
   RolltuiAppProfile* p = rolltui_app_profile_new();
   rolltui_app_profile_set_app(p, "paint", 5);
   RolltuiLayoutReport rep{};
   std::size_t defaults_n = 0;
-  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
   if (RolltuiLayout* own = rolltui_load_layout_text(kDefaultLayout, std::strlen(kDefaultLayout), defaults,
                                                     defaults_n, rolltui_layout_default_hooks(), &rep)) {
     int mw = 0, mh = 0;
@@ -604,9 +604,9 @@ bool parse_size(const std::string& s, int& w, int& h) {
 // One load, from TEXT, to the enduring `RolltuiLayout` a host holds. The report is the
 // caller's to read and release; the loaded carrier is never retained past the call, which is
 // `rolltui_loaded_layout_to_layout`'s own contract.
-RolltuiLayout* load_layout_text(std::string_view text, RolltuiLayoutReport* rep) {
+RolltuiLayout* load_layout_text(RolltuiContext* ctx, std::string_view text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
-  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(&defaults_n);
+  const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
   return rolltui_load_layout_text(text.data(), text.size(), defaults, defaults_n,
                                   rolltui_layout_default_hooks(), rep);
 }
@@ -721,7 +721,7 @@ int main(int argc, char** argv) {
     // is READ from, so it has to be registered before one is written.
     RolltuiContext* pctx = rolltui_context_new();
     App::register_canvas_kind(pctx);
-    RolltuiAppProfile* p = paint_profile();
+    RolltuiAppProfile* p = paint_profile(pctx);
     RolltuiStr dumped{};
     rolltui_app_profile_dump(p, 2, &dumped);
     const std::string text = std::string(dumped.p ? dumped.p : "", dumped.n) + "\n";
@@ -753,12 +753,12 @@ int main(int argc, char** argv) {
     bool ok = false;
     const std::string text = read_file(file, ok);
     if (ok) {
-      loaded = load_layout_text(text, &rep);
+      loaded = load_layout_text(app.ctx, text, &rep);
       have = loaded != nullptr;
     } else {
       std::size_t n = 0;
       if (const char* builtin = rolltui_layout_builtin_json(layout_arg.data(), layout_arg.size(), &n))
-        if (n != 0) { loaded = load_layout_text(std::string_view(builtin, n), &rep); have = loaded != nullptr; }
+        if (n != 0) { loaded = load_layout_text(app.ctx, std::string_view(builtin, n), &rep); have = loaded != nullptr; }
     }
     if (!have) {
       std::fprintf(stderr, "rolltui-paint: no layout '%s' (%s)\n", layout_arg.c_str(), rep.error.c_str());
@@ -767,7 +767,7 @@ int main(int argc, char** argv) {
       return 1;
     }
   } else {
-    loaded = load_layout_text(kDefaultLayout, &rep);
+    loaded = load_layout_text(app.ctx, kDefaultLayout, &rep);
     have = loaded != nullptr;
   }
   app.set_layout(loaded);  // TAKES OWNERSHIP

@@ -80,7 +80,7 @@ std::string chords_text(const RolltuiBindings* b, const std::string& action) {
 }
 }  // namespace
 
-KeysEditor::KeysEditor() : current_(rolltui_bindings_clone(rolltui_bindings_default())) {
+KeysEditor::KeysEditor(RolltuiContext* ctx) : current_(rolltui_bindings_clone(rolltui_bindings_default(ctx))) {
   undo_.reset(current_);
   rebuild_menu();
 }

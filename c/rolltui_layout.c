@@ -2341,21 +2341,46 @@ const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* l
   return rolltui_str_get(&s->captured, len);
 }
 
-/* ---- THE SHIPPED SCREEN'S OWN ACTIONS — see the header ---------------------------------
- * OWNED, LONG-LIVED (CLAUDE.md strategy 4): parsed once, held for the process, released by
- * the shutdown hook. The hook is registered on the FIRST fill, which is the same idiom
- * `rolltui_widget_kind_clear` and `rolltui_effect_clear_registered` already use here. */
-static RolltuiLayoutAction* g_shipped_actions = NULL;
-static size_t g_shipped_actions_n = 0;
-static size_t g_shipped_actions_cap = 0;
-static int g_shipped_actions_done = 0;
+/* ---- THE SHIPPED SCREEN'S OWN ACTIONS AND THE BUILT-IN LAYOUTS — see the header ---------
+ * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S rather than the process's since
+ * Phase 25 m2. Both are parsed once from the same embedded `const` bytes, so every context
+ * ends up with identical CONTENT and its own STORAGE — which is contract point 4: a cached
+ * built-in belongs to the context that cached it, and a `RolltuiLayout*` handed out here must
+ * not outlive the session that parsed it. The shutdown hooks both used to register went with
+ * the globals; `rolltui_context_free` releases the cache by name. */
 
-static void shipped_actions_clear(void) {
-  rolltui_layout_actions_free(g_shipped_actions, g_shipped_actions_n);
-  g_shipped_actions = NULL;
-  g_shipped_actions_n = 0;
-  g_shipped_actions_cap = 0;
-  g_shipped_actions_done = 0;
+typedef struct {
+  const char* name; /* BORROWED: the embedded table's own literal */
+  size_t name_len;
+  RolltuiLayout layout;
+} BuiltinLayout;
+
+struct RolltuiLayoutCache {
+  RolltuiLayoutAction* actions;
+  size_t actions_n, actions_cap;
+  int actions_done;
+  BuiltinLayout* layouts;
+  size_t layouts_n;
+};
+
+RolltuiLayoutCache* rolltui_layout_cache_new(void) {
+  RolltuiLayoutCache* c = (RolltuiLayoutCache*)rolltui_mem_alloc(sizeof *c);
+  memset(c, 0, sizeof *c);
+  return c;
+}
+
+void rolltui_layout_cache_free(RolltuiLayoutCache* c) {
+  size_t i;
+  if (c == NULL) return;
+  rolltui_layout_actions_free(c->actions, c->actions_n);
+  for (i = 0; i < c->layouts_n; ++i) rolltui_layout_release(&c->layouts[i].layout);
+  rolltui_mem_free(c->layouts);
+  rolltui_mem_free(c);
+}
+
+static RolltuiLayoutCache* cache_of(RolltuiContext* c) {
+  if (c->layouts == NULL) c->layouts = rolltui_layout_cache_new();
+  return c->layouts;
 }
 
 const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* out_len) {
@@ -2373,20 +2398,25 @@ const char* rolltui_layout_builtin_json(const char* name, size_t len, size_t* ou
   return "";
 }
 
-const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(size_t* n) {
-  if (!g_shipped_actions_done) {
+const RolltuiLayoutAction* rolltui_layout_shipped_default_actions(RolltuiContext* c, size_t* n) {
+  RolltuiLayoutCache* lc;
+  if (c == NULL) {
+    if (n) *n = 0;
+    return NULL;
+  }
+  lc = cache_of(c);
+  if (!lc->actions_done) {
     size_t tlen = 0;
     const char* text = rolltui_layout_builtin_json("default", 7, &tlen);
     RolltuiJsonValue* v = tlen ? rolltui_json_parse(text, tlen, NULL) : NULL;
-    g_shipped_actions_done = 1;
-    rolltui_on_shutdown(shipped_actions_clear);
+    lc->actions_done = 1;
     if (v) {
-      rolltui_layout_read_actions_key(v, &g_shipped_actions, &g_shipped_actions_n, &g_shipped_actions_cap);
+      rolltui_layout_read_actions_key(v, &lc->actions, &lc->actions_n, &lc->actions_cap);
       rolltui_json_free(v);
     }
   }
-  if (n) *n = g_shipped_actions_n;
-  return g_shipped_actions;
+  if (n) *n = lc->actions_n;
+  return lc->actions;
 }
 
 /* ---- the library's own hooks (Phase 17 m2a) ------------------------------------------------
@@ -2441,23 +2471,6 @@ const RolltuiLayoutRoles* rolltui_layout_default_roles(void) {
  * header for the two properties it carries over and the defect each one cost first.
  * ============================================================================================ */
 
-typedef struct {
-  const char* name; /* BORROWED: the embedded table's own literal */
-  size_t name_len;
-  RolltuiLayout layout;
-} BuiltinLayout;
-
-static BuiltinLayout* g_builtin_layouts;
-static size_t g_builtin_layout_n;
-
-static void builtin_layouts_release(void) {
-  size_t i;
-  for (i = 0; i < g_builtin_layout_n; ++i) rolltui_layout_release(&g_builtin_layouts[i].layout);
-  rolltui_mem_free(g_builtin_layouts);
-  g_builtin_layouts = NULL;
-  g_builtin_layout_n = 0;
-}
-
 /* Shipped order: "default" first — it is what a fresh install runs — then the table's own. */
 static const char* builtin_name_at(size_t i) {
   size_t k, seen = 0;
@@ -2474,17 +2487,14 @@ static const char* builtin_name_at(size_t i) {
   return NULL;
 }
 
-static void builtin_layouts_fill(void) {
+static void builtin_layouts_fill(RolltuiContext* c) {
   size_t i;
   size_t n = rolltui_kLayoutPresetCount;
-  if (g_builtin_layout_n != 0) return;
+  RolltuiLayoutCache* lc = cache_of(c);
+  if (lc->layouts_n != 0) return;
   if (n == 0) return;
-  /* AT FILL TIME, not once per process: `rolltui_shutdown()` clears its own registry as it
-   * runs, so a register-once cache survives the second shutdown holding what it meant to
-   * release. `Layout.cpp` and `Theme.cpp` both shipped that defect. */
-  rolltui_on_shutdown(builtin_layouts_release);
-  g_builtin_layouts = (BuiltinLayout*)rolltui_mem_alloc(n * sizeof *g_builtin_layouts);
-  memset(g_builtin_layouts, 0, n * sizeof *g_builtin_layouts);
+  lc->layouts = (BuiltinLayout*)rolltui_mem_alloc(n * sizeof *lc->layouts);
+  memset(lc->layouts, 0, n * sizeof *lc->layouts);
   for (i = 0; i < n; ++i) {
     const char* name = builtin_name_at(i);
     size_t json_len = 0;
@@ -2492,7 +2502,7 @@ static void builtin_layouts_fill(void) {
     RolltuiLoadedLayout loaded;
     RolltuiLayoutReport rep;
     size_t na = 0;
-    const RolltuiLayoutAction* da = rolltui_layout_shipped_default_actions(&na);
+    const RolltuiLayoutAction* da = rolltui_layout_shipped_default_actions(c, &na);
     if (!name) break;
     json = rolltui_layout_builtin_json(name, strlen(name), &json_len);
     rolltui_loaded_layout_init(&loaded);
@@ -2506,22 +2516,24 @@ static void builtin_layouts_fill(void) {
       abort();
     }
     rolltui_layout_report_release(&rep);
-    g_builtin_layouts[i].name = name;
-    g_builtin_layouts[i].name_len = strlen(name);
-    rolltui_layout_init(&g_builtin_layouts[i].layout);
-    rolltui_loaded_layout_to_layout(&loaded, &g_builtin_layouts[i].layout);
-    ++g_builtin_layout_n;
+    lc->layouts[i].name = name;
+    lc->layouts[i].name_len = strlen(name);
+    rolltui_layout_init(&lc->layouts[i].layout);
+    rolltui_loaded_layout_to_layout(&loaded, &lc->layouts[i].layout);
+    ++lc->layouts_n;
   }
 }
 
-const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len) {
+const RolltuiLayout* rolltui_layout_builtin(RolltuiContext* c, const char* name, size_t len) {
   size_t i;
-  /* FILLED WHEN EMPTY, never in a static initializer — `shutdown()` releases this, and a
+  const RolltuiLayoutCache* lc;
+  if (c == NULL) return NULL;
+  /* FILLED WHEN EMPTY, never in a static initializer — a session may clear its cache and a
    * once-only fill would leave every later call answering NULL. */
-  builtin_layouts_fill();
-  for (i = 0; i < g_builtin_layout_n; ++i)
-    if (g_builtin_layouts[i].name_len == len && memcmp(g_builtin_layouts[i].name, name, len) == 0)
-      return &g_builtin_layouts[i].layout;
+  builtin_layouts_fill(c);
+  lc = c->layouts;
+  for (i = 0; i < lc->layouts_n; ++i)
+    if (lc->layouts[i].name_len == len && memcmp(lc->layouts[i].name, name, len) == 0) return &lc->layouts[i].layout;
   return NULL;
 }
 

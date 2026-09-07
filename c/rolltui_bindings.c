@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/rolltui.h"
 /* For `RolltuiLayoutAction`, which the header can only FORWARD-declare — `rolltui_layout.h`
  * includes this one, so including it back from the header would be a cycle. Dereferencing one
@@ -922,13 +923,9 @@ void rolltui_bindings_declare(RolltuiBindings* b, const RolltuiLayoutAction* dec
 }
 
 /* THE SHIPPED DEFAULT TABLE — see the header for the two aborts and why they are aborts.
- * OWNED, LONG-LIVED (CLAUDE.md strategy 4): built once, released by the shutdown hook. */
-static RolltuiBindings* g_default_bindings = NULL;
-
-static void default_bindings_clear(void) {
-  rolltui_bindings_free(g_default_bindings);
-  g_default_bindings = NULL;
-}
+ * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S since Phase 25 m2: it is BORROWED
+ * by every caller, so `rolltui_context_free` releasing it is what bounds the borrow. The
+ * shutdown hook it used to register went with the global. */
 
 static const char* default_bindings_json(size_t* len) {
   size_t i;
@@ -958,7 +955,7 @@ RolltuiBindings* rolltui_bindings_new_seeded(void) {
   return b;
 }
 
-const RolltuiBindings* rolltui_bindings_default(void) {
+const RolltuiBindings* rolltui_bindings_default(RolltuiContext* c) {
   RolltuiBindings* b;
   RolltuiBindingsReport rep;
   RolltuiStr summary = {0};
@@ -967,7 +964,8 @@ const RolltuiBindings* rolltui_bindings_default(void) {
   const RolltuiLayoutAction* actions;
   int ok;
 
-  if (g_default_bindings) return g_default_bindings;
+  if (c == NULL) return NULL;
+  if (c->bindings) return c->bindings;
 
   b = rolltui_bindings_new_seeded();
   text = default_bindings_json(&tlen);
@@ -994,7 +992,7 @@ const RolltuiBindings* rolltui_bindings_default(void) {
 
   /* The shipped default LAYOUT declares the app scope; the two files ship together, so this is
    * the library's one complete "default screen + default keys". */
-  actions = rolltui_layout_shipped_default_actions(&n);
+  actions = rolltui_layout_shipped_default_actions(c, &n);
   rolltui_bindings_declare(b, actions, n, NULL, 0);
 
   /* A row for an action no shipped layout declares is a key EVERY host advertises and cannot
@@ -1013,9 +1011,8 @@ const RolltuiBindings* rolltui_bindings_default(void) {
     }
   }
 
-  g_default_bindings = b;
-  rolltui_on_shutdown(default_bindings_clear);
-  return g_default_bindings;
+  c->bindings = b;
+  return c->bindings;
 }
 
 

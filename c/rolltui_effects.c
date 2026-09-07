@@ -10,8 +10,8 @@
  * `rolltui::shutdown()` for the first time, and the promise it has to keep is a NUMBER:
  * after shutdown, `rolltui::mem::stats().live_bytes == 0`. Three things are retained per
  * host kind — the table slot, a COPY of the name, and the host's context — and all three
- * are released by `rolltui_effect_clear_registered`, which the registry hands to
- * `rolltui_on_shutdown` the first time it holds anything.
+ * are released with the CONTEXT that holds them (Phase 25 m2): `rolltui_context_free` releases
+ * the registry by name, so the number is a session's fact and not only the process's.
  *
  * Everything allocates through the closed set in `rolltui_alloc.h`. */
 #include "rolltui/c/rolltui_effects.h"

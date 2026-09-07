@@ -157,7 +157,7 @@ struct LoadedLayoutCheck {
 };
 LoadedLayoutCheck load_layout_check(std::string_view json_text) {
   std::size_t default_actions_n = 0;
-  const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(&default_actions_n);
+  const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(rolltui_test::test_context(), &default_actions_n);
   RolltuiLayoutReport rep{};
   // Phase 23: one call, an OWNED layout back, and the counts through the public doors.
   RolltuiLayout* out = rolltui_load_layout_text(json_text.data(), json_text.size(), default_actions,

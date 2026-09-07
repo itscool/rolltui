@@ -132,7 +132,7 @@ using InputSpec = RolltuiInputSpec;
 // entry points, the last one promoted for exactly this call (Phase 17 m1d). An unknown
 // name parses the empty string and comes back an empty Layout; every caller here only
 // ever asks for "default", which always exists.
-Layout builtin_layout(std::string_view name);
+Layout builtin_layout(RolltuiContext* ctx, std::string_view name);
 
 class LayoutEditor {
  public:
@@ -146,7 +146,7 @@ class LayoutEditor {
   // Phase 25: the kind registry belongs to a CONTEXT, and this editor types a source field by
   // asking it what a kind's shape is — so it holds the session it was opened for. BORROWED: the
   // studio owns it and outlives every editor.
-  explicit LayoutEditor(const RolltuiContext* ctx);
+  explicit LayoutEditor(RolltuiContext* ctx);
   ~LayoutEditor() { rolltui_menu_free(menu_); }
   LayoutEditor(const LayoutEditor&) = delete;
   LayoutEditor& operator=(const LayoutEditor&) = delete;
@@ -181,7 +181,7 @@ class LayoutEditor {
   RolltuiMenu* menu() { return menu_; }
   const RolltuiMenu* menu() const { return menu_; }
   Outcome handle(const RolltuiEvent* e, const RolltuiBindings* nav);  // `nav`: the host's bindings (menu + editor scopes)
-  Outcome handle(const RolltuiEvent* e) { return handle(e, editor_bindings()); }   // Alt+arrows nudge; Ctrl-Z/Ctrl-Y; Tab / Shift-Tab select; the rest is the menu's
+  Outcome handle(const RolltuiEvent* e) { return handle(e, editor_bindings(ctx_)); }   // Alt+arrows nudge; Ctrl-Z/Ctrl-Y; Tab / Shift-Tab select; the rest is the menu's
   bool undo();
   bool redo();
   std::size_t undo_depth() const { return undo_.undo_depth(); }
@@ -222,7 +222,7 @@ class LayoutEditor {
   ContentParts content_parts() const;
 
  private:
-  const RolltuiContext* ctx_;  // BORROWED: the session this editor resolves kinds against
+  RolltuiContext* ctx_;        // BORROWED: the session this editor resolves kinds against
   ContentParts parts_of(const Node* n) const;  // Phase 25: resolves kinds against `ctx_`
   std::string base_source() const;  // the source before the live preview began
   std::string carried_source(std::string_view kind_name) const;  // …and whether that kind takes it

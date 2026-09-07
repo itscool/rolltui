@@ -154,7 +154,7 @@ void rolltui_layout_actions_free(RolltuiLayoutAction* actions, size_t n);
  * The result is a BORROW the library keeps until `rolltui_shutdown()`; NULL for a name that is
  * not a built-in. A built-in that does not parse cleanly is a programming error and aborts
  * rather than serving half a layout — the same call the C++ made. */
-const RolltuiLayout* rolltui_layout_builtin(const char* name, size_t len);
+const RolltuiLayout* rolltui_layout_builtin(RolltuiContext* c, const char* name, size_t len);
 /* Builds the JSON tree (an OWNED value the caller frees) — `layout_to_json_value`'s port.
  * `base`/`popups` are BORROWS (read-only: this never copies a tree merely to serialise it). */
 RolltuiJsonValue* rolltui_layout_to_json_value(const char* name, size_t name_len, int min_width, int min_height,

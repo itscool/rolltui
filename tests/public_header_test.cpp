@@ -626,7 +626,7 @@ int main() {
      * which this file of all files must not lean on; section 1 uses the swap now. */
     /* PHASE 25 m2: +3 PUBLIC (`rolltui_context_new`/`_free`, `rolltui_windows_context`) and
      * +4 INTERNAL (the transitional default and its release, the kind registry's own new/free). */
-    const int kPublic = 326, kInternal_ = 519, kDelete = 0;
+    const int kPublic = 326, kInternal_ = 523, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +

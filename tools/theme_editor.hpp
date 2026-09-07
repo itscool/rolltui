@@ -144,7 +144,7 @@ class ThemeEditor {
     bool operator==(const Outcome&) const = default;
   };
 
-  ThemeEditor();
+  explicit ThemeEditor(RolltuiContext* ctx);
   ~ThemeEditor() {
     rolltui_menu_free(menu_);
     rolltui_effect_map_free(dark_effects_);
@@ -180,7 +180,7 @@ class ThemeEditor {
 
   // Events already routed to the editor's window. Ctrl-Z / Ctrl-Y are handled here.
   Outcome handle(const RolltuiEvent* e, const RolltuiBindings* nav);  // `nav`: the host's bindings (menu + editor scopes)
-  Outcome handle(const RolltuiEvent* e) { return handle(e, editor_bindings()); }  // tool_actions.hpp: the shipped table with the editors mounted
+  Outcome handle(const RolltuiEvent* e) { return handle(e, editor_bindings(ctx_)); }  // tool_actions.hpp: the shipped table with the editors mounted
   bool undo();
   bool redo();
   std::size_t undo_depth() const { return undo_.undo_depth(); }
@@ -206,6 +206,7 @@ class ThemeEditor {
   const std::vector<RolltuiFix>& fixes() const { return fixes_; }  // the Fixes level's proposals
 
  private:
+  RolltuiContext* ctx_;  // BORROWED: the session this editor edits within
   struct Field { unsigned char role; std::string name; };  // "fg" | "bg" | attribute
   static std::optional<Field> field_of(std::string_view id);
   void rebuild_menu();
