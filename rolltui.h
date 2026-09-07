@@ -126,8 +126,6 @@ extern "C" {
 #endif
 
 
-
-
 /* ========================================================================================
  * PART 1 — THE NOUNS: every type, table and name the two roles speak
  * C needs a type before the functions that take it, so EVERY public type is defined here
@@ -1229,8 +1227,6 @@ typedef struct RolltuiInputSpec {
 
 struct RolltuiMenuItem;
 
-/* An item's OWNED children (a Submenu's items, a Choice's options). Pointers, for the reason
- * `RolltuiNodeList` holds pointers: a child's address never moves. */
 /* PINNED PUBLIC BY A PUBLIC STRUCT'S C++ MEMBERS (Phase 23): `RolltuiMenuItem` holds a
  * `RolltuiInputSpec` by value and its `clone()`/`operator==` call these, so they must be
  * declared in the definition even though no consumer calls either directly. That is the same
@@ -2235,12 +2231,11 @@ typedef struct RolltuiContent RolltuiContent;
 typedef struct RolltuiActionList RolltuiActionList;
 typedef struct RolltuiLayout RolltuiLayout;
 
-/* The seven doors are declared in PART 2 (a host's own section), where their roles put them. */
+/* The EIGHT doors are declared in PART 2 (a host's own section), where their roles put them.
+ * Seven came from reading what the four consumers touch; the eighth, `rolltui_layer_id`, came
+ * from the COMPILER — "the smallest set that compiles every consumer" is a build result, and a
+ * reading gets close without getting there. */
 
-
-/* A window (a content slot) or a split (a row/column of children). ONE struct for both,
- * exactly as the C++ had, because a split that could not be given a border and a title
- * would need a second one. */
 
 /* Releases and frees. A no-op on NULL. */
 
@@ -2249,13 +2244,6 @@ typedef struct RolltuiLayout RolltuiLayout;
 
 
 /* ---- popups: an OWNED, growable array of Layer VALUES (Phase 17) --------------------------- */
-/* `Layout::popups`' storage. A FLAT array of values, not individually-heap-boxed pointers like
- * RolltuiNodeList: nothing holds a `Layer*` across a mutation (a popup is always looked up by id
- * on demand — `Layout::popup()`), so there is no address-stability property worth paying an
- * extra indirection for. `RolltuiWindowStack`'s own `layers` array already proves the shape
- * safe: a Layer is trivially relocatable (every byte it owns is behind a pointer elsewhere), so
- * growing this array with `rolltui_grow_zeroed` and shifting on removal is exactly that same,
- * already-proven pattern one level up. */
 
 /* PLAIN DATA, and deliberately so: it is emitted per node per frame, it borrows the node it
  * describes, and it is what a host reads to draw. `node` is a BORROW valid as long as the
@@ -2408,11 +2396,6 @@ typedef struct RolltuiLayoutAction {
   RolltuiStr description;
 } RolltuiLayoutAction;
 
-/* An OWNED, growable array of `RolltuiLayoutAction` VALUES — `RolltuiLayout::actions`' storage.
- * A flat array, the same shape as `RolltuiLoadedLayout::actions` below and for the same
- * reason: nothing holds an `Action*` across a mutation (a caller reads one, or appends, or
- * removes by index), so there is no address-stability property worth an extra indirection
- * for, and each element is two `RolltuiStr`s — already trivially relocatable. */
 
 /* The parsed layout: a TRANSIENT carrier, never retained past one load. Phase 17 gave
  * `rolltui::Layout` this same shape (`RolltuiLayout` below shares `RolltuiStr name` and
@@ -3293,7 +3276,6 @@ typedef struct RolltuiWrapLines RolltuiWrapLines;
 /* ---- the engine ----------------------------------------------------------------------- */
 
 
-
 /* ========================================================================================
  * PART 2 — THE HOST AUTHOR: load a thing, bind your own functions, run, release
  * Everything an app calls, in the order an app calls it. The ordering is measured rather than
@@ -3302,7 +3284,6 @@ typedef struct RolltuiWrapLines RolltuiWrapLines;
  * differ in WHICH they call, which is what makes this a section and not a grouping of
  * convenience. If you are writing an app, this part and Part 1 are the whole API.
  * ======================================================================================== */
-
 
 
 /* ========================================================================================
@@ -3418,31 +3399,8 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
 
 /* ---- layout_tree ---------------------------------------------------------------------------*/
 
-/* Zeroes and defaults a node the caller owns the storage of. Every C caller starts here;
- * `RolltuiLayoutNode n = {0}` would give a window with `visible` 0 and no background, which
- * is exactly the kind of "the language answered a question nobody asked" this port removes. */
-
-/* Releases everything BELOW and INSIDE `n`, leaving it zeroed. Does not free `n` itself —
- * a root lives in its layer, a child in the list that owns it. */
-/* Deep copy: `to` is released first, then filled from `from`. */
-
-/* Deep equality, including every child in order. */
-
-/* A node on the heap, initialised. The child lists own these. */
-
-
-
-
-
-
-
-/* Takes `from`'s buffers and leaves it empty — the move, written down for C. */
-
-
-
 
 /* Appends an EMPTY layer and returns it — the C's `emplace_back`. */
-
 
 
 /* ---- layout --------------------------------------------------------------------------------*/
@@ -3499,8 +3457,6 @@ void rolltui_content_format(const char* kind_name, size_t kind_name_len, const c
 const RolltuiLayoutHooks* rolltui_layout_default_hooks(void);
 
 void rolltui_layout_report_release(RolltuiLayoutReport* r); /* frees everything; zeroes it */
-
-
 
 
 /* ---- THE SHIPPED SCREEN'S OWN ACTIONS (Phase 17) ----------------------------------------
@@ -3882,7 +3838,6 @@ const RolltuiPresetSettingSpec* rolltui_preset_settings_at(size_t i);
 int rolltui_preset_setting_index(const char* key, size_t len);
 
 
-
 /* ========================================================================================
  * BIND — your own functions, sources and kinds
  * Everything the screen named that only your app can supply: the rows behind `rows:`, the
@@ -4038,7 +3993,6 @@ void rolltui_input_set_options(RolltuiInput* in, const RolltuiInputOptions* o);
 const RolltuiInputOptions* rolltui_input_options(const RolltuiInput* in);
 
 /* ---- menu_tree -----------------------------------------------------------------------------*/
-
 
 
 /* Sets an item's kind, id and label in one call, releasing whatever they held — the C form of
@@ -4312,7 +4266,6 @@ int rolltui_input_kind_process_event(RolltuiInput* ed, RolltuiWindows* w, const 
 void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
 
 
-
 /* ========================================================================================
  * RUN — the terminal, the events, the frame
  * One fd, one event loop, one double buffer. The compose call walks the screen and hands each
@@ -4447,12 +4400,6 @@ int rolltui_widget_kind_register(const char* name, size_t len, unsigned char rul
 int rolltui_layout_report_clean(const RolltuiLayoutReport* r);
 
 
-/* Appends an EMPTY action and returns it — the C's `emplace_back`. */
-
-
-/* The C-callable form of `RolltuiLayout::popup()`, for a pure C caller. */
-const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id, size_t len);
-
 /* A stack with one empty base layer, which is what `WindowStack{}` has always meant. */
 RolltuiWindowStack* rolltui_window_stack_new(void);
 
@@ -4462,8 +4409,6 @@ void rolltui_window_stack_free(RolltuiWindowStack* s);
  * window with that id still exists. */
 void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* base);
 
-/* Takes `popup` BY MOVE and leaves the caller's empty — the ownership `push(Layer)` was
- * doing twice by value. */
 
 /* PUSHES A POPUP THE LAYOUT DECLARED, BY ID — deep-copies it and pushes the copy. 1 when the
  * layout declares one of that id, 0 when it does not (nothing is pushed). A layer a HOST built
@@ -4645,7 +4590,6 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
 int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out);
 
 
-
 /* ========================================================================================
  * RELEASE — and the number that proves you did
  * There is no RAII in C: create and release in a pair, then `rolltui_shutdown()` and assert
@@ -4701,7 +4645,6 @@ void rolltui_mem_stats(size_t* allocations, size_t* frees, size_t* bytes_request
 void* rolltui_mem_alloc(size_t bytes);
 
 void rolltui_mem_free(void* p);
-
 
 
 /* ========================================================================================
@@ -4863,7 +4806,6 @@ size_t rolltui_wrap_line_count(const RolltuiWrapLines* w);
 void rolltui_wrap_line(const RolltuiWrapLines* w, size_t i, const char** text, size_t* text_len,
                        const RolltuiWrapGrapheme** graphemes, size_t* grapheme_count,
                        int* width, int* indent, int* hard);
-
 
 
 #ifdef __cplusplus

@@ -826,6 +826,62 @@ int main() {
           "…and the three parts are non-empty as read from the file (" + std::to_string(part[0].size()) + "/" +
               std::to_string(part[1].size()) + "/" + std::to_string(part[2].size()) + " declarations)");
   }
+  // ---- 10. NO ORPHANED DOC COMMENT: a sentence in the header describes something it declares
+  // ------------------------------------------------------------------------------------------
+  // **Phase 23 left TWELVE.** Moving the layout family's lifecycle to the internal headers took
+  // the declarations and left their comments standing, so the public header documented seven
+  // functions it no longer declared and one it declared twice, with the duplicate's comment
+  // naming a C++ member (`RolltuiLayout::popup()`) that the opaque struct had just removed.
+  // That is Phase 17 m5's own rule — *a milestone that deletes a thing owns every sentence that
+  // described it* — and the reason it matters here is the reason it mattered there: the only
+  // reader who believes a public header over the call sites is the one who cannot see the call
+  // sites, which is exactly the consumer this header exists for.
+  //
+  // THE RULE: a doc comment (not a `/* ---- section ---- */` banner) must be followed by
+  // something OTHER than another doc comment. A comment with no declaration under it is either
+  // a scar from a deletion or prose that belongs in a banner. The 22 that predate Phase 23 are
+  // RECORDED as a ceiling rather than fixed blind — each is a judgement call about prose, and a
+  // ratchet that can only fall is honest where a blanket assertion would invite someone to
+  // delete a real note to make a number go green.
+  {
+    const std::string h = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui.h");
+    std::vector<std::string> lines;
+    {
+      std::istringstream in(h);
+      std::string l;
+      while (std::getline(in, l)) lines.push_back(l);
+    }
+    auto lstrip = [](const std::string& s2) {
+      const std::size_t a = s2.find_first_not_of(" \t");
+      return a == std::string::npos ? std::string() : s2.substr(a);
+    };
+    auto is_banner = [&](const std::string& s2) {
+      const std::string t = lstrip(s2);
+      return t.rfind("/* ----", 0) == 0 || t.rfind("/* ===", 0) == 0;
+    };
+    auto opens = [&](const std::string& s2) { return lstrip(s2).rfind("/*", 0) == 0 && !is_banner(s2); };
+    int orphans = 0;
+    std::string first;
+    for (std::size_t i = 0; i < lines.size();) {
+      if (!opens(lines[i])) { ++i; continue; }
+      const std::size_t start = i;
+      while (i < lines.size() && lines[i].find("*/") == std::string::npos) ++i;
+      std::size_t j = i + 1;
+      while (j < lines.size() && lstrip(lines[j]).empty()) ++j;
+      if (j < lines.size() && opens(lines[j])) {
+        ++orphans;
+        if (first.empty()) first = lstrip(lines[start]).substr(0, 60);
+      }
+      ++i;
+    }
+    // A RATCHET, measured 2026-09-06 after Phase 23's twelve were removed. It may FALL freely; a
+    // rise means a declaration left and its sentence stayed.
+    check(orphans <= 22, "no NEW orphaned doc comment in rolltui.h — a sentence with no declaration "
+                         "under it (" + std::to_string(orphans) + " of at most 22; first: " + first + ")");
+    // CONTROL: the scanner sees a planted orphan, and does not count a banner as one.
+    check(orphans > 0, "…and the scanner is armed: it still finds the recorded pre-Phase-23 ones");
+  }
+
 
   return report("public_header_test");
 }
