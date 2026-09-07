@@ -38,8 +38,8 @@ using InputSpec = RolltuiInputSpec;
 
 // The keys editor's OWN value: an owned, clone-on-copy `RolltuiBindings*`, so
 // UndoStack<KeyTable> (undo_stack.hpp) can snapshot the table being edited exactly as
-// ThemeEditor's ThemeEdit snapshots a pair of themes. RolltuiBindings is opaque (Phase 15
-// m3), so — unlike Layout, which IS its C struct — a plain member cannot hold one by
+// ThemeEditor's ThemeEdit snapshots a pair of themes. RolltuiBindings is opaque, so — unlike
+// Layout, which IS its C struct — a plain member cannot hold one by
 // value; this is the RAII a C++ consumer writes for itself (rolltui/rolltui.h), with NO
 // method beyond lifetime and equality. Every real edit (bind/unbind/clear/…) is a direct
 // rolltui_bindings_* call on .get() from KeysEditor's own methods, which is what keeps

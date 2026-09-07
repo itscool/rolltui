@@ -514,7 +514,7 @@ int main() {
     check(every_number, "every role of default-dark has both numbers (nothing is none)");
     check(report_text(dark).find("badges: dark") == 0 && report_text(dark).find("must-differ pairs") != std::string::npos, "report_text starts with the badges and lists the pairs");
 
-    // PHASE 18 m1 — THE RULE, BY NAME. `kMustDiffer` is a LIBRARY rule closed on purpose (the
+    // THE RULE, BY NAME. `kMustDiffer` is a LIBRARY rule closed on purpose (the
     // decision and every pair's reason are written at the table in rolltui_theme_analysis.c).
     // This reads the pairs the analysis hands back and asserts their MEMBERSHIP, so a change to
     // the table is a change to a test — a decision — rather than an edit nothing notices. The

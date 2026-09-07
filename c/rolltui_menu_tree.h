@@ -26,8 +26,8 @@
  * individually allocated items, so a child's address is stable. Both are laid out exactly as
  * `RolltuiPtrVec` (`rolltui_str.h`) and both delegate their mechanics to it — a C++ template
  * would have made them one type, and in C the honest answer is one MECHANISM with two typed
- * faces rather than two copies of the mechanism. That asymmetry is the same one m3 measured
- * on `PresetStore` and it belongs in m6's verdict, not in a workaround here.
+ * faces rather than two copies of the mechanism. That asymmetry is a KNOWN cost of the
+ * boundary, recorded rather than worked around here.
  */
 
 #include "rolltui/rolltui.h"

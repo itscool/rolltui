@@ -5,11 +5,9 @@
 // and a bindings file; a screen is FOUR file types and until this existed the fourth had
 // to be hand-written JSON, so "build an app from nothing" was false by exactly one file.
 //
-// The user, 2026-09-07: "menus should be created by studio. the heck? studio shoukd let me
-// build an app from nothing minus the custom buildings and widgets being properly previews".
-// That also settles what "menu heck no, studio only" meant — not *menus are not
-// a user-editable format* but **menus are the DESIGNER's to author**, the same reason
-// layouts are.
+// MENUS ARE THE DESIGNER'S TO AUTHOR, the same reason layouts are. Not "a menu is not a
+// user-editable format" — it is one — but that authoring it belongs in the design tool rather
+// than in a text editor beside it.
 //
 // THE SAME SHAPE AS ITS THREE SIBLINGS, deliberately and to the letter: a MODEL with no
 // terminal in it, a rolltui::Menu over the SELECTED item, one UndoStack<T>, an Outcome the
@@ -53,8 +51,8 @@
 // never the open menu with its items stripped out. A menu carries action names, and an
 // inherited tree would hand the author another app's `studio.reload` under a new file name.
 //
-// WHAT THIS EDITOR DOES NOT KNOW, and does not pretend to (the framing, and the two
-// permanent exceptions of the plan m4): an item's `action` is a name in the APP's
+// WHAT THIS EDITOR DOES NOT KNOW, and does not pretend to: an item's `action` is a name in
+// the APP's
 // bindings table, and this tool cannot verify it — the action belongs to the app. It is
 // typed, written, and the app reports at start-up what nothing reaches. A designer names
 // what the screen needs; the code catches up.

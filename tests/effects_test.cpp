@@ -1,6 +1,6 @@
 //
-// effects_test.cpp — Phase 12 m6. Motion is the theme's, a state is the widget's
-// (rolltui/Effects.hpp), and this file is where the claim stops being a paragraph.
+// effects_test.cpp — MOTION IS THE THEME'S, A STATE IS THE WIDGET'S (rolltui/Effects.hpp),
+// and this file is where that claim stops being a paragraph.
 //
 // The two properties are asserted OVER EVERY REGISTERED KIND — the seven built-ins plus
 // two host kinds registered here, one well-behaved and one that deliberately misbehaves:

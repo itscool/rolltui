@@ -84,7 +84,7 @@ std::string strip_all_comments(const std::string& src) {
 // a function by naming it in a string.
 // ONE PASS, because comments and literals cannot be stripped in either order — and the census
 // this feeds is what every class in `api_classes.inc` is held to, so an under-count here is a
-// wrong CLASS, silently. Measured 2026-09-06, three ways to get it wrong:
+// wrong CLASS, silently. Three ways to get it wrong, all measured:
 //   - literals first: an apostrophe in prose ("don't") opens a bogus char literal.
 //   - comments first, which is what this function did: **roll's own commands are the string
 //     literals "//status", "//set" and "//theme"**, so the line-comment rule truncated them and

@@ -1,9 +1,7 @@
 #pragma once
 //
 // rolltui/tools/tool_actions.hpp — the actions of the library's own TOOLS, and the chords
-// they suggest . Phase 17 m1d: calls `rolltui/c/*.h`
-// directly — no `rolltui/*.hpp` — the same C API `rolltui/rolltui.h` curates for every
-// other C++ consumer.
+// they suggest. Calls the C API directly, like every other C++ consumer.
 //
 // These used to sit in library_actions() beside the widget scopes, which made every
 // rolltui host declare them whether or not it mounted the tool: roll listed eight keys it
@@ -36,8 +34,8 @@ namespace rolltui::tools {
 
 // The `editor` scope: what a host that mounts the FOUR editors (theme, layout, keys, menu)
 // declares. undo/redo are handled by all four; the other four OPEN one, and so belong
-// to the host doing the mounting rather than to any editor. The menu editor joined at Phase 27
-// m2 — a screen is four file types and the tool could author three.
+// to the host doing the mounting rather than to any editor. All FOUR are here because a
+// screen is four file types, and a tool that can author three of them cannot author a screen.
 inline std::span<const RolltuiToolAction> editor_actions() {
   static const RolltuiToolAction t[] = {
       {"editor.undo", "undo the last committed change", "ctrl+z"},
@@ -62,9 +60,9 @@ inline RolltuiBindings*& editor_bindings_slot() {
 
 // The shipped default table with the three editors MOUNTED: what a host that mounts them
 // and has loaded nothing of its own is running. It is what an editor's convenience
-// `handle(e)` overload looks its own Ctrl-Z up in — before m1 that overload asked
-// default_bindings(), which knew `editor.undo` because the library did; now the library
-// does not, and an editor with no host table around it would have no undo key at all.
+// `handle(e)` overload looks its own Ctrl-Z up in. The library's own table does NOT know
+// `editor.undo` — an editor is a tool's, not the library's — so an editor with no host table
+// around it has no undo key at all.
 //
 // A CLONE of rolltui_bindings_default(), because the shipped cache is borrowed and this
 // table is then declared into — freed at rolltui_shutdown() (Lifetime's rule: register a

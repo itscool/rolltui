@@ -28,19 +28,16 @@
  * bytes, termios flags, size, events from bytes written to the master, SIGWINCH -> Resize,
  * and a forked child killed by SIGTERM whose restore bytes are seen by the parent.
  *
- * THIS WAS THE EASIEST PORT IN THE SET, AND FOR A REASON WORTH RECORDING (m1's retraction of
- * m5e's closing sentence): `Terminal.cpp` made 43 POSIX C calls already — write x10, read x7,
- * poll x7, signal x5, tcsetattr x3, fcntl x3, sigaction x2, ioctl x2, close x2, plus
- * tcgetattr, isatty, cfmakeraw. It was a C++ wrapper around a C API; touching a file
- * descriptor is the strongest argument FOR C in this library, not an exception to it. What
- * moved was the `std::string` / `std::vector` / `std::chrono` / `std::atomic` / `std::optional`
+ * TOUCHING A FILE DESCRIPTOR IS THE STRONGEST ARGUMENT FOR C IN THIS LIBRARY, not an
+ * exception to it. This module is 43 POSIX C calls — write x10, read x7, poll x7, signal x5,
+ * tcsetattr x3, fcntl x3, sigaction x2, ioctl x2, close x2, plus tcgetattr, isatty,
+ * cfmakeraw — so writing it in C++ makes it a wrapper around a C API. What C++ would add is
+ * the `std::string` / `std::vector` / `std::chrono` / `std::atomic` / `std::optional`
  * around those calls, never the calls themselves.
  *
  * THE BOUNDARY'S RULES:
  *   1. **THE TERMINAL IS AN OPAQUE HANDLE, OWNED by the caller.** `rolltui::Terminal` holds
- *      one and does the RAII (`rolltui/Terminal.hpp`, kept as the thin C++ shape every
- *      existing caller already writes against — Phase 17 m2 is what deletes that shim, not
- *      this milestone).
+ *      one and does the RAII; a C caller does it by hand.
  *   2. **NOTHING IS RETURNED BY VALUE** from an `extern "C"` function. Events are reported
  *      through a sink callback, the same shape `rolltui_key_decoder_feed` already uses;
  *      the background-colour query and the negotiated protocol travel through out-params

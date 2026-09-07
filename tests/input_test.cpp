@@ -1003,8 +1003,8 @@ void test_degenerate_sizes() {
     set_caret(in.get(), 0);
     rolltui_input_layout(in.get(), a);
     check(rolltui_input_top_row(in.get()) == 0, name + ": the scroll follows the caret back to the top");
-    // Undo/redo survive a degenerate area too (extended
-    // to Phase 12 m1): nothing crashes, and redo restores the paste byte-for-byte.
+    // Undo/redo survive a degenerate area too: nothing crashes, and redo restores the paste
+    // byte-for-byte.
     const std::string full(text_of(in.get()));
     check(rolltui_input_can_undo(in.get()) != 0, name + ": there is something to undo after editing a degenerate area");
     check(rolltui_input_undo(in.get()) != 0 && text_of(in.get()) != full, name + ": undo runs without crashing in a degenerate area");

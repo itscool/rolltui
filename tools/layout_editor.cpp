@@ -33,9 +33,9 @@ MenuItem* find(RolltuiMenu* m, std::string_view id) { return rolltui_menu_find(m
 // ---- content: built directly from rolltui_widget_kind_resolve, the primitive Layout.hpp's
 // own content_for_kind/content_kind_name/content_source_rule/content_source_describes were
 // always "the one accessor" over (its own words) — none of these carry a decision of their
-// own beyond what that one C call already answers. Phase 18 m2: a kind's NAME is its identity
-// whichever rung it came from, so `Content` holds the name and the source and each helper here
-// is one C call over the name. ------------------------------------------------------------------
+// own beyond what that one C call already answers. A kind's NAME is its identity whichever
+// rung it came from, so `Content` holds the name and the source, and each helper here is one C
+// call over the name. ----------------------------------------------------------------------
 std::optional<Content> content_for_kind(const RolltuiContext* ctx, std::string_view kind_name, std::string source = {}) {
   if (rolltui_widget_kind_resolve(ctx, kind_name.data(), kind_name.size(), nullptr, nullptr, nullptr, nullptr) ==
       ROLLTUI_KIND_UNKNOWN)
@@ -419,12 +419,9 @@ void LayoutEditor::rebuild_menu() {
     if (nm && rn) grounds.push_back(MenuItem::action(std::string(nm, rn).c_str(), std::string(nm, rn).c_str()));
   }
   top.push_back(choice_of("background", "Background role", std::move(grounds), "default_background"));
-  // THE WINDOW ID, added because building an app from nothing found it
-  // missing: every node the editor created was `main`, `main-2`, `main-row`, and a person
-  // who wanted a window named after what it shows had to edit the JSON. That made a THIRD
-  // thing you cannot
-  // design without writing JSON, and m4's claim is that there are exactly two. It is a
-  // Name, not free text: a layout's `focus` names it and a report quotes it. Called a NODE
+  // THE NODE ID. Without it every node the editor creates is `main`, `main-2`, `main-row`,
+  // and a person who wants a window named after what it shows has to edit the JSON — which
+  // makes it a third thing you cannot design in the tool. It is a Name, not free text: a layout's `focus` names it and a report quotes it. Called a NODE
   // id and not a window id because a row and a column carry one too, and because every other
   // tree operation in this menu says node ("Select the next node", "Delete this node").
   top.push_back(MenuItem::input("id", "Node id", name.clone()));
@@ -750,9 +747,9 @@ std::string LayoutEditor::selection_line() const {
   std::string s = "selected: " + str_of(n->id) + "  size " + split_size_to_string(n->size) + "  border " + std::string(border_name(n->border)) +
                   (n->visible ? "" : "  hidden") +
                   (n->is_window() ? "  " + str_of(n->content) : n->kind == Node::Kind::Row ? "  (row)" : "  (column)");
-  // A content this binary cannot resolve is said HERE as well as drawn as a placeholder,
-  // and the wording is about the TOOL: under Phase 26 a foreign kind is not a fault in the
-  // screen, it is a thing this preview cannot show.
+  // A content this binary cannot resolve is said HERE as well as drawn as a placeholder, and
+  // the wording is about the TOOL: a foreign kind is not a fault in the screen, it is a thing
+  // this preview cannot show.
   if (n->is_window())
     if (std::string why; !parse_content(ctx_, view_of(n->content), &why)) s += " \xE2\x80\x94 not previewable here: " + why;
   return s;

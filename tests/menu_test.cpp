@@ -846,7 +846,7 @@ int main() {
           "menus/main.json is the settings menu over the three preset domains");
     check(shipped_menu("no-such-menu").empty(), "an unshipped name is empty, never a wrong menu");
   }
-  // ---- m4: an item may NAME a bindings action --------------------------------------
+  // ---- an item may NAME a bindings action --------------------------------------------
   {
     MenuLoadReport rep;
     std::optional<MenuItem> root = menu_from_json(

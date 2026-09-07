@@ -268,7 +268,7 @@ struct Generated {
 };
 
 // splitmix64 — `RolltuiRng` IS this struct (rolltui_theme_gen.h defines `next()`/`unit()`
-// inline on it directly), the same one-definition move Phase 14 m2 made for Color/Style.
+// inline on it directly), the same one-definition rule Color and Style follow.
 using Rng = RolltuiRng;
 
 // Mirrors rolltui::generate() (ThemeGen.cpp): a thin shim over rolltui_theme_generate.

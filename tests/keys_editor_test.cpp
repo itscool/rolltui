@@ -178,7 +178,7 @@ int main() {
     rolltui_str_free(&dumped);
   }
 
-  // ---- Phase 11 m1: the tools' own tables ------------------------------------------
+  // ---- the tools' own tables --------------------------------------------------------
   // tool_actions.hpp is where the library's tools' keys live now that library_actions()
   // is the widget scopes only. Every row of it has to actually work when mounted, and
   // nothing in the shipped bindings file can say so any more — so it is said here: mount

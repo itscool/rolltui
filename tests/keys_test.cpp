@@ -115,9 +115,9 @@ int main() {
   table("\r", "Enter");
   // LF is Ctrl-J, not Enter. Terminal always runs raw — cfmakeraw clears
   // ICRNL and INLCR — so Enter is CR and the only thing that sends LF is ctrl+j. While
-  // both were Enter, `ctrl+j` was a chord that parsed, bound, saved, rendered in the
-  // help popup and never fired; the Phase 10 files-only fixture binds exactly that
-  // chord, so the defect was live and advertised in a golden frame.
+  // both are Enter, `ctrl+j` is a chord that parses, binds, saves, renders in the help popup
+  // and never fires — and a shipped fixture binds exactly that chord, so the defect is live
+  // and advertised in a golden frame.
   table("\n", "Ctrl+j");
   table("\t", "Tab");
   table("\x7f", "Backspace");
@@ -237,7 +237,7 @@ int main() {
     rolltui_key_decoder_free(d);
     check(p == "line1\nline2", "paste text is verbatim, newlines included");
   }
-  // ---- two the m2b table change needed, and neither existed before ---------------------
+  // ---- the two rows the shared key list needs a word for ------------------------------
   // `Char` and `Unknown` are in the shared key list with "" as their FILE spelling (a bindings
   // file has no word for either), and "space" is the one ALIAS that names a CHAR chord and so
   // carries a codepoint. The second check is a real control for that: spelling the alias

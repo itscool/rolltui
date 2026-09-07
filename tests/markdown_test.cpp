@@ -342,8 +342,7 @@ bool has_role(std::span<const RolltuiMdLine> v, Role r, const std::string& text)
 }
 
 // A two-language ("cpp", "python") toy highlighter — the seam's PROOF, not a shipped
-// highlighter (Markdown.hpp: "the library ships no highlighter"; a real one is
-// deliberately out of scope, the plan m2's "Deliberately NOT in this phase").
+// highlighter. The library ships none, deliberately.
 // Plugged in as `RolltuiMdRenderOptions::highlight` (a raw function pointer) with
 // `highlight_ctx` carrying the `int*` call counter — there is no closure to capture into
 // once the field is a C function pointer rather than a `std::function`. It emits byte-range
@@ -798,13 +797,13 @@ int main() {
     }
   }
   // ---- the diff colouriser ----------------
-  // It rides m2's seam rather than being a second mechanism — which is the cheapest rung
-  // and also the test of whether that seam was placed right. `diff_spans` is Diff.hpp's
+  // It rides the highlight seam rather than being a second mechanism, which is the cheapest
+  // rung and also the test of whether that seam was placed right. `diff_spans` is Diff.hpp's
   // own, untouched function; only its direct calls appear below (see the scope note at the
   // top of this file) — the ONE place it is plugged into the renderer's `highlight` field
   // is bridged by `diff_highlight_fn`, in the section after this one.
   {
-    // A single line, with no neighbours: the line level, unchanged from m5.
+    // A single line, with no neighbours: the line level.
     auto one = [](std::string_view lang, std::string_view line) {
       const std::vector<std::string_view> block{line};
       return diff_spans(lang, block, 0);
@@ -837,7 +836,7 @@ int main() {
     check(sp.size() == 1 && sp[0].begin == 0 && sp[0].end == 4, "the span covers the whole line, marker included");
     check(diff_spans("diff", std::vector<std::string_view>{}, 0).empty(), "an index past the block asks for nothing");
 
-    // ---- word level (m5b): the PAIRING rule, then the REFINEMENT rule --------------
+    // ---- word level: the PAIRING rule, then the REFINEMENT rule -------------------
     // Every case here is stated in Diff.hpp; the point of the table is that the rules
     // are asserted rather than tuned until a screenshot looked right.
     auto diff_spans_at = [](std::vector<std::string_view> block, std::size_t i) { return diff_spans("diff", block, i); };

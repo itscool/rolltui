@@ -11,7 +11,7 @@
 // a FAIL naming it (a stale explanation — e.g. macOS updated its table). Both are the
 // point: the list is only worth having if it cannot drift.
 //
-// Measured 2026-09-01 on macOS 26 (Darwin 25.6.0) libc under C.UTF-8:
+// Measured on macOS 26 (Darwin 25.6.0) libc under C.UTF-8:
 //   1,571 of the BMP's 63,488 non-surrogate code points disagree; all fall into the
 //   seven entries below; the remaining ~62,000 agree, including every CJK, Hangul
 //   syllable, kana, combining mark, emoji and control in the BMP.

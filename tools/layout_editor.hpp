@@ -54,10 +54,9 @@
 // five `app.*` actions, four popups pointing at roll's own composites, and `no-panel`'s
 // min sizes — none of which the author chose, and all of which the target app then reads.
 // NOTHING ELSE IS INHERITED, INCLUDING THE THRESHOLDS. A new layout takes the host's
-// `set_default_min` and nothing more; Phase 11 filled that from an app profile, and Phase 26
-// retired the profile, so a designer states the size their screen needs the way they state
-// everything else about it — by typing it. That is one field against a whole mechanism whose
-// only job was to answer it, and the screen is the place the answer belongs.
+// `set_default_min` and nothing more. A designer states the size their screen needs the way
+// they state everything else about it — by typing it — which is one field against a whole
+// mechanism whose only job would be to answer it, and the screen is where the answer belongs.
 //
 // CONTENT IS TWO FIELDS, AND EXACTLY ONE WRITES THE SOURCE. A window's
 // content is `kind[:source]`, so the editor shows the kind as a choice over the offered
@@ -164,9 +163,9 @@ class LayoutEditor {
   // beside the source field for the selected kind. A hint, not a menu: a source the
   // host has not bound is still typeable, and reports itself in the window.
   void set_sources(std::vector<std::string> contents);
-  // The kinds THIS BINARY can preview — the widget-kind field's hint, and
-  // nothing more than that. Until Phase 26 it was the field's closed option list and a name
-  // outside it was refused, which is a design tool deciding what an app may be asked for.
+  // The kinds THIS BINARY can preview — the widget-kind field's HINT, and nothing more. Making
+  // it the field's closed option list, with a name outside it refused, is a design tool
+  // deciding what an app may be asked for.
   void set_kinds(std::vector<std::string> names);
   void set_menus(std::vector<std::string> names);      // the menu names that RESOLVE, as that field's hint
   void set_layouts(std::vector<std::string> names);    // the Load choice's options
@@ -254,9 +253,8 @@ class LayoutEditor {
   void sync_values();
   void sync_content_fields();  // the kind/source/menu-file values, specs and enabled-ness
   void sync_hints();           // the kind and menu-file hints: what this binary can preview
-  // Writes kind[:source] into the selected window. By NAME, because a kind's name is the
-  // only thing that identifies it (Phase 18 m2 retired the enum whose `Registered` value used
-  // to say so for the host half). A name in neither rung writes nothing and is reported.
+  // Writes kind[:source] into the selected window. By NAME, because a kind's name is the only
+  // thing that identifies it. A name in neither rung writes nothing and is reported.
   bool set_content(const std::string& kind_name, const std::string& source);
   void begin_preview();
   void cancel_preview();

@@ -161,11 +161,9 @@ void rolltui_render_diff(const RolltuiFrame* prev, const RolltuiFrame* next, uns
        * two-cell glyph, back up so its lead cell is re-emitted too. Emitting only the tail
        * would leave the terminal with half a character.
        *
-       * NOT COVERED BY ANY TEST — found 2026-09-04 by a negative control that failed
-       * NOTHING with this line disabled (the harness was proved live the same run: gutting
-       * `emit_run` fails 4 suites). The gap is pre-existing and was equally uncovered while
-       * this was C++; the port did not create it, it revealed it. A test wants a frame whose
-       * changed cell is a wide glyph's continuation. */
+       * NOT COVERED BY ANY TEST: a negative control that disables this line fails NOTHING,
+       * with the harness proved live in the same run (gutting `emit_run` fails four suites).
+       * A test wants a frame whose changed cell is a wide glyph's continuation. */
       if (c.continuation && start > 0) --start;
       int end = x + 1;
       while (end < w && !same(prev, next, end, y)) ++end;

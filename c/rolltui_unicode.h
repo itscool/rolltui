@@ -19,7 +19,7 @@
  * the strongest position any milestone in this phase has been in.
  *
  * THE BOUNDARY'S RULES, all inherited and none new:
- *   1. **THE CALLER OWNS EVERY BUFFER** (m1), with the required size stated at each one. Every
+ *   1. **THE CALLER OWNS EVERY BUFFER**, with the required size stated at each one. Every
  *      output length here has a bound the caller can compute WITHOUT asking first — a decode
  *      yields at most one scalar per byte, a boundary array is n + 1, a strip only ever
  *      shrinks — so no function here needs a measure-then-fill round trip, and none allocates.
@@ -27,15 +27,13 @@
  *      the same rule the rest of this port already follows: a `RolltuiFrame` and a
  *      `RolltuiWrapLines` are handles the caller owns that carry the reusable buffers, and
  *      these functions were the odd ones out for having nowhere to keep theirs.
- *   2. **ONE DEFINITION** (m2): `RolltuiDecodedChar` and `RolltuiUnicodeGrapheme` are the C++
+ *   2. **ONE DEFINITION**: `RolltuiDecodedChar` and `RolltuiUnicodeGrapheme` are the C++
  *      `unicode::DecodedChar` and `unicode::Grapheme`, aliased rather than converted.
- *   3. **A CODE POINT IS `RolltuiCodepoint`** (m3): `char32_t` to C++, `unsigned int` to C,
+ *   3. **A CODE POINT IS `RolltuiCodepoint`**: `char32_t` to C++, `unsigned int` to C,
  *      asserted the same width, never cast at the seam.
  *
- * WHAT THE PORT DELETED, recorded because a removal is evidence too: `grapheme_boundaries_into`
- * and `line_break_opportunities_into` are gone from `Unicode.hpp`. They existed so that m3's
- * temporary seam could reach the algorithms without allocating; the caller-buffer functions
- * below ARE that, so the C++-only spelling of the same idea had no callers left.
+ * THERE IS NO SECOND SPELLING of "reach the algorithm without allocating": the caller-buffer
+ * functions below ARE that, so a C++-only `..._into` pair beside them would have no callers.
  */
 
 #include "rolltui/rolltui.h"
@@ -99,7 +97,7 @@ void rolltui_u_line_break_opportunities(RolltuiUnicodeScratch* s, const RolltuiC
  * decoding is total and a malformed byte is one scalar of length 1, so the count can never
  * exceed the byte count. Returns the number of scalars. Kept as parallel arrays rather than an
  * array of `RolltuiDecodedChar` because the wrap engine wants a contiguous code-point array
- * and building one out of an array of structs was a copy loop it no longer has (m3). */
+ * and building one out of an array of structs is a copy loop. */
 size_t rolltui_u_decode_utf8(const char* s, size_t len, RolltuiCodepoint* cp, size_t* offset, size_t* length);
 /* The same, into an array of structs, which is what a caller wanting `valid` needs. `out` must
  * hold at least `len` entries. Returns the number of scalars. */

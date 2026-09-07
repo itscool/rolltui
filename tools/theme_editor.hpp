@@ -42,12 +42,10 @@
 #include "undo_stack.hpp"
 #include "tool_actions.hpp"
 
-// THE VOCAB IS THE LIBRARY'S (`rolltui_theme_default_vocab`, rolltui_theme.h). This file
-// briefly forward-declared `rolltui::theme_vocab()` instead — reaching across into `Theme.cpp`,
-// which m2c deletes — and the comment here argued that being the SECOND consumer to do that was
-// better than writing a third table. Both halves were true and the conclusion was still wrong:
-// six consumers were building or reaching for one, and the vocab only existed because a C file
-// could not name a role. It can, since m2a.
+// THE VOCAB IS THE LIBRARY'S (`rolltui_theme_default_vocab`, rolltui_theme.h). Forward-
+// declaring some other consumer's accessor instead — on the argument that being the SECOND
+// consumer to reach for it beats writing a third table — is how six consumers end up building
+// or reaching for one. The library names the roles; nothing here needs to.
 
 namespace rolltui::tools {
 

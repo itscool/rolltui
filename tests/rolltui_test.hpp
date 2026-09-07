@@ -2,9 +2,8 @@
 //
 // rolltui_test.hpp — the whole test harness for the rolltui library. Deliberately the
 // same shape as roll's tests/test_util.hpp and deliberately not that file: the
-// library's tests include nothing of roll's, so that "rolltui builds and passes with
-// roll's include/ absent" (phase 9 Done-when (g)) is a property of the build, not a
-// promise.
+// library's tests include nothing of roll's, so that "rolltui builds and passes with roll's
+// include/ absent" is a property of the build rather than a promise.
 //
 #include <cstdio>
 #include <string>

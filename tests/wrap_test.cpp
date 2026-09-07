@@ -352,8 +352,7 @@ int main() {
   // allocates nothing, so the port had to carry it across intact. What needed proving is not
   // the ANSWER — that is the same engine the whole file above already tests — it is the
   // WINDOW: the lines belong to the callee, a second window reuses the same storage, and a
-  // borrow held past its window reads EMPTY rather than plausibly stale. It had no test of
-  // its own before m3, which is why it gets one now.
+  // borrow held past its window reads EMPTY rather than plausibly stale.
   //
   // `wrap_borrow` (rolltui/Wrap.hpp) is `Scratch<WrapLines>` (rolltui/Scratch.hpp) lending
   // ONE thread-local handle: wrapped into while "locked", reset back to empty when the

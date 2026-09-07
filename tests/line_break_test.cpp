@@ -1,7 +1,7 @@
 //
 // line_break_test.cpp — UAX #14 line breaking conformance: every case in
 // LineBreakTest.txt (Unicode 17.0.0, checked in under rolltui/ucd/; 19,338 cases
-// counted 2026-09-01), run in full against line_break_opportunities(). The suite
+// counted), run in full against line_break_opportunities(). The suite
 // marks ÷ (opportunity) and × (none); a mandatory break (LB4/LB5) also counts as ÷.
 // A failing case prints the suite's rule annotations next to our marks.
 //
