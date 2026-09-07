@@ -1,11 +1,11 @@
 //
-// studio.cpp — the rolltui studio (plan/phase-9.md, requirement 12): renders
+// studio.cpp — the rolltui studio : renders
 // a fixture transcript in a theme and a layout, so trying a layout or theme idea and
 // asserting it are the same command.
 //
 // WHAT A PERSON CAN DESIGN HERE WITHOUT WRITING JSON: a screen is FOUR
 // files and this tool authors all four — a theme (F4), a layout (F6), a bindings file (F7) and,
-// since Phase 27 m2, a menu (F8). Started with no arguments at all it comes up on the shipped
+// now, a menu (F8). Started with no arguments at all it comes up on the shipped
 // `default` screen with a placeholder in it, so building an app from nothing does not begin by
 // being handed a file. Every key the layout and menu loaders accept has a field; that is not a
 // claim in a comment but `rolltui-designable-test`, which reads the loaders' own source and
@@ -125,7 +125,7 @@
 // acts on the ids; a user may edit or shadow the file with no rebuild.
 //
 // KEYS ARE DATA (milestone 17): every key below is the default of an action — the app.*
-// ones from rolltui/presets/bindings/default.json, and since Phase 11 m1 the editor.* and
+// ones from rolltui/presets/bindings/default.json, and now the editor.* and
 // studio.* ones from the tools this binary MOUNTS (tools/tool_actions.hpp), because a
 // tool's keys are not every host's. The studio looks its own keys up in the
 // Bindings working copy (app.*, editor.*, studio.* scopes), hands the same table to
@@ -162,7 +162,7 @@
 // (instrumented from the first line — a slow frame is a number, not a feeling).
 //
 // ============================================================================================
-// PHASE 17 m3: THIS FILE CALLS THE C DIRECTLY, following `rolltui-paint`'s lead (the
+// THIS FILE CALLS THE C DIRECTLY, following `rolltui-paint`'s lead (the
 // library's first host to do so, m3's worked example). What changed from the C++-shim
 // version, in the same three shapes `paint.cpp`'s own header names:
 //
@@ -290,7 +290,7 @@ void collect_resolved(void* ctx, const RolltuiResolvedNode* rn) {
 
 // ---- the preset stores studio builds directly from the C API ----------------
 // `rolltui::PresetStore<Domain>` and `Presets.hpp`'s three domain traits are the C++ ADAPTER
-// this file no longer needs. The three domain descriptors are the LIBRARY's since Phase 18 m3
+// this file no longer needs. The three domain descriptors are the LIBRARY's now
 // (`rolltui_preset_domain`): this file had assembled them itself, identically to roll and to
 // three tests, and — unlike roll — never released their parsed cache.
 
@@ -299,7 +299,7 @@ struct ThemePresetReport : RolltuiThemePresetReport {
   ThemePresetReport() : RolltuiThemePresetReport{} {}
   ThemePresetReport(const ThemePresetReport&) = delete;
   ~ThemePresetReport() { rolltui_theme_preset_report_release(this); }
-  // Phase 17 m3: the JUDGEMENT is the library's — roll had written the identical six.
+  // the JUDGEMENT is the library's — roll had written the identical six.
   bool clean() const { return rolltui_theme_preset_report_clean(this) != 0; }
   std::string summary() const {
     RolltuiStr out{};
@@ -594,7 +594,7 @@ struct App {
   unsigned char detected_mode = ROLLTUI_MODE_DARK;  // OSC 11's answer (interactive), dark otherwise
   unsigned char depth = ROLLTUI_DEPTH_TRUECOLOR;
   bool ambiguous = false;
-  // Phase 12 m5b: this host's own thresholds for a long code block, overridable with
+  // this host's own thresholds for a long code block, overridable with
   // --code-fold so a golden can exercise the cap without a hundred-line fixture.
   int code_fold_over = 30, code_cap = 100;
   int w = 80, h = 24;  // the screen
@@ -795,7 +795,7 @@ struct App {
     rolltui_context_register_kind(ctx, "confirm", 7, confirm_factory, this, nullptr);
     rolltui_widget_kind_register(ctx, "report", 6, ROLLTUI_SOURCE_FORBIDDEN, "", 0);
     rolltui_context_register_kind(ctx, "report", 6, report_factory, this, nullptr);
-    // PHASE 26: A CONTENT THIS BINARY CANNOT BUILD PREVIEWS AS A LABELLED PLACEHOLDER, and
+    // A CONTENT THIS BINARY CANNOT BUILD PREVIEWS AS A LABELLED PLACEHOLDER, and
     // that is this tool's decision rather than the library's. roll and paint want the error
     // panel: a window naming a kind they never registered is their own bug. A DESIGN TOOL is
     // the one host for which it is not a bug at all — a screen for another app names that
@@ -1235,7 +1235,7 @@ struct App {
     lstore->list(pl);
     for (const RolltuiPresetInfo& p : pl) names.push_back(str_of(p.name));  // shipped first, then the user's
     leditor.set_layouts(names);
-    // PHASE 26: what this list is has changed, and the change is the milestone. It used to be
+    // what this list is has changed, and the change is the milestone. It used to be
     // the set of contents the author was ALLOWED to name — the target app's under `--app`, the
     // studio's own without one. It is now what this binary can PREVIEW, offered as a hint under
     // a field that accepts anything: a designer names what the screen needs, and a name this
@@ -1628,7 +1628,7 @@ struct App {
   // The tools this binary MOUNTS: the four editors, and its own three keys. A host that
   // mounted only the theme editor would list only that one.
   //
-  // AND THAT IS THE CONTROL for plan/phase-27.md m3, expressed in the library's own mounting
+  // AND THAT IS THE CONTROL for the plan m3, expressed in the library's own mounting
   // mechanism rather than as a test hack. `ROLLTUI_NO_MENU_EDITOR` makes this binary a
   // designer that did not mount a menu editor: `editor.menu` is not declared, so F8 resolves
   // to no action at all, the F2 menu shows the item with no shortcut, and `toggle_menu_editor`
@@ -1905,7 +1905,7 @@ struct App {
       const int sw = rolltui_u_display_width(u_scratch, status.data(), status.size(), ambiguous ? 1 : 0);
       if (hw + sw + 2 <= w) put_text(f, w - hw, h - 1, help, style(ROLLTUI_ROLE_TEXT_MUTED), hw);
     }
-    // Phase 12 m6: THE ONE PLACE this host applies an effect — after the whole screen has
+    // THE ONE PLACE this host applies an effect — after the whole screen has
     // composed, so a marked span under a modal's overlay animates over what the reader
     // actually sees, and before the frame diff.
     RolltuiEffectReport rep{};

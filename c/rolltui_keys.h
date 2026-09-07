@@ -13,7 +13,7 @@
  * `rolltui/tests/deliverability_test.cpp`; none of it is repeated here, because the rules
  * are the same in both languages and a second copy is a second thing to drift.
  *
- * THE BOUNDARY'S RULES, all inherited from Phase 14 and none new:
+ * THE BOUNDARY'S RULES:
  *   1. **THE CALLER OWNS EVERY BUFFER.** `rolltui_key_encode` fills one the caller sized
  *      from ROLLTUI_KEY_ENCODE_MAX; the decoder's own pending bytes are its handle's.
  *   2. **NOTHING IS RETURNED BY VALUE** from an `extern "C"` function.
@@ -23,7 +23,7 @@
  *
  * ---- WHY A CHORD IS NOT A `KeyEvent`, AND WHY THAT IS NOT A SECOND DEFINITION ---------------
  *
- * Phase 14 m2's rule is one definition for a struct that crosses. `RolltuiMouseEvent`
+ * the rule is one definition for a struct that crosses. `RolltuiMouseEvent`
  * below obeys it outright: `rolltui::MouseEvent` IS this struct, methods and all.
  * `RolltuiChord` deliberately does not, and the reason is the finding rather than an
  * exception to it.
@@ -83,11 +83,10 @@ const char* rolltui_key_protocol_name(unsigned char p, size_t* len);
 void rolltui_key_set_active_protocol(unsigned char p);
 /* The verdict: `p` has bytes for this chord and they decode back to exactly it. */
 int rolltui_key_deliverable(const RolltuiChord* k, unsigned char p);
-/* WHY NOT, as a CODE — and, since Phase 17 m2a, as WORDS too. This comment used to read "the
- * four messages are English and belong where the words already are (`Keys.cpp`), so the C
- * classifies and never carries a sentence." The split was right; the destination was not, and
- * it cost the usual: `deliverability_test.cpp:110`, `bindings_test.cpp:180` and
- * `menu_test.cpp:273` had each hand-copied the sentences, because `Keys.cpp` is where they
+/* WHY NOT, as a CODE and as WORDS. The library owns both: the classification AND the sentence
+ * that explains it. Splitting them — classifying here and keeping the English elsewhere — makes
+ * every caller that wants to explain a refusal hand-copy the wording, and three test files did
+ * exactly that before the sentences moved here. The words live where they
  * were and a test asserting on one has to say it. With `Keys.cpp` deleted in m2c they would
  * have had no original at all — three copies and no source. */
 #define ROLLTUI_UNDELIVERABLE_NONE 0     /* it is deliverable */

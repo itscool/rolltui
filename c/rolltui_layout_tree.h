@@ -314,7 +314,7 @@ void rolltui_node_list_remove(RolltuiNodeList* l, size_t i);
  * implementation and a destructor reaches it rather than being a second mechanism.
  *
  * They were out-of-line in `rolltui/LayoutTree.cpp` until the C++ binding was deleted. They are not
- * part of that binding — they are what makes "the C++ type IS the C struct" true (Phase 14's
+ * part of that binding — they are what makes "the C++ type IS the C struct" true (the
  * one-definition rule), so they had to keep a home; `inline`, beside the declarations they
  * implement, is that home and removes the last C++ translation unit from the library. */
 inline RolltuiNodeList::~RolltuiNodeList() { rolltui_node_list_release(this); }

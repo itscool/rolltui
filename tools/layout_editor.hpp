@@ -1,6 +1,6 @@
 #pragma once
 //
-// rolltui/tools/layout_editor.hpp — the layout editor (plan/phase-9.md, milestone 16,
+// rolltui/tools/layout_editor.hpp — the layout editor (the plan, milestone 16,
 // formerly 11d): the sibling of the theme editor, the same shape — a MODEL with no
 // terminal in it, a rolltui::Menu over the SELECTED NODE of the split tree, the same
 // recovery model (live preview; Enter commits, Escape cancels the focused change;
@@ -151,7 +151,7 @@ class LayoutEditor {
     bool operator==(const Outcome&) const = default;
   };
 
-  // Phase 25: the kind registry belongs to a CONTEXT, and this editor types a source field by
+  // the kind registry belongs to a CONTEXT, and this editor types a source field by
   // asking it what a kind's shape is — so it holds the session it was opened for. BORROWED: the
   // studio owns it and outlives every editor.
   explicit LayoutEditor(RolltuiContext* ctx);
@@ -217,7 +217,7 @@ class LayoutEditor {
   static Node* parent_of(Node& root, std::string_view id, std::size_t* index = nullptr);
   static std::vector<std::string> ids_in_order(const Node& root);  // every node id, tree order
   // EVERY node the editor can select: the base tree, then each popup's tree. A popup's root IS
-  // a node — it has an id, a content, a border, a title, a background — and until Phase 27 m4
+  // a node — it has an id, a content, a border, a title, a background — and previously
   // it was the one node nothing could reach, so a popup drew `text:<its own id>` for ever.
   // Rejected: repeating the per-node fields inside the Popups submenu — `rolltui.h` rule 5, if
   // two consumers write the same wrapper the API is wrong, not the consumers.
@@ -230,7 +230,7 @@ class LayoutEditor {
   // The selected window's content split at the first ':' — WITHOUT requiring it to parse, so
   // a content typed by hand into a file can be shown and repaired here.
   //
-  // PHASE 26: `content` is no longer optional and `known` is the separate answer. It went
+  // `content` is no longer optional and `known` is the separate answer. It went
   // empty for a kind neither rung of the registry had, and every field that read it then went
   // inert — the tool refusing to hold a screen it could not preview. `known` says whether THIS
   // binary can build the kind, which is all this tool ever knew; whether the app being designed

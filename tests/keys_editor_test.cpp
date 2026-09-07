@@ -6,7 +6,7 @@
 // commits, the host-facing outcomes, and the edited table round-tripping through the
 // file format.
 //
-// Phase 17 m1d: drives the editor through `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
+// drives the editor through `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
 #include <optional>
 #include <string>

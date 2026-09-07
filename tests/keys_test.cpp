@@ -22,7 +22,7 @@ namespace {
 
 // event_to_string mirrors rolltui::to_string(Event) (rolltui/Keys.cpp) one level down,
 // directly over RolltuiEvent. The COMPOSITION (modifier prefixes, the mouse form) is still
-// this file's; the KEY NAMES are the library's since Phase 17 m2b.
+// this file's; the KEY NAMES are the library's now.
 std::string event_to_string(const RolltuiEvent& e) {
   // THE LIBRARY'S TitleCase names, not a hand-copy of them. There were three
   // copies of this 28-entry table and no source: the lowercase half was already in C, the

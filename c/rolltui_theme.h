@@ -11,7 +11,7 @@
  * answer. Every rule is stated in `rolltui/Theme.hpp` and asserted against published
  * reference values in `rolltui/tests/theme_test.cpp`; none of it is repeated here.
  *
- * THE BOUNDARY'S RULES, all inherited from Phase 14 and none new:
+ * THE BOUNDARY'S RULES:
  *   1. **THE CALLER OWNS EVERY BUFFER**, and every result here has a bound known WITHOUT
  *      asking — a colour prints in at most seven bytes, an SGR sequence in at most
  *      thirty-one — so there is no measure-then-fill round trip anywhere on this file.

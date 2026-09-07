@@ -56,7 +56,7 @@ std::string read_file(const std::string& path) {
   return ss.str();
 }
 
-// Every source the library is BUILT from, which since Phase 17 m3 means `c/*.h` and `c/*.c`:
+// Every source the library is BUILT from, which now means `c/*.h` and `c/*.c`:
 // the C++ binding it used to also mean was deleted with that milestone, and an enumerator
 // still filtering on `.hpp`/`.cpp` matched NOTHING — this suite reported "scanned 0 files" and
 // four passing checks about an empty set. A control whose subject is deleted does not fail
@@ -73,7 +73,7 @@ std::vector<std::string> library_sources(bool headers_only) {
     if (rel.rfind("tests/", 0) == 0 || rel.rfind("third_party/", 0) == 0 || rel.rfind("ucd/", 0) == 0 ||
         rel.rfind("presets/", 0) == 0)
       continue;
-    // The generated tables are a .h/.c pair since Phase 14 m5, so the extension filter
+    // The generated tables are a .h/.c pair now, so the extension filter
     // below already skips them; the name check stays as the statement of intent.
     if (rel == "unicode_tables.h" || rel == "unicode_tables.c") continue;  // generated
     const std::string ext = e.path().extension().string();
@@ -208,7 +208,7 @@ int main() {
   // never an invention, and that in C the rule can be TOTAL because every allocation is an
   // explicit call. We had the entry point (`rolltui_mem_*`) and not the set, and by the end
   // of m3 the two ported C files had invented the same growing buffer EIGHT times with two
-  // different policies — Phase 13's finding reproduced exactly, one language over.
+  // different policies — the finding reproduced exactly, one language over.
   //
   // `rolltui_mem_realloc` is how growth is spelled, so the rule is one line: only
   // `rolltui_alloc.c` may call it. `alloc` and `free` stay available everywhere, because a
@@ -339,7 +339,7 @@ int main() {
     int total = 0, checked = 0;
     std::vector<std::string> unlisted;
     for (const std::string& rel : library_sources(/*headers_only=*/true)) {
-      // The public headers are `c/*.h` plus the umbrella since Phase 17 m3; `tools/` headers
+      // The public headers are `c/*.h` plus the umbrella now; `tools/` headers
       // are a HOST's and stay out. This used to read "no slash at all", which was the same set
       // back when the public headers were `rolltui/*.hpp` — and silently became the empty set
       // the moment they moved one directory down.
@@ -391,7 +391,7 @@ int main() {
     // for itself; the total is unchanged at 194, which is the check that nothing was invented
     // or lost in the move. Every one of the 171 is a BORROW or an OWNED member whose lifetime
     // the struct's own comment states, exactly as it did in the header it came from.
-    // 194 -> 193 in Phase 19 m3: the one that went was the `const size_t** out` of
+    // 194 -> 193 : the one that went was the `const size_t** out` of
     // `rolltui_menu_flat_path`, a DELETE row (reached by nothing) whose declaration left
     // `c/rolltui_menu.h` with the function; the fifteen headers left with nothing (every row a 0)
     // left the table with them.
@@ -569,7 +569,7 @@ int main() {
     check(claude.find("OWNED") != std::string::npos && claude.find("BORROWED") != std::string::npos &&
               claude.find("shared_ptr") != std::string::npos,
           "CLAUDE.md carries the ownership rule, where every session reads it");
-    // `rolltui/Widgets.hpp` until Phase 17 m3; the type that does the owning is
+    // `rolltui/Widgets.hpp` previously; the type that does the owning is
     // `RolltuiWindows` in `c/rolltui_widgets.h` now, and the rule went with it. Repointed
     // rather than dropped: this check exists because a convention nobody meets is not one, and
     // that is as true of the C header as it was of the C++ one.

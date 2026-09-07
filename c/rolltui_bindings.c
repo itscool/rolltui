@@ -923,7 +923,7 @@ void rolltui_bindings_declare(RolltuiBindings* b, const RolltuiLayoutAction* dec
 }
 
 /* THE SHIPPED DEFAULT TABLE — see the header for the two aborts and why they are aborts.
- * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S since Phase 25 m2: it is BORROWED
+ * OWNED, LONG-LIVED (CLAUDE.md strategy 4), and A SESSION'S now: it is BORROWED
  * by every caller, so `rolltui_context_free` releasing it is what bounds the borrow. The
  * shutdown hook it used to register went with the global. */
 

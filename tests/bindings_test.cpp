@@ -11,11 +11,11 @@
 // too — one declare() takes the layout's actions and the mounted tool's, a tool's
 // suggested chord fills a gap and never overrides, and a file naming an
 // unmounted tool's action still loads clean and keeps its row.
-// Phase 12 m3: a chord this terminal cannot deliver is refused BY NAME and its row kept
+// a chord this terminal cannot deliver is refused BY NAME and its row kept
 // anyway — the loader's half of it; the deliverability model itself is measured against
 // the encodings in deliverability_test.
 //
-// PHASE 17 m2: converted off the C++ shim (`rolltui/Bindings.hpp`/`Bindings.cpp`), which
+// converted off the C++ shim (`rolltui/Bindings.hpp`/`Bindings.cpp`), which
 // is being deleted — this file now calls `rolltui/c/rolltui_bindings.h` (and friends)
 // directly, reached only through the umbrella `rolltui/rolltui.h`. The shim's own
 // composition logic (the action vocabulary, `declare()`/`suggest()`, the shipped-default
@@ -715,7 +715,7 @@ int main() {
 
     // The shipped file, against the WEAKEST protocol — the same check default_bindings()
     // aborts on, asserted here so the failure has a name and not only an exit status
-    // (Phase 11 m1's tool-row abort, same shape).
+    // (the tool-row abort, same shape).
     BindingsLoadReport srep;
     RolltuiBindings* shipped = bindings_from_json(default_bindings_json(), srep, ROLLTUI_PROTOCOL_LEGACY);
     std::string named;

@@ -17,9 +17,9 @@
  * **md4c is already C.** The C++ side of this module was a wrapper around a C parser: every
  * callback took `void* ud`, cast it, and moved bytes out of `MD_ATTRIBUTE` into
  * `std::string`s. The C implementation is not wrapping anything — it is the same callbacks
- * writing into its own arrays. `plan/phase-15.md` m4 records what the ratio came out at.
+ * writing into its own arrays. the plan m4 records what the ratio came out at.
  *
- * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------------
+ * ---- THE BOUNDARY'S RULES -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER.** The parsed document is a handle the caller makes,
  *      reuses and frees; so is the store a render fills. Neither is returned by value and

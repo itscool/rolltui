@@ -47,7 +47,7 @@
  * — stays entirely on the other side, and the store gains a property the template did not
  * have, that it never sees a parsed tree it has no use for.
  *
- * THE BOUNDARY'S RULES, all inherited from Phase 14 and none new:
+ * THE BOUNDARY'S RULES:
  *   1. **THE CALLER OWNS EVERY BUFFER**, including every VALUE this file hands back: a
  *      `void*` out of here is a clone the caller destroys with `domain->destroy`, which is
  *      exactly what `PresetStore::working()` returning by value already meant.

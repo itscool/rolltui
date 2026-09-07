@@ -1,6 +1,6 @@
 #pragma once
 //
-// rolltui/tools/keys_editor.hpp — the keys editor (plan/phase-9.md, milestone 17): the
+// rolltui/tools/keys_editor.hpp — the keys editor : the
 // third editor, the same shape as the other two — a MODEL over a rolltui menu with the
 // shared UndoStack, no terminal in it. The tree is scope › action › {add a chord, one
 // "remove <chord>" per chord, clear}; "add a chord" puts the editor in CAPTURE: the next
@@ -10,7 +10,7 @@
 // (there is no half-typed state to preview). Load / Save as / Write shipped / Reset are
 // the host's, as in the theme editor.
 //
-// Phase 17 m1d: calls `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
+// calls `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
 #include "rolltui/rolltui.h"
 

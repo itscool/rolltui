@@ -53,8 +53,8 @@
 // never the open menu with its items stripped out. A menu carries action names, and an
 // inherited tree would hand the author another app's `studio.reload` under a new file name.
 //
-// WHAT THIS EDITOR DOES NOT KNOW, and does not pretend to (Phase 26's framing, and the two
-// permanent exceptions of plan/phase-27.md m4): an item's `action` is a name in the APP's
+// WHAT THIS EDITOR DOES NOT KNOW, and does not pretend to (the framing, and the two
+// permanent exceptions of the plan m4): an item's `action` is a name in the APP's
 // bindings table, and this tool cannot verify it — the action belongs to the app. It is
 // typed, written, and the app reports at start-up what nothing reaches. A designer names
 // what the screen needs; the code catches up.

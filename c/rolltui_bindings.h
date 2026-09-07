@@ -4,15 +4,14 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_bindings.h — CHORDS AND THE BINDING TABLE, as C (Phase 15 m3; the file
- * format joins them at Phase 17 m1, once `rolltui_json.h` existed to build it on).
+ * rolltui/c/rolltui_bindings.h — chords, the binding table, and the file format that fills it.
  *
  * A chord's spelling ("ctrl+shift+left") and its help form ("Ctrl-Shift-Left"), the table an
  * action's keys live in and every edit to it, and — since m1 — the file format that reads and
  * writes a whole table at once. Every rule is stated in `rolltui/Bindings.hpp` and asserted in
  * `rolltui/tests/bindings_test.cpp`; none of it is repeated here.
  *
- * THE BOUNDARY'S RULES, all inherited from Phase 14 and none new:
+ * THE BOUNDARY'S RULES:
  *   1. **THE CALLER OWNS EVERY BUFFER.** Every string OUT of this file is either written
  *      into a caller buffer whose bound is a constant here, or a BORROW valid until the
  *      table next changes.
@@ -138,9 +137,8 @@ size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action
 
 /* The HELP spelling: every chord bound to `action` that THIS TERMINAL can deliver, in display
  * form ("Ctrl-W, Alt-Backspace"), comma-separated. CLEARS `out`. The undeliverable filter is
- * what makes this the library's and not a loop a caller writes — it had three independent
- * implementations before Phase 17 m2a, the third written by an agent that could reach neither
- * of the other two. */
+ * what makes this the library's and not a loop a caller writes: filtering by deliverability is
+ * easy to get subtly wrong and easy to forget entirely. */
 void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out);
 
 /* Chord `i` of the row, into `out`. 0 when there is none. */
@@ -157,9 +155,8 @@ const char* rolltui_bindings_scope_of(const char* action, size_t len, size_t* ou
 int rolltui_bindings_report_clean(const RolltuiBindingsReport* r);
 
 /* `RolltuiReasonFn`-shaped, over `rolltui_key_undeliverable_reason`/`_text` (rolltui_keys.h) —
- * the same story one function over: the reason text has been C since Phase 15, and the only
- * thing keeping a host from passing it to the domain init was that nobody had written it in
- * this shape. Truncates at `cap`, like every other bounded writer here. */
+ * the reason text in the shape a preset domain's init takes. Truncates at `cap`, like every
+ * other bounded writer here. */
 size_t rolltui_undeliverable_reason_fn(void* ctx, const RolltuiChord* k, unsigned char protocol, char* out,
                                        size_t cap);
 

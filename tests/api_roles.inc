@@ -35,7 +35,7 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  *   WIDGET        what implementing a `RolltuiWidgetPlugin` slot needs. PART 3.
  *
  * AND THE POINT OF DOING IT AT ALL: **a function that fits NO role is a candidate for internal.**
- * That is Phase 20's instrument aimed at a better question. Phase 22 found ZERO — every public
+ * That is the instrument aimed at a better question. Phase 22 found ZERO — every public
  * function is describable by a reader — which is not a null result: it says the three cuts that
  * took the surface 624 -> 346 had already removed everything no reader could be named for, and
  * this table is what keeps that true for the next function somebody adds.

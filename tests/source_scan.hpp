@@ -76,7 +76,7 @@ std::string strip_all_comments(const std::string& src) {
   return out;
 }
 
-// PHASE 20 m1: for REACH, a string literal's CONTENTS are blanked as well. An identifier inside
+// for REACH, a string literal's CONTENTS are blanked as well. An identifier inside
 // a literal is DATA, never a call — `ownership_test.cpp` names `rolltui_mem_realloc` inside a
 // regex and `budget_test.cpp` names it in prose, and the first run of the public-only rule below
 // reported both as consumers of an internal function. Comments already went; literals had to go

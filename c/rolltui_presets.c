@@ -309,7 +309,7 @@ static void build_cache(RolltuiPresetDomain* d) {
   int have_default = 0;
   /* OWNED, short-lived: the report every shipped preset is parsed into and nobody reads —
    * a shipped preset loads cleanly or the process aborts below. Made by the domain, which
-   * is the one thing that can name its type; until Phase 18 m3 every caller supplied one. */
+   * is the one thing that can name its type; previously every caller supplied one. */
   void* scratch = d->report->create();
   RolltuiPresetShippedCache* c =
       (RolltuiPresetShippedCache*)rolltui_mem_alloc(sizeof(RolltuiPresetShippedCache));
@@ -1183,7 +1183,7 @@ static const RolltuiPresetReportFns kThemePresetReportFns = {
     theme_preset_report_destroy,
 };
 
-/* The vocab and the two validators live ON THE DESCRIPTOR since Phase 25 m2 — see the note at
+/* The vocab and the two validators live ON THE DESCRIPTOR now — see the note at
  * `RolltuiPresetDomain`'s configuration block for the two defects the statics carried. */
 
 static size_t theme_domain_shipped_count(void) { return rolltui_kThemePresetCount; }

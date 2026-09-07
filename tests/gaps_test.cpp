@@ -30,7 +30,7 @@ namespace {
 
 RolltuiContext* ctx() { return rolltui_test::test_context(); }
 
-// A layout is an OPAQUE handle since Phase 23: the loader hands one back OWNED and this frees
+// A layout is an OPAQUE handle now: the loader hands one back OWNED and this frees
 // it. `Screen` is the smallest thing that can hold one and not leak when an assertion returns
 // early — a test that leaks its fixture would make `lifetime_test`'s zero a lie about this suite.
 struct Screen {

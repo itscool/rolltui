@@ -236,7 +236,7 @@ void LayoutEditor::set_sources(std::vector<std::string> contents) {
   sync_content_fields();
 }
 
-// PHASE 26: these two lists became HINTS under a field that accepts anything, and that is the
+// these two lists became HINTS under a field that accepts anything, and that is the
 // milestone rather than a detail of it. Both were closed CHOICES: a kind or a menu file this
 // binary could resolve, or nothing. That made the tool the authority on what an app may be
 // asked for — a designer working on a screen for another app could not name that app's canvas
@@ -382,7 +382,7 @@ void LayoutEditor::rebuild_menu() {
     fields.push_back(MenuItem::input((base + ".w").c_str(), "w", dim.clone(), dim_to_string(p.placement.w).c_str()));
     fields.push_back(MenuItem::input((base + ".h").c_str(), "h", dim.clone(), dim_to_string(p.placement.h).c_str()));
     fields.push_back(choice_of((base + ".anchor").c_str(), "anchor", clone_items(anchors), std::string(anchor_name(p.placement.anchor)).c_str()));
-    // THE FOUR OPTIONAL BOUNDS AND THE CLAMP, added at Phase 27 m4. The shipped `default`
+    // THE FOUR OPTIONAL BOUNDS AND THE CLAMP, added . The shipped `default`
     // layout gives every popup a `min_w` and a `max_w` and the editor could not set either, so
     // a popup authored here spread to whatever `w` said on a 200-column terminal. They are
     // OPTIONAL dims: empty is a real answer and means unbounded, which is why the field is
@@ -408,7 +408,7 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
   top.push_back(MenuItem::toggle("visible", "Visible", true));
   top.push_back(choice_of("border", "Border", std::move(borders), "single"));
-  // THE BACKGROUND ROLE, added at Phase 27 m4. A node has carried one since the layout format
+  // THE BACKGROUND ROLE, added . A node has carried one since the layout format
   // did, the shipped screens use it (a banner, every popup), and the editor could not set it —
   // so a person who wanted one edited the JSON. A CHOICE over the role table read from the
   // library, never a copy of it: whoever owns a vocabulary owns exactly one spelling of it.
@@ -419,7 +419,7 @@ void LayoutEditor::rebuild_menu() {
     if (nm && rn) grounds.push_back(MenuItem::action(std::string(nm, rn).c_str(), std::string(nm, rn).c_str()));
   }
   top.push_back(choice_of("background", "Background role", std::move(grounds), "default_background"));
-  // THE WINDOW ID, added at Phase 27 m3 because building an app from nothing found it
+  // THE WINDOW ID, added because building an app from nothing found it
   // missing: every node the editor created was `main`, `main-2`, `main-row`, and a person
   // who wanted a window named after what it shows had to edit the JSON. That made a THIRD
   // thing you cannot
@@ -460,7 +460,7 @@ LayoutEditor::ContentParts LayoutEditor::parts_of(const Node* n) const {
   p.window = true;
   p.kind_text = content.substr(0, colon);
   if (colon != std::string_view::npos) p.source = content.substr(colon + 1);
-  // PHASE 26: the split is unconditional and `known` is a separate answer. It used to be a
+  // the split is unconditional and `known` is a separate answer. It used to be a
   // `std::optional<Content>` that went empty for a kind neither rung of the registry had,
   // which made every field below inert — the tool refusing to hold a screen it could not
   // build. A screen is the intent; whether THIS binary can preview it is a different
@@ -492,7 +492,7 @@ std::string LayoutEditor::carried_source(std::string_view kind_name) const {
 // A kind NAME and a source in, `kind[:source]` out — through content_to_string, so the
 // one rule about which kinds carry a colon lives in one place, not here as well.
 //
-// PHASE 26: A NAME IN NEITHER RUNG IS WRITTEN, AND SAID. Until now this refused it outright
+// A NAME IN NEITHER RUNG IS WRITTEN, AND SAID. Until now this refused it outright
 // ("'canvas' is not a widget kind this app can build") — the design tool deciding what the
 // app is allowed to be asked for, which is the exact direction this phase reverses. What a
 // screen names is the DEVELOPER's to answer; all this tool knows is whether it can draw a
@@ -576,7 +576,7 @@ void LayoutEditor::sync_values() {
   sync_content_fields();
   if (MenuItem* root = find(menu_, "root")) {
     // WHICH TREE THE SELECTION IS IN, said rather than inferred. Popup nodes became selectable
-    // at Phase 27 m4 and there are now two trees behind one id; a header that named only the
+    // and there are now two trees behind one id; a header that named only the
     // node would make `find` in the base layer and `find` inside the find popup
     // indistinguishable, which is the ambiguity this project's corollary exists to refuse.
     const Layer* in = popup_of(sel_);

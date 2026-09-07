@@ -4,7 +4,7 @@
 // the degenerate-size rule (0 or 1 cells in either dimension draws nothing outside
 // the area and never crashes).
 //
-// PHASE 17 m2: converted off the C++ shim (`rolltui/Menu.hpp`/`Menu.cpp`, and the
+// converted off the C++ shim (`rolltui/Menu.hpp`/`Menu.cpp`, and the
 // `rolltui/Bindings.hpp`/`Bindings.cpp` it in turn depended on for `default_bindings()`),
 // both being deleted — this file now calls `rolltui/c/rolltui_menu.h`,
 // `rolltui/c/rolltui_menu_tree.h` and `rolltui/c/rolltui_bindings.h` directly, reached
@@ -450,7 +450,7 @@ void fill_shortcuts(MenuItem& it, const RolltuiBindings* b) {
 
 class Menu {
  public:
-  // PHASE 17: the menu owns its editor, AND SHAPES IT. This holder used to create the editor
+  // the menu owns its editor, AND SHAPES IT. This holder used to create the editor
   // and hand it in, then set single_line/no-prompt on it — the second of the two identical
   // wrappers each time, which is what moved both jobs into the library.
   Menu() : m_(rolltui_menu_new()), editor_(rolltui_menu_editor(m_)) {
@@ -965,7 +965,7 @@ int main() {
         {9, "abcd", "abc", false, "", "text: max_len 3 refuses the fourth; commit refused — no validator 'even' registered"},
         {9, "a", "a", false, "", "text: min_len 2 refuses the commit"},
         {10, "", "", true, "", "optional int: empty commits as empty"},
-        // Text honours `optional` like every other type. It did not until Phase 10 m5,
+        // Text honours `optional` like every other type. It did not previously,
         // where a `file:` source is a Text field that must not commit empty; min_len is
         // a LENGTH rule and was never the emptiness rule.
         {12, "", "", false, "", "text: empty is refused when the spec is not optional and there is no min_len"},

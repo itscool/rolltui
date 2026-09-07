@@ -7,7 +7,7 @@
 // the cell-wrap layout (full rows, a wide glyph at the edge, tabs, newlines), the
 // caret's scroll, hit-testing, and what a frame shows.
 //
-// PHASE 17 m2c: calls the C API (rolltui/rolltui.h) directly rather than through ANY C++
+// calls the C API (rolltui/rolltui.h) directly rather than through ANY C++
 // binding header. An earlier pass here argued Screen.hpp/Theme.hpp/Unicode.hpp/Bindings.hpp
 // were "not part of that layer" because Frame/Theme/RolltuiRect/Role/unicode:: are either
 // one-definition aliases of C structs already or permanent C++-only vocabulary — true of each
@@ -274,7 +274,7 @@ std::vector<std::string> undo_trace(RolltuiInput* in) {
   return trace;
 }
 
-// PHASE 15 m5: the history is `history_count()` + `history_at(i)` — nothing on the C side
+// the history is `history_count()` + `history_at(i)` — nothing on the C side
 // can hand back a `std::vector<std::string>` without building one per call (the same reason
 // `Frame`'s marks are). This test wants the whole list to compare, so it builds one HERE,
 // where the copy is the test's own and visible.
@@ -792,7 +792,7 @@ void test_frame() {
         "a one-row window after a full row shows the caret's (empty) row — the host grows the window instead");
 }
 
-// Phase 12 m1: undo/redo. The grouping rule, stated in rolltui_input.h, as a table driven
+// undo/redo. The grouping rule, stated in rolltui_input.h, as a table driven
 // through the widget: each row performs a sequence of edits on a fresh input, then walks
 // undo() to the bottom recording the text after every step. The sequence of texts is a
 // direct read of where the widget drew a group boundary.

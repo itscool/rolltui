@@ -1614,7 +1614,7 @@ RolltuiTranscript* rolltui_transcript_new(void) {
    * `transcript_test.cpp`'s handle wrote the IDENTICAL six-line table, which is rule 5's tell
    * that the API was wrong rather than the consumers. The role vocabulary is this library's
    * own C enum now (`rolltui.h`), so a transcript names its own defaults; the setter that let
-   * a caller choose different ones was reached by nothing and went in Phase 19 m3. */
+   * a caller choose different ones was reached by nothing and is gone. */
   t->roles_.background = ROLLTUI_ROLE_BACKGROUND;
   t->roles_.selection = ROLLTUI_ROLE_SELECTION;
   t->roles_.find_match = ROLLTUI_ROLE_FIND_MATCH;

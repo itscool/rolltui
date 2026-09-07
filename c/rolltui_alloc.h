@@ -15,7 +15,7 @@
  * `cap = cap ? cap * 2 : 4` at five more sites; `rolltui_wrap.c` had one `reserve()` helper
  * that doubled from 16 and hand-wrote two more paired-growth blocks beside it. Nobody was
  * careless — each site was written by someone with no reason to look at the others, which is
- * Phase 13's finding verbatim ("seven independently invented ad-hoc allocations, each needing
+ * the finding verbatim ("seven independently invented ad-hoc allocations, each needing
  * its own discovery"). The entry point made every allocation VISIBLE; only a closed set makes
  * it a DECISION.
  *

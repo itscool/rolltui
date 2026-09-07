@@ -1,5 +1,5 @@
 //
-// paint_art_test.cpp — what `rolltui-paint` can and cannot do (plan/phase-21.md, m2's paint half).
+// paint_art_test.cpp — what `rolltui-paint` can and cannot do .
 //
 // PAINT IS THE ADVERSARIAL PROBE, and this suite is written to that: a canvas of arbitrary
 // coloured cells uses no theme role, marks no state and fits none of the library's document /

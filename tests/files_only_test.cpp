@@ -1,5 +1,5 @@
 //
-// files_only_test.cpp — THE PHASE 10 PROOF (plan/phase-10.md, milestone 6): a screen
+// files_only_test.cpp — THE PHASE 10 PROOF : a screen
 // that exists only as files runs in a host that has never heard of it.
 //
 // Everything the screen is lives in rolltui/tests/fixtures/screen/, which this test
@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
       // number of pages does not always fall inside it. Six pages (offset 36) plus FOUR
       // lines (40) puts "app:" on the fourth visible row. **Any milestone that grows
       // `library_actions()` moves the app scope further down this table and this number
-      // must be recomputed** (plan/phase-12.md's ordering note). It has now happened
+      // must be recomputed** . It has now happened
       // twice, both times exactly as that note predicted: m1 added two `input` rows and
       // turned a bare `PageDown ×6` — which had landed on the window by luck — into a
       // case that scrolled past it and returned -1; m4 added two `transcript` rows, which
@@ -210,7 +210,7 @@ int main(int argc, char** argv) {
       {"files-only.100x14.silent", "--frame 100x14 --layout kettle-silent --bindings kettle"},
       // THE STANDING RULE: every view shrinks to 1 or 0 cells in
       // either dimension and stays graceful — with the menu driven.
-      // Phase 12 m7: the four capabilities, on the same screen and from the same files.
+      // the four capabilities, on the same screen and from the same files.
       // `--tick 240` fixes the effect clock so the marked span records deterministically;
       // Tab Tab reaches the transcript from the menu the layout focuses, and Home puts
       // the marked entry and the diff block in view together.
@@ -480,7 +480,7 @@ int main(int argc, char** argv) {
           rel.rfind("presets/", 0) == 0)
         continue;
       const std::string ext = e.path().extension().string();
-      // `.c` IS SCANNED. It was not until Phase 27 m3, and after the Phase 15 port that left
+      // `.c` IS SCANNED. It was not previously, and after the Phase 15 port that left
       // the control looking at the C++ shell rather than at most of the library.
       if (ext != ".c" && ext != ".cpp" && ext != ".hpp" && ext != ".h") continue;
       scanned.push_back(rel);

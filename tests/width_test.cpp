@@ -2,7 +2,7 @@
 // width_test.cpp — the display-width functions: a hand table of code points and
 // clusters whose width the renderer depends on, and a cross-check of
 // codepoint_width() against libc wcwidth() over the whole BMP in which EVERY
-// disagreement is listed with its reason (plan/phase-9.md: "the table is
+// disagreement is listed with its reason (the plan: "the table is
 // cross-checked against libc wcwidth over the BMP and every disagreement is listed in
 // the test, not hidden").
 //

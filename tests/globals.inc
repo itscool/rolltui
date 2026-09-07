@@ -100,7 +100,7 @@
  * made its own assertion stronger rather than weaker: `live_bytes == 0` was a PROCESS fact and
  * is a SESSION fact, proved twice in one run with a fresh session in between.
  *
- * The pattern is the reusable part, and it is Phase 14's `-DROLLTUI_C` flag again: a scaffold
+ * The pattern is the reusable part, and it is the `-DROLLTUI_C` flag again: a scaffold
  * that lets a migration land in green commits, written down with the condition under which it
  * is deleted, and then actually deleted. */
 

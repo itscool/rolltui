@@ -15,7 +15,7 @@
 // instead of dereferencing a null (CLAUDE.md: a control that crashes reports nothing —
 // this file segfaulted on `find("content")->value` the moment that item was renamed).
 //
-// Phase 17 m1d: drives the editor through `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
+// drives the editor through `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
 #include <string>
 
@@ -297,7 +297,7 @@ int main() {
           "on a transcript the Source field is the one that owns the source, the Menu file choice is off");
     check(find(ed.menu(), "source") && find(ed.menu(), "source")->spec.type == InputType::Name && find(ed.menu(), "source")->spec.hint == "session",
           "…typed Name, hinted with the contents the host offers for that kind");
-    // PHASE 26 m4: THE KIND IS AN INPUT, NOT A CHOICE. Every claim below is the one this block
+    // THE KIND IS AN INPUT, NOT A CHOICE. Every claim below is the one this block
     // has always made — the preview is live, the source carries over, `help` drops it, Escape
     // puts the whole content back — driven by typing a name instead of stepping a closed list.
     // What changed is what the field ACCEPTS, and that is asserted at the end of this file.

@@ -17,7 +17,7 @@
 #include "rolltui/c/rolltui_terminal.h"
 
 /* std::clamp/min/max have no C equivalent; three small helpers stand in for them
- * everywhere below (Phase 17 m1's own instance of the rule `rolltui_alloc.h` states for
+ * everywhere below (the own instance of the rule `rolltui_alloc.h` states for
  * allocation: a closed set of named helpers, not one invented per call site). */
 static double clampd(double v, double lo, double hi) { return v < lo ? lo : (v > hi ? hi : v); }
 static double maxd(double a, double b) { return a > b ? a : b; }
@@ -153,7 +153,7 @@ void rolltui_simulate_cvd(RolltuiLin l, unsigned char type, RolltuiLin* out) {
 /* =========================================================================================
  * THE REPORT AND THE AUTO-FIX — ported verbatim from
  * `rolltui::analyse`/`report_text`/`check_claims`/`fix_contrast`/`fix_confusable`/
- * `propose_fixes`/`apply_fix` (`rolltui/ThemeAnalysis.cpp`, deleted at Phase 17 m2c — this
+ * `propose_fixes`/`apply_fix` (`rolltui/ThemeAnalysis.cpp`, deleted — this
  * file is the only implementation now).
  * ========================================================================================= */
 

@@ -1,6 +1,6 @@
 #pragma once
 //
-// rolltui/tools/theme_editor.hpp — the theme editor (plan/phase-9.md, milestone 14,
+// rolltui/tools/theme_editor.hpp — the theme editor (the plan, milestone 14,
 // formerly 11b): the editor's MODEL, with no terminal in it, so the studio hosts
 // it and a test drives it. It is a rolltui::Menu over the theme — Roles › <role> › fg
 // › <palette entry> is three levels of the same navigation the settings menu uses —
@@ -155,7 +155,7 @@ class ThemeEditor {
 
   // Loads a preset's colours (both variants) as the baseline; the undo stack restarts.
   // `colours` is the preset's parsed "colours" tree (ThemePreset::colours, a
-  // RolltuiJsonValue* since Phase 17 m2); `report` receives the colours loader's
+  // RolltuiJsonValue* now); `report` receives the colours loader's
   // problems. Returns false when the colours are unusable (the editor keeps what it had).
   bool load(const RolltuiJsonValue* colours, RolltuiThemeReport* report);
   void set_presets(std::vector<std::string> names);          // the Load choice's options

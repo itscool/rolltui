@@ -957,7 +957,7 @@ void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root) {
 
 RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m) { return &m->root; }
 
-/* A CHOICE'S OPTIONS ARE NOT SEARCHED, and that is the whole of the fix made at Phase 27 m4.
+/* A CHOICE'S OPTIONS ARE NOT SEARCHED, and that is the whole of the fix made .
  * A Choice's children are its VALUES, in their own id namespace — `rolltui_menu_parse_json`
  * says so, keeping them in a separate `option_ids` set, so `{"id":"depth","kind":"choice",
  * "items":[{"id":"16"}]}` and a sibling item `16` are both legal. Descending into them made

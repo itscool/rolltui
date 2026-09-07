@@ -657,7 +657,7 @@ static const KindRow kKinds[] = {
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 
-/* Phase 9's slot names and Phase 10's `custom:` contents → their m3 form. A closed, one-way
+/* the slot names and the `custom:` contents → their m3 form. A closed, one-way
  * table; the five composites are why it is a MAP rather than a rule (Layout.hpp). */
 /* RUNG 2: a kind is a SESSION's vocabulary, not one screen's — a host registers once at startup
  * and every `Windows` sharing that context parses layout files the same way. Released by

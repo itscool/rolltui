@@ -1,4 +1,4 @@
-# rolltui — a small terminal-UI library of our own (plan/phase-9.md, requirement 9).
+# rolltui — a small terminal-UI library of our own .
 #
 # WHAT "SMALL" AND "LIGHTWEIGHT" MEAN HERE IS MEASURED, NOT ASSERTED. A real
 # 120x40 render of a 40-entry document costs 108 allocations, 7 KB and ~250 us — down from
@@ -33,7 +33,7 @@
 #
 # WHAT THE DELETION BUYS, beyond 8,157 lines: a control point planted in one of these files used
 # to be ABSENT in the other configuration, so a two-sided negative control had to declare which
-# build it reached (`plan/phase-16.md`'s reach parameter, now struck). With one implementation a
+# build it reached (the plan's reach parameter, now struck). With one implementation a
 # control is simply present, and `main`'s `check_controlled` crosses over unchanged.
 #
 # The C++ files that REMAIN are not implementations of these — they are the C++ API over them
@@ -46,18 +46,18 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                   c/rolltui_input.c c/rolltui_menu.c
                   c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
                   c/rolltui_gaps.c
-                                         # Phase 26: the gap report — what a screen NAMES
+                                         # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
                                          #   WHOLE layout once rather than the pushed stack
                                          #   per frame. Reports; never fails.
                   c/rolltui_json.c
-                                         # Phase 17 m1: the parser. `c/rolltui_app_profile.c`
-                                         #   sat beside it until Phase 26 RETIRED the app
+                                         # the parser. `c/rolltui_app_profile.c`
+                                         # sat beside it previously RETIRED the app
                                          #   profile: the design leads and an app reports its
                                          #   gaps at end of init, so a format in which an app
                                          #   publishes what may be asked of it has no job.
                   c/rolltui_theme_analysis.c c/rolltui_theme_gen.c
-                                         # Phase 17 m1: the colour maths and the generator's
+                                         # the colour maths and the generator's
                                          #   PRNG/ruleset lookup — the parts of
                                          #   ThemeAnalysis/ThemeGen with no Theme, Role or
                                          #   json::Value in them. Their .cpp files REMAIN,
@@ -77,7 +77,7 @@ add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_PRESETS}
   DEPENDS ${ROLLTUI_THEME_PRESETS} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
   COMMENT "Embedding the shipped rolltui theme presets"
   VERBATIM)
-# Phase 10 m1: the Layout domain's shipped presets (presets/layouts/*.json). These are
+# the Layout domain's shipped presets (presets/layouts/*.json). These are
 # also the built-in layouts — builtin_layout() parses this same embedded table, so the
 # four layouts have ONE definition site (a file), not a file plus a string in Layout.cpp.
 file(GLOB ROLLTUI_LAYOUT_PRESETS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/presets/layouts/*.json)
@@ -89,7 +89,7 @@ add_custom_command(OUTPUT ${ROLLTUI_EMBEDDED_LAYOUTS}
   COMMENT "Embedding the shipped rolltui layout presets"
   VERBATIM)
 
-# Phase 10 m3: the shipped MENU files (presets/menus/*.json). Not a preset domain — a
+# the shipped MENU files (presets/menus/*.json). Not a preset domain — a
 # menu has no working copy; it is a file a layout names (`menu:<name>`) and the library
 # resolves, the shipped rung under the user's directory and the host's own embedded
 # menus (rolltui/Widgets.hpp).
@@ -161,12 +161,12 @@ add_library(rolltui STATIC
                               #   copies of a data structure is two things that can disagree
                               #   about what a span is. The flag chooses the ALGORITHM.
   ${ROLLTUI_SLICE}            # the library proper, in C (Phase 14 + Phase 15)
-  c/rolltui_mem.c             # Phase 13, moved to C at Phase 17 m1: the library's ONE entry
+  c/rolltui_mem.c # Phase 13, moved to C : the library's ONE entry
                               #   point for memory. Memory.hpp is a thin forwarding shim now.
   c/rolltui_context.c         # Phase 25 m2: A SESSION'S OWN STATE. The closed set of
                               #   subsystem registries and caches that used to be process-wide
                               #   statics, so two contexts in one process share nothing.
-  c/rolltui_lifetime.c        # Phase 14 m6a, moved to C at Phase 17 m1: shutdown(), and no
+  c/rolltui_lifetime.c # Phase 14 m6a, moved to C : shutdown(), and no
                               #   init — the release point that makes "did we leak?"
                               #   answerable. Lifetime.hpp is a thin forwarding shim now.
                               #   release`, whose only declaration (rolltui/Scratch.hpp,
@@ -218,21 +218,21 @@ add_rolltui_test(rolltui-markdown-test tests/markdown_test.cpp)
 # Milestone 5: theme (roles → styles), our JSON, downgrade, SGR, the grep control.
 add_rolltui_test(rolltui-theme-test tests/theme_test.cpp)
 
-# Phase 13 m2: OWNERSHIP — no shared ownership in the library (a grep control with a
+# OWNERSHIP — no shared ownership in the library (a grep control with a
 # planted-pattern liveness check), no hand-rolled new/delete, and a recorded census of
 # every raw pointer in a public header, so adding one forces its lifetime to be stated.
 add_rolltui_test(rolltui-ownership-test tests/ownership_test.cpp)
 
-# Phase 17 m2: THE PUBLIC HEADER's own guarantees, as assertions. That including
+# THE PUBLIC HEADER's own guarantees, as assertions. That including
 # `rolltui/rolltui.h` alone is SUFFICIENT is proved by this translation unit compiling and
 # calling the API; that the header declares NOTHING of its own is a grep control which proves
 # itself against a planted declaration first.
 add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
-# Phase 19 m2: THE OPT-IN LIST. A test may include a `rolltui/c/` header — an internal one, since
+# THE OPT-IN LIST. A test may include a `rolltui/c/` header — an internal one, since
 # the public declarations live in `rolltui/rolltui.h` — by naming it in its source and being listed
 # here. `public_header_test` asserts that every other consumer (hosts, tools, every unlisted test)
 # includes none: the count is an exact zero, not a ratchet.
-# PHASE 20 m6: RENAMED IN MEANING — this is no longer only tests. The STUDIO and its three
+# RENAMED IN MEANING — this is no longer only tests. The STUDIO and its three
 # editors are on it: they are rolltui's OWN authoring tool for rolltui's OWN files (themes,
 # layouts, bindings), nobody outside this repo builds one, and the user's call is that the
 # studio "doesn't count as having public functions ... it can include private headers." So its
@@ -252,11 +252,11 @@ set(ROLLTUI_INTERNAL_OPT_IN
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp
   screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp
-  # PHASE 20 m6: the two EDITOR unit tests joined. They were in the public-only set, and an
+  # the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
   keys_editor_test.cpp theme_editor_test.cpp menu_editor_test.cpp designable_test.cpp
-  # PHASE 24: the frame-allocation bench. It builds a bare frame to measure that frame's own
+  # the frame-allocation bench. It builds a bare frame to measure that frame's own
   # allocations; the swap would measure reuse instead. An instrument is not a consumer.
   frame_allocs.cpp)
 list(JOIN ROLLTUI_INTERNAL_OPT_IN "," ROLLTUI_INTERNAL_OPT_IN_JOINED)
@@ -287,18 +287,18 @@ set(ROLLTUI_PUBLIC_ONLY_TESTS
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
 
-# Phase 14 m6a: THE RELEASE POINT, as an assertion — after shutdown() the library holds
+# THE RELEASE POINT, as an assertion — after shutdown() the library holds
 # NOTHING, asserted as a number in both configurations, with a control that proves the gauge
 # can see a retention before it is trusted to report a zero. Until this existed, "did the
 # library leak?" had no answer: by-design retention and a real leak look identical.
 add_rolltui_test(rolltui-lifetime-test tests/lifetime_test.cpp)
 
-# Phase 13 m1: THE BUDGET — allocations, bytes and wall-clock per frame, asserted as a
+# THE BUDGET — allocations, bytes and wall-clock per frame, asserted as a
 # RANGE against numbers recorded from a real render, with the counter proved armed on
 # every run (an exact accounting check plus a live wasteful-widget control).
 add_rolltui_test(rolltui-budget-test tests/budget_test.cpp)
 
-# Phase 12 m6: effects — the two properties over EVERY registered kind (an effect never
+# effects — the two properties over EVERY registered kind (an effect never
 # changes a span's width and never writes outside its span), the built-in kind table, and
 # "no wakeups with no marks".
 add_rolltui_test(rolltui-effects-test tests/effects_test.cpp)
@@ -310,7 +310,7 @@ add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
 
-# Phase 12 m3: DELIVERABILITY — a chord a terminal cannot deliver is refused, not bound
+# DELIVERABILITY — a chord a terminal cannot deliver is refused, not bound
 # to silence. The table is measured against the ENCODINGS (encode_key fed to the real
 # KeyDecoder over ~1000 chords × 3 protocols), the loader's refusal is named, the same
 # file loads clean under kitty, and the protocol is negotiated on a real pty pair by a
@@ -322,7 +322,7 @@ set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
 # layout loader and the four built-ins, border joining, the stack's focus routing.
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
 
-# Phase 26 m2: THE GAP REPORT — what a screen NAMES that an app does not PROVIDE, reported to
+# THE GAP REPORT — what a screen NAMES that an app does not PROVIDE, reported to
 # the app's own DEVELOPER and never fatal. Its sharpest assertion is the one `rolltui_windows_sync`
 # cannot make: a gap inside a popup the layout DECLARES and nobody has pushed.
 add_rolltui_test(rolltui-gaps-test tests/gaps_test.cpp)
@@ -355,7 +355,7 @@ add_rolltui_test(rolltui-bindings-test tests/bindings_test.cpp)
 # files equal to the built-ins, the four-rung precedence table, OSC 11 parsing.
 add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 
-# Milestone 7: the studio (Phase 11 m2 renamed it; plan/phase-11.md) — renders a fixture transcript in a theme; `--frame WxH`
+# Milestone 7: the studio (Phase 11 m2 renamed it; the plan) — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the
 # screenshot tool. Interactive mode hot-reloads a theme file on mtime change.
 # Milestones 14-17 grow it into the library's own editor: the theme editor (tools/
@@ -367,7 +367,7 @@ target_link_libraries(rolltui-studio PRIVATE rolltui)
 target_compile_options(rolltui-studio PRIVATE -Wall -Wextra)
 target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
 
-# Phase 11 m6: THE THIRD HOST — a text-mode painting app with no transcript and no
+# THE THIRD HOST — a text-mode painting app with no transcript and no
 # input, whose whole interaction is one registered widget kind. It is the phase's proof
 # target: the studio authors its screen from its PROFILE alone, and this binary runs the
 # file. `--frame WxH` prints one frame (the studio's convention); `--stroke X,Y-X,Y`
@@ -378,7 +378,7 @@ target_link_libraries(rolltui-paint PRIVATE rolltui)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
 target_include_directories(rolltui-paint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
-# Phase 21: THE FOURTH CONSUMER — a read-only file-system browser whose custom widget is a
+# THE FOURTH CONSUMER — a read-only file-system browser whose custom widget is a
 # macOS-style column view. It is the first widget in this repo with INTERNAL STRUCTURE the
 # library does not already model (children of its own, a selection that propagates sideways,
 # two scroll axes, a content-dependent width), which is what makes it an instrument rather
@@ -402,7 +402,7 @@ add_rolltui_test(rolltui-layout-editor-test tests/layout_editor_test.cpp)
 target_sources(rolltui-layout-editor-test PRIVATE tools/layout_editor.cpp)
 target_include_directories(rolltui-layout-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
-# Phase 27 m4: WHAT A PERSON CAN DESIGN WITHOUT WRITING JSON, as a check. It reads the layout and
+# WHAT A PERSON CAN DESIGN WITHOUT WRITING JSON, as a check. It reads the layout and
 # menu loaders' own source for every JSON key they accept and holds each one to a named field in
 # an editor, so a loader that grows a key fails until an editor grows a field or the table records
 # it as structure. There is no "not covered yet" state.
@@ -416,7 +416,7 @@ add_rolltui_test(rolltui-keys-editor-test tests/keys_editor_test.cpp)
 target_sources(rolltui-keys-editor-test PRIVATE tools/keys_editor.cpp)
 target_include_directories(rolltui-keys-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
-# Phase 27 m2: the menu editor's model — the FOURTH editor, and the one that makes "build an
+# the menu editor's model — the FOURTH editor, and the one that makes "build an
 # app from nothing" true: a screen is four file types and until this existed the fourth was
 # hand-written JSON. Add/remove/reorder/nest over the item tree, the kind and its typed
 # fields, a choice's options, an input's type and range, undo/redo, and the tree round-tripping
@@ -447,10 +447,10 @@ target_compile_definitions(rolltui-authored-screen-test PRIVATE
   ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint>")
 add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
 
-# Phase 21 m4: the explorer's golden frames and its files-only control — the screen's own
+# the explorer's golden frames and its files-only control — the screen's own
 # words (the window ids, the browser scope's actions, the titles) appear in no source the
 # binary is built from, exactly as `files_only_test` asserts for the studio's fixture screen.
-# Phase 21: paint as the ADVERSARIAL probe — the ramps make a real picture, a hand-picked RGB
+# paint as the ADVERSARIAL probe — the ramps make a real picture, a hand-picked RGB
 # down-converts at every depth (paint is the first consumer whose colour is user DATA rather
 # than the theme's expression of a state), and the block ramp meets East Asian AMBIGUOUS width
 # head-on instead of avoiding it.
@@ -469,7 +469,7 @@ target_compile_definitions(rolltui-files-only-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
 add_dependencies(rolltui-files-only-test rolltui-studio)
 
-# Phase 27 m3: BUILD AN APP FROM NOTHING. An empty preset directory and no document in, four
+# BUILD AN APP FROM NOTHING. An empty preset directory and no document in, four
 # authored screen files out, and a host that draws them. The third of the family: `files_only`
 # proved a screen can BE files, `authored_screen` proved the files can be authored for an app
 # the tool is not, and this one proves the tool can start from nothing at all.
@@ -478,7 +478,7 @@ target_compile_definitions(rolltui-from-nothing-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
 add_dependencies(rolltui-from-nothing-test rolltui-studio)
 
-# Phase 16 m6: THE PURE-C CONSUMER — the claim this library had never executed once. Not
+# THE PURE-C CONSUMER — the claim this library had never executed once. Not
 # `add_rolltui_test`, because that function's `target_include_directories(… tests)` would put
 # the C++ harness on the path and this file must not be able to reach it: it includes
 # `rolltui/rolltui.h` and nothing else of the library's, which is the property under test.

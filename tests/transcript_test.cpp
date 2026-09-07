@@ -14,10 +14,10 @@
 #include <utility>
 #include <vector>
 
-// PHASE 17 m2c: the C API, through the umbrella alone. What this file gained is the FIXTURE
+// the C API, through the umbrella alone. What this file gained is the FIXTURE
 // below — a `Frame` with the five accessors this suite reads, a `Theme` that is a styles array
 // with a name, and a `Role` expanded from the library's own list. That fixture is deliberately
-// private and deliberately small: `plan/phase-16.md` m1 extracts a shared test module, and
+// private and deliberately small: the plan m1 extracts a shared test module, and
 // Phase 17 runs first so that 16 moves suites that have already been rewritten once. The
 // standing condition is that a mirror may hold a SHAPE and never a rule or a word — every rule
 // here (the wrap, the marker, the action names, the role names) is a call, not a copy.
@@ -246,7 +246,7 @@ std::string lines(int n) {
 // `handle()` did inline, and one free function per method — copied here (not invented)
 // because a test that calls the C API directly has nowhere else for the mapping to live.
 
-// THE SIX ROLES A DRAW NEEDS are the transcript's own defaults as of Phase 17 m1c — this
+// THE SIX ROLES A DRAW NEEDS are the transcript's own defaults — this
 // file carried Transcript.cpp's `kRoles` verbatim, and being the SECOND copy is exactly what
 // moved them into `rolltui_transcript_new`. Nothing here names a role now.
 // THE ELEVEN ACTION NAMES (Transcript.cpp's kActions, verbatim). The C knows the rules
@@ -822,7 +822,7 @@ int main() {
               std::to_string(match_count(tr)) + ")");
     const std::size_t folded_hits = [&] {
       std::size_t n = 0;
-      // PHASE 15 m5e: the matches are counted and indexed — nothing on the C side can hand
+      // the matches are counted and indexed — nothing on the C side can hand
       // back a `std::vector<FindMatch>` without building one per call.
       for (std::size_t k = 0; k < match_count(tr); ++k) if (match_at(tr, k).entry == 2) ++n;
       return n;

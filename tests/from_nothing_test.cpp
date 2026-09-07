@@ -19,7 +19,7 @@
 //   NOTHING IN                    an empty --presets directory, and no FIXTURE.md argument
 //   ONE PROCESS, KEYSTROKES ONLY  themes/sundial.json   the theme editor's seeded generator
 //                                 layouts/sundial.json  the layout editor, two named windows
-//                                 menus/sundial.json    THE MENU EDITOR — new at Phase 27 m2
+// menus/sundial.json THE MENU EDITOR — new 
 //                                 bindings/sundial.json the keys editor, one chord
 //   A HOST OUT                    the same binary, told only the four names, draws the screen
 //
@@ -193,7 +193,7 @@ int main() {
   const std::string authoring = author(with, true, rc);
   check(rc == 0 && !authoring.empty(),
         "the studio started with NO document argument and ran the script (rc " + std::to_string(rc) + ")");
-  // THE NO-DOCUMENT CONTROL: it drew a screen, not the usage text it printed until Phase 27 m3.
+  // THE NO-DOCUMENT CONTROL: it drew a screen, not the usage text it printed previously.
   check(!has(authoring, "usage: rolltui-studio"),
         "…starting from nothing is not a usage error — the tool that designs from nothing starts from nothing");
 

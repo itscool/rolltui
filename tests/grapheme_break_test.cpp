@@ -27,7 +27,7 @@ namespace {
 
 // The four helpers mirror the C++ shim's own bodies (rolltui/Unicode.cpp) one level
 // down, over the C API directly: DecodedChar/Grapheme ARE RolltuiDecodedChar/
-// RolltuiUnicodeGrapheme (Phase 14 m2's one-definition rule), so only the calls change.
+// RolltuiUnicodeGrapheme (the one-definition rule), so only the calls change.
 
 std::vector<bool> grapheme_boundaries(RolltuiUnicodeScratch* scratch, const std::vector<char32_t>& cps) {
   std::vector<unsigned char> bytes(cps.size() + 1);

@@ -6,10 +6,10 @@
 // badges, the file round-trips with its meta, and check_claims holds on a generated
 // theme's own claims.
 //
-// PHASE 17 m2: calls the C API (rolltui/c/rolltui_theme_gen.h, rolltui_theme_analysis.h,
+// calls the C API (rolltui/c/rolltui_theme_gen.h, rolltui_theme_analysis.h,
 // rolltui_theme.h, rolltui_json.h, all reached through rolltui/rolltui.h) directly —
 // ThemeGen.hpp, ThemeAnalysis.hpp, Theme.hpp and Style.hpp are all deleted along with the
-// rest of the C++ binding (plan/phase-17.md milestone 2). `Rng` is `RolltuiRng` by alias,
+// rest of the C++ binding . `Rng` is `RolltuiRng` by alias,
 // same as before (ThemeGen.hpp already aliased it, one definition compiled by both
 // languages). `Role` (Style.hpp) and `Ruleset` (ThemeGen.hpp) have no C enum form — a C
 // file takes the ORDINAL, never the name — so both are reproduced below exactly as

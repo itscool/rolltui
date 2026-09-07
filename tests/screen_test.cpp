@@ -2,7 +2,7 @@
 // screen_test.cpp — Frame semantics (wide glyphs, continuation cells, clipping, the
 // right edge) and golden byte strings for render_full / render_diff.
 //
-// PHASE 17: calls the C API (rolltui/c/rolltui_screen.h, rolltui_frame_ops.h,
+// calls the C API (rolltui/c/rolltui_screen.h, rolltui_frame_ops.h,
 // rolltui_render.h, all reached through rolltui/rolltui.h) directly rather than through
 // the rolltui::Frame C++ RAII shim (Screen.hpp, and its shim Screen.cpp) that this file
 // used to include — those are the files being deleted. `RolltuiRect`/`RolltuiCell`/

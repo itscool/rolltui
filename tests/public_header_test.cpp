@@ -10,7 +10,7 @@
 //      (section 3, an exact zero over an explicit opt-in list of tests), and no C++ member
 //      anywhere names a std:: container or view (section 7).
 // It used to certify the opposite — a facade that "declares NOTHING of its own" — which is
-// the mis-capture plan/phase-19.md records.
+// the mis-capture the plan records.
 //
 // The grep control proves itself against a planted line before it is trusted, because
 // CLAUDE.md records `strings | grep MARKER` false-negativing twice in this repo and a
@@ -107,7 +107,7 @@ int main() {
   // ---- 1. it is SUFFICIENT ------------------------------------------------------------
   // Proved by this translation unit: it includes rolltui.h and nothing else from the
   // library, and the calls below are what a real consumer's first five minutes look like.
-  // PHASE 24: this used `rolltui_frame_new`/`_width`/`_free` and `rolltui_str_get`, and their
+  // this used `rolltui_frame_new`/`_width`/`_free` and `rolltui_str_get`, and their
   // being PUBLIC rested on THIS TEST reaching them — a meta-test's reach, which Phase 20 struck
   // as a reason and which this file of all files must not lean on. A host never builds a frame;
   // it gets one from the double buffer, so that is what the sufficiency check does now, and the
@@ -124,7 +124,7 @@ int main() {
 
   // ---- 2. it DECLARES the public API ----------------------------------------
   // Until Phase 19 this check read "declares NOTHING of its own", and it enforced a facade the
-  // user never chose (the record in plan/phase-19.md). The definition is certified the other
+  // user never chose (the record in the plan). The definition is certified the other
   // way round: this file carries the declarations, every PUBLIC and TOOL_FACING function of
   // api_classes.inc is declared HERE and no INTERNAL one is (section 6), and it includes no
   // `rolltui/c/` header at all.
@@ -277,7 +277,7 @@ int main() {
     list_files(repo + "/tests", {".cpp", ".hpp"}, files);
     list_files(repo + "/tools", {".cpp", ".hpp"}, files);
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tools", {".cpp", ".hpp"}, files);
-    // PHASE 21: `rolltui/examples/` is scanned too, and NOTHING in it may opt in. It holds the
+    // `rolltui/examples/` is scanned too, and NOTHING in it may opt in. It holds the
     // two CONSUMERS — `rolltui-paint` (moved here from `tools/` when the directory's name
     // finally misled someone) and `rolltui-explorer` — and a consumer that reaches past the
     // definition is what makes this zero worth asserting.
@@ -288,12 +288,12 @@ int main() {
     for (const std::string& f : files) {
       if (strip_all_comments(read(f)).find("#include \"rolltui/c/") == std::string::npos) continue;
       const std::string base = f.substr(f.find_last_of('/') + 1);
-      // PHASE 20 m6: the opt-in list is no longer only tests. The studio and its three editors
+      // the opt-in list is no longer only tests. The studio and its three editors
       // are on it — rolltui's OWN authoring tool, which is removed from the
       // consumer set — so a listed file may live under `tests/` OR under `rolltui/tools/`.
       // `rolltui-paint` is deliberately NOT on the list: it is a consumer and must keep
       // building from the definition alone, which is what makes this zero mean something.
-      // PHASE 24: `tools/bench` joined the two rolltui directories. The opt-in LIST is the
+      // `tools/bench` joined the two rolltui directories. The opt-in LIST is the
       // authority on who may reach an internal header; this bound only says where such a file
       // may live, and rolltui's benches live at the repo root beside its other instruments.
       const bool listed_dir = f.find(std::string(ROLLTUI_SOURCE_DIR) + "/tests/") != std::string::npos ||
@@ -328,7 +328,7 @@ int main() {
   }
 
   // ---- 5. (the .hpp ratchet, retired) --------------------------------------------------
-  // It counted consumers including a C++ `rolltui/*.hpp`; none exist since Phase 17 m2c, and
+  // It counted consumers including a C++ `rolltui/*.hpp`; none exist now, and
   // section 3 above counts the thing that matters now — direct `rolltui/c/` includes — as an
   // exact zero rather than a ceiling.
 
@@ -418,8 +418,8 @@ int main() {
       for (const auto& [k, v] : counts) out.insert(k);
       return out;
     };
-    // PHASE 20 m6: `roll` gains its own bench tools — they build frames the way a host does.
-    // PHASE 24: `tools/bench` LEFT this set. A bench is rolltui's own INSTRUMENT, not roll the
+    // `roll` gains its own bench tools — they build frames the way a host does.
+    // `tools/bench` LEFT this set. A bench is rolltui's own INSTRUMENT, not roll the
     // consumer — `frame_allocs.cpp` builds a bare frame on purpose, because the number it reports
     // is that frame's own allocation and `rolltui_swap_begin` would measure the double buffer's
     // reuse instead. Counting it as roll made `rolltui_frame_new`/`_free` look consumer-reached
@@ -431,7 +431,7 @@ int main() {
     // and it opts in to internal headers like a test. `rolltui-paint` IS a consumer and is the
     // only thing left in `tools/` that counts — a generic painting app is the closest thing in
     // this tree to what an outsider would write, which is why Phase 11 built it.
-    // PHASE 21: the consumer set is `rolltui/examples/` — paint AND the explorer, the fourth
+    // the consumer set is `rolltui/examples/` — paint AND the explorer, the fourth
     // consumer, whose Miller-column browser is the first widget in the tree with internal
     // structure the library does not model. What an ALIGNED rich widget reaches is the floor
     // the public surface cannot go below.
@@ -444,7 +444,7 @@ int main() {
     }
     const std::set<std::string> tools = paint_reach;
     const std::set<std::string> tests = mentions_in({root + "/tests", repo + "/tests"}, {".cpp", ".hpp", ".c"});
-    // PHASE 20 m1: the PUBLIC-ONLY suites — programs shaped like a CONSUMER, which include
+    // the PUBLIC-ONLY suites — programs shaped like a CONSUMER, which include
     // `rolltui/rolltui.h` and nothing else. What one of them reaches is PUBLIC because a
     // consumer-shaped program reaches it, NOT because a test does; a test's reach is never a
     // reason (see api_classes.inc's header). roll's own tests are all in the set implicitly:
@@ -642,9 +642,9 @@ int main() {
      * why internal falls by one. Its INTERNAL reason read "a host loads a file or clones the
      * default" — naming the case and then concluding the opposite. `rolltui/examples/explorer.cpp`
      * loads its own bindings file, could not reach the summary, and hand-wrote six loops over the
-     * report's arrays: rule 5's tell, recorded there as Phase 21's wall 6 and closed here. */
+     * report's arrays: rule 5's tell, recorded there as the wall 6 and closed here. */
     /* PHASE 26 m3: 331 -> 296 and 523 -> 518. THE APP PROFILE IS RETIRED — 35 public and 7
-     * internal rows gone with the module, the largest single removal since Phase 22's cuts and
+     * internal rows gone with the module, the largest single removal now's cuts and
      * the only one so far where what went was not redundant but WRONG-DIRECTIONED. It let an
      * app publish what a layout was ALLOWED to name inside it, and the design tool then refused
      * anything else; the direction is now one-way (the screen names what it needs, the app
@@ -893,7 +893,7 @@ int main() {
   // the declarations and left their comments standing, so the public header documented seven
   // functions it no longer declared and one it declared twice, with the duplicate's comment
   // naming a C++ member (`RolltuiLayout::popup()`) that the opaque struct had just removed.
-  // That is Phase 17 m5's own rule — *a milestone that deletes a thing owns every sentence that
+  // That is the own rule — *a milestone that deletes a thing owns every sentence that
   // described it* — and the reason it matters here is the reason it mattered there: the only
   // reader who believes a public header over the call sites is the one who cannot see the call
   // sites, which is exactly the consumer this header exists for.
@@ -940,7 +940,7 @@ int main() {
     //
     // **THE 22 "PRE-EXISTING" ONES WERE THE SAME DEFECT, and calling them judgement calls about
     // prose was wrong.** Recovering each comment's subject from the header as it stood at
-    // `9c00c28` (before Phase 20's first removals) showed SIXTEEN described a function that had
+    // `9c00c28` (previously's first removals) showed SIXTEEN described a function that had
     // gone INTERNAL in Phases 20-23 — its declaration moved to a `c/*.h` and the sentence stayed
     // behind. Fourteen were MOVED to sit above their declaration in the internal header, which is
     // where a reader of that header now needs them; two were deleted because the internal

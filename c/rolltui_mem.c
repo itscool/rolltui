@@ -1,6 +1,6 @@
 /* rolltui/c/rolltui_mem.c — see rolltui_mem.h and rolltui_alloc.h (which declares the four
  * entry points this file defines: `rolltui_mem_alloc`, `rolltui_mem_realloc`,
- * `rolltui_mem_free`, `rolltui_mem_stats`). Moved from `rolltui/Memory.cpp` at Phase 17 m1,
+ * `rolltui_mem_free`, `rolltui_mem_stats`). Moved from `rolltui/Memory.cpp` ,
  * the C++ implementation deleted with it; `rolltui/Memory.hpp` is now a thin forwarding
  * shim over this file.
  *

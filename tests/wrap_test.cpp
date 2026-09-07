@@ -1,6 +1,6 @@
 //
 // wrap_test.cpp — the wrap engine (rolltui/Wrap.hpp): the edge-case table from
-// plan/phase-9.md (CJK, ZWJ emoji, combining marks, a 300-cell URL, tabs, width 1,
+// the plan (CJK, ZWJ emoji, combining marks, a 300-cell URL, tabs, width 1,
 // empty, spaces-only) with exact expected lines, then the three properties over a
 // corpus and a seeded random generator at every width 0..48:
 //   1. no line exceeds the width, except a line holding a single grapheme that is
@@ -347,7 +347,7 @@ int main() {
   check(rand_fail == 0, "properties hold over " + std::to_string(cases) + " seeded random cases (" +
                             std::to_string(rand_fail) + " failures)");
 
-  // ---- THE LENT WINDOW (Phase 14 m3's Done-when) -----------------------------------
+  // ---- THE LENT WINDOW (the Done-when) -----------------------------------
   // `wrap_borrow` is the form every draw and layout loop uses and the reason a steady frame
   // allocates nothing, so the port had to carry it across intact. What needed proving is not
   // the ANSWER — that is the same engine the whole file above already tests — it is the

@@ -19,7 +19,7 @@
  * is a `std::vector<T>` of those, capped at 200, and a `commit` copies the entire text.
  * Nobody decided any of it; it is what you type.
  *
- * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------------
+ * ---- THE BOUNDARY'S RULES -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER.** The input is a handle the caller makes and frees.
  *   2. **NOTHING IS RETURNED BY VALUE** except plain scalars — and `RolltuiRect` is not one

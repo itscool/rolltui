@@ -85,7 +85,7 @@
 /* ---- OWNERSHIP HAS THREE SHAPES AND NO FOURTH -----------------------------------------------
  * Stated here, beside the type that does the owning, because that is where a reader (and a
  * model) meets it — `ownership_test` checks that this header carries it, and CLAUDE.md carries
- * the same rule for every session. It lived in `rolltui/Widgets.hpp` until Phase 17 m3 and came
+ * the same rule for every session. It lived in `rolltui/Widgets.hpp` previously and came
  * across with the type: half of it had already arrived (three uses of OWNED) and the BORROWED
  * half had not, which the test caught by name.
  *

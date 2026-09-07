@@ -393,7 +393,7 @@ void MenuEditor::sync_values() {
   set_checked(menu_, "optional", it->spec.optional != 0);
   set_value(menu_, "shortcut", str_of(it->shortcut));
   // The actions THIS BINARY knows are the field's HINT and never its option list: an item may
-  // name an action the app declares and this tool has never heard of, which is Phase 26's
+  // name an action the app declares and this tool has never heard of, which is the
   // direction — the screen is the intent and the app reports what it cannot reach.
   if (MenuItem* field = rolltui_menu_find(menu_, "action", 6); field && !actions_.empty())
     set_str(field->spec.hint, joined(actions_));

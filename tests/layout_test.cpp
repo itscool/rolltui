@@ -49,7 +49,7 @@
 #include <regex>
 #include <sstream>
 
-// PHASE 17 m2c: FINISHED. `rolltui/Layout.hpp` and `rolltui/Widgets.hpp` are gone from this
+// FINISHED. `rolltui/Layout.hpp` and `rolltui/Widgets.hpp` are gone from this
 // file's includes — the two things a prior pass's comment here said "GENUINELY has no C
 // form" were re-checked against the current headers and both had one:
 //   - `rolltui::Layout`/`ActionDecl`'s OWN shape: `RolltuiLayout` IS `rolltui::Layout`
@@ -66,7 +66,7 @@
 //     which is exactly the property the old comment said only `Windows`' C++ maps could give.
 // Every remaining `rolltui::`-namespaced type below (`RolltuiLayoutNode`/`RolltuiLayer`/
 // `RolltuiDim`/`RolltuiPlacement`/`RolltuiSplitSize`/`RolltuiResolvedNode`/`RolltuiContent`/
-// `Border`/`Anchor`; `WidgetKind` was one until Phase 18 m2 retired it) is declared inside `rolltui/c/*.h`'s own `#ifdef __cplusplus`
+// `Border`/`Anchor`; `WidgetKind` was one previously retired it) is declared inside `rolltui/c/*.h`'s own `#ifdef __cplusplus`
 // blocks — reachable from `rolltui/rolltui.h` alone, no C++ binding header needed. `Rect`,
 // `RolltuiStyle`/`Color`, `Theme`, `Role`'s named enumerators, `Frame`, `Windows`/`WindowStack`
 // (the class), `Key`, `RolltuiMouseEvent`'s short alias and `Route` WERE Layout.hpp/Widgets.hpp's own
@@ -332,7 +332,7 @@ std::optional<Border> border_from_name_c(std::string_view name) {
 // m2: a kind's NAME is its identity (the C++-only enum is retired), so each of these is one C
 // call over a name; the rung comes back as `rolltui_widget_kind_resolve`'s return and the row
 // is where the kind's rules live, whichever rung it came from.
-// PHASE 25: the widget-kind registry belongs to a CONTEXT, so this suite has one session that
+// the widget-kind registry belongs to a CONTEXT, so this suite has one session that
 // every shim below resolves against — `rolltui_test.hpp`'s, because the effects suite needed
 // the same thing and a wrapper written twice means the helper belongs in one place (rule 5).
 RolltuiContext* test_ctx() { return rolltui_test::test_context(); }
@@ -397,7 +397,7 @@ std::vector<std::string> widget_kind_names_c() {
 }
 
 // ---- direct C calls, continued: the loader (load_layout/layout_to_json/builtin_layout*) ----
-// PHASE 17 m2c: `RolltuiLayoutReport`/`RolltuiLayout`/`RolltuiLayoutAction` ARE now the types
+// `RolltuiLayoutReport`/`RolltuiLayout`/`RolltuiLayoutAction` ARE now the types
 // this file holds throughout (rolltui_layout.h's own "one definition" section), so the
 // bridging this block used to do (`report_from_c_c` copying a C report into a C++
 // `LayoutLoadReport`, `actions_to_c_c` converting `ActionDecl`s) has nothing left to bridge —
@@ -479,7 +479,7 @@ RolltuiEvent mouse_ev(const RolltuiMouseEvent& m) {
   return e;
 }
 
-// PHASE 17 m3: the LIBRARY's three, not a copy. This file had hand-written them, which made
+// the LIBRARY's three, not a copy. This file had hand-written them, which made
 // two consumers with the same table (`Layout.cpp` was the other) — rule 5's tell, fired before
 // a single host had been converted.
 const RolltuiStackActions& kStackActions_c = *rolltui_stack_default_actions();
@@ -1145,7 +1145,7 @@ int main() {
           "a border takes its colour from `border` and its ground from the window it belongs to");
     check(f.at(0, 22).style.fg == dark.style(ROLLTUI_ROLE_BORDER_ACTIVE).fg && f.at(0, 5).style.fg == dark.style(ROLLTUI_ROLE_BORDER).fg,
           "the focused input's border is border_active; the transcript's is border");
-    // PHASE 17 m3: `title` was the ONE of the four compose roles nothing asserted — the cell
+    // `title` was the ONE of the four compose roles nothing asserted — the cell
     // it lands in was checked, its colour was not. That is the whole reason a role table can
     // move house and still be wrong: three of the four would have failed loudly and this one
     // would have gone quietly. Pointing the compose at `warning` instead turns this red.
@@ -1243,7 +1243,7 @@ int main() {
     check(rolltui_window_stack_focused(s.s)->id == "input", "focus returns to the base layer's window");
     check(!rolltui_window_stack_pop(s.s), "pop() on the base alone is false");
 
-    // Phase 16 m6: the same push, BY ID out of the layout — the operation two hosts had each
+    // the same push, BY ID out of the layout — the operation two hosts had each
     // hand-written and a pure-C consumer could not write at all (the copy above is a deep one
     // only because C++ synthesises it; see `rolltui_window_stack_push_popup`'s declaration).
     // The layout is BORROWED and must be unchanged by the push, which is what the second
@@ -1370,7 +1370,7 @@ int main() {
                           Case{"text:", "text", ""},
                           Case{"file:/tmp/x.md", "file", "/tmp/x.md"},
                           Case{"help", "help", ""},
-                          // Phase 11 m5b: `help` takes an OPTIONAL scope, so which keys a
+                          // `help` takes an OPTIONAL scope, so which keys a
                           // window lists is the layout's and not only the host's.
                           Case{"help:app", "help", "app"},
 
@@ -1543,7 +1543,7 @@ int main() {
     windows.bind_document("session", &doc);
     windows.bind_rows("status", [](void*, RolltuiRows* out) { out->add("label", "value"); });
     windows.bind_submit("prompt", [](void*, const char*, std::size_t) {});
-    // Phase 11 m3: a kind this test registers, built by the library like any other.
+    // a kind this test registers, built by the library like any other.
     MineCtx mine_proto{&drew_own, &dark};
     windows.register_kind("mine", mine_factory, &mine_proto);
     windows.set_help("", {"transcript"}, "");
@@ -1726,7 +1726,7 @@ int main() {
     { std::ofstream(dir + "/menus/extra.json") << R"({"id":"root","label":"dropped","items":[{"id":"d","label":"dropped item"}]})"; }
     rep = windows.prepare(s, box);
     check(rep.clean(), "a menu file dropped in after the fact resolves with no rebuild [" + rep.summary() + "]");
-    // Phase 10 m5: what the design editor offers as the menu-file choice is the UNION
+    // what the design editor offers as the menu-file choice is the UNION
     // of the three rungs, deduplicated and sorted — a name is offered because a rung
     // has it, never because a host listed it. 'extra' and 'main' are the user's here;
     // 'main' is also the host's and the shipped one, and appears once.
@@ -1968,7 +1968,7 @@ int main() {
               rolltui_widget_kind_count(test_ctx()) == rolltui_widget_kind_library_count() + 1,
           "the registered kind is enumerable, after the library's, in resolution order");
     {
-      // Phase 18 m2: a host kind is a ROW past the library's boundary, and its rules are the
+      // a host kind is a ROW past the library's boundary, and its rules are the
       // row's — the rung as an index, not a type; the shape as a stated default, not a guess.
       int rung = ROLLTUI_KIND_UNKNOWN;
       const std::optional<std::size_t> row = widget_kind_row_c("canvas", &rung);

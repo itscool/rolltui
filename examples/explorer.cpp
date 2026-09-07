@@ -18,7 +18,7 @@
 // been asked to carry a widget with children, two scroll axes, a selection that propagates
 // sideways and a width that depends on its contents. This app asks them.
 //
-// Its value is therefore the WALL LOG in `plan/phase-21.md`, not the screenshots: every place
+// Its value is therefore the WALL LOG in the plan, not the screenshots: every place
 // the public header could not do something, and what was done instead. It includes
 // `rolltui/rolltui.h` and NOTHING else of the library's — it is a consumer like paint, not
 // like the studio, and `public_header_test` asserts that rather than trusting it.
@@ -557,7 +557,7 @@ struct App {
     effects = rolltui_theme_builtin_fill(name, std::strlen(name), styles, ROLLTUI_ROLE_COUNT);
   }
 
-  // Phase 25: the kind table belongs to a CONTEXT, so this registers into this app's session.
+  // the kind table belongs to a CONTEXT, so this registers into this app's session.
   void register_browser_kind() {
     rolltui_widget_kind_register(ctx, kBrowserKind, std::strlen(kBrowserKind), ROLLTUI_SOURCE_REQUIRED,
                                  kBrowserDescribes, std::strlen(kBrowserDescribes));

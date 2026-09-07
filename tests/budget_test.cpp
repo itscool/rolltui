@@ -48,11 +48,11 @@
 // phase — but 203 µs is 1.2% of a terminal frame, so nothing here is a performance
 // emergency and no milestone may claim otherwise.
 //
-// PHASE 17 m2c: THIS FILE CALLS THE C DIRECTLY. `Document.hpp`, `Layout.hpp`,
+// THIS FILE CALLS THE C DIRECTLY. `Document.hpp`, `Layout.hpp`,
 // `Markdown.hpp`, `Screen.hpp`, `Theme.hpp` and `Widgets.hpp` are deleted; the idiom below
 // (an app-lifetime fixture with plain members released in one destructor, `rolltui_swap`
 // in place of a per-frame `Frame`, a host widget as a `RolltuiWidgetPlugin` table) is the
-// one `rolltui/tools/paint.cpp` established as Phase 17 m3's first host.
+// one `rolltui/tools/paint.cpp` established as the first host.
 //
 // **ONE GAP, NAMED RATHER THAN WORKED AROUND**: `rolltui_mem_realloc` — the growing-heap
 // strategy's realloc half, which `rolltui::mem::realloc` wraps — has no public declaration.
@@ -318,7 +318,7 @@ struct Scene {
 // layout's without it by at least that much. It runs on every ctest run: the counter
 // cannot come unarmed without this failing.
 //
-// PHASE 17 m2c: `Widget` is deleted along with `Widgets.hpp`, so the control is a
+// `Widget` is deleted along with `Widgets.hpp`, so the control is a
 // `RolltuiWidgetPlugin` — the same nine-slot table `rolltui/tools/paint.cpp`'s `Canvas`
 // fills — rather than a C++ subclass. `ctx` carries its own draw scratch (CLAUDE.md's
 // caller-owns-working-memory rule) and a BORROW of the `Windows` it was built for, which is
@@ -411,7 +411,7 @@ int main() {
   // milestone moved which number and by how much — that is the whole point of the phase.
   Scene scene;
   // Warm: the transcript's layout cache is a memo, and measuring a cold cache would be
-  // measuring the cache and not the draw path (plan/phase-13.md: "the layout cache is
+  // measuring the cache and not the draw path (the plan: "the layout cache is
   // already doing its job — this phase must not touch it").
   for (int i = 0; i < 3; ++i) scene.paint(120, 40);
 
@@ -485,7 +485,7 @@ int main() {
   // A steady frame is SIX allocations, all in widget draws: four in the `rows:` window and
   // one in the transcript's. `prepare`, `resolve`, the frame reset and `compose` with no
   // slot renderer are all EXACTLY ZERO. The target is 0 and this is not it; the six are
-  // itemised in plan/phase-13.md m5b.
+  // itemised in the plan m5b.
   // RE-RECORDED 2026-09-04 by Phase 14 m3, and this is the FIRST TIME THE TWO
   // CONFIGURATIONS NEED TWO NUMBERS. m1 and m2 were identical either way and the journal
   // said so; the wrap engine is not:
@@ -524,7 +524,7 @@ int main() {
   //
   // **A RESIZE FRAME IS 122 ALLOCATIONS, DOWN FROM 10,941 — 98.9%** — and a SECOND resize to
   // the same width is **2**, measured in both configurations while both existed. Three things did it, all of
-  // them the same finding (`plan/phase-15.md` m4, `rolltui/c/rolltui_md_lines.h`):
+  // them the same finding (the plan m4, `rolltui/c/rolltui_md_lines.h`):
   //   - a SPAN OWNS NOTHING. It was a `std::string` and two vectors per span; it is an
   //     offset and a length into pools the caller's store owns. That was m1's 4,128.
   //   - a span COPIED into another line is a descriptor, or not copied at all: the
@@ -644,7 +644,7 @@ int main() {
   }
 
   // ---- the library's own entry point, and what it can honestly claim ----------------
-  // Phase 13's runtime half: the numbers above come from replacing the global operator new,
+  // the runtime half: the numbers above come from replacing the global operator new,
   // which only a TEST can do. `rolltui::mem` is the same counting in the LIBRARY, readable
   // by a host at runtime — one pipeline, two consumers.
   {

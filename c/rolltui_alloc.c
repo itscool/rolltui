@@ -87,7 +87,7 @@ void* rolltui_grow(void* p, size_t* cap, size_t need, size_t elem) {
 // **THIS ONE POISONS NOTHING, and the difference from `rolltui_grow` is a real semantic one
 // rather than an exception.** A zeroed table's slots are VALID OBJECTS all the way to the
 // capacity — that is what zeroing them is for — and they may already own a buffer a past frame
-// left there (Phase 13 m5b's retained link and spill tables). `rolltui_frame_free` walks to
+// left there (the retained link and spill tables). `rolltui_frame_free` walks to
 // `cap`, not to the live count, precisely because of that, and the first version of this
 // annotation reported it as a use-after-poison: **a false positive of my own making, caught by
 // the studio's golden test within a minute of the poisoning going in.**

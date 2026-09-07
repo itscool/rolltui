@@ -41,7 +41,7 @@
  *      it is thirteen plain flags, no `Role`, no `std::string`, nothing that keeps it from
  *      being one definition. `RolltuiRoleCheck`/`RolltuiPairCheck`/`RolltuiFix` carry role
  *      ORDINALS as `unsigned char` — `ROLLTUI_ROLE_*` values, the role vocabulary having been
- *      C since Phase 17 m2a (`ROLLTUI_ROLE_LIST`, rolltui_style.h). A C++ consumer that wants
+ * C now (`ROLLTUI_ROLE_LIST`, rolltui_style.h). A C++ consumer that wants
  *      to read `c.role == Role::warning` mirrors the three structs over the same calls
  *      (`theme_analysis_test.cpp` does); this file hands over numbers and never a type.
  *   4. **NOTHING ALLOCATES** in the colour-maths half; the report/auto-fix half's

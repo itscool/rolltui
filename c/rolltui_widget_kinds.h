@@ -55,7 +55,7 @@
  * `rolltui::Windows` builds them from the kind table when a layout names `rows:status` or
  * `text:...`. A consumer binds data (`bind_rows`, `bind_document`, `bind_submit`, `bind_note`)
  * and lets the layout name the kind — exactly as the widget-kind registry (public, in
- * `rolltui_layout.h`; a kind's NAME is its identity since Phase 18 m2) and the plugin contract
+ * `rolltui_layout.h`; a kind's NAME is its identity now) and the plugin contract
  * (public, in `rolltui_widgets.h`) already say.
  */
 

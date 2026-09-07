@@ -2,7 +2,7 @@
  * rolltui/tests/c_consumer_test.c — THE CLAIM THIS LIBRARY HAD NEVER EXECUTED ONCE
  *.
  *
- * THE FINDING THAT PUT THIS FILE HERE, and it was checkable in one command. `plan/phase-17.md`
+ * THE FINDING THAT PUT THIS FILE HERE, and it was checkable in one command. the plan
  * reasons about *"a pure-C host"* five separate times and uses it as the standard for whether
  * something is REACHABLE rather than merely ported. Until this file existed,
  * `find . -name '*.c'` outside `rolltui/c/` returned exactly one result and it was a generated
@@ -57,7 +57,7 @@ which is precisely the padding this file exists to run without."
 
 /* ---- the harness: fifteen lines, and it fails on zero assertions ----------------------------
  * The same rule roll's `tests/test_util.hpp` has and `rolltui/tests/rolltui_test.hpp` does not
- * (measured 2026-09-04, and it is Phase 16 m2's second mechanism): a suite that ran NOTHING
+ * (measured 2026-09-04, and it is the second mechanism): a suite that ran NOTHING
  * must not read as success. It is three lines here, so it is here now rather than after m2 —
  * a file whose whole subject is a check that never fired should not ship without it. */
 static int g_pass = 0;
@@ -291,7 +291,7 @@ int main(void) {
           "a C host can open a popup the SCREEN declared");
     check(rolltui_window_stack_depth(app.stack) == before + 1, "…the stack is one deeper");
     /* A DOOR TAKES A HANDLE, AND A HANDLE MAY BE NULL. Every accessor guards; this asserts the
-     * one that did not until Phase 23 — a failed load handed straight to `_popup` segfaulted a
+     * one that did not previously — a failed load handed straight to `_popup` segfaulted a
      * host test, and the guard was added without a check until this line. */
     check(rolltui_layout_popup(NULL, "help", 4) == NULL, "a door takes a NULL handle and answers NULL");
     check(rolltui_window_stack_push_popup(app.stack, app.layout, "nosuch", 6) == 0,
@@ -455,7 +455,7 @@ int main(void) {
   /* ---- 4b. A PRESET STORE, OPENED FROM C ------------------------------------ *
    * THE EVIDENCE THIS MILESTONE HAD NONE OF. Section 1 reaches the shipped theme through
    * `rolltui_theme_builtin_fill` and the embedded bytes — a different rung of the same domain
-   * — and `plan/phase-18.md` m3 recorded that this file therefore said NOTHING about the thing
+   * — and the plan m3 recorded that this file therefore said NOTHING about the thing
    * m3 is about: a `RolltuiPresetStore`, the stateful handle roll and the studio each wrap in
    * an adapter with twelve identical method names. A control that exists but does not reach
    * its guarantee is indistinguishable from one that does, so this section opens one.
@@ -486,7 +486,7 @@ int main(void) {
    * C++ host still wraps is the conversion of a borrow or a caller-filled buffer into an owning
    * `std::string`, which this file needs none of — and neither does C++, since `RolltuiStr` is
    * the C++ type already. That residue is a host DEFAULT, judged per call site: on an event a
-   * choice, on a frame an allocation (`plan/phase-18.md` m3 has the count). */
+   * choice, on a frame an allocation (the plan m3 has the count). */
   {
     char dir[512];
     size_t dir_len = 0;
@@ -605,7 +605,7 @@ int main(void) {
         rolltui_str_free(&text);
       }
 
-      /* SAVE-AS, and its four refusals — each a CODE and, since Phase 18 m3, its SENTENCE. */
+      /* SAVE-AS, and its four refusals — each a CODE and, now, its SENTENCE. */
       check(rolltui_preset_store_save_as(ts, "mine", 4, /*overwrite=*/0, &err) == ROLLTUI_SAVE_SAVED && err.n == 0,
             "save-as a user name from C: SAVED, with nothing in `err`");
       {

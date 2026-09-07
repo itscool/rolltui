@@ -14,13 +14,13 @@
  * same in both languages and a second copy is a second thing to drift.
  *
  * THIS IS THE OWNERSHIP-HEAVY HALF OF m2, and the reason it and `Diff` were ported
- * together. `plan/phase-15.md` predicts the port's cost tracks how much of a module is
+ * together. the plan predicts the port's cost tracks how much of a module is
  * ownership work rather than algorithm — Phase 14 measured +12% for Unicode against +55%
  * for Wrap. `Diff` is a pure function; this is **a process-wide registry that OWNS a name
  * and a host's callable per entry, is guarded by a mutex, and must hand everything back at
  * `rolltui::shutdown()`.** If the prior is right, these two land on opposite sides of it.
  *
- * THE BOUNDARY'S RULES, all inherited from Phase 14:
+ * THE BOUNDARY'S RULES:
  *   1. **THE CALLER OWNS EVERY BUFFER**, working memory included, through a handle
  *      (`RolltuiEffectScratch`).
  *   2. **ONE DEFINITION**: `rolltui::EffectCell` and `rolltui::EffectOut` ARE the two

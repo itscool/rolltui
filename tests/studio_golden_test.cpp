@@ -1,6 +1,6 @@
 //
 // studio_golden_test.cpp — golden frames through the studio's `--frame WxH`
-// mode (plan/phase-9.md VERIFY: "golden frames at 80×24, 120×40 and 40×12"). Runs
+// mode . Runs
 // the REAL rolltui-studio binary on the demo session fixture and compares its
 // stdout byte-for-byte with rolltui/tests/fixtures/frames/<case>.txt.
 //
@@ -50,7 +50,7 @@
 #include <string_view>
 #include <vector>
 
-// PHASE 17 m2c: the C API, through the umbrella alone. This suite drives the REAL
+// the C API, through the umbrella alone. This suite drives the REAL
 // rolltui-studio binary as a subprocess and mostly matches its stdout as text, so the only
 // library calls left are: a display-width check on each frame's rows, one layout round-trip
 // (load a saved file back and ask what it has), and building two small bindings/JSON fixture
@@ -159,7 +159,7 @@ LoadedLayoutCheck load_layout_check(std::string_view json_text) {
   std::size_t default_actions_n = 0;
   const RolltuiLayoutAction* default_actions = rolltui_layout_shipped_default_actions(rolltui_test::test_context(), &default_actions_n);
   RolltuiLayoutReport rep{};
-  // Phase 23: one call, an OWNED layout back, and the counts through the public doors.
+  // one call, an OWNED layout back, and the counts through the public doors.
   RolltuiLayout* out = rolltui_load_layout_text(json_text.data(), json_text.size(), default_actions,
                                                 default_actions_n, rolltui_layout_default_hooks(), &rep);
   LoadedLayoutCheck result;
@@ -358,13 +358,13 @@ int main(int argc, char** argv) {
       // Phase 10 m5 (the design editor). `add-widget` is the milestone's Done-when: a
       // window that did not exist, holding a widget of a kind this layout never had,
       // through the kind picker alone — and DRAWN in the same frame.
-      // The trailing Escape is Phase 26 m4's: the widget kind is an INPUT now, not a choice, and
+      // The trailing Escape is the: the widget kind is an INPUT now, not a choice, and
       // an input's commit leaves the menu's typed filter standing (a choice clears it on the way
       // back up). Without it this golden would show the field being edited rather than the window
       // it produced, which is the thing the case exists to show.
       {"layout-editor.120x40.add-widget", "--frame 120x40 --theme default-dark --keys \"F6 Type:split_into_a_row Enter Tab Type:widget_kind Enter Type:help Enter Escape\""},
       {"layout-editor.120x40.actions", "--frame 120x40 --theme default-dark --keys \"F6 Type:actions Enter End Enter Type:app.zoom Enter Escape Type:save Enter Type:three Enter Escape Type:actions Enter\""},
-      // Phase 11 m5: CREATING a layout, not inheriting one. Started from the shipped
+      // CREATING a layout, not inheriting one. Started from the shipped
       // `default` — five actions, four popups, min 60x8 — so what the skeleton does NOT
       // carry is visible in the same frame that shows what it does.
       // The SAVE is deliberately not in this case: the written file is asserted below in
@@ -807,7 +807,7 @@ int main(int argc, char** argv) {
     // The seam is `┬` and not `┌` since m7: the layout editor's selection outline used to
     // redraw the selected window's border UNJOINED and win, which broke the join it sits
     // on. This assertion was pinned to that broken glyph.
-    // "Widget kind: help" rather than "help ▸" since Phase 26 m4 — the field is an input the
+    // "Widget kind: help" rather than "help ▸" now — the field is an input the
     // author types into, not a closed list they step through.
     check(le_widget.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
               le_widget.find("Widget kind: help") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
@@ -1051,7 +1051,7 @@ int main(int argc, char** argv) {
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
       check(run(base + " --keys \"F3 F3\"", rc).find("default-light") != std::string::npos,
             "F3 still cycles the shipped themes (studio.cycle_theme), two presses on from default-dark");
-      // The keys editor lists what the studio declares — and `app`, empty since Phase 10
+      // The keys editor lists what the studio declares — and `app`, empty now
       // m4 because the editor was handed the store's undeclared working copy, is in it.
       const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
       check(scopes.find("editor") != std::string::npos && scopes.find("studio") != std::string::npos && scopes.find("app") != std::string::npos,
@@ -1077,7 +1077,7 @@ int main(int argc, char** argv) {
     // shipped preset FILES, which are compiled into the binary as bytes and are exactly
     // where an action name would survive unnoticed (menus/main.json named two).
     //
-    // PHASE 17 m4b: THE THRESHOLD IS NOW ZERO, and this control got STRICTLY
+    // THE THRESHOLD IS NOW ZERO, and this control got STRICTLY
     // STRONGER rather than going quiet when its subject was deleted. It used to permit the
     // three-row migration table in `rolltui/c/rolltui_bindings.c` and required it to be
     // there (`table >= 3`), which was what armed it. That table is retired, so the exemption

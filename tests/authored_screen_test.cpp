@@ -1,6 +1,6 @@
 //
 // authored_screen_test.cpp — THE PROOF THAT A SCREEN CAN BE AUTHORED FOR AN APP THE TOOL IS
-// NOT (Phase 11 m6, rewritten at Phase 26 m4), the sibling of Phase 10 m6's files-only test
+// NOT (Phase 11 m6, rewritten ), the sibling of the files-only test
 // one level up.
 //
 // Phase 10 proved a screen can be FILES: a layout, a menu, a bindings file and a document that
@@ -56,7 +56,7 @@
 #include <string>
 #include <vector>
 
-// PHASE 17 m2c: the C API, through the umbrella alone. This suite reads the layout the studio
+// the C API, through the umbrella alone. This suite reads the layout the studio
 // saved back through the library's own loader, `rolltui_load_layout_text`, with the hooks the
 // library itself supplies (`rolltui_layout_default_hooks`) rather than a copied table.
 #include "rolltui/rolltui.h"
@@ -116,7 +116,7 @@ std::string status_line(const std::string& frame) {
 // Escape follows each INPUT commit and no CHOICE, because a choice clears the menu's
 // filter on its way back up and an input does not — an Escape with no filter to clear
 // would close the editor instead.
-// PHASE 26: every one of `widget kind`, `source` and `menu file` is now an INPUT, so each
+// every one of `widget kind`, `source` and `menu file` is now an INPUT, so each
 // commit is followed by an Escape (a choice clears the menu's filter on its way back up and an
 // input does not — an Escape with no filter to clear would close the editor instead). The kind
 // was a closed CHOICE until this phase, which is why `canvas` had to be offered to be typed at
@@ -241,7 +241,7 @@ int main() {
           "…all three windows, titled as the author titled them");
     // The canvas is a REAL widget: it received the press, every drag between the two
     // points, and the release, and it kept the marks. 22 cells for a 21-step stroke.
-    // Phase 21: the default tool is the ascii ramp at level 4, so a stroke lays `=` rather than
+    // the default tool is the ascii ramp at level 4, so a stroke lays `=` rather than
     // the single `#` the one-glyph brush used to.
     check(has(frame, "===") && has(status_line(frame), "marks 22"),
           "…the canvas took the whole drag — press, drags and release — and painted it [" + status_line(frame) + "]");

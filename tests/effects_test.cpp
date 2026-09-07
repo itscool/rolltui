@@ -18,13 +18,10 @@
 // function BOTH hosts route through, over every built-in theme including the two that map
 // every state — so it cannot be true only for the theme that happens to be loaded.
 //
-// PHASE 17 m2: calls the C API (rolltui/c/rolltui_effects.h, rolltui_screen.h,
+// calls the C API (rolltui/c/rolltui_effects.h, rolltui_screen.h,
 // rolltui_frame_ops.h, rolltui_render.h, rolltui_theme.h, rolltui_json.h, all reached
-// through rolltui/rolltui.h) directly for the frame, the theme and the effects engine —
-// Effects.hpp, Style.hpp, Theme.hpp and Json.hpp are all deleted along with the rest of
-// the C++ binding (plan/phase-17.md milestone 2), so nothing here goes through
-// `rolltui::Frame` / `rolltui::EffectMap` / `rolltui::Theme` any more; those are the files
-// that used to be included.
+// through rolltui/rolltui.h) directly for the frame, the theme and the effects engine. There is
+// no C++ wrapper layer: this suite calls the C API the same way a host does.
 //
 // `Role` (Style.hpp) and `EffectState`/`effect_state_name`/`effect_state_from_name`
 // (Effects.hpp) have NO C form at all and are stated to stay in ONE language, permanently
@@ -107,7 +104,7 @@ const std::array<const char*, kRoleCount>& kRoleNamesTable() {
 // reproduced verbatim; there was never a second definition to convert away from.
 using Style = RolltuiStyle;
 
-// PHASE 17: DERIVED from `ROLLTUI_EFFECT_STATE_LIST`. This file used to declare the enum by
+// DERIVED from `ROLLTUI_EFFECT_STATE_LIST`. This file used to declare the enum by
 // hand next to a verbatim copy of the names, on the rule that "names stay in one language" —
 // the rule that has since been reversed, because a vocabulary the C refuses to carry does not
 // disappear, it relocates into every caller that cannot reach it.
@@ -484,7 +481,7 @@ void wide_liar_kind(void*, const RolltuiEffectSpec*, const RolltuiStyle* styles,
 
 // ---- rung 2, and the registry vocabulary — the direct C calls Effects.cpp's shim made
 // on a caller's behalf; a caller now makes them itself. ----
-// PHASE 25: rung 2 is a CONTEXT's, so this suite registers into one session that every shim
+// rung 2 is a CONTEXT's, so this suite registers into one session that every shim
 // below resolves against. The helper is `rolltui_test.hpp`'s — see the note there for why a
 // suite's session is not shaped like a host's.
 RolltuiContext* test_ctx() { return rolltui_test::test_context(); }
@@ -561,7 +558,7 @@ int poll_timeout_ms(const RolltuiFrame* f, const Theme& theme, int idle_ms) {
 }
 
 // A theme mapping ONE state to one spec, so a kind can be exercised on its own. A spec is
-// BUILT INTO the map since Phase 15 m3 (the theme owns its specs in C), so these helpers
+// BUILT INTO the map now (the theme owns its specs in C), so these helpers
 // take what a spec is made of rather than a spec.
 Theme theme_with(EffectState state, std::string_view kind, int period_ms = 800,
                  std::vector<std::string> frames = {}, std::vector<Role> roles = {}, int width = 0) {

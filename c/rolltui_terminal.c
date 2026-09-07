@@ -100,7 +100,7 @@ void rolltui_terminal_restore_now(void) {
  * next `rolltui_terminal_poll`. `text_off` into `queued_text` rather than a raw pointer: a
  * later queue entry can grow (and so move) the arena before an earlier entry is drained, and
  * an offset survives a realloc where a pointer would dangle. Cleared by resetting the two
- * lengths to 0, never by freeing — Phase 13's rule for a buffer that gets reused. */
+ * lengths to 0, never by freeing — the rule for a buffer that gets reused. */
 typedef struct QueuedEvent {
   unsigned char kind;
   RolltuiChord key;

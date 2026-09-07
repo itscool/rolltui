@@ -93,7 +93,7 @@ RolltuiMdLines* rolltui_md_lines_new(void);
 void rolltui_md_lines_free(RolltuiMdLines* L); /* a no-op on NULL */
 /* Drops every line, span and byte and KEEPS every buffer. This is the reset that makes a
  * re-laid entry cost nothing: `clear()` on a container of owning elements frees exactly the
- * storage being reused (CLAUDE.md, Phase 13's mistake-made-four-times), and there is
+ * storage being reused (CLAUDE.md, the mistake-made-four-times), and there is
  * nothing owning left in here to free. */
 void rolltui_md_lines_reset(RolltuiMdLines* L);
 

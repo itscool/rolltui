@@ -2,10 +2,10 @@
  *
  * Everything here allocates through `rolltui_mem_*` (rolltui/Memory.hpp's C face), which
  * is CLAUDE.md's rule and is also the point: in C the entry point is TOTAL, where in C++ it
- * only ever saw the library's own explicit allocations. Phase 14's verdict reports the
+ * only ever saw the library's own explicit allocations. the verdict reports the
  * difference, and this file is where it comes from.
  *
- * Phase 13's findings are carried across deliberately, because they are properties of the
+ * the findings are carried across deliberately, because they are properties of the
  * design and not of the language:
  *   - reset REUSES every buffer, including the link and spill tables' bytes, so a steady
  *     frame allocates nothing;

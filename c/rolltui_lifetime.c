@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_lifetime.c — see rolltui_lifetime.h. Moved from `rolltui/Lifetime.cpp`
- * at Phase 17 m1; `rolltui/Lifetime.hpp` is now a thin forwarding shim over this file.
+ * ; `rolltui/Lifetime.hpp` is now a thin forwarding shim over this file.
  *
  * TWO GROWABLE LISTS, both grown through `rolltui_alloc.h`'s one home for growth
  * (`rolltui_grow`), never by a hand-rolled realloc here:

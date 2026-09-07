@@ -7,10 +7,10 @@
 // requires), the unknown-colour rule, claimed badges, and auto-fix on a deliberately
 // broken pair.
 //
-// PHASE 17 m2: calls the C API (rolltui/c/rolltui_theme_analysis.h, rolltui_theme.h,
+// calls the C API (rolltui/c/rolltui_theme_analysis.h, rolltui_theme.h,
 // rolltui_json.h, all reached through rolltui/rolltui.h) directly — ThemeAnalysis.hpp,
 // Theme.hpp and Style.hpp are all deleted along with the rest of the C++ binding
-// (plan/phase-17.md milestone 2). `Lin`/`OkLab`/`OkLch`/`Badges` were one-definition
+// . `Lin`/`OkLab`/`OkLch`/`Badges` were one-definition
 // aliases over the same C structs and are reproduced verbatim — there was
 // never a second definition to convert away from. `Role` (Style.hpp) has no C enum form
 // at all — a C file names no role, so the ordinal crosses a boundary call and the name

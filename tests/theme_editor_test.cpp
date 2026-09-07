@@ -7,7 +7,7 @@
 // switching editing the other variant, and the written-back pair object round-tripping
 // through the theme loader. Also the UndoStack itself.
 //
-// Phase 17 m1d: drives the editor through `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
+// drives the editor through `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
 #include <string>
 
@@ -23,7 +23,7 @@
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
 
-// PHASE 17 m3: the forward declaration of `rolltui::theme_vocab()` that stood here is gone with
+// the forward declaration of `rolltui::theme_vocab()` that stood here is gone with
 // `Theme.cpp`. `rolltui_theme_default_vocab()` is the same table and always was — the C++ one
 // only forwarded to it, which is why nothing but the spelling changes below.
 

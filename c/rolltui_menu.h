@@ -22,9 +22,8 @@
  * rather than move that map across, the C ASKS — one callback, "is a validator by this name
  * registered, and does it accept this text". The map stays where the callables are, which is
  * the same trade `rolltui_bindings.h` makes for "is this scope the library's". The JSON
- * loader below JOINS this file at Phase 17 m1, once `rolltui_json.h` existed to build it on
- * — unlike Theme's and Layout's, which stay in their C++ modules permanently (see those
- * headers), a menu FILE has no sibling algorithm on the other side of a boundary to entangle
+ * loader below lives in this file: unlike a theme's or a layout's, a menu FILE has no sibling
+ * algorithm on the other side of a boundary to entangle
  * it, so the whole walk moves.
  *
  * ~~**Which tree items name an action, and what a chord is called.** `item_actions()`,
@@ -40,7 +39,7 @@
  * them — which is the failure the vocabulary rule names, one level up.
  *
  * Two are below as `rolltui_menu_apply_shortcuts` and `rolltui_menu_item_actions` (the third,
- * `rolltui_menu_unknown_validators`, was reached by nothing and went in Phase 19 m3). They take
+ * `rolltui_menu_unknown_validators`, was reached by nothing and went ). They take
  * a TREE, not a menu, because that is what they are about; the widget's own one-line versions
  * are beside them.
  *

@@ -1,5 +1,5 @@
 //
-// rolltui/tools/paint.cpp — `rolltui-paint`, the library's THIRD host (plan/phase-11.md,
+// rolltui/tools/paint.cpp — `rolltui-paint`, the library's THIRD host (the plan,
 // milestone 6) and the phase's proof that a rolltui app need not be chat-shaped.
 //
 // It is a text-mode painting app: a canvas you drag on, a tool palette that is a menu
@@ -31,7 +31,7 @@
 // else is the ordinary interactive loop.
 //
 // ============================================================================================
-// PHASE 17 m3: THIS FILE CALLS THE C, AND IT IS THE FIRST HOST TO — so what it holds is the
+// THIS FILE CALLS THE C, AND IT IS THE FIRST HOST TO — so what it holds is the
 // answer the other five copy rather than each invent. Three decisions, all forced by the
 // plan's own measurements rather than chosen here:
 //
@@ -74,11 +74,11 @@ namespace {
 // 10 m3's three rungs — so a user can shadow it with menus/tools.json. A DESIGNER working on
 // a screen for this app sees `menu:tools` as a labelled placeholder, the same honest answer it
 // already gives for a foreign widget kind: the tool is not this app and cannot build one.
-// PHASE 21: the palette is the app's own FILE, and every tool a person picks now comes out of
+// the palette is the app's own FILE, and every tool a person picks now comes out of
 // it — the ramp, the ink, the brush size and its shape. Two of them are the menu's TYPED input
 // fields (`"kind": "input"`, `"type": "int"` with a range and `"type": "color"`), which NOTHING
 // in this tree drove from a host before: they were built in Phase 10 and only the editors used
-// them. What that cost is wall 7 in `plan/phase-21.md`.
+// them. What that cost is wall 7 in the plan.
 constexpr const char* kToolsMenu = R"({
   "id": "root", "label": "tools", "items": [
     { "id": "ramp", "label": "Shading", "kind": "choice",
@@ -97,7 +97,7 @@ constexpr const char* kToolsMenu = R"({
 
 // THE TWO RAMPS, and the second is a deliberate Unicode probe. CLAUDE.md records that U+2588
 // FULL BLOCK is East Asian AMBIGUOUS and overflowed a one-cell column on a wide-ambiguous
-// terminal in Phase 12 m7. A painting app whose best tool is a block ramp should meet that
+// terminal . A painting app whose best tool is a block ramp should meet that
 // rather than avoid it, so `--ambiguous-wide` is a real mode here and a golden frame runs in it.
 struct Ramp {
   const char* name;
@@ -134,7 +134,7 @@ struct Tool {
   // ROUND OR SQUARE, and it is here for the second reason an example's feature can be here:
   // it probes NOTHING about the API — no public function, no wall, no header growth — and it
   // makes the app better to use and to read. Those are two independent tests (see
-  // `plan/phase-21.md`), and passing either is enough for pure app-side code. What is never
+  // the plan), and passing either is enough for pure app-side code. What is never
   // allowed is app-side polish that grows the PUBLIC surface.
   bool round = false;
 };
@@ -221,7 +221,7 @@ void canvas_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     // it does not need to: the HOST set it and lends it through the tool. The block ramp is
     // EA-AMBIGUOUS, so on a wide-ambiguous terminal U+2588 is TWO cells and `put_text` refuses
     // to cut one in half — a visible refusal rather than a torn row.
-    // THE AMBIGUOUS-WIDTH FALLBACK, AND IT IS THE APP'S TO MAKE (Phase 21's Unicode probe).
+    // THE AMBIGUOUS-WIDTH FALLBACK, AND IT IS THE APP'S TO MAKE (the Unicode probe).
     // U+2588 and friends are East Asian AMBIGUOUS: on a terminal that renders them two cells
     // wide, `put_text` will not cut one in half and lays down NOTHING — measured, and the whole
     // block ramp vanished. The library is right to refuse and it says so the only way a draw
@@ -392,7 +392,7 @@ struct App {
     declare_actions();  // the SCREEN says what this app can do (Phase 10 m4)
   }
 
-  // The kind table belongs to a CONTEXT since Phase 25, so this takes the session it registers
+  // The kind table belongs to a CONTEXT now, so this takes the session it registers
   // into. Registering the same name twice in one context is idempotent —
   // `rolltui_widget_kind_register` refuses only a name already registered with ANOTHER rule.
   static void register_canvas_kind(RolltuiContext* ctx) {
@@ -474,7 +474,7 @@ struct App {
     if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
       RolltuiMenuEvent ev{};
       rolltui_menu_handle(m, &e, bindings, rolltui_menu_default_actions(), &ev);
-      // THE TYPED FIELDS FROM A HOST'S SIDE, which nothing in this tree did before Phase 21.
+      // THE TYPED FIELDS FROM A HOST'S SIDE, which nothing in this tree did previously.
       // What the API makes easy: a committed value arrives already validated and CANONICAL, so
       // there is no range check, no re-format and no error path here — the field refused
       // anything that could not become a valid value while it was still being typed. What it

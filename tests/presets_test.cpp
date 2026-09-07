@@ -6,11 +6,11 @@
 // rule. Phase 10 m1 adds the Layout domain.
 // Runs in a scratch directory under $TMPDIR it creates and removes.
 //
-// PHASE 17 m2c: this file calls the C directly (`rolltui/c/rolltui_presets.h`) instead of
+// this file calls the C directly (`rolltui/c/rolltui_presets.h`) instead of
 // `rolltui::PresetStore<Domain>` (Presets.hpp/PresetStore.hpp, deleted from this file's
 // dependencies). `PresetStore<D>` was only ever the ADAPTER that turns a Domain traits type
 // into the descriptor of function pointers `rolltui_preset_store_new` takes.
-// PHASE 18 m3: the three descriptors are the LIBRARY's (`rolltui_preset_domain`). This file had
+// the three descriptors are the LIBRARY's (`rolltui_preset_domain`). This file had
 // assembled them itself from `rolltui_theme_preset_domain_init` and its siblings — as had roll,
 // the studio, `lifetime_test` and the C consumer, five spellings of one assembly — and never
 // released their cache. The library's Bindings domain carries `rolltui_undeliverable_reason_fn`
@@ -499,7 +499,7 @@ int main() {
     const RolltuiThemePresetValue* m = ThemeStore::shipped("mono");
     const bool ok_mono = resolve_colours_c(m->colours, ROLLTUI_MODE_DARK, mono);
     check(ok_mono && mono.clean() && styles_eq(mono.styles, builtin_mono.styles), "shipped 'mono' is the built-in mono");
-    // Phase 12 m6: the shipped files carry the built-ins' MOTION too. Without this the
+    // the shipped files carry the built-ins' MOTION too. Without this the
     // two definition sites could drift in exactly the way that matters least visibly and
     // most: a built-in that spins and a shipped file — the one every session actually
     // runs — that is silently still.

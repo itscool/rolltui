@@ -1,6 +1,6 @@
 /*
  * rolltui/tests/api_classes.inc — THE CLASS OF EVERY PUBLIC FUNCTION (Phase 19 m1; the criterion
- * CORRECTED in Phase 20 m1, 2026-09-06).
+ * CORRECTED , 2026-09-06).
  *
  * This is the "intentional public API design" the user asked for, as data a test enforces: every
  * function declared in a public header has ONE class, with the reason written where it is not the
@@ -14,7 +14,7 @@
  * Those two clauses put **304 of 624 public functions in front of no consumer at all** — 217
  * reached only by tests (143 of them by exactly ONE suite) and 87 by nothing.
  *
- * **A TEST'S REACH IS NEVER A REASON. A test exists to reach things.** That is Phase 17 m4b's
+ * **A TEST'S REACH IS NEVER A REASON. A test exists to reach things.** That is the
  * retracted method one level down — *"measuring reach cannot tell an entry point from plumbing"* —
  * and the third time this repo has used the cheapest available signal as the criterion:
  *   1. Phase 17 m4 derived the public HEADER set from reach → 37 of 39 public → retracted by m4b.
@@ -613,7 +613,7 @@ ROLLTUI_API(rolltui_windows_widget_for, PUBLIC)
  * for: the report is how an app tells its own developer what a screen wants and the code has
  * not built. The pair rule (rule 1) covers `_release`; `_clean` and `_summary` are the shape
  * every other report on this boundary has, and shipping three of the four would be the lopsided
- * API Phase 24's caveat is about. */
+ * API the caveat is about. */
 ROLLTUI_API(rolltui_gap_report_clean, PUBLIC)
 ROLLTUI_API(rolltui_gap_report_release, PUBLIC)
 ROLLTUI_API(rolltui_gap_report_summary, PUBLIC)

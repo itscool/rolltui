@@ -10,7 +10,7 @@
 // part of the Markdown shim this file replaces, and `Role` specifically has no C-side named
 // equivalent to convert TO yet — `rolltui/c/rolltui_style.h` carries only the three ordinals
 // that cross as struct-field defaults, and Style.hpp's own comment states the rest is a
-// permanent C++-only vocabulary until Phase 17 m1 (unstarted: `plan/phase-17.md`) decides
+// permanent C++-only vocabulary previously (unstarted: the plan) decides
 // what replaces it. The ONE place `diff_spans` crosses into this file's OWN converted
 // surface — plugged in as a `RenderOptions::highlight` — is bridged by a small local
 // trampoline (`diff_highlight_fn`, below) that calls the existing, untouched C++ function
@@ -105,7 +105,7 @@ struct HighlightSpan {
 // THE ROLE TABLE, exactly Diff.cpp's kRoles: the C names no role at all, so the mapping
 // lives in this one initializer, and markdown_test's own per-line-kind assertions are its
 // oracle (swap two fields and they fail).
-// PHASE 17 m3: this was a verbatim copy of `Diff.cpp`'s private table — two consumers writing
+// this was a verbatim copy of `Diff.cpp`'s private table — two consumers writing
 // the same thing, which means the API was wrong rather than the consumers. Both now read the
 // library's `rolltui_diff_default_roles()`, so a changed mapping is one edit and this suite
 // still fails on it (its per-line-kind assertions are the oracle either way).
@@ -206,7 +206,7 @@ std::string subsequence_gap(const std::vector<std::string>& needle, const std::v
 }
 
 // A render PLUS the storage its spans borrow from. `render()` used to hand back a
-// `std::vector<StyledLine>` that owned every byte in it; since Phase 15 m4 a span owns
+// `std::vector<StyledLine>` that owned every byte in it; now a span owns
 // nothing (rolltui_md_lines.h), so a caller has to keep the store alive for as long as it
 // reads the lines. That obligation is the one thing the raw C API puts on a caller — in
 // place of the deleted `rolltui::markdown::Rendered` shim, this holder OWNS the
@@ -343,7 +343,7 @@ bool has_role(std::span<const RolltuiMdLine> v, Role r, const std::string& text)
 
 // A two-language ("cpp", "python") toy highlighter — the seam's PROOF, not a shipped
 // highlighter (Markdown.hpp: "the library ships no highlighter"; a real one is
-// deliberately out of scope, plan/phase-12.md m2's "Deliberately NOT in this phase").
+// deliberately out of scope, the plan m2's "Deliberately NOT in this phase").
 // Plugged in as `RolltuiMdRenderOptions::highlight` (a raw function pointer) with
 // `highlight_ctx` carrying the `int*` call counter — there is no closure to capture into
 // once the field is a C function pointer rather than a `std::function`. It emits byte-range
@@ -641,7 +641,7 @@ int main() {
     check(w.empty(), "blank source renders no lines");
   }
   {
-    // The block TREE left the public header in Phase 15 m4 (each implementation shapes it
+    // The block TREE left the public header (each implementation shapes it
     // the way its language wants); what a caller can ask is what the top-level blocks ARE,
     // which is what this assertion was always really checking.
     const std::string src = "# H\n\n- a\n\n```\nc\n```\n";
@@ -797,7 +797,7 @@ int main() {
             "…and a size over 1024 reads in kB [" + summary("diff", 42, 1229) + "]");
     }
   }
-  // ---- the diff colouriser (plan/phase-12.md m5, word level in m5b) ----------------
+  // ---- the diff colouriser ----------------
   // It rides m2's seam rather than being a second mechanism — which is the cheapest rung
   // and also the test of whether that seam was placed right. `diff_spans` is Diff.hpp's
   // own, untouched function; only its direct calls appear below (see the scope note at the

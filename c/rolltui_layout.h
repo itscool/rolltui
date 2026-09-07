@@ -5,7 +5,7 @@
  * header by name. */
 /*
  * rolltui/c/rolltui_layout.h — PLACEMENT, COMPOSITION, THE STACK AND THE LOADER (Phase 15 m5,
- * the loader and every English sentence added at Phase 17 m2).
+ * the loader and every English sentence added ).
  *
  * The algorithm half of the layout module: what a Dim resolves to, how a Row divides its
  * width, which borders join, which window has focus and where an event goes, and — since
@@ -27,7 +27,7 @@
  * a layer and leaves the caller's empty, and `base()` is a call rather than a reference kept
  * across a mutation.
  *
- * ---- THE BOUNDARY'S RULES, all inherited from Phase 14 and none new -------------------------
+ * ---- THE BOUNDARY'S RULES -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER**, including working memory: `rolltui_compose_layer`
  *      needs two screen-sized byte maps and takes a SCRATCH handle rather than keeping a
@@ -48,7 +48,7 @@
  * `rolltui::Content` and `rolltui::ActionDecl` kept `std::string`/`std::vector` fields in
  * `Layout.hpp` and a shim unpacked `RolltuiLoadedLayout` into them once per load. `Layout.hpp`
  * and the shim are deleted: `RolltuiLayout`, `RolltuiContent` and
- * `RolltuiLayoutAction` below ARE the types every consumer holds, and since Phase 18 m2 a
+ * `RolltuiLayoutAction` below ARE the types every consumer holds, and now a
  * content's kind is its NAME rather than a C++-only enum (the registry section says why).
  * What crosses is unchanged — the ALGORITHM (JSON in, JSON out, which rung, what rule) and
  * every SENTENCE a bad layout produces.

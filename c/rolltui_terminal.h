@@ -20,7 +20,7 @@
  *                              // user staring at an alternate screen with a raw tty.
  *
  * Raw mode here means cfmakeraw: ISIG is off, so Ctrl-C arrives as a key event
- * (plan/phase-9.md: Ctrl-C cancels a turn, twice exits) and SIGINT only ever comes from
+ * and SIGINT only ever comes from
  * outside. Ctrl-Z likewise. The restore path is async-signal-safe: precomputed bytes
  * written with write(2) and a tcsetattr of the saved termios.
  *
@@ -36,7 +36,7 @@
  * moved was the `std::string` / `std::vector` / `std::chrono` / `std::atomic` / `std::optional`
  * around those calls, never the calls themselves.
  *
- * THE BOUNDARY'S RULES, all inherited from Phase 14/15 and none new:
+ * THE BOUNDARY'S RULES:
  *   1. **THE TERMINAL IS AN OPAQUE HANDLE, OWNED by the caller.** `rolltui::Terminal` holds
  *      one and does the RAII (`rolltui/Terminal.hpp`, kept as the thin C++ shape every
  *      existing caller already writes against — Phase 17 m2 is what deletes that shim, not

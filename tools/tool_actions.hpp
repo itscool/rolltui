@@ -1,7 +1,7 @@
 #pragma once
 //
 // rolltui/tools/tool_actions.hpp — the actions of the library's own TOOLS, and the chords
-// they suggest (plan/phase-11.md, milestone 1). Phase 17 m1d: calls `rolltui/c/*.h`
+// they suggest . Phase 17 m1d: calls `rolltui/c/*.h`
 // directly — no `rolltui/*.hpp` — the same C API `rolltui/rolltui.h` curates for every
 // other C++ consumer.
 //
@@ -70,7 +70,7 @@ inline RolltuiBindings*& editor_bindings_slot() {
 // table is then declared into — freed at rolltui_shutdown() (Lifetime's rule: register a
 // releaser where the retained thing is made), so it never shows as a leak.
 //
-// PHASE 25: it takes the SESSION whose shipped table it clones. The slot stays one per
+// it takes the SESSION whose shipped table it clones. The slot stays one per
 // process because this is a HOST-side convenience over one binary's three editors, and a
 // binary runs one editor set; what changed is that the table it copies is a context's, so
 // the context has to be named rather than assumed.
@@ -90,10 +90,9 @@ inline const RolltuiBindings* editor_bindings(RolltuiContext* c) {
   return slot;
 }
 
-// The `studio` scope: the studio binary's own three. These were renamed along with the
-// binary in Phase 11 m2, and a bindings file written before that is rewritten once by
-// the loader — Bindings.cpp's migration table is where the old names are written down,
-// deliberately the only place left that carries them, so an old Ctrl-Q still quits.
+// The `studio` scope: the studio binary's own three. A bindings file naming their older
+// spellings is rewritten once by the loader — the migration table in the bindings module is the
+// only place those old names still exist, so an old Ctrl-Q still quits.
 inline std::span<const RolltuiToolAction> studio_actions() {
   static const RolltuiToolAction t[] = {
       {"studio.cycle_theme", "cycle the shipped theme presets", "f3"},

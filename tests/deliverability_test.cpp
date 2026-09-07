@@ -26,7 +26,7 @@
 //            form with its worked examples, the modifier parameter 1 + (shift 1 |
 //            alt 2 | ctrl 4), and the cursor/function keys that already carry it.
 //
-// PHASE 17: calls the C API (rolltui/c/rolltui_keys.h, rolltui_bindings.h,
+// calls the C API (rolltui/c/rolltui_keys.h, rolltui_bindings.h,
 // rolltui_terminal.h, all reached through rolltui/rolltui.h) directly rather than through
 // the rolltui::KeyEvent / KeyDecoder / Bindings / Terminal C++ shims (Keys.hpp + its shim
 // Keys.cpp, Bindings.hpp + its shim Bindings.cpp, Terminal.hpp + its shim Terminal.cpp)
@@ -595,7 +595,7 @@ int main() {
 
   // ---- 5. THE SHIPPED FILE IS DELIVERABLE EVERYWHERE ---------------------------------
   // default_bindings() aborts the build if it is not — asserted here so the failure has
-  // a name as well as an exit status, the way Phase 11 m1's tool-row abort is.
+  // a name as well as an exit status, the way the tool-row abort is.
   {
     BindingsLoadReport rep;
     BindingsPtr d = bindings_from_json(default_bindings_json(), rep, KeyProtocol::Legacy);
