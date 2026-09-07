@@ -103,6 +103,5 @@ void rolltui_shutdown(void) {
    * `live_bytes == 0` assertion still means what it always did: a no-context entry point
    * lazily makes one, and a caller that never asked for a context must not be left holding
    * its storage. When the last no-context entry point goes, so do this line and the default. */
-  rolltui_context_default_release();
   rolltui_release_thread();
 }

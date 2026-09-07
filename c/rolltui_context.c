@@ -22,21 +22,3 @@ void rolltui_context_free(RolltuiContext* c) {
   rolltui_window_config_free(c->window_config);
   rolltui_mem_free(c);
 }
-
-/* The transitional rung (see the header). Deliberately NOT freed at exit: it is owned by the
- * process for as long as a no-context entry point can be called, and the tests that assert
- * `live_bytes == 0` release it explicitly through `rolltui_shutdown`. */
-static RolltuiContext* g_default;
-
-RolltuiContext* rolltui_context_default(void) {
-  if (g_default == NULL) g_default = rolltui_context_new();
-  return g_default;
-}
-
-/* What `rolltui_shutdown()` now means for the default context: release what it owns and let it
- * be rebuilt on next use, which is exactly the "safe to call at any moment" contract that
- * function has always had. */
-void rolltui_context_default_release(void) {
-  rolltui_context_free(g_default);
-  g_default = NULL;
-}

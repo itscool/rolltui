@@ -92,19 +92,19 @@
  * silently changed the library's descriptor's behaviour. Configuration belongs to the thing it
  * configures. */
 
-/* ---- PROCESS: one per process by nature, each with its reason (17) -------------------------- */
+/* ---- PROCESS: one per process by nature, each with its reason (16) -------------------------- */
 
-/* THE TRANSITIONAL DEFAULT CONTEXT (m2). The one global this phase ADDS, and it is here rather
- * than hidden precisely because a transitional global nobody is committed to removing is just a
- * global. Every no-context entry point still in the API forwards to it, which is what lets the
- * migration land one subsystem at a time in green commits instead of one unverifiable change —
- * the discipline Phase 14 used with `-DROLLTUI_C`.
- * **REMOVAL CONDITION, stated so it is checkable:** when the last no-context entry point takes a
- * context, this goes, `rolltui_shutdown`'s call to `rolltui_context_default_release` goes with
- * it, and this row goes with both. Its remaining callers today are `rolltui_app_profile_mount`
- * (which takes a `RolltuiWindows` that carries a context in m3) and two suites whose subject IS
- * the process-wide shutdown path. */
-ROLLTUI_GLOBAL("rolltui_context.c", "g_default", PROCESS)
+/* ~~THE TRANSITIONAL DEFAULT CONTEXT~~ — ADDED AND REMOVED IN THE SAME PHASE (m2 → m5,
+ * 2026-09-07). It was the one global this phase introduced, recorded here with a stated removal
+ * condition precisely so it could not quietly become permanent: "when the last no-context entry
+ * point takes a context, this goes." That condition was met at m3, and `lifetime_test` — whose
+ * subject IS the release path — was the last caller. It now owns a session and frees it, which
+ * made its own assertion stronger rather than weaker: `live_bytes == 0` was a PROCESS fact and
+ * is a SESSION fact, proved twice in one run with a fresh session in between.
+ *
+ * The pattern is the reusable part, and it is Phase 14's `-DROLLTUI_C` flag again: a scaffold
+ * that lets a migration land in green commits, written down with the condition under which it
+ * is deleted, and then actually deleted. */
 
 /* ~~THE RELEASER LIST~~ — RECLASSIFIED PROCESS 2026-09-07 (m2), which is the milestone's real
  * result and not a concession. m1 filed it CONTEXT on the assumption that `rolltui_shutdown()`

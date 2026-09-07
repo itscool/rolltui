@@ -551,8 +551,12 @@ int main() {
     // one thread at a time, so it guarded nothing a caller was still permitted to do) and, one
     // level along, the ten preset-domain configuration rows went ONTO the descriptor each one
     // configures rather than into the context — configuration belongs to the thing it configures.
-    check(ctx == 0 && proc == 17,
-          "the boundary is 0 CONTEXT + 17 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
+    // m5: 17 → 16. The transitional default context was ADDED AND REMOVED IN THE SAME PHASE, on
+    // the condition its own row stated. What is left is the terminal (7), the allocator counters
+    // (6), a thread's scratch and a host's shutdown-hook list (2), and the keyboard protocol the
+    // TTY negotiated (1) — four things that are genuinely the process's, and no registry.
+    check(ctx == 0 && proc == 16,
+          "the boundary is 0 CONTEXT + 16 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }
 
   // ---- the rule is WRITTEN where a reader (and a model) will meet it -----------------

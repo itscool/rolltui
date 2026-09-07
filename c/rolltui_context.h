@@ -71,20 +71,6 @@ struct RolltuiContext {
   RolltuiWindowConfig* window_config; /* rolltui_widgets.c — what a program configured once */
 };
 
-/* ---- THE TRANSITIONAL RUNG, and it is the ONE new global this phase adds ---------------------
- * Every no-context entry point still in the API forwards to this. It exists so the migration
- * lands in GREEN COMMITS, one subsystem at a time, instead of one unverifiable change — the same
- * discipline Phase 14 used with `-DROLLTUI_C`, where both implementations satisfied the same
- * tests and a bad module was reverted by deleting a filename.
- *
- * IT IS RECORDED IN `globals.inc` WITH ITS REMOVAL CONDITION rather than hidden: when the last
- * no-context entry point goes, this goes with it, and the boundary test's PROCESS count falls by
- * one. A transitional global that nothing is committed to removing is just a global. */
-RolltuiContext* rolltui_context_default(void);
-
-/* Releases the default and lets it be rebuilt on next use — called by `rolltui_shutdown()`, so
- * a caller that never asked for a context is not left holding its storage. */
-void rolltui_context_default_release(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

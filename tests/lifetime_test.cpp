@@ -147,6 +147,15 @@ const Theme* builtin_theme(std::string_view name) {
   return nullptr;
 }
 
+// ---- THIS SUITE'S SESSION (Phase 25 m5) ---------------------------------------------------
+// The transitional default context is GONE — its removal condition was "when the last
+// no-context entry point takes one", and this file was the last caller. So the suite owns a
+// session and swaps it, which is what makes the assertion below a stronger claim than it was:
+// `live_bytes == 0` used to be a PROCESS fact and is now a SESSION fact, provable twice in one
+// run with a fresh session in between.
+RolltuiContext* g_session = nullptr;
+RolltuiContext* session() { return g_session; }
+
 // ---- the one built-in layout this file needs, cached the same shutdown-aware way -----------
 // Only "default" — unlike the theme cache above, nothing here ever asks for a second name, so
 // there is no reason to mirror Layout.cpp's full by-name table.
@@ -169,7 +178,7 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
       RolltuiLoadedLayout loaded{};
       rolltui_loaded_layout_init(&loaded);
       std::size_t defaults_n = 0;
-      const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(rolltui_context_default(), &defaults_n);
+      const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(session(), &defaults_n);
       RolltuiLayoutReport rep{};
       if (rolltui_load_layout_text_into(text, text_len, &loaded, defaults, defaults_n, rolltui_layout_default_hooks(),
                                     &rep) != 0) {
@@ -220,9 +229,9 @@ void paint_something() {
                          "\n\nSome prose that is long enough to wrap, with `code` and a "
                          "[link](https://example.invalid/p).\n\n- one\n- two\n");
   }
-  RolltuiWindows* windows = rolltui_windows_new(rolltui_context_default());
-  rolltui_context_set_library_defaults(rolltui_context_default());
-  rolltui_context_set_bindings(rolltui_context_default(), rolltui_bindings_default(rolltui_context_default()));
+  RolltuiWindows* windows = rolltui_windows_new(session());
+  rolltui_context_set_library_defaults(session());
+  rolltui_context_set_bindings(session(), rolltui_bindings_default(session()));
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   rolltui_window_stack_set_base(stack, &builtin_layout("default")->base);
   const Theme* theme = builtin_theme("default-dark");
@@ -230,7 +239,7 @@ void paint_something() {
   rolltui_windows_bind_rows(windows, "status", 6, bind_status_rows, nullptr, nullptr);
   rolltui_windows_bind_submit(windows, "prompt", 6, bind_prompt_submit, nullptr, nullptr, /*SendAndClear=*/0);
   const RolltuiWidgetEnv env{0, 1};
-  rolltui_context_set_env(rolltui_context_default(), &env);
+  rolltui_context_set_env(session(), &env);
   const RolltuiRect box{0, 0, 100, 30};
   rolltui_windows_sync(windows, stack);
   rolltui_windows_autosize(windows, stack, box);
@@ -276,12 +285,12 @@ void use_the_ported_modules(const char* when) {
   // measuring. Deleting its releaser left this suite 29/29 green: a leak of it would have
   // shipped. Filling it here puts it inside the window the existing assertions already cover,
   // which is why this adds a CALL and not a check.
-  check(rolltui_layout_builtin(rolltui_context_default(), "default", 7) != nullptr,
+  check(rolltui_layout_builtin(session(), "default", 7) != nullptr,
         std::string("the built-in layout cache fills, so the library HOLDS it — ") + when);
 
   constexpr std::string_view kProbeName = "lifetime-probe";
   const int effect_code =
-      rolltui_effect_register(rolltui_context_default(), kProbeName.data(), kProbeName.size(), probe_effect,
+      rolltui_effect_register(session(), kProbeName.data(), kProbeName.size(), probe_effect,
                               nullptr, nullptr);
   const std::string effect_why =
       effect_code == ROLLTUI_EFFECT_OK ? std::string() : ("code " + std::to_string(effect_code));
@@ -300,14 +309,14 @@ void use_the_ported_modules(const char* when) {
   RolltuiEffectScratch* effect_scratch = rolltui_effect_scratch_new();
   RolltuiEffectReport rep{};
   bool any_unknown = false;
-  rolltui_effects_apply(rolltui_context_default(), f, effect_scratch, theme->styles, theme, theme->effects, 137, 0,
+  rolltui_effects_apply(session(), f, effect_scratch, theme->styles, theme, theme->effects, 137, 0,
                         &rep, note_unknown_effect, &any_unknown);
   rolltui_effect_scratch_free(effect_scratch);
   check(rep.marks_drawn == 1 && rep.glyphs_refused == 0 && !any_unknown,
         std::string("…and an effect is APPLIED, so its scratch is populated too — ") + when);
 
   const int tick_ms = (rolltui_frame_mark_count(f) != 0 && rolltui_effect_map_empty(theme->effects) == 0)
-                          ? rolltui_effects_tick_ms(rolltui_context_default(), f, theme->effects)
+                          ? rolltui_effects_tick_ms(session(), f, theme->effects)
                           : 0;
   check(tick_ms > 0, std::string("…and the frame asks for a wakeup — ") + when);
   rolltui_frame_free(f);
@@ -328,21 +337,21 @@ void use_the_ported_modules(const char* when) {
   check(span_count == 3, std::string("…and a diff line is coloured, which is the other new handle — ") + when);
 
   check(builtin_theme("mono") != nullptr, std::string("…and the built-in themes are built — ") + when);
-  check(rolltui_bindings_action_count(rolltui_bindings_default(rolltui_context_default())) != 0,
+  check(rolltui_bindings_action_count(rolltui_bindings_default(session())) != 0,
         std::string("…and the shipped default bindings parsed — ") + when);
 
   constexpr std::string_view kDefaultPreset = "default";
   const bool presets_ok =
-      rolltui_preset_shipped(rolltui_preset_domain(rolltui_context_default(), ROLLTUI_PRESET_DOMAIN_THEME), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain(session(), ROLLTUI_PRESET_DOMAIN_THEME), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain(rolltui_context_default(), ROLLTUI_PRESET_DOMAIN_LAYOUT), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain(session(), ROLLTUI_PRESET_DOMAIN_LAYOUT), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain(rolltui_context_default(), ROLLTUI_PRESET_DOMAIN_BINDINGS), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain(session(), ROLLTUI_PRESET_DOMAIN_BINDINGS), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr;
   check(presets_ok, std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 
   constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";
-  const int register_ok = rolltui_widget_kind_register(rolltui_context_default(), kProbeKind.data(), kProbeKind.size(), ROLLTUI_SOURCE_OPTIONAL,
+  const int register_ok = rolltui_widget_kind_register(session(), kProbeKind.data(), kProbeKind.size(), ROLLTUI_SOURCE_OPTIONAL,
                                                        kProbeDescribes.data(), kProbeDescribes.size());
   const std::string register_why =
       register_ok == ROLLTUI_REGISTER_OK ? std::string() : ("code " + std::to_string(register_ok));
@@ -357,7 +366,7 @@ void use_the_ported_modules(const char* when) {
   std::size_t name_len = 0, source_len = 0;
   RolltuiStr why{};
   constexpr std::string_view kProbeContent = "lifetime-probe-kind:x";
-  const int parsed = rolltui_content_parse(rolltui_context_default(), kProbeContent.data(), kProbeContent.size(),
+  const int parsed = rolltui_content_parse(session(), kProbeContent.data(), kProbeContent.size(),
                                            &row, &is_host, &name,
                                            &name_len, &source, &source_len, &problem, &why);
   rolltui_str_free(&why);
@@ -384,6 +393,12 @@ int main() {
   check(true, "shutdown() on a library that has done nothing does not crash");
 
   // ---- the real thing ----------------------------------------------------------------
+  // TWO RELEASES, and they release different things (Phase 25 m5): `rolltui_context_free`
+  // hands back what THIS SESSION held — its registries and caches — and `rolltui_shutdown`
+  // hands back what the PROCESS holds, which after this phase is a thread's scratch buffers
+  // and whatever a HOST put on the hook list. Zero requires both, and that is the honest
+  // shape: the library stopped having process state of its own, it did not stop having any.
+  g_session = rolltui_context_new();
   paint_something();
   check(builtin_layout("default") != nullptr, "a scene painted, so the caches and scratch are populated");
   const std::size_t before_registry = live_bytes();
@@ -395,22 +410,28 @@ int main() {
                                             std::to_string(before_registry) + " → " + std::to_string(live_bytes()) +
                                             " B]");
 
+  rolltui_context_free(g_session);
+  g_session = nullptr;
   rolltui_shutdown();
   check(live_bytes() == 0,
-        "AFTER shutdown() THE LIBRARY HOLDS NOTHING: live_bytes == 0 [" + std::to_string(live_bytes()) + " B]");
+        "AFTER A SESSION IS FREED AND shutdown() RUNS, THE LIBRARY HOLDS NOTHING: live_bytes == 0 [" +
+            std::to_string(live_bytes()) + " B]");
   check(live_blocks() == 0, "…and no blocks either [" + std::to_string(live_blocks()) + "]");
 
   // ---- and it is safe to carry on afterwards ------------------------------------------
-  // The caches rebuild. This is what makes shutdown() callable at any moment rather than only
-  // at the very end.
-  check(builtin_layout("default") != nullptr, "…and the caches REBUILD, so the library still works after it");
+  // A SECOND SESSION rebuilds everything. This is what makes the pair callable at any moment
+  // rather than only at the very end — and it is now a stronger claim than the one this file
+  // used to make, because the first session's state is provably gone rather than merely
+  // unaccounted: the registry below takes a name the first session had held.
+  g_session = rolltui_context_new();
+  check(builtin_layout("default") != nullptr, "…and a SECOND SESSION rebuilds the caches, so the library still works after it");
   // …and THE SECOND REGISTRATION IS THE PROOF THE FIRST WAS RELEASED, not merely
   // unaccounted (m2's shape): a name still live in the registry with a different source rule
   // is refused, so this succeeding means the table really was handed back.
   {
     constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";
     const int register_ok =
-        rolltui_widget_kind_register(rolltui_context_default(), kProbeKind.data(), kProbeKind.size(),
+        rolltui_widget_kind_register(session(), kProbeKind.data(), kProbeKind.size(),
                                      ROLLTUI_SOURCE_REQUIRED, kProbeDescribes.data(), kProbeDescribes.size());
     const std::string why =
         register_ok == ROLLTUI_REGISTER_OK ? std::string() : ("code " + std::to_string(register_ok));
@@ -420,7 +441,7 @@ int main() {
               why + "]");
     // …and put it back the way it was found, so the pass below registers into an empty
     // registry rather than into this proof's leftovers.
-    rolltui_widget_kind_clear(rolltui_context_default());
+    rolltui_widget_kind_clear(session());
   }
   paint_something();
   check(true, "…including painting a whole frame again");
@@ -429,8 +450,10 @@ int main() {
   // released the entry rather than merely leaving the bytes unaccounted.
   use_the_ported_modules("after a shutdown");
 
+  rolltui_context_free(g_session);
+  g_session = nullptr;
   rolltui_shutdown();
-  check(live_bytes() == 0, "a second shutdown() is safe and still lands on zero");
+  check(live_bytes() == 0, "a second session freed and a second shutdown() still land on zero");
 
   return report("rolltui lifetime_test");
 }
