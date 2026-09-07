@@ -1,33 +1,20 @@
-  // RE-RECORDED 2026-09-03 at the close of m5b. Phase 13 end to end:
-  //   steady   887 →   0   streaming 2772 → 289   resize 70272 → 11180   steady KB 455 → 0
-  //
-  // **A STEADY FRAME ALLOCATES NOTHING, and that is asserted as `== 0` rather than as a
-  // band.** This is the phase's target and the reason for it is the instrument, not the
-  // speed: at `6 ± 3` a reading of 7 is an argument about head-room; at 0, any allocation
-  // at all is a signal with a cause. There is no floor left for the next accidental one to
-  // hide under.
-  //
-  // The other two frames keep bands, because they are ALLOWED to allocate — they are the
-  // phase's named exceptions (a re-lay builds the layout cache, which must outlive the
-  // frame). What is asserted about them is that they do not GROW.
 //
-// budget_test.cpp — Phase 13 m1: THE BUDGET, IN ctest, BEFORE ANYTHING IS OPTIMISED.
+// budget_test.cpp — THE ALLOCATION BUDGET, IN ctest.
 //
-// Every later milestone of this phase is judged by this file, which is why it comes
-// first: optimising before the instrument exists means none of it can be shown to have
-// worked. What it measures is a REAL render — a 40-entry document through the shipped
-// `default` layout, laid out and composed exactly as a host does it — counted by a
-// replacement `operator new`.
+// What it measures is a REAL render — a 40-entry document through the shipped `default`
+// layout, laid out and composed exactly as a host does it — counted by a replacement
+// `operator new` and by the library's own entry point.
 //
-// THE TRAP THIS FILE IS BUILT AROUND, and it is this project's oldest: **a counter that
-// reports zero because it was never armed looks exactly like a frame that allocates
-// nothing.** A budget test that has quietly stopped counting passes forever and is worse
-// than no test at all, because it manufactures confidence. So:
+// THE TRAP THIS FILE IS BUILT AROUND: **a counter that reports zero because it was never
+// armed looks exactly like a frame that allocates nothing.** A budget test that has
+// quietly stopped counting passes forever and is worse than no test at all, because it
+// manufactures confidence. So:
 //
 //   1. THE BUDGET IS A RANGE, not a ceiling. A count BELOW the floor fails just as loudly
-//      as one above it. "It got faster" is not a thing this test may silently accept —
-//      it is either a real improvement (re-record, deliberately, with a journal entry) or
-//      it is the counter having come unarmed.
+//      as one above it. "It got faster" is not a thing this test may silently accept — it
+//      is either a real improvement (re-record deliberately, and say in the journal which
+//      change moved which number and by how much) or it is the counter having come
+//      unarmed.
 //   2. THE COUNTER IS PROVED ARMED ON EVERY RUN, twice and independently: an exact
 //      accounting test (allocate a known number of blocks between arm and disarm and
 //      demand exactly that many) and a LIVE NEGATIVE CONTROL — a registered widget kind
@@ -35,7 +22,8 @@
 //      which must move the measured number by at least what it wasted. The control is not
 //      a patch a human applies once; it runs in ctest, so the day the counter breaks the
 //      control fails with it.
-//   3. THE NUMBERS CARRY THEIR DATE, and the head-room is stated rather than felt.
+//   3. THE NUMBERS CARRY THEIR DATE AND THEIR TOOLCHAIN, and the head-room is stated
+//      rather than felt.
 //
 // WALL-CLOCK IS REPORTED BUT ONLY LOOSELY GATED, and that is deliberate. A tight timing
 // assertion in a test suite is the classic source of failures with no cause, and
@@ -43,30 +31,26 @@
 // only a catastrophe crosses, and the ALLOCATION counts, which are deterministic for a
 // fixed binary and a fixed input, are what actually guard the draw path.
 //
-// WHAT THIS TEST DELIBERATELY DOES NOT DO: judge whether the numbers are good. They are
-// not — 946 allocations to repaint an unchanged screen is the finding that scoped this
-// phase — but 203 µs is 1.2% of a terminal frame, so nothing here is a performance
-// emergency and no milestone may claim otherwise.
+// WHY THE COUNTS ARE WORTH GATING AT ALL, since a steady frame is ~1% of a terminal's
+// budget and no number here is a performance emergency: the point is the INSTRUMENT. On a
+// path asserted at zero, any allocation is a signal with a cause; under a band with
+// head-room in it, the same allocation is an argument.
 //
-// THIS FILE CALLS THE C DIRECTLY. `Document.hpp`, `Layout.hpp`,
-// `Markdown.hpp`, `Screen.hpp`, `Theme.hpp` and `Widgets.hpp` are deleted; the idiom below
-// (an app-lifetime fixture with plain members released in one destructor, `rolltui_swap`
-// in place of a per-frame `Frame`, a host widget as a `RolltuiWidgetPlugin` table) is the
-// one `rolltui/tools/paint.cpp` established as the first host.
+// THIS FILE CALLS THE C DIRECTLY, in the idiom `rolltui/examples/paint.cpp` uses: an
+// app-lifetime fixture whose plain members are released in one destructor, `rolltui_swap`
+// in place of a frame the host resets itself, and a host widget as a
+// `RolltuiWidgetPlugin` table.
 //
 // **ONE GAP, NAMED RATHER THAN WORKED AROUND**: `rolltui_mem_realloc` — the growing-heap
-// strategy's realloc half, which `rolltui::mem::realloc` wraps — has no public declaration.
-// `rolltui_mem_alloc`/`rolltui_mem_free` moved from the internal `rolltui/c/rolltui_alloc.h`
-// to the public `rolltui_mem.h` on 2026-09-05 (Phase 17 m3, concurrent with this file's own
-// conversion) precisely so a consumer could reach a handle and its release; that same change
-// deliberately did NOT move `rolltui_mem_realloc` — its own header comment says why: "growth
-// is the thing the closed set exists to stop being invented, and leaving its declaration in
-// an internal header makes that structural rather than a grep control's promise." This
-// file's exact-accounting check needs to trigger a GROWING realloc specifically (the
-// assertion right below is about how a grow is counted), so it is the one call this file
-// cannot get from `rolltui.h` — `rolltui_mem_alloc`/`rolltui_mem_free` are public and used
-// directly below, and `rolltui_mem_realloc` is reached through the internal
-// `rolltui/c/rolltui_alloc.h`, deliberately and for one call. See the include for why.
+// strategy's realloc half — has no public declaration, and that is deliberate. Its own
+// header says why: "growth is the thing the closed set exists to stop being invented, and
+// leaving its declaration in an internal header makes that structural rather than a grep
+// control's promise." This file's exact-accounting check needs to trigger a GROWING
+// realloc specifically (the assertion right below is about how a grow is counted), so it
+// is the one call this file cannot get from `rolltui.h` — `rolltui_mem_alloc` and
+// `rolltui_mem_free` are public and used directly below, and `rolltui_mem_realloc` is
+// reached through the internal `rolltui/c/rolltui_alloc.h`, for that one call. See the
+// include for why.
 #include <cstdlib>
 #include <cstring>
 #include <new>
@@ -82,8 +66,8 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_terminal.h"
-#include "rolltui/c/rolltui_alloc.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_alloc.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_markdown.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 // …AND ONE DELIBERATE REACH PAST IT, which is not a gap. `rolltui_mem_realloc`
 // is declared only in the INTERNAL `rolltui/c/rolltui_alloc.h`, on purpose: growth is the thing
 // the closed set exists to stop being invented, and keeping its declaration out of the public
@@ -169,14 +153,12 @@ struct Cost {
 // Runs `fn` with the counter armed. Nothing outside `fn` is counted, so building the
 // scene never lands in a frame's number.
 //
-// TWO SOURCES, ADDED TOGETHER, AND THE SECOND IS PHASE 14's DOING. The replacement
-// `operator new` above sees every C++ container; it does NOT see `rolltui::mem`, which is a
-// `malloc` wrapper. That was harmless while every allocation in a frame was a container's —
-// and it became a HOLE IN THE INSTRUMENT the moment the port put the Frame's cells,
-// links and spilled glyphs behind `rolltui_mem_alloc`. A budget that reports zero because it
-// cannot see the allocator is exactly the failure this file's header is built around, aimed
-// at its own counter, so `mem_stats()` is read across the same window and the deltas are
-// summed.
+// TWO SOURCES, ADDED TOGETHER. The replacement `operator new` above sees every C++
+// container; it does NOT see `rolltui::mem`, which is a `malloc` wrapper. The Frame's
+// cells, links and spilled glyphs are behind `rolltui_mem_alloc`, so a counter reading
+// only `operator new` would report zero for them — exactly the failure this file's header
+// is built around, aimed at its own counter. `mem_stats()` is read across the same window
+// and the deltas are summed.
 template <typename F>
 Cost measure(F&& fn) {
   const auto t0 = std::chrono::steady_clock::now();
@@ -218,18 +200,17 @@ void windows_prepare(RolltuiWindows* w, RolltuiWindowStack* s, RolltuiRect box) 
 // host binds actually bound. Deliberately NOT a preset store — no file is read, so the
 // numbers cannot depend on the machine running them.
 struct Scene {
-  RolltuiContext* ctx = rolltui_context_new();  // OWNED: this scene's session (Phase 25)
+  RolltuiContext* ctx = rolltui_context_new();  // OWNED: this scene's session
   RolltuiDocument doc{};
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* effects = nullptr;
   RolltuiWindows* windows = rolltui_windows_new(ctx);
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
-  // PHASE 17 m2c, per this file's own note below at `paint()`: the scene calls the SWAP
-  // rather than resetting an owned Frame directly, which is what makes "exactly as a host
-  // paints it" true of the code as well as the comment (`rolltui-paint` adopted the swap
-  // first, Phase 17 m3). `rolltui_swap_begin` IS `rolltui_frame_reset` plus lending the
-  // pointer back (`rolltui/c/rolltui_swap.c`), so this is not a new allocation shape.
+  // The scene calls the SWAP rather than resetting a frame it owns, which is what makes
+  // "exactly as a host paints it" true of this code and not only of the comment.
+  // `rolltui_swap_begin` IS a frame reset plus lending the pointer back
+  // (`rolltui/c/rolltui_swap.c`), so it introduces no allocation shape of its own.
   RolltuiSwap* swap = rolltui_swap_new(0, 0, RolltuiStyle{});
 
   Scene() {
@@ -290,15 +271,12 @@ struct Scene {
   // One frame, exactly as a host paints it: prepare (instantiate, autosize, lay out),
   // then compose into the frame the SWAP lends.
   //
-  // CORRECTED 2026-09-04, when the C++ shim still carried this scene: the comment used to
-  // claim `Frame::reset` was "exactly as a host does it" while `Frame::reset` had zero
-  // callers outside this file — all three hosts built a fresh frame every repaint and threw
-  // it away (~153 KB at 120x40) while this budget reported zero. `rolltui-paint` closed that
-  // gap for itself by adopting `rolltui_swap`; this file adopting it too
-  // (m2c) is what makes the sentence true of the INSTRUMENT as well. `rolltui_swap_present`
-  // — which turns a frame into the bytes a terminal would receive — is never called here:
-  // this suite measures the draw path, and diffing/output is a different (and differently
-  // measured) concern.
+  // THE INSTRUMENT MUST PAINT THE WAY A HOST PAINTS, or it measures a path nobody runs.
+  // A host that builds a fresh frame every repaint and throws it away spends ~153 KB at
+  // 120x40 that a budget over a reused frame never sees, so this scene reuses through the
+  // swap, as the shipped hosts do. `rolltui_swap_present` — which turns a frame into the
+  // bytes a terminal would receive — is never called here: this suite measures the draw
+  // path, and diffing/output is a different (and differently measured) concern.
   void paint(int w, int h) {
     const RolltuiRect box{0, 0, w, h};
     windows_prepare(windows, stack, box);
@@ -404,11 +382,11 @@ int main() {
   }
 
   // ---- the baseline ------------------------------------------------------------------
-  // MEASURED 2026-09-03 on Apple Clang / macOS, Release. The head-room is ±25% on
-  // allocations and ±35% on bytes: wide enough that an incidental change in a container's
-  // growth does not fail the suite, tight enough that a new per-cell or per-grapheme
-  // allocation cannot hide. Re-record DELIBERATELY, with a journal entry saying which
-  // milestone moved which number and by how much — that is the whole point of the phase.
+  // MEASURED on Apple Clang / macOS, Release. The head-room is ±25% on allocations and
+  // ±35% on bytes: wide enough that an incidental change in a container's growth does not
+  // fail the suite, tight enough that a new per-cell or per-grapheme allocation cannot
+  // hide. Re-record DELIBERATELY, with a journal entry saying which change moved which
+  // number and by how much.
   Scene scene;
   // Warm: the transcript's layout cache is a memo, and measuring a cold cache would be
   // measuring the cache and not the draw path (the plan: "the layout cache is
@@ -430,11 +408,10 @@ int main() {
   std::printf("  resize       →100x40: %s\n", fmt(resize).c_str());
   for (int i = 0; i < 3; ++i) scene.paint(120, 40);  // back to the baseline width
 
-  // MEASURED 2026-09-03, Apple Clang / macOS / Release. **The bands are ±2%, and that
-  // number is evidence rather than caution.** Three consecutive runs gave 887 / 2772 /
-  // 70272 with no variation at all: an allocation count is a deterministic function of
-  // this binary and this input, which is exactly why it is worth gating on where
-  // wall-clock is not.
+  // MEASURED on Apple Clang / macOS / Release. **The bands are ±2%, and that number is
+  // evidence rather than caution.** Three consecutive runs gave 887 / 2772 / 70272 with no
+  // variation at all: an allocation count is a deterministic function of this binary and
+  // this input, which is exactly why it is worth gating on where wall-clock is not.
   //
   // THE FIRST DRAFT USED ±25% AND WAS NOT A GATE. Its control — forty wasted allocations
   // added to `Transcript::draw` — moved the steady frame 887 → 928 and the assertion still
@@ -454,10 +431,9 @@ int main() {
   // nothing the steady frame had not already said.
   //
   // So: when one of these fails, read the delta it prints. A change of OURS that moved it
-  // is the finding this phase exists for — quote the before/after in the journal (m3's
-  // rule) and re-record. A toolchain change that moved it is a re-record too, but a
-  // deliberate one, and the same act either way: look at the number before you write it
-  // down.
+  // is the finding this file exists to produce — quote the before/after in the journal
+  // and re-record. A toolchain change that moved it is a re-record too, but a deliberate
+  // one, and the same act either way: look at the number before you write it down.
   // ±2% with a floor of ±3, because 2% of 144 is 2 and a band that tight would fail on a
   // single incidental allocation rather than on a regression worth reading about. The
   // counts are still bit-identical across runs at the new numbers (checked three times).
@@ -469,103 +445,44 @@ int main() {
     const long d = got - want;
     return std::string(d >= 0 ? "+" : "") + std::to_string(d) + " vs the recorded " + std::to_string(want);
   };
-  // RE-RECORDED 2026-09-03 by Phase 13 m3, which is the only reason these may move. The
-  // numbers this test was born with, and what m3 did to them:
+  // WHAT THESE FOUR NUMBERS ARE, and what it takes to move one.
   //
-  //   steady 120x40    887 → 144   (-84%)   streaming  2772 →   815   (-71%)
-  //   resize →100x40 70272 → 24944 (-65%)   steady KB   455 →   248   (-45%)
+  // A STEADY frame is asserted at exactly 0 further down. The other two are recorded with
+  // bands because they are ALLOWED to allocate: a re-lay builds the layout cache, which
+  // must outlive the frame. What is asserted about them is that they do not GROW.
   //
-  // One change earned most of it: `unicode::graphemes()` was allocating FOUR vectors per
-  // call (decode, codepoints, boundaries, result) plus three more inside
-  // `grapheme_boundaries`, on a path that runs for every string drawn and every span of
-  // every row. Reusing those buffers — same algorithm, same UAX #29 answers, conformance
-  // suites untouched and still green — took 887 to 448 on its own.
-  // RE-RECORDED 2026-09-03 at the end of m5b. Phase 13 end to end:
-  //   steady   887 →   6   streaming 2772 → 303   resize 70272 → 11467   steady KB 455 → 0
-  // A steady frame is SIX allocations, all in widget draws: four in the `rows:` window and
-  // one in the transcript's. `prepare`, `resolve`, the frame reset and `compose` with no
-  // slot renderer are all EXACTLY ZERO. The target is 0 and this is not it; the six are
-  // itemised in the plan m5b.
-  // RE-RECORDED 2026-09-04 by Phase 14 m3, and this is the FIRST TIME THE TWO
-  // CONFIGURATIONS NEED TWO NUMBERS. m1 and m2 were identical either way and the journal
-  // said so; the wrap engine is not:
-  //
-  //             steady   streaming   resize    steady KB   resize KB
-  //   C++ (OFF)      0         286    10941            0        1381
-  //   C   (ON)       0         267    10297            0        1368
-  //
-  // **THE C IS CHEAPER, AND THE FIRST VERSION OF THIS COMMENT SAID THE OPPOSITE.** It is
-  // worth keeping the wrong version's reasoning, because the mistake is the instructive
-  // part. The first cut had C at 291/11140 against C++'s 286/10941, and explained the gap
-  // as the small-string optimisation: `wrap()` hands over a result by copying three buffers
-  // into a fresh handle, which is four allocations in C, while a `std::string` holds a short
-  // total inline. That explanation was CORRECT and COMPLETE as far as it went — a probe
-  // counted **281 `wrap()` results in the resize frame, 200 with a total text of 1..22
-  // bytes**, libc++'s inline capacity, and the C's wrap cost exactly 281 x 4 = 1,124
-  // allocations against C++'s 924; on a warm resize the difference was exactly 200.
-  //
-  // **What was wrong was the conclusion drawn from it: "C cannot do this" instead of "the C
-  // is not written well enough yet".** A handed-over result is immutable and all three of
-  // its sizes are known the moment it exists, so the handle and its three arrays are ONE
-  // allocation with the arrays carved out — which is what `rolltui_wrap_clone` now does.
-  // 1,124 became 281, and the number that had been 200 worse than C++ became 643 better.
-  // Three `std::` containers cannot follow: each owns its own block by definition. So the
-  // real finding points the other way from the first one — see rolltui/c/rolltui_wrap.h.
-  //
-  // The OFF numbers moved too (289 -> 286, 11180 -> 10941) and that is m3's own doing: the
-  // soft-break cut used to build a tail `std::vector` and a tail `std::string` per wrapped
-  // line, and the shared-buffer data model the port forced deleted both (rolltui/WrapCpp.cpp).
-  // RE-RECORDED 2026-09-04 by Phase 15 m4, and this is the largest single move the budget
-  // has ever recorded:
-  //
-  //             steady   streaming     resize      streaming KB   resize KB   resize us
-  //   C++ (OFF)      0    286 →  37   10941 → 122      39 → 9    1383 → 134   6150 → 3358
-  //   C   (ON)       0    267 →  13   10297 →  82      39 → 7    1368 → 127
-  //
-  // **A RESIZE FRAME IS 122 ALLOCATIONS, DOWN FROM 10,941 — 98.9%** — and a SECOND resize to
-  // the same width is **2**, measured in both configurations while both existed. Three things did it, all of
-  // them the same finding (the plan m4, `rolltui/c/rolltui_md_lines.h`):
-  //   - a SPAN OWNS NOTHING. It was a `std::string` and two vectors per span; it is an
-  //     offset and a length into pools the caller's store owns. That was m1's 4,128.
-  //   - a span COPIED into another line is a descriptor, or not copied at all: the
+  // The reductions that produced them are the same finding four times over — storage that
+  // was invented per call became storage the caller already owned:
+  //   - `graphemes()` allocated four vectors per call plus three more inside
+  //     `grapheme_boundaries`, on a path that runs for every string drawn and every span
+  //     of every row. Reusing those buffers — same algorithm, same UAX #29 answers,
+  //     conformance suites green — was worth about half of a steady frame on its own.
+  //   - a SPAN OWNS NOTHING. It is an offset and a length into pools the caller's store
+  //     owns, not a string and two vectors per span.
+  //   - a span COPIED into another line is a descriptor, or is not copied at all: the
   //     transcript puts a body line behind its prefix by REFERENCING the body's spans.
-  //     That was m1's 2,283.
-  //   - a document is PARSED once per (id, version) and not once per width. That was m1's
-  //     1,243, and it is the one the port only surfaced rather than forced.
+  //   - a document is PARSED once per (id, version), not once per width.
   //
-  // WHAT THE 122 ARE, and they are a different KIND of number from the 10,941: since a
-  // second resize to the same width costs 2, all but two of them are buffers reaching a
-  // high-water mark they never leave — GROWING, AMORTISED, by name, and something the old
-  // 10,941 could never become. 80 are `rolltui::mem` growing the stores' pools; 40 are each
-  // entry's own wrap engine growing its line array, because a NARROWER width makes more
-  // lines than that entry had ever needed before.
+  // WHAT A RESIZE'S REMAINING ALLOCATIONS ARE, since the number is otherwise hard to read:
+  // a SECOND resize to the same width costs 2, so all but two of them are buffers reaching
+  // a high-water mark they never leave — GROWING, AMORTISED, by name. Most are
+  // `rolltui::mem` growing the stores' pools, and the rest are each entry's own wrap engine
+  // growing its line array, because a NARROWER width makes more lines than that entry had
+  // ever needed before.
   //
-  // **THE C IS 40 CHEAPER ON A RESIZE AND 24 CHEAPER ON A STREAMING FRAME, and both gaps
-  // have one cause: what a re-parse costs when the storage is pooled.** The C++ block tree
-  // is `std::vector<Block>` holding `std::string`s, so re-parsing the streaming entry
-  // reconstructs owning containers; the C's is index arrays over one byte pool, so it
-  // refills buffers it already had. Neither is a better algorithm — it is the same design in
-  // two languages, and only one of them has a default that allocates.
+  // POOLED STORAGE IS WHY A RE-PARSE IS CHEAP: the block tree is index arrays over one
+  // byte pool, so re-parsing the streaming entry refills buffers it already had rather
+  // than reconstructing owning containers. `rolltui/c/rolltui_md_lines.h` and
+  // `rolltui/c/rolltui_wrap.h` state the data model; a handed-over wrap result is
+  // immutable with all three of its sizes known when it exists, so its handle and its
+  // three arrays are ONE allocation with the arrays carved out.
   //
-  // **C RE-RECORDED 2026-09-04 by Phase 15 m5e: streaming 13 → 6 and resize 82 → 80**, and
-  // the number went DOWN, which this test fails on as loudly as an increase — the floor is
-  // there so that a collapse has to be explained rather than enjoyed. The cause is the
-  // transcript itself, which was the last module of the layer to port:
-  // every per-frame working buffer it needs is a `rolltui_grow` array on the handle that
-  // reaches a high-water mark and stays — the cluster array the cell walk decodes into, the
-  // plain wrap's per-grapheme source offsets, the match list, and the three per-entry arrays
-  // `build` fills. The C++ implementation re-creates several of those per call (a
-  // `std::vector<RolltuiMdFoldState>` per relaid entry, a `std::string` per unfolded-text
-  // cache fill, a `Scratch` per `for_each_cell` instantiation). Same design, two languages,
-  // and only one of them has a default that allocates. The C++ numbers did not move at all,
-  // which is the control: `TranscriptCpp.cpp` IS the code that was there.
+  // BYTES AND COUNTS MOVE INDEPENDENTLY, and a change that moves only one is not a mistake
+  // in the instrument. Taking a `std::string` out of `Cell` cut 4,800 constructions and 16
+  // bytes per cell while leaving every allocation count at +0, because those strings were
+  // small enough never to reach the heap.
   constexpr long kStreaming = 6, kResize = 80;
-  // BYTES RE-RECORDED 2026-09-03 by m4 (248 KB → 173 KB); the COUNTS did not move at all,
-  // and that was the prediction stated before the change was written: taking `std::string`
-  // out of `Cell` deletes 4,800 constructions and 16 bytes per cell, but those strings were
-  // SSO and never reached the heap. The budget said exactly that by failing on bytes alone
-  // and passing all three allocation assertions with +0.
-  // THE PHASE'S TARGET, and it is an equality: no band, no head-room, no floor.
+  // THE TARGET, and it is an equality: no band, no head-room, no floor.
   check(steady.allocs == 0, "A STEADY FRAME ALLOCATES NOTHING [" + fmt(steady) + "]");
   check(steady.bytes == 0, "…and takes no bytes: nothing is constructed either [" + std::to_string(steady.bytes) + " B]");
 
@@ -576,10 +493,9 @@ int main() {
                                                   std::to_string(hi) + "]");
   }
   check(streaming.allocs > steady.allocs, "…and costs more than a steady frame, which is the only ordering that makes sense");
-  // THE EXPENSIVE ONE, and the number this phase should be judged against: a resize
-  // re-wraps every entry, and at ~70k allocations and several milliseconds it is the one
-  // frame a user can actually feel — they make it by dragging a corner, repeatedly. It is
-  // recorded here rather than acted on, because m1 does not optimise anything.
+  // THE EXPENSIVE ONE: a resize re-wraps every entry, and it is the one frame a user can
+  // actually feel — they make it by dragging a corner, repeatedly. It is the number to
+  // watch when a change touches wrapping, layout or the stores.
   {
     auto [lo, hi] = band(kResize, 0.02);
     check(in_range(resize.allocs, lo, hi), "a resize re-wraps every entry [" + fmt(resize) + "; " + delta(resize.allocs, kResize) +
@@ -632,12 +548,11 @@ int main() {
           "THE COUNTER IS ARMED ON THE DRAW PATH: a widget wasting " + std::to_string(kWasted) +
               " allocations moves the frame's number by at least that [" + std::to_string(before.allocs) + " → " +
               std::to_string(after.allocs) + "]");
-    // This used to assert `before.allocs > 0`, on the reasoning that two zero readings
-    // would be what a DEAD counter reports. m5b made that assumption stale: the
-    // un-wasteful frame is now legitimately zero, which is the phase's whole target. The
-    // armed-ness is carried by the DELTA above and by the exact-accounting check at the top
-    // of this file, both of which are unaffected — so what is asserted here is the half
-    // that still means something.
+    // This deliberately does NOT assert `before.allocs > 0`. Two zero readings would be
+    // what a DEAD counter reports, but the un-wasteful frame is legitimately zero — that
+    // is the target — so armed-ness is carried instead by the DELTA above and by the
+    // exact-accounting check at the top of this file. What is asserted here is the half
+    // that still means something with a zero baseline.
     check(after.allocs > 0 && before.allocs == 0,
           "…and the un-wasteful frame is zero while the wasteful one is not: the counter reads a REAL difference [" +
               std::to_string(before.allocs) + " → " + std::to_string(after.allocs) + "]");
@@ -653,11 +568,10 @@ int main() {
     void* b = rolltui_mem_realloc(a, 256);
     rolltui_mem_free(b);
     const MemStats after = mem_stats();
-    // RE-RECORDED by Phase 14 m3, and the change is the point: a GROWING REALLOC counts as
-    // an allocation now, because it hands out new storage and copies into it. It used to
-    // count as neither, which made the C implementation — where every buffer grows through
-    // `realloc` — look free next to a C++ one whose every `std::vector` growth is a counted
-    // `operator new`. `live_blocks` is tracked separately, so it still says one block.
+    // A GROWING REALLOC COUNTS AS AN ALLOCATION, because it hands out new storage and
+    // copies into it. Counting it as neither would make a buffer that grows through
+    // `realloc` look free next to one whose every growth is a counted `operator new`.
+    // `live_blocks` is tracked separately, so it still says one block.
     check(after.allocations == before.allocations + 2 && after.frees == before.frees + 1,
           "rolltui::mem counts alloc→realloc→free as two allocations and one free (a grow IS new storage)");
     check(after.live_blocks == before.live_blocks && mem_stats().live_blocks == before.live_blocks,
@@ -688,28 +602,18 @@ int main() {
       check(after_free.bytes_requested > base.bytes_requested,
             "…and bytes_requested only ever goes up: it is churn, not occupancy");
 
-      // WHAT THE GAUGE CAN HONESTLY SEE, and it differs by configuration — which makes this
-      // the sharpest measurement Phase 14 has of its own central claim. CLAUDE.md says the
-      // library's entry point covers only its OWN explicit allocations in C++, because
-      // `std::string` and `std::vector` go through the global `operator new`, and that in C
-      // the same rule would be TOTAL since every allocation is an explicit call. By this
-      // point in the test a 40-entry scene has been painted several times and is still held,
-      // so the gauge is being asked about a real workload rather than a toy:
+      // WHAT THE GAUGE CAN HONESTLY SEE. CLAUDE.md's rule is that the library's entry
+      // point covers only its OWN explicit allocations: in C++ `std::string` and
+      // `std::vector` go through the global `operator new` and are invisible to it, while
+      // in C every allocation is an explicit call and the rule is TOTAL. By this point a
+      // 40-entry scene has been painted several times and is still held, so the gauge is
+      // being asked about a real workload rather than a toy.
       //
-      // RE-AIMED 2026-09-04 by Phase 15 m4, and the reason is a finding rather than a
-      // relaxation. This used to assert `live_bytes == 0` in the C++ build, because every
-      // byte of a painted scene was in a `std::string` or a `std::vector`. The span store is
-      // C in both configurations (it is DATA an implementation fills, not an algorithm
-      // the flag chooses — `rolltui/c/rolltui_md_lines.h`), so the C++ build routes real
-      // occupancy through the entry point too.
-      //
-      // **The LIMIT it existed to assert has not gone away; its SUBJECT moved**, and the
-      // assertion moved with it rather than being deleted. The markdown PARSE TREE is the
-      // sharpest subject it has ever had, because the flag decides what the tree IS:
-      // `std::vector<Block>` holding `std::string`s in the C++ build, index arrays over
-      // one byte pool with it ON. So the SAME parse is INVISIBLE to the gauge in one
-      // configuration and VISIBLE in the other — the partial-in-C++/total-in-C claim,
-      // measured on one line instead of described.
+      // The markdown PARSE TREE is the sharpest case, because it is exactly the kind of
+      // structure a C++ implementation would build out of `std::vector<Block>` holding
+      // `std::string`s and hand the gauge nothing to see. Here it is index arrays over one
+      // byte pool, so the whole parse is VISIBLE — asserted below on one line rather than
+      // described.
       check(base.live_bytes > 100000, "the gauge reports REAL occupancy for the painted scene [" +
                                           std::to_string(base.live_bytes) + " B]");
       {
@@ -728,15 +632,16 @@ int main() {
         rolltui_md_doc_free(parsed);
       }
     }
-    // THE HONEST LIMIT, asserted rather than only documented: std::string and std::vector
-    // do NOT route through this in C++, so these figures cover the library's own explicit
-    // allocations and no more. A test that pretended otherwise would be the exact
+    // THE HONEST LIMIT, asserted rather than only documented: `std::string` and
+    // `std::vector` do NOT route through this entry point, so these figures cover the
+    // library's own explicit allocations and no more. Any C++ a host writes around the
+    // library is outside them. A test that pretended otherwise would be the exact
     // "instrument that under-reports while looking healthy" failure this file exists for.
     const MemStats s0 = mem_stats();
     { std::vector<int> v(1000, 7); (void)v; }
     check(mem_stats().allocations == s0.allocations,
-          "a std::vector allocates WITHOUT touching rolltui::mem — in C++ this entry point is partial by "
-          "construction, and Phase 14's verdict is what reports how partial");
+          "a std::vector allocates WITHOUT touching rolltui::mem: this entry point sees the library's own "
+          "allocations and nothing a C++ container does");
   }
 
   return report("rolltui budget_test");
