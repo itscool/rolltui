@@ -50,19 +50,21 @@
  *     COMPILE-TIME table now: the runtime fill, the per-call branch and four rows all went.
  */
 
-/* ---- CONTEXT: session state, moving in m2 (29) --------------------------------------------- */
+/* ---- CONTEXT: session state, moving in m2 (20) --------------------------------------------- */
 
 /* The shipped `default` bindings table, parsed from embedded bytes and cached. Owned memory the
  * leak gauge counts, so one context freeing it must not blind another. */
 ROLLTUI_GLOBAL("rolltui_bindings.c", "g_default_bindings", CONTEXT)
 
-/* THE EFFECT-KIND REGISTRY. A host registers effect kinds; two apps in one process register
- * different ones. `g_mu` guards it and becomes the context's own. */
-ROLLTUI_GLOBAL("rolltui_effects.c", "g_mu", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_effects.c", "g_kinds", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_effects.c", "g_count", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_effects.c", "g_cap", CONTEXT)
-ROLLTUI_GLOBAL("rolltui_effects.c", "g_releaser_registered", CONTEXT)
+/* ~~THE EFFECT-KIND REGISTRY~~ — MOVED 2026-09-06 (m2), the second subsystem across, and the
+ * same shape as the widget kinds: `g_kinds`/`_count`/`_cap` plus a releaser flag, now
+ * `RolltuiContext::effects` and released by name.
+ *
+ * `g_mu` WENT WITH THEM RATHER THAN MOVING, and that is the contract doing work rather than a
+ * relaxation of it. A mutex was right for a table any thread could reach; a context is entered
+ * by ONE THREAD AT A TIME (point 1), so the lock guarded nothing a caller was still permitted
+ * to do. It was not free: `rolltui_effects_apply` took it once per MARK, on the per-frame draw
+ * path, to read a table nothing had written since startup. */
 
 /* ~~THE WIDGET-KIND REGISTRY~~ — MOVED 2026-09-06 (m2), the first subsystem across and the one
  * the two-context proof registers into. It was `g_host_kinds`/`_count`/`_cap` plus a

@@ -484,12 +484,16 @@ void wide_liar_kind(void*, const RolltuiEffectSpec*, const RolltuiStyle* styles,
 
 // ---- rung 2, and the registry vocabulary — the direct C calls Effects.cpp's shim made
 // on a caller's behalf; a caller now makes them itself. ----
+// PHASE 25: rung 2 is a CONTEXT's, so this suite registers into one session that every shim
+// below resolves against. The helper is `rolltui_test.hpp`'s — see the note there for why a
+// suite's session is not shaped like a host's.
+RolltuiContext* test_ctx() { return rolltui_test::test_context(); }
 bool register_effect_kind(std::string_view name, RolltuiEffectFn fn, std::string* why) {
   auto fail = [&](std::string reason) {
     if (why) *why = std::move(reason);
     return false;
   };
-  const int code = rolltui_effect_register(name.data(), name.size(), fn, nullptr, nullptr);
+  const int code = rolltui_effect_register(test_ctx(), name.data(), name.size(), fn, nullptr, nullptr);
   switch (code) {
     case ROLLTUI_EFFECT_OK:
       return true;
@@ -503,19 +507,21 @@ bool register_effect_kind(std::string_view name, RolltuiEffectFn fn, std::string
       return fail("effect kind '" + std::string(name) + "' is already registered");
   }
 }
-void clear_registered_effect_kinds() { rolltui_effect_clear_registered(); }
+void clear_registered_effect_kinds() { rolltui_effect_clear_registered(test_ctx()); }
 std::vector<std::string> effect_kind_names() {
   std::vector<std::string> out;
-  const std::size_t n = rolltui_effect_kind_count();
+  const std::size_t n = rolltui_effect_kind_count(test_ctx());
   out.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
     std::size_t len = 0;
-    const char* p = rolltui_effect_kind_name(i, &len);
+    const char* p = rolltui_effect_kind_name(test_ctx(), i, &len);
     out.emplace_back(p, len);
   }
   return out;
 }
-bool effect_kind_resolves(std::string_view name) { return rolltui_effect_kind_resolves(name.data(), name.size()) != 0; }
+bool effect_kind_resolves(std::string_view name) {
+  return rolltui_effect_kind_resolves(test_ctx(), name.data(), name.size()) != 0;
+}
 bool is_builtin_effect_kind(std::string_view name) { return rolltui_effect_is_builtin(name.data(), name.size()) != 0; }
 
 // ---- applying, and the tick — the direct C calls, over a Theme's OWN EffectMap
@@ -536,7 +542,7 @@ EffectReport apply_effects(RolltuiFrame* f, const Theme& theme, std::uint64_t no
   EffectReport rep;
   if (rolltui_frame_mark_count(f) == 0 || theme.effects.empty()) return rep;
   RolltuiEffectReport r{};
-  rolltui_effects_apply(f, effect_scratch(), theme.styles.data(), nullptr, theme.effects.handle(), now_ms,
+  rolltui_effects_apply(test_ctx(), f, effect_scratch(), theme.styles.data(), nullptr, theme.effects.handle(), now_ms,
                         ambiguous_wide, &r, note_unknown_kind, &rep.unknown_kinds);
   rep.marks_drawn = r.marks_drawn;
   rep.cells_touched = r.cells_touched;
@@ -545,7 +551,7 @@ EffectReport apply_effects(RolltuiFrame* f, const Theme& theme, std::uint64_t no
 }
 std::optional<int> effect_tick_ms(const RolltuiFrame* f, const Theme& theme) {
   if (rolltui_frame_mark_count(f) == 0 || theme.effects.empty()) return std::nullopt;
-  const int ms = rolltui_effects_tick_ms(f, theme.effects.handle());
+  const int ms = rolltui_effects_tick_ms(test_ctx(), f, theme.effects.handle());
   return ms > 0 ? std::optional<int>(ms) : std::nullopt;
 }
 int poll_timeout_ms(const RolltuiFrame* f, const Theme& theme, int idle_ms) {
@@ -658,6 +664,33 @@ int main() {
           "…and a kind that LIES about its width, which is the sweep's control");
     check(!register_effect_kind("wide-liar", noop_kind, &why), "a second registration of the same name is refused");
     check(effect_kind_names().size() == 9, "both appear after the library's seven, in resolution order");
+  }
+
+  // ---- RUNG 2 IS A SESSION'S (Phase 25 m2) ------------------------------------------
+  // The same proof `c_consumer_test` makes for widget kinds, made here because an effect
+  // kind is registered through an INTERNAL header that the pure-C consumer does not include.
+  // Two contexts, one registration, and the library's own rung answering identically in both.
+  {
+    RolltuiContext* a = rolltui_context_new();
+    RolltuiContext* b = rolltui_context_new();
+    check(rolltui_effect_register(a, "gauge", 5, noop_kind, nullptr, nullptr) == ROLLTUI_EFFECT_OK,
+          "a kind registers in the FIRST of two sessions");
+    check(rolltui_effect_kind_resolves(a, "gauge", 5) != 0, "…and the session that registered it resolves it");
+    check(rolltui_effect_kind_resolves(b, "gauge", 5) == 0,
+          "…AND THE SECOND DOES NOT SEE IT AT ALL — the effect registries are separate");
+    check(rolltui_effect_kind_count(a) == rolltui_effect_kind_count(b) + 1,
+          "…one row in the first, none in the second");
+    check(rolltui_effect_kind_resolves(a, "spinner", 7) != 0 && rolltui_effect_kind_resolves(b, "spinner", 7) != 0,
+          "…while the library's own rung answers the same in both, because rung 1 is not a session's");
+    // FREED IN SEQUENCE, never asserted while both are alive: the allocator counters are a
+    // process-wide atomic SUM (contract point 6), so "this context holds nothing" is a claim
+    // about the last one standing.
+    rolltui_context_free(b);
+    check(rolltui_effect_kind_resolves(a, "gauge", 5) != 0, "…and freeing one leaves the other's registry intact");
+    rolltui_context_free(a);
+    check(rolltui_effect_kind_resolves(nullptr, "gauge", 5) == 0 &&
+              rolltui_effect_kind_resolves(nullptr, "spinner", 7) != 0,
+          "…and a NULL context is a session with no host kinds: rung 1 answers, rung 2 is empty");
   }
 
   // ---- THE TWO PROPERTIES, over every registered kind -------------------------------

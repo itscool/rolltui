@@ -15,6 +15,7 @@ void rolltui_context_free(RolltuiContext* c) {
   if (c == NULL) return;
   /* By NAME, in one place, so the set a context owns is readable rather than discovered. */
   rolltui_kind_registry_free(c->kinds);
+  rolltui_effect_registry_free(c->effects);
   rolltui_mem_free(c);
 }
 

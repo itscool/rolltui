@@ -17,6 +17,7 @@
 // scanner that cannot see a violation is worse than no scanner.
 #include <cstdio>
 #include <fstream>
+#include <cctype>
 #include <sstream>
 #include <string>
 #include <algorithm>
@@ -181,6 +182,69 @@ int main() {
     for (const std::string& h : hollow) joined += " " + h;
     check(hollow.empty(), "no internal header is left with nothing — a header that declares nothing is a file with no reason" + joined);
   }
+  // ---- NOTHING IS DECLARED TWICE IN ONE HEADER (Phase 25 m2) ------------------------
+  // Found by reading `rolltui_effects.h` while moving its registry: a 33-line block of
+  // declarations appeared VERBATIM twice, under two identical "PHASE 20 m1/m3" banners. It
+  // was not one file's slip — six headers carried it, 86 functions declared twice, and
+  // nothing failed, because a repeated declaration is legal C and the compiler says nothing.
+  // That is exactly the shape this repo keeps meeting: no error, no warning, and a
+  // vocabulary written down twice quietly becomes a second thing to drift.
+  //
+  // ONE SHAPE IS LEGITIMATE: a FORWARD declaration that a C++ inline member below it has to
+  // call, which the file then declares again in its ordinary section. `rolltui.h` carries a
+  // literal banner over each such block — "forward declarations the C++ members just below
+  // call" — and `rolltui_layout_tree.h` puts its block inside `#ifdef __cplusplus`. Those two
+  // are RECORDED per header rather than pattern-matched, because a number that has to be
+  // re-recorded makes a new duplicate an argument someone has to win; a pattern would just
+  // absorb it. Every OTHER header must have none, and that is the ratchet.
+  {
+    const auto dupes_in = [](const std::string& text) {
+      std::map<std::string, int> seen;
+      std::istringstream in(text);
+      std::string line;
+      while (std::getline(in, line)) {
+        const std::size_t semi = line.find_last_not_of(" \t\r");
+        if (semi == std::string::npos || (line[semi] != ';' && line[semi] != ',')) continue;
+        const std::size_t open = line.find('(');
+        if (open == std::string::npos) continue;
+        std::size_t b = open;
+        while (b > 0 && (std::isalnum((unsigned char)line[b - 1]) || line[b - 1] == '_')) --b;
+        const std::string name = line.substr(b, open - b);
+        if (name.rfind("rolltui_", 0) != 0) continue;
+        // A declaration, not a call: what precedes the name must be a return type.
+        const std::size_t before = line.find_first_not_of(" \t");
+        if (before == std::string::npos || before >= b) continue;
+        ++seen[name];
+      }
+      int n = 0;
+      for (const auto& kv : seen)
+        if (kv.second > 1) ++n;
+      return n;
+    };
+    // RECORDED: header -> how many functions it declares twice, and the only accepted reason
+    // is the forward-declaration-for-a-C++-member shape above.
+    struct Row { const char* header; int dupes; };
+    static const Row kRows[] = {{"rolltui.h", 19}, {"c/rolltui_layout_tree.h", 21}};
+    int accounted = 0;
+    for (const Row& r : kRows) {
+      const int got = dupes_in(depth0(strip_all_comments(read(std::string(ROLLTUI_SOURCE_DIR) + "/" + r.header))));
+      check(got == r.dupes, std::string("forward declarations in ") + r.header + " are the recorded " +
+                                std::to_string(r.dupes) + " [" + std::to_string(got) + "]");
+      accounted += got;
+    }
+    std::vector<std::string> offenders;
+    for (const std::string& h : headers) {
+      if (std::string("c/" + h) == "c/rolltui_layout_tree.h") continue;
+      const int got = dupes_in(depth0(strip_all_comments(read(std::string(ROLLTUI_SOURCE_DIR) + "/c/" + h))));
+      if (got) offenders.push_back(h + " (" + std::to_string(got) + ")");
+    }
+    std::string names;
+    for (const std::string& o : offenders) names += " " + o;
+    check(offenders.empty(),
+          "no other header declares anything twice — a repeated declaration compiles silently and is a "
+          "vocabulary written down twice" + names);
+    check(accounted == 40, "…and the accepted forward declarations are the recorded 40 [" + std::to_string(accounted) + "]");
+  }
   {
     std::vector<std::string> without;
     for (const std::string& h : headers) {
@@ -320,27 +384,6 @@ int main() {
     // `rolltui_str_append` mentions it without declaring it, and the first draft of this check
     // counted the mention — a planted removal of the declaration itself passed. The braces of
     // `extern "C" {` and `namespace x {` are not depth; everything else's are.
-    auto depth0 = [](const std::string& t) {
-      std::string out;
-      std::vector<bool> counted;
-      int depth = 0;
-      for (std::size_t i = 0; i < t.size(); ++i) {
-        const char ch = t[i];
-        if (ch == '{') {
-          const std::string before = t.substr(i >= 40 ? i - 40 : 0, i >= 40 ? 40 : i);
-          const bool linkage = std::regex_search(before, std::regex(R"((extern\s+"C"|namespace\s+\w+)\s*$)"));
-          counted.push_back(!linkage);
-          if (!linkage) ++depth;
-          continue;
-        }
-        if (ch == '}') {
-          if (!counted.empty()) { if (counted.back()) --depth; counted.pop_back(); }
-          continue;
-        }
-        if (depth == 0) out += ch;
-      }
-      return out;
-    };
     auto names_in = [&](const std::string& t, std::set<std::string>& into) {
       for (std::sregex_iterator it(t.begin(), t.end(), decl_re), end; it != end; ++it) into.insert((*it)[1].str());
     };
@@ -583,7 +626,7 @@ int main() {
      * which this file of all files must not lean on; section 1 uses the swap now. */
     /* PHASE 25 m2: +3 PUBLIC (`rolltui_context_new`/`_free`, `rolltui_windows_context`) and
      * +4 INTERNAL (the transitional default and its release, the kind registry's own new/free). */
-    const int kPublic = 326, kInternal_ = 517, kDelete = 0;
+    const int kPublic = 326, kInternal_ = 519, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +

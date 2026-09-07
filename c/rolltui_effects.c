@@ -17,10 +17,10 @@
 #include "rolltui/c/rolltui_effects.h"
 
 #include <math.h>
-#include <pthread.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_context.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_lifetime.h"
@@ -239,8 +239,15 @@ static int spec_kind_is(const RolltuiEffectSpec* s, const char* name, size_t len
 }
 
 /* ---- rung 2: the kinds a HOST registered --------------------------------------------------- */
-/* THE ONLY PROCESS-WIDE STATE IN THE PORTED SLICE. Three owned things per entry — the slot,
- * a copy of the name, and the host's context — and one releaser for all of them. */
+/* RUNG 2 IS A CONTEXT'S, NOT THE PROCESS'S (Phase 25 m2) — the same move, for the same reason,
+ * as the widget kinds in `rolltui_layout.c`. Three owned things per entry: the slot, a copy of
+ * the name, and the host's own context pointer.
+ *
+ * THE MUTEX WENT WITH THE GLOBAL, and that is a consequence of the contract rather than a
+ * relaxation of it. It existed because the table was process-wide and two threads could reach
+ * it; a context is entered by ONE THREAD AT A TIME (contract point 1), so the lock guarded
+ * nothing a caller was still allowed to do. What it cost was real: the applier took it once
+ * per MARK, inside the per-frame draw path, to read a table nothing had written since startup. */
 
 typedef struct {
   char* name; /* OWNED: a copy, because the caller's may not outlive the registration */
@@ -250,109 +257,103 @@ typedef struct {
   void (*free_ctx)(void*); /* may be NULL: a context with no lifetime of its own */
 } HostKind;
 
-static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
-static HostKind* g_kinds;
-static size_t g_count, g_cap;
-static int g_releaser_registered;
+struct RolltuiEffectRegistry {
+  HostKind* v;
+  size_t n, cap;
+};
 
-int rolltui_effect_register(const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
+RolltuiEffectRegistry* rolltui_effect_registry_new(void) {
+  RolltuiEffectRegistry* r = (RolltuiEffectRegistry*)rolltui_mem_alloc(sizeof *r);
+  memset(r, 0, sizeof *r);
+  return r;
+}
+
+void rolltui_effect_registry_free(RolltuiEffectRegistry* r) {
+  size_t i;
+  if (r == NULL) return;
+  for (i = 0; i < r->n; ++i) {
+    rolltui_mem_free(r->v[i].name);
+    if (r->v[i].free_ctx) r->v[i].free_ctx(r->v[i].ctx);
+  }
+  rolltui_mem_free(r->v);
+  rolltui_mem_free(r);
+}
+
+/* A NULL CONTEXT IS A CONTEXT WITH NO HOST KINDS — one rule, the same one
+ * `rolltui_content_parse` states, so rung 1 answers everywhere and rung 2 is simply empty. */
+static size_t host_n(const RolltuiContext* c) { return (c && c->effects) ? c->effects->n : 0; }
+static const HostKind* host_v(const RolltuiContext* c) { return (c && c->effects) ? c->effects->v : NULL; }
+
+int rolltui_effect_register(RolltuiContext* c, const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
                             void (*free_ctx)(void*)) {
+  RolltuiEffectRegistry* r;
+  HostKind* k;
+  if (!c) return ROLLTUI_EFFECT_NO_NAME;
   if (name_len == 0) return ROLLTUI_EFFECT_NO_NAME;
   if (!fn) return ROLLTUI_EFFECT_NO_FN;
   /* Rung 1 is never shadowed — the same guard, for the same reason, as a widget kind. */
   if (rolltui_effect_is_builtin(name, name_len)) return ROLLTUI_EFFECT_IS_BUILTIN;
-  pthread_mutex_lock(&g_mu);
-  for (size_t i = 0; i < g_count; ++i)
-    if (name_eq(g_kinds[i].name, g_kinds[i].name_len, name, name_len)) {
-      pthread_mutex_unlock(&g_mu);
-      return ROLLTUI_EFFECT_DUPLICATE;
-    }
-  if (!g_releaser_registered) {
-    /* Registered where the retained thing is MADE, not in a central list (Lifetime.hpp).
-     * The flag is cleared again by `clear`, so a registry emptied by `shutdown()` and then
-     * used again says so again — a releaser registered twice is idempotent, and a missing
-     * one is a leak, so the duplicate is the safe direction. */
-    g_releaser_registered = 1;
-    rolltui_on_shutdown(rolltui_effect_clear_registered);
-  }
-  g_kinds = rolltui_grow_zeroed(g_kinds, &g_cap, g_count + 1, sizeof *g_kinds);
-  HostKind* k = &g_kinds[g_count];
+  for (size_t i = 0; i < host_n(c); ++i)
+    if (name_eq(c->effects->v[i].name, c->effects->v[i].name_len, name, name_len)) return ROLLTUI_EFFECT_DUPLICATE;
+  if (c->effects == NULL) c->effects = rolltui_effect_registry_new();
+  r = c->effects;
+  /* NO RELEASER TO REGISTER: the storage belongs to the context and `rolltui_context_free`
+   * releases it by name, which is what makes the set of owned things readable in one place
+   * instead of discovered by following `rolltui_on_shutdown` calls. */
+  r->v = rolltui_grow_zeroed(r->v, &r->cap, r->n + 1, sizeof *r->v);
+  k = &r->v[r->n];
   k->name = (char*)rolltui_mem_alloc(name_len);
   memcpy(k->name, name, name_len);
   k->name_len = name_len;
   k->fn = fn;
   k->ctx = ctx;
   k->free_ctx = free_ctx;
-  ++g_count;
-  pthread_mutex_unlock(&g_mu);
+  ++r->n;
   return ROLLTUI_EFFECT_OK;
 }
 
-void rolltui_effect_clear_registered(void) {
-  /* The table is taken OUT under the lock and released outside it, so a host's own
-   * destructor never runs while this library holds a mutex it might want. */
-  pthread_mutex_lock(&g_mu);
-  HostKind* kinds = g_kinds;
-  const size_t n = g_count;
-  g_kinds = NULL;
-  g_count = 0;
-  g_cap = 0;
-  g_releaser_registered = 0;
-  pthread_mutex_unlock(&g_mu);
-  for (size_t i = 0; i < n; ++i) {
-    rolltui_mem_free(kinds[i].name);
-    if (kinds[i].free_ctx) kinds[i].free_ctx(kinds[i].ctx);
-  }
-  rolltui_mem_free(kinds);
+void rolltui_effect_clear_registered(RolltuiContext* c) {
+  if (!c) return;
+  rolltui_effect_registry_free(c->effects);
+  c->effects = NULL;
 }
 
-size_t rolltui_effect_kind_count(void) {
-  pthread_mutex_lock(&g_mu);
-  const size_t n = ROLLTUI_BUILTIN_COUNT + g_count;
-  pthread_mutex_unlock(&g_mu);
-  return n;
-}
+size_t rolltui_effect_kind_count(const RolltuiContext* c) { return ROLLTUI_BUILTIN_COUNT + host_n(c); }
 
-const char* rolltui_effect_kind_name(size_t i, size_t* len) {
+const char* rolltui_effect_kind_name(const RolltuiContext* c, size_t i, size_t* len) {
   if (i < ROLLTUI_BUILTIN_COUNT) {
     *len = kBuiltins[i].len;
     return kBuiltins[i].name;
   }
-  pthread_mutex_lock(&g_mu);
-  const size_t at = i - ROLLTUI_BUILTIN_COUNT;
-  const char* name = "";
-  *len = 0;
-  if (at < g_count) {
-    name = g_kinds[at].name;
-    *len = g_kinds[at].name_len;
+  i -= ROLLTUI_BUILTIN_COUNT;
+  if (i < host_n(c)) {
+    *len = host_v(c)[i].name_len;
+    return host_v(c)[i].name;
   }
-  pthread_mutex_unlock(&g_mu);
-  return name;
+  *len = 0;
+  return "";
 }
 
 /* Rung 1 first and never shadowed, then the host's — the resolution order the whole
  * library uses for a widget kind, a menu file and an effect kind alike. */
-static int resolve(const char* name, size_t len, Resolved* out) {
+static int resolve(const RolltuiContext* c, const char* name, size_t len, Resolved* out) {
   out->builtin = builtin_index(name, len);
   out->fn = NULL;
   out->ctx = NULL;
   if (out->builtin >= 0) return 1;
-  for (size_t i = 0; i < g_count; ++i)
-    if (name_eq(g_kinds[i].name, g_kinds[i].name_len, name, len)) {
-      out->fn = g_kinds[i].fn;
-      out->ctx = g_kinds[i].ctx;
+  for (size_t i = 0; i < host_n(c); ++i)
+    if (name_eq(host_v(c)[i].name, host_v(c)[i].name_len, name, len)) {
+      out->fn = host_v(c)[i].fn;
+      out->ctx = host_v(c)[i].ctx;
       return 1;
     }
   return 0;
 }
 
-int rolltui_effect_kind_resolves(const char* name, size_t len) {
-  if (builtin_index(name, len) >= 0) return 1;
-  pthread_mutex_lock(&g_mu);
+int rolltui_effect_kind_resolves(const RolltuiContext* c, const char* name, size_t len) {
   Resolved r;
-  const int ok = resolve(name, len, &r);
-  pthread_mutex_unlock(&g_mu);
-  return ok;
+  if (builtin_index(name, len) >= 0) return 1;
+  return resolve(c, name, len, &r);
 }
 
 static void call_kind(RolltuiEffectScratch* sc, const Resolved* r, const RolltuiEffectSpec* spec,
@@ -592,7 +593,8 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length) {
 
 /* ---- applying, and the tick -------------------------------------------------------------------- */
 
-void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const RolltuiStyle* styles, const void* host,
+void rolltui_effects_apply(const RolltuiContext* c, RolltuiFrame* f, RolltuiEffectScratch* sc,
+                           const RolltuiStyle* styles, const void* host,
                            const RolltuiEffectMap* map, unsigned long long now_ms, int ambiguous_wide,
                            RolltuiEffectReport* rep, RolltuiEffectUnknownFn on_unknown, void* unknown_ctx) {
   rep->marks_drawn = 0;
@@ -610,15 +612,14 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
     const size_t n_specs = rolltui_effect_map_count(map, (size_t)state);
     if (n_specs == 0) continue;
     /* Each spec's kind is resolved ONCE PER MARK, not once per cell: the lookup is
-     * loop-invariant, it is a string compare against the closed table, and for a HOST kind
-     * it takes the registry's mutex — none of which belongs inside a per-cell draw loop. */
+     * loop-invariant and it is a string compare against a closed table, neither of which
+     * belongs inside a per-cell draw loop. It also used to take the registry's mutex here,
+     * once per mark, on the draw path — that went with the global (see rung 2 above). */
     sc->res = rolltui_grow(sc->res, &sc->res_cap, n_specs, sizeof *sc->res);
-    pthread_mutex_lock(&g_mu);
     for (size_t k = 0; k < n_specs; ++k) {
       const RolltuiEffectSpec* s = rolltui_effect_map_at(map, (size_t)state, k);
-      if (!resolve(s->kind, s->kind_len, &sc->res[k]) && on_unknown) on_unknown(unknown_ctx, s->kind, s->kind_len);
+      if (!resolve(c, s->kind, s->kind_len, &sc->res[k]) && on_unknown) on_unknown(unknown_ctx, s->kind, s->kind_len);
     }
-    pthread_mutex_unlock(&g_mu);
     int any = 0;
     const unsigned long long elapsed = now_ms >= since ? now_ms - since : 0;
     for (int i = 0; i < cells; ++i) {
@@ -687,7 +688,7 @@ void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* sc, const Roll
   }
 }
 
-int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectMap* map) {
+int rolltui_effects_tick_ms(const RolltuiContext* c, const RolltuiFrame* f, const RolltuiEffectMap* map) {
   int best = 0;
   const size_t marks = rolltui_frame_mark_count(f);
   for (size_t im = 0; im < marks; ++im) {
@@ -700,7 +701,7 @@ int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectMap* map) 
     for (size_t k = 0; k < n_specs; ++k) {
       const RolltuiEffectSpec* s = rolltui_effect_map_at(map, (size_t)state, k);
       if (s->period_ms <= 0) continue;                                    /* a still effect asks for no wakeup */
-      if (!rolltui_effect_kind_resolves(s->kind, s->kind_len)) continue;  /* nor one that cannot draw */
+      if (!rolltui_effect_kind_resolves(c, s->kind, s->kind_len)) continue; /* nor one that cannot draw */
       int steps = rolltui_effect_steps(s, cells);
       if (steps < 1) steps = 1;
       int ms = s->period_ms / steps;

@@ -524,7 +524,7 @@ struct App {
     // is that a `canvas` that DID mark a span would move here with no library change.
     if (rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       RolltuiEffectReport rep{};
-      rolltui_effects_apply(f, effect_scratch, styles, nullptr, effects, effect_ms, 0, &rep, nullptr, nullptr);
+      rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, effect_ms, 0, &rep, nullptr, nullptr);
     }
   }
 
@@ -537,7 +537,7 @@ struct App {
   // whole of a host's animation loop (`rolltui_effects.h`).
   int poll_timeout_ms(const RolltuiFrame* f, int idle_ms) const {
     if (!f || rolltui_frame_mark_count(f) == 0 || !effects || rolltui_effect_map_empty(effects)) return idle_ms;
-    const int tick = rolltui_effects_tick_ms(f, effects);
+    const int tick = rolltui_effects_tick_ms(ctx, f, effects);
     if (tick <= 0) return idle_ms;
     return idle_ms <= 0 ? tick : (idle_ms < tick ? idle_ms : tick);
   }

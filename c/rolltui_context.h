@@ -28,8 +28,13 @@ typedef struct RolltuiKindRegistry RolltuiKindRegistry;
 RolltuiKindRegistry* rolltui_kind_registry_new(void);
 void rolltui_kind_registry_free(RolltuiKindRegistry* r); /* a no-op on NULL */
 
+typedef struct RolltuiEffectRegistry RolltuiEffectRegistry;
+RolltuiEffectRegistry* rolltui_effect_registry_new(void);
+void rolltui_effect_registry_free(RolltuiEffectRegistry* r); /* a no-op on NULL */
+
 struct RolltuiContext {
-  RolltuiKindRegistry* kinds; /* rolltui_layout.c — the host widget kinds, rung 2 */
+  RolltuiKindRegistry* kinds;    /* rolltui_layout.c  — the host WIDGET kinds, rung 2 */
+  RolltuiEffectRegistry* effects; /* rolltui_effects.c — the host EFFECT kinds, rung 2 */
 };
 
 /* ---- THE TRANSITIONAL RUNG, and it is the ONE new global this phase adds ---------------------

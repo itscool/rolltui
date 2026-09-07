@@ -1078,6 +1078,8 @@ ROLLTUI_API(rolltui_context_default_release, INTERNAL)
  * follows — the type stays private to its `.c`, the context holds only the pointer. */
 ROLLTUI_API(rolltui_kind_registry_new, INTERNAL)
 ROLLTUI_API(rolltui_kind_registry_free, INTERNAL)
+ROLLTUI_API(rolltui_effect_registry_new, INTERNAL)
+ROLLTUI_API(rolltui_effect_registry_free, INTERNAL)
 /* The session a Windows was made for — a host that holds a Windows can reach its context
  * without carrying a second pointer beside it, which is what the built-in widget factories do. */
 ROLLTUI_API(rolltui_windows_context, PUBLIC)

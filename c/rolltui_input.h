@@ -116,43 +116,6 @@ void rolltui_input_cell_of(const RolltuiInput* in, size_t offset, int* row, int*
 void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw,
                         const RolltuiStyle* styles, const RolltuiInputRoles* roles, int focused);
 
-
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
-void rolltui_input_options_init(RolltuiInputOptions* o);
-RolltuiInput* rolltui_input_new(void);
-void rolltui_input_free(RolltuiInput* in); /* a no-op on NULL */
-void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len);
-size_t rolltui_input_caret(const RolltuiInput* in);
-void rolltui_input_set_caret(RolltuiInput* in, size_t byte, int extend);
-void rolltui_input_selection(const RolltuiInput* in, RolltuiInputSelection* out);
-const char* rolltui_input_selected_text(const RolltuiInput* in, size_t* len);
-void rolltui_input_select_all(RolltuiInput* in);
-void rolltui_input_clear_selection(RolltuiInput* in);
-/* ---- editing primitives --------------------------------------------------------------------- */
-void rolltui_input_insert(RolltuiInput* in, const char* utf8, size_t len);
-/* ---- undo / redo ------------------------------------------------------------------------------ */
-int rolltui_input_undo(RolltuiInput* in);
-int rolltui_input_redo(RolltuiInput* in);
-int rolltui_input_can_undo(const RolltuiInput* in);
-int rolltui_input_can_redo(const RolltuiInput* in);
-/* ---- history ---------------------------------------------------------------------------------- */
-void rolltui_input_push_history(RolltuiInput* in, const char* entry, size_t len);
-size_t rolltui_input_history_count(const RolltuiInput* in);
-/* A BORROW, valid until the history next changes. */
-const char* rolltui_input_history_at(const RolltuiInput* in, size_t i, size_t* len);
-size_t rolltui_input_history_cursor(const RolltuiInput* in);
-unsigned char rolltui_input_handle(RolltuiInput* in, const RolltuiEvent* e, const RolltuiBindings* bindings,
-                                   const RolltuiInputActions* actions, unsigned long long now_ms);
-int rolltui_input_rows(const RolltuiInput* in);
-void rolltui_input_layout(RolltuiInput* in, RolltuiRect area);
-int rolltui_input_top_row(const RolltuiInput* in);
-void rolltui_input_cell_of(const RolltuiInput* in, size_t offset, int* row, int* col);
-void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw,
-                        const RolltuiStyle* styles, const RolltuiInputRoles* roles, int focused);
-
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

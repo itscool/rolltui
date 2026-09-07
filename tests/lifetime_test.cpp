@@ -281,7 +281,8 @@ void use_the_ported_modules(const char* when) {
 
   constexpr std::string_view kProbeName = "lifetime-probe";
   const int effect_code =
-      rolltui_effect_register(kProbeName.data(), kProbeName.size(), probe_effect, nullptr, nullptr);
+      rolltui_effect_register(rolltui_context_default(), kProbeName.data(), kProbeName.size(), probe_effect,
+                              nullptr, nullptr);
   const std::string effect_why =
       effect_code == ROLLTUI_EFFECT_OK ? std::string() : ("code " + std::to_string(effect_code));
   check(effect_code == ROLLTUI_EFFECT_OK,
@@ -299,14 +300,14 @@ void use_the_ported_modules(const char* when) {
   RolltuiEffectScratch* effect_scratch = rolltui_effect_scratch_new();
   RolltuiEffectReport rep{};
   bool any_unknown = false;
-  rolltui_effects_apply(f, effect_scratch, theme->styles, theme, theme->effects, 137, 0, &rep, note_unknown_effect,
-                        &any_unknown);
+  rolltui_effects_apply(rolltui_context_default(), f, effect_scratch, theme->styles, theme, theme->effects, 137, 0,
+                        &rep, note_unknown_effect, &any_unknown);
   rolltui_effect_scratch_free(effect_scratch);
   check(rep.marks_drawn == 1 && rep.glyphs_refused == 0 && !any_unknown,
         std::string("…and an effect is APPLIED, so its scratch is populated too — ") + when);
 
   const int tick_ms = (rolltui_frame_mark_count(f) != 0 && rolltui_effect_map_empty(theme->effects) == 0)
-                          ? rolltui_effects_tick_ms(f, theme->effects)
+                          ? rolltui_effects_tick_ms(rolltui_context_default(), f, theme->effects)
                           : 0;
   check(tick_ms > 0, std::string("…and the frame asks for a wakeup — ") + when);
   rolltui_frame_free(f);

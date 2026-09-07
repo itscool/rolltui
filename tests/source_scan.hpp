@@ -12,7 +12,39 @@
 // that `rolltui/rolltui.h` alone suffices, so a helper it includes must not smuggle anything in.
 #pragma once
 #include <cstddef>
+#include <regex>
 #include <string>
+#include <vector>
+
+// Everything at BRACE DEPTH 0 — a struct's inline C++ member bodies removed, so a call inside
+// one is not mistaken for a declaration. `extern "C" {` and `namespace x {` open no depth,
+// because what follows them is still the file's own top level. Lived in
+// `public_header_test.cpp` until the duplicate-declaration check became its second consumer
+// (rule 5 again, the same way the strippers below got here).
+inline std::string depth0(const std::string& t) {
+  std::string out;
+  std::vector<bool> counted;
+  int depth = 0;
+  for (std::size_t i = 0; i < t.size(); ++i) {
+    const char ch = t[i];
+    if (ch == '{') {
+      const std::string before = t.substr(i >= 40 ? i - 40 : 0, i >= 40 ? 40 : i);
+      const bool linkage = std::regex_search(before, std::regex(R"((extern\s+"C"|namespace\s+\w+)\s*$)"));
+      counted.push_back(!linkage);
+      if (!linkage) ++depth;
+      continue;
+    }
+    if (ch == '}') {
+      if (!counted.empty()) {
+        if (counted.back()) --depth;
+        counted.pop_back();
+      }
+      continue;
+    }
+    if (depth == 0) out += ch;
+  }
+  return out;
+}
 
 // ---- section 6's instruments: a literal-aware comment stripper, a recursive lister, and the
 // identifier scan the class table is checked against (Phase 19 m1) ---------------------------

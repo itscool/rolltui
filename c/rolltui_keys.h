@@ -99,41 +99,6 @@ int rolltui_key_undeliverable_reason(const RolltuiChord* k, unsigned char p);
 /* The sentence for that code. BORROWS a static literal; `*len` may be NULL. Code 0 (it IS
  * deliverable) and any out-of-range code read back as "" — there is nothing to say. */
 const char* rolltui_key_undeliverable_text(int code, size_t* len);
-
-
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
-/* Both spellings, BORROWED from static storage; `*len` may be NULL. An out-of-range ordinal
- * reads back as the CHAR row ("Char" / ""), never past the table. `rolltui_key_file_name`
- * returns "" (len 0) for `Char` and `Unknown`, which is what "this key has no chord name"
- * means — the keys editor refuses to bind exactly those. */
-const char* rolltui_key_display_name(unsigned char key, size_t* len);
-/* BORROWS a static literal; `*len` may be NULL. An out-of-range byte reads back as "legacy",
- * which is what `protocol_name`'s own default already was. */
-const char* rolltui_key_protocol_name(unsigned char p, size_t* len);
-void rolltui_key_set_active_protocol(unsigned char p);
-/* The verdict: `p` has bytes for this chord and they decode back to exactly it. */
-int rolltui_key_deliverable(const RolltuiChord* k, unsigned char p);
-/* WHY NOT, as a CODE — and, since Phase 17 m2a, as WORDS too. This comment used to read "the
- * four messages are English and belong where the words already are (`Keys.cpp`), so the C
- * classifies and never carries a sentence." The split was right; the destination was not, and
- * it cost the usual: `deliverability_test.cpp:110`, `bindings_test.cpp:180` and
- * `menu_test.cpp:273` had each hand-copied the sentences, because `Keys.cpp` is where they
- * were and a test asserting on one has to say it. With `Keys.cpp` deleted in m2c they would
- * have had no original at all — three copies and no source. */
-#define ROLLTUI_UNDELIVERABLE_NONE 0     /* it is deliverable */
-#define ROLLTUI_UNDELIVERABLE_NOT_A_KEY 1
-#define ROLLTUI_UNDELIVERABLE_SHIFT_ON_CHAR 2
-#define ROLLTUI_UNDELIVERABLE_NEEDS_ENHANCED 3 /* kitty, or xterm's modifyOtherKeys */
-#define ROLLTUI_UNDELIVERABLE_NEEDS_KITTY 4
-#define ROLLTUI_UNDELIVERABLE_NEVER 5
-int rolltui_key_undeliverable_reason(const RolltuiChord* k, unsigned char p);
-/* The sentence for that code. BORROWS a static literal; `*len` may be NULL. Code 0 (it IS
- * deliverable) and any out-of-range code read back as "" — there is nothing to say. */
-const char* rolltui_key_undeliverable_text(int code, size_t* len);
-
 /* The key of that DISPLAY name ("PageUp"), or -1. Case-insensitive, because `studio.cpp`'s
  * `--keys` scripts are typed by a person. The FILE-name direction already exists inside
  * `rolltui_chord_parse`, which is where a whole chord is spelled. */

@@ -68,10 +68,10 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Releases every host kind — for a test, and for a host tearing down. This is also what
- * runs at `rolltui::shutdown()`; the registry registers itself the first time it holds
- * anything, which is the rule in rolltui/Lifetime.hpp. */
-void rolltui_effect_clear_registered(void);
+/* Releases every host kind THIS CONTEXT holds — for a test, and for a host tearing down a
+ * session without freeing it. `rolltui_context_free` does the same by name, so nothing has to
+ * remember to call this; it exists for the case where the context outlives its kinds. */
+void rolltui_effect_clear_registered(RolltuiContext* c);
 
 /* How many distinct pictures one period of `spec` has over a span `length` cells long. */
 int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
@@ -98,52 +98,19 @@ void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, un
  * C++ `effect_state_name` did and what a mark of an unknown state means. */
 const char* rolltui_effect_state_name(unsigned char state, size_t* len);
 /* Registers a kind. The registry COPIES the name and takes ownership of `ctx`, releasing
- * it with `free_ctx` at `clear` or at `rolltui::shutdown()`. On any refusal it takes
+ * it with `free_ctx` at `clear` or at `rolltui_context_free`. On any refusal it takes
  * nothing: `ctx` is still the caller's, and `free_ctx` is not called. */
-int rolltui_effect_register(const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
+int rolltui_effect_register(RolltuiContext* c, const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
                             void (*free_ctx)(void*));
 /* Every kind name that resolves right now, in RESOLUTION ORDER: the library's closed seven
  * first and never shadowed, then the host's. `name` is a BORROW, valid until the registry
  * next changes. */
-size_t rolltui_effect_kind_count(void);
-const char* rolltui_effect_kind_name(size_t i, size_t* len);
+size_t rolltui_effect_kind_count(const RolltuiContext* c);
+const char* rolltui_effect_kind_name(const RolltuiContext* c, size_t i, size_t* len);
 /* Whether anything answers for `name` — a HOST fact, never a theme error. */
-int rolltui_effect_kind_resolves(const char* name, size_t len);
+int rolltui_effect_kind_resolves(const RolltuiContext* c, const char* name, size_t len);
 int rolltui_effect_is_builtin(const char* name, size_t len);
 
-
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
-RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
-void rolltui_effect_map_clear(RolltuiEffectMap* m);
-int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);
-size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state);
-const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i);
-/* Appends a spec to `state` and returns its index; the two adders then fill it in. A spec
- * is built rather than handed over whole because its three arrays are variable-length, and
- * a builder is what keeps them the MAP's allocations instead of a caller's. */
-size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
-                              int width, int steps, int backward);
-void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len);
-void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role);
-/* BORROWS a static literal. An out-of-range state reads back as "none", which is what the
- * C++ `effect_state_name` did and what a mark of an unknown state means. */
-const char* rolltui_effect_state_name(unsigned char state, size_t* len);
-/* Registers a kind. The registry COPIES the name and takes ownership of `ctx`, releasing
- * it with `free_ctx` at `clear` or at `rolltui::shutdown()`. On any refusal it takes
- * nothing: `ctx` is still the caller's, and `free_ctx` is not called. */
-int rolltui_effect_register(const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
-                            void (*free_ctx)(void*));
-/* Every kind name that resolves right now, in RESOLUTION ORDER: the library's closed seven
- * first and never shadowed, then the host's. `name` is a BORROW, valid until the registry
- * next changes. */
-size_t rolltui_effect_kind_count(void);
-const char* rolltui_effect_kind_name(size_t i, size_t* len);
-/* Whether anything answers for `name` — a HOST fact, never a theme error. */
-int rolltui_effect_kind_resolves(const char* name, size_t len);
-int rolltui_effect_is_builtin(const char* name, size_t len);
 
 /* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
  * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors

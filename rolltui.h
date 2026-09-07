@@ -4281,15 +4281,18 @@ void rolltui_windows_set_code_fold(RolltuiWindows* w, const RolltuiCodeFold* c);
  * own `states` draws nothing.
  *
  * Called by a host AFTER the whole screen has composed and before the frame diff.
- * `now_ms` is any monotonic millisecond clock. `rep` may not be NULL; `on_unknown` may. */
-void rolltui_effects_apply(RolltuiFrame* f, RolltuiEffectScratch* s, const RolltuiStyle* styles, const void* host,
+ * `now_ms` is any monotonic millisecond clock. `rep` may not be NULL; `on_unknown` may.
+ * `c` is the SESSION whose registered effect kinds rung 2 resolves against; NULL means the
+ * library's closed seven and nothing else, exactly as it does for a widget kind. */
+void rolltui_effects_apply(const RolltuiContext* c, RolltuiFrame* f, RolltuiEffectScratch* s,
+                           const RolltuiStyle* styles, const void* host,
                            const RolltuiEffectMap* map, unsigned long long now_ms, int ambiguous_wide,
                            RolltuiEffectReport* rep, RolltuiEffectUnknownFn on_unknown, void* unknown_ctx);
 
 /* The interval at which this frame must be redrawn for its motion, or 0 when nothing is
  * marked, when the theme maps nothing to what is marked, or when nothing mapped MOVES.
  * Clamped to at least 16 ms so a long span cannot ask for a wakeup per millisecond. */
-int rolltui_effects_tick_ms(const RolltuiFrame* f, const RolltuiEffectMap* map);
+int rolltui_effects_tick_ms(const RolltuiContext* c, const RolltuiFrame* f, const RolltuiEffectMap* map);
 
 /* ---- unicode -------------------------------------------------------------------------------*/
 

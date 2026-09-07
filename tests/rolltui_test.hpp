@@ -31,6 +31,27 @@ inline void check_quiet(bool cond, const std::string& name) {
   std::fprintf(stdout, "  [FAIL] %s\n", name.c_str());
 }
 
+// ONE SESSION FOR A SUITE (Phase 25 m2). A registry is a CONTEXT's now, so a suite that
+// registers a widget or effect kind needs a session to register it INTO. Two suites had
+// written the same wrapper, which is rule 5 firing, so it lives here once.
+//
+// It is NOT what a host does, and the difference is the point: a host owns its context and
+// frees it where the session ends. A suite has no such place, so the holder frees it at
+// static destruction — after the last check has run, which is why no assertion can see it.
+// A suite that wants to PROVE a context releases what it holds builds its own and frees it
+// itself, in sequence, the way `c_consumer_test` does.
+inline RolltuiContext* test_context() {
+  struct Holder {
+    RolltuiContext* c = rolltui_context_new();
+    Holder() = default;
+    Holder(const Holder&) = delete;
+    Holder& operator=(const Holder&) = delete;
+    ~Holder() { rolltui_context_free(c); }
+  };
+  static Holder h;
+  return h.c;
+}
+
 inline int report(const char* suite) {
   std::fprintf(stdout, "\n%s: %d passed, %d failed — %s\n", suite, g_pass, g_fail,
                g_fail == 0 ? "ALL PASS" : "FAILURES");

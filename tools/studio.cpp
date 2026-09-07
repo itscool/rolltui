@@ -1736,8 +1736,7 @@ struct App {
     // actually sees, and before the frame diff.
     RolltuiEffectReport rep{};
     effects_unknown_kinds.clear();
-    rolltui_effects_apply(
-        f, effect_scratch, theme_styles, nullptr, effects_map, effect_ms, ambiguous ? 1 : 0, &rep,
+    rolltui_effects_apply(ctx, f, effect_scratch, theme_styles, nullptr, effects_map, effect_ms, ambiguous ? 1 : 0, &rep,
         [](void* ctx, const char* kind, std::size_t len) { static_cast<App*>(ctx)->effects_unknown_kinds.emplace_back(kind, len); },
         this);
     last_frame_us = static_cast<long>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
@@ -1918,7 +1917,7 @@ struct App {
   // The redraw interval this frame's motion asks for, or `idle_ms` when nothing moves.
   int poll_timeout_ms(const RolltuiFrame* f, int idle_ms) const {
     if (!f || rolltui_frame_mark_count(f) == 0 || !effects_map || rolltui_effect_map_empty(effects_map)) return idle_ms;
-    const int tick = rolltui_effects_tick_ms(f, effects_map);
+    const int tick = rolltui_effects_tick_ms(ctx, f, effects_map);
     if (tick <= 0) return idle_ms;
     return idle_ms <= 0 ? tick : (idle_ms < tick ? idle_ms : tick);
   }
@@ -2489,7 +2488,7 @@ int main(int argc, char** argv) {
     if (dump_tick) {
       // What this frame ASKS FOR, which is the whole of "the tick runs only while
       // something is marked": no marks (or nothing that moves) prints "none".
-      const int tick = rolltui_effects_tick_ms(f, app.effects_map);
+      const int tick = rolltui_effects_tick_ms(app.ctx, f, app.effects_map);
       std::printf("--- tick ---\n%s\n", tick > 0 ? std::to_string(tick).c_str() : "none");
     }
     if (!dump_role.empty()) {

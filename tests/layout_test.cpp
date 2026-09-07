@@ -333,13 +333,9 @@ std::optional<Border> border_from_name_c(std::string_view name) {
 // call over a name; the rung comes back as `rolltui_widget_kind_resolve`'s return and the row
 // is where the kind's rules live, whichever rung it came from.
 // PHASE 25: the widget-kind registry belongs to a CONTEXT, so this suite has one session that
-// every shim below resolves against. A function-local static rather than a file-scope one: it is
-// created on first use and released by `rolltui_shutdown()` like any other context this file
-// makes, and the suite's own registrations cannot leak into another test binary.
-RolltuiContext* test_ctx() {
-  static RolltuiContext* c = rolltui_context_new();
-  return c;
-}
+// every shim below resolves against — `rolltui_test.hpp`'s, because the effects suite needed
+// the same thing and a wrapper written twice means the helper belongs in one place (rule 5).
+RolltuiContext* test_ctx() { return rolltui_test::test_context(); }
 
 std::string_view widget_kind_name_c(std::size_t row) {
   std::size_t n = 0;
