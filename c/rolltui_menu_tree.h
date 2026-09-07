@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_MENU_TREE_H
 #define ROLLTUI_C_MENU_TREE_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_menu_tree.h — THE MENU TREE, AS DATA (Phase 15 m5).
  *
@@ -40,12 +40,10 @@ size_t rolltui_menu_list_count(const RolltuiMenuItemList* l);
 RolltuiMenuItem* rolltui_menu_list_at(const RolltuiMenuItemList* l, size_t i);
 
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 void rolltui_input_spec_init(RolltuiInputSpec* s);
 void rolltui_input_spec_release(RolltuiInputSpec* s);
 

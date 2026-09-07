@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_SCREEN_H
 #define ROLLTUI_C_SCREEN_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_screen.h — THE FRAME, as C (Phase 14 m2).
  *
@@ -67,10 +67,11 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
 
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 RolltuiFrame* rolltui_frame_clone(const RolltuiFrame* src);
 void rolltui_frame_reset(RolltuiFrame* f, int w, int h, RolltuiStyle fill);
 void rolltui_frame_clear(RolltuiFrame* f, RolltuiStyle fill);
@@ -94,8 +95,8 @@ void rolltui_frame_cursor(const RolltuiFrame* f, int* x, int* y, int* visible);
 int rolltui_frame_equal(const RolltuiFrame* a, const RolltuiFrame* b);
 
 
-/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
- * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+/* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape
+ * needs them. ---- */
 void rolltui_frame_free(RolltuiFrame* f);
 
 int rolltui_frame_height(const RolltuiFrame* f);

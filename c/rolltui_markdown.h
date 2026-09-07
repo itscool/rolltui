@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_MARKDOWN_H
 #define ROLLTUI_C_MARKDOWN_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_markdown.h — THE MARKDOWN CONTRACT (Phase 15 m4).
  *

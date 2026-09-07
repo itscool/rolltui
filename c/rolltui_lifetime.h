@@ -15,10 +15,11 @@
 extern "C" {
 #endif
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 /* Registers one per-thread buffer with `rolltui_release_thread`: `fn` is called with
  * `target` when the calling thread's scratch is released (by an explicit call, or by
  * `rolltui_shutdown`). This is `rolltui::detail::on_thread_release`'s C implementation —
@@ -27,12 +28,10 @@ extern "C" {
  * else". Registering the same (fn, target) pair twice registers it twice. */
 void rolltui_thread_on_release(void (*fn)(void*), void* target);
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 /* ========================================================================================
  * lifetime — the release point
  * ======================================================================================== */

@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_THEME_GEN_H
 #define ROLLTUI_C_THEME_GEN_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_theme_gen.h — THE PRNG AND THE RULESET NAMES, as C (Phase 17 m1).
  *
@@ -72,12 +72,10 @@ inline double RolltuiRng::unit() { return rolltui_rng_unit(this); }
 
 #endif
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 /* A BORROW of a string literal; never NULL, `*len` 0 for an out-of-range ruleset. `len`
  * may be NULL. */
 const char* rolltui_ruleset_name(unsigned char ruleset, size_t* len);

@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_LAYOUT_H
 #define ROLLTUI_C_LAYOUT_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_layout.h — PLACEMENT, COMPOSITION, THE STACK AND THE LOADER (Phase 15 m5,
  * the loader and every English sentence added at Phase 17 m2).
@@ -113,10 +113,11 @@ int rolltui_load_layout(const RolltuiJsonValue* root, RolltuiLoadedLayout* out,
 void rolltui_window_stack_cycle_focus(RolltuiWindowStack* s, int backwards);
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 /* Draws one border with NO joining — for a widget that boxes its own content. `title` may
  * be NULL when `title_n` is 0. */
 void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
@@ -170,12 +171,10 @@ void rolltui_layout_to_json_text(const char* name, size_t name_len, int min_widt
 RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len);
 size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s);
 const char* rolltui_window_stack_captured(const RolltuiWindowStack* s, size_t* len);
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 int rolltui_parse_dim(const char* text, size_t len, RolltuiDim* out);
 
 size_t rolltui_dim_to_string(RolltuiDim d, char* out, size_t cap);

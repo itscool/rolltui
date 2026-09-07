@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_THEME_ANALYSIS_H
 #define ROLLTUI_C_THEME_ANALYSIS_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_theme_analysis.h — THE COLOUR MATHS, as C (Phase 17 m1).
  *
@@ -63,10 +63,11 @@ extern "C" {
 void rolltui_into_gamut(RolltuiOkLch c, RolltuiLin* out);
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 /* ---- sRGB <-> linear ------------------------------------------------------------------- */
 double rolltui_srgb_channel_to_linear(double c); /* c in 0..1 */
 double rolltui_linear_channel_to_srgb(double v);
@@ -104,12 +105,10 @@ int rolltui_fix_contrast(const RolltuiStyle* styles, size_t role_count, unsigned
 int rolltui_fix_confusable(const RolltuiStyle* styles, size_t role_count, unsigned char a, unsigned char b,
                            const RolltuiThemeVocab* vocab, RolltuiFix* out);
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 /* 1 on success, 0 for `Color::none()` (the terminal's own colour — unknown, not assumed). */
 int rolltui_to_linear(RolltuiStyleColor c, RolltuiLin* out);
 /* Clamped, encoded to an Rgb colour. */

@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_KEYS_H
 #define ROLLTUI_C_KEYS_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_keys.h — THE INPUT DECODER AND THE DELIVERABILITY MODEL, as C
  * (Phase 15 m3).
@@ -67,10 +67,11 @@ int rolltui_key_decoder_in_paste(const RolltuiKeyDecoder* d);
 long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_t cap);
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 /* Both spellings, BORROWED from static storage; `*len` may be NULL. An out-of-range ordinal
  * reads back as the CHAR row ("Char" / ""), never past the table. `rolltui_key_file_name`
  * returns "" (len 0) for `Char` and `Unknown`, which is what "this key has no chord name"

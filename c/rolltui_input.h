@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_INPUT_H
 #define ROLLTUI_C_INPUT_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_input.h — THE INPUT WIDGET, AS A STATE MACHINE (Phase 15 m5).
  *
@@ -77,10 +77,11 @@ int rolltui_input_rows_for(const RolltuiInput* in, int width);
 int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_t* end);
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 void rolltui_input_options_init(RolltuiInputOptions* o);
 RolltuiInput* rolltui_input_new(void);
 void rolltui_input_free(RolltuiInput* in); /* a no-op on NULL */

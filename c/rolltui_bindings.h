@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_BINDINGS_H
 #define ROLLTUI_C_BINDINGS_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_bindings.h — CHORDS AND THE BINDING TABLE, as C (Phase 15 m3; the file
  * format joins them at Phase 17 m1, once `rolltui_json.h` existed to build it on).
@@ -84,10 +84,11 @@ void rolltui_bindings_suggest(RolltuiBindings* b, const RolltuiToolAction* tools
 
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 /* The bare-Enter rule's subject, handed over once — see the note above. Passing a zero
  * length turns the rule off. */
 void rolltui_bindings_set_enter_rule(RolltuiBindings* b, const char* action, size_t len);
@@ -116,12 +117,10 @@ void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t l
 size_t rolltui_library_action_count(void);
 const char* rolltui_library_action_name(size_t i, size_t* len);
 const char* rolltui_library_action_description(size_t i, size_t* len);
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap);
 size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
 

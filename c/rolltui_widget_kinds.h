@@ -1,8 +1,8 @@
 #ifndef ROLLTUI_C_WIDGET_KINDS_H
 #define ROLLTUI_C_WIDGET_KINDS_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
  * rolltui/c/rolltui_widget_kinds.h — THE LIBRARY'S OWN WIDGET KINDS, IN C (Phase 15/17).
  *
@@ -124,19 +124,17 @@ void rolltui_menu_widget_ctx_refresh(void* ctx);
 const char* rolltui_menu_widget_ctx_origin(void* ctx, size_t* len);
 
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 const RolltuiBuiltinRoles* rolltui_windows_builtin_roles(const RolltuiWindows* w);
 
 const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w);
 
 
-/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
- * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+/* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape
+ * needs them. ---- */
 /* The input window's sizing rule: the cap is HALF the parent's extent less the border rows, at
  * least 1; the rows are the text's capped at that, plus one for a note that cannot sit beside a
  * single row. */

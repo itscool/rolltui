@@ -1,29 +1,24 @@
 #ifndef ROLLTUI_C_DIFF_H
 #define ROLLTUI_C_DIFF_H
 /*
- * rolltui/c/rolltui_diff.h — INTERNAL (Phase 20 m6/m7, 2026-09-06).
+ * rolltui/c/rolltui_diff.h — INTERNAL.
  *
- * RE-CREATED, the same way `rolltui_render.h` was in m1/m3 and under the same rule: a
- * header exists because a `.c` needs a declaration from it, and one that declares nothing
- * is deleted. Phase 19 m3 deleted this file when every declaration in it was public and
- * lived in the definition; Phase 20 moved this module's operations back to INTERNAL — no
- * CONSUMER reaches them, only the studio, its editors, or a suite that tests
- * implementation — so the `.c` needs its declarations again and the rule re-creates it.
+ * The library's own declarations for this module. The PUBLIC API is `rolltui/rolltui.h`,
+ * which declares everything a consumer may call; nothing below is promised to one, so its
+ * shape can change without breaking a host.
  *
- * A suite that needs one includes this header BY NAME and lists itself in
- * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
+ * A suite that needs an internal declaration includes this header BY NAME and lists itself
+ * in `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 #include "rolltui/rolltui.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 /* True for the info strings this colouriser answers to: "diff", "patch", "udiff". The
  * FENCE decides; content is never sniffed (Diff.hpp). */
 int rolltui_diff_is_language(const char* lang, size_t lang_len);

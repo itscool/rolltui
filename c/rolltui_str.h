@@ -1,44 +1,32 @@
 #ifndef ROLLTUI_C_STR_H
 #define ROLLTUI_C_STR_H
-/* INTERNAL since Phase 19 m2: the public declarations of this module live in
- * `rolltui/rolltui.h`, the library's one definition; what is below is the library's own —
- * reached by the library's own .c files and by a test that opts in by including this file by name. */
+/* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
+ * the library's own — reached by its `.c` files, and by a suite that opts in by including this
+ * header by name. */
 /*
- * rolltui/c/rolltui_str.h — AN OWNED STRING AND AN OWNED ARRAY, ONCE (Phase 15 m5).
+ * rolltui/c/rolltui_str.h — an owned string and an owned pointer array.
  *
- * m5 is the milestone where the C has to HOLD the library's own long-lived data: a layout
- * node's three names, a menu item's five, the child arrays of two recursive trees, and the
- * `Windows` map that keys a widget by its content. `std::string` and `std::vector` did all
- * of that in the C++ and did it INVISIBLY, which is the whole finding of Phase 14's design
- * lens — *a default is an answer to a question nobody asked*.
+ * These are the two containers the library holds its own long-lived data in: a layout node's
+ * names, a menu item's, the child arrays of the recursive trees, and the map keying a widget by
+ * its content. They exist as NAMED types built from the closed allocation set in
+ * `rolltui_alloc.h`, rather than as `char* p; size_t n, cap;` triples open-coded per module.
  *
- * ---- WHY THIS FILE EXISTS RATHER THAN THE ALTERNATIVE ---------------------------------
+ *   RolltuiStr       an owned, NUL-terminated byte string. GROWING EXACT: an assign knows its
+ *                    final size, and a name is written once and read many times.
+ *   RolltuiPtrVec    an owned array of `void*` slots. GROWING AMORTISED: it is APPENDED to
+ *                    (children, layers, rows) and its final size is not known in advance.
  *
- * The alternative was eight independently written `char* p; size_t n, cap;` triples, which
- * is precisely what `rolltui_alloc.h`'s own header records happening in m2/m3 with growth
- * and what Phase 13 found seven times in the C++. So this is the same fix one level up: a
- * NAMED type built out of the closed allocation set, rather than the set open-coded per
- * module.
+ * ---- ONE DEFINITION, TWO LANGUAGES -----------------------------------------------------
  *
- *   RolltuiStr       an owned, NUL-terminated byte string. Strategy 3, GROWING EXACT: an
- *                    assign knows its size, and a name is written once and read forever.
- *   RolltuiPtrVec    an owned array of `void*` slots. Strategy 2, GROWING AMORTISED: it is
- *                    APPENDED to (children, layers, rows), and its final size is not known.
+ * `rolltui::Str` and `rolltui::PtrVec` ARE these structs, so a layout node has one layout and
+ * both languages compile it. Under `__cplusplus` they additionally carry the five special
+ * members, and those members CALL THE C FUNCTIONS BELOW: there is one implementation of
+ * "release this buffer" and the C++ destructor is a caller of it. Two languages managing one
+ * buffer with two mechanisms would be a double-free waiting to happen; two languages calling
+ * one mechanism is what the boundary is for.
  *
- * ---- ONE DEFINITION, AND WHAT THAT COSTS IN C++ ----------------------------------------
- *
- * `rolltui::Str` and `rolltui::PtrVec` ARE these structs — the Phase 14 rule, so a layout
- * node has one layout and both languages compile it. In C++ they additionally carry the
- * five special members, and **those call exactly the C functions below**: there is one
- * implementation of "release this buffer", and the C++ destructor is a caller of it, the
- * same shape `Frame` and `Bindings` already use one level up with a `unique_ptr` deleter.
- * Two languages managing one buffer with two mechanisms is the thing that would be wrong;
- * two languages calling one mechanism is what a boundary is for.
- *
- * The C++ side keeps `.empty()`, `.size()`, `==` against a `string_view` and assignment
- * from one, so a host that writes `n.id == "input"` still says what it said. That is not
- * politeness to hosts: it is what keeps the DIFF of this port about ownership rather than
- * about spelling, which is the only way its line ratio means anything (plan/phase-15.md).
+ * The C++ side also keeps `.empty()`, `.size()`, `==` against a `string_view` and assignment
+ * from one, so `n.id == "input"` compiles and means what it reads as.
  */
 
 #include "rolltui/rolltui.h"
@@ -54,26 +42,25 @@ void* rolltui_ptrvec_take(RolltuiPtrVec* a, size_t i);
 void rolltui_ptrvec_free(RolltuiPtrVec* a);  /* releases the array; the caller owns the elements */
 
 
-/* ---- PHASE 20 m1/m3: INTERNAL — moved out of the definition ------------------------------
- * A test's reach is never a reason to be public, and nothing but a suite that tests this
- * module's implementation reaches these. They are unchanged; what moved is the PROMISE.
- * A suite that needs one includes this header and names itself in `ROLLTUI_INTERNAL_OPT_IN`. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached only by the library's own `.c` files and by a suite that tests this module's
+ * implementation. The library does not promise these, so their shape can change without
+ * breaking a consumer. A suite that needs one includes this header and names itself in
+ * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 void rolltui_ptrvec_clear(RolltuiPtrVec* a); /* keeps the array; the caller owns the elements */
 
-/* ---- PHASE 20 m6/m7: MOVED OUT OF THE DEFINITION ------------------------------------
- * PUBLIC until 2026-09-06, and reached by no CONSUMER: only by the studio or its editors
- * (rolltui's OWN authoring tool for rolltui's OWN files, which opts in like a test) or by a
- * suite that tests implementation. A test's reach is never a reason and neither is the
- * studio's. The code and its tests are unchanged; what changed is that the library no longer
- * PROMISES these, so their shape can move without breaking a consumer. */
+/* ---- INTERNAL: not part of the public API ---------------------------------------------
+ * Reached by the library's own `.c` files, by rolltui's authoring tool, or by a suite that
+ * tests this module's implementation — never by a host. The library does not promise these,
+ * so their shape can change without breaking a consumer. */
 void rolltui_str_append_str(RolltuiStr* s, const RolltuiStr* o);
 
 void rolltui_str_list_clear(RolltuiStrList* l); /* n = 0; every entry's buffer is KEPT for reuse */
 RolltuiStr* rolltui_str_list_add(RolltuiStrList* l, const char* s, size_t len);
 
 
-/* ---- INTERNAL as of Phase 24: no consumer, no host suite and no roll test reaches these,
- * and no public shape needs them. Each kept the comment it had in `rolltui.h`. ---- */
+/* ---- INTERNAL: no consumer, host suite or roll test reaches these, and no public shape
+ * needs them. ---- */
 /* A BORROW of the bytes, never NULL: the empty string reads back as "" with `*len` 0, so a
  * caller never branches on NULL to print a name. */
 const char* rolltui_str_get(const RolltuiStr* s, size_t* len);
