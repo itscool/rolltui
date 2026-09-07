@@ -8,33 +8,31 @@
 # shared_ptr, no hand-rolled new/delete).
 #
 # One static library. Headers are the API; implementations live in .cpp files, and a
-# vendored dependency (md4c) is included only by the .cpp that uses it, so a consumer
-# pays for a component once at link time rather than at every include (measured
-# 2026-09-01: a translation unit that merely included the header-only Markdown.hpp
-# cost 0.8 s and a 197 KB object; that is what this layout removes). The include
+# vendored dependency (md4c) is included only by the .c that uses it, so a consumer
+# pays for a component once at link time rather than at every include. Header-only was
+# measured at 0.8 s and a 197 KB object for a translation unit that merely INCLUDED the
+# markdown component; that is what this layout removes. The include
 # directory is the REPO ROOT so consumers write `#include "rolltui/rolltui.h"` — and
 # nothing else: roll's own `include/` is never on this target's path, and the tests
-# below build with only this directory and rolltui/tests. That is the whole of
-# phase 9's Done-when (g).
+# below build with only this directory and rolltui/tests.
 #
 # Tests use their own 30-line harness (rolltui/tests/rolltui_test.hpp), not roll's
 # tests/test_util.hpp, for the same reason.
 
-# Milestone 11: the presets that SHIP are real files (rolltui/presets/themes/*.json)
+# The presets that SHIP are real files (rolltui/presets/themes/*.json)
 # so the editor can write them; they are embedded at build time and parsed at start
 # like the built-in layouts. A new file needs a re-run of cmake (CONFIGURE_DEPENDS
 # re-globs on every build in the generators that support it).
-# THE LIBRARY IS THE C IMPLEMENTATION (2026-09-04, the user's call after Phase 15 m6).
-# Phase 14 built `-DROLLTUI_C` as a rollback flag: both implementations in the tree, satisfying
-# the same tests, so a module that went badly was reverted by deleting one filename from a list
-# rather than by unwinding a merge. It did its job — Phase 15 ported the whole library behind it
-# and every milestone landed green on both sides — and the flag is now spent. The sixteen
-# `*Cpp.cpp` files are deleted; these are the implementation.
+# THE LIBRARY IS THE C IMPLEMENTATION. There is exactly ONE implementation of each module,
+# which is what lets a negative control be simply PRESENT: a control planted in a file that
+# only one of two builds links has to declare which build it reaches, and `check_controlled`
+# crosses over unchanged because it never has to.
 #
-# WHAT THE DELETION BUYS, beyond 8,157 lines: a control point planted in one of these files used
-# to be ABSENT in the other configuration, so a two-sided negative control had to declare which
-# build it reached (the plan's reach parameter, now struck). With one implementation a
-# control is simply present, and `main`'s `check_controlled` crosses over unchanged.
+# HOW A PORT OF THIS SIZE STAYS REVERSIBLE, since the same problem will come round again: put
+# both implementations in the tree behind a flag, satisfying the SAME tests, so a behavioural
+# difference is a test failure on the day it appears and a module that goes badly is reverted
+# by deleting one filename from a list rather than by unwinding a merge. Then spend the flag
+# and delete the losing side — as a separate, deliberate change.
 #
 # The C++ files that REMAIN are not implementations of these — they are the C++ API over them
 # (`Screen.cpp`, `Wrap.cpp`, `Menu.cpp`, …), plus the C++ halves of data that is C in the
@@ -51,21 +49,16 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   WHOLE layout once rather than the pushed stack
                                          #   per frame. Reports; never fails.
                   c/rolltui_json.c
-                                         # the parser. `c/rolltui_app_profile.c`
-                                         # sat beside it previously RETIRED the app
-                                         #   profile: the design leads and an app reports its
-                                         #   gaps at end of init, so a format in which an app
-                                         #   publishes what may be asked of it has no job.
+                                         # the parser.
                   c/rolltui_theme_analysis.c c/rolltui_theme_gen.c
                                          # the colour maths and the generator's
                                          #   PRNG/ruleset lookup — the parts of
                                          #   ThemeAnalysis/ThemeGen with no Theme, Role or
                                          #   json::Value in them. Their .cpp files REMAIN,
-                                         #   unlike the *Cpp.cpp Phase 15 deleted: the
-                                         #   report, the auto-fix and generate() are real
-                                         #   C++ logic over a Theme, not a binding, and they
-                                         #   port when Theme and Json do.
-                  c/rolltui_terminal.c)  # Phase 17 m1: the one unit that touches a file
+                                         #   the report, the auto-fix and generate() are
+                                         #   real C++ logic over a Theme, not a binding, and
+                                         #   they port when Theme and Json do.
+                  c/rolltui_terminal.c)  # the one unit that touches a file
                                          #   descriptor — 43 POSIX calls that were wrapped in
                                          #   C++, which is the strongest argument FOR C here.
 
@@ -117,33 +110,23 @@ add_library(rolltui STATIC
                               # file compiled by both languages, so the
                               #   two algorithm implementations share the data rather
                               #   than each carrying 9,800 lines that could disagree.
-  c/rolltui_alloc.c           # Phase 14 m4: the C side's CLOSED SET of allocation
-                              #   strategies. Compiled into BOTH configurations for the same
-                              #   reason as UnicodeSeam.cpp below — a file only one build
-                              #   links is one only that build can find a defect in.
-  c/rolltui_marker.c          # Phase 15 m4: the "▼ N more" marker, whose one definition
-                              #   now has a C caller. Both configurations, same reason.
-  c/rolltui_str.c             # Phase 15 m5: THE OWNED STRING AND THE OWNED ARRAY. Both
-                              #   configurations: it is the storage two recursive trees and
-                              #   the widget map are built out of, and one definition of "who
-                              #   owns these bytes" is the whole point of the milestone.
-  c/rolltui_frame_ops.c       # Phase 15 m5: put_text / fill / tint. They were methods on the
-                              #   C++ `Frame` in Screen.cpp, which is fine while only C++
-                              #   draws and impossible once the widgets are C.
-  c/rolltui_layout_tree.c     # Phase 15 m5: THE SPLIT TREE, as data. Both configurations,
-                              #   for the span store's reason — the flag chooses the
-                              #   placement ALGORITHM, never the shape of a node.
-  c/rolltui_menu_tree.c       # Phase 15 m5: THE MENU TREE, the second recursive owning tree,
-                              #   also in both configurations and for the same reason.
-  c/rolltui_document.c        # Phase 15 m5e: THE DOCUMENT MODEL, as data. Both
-                              #   configurations, and for a second reason: a HOST fills it,
-                              #   so two shapes of an entry would be two things to disagree.
-  c/rolltui_undo.c            # Phase 17: opaque-snapshot undo, the C form of the last
-                              #   pure-C++ template. The editors keep a C++ adapter of
+  c/rolltui_alloc.c           # the CLOSED SET of allocation strategies, and the one home
+                              #   growth is allowed to have.
+  c/rolltui_marker.c          # the "▼ N more" marker, in one definition.
+  c/rolltui_str.c             # THE OWNED STRING AND THE OWNED ARRAY: the storage two
+                              #   recursive trees and the widget map are built out of, so
+                              #   "who owns these bytes" has one definition.
+  c/rolltui_frame_ops.c       # put_text / fill / tint, reachable by the C widgets that draw.
+  c/rolltui_layout_tree.c     # THE SPLIT TREE, as data — the shape of a node, never the
+                              #   placement algorithm over it.
+  c/rolltui_menu_tree.c       # THE MENU TREE, the second recursive owning tree, same shape.
+  c/rolltui_document.c        # THE DOCUMENT MODEL, as data. A HOST fills it, so two shapes
+                              #   of an entry would be two things to disagree.
+  c/rolltui_undo.c            # opaque-snapshot undo. The editors keep a C++ adapter of
                               #   their own under tools/, which is a HOST's business.
-  c/rolltui_style.c           # Phase 17: the 49 role names, from the one X-macro list
-  c/rolltui_library_actions.c # Phase 17: the 59 library actions as DATA, once — four
-                              #   consumers had each copied them verbatim.
+  c/rolltui_style.c           # the 49 role names, from the one X-macro list
+  c/rolltui_library_actions.c # the 59 library actions as DATA, once — a vocabulary the C
+                              #   refused to carry got copied verbatim into four consumers.
   c/rolltui_embedded.c        # the shipped presets as C DATA — see its header for the
                               #   fifth-copy incident that moved them out of C++.
   c/rolltui_render.c          # the frame -> bytes step `rolltui_screen.h` deliberately
@@ -152,23 +135,15 @@ add_library(rolltui STATIC
   c/rolltui_swap.c            # THE DOUBLE BUFFER, because three hosts had written it. The
                               #   per-frame lifetime stops existing and a host's repaint
                               #   lands inside the budget instead of beside it.
-  c/rolltui_map.c             # Phase 15 m5: THE STRING-KEYED TABLE, once — seven
-                              #   `unordered_map<string, T>`s across two modules had it
-                              #   invisibly. Both configurations, like the rest of the data.
-  c/rolltui_md_lines.c        # Phase 15 m4: THE SPAN STORE. Also in both configurations,
-                              #   and for a second reason stated at its header: it is the
-                              #   DATA both implementations of the renderer fill, and two
-                              #   copies of a data structure is two things that can disagree
-                              #   about what a span is. The flag chooses the ALGORITHM.
-  ${ROLLTUI_SLICE}            # the library proper, in C (Phase 14 + Phase 15)
-  c/rolltui_mem.c # Phase 13, moved to C : the library's ONE entry
-                              #   point for memory. Memory.hpp is a thin forwarding shim now.
-  c/rolltui_context.c         # Phase 25 m2: A SESSION'S OWN STATE. The closed set of
-                              #   subsystem registries and caches that used to be process-wide
-                              #   statics, so two contexts in one process share nothing.
-  c/rolltui_lifetime.c # Phase 14 m6a, moved to C : shutdown(), and no
-                              #   init — the release point that makes "did we leak?"
-                              #   answerable. Lifetime.hpp is a thin forwarding shim now.
+  c/rolltui_map.c             # THE STRING-KEYED TABLE, once.
+  c/rolltui_md_lines.c        # THE SPAN STORE — pooled storage a span indexes into, which
+                              #   is what makes a re-parse a refill. See its header.
+  ${ROLLTUI_SLICE}            # the library proper, in C
+  c/rolltui_mem.c             # the library's ONE entry point for memory.
+  c/rolltui_context.c         # A SESSION'S OWN STATE: the closed set of subsystem registries
+                              #   and caches, so two contexts in one process share nothing.
+  c/rolltui_lifetime.c        # shutdown(), and no init — the release point that makes
+                              #   "did we leak?" answerable.
                               #   release`, whose only declaration (rolltui/Scratch.hpp,
                               #   out of scope here) is deliberately not `inline`, so it
                               #   needs an ordinary out-of-line definition somewhere.
@@ -232,16 +207,16 @@ add_rolltui_test(rolltui-public-header-test tests/public_header_test.cpp)
 # the public declarations live in `rolltui/rolltui.h` — by naming it in its source and being listed
 # here. `public_header_test` asserts that every other consumer (hosts, tools, every unlisted test)
 # includes none: the count is an exact zero, not a ratchet.
-# RENAMED IN MEANING — this is no longer only tests. The STUDIO and its three
-# editors are on it: they are rolltui's OWN authoring tool for rolltui's OWN files (themes,
-# layouts, bindings), nobody outside this repo builds one, and the user's call is that the
-# studio "doesn't count as having public functions ... it can include private headers." So its
-# reach stops justifying PUBLIC, exactly as a test's does. `rolltui-paint` is NOT here: a
-# generic painting app is the closest thing in this tree to what an outsider would write.
-# RENAMED from ROLLTUI_INTERNAL_TESTS in Phase 22: it lists the studio and its three editors,
-# which are not tests, and a name that misdescribes its own contents is how the tools/ directory
-# came to hold two hosts under one word. It names what it does: the files that may opt in to an
-# internal header.
+# THIS IS NOT ONLY TESTS, which is why it is not called ROLLTUI_INTERNAL_TESTS: a name that
+# misdescribes its own contents is how the tools/ directory came to hold two hosts under one
+# word. It names what it does — the files that may opt in to an internal header.
+#
+# THE STUDIO AND ITS THREE EDITORS ARE ON IT: they are rolltui's OWN authoring tool for
+# rolltui's OWN files (themes, layouts, bindings), nobody outside this repo builds one, and a
+# tool that may include private headers does not count as having public functions. So its reach
+# stops justifying PUBLIC, exactly as a suite's does. The EXAMPLES are NOT here: a generic
+# painting app and a file browser are the closest things in this tree to what an outsider would
+# write.
 set(ROLLTUI_INTERNAL_OPT_IN
   # the studio and its editors — rolltui's own tool, not a consumer
   studio.cpp theme_editor.cpp theme_editor.hpp keys_editor.cpp keys_editor.hpp
@@ -262,24 +237,18 @@ set(ROLLTUI_INTERNAL_OPT_IN
 list(JOIN ROLLTUI_INTERNAL_OPT_IN "," ROLLTUI_INTERNAL_OPT_IN_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_OPT_IN="${ROLLTUI_INTERNAL_OPT_IN_JOINED}")
 
-# Phase 20 m1/m4: THE OTHER HALF OF THE LIST, AND THE ONE THAT IS THE INSTRUMENT. Moving a
-# function INTERNAL costs a suite an opt-in, so the opt-in list only grows — and if nearly every
-# suite is on it, the exact-zero above stops saying anything. What keeps it meaningful is the set
-# that stays OUT: programs shaped like a CONSUMER, which include `rolltui/rolltui.h` and nothing
-# else. What one of these reaches is PUBLIC for that reason, not because a test reaches it.
+# THE INSTRUMENT IS THIS LIST, NOT THE ONE ABOVE: the programs that build against
+# `rolltui/rolltui.h` ALONE. Moving a function INTERNAL costs a suite an opt-in, so the opt-in
+# list only ever grows; if nearly everything ended up on it, the exact-zero bypass check would
+# stop saying anything. What keeps it meaningful is the set that stays OUT, and these are all
+# CONSUMER-SHAPED. What one of them reaches is PUBLIC for that reason, never because a test
+# reaches it.
 #   - `c_consumer_test.c` is MANDATORY and can never be moved: it is the pure-C proof that the
 #     public API alone builds a screen, draws a frame and drives a preset store.
-#   - the whole-host suites run the real binaries; the meta-tests scan sources; roll's own tests
-#     are a HOST's, and roll builds from the one header.
+#   - the whole-host suites run the real binaries; the meta-tests scan sources rather than call
+#     the library; roll's own tests are a HOST's, and roll builds from the one header.
 # `public_header_test` asserts this set is non-empty, contains the C consumer and at least one
 # whole-host suite, and that no function it reaches is INTERNAL.
-# THE INSTRUMENT, and it is this list rather than the one above: the programs that build
-# against `rolltui/rolltui.h` ALONE. Moving a function INTERNAL costs a suite an opt-in, so the
-# list above only grows; if everything ended up on it, the exact-zero bypass check would stop
-# saying anything. What keeps it meaningful is that these stay OUT — and they are CONSUMER-SHAPED
-# (Phase 20 m6, decision 2): the pure-C consumer, which is the proof that the public API alone
-# builds a screen, draws a frame and drives a preset store; the three suites that drive whole
-# host binaries; and the two meta-tests, which scan sources rather than call the library.
 set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c explorer_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp
@@ -355,7 +324,7 @@ add_rolltui_test(rolltui-bindings-test tests/bindings_test.cpp)
 # files equal to the built-ins, the four-rung precedence table, OSC 11 parsing.
 add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 
-# Milestone 7: the studio (Phase 11 m2 renamed it; the plan) — renders a fixture transcript in a theme; `--frame WxH`
+# The studio — renders a fixture transcript in a theme; `--frame WxH`
 # prints one frame and exits, which is also the golden-frame harness and the
 # screenshot tool. Interactive mode hot-reloads a theme file on mtime change.
 # Milestones 14-17 grow it into the library's own editor: the theme editor (tools/
@@ -430,17 +399,17 @@ target_compile_definitions(rolltui-studio-golden-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
 add_dependencies(rolltui-studio-golden-test rolltui-studio)
 
-# Phase 10 milestone 6 — THE PHASE'S PROOF: a screen that exists only as files (a
+# THE FILES-ONLY PROOF: a screen that exists only as files (a
 # layout, a menu, a bindings file and a document under tests/fixtures/screen) copied
 # into a scratch preset directory and run by the real studio, which has never heard
 # of it. Its controls are what carry the weight: no source names the screen, the chord
 # comes only from the bindings file, an undeclared action shows no shortcut, and a file
 # written after the build opens in it.
-# Phase 11 milestone 6 — THE PHASE'S PROOF, one level up from the files-only test: the
-# studio, driven through its own design editor by keystrokes and knowing the target only
-# from `rolltui-paint --profile`, authors a three-window screen for an app it is not,
-# saves it, and a second process renders it. Its controls are the pair: drop --app and the
-# identical keystrokes build nothing, and no source names the authored screen.
+# THE AUTHORING PROOF, one level up from the files-only test: the studio, driven through its
+# own design editor by keystrokes, authors a three-window screen for an app it is NOT — naming
+# a widget kind it cannot build and a menu file it cannot resolve — saves it, and a second
+# process (the target app) renders it. Its control is that no source names the authored
+# screen.
 add_rolltui_test(rolltui-authored-screen-test tests/authored_screen_test.cpp)
 target_compile_definitions(rolltui-authored-screen-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>"

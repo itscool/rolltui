@@ -1,32 +1,32 @@
 /*
- * rolltui/tests/api_classes.inc — THE CLASS OF EVERY PUBLIC FUNCTION (Phase 19 m1; the criterion
- * CORRECTED , 2026-09-06).
+ * rolltui/tests/api_classes.inc — THE CLASS OF EVERY PUBLIC FUNCTION.
  *
- * This is the "intentional public API design" the user asked for, as data a test enforces: every
+ * This is the library's intentional public API design as data a test enforces: every
  * function declared in a public header has ONE class, with the reason written where it is not the
  * module's default. The census that drives it is `public_header_test`'s section 6, and the classes
  * are what `rolltui.h` is written from — never a prediction of it.
  *
- * ---- WHAT PHASE 20 STRUCK, AND WHY IT IS THE THIRD INSTANCE OF ONE SHAPE --------------------
+ * ---- REACH IS THE INPUT, NEVER THE CRITERION ------------------------------------------------
  *
- * This header used to make a function PUBLIC when *"a test stands in for a host to exercise"* a
- * handle, and to keep a type's lifecycle public *"even when only the library reaches it today"*.
- * Those two clauses put **304 of 624 public functions in front of no consumer at all** — 217
- * reached only by tests (143 of them by exactly ONE suite) and 87 by nothing.
+ * The two clauses that are always available and always wrong: making a function PUBLIC when
+ * *"a test stands in for a host to exercise"* a handle, and keeping a type's lifecycle public
+ * *"even when only the library reaches it today"*. Together they put **304 of 624 public
+ * functions in front of no consumer at all** — 217 reached only by tests (143 of them by exactly
+ * ONE suite) and 87 by nothing.
  *
- * **A TEST'S REACH IS NEVER A REASON. A test exists to reach things.** That is the
- * retracted method one level down — *"measuring reach cannot tell an entry point from plumbing"* —
- * and the third time this repo has used the cheapest available signal as the criterion:
- *   1. Phase 17 m4 derived the public HEADER set from reach → 37 of 39 public → retracted by m4b.
- *   2. Phase 17 m5(f) asked *"is anything dead?"* counting the library's own `.c` as a consumer → 2.
- *   3. Phase 19 m1 classified per FUNCTION with a test clause → 304 with no consumer.
+ * **A TEST'S REACH IS NEVER A REASON. A test exists to reach things.** The general form is that
+ * measuring reach cannot tell an entry point from plumbing, because a consumer reaching THROUGH a
+ * bad API looks identical to one reaching FOR a good one. Reach as the criterion has produced a
+ * wrong answer that looked rigorous every time it has been tried here: deriving the public HEADER
+ * set from it made 37 of 39 headers public; asking "is anything dead?" while counting the
+ * library's own `.c` files as a consumer found two dead symbols.
  * **DO make reach the INPUT and a stated reason the DECISION.**
  *
  * ---- THE CLASSES ----------------------------------------------------------------------------
  *
  *   PUBLIC       a CONSUMER reaches it, or a stated reason keeps it. The consumers are roll,
- *                `rolltui-paint`, the pure-C consumer and the suites that drive a whole host —
- *                and nothing else (see the two decisions below). The stated reasons, each written
+ *                the examples, the pure-C consumer and the suites that drive a whole host — and
+ *                nothing else (see "who counts as a consumer"). The stated reasons, each written
  *                on its own row as `KEPT:`: the release half of a pair a CONSUMER holds (a C
  *                consumer has no destructor); a public C++ member IN THE DEFINITION calls it, so a
  *                C consumer must be able to perform the same operation; a named rung (the leak
@@ -40,28 +40,25 @@
  *                library no longer promises the shape.
  *   DELETE       reached by nothing, anywhere, and not a public type's lifecycle.
  *
- * ---- PHASE 20 m6/m7: THE TWO DECISIONS THAT FINISHED THIS, both the user's ------------------
+ * ---- WHO COUNTS AS A CONSUMER ---------------------------------------------------------------
  *
- * **1. THE STUDIO IS NOT A CONSUMER.** *"studio is special. it doesn't count as having public
- * functions because no one else is going to make rolltui's own explicit editor. it can include
- * private headers."* The studio and its three editors are rolltui's OWN authoring tool for
+ * **1. THE STUDIO IS NOT ONE.** It and its three editors are rolltui's OWN authoring tool for
  * rolltui's OWN files — themes, layouts, bindings. Nobody outside this repo builds one, so it
- * joins the opt-in list and its reach stops justifying anything. **`rolltui-paint` STAYS a
- * consumer**, and the distinction is the point: a generic painting app is the closest thing in
- * this tree to what an outsider would write.
+ * joins the opt-in list and its reach stops justifying anything. **The EXAMPLES are consumers**,
+ * and the distinction is the point: a generic painting app and a file browser are the closest
+ * things in this tree to what an outsider would write.
  *
- * **2. A UNIT OR META TEST'S REACH IS NOT A REASON EITHER.** m1 struck "a test stands in for a
- * host" and then let "a public-only suite reaches it" back in — and two of those eight suites
- * were meta-tests ABOUT THE SOURCE and two were one editor's unit tests. What counts is a
- * CONSUMER-SHAPED program: the pure-C consumer (which includes `rolltui/rolltui.h` and nothing
- * else, so a need it has is a GAP) and the suites that drive whole host binaries.
+ * **2. A UNIT OR META TEST'S REACH IS NOT A REASON EITHER**, and "a public-only suite reaches it"
+ * is the form this comes back in: some of those suites are meta-tests ABOUT THE SOURCE and some
+ * are one editor's unit tests. What counts is a CONSUMER-SHAPED program — the pure-C consumer,
+ * which includes `rolltui/rolltui.h` and nothing else, so a need it has is a GAP, and the suites
+ * that drive whole host binaries.
  *
- * **AND THE CLASS THAT DISAPPEARED WITH THEM.** `TOOL_FACING` is retired. The user's question —
- * *"isn't a tool a host?"* — found the vocabulary error: IT IS. Three HOSTS (roll, the studio,
- * paint; the last two are the only files under `tools/` with a `main`), and the genuine third
- * category is the EDITORS, models with no terminal mounted inside a host. The class was measuring
- * the DIRECTORY, and **8 of its 26 rows were reached by `studio.cpp`, a host**, while the class
- * said roll never reached them. With decision 1 all 26 are INTERNAL and nothing is left to name.
+ * **THERE IS NO TOOL-FACING CLASS**, because a tool IS a host. Such a class measures the
+ * DIRECTORY `rolltui/tools/` rather than a concept, and the DIRECTORY answer disagrees with the
+ * reach answer: of the 26 rows it once held, 8 were reached by `studio.cpp` — a host — while the
+ * class said roll never reached them. The genuine other category is the EDITORS: models with no
+ * terminal in them, mounted inside a host.
  *
  * `ROLLTUI_PUBLIC_ONLY_TESTS` names the programs that build against the definition ALONE, and it
  * is asserted non-empty with the pure-C consumer required: the instrument is not the opt-in list,
@@ -608,7 +605,7 @@ ROLLTUI_API(rolltui_windows_transcript_at, INTERNAL)  /* a hit-test the stack al
 ROLLTUI_API(rolltui_windows_widget_for, PUBLIC)
 
 /* ---- rolltui_gaps.c — the gap report: what a screen NAMES that an app does not PROVIDE ------
- * Phase 26. All four PUBLIC and none by measured reach — this module is BRAND NEW, so nobody
+ * All four PUBLIC and none by measured reach — this module is BRAND NEW, so nobody
  * calls it yet by construction. They are public because a host author is the reader they exist
  * for: the report is how an app tells its own developer what a screen wants and the code has
  * not built. The pair rule (rule 1) covers `_release`; `_clean` and `_summary` are the shape
@@ -798,7 +795,7 @@ ROLLTUI_API(rolltui_menu_item_init, PUBLIC)  /* KEPT: matching part — `rolltui
 ROLLTUI_API(rolltui_menu_item_new, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_item_set, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
-   can, which is how every row with this reason was found. */  /* the C form of the item builders every host wrote — added Phase 19 m2 */
+   can, which is how every row with this reason was found. */
 ROLLTUI_API(rolltui_menu_item_release, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_menu_list_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
@@ -997,8 +994,8 @@ ROLLTUI_API(rolltui_terminal_wake, PUBLIC)
 ROLLTUI_API(rolltui_terminal_width, PUBLIC)
 ROLLTUI_API(rolltui_terminal_write, PUBLIC)
 
-/* rolltui_alloc.h + rolltui_map.h — the two headers that were internal BEFORE Phase 19 (the old
-   facade's kInternal list) and so were outside m1's census. m2 widened the census to every
+/* rolltui_alloc.h + rolltui_map.h — two headers that were internal before the census covered
+   every header under c/, and so were outside it. The census now takes in every
    header under c/, and these are their rows: INTERNAL by the same measure as the rest — the
    library's own storage primitives, reached by budget_test only (a test may). */
 ROLLTUI_API(rolltui_fit, INTERNAL)
@@ -1021,7 +1018,7 @@ ROLLTUI_API(rolltui_pack_add, INTERNAL)
 ROLLTUI_API(rolltui_pack_alloc, INTERNAL)
 ROLLTUI_API(rolltui_pack_begin, INTERNAL)
 
-/* ---- PHASE 23: the layout family's opaque handle and its seven doors --------------------- */
+/* ---- the layout family's opaque handle and its seven doors ------------------------------- */
 ROLLTUI_API(rolltui_layout_new, PUBLIC)
 ROLLTUI_API(rolltui_layout_free, PUBLIC)
 ROLLTUI_API(rolltui_layout_clone, PUBLIC)

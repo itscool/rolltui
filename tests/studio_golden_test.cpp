@@ -275,7 +275,7 @@ int main(int argc, char** argv) {
       // Ctrl-O unfolds the first block; the second block's summary then sits on row 29
       // and a click unfolds it (Ctrl-O again would re-fold the first, still nearest).
       {"tools.120x40.unfold-all", "--frame 120x40 --theme default-dark --keys \"Home CtrlO Click 5,29\"", "tools.md"},
-      // Phase 12 m5b on a third fixture (long_diff.md): a long ```diff block folded to
+      // A third fixture (long_diff.md): a long ```diff block folded to
       // one summary row, opened by a click on that row (still CAPPED at 10 of its 13
       // lines, with the "▼ N more" marker INSIDE the box), and uncapped by a click on
       // the marker row. --code-fold sets the two thresholds so the fixture can stay
@@ -316,7 +316,7 @@ int main(int argc, char** argv) {
       {"menu.80x24.left", "--frame 80x24 --theme default-dark --keys \"F2 Enter Left\""},
       {"menu.80x24.escape", "--frame 80x24 --theme default-dark --keys \"F2 Escape\""},
       {"menu.80x24.toggle", "--frame 80x24 --theme default-dark --keys \"F2 Down Down Down Enter\""},
-      // m4: the Commands level, whose shortcuts are the LIVE chords of the actions its
+      // The Commands level, whose shortcuts are the LIVE chords of the actions its
       // items name — nothing in the menu file spells a key out.
       {"menu.80x24.commands", "--frame 80x24 --theme default-dark --keys \"F2 Type:comm Enter\""},
       {"menu.80x24.palette", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:mono\""},
@@ -355,10 +355,10 @@ int main(int argc, char** argv) {
       // the seam rule: the FIXED side takes the new size — the status before the seam
       // (panel-left) and the status after it (a fixture with a 55-wide right panel), both
       // seams left of the editor's popup
-      // Phase 10 m5 (the design editor). `add-widget` is the milestone's Done-when: a
-      // window that did not exist, holding a widget of a kind this layout never had,
-      // through the kind picker alone — and DRAWN in the same frame.
-      // The trailing Escape is the: the widget kind is an INPUT now, not a choice, and
+      // The design editor's `add-widget`, end to end: a window that did not exist, holding a
+      // widget of a kind this layout never had, through the kind picker alone — and DRAWN in
+      // the same frame.
+      // The trailing Escape is needed because the widget kind is an INPUT, not a choice, and
       // an input's commit leaves the menu's typed filter standing (a choice clears it on the way
       // back up). Without it this golden would show the field being edited rather than the window
       // it produced, which is the thing the case exists to show.
@@ -383,7 +383,7 @@ int main(int argc, char** argv) {
       {"keys-editor.120x40.bound", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltB\""},
       {"keys-editor.120x40.moved", "--frame 120x40 --theme default-dark --keys \"F7 Enter Enter Down Down Down Down Down Down Down Down Down Down Enter Enter AltD\""},
       {"tiny.7x3.keys-editor", "--frame 7x3 --theme default-dark --keys \"F7 Enter Enter Enter Enter AltB Type:x\""},
-      // Phase 12 m6 (effects) on a fourth fixture, whose entries carry STATES and nothing
+      // Effects on a fourth fixture, whose entries carry STATES and nothing
       // else — no glyph, no colour, no period anywhere in effects.md. Three ticks of one
       // screen, and `--dump-tick` recording what each frame ASKS FOR, in the golden bytes.
       {"fx.80x24.tick0", "--frame 80x24 --theme default-dark --tick 0 --dump-tick --keys \"Home\"", "effects.md"},
@@ -418,19 +418,18 @@ int main(int argc, char** argv) {
     std::string cmd = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + fixture + "' " + c.args;
     // THE LAYOUT AXIS IS PINNED THE WAY THE THEME AXIS IS. Every case names `--theme`; none
     // named `--layout`, so each case's layout was whatever the SHARED scratch working copy held
-    // — stable only while no case wrote one. 2026-09-06: the layout editor's save-as goes through
-    // the Layout store and records its origin (a manual save writes even under --frame, the rule
-    // the theme save-as already follows and this file asserts), and seventeen later frames
-    // inherited "two" through the shared directory. A case that names its layout keeps it.
+    // — stable only while no case writes one. The layout editor's save-as goes through the
+    // Layout store and records its origin (a manual save writes even under --frame, the rule
+    // the theme save-as already follows and this file asserts), so one editor case can leave
+    // every later frame inheriting its layout through the shared directory. A case that names
+    // its layout keeps it.
     if (std::strstr(c.args, "--layout") == nullptr) cmd += " --layout default";
     // THE SCRATCH PRESET DIRECTORY GOES TO EVERY CASE, not just the editor ones.
-    // Until Phase 12 m4 it went only to the editor and bindings cases, so every other
-    // golden ran against WHATEVER PRESET DIRECTORY THE DEVELOPER HAPPENED TO HAVE — and
-    // passed only because that working copy happened to equal the shipped default. The
-    // moment a shipped layout changed, the status line read "default (modified)" on this
-    // machine and nowhere else: a golden whose value depends on the machine running it,
-    // which is the same class of defect as the gate's shared log file. Found by m4
-    // adding a popup to the shipped layouts.
+    // Giving it only to the editor and bindings cases leaves every other golden running
+    // against WHATEVER PRESET DIRECTORY THE DEVELOPER HAPPENED TO HAVE, passing only while
+    // that working copy equals the shipped default. Change a shipped layout and the status
+    // line reads "default (modified)" on that machine and nowhere else: a golden whose value
+    // depends on the machine running it.
     cmd += presets;
     std::string out = run(cmd, rc);
     check(rc == 0 && !out.empty(), std::string(c.name) + ": studio ran (rc " + std::to_string(rc) + ", " +
@@ -652,7 +651,7 @@ int main(int argc, char** argv) {
     check(!menu_left.empty() && menu_left == menu_open, "Enter then Left gives back exactly the opened frame");
     check(!menu_escape.empty() && menu_escape == bottom, "F2 then Escape gives back exactly the frame without the menu");
     check(menu_toggle.find("[x] Ambiguous width") != std::string::npos, "Enter on the toggle shows [x]");
-    // m4: the shipped menu file names ACTIONS, never keys — so these columns are the
+    // The shipped menu file names ACTIONS, never keys — so these columns are the
     // live table's, and "F1, ?" (two chords) is what app.help actually has.
     check(menu_commands.find("Theme editor") != std::string::npos && menu_commands.find("F4") != std::string::npos &&
               menu_commands.find("Help") != std::string::npos && menu_commands.find("F1, ?") != std::string::npos &&
@@ -707,7 +706,8 @@ int main(int argc, char** argv) {
     check(find_next.find("find 4/4") != std::string::npos,
           "Enter in the find bar is next-match, twice: 2/4 → 4/4 (its Submit, no routing rule of its own)");
     // Enter must NOT clear the bar: a find bar's text is a standing query, not a message
-    // (Widgets.hpp's OnSubmit). Until m4 every input got the prompt's send-and-clear, so
+    // (Widgets.hpp's OnSubmit). With one shared submit rule every input gets the prompt's
+    // send-and-clear, so
     // the bar erased its own query on its own next-match key.
     check(find_next.find("> wrap") != std::string::npos,
           "…and the query SURVIVES its own Enter — the text is a standing query, not a message");
@@ -717,7 +717,7 @@ int main(int argc, char** argv) {
           "a query with no matches says 0/0 and stays put rather than reporting nothing at all [" + row(find_none, 23) + "]");
     check(find_closed.find("\xE2\x95\xAD find ") == std::string::npos && row(find_closed, 23).find("find ") == std::string::npos,
           "closing the bar clears the query, so highlights never outlive the bar invisibly");
-    // ---- Phase 12 m6 (effects) — what the goldens alone do not say ------------------
+    // ---- effects — what the goldens alone do not say --------------------------------
     // effects.md contains no glyph, no colour and no period: its entries say `waiting`,
     // `streaming`, `progress`, `flash` and stop. Everything below is the THEME's answer
     // to those five words, recorded at a fixed tick.
@@ -797,14 +797,14 @@ int main(int argc, char** argv) {
       check(rc == 0 && again.find("\xE2\x94\x8C chat ") != std::string::npos && again.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && again.find("[layout editor]") == std::string::npos,
             "a relaunch with --layout <that file> shows the two panes ('chat' and 'transcript-2') with no editor open (Done-when of m16)");
     }
-    // ---- Phase 10 m5: the design editor ----
+    // ---- the design editor ----
     // The Done-when, end to end through the real binary: a window that did not exist,
     // holding a widget of a kind this layout never had, DRAWN in the same frame — and
     // the kind picker is the only thing that put it there. "Ctrl-W, Alt-Backspace" is
     // a chord pair only a `help` widget renders (from the LIVE bindings), so finding it
     // in the second pane is the widget itself, not a title the editor wrote — and it
     // survives the pane being narrow enough to wrap the descriptions.
-    // The seam is `┬` and not `┌` since m7: the layout editor's selection outline used to
+    // The seam is `┬` and not `┌`: the layout editor's selection outline used to
     // redraw the selected window's border UNJOINED and win, which broke the join it sits
     // on. This assertion was pinned to that broken glyph.
     // "Widget kind: help" rather than "help ▸" now — the field is an input the
@@ -820,7 +820,7 @@ int main(int argc, char** argv) {
       check(ok && saved.find("\"app.zoom\"") != std::string::npos && saved.find("\"app.help\"") != std::string::npos,
             "…and saving writes it into the layout file's \"actions\", beside the ones it was loaded with");
     }
-    // ---- Phase 11 m5: creating a layout, not inheriting one ----
+    // ---- creating a layout, not inheriting one ----
     // The Done-when is asserted against the WRITTEN FILE, not the frame, because the file
     // is the artifact the target app reads — and because the measurement that scoped this
     // milestone was about a file: stripping `no-panel` to one window and saving it as
@@ -857,11 +857,9 @@ int main(int argc, char** argv) {
             "…and it loads clean with nothing filled in — a fill-in would have shown up here as five actions [" + back.error + "]");
     }
     {
-      // PHASE 26 m3 REPLACED THIS CASE, and what it used to assert is worth keeping written
-      // down: under `--app PROFILE.json` a new layout started at the TARGET APP's thresholds,
-      // "the one place inheriting is right". The profile is retired, and the thresholds a
-      // screen needs are a fact about the SCREEN — so the author types them, and this case now
-      // checks that a typed threshold is what reaches the file. Nothing is inherited at all.
+      // A NEW LAYOUT INHERITS NOTHING, thresholds included. The size a screen needs is a fact
+      // about the SCREEN, not about whatever app or layout was open when it was created, so
+      // the author types it and this case checks that what was typed is what reaches the file.
       std::filesystem::create_directories(scratch + "/p7");
       int rc = 0;
       run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
@@ -876,7 +874,7 @@ int main(int argc, char** argv) {
       check(ok && saved.find("\"actions\": {}") != std::string::npos && saved.find("\"popups\"") == std::string::npos,
             "…and nothing else came with them");
     }
-    // ---- Phase 12 m5b: the FENCE decides, and a golden frame cannot show that -------
+    // ---- the FENCE decides, and a golden frame cannot show that --------------------
     // The frames above prove the FOLD (a summary row, a capped body, a marker). They
     // cannot prove the COLOURING, because a golden is text. --frame-sgr can: the same
     // shape of text under a ```diff fence and under a bare one, in one document, and
@@ -906,7 +904,7 @@ int main(int argc, char** argv) {
                   sgr.find(removed + ";48;2;20;22;26m" + line) == std::string::npos,
               std::string("…and NOWHERE in the frame does \"") + line + "\" carry a diff role");
       }
-      // Word level (m5b): the changed run of a 1:1 pair is the SAME colour with bold —
+      // Word level: the changed run of a 1:1 pair is the SAME colour with bold —
       // an emphasis on its line, which is why it is not a must-differ pair (Style.hpp).
       check(sgr.find("\x1b[0;1;38;2;192;106;100;48;2;20;22;26m100") != std::string::npos &&
                 sgr.find("\x1b[0;1;38;2;173;238;174;48;2;20;22;26m200") != std::string::npos,
@@ -947,7 +945,7 @@ int main(int argc, char** argv) {
       const std::string liar = run(bin + " --check '" + scratch + "/lying.json'" + presets, rc);
       check(rc != 0 && liar.find("CLAIM FAILED: mono") != std::string::npos, "a file claiming a badge it does not have fails --check with the claim named");
     }
-    // ---- Phase 10 m3: a menu is a FILE, and a dropped one opens with NO REBUILD ----
+    // ---- a menu is a FILE, and a dropped one opens with NO REBUILD ----
     // The milestone's Done-when, end to end through the real binary: two files nobody
     // compiled — a layout naming `menu:extra` and the menu it names — put on screen by
     // a studio that has never heard the name 'extra'. Then the same name in the
@@ -979,7 +977,7 @@ int main(int argc, char** argv) {
       check(rc == 0 && f2.find("my own item") != std::string::npos && f2.find("Ambiguous width") == std::string::npos,
             "…and a user's menus/main.json shadows the shipped settings menu in the F2 popup");
     }
-    // ---- Phase 10 m4: the LAYOUT declares the actions, end to end -------------------
+    // ---- the LAYOUT declares the actions, end to end ---------------------------------
     // The milestone's Done-when through the real binary: an action nothing has compiled
     // in — declared by a dropped layout file, given a chord by a dropped bindings file,
     // named by a dropped menu file — appears in the help popup with its live key and in
@@ -1029,7 +1027,7 @@ int main(int argc, char** argv) {
       check(rc == 0 && help_out.find("Ctrl-G      zoom the transcript") != std::string::npos,
             "…and `help` RENDERS an action that exists only because a layout file declared it, with its chord");
     }
-    // ---- Phase 11 m1: the tool scopes leave library_actions() ------------------------
+    // ---- the tool scopes are NOT in library_actions() --------------------------------
     // The milestone's "every studio key still works", through the real binary and with a
     // preset directory that has no bindings file at all — so the ONLY thing that can be
     // binding these keys is the tool table this binary mounts. A quit is observable
@@ -1051,8 +1049,9 @@ int main(int argc, char** argv) {
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
       check(run(base + " --keys \"F3 F3\"", rc).find("default-light") != std::string::npos,
             "F3 still cycles the shipped themes (studio.cycle_theme), two presses on from default-dark");
-      // The keys editor lists what the studio declares — and `app`, empty now
-      // m4 because the editor was handed the store's undeclared working copy, is in it.
+      // The keys editor lists what the studio declares, and `app` is in it even while empty.
+      // It edits the LIVE table; handing it the store's undeclared working copy instead is
+      // what made the app scope unrebindable.
       const std::string scopes = run(base.substr(0, base.find("--frame")) + " --frame 120x40 --keys \"F7 Enter\"", rc);
       check(scopes.find("editor") != std::string::npos && scopes.find("studio") != std::string::npos && scopes.find("app") != std::string::npos,
             "the keys editor lists the app, editor and studio scopes");

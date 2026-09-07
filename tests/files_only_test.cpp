@@ -1,6 +1,6 @@
 //
-// files_only_test.cpp — THE PHASE 10 PROOF : a screen
-// that exists only as files runs in a host that has never heard of it.
+// files_only_test.cpp — THE PROOF: a screen that exists only as FILES runs in a host that
+// has never heard of it.
 //
 // Everything the screen is lives in rolltui/tests/fixtures/screen/, which this test
 // copies into a scratch preset directory before running the REAL rolltui-studio
@@ -17,32 +17,32 @@
 //                          lines than the window has rows
 //   layouts/kettle-silent.json   the same screen declaring NO actions, for the VERIFY rung
 //
-// PHASE 12 m7 EXTENDED THE SCREEN rather than adding a second one, because the claim is
-// about composition: the four capabilities Phase 12 built have to reach a screen through
-// FILES, and the cheapest way to be wrong about that is to demonstrate each one in a
-// host that was written for it. So the same six files now also carry
+// ONE SCREEN CARRIES EVERY CAPABILITY, rather than one screen per capability, because the
+// claim is about COMPOSITION. The cheapest way to be wrong about "it reaches a screen
+// through files" is to demonstrate each capability in a host written for it. So the same
+// six files also carry
 //
 //   a MARKED SPAN      docs/kettle-session.md's `<!-- state: waiting -->` entry, which
-//                      the theme turns into a spinner (m6)
+//                      the theme turns into a spinner
 //   a HIGHLIGHTED      the same document's ```diff fence, coloured by the highlighter
 //   CODE BLOCK         the host registered — asserted on the SGR bytes, since colour is
-//                      the whole point and a text frame cannot show it (m2, m5b)
+//                      the whole point and a text frame cannot show it
 //   a SCROLLBAR        the transcript window is smaller than its document, so it reports
-//                      a scroll extent and the window draws a thumb (m5)
+//                      a scroll extent and the window draws a thumb
 //   FIND               Ctrl-F, from the bindings file, opening the find popup the LAYOUT
-//                      file declares — not a mode any host implements (m4)
+//                      file declares — not a mode any host implements
 //
-// None of that needed a line of host code, which is the milestone. Two things it DID need
-// were defects m5 had shipped and nothing had caught, both found here and both fixed:
+// None of that needs a line of host code, which is the claim. Composing them on ONE screen
+// is also what found two defects that each capability's own suite had passed over:
 // a window whose right border is shared with a bordered neighbour had its thumb drawn and
 // then overwritten by that neighbour's border (so roll's own shipped `default` layout had
 // an invisible scrollbar), and the thumb glyph █ is East Asian AMBIGUOUS, so on a
 // wide-ambiguous terminal it overflowed the one-cell border column.
 //
-// Nothing here is a new capability: m2 put widgets behind kinds, m3 made menus files,
-// m4 gave layouts their actions and m5 the editor. This milestone is the claim that the
-// four compose — so the assertions below are deliberately end-to-end and the controls
-// are what carry the weight:
+// NOTHING HERE IS A NEW CAPABILITY. Widgets sit behind kinds, menus are files, layouts
+// declare their actions, and the editor authors them; this file is the claim that the four
+// COMPOSE. So the assertions below are deliberately end-to-end and the controls are what
+// carry the weight:
 //
 //   THE SOURCE CONTROL. The word "kettle" appears in no host or library source file.
 //   It is the layout name, the menu name, the document, all four window ids and the
@@ -182,18 +182,12 @@ int main(int argc, char** argv) {
       // the "app:" header, its one action row and the following "editor:" header all in
       // view at once, so the scroll offset has to land in a FOUR-line window — and a whole
       // number of pages does not always fall inside it. Six pages (offset 36) plus FOUR
-      // lines (40) puts "app:" on the fourth visible row. **Any milestone that grows
-      // `library_actions()` moves the app scope further down this table and this number
-      // must be recomputed** . It has now happened
-      // twice, both times exactly as that note predicted: m1 added two `input` rows and
-      // turned a bare `PageDown ×6` — which had landed on the window by luck — into a
-      // case that scrolled past it and returned -1; m4 added two `transcript` rows, which
-      // sit ABOVE the app scope, taking the two extra lines to four. The recipe, so the
-      // next one is arithmetic and not archaeology: count the rows your milestone adds
-      // BEFORE the "app:" header and add that many `Down`s. m7 is the third time and the
-      // first for a different reason: it added no row ABOVE "app:" but one INSIDE the
-      // scope (app.find), so "editor:" sits one lower and the four-line window has to
-      // start one line higher — five Downs, not four.
+      // lines (40) puts "app:" on the fourth visible row. **ANY CHANGE THAT GROWS
+      // `library_actions()` MOVES THE APP SCOPE DOWN THIS TABLE AND THIS NUMBER MUST BE
+      // RECOMPUTED.** The recipe, so the next one is arithmetic and not archaeology: count
+      // the rows your change adds BEFORE the "app:" header and add that many `Down`s. A row
+      // added INSIDE the app scope counts too, for the opposite reason — it pushes the next
+      // header down, so the four-line window has to START one line higher.
       {"files-only.80x24.app-scope",
        "--frame 80x24 --layout kettle --bindings kettle --keys \"Tab PageDown PageDown PageDown PageDown PageDown "
        "PageDown Down Down Down Down Down\""},
@@ -282,7 +276,7 @@ int main(int argc, char** argv) {
   {
     // Each of the four kinds actually drew its own content, and the window note is empty
     // (an unknown kind, an unbound source or an unreadable file: would put it in the
-    // status line as "[...]" and draw an error panel instead — m2).
+    // status line as "[...]" and draw an error panel instead).
     check(has(screen, "a screen with no code behind it"), "the text: window drew the layout file's own literal");
     check(has(screen, "A screen that exists only as files."), "the file: window drew docs/kettle.md");
     check(has(screen, "Put the kettle on") && has(screen, "About this screen"),
@@ -294,13 +288,13 @@ int main(int argc, char** argv) {
 
     // The three files meeting in one row: the LAYOUT declares app.kettle, the BINDINGS
     // file gives it Ctrl-J, the MENU file names it, and the row is rendered from the live
-    // chords (m4) rather than from any "shortcut" string in the file.
+    // chords rather than from any "shortcut" string in the file.
     check(has(screen, "Put the kettle on       Ctrl-J"),
           "the menu row carries the chord the bindings file gave the action the layout declared");
     check(has(app_scope, "Ctrl-J      put the kettle on"),
           "…and help renders the same action with the layout file's own description");
     // Exactly one app action: the app scope is this screen's, not this screen's plus the
-    // last one's (declare() is authoritative — the m6 fix). The help window prints one
+    // last one's, because declare() is authoritative rather than additive. The help window prints one
     // "scope:" header per scope with its actions under it, so the distance from the "app:"
     // header to the next header IS the size of the scope.
     auto app_scope_size = [](const std::string& frame, std::string& action_row) {
@@ -319,7 +313,7 @@ int main(int argc, char** argv) {
       return -1;
     };
     std::string action_row;
-    // TWO since m7 (app.kettle and app.find), and the number is the point: it is exactly
+    // TWO (app.kettle and app.find), and the number is the point: it is exactly
     // what THIS layout file declares. `app_scope_size` reports the rows between the "app:"
     // header and the next one, and `action_row` is the first of them.
     check(app_scope_size(app_scope, action_row) == 2 && has(action_row, "put the kettle on"),
@@ -339,7 +333,7 @@ int main(int argc, char** argv) {
           "Down + Enter descends a level of a menu that is only a file");
   }
 
-  // ---- PHASE 12 m7: the four capabilities, each reached through a file ----------------
+  // ---- the four capabilities, each reached through a file ---------------------------
   // The screen's files say `waiting`, ```diff, a window smaller than its document, and
   // app.find. No host source says any of it — which the grep control at the bottom is
   // what actually establishes; these assertions establish that it WORKED.
@@ -359,8 +353,8 @@ int main(int argc, char** argv) {
 
     // (3) A SCROLLBAR. The transcript is smaller than its document, so it reports an
     // extent and the WINDOW draws a thumb in its right border column — which is the
-    // column it SHARES with the menu beside it, the case that was silently overwritten
-    // until m7 found it. Asserting the thumb on the marked entry's own row is what ties
+    // column it SHARES with the menu beside it — the case where the neighbour's border
+    // silently overwrote the thumb. Asserting the thumb on the marked entry's own row is what ties
     // it to this window rather than to some other one on the screen.
     std::vector<std::string> rows;
     {
@@ -480,8 +474,8 @@ int main(int argc, char** argv) {
           rel.rfind("presets/", 0) == 0)
         continue;
       const std::string ext = e.path().extension().string();
-      // `.c` IS SCANNED. It was not previously, and after the Phase 15 port that left
-      // the control looking at the C++ shell rather than at most of the library.
+      // `.c` IS SCANNED. The library is C, so a control that skipped `.c` would be looking
+      // at a shell around the code it means to check.
       if (ext != ".c" && ext != ".cpp" && ext != ".hpp" && ext != ".h") continue;
       scanned.push_back(rel);
       bool ok = false;
