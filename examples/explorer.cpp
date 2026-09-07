@@ -818,8 +818,9 @@ bool parse_size(const std::string& s, int& w, int& h) {
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-explorer [PATH] [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
+               "usage: rolltui-explorer [PATH]\n"
 #ifdef ROLLTUI_SELFTEST
+               "                        [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
                "                        [--frame WxH] [--keys \"Down Right CtrlD\"]\n"
 #endif
                );
@@ -829,19 +830,21 @@ int usage() {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", start;
+  std::string start;
+  [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] std::string frame_spec, keys_spec;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
-    auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+#ifdef ROLLTUI_SELFTEST
     if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
-#ifdef ROLLTUI_SELFTEST
     else if (a == "--frame") frame_spec = next();
     else if (a == "--keys") keys_spec = next();
+    else
 #endif
-    else if (!a.empty() && a[0] != '-' && start.empty()) start = a;
+    if (!a.empty() && a[0] != '-' && start.empty()) start = a;
     else return usage();
   }
 

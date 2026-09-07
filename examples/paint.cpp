@@ -684,9 +684,9 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, std::string_view text, Roll
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-paint [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
-               "                     [--ambiguous-wide]\n"
+               "usage: rolltui-paint [--ambiguous-wide]\n"
 #ifdef ROLLTUI_SELFTEST
+               "                     [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
                "                     [--frame WxH] [--present truecolor|256|16|mono]\n"
                "                     [--ramp ascii|blocks] [--ink #rrggbb] [--size N] [--shape square|round]\n"
                "                     [--stroke X,Y-X,Y] [--drag X,Y-X,Y] [--dot X,Y]\n"
@@ -775,12 +775,12 @@ int main(int argc, char** argv) {
   std::vector<std::pair<std::string, std::string>> script;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
-    auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
-    if (a == "--presets") presets_dir = next();
+    [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    if (a == "--ambiguous-wide") ambiguous = true;  // a fact about the terminal, not a test hook
+#ifdef ROLLTUI_SELFTEST
+    else if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
-    else if (a == "--ambiguous-wide") ambiguous = true;  // a fact about the terminal, not a test hook
-#ifdef ROLLTUI_SELFTEST
     else if (a == "--frame") frame_spec = next();
     else if (a == "--present") present_depth = next();
     else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||

@@ -2328,10 +2328,14 @@ void print_frame_plain(const RolltuiFrame* f) {
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-studio --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
-               "       rolltui-studio [FIXTURE.md] [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
-               "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
-               "       [--dump-role ROLE] [--tick MS] [--dump-tick] [--code-fold FOLD,CAP]\n"
-               "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
+               "       rolltui-studio [FIXTURE.md] [--ambiguous-wide] [--dump-role ROLE]\n"
+#ifdef ROLLTUI_SELFTEST
+               "       [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
+               "       [--mode dark|light] [--depth truecolor|256|16|mono] [--frame WxH | --frame-sgr WxH]\n"
+               "       [--tick MS] [--dump-tick] [--code-fold FOLD,CAP]\n"
+               "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n"
+#endif
+               );
   return 2;
 }
 
@@ -2404,22 +2408,29 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
-    if (a == "--theme") app.theme_arg = next();
+    // THE PRODUCT'S WHOLE COMMAND LINE. `--check` and `--generate` run the theme analyser and
+    // the seeded generator, which the theme editor also offers, so they are a headless entry
+    // point to a shipped feature. `--ambiguous-wide` states a fact about the terminal that
+    // cannot always be detected. Everything a person would call a SETTING lives in the settings.
+    if (a == "--check") check_arg = next();
+    else if (a == "--generate") generate_arg = next();
+    else if (a == "--seed") seed_arg = next();
+    else if (a == "--chaos") chaos_arg = next();
+    else if (a == "--dump-role") dump_role = next();
+    else if (a == "--ambiguous-wide") app.ambiguous = true;
+#ifdef ROLLTUI_SELFTEST
+    // A test still has to pin a theme and point at a scratch directory, so these do not vanish;
+    // they leave the PRODUCT. Pointing a person at a directory is what ROLL_CONFIG_DIR is for.
+    else if (a == "--theme") app.theme_arg = next();
     else if (a == "--layout") app.layout_arg = next();
     else if (a == "--presets") presets_dir = next();
     else if (a == "--shipped") shipped_dir = next();
     else if (a == "--bindings") app.bindings_arg = next();
-    else if (a == "--dump-role") dump_role = next();
-    else if (a == "--check") check_arg = next();
-    else if (a == "--generate") generate_arg = next();
-    else if (a == "--seed") seed_arg = next();
-    else if (a == "--chaos") chaos_arg = next();
     else if (a == "--mode") app.mode_flag = (next() == "light") ? ROLLTUI_MODE_LIGHT : ROLLTUI_MODE_DARK;
     else if (a == "--depth") {
       std::string d = next();
       app.depth = rolltui_detect_color_depth(nullptr, nullptr, d.c_str());
-    } else if (a == "--ambiguous-wide") app.ambiguous = true;
-#ifdef ROLLTUI_SELFTEST
+    }
     else if (a == "--code-fold") {  // "FOLD,CAP" — the two thresholds, so a golden can
       const std::string v = next();  // exercise them on a small fixture rather than on
       const std::size_t comma = v.find(',');  // a hundred-line one
