@@ -366,7 +366,7 @@ enum { ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_ST_ALIAS_) };
 /* ---- small helpers shared by the built-ins and the loader --------------------------------- */
 
 /* A literal C string plus its length, computed once here rather than hand-counted at every
- * call site — this file's own version of `rolltui_json.c`'s `JLIT` / `rolltui_app_profile.c`'s
+ * call site — this file's own version of `rolltui_json.c`'s `JLIT` / `rolltui_menu.c`'s
  * `K` (the same macro name, same purpose, independently duplicated for the reason both of
  * those already state: a `static`/file-local helper has no external linkage to share). Theme
  * loading happens once per file, never per frame, so the `strlen` this costs is not one this
@@ -725,7 +725,7 @@ RolltuiEffectMap* rolltui_theme_builtin_fill(const char* name, size_t name_len, 
 }
 
 /* ---- the load report: mirrors rolltui::ThemeLoadReport field for field, and
- * `RolltuiAppProfileReport`'s own shape one file over ------------------------------------- */
+ * `RolltuiBindingsReport`'s own shape one file over -------------------------------------- */
 
 void rolltui_theme_report_release(RolltuiThemeReport* r) {
   size_t i;
@@ -746,7 +746,7 @@ void rolltui_theme_report_set_error(RolltuiThemeReport* r, const char* s, size_t
 
 void rolltui_theme_report_add_missing_role(RolltuiThemeReport* r, const char* s, size_t len) {
   /* GROWING AMORTISED (rolltui_alloc.h strategy 2): an array of small owned strings, the same
-   * shape `rolltui_app_profile.c`'s own report arrays already use. */
+   * shape `rolltui_bindings.c`'s own report arrays already use. */
   r->missing_roles = (RolltuiStr*)rolltui_grow_zeroed(r->missing_roles, &r->missing_roles_cap,
                                                        r->missing_roles_n + 1, sizeof *r->missing_roles);
   rolltui_str_set(&r->missing_roles[r->missing_roles_n++], s, len);
@@ -775,9 +775,8 @@ void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, si
 /* "where" paths are built with `snprintf` into a caller-owned stack buffer. Bounded because
  * the defs-cycle depth is capped at 4 and every piece appended (a role name, a JSON key, a
  * defs name) is itself short in practice; a diagnostic a human reads is allowed to TRUNCATE
- * past that rather than need unbounded storage — `rolltui_app_profile.c` already made the
- * same call with its own 320-byte buffers, sized up here for the deeper nesting a colour's
- * defs chain can reach. */
+ * past that rather than need unbounded storage; the buffer is sized here for the deepest
+ * nesting a colour's defs chain can reach. */
 #define ROLLTUI_THEME_WHERE_MAX 512
 
 /* Resolves one colour value: string forms (`#rrggbb` | `0-255` | `none`), an integer 0-255, a

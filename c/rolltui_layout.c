@@ -816,7 +816,7 @@ void rolltui_widget_kind_clear(RolltuiContext* c) {
 }
 
 /* ---- small local helpers shared by content-parsing and the loader below -----------------------
- * `K`/`streq` mirror `rolltui_app_profile.c`'s own (its own copy, not shared: a static helper
+ * `K`/`streq` mirror `rolltui_menu.c`'s own (its own copy, not shared: a static helper
  * has no external linkage, and each is a two-line wrapper, not a strategy worth a header). */
 #define K(s) (s), strlen(s)
 
@@ -1052,7 +1052,7 @@ int rolltui_layout_report_clean(const RolltuiLayoutReport* r) {
 /* MOVE variants: take ownership of an already-built message, leaving it empty — every call
  * site below builds one local `RolltuiStr msg` from pieces and hands it straight over, so
  * there is exactly one copy of the bytes rather than a build-then-copy-then-free. GROWING
- * AMORTISED arrays of small owned strings, the same shape `rolltui_app_profile.c`'s report
+ * AMORTISED arrays of small owned strings, the same shape `rolltui_bindings.c`'s report
  * and `rolltui_presets.c`'s `NameList` already use. */
 static void add_bad(RolltuiLayoutReport* r, RolltuiStr* msg) {
   r->bad_values =

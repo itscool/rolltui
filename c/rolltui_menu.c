@@ -22,7 +22,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_bindings.c` and
- * `rolltui_app_profile.c` each name locally rather than share — a menu loads once per file,
+ * `rolltui_layout.c` each name locally rather than share — a menu loads once per file,
  * never per frame. */
 #define K(s) (s), strlen(s)
 
@@ -1625,7 +1625,7 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
 /* ---- the file format (Phase 17 m1) --------------------------------------------------------- */
 
 /* ---- the report: mirrors `MenuLoadReport` field-for-field, the same shape
- * `rolltui_app_profile.c`'s and `rolltui_bindings.c`'s reports use. --------------------------- */
+ * `rolltui_bindings.c`'s and `rolltui_layout.c`'s reports use. -------------------------------- */
 
 void rolltui_menu_load_report_release(RolltuiMenuLoadReport* r) {
   size_t i;

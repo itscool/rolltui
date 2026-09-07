@@ -25,8 +25,8 @@
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_terminal.h"
 
-/* A literal C string plus its length, the same one-time convenience `rolltui_app_profile.c`
- * and `rolltui_json.c` each name locally rather than share — a load happens once per file,
+/* A literal C string plus its length, the same one-time convenience `rolltui_menu.c` and
+ * `rolltui_json.c` each name locally rather than share — a load happens once per file,
  * never per frame, so the `strlen` this costs is not one this library's budget covers. */
 #define K(s) (s), strlen(s)
 
@@ -532,7 +532,7 @@ int rolltui_bindings_equal(const RolltuiBindings* a, const RolltuiBindings* b) {
 /* ---- the file format (Phase 17 m1) --------------------------------------------------------- */
 
 /* ---- the report: a plain `RolltuiStr` array per `BindingsLoadReport` field, the same shape
- * `rolltui_app_profile.c`'s report uses. ---------------------------------------------------- */
+ * every loader's report on this boundary uses. ------------------------------------------- */
 
 void rolltui_bindings_report_release(RolltuiBindingsReport* r) {
   size_t i;
@@ -556,7 +556,7 @@ void rolltui_bindings_report_set_error(RolltuiBindingsReport* r, const char* s, 
 }
 
 /* `fn` is the SINGULAR suffix the header declares (`add_bad_chord`, one call per occurrence,
- * matching `rolltui_app_profile.c`'s own convention); `field` is the PLURAL array it grows. */
+ * matching every other report builder here); `field` is the PLURAL array it grows. */
 #define ADD(fn, field)                                                                                       \
   void rolltui_bindings_report_add_##fn(RolltuiBindingsReport* r, const char* s, size_t len) {                \
     r->field =                                                                                               \
@@ -576,8 +576,8 @@ int rolltui_bindings_report_clean(const RolltuiBindingsReport* r) {
          r->bad_values_n == 0 && r->unknown_keys_n == 0 && r->undeliverable_n == 0;
 }
 
-/* A ten-line growing byte buffer, the same private helper `rolltui_app_profile.c` and
- * `rolltui_json.c` each name locally for the same GROWING AMORTISED role. */
+/* A ten-line growing byte buffer, the same private helper `rolltui_json.c` and
+ * `rolltui_theme.c` each name locally for the same GROWING AMORTISED role. */
 typedef struct { char* p; size_t len, cap; } SBuf;
 
 static void sbuf_add(SBuf* b, const char* s, size_t n) {

@@ -43,7 +43,7 @@ double rolltui_json_as_number(const RolltuiJsonValue* v, double def);
 int rolltui_json_has(const RolltuiJsonValue* v, const char* key, size_t key_len);
 
 /* Generic object iteration (unordered lookup by key is `get`/`has` above; this is for a
- * caller that must see every member, e.g. AppProfile's "unknown key" scan). BORROWS. */
+ * caller that must see every member, e.g. a loader's "unknown key" scan). BORROWS. */
 size_t rolltui_json_object_size(const RolltuiJsonValue* v);
 const char* rolltui_json_object_key_at(const RolltuiJsonValue* v, size_t i, size_t* len);
 RolltuiJsonValue* rolltui_json_object_value_at(const RolltuiJsonValue* v, size_t i);
