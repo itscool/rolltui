@@ -39,7 +39,7 @@
  * A `static const` table is a constant, not state. So is `static const char* const`. What counts
  * is a mutable pointer (`static const T* p` — the POINTER moves) or any mutable object. Two
  * things left the list rather than earning a row, because a constant that merely looked mutable
- * is worse than either (Phase 25 m1, under the standing "leave it in its best condition" policy):
+ * is worse than either:
  *   - `rolltui_menu.c`'s four `static const char* kHint` are literals never reassigned; they are
  *     `const char* const` now.
  *   - `rolltui_theme.c`'s default vocab was FOUR function-local statics filled behind a `built`
@@ -48,69 +48,54 @@
  *     COMPILE-TIME table now: the runtime fill, the per-call branch and four rows all went.
  */
 
-/* ---- CONTEXT: session state — EMPTY as of m2, 2026-09-07 (0) ----------------------------- */
-
-/* ~~THE SHIPPED DEFAULT BINDINGS TABLE~~ — MOVED 2026-09-07 (m2). Every caller BORROWS it, so
- * `rolltui_context_free` releasing it is what bounds the borrow. */
-
-/* ~~THE EFFECT-KIND REGISTRY~~ — MOVED 2026-09-06 (m2), the second subsystem across, and the
- * same shape as the widget kinds: `g_kinds`/`_count`/`_cap` plus a releaser flag, now
- * `RolltuiContext::effects` and released by name.
+/* ---- CONTEXT: session state — EMPTY (0) -------------------------------------------------
  *
- * `g_mu` WENT WITH THEM RATHER THAN MOVING, and that is the contract doing work rather than a
- * relaxation of it. A mutex was right for a table any thread could reach; a context is entered
- * by ONE THREAD AT A TIME (point 1), so the lock guarded nothing a caller was still permitted
- * to do. It was not free: `rolltui_effects_apply` took it once per MARK, on the per-frame draw
- * path, to read a table nothing had written since startup. */
-
-/* ~~THE WIDGET-KIND REGISTRY~~ — MOVED 2026-09-06 (m2), the first subsystem across and the one
- * the two-context proof registers into. It was `g_host_kinds`/`_count`/`_cap` plus a
- * `g_kind_releaser_registered` flag; it is `RolltuiContext::kinds` now, released by name in
- * `rolltui_context_free` rather than by a shutdown hook — so the flag went too, along with the
- * hook it guarded. `c_consumer_test.c` section 3e is the assertion: a kind registered in one
- * context is UNKNOWN in the other, and both resolve the library's own rung identically. */
-
-/* ~~THE SHIPPED ACTIONS AND THE BUILT-IN LAYOUTS~~ — MOVED 2026-09-07 (m2), together, as
- * `RolltuiContext::layouts`. Both are parsed once from the same embedded const bytes, so every
- * session gets identical CONTENT and its own STORAGE — contract point 4 exactly: a cached
- * built-in belongs to the context that cached it, and a `RolltuiLayout*` handed out of
- * `rolltui_layout_builtin` may not outlive the session that parsed it. */
-
-
-/* ~~THE THREE PRESET DESCRIPTORS AND THEIR CONFIGURATION~~ — MOVED 2026-09-07 (m2), and this
- * one HAD to move rather than merely could. The Layout descriptor holds
- * `rolltui_layout_shipped_default_actions()`'s pointer, and that cache is a context's since
- * this milestone — so a process-wide descriptor outlives the storage it borrows the moment one
- * session is freed. Contract point 4 stated as a defect instead of a rule.
+ * EMPTY IS THE CLAIM, not an accident of what has been done so far. Every registry, cache and
+ * descriptor the library once kept process-wide lives on `RolltuiContext` and is released BY
+ * NAME in `rolltui_context_free`: the shipped default bindings table, the widget-kind and
+ * effect-kind registries, the shipped actions and built-in layouts, and the three preset
+ * descriptors. Nothing in `rolltui/c/` registers a shutdown hook, and a static that turns up
+ * here fails the test that reads this file.
  *
- * The descriptors are `RolltuiContext::presets`. The TEN configuration rows did NOT follow them
- * into the context: they went onto the `RolltuiPresetDomain` each one configures, and the four
- * callbacks that read them are handed their descriptor. That fixed a second defect nobody had
- * met yet — two descriptors of the SAME kind shared one configuration, so a host's own `_init`
- * silently changed the library's descriptor's behaviour. Configuration belongs to the thing it
- * configures. */
+ * FOUR RULES CAME OUT OF PUTTING THEM THERE, and each one is still load-bearing:
+ *
+ *   - A MUTEX ROUND A CONTEXT'S TABLE GUARDS NOTHING. Contract point 1 is one thread at a time
+ *     per context, so a lock on a per-context registry protects against a caller who is
+ *     already forbidden. It is not free either: the effect registry's lock was taken once per
+ *     MARK on the per-frame draw path, to read a table nothing had written since startup.
+ *
+ *   - A CACHED BUILT-IN BELONGS TO THE CONTEXT THAT CACHED IT (point 4). The built-in layouts
+ *     are parsed from the same embedded const bytes in every session, so each gets identical
+ *     CONTENT and its own STORAGE, and a `RolltuiLayout*` from `rolltui_layout_builtin` may not
+ *     outlive the session that parsed it.
+ *
+ *   - A PROCESS-WIDE DESCRIPTOR MAY NOT BORROW A CONTEXT'S STORAGE. The Layout preset
+ *     descriptor holds `rolltui_layout_shipped_default_actions()`'s pointer, so leaving it
+ *     process-wide would outlive that storage the moment one session was freed. That is
+ *     contract point 4 stated as a defect rather than as a rule.
+ *
+ *   - CONFIGURATION BELONGS TO THE THING IT CONFIGURES. The ten preset configuration rows sit
+ *     on the `RolltuiPresetDomain` each one configures, not on the context, and the callbacks
+ *     that read them are handed their descriptor. Process-wide configuration meant two
+ *     descriptors of the SAME kind shared one, so a host's own `_init` silently changed the
+ *     library descriptor's behaviour.
+ *
+ * A SCAFFOLD GETS ITS REMOVAL CONDITION IN WRITING. Moving this state took one temporary
+ * process-wide default context, which was recorded here with the condition under which it
+ * would go — "when the last no-context entry point takes a context, this goes" — precisely so
+ * it could not quietly become permanent. It is gone. Write the condition down, then delete the
+ * scaffold; a migration that lands in green commits is worth a scaffold, and a scaffold with no
+ * stated end is a global.
+ */
 
 /* ---- PROCESS: one per process by nature, each with its reason (16) ----------------------- */
 
-/* ~~THE TRANSITIONAL DEFAULT CONTEXT~~ — ADDED AND REMOVED IN THE SAME PHASE (m2 → m5,
- * 2026-09-07). It was the one global this phase introduced, recorded here with a stated removal
- * condition precisely so it could not quietly become permanent: "when the last no-context entry
- * point takes a context, this goes." That condition was met at m3, and `lifetime_test` — whose
- * subject IS the release path — was the last caller. It now owns a session and frees it, which
- * made its own assertion stronger rather than weaker: `live_bytes == 0` was a PROCESS fact and
- * is a SESSION fact, proved twice in one run with a fresh session in between.
- *
- * The pattern is the reusable part, and it is the `-DROLLTUI_C` flag again: a scaffold
- * that lets a migration land in green commits, written down with the condition under which it
- * is deleted, and then actually deleted. */
-
-/* ~~THE RELEASER LIST~~ — RECLASSIFIED PROCESS 2026-09-07 (m2), which is the milestone's real
- * result and not a concession. m1 filed it CONTEXT on the assumption that `rolltui_shutdown()`
- * BECOMES `rolltui_context_free()`. It does not: once every library subsystem moved into a
- * context and was freed BY NAME, nothing in `rolltui/c/` registers a hook at all. What is left
- * on the list is what HOSTS and TESTS put there, for things THEY own with process lifetime —
- * `tool_actions.hpp`'s editor table, the studio's, this suite's. A host facility on a host's
- * schedule is process state by definition, so the row moves rather than the state. */
+/* THE RELEASER LIST, and it is PROCESS rather than CONTEXT even though it looks like a
+ * context's business. `rolltui_shutdown()` is not `rolltui_context_free()` under another name:
+ * every library subsystem is freed BY NAME when its context goes, and nothing in `rolltui/c/`
+ * registers a hook at all. What is left on the list is what HOSTS and SUITES put there, for
+ * things THEY own with process lifetime — `tool_actions.hpp`'s editor table, the studio's, this
+ * suite's. A host facility on a host's schedule is process state by definition. */
 ROLLTUI_GLOBAL("rolltui_lifetime.c", "g_process", PROCESS)
 
 /* THE KEYBOARD PROTOCOL LEVEL the terminal negotiated. It describes THE TTY, not a session, and
@@ -124,8 +109,8 @@ ROLLTUI_GLOBAL("rolltui_lifetime.c", "g_thread", PROCESS)
 /* THE ALLOCATOR COUNTERS. `rolltui_mem_alloc` takes no context and must not: threading one
  * through every allocation touches every call for a property nothing needs. They are `_Atomic`,
  * so two contexts may allocate concurrently, and they are a process-wide SUM that is NOT
- * attributable to a context. **m2's proof works with deltas instead** — free contexts in
- * sequence and assert the total returns, which also proves neither leaked into the other. */
+ * attributable to a context. **Prove per-context release with DELTAS instead** — free contexts
+ * in sequence and assert the total returns, which also proves neither leaked into the other. */
 ROLLTUI_GLOBAL("rolltui_mem.c", "g_allocations", PROCESS)
 ROLLTUI_GLOBAL("rolltui_mem.c", "g_frees", PROCESS)
 ROLLTUI_GLOBAL("rolltui_mem.c", "g_bytes", PROCESS)

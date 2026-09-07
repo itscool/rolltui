@@ -1,7 +1,7 @@
 // rolltui/tests/public_header_test.cpp — the guarantees `rolltui/rolltui.h` makes about
 // itself, as assertions rather than as a promise in its own comment.
 //
-// Since Phase 19 m2 the header is THE DEFINITION, and the guarantees are:
+// The header is THE DEFINITION of the public API, and the guarantees are:
 //   1. It COMPILES ALONE and gives you the API — this translation unit includes it and
 //      nothing else of the library's, and calls it.
 //   2. It DECLARES the public API and includes no `rolltui/c/` header: every PUBLIC and
@@ -31,7 +31,7 @@
 
 #include "rolltui/rolltui.h"  // MUST be sufficient on its own — that is assertion 1.
 
-#include "source_scan.hpp"  // the two strippers, shared with ownership_test (Phase 25 m1)
+#include "source_scan.hpp"  // the two strippers, shared with ownership_test
 
 #include "rolltui_test.hpp"
 
@@ -107,11 +107,11 @@ int main() {
   // ---- 1. it is SUFFICIENT ------------------------------------------------------------
   // Proved by this translation unit: it includes rolltui.h and nothing else from the
   // library, and the calls below are what a real consumer's first five minutes look like.
-  // this used `rolltui_frame_new`/`_width`/`_free` and `rolltui_str_get`, and their
-  // being PUBLIC rested on THIS TEST reaching them — a meta-test's reach, which Phase 20 struck
-  // as a reason and which this file of all files must not lean on. A host never builds a frame;
-  // it gets one from the double buffer, so that is what the sufficiency check does now, and the
-  // text comes back through `RolltuiStr`'s own public fields.
+  //
+  // THE SUFFICIENCY CHECK MAY NOT LEAN ON ITSELF. A function kept PUBLIC because THIS TEST
+  // reaches it is public for a meta-test's sake, which section 5 forbids by name — so the
+  // check exercises what a host actually does: a host never builds a frame, it gets one
+  // from the double buffer, and text comes back through `RolltuiStr`'s own public fields.
   RolltuiSwap* s = rolltui_swap_new(4, 2, RolltuiStyle{});
   check(s != nullptr, "the double buffer, from the umbrella header alone");
   RolltuiFrame* f = rolltui_swap_begin(s, 4, 2, RolltuiStyle{});
@@ -123,11 +123,9 @@ int main() {
   rolltui_swap_free(s);
 
   // ---- 2. it DECLARES the public API ----------------------------------------
-  // Until Phase 19 this check read "declares NOTHING of its own", and it enforced a facade the
-  // user never chose (the record in the plan). The definition is certified the other
-  // way round: this file carries the declarations, every PUBLIC and TOOL_FACING function of
-  // api_classes.inc is declared HERE and no INTERNAL one is (section 6), and it includes no
-  // `rolltui/c/` header at all.
+  // THE DEFINITION CARRIES THE DECLARATIONS. It is not a facade that forwards to internal
+  // headers: every PUBLIC function of api_classes.inc is declared HERE and no INTERNAL one
+  // is (section 6), and it includes no `rolltui/c/` header at all.
   const std::vector<std::string> decls = declarations(text);
   check(decls.size() > 1500, "rolltui.h DECLARES the API: " + std::to_string(decls.size()) + " declaration lines of its own");
   check(text.find("#include \"rolltui/c/") == std::string::npos, "…and includes no rolltui/c/ header — the definition is the file, not a list");
@@ -148,17 +146,10 @@ int main() {
     closedir(d);
   }
   std::sort(headers.begin(), headers.end());
-  // RECORDED: 39 headers under c/ before m3, 24 after — the 48 DELETE functions
-  // went, and every header that was left with nothing but its guard went with them (rule: a
-  // header exists because a .c needs a declaration from it; one that declares nothing is a
-  // file with no reason, and the check below keeps it that way).
-  // 24 -> 27: `rolltui_lifetime.h`, `rolltui_render.h` and `rolltui_wrap.h` were
-  // RE-CREATED. m3's rule ran in reverse — a header exists because a `.c` needs a declaration
-  // from it, and moving those modules' steps out of the definition gave each a declaration again.
-  // 39 -> 24 (Phase 19 m3, headers left with nothing deleted) -> 27 (Phase 20 m3, three
-  // re-created when their module's steps went internal) -> 33 (Phase 20 m6/m7: six more, for
-  // the same reason and by the same rule — a header exists because a `.c` needs a declaration
-  // from it). The six are style, document, frame_ops, json, diff and undo.
+  // A HEADER EXISTS BECAUSE A `.c` NEEDS A DECLARATION FROM IT. One that declares nothing
+  // is a file with no reason to be — the hollow-header check below enforces that — and a
+  // module whose steps move out of the definition earns a header back by the same rule.
+  // The count is recorded so that a header appearing or vanishing is a deliberate act.
   const std::size_t kInternalHeaders = 33; /* +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
@@ -183,12 +174,11 @@ int main() {
     check(hollow.empty(), "no internal header is left with nothing — a header that declares nothing is a file with no reason" + joined);
   }
   // ---- NOTHING IS DECLARED TWICE IN ONE HEADER ------------------------
-  // Found by reading `rolltui_effects.h` while moving its registry: a 33-line block of
-  // declarations appeared VERBATIM twice, under two identical "PHASE 20 m1/m3" banners. It
-  // was not one file's slip — six headers carried it, 86 functions declared twice, and
-  // nothing failed, because a repeated declaration is legal C and the compiler says nothing.
-  // That is exactly the shape this repo keeps meeting: no error, no warning, and a
-  // vocabulary written down twice quietly becomes a second thing to drift.
+  // A REPEATED DECLARATION IS LEGAL C AND THE COMPILER SAYS NOTHING, which is how six
+  // headers came to declare 86 functions twice — one of them a 33-line block appearing
+  // verbatim under two identical banners — with nothing failing anywhere. That is the shape
+  // this repo keeps meeting: no error, no warning, and a vocabulary written down twice
+  // quietly becomes a second thing to drift.
   //
   // ONE SHAPE IS LEGITIMATE: a FORWARD declaration that a C++ inline member below it has to
   // call, which the file then declares again in its ordinary section. `rolltui.h` carries a
@@ -332,7 +322,7 @@ int main() {
   // section 3 above counts the thing that matters now — direct `rolltui/c/` includes — as an
   // exact zero rather than a ceiling.
 
-  // ---- m4b: NO PUBLIC FUNCTION HANDS A RESULT BACK THROUGH A CALLBACK ---------------------
+  // ---- NO PUBLIC FUNCTION HANDS A RESULT BACK THROUGH A CALLBACK -------------------------
   // A callback parameter is legitimate when it carries a DECISION the library cannot make; it
   // is wrong when it carries a RESULT the library already has, because then every consumer
   // writes the same lambda-and-collector (`rolltui_preset_store_list` was wrapped at 7 of 7
@@ -366,7 +356,7 @@ int main() {
   }
 
   // ---- 6. THE CLASS TABLE: every function has ONE class, and the definition is written from
-  //         it (Phase 19 m1, flipped in m2) ------------------------------------------------
+  //         it ---------------------------------------------------------------------------
   // Reach is MEASURED — who outside the library mentions each function — and the table is held
   // to it; then the DEFINITION is held to the table: a PUBLIC or TOOL_FACING row is declared in
   // rolltui.h and not in a c/ header, an INTERNAL or DELETE row the other way round.
@@ -426,15 +416,17 @@ int main() {
     // and would have held them public for an instrument's sake, which is the same shape as
     // holding one public for a test's sake. It is on the opt-in list instead.
     const std::set<std::string> roll = mentions_in({repo + "/src", repo + "/include"}, {".cpp", ".hpp"});
-    // THE STUDIO IS NOT A CONSUMER (by decision): it and its three editors are
-    // rolltui's OWN authoring tool for rolltui's OWN files, nobody outside this repo builds one,
-    // and it opts in to internal headers like a test. `rolltui-paint` IS a consumer and is the
-    // only thing left in `tools/` that counts — a generic painting app is the closest thing in
-    // this tree to what an outsider would write, which is why Phase 11 built it.
-    // the consumer set is `rolltui/examples/` — paint AND the explorer, the fourth
-    // consumer, whose Miller-column browser is the first widget in the tree with internal
-    // structure the library does not model. What an ALIGNED rich widget reaches is the floor
-    // the public surface cannot go below.
+    // THE STUDIO IS NOT A CONSUMER, by decision: it and its three editors are rolltui's OWN
+    // authoring tool for rolltui's OWN files, nobody outside this repo builds one, and it
+    // opts in to internal headers like a suite.
+    //
+    // THE CONSUMER SET IS `rolltui/examples/`, and the two examples have different jobs.
+    // `paint` is the ADVERSARIAL probe — a generic painting app against the grain of every
+    // vocabulary the library models, so a limit it hits may be correct and is reported
+    // rather than fixed. The `explorer` is the ALIGNED probe — a Miller-column browser is
+    // what a terminal UI library is FOR, and it is the first widget in the tree with
+    // internal structure the library does not model, so what it reaches is the floor the
+    // public surface cannot go below.
     std::set<std::string> paint_reach;
     {
       std::map<std::string, int> counts;
@@ -492,10 +484,10 @@ int main() {
     auto reach_of = [&](const std::string& f) -> const char* {
       return roll.count(f) ? "roll" : tools.count(f) ? "tools" : tests.count(f) ? "tests" : lib.count(f) ? "lib" : mentioned_in_def.count(f) ? "hdr" : "nothing";
     };
-    /* The floors say the census PARSED something, never what the surface should be — so the
-     * definition's fell 300 -> 250 when Phase 26 m3 took the public surface to 296. A floor that
-     * has to be edited every time the surface shrinks is measuring the wrong thing; this one is
-     * armed at any plausible size and dead only if the parser returns nothing. */
+    /* The floors say the census PARSED something, never what the surface should be. A floor
+     * that has to be edited every time the surface shrinks is measuring the wrong thing;
+     * this one is armed at any plausible size and dead only if the parser returns
+     * nothing. */
     check(declared.size() > 700 && roll.count("rolltui_preset_store_new") && tools.count("rolltui_context_register_kind") /* paint registers its canvas kind */ &&
               lib.count("rolltui_str_append") && !lib.count("rolltui_preset_store_new_NOSUCH") && in_def.size() > 250 && in_internal.size() > 400,
           "the class census sees the definition (" + std::to_string(in_def.size()) + " named), the internal headers (" + std::to_string(in_internal.size()) + "), roll's reach, the tools' reach and the library's own");
@@ -510,7 +502,7 @@ int main() {
       static const std::regex kept_re(R"(ROLLTUI_API\(\s*(rolltui_[a-z0-9_]+)\s*,[^)]*\)\s*/\*\s*KEPT:)");
       for (std::sregex_iterator it(tbl.begin(), tbl.end(), kept_re), end; it != end; ++it) kept.insert((*it)[1].str());
     }
-    // ---- PHASE 20 m4: THE NOT-OPTED-IN GUARD ------------------------------------------------
+    // ---- THE NOT-OPTED-IN GUARD -------------------------------------------------------------
     // Moving a function INTERNAL costs a suite an opt-in, so `ROLLTUI_INTERNAL_OPT_IN` only grows;
     // if nearly every suite ends up on it, section 3's exact zero stops saying anything. **The
     // instrument is the set that stays OUT.** These four assertions are what keep it meaningful:
@@ -582,7 +574,7 @@ int main() {
       if (c == "DELETE" && reach != "nothing") deleted_but_reached.push_back(std::string(r.fn) + " (" + reach + ")");
       if (c == "INTERNAL" && (reach == "roll" || reach == "tools")) internal_reached.push_back(std::string(r.fn) + " (" + reach + ")");
       if (c == "INTERNAL" && public_only.count(r.fn)) internal_reached.push_back(std::string(r.fn) + " (a public-only suite)");
-      // PHASE 20 m1, THE DONE-WHEN: a row whose ONLY justification would be a test's reach fails.
+      // A ROW WHOSE ONLY JUSTIFICATION WOULD BE A TEST'S REACH FAILS.
       // If nothing but a test reaches a PUBLIC function, that test must be a PUBLIC-ONLY suite —
       // a program shaped like a consumer — because a test's reach is never itself a reason.
       if (pub_cls && reach == "tests" && !public_only.count(r.fn) && !kept.count(r.fn))
@@ -603,57 +595,31 @@ int main() {
     check(misplaced.empty(), "THE DEFINITION IS WRITTEN FROM THE TABLE: every PUBLIC function is declared in rolltui.h and every INTERNAL one only under c/" + join(misplaced));
     std::map<std::string, int> totals;
     for (const Row& r : kApi) ++totals[r.cls];
-    // MEASURED 2026-09-06, re-recorded in m2 for the four functions a public
-    // C++ member calls, the one the C consumer reaches, and the 19 allocator/map rows the
-    // widened census (every header under c/) added as INTERNAL; DELETE 48 -> 0 in m3, the functions gone.
-    // PHASE 20 m1/m2: 582/42/199 -> 454/26/343. PHASE 20 m6/m7: 454/26/343 -> 345/0/478.
-    // 135 more moved to INTERNAL on two user decisions — the STUDIO is not a consumer (it is
-    // rolltui's own authoring tool and opts in like a test) and a UNIT or META test's reach is
-    // not a reason either — and TOOL_FACING was retired with them. What is left PUBLIC is
-    // reached by roll, by paint, by the pure-C consumer or by a whole-host suite, or carries a
-    // KEPT reason: the leak gauge and the named rungs, the 37 a public C++ member in the
-    // definition calls (found by COMPILING it, which no reach bucket can do), and the four the
-    // sufficiency check in section 1 needs.
-    // 346 -> 348: `rolltui_color_parse` and `rolltui_color_to_string` moved to PUBLIC
-    // because the menu's typed `"type": "color"` field hands a host TEXT and there was no public
-    // way to use it — a public input type whose value cannot be parsed is a contradiction in the
-    // surface, and it holds independently of the consumer that found it.
-    /* 348 -> 349: `rolltui_u_fit`, the explorer's wall E2 — the cut offset
-     * `rolltui_frame_put_text` computes and did not share, which every list, tree, table and
-     * column widget would otherwise write for itself. */
-    /* PHASE 23: 349 → 331. THIRTY-TWO functions went INTERNAL — the seven types no consumer
-     * names (node/layer/action lists, content, the two reports, the input spec) plus the layout
-     * family's by-value lifecycle — and the loader's carrier retired outright. ELEVEN arrived:
-     * the handle's `new`/`free`/`clone` and the eight doors, one of which (`rolltui_layer_id`)
-     * the BUILD found rather than the survey. Re-recorded deliberately. */
-    /* PHASE 24: 331 → 323. EIGHT went INTERNAL after the sift — `rolltui_str_get` (RolltuiStr is
-     * transparent, so `.p`/`.n` already read it), `rolltui_frame_new`/`_free`/`_width`/`_height`
-     * (a host gets its frame from the swap), `rolltui_sgr` (nothing writes an escape sequence)
-     * and the input window's two sizing rules. FOUR of those had been kept on a META-TEST's
-     * reach — `public_header_test` section 1 itself — which Phase 20 struck as a reason and
-     * which this file of all files must not lean on; section 1 uses the swap now. */
-    /* PHASE 25 m2: +3 PUBLIC (`rolltui_context_new`/`_free`, `rolltui_windows_context`) and
-     * +4 INTERNAL (the transitional default and its release, the kind registry's own new/free). */
-    /* PHASE 26 m2: 326 -> 330. The gap report's four (`rolltui_gaps_collect` plus the
-     * `_release`/`_clean`/`_summary` every report on this boundary has). A NEW module is the one
-     * case where measured reach cannot decide a class — nobody calls it yet by construction —
-     * so these are public on a STATED reason: a host author is the reader they exist for.
-     * AND ONE MOVE THE OTHER WAY: `rolltui_bindings_report_summary` INTERNAL -> PUBLIC, which is
-     * why internal falls by one. Its INTERNAL reason read "a host loads a file or clones the
-     * default" — naming the case and then concluding the opposite. `rolltui/examples/explorer.cpp`
-     * loads its own bindings file, could not reach the summary, and hand-wrote six loops over the
-     * report's arrays: rule 5's tell, recorded there as the wall 6 and closed here. */
-    /* PHASE 26 m3: 331 -> 296 and 523 -> 518. THE APP PROFILE IS RETIRED — 35 public and 7
-     * internal rows gone with the module, the largest single removal now's cuts and
-     * the only one so far where what went was not redundant but WRONG-DIRECTIONED. It let an
-     * app publish what a layout was ALLOWED to name inside it, and the design tool then refused
-     * anything else; the direction is now one-way (the screen names what it needs, the app
-     * reports what it cannot provide) and there is nothing left for a profile to carry. Two of
-     * the 42 rows survive under other names — nothing does, in fact: `_mount`'s sample-document
-     * binding was already `rolltui_windows_bind_sample_document`, which stays because a C
-     * consumer and the gap suite both use it for their own reasons. The internal six are the
-     * profile's loader-report builders, its `_mount` and the two `_content_*` accessors the
-     * studio's kind picker read. */
+    // MEASURED, and re-recorded DELIBERATELY whenever a row's class changes. What the two
+    // classes MEAN is the part that has to survive a re-record:
+    //
+    //   PUBLIC   — reached by a host (roll, paint, the explorer), by the pure-C consumer or
+    //              by a whole-host suite; OR kept on a STATED reason. The stated ones are
+    //              the leak gauge and the named rungs, the functions a public C++ member in
+    //              the definition calls (found by COMPILING it, which no reach bucket can
+    //              do), and the four the sufficiency check in section 1 needs.
+    //   INTERNAL — everything else. The STUDIO is not a consumer for this purpose: it is
+    //              rolltui's own authoring tool and opts in like a suite. A unit test's or a
+    //              meta test's reach is not a reason either.
+    //
+    // REACH IS THE INPUT AND NEVER THE CRITERION, because a consumer reaching THROUGH a bad
+    // API looks identical to one reaching FOR a good one. The decision is a stated reason:
+    // this is an entry point, or the vocabulary an entry point's signature speaks, or the
+    // release half of a pair a consumer holds. Two cases reach cannot decide at all:
+    //   - A NEW module has no callers by construction. Its rows are PUBLIC on a stated
+    //     reason — a host author is the reader they exist for — or they are not public.
+    //   - A function a host cannot REACH looks exactly like one nothing needs. The tell is
+    //     rule 5: when a consumer hand-writes loops around a library function it could not
+    //     get to, the API is wrong, not the consumer.
+    //
+    // A public input type whose value cannot be parsed is a contradiction in the surface,
+    // which is why the colour parser and printer are public independently of the consumer
+    // that found them missing.
     const int kPublic = 296, kInternal_ = 517, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
@@ -672,7 +638,7 @@ int main() {
 
   // ---- 7. NO std:: CONTAINER OR VIEW UNDER __cplusplus, in the definition or under c/ ------
   // A C++ member may name rolltui's own types and the C standard's,
-  // never a std:: container or view. 117 such lines were cut in m2; this keeps the count at zero.
+  // never a std:: container or view. The count is an exact zero, not a ceiling.
   {
     static const std::regex std_view(R"(\bstd::(string|string_view|vector|span|optional|map|set|function|unique_ptr|shared_ptr)\b)");
     std::vector<std::string> offenders;
@@ -707,13 +673,12 @@ int main() {
   }
 
   // ---- 8. THE TOOL-FACING CLASS IS RETIRED, AND CANNOT COME BACK BY DRIFT ----
-  // Phase 19 m4 gave the class a home: three `[TOOL-FACING]` sections of this header. The class
-  // is GONE, and the reason is the vocabulary error behind the question **"isn\'t a tool a
-  // host?"** — it is. There are THREE HOSTS: roll, the studio and paint (the last two are the
-  // only files under `tools/` with a `main`). The genuine third category is the EDITORS, models
-  // with no terminal that the studio mounts inside itself. `TOOL_FACING` was measuring the
-  // DIRECTORY `rolltui/tools/`, not a concept — and of its 26 rows, EIGHT were reached by
-  // `studio.cpp`, a host, which the class said roll never reaches.
+  // THE CLASS IS GONE, and the reason is the vocabulary error behind the question **"isn't
+  // a tool a host?"** — it is. There are HOSTS (roll, the studio, paint, the explorer) and
+  // there is one genuine other category, the EDITORS: models with no terminal in them that
+  // the studio mounts inside itself. `TOOL_FACING` was measuring the DIRECTORY
+  // `rolltui/tools/` rather than a concept, and of its 26 rows EIGHT were reached by
+  // `studio.cpp` — a host, which the class said roll never reaches.
   //
   // With the studio reclassified as rolltui's own tool rather than a consumer, every one of
   // those 26 is reached only by the studio or an editor, so all of them are INTERNAL and the
@@ -833,37 +798,26 @@ int main() {
     check(misplaced_role.empty(), "THE HEADER IS SECTIONED BY THE ROLE: VOCAB in part 1, a host's in part 2, WIDGET in part 3" + join(misplaced_role));
     std::map<std::string, int> rt;
     for (const RoleRow& r : kRoles) ++rt[r.role];
-    // MEASURED 2026-09-06. Moving a role re-records these, which is the point: the
-    // SHAPE of the surface becomes a number a reader can audit rather than an impression.
-    /* PHASE 23: load 121 → 104 and bind 87 → 83 as the layout family's lifecycle went internal;
-     * vocab 33 → 35 (the `RolltuiInputSpec` pair, pinned public by `RolltuiMenuItem`'s C++
-     * members); release 4 → 5 (`rolltui_layout_free`). */
-    /* PHASE 24: vocab 35 → 33 (`rolltui_str_get`, `rolltui_sgr`), bind 83 → 81 (the input
-     * window's two sizing rules), run 77 → 75 and widget 27 → 25 (the frame's own lifecycle and
-     * bounds — a host is handed a frame by the swap and a widget a resolved node's rect). */
-    /* PHASE 25 m2: load 104 → 106 (`rolltui_context_new`, `rolltui_windows_context`),
-     * release 5 → 6 (`rolltui_context_free`). A session is the first thing a host makes. */
-    /* PHASE 25 m4 — THE RE-CUT. load 106 → 26. It had become the stage anything touching a FILE
-     * landed in, which is what a catch-all looks like from the inside: 106 of 326 functions
-     * under one word, and a reader asking "what do I need to start?" was handed a third of the
-     * API. Two subsystems filed there were not loading, and each got the stage it always was —
-     * the preset store SPANS load and run (a host opens it at startup; `//theme` at runtime goes
-     * through it), and the app profile is TOOL INTEROP a host author never calls.
-     * THE OTHER TWO LARGE STAGES WERE CHECKED THE SAME WAY AND ARE NOT CATCH-ALLS: HOST_BIND's
-     * families are menu 21, bindings 12, input 10, context 10, windows 9 — every one a thing a
-     * host SUPPLIES; HOST_RUN's are windows 15, window 13, transcript 13, terminal 9, swap 6 —
-     * every one a thing a host DRIVES per frame. Neither holds a subsystem that is doing
-     * something else, which is the test HOST_LOAD failed. */
-    /* PHASE 26 m2: bind 81 -> 86 — the gap report's four, and `rolltui_bindings_report_summary`
-     * coming public with them (wall 6). It closes the BIND stage — an app has
-     * registered its kinds and bound its sources, and this is what says which of them the screen
-     * asked for and did not get. */
-    /* PHASE 26 m3: TOOL INTEROP 35 -> 0, AND THE STAGE STAYS IN THE TABLE AS A NAMED EMPTY ONE.
-     * It held one module, the app profile, and the m1 review found that module was the whole
-     * of what this phase set out to reverse: an app publishing what a layout was ALLOWED to
-     * name inside it. That the stage was never a stage of RUNNING a screen — it sat outside
-     * the load / settings / bind / run / release sequence entirely — is what made it visible
-     * as a category rather than as 35 separate rows, which is the argument for this table. */
+    // MEASURED. Moving a role re-records these, which is the point: the SHAPE of the
+    // surface becomes a number a reader can audit rather than an impression.
+    //
+    // WHAT MAKES A STAGE A STAGE, AND HOW A CATCH-ALL IS DETECTED. The stages follow one
+    // sequence — load, settings, bind, run, release — plus the vocabulary they all speak
+    // and the widget surface. A stage is honest when the families inside it are all doing
+    // the SAME KIND of thing: HOST_BIND's are menu, bindings, input, context and windows,
+    // every one a thing a host SUPPLIES; HOST_RUN's are windows, window, transcript,
+    // terminal and swap, every one a thing a host DRIVES per frame.
+    //
+    // HOST_LOAD once failed that test, and the failure has a recognisable shape: it had
+    // become the stage that anything touching a FILE landed in, a third of the whole API
+    // under one word, so a reader asking "what do I need to start?" was handed 106
+    // functions. Two subsystems filed there were not loading at all. The check is to name
+    // each family in a large stage and ask whether it belongs to the same act; a stage that
+    // sits OUTSIDE the sequence entirely is the strongest signal, because a category that
+    // is not a stage of running a screen is visible as one thing rather than as N rows.
+    //
+    // A NAMED EMPTY STAGE STAYS IN THE TABLE. An empty row asserts that nothing is filed
+    // there; deleting the row would make a future arrival unremarkable.
     check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 26 && rt["HOST_SETTINGS"] == 45 &&
               rt["HOST_BIND"] == 86 && rt["HOST_RUN"] == 75 && rt["HOST_RELEASE"] == 6 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 25,
@@ -889,21 +843,16 @@ int main() {
   }
   // ---- 10. NO ORPHANED DOC COMMENT: a sentence in the header describes something it declares
   // ------------------------------------------------------------------------------------------
-  // **Phase 23 left TWELVE.** Moving the layout family's lifecycle to the internal headers took
-  // the declarations and left their comments standing, so the public header documented seven
-  // functions it no longer declared and one it declared twice, with the duplicate's comment
-  // naming a C++ member (`RolltuiLayout::popup()`) that the opaque struct had just removed.
-  // That is the own rule — *a milestone that deletes a thing owns every sentence that
-  // described it* — and the reason it matters here is the reason it mattered there: the only
-  // reader who believes a public header over the call sites is the one who cannot see the call
-  // sites, which is exactly the consumer this header exists for.
+  // WHY A PUBLIC HEADER'S ORPHANED SENTENCE MATTERS MORE THAN A COMMENT USUALLY DOES: the
+  // only reader who believes a header over the call sites is the one who cannot SEE the
+  // call sites, which is exactly the consumer this header exists for. A declaration that
+  // moves to an internal header takes the declaration and leaves the sentence, so the
+  // definition documents functions it no longer declares — and the rule that covers it is
+  // the general one, that whoever deletes a thing owns every sentence which described it.
   //
-  // THE RULE: a doc comment (not a `/* ---- section ---- */` banner) must be followed by
-  // something OTHER than another doc comment. A comment with no declaration under it is either
-  // a scar from a deletion or prose that belongs in a banner. The 22 that predate Phase 23 are
-  // RECORDED as a ceiling rather than fixed blind — each is a judgement call about prose, and a
-  // ratchet that can only fall is honest where a blanket assertion would invite someone to
-  // delete a real note to make a number go green.
+  // THE RULE HERE: a doc comment (not a `/* ---- section ---- */` banner) must be followed
+  // by something OTHER than another doc comment. A comment with no declaration under it is
+  // either a scar from a deletion or prose that belongs in a banner.
   {
     const std::string h = read(std::string(ROLLTUI_SOURCE_DIR) + "/rolltui.h");
     std::vector<std::string> lines;
@@ -935,21 +884,12 @@ int main() {
       }
       ++i;
     }
-    // A RATCHET at 6, measured 2026-09-06 after all 28 scars were cleared. It may FALL freely; a
-    // rise means a declaration left the header and its sentence stayed.
-    //
-    // **THE 22 "PRE-EXISTING" ONES WERE THE SAME DEFECT, and calling them judgement calls about
-    // prose was wrong.** Recovering each comment's subject from the header as it stood at
-    // `9c00c28` (previously's first removals) showed SIXTEEN described a function that had
-    // gone INTERNAL in Phases 20-23 — its declaration moved to a `c/*.h` and the sentence stayed
-    // behind. Fourteen were MOVED to sit above their declaration in the internal header, which is
-    // where a reader of that header now needs them; two were deleted because the internal
-    // declaration already carried one.
-    //
-    // The SIX that remain are not scars: they are the legitimate pattern of two stacked comments
-    // above one declaration — a general note, then a specific one. `rolltui_preset_store_save_as`
-    // and `rolltui_widget_kind_count` are the clearest, and the "EIGHT doors" note is prose that
-    // introduces the block under it.
+    // A RATCHET at 6. It may FALL freely; a RISE means a declaration left the header and
+    // its sentence stayed. A ratchet rather than a blanket `== 0` because the six that
+    // remain are not scars: they are the legitimate pattern of two stacked comments above
+    // one declaration, a general note and then a specific one.
+    // `rolltui_preset_store_save_as` and `rolltui_widget_kind_count` are the clearest, and
+    // the "EIGHT doors" note is prose introducing the block under it.
     check(orphans <= 6, "no orphaned doc comment in rolltui.h beyond the six stacked-note pairs — "
                         "a sentence with no declaration under it (" + std::to_string(orphans) +
                         " of at most 6; first: " + first + ")");

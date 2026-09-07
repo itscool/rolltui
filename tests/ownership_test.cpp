@@ -1,5 +1,5 @@
 //
-// ownership_test.cpp — Phase 13 m2: OWNERSHIP IS A STATED RULE WITH A GREP CONTROL.
+// ownership_test.cpp — OWNERSHIP IS A STATED RULE WITH A GREP CONTROL.
 //
 // THE RULE, and it is true of `rolltui/` today rather than aspirational — which is the
 // whole reason it is worth freezing:
@@ -80,9 +80,9 @@ std::vector<std::string> library_sources(bool headers_only) {
     const bool is_header = ext == ".hpp" || ext == ".h";
     const bool is_source = ext == ".cpp" || ext == ".c";
     if (headers_only ? !is_header : !(is_header || is_source)) continue;
-    // A TOOL is a host, not the library — and so is an EXAMPLE (Phase 21: `rolltui-paint` moved
-    // to `examples/` and `rolltui-explorer` joined it there, so the directory that means "not the
-    // library" is now two). The rule this skips is the LIBRARY's ownership discipline; a host may
+    // A TOOL is a host, not the library, and so is an EXAMPLE — `tools/` and `examples/` are
+    // the two directories that mean "not the library". The rule this skips is the LIBRARY's
+    // ownership discipline; a host may
     // own its own widget's context with `new`/`delete`, which is exactly what a widget plugin's
     // `destroy` slot is for.
     if (!headers_only && (rel.rfind("tools/", 0) == 0 || rel.rfind("examples/", 0) == 0)) continue;
@@ -204,11 +204,11 @@ int main() {
   }
 
   // ---- THE C SIDE'S CLOSED SET: growth has exactly one home --------------------------
-  // Phase 14 m4. CLAUDE.md's rule is that every allocation is a CHOICE from a closed set and
-  // never an invention, and that in C the rule can be TOTAL because every allocation is an
-  // explicit call. We had the entry point (`rolltui_mem_*`) and not the set, and by the end
-  // of m3 the two ported C files had invented the same growing buffer EIGHT times with two
-  // different policies — the finding reproduced exactly, one language over.
+  // CLAUDE.md's rule is that every allocation is a CHOICE from a closed set and never an
+  // invention, and that in C the rule can be TOTAL because every allocation is an explicit
+  // call. An entry point without the closed SET is not enough: two C files once invented the
+  // same growing buffer EIGHT times between them, under two different growth policies, with
+  // every allocation dutifully going through `rolltui_mem_*`.
   //
   // `rolltui_mem_realloc` is how growth is spelled, so the rule is one line: only
   // `rolltui_alloc.c` may call it. `alloc` and `free` stay available everywhere, because a
@@ -224,9 +224,8 @@ int main() {
       const std::string ext = e.path().extension().string();
       if (ext != ".c" && ext != ".h") continue;
       if (name == "rolltui_alloc.c" || name == "rolltui_alloc.h") continue;  // the one home
-      // rolltui_mem.c DEFINES rolltui_mem_realloc (Phase 17 m1: moved from Memory.cpp,
-      // Memory.hpp's C face) rather than calling it, which is the same reason
-      // rolltui_alloc.c/h are exempted above and not a second rule.
+      // rolltui_mem.c DEFINES rolltui_mem_realloc rather than calling it, which is the same
+      // reason rolltui_alloc.c/h are exempted above and not a second rule.
       if (name == "rolltui_mem.c") continue;
       ++scanned;
       std::istringstream in(read_file(e.path().string()));
@@ -253,7 +252,7 @@ int main() {
   // updates the number — at which point they have had to look at it and say what it
   // borrows. The failure is never "you may not add a pointer".
   //
-  // MEASURED 2026-09-03. A count that goes DOWN fails too, for the same reason the budget
+  // MEASURED. A count that goes DOWN fails too, for the same reason the budget
   // does: it is either a real simplification (re-record, deliberately) or the scanner
   // having stopped seeing.
   {
@@ -261,12 +260,9 @@ int main() {
       const char* header;
       int pointers;
     };
-    // MEASURED 2026-09-03 by this test's own scanner (it prints the table it wants, so a
-    // re-record is a copy-paste and never arithmetic). Terminal.hpp is 0 because m2 turned
-    // its one hand-rolled owner into a `unique_ptr`.
-    // THE CENSUS, RE-RECORDED WHOLE 2026-09-05, because its subject moved: the
-    // public headers are `c/*.h` now, and every `rolltui/*.hpp` row named a deleted file. Two
-    // things changed with it, both enforced above rather than promised here:
+    // MEASURED by this test's own scanner, which prints the table it wants, so a re-record is
+    // a copy-paste and never arithmetic. Two properties of the census are enforced above
+    // rather than promised here:
     //   - it counts STORED pointers (struct members), not every declaration. Counting all of
     //     them gives 1,139 against the C++ era's 122 — in C every parameter is a pointer, so
     //     the old rule would fire on every ordinary API addition and mean nothing. What the
@@ -314,8 +310,7 @@ int main() {
         {"c/rolltui_lifetime.h", 0},
     };
     // A continuation line of a WRAPPED declaration (`const char* name, size_t len);`) has no
-    // `(` and ends in `;`, so `is_stored_pointer` alone counts it as a member — found 2026-09-06
-    // when a re-record moved by one for a reason the rule could not state. Parentheses are
+    // `(` and ends in `;`, so `is_stored_pointer` alone counts it as a member. Parentheses are
     // tracked across lines; a line that starts inside an open one is a continuation, never a
     // member. Both halves are asserted below on literal snippets.
     auto count_stored = [](const std::string& text) {
@@ -367,49 +362,10 @@ int main() {
     check(unlisted.empty(), "every public header is in the census" + (unlisted.empty() ? "" : " — missing: " + unlisted.front()));
     check(checked == static_cast<int>(sizeof(recorded) / sizeof(recorded[0])),
           "…and every recorded row matched a real header (" + std::to_string(checked) + ")");
-    // 115 -> 121: +1 each for `input_handle`/`menu_handle`/`transcript_handle`
-    // and +3 for `Windows`' three typed accessors handing back the library's own handles. Every
-    // one is a BORROW; what left in the same change is three C++ maps that OWNED widgets.
-    // 121 -> 122: `PresetStore.hpp`'s `handle()`, above.
-    // 122 -> 199: a different measurement of a different set — STORED pointers
-    // in `c/*.h`, where the old figure was every declaration in `rolltui/*.hpp`. Not comparable,
-    // and deliberately not presented as a delta.
-    // 194 -> 193: +1 `RolltuiPresetDomain::report`, which BORROWS a library static
-    // (the domain's own report ops, set by its `_init`); -2 from two wrapped parameter-list
-    // continuation lines that the scanner had been counting as members — `rolltui_preset_shipped`'s
-    // and `rolltui_preset_working_value`'s second lines (`const char* name, size_t len);`) became
-    // one-liners when they lost a parameter. A line with no `(` that ends in `;` is not always a
-    // member: the rule above over-counts a wrapped declaration by one. Noted here rather than
-    // repaired, because repairing it re-records every row; the trigger is the next re-record
-    // that has to explain one of these.
-    // 193 -> 194: the scanner's wrapped-declaration artefact again, on the new
-    // `rolltui_menu_item_set` (its second line `size_t label_len, const char* shortcut, …);` has no
-    // `(` and ends in `;`). Nothing new is STORED; the row rises by one for the same reason
-    // `rolltui_presets.h`'s fell by two the day before. Still noted, still not repaired here.
-    // RE-RECORDED WHOLE 2026-09-06: the public declarations moved into `rolltui.h`,
-    // the definition, so its row went 0 -> 171 and every `c/` row fell to what the library keeps
-    // for itself; the total is unchanged at 194, which is the check that nothing was invented
-    // or lost in the move. Every one of the 171 is a BORROW or an OWNED member whose lifetime
-    // the struct's own comment states, exactly as it did in the header it came from.
-    // 194 -> 193 : the one that went was the `const size_t** out` of
-    // `rolltui_menu_flat_path`, a DELETE row (reached by nothing) whose declaration left
-    // `c/rolltui_menu.h` with the function; the fifteen headers left with nothing (every row a 0)
-    // left the table with them.
-    // 125 -> 125: three internal headers were RE-CREATED (`render`, `wrap`,
-    // `lifetime`), each declaring functions and storing no pointer, so they enter the census at 0.
-    // 193 -> 125: the scanner stopped counting a wrapped declaration's continuation
-    // line as a member — 68 of the 193 were `const char* name, size_t len);`-shaped second lines
-    // of prototypes, 53 of them in the definition. Every row re-recorded from the printed table;
-    // no pointer was added or removed.
-    // 125 (Phase 20 m1-m5, after the scanner stopped counting wrapped-declaration continuation
-    // lines) -> 125 with the rows redistributed: 135 declarations moved from
-    // the definition into their modules' internal headers and six headers were re-created, so
-    // pointers moved BETWEEN rows without any being added or removed. Re-recorded whole from the
-    // printed table, which is why the total is unchanged and the rows are not.
-    // 125 -> 125: four STORED borrows moved from `rolltui.h` to
-    // `c/rolltui_layout_tree.h` with the layout family's structures. The total is unchanged
-    // because nothing was added or removed — the same pointers are simply behind the handle now.
-    // 136 -> 134: the app profile's report took its two array members with it.
+    // A ROW THAT RISES OWES A SENTENCE saying what the new member BORROWS or OWNS, and the
+    // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
+    // rows while the total holds is a declaration changing headers, which is not a lifetime
+    // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
     check(total == 134, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
@@ -430,10 +386,10 @@ int main() {
 
   // ---- THE GLOBALS BOUNDARY: every piece of mutable process-wide state is NAMED
   // ------------------------------------------------------------------------------------------
-  // The user's parenthesis for `RolltuiContext` was *"a real single rolltui session hopefully
-  // proving nothing is global"* — and it was FALSE: 44 mutable statics across 9 files. This holds
-  // the library to `globals.inc`, where each one is named CONTEXT (session state, moving) or
-  // PROCESS (one per process, with its reason on the row).
+  // A `RolltuiContext` is a real single rolltui session, and the claim that nothing in the
+  // library is global is only as true as `globals.inc`. This holds the library to that file,
+  // where every mutable process-wide static is named CONTEXT (session state) or PROCESS (one
+  // per process, with its reason written on the row).
   //
   // **THE POINT IS THE NEW ONE, not the count.** A list alone is a snapshot; without this check
   // the first cache someone adds is global again and nothing says so. A new static must either
@@ -442,8 +398,8 @@ int main() {
   //
   // WHAT COUNTS AS STATE: a mutable object, or a mutable POINTER to const data
   // (`static const T* p` — the pointer moves). A `static const T x` and a
-  // `static const T* const x` are constants and are not on the list, which is why two things
-  // LEFT it in m1 rather than earning a row (see `globals.inc`'s own header).
+  // `static const T* const x` are constants and are not on the list. A constant that merely
+  // LOOKS mutable earns no row; it gets made properly const (see `globals.inc`'s own header).
   {
     struct Row { const char* file; const char* name; const char* disposition; };
     static const Row kRecorded[] = {
@@ -539,23 +495,13 @@ int main() {
     int ctx = 0, proc = 0;
     for (std::size_t i = 0; i < recorded_n; ++i)
       (std::string(kRecorded[i].disposition) == "CONTEXT" ? ctx : proc)++;
-    // RECORDED, and both numbers move deliberately: m2 drives CONTEXT to 0 as the state moves into
-    // `RolltuiContext`. PROCESS may only fall, or rise with a reason written on the row.
-    // m1 recorded 29 + 15. m2 DROVE CONTEXT TO ZERO, which is the milestone: every registry and
-    // cache the library holds is a session's, released by name in `rolltui_context_free`.
-    // PROCESS rose by two and both are stated on their rows — the transitional default context,
-    // which carries its removal condition, and the shutdown-hook list, which m1 had filed
-    // CONTEXT on the assumption that `rolltui_shutdown()` BECOMES `rolltui_context_free()`. It
-    // does not: nothing in `rolltui/c/` registers a hook any more, so what is left on that list
-    // is what HOSTS and TESTS put there for things they own with process lifetime.
-    // Three statics were DELETED rather than moved: the effects mutex (a context is entered by
-    // one thread at a time, so it guarded nothing a caller was still permitted to do) and, one
-    // level along, the ten preset-domain configuration rows went ONTO the descriptor each one
-    // configures rather than into the context — configuration belongs to the thing it configures.
-    // m5: 17 → 16. The transitional default context was ADDED AND REMOVED IN THE SAME PHASE, on
-    // the condition its own row stated. What is left is the terminal (7), the allocator counters
-    // (6), a thread's scratch and a host's shutdown-hook list (2), and the keyboard protocol the
-    // TTY negotiated (1) — four things that are genuinely the process's, and no registry.
+    // RECORDED, and both numbers move deliberately. CONTEXT is ZERO and stays there: every
+    // registry and cache the library holds belongs to a session and is released by name in
+    // `rolltui_context_free`. PROCESS may only fall, or rise with a reason written on the row.
+    //
+    // What the 16 are: the terminal (7), the allocator counters (6), a thread's scratch and a
+    // host's shutdown-hook list (2), and the keyboard protocol the TTY negotiated (1). Four
+    // things that are genuinely the process's, and no registry among them.
     check(ctx == 0 && proc == 16,
           "the boundary is 0 CONTEXT + 16 PROCESS (" + std::to_string(ctx) + " + " + std::to_string(proc) + ")");
   }

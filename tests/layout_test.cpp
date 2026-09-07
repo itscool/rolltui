@@ -18,13 +18,13 @@
 //      takes focus and Escape returns it, a non-focusable notice leaves focus alone,
 //      a mouse press under a modal is dropped, a press on a focusable base window
 //      focuses it, set_base keeps focus across a reload when the id survives.
-//   7. Phase 10 m2 — CONTENT AND WIDGETS: the kind table and every way a content
+//   7. CONTENT AND WIDGETS: the kind table and every way a content
 //      string can be wrong, said by name; rolltui::Windows instantiating every kind,
 //      drawing each of them, and
 //      turning every failure (unknown kind, unbound source, unreadable file) into a
 //      named report entry AND a visible error panel; the input sizing its own window;
 //      one widget per content, kept across a layout reload.
-//   8. Phase 10 m3 — MENUS FROM FILES: the three rungs in order (the user's directory,
+//   8. MENUS FROM FILES: the three rungs in order (the user's directory,
 //      the host's own embedded menus, the library's shipped ones) with the origin said;
 //      a file dropped in after the fact opens with no rebuild and a changed one is
 //      re-read; a missing menu and an unparsable one are named bad values drawn in the
@@ -76,8 +76,8 @@
 // idiom `rolltui-paint` and `authored_screen_test.cpp` already use.
 #include "rolltui/rolltui.h"
 // INTERNAL: this test opts in. `rolltui_input_max_rows`/`_window_rows` are the input
-// window's sizing rules, applied by `Windows`; Phase 24 moved them internal because no
-// consumer applies them, and this suite asserts the rule itself.
+// window's sizing rules, applied by `Windows`. They are internal because no consumer
+// applies them, and this suite asserts the rule itself.
 #include "rolltui/c/rolltui_widget_kinds.h"
 
 /* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
@@ -87,9 +87,9 @@
 #include "rolltui/c/rolltui_input.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_transcript.h"
-#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_widgets.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_widgets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -262,9 +262,7 @@ std::string cell_c(const RolltuiFrame* f, int x, int y) {
   return std::string(p, n);
 }
 
-// Node::row/column/window/window_id are LayoutTree.cpp statics (one of "the 3 C++ data
-// edges" Phase 17 m2 deletes); these build the same shapes through the plain C entry points
-// (rolltui_layout_tree.h) instead: rolltui_layout_node_init zeroes/defaults exactly as the
+// These build a node tree through the plain C entry points (rolltui_layout_tree.h): rolltui_layout_node_init zeroes/defaults exactly as the
 // struct's own defaults would, rolltui_node_list_add is the list's emplace_back, and
 // rolltui_layout_node_copy fills the slot it returns.
 RolltuiLayoutNode win(const char* content, RolltuiSplitSize size = {}, Border b = Border::Single, bool focusable = false) {
@@ -328,11 +326,11 @@ std::optional<Border> border_from_name_c(std::string_view name) {
 }
 
 // ---- direct C calls, continued: content and the widget-kind registry ------------------
-// Each mirrors Layout.cpp's own body exactly, same as parse_dim_c and friends above. Phase 18
-// m2: a kind's NAME is its identity (the C++-only enum is retired), so each of these is one C
-// call over a name; the rung comes back as `rolltui_widget_kind_resolve`'s return and the row
-// is where the kind's rules live, whichever rung it came from.
-// the widget-kind registry belongs to a CONTEXT, so this suite has one session that
+// A kind's NAME is its identity, so each of these is one C call over a name; the rung comes
+// back as `rolltui_widget_kind_resolve`'s return, and the row is where the kind's rules live
+// whichever rung it came from.
+//
+// The widget-kind registry belongs to a CONTEXT, so this suite has one session that
 // every shim below resolves against — `rolltui_test.hpp`'s, because the effects suite needed
 // the same thing and a wrapper written twice means the helper belongs in one place (rule 5).
 RolltuiContext* test_ctx() { return rolltui_test::test_context(); }
@@ -673,10 +671,8 @@ struct WindowsC {
   // `rolltui::Windows`'s C++ constructor evidently defaulted to a live table for exactly this
   // reason; this restores that default (the library's own shipped one) rather than requiring
   // every block below that shows a `help` window to remember to call `set_bindings` first.
-  // ONE LINE, which is the point: `set_library_defaults` now installs the live table too, so a
-  // pure-C window table is usable after it and not one call short of it (Phase 17 m3 — this
-  // suite's conversion is what found the NULL, and deleting the second line here is what proves
-  // the library fix rather than the workaround).
+  // ONE LINE, which is the point: `set_library_defaults` installs the live table too, so a
+  // pure-C window table is usable after it and is never one call short of it.
   WindowsC() { rolltui_context_set_library_defaults(test_ctx()); }
   WindowsC(const WindowsC&) = delete;
   ~WindowsC() { rolltui_windows_free(w); }
@@ -1333,7 +1329,7 @@ int main() {
   std::printf("-- content: the kind table\n");
   {
     // Every library kind is in the table under its own name, AT ITS OWN ROW, and nothing
-    // else is — Phase 18 m2: the name is the identity and the row is where its rules live.
+    // else is: the name is the identity, and the row is where the kind's rules live.
     const std::size_t lib = rolltui_widget_kind_library_count();
     check(lib == 7 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has seven kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
     for (std::size_t i = 0; i < lib; ++i) {
@@ -1388,7 +1384,7 @@ int main() {
 
     // Every way it can be wrong SAYS SO, by name.
     // A FORBIDDEN source is now only a registered kind's rule to state — no library kind
-    // forbids one since m5b gave `help` an optional scope — so the case is tested through
+    // forbids one, since `help` takes an optional scope — so the case is tested through
     // one, registered and cleared right here so nothing after it inherits the vocabulary.
     std::string kind_why;
     check(register_widget_kind_c("modal", ROLLTUI_SOURCE_FORBIDDEN, "", &kind_why), "a host kind that takes no source registers [" + kind_why + "]");
@@ -1411,7 +1407,7 @@ int main() {
     clear_registered_widget_kinds_c();
   }
   {
-    // m4: a file with no "actions" key is given the shipped default's — it must not
+    // A file with no "actions" key is given the shipped default's — it must not
     // silently lose every app key — and the loader says so in `notes`, which is the one
     // thing that array still carries.
     LayoutReport rep;
@@ -1426,10 +1422,10 @@ int main() {
     check(first.id == "transcript" && first.content == "transcript:session", "the window keeps its id and its content");
     check(l->base.focus == "input" && l->base.root.children[1].id == "input", "…so the layout's own focus id still names a window");
 
-    // Phase 11 m3 moved the UNKNOWN KIND to `Windows`; Phase 25 m2 moved the SOURCE RULE of a
-    // HOST kind after it, for the same reason taken one step further. Rung 2 belongs to a
-    // CONTEXT, and a layout file is plain data portable between contexts — so the loader runs
-    // with no session at all and judges exactly what the library's closed table can answer.
+    // THE LOADER DOES NOT JUDGE AN UNKNOWN KIND, AND DOES NOT JUDGE A HOST KIND'S SOURCE
+    // RULE EITHER; `Windows` does both. Rung 2 belongs to a CONTEXT and a layout file is
+    // plain data portable between contexts, so the loader runs with no session at all and
+    // judges exactly what the library's closed table can answer.
     // What that retires is a registration-ORDER dependency: whether `modal:x` was a bad value
     // used to depend on whether the host had registered `modal` before the file was read.
     LayoutReport rep2;
@@ -1465,7 +1461,7 @@ int main() {
           "…and the unknown kind is still parse_content's named refusal, tagged so the loader can leave it to the host");
   }
   {
-    // ---- m4: the layout DECLARES the actions its screen emits ---------------------
+    // ---- the layout DECLARES the actions its screen emits -------------------------
     LayoutReport rep;
     const std::optional<RolltuiLayout> l = load_layout_c(R"({"name":"acts","actions":{"app.zoom":"zoom in","mine.thing":"my own"},
         "root":{"content":"help"}})", rep);
@@ -1585,11 +1581,10 @@ int main() {
     check(windows.content_at("panel") == content_to_string_c(RolltuiContent{"rows", "status"}) && !windows.content_at("nope"),
           "content_at names what a window holds");
 
-    // PHASE 17 m1c — THE CHECK THAT SEPARATES "PORTED" FROM "REACHABLE", and the reason the
-    // milestone was reopened after being ticked. The three accessors above were reachable
-    // through `Windows` for four phases; what was NOT was getting the typed handle out of the
-    // C table, because the objects lived in C++ maps and a C-side map beside them would have
-    // been a second owner. So this drives the input through the LIBRARY's entry points alone,
+    // THE CHECK THAT SEPARATES "PORTED" FROM "REACHABLE". Reaching an accessor through a
+    // C++ wrapper proves nothing about whether a C consumer can get the typed handle out of
+    // the window table at all. So this drives the input through the LIBRARY's entry points
+    // alone,
     // on the table's own handle, and looks for the bytes on the drawn frame — an accessor that
     // handed back a different object would pass every check above and fail this one.
     RolltuiWindows* wh = windows.handle();
@@ -1668,7 +1663,7 @@ int main() {
     check(drawn == 7, "…and every one of them DREW its reason (" + std::to_string(drawn) + " of 7): a bad window is never blank");
   }
   {
-    // ---- m3: a menu is a FILE, resolved through three rungs -----------------------
+    // ---- a menu is a FILE, resolved through three rungs ---------------------------
     // The order is the whole point: a user's own file shadows the host's, which shadows
     // the library's shipped one, and each is named so a surprising menu has one place
     // to be traced from.
@@ -1786,7 +1781,7 @@ int main() {
     rolltui_menu_set_options(windows.menu("extra"), "d", 1, &two_options);
     check(option_count("extra", "d") == 2, "a host fills a file-loaded item's options by id (" + std::to_string(option_count("extra", "d")) + ")");
 
-    // ---- m4: a menu item may NAME an action, and it is checked against the live table.
+    // ---- a menu item may NAME an action, and it is checked against the live table.
     { std::ofstream(dir + "/menus/extra.json") << R"({"id":"root","label":"x","items":[
         {"id":"d","label":"Details","action":"app.details"},{"id":"z","label":"Zoom","action":"app.zoom"}]})"; }
     std::filesystem::last_write_time(dir + "/menus/extra.json", std::filesystem::file_time_type::clock::now() + std::chrono::seconds(8));
@@ -1799,7 +1794,7 @@ int main() {
           "a menu item naming an UNDECLARED action is a bad value, by item and action [" + rep.summary() + "]");
     check(rolltui_menu_find(windows.menu("extra"), "d", 1) != nullptr, "…and the item that names a DECLARED action is not reported");
 
-    // declare() is the whole screen's list (m6), so app.details has to be named again
+    // declare() is the whole screen's list, so app.details has to be named again
     // here or it stops being declared — which the very next assertion relies on.
     binds.declare({{"app.details", "open the session details"}, {"app.zoom", "zoom in"}});
     rep = windows.prepare(s, box);
@@ -1815,9 +1810,9 @@ int main() {
     binds.bind("app.details", *parse_chord_c("f9"));
     windows.prepare(s, box);
     check(shortcut_of("d") == "F3, F9", "…and follows a rebinding immediately [" + shortcut_of("d") + "]");
-    // m6: an action the CURRENT layout no longer declares is inert, so its item shows no
+    // An action the CURRENT layout no longer declares is inert, so its item shows no
     // shortcut at all — the table still keeps its two chords. A menu that advertised them
-    // would promise a key that cannot fire (found by the files-only proof screen).
+    // would promise a key that cannot fire.
     binds.declare({{"app.zoom", "zoom in"}});
     rep = windows.prepare(s, box);
     check(binds.chords_for_count("app.details") == 2 && binds.action_for(*parse_chord_c("f3"), "app").empty() &&
@@ -1826,7 +1821,7 @@ int main() {
               shortcut_of("d") + "]");
   }
   {
-    // ---- m4, the Done-when: `help` renders an action declared ONLY in a layout file.
+    // ---- `help` renders an action declared ONLY in a layout file.
     // Nothing here compiles the action in: the layout declares it, the bindings file
     // gives it a chord, and the help window is the only thing that draws it.
     LayoutReport lr;
@@ -1892,10 +1887,9 @@ int main() {
   }
 
   // ---- the grep control: no host resolves a content string itself ----------------------
-  // The m2 Done-when. Before this milestone every host answered "what does this slot
-  // mean?" with an if-chain over `rn.node->content`; after it, Windows does, from one
-  // table. A host may still READ a content — the layout editor SHOWS it — so the
-  // control is a count with a stated allowance, not a ban: an alias
+  // WINDOWS ANSWERS "what does this slot mean?", from one table; a host never answers it
+  // with an if-chain over `rn.node->content`. A host may still READ a content — the layout
+  // editor SHOWS it — so the control is a count with a stated allowance, not a ban: an alias
   // (`const std::string& c = rn.node->content;`) cannot slip past a count.
   {
     const std::string dir = std::string(ROLLTUI_SOURCE_DIR) + "/tools";
@@ -1992,8 +1986,8 @@ int main() {
     check(built == 2, "two windows on ONE content share ONE instance; a second content is a second (" + std::to_string(built) + " built)");
     check(windows.at("a") == windows.at("b") && windows.at("a") != windows.at("c"), "…and that is what the two windows hold");
     check(windows.registered("canvas", "main") == windows.at("a"), "registered(kind, source) reaches it, like transcript(source)");
-    // An unregistered kind is still the Phase 10 m2 answer: named in the report, error
-    // panel drawn — never a blank window.
+    // An unregistered kind gets the same answer as an unknown one: named in the report,
+    // error panel drawn — never a blank window.
     check(rep.bad_values.size() == 1 && rep.bad_values[0].find("window 'd'") != std::string::npos &&
               rep.bad_values[0].find("'nosuch' is not a widget kind") != std::string::npos,
           "an UNregistered kind is a named bad value on the window [" + rep.summary() + "]");
@@ -2100,8 +2094,8 @@ int main() {
     check(rolltui_scroll_first_for_cell(&fits, 10, 5) == 0, "…and a document that fits has one position: 0");
 
     // ---- the bar END TO END: the window draws it and drives the widget ----------------
-    // The point of the milestone as the user re-scoped it: a widget OPTS IN, the window
-    // owns the bar, and a widget that only REPORTS gets a bar that is not a handle.
+    // A widget OPTS IN, the window owns the bar, and a widget that only REPORTS gets a bar
+    // that is not a handle.
     {
       RolltuiDocument doc;
       for (int i = 0; i < 200; ++i) {
@@ -2136,9 +2130,9 @@ int main() {
       for (int y = 1; y < 11; ++y)
         if (f.glyph(track_x, y) == "\xE2\x96\x88") {
           thumb_drawn = true;
-          // PHASE 17 m3, and the same gap as the title above: the thumb's GLYPH was asserted
-          // and its colour was not, so `RolltuiWindowRoles::scrollbar` could name any role at
-          // all and every suite stayed green. Pointing it at `error` turns this red.
+          // THE GLYPH IS NOT ENOUGH. With the glyph asserted and the colour not,
+          // `RolltuiWindowRoles::scrollbar` could name any role at all and every suite would
+          // stay green. Pointing it at `error` turns this red.
           if (f.at(track_x, y).style.fg == th.style(ROLLTUI_ROLE_SCROLLBAR).fg) thumb_coloured = true;
         }
       check(thumb_drawn, "the window drew a thumb in its right border column");
