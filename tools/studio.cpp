@@ -2328,11 +2328,11 @@ void print_frame_plain(const RolltuiFrame* f) {
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-studio --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
-               "       rolltui-studio [FIXTURE.md] [--ambiguous-wide] [--dump-role ROLE]\n"
+               "       rolltui-studio [FIXTURE.md] [--ambiguous-wide]\n"
 #ifdef ROLLTUI_SELFTEST
                "       [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--frame WxH | --frame-sgr WxH]\n"
-               "       [--tick MS] [--dump-tick] [--code-fold FOLD,CAP]\n"
+               "       [--tick MS] [--dump-tick] [--dump-role ROLE] [--code-fold FOLD,CAP]\n"
                "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n"
 #endif
                );
@@ -2416,9 +2416,11 @@ int main(int argc, char** argv) {
     else if (a == "--generate") generate_arg = next();
     else if (a == "--seed") seed_arg = next();
     else if (a == "--chaos") chaos_arg = next();
-    else if (a == "--dump-role") dump_role = next();
     else if (a == "--ambiguous-wide") app.ambiguous = true;
 #ifdef ROLLTUI_SELFTEST
+    // Prints a role's resolved style. Reached by golden frames and nothing else — the theme
+    // editor shows the same thing live, which is where a person looks.
+    else if (a == "--dump-role") dump_role = next();
     // A test still has to pin a theme and point at a scratch directory, so these do not vanish;
     // they leave the PRODUCT. Pointing a person at a directory is what ROLL_CONFIG_DIR is for.
     else if (a == "--theme") app.theme_arg = next();
