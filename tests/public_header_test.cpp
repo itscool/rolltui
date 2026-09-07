@@ -898,5 +898,39 @@ int main() {
   }
 
 
+  // rolltui draws for whoever asks and knows nothing about roll, so the dependency between
+  // them runs ONE WAY. This is what says so. roll's headers are ENUMERATED from `include/`
+  // rather than listed here, so a roll header added tomorrow is covered the day it lands.
+  {
+    std::vector<std::string> roll_headers;
+    list_files(std::string(ROLLTUI_SOURCE_DIR) + "/../include", {".hpp"}, roll_headers);
+    std::vector<std::string> names;
+    for (const std::string& h : roll_headers) names.push_back(h.substr(h.rfind('/') + 1));
+    check(names.size() > 5, "roll's own header set was found, so there is something to look for (" +
+                            std::to_string(names.size()) + ")");
+    if (!names.empty()) {
+      auto roll_header_included_by = [&](const std::string& text) {
+        for (const std::string& n : names)
+          if (text.find("#include \"" + n + "\"") != std::string::npos ||
+              text.find("#include <" + n + ">") != std::string::npos) return n;
+        return std::string();
+      };
+      std::vector<std::string> lib;
+      list_files(std::string(ROLLTUI_SOURCE_DIR), {".c", ".h", ".cpp", ".hpp"}, lib);
+      std::string where, what;
+      for (const std::string& f : lib) {
+        if (f.find("/third_party/") != std::string::npos) continue;
+        const std::string hit = roll_header_included_by(strip_all_comments(read(f)));
+        if (!hit.empty()) { where = f; what = hit; break; }
+      }
+      check(what.empty(), "rolltui includes no roll header, so the dependency runs one way" +
+                          (what.empty() ? std::string() : " (" + where + " includes " + what + ")"));
+      // CONTROL: the matcher is armed. A planted include of a real roll header is found,
+      // so the empty result above means "nothing there" rather than "nothing looked for".
+      check(roll_header_included_by("#include \"" + names[0] + "\"\n") == names[0],
+            "...and the matcher is armed: it finds a planted include of " + names[0]);
+    }
+  }
+
   return report("public_header_test");
 }
