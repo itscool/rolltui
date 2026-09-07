@@ -186,12 +186,19 @@ typedef struct RolltuiNodeList {
 #endif
 } RolltuiNodeList;
 
+/* A node's KIND, spelled once. C++ has `RolltuiLayoutNode::Kind`; C had the bare integers, and
+ * three files wrote a literal 0 with the word "Window" in a trailing comment from memory
+ * (Phase 26 — the duplication rule firing on a magic number rather than on a word). */
+#define ROLLTUI_NODE_WINDOW 0
+#define ROLLTUI_NODE_ROW 1
+#define ROLLTUI_NODE_COLUMN 2
+
 typedef struct RolltuiLayoutNode {
 #ifdef __cplusplus
   enum class Kind : unsigned char { Window = 0, Row, Column };
   Kind kind = Kind::Window;
 #else
-  unsigned char kind; /* 0 window, 1 row, 2 column */
+  unsigned char kind; /* ROLLTUI_NODE_WINDOW | _ROW | _COLUMN */
 #endif
   RolltuiStr id;      /* defaults to `content` for windows; optional on splits */
   RolltuiStr content; /* windows: "kind[:source]" */

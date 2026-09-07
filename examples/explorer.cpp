@@ -892,21 +892,34 @@ int main(int argc, char** argv) {
       // silently does nothing. `ctrl+h` and `ctrl+l` were exactly that — the shipped input
       // bindings hold them — and the app looked broken rather than configured.
       //
-      // WALL 6: the library HAS the sentence for this — `rolltui_bindings_report_summary`, whose
-      // doc comment is still in `rolltui/rolltui.h` with no declaration under it — and it is
-      // classified INTERNAL, its reason reading "a host loads a file or clones the default".
-      // A host that loads its own bindings FILE is that case, and it cannot reach the summary,
-      // so the six loops below are the wrapper the summary exists to prevent.
-      auto say = [](const char* what, const RolltuiStr* v, std::size_t n) {
-        for (std::size_t i = 0; i < n; ++i)
-          std::fprintf(stderr, "rolltui-explorer: bindings/default.json: %s %s\n", what, v[i].c_str());
-      };
-      say("unknown action", brep.unknown_actions, brep.unknown_actions_n);
-      say("conflict", brep.conflicts, brep.conflicts_n);
-      say("bad chord", brep.bad_chords, brep.bad_chords_n);
-      say("undeliverable", brep.undeliverable, brep.undeliverable_n);
+      // WALL 6, CLOSED IN PHASE 26. This was six loops over the report's arrays — the wrapper
+      // `rolltui_bindings_report_summary` exists to prevent — because that function was INTERNAL
+      // on a reason ("a host loads a file or clones the default") that named this exact case and
+      // then concluded the opposite. It is public now and the six loops are one call.
+      RolltuiStr why{};
+      rolltui_bindings_report_summary(&brep, &why);
+      if (why.size() != 0)
+        std::fprintf(stderr, "rolltui-explorer: bindings/default.json: %s\n", why.c_str());
+      rolltui_str_free(&why);
       rolltui_bindings_report_release(&brep);
     }
+  }
+
+  // ---- END OF INIT: what this screen NAMES that this app does not PROVIDE (Phase 26) --------
+  // The kinds are registered, the sources are bound and the bindings are loaded, so this is the
+  // one moment the question is answerable. It REPORTS: a gap is a to-do for whoever builds this
+  // app, never a reason to refuse the screen — so nothing below branches on it. A layout naming
+  // a kind nobody has written yet is a design that has run ahead of the code, which is allowed.
+  {
+    RolltuiGapReport gaps{};
+    rolltui_gaps_collect(app.windows, app.layout, app.bindings, &gaps);
+    if (!rolltui_gap_report_clean(&gaps)) {
+      RolltuiStr say{};
+      rolltui_gap_report_summary(&gaps, &say);
+      std::fprintf(stderr, "rolltui-explorer: %s\n", say.c_str());
+      rolltui_str_free(&say);
+    }
+    rolltui_gap_report_release(&gaps);
   }
 
   if (!frame_spec.empty()) {

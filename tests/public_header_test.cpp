@@ -626,7 +626,16 @@ int main() {
      * which this file of all files must not lean on; section 1 uses the swap now. */
     /* PHASE 25 m2: +3 PUBLIC (`rolltui_context_new`/`_free`, `rolltui_windows_context`) and
      * +4 INTERNAL (the transitional default and its release, the kind registry's own new/free). */
-    const int kPublic = 326, kInternal_ = 524, kDelete = 0;
+    /* PHASE 26 m2: 326 -> 330. The gap report's four (`rolltui_gaps_collect` plus the
+     * `_release`/`_clean`/`_summary` every report on this boundary has). A NEW module is the one
+     * case where measured reach cannot decide a class — nobody calls it yet by construction —
+     * so these are public on a STATED reason: a host author is the reader they exist for.
+     * AND ONE MOVE THE OTHER WAY: `rolltui_bindings_report_summary` INTERNAL -> PUBLIC, which is
+     * why internal falls by one. Its INTERNAL reason read "a host loads a file or clones the
+     * default" — naming the case and then concluding the opposite. `rolltui/examples/explorer.cpp`
+     * loads its own bindings file, could not reach the summary, and hand-wrote six loops over the
+     * report's arrays: rule 5's tell, recorded there as Phase 21's wall 6 and closed here. */
+    const int kPublic = 331, kInternal_ = 523, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -826,10 +835,14 @@ int main() {
      * host SUPPLIES; HOST_RUN's are windows 15, window 13, transcript 13, terminal 9, swap 6 —
      * every one a thing a host DRIVES per frame. Neither holds a subsystem that is doing
      * something else, which is the test HOST_LOAD failed. */
+    /* PHASE 26 m2: bind 81 -> 86 — the gap report's four, and `rolltui_bindings_report_summary`
+     * coming public with them (wall 6). It closes the BIND stage — an app has
+     * registered its kinds and bound its sources, and this is what says which of them the screen
+     * asked for and did not get. */
     check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 26 && rt["HOST_SETTINGS"] == 45 &&
-              rt["HOST_BIND"] == 81 && rt["HOST_RUN"] == 75 && rt["HOST_RELEASE"] == 6 &&
+              rt["HOST_BIND"] == 86 && rt["HOST_RUN"] == 75 && rt["HOST_RELEASE"] == 6 &&
               rt["TOOL_INTEROP"] == 35 && rt["WIDGET"] == 25,
-          "the roles are the recorded shape — vocab 33, host load 26 / settings 45 / bind 81 / run 75 / "
+          "the roles are the recorded shape — vocab 33, host load 26 / settings 45 / bind 86 / run 75 / "
           "release 6, tool interop 35, widget 25 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

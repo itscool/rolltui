@@ -3915,6 +3915,19 @@ int rolltui_bindings_bind(RolltuiBindings* b, const char* action, size_t len, co
 
 void rolltui_bindings_report_release(RolltuiBindingsReport* r); /* frees everything; zeroes it */
 
+/* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
+ * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
+ * that order. Replaces `*out`.
+ *
+ * PUBLIC as of Phase 26. It was INTERNAL on the reason "a step of loading or building a table;
+ * a host loads a file or clones the default" — and a host that loads its own bindings FILE is
+ * exactly that case, so the reason argued for the opposite of what it concluded.
+ * `rolltui/examples/explorer.cpp` recorded it as Phase 21's wall 6 and hand-wrote six loops over
+ * the report's arrays to say what this one call says. **That is `rolltui.h` rule 5's tell** —
+ * a consumer writing the wrapper an API already has — and it is the same shape as the gap report
+ * beside it: a host tells its own developer what a FILE asked for that this app cannot give. */
+void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
+
 /* ADDS a file's rows to `b`, which the caller constructs first (`Bindings::Bindings()` seeds
  * the library's own actions before calling this, exactly as the original C++ loop started
  * from `Bindings b;`) — so an action the caller already declared is never re-added, and its
@@ -4244,6 +4257,57 @@ void rolltui_context_set_env(RolltuiContext* ctx, const RolltuiWidgetEnv* env);
  * `Bindings::handle()` (the live table, or `default_bindings().handle()`). NULL only before
  * the first `set_env`. */
 void rolltui_context_set_bindings(RolltuiContext* ctx, const RolltuiBindings* b);
+
+/* ---- THE GAP REPORT: what this screen NAMES that this app does not PROVIDE (Phase 26) -------
+ *
+ * **FOR THE DEVELOPER, not for whoever wrote the layout**, and that decides everything else
+ * about it. The user's framing, 2026-09-06: *"its feedback on the right place — 'the app was
+ * designed like this and your code doesn't support it properly yet.'"* **A screen is the
+ * INTENT and the code catches up**, so this REPORTS and never fails: it hands you a list and
+ * YOU decide whether any of it is fatal, exactly as `rolltui_bindings_load_json` already does
+ * with an action nothing declares. Nothing here refuses a layout. **A layout may name a
+ * `browser` kind nobody has written yet, and that is a to-do rather than an error.**
+ *
+ * CALL IT ONCE AT THE END OF INIT — after the screen is loaded and after you have registered
+ * your kinds and bound your sources, before the loop starts.
+ *
+ * **NOT the same as `rolltui_windows_report_*`, which is correct and stays.** That is the same
+ * per-widget question asked at a different moment for a different reader: it walks the layers
+ * currently PUSHED, per `sync`, per frame, framed as *problems this frame*. This walks the
+ * WHOLE screen — the base and **every popup the layout declares, opened or not** — once, framed
+ * as *what you have not built*. A `details` popup naming a kind you never wrote is invisible to
+ * `sync` until a user opens it. The per-kind rule is not duplicated: each widget's own
+ * `problem()` answers for itself, which is where that rule already lives.
+ *
+ * **TWO KINDS OF GAP, and the second is a HINT rather than a proof:**
+ *   - **A thing that does not EXIST** — a window names a kind nobody registered, or a source
+ *     nothing is bound to. Exact: the library resolves both and knows.
+ *   - **A thing nothing can REACH** — the screen declares an action and no chord serves it.
+ *     A menu item may still invoke it, and **whether your host HANDLES an action is not
+ *     library-visible at all**, because handling is a `switch` in your own event loop. What is
+ *     visible is the keyboard. Pass `b` NULL to skip this half.
+ *
+ * `named` counts everything checkable that the screen names, so the summary can say "3 of 12"
+ * rather than "3". REPLACES `*out` (releasing whatever it held), so one report may be reused. */
+typedef struct RolltuiGapReport {
+  RolltuiStr* gaps ROLLTUI_DEFAULT(nullptr); /* GROWING AMORTISED; one line per gap */
+  size_t gaps_n ROLLTUI_DEFAULT(0), gaps_cap ROLLTUI_DEFAULT(0);
+  size_t named ROLLTUI_DEFAULT(0); /* how many things the screen names that could be checked */
+} RolltuiGapReport;
+
+void rolltui_gap_report_release(RolltuiGapReport* r); /* frees everything; zeroes it */
+
+int rolltui_gap_report_clean(const RolltuiGapReport* r); /* 1 when there is nothing to say */
+
+/* "this screen names 12 things this app must provide and 3 are missing: <gap>; <gap>; <gap>".
+ * "" when clean, which is the rule every report on this boundary has. APPENDS to `out`. */
+void rolltui_gap_report_summary(const RolltuiGapReport* r, RolltuiStr* out);
+
+/* `w` is not `const`: a kind's widget is BUILT to ask it, and building is what resolves a
+ * `menu:` file and a bound source. The instances are the ones a later `sync` reuses, so this
+ * costs a screen's widgets once rather than twice. */
+void rolltui_gaps_collect(RolltuiWindows* w, const RolltuiLayout* l, const RolltuiBindings* b,
+                          RolltuiGapReport* out);
 
 /* ---- widget_kinds --------------------------------------------------------------------------*/
 

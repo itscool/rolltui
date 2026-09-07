@@ -359,7 +359,7 @@ ROLLTUI_API(rolltui_bindings_report_add_unknown_key, INTERNAL)  /* the loader's 
 ROLLTUI_API(rolltui_bindings_report_clean, INTERNAL)
 ROLLTUI_API(rolltui_bindings_report_release, PUBLIC)
 ROLLTUI_API(rolltui_bindings_report_set_error, INTERNAL)  /* the loader's report builder */
-ROLLTUI_API(rolltui_bindings_report_summary, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
+ROLLTUI_API(rolltui_bindings_report_summary, PUBLIC)  /* Phase 26: its INTERNAL reason argued the opposite of what it concluded — a host that loads its own bindings FILE is the case it named. Phase 21 wall 6: the explorer hand-wrote six loops for it. */
 ROLLTUI_API(rolltui_bindings_row_at, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_row_count, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_scope_of, INTERNAL)
@@ -606,6 +606,18 @@ ROLLTUI_API(rolltui_windows_sync, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript_at, INTERNAL)  /* a hit-test the stack already routes */
 ROLLTUI_API(rolltui_windows_widget_for, PUBLIC)
+
+/* ---- rolltui_gaps.c — the gap report: what a screen NAMES that an app does not PROVIDE ----
+ * Phase 26. All four PUBLIC and none by measured reach — this module is BRAND NEW, so nobody
+ * calls it yet by construction. They are public because a host author is the reader they exist
+ * for: the report is how an app tells its own developer what a screen wants and the code has
+ * not built. The pair rule (rule 1) covers `_release`; `_clean` and `_summary` are the shape
+ * every other report on this boundary has, and shipping three of the four would be the lopsided
+ * API Phase 24's caveat is about. */
+ROLLTUI_API(rolltui_gap_report_clean, PUBLIC)
+ROLLTUI_API(rolltui_gap_report_release, PUBLIC)
+ROLLTUI_API(rolltui_gap_report_summary, PUBLIC)
+ROLLTUI_API(rolltui_gaps_collect, PUBLIC)
 
 /* ---- rolltui_widget_kinds.h — the built-in kinds and their registration; default PUBLIC ---- */
 ROLLTUI_API(rolltui_help_document, PUBLIC)

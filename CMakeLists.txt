@@ -45,6 +45,11 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                   c/rolltui_presets.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
                   c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
+                  c/rolltui_gaps.c
+                                         # Phase 26: the gap report — what a screen NAMES
+                                         #   that an app does not PROVIDE, walked over the
+                                         #   WHOLE layout once rather than the pushed stack
+                                         #   per frame. Reports; never fails.
                   c/rolltui_json.c c/rolltui_app_profile.c
                                          # Phase 17 m1: the parser, and the app profile on
                                          #   top of it. The profile's C boundary takes and
@@ -316,6 +321,11 @@ set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
 # Milestone 8: placement (the resolve table + tiling properties), the split tree, the
 # layout loader and the four built-ins, border joining, the stack's focus routing.
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
+
+# Phase 26 m2: THE GAP REPORT — what a screen NAMES that an app does not PROVIDE, reported to
+# the app's own DEVELOPER and never fatal. Its sharpest assertion is the one `rolltui_windows_sync`
+# cannot make: a gap inside a popup the layout DECLARES and nobody has pushed.
+add_rolltui_test(rolltui-gaps-test tests/gaps_test.cpp)
 
 # Milestone 9: the transcript widget — layout cache, entry-anchored scroll, follow +
 # marker, folding, logical-coordinate selection with auto-scroll and copy, OSC 8.

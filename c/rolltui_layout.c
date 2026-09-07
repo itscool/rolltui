@@ -20,10 +20,6 @@
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/rolltui.h"
 
-#define ROLLTUI_NODE_WINDOW 0
-#define ROLLTUI_NODE_ROW 1
-#define ROLLTUI_NODE_COLUMN 2
-
 #define ROLLTUI_BORDER_NONE 0
 #define ROLLTUI_BORDER_SINGLE 1
 #define ROLLTUI_BORDER_ROUNDED 2

@@ -107,10 +107,6 @@ void rolltui_bindings_add_row(RolltuiBindings* b, const char* action, size_t len
  * its undeliverable chords are all REPORTED with a message before anything lands, so the
  * loader has already decided and needs a put rather than a policy. */
 void rolltui_bindings_add_chord(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
-/* Mirrors `BindingsLoadReport::summary()` exactly: "" when clean, else `error`, else
- * "bad: x; conflict: y; chord: z; undeliverable: w; unknown action: u; unknown: k" joined in
- * that order. Replaces `*out`. */
-void rolltui_bindings_report_summary(const RolltuiBindingsReport* r, RolltuiStr* out);
 /* ---- THE LIBRARY'S CLOSED ACTION TABLE (Phase 17) ---------------------------------------
  * The 59 actions the library's own widgets look up, as data a consumer can enumerate. It
  * used to live only in `Bindings.cpp` on the rule that the C is TOLD which scopes are the

@@ -851,7 +851,7 @@ static void sync_node(RolltuiWindows* w, const RolltuiLayoutNode* n) {
   RolltuiWidget* wd;
   WindowSlot* s;
   size_t i;
-  if (n->kind != 0 /* Window */) {
+  if (n->kind != ROLLTUI_NODE_WINDOW) {
     for (i = 0; i < n->children.n; ++i) sync_node(w, n->children.v[i]);
     return;
   }
