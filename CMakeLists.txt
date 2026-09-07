@@ -332,9 +332,18 @@ add_rolltui_test(rolltui-presets-test tests/presets_test.cpp)
 # editor's "write a shipped preset" privilege writes — the source tree, for the next
 # build — unless --shipped says otherwise.
 add_executable(rolltui-studio tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp tools/menu_editor.cpp)
+
+# The SELF-TEST build: the same source plus the script vocabulary and the headless frame, so a
+# golden has a driver and the shipped studio has none. `--check` and `--generate` stay in BOTH:
+# they run the theme analyser and the generator, which the theme editor also offers.
+add_executable(rolltui-studio-selftest tools/studio.cpp tools/theme_editor.cpp tools/layout_editor.cpp tools/keys_editor.cpp tools/menu_editor.cpp)
+target_compile_definitions(rolltui-studio-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_link_libraries(rolltui-studio PRIVATE rolltui)
+target_link_libraries(rolltui-studio-selftest PRIVATE rolltui)
 target_compile_options(rolltui-studio PRIVATE -Wall -Wextra)
+target_compile_options(rolltui-studio-selftest PRIVATE -Wall -Wextra)
 target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
+target_compile_definitions(rolltui-studio-selftest PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_CURRENT_SOURCE_DIR}/presets")
 
 # THE THIRD HOST — a text-mode painting app with no transcript and no
 # input, whose whole interaction is one registered widget kind. It is the phase's proof
@@ -344,8 +353,15 @@ target_compile_definitions(rolltui-studio PRIVATE ROLLTUI_SHIPPED_DIR="${CMAKE_C
 # receive them with no terminal.
 add_executable(rolltui-paint examples/paint.cpp)
 target_link_libraries(rolltui-paint PRIVATE rolltui)
+
+# The SELF-TEST build: the same source plus its scripted strokes and headless frame.
+add_executable(rolltui-paint-selftest examples/paint.cpp)
+target_link_libraries(rolltui-paint-selftest PRIVATE rolltui)
+target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
+target_compile_options(rolltui-paint-selftest PRIVATE -Wall -Wextra)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
 target_include_directories(rolltui-paint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+target_include_directories(rolltui-paint-selftest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 # THE FOURTH CONSUMER — a read-only file-system browser whose custom widget is a
 # macOS-style column view. It is the first widget in this repo with INTERNAL STRUCTURE the
@@ -371,6 +387,14 @@ add_custom_command(OUTPUT ${ROLLTUI_EXPLORER_EMBEDDED}
 
 add_executable(rolltui-explorer examples/explorer.cpp ${ROLLTUI_EXPLORER_EMBEDDED})
 target_link_libraries(rolltui-explorer PRIVATE rolltui)
+
+# The SELF-TEST build: the same source plus the script vocabulary, so a golden frame has a driver
+# and the shipped binary has none. Additive rather than compiled out, so the app code the product
+# runs is the code the tests ran.
+add_executable(rolltui-explorer-selftest examples/explorer.cpp ${ROLLTUI_EXPLORER_EMBEDDED})
+target_link_libraries(rolltui-explorer-selftest PRIVATE rolltui)
+target_compile_definitions(rolltui-explorer-selftest PRIVATE ROLLTUI_SELFTEST=1)
+target_compile_options(rolltui-explorer-selftest PRIVATE -Wall -Wextra)
 target_compile_options(rolltui-explorer PRIVATE -Wall -Wextra)
 
 # Milestone 14: the theme editor's model — every role reachable, live preview, commit,
@@ -412,8 +436,9 @@ target_include_directories(rolltui-menu-editor-test PRIVATE ${CMAKE_CURRENT_SOUR
 
 add_rolltui_test(rolltui-studio-golden-test tests/studio_golden_test.cpp)
 target_compile_definitions(rolltui-studio-golden-test PRIVATE
-  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
-add_dependencies(rolltui-studio-golden-test rolltui-studio)
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>"
+  ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>")
+add_dependencies(rolltui-studio-golden-test rolltui-studio rolltui-studio-selftest)
 
 # THE FILES-ONLY PROOF: a screen that exists only as files (a
 # layout, a menu, a bindings file and a document under tests/fixtures/screen) copied
@@ -428,8 +453,10 @@ add_dependencies(rolltui-studio-golden-test rolltui-studio)
 # screen.
 add_rolltui_test(rolltui-authored-screen-test tests/authored_screen_test.cpp)
 target_compile_definitions(rolltui-authored-screen-test PRIVATE
-  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>"
-  ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint>")
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>"
+  ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
+  ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint-selftest>"
+  ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>")
 add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
 
 # the explorer's golden frames and its files-only control — the screen's own
@@ -440,19 +467,22 @@ add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
 # than the theme's expression of a state), and the block ramp meets East Asian AMBIGUOUS width
 # head-on instead of avoiding it.
 add_rolltui_test(rolltui-paint-art-test tests/paint_art_test.cpp)
-target_compile_definitions(rolltui-paint-art-test PRIVATE ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint>")
-add_dependencies(rolltui-paint-art-test rolltui-paint)
+target_compile_definitions(rolltui-paint-art-test PRIVATE ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint-selftest>"
+  ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>")
+add_dependencies(rolltui-paint-art-test rolltui-paint rolltui-paint-selftest)
 
 add_rolltui_test(rolltui-explorer-test tests/explorer_test.cpp)
 target_compile_definitions(rolltui-explorer-test PRIVATE
-  ROLLTUI_EXPLORER_BIN="$<TARGET_FILE:rolltui-explorer>"
+  ROLLTUI_EXPLORER_BIN="$<TARGET_FILE:rolltui-explorer-selftest>"
+  ROLLTUI_EXPLORER_PRODUCT_BIN="$<TARGET_FILE:rolltui-explorer>"
   ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")
-add_dependencies(rolltui-explorer-test rolltui-explorer)
+add_dependencies(rolltui-explorer-test rolltui-explorer rolltui-explorer-selftest)
 
 add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE
-  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
-add_dependencies(rolltui-files-only-test rolltui-studio)
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>"
+  ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>")
+add_dependencies(rolltui-files-only-test rolltui-studio rolltui-studio-selftest)
 
 # BUILD AN APP FROM NOTHING. An empty preset directory and no document in, four
 # authored screen files out, and a host that draws them. The third of the family: `files_only`
@@ -460,8 +490,9 @@ add_dependencies(rolltui-files-only-test rolltui-studio)
 # the tool is not, and this one proves the tool can start from nothing at all.
 add_rolltui_test(rolltui-from-nothing-test tests/from_nothing_test.cpp)
 target_compile_definitions(rolltui-from-nothing-test PRIVATE
-  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio>")
-add_dependencies(rolltui-from-nothing-test rolltui-studio)
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>"
+  ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>")
+add_dependencies(rolltui-from-nothing-test rolltui-studio rolltui-studio-selftest)
 
 # THE PURE-C CONSUMER — the claim this library had never executed once. Not
 # `add_rolltui_test`, because that function's `target_include_directories(… tests)` would put

@@ -234,6 +234,23 @@ int main(int argc, char** argv) {
   const std::string presets = " --presets '" + scratch + "/p' --shipped '" + scratch + "/s'";
   std::filesystem::remove_all(scratch);
   std::filesystem::create_directories(scratch);
+
+  // ---- THE PRODUCT BINARY CANNOT DRIVE ITSELF ----------------------------------------------
+  // Additive, not compiled out: `rolltui-studio-selftest` is this same source plus the script
+  // vocabulary, and the shipped studio does not contain it. `--check` and `--generate` stay in
+  // BOTH, because they run the theme analyser and the generator, which the theme editor also
+  // offers — a headless entry point to a shipped feature rather than a test hook.
+  {
+    int prc = 0;
+    const std::string product = std::string("'") + ROLLTUI_STUDIO_PRODUCT_BIN + "'";
+    const std::string in_product = run("strings " + product + " | grep -cx TripleClick", prc);
+    check(in_product.substr(0, 1) == "0", "the script vocabulary is absent from the shipped studio");
+    const std::string in_selftest = run(std::string("strings '") + ROLLTUI_STUDIO_BIN + "' | grep -cx TripleClick", prc);
+    check(in_selftest.substr(0, 1) != "0", "…while the self-test binary has it, so the marker discriminates");
+    const std::string feat = run(product + " --check default 2>&1", prc);
+    check(feat.find("usage:") == std::string::npos,
+          "…and --check still works in the shipped studio: it is a feature, not a hook");
+  }
   const Case cases[] = {
       {"demo.80x24", "--frame 80x24 --theme default-dark"},
       {"demo.120x40", "--frame 120x40 --theme default-dark"},

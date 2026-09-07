@@ -50,7 +50,14 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+
+// ADDITIVE, NOT SUBTRACTIVE. `rolltui-explorer` is the product and cannot drive itself: the
+// script vocabulary is not compiled into it. `rolltui-explorer-selftest` is the same source plus
+// this, which is what a golden frame is rendered by. The app code either binary runs is the
+// same code, so the product binary is the one the app was verified through.
+#ifdef ROLLTUI_SELFTEST
 #include "rolltui/selftest/script.hpp"
+#endif
 
 namespace {
 
@@ -812,22 +819,28 @@ bool parse_size(const std::string& s, int& w, int& h) {
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-explorer [PATH] [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
-               "                        [--frame WxH] [--keys \"Down Right CtrlD\"]\n");
+#ifdef ROLLTUI_SELFTEST
+               "                        [--frame WxH] [--keys \"Down Right CtrlD\"]\n"
+#endif
+               );
   return 2;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, keys_spec, start;
+  std::string presets_dir, layout_arg, theme_arg = "default-dark", start;
+  [[maybe_unused]] std::string frame_spec, keys_spec;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
     if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
+#ifdef ROLLTUI_SELFTEST
     else if (a == "--frame") frame_spec = next();
     else if (a == "--keys") keys_spec = next();
+#endif
     else if (!a.empty() && a[0] != '-' && start.empty()) start = a;
     else return usage();
   }
@@ -941,6 +954,7 @@ int main(int argc, char** argv) {
     rolltui_gap_report_release(&gaps);
   }
 
+#ifdef ROLLTUI_SELFTEST
   if (!frame_spec.empty()) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
     app.prepare();
@@ -959,6 +973,7 @@ int main(int argc, char** argv) {
     rolltui_swap_free(swap);
     return 0;
   }
+#endif
 
   RolltuiTerminalOptions opts{};
   RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);

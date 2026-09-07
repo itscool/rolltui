@@ -73,6 +73,23 @@ int main() {
   const std::string base = bin + " --frame 64x20 --theme default-dark";
   int rc = 0;
 
+  // ---- 0. THE PRODUCT BINARY CANNOT DRIVE ITSELF -------------------------------------------
+  // Additive, not compiled out: `rolltui-paint-selftest` is this same source plus the driving code,
+  // and the shipped binary does not contain it. Asserted on the ARTIFACT, because what ships is a
+  // binary. `TripleClick` is a marker the driving code owns; a key NAME would not discriminate,
+  // since the library's own tables carry those and both binaries link it.
+  {
+    int prc = 0;
+    const std::string product = std::string("'") + ROLLTUI_PAINT_PRODUCT_BIN + "'";
+    const std::string refused = run(product + " --frame 2>&1", prc);
+    check(refused.find("usage:") != std::string::npos && refused.find("--frame") == std::string::npos,
+          "the shipped rolltui-paint refuses --frame and does not advertise it");
+    const std::string in_product = run("strings " + product + " | grep -cx -- --stroke", prc);
+    const std::string in_selftest = run("strings " + bin + " | grep -cx -- --stroke", prc);
+    check(in_product.substr(0, 1) == "0", "…and the driving code is absent from the shipped binary");
+    check(in_selftest.substr(0, 1) != "0", "…while the self-test binary has it, so the marker discriminates");
+  }
+
   // ---- 1. it draws a picture, in BOTH ramps at once -----------------------------------------
   const std::string art = run(base + kScene + " 2>&1", rc);
   check(rc == 0 && !art.empty(), "paint draws a scene from an ordered tool script (rc " + std::to_string(rc) + ")");

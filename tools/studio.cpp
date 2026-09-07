@@ -197,7 +197,15 @@
 #include <unistd.h>
 
 #include "rolltui/rolltui.h"
+
+// ADDITIVE, NOT SUBTRACTIVE. `rolltui-studio` is the product and cannot drive itself; the script
+// vocabulary is not compiled into it. `rolltui-studio-selftest` is this same source plus it, and
+// is what renders a golden frame. `--check` and `--generate` are NOT here: they run the theme
+// analyser and the generator, which the theme editor also offers, so they are a headless entry
+// point to a shipped feature rather than a test hook.
+#ifdef ROLLTUI_SELFTEST
 #include "rolltui/selftest/script.hpp"
+#endif
 
 /* INTERNAL headers, BY NAME. This file is not a CONSUMER: the studio and its editors are
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
@@ -2292,9 +2300,12 @@ bool parse_size(const std::string& s, int& w, int& h) {
 // The script vocabulary is the library's self-test header, not this file's: three apps had
 // written three dialects of "drive me with no terminal", and one of them said so in its own
 // comment. It is included only by binaries that drive an app; no product binary sees it.
+#ifdef ROLLTUI_SELFTEST
 using rolltui_selftest::Step;
 using rolltui_selftest::scripted_keys;
+#endif
 
+#ifdef ROLLTUI_SELFTEST
 // handle() returns false only to QUIT (Ctrl-C, or the studio.quit action), so a
 // script stops there exactly as the interactive loop does.
 void run_steps(App& app, std::vector<Step>& steps) {
@@ -2305,6 +2316,7 @@ void run_steps(App& app, std::vector<Step>& steps) {
     if (!app.handle(s.ev)) return;
   }
 }
+#endif
 
 void print_frame_plain(const RolltuiFrame* f) {
   RolltuiStr text{};
@@ -2407,6 +2419,7 @@ int main(int argc, char** argv) {
       std::string d = next();
       app.depth = rolltui_detect_color_depth(nullptr, nullptr, d.c_str());
     } else if (a == "--ambiguous-wide") app.ambiguous = true;
+#ifdef ROLLTUI_SELFTEST
     else if (a == "--code-fold") {  // "FOLD,CAP" — the two thresholds, so a golden can
       const std::string v = next();  // exercise them on a small fixture rather than on
       const std::size_t comma = v.find(',');  // a hundred-line one
@@ -2418,6 +2431,7 @@ int main(int argc, char** argv) {
     else if (a == "--keys") keys_spec = next();
     else if (a == "--tick") tick_ms = std::strtoull(next().c_str(), nullptr, 10);
     else if (a == "--dump-tick") dump_tick = true;
+#endif
     else if (a.rfind("--", 0) == 0) return usage();
     else app.fixture_path = a;
   }
@@ -2574,6 +2588,7 @@ int main(int argc, char** argv) {
   app.load_bindings_arg();
   app.refresh_menu();
 
+#ifdef ROLLTUI_SELFTEST
   if (!frame_spec.empty()) {
     int fw, fh;
     if (!parse_size(frame_spec, fw, fh)) return usage();
@@ -2581,8 +2596,7 @@ int main(int argc, char** argv) {
     app.load_layout_arg();
     app.sync_look();
     app.ensure_layout();
-    std::vector<Step> steps = scripted_keys(keys_spec, fw, fh);
-    run_steps(app, steps);
+    { std::vector<Step> steps = scripted_keys(keys_spec, fw, fh); run_steps(app, steps); }
     app.effect_ms = tick_ms;  // --tick: the frame is rendered AT this elapsed time
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
@@ -2613,10 +2627,11 @@ int main(int argc, char** argv) {
     rolltui_swap_free(swap);
     return 0;
   }
+#endif
 
   RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, RolltuiTerminalOptions{});
   if (!rolltui_terminal_is_tty(term)) {
-    std::fprintf(stderr, "not a terminal; use --frame WxH\n");
+    std::fprintf(stderr, "not a terminal (rolltui-studio-selftest --frame WxH renders one)\n");
     rolltui_terminal_free(term);
     return 1;
   }
@@ -2629,7 +2644,9 @@ int main(int argc, char** argv) {
   app.load_layout_arg();
   app.sync_look();
   app.ensure_layout();
+#ifdef ROLLTUI_SELFTEST
   { std::vector<Step> steps = scripted_keys(keys_spec, app.w, app.h); run_steps(app, steps); }
+#endif
   // THE DOUBLE BUFFER IS THE LIBRARY'S: two frames for the whole run, nothing owned inside
   // the loop, and `begin` calls `rolltui_frame_reset` — so this repaint lands INSIDE the
   // budget rather than beside it.

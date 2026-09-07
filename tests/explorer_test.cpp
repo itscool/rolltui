@@ -89,6 +89,24 @@ int main() {
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
   const std::string base = bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
 
+  // ---- 0a. THE PRODUCT BINARY CANNOT TEST ITSELF -------------------------------------------
+  // Additive, not compiled out: rolltui-explorer-selftest is this same source plus the script
+  // vocabulary, and the shipped binary simply does not contain it. Asserted on the ARTIFACT
+  // rather than on the source, because what ships is a binary and that is what the claim is
+  // about. TripleClick is a marker the vocabulary owns; a key NAME like PageDown would not
+  // discriminate, since the library's own key table carries those and both binaries link it.
+  {
+    int prc = 0;
+    const std::string product = std::string("'") + ROLLTUI_EXPLORER_PRODUCT_BIN + "'";
+    const std::string refused = run(product + " --frame 40x6 2>&1", prc);
+    check(has(refused, "usage:") && !has(refused, "--frame"),
+          "the shipped explorer refuses --frame and does not advertise it");
+    const std::string in_product = run("strings " + product + " | grep -cx TripleClick", prc);
+    const std::string in_selftest = run("strings " + bin + " | grep -cx TripleClick", prc);
+    check(in_product.substr(0, 1) == "0", "…and the script vocabulary is absent from the shipped binary [" + in_product.substr(0, 3) + "]");
+    check(in_selftest.substr(0, 1) != "0", "…while the self-test binary has it, so the marker discriminates");
+  }
+
   // ---- 0. it runs BARE, and a miss names every path it tried --------------------------------
   // The app keeps its screen in files rather than in its source, so with no --presets it has to
   // ask where its own files are. It used to build "/layouts/explorer.json" from an empty string

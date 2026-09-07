@@ -684,13 +684,16 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, std::string_view text, Roll
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-paint [--presets DIR] [--layout NAME|FILE] [--theme NAME] [--frame WxH]\n"
-               "                     [--present truecolor|256|16|mono] [--ambiguous-wide]\n"
+               "usage: rolltui-paint [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
+               "                     [--ambiguous-wide]\n"
+#ifdef ROLLTUI_SELFTEST
+               "                     [--frame WxH] [--present truecolor|256|16|mono]\n"
                "                     [--ramp ascii|blocks] [--ink #rrggbb] [--size N] [--shape square|round]\n"
                "                     [--stroke X,Y-X,Y] [--drag X,Y-X,Y] [--dot X,Y]\n"
                "                     --stroke presses, drags ONCE to the far end and releases;\n"
                "                     --drag sends the same drags with NO press\n"
                "                     tool flags and strokes are applied IN THE ORDER WRITTEN\n"
+#endif
                "\n");
   return 2;
 }
@@ -776,12 +779,14 @@ int main(int argc, char** argv) {
     if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
+    else if (a == "--ambiguous-wide") ambiguous = true;  // a fact about the terminal, not a test hook
+#ifdef ROLLTUI_SELFTEST
     else if (a == "--frame") frame_spec = next();
     else if (a == "--present") present_depth = next();
-    else if (a == "--ambiguous-wide") ambiguous = true;
     else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||
              a == "--shape" || a == "--dot")
       script.emplace_back(a, next());
+#endif
     else return usage();
   }
 
