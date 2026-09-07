@@ -235,11 +235,11 @@ int main() {
     check(rc2 == 0 && !frame.empty(), "rolltui-paint rendered the authored screen (rc " + std::to_string(rc2) + ")");
     check(has(frame, "easel sheet") && has(frame, "easel tools") && has(frame, "easel keys"),
           "…all three windows, titled as the author titled them");
-    // The canvas is a REAL widget: it received the press, every drag between the two
-    // points, and the release, and it kept the marks. 22 cells for a 21-step stroke.
-    // the default tool is the ascii ramp at level 4, so a stroke lays `=` rather than
-    // the single `#` the one-glyph brush used to.
-    check(has(frame, "===") && has(status_line(frame), "marks 22"),
+    // The canvas is a REAL widget: it received the press, the drag to the far point and the
+    // release, and it filled the cells between them itself. 22 cells for a 21-step stroke.
+    // One pass over a cell is the ascii ramp's light step, `:` — darkness in this app is a
+    // count of passes, so a first stroke is deliberately faint.
+    check(has(frame, ":::") && has(status_line(frame), "marks 22"),
           "…the canvas took the whole drag — press, drags and release — and painted it [" + status_line(frame) + "]");
     // The studio could not resolve `menu:tools` at all. The app it was authored for embeds
     // that file, so the window the designer placed fills with a palette they never saw.

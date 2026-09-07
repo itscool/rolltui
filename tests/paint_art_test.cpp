@@ -48,14 +48,23 @@ int count(const std::string& h, const std::string& n) {
   return c;
 }
 
-// One scene: water in two block shades, a shoreline, two hills and a sun. Every tool change is
-// a flag and the order is the order they were written, which is the whole of paint's script.
+// One scene: water in three block shades, a shoreline, two hills and a sun. Every tool change
+// is a flag and the order is the order they were written, which is the whole of paint's script.
+//
+// NOTHING HERE SETS A DARKNESS, because there is no longer a way to. Every shade in the picture
+// is a number of passes: the sea is built up in overlapping bands with a two-cell brush, the
+// hills are drawn twice, and the sun is seven clicks in one place with an eighth in its centre.
+// That is what the script looked like before, per shade, as a `--level` flag — the difference
+// is that a person painting now gets the same result from the same gesture.
 const char* kScene =
-    " --ramp blocks --ink '#2c4a70' --level 3 --size 1 --stroke 1,13-44,13 --stroke 1,14-44,14"
-    " --level 6 --stroke 1,15-44,15"
-    " --ink '#6f8fae' --level 9 --size 2 --stroke 4,11-40,11"
-    " --ramp ascii --ink '#e8d8a0' --level 9 --size 3 --dot 34,4"
-    " --ink '#7aa86a' --level 8 --size 2 --stroke 10,10-15,5 --stroke 15,5-20,10";
+    " --ramp blocks --ink '#2c4a70' --size 2"
+    " --stroke 1,12-44,12 --stroke 1,13-44,13"
+    " --stroke 1,14-44,14 --stroke 1,14-44,14 --stroke 1,15-44,15 --stroke 1,15-44,15"
+    " --ink '#6f8fae' --size 1 --stroke 4,11-40,11"
+    " --ramp ascii --ink '#e8d8a0' --size 3"
+    " --dot 34,4 --dot 34,4 --dot 34,4 --dot 34,4 --dot 34,4 --dot 34,4 --dot 34,4 --size 1 --dot 34,4"
+    " --ink '#7aa86a' --size 2 --stroke 10,10-15,5 --stroke 15,5-20,10"
+    " --stroke 10,10-15,5 --stroke 15,5-20,10";
 
 }  // namespace
 
@@ -73,9 +82,14 @@ int main() {
         "…and the ascii ramp's darkest steps are in the SAME picture: a cell carries its own ramp");
   check(count(art, "\xE2\x96\x92") > 30, "…the water is a body rather than a line (" +
                                              std::to_string(count(art, "\xE2\x96\x92")) + " cells)");
+  check(has(art, "\xE2\x96\x93"), "…and a third shade, from a band the brush crossed four times");
   // The tool panel is the app's menu FILE, and its typed fields render as fields.
-  check(has(art, "Level:") && has(art, "Ink:") && has(art, "Brush size:"),
+  check(has(art, "Ink:") && has(art, "Brush size:"),
         "the palette's TYPED fields (int with a range, colour) draw as fields — nothing in the tree drove them from a host before");
+  // AND THE FIELD THAT IS GONE. A darkness you set before you can make a mark is a number
+  // standing between a person and the picture; drawing over the same place is what a person
+  // already does when they want it darker. The palette is one field shorter for it.
+  check(!has(art, "Level:"), "…and the palette no longer asks for a shading LEVEL: darkness is a consequence of drawing");
 
   // ---- 2. a hand-picked RGB down-converts at every depth ------------------------------------
   const std::string tc = run(base + kScene + " --present truecolor 2>&1", rc);
@@ -93,13 +107,15 @@ int main() {
         "…and the picture SURVIVES mono, because the intensity ramp is what carries it");
 
   // ---- 3. the ambiguous-width probe ----------------------------------------------------------
-  const std::string blocks = base + " --ramp blocks --ink '#6f8fae' --level 9 --size 1 --stroke 2,3-20,3";
+  const std::string blocks = base + " --ramp blocks --ink '#6f8fae' --size 1" +
+                             " --stroke 2,3-20,3 --stroke 2,3-20,3 --stroke 2,3-20,3" +
+                             " --stroke 2,3-20,3 --stroke 2,3-20,3 --stroke 2,3-20,3";
   const std::string narrow = run(blocks + " 2>&1", rc);
   check(rc == 0 && has(narrow, "\xE2\x96\x88"), "on an ordinary terminal the block ramp draws blocks");
   const std::string wide = run(blocks + " --ambiguous-wide 2>&1", rc);
   check(rc == 0 && !has(wide, "\xE2\x96\x88"),
         "on a WIDE-AMBIGUOUS terminal the library refuses to cut a two-cell block into one cell");
-  check(has(wide, "@"),
+  check(has(wide, "#"),
         "…and paint falls back to the ascii step of the same darkness, which it learns from the CELLS RETURNED by put_text");
 
   // ---- 4. THE STROKE: what a still frame cannot show ---------------------------------------
@@ -112,26 +128,62 @@ int main() {
   // `--stroke` presses, drags ONCE to the far end and releases. `--drag` sends the same two
   // drags with no press. So the line below is the widget's own interpolation or it is absent,
   // and the difference between the two flags is the whole of the stroke.
-  const std::string pen = base + " --ramp ascii --ink '#d8dce2' --level 9 --size 1";
+  // `marks N` in the status line is the app's own count of painted cells, which is the property
+  // itself rather than a glyph that could also come from the palette's text.
+  const std::string pen = base + " --ramp ascii --ink '#d8dce2' --size 1";
   const std::string empty = run(pen + " 2>&1", rc);
-  check(rc == 0 && !has(empty, "@"), "an untouched sheet is empty");
+  check(rc == 0 && has(empty, "marks 0"), "an untouched sheet is empty");
 
   const std::string dragged = run(pen + " --drag 2,2-30,2 2>&1", rc);
   check(rc == 0 && dragged == empty,
         "a DRAG WITH NO PRESS paints nothing — the frame is byte-identical to the untouched sheet");
 
   const std::string line = run(pen + " --stroke 2,2-30,2 2>&1", rc);
-  check(rc == 0 && has(line, std::string(29, '@')),
+  check(rc == 0 && has(line, std::string(29, ':')) && has(line, "marks 29"),
         "…while a press-drag-release across 29 cells leaves a CONTINUOUS line, from two reported points");
 
   const std::string diag = run(pen + " --stroke 1,1-16,9 2>&1", rc);
-  check(rc == 0 && count(diag, "@") >= 16,
-        "…and a diagonal has a mark in every column it crosses (" + std::to_string(count(diag, "@")) + " of 16)");
+  check(rc == 0 && has(diag, "marks 16"),
+        "…and a diagonal marks every column it crosses, one cell per column and no gap");
 
   // A RELEASE REALLY CLOSES IT. Without this the flag would only prove that the FIRST drag of a
   // run is refused, not that a stroke ever ends: a leaked down flag paints the second row too.
   const std::string after = run(pen + " --stroke 2,2-30,2 --drag 2,5-30,5 2>&1", rc);
   check(rc == 0 && after == line, "a release ENDS the stroke: drags after it paint nothing");
+
+  // ---- 5. SHADING IS A CONSEQUENCE OF DRAWING ----------------------------------------------
+  // The step is per distinct cell ENTRY, never per event, and that distinction is the whole of
+  // "not too sensitive": a slow hand reports one cell a dozen times and a fast one reports it
+  // once, and both must leave the same picture. A stroke that crosses itself is the one gesture
+  // that shows the difference in a still frame.
+  const std::string once = run(pen + " --stroke 2,2-30,2 2>&1", rc);
+  check(rc == 0 && has(once, std::string(29, ':')), "one pass over a line is the ramp's LIGHT step");
+  const std::string twice = run(pen + " --stroke 2,2-30,2 --stroke 30,2-2,2 2>&1", rc);
+  check(rc == 0 && has(twice, std::string(29, '-')) && has(twice, "marks 29"),
+        "…a second pass over the SAME cells deepens each one step, and adds no new mark");
+
+  // A CROSS, drawn as one horizontal and one vertical stroke: every cell is one pass except the
+  // one they share, which is two. That single darker cell is the gradient, in a golden frame.
+  const std::string cross = run(pen + " --stroke 2,4-30,4 --stroke 16,1-16,9 2>&1", rc);
+  check(rc == 0 && has(cross, ":::-:::") && count(cross, "-") == 1,
+        "a stroke crossing another leaves exactly one deeper cell where they meet");
+
+  // AND THE SENSITIVITY, WHICH IS WHERE A WIDE BRUSH SHOWS IT. A three-cell brush covers every
+  // cell of its line three times as it passes over. Deepening on each of those is deepening per
+  // EVENT, and it draws a line with a dark core and pale edges — a picture of how the brush
+  // moved rather than of where it went. A cell still under the brush from the last stamp is not
+  // entered again, so the line is one darkness across.
+  const std::string fat = run(pen + " --size 3 --stroke 2,4-30,4 2>&1", rc);
+  check(rc == 0 && has(fat, "marks 93") && count(fat, "-") == 0 && count(fat, "=") == 0,
+        "a WIDE brush lays a line of ONE darkness: a cell the brush has not left is not re-entered");
+  check(rc == 0 && has(fat, std::string(31, ':')), "…and that one darkness is the light first pass, across its full width");
+
+  // A NEW PRESS IS ALWAYS A NEW ENTRY, including on ink the last stroke just laid. That is the
+  // only way to deepen, and it is deliberate: lifting and pressing again is the gesture.
+  const std::string slow = run(pen + " --stroke 2,2-8,2 --stroke 8,2-16,2 --stroke 16,2-30,2 2>&1", rc);
+  check(rc == 0 && count(slow, "-") == 2,
+        "a stroke reported in three pieces deepens only where a press LANDS on painted ink (" +
+            std::to_string(count(slow, "-")) + " cells)");
 
   return report("rolltui paint_art_test");
 }

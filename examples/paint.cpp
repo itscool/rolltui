@@ -84,8 +84,6 @@ constexpr const char* kToolsMenu = R"({
     { "id": "ramp", "label": "Shading", "kind": "choice",
       "items": [ { "id": "ascii", "label": "ascii   .:-=+*#%@" },
                  { "id": "blocks", "label": "blocks  \u2591\u2592\u2593\u2588" } ] },
-    { "id": "level", "label": "Level", "kind": "input", "type": "int",
-      "min": 0, "max": 9, "step": 1, "value": "4", "hint": "0 lightest, 9 darkest" },
     { "id": "ink", "label": "Ink", "kind": "input", "type": "color",
       "value": "#d8dce2", "hint": "#rrggbb, 0-255 or none" },
     { "id": "size", "label": "Brush size", "kind": "input", "type": "int",
@@ -121,15 +119,26 @@ constexpr Ramp kRamps[] = {
 // `RolltuiCell` is the library's own and is not a host's to build, so this is the parallel
 // structure the phase asked me to be plain about.
 struct Ink {
-  int ramp = 0;                  // WHICH ramp, per cell: a picture mixes them, so the cell has
-  int level = 4;                 // to carry it. Storing only the level made the last ramp chosen
-  RolltuiStyleColor color = RolltuiStyleColor::rgb(0xd8, 0xdc, 0xe2);  // repaint the whole sheet.
+  int ramp = 0;   // WHICH ramp, per cell: a picture mixes them, so the cell has to carry it.
+  int level = 0;  // Storing only the level made the last ramp chosen repaint the whole sheet.
+  RolltuiStyleColor color = RolltuiStyleColor::rgb(0xd8, 0xdc, 0xe2);
 };
+
+// HOW DARK A CELL GETS IS A CONSEQUENCE OF DRAWING, NOT A FIELD SOMEBODY SETS. A level in the
+// palette is a number you have to think about before you can make a mark; drawing over the same
+// place is what a person already does when they want it darker, in every medium there is.
+//
+// The step is per distinct cell ENTRY and never per event, which is the whole of "not too
+// sensitive": a slow drag reports the same cell many times and would max it out instantly,
+// while a fast one reports it once. Entry is a property of the picture, so both hands paint
+// the same. See `canvas_stamp`.
+constexpr int kFirstLevel = 2;  // one pass is visible, and light
+constexpr int kMaxLevel = 9;    // the ramp's darkest step
 
 struct Tool {
   int ambiguous = 0;  // the app's --ambiguous-wide, lent to the canvas (wall 8)
   int ramp = 0;
-  Ink ink;
+  RolltuiStyleColor color = RolltuiStyleColor::rgb(0xd8, 0xdc, 0xe2);
   int size = 1;
   // ROUND OR SQUARE, and it is here for the second reason an example's feature can be here:
   // it probes NOTHING about the API — no public function, no wall, no header growth — and it
@@ -185,6 +194,11 @@ struct Canvas {
   // filled rather than left.
   bool down = false;
   int last_x = 0, last_y = 0;
+  // WHERE THE BRUSH WAS FOR THE LAST STAMP, which is what makes a cell's darkening a function
+  // of the picture rather than of how fast the hand moved. A footprint is a pure function of
+  // its centre, so the previous one needs no set and no allocation to test against.
+  bool stamped = false;
+  int stamp_x = 0, stamp_y = 0;
 };
 
 void canvas_destroy(void* ctx) {
@@ -246,21 +260,51 @@ void canvas_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   }
 }
 
-// ONE FOOTPRINT, at one point in the canvas's own coordinates. A brush is a SIZE and a
-// SHAPE, so a stroke lays a footprint rather than one cell. The round mask is the ordinary
-// discrete disc: a cell is in when its centre is within the radius, which at these sizes is
-// the difference between a blunt end and a bevelled one.
+// THE BRUSH'S SHAPE, as one predicate. A brush is a SIZE and a SHAPE, so a stroke lays a
+// footprint rather than one cell; the round mask is the ordinary discrete disc, a cell being
+// in when its centre is within the radius, which at these sizes is the difference between a
+// blunt end and a bevelled one. It is a predicate rather than a loop because the stamp asks
+// it about the CURRENT centre and the entry test asks the same question about the previous
+// one — two callers, one shape, so a brush cannot be round going and square coming back.
+int in_footprint(const Tool& t, int cx, int cy, int x, int y) {
+  const int n = t.size < 1 ? 1 : (t.size > 5 ? 5 : t.size);
+  const int rad = n / 2;
+  const int dx = x - cx, dy = y - cy;
+  if (dx < -rad || dx > rad || dy < -rad || dy > rad) return 0;
+  if (n % 2 == 0 && (dx == -rad || dy == -rad)) return 0;  // an even brush grows right/down
+  if (t.round && rad > 0 && dx * dx + dy * dy > rad * rad) return 0;
+  return 1;
+}
+
+// ONE FOOTPRINT, at one point in the canvas's own coordinates — and the one place a cell's
+// darkness is decided.
+//
+// A CELL STILL UNDER THE BRUSH FROM THE LAST STAMP IS SKIPPED ENTIRELY. That is what makes
+// the step per ENTRY: dragging slowly across one cell reports it a dozen times and darkens it
+// once, dragging fast reports it once and darkens it once. Deepening per event would make the
+// picture a record of the hand's speed, which is the "too sensitive" this replaced.
+//
+// A cell with no ink starts light; every later entry moves it one step down the ramp until it
+// reaches the darkest. There is no way to go back up — an eraser would be a tool, and clearing
+// the sheet is the one the palette offers.
 void canvas_stamp(Canvas* c, int cx, int cy) {
   const int n = c->tool->size < 1 ? 1 : (c->tool->size > 5 ? 5 : c->tool->size);
   const int rad = n / 2;
   for (int dy = -rad; dy <= rad; ++dy)
     for (int dx = -rad; dx <= rad; ++dx) {
-      if (n % 2 == 0 && (dx == -rad || dy == -rad)) continue;  // an even brush grows right/down
-      if (c->tool->round && rad > 0 && dx * dx + dy * dy > rad * rad) continue;
-      Ink laid = c->tool->ink;
+      const int x = cx + dx, y = cy + dy;
+      if (!in_footprint(*c->tool, cx, cy, x, y)) continue;
+      if (c->stamped && in_footprint(*c->tool, c->stamp_x, c->stamp_y, x, y)) continue;
+      const auto it = c->pixels.find({x, y});
+      Ink laid;
       laid.ramp = c->tool->ramp;  // the cell remembers which ramp drew it
-      c->pixels[{cx + dx, cy + dy}] = laid;
+      laid.color = c->tool->color;
+      laid.level = it == c->pixels.end() ? kFirstLevel : std::min(it->second.level + 1, kMaxLevel);
+      c->pixels[{x, y}] = laid;
     }
+  c->stamped = true;  // AFTER the loop: the whole footprint is tested against the OLD centre
+  c->stamp_x = cx;
+  c->stamp_y = cy;
 }
 
 // THE SEGMENT FROM THE LAST POINT TO THIS ONE, which is what makes a fast drag a line instead
@@ -300,6 +344,7 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
       c->down = true;
       c->last_x = cx;
       c->last_y = cy;
+      c->stamped = false;  // a new stroke enters every cell it lands on, including ones it left
       canvas_stamp(c, cx, cy);
       return 1;
     case K::Drag:
@@ -423,10 +468,8 @@ struct App {
           App& a = *static_cast<App*>(ctx);
           const char* ramp = kRamps[a.tool.ramp % 2].name;
           rolltui_rows_add(out, "shading", 7, ramp, std::strlen(ramp));
-          const std::string lvl = std::to_string(a.tool.ink.level);
-          rolltui_rows_add(out, "level", 5, lvl.data(), lvl.size());
           char ink[ROLLTUI_COLOR_STRING_MAX];
-          const std::size_t n = rolltui_color_to_string(a.tool.ink.color, ink, sizeof ink);
+          const std::size_t n = rolltui_color_to_string(a.tool.color, ink, sizeof ink);
           rolltui_rows_add(out, "ink", 3, ink, n);
           const std::string brush = std::to_string(a.tool.size) + (a.tool.round ? " round" : " square");
           rolltui_rows_add(out, "brush", 5, brush.data(), brush.size());
@@ -532,9 +575,8 @@ struct App {
       }
       if (ev.kind == ROLLTUI_MENU_EVENT_INPUT && ev.value.n != 0) {
         const std::string v = str_of(ev.value);
-        if (view_of(ev.id) == "level") tool.ink.level = std::atoi(v.c_str());
         if (view_of(ev.id) == "size") tool.size = std::atoi(v.c_str());
-        if (view_of(ev.id) == "ink") rolltui_color_parse(v.data(), v.size(), &tool.ink.color);
+        if (view_of(ev.id) == "ink") rolltui_color_parse(v.data(), v.size(), &tool.color);
       }
       if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "clear" && canvas()) canvas()->pixels.clear();
       rolltui_menu_event_release(&ev);
@@ -552,14 +594,14 @@ struct App {
                          nullptr, 0);
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
       char inkstr[ROLLTUI_COLOR_STRING_MAX];
-      const std::size_t inkn = rolltui_color_to_string(tool.ink.color, inkstr, sizeof inkstr);
-      // COMPACT ON PURPOSE: the tool grew from one glyph to a ramp, a level, an ink and a size,
-      // and a status line that pushes the window REPORT off the right edge hides the one thing
-      // that must never be hidden. `ascii/4 #d8dce2 b1` says all four in a third of the width.
+      const std::size_t inkn = rolltui_color_to_string(tool.color, inkstr, sizeof inkstr);
+      // COMPACT ON PURPOSE: the tool grew from one glyph to a ramp, an ink and a brush, and a
+      // status line that pushes the window REPORT off the right edge hides the one thing that
+      // must never be hidden. `ascii #d8dce2 b1s` says all three in a quarter of the width.
       std::size_t lname_n = 0;
       const char* lname = rolltui_layout_name(layout, &lname_n);
       std::string status = " " + std::string(lname, lname_n) + "  " + std::to_string(w) + "x" + std::to_string(h) +
-                           "  " + kRamps[tool.ramp % 2].name + "/" + std::to_string(tool.ink.level) + " " +
+                           "  " + kRamps[tool.ramp % 2].name + " " +
                            std::string(inkstr, inkn) + " b" + std::to_string(tool.size) +
                            (tool.round ? "r" : "s") + "  marks " + std::to_string(marks()) + "  focus:" +
                            (focused ? std::string(rolltui_layout_node_id(focused, nullptr)) : std::string("-"));
@@ -623,7 +665,7 @@ int usage() {
   std::fprintf(stderr,
                "usage: rolltui-paint [--presets DIR] [--layout NAME|FILE] [--theme NAME] [--frame WxH]\n"
                "                     [--present truecolor|256|16|mono] [--ambiguous-wide]\n"
-               "                     [--ramp ascii|blocks] [--level 0-9] [--ink #rrggbb] [--size N]\n"
+               "                     [--ramp ascii|blocks] [--ink #rrggbb] [--size N] [--shape square|round]\n"
                "                     [--stroke X,Y-X,Y] [--drag X,Y-X,Y] [--dot X,Y]\n"
                "                     --stroke presses, drags ONCE to the far end and releases;\n"
                "                     --drag sends the same drags with NO press\n"
@@ -716,8 +758,8 @@ int main(int argc, char** argv) {
     else if (a == "--frame") frame_spec = next();
     else if (a == "--present") present_depth = next();
     else if (a == "--ambiguous-wide") ambiguous = true;
-    else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--level" || a == "--ink" ||
-             a == "--size" || a == "--shape" || a == "--dot")
+    else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||
+             a == "--shape" || a == "--dot")
       script.emplace_back(a, next());
     else return usage();
   }
@@ -783,10 +825,9 @@ int main(int argc, char** argv) {
     app.prepare();
     for (const auto& [flag, val] : script) {
       if (flag == "--ramp") app.tool.ramp = val == "blocks" ? 1 : 0;
-      else if (flag == "--level") app.tool.ink.level = std::atoi(val.c_str());
       else if (flag == "--size") app.tool.size = std::atoi(val.c_str());
       else if (flag == "--shape") app.tool.round = val == "round";
-      else if (flag == "--ink") rolltui_color_parse(val.data(), val.size(), &app.tool.ink.color);
+      else if (flag == "--ink") rolltui_color_parse(val.data(), val.size(), &app.tool.color);
       else if (flag == "--dot") {
         int x = 0, y = 0;
         if (std::sscanf(val.c_str(), "%d,%d", &x, &y) != 2) return usage();
