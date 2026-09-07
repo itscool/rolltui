@@ -34,9 +34,10 @@
 
 namespace rolltui::tools {
 
-// The `editor` scope: what a host that mounts the three editors (theme, layout, keys)
-// declares. undo/redo are handled by all three; the other three OPEN one, and so belong
-// to the host doing the mounting rather than to any editor.
+// The `editor` scope: what a host that mounts the FOUR editors (theme, layout, keys, menu)
+// declares. undo/redo are handled by all four; the other four OPEN one, and so belong
+// to the host doing the mounting rather than to any editor. The menu editor joined at Phase 27
+// m2 — a screen is four file types and the tool could author three.
 inline std::span<const RolltuiToolAction> editor_actions() {
   static const RolltuiToolAction t[] = {
       {"editor.undo", "undo the last committed change", "ctrl+z"},
@@ -44,6 +45,7 @@ inline std::span<const RolltuiToolAction> editor_actions() {
       {"editor.theme", "open the theme editor", "f4"},
       {"editor.layout", "open the layout editor", "f6"},
       {"editor.keys", "open the keys editor", "f7"},
+      {"editor.menu", "open the menu editor", "f8"},
   };
   return t;
 }

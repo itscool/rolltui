@@ -63,7 +63,6 @@ void write_file(const fs::path& p, const std::string& s) {
   std::ofstream out(p, std::ios::binary);
   out << s;
 }
-void put_str(void* ctx, const char* s, std::size_t len) { static_cast<std::string*>(ctx)->append(s, len); }
 
 // ---- the three domain descriptors are `rolltui_preset_domain(...)` throughout (see the header
 // note); the NULL-`parse_partial` guard this file once worked around locally is the library's

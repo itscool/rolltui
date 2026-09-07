@@ -58,20 +58,14 @@ static_assert(static_cast<unsigned char>(Role::background) == ROLLTUI_ROLE_DEFAU
 static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_PROMPT,
               "the C side's default input prompt role must be Role::prompt");
 
-// THE ROLE NAMES, FROM THE LIBRARY — not reproduced. This block used to be a verbatim copy
-// of `Style.hpp`'s table with the comment "reproduced", and it was the FIFTH copy of this
-// vocabulary in the tree. It also silently shadowed `rolltui::kRoleNames` in this whole
-// translation unit, which is how a check added below it could compare the C table against a
-// hand-copy and pass no matter what either side said (found 2026-09-05, by that check's own
-// control failing to fire).
-const std::array<const char*, kRoleCount>& role_name_table() {
-  static const std::array<const char*, kRoleCount> t = [] {
-    std::array<const char*, kRoleCount> a{};
-    for (std::size_t i = 0; i < kRoleCount; ++i) a[i] = rolltui_role_name(static_cast<unsigned char>(i), nullptr);
-    return a;
-  }();
-  return t;
-}
+// THE ROLE NAMES ARE READ FROM THE LIBRARY WHERE THEY ARE NEEDED (`rolltui_role_name`), and
+// this file holds no table of its own. It used to: a verbatim copy of `Style.hpp`'s table
+// under the comment "reproduced", the FIFTH copy of that vocabulary in the tree, which also
+// silently shadowed `rolltui::kRoleNames` for this whole translation unit — so a check added
+// below it compared the C table against a hand-copy and passed no matter what either side
+// said (found 2026-09-05, by that check's own control failing to fire). The accessor that
+// replaced the copy was itself orphaned once the checks called the C function directly, and
+// is gone; keep it that way — read the library, do not cache it here.
 
 // `rolltui::Color`/`rolltui::Style` (Style.hpp) were one-definition aliases over the same C
 // structs -- reproduced verbatim; there was never a second definition to convert away from.

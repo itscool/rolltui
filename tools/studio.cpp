@@ -201,11 +201,14 @@
 #include "tool_str.hpp"
 #include "keys_editor.hpp"
 #include "layout_editor.hpp"
+#include "menu_editor.hpp"
 #include "theme_editor.hpp"
 #include "tool_actions.hpp"
 
 using rolltui::tools::KeysEditor;
 using rolltui::tools::LayoutEditor;
+using rolltui::tools::MenuEditor;
+using rolltui::tools::MenuItem;
 using rolltui::tools::ThemeEditor;
 using rolltui::tools::builtin_layout;
 
@@ -226,8 +229,6 @@ long mtime_of(const std::string& path) {
   if (stat(path.c_str(), &st) != 0) return -1;
   return static_cast<long>(st.st_mtime);
 }
-
-void put_str(void* ctx, const char* s, std::size_t len) { static_cast<std::string*>(ctx)->append(s, len); }
 
 std::string color_to_string(RolltuiStyleColor c) {
   char buf[ROLLTUI_COLOR_STRING_MAX];
@@ -604,11 +605,12 @@ struct App {
   RolltuiLayout stacked_layout_ = builtin_layout(studio_ctx(), "stacked");  // cached: the shipped fallback screen
   // The theme editor (milestone 14) and the layout editor (milestone 16) share the
   // side popup; one is open at a time.
-  enum class EditorMode { None, Theme, Layout, Keys };
+  enum class EditorMode { None, Theme, Layout, Keys, Menu };
   EditorMode editor_mode = EditorMode::None;
   ThemeEditor teditor{ctx};
   LayoutEditor leditor{ctx};  // resolves kinds against this session
   KeysEditor keditor{ctx};
+  MenuEditor meditor{ctx};  // Phase 27 m2: the fourth file type
   bool editor_open = false;
   std::string pending_save;             // a save-as awaiting its overwrite confirmation
   std::string confirm_text;
@@ -1047,6 +1049,94 @@ struct App {
     { RolltuiLayer popup = editor_popup("keys editor"); rolltui_window_stack_push(stack, &popup); }
     sync_look();
   }
+  // The menus a `menu:` window could resolve, and the actions this binary knows — both HINTS.
+  void toggle_menu_editor() {
+    if (editor_mode == EditorMode::Menu) { close_editor(); return; }
+    close_editor();
+    meditor.set_menus(menu_names());
+    std::vector<std::string> actions;
+    for (std::size_t i = 0; i < rolltui_bindings_row_count(bindings); ++i) {
+      std::size_t n = 0;
+      const char* p = rolltui_bindings_row_at(bindings, i, &n);
+      actions.emplace_back(p, n);
+    }
+    meditor.set_actions(std::move(actions));
+    editor_open = true;
+    editor_mode = EditorMode::Menu;
+    { RolltuiLayer popup = editor_popup("menu editor"); rolltui_window_stack_push(stack, &popup); }
+    sync_look();
+  }
+  // A menu is the one screen file with no PRESET DOMAIN behind it — `menu:<name>` resolves
+  // against `<presets>/menus/<name>.json`, the host's embedded table and the library's shipped
+  // ones (rolltui.h), and none of those is a store. So this writes the file itself, which is
+  // what the layout save-as did before it had a store to go through. There is no working copy
+  // to keep in step and no origin to record, so there is nothing a store would have added.
+  void menu_outcome(const MenuEditor::Outcome& o) {
+    using K = MenuEditor::Outcome::Kind;
+    switch (o.kind) {
+      case K::None: case K::Changed: case K::Committed: break;
+      case K::SaveAs: {
+        if (o.value.empty()) { hint = "a menu file needs a name"; break; }
+        std::size_t dir_len = 0;
+        const char* dir_p = rolltui_windows_dir(windows, &dir_len);
+        const std::string dir(dir_p ? dir_p : "", dir_len);
+        if (dir.empty()) { hint = "no preset directory to write a menu into"; break; }
+        std::error_code ec;
+        std::filesystem::create_directories(dir + "/menus", ec);
+        const std::string path = dir + "/menus/" + o.value + ".json";
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        if (!out) { hint = "cannot write " + path; break; }
+        out << meditor.to_json() << "\n";
+        out.close();
+        hint = "saved menu file " + path;
+        meditor.set_menus(menu_names());  // it resolves now, so the Load list and the hints say so
+        break;
+      }
+      case K::LoadMenu: {
+        const std::string text = menu_json(o.value);
+        if (text.empty()) { hint = "no menu file '" + o.value + "'"; break; }
+        const char* json = text.data();
+        const std::size_t json_len = text.size();
+        MenuItem root;
+        RolltuiMenuLoadReport rep{};
+        if (rolltui_menu_parse_json(json, json_len, &root, &rep)) {
+          meditor.load(root);
+          hint = rolltui_menu_load_report_clean(&rep) ? "loaded menu " + o.value
+                                                      : "loaded '" + o.value + "' with problems";
+        } else {
+          hint = "cannot read menu '" + o.value + "'";
+        }
+        rolltui_menu_load_report_release(&rep);
+        break;
+      }
+      case K::ResetLoaded:
+        ask("Reset the menu to what was loaded? (y/n)", [this] {
+          meditor.replace(meditor.committed().clone());
+          hint = "reset";
+        });
+        break;
+      case K::Closed:
+        close_editor();
+        break;
+    }
+  }
+  void draw_menu_editor(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
+    RolltuiRect r{};
+    rolltui_content_rect(&rn, &r);
+    RolltuiRect m = r;
+    m.h = r.h > 3 ? r.h - 3 : 0;
+    RolltuiMenuOptions mo{};
+    mo.ambiguous_wide = ambiguous ? 1 : 0;
+    rolltui_menu_set_options_struct(meditor.menu(), &mo);
+    rolltui_menu_layout(meditor.menu(), m);
+    if (m.h > 0) draw_raw_menu(meditor.menu(), f, rn.focused != 0);
+    int y = r.y + m.h;
+    const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
+    if (const std::string line = meditor.selection_line(); !line.empty() && y < r.y + r.h)
+      put_text(f, r.x, y++, line, label, r.w);
+    if (y < r.y + r.h) { meditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
+    if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
+  }
   void keys_outcome(const KeysEditor::Outcome& o) {
     using K = KeysEditor::Outcome::Kind;
     switch (o.kind) {
@@ -1166,6 +1256,23 @@ struct App {
     for (std::size_t i = 0; i < rolltui_kMenuCount; ++i) add(std::string(rolltui_kMenus[i].name));
     std::sort(out.begin(), out.end());
     return out;
+  }
+  // One menu file's TEXT, through the same three rungs `menu:<name>` itself resolves through
+  // and in the same order (rolltui.h): the preset directory, this binary's embedded menus, the
+  // library's shipped ones. `menu_names()` beside this lists exactly these three.
+  std::string menu_json(const std::string& name) const {
+    std::size_t dir_len = 0;
+    const char* dir_p = rolltui_windows_dir(windows, &dir_len);
+    if (const std::string_view d(dir_p ? dir_p : "", dir_len); !d.empty()) {
+      bool ok = false;
+      const std::string text = read_file(std::string(d) + "/menus/" + name + ".json", ok);
+      if (ok) return text;
+    }
+    std::size_t n = 0;
+    if (const char* p = rolltui_windows_host_menu(windows, name.data(), name.size(), &n); p) return std::string(p, n);
+    for (std::size_t i = 0; i < rolltui_kMenuCount; ++i)
+      if (name == rolltui_kMenus[i].name) return std::string(rolltui_kMenus[i].text);
+    return {};
   }
   void layout_outcome(const LayoutEditor::Outcome& o) {
     using K = LayoutEditor::Outcome::Kind;
@@ -1381,9 +1488,26 @@ struct App {
     if (y < r.y + r.h) { leditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
   }
+  // ONE dispatch from `editor_mode` to the open editor, because there were FOUR hand-written
+  // copies of this if-chain (the widget plugin's `handle`, the paste branch, the Escape
+  // branch, and `draw_editor`) and the menu editor was added to three of them. The one it
+  // was missing from is the one every ordinary key flows through, so F8 opened the menu
+  // editor, drew it correctly, and typed into the THEME editor — a silent wrong branch of
+  // exactly the shape CLAUDE.md's "explicit over implicit" paragraph describes. A fifth
+  // editor now cannot be half-wired: there is one place to add it, and drawing is the other.
+  void route_editor_event(const RolltuiEvent* e) {
+    switch (editor_mode) {
+      case EditorMode::Layout: layout_outcome(leditor.handle(e, bindings)); return;
+      case EditorMode::Keys:   keys_outcome(keditor.handle(e, bindings)); return;
+      case EditorMode::Menu:   menu_outcome(meditor.handle(e, bindings)); return;
+      case EditorMode::Theme:  editor_outcome(teditor.handle(e, bindings)); return;
+      case EditorMode::None:   return;
+    }
+  }
   void draw_editor(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
     if (editor_mode == EditorMode::Layout) { draw_layout_editor(rn, f); return; }
     if (editor_mode == EditorMode::Keys) { draw_keys_editor(rn, f); return; }
+    if (editor_mode == EditorMode::Menu) { draw_menu_editor(rn, f); return; }
     RolltuiRect r = content_rect(rn);
     if (r.w <= 0 || r.h <= 0) return;
     const int box = std::min(6, r.h);
@@ -1493,7 +1617,31 @@ struct App {
     h = nh;
     apply_layout();
   }
+  // THE TOOL WHOSE JOB IS DESIGNING AN APP FROM NOTHING MUST ITSELF START FROM NOTHING
+  // (Phase 27 m3). Until 2026-09-07 `main` returned usage() when no document was given, a
+  // leftover from when this was a fixture previewer — so the first step of "build an app from
+  // nothing" was handing the designer a file, and the phase's claim could not honestly be a
+  // test. A document argument is still supported and is still how real content is previewed;
+  // it is no longer mandatory.
+  //
+  // THE BARE SCREEN IS THE SHIPPED `default` LAYOUT WITH A PLACEHOLDER DOCUMENT, so what you
+  // see with no argument is the screen you see with one and only the content differs.
+  // (Rejected: a minimal screen of its own. The layout editor would then be editing against a
+  // screen you only ever see when you pass no argument — "what you see bare is not what you
+  // get", which is the hidden second path this repo keeps removing.) The placeholder is not
+  // empty on purpose: a blank transcript is indistinguishable from a broken one.
+  static const char* placeholder() {
+    return "# rolltui designer\n\n"
+           "Nothing is open. This is the shipped `default` screen with a placeholder in it.\n\n"
+           "- **F4** theme  ·  **F6** layout  ·  **F7** keys  ·  **F8** menu\n"
+           "- **F2** the menu  ·  **F1** help\n\n"
+           "Pass a markdown file to preview real content instead of this.\n";
+  }
   bool load_fixture() {
+    if (fixture_path.empty()) {
+      doc = parse_fixture(placeholder());
+      return true;
+    }
     bool ok;
     std::string text = read_file(fixture_path, ok);
     if (!ok) return false;
@@ -1658,7 +1806,11 @@ struct App {
       status.clear();
       status += ' ';
       if (store) { store->label(theme_label_str); status += view_of(theme_label_str); } else status += resolved_name;
-      status += editor_mode == EditorMode::Theme ? " [theme editor]" : editor_mode == EditorMode::Layout ? " [layout editor]" : editor_mode == EditorMode::Keys ? " [keys editor]" : "";
+      status += editor_mode == EditorMode::Theme    ? " [theme editor]"
+              : editor_mode == EditorMode::Layout ? " [layout editor]"
+              : editor_mode == EditorMode::Keys   ? " [keys editor]"
+              : editor_mode == EditorMode::Menu   ? " [menu editor]"
+                                                  : "";
       status += "  ";
       status += view_of(effective_layout().name);
       if (lstore && lstore->modified()) status += " (modified)";
@@ -1754,6 +1906,7 @@ struct App {
       if (ed == "editor.theme") { toggle_editor(); return true; }
       if (ed == "editor.layout") { toggle_layout_editor(); return true; }
       if (ed == "editor.keys") { toggle_keys_editor(); return true; }
+      if (ed == "editor.menu") { toggle_menu_editor(); return true; }
       std::size_t draft_n = 0;
       rolltui_input_text(editor(), &draft_n);
       if (app_a == "app.help" && !(k.key == ROLLTUI_KEY_CHAR && !k.ctrl && !k.alt && draft_n != 0)) { toggle_help(); return true; }
@@ -1766,9 +1919,7 @@ struct App {
     if (ev.kind == ROLLTUI_EVENT_PASTE) {
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
       if (rolltui_window_stack_has_popup(stack, "editor", 6) && focused && focused->id == "editor") {
-        if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(&ev, bindings));
-        else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(&ev, bindings));
-        else editor_outcome(teditor.handle(&ev, bindings));
+        route_editor_event(&ev);
         return true;
       }
       input_event("prompt", ev);  // a paste goes to the prompt whatever has focus
@@ -1783,9 +1934,8 @@ struct App {
         const std::string_view sa = action_for(ev.key, "stack");
         if (sa == "stack.close_popup" || sa == "stack.focus_next" || sa == "stack.focus_prev") {
           hint.clear();
-          if (editor_mode == EditorMode::Layout) layout_outcome(leditor.handle(&ev, bindings));
-          else if (editor_mode == EditorMode::Keys) keys_outcome(keditor.handle(&ev, bindings));
-          else if (sa == "stack.close_popup") editor_outcome(teditor.handle(&ev, bindings));
+          // The theme editor is the one that ignores a focus move; the tree editors read it.
+          if (editor_mode != EditorMode::Theme || sa == "stack.close_popup") route_editor_event(&ev);
           return true;
         }
       }
@@ -1916,9 +2066,7 @@ void editor_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) { st
 int editor_handle(void* ctx, const RolltuiEvent* e) {
   App* app = static_cast<App*>(ctx);
   app->hint.clear();
-  if (app->editor_mode == App::EditorMode::Layout) app->layout_outcome(app->leditor.handle(e, app->bindings));
-  else if (app->editor_mode == App::EditorMode::Keys) app->keys_outcome(app->keditor.handle(e, app->bindings));
-  else app->editor_outcome(app->teditor.handle(e, app->bindings));
+  app->route_editor_event(e);
   return 1;
 }
 // Registered FORBIDDEN and never scrollable/sized on its own — the editor draws its own
@@ -2184,7 +2332,7 @@ void print_frame_plain(const RolltuiFrame* f) {
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-studio --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
-               "       rolltui-studio FIXTURE.md [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
+               "       rolltui-studio [FIXTURE.md] [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--ambiguous-wide] [--frame WxH | --frame-sgr WxH]\n"
                "       [--dump-role ROLE] [--tick MS] [--dump-tick] [--code-fold FOLD,CAP]\n"
                "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n");
@@ -2410,7 +2558,7 @@ int main(int argc, char** argv) {
     }
     return rc;
   }
-  if (app.fixture_path.empty()) return usage();
+  // No document is a legitimate start: load_fixture() puts the placeholder up. See its comment.
   if (!app.load_fixture()) { std::fprintf(stderr, "cannot read %s\n", app.fixture_path.c_str()); return 1; }
   // The preset store: the studio is a rolltui host, with the editor's privilege
   // (it writes what ships). Under --frame nothing autosaves.

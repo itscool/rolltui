@@ -17,8 +17,8 @@
 │   Alt-C            copy the selection again                                  │
 │   Escape           clear the selection                                       │
 │ app:                                                                         │
-│   Ctrl-J      put the kettle on                                              │
-│   Ctrl-T      find in the transcript                                         █
-│ editor:                                                           ▼ 17 more  │
+│   Ctrl-J      put the kettle on                                              █
+│   Ctrl-T      find in the transcript                                         │
+│ editor:                                                           ▼ 18 more  │
 └──────────────────────────────────────────────────────────────────────────────┘
  default-dark  kettle  80x24  line 34/41  follow  truecolor  focus:kettle_keys

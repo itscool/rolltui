@@ -13,7 +13,7 @@
 │ └─────────────│   Delete                  erase after the    │               │
 │               │ caret (or the selection)                     │               │
 │ Here is the fu│   Ctrl-W, Alt-Backspace   kill the word      │               │
-│               │ before the caret                  ▼ 89 more  │               │
+│               │ before the caret                  ▼ 90 more  │               │
 │ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ █                              │

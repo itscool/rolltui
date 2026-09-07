@@ -223,7 +223,6 @@ std::string json_dump_text(const RolltuiJsonValue* v, int indent) {
   rolltui_str_free(&out);
   return s;
 }
-int json_erase_v(RolltuiJsonValue* v, std::string_view key) { return rolltui_json_object_erase(v, key.data(), key.size()); }
 
 }  // namespace
 
