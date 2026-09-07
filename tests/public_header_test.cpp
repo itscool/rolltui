@@ -815,11 +815,36 @@ int main() {
      * bounds — a host is handed a frame by the swap and a widget a resolved node's rect). */
     /* PHASE 25 m2: load 104 → 106 (`rolltui_context_new`, `rolltui_windows_context`),
      * release 5 → 6 (`rolltui_context_free`). A session is the first thing a host makes. */
-    check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 106 && rt["HOST_BIND"] == 81 && rt["HOST_RUN"] == 75 &&
-              rt["HOST_RELEASE"] == 6 && rt["WIDGET"] == 25,
-          "the roles are the recorded shape — vocab 33, host load 106 / bind 81 / run 75 / release 6, widget 25 (got " +
-              std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_BIND"]) + "/" +
-              std::to_string(rt["HOST_RUN"]) + "/" + std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["WIDGET"]) + ")");
+    /* PHASE 25 m4 — THE RE-CUT. load 106 → 26. It had become the stage anything touching a FILE
+     * landed in, which is what a catch-all looks like from the inside: 106 of 326 functions
+     * under one word, and a reader asking "what do I need to start?" was handed a third of the
+     * API. Two subsystems filed there were not loading, and each got the stage it always was —
+     * the preset store SPANS load and run (a host opens it at startup; `//theme` at runtime goes
+     * through it), and the app profile is TOOL INTEROP a host author never calls.
+     * THE OTHER TWO LARGE STAGES WERE CHECKED THE SAME WAY AND ARE NOT CATCH-ALLS: HOST_BIND's
+     * families are menu 21, bindings 12, input 10, context 10, windows 9 — every one a thing a
+     * host SUPPLIES; HOST_RUN's are windows 15, window 13, transcript 13, terminal 9, swap 6 —
+     * every one a thing a host DRIVES per frame. Neither holds a subsystem that is doing
+     * something else, which is the test HOST_LOAD failed. */
+    check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 26 && rt["HOST_SETTINGS"] == 45 &&
+              rt["HOST_BIND"] == 81 && rt["HOST_RUN"] == 75 && rt["HOST_RELEASE"] == 6 &&
+              rt["TOOL_INTEROP"] == 35 && rt["WIDGET"] == 25,
+          "the roles are the recorded shape — vocab 33, host load 26 / settings 45 / bind 81 / run 75 / "
+          "release 6, tool interop 35, widget 25 (got " +
+              std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
+              "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +
+              std::to_string(rt["HOST_RELEASE"]) + "/" + std::to_string(rt["TOOL_INTEROP"]) + "/" +
+              std::to_string(rt["WIDGET"]) + ")");
+    /* NO RATIO CHECK SITS HERE, AND THAT IS A MEASUREMENT RATHER THAN AN OMISSION. The obvious
+     * guard against a stage becoming a catch-all again is "no stage is more than a fraction of
+     * the surface", so it was written — and then aimed at the defect this milestone had just
+     * fixed. A THIRD would have passed the old shape (106 of 326 is 32.5%), so it would have
+     * caught nothing; a QUARTER would have caught it and now passes by two functions (81 of
+     * 326, and 324 <= 326), so it would fail on the next ordinary addition for a reason that is
+     * not this one. Neither is an instrument. The RECORDED SHAPE above is the ratchet: it fails
+     * on any move at all, which is stronger than either threshold and never for the wrong
+     * reason — the cost is that a human reads the diff, which is the right place for a
+     * judgement about whether a stage still means one thing. */
     check(part[0].size() > 20 && part[1].size() > 200 && part[2].size() > 15,
           "…and the three parts are non-empty as read from the file (" + std::to_string(part[0].size()) + "/" +
               std::to_string(part[1].size()) + "/" + std::to_string(part[2].size()) + " declarations)");
