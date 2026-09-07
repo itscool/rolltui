@@ -26,9 +26,10 @@
 // cannot yet provide, at end of init (`rolltui_gaps_collect`).
 //
 // `--frame WxH` prints one frame and exits (the studio's convention, and what the tests
-// read); `--stroke x,y-x,y` synthesises a press, the drags between the two points and a
-// release, so a test can prove the canvas received them without a terminal. Everything
-// else is the ordinary interactive loop.
+// read); `--stroke x,y-x,y` synthesises a press, ONE drag to the far end and a release, and
+// `--drag x,y-x,y` synthesises the same drags with no press at all — so a test can prove both
+// what the canvas draws from a sparse stroke and what it refuses to draw without one, neither
+// of which a still frame can show. Everything else is the ordinary interactive loop.
 //
 // ============================================================================================
 // THIS FILE CALLS THE C, and the shape it uses is the one every other host copies rather
@@ -50,6 +51,7 @@
 //
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -174,6 +176,15 @@ struct Canvas {
   // make or hold one. So a paint app keeps a parallel picture and turns it into cells at draw
   // time — stated in the wall log rather than left implicit.
   std::map<std::pair<int, int>, Ink> pixels;
+  // THE STROKE, which is the state this widget was missing and the reason two separate
+  // complaints were one defect. A canvas that paints on any `Drag` paints on a drag whose
+  // `Press` it never saw, and nothing ever turns that off because there is nothing to turn
+  // off. A canvas that paints ONE footprint per event draws a dotted line, because terminal
+  // motion arrives per cell at best and skips outright under speed. A button that is down and
+  // a point it was last at fixes both: no press, no paint; and the gap between two reports is
+  // filled rather than left.
+  bool down = false;
+  int last_x = 0, last_y = 0;
 };
 
 void canvas_destroy(void* ctx) {
@@ -235,9 +246,46 @@ void canvas_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   }
 }
 
-// Press, every Drag, and the Release — the drags past the window's own edge included,
-// because the press captured the pointer. Nothing here clamps to the window: a stroke
-// that leaves the canvas keeps its shape and simply is not drawn until it comes back.
+// ONE FOOTPRINT, at one point in the canvas's own coordinates. A brush is a SIZE and a
+// SHAPE, so a stroke lays a footprint rather than one cell. The round mask is the ordinary
+// discrete disc: a cell is in when its centre is within the radius, which at these sizes is
+// the difference between a blunt end and a bevelled one.
+void canvas_stamp(Canvas* c, int cx, int cy) {
+  const int n = c->tool->size < 1 ? 1 : (c->tool->size > 5 ? 5 : c->tool->size);
+  const int rad = n / 2;
+  for (int dy = -rad; dy <= rad; ++dy)
+    for (int dx = -rad; dx <= rad; ++dx) {
+      if (n % 2 == 0 && (dx == -rad || dy == -rad)) continue;  // an even brush grows right/down
+      if (c->tool->round && rad > 0 && dx * dx + dy * dy > rad * rad) continue;
+      Ink laid = c->tool->ink;
+      laid.ramp = c->tool->ramp;  // the cell remembers which ramp drew it
+      c->pixels[{cx + dx, cy + dy}] = laid;
+    }
+}
+
+// THE SEGMENT FROM THE LAST POINT TO THIS ONE, which is what makes a fast drag a line instead
+// of a row of dots. A terminal reports motion at best once per cell entered and drops reports
+// under speed, so the two points a widget is handed are the ends of a gap it has to fill
+// itself — there is no event for the cells in between and there never will be.
+//
+// One stamp per step along the longer axis, so the walk is dense in cells rather than in
+// distance: a 40-wide, 2-tall segment gets 40 stamps and no cell is skipped.
+void canvas_stroke_to(Canvas* c, int cx, int cy) {
+  const int dx = cx - c->last_x, dy = cy - c->last_y;
+  const int steps = std::max(std::abs(dx), std::abs(dy));
+  for (int st = 1; st <= steps; ++st) canvas_stamp(c, c->last_x + dx * st / steps, c->last_y + dy * st / steps);
+  c->last_x = cx;
+  c->last_y = cy;
+}
+
+// A PRESS OPENS THE STROKE, A DRAG CONTINUES IT ONLY WHILE IT IS OPEN, A RELEASE CLOSES IT.
+// The drags past the window's own edge are included, because the press captured the pointer.
+// Nothing here clamps to the window: a stroke that leaves the canvas keeps its shape and
+// simply is not drawn until it comes back.
+//
+// A `Drag` with no stroke open is NOT this widget's event and is refused as one — the press
+// landed somewhere else, or was never reported at all. Returning 0 rather than painting is
+// what makes a pointer moving across the sheet leave it alone.
 int canvas_handle(void* ctx, const RolltuiEvent* e) {
   Canvas* c = static_cast<Canvas*>(ctx);
   if (e->kind != ROLLTUI_EVENT_MOUSE) return 0;
@@ -246,25 +294,26 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
   // host is C++ and can name them, but a pure-C consumer has no word for any of the eight.
   // The fix is the shape `ROLLTUI_ROLE_LIST` uses one level up.
   using K = RolltuiMouseEvent::Kind;
-  const K k = e->mouse.kind;
-  if (k != K::Press && k != K::Drag && k != K::Release) return 0;
-  if (k != K::Release) {
-    // A brush is a SIZE and a SHAPE, so a drag lays a footprint rather than one cell. The
-    // round mask is the ordinary discrete disc: a cell is in when its centre is within the
-    // radius, which at these sizes is the difference between a blunt end and a bevelled one.
-    const int cx = e->mouse.x - c->inner.x, cy = e->mouse.y - c->inner.y;
-    const int n = c->tool->size < 1 ? 1 : (c->tool->size > 5 ? 5 : c->tool->size);
-    const int rad = n / 2;
-    for (int dy = -rad; dy <= rad; ++dy)
-      for (int dx = -rad; dx <= rad; ++dx) {
-        if (n % 2 == 0 && (dx == -rad || dy == -rad)) continue;  // an even brush grows right/down
-        if (c->tool->round && rad > 0 && dx * dx + dy * dy > rad * rad) continue;
-        Ink laid = c->tool->ink;
-        laid.ramp = c->tool->ramp;  // the cell remembers which ramp drew it
-        c->pixels[{cx + dx, cy + dy}] = laid;
-      }
+  const int cx = e->mouse.x - c->inner.x, cy = e->mouse.y - c->inner.y;
+  switch (e->mouse.kind) {
+    case K::Press:
+      c->down = true;
+      c->last_x = cx;
+      c->last_y = cy;
+      canvas_stamp(c, cx, cy);
+      return 1;
+    case K::Drag:
+      if (!c->down) return 0;
+      canvas_stroke_to(c, cx, cy);
+      return 1;
+    case K::Release:
+      if (!c->down) return 0;
+      canvas_stroke_to(c, cx, cy);  // the release carries a position, and it is part of the line
+      c->down = false;
+      return 1;
+    default:
+      return 0;
   }
-  return 1;
 }
 
 // The plugin is a BORROW of a table the implementor keeps — one `static const` per kind, the
@@ -575,7 +624,9 @@ int usage() {
                "usage: rolltui-paint [--presets DIR] [--layout NAME|FILE] [--theme NAME] [--frame WxH]\n"
                "                     [--present truecolor|256|16|mono] [--ambiguous-wide]\n"
                "                     [--ramp ascii|blocks] [--level 0-9] [--ink #rrggbb] [--size N]\n"
-               "                     [--stroke X,Y-X,Y] [--dot X,Y]\n"
+               "                     [--stroke X,Y-X,Y] [--drag X,Y-X,Y] [--dot X,Y]\n"
+               "                     --stroke presses, drags ONCE to the far end and releases;\n"
+               "                     --drag sends the same drags with NO press\n"
                "                     tool flags and strokes are applied IN THE ORDER WRITTEN\n"
                "\n");
   return 2;
@@ -665,8 +716,8 @@ int main(int argc, char** argv) {
     else if (a == "--frame") frame_spec = next();
     else if (a == "--present") present_depth = next();
     else if (a == "--ambiguous-wide") ambiguous = true;
-    else if (a == "--stroke" || a == "--ramp" || a == "--level" || a == "--ink" || a == "--size" ||
-             a == "--shape" || a == "--dot")
+    else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--level" || a == "--ink" ||
+             a == "--size" || a == "--shape" || a == "--dot")
       script.emplace_back(a, next());
     else return usage();
   }
@@ -744,12 +795,23 @@ int main(int argc, char** argv) {
       } else {
         int x1, y1, x2, y2;
         if (std::sscanf(val.c_str(), "%d,%d-%d,%d", &x1, &y1, &x2, &y2) != 4) return usage();
-        app.handle(mouse_event(RolltuiMouseEvent::Kind::Press, x1, y1));
-        const int steps = std::max(std::abs(x2 - x1), std::abs(y2 - y1));
-        for (int st = 1; st <= steps; ++st)
-          app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x1 + (x2 - x1) * st / std::max(steps, 1),
-                                 y1 + (y2 - y1) * st / std::max(steps, 1)));
-        app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x2, y2));
+        // THREE EVENTS FOR THE WHOLE STROKE, AND THAT IS THE POINT. This used to synthesise a
+        // drag at every cell along the line, which meant the script drew the line and the
+        // widget only stamped — so a golden frame proved nothing about what happens when a
+        // terminal reports two points and nothing between them, which is the ordinary case.
+        // The far end is now ONE drag, so the line in the frame is the widget's interpolation
+        // or it is not there at all.
+        if (flag == "--drag") {
+          // A drag whose press this app never saw — a pointer crossing the sheet with the
+          // button up, or a press that landed in another window. Nothing may be painted.
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x1, y1));
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x2, y2));
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x2, y2));
+        } else {
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Press, x1, y1));
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x2, y2));
+          app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x2, y2));
+        }
       }
     }
     // Even the one-shot path goes through the swap: it is the only place a frame is made, so

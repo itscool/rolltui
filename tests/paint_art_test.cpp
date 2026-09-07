@@ -102,5 +102,36 @@ int main() {
   check(has(wide, "@"),
         "…and paint falls back to the ascii step of the same darkness, which it learns from the CELLS RETURNED by put_text");
 
+  // ---- 4. THE STROKE: what a still frame cannot show ---------------------------------------
+  // Two properties, and neither is visible in a golden frame — which is why they were both
+  // wrong while every frame in this suite was green. A canvas with no stroke state paints on
+  // any drag, including one whose press it never saw; and a canvas that paints one footprint
+  // per event draws a dotted line, because a terminal reports motion once per cell at best and
+  // drops reports outright under speed.
+  //
+  // `--stroke` presses, drags ONCE to the far end and releases. `--drag` sends the same two
+  // drags with no press. So the line below is the widget's own interpolation or it is absent,
+  // and the difference between the two flags is the whole of the stroke.
+  const std::string pen = base + " --ramp ascii --ink '#d8dce2' --level 9 --size 1";
+  const std::string empty = run(pen + " 2>&1", rc);
+  check(rc == 0 && !has(empty, "@"), "an untouched sheet is empty");
+
+  const std::string dragged = run(pen + " --drag 2,2-30,2 2>&1", rc);
+  check(rc == 0 && dragged == empty,
+        "a DRAG WITH NO PRESS paints nothing — the frame is byte-identical to the untouched sheet");
+
+  const std::string line = run(pen + " --stroke 2,2-30,2 2>&1", rc);
+  check(rc == 0 && has(line, std::string(29, '@')),
+        "…while a press-drag-release across 29 cells leaves a CONTINUOUS line, from two reported points");
+
+  const std::string diag = run(pen + " --stroke 1,1-16,9 2>&1", rc);
+  check(rc == 0 && count(diag, "@") >= 16,
+        "…and a diagonal has a mark in every column it crosses (" + std::to_string(count(diag, "@")) + " of 16)");
+
+  // A RELEASE REALLY CLOSES IT. Without this the flag would only prove that the FIRST drag of a
+  // run is refused, not that a stroke ever ends: a leaked down flag paints the second row too.
+  const std::string after = run(pen + " --stroke 2,2-30,2 --drag 2,5-30,5 2>&1", rc);
+  check(rc == 0 && after == line, "a release ENDS the stroke: drags after it paint nothing");
+
   return report("rolltui paint_art_test");
 }
