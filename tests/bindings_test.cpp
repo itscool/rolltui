@@ -5,9 +5,9 @@
 // several widgets; a conflict inside a scope is reported and the first binding wins;
 // the Enter rule refuses a file that moves Enter and restores it; bind() moves a chord
 // off a conflicting action and says so; to_json round-trips; help_lines renders the
-// live table. Phase 10 m4: the app scope leaves the library's table — a layout
+// live table. The app scope is NOT in the library's table — a layout
 // declares it, a file's chords for an undeclared action are kept and inert, and
-// declaring makes them live. Phase 11 m1: the library's own TOOLS' scopes leave it
+// declaring makes them live. The library's own TOOLS' scopes are not in it
 // too — one declare() takes the layout's actions and the mounted tool's, a tool's
 // suggested chord fills a gap and never overrides, and a file naming an
 // unmounted tool's action still loads clean and keeps its row.
@@ -37,9 +37,9 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
-#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_keys.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -103,10 +103,9 @@ std::string chord_display(const RolltuiChord& k) {
 }
 
 // ---- the library's 59 actions, READ FROM THE C rather than copied ----------------------
-// This file used to carry a verbatim duplicate of the whole table. It moved into
-// `c/rolltui_library_actions.c` on 2026-09-04 precisely because four consumers had each
-// grown one — the vocabulary a "written down twice drifts" rule was protecting had become
-// quintuple. Now there is one table and this reads it.
+// A duplicate of the table here would be one more copy of a vocabulary that four consumers
+// had each already grown independently. There is ONE table, in
+// `c/rolltui_library_actions.c`, and this reads it.
 struct ActionInfo {
   std::string_view name, description;  // BORROWS into the C's static literals
 };
@@ -543,7 +542,7 @@ int main() {
     check(scope_of("input.submit") == "input" && scope_of("app.help") == "app", "scope_of");
     rolltui_bindings_free(b);
   }
-  // ---- Phase 10 m4: the app scope is a LAYOUT's, not the library's ----
+  // ---- the app scope is a LAYOUT's, not the library's ----
   {
     bool any_app = false;
     for (const ActionInfo& a : library_actions()) any_app |= scope_of(a.name) == "app";
@@ -579,7 +578,7 @@ int main() {
     check(help_lines(b, "app").size() == 1 && help_lines(b, "app")[0].find("F1, ?") == 0,
           "help renders an action known only because a layout declared it [" + (help_lines(b, "app").empty() ? "" : help_lines(b, "app")[0]) + "]");
 
-    // m6: declare() is AUTHORITATIVE, not additive — the actions of the screen you are on,
+    // declare() is AUTHORITATIVE, not additive — the actions of the screen you are on,
     // not of every screen you have been on. Found by the files-only proof: a runtime layout
     // switch left the previous layout's five app actions live under a layout declaring one.
     bindings_declare(b, {{"app.zoom", "zoom in"}});
@@ -608,7 +607,7 @@ int main() {
     rolltui_bindings_free(d2);
     rolltui_bindings_free(b);
   }
-  // ---- Phase 11 m1: a TOOL's scope is not the library's ----------------------------
+  // ---- a TOOL's scope is not the library's -----------------------------------------
   // library_actions() closes over the WIDGET scopes only. `editor.*` and `studio.*`
   // are the library's own tools' — one application's, not every host's — so whoever
   // MOUNTS a tool declares them, and a host that mounts none advertises none.
@@ -629,7 +628,7 @@ int main() {
     check(shipped && stray.empty(), "the shipped bindings file binds the library's widgets and the shipped screen's app.* and nothing else —" + (stray.empty() ? " none" : stray));
     rolltui_bindings_free(shipped);
 
-    // A PHASE 10 BINDINGS FILE still loads clean and keeps its rows. This is the mercy
+    // AN OLDER BINDINGS FILE still loads clean and keeps its rows. This is the mercy
     // the whole split depends on, and which side of the table a scope sits on is what
     // decides it: a typo in a LIBRARY scope is an unknown action, while `studio.quit`
     // — now in nobody's closed set — is kept, inert, until something declares it.
@@ -691,7 +690,7 @@ int main() {
           "…and UNmounting the tool makes its actions inert again, chords kept: nothing else can advertise them");
     rolltui_bindings_free(p);
   }
-  // ---- Phase 12 m3: a chord this terminal cannot deliver is REFUSED, not bound to
+  // ---- a chord this terminal cannot deliver is REFUSED, not bound to
   // silence. The MODEL (which chord, under which protocol, and why) is measured against
   // the encodings in deliverability_test; what belongs here is the LOADER's contract —
   // that the refusal is a named problem of its own kind, that the row survives it, and
@@ -726,7 +725,7 @@ int main() {
     rolltui_bindings_free(shipped);
 
     // The mercy rung may not become an undeliverability refusal by accident: another
-    // screen's action is kept (m1) under a protocol that refuses one of the chords in the
+    // screen's action is kept under a protocol that refuses one of the chords in the
     // same file.
     BindingsLoadReport mrep;
     RolltuiBindings* m = bindings_from_json(

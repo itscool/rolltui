@@ -30,10 +30,8 @@
  *      not rolltui; printing is how a test speaks, and `mkdtemp`/`rmdir` are how section 4b
  *      gets a directory of its own for a preset store and proves what the store left in it.
  *      It does NOT include `rolltui/tests/rolltui_test.hpp` — that harness is C++ (it is built
- *      out of `std::string`), so the fifteen lines below are this file's own. When Phase 16 m1
- *      extracts the shared testing module, its control-point core is C by design and this file
- *      is one of its consumers; the harness here is deliberately the smallest thing that can
- *      count, not a third copy of anything.
+ *      out of `std::string`), so the fifteen lines below are this file's own — deliberately
+ *      the smallest thing that can count, not a third copy of anything.
  *
  *   3. **THE GAUGE IS PROVED ARMED BEFORE THE ZERO IS BELIEVED.** `live_bytes == 0` after
  *      `rolltui_shutdown()` is the assertion this file exists to make, and a counter that is
@@ -57,9 +55,8 @@ which is precisely the padding this file exists to run without."
 
 /* ---- the harness: fifteen lines, and it fails on zero assertions ----------------------------
  * The same rule roll's `tests/test_util.hpp` has and `rolltui/tests/rolltui_test.hpp` does not
- * (measured 2026-09-04, and it is the second mechanism): a suite that ran NOTHING
- * must not read as success. It is three lines here, so it is here now rather than after m2 —
- * a file whose whole subject is a check that never fired should not ship without it. */
+ * a suite that ran NOTHING must not read as success. It is three lines, and a file whose
+ * whole subject is a check that never fired should not ship without it. */
 static int g_pass = 0;
 static int g_fail = 0;
 
@@ -221,8 +218,8 @@ int main(void) {
     check(text != NULL && text_len != 0, "the shipped `default` layout's bytes are reachable from C");
     memset(&rep, 0, sizeof rep);
     check(defaults != NULL && defaults_n != 0, "the shipped screen's own actions are reachable from C");
-    /* PHASE 23: one call, and the layout comes back OWNED. It used to be four — a carrier to
-     * init, the load, an unpack and a release — written identically by all three examples. */
+    /* ONE call, and the layout comes back OWNED. A carrier to init, a load, an unpack and a
+     * release is four calls every consumer writes identically. */
     app.layout = rolltui_load_layout_text(text != NULL ? text : "", text_len, defaults, defaults_n,
                                           rolltui_layout_default_hooks(), &rep);
     check(app.layout != NULL, "it loads, and the loader hands back an OWNED layout");
@@ -321,11 +318,10 @@ int main(void) {
   }
 
   /* ---- 3e. TWO CONTEXTS, AND THEY SHARE NOTHING ------------------------------ *
-   * The user's parenthesis for `RolltuiContext` was *"a real single rolltui session hopefully
-   * proving nothing is global"*, and until this phase it was FALSE: the widget-kind registry was
-   * four file-scope statics, so two apps in one process shared one table and could not have been
-   * told apart. **This is the assertion that says they can.** It is written from C on purpose —
-   * the same reason 3d is: no C++ special member can absorb the answer.
+   * A `RolltuiContext` is a real single rolltui session, and nothing in the library is global.
+   * With the widget-kind registry as file-scope statics, two apps in one process share one
+   * table and cannot be told apart. **This is the assertion that says they can.** It is written
+   * from C on purpose, for the same reason 3d is: no C++ special member can absorb the answer.
    *
    * WHAT IT DOES NOT ASSERT, and the header says why: not `live_bytes == 0` PER context. The
    * allocator counters are one process-wide atomic sum (contract point 6), so the zero is taken
@@ -358,10 +354,10 @@ int main(void) {
   }
 
   /* ---- 3f. WHAT THE SPLIT ACTUALLY BUYS -----------------------------------------------------
-   * A session is CONFIGURED ONCE and every screen it runs sees that configuration. Before m3
-   * the same calls were made against a `RolltuiWindows`, so a second screen in one program was
-   * a second copy of the same setup — and a kind's NAME lived in the context while its FACTORY
-   * lived on one of those screens, which is one identity with two owners. */
+   * A session is CONFIGURED ONCE and every screen it runs sees that configuration. Making the
+   * same calls against a `RolltuiWindows` instead makes a second screen a second copy of the
+   * setup, and splits a kind's NAME (in the context) from its FACTORY (on one screen), which is
+   * one identity with two owners. */
   {
     RolltuiContext* c = rolltui_context_new();
     RolltuiWindows* w1;
@@ -453,12 +449,11 @@ int main(void) {
   }
 
   /* ---- 4b. A PRESET STORE, OPENED FROM C ------------------------------------ *
-   * THE EVIDENCE THIS MILESTONE HAD NONE OF. Section 1 reaches the shipped theme through
-   * `rolltui_theme_builtin_fill` and the embedded bytes — a different rung of the same domain
-   * — and the plan m3 recorded that this file therefore said NOTHING about the thing
-   * m3 is about: a `RolltuiPresetStore`, the stateful handle roll and the studio each wrap in
-   * an adapter with twelve identical method names. A control that exists but does not reach
-   * its guarantee is indistinguishable from one that does, so this section opens one.
+   * A CONTROL THAT EXISTS BUT DOES NOT REACH ITS GUARANTEE IS INDISTINGUISHABLE FROM ONE THAT
+   * DOES. Section 1 reaches the shipped theme through `rolltui_theme_builtin_fill` and the
+   * embedded bytes, which is a different rung of the same domain — so it says nothing about a
+   * `RolltuiPresetStore`, the stateful handle roll and the studio each wrap in an adapter with
+   * twelve identical method names. This section opens one.
    *
    * What it does is what a HOST does, in the order a host does it, with no C++ anywhere in
    * the chain: take the three domains; open a store on a directory with nothing in it; start
@@ -486,7 +481,7 @@ int main(void) {
    * C++ host still wraps is the conversion of a borrow or a caller-filled buffer into an owning
    * `std::string`, which this file needs none of — and neither does C++, since `RolltuiStr` is
    * the C++ type already. That residue is a host DEFAULT, judged per call site: on an event a
-   * choice, on a frame an allocation (the plan m3 has the count). */
+   * choice, on a frame an allocation. */
   {
     char dir[512];
     size_t dir_len = 0;
@@ -756,8 +751,8 @@ int main(void) {
   rolltui_effect_map_free(app.effects);
 
   rolltui_shutdown();
-  /* Since Phase 18 m3 this zero also covers the three preset domains' parsed caches, which
-   * section 4b populated and never released: they are the library's, and the library did. */
+  /* This zero also covers the three preset domains' parsed caches, which section 4b populated
+   * and never released: they are the library's, and the library releases them. */
   {
     const size_t b = live_bytes();
     const size_t n = live_blocks();

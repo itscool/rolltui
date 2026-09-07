@@ -20,10 +20,10 @@
 //     in the studio, by a person who never had to be told what this app can build — and the
 //     word for that screen appears in no source file, which `files_only_test`'s grep asserts.
 //
-// PHASE 26 RETIRED `--profile`. It published what a layout may name inside this app so a
-// designer could be limited to it, which is the app bounding the design. The direction is
-// one-way now: a designer names what a screen needs and the app REPORTS what it cannot yet
-// provide, at end of init (`rolltui_gaps_collect`).
+// THIS APP PUBLISHES NOTHING ABOUT ITSELF, and that is the design rather than an omission.
+// A file saying what a layout may name inside this app is the app bounding the design. The
+// direction is one-way: a designer names what a screen needs, and the app REPORTS what it
+// cannot yet provide, at end of init (`rolltui_gaps_collect`).
 //
 // `--frame WxH` prints one frame and exits (the studio's convention, and what the tests
 // read); `--stroke x,y-x,y` synthesises a press, the drags between the two points and a
@@ -31,25 +31,22 @@
 // else is the ordinary interactive loop.
 //
 // ============================================================================================
-// THIS FILE CALLS THE C, AND IT IS THE FIRST HOST TO — so what it holds is the
-// answer the other five copy rather than each invent. Three decisions, all forced by the
-// plan's own measurements rather than chosen here:
+// THIS FILE CALLS THE C, and the shape it uses is the one every other host copies rather
+// than each inventing. Three decisions, each forced by a measurement rather than chosen:
 //
 //   1. **NO PER-FRAME FRAME AT ALL.** `rolltui_swap` owns both frames for the whole run and
 //      lends the back one per repaint. `Frame prev; bool have_prev;` — which all three hosts
-//      had written identically — is gone, and with it the ONE hot RAII site a host had
-//      (m4's measurement). This is why the swap could not be a bolt-on: `rolltui::Frame` had
-//      no borrowing constructor, so adopting it IS the draw path's C transition.
+//      had written identically — is gone, and with it the ONE hot RAII site a host had. A
+//      frame type with no borrowing constructor cannot be swapped in underneath: adopting
+//      the double buffer IS the draw path's transition, not a bolt-on to it.
 //   2. **APP-LIFETIME HANDLES ARE PLAIN MEMBERS RELEASED IN ONE DESTRUCTOR.** Not a
 //      `Handle<T, New, Free>` template — that is the wrapper `rolltui.h` rule 5 forbids
 //      three hosts from each writing. `App` owning its own resources is ordinary C++ and is
 //      ONE place; a missed release leaks once and `rolltui_shutdown`'s `live_bytes == 0` is
-//      what catches it (m4: app lifetime is "the easy 90% and it needs no machinery").
-//   3. **NO JSON TYPE ANYWHERE.** `--profile` used to be `json::dump(app_profile_to_json(p))`
-//      — the cleanest evidence in that phase that `json::Value` was leaking through the C++
-//      surface, since paint depended on the parser only because a profile came back as a
-//      tree. The dump took TEXT after Phase 17, and Phase 26 retired the flag entirely; the
-//      dependency is gone twice over.
+//      what catches it. App lifetime is the easy 90% and it needs no machinery.
+//   3. **NO JSON TYPE ANYWHERE.** A host that only wants to WRITE a file should never end up
+//      depending on the parser, which is what happens the moment a library hands something
+//      back as a tree instead of as text.
 //
 #include <unistd.h>
 
@@ -71,14 +68,15 @@
 namespace {
 
 // The tool palette. A MENU FILE the app carries in its own binary — the middle of Phase
-// 10 m3's three rungs — so a user can shadow it with menus/tools.json. A DESIGNER working on
-// a screen for this app sees `menu:tools` as a labelled placeholder, the same honest answer it
-// already gives for a foreign widget kind: the tool is not this app and cannot build one.
-// the palette is the app's own FILE, and every tool a person picks now comes out of
-// it — the ramp, the ink, the brush size and its shape. Two of them are the menu's TYPED input
-// fields (`"kind": "input"`, `"type": "int"` with a range and `"type": "color"`), which NOTHING
-// in this tree drove from a host before: they were built in Phase 10 and only the editors used
-// them. What that cost is wall 7 in the plan.
+// the middle of the three menu rungs — so a user can shadow it with menus/tools.json. A
+// DESIGNER working on a screen for this app sees `menu:tools` as a labelled placeholder, the
+// same honest answer it already gives for a foreign widget kind: the tool is not this app and
+// cannot build one.
+//
+// Every tool a person picks comes out of this file — the ramp, the ink, the brush size and its
+// shape. Two of them are the menu's TYPED input fields (`"kind": "input"`, `"type": "int"` with
+// a range and `"type": "color"`), driven from a HOST rather than from an editor, which is what
+// this example is for.
 constexpr const char* kToolsMenu = R"({
   "id": "root", "label": "tools", "items": [
     { "id": "ramp", "label": "Shading", "kind": "choice",
@@ -244,9 +242,9 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
   Canvas* c = static_cast<Canvas*>(ctx);
   if (e->kind != ROLLTUI_EVENT_MOUSE) return 0;
   // `RolltuiMouseEvent::Kind` is spelled per language (rolltui_keys.h): the scoped enum in
-  // C++, eight bare bytes plus a comment in C. Worth recording for m4 rather than fixing
-  // here — this host is C++ and names them, but a pure-C consumer has no word for any of the
-  // eight, which is the shape `ROLLTUI_ROLE_LIST` fixed one level up.
+  // C++, eight bare bytes plus a comment in C. A KNOWN LIMIT rather than a fixed one — this
+  // host is C++ and can name them, but a pure-C consumer has no word for any of the eight.
+  // The fix is the shape `ROLLTUI_ROLE_LIST` uses one level up.
   using K = RolltuiMouseEvent::Kind;
   const K k = e->mouse.kind;
   if (k != K::Press && k != K::Drag && k != K::Release) return 0;
@@ -325,15 +323,15 @@ struct App {
   int w = 80, h = 24;
   Tool tool;
   std::string note;
-  // m6: the clock effects are applied at — 0 under --frame, so a frame dump stays a pure
+  // The clock effects are applied at — 0 under --frame, so a frame dump stays a pure
   // function of state; the real one in the event loop.
   std::uint64_t effect_ms = 0;
 
   App() {
     layout = rolltui_layout_new();
     // The eight built-in kinds and the five vocabularies they draw with. A bare
-    // `rolltui_windows_new(ctx)` has neither (m1c's recorded gap, closed in m2a) — this is the
-    // one line that makes a pure-C window table usable, and every host calls it.
+    // `rolltui_windows_new(ctx)` has neither — this is the one line that makes a pure-C
+    // window table usable, and every host calls it.
     rolltui_context_set_library_defaults(ctx);
   }
   App(const App&) = delete;
@@ -520,9 +518,9 @@ struct App {
       rolltui_frame_put_text(f, draw_scratch, 0, h - 1, status.data(), status.size(), style(ROLLTUI_ROLE_VALUE), w, 0,
                              0);
     }
-    // Phase 12 m6, in the THIRD host too — one line, and it is the same line roll and the
-    // studio have. A paint app marks nothing today, so this frame is unchanged; the point
-    // is that a `canvas` that DID mark a span would move here with no library change.
+    // EFFECTS ARE ONE LINE, and it is the same line roll and the studio have. A paint app
+    // marks nothing today, so this frame is unchanged; the point is that a `canvas` that DID
+    // mark a span would move here with no library change.
     if (rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       RolltuiEffectReport rep{};
       rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, effect_ms, 0, &rep, nullptr, nullptr);
@@ -790,7 +788,7 @@ int main(int argc, char** argv) {
   app.w = rolltui_terminal_width(term);
   app.h = rolltui_terminal_height(term);
 
-  // THE DOUBLE BUFFER IS THE LIBRARY'S (Phase 17 m4, adopted here in m3, its first caller).
+  // THE DOUBLE BUFFER IS THE LIBRARY'S.
   // What this replaces in all three hosts: `Frame prev; bool have_prev; … Frame f =
   // render(); write(render_diff(have_prev ? &prev : nullptr, f)); prev = std::move(f);`.
   // Two frames for the whole run, nothing owned inside the loop, and `begin` calls

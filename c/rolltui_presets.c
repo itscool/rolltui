@@ -241,11 +241,11 @@ int rolltui_preset_valid_name(const char* name, size_t len) {
   return 1;
 }
 
-/* ---- the library's own three descriptors (`rolltui_preset_domain`, Phase 18 m3) -------------
- * A SESSION'S SINCE PHASE 25 m2, and this one HAD to move rather than merely could: the Layout
- * descriptor holds `rolltui_layout_shipped_default_actions()`'s pointer, and that cache is
- * per-context now, so a process-wide descriptor would outlive the storage it borrows the moment
- * one session was freed. That is contract point 4 stated as a defect instead of a rule.
+/* ---- the library's own three descriptors (`rolltui_preset_domain`) --------------------------
+ * A SESSION'S, and this one HAD to be rather than merely could: the Layout descriptor holds
+ * `rolltui_layout_shipped_default_actions()`'s pointer, and that cache is per-context, so a
+ * process-wide descriptor would outlive the storage it borrows the moment one session was
+ * freed. That is the context contract's point 4 stated as a defect instead of as a rule.
  *
  * The three are owned together because they are configured together and released together; the
  * config the three `*_preset_domain_init` calls used to leave in file-scope statics is here for
@@ -564,8 +564,8 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
    * pure-C Layout or Bindings store loaded a user-saved preset by name. Nothing caught it
    * because `PresetStore<D>`'s C++ descriptor always installs a real lambda in that slot even
    * when the wrapped `D::parse_partial` only ever returns nullopt — so the C++ path could not
-   * reach the branch, and until this milestone there was no other path. Found 2026-09-05 by
-   * converting `presets_test`, which is the only way any of these has been found. */
+   * reach the branch at all. A path only one language can take is a path only that language's
+   * consumers can find a defect in. */
   v = s->d->parse_partial ? s->d->parse_partial(s->d, text.p, text.len, s->working, report) : NULL;
   if (v) {
     Buf prefix = {NULL, 0, 0};
@@ -889,8 +889,8 @@ int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t
     /* ALWAYS persists, unlike load/set_working/edit — on purpose, and asserted. A save-as is an
      * explicit write: the working copy records its new origin so the next start knows it, and
      * the studio's --frame mode (which suppresses EDIT autosaves) relies on exactly that
-     * (`studio_golden_test`: "a manual save writes even under --frame"). A `persist` parameter
-     * was added and removed on 2026-09-06: no caller wanted 0. */
+     * (`studio_golden_test`: "a manual save writes even under --frame"). There is deliberately
+     * no `persist` parameter: no caller wants 0. */
     touch_locked(s, 1);
   }
   buf_free(&path);
@@ -1194,9 +1194,8 @@ static void theme_domain_shipped_at(size_t i, const char** name, size_t* nlen, c
   *tlen = strlen(*text);
 }
 
-/* A NULL REPORT IS LEGAL AT THE DESCRIPTOR AND MEANS "DO NOT TELL ME WHY" — added
- * 2026-09-05, when the first test ever to pass one crashed here. Every other out-param in
- * this library is optional (`rolltui_mem_stats`: "Any pointer may be NULL"), and a C caller
+/* A NULL REPORT IS LEGAL AT THE DESCRIPTOR AND MEANS "DO NOT TELL ME WHY". Every other
+ * out-param in this library is optional (`rolltui_mem_stats`: "Any pointer may be NULL"), and a C caller
  * that only wants the value has no reason to build a report to throw away.
  *
  * IT IS GUARDED HERE, AT THE TWO WRAPPERS, AND NOT INSIDE THE PARSE FUNCTIONS. The first
@@ -1771,7 +1770,7 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out,
   out->report = &kBindingsPresetReportFns;
 }
 
-/* ---- the library's own three domains (Phase 18 m3; the case is at the header) ------------ */
+/* ---- the library's own three domains (the case is at the header) ------------------------- */
 RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id) {
   const size_t i = (size_t)id;
   RolltuiPresetDomains* p;
@@ -1999,8 +1998,8 @@ void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, 
   }
   if (!(s->d->kind_len == 5 && memcmp(s->d->kind, "theme", 5) == 0)) return; /* only Theme has non-identity settings */
   {
-    /* Read in place, under the lock. Until 2026-09-06 this CLONED the whole working theme — a
-     * JSON tree — to read one short string, then freed it: a copy that existed for no reason. */
+    /* Read in place, under the lock. Cloning the working theme — a JSON tree — to read one
+     * short string and then freeing it is a copy that exists for no reason. */
     const RolltuiThemePresetValue* w;
     pthread_mutex_lock((pthread_mutex_t*)&s->mu);
     w = (const RolltuiThemePresetValue*)s->working;

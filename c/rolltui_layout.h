@@ -4,42 +4,35 @@
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_layout.h — PLACEMENT, COMPOSITION, THE STACK AND THE LOADER (Phase 15 m5,
- * the loader and every English sentence added ).
+ * rolltui/c/rolltui_layout.h — PLACEMENT, COMPOSITION, THE STACK AND THE LOADER.
  *
  * The algorithm half of the layout module: what a Dim resolves to, how a Row divides its
- * width, which borders join, which window has focus and where an event goes, and — since
- * Phase 17 m2 — how a layout FILE turns into that tree and back. Every rule is stated in
- * `rolltui/Layout.hpp` and asserted in `rolltui/tests/layout_test.cpp`; none of it is
- * repeated here. The DATA it walks is `rolltui_layout_tree.h`, which is C unconditionally: m5
- * built `-DROLLTUI_C` as a two-implementation rollback flag, and CMakeLists.txt's own note
- * records that flag as SPENT as of 2026-09-04 — `LayoutCpp.cpp` (this file's one-time C++
- * counterpart) is deleted along with the other fifteen `*Cpp.cpp` files, and this is now the
- * only implementation, not one side of a flag.
+ * width, which borders join, which window has focus, where an event goes, and how a layout
+ * FILE turns into that tree and back. Every rule is asserted in
+ * `rolltui/tests/layout_test.cpp`. The DATA it walks is `rolltui_layout_tree.h`.
  *
  * ---- THE LIFETIME THIS FILE MAKES EXPLICIT --------------------------------------------------
  *
- * **`WindowStack` owns its layers.** In C++ that was `std::vector<Layer> layers_{Layer{}}`,
- * and the ownership was three separate accidents: the vector deep-copied a whole tree on
- * `set_base`, `push(Layer)` took one BY VALUE so a popup's tree was copied twice on the way
- * in, and a `Layer&` handed out by `base()` dangled the moment a popup pushed. Here the
- * stack is an opaque handle that owns an array of layers it MOVES into place, `push` takes
- * a layer and leaves the caller's empty, and `base()` is a call rather than a reference kept
- * across a mutation.
+ * **`WindowStack` owns its layers**, and it is an OPAQUE HANDLE owning an array it MOVES into
+ * place: `push` takes a layer and leaves the caller's empty, and `base()` is a call rather
+ * than a reference kept across a mutation. A `std::vector<Layer>` here makes the ownership
+ * three separate accidents instead — the vector deep-copies a whole tree on `set_base`,
+ * `push(Layer)` by value copies a popup's tree twice on the way in, and a `Layer&` handed out
+ * by `base()` dangles the moment a popup pushes.
  *
  * ---- THE BOUNDARY'S RULES -------------------------
  *
  *   1. **THE CALLER OWNS EVERY BUFFER**, including working memory: `rolltui_compose_layer`
  *      needs two screen-sized byte maps and takes a SCRATCH handle rather than keeping a
- *      `thread_local` of its own, which is CLAUDE.md's strategy 3 as amended on 2026-09-04.
+ *      `thread_local` of its own, which is CLAUDE.md's CALLER-FILLED strategy.
  *   2. **NOTHING IS RETURNED BY VALUE** except plain scalars and the two POD geometry
  *      structs that are one definition in both languages.
  *   3. **NO `std::function` CROSSES.** A resolve EMITS THROUGH A SINK and a compose calls a
- *      slot renderer through a function pointer and a `void*` — the shape m4 fixed for the
- *      highlighting seam, and for the same reason: the caller decides where the nodes go.
+ *      slot renderer through a function pointer and a `void*`, the same shape the
+ *      highlighting seam uses and for the same reason: the caller decides where the nodes go.
  *   4. **THIS FILE NAMES NO ROLE AND NO ACTION.** The three roles a border needs and the
- *      three stack actions are HANDED IN as bytes and as strings, the m2 rule at
- *      `rolltui_diff.h` and the m3 rule at `rolltui_bindings.h`'s Enter rule. The C knows
+ *      three stack actions are HANDED IN as bytes and as strings, the rule stated at
+ *      `rolltui_diff.h` and again at `rolltui_bindings.h`'s Enter rule. The C knows
  *      "the focused window's border uses this role" and none of the words.
  *
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------------
@@ -206,7 +199,7 @@ void rolltui_action_list_copy(RolltuiActionList* to, const RolltuiActionList* fr
 
 RolltuiLayer* rolltui_window_stack_base(RolltuiWindowStack* s);
 
-/* ---- MOVED HERE BY PHASE 23: the loader's own carrier and the value lifecycle ---------------
+/* ---- the loader's own carrier and the value lifecycle --------------------------------------
  * `rolltui/rolltui.h` publishes `rolltui_load_layout_text` returning an OWNED `RolltuiLayout*`
  * and `rolltui_layout_new/_free/_clone`. What is below is how the library builds one: the
  * carrier the parser fills, and the by-value init/release/copy the opaque handle wraps. A test
@@ -217,7 +210,7 @@ void rolltui_layout_copy(RolltuiLayout* to, const RolltuiLayout* from);
 void rolltui_loaded_layout_init(RolltuiLoadedLayout* l);
 void rolltui_loaded_layout_release(RolltuiLoadedLayout* l);
 void rolltui_loaded_layout_to_layout(RolltuiLoadedLayout* loaded, RolltuiLayout* out);
-/* The pre-Phase-23 loader, still the implementation: fills a carrier the caller supplies. */
+/* The carrier-filling loader, which the owning one above is written in terms of. */
 int rolltui_load_layout_text_into(const char* text, size_t len, RolltuiLoadedLayout* out,
                                   const RolltuiLayoutAction* default_actions, size_t default_actions_n,
                                   const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report);

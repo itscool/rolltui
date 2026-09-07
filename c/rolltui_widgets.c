@@ -144,9 +144,10 @@ typedef struct WindowSlot {
  * is the definition of a session's rather than a screen's — so it is owned by the CONTEXT and a
  * `RolltuiWindows` borrows it.
  *
- * THE FACTORY HALF OF RUNG 2 IS WHY THIS COULD NOT WAIT. m2 moved a host kind's NAME and source
- * rule into the context and left its FACTORY here, so one registration was owned by two things —
- * the "TWO SPELLINGS of one identity" shape CLAUDE.md names, created by a milestone boundary.
+ * THE FACTORY HALF OF RUNG 2 LIVES WITH THE OTHER HALF. A host kind's NAME, its source rule and
+ * its FACTORY are one registration; splitting them across the context and this file makes one
+ * registration owned by two things, which is the "TWO SPELLINGS of one identity" shape CLAUDE.md
+ * names.
  *
  * LIFETIME: every widget in `by_content` borrows from here, and `rolltui_windows_free` runs
  * before `rolltui_context_free` because a context must outlive the windows made against it
@@ -236,7 +237,7 @@ struct RolltuiWindows {
 
   /* ---- what a host BOUND, by name -------------------------------------------------------- */
   RolltuiMap documents;  /* name -> BORROWED doc pointer, opaque to C; never freed by this table */
-  /* …and the OWNED half (Phase 17 m3, from `rolltui::Windows::owned_documents_`): name ->
+  /* …and the OWNED half: name ->
    * RolltuiDocument*, OWNED. A sample a tool binds from an app profile has no live document to
    * point at, so this table keeps one; `documents` above then carries the borrow of it, which is
    * why the two maps are separate rather than one map with an ownership flag. */
@@ -304,7 +305,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
   rolltui_str_free(&w->bar_drag);
   rolltui_mem_free(w->nodes);
   free_binding_ctx(w->highlight_ctx, w->highlight_free_ctx);
-  /* the host-binding surface (m6): `documents` is BORROWS only, nothing to free per entry —
+  /* the host-binding surface: `documents` is BORROWS only, nothing to free per entry —
    * but `owned_documents` holds the samples those borrows may point INTO, so it is released
    * after it rather than before. */
   rolltui_map_release(&w->documents);
@@ -332,7 +333,7 @@ void rolltui_windows_free(RolltuiWindows* w) {
     rolltui_mem_free(b);
   }
   rolltui_map_release(&w->notes);
-  /* The typed widgets (m1c), AFTER `by_content` above: every widget ctx BORROWS one of these,
+  /* The typed widgets, AFTER `by_content` above: every widget ctx BORROWS one of these,
    * so the borrowers have to be gone before the owners are. */
   for (i = 0; i < rolltui_map_count(&w->inputs); ++i)
     rolltui_input_free((RolltuiInput*)rolltui_map_value_at(&w->inputs, i));
@@ -440,7 +441,7 @@ const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* wind
   return rolltui_str_get(&s->content, out_len);
 }
 
-/* ---- THE TYPED WIDGETS, OWNED HERE (Phase 17 m1c; the header states why) --------------------
+/* ---- THE TYPED WIDGETS, OWNED HERE (the header states why) ----------------------------------
  *
  * One object per SOURCE, created on demand and kept until `w` is freed — the same rule the
  * widget table itself follows, and the reason a host driving `input:prompt` and the window
@@ -704,7 +705,7 @@ const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i,
   return rolltui_map_key_at(&w->cfg->host_menus, i, len);
 }
 
-/* ---- help (Phase 15 m5e: moved to the boundary so `help` can be a plugin) ---------------- */
+/* ---- help (at the boundary, so `help` can be a plugin) ----------------------------------- */
 
 void rolltui_context_set_help(RolltuiContext* ctx, const char* lead, size_t lead_len, const char* note,
                               size_t note_len) {
@@ -788,7 +789,7 @@ void rolltui_windows_set_input_min_outer(RolltuiWindows* w, const char* source, 
   rolltui_str_free(&key);
 }
 
-/* ---- rows (Phase 15 m5e: moved to the boundary so `rows` can be a plugin) ---------------- */
+/* ---- rows (at the boundary, so `rows` can be a plugin) ----------------------------------- */
 
 void rolltui_rows_reset(RolltuiRows* r) { r->n = 0; /* keeps v's storage and every row's buffers */ }
 
@@ -811,7 +812,7 @@ void rolltui_rows_release(RolltuiRows* r) {
   r->cap = 0;
 }
 
-/* ---- note (Phase 15 m5e: moved to the boundary so `input` can be a plugin) --------------- */
+/* ---- note (at the boundary, so `input` can be a plugin) ---------------------------------- */
 
 void rolltui_note_clear(RolltuiNote* n) {
   rolltui_str_clear(&n->text); /* keeps the buffer — the reuse this call exists for */

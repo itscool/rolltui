@@ -6,9 +6,8 @@
 // anchor, remove), the seam drag, undo/redo, save/load outcomes, and the produced
 // layout round-tripping through the loader clean.
 //
-// Phase 10 m5 — THE DESIGN EDITOR: the widget-kind picker over Layout.hpp's closed
-// table, the source field typed by the kind, the menu-file choice, and the actions
-// level. The property to hold on to is that EXACTLY ONE of Source / Menu file is
+// THE DESIGN EDITOR: the widget-kind picker over the closed table, the source field typed
+// by the kind, the menu-file choice, and the actions level. The property to hold on to is that EXACTLY ONE of Source / Menu file is
 // enabled for any kind, so the editor never offers two ways to say one thing.
 //
 // Every menu lookup goes through value_of / enabled_of, which NAME a missing item
@@ -25,7 +24,7 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui;
@@ -287,7 +286,7 @@ int main() {
     o = handle(ed, key(ROLLTUI_KEY_ESCAPE));
     check(o.kind == O::Closed, "Escape at the top asks the host to close");
   }
-  // ---- m5: the kind picker, the source field, the menu-file choice ----
+  // ---- the kind picker, the source field, the menu-file choice ----
   {
     ed.load(builtin_layout(rolltui_test::test_context(), "default"));  // a fresh baseline: the blocks above left it split about
     ed.set_menus({"main", "extra"});
@@ -378,7 +377,7 @@ int main() {
     std::optional<Layout> back = parse_layout(dump_layout(ed.current()), &clean);
     check(back && clean && *back == ed.current(), "every content the kind picker wrote round-trips through the loader clean");
   }
-  // ---- m5: the actions level ----
+  // ---- the actions level ----
   {
     const std::size_t before = ed.current().actions.size();
     act(ed, "actions this screen");
@@ -423,7 +422,7 @@ int main() {
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
   }
-  // ---- Phase 11 m5: creating a layout, not inheriting one ----
+  // ---- creating a layout, not inheriting one ----
   // The three fields the editor could not reach (min_width, min_height, the layer's
   // focus), and the skeleton. The layout in `ed` at this point is the shipped default,
   // split about and carrying an extra action — which is exactly the state the milestone's
@@ -473,11 +472,10 @@ int main() {
     check(ed.skeleton("x").min_width == 40 && ed.skeleton("x").actions.empty(), "…and the skeleton says so as a value");
     ed.set_default_min(0, 0);
   }
-  // ---- Phase 11 m4: the picker offers what the TARGET can build ----
-  // The kinds are no longer the library's table read straight out of Layout.hpp — they
-  // are what the host offers, which under an app profile is the library's PLUS that app's
-  // registered ones. **Phase 25: a session of its own, so this no longer has to clear a
-  // process-wide table to keep out of another test's way — freeing the context IS that.**
+  // ---- the picker offers what the HOST offers ----
+  // The kinds are what the host offers, never the library's closed table read directly. The
+  // registry belongs to a CONTEXT, so this case gets a session of its own and freeing it is
+  // what keeps the case out of another one's way.
   {
     RolltuiContext* target = rolltui_context_new();
     std::string why;
@@ -533,15 +531,12 @@ int main() {
     check(find(te.menu(), "source") && find(te.menu(), "source")->spec.hint == "a surface this app paints",
           "…and with no sample content the hint is what the app said its source names");
 
-    // ---- PHASE 26 m4: A KIND IN NEITHER RUNG IS WRITTEN DOWN, AND SAID -----------------------
-    // This is the milestone, and it is the exact reversal of what this block asserted until
-    // 2026-09-07: *"the picker is a list of what EXISTS, never a way to invent a kind"*, with a
-    // refusal — "'sundial' is not a widget kind this app can build" — and nothing written. The
-    // reason given was drift: a name no binary registers would draw an error panel in the real
-    // app. That reasoning has one app in it. A design tool is authoring for ANOTHER app, and the
-    // kinds it can resolve are its own, so refusing a name it does not know is refusing every
-    // kind the target has and this tool does not. The screen names what it needs; the app
-    // REPORTS what it cannot provide (`rolltui_gaps_collect`), where the answer actually is.
+    // ---- A KIND IN NEITHER RUNG IS WRITTEN DOWN, AND SAID ------------------------------------
+    // A DESIGN TOOL MAY NOT REFUSE A KIND IT DOES NOT KNOW. The tempting rule — "the picker is
+    // a list of what EXISTS, never a way to invent a kind" — has one app in it. This tool is
+    // authoring for ANOTHER app, and the kinds it can resolve are its own, so refusing an
+    // unknown name refuses every kind the TARGET has and this tool does not. The screen names
+    // what it needs; the app REPORTS what it cannot provide (`rolltui_gaps_collect`).
     te.set_kinds({"transcript", "canvas"});
     retype(te, "source", "session");  // so the assertion below is about the KIND and not about a carried source
     handle(te, key(ROLLTUI_KEY_ENTER));
