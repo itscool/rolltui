@@ -8,6 +8,7 @@
 │                                                                     │ Swap with the next sibling                     │
 │                                                                     │ [x] Visible                                    │
 │                                                                     │ Border                                single ▸ │
+│                                                                     │ Background role                   background ▸ │
 │                                                                     │ Node id: main                                  │
 │                                                                     │ Title:                                         │
 │                                                                     │ Widget kind: text                              │
@@ -27,7 +28,6 @@
 │                                                                     │ Load layout                                  ▸ │
 │                                                                     │ Save layout file as (layouts/<name>.json):     │
 │                                                                     │ Reset to the loaded layout…                    │
-│                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │

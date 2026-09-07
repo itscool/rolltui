@@ -6,6 +6,7 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_style.h" /* INTERNAL: the role VOCABULARY, for the background choice */
 #include "layout_editor.hpp"
 
 #include <algorithm>
@@ -195,7 +196,7 @@ std::vector<std::string> LayoutEditor::ids_in_order(const Node& root) {
 }
 
 std::string LayoutEditor::unique_id(const std::string& base) const {
-  const std::vector<std::string> ids = ids_in_order(current_.base.root);
+  const std::vector<std::string> ids = all_ids();
   auto taken = [&](const std::string& s) { return std::find(ids.begin(), ids.end(), s) != ids.end(); };
   if (!taken(base)) return base;
   for (int n = 2;; ++n) {
@@ -293,15 +294,35 @@ void LayoutEditor::set_layouts(std::vector<std::string> names) {
 
 // ---- selection ------------------------------------------------------------------------
 
-const Node* LayoutEditor::selected_node() const { return find_node(current_.base.root, sel_); }
-Node* LayoutEditor::sel_node() { return find_node(current_.base.root, sel_); }
+const Node* LayoutEditor::selected_node() const { return find_any(sel_); }
+Node* LayoutEditor::sel_node() { return find_any(sel_); }
+
+std::vector<std::string> LayoutEditor::all_ids() const {
+  std::vector<std::string> out = ids_in_order(current_.base.root);
+  for (const Layer& p : current_.popups)
+    for (std::string& s : ids_in_order(p.root)) out.push_back(std::move(s));
+  return out;
+}
+Node* LayoutEditor::find_any(std::string_view id) {
+  if (Node* n = find_node(current_.base.root, id)) return n;
+  for (Layer& p : current_.popups)
+    if (Node* n = find_node(p.root, id)) return n;
+  return nullptr;
+}
+const Node* LayoutEditor::find_any(std::string_view id) const { return const_cast<LayoutEditor*>(this)->find_any(id); }
+Layer* LayoutEditor::popup_of(std::string_view id) {
+  for (Layer& p : current_.popups)
+    if (find_node(p.root, id)) return &p;
+  return nullptr;
+}
+const Layer* LayoutEditor::popup_of(std::string_view id) const { return const_cast<LayoutEditor*>(this)->popup_of(id); }
 
 void LayoutEditor::select(std::string_view id) {
   if (find_node(current_.base.root, id)) { sel_ = std::string(id); sync_values(); }
 }
 
 void LayoutEditor::select_next(bool backwards) {
-  const std::vector<std::string> ids = ids_in_order(current_.base.root);
+  const std::vector<std::string> ids = all_ids();
   if (ids.empty()) { sel_.clear(); return; }
   auto it = std::find(ids.begin(), ids.end(), sel_);
   std::size_t i = it == ids.end() ? (backwards ? ids.size() - 1 : 0) : static_cast<std::size_t>(it - ids.begin());
@@ -340,8 +361,10 @@ void LayoutEditor::rebuild_menu() {
   for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
   for (const std::string& n : layouts_) loads.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
-  InputSpec dim, size, name, text, threshold;
+  InputSpec dim, opt_dim, size, name, text, threshold;
   dim.type = InputType::Dim;
+  opt_dim.type = InputType::Dim;
+  opt_dim.optional = true;  // a bound may be absent, and empty is how you take one off
   size.type = InputType::Size;
   name.type = InputType::Name;
   text.type = InputType::Text;
@@ -359,6 +382,18 @@ void LayoutEditor::rebuild_menu() {
     fields.push_back(MenuItem::input((base + ".w").c_str(), "w", dim.clone(), dim_to_string(p.placement.w).c_str()));
     fields.push_back(MenuItem::input((base + ".h").c_str(), "h", dim.clone(), dim_to_string(p.placement.h).c_str()));
     fields.push_back(choice_of((base + ".anchor").c_str(), "anchor", clone_items(anchors), std::string(anchor_name(p.placement.anchor)).c_str()));
+    // THE FOUR OPTIONAL BOUNDS AND THE CLAMP, added at Phase 27 m4. The shipped `default`
+    // layout gives every popup a `min_w` and a `max_w` and the editor could not set either, so
+    // a popup authored here spread to whatever `w` said on a 200-column terminal. They are
+    // OPTIONAL dims: empty is a real answer and means unbounded, which is why the field is
+    // optional text rather than a number with a sentinel nobody could guess.
+    for (const auto& [suffix, label, od] : {std::tuple{"min_w", "min width", p.placement.min_w},
+                                            {"max_w", "max width", p.placement.max_w},
+                                            {"min_h", "min height", p.placement.min_h},
+                                            {"max_h", "max height", p.placement.max_h}})
+      fields.push_back(MenuItem::input((base + "." + suffix).c_str(), label, opt_dim.clone(),
+                                       od.present ? dim_to_string(od.d).c_str() : ""));
+    fields.push_back(MenuItem::toggle((base + ".clamp").c_str(), "clamp to the screen", p.placement.clamp != 0));
     fields.push_back(MenuItem::toggle((base + ".modal").c_str(), "modal", p.modal != 0));
     fields.push_back(MenuItem::action((base + ".remove").c_str(), "remove this popup"));
     popups.push_back(submenu_of(base.c_str(), id.c_str(), std::move(fields)));
@@ -373,6 +408,17 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::action("swap_next", "Swap with the next sibling"));
   top.push_back(MenuItem::toggle("visible", "Visible", true));
   top.push_back(choice_of("border", "Border", std::move(borders), "single"));
+  // THE BACKGROUND ROLE, added at Phase 27 m4. A node has carried one since the layout format
+  // did, the shipped screens use it (a banner, every popup), and the editor could not set it —
+  // so a person who wanted one edited the JSON. A CHOICE over the role table read from the
+  // library, never a copy of it: whoever owns a vocabulary owns exactly one spelling of it.
+  std::vector<MenuItem> grounds;
+  for (unsigned char r = 0; r < ROLLTUI_ROLE_COUNT; ++r) {
+    std::size_t rn = 0;
+    const char* nm = rolltui_role_name(r, &rn);
+    if (nm && rn) grounds.push_back(MenuItem::action(std::string(nm, rn).c_str(), std::string(nm, rn).c_str()));
+  }
+  top.push_back(choice_of("background", "Background role", std::move(grounds), "default_background"));
   // THE WINDOW ID, added at Phase 27 m3 because building an app from nothing found it
   // missing: every node the editor created was `main`, `main-2`, `main-row`, and a person
   // who wanted a window named after what it shows had to edit the JSON. That made a THIRD
@@ -519,11 +565,25 @@ void LayoutEditor::sync_values() {
   set_value(menu_, "border", std::string(border_name(n->border)));
   set_value(menu_, "id", sel_);
   set_value(menu_, "title", str_of(n->title));
+  {
+    std::size_t rn = 0;
+    const char* nm = rolltui_role_name(static_cast<unsigned char>(n->background), &rn);
+    set_value(menu_, "background", std::string(nm ? nm : "", rn));
+  }
   set_value(menu_, "size", split_size_to_string(n->size));
   set_checked(menu_, "focusable", n->focusable);
   set_enabled(menu_, "focusable", n->is_window());
   sync_content_fields();
-  if (MenuItem* root = find(menu_, "root")) set_str(root->label, "layout editor \xE2\x80\xA2 " + sel_ + (n->is_window() ? "" : n->kind == Node::Kind::Row ? " (row)" : " (column)"));
+  if (MenuItem* root = find(menu_, "root")) {
+    // WHICH TREE THE SELECTION IS IN, said rather than inferred. Popup nodes became selectable
+    // at Phase 27 m4 and there are now two trees behind one id; a header that named only the
+    // node would make `find` in the base layer and `find` inside the find popup
+    // indistinguishable, which is the ambiguity this project's corollary exists to refuse.
+    const Layer* in = popup_of(sel_);
+    set_str(root->label, "layout editor \xE2\x80\xA2 " + sel_ +
+                             (in ? " (in popup '" + std::string(view_of(in->id)) + "')" : "") +
+                             (n->is_window() ? "" : n->kind == Node::Kind::Row ? " (row)" : " (column)"));
+  }
 }
 
 // ---- preview / commit -----------------------------------------------------------------
@@ -548,7 +608,7 @@ void LayoutEditor::replace(Layout l) {
   preview_.reset();
   current_ = std::move(l);
   undo_.commit(current_.clone());
-  if (!find_node(current_.base.root, sel_)) { sel_.clear(); select_next(); }
+  if (!find_any(sel_)) { sel_.clear(); select_next(); }
   rebuild_menu();
 }
 
@@ -556,7 +616,7 @@ bool LayoutEditor::undo() {
   cancel_preview();
   if (!undo_.undo()) return false;
   current_ = (undo_.current()).clone();
-  if (!find_node(current_.base.root, sel_)) { sel_.clear(); select_next(); }
+  if (!find_any(sel_)) { sel_.clear(); select_next(); }
   rebuild_menu();
   status_ = "undone";
   return true;
@@ -566,7 +626,7 @@ bool LayoutEditor::redo() {
   cancel_preview();
   if (!undo_.redo()) return false;
   current_ = (undo_.current()).clone();
-  if (!find_node(current_.base.root, sel_)) { sel_.clear(); select_next(); }
+  if (!find_any(sel_)) { sel_.clear(); select_next(); }
   rebuild_menu();
   status_ = "redone";
   return true;
@@ -575,7 +635,12 @@ bool LayoutEditor::redo() {
 // ---- operations -----------------------------------------------------------------------
 
 bool LayoutEditor::apply_op(Op op) {
-  Node& root = current_.base.root;
+  // The tree the operation happens IN: a popup's own, when the selection is inside one. Every
+  // op below is relative to a root — a split's collapse, a delete's parent, a swap's siblings —
+  // and taking the base tree's root while standing in a popup silently made all three no-ops
+  // (`parent_of` simply would not find the node).
+  Layer* owner = popup_of(sel_);
+  Node& root = owner ? owner->root : current_.base.root;
   std::size_t idx = 0;
   Node* parent = parent_of(root, sel_, &idx);
   Node* n = sel_node();
@@ -614,7 +679,11 @@ bool LayoutEditor::apply_op(Op op) {
       n->focusable = !n->focusable;
       return true;
     case Op::Delete: {
-      if (!parent) { status_ = "the root cannot be deleted"; return false; }
+      if (!parent) {
+        status_ = owner ? "a popup's root window is the popup — remove the popup instead"
+                        : "the root cannot be deleted";
+        return false;
+      }
       parent->children.erase(parent->children.begin() + static_cast<std::ptrdiff_t>(idx));
       // A split with one child left collapses into that child (keeping the split's size).
       if (parent->children.size() == 1 && parent != &root) {
@@ -775,9 +844,19 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       return commit_current();
     }
     if (id.rfind("popup.", 0) == 0) {
-      const std::string pid = id.substr(6, id.size() - 12);
+      // SPLIT ON THE LAST DOT, the way the input handler above already does. This read
+      // `id.substr(6, id.size() - 12)` and then set `modal` unconditionally — correct only
+      // while `.modal` was the one toggle a popup had, and silently wrong the moment `.clamp`
+      // joined it, since both suffixes are six characters long.
+      const std::size_t dot = id.rfind('.');
+      const std::string pid = id.substr(6, dot - 6), field = id.substr(dot + 1);
       for (Layer& p : current_.popups)
-        if (view_of(p.id) == pid) { begin_preview(); p.modal = checked; return commit_current(); }
+        if (view_of(p.id) == pid) {
+          begin_preview();
+          if (field == "clamp") p.placement.clamp = checked ? 1 : 0;
+          else p.modal = checked;
+          return commit_current();
+        }
     }
     return {O::None, {}};
   }
@@ -838,6 +917,13 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       sel_ = to;
       status_ = to == value ? "renamed '" + from + "' to '" + to + "'"
                             : "'" + value + "' was taken; renamed '" + from + "' to '" + to + "'";
+      return commit_current();
+    }
+    if (id == "background") {
+      const int role = rolltui_role_from_name(value.c_str(), value.size());
+      if (role < 0) { status_ = "no role named '" + value + "'"; return {O::Changed, {}}; }
+      begin_preview();
+      if (Node* n = sel_node()) n->background = static_cast<rolltui::Role>(role);
       return commit_current();
     }
     if (id == "title") { begin_preview(); if (Node* n = sel_node()) set_str(n->title, value); return commit_current(); }
@@ -907,6 +993,21 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
     if (id.rfind("popup.", 0) == 0) {
       const std::size_t dot = id.rfind('.');
       const std::string pid = id.substr(6, dot - 6), field = id.substr(dot + 1);
+      const bool bound = field == "min_w" || field == "max_w" || field == "min_h" || field == "max_h";
+      // AN EMPTY BOUND IS A REAL ANSWER — "unbounded" — and the only way to take one back off.
+      if (bound && value.empty()) {
+        for (Layer& p : current_.popups)
+          if (view_of(p.id) == pid) {
+            begin_preview();
+            RolltuiOptDim& t = field == "min_w"   ? p.placement.min_w
+                               : field == "max_w" ? p.placement.max_w
+                               : field == "min_h" ? p.placement.min_h
+                                                  : p.placement.max_h;
+            t.reset();
+            status_ = "popup '" + pid + "' " + field + " is now unbounded";
+            return commit_current();
+          }
+      }
       std::optional<Dim> d = parse_dim(value);
       if (!d) {
         // A bare integer is cells (parse_dim refuses it by design: a size is explicit).
@@ -922,6 +1023,10 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
           else if (field == "y") p.placement.y = *d;
           else if (field == "w") p.placement.w = *d;
           else if (field == "h") p.placement.h = *d;
+          else if (field == "min_w") p.placement.min_w = *d;
+          else if (field == "max_w") p.placement.max_w = *d;
+          else if (field == "min_h") p.placement.min_h = *d;
+          else if (field == "max_h") p.placement.max_h = *d;
           return commit_current();
         }
     }

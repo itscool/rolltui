@@ -957,9 +957,26 @@ void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root) {
 
 RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m) { return &m->root; }
 
+/* A CHOICE'S OPTIONS ARE NOT SEARCHED, and that is the whole of the fix made at Phase 27 m4.
+ * A Choice's children are its VALUES, in their own id namespace — `rolltui_menu_parse_json`
+ * says so, keeping them in a separate `option_ids` set, so `{"id":"depth","kind":"choice",
+ * "items":[{"id":"16"}]}` and a sibling item `16` are both legal. Descending into them made
+ * `rolltui_menu_find` resolve one id to two different things and return whichever came first
+ * in tree order.
+ *
+ * IT WAS NOT HYPOTHETICAL. The layout editor grew a "Background role" choice whose options are
+ * the theme's role names, and the role vocabulary contains `title`, `label`, `value` and
+ * `border` — four of the editors' own field ids. `set_value(menu, "title", ...)` then wrote the
+ * OPTION and the Title input silently went blank. The same trap was already armed for two other
+ * choices whose options are user-supplied names: `focus` (window ids) and `load` (layout names),
+ * where a window called `title` would have done it.
+ *
+ * Fixed HERE and not in the caller because every consumer would otherwise have to know it — the
+ * library owns this vocabulary's shape, so it owns the lookup rule. */
 static RolltuiMenuItem* find_in(RolltuiMenuItem* it, const char* id, size_t len) {
   size_t i;
   if (rolltui_str_eq(&it->id, id, len)) return it;
+  if (it->kind == ROLLTUI_MENU_CHOICE) return NULL;
   for (i = 0; i < it->children.n; ++i) {
     RolltuiMenuItem* f = find_in(it->children.v[i], id, len);
     if (f) return f;

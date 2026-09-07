@@ -3,6 +3,28 @@
 // a fixture transcript in a theme and a layout, so trying a layout or theme idea and
 // asserting it are the same command.
 //
+// WHAT A PERSON CAN DESIGN HERE WITHOUT WRITING JSON (plan/phase-27.md m4): a screen is FOUR
+// files and this tool authors all four — a theme (F4), a layout (F6), a bindings file (F7) and,
+// since Phase 27 m2, a menu (F8). Started with no arguments at all it comes up on the shipped
+// `default` screen with a placeholder in it, so building an app from nothing does not begin by
+// being handed a file. Every key the layout and menu loaders accept has a field; that is not a
+// claim in a comment but `rolltui-designable-test`, which reads the loaders' own source and
+// fails when one grows a key no editor grows a field for.
+//
+// AND EXACTLY TWO THINGS IT CANNOT DO, both about VERIFICATION and neither about authoring:
+//
+//   1. A WIDGET KIND FROM ANOTHER APP PREVIEWS AS A LABELLED PLACEHOLDER. You can type
+//      `canvas:sheet`, the file keeps it, and the target app builds it — this binary has no
+//      canvas, so it draws `[canvas:sheet]` and says so rather than refusing the content or
+//      quietly rewriting it to something it can draw.
+//   2. AN ACTION NAME CANNOT BE CHECKED, because the action belongs to the app. A menu item's
+//      `action` and an input's `validator` are the same case and not a third exception: they
+//      are typed, written, and the app reports at start-up what nothing reaches (Phase 26).
+//
+// Neither is a gap to close. Both are the same rule the library already runs on — the screen is
+// the intent and the code catches up — and the alternative in each case is the tool refusing to
+// record a design because it is not the app the design is for.
+//
 //   rolltui-studio FIXTURE.md [options]
 //     --presets DIR            the preset store's directory (rolltui/Presets.hpp):
 //                              the Theme working copy, user presets, layout files.

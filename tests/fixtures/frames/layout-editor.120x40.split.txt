@@ -8,26 +8,26 @@
 │ │ widgets    │            │ small       │ │ │ widgets    │          │ Swap with the next sibling                     │
 │ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ [x] Visible                                    │
 │ │ files      │            │ theme       │ │ │ files      │          │ Border                                single ▸ │
-│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Node id: transcript                            │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Title: transcript                              │
-│ │ placements │            │ parser;     │ │ │ placements │          │ Widget kind: transcript                        │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ Source: session                                │
-│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Menu file:                                     │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Size (Alt+arrows nudge): fill                  │
-│ │ block      │            │ header over │ │ │ block      │          │ [x] Focusable                                  │
-│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │ Delete this node                               │
-│ │ (blocks →  │            │             │ │ │ (blocks →  │          │ Popups                                       ▸ │
-│ │ styled     │            │             │ │ │ styled     │          │ Actions this screen emits                    ▸ │
-│ │ wrapped    │            │             │ │ │ wrapped    │          │ Minimum width this screen needs: 60            │
-│ │ lines)     │            │             │ │ │ lines)     │          │ Minimum height this screen needs: 8            │
-│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ Focused window                         input ▸ │
-│ │ (roles →   │            │ header      │ │ │ (roles →   │          │ Undo                                    Ctrl-Z │
-│ │ styles,    │            │             │ │ │ styles,    │          │ Redo                                    Ctrl-Y │
-│ │ JSON       │            │             │ │ │ JSON       │          │ New layout, from an empty screen (name):       │
-│ │ loader,    │            │             │ │ │ loader,    │          │ Load layout                                  ▸ │
-│ │ built-ins) │            │             │ │ │ built-ins) │          │ Save layout file as (layouts/<name>.json):     │
-│ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│ Reset to the loaded layout…                    │
-│                                           │                         │                                                │
+│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ Background role                   background ▸ │
+│ │ windows +  │            │ hand        │ │ │ windows +  │          │ Node id: transcript                            │
+│ │ placements │            │ parser;     │ │ │ placements │          │ Title: transcript                              │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ Widget kind: transcript                        │
+│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Source: session                                │
+│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Menu file:                                     │
+│ │ block      │            │ header over │ │ │ block      │          │ Size (Alt+arrows nudge): fill                  │
+│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │ [x] Focusable                                  │
+│ │ (blocks →  │            │             │ │ │ (blocks →  │          │ Delete this node                               │
+│ │ styled     │            │             │ │ │ styled     │          │ Popups                                       ▸ │
+│ │ wrapped    │            │             │ │ │ wrapped    │          │ Actions this screen emits                    ▸ │
+│ │ lines)     │            │             │ │ │ lines)     │          │ Minimum width this screen needs: 60            │
+│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ Minimum height this screen needs: 8            │
+│ │ (roles →   │            │ header      │ │ │ (roles →   │          │ Focused window                         input ▸ │
+│ │ styles,    │            │             │ │ │ styles,    │          │ Undo                                    Ctrl-Z │
+│ │ JSON       │            │             │ │ │ JSON       │          │ Redo                                    Ctrl-Y │
+│ │ loader,    │            │             │ │ │ loader,    │          │ New layout, from an empty screen (name):       │
+│ │ built-ins) │            │             │ │ │ built-ins) │          │ Load layout                                  ▸ │
+│ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│ Save layout file as (layouts/<name>.json):     │
+│                                           │                         │ Reset to the loaded layout…                    │
 │ Here is the function you asked for:       █ Here is the function you│                                                │
 │                                           █                         │                                                │
 │ ┌ cpp ──────────────────────────────────┐ █ ┌ cpp ──────────────────│                                                │

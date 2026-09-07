@@ -3945,7 +3945,9 @@ void rolltui_menu_event_release(RolltuiMenuEvent* e);
 
 RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m);
 
-/* Depth-first, any level; NULL when absent. */
+/* Depth-first, any level; NULL when absent. A CHOICE's options are NOT searched: they are its
+ * VALUES, in their own id namespace (see rolltui_menu_parse_json), so an option and a field may
+ * share an id and only the field is a thing to find. */
 RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
 
 /* A Choice's options / a Submenu's items, by COPY, then the flat list and the selection are

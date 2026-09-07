@@ -255,7 +255,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   # PHASE 20 m6: the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
-  keys_editor_test.cpp theme_editor_test.cpp menu_editor_test.cpp
+  keys_editor_test.cpp theme_editor_test.cpp menu_editor_test.cpp designable_test.cpp
   # PHASE 24: the frame-allocation bench. It builds a bare frame to measure that frame's own
   # allocations; the swap would measure reuse instead. An instrument is not a consumer.
   frame_allocs.cpp)
@@ -401,6 +401,14 @@ target_include_directories(rolltui-theme-editor-test PRIVATE ${CMAKE_CURRENT_SOU
 add_rolltui_test(rolltui-layout-editor-test tests/layout_editor_test.cpp)
 target_sources(rolltui-layout-editor-test PRIVATE tools/layout_editor.cpp)
 target_include_directories(rolltui-layout-editor-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+
+# Phase 27 m4: WHAT A PERSON CAN DESIGN WITHOUT WRITING JSON, as a check. It reads the layout and
+# menu loaders' own source for every JSON key they accept and holds each one to a named field in
+# an editor, so a loader that grows a key fails until an editor grows a field or the table records
+# it as structure. There is no "not covered yet" state.
+add_rolltui_test(rolltui-designable-test tests/designable_test.cpp)
+target_sources(rolltui-designable-test PRIVATE tools/layout_editor.cpp tools/menu_editor.cpp)
+target_include_directories(rolltui-designable-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 # Milestone 17: the keys editor's model — capture a chord, a conflict moves and says
 # so, the Enter rule refused by name, remove and clear, undo/redo, the outcomes.

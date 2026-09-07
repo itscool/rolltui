@@ -291,6 +291,10 @@ void MenuEditor::rebuild_menu() {
   number.type = InputType::Float;
 
   std::vector<MenuItem> top;
+  InputSpec count;
+  count.type = InputType::Int;
+  count.min = 0;
+  count.max = 1e6;
   top.push_back(MenuItem::action("next", "Select the next item", "Tab"));
   top.push_back(MenuItem::action("prev", "Select the previous item", "Shift-Tab"));
   top.push_back(choice_of("kind", "Kind", std::move(kinds), "action"));
@@ -304,8 +308,17 @@ void MenuEditor::rebuild_menu() {
   top.push_back(MenuItem::input("min", "Minimum", number.clone()));
   top.push_back(MenuItem::input("max", "Maximum", number.clone()));
   top.push_back(MenuItem::input("step", "Step", number.clone()));
+  top.push_back(MenuItem::input("precision", "Decimal places (-1: any)", number.clone()));
   top.push_back(MenuItem::input("hint", "Hint", text.clone()));
+  top.push_back(MenuItem::input("min_len", "Shortest allowed (0: no floor)", count.clone()));
+  top.push_back(MenuItem::input("max_len", "Longest allowed (0: no cap)", count.clone()));
+  // A VALIDATOR IS A NAME IN THE APP, exactly as an item's action is, and this tool can no more
+  // check it than it can check the action — the same permanent exception, not a second one.
+  top.push_back(MenuItem::input("validator", "Validator the app registers", text.clone()));
   top.push_back(MenuItem::toggle("optional", "Optional", false));
+  // A SHORTCUT is display only. With an action set, the live chords win and this is ignored;
+  // it exists for an item that names no action and still wants to advertise a key.
+  top.push_back(MenuItem::input("shortcut", "Shortcut text (display only)", text.clone()));
   top.push_back(MenuItem::input("add_child", "Add a child item (id)", name.clone()));
   top.push_back(MenuItem::input("add_sibling", "Add a sibling item (id)", name.clone()));
   top.push_back(MenuItem::action("move_up", "Move up"));
@@ -344,7 +357,15 @@ void MenuEditor::sync_fields() {
   set_enabled(menu_, "max", numeric);
   set_enabled(menu_, "step", numeric);
   set_enabled(menu_, "hint", is_input);
+  // `precision` is a Float's alone; the two lengths and the validator are a Text's or a Name's,
+  // which is what the spec's own comments say each field is checked for.
+  set_enabled(menu_, "precision", is_input && it->spec.type == InputType::Float);
+  const bool textual = is_input && (it->spec.type == InputType::Text || it->spec.type == InputType::Name);
+  set_enabled(menu_, "min_len", textual);
+  set_enabled(menu_, "max_len", textual);
+  set_enabled(menu_, "validator", textual);
   set_enabled(menu_, "optional", is_input);
+  set_enabled(menu_, "shortcut", have);
   set_enabled(menu_, "move_up", !root);
   set_enabled(menu_, "move_down", !root);
   set_enabled(menu_, "remove", !root);
@@ -365,7 +386,12 @@ void MenuEditor::sync_values() {
   set_value(menu_, "max", num_text(it->spec.max));
   set_value(menu_, "step", num_text(it->spec.step));
   set_value(menu_, "hint", str_of(it->spec.hint));
+  set_value(menu_, "precision", std::to_string(it->spec.precision));
+  set_value(menu_, "min_len", std::to_string(it->spec.min_len));
+  set_value(menu_, "max_len", std::to_string(it->spec.max_len));
+  set_value(menu_, "validator", str_of(it->spec.validator));
   set_checked(menu_, "optional", it->spec.optional != 0);
+  set_value(menu_, "shortcut", str_of(it->shortcut));
   // The actions THIS BINARY knows are the field's HINT and never its option list: an item may
   // name an action the app declares and this tool has never heard of, which is Phase 26's
   // direction — the screen is the intent and the app reports what it cannot reach.
@@ -514,6 +540,15 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
     if (id == "action") { set_str(it->action_name, value); return commit_current(); }
     if (id == "value") { set_str(it->value, value); return commit_current(); }
     if (id == "hint") { set_str(it->spec.hint, value); return commit_current(); }
+    if (id == "validator") { set_str(it->spec.validator, value); return commit_current(); }
+    if (id == "shortcut") { set_str(it->shortcut, value); return commit_current(); }
+    if (id == "precision") { it->spec.precision = std::atoi(value.c_str()); return commit_current(); }
+    if (id == "min_len" || id == "max_len") {
+      const std::size_t n = static_cast<std::size_t>(std::atol(value.c_str()));
+      if (id == "min_len") it->spec.min_len = n;
+      else it->spec.max_len = n;
+      return commit_current();
+    }
     if (id == "min" || id == "max" || id == "step") {
       const double d = std::atof(value.c_str());
       if (id == "min") it->spec.min = d;

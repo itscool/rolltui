@@ -216,6 +216,16 @@ class LayoutEditor {
   static const Node* find_node(const Node& root, std::string_view id);
   static Node* parent_of(Node& root, std::string_view id, std::size_t* index = nullptr);
   static std::vector<std::string> ids_in_order(const Node& root);  // every node id, tree order
+  // EVERY node the editor can select: the base tree, then each popup's tree. A popup's root IS
+  // a node — it has an id, a content, a border, a title, a background — and until Phase 27 m4
+  // it was the one node nothing could reach, so a popup drew `text:<its own id>` for ever.
+  // Rejected: repeating the per-node fields inside the Popups submenu — `rolltui.h` rule 5, if
+  // two consumers write the same wrapper the API is wrong, not the consumers.
+  std::vector<std::string> all_ids() const;
+  Node* find_any(std::string_view id);
+  const Node* find_any(std::string_view id) const;
+  Layer* popup_of(std::string_view id);              // the popup whose tree holds it, else null
+  const Layer* popup_of(std::string_view id) const;
 
   // The selected window's content split at the first ':' — WITHOUT requiring it to parse, so
   // a content typed by hand into a file can be shown and repaired here.
