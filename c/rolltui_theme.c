@@ -2,21 +2,20 @@
  * boundary's rules and rolltui/Theme.hpp for the colour and file-format rules themselves; the
  * reference values in `rolltui/tests/theme_test.cpp` are the oracle for all of it.
  *
- * TWO PARTS, ported in two milestones and kept in one file because they are one module:
- *   Phase 15 m3 — THE COLOUR ENGINE (below, unchanged by m5): parsing/printing a colour,
- *     reduction, SGR emission, OSC 11. THE COLOUR LITERALS THERE ARE xterm's PUBLISHED
- *     PALETTE, not a theme's — the reference the 16-colour downgrade measures against.
- *     Nothing in that part allocates: every result goes into a caller's buffer sized from a
- *     constant in the header.
- *   Phase 15 m5 — THE BUILT-IN THEMES AND THE JSON LOADER/DUMPER (below the colour engine):
- *     this library's own TASTE (three compiled-in palettes) and its FILE FORMAT. THIS part
- *     allocates freely through `rolltui_alloc.h`'s closed set — a theme loads once per file,
- *     never per frame, so this is not the budget `rolltui-budget-test` holds the draw path to.
- * Both halves are exempted BY NAME in `theme_test`'s colour-literal grep control (the m3 half
- * for the xterm reference table, the m5 half for the three built-in themes' own colours —
- * `rolltui::Theme.cpp`'s taste, moved here) rather than by being in a directory the control
- * does not scan; the control also asserts each half still carries what it is exempt for, so
- * either one moving away silently fails a test instead of passing everywhere. */
+ * TWO PARTS, in one file because they are one module:
+ *   THE COLOUR ENGINE (first): parsing/printing a colour, reduction, SGR emission, OSC 11.
+ *     THE COLOUR LITERALS THERE ARE xterm's PUBLISHED PALETTE, not a theme's — the reference
+ *     the 16-colour downgrade measures against. Nothing in that part allocates: every result
+ *     goes into a caller's buffer sized from a constant in the header.
+ *   THE BUILT-IN THEMES AND THE JSON LOADER/DUMPER (below it): this library's own TASTE
+ *     (three compiled-in palettes) and its FILE FORMAT. THIS part allocates freely through
+ *     `rolltui_alloc.h`'s closed set — a theme loads once per file, never per frame, so it is
+ *     not under the budget `rolltui-budget-test` holds the draw path to.
+ * Both halves are exempted BY NAME in `theme_test`'s colour-literal grep control (the first
+ * for the xterm reference table, the second for the built-in themes' own colours) rather than
+ * by sitting in a directory the control does not scan. The control also asserts each half
+ * still carries what it is exempt for, so either one moving away fails a test instead of
+ * passing everywhere. */
 #include "rolltui/c/rolltui_theme.h"
 
 #include <math.h>
@@ -348,10 +347,10 @@ unsigned char rolltui_mode_for_background(RolltuiStyleColor bg) {
  * These exist for ONE reason — so the three built-in themes below read as
  * `styles[R_accent_1] = ...` instead of `styles[9] = ...`. `R_<name>` is
  * `ROLLTUI_ROLE_<NAME>` and `ST_<name>` is `ROLLTUI_EFFECT_STATE_<NAME>`, each generated from
- * the X-macro that owns the list (`ROLLTUI_ROLE_LIST`, `ROLLTUI_EFFECT_STATE_LIST`). Until
- * Phase 18 m1 both were HAND-WRITTEN COPIES whose comment said their order "must still agree
- * with rolltui::Role's declaration order (Style.hpp)" — a file deleted the day before, and
- * `rolltui_theme_analysis.c` carried a third copy. A copy can drift; an alias cannot.
+ * the X-macro that owns the list (`ROLLTUI_ROLE_LIST`, `ROLLTUI_EFFECT_STATE_LIST`). They are
+ * ALIASES rather than hand-written parallel enumerations, because a copy can drift and an
+ * alias cannot: a copy needs a comment asking the next person to keep its order in agreement,
+ * which is a promise where this is a guarantee.
  * `rolltui_theme_builtin_fill` below still checks `role_count` against `ROLLTUI_ROLE_COUNT`
  * before trusting a caller's array: a mismatch reads as "this theme doesn't exist" rather
  * than writing past its end. */
@@ -496,10 +495,9 @@ static void mono_effects(RolltuiEffectMap* m) {
 static void fill_default_dark(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap* effects) {
   (void)role_count;
   // A restrained palette: text on a near-black ground, four accents, muted chrome.
-  // The accents and the muted grey were re-picked 2026-09-02 by ThemeAnalysis
-  // (milestone 15): the first cut's muted text missed 4.5:1 on the panel by a hair,
-  // and blue/purple and green/yellow were confusable under protanopia and
-  // deuteranopia. These five sit at hues 255/145/90/310/25 in OKLCH with their
+  // The accents and the muted grey are ThemeAnalysis picks, not taste: a hand-chosen muted
+  // text misses 4.5:1 on the panel by a hair, and hand-chosen blue/purple and green/yellow
+  // come out confusable under protanopia and deuteranopia. These five sit at hues 255/145/90/310/25 in OKLCH with their
   // lightness spread so every must-differ pair keeps an OKLab dE >= 0.13 under all
   // three simulations (a grid search, not taste) — rolltui-theme-analysis-test asserts
   // dark + readable + cvd-safe on this theme.
@@ -542,7 +540,7 @@ static void fill_default_dark(RolltuiStyle* styles, size_t role_count, RolltuiEf
   styles[R_diff_added] = mk(green, bg, 0, 0, 0, 0, 0);
   styles[R_diff_removed] = mk(red, bg, 0, 0, 0, 0, 0);
   styles[R_diff_context] = mk(muted, bg, 0, 0, 0, 0, 0);
-  // m5b: the word run inside a changed PAIR. Same hue as its line — an emphasis, not a
+  // The word run inside a changed PAIR. Same hue as its line — an emphasis, not a
   // second signal — so it costs no colour budget and cannot break a must-differ pair.
   styles[R_diff_added_word] = mk(green, bg, 1, 0, 0, 0, 0);
   styles[R_diff_removed_word] = mk(red, bg, 1, 0, 0, 0, 0);
@@ -556,7 +554,7 @@ static void fill_default_dark(RolltuiStyle* styles, size_t role_count, RolltuiEf
   styles[R_menu_selected] = mk(bg, blue, 1, 0, 0, 0, 0);
   styles[R_menu_breadcrumb] = mk(muted, panel, 0, 0, 0, 0, 0);
   styles[R_menu_shortcut] = mk(yellow, panel, 0, 0, 0, 0, 0);
-  // Find (m4): every match is normal text on a dim amber ground — legible, and it keeps
+  // Find: every match is normal text on a dim amber ground — legible, and it keeps
   // the line's own shape. The current one is INVERTED on the accent, which is both the
   // strongest "you are here" a cell grid has and the reason the must-differ pair can be
   // measured at all (Style.hpp: the check reads `fg`, so a bg-only difference is
@@ -614,7 +612,7 @@ static void fill_default_light(RolltuiStyle* styles, size_t role_count, RolltuiE
   styles[R_diff_added] = mk(green, bg, 0, 0, 0, 0, 0);
   styles[R_diff_removed] = mk(red, bg, 0, 0, 0, 0, 0);
   styles[R_diff_context] = mk(muted, bg, 0, 0, 0, 0, 0);
-  // m5b: the word run inside a changed PAIR. Same hue as its line — an emphasis, not a
+  // The word run inside a changed PAIR. Same hue as its line — an emphasis, not a
   // second signal — so it costs no colour budget and cannot break a must-differ pair.
   styles[R_diff_added_word] = mk(green, bg, 1, 0, 0, 0, 0);
   styles[R_diff_removed_word] = mk(red, bg, 1, 0, 0, 0, 0);
@@ -628,7 +626,7 @@ static void fill_default_light(RolltuiStyle* styles, size_t role_count, RolltuiE
   styles[R_menu_selected] = mk(bg, blue, 1, 0, 0, 0, 0);
   styles[R_menu_breadcrumb] = mk(muted, panel, 0, 0, 0, 0, 0);
   styles[R_menu_shortcut] = mk(purple, panel, 0, 0, 0, 0, 0);
-  // Find (m4) — the dark theme's rule, read for a light ground: a pale amber wash for
+  // Find — the dark theme's rule, read for a light ground: a pale amber wash for
   // every match, and the current one inverted on the olive that serves as this
   // palette's yellow.
   styles[R_find_match] = mk(fg, find_bg, 0, 0, 0, 0, 0);
@@ -674,7 +672,7 @@ static void fill_mono(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap*
   styles[R_diff_added] = mk(n, n, 1, 0, 0, 0, 0);
   styles[R_diff_removed] = mk(n, n, 0, 0, 0, 1, 0);
   styles[R_diff_context] = mk(n, n, 0, 0, 0, 1, 0);
-  // m5b, with no colour to spend: underline is the only attribute left, so it carries
+  // With no colour to spend, underline is the only attribute left, so it carries
   // the word run on top of whatever its line already uses.
   styles[R_diff_added_word] = mk(n, n, 1, 0, 1, 0, 0);
   styles[R_diff_removed_word] = mk(n, n, 0, 0, 1, 1, 0);
@@ -686,7 +684,7 @@ static void fill_mono(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap*
   styles[R_menu_selected] = mk(n, n, 1, 0, 0, 0, 1);
   styles[R_menu_breadcrumb] = mk(n, n, 0, 0, 0, 1, 0);
   styles[R_menu_shortcut] = mk(n, n, 0, 0, 1, 0, 0);
-  // Find (m4). With no colour to spend, the distinction is carried by attributes and
+  // Find. With no colour to spend, the distinction is carried by attributes and
   // must still be a distinction: underline marks every match, bold+reverse the current
   // one — the same "inverted means here" this theme already uses for menu_selected.
   styles[R_find_match] = mk(n, n, 0, 0, 1, 0, 0);

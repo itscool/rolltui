@@ -1,31 +1,27 @@
 //
-// lifetime_test.cpp — Phase 14 m6a: THE RELEASE POINT, AS AN ASSERTION.
+// lifetime_test.cpp — THE RELEASE POINT, AS AN ASSERTION.
 //
 // The claim `rolltui_shutdown()` makes is not "we tidy up" — it is a NUMBER:
 //
 //     after shutdown(), rolltui_mem_stats()'s live_bytes == 0 and live_blocks == 0
 //
-// **WHY THIS IS WORTH A TEST BINARY OF ITS OWN.** Until m6a, "did the library leak?" had no
-// answer, because by-design retention and a real leak look identical to any checker: the
-// effect-kind registry, the host-kind registry and the parsed built-in layout cache are all
-// allocated on first use and kept forever, and a leak checker cannot tell those from a bug.
-// A release point does not make the library tidier — it makes the question ANSWERABLE, which
-// is what m6b's sanitizer run needs in order to mean anything.
+// **WHY THIS IS WORTH A TEST BINARY OF ITS OWN.** Without a release point, "did the library
+// leak?" has no answer, because by-design retention and a real leak look identical to any
+// checker: registries and caches allocated on first use and kept forever are exactly what a
+// leak looks like. A release point does not make the library tidier — it makes the question
+// ANSWERABLE, which is what the sanitizer run needs in order to mean anything.
 //
-// **WHAT THIS ASSERTS IS NOW TOTAL, and it was not always.** While a C++ implementation of
-// the library existed, `live_bytes == 0` was weaker than it looked in that build: `std::string`
-// and `std::vector` reach the global `operator new`, never `rolltui::mem`, so a zero here could
-// coexist with memory the gauge simply could not see. The C++ implementations were deleted on
-// 2026-09-04; every allocation the library makes is now an explicit call through one entry
-// point, so the zero below means the library holds nothing.
+// **WHAT THIS ASSERTS IS TOTAL, and that is a property of the library being C.** Every
+// allocation it makes is an explicit call through one entry point, so the zero below means
+// the library holds nothing. The same assertion over a C++ implementation would be weaker
+// than it looks: `std::string` and `std::vector` reach the global `operator new`, never
+// `rolltui::mem`, so a zero could coexist with memory the gauge cannot see.
 //
-// ---- PHASE 17 m2c: THIS FILE CALLS THE C DIRECTLY ---------------------------------------
+// ---- THIS FILE CALLS THE C DIRECTLY -----------------------------------------------------
 //
-// The eleven C++ headers this file used to include (Bindings/Diff/Document/Effects/Layout/
-// Lifetime/Memory/Presets/Screen/Theme/Widgets) are thin BINDINGS over `rolltui/c/*.h` and are
-// about to be deleted; this file now reaches for the umbrella (`rolltui/rolltui.h`) instead,
-// with ONE stated exception below. Three shapes are worth naming up front, because each is a
-// SHAPE this file mirrors, never a rule or a word the library owns:
+// It reaches for the umbrella (`rolltui/rolltui.h`), with ONE stated exception below. Three
+// shapes are worth naming up front, because each is a SHAPE this file mirrors, never a rule
+// or a word the library owns:
 //
 //   - `Theme` (styles + an effect map) and the two rebuildable, `rolltui_on_shutdown`-
 //     registered caches (`builtin_theme`, `builtin_layout`) mirror `Theme.cpp`'s and
@@ -35,26 +31,22 @@
 //     `rolltui_layout_builtin_json` (hands back unparsed embedded TEXT) — so a caller that
 //     wants the ORIGINAL property under test ("this cache empties at shutdown() and rebuilds
 //     on next use") has to hold it, the same way any future C host would.
-//   - the three preset domains are the library's own (`rolltui_preset_domain`, Phase 18 m3),
-//     which registers their releaser at cache-build time for the same reason the two caches
-//     above do. Until then this file built its own three, with a STUB `reason` callback; the
-//     library's carries the real one, and the shipped "default" bindings preset has no
-//     undeliverable chord (the library aborts its own build if it ever did), so the two are
-//     observationally identical for this one lookup.
+//   - the three preset domains are the library's own (`rolltui_preset_domain`), which
+//     registers their releaser at cache-build time for the same reason the two caches above
+//     do. A suite that built its own three with a STUB `reason` callback would be testing
+//     something adjacent to what ships.
 //   - `diff_spans`' `RolltuiDiffRoles` is filled with ONE placeholder role for all seven
 //     slots, not the theme's real added/removed/context/... mapping: the assertion below only
 //     counts spans, never inspects which role one carries, and the real mapping
 //     (`Diff.cpp`'s `kRoles`) is ALREADY duplicated once, verbatim, in
 //     `markdown_test.cpp`'s `kDiffRoles` — a second copy here would be a third. See the report.
 //
-// **THE ONE THING THAT WAS BLOCKED IS NOW FIXED AT THE LIBRARY, and the block is what found
-// it.** `mem::alloc`/`mem::free` — the raw allocate/free pair the first control below needs —
-// were declared only in `rolltui/c/rolltui_alloc.h`, which the umbrella excludes as internal,
-// while that same header's own text said "`alloc` and `free` stay available everywhere". This
-// file could not reach them and said so instead of working around it; they moved to the public
-// `rolltui/c/rolltui_mem.h` on 2026-09-05, one day after `rolltui_mem_stats` moved for exactly
-// the same reason and was found the same way. `rolltui_mem_realloc` stayed behind on purpose —
-// growth is the restricted one, and an internal header makes that structural.
+// **A CONSUMER THAT CANNOT REACH SOMETHING SAYS SO INSTEAD OF WORKING AROUND IT**, which is
+// how the raw allocate/free pair the first control below needs became public. It had been
+// declared only in `rolltui/c/rolltui_alloc.h`, which the umbrella excludes as internal, while
+// that same header's own text promised "`alloc` and `free` stay available everywhere".
+// `rolltui_mem_realloc` stayed behind on purpose — growth is the restricted one, and an
+// internal header makes that structural.
 //
 #include <cstddef>
 #include <cstring>
@@ -72,10 +64,10 @@
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_render.h"
 #include "rolltui/c/rolltui_screen.h"
-#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 
 #include "rolltui_test.hpp"
-// INTERNAL: this test opts in. Phase 25 made the widget-kind registry a CONTEXT's, and this
+// INTERNAL: this suite opts in. The widget-kind registry belongs to a CONTEXT, and this
 // suite's whole subject is that `rolltui_shutdown()` releases everything and the caches rebuild
 // — shutdown releases the DEFAULT context, so registering into that one is what keeps every
 // assertion below meaning what it meant.
@@ -194,7 +186,7 @@ const RolltuiLayout* builtin_layout(std::string_view name) {
   return cache ? &*cache : nullptr;
 }
 
-// ---- the three preset domains are the LIBRARY's (`rolltui_preset_domain`, Phase 18 m3) --------
+// ---- the three preset domains are the LIBRARY's (`rolltui_preset_domain`) -------------------
 // This file had built its own three as function-local statics — with a `reason_noop` stub in
 // place of the library's own reason table, and its own `rolltui_on_shutdown` registration — as
 // had four other consumers. The release at shutdown is the library's now, which is exactly what
@@ -261,7 +253,7 @@ void paint_something() {
   rolltui_document_release(&doc);
 }
 
-// PHASE 15 m2/m3: THE EFFECT-KIND REGISTRY AND THE THREE OTHER RETAINERS THIS FUNCTION TOUCHES
+// THE EFFECT-KIND REGISTRY AND THE THREE OTHER RETAINERS THIS FUNCTION TOUCHES
 // (built-in themes, shipped bindings, every domain's shipped presets), plus the widget-kind
 // registry — see the original file header (kept above) for why each is exercised rather than
 // assumed populated: a zero over a registry nobody ever filled is this repo's oldest failure.
@@ -426,7 +418,7 @@ int main() {
   g_session = rolltui_context_new();
   check(builtin_layout("default") != nullptr, "…and a SECOND SESSION rebuilds the caches, so the library still works after it");
   // …and THE SECOND REGISTRATION IS THE PROOF THE FIRST WAS RELEASED, not merely
-  // unaccounted (m2's shape): a name still live in the registry with a different source rule
+  // unaccounted: a name still live in the registry with a different source rule
   // is refused, so this succeeding means the table really was handed back.
   {
     constexpr std::string_view kProbeKind = "lifetime-probe-kind", kProbeDescribes = "a probe";

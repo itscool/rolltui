@@ -162,9 +162,8 @@
 // (instrumented from the first line — a slow frame is a number, not a feeling).
 //
 // ============================================================================================
-// THIS FILE CALLS THE C DIRECTLY, following `rolltui-paint`'s lead (the
-// library's first host to do so, m3's worked example). What changed from the C++-shim
-// version, in the same three shapes `paint.cpp`'s own header names:
+// THIS FILE CALLS THE C DIRECTLY, in the idiom `paint.cpp`'s own header names. The three
+// shapes that matter:
 //
 //   1. **NO PER-FRAME FRAME.** `rolltui_swap` owns both frames for the run and lends the
 //      back one per repaint; `Frame prev; bool have_prev;` is gone. The studio had TWO
@@ -259,7 +258,7 @@ std::string color_to_string(RolltuiStyleColor c) {
   return std::string(buf, n);
 }
 // A BORROW of the library's literal, which is what the C hands back; it was copied into a
-// std::string per call until 2026-09-06, on the status line and the rows source every frame.
+// A std::string per call here would run on the status line and the rows source every frame.
 std::string_view depth_name(unsigned char d) {
   std::size_t n = 0;
   const char* p = rolltui_color_depth_name(d, &n);
@@ -536,7 +535,7 @@ RolltuiDocument parse_fixture(const std::string& text) {
     else if (kind == "note") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_NOTE); }
     else if (kind == "tool") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_TEXT_MUTED); e->foldable = 1; set_str(e->summary, summary); e->folded = 1; }
     else { e->markdown = 1; e->role = to_role(ROLLTUI_ROLE_TEXT); }
-    // m6: a marked entry. The fixture says WHICH STATE and nothing else.
+    // A marked entry. The fixture says WHICH STATE and nothing else.
     e->state = to_effect_state(state);
     e->progress = fraction;
     state = ROLLTUI_EFFECT_STATE_NONE;
@@ -613,7 +612,7 @@ struct App {
   std::string resolved_name;
   // Per-frame text, held and REFILLED rather than rebuilt: the status line, the editors'
   // "preset:" line, the rows' layout cell and the two store labels, so a warm frame allocates
-  // nothing for them (the finding of 2026-09-06, measured on roll's status panel first).
+  // nothing for them.
   std::string status_line, editor_line, layout_row, editor_status;
   RolltuiStr theme_label_str, keys_label_str;
   RolltuiStyle theme_styles[ROLLTUI_ROLE_COUNT]{};     // what this frame draws with (resolved, or the editor's preview)
@@ -659,7 +658,7 @@ struct App {
   std::string copied;       // the last copy (the studio has no clipboard)
   bool copied_any = false;
   std::uint64_t clock_ms = 0;  // the clock handed to the widgets (real or scripted)
-  // m6: the clock EFFECTS are applied at, kept apart from clock_ms on purpose — the
+  // The clock EFFECTS are applied at, kept apart from clock_ms on purpose — the
   // widgets' clock is scripted (a click pair is one second after the last), and motion
   // wants the real one interactively and `--tick N` under --frame. One field each beats
   // one field meaning two things at two times.
@@ -1311,9 +1310,8 @@ struct App {
       case K::SaveAs: {
         // Through the Layout store, as the theme and keys editors already save: the store learns
         // the new origin (its label reads the new name, the working copy records it, as a manual
-        // save does even under --frame) and the path rule stays the library's. Until 2026-09-06
-        // this hand-built the path from the THEME store's options and wrote the file itself, so
-        // the Layout store never learned the save happened.
+        // save does even under --frame) and the path rule stays the library's. Hand-building
+        // the path and writing the file directly leaves the store never learning it happened.
         if (o.value.empty()) { hint = "a layout file needs a name"; break; }
         RolltuiLayout l = (leditor.committed()).clone();
         set_str(l.name, o.value);
@@ -1628,8 +1626,8 @@ struct App {
   // The tools this binary MOUNTS: the four editors, and its own three keys. A host that
   // mounted only the theme editor would list only that one.
   //
-  // AND THAT IS THE CONTROL for the plan m3, expressed in the library's own mounting
-  // mechanism rather than as a test hack. `ROLLTUI_NO_MENU_EDITOR` makes this binary a
+  // AND THAT IS THE CONTROL, expressed in the library's own mounting mechanism rather than
+  // as a test hack. `ROLLTUI_NO_MENU_EDITOR` makes this binary a
   // designer that did not mount a menu editor: `editor.menu` is not declared, so F8 resolves
   // to no action at all, the F2 menu shows the item with no shortcut, and `toggle_menu_editor`
   // refuses independently. The from-nothing test runs the IDENTICAL keystrokes with it set and
@@ -1654,12 +1652,10 @@ struct App {
     h = nh;
     apply_layout();
   }
-  // THE TOOL WHOSE JOB IS DESIGNING AN APP FROM NOTHING MUST ITSELF START FROM NOTHING
-  //. Until 2026-09-07 `main` returned usage() when no document was given, a
-  // leftover from when this was a fixture previewer — so the first step of "build an app from
-  // nothing" was handing the designer a file, and the phase's claim could not honestly be a
-  // test. A document argument is still supported and is still how real content is previewed;
-  // it is no longer mandatory.
+  // THE TOOL WHOSE JOB IS DESIGNING AN APP FROM NOTHING MUST ITSELF START FROM NOTHING, so a
+  // document argument is optional. Requiring one makes the first step of "build an app from
+  // nothing" be handing the designer a file. A document is still how real content is
+  // previewed; it is not how the tool starts.
   //
   // THE BARE SCREEN IS THE SHIPPED `default` LAYOUT WITH A PLACEHOLDER DOCUMENT, so what you
   // see with no argument is the screen you see with one and only the content differs.
@@ -1749,7 +1745,7 @@ struct App {
   // they are.
   void status_rows(RolltuiRows& out) {
     // Formatted on the stack or refilled into held strings; the rows copy once into their own
-    // reused buffers. Built from std::string temporaries per frame until 2026-09-06.
+    // reused buffers, so a warm frame allocates nothing here.
     const std::size_t total = rolltui_transcript_total_lines(transcript());
     char b[64];
     if (store) { store->label(theme_label_str); out.add("theme", theme_label_str); } else out.add("theme", resolved_name.data(), resolved_name.size());
@@ -1836,9 +1832,9 @@ struct App {
       rolltui_transcript_query(transcript(), &query_len);
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
       // The status line is REFILLED into a string this struct keeps, piece by piece, with the
-      // numbers formatted on the stack: a warm frame allocates nothing for it. It was rebuilt
-      // by `+` per frame until 2026-09-06 — a dozen temporaries — and read the Theme store's
-      // label through a deep compare each time.
+      // numbers formatted on the stack: a warm frame allocates nothing for it. Rebuilding it
+      // with `+` costs a dozen temporaries a frame, and reading the Theme store's label by
+      // value costs a deep compare with them.
       std::string& status = status_line;
       status.clear();
       status += ' ';
@@ -1883,7 +1879,7 @@ struct App {
       if (!theme_note.empty()) { status += "  ["; status += theme_note; status += ']'; }
       if (!layout_note.empty()) { status += "  ["; status += layout_note; status += ']'; }
       if (!window_note.empty()) { status += "  ["; status += window_note; status += ']'; }
-      // m6: an effect kind no host registered is SAID. It cannot draw an error panel —
+      // An effect kind no host registered is SAID. It cannot draw an error panel —
       // an effect has no window — so the status line is where it surfaces. One frame
       // stale, on purpose: it reads the PREVIOUS frame's `rolltui_effects_apply` result,
       // updated again below only after this line is drawn.
@@ -2018,9 +2014,9 @@ struct App {
     if (route_kind == ROLLTUI_ROUTE_CLOSED_POPUP && target == "confirm") { confirm_action = nullptr; return true; }
     if (route_kind != ROLLTUI_ROUTE_DELIVER) return true;
     // The event goes to the window's WIDGET, by kind — never by a window name, so a
-    // layout file may call its windows anything. Since Phase 11 m3 that
-    // holds for the studio's OWN three as well: they are registered kinds, so they take
-    // their events through the same routing as every built-in.
+    // layout file may call its windows anything. That holds for the studio's OWN three as
+    // well: they are registered kinds, so they take their events through the same routing as
+    // every built-in.
     if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
       RolltuiMenuEvent mev{};
       rolltui_menu_handle(m, &ev, bindings, rolltui_menu_default_actions(), &mev);
@@ -2228,10 +2224,9 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   auto unescape = [](std::string s, bool newlines) {
     std::string out;
     for (std::size_t i = 0; i < s.size(); ++i) {
-      // `\_` is a LITERAL underscore, the escape `_`-means-space always needed and did not
-      // have: an identifier is the thing you most often want to type into a Name field, and
-      // `Type:my_window` silently produced `mywindow` because the Name spec dropped the
-      // space. Found by Phase 27 m3 authoring a screen whose window ids are identifiers.
+      // `\_` is a LITERAL underscore, the escape that `_`-means-space needs: an identifier is
+      // the thing you most often want to type into a Name field, and without it
+      // `Type:my_window` silently produces `mywindow`, because the Name spec drops the space.
       if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == '_') { out.push_back('_'); ++i; }
       else if (s[i] == '_') out.push_back(' ');
       else if (newlines && s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') { out.push_back('\n'); ++i; }
@@ -2700,7 +2695,7 @@ int main(int argc, char** argv) {
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f, true);
     const bool ticking = rolltui_transcript_wants_tick(app.transcript());
-    // m6: how long this host may sleep is a function of what the frame MARKED, so an
+    // How long this host may sleep is a function of what the frame MARKED, so an
     // idle screen still costs one wakeup every 250 ms and no more.
     const int timeout = app.poll_timeout_ms(f, ticking ? 50 : 250);
     RolltuiStr out{};

@@ -1,9 +1,9 @@
 //
-// presets_test.cpp — the preset system (milestone 11 / 11e, Phase 10 m1) on all three
+// presets_test.cpp — the preset system on all three
 // domains: the five rules in Presets.hpp, the shipped files against the built-in themes
 // and layouts, the four-rung precedence table (every combination of present/absent
 // rungs), the file format's report, and the OSC 11 reply parser with the light/dark
-// rule. Phase 10 m1 adds the Layout domain.
+// rule.
 // Runs in a scratch directory under $TMPDIR it creates and removes.
 //
 // this file calls the C directly (`rolltui/c/rolltui_presets.h`) instead of
@@ -38,7 +38,7 @@
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_theme.h"
-#include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this test opts in (Phase 19 m2) */
+#include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -640,10 +640,10 @@ int main() {
               rep4.unknown_keys[0] == "extra" && rep4.colours.missing_roles_n == ROLLTUI_ROLE_COUNT - 1,
           "a loadable working copy with problems loads and reports each: bad mode, unknown key, missing roles [" + rep4.summary() + "]");
     check(s4.working()->mode == "auto" && s4.working()->depth == "256", "the bad value keeps its default; the good parts load");
-    // THE SENTENCE ITSELF, not just its inputs (Phase 17 m2a, +1 assertion). Every use of
-    // summary() in this suite was inside a check NAME — so the composition it performs (which
-    // parts, in what order, "bad: "/"unknown: "/"colours: " prefixes, "; " between them) was
-    // asserted by nothing at all, and moving it to C could have changed every word silently.
+    // THE SENTENCE ITSELF, not just its inputs. Using summary() only inside a check NAME
+    // leaves the composition it performs — which parts, in what order, the "bad: "/"unknown:
+    // "/"colours: " prefixes, the "; " between them — asserted by nothing at all, so a rewrite
+    // of it could change every word silently.
     {
       const std::string one = rep4.summary();
       check(one.find("bad: mode") == 0 && one.find("; unknown: extra") != std::string::npos &&
@@ -709,11 +709,9 @@ int main() {
 
     RolltuiJsonValue* whole = rolltui_theme_preset_to_json(rolltui_json_clone(d->colours), d->mode.data(), d->mode.size(),
                                                            d->depth.data(), d->depth.size(), "x", 1);
-    check(!rolltui_json_has(whole, "layout", 6), "a written theme preset carries no layout (Phase 10 m1)");
-    // A theme file carrying a "layout" key: since 2026-09-05 it is an ORDINARY UNKNOWN
-    // KEY, not a special case. The Theme domain used to name it and pass the file clean, on
-    // the strength of a Phase 9 -> Phase 10 migration that has since been retired; with the
-    // migration gone there is nothing that key can mean, so it is reported like any other.
+    check(!rolltui_json_has(whole, "layout", 6), "a written theme preset carries no layout");
+    // A theme file carrying a "layout" key is an ORDINARY UNKNOWN KEY, not a special case:
+    // the layout is its own domain, so there is nothing that key can mean here.
     const RolltuiLayout* stacked = builtin_layout_c("stacked");
     RolltuiJsonValue* stacked_json =
         rolltui_layout_to_json_value(stacked->name.data(), stacked->name.size(), stacked->min_width, stacked->min_height,
@@ -816,7 +814,7 @@ int main() {
     check(ls.save_as("wide", false, err) == ROLLTUI_SAVE_SAVED && ls.label() == "wide" && fs::exists(ls.preset_path("wide")), "save-as 'wide' saves and becomes the origin");
     check(ls.load("stacked", rep) && layout_eq(ls.working(), *builtin_layout_c("stacked")) && ls.label() == "stacked", "load copies a shipped layout back whole (rule 1)");
     check(ls.load("wide", rep) && layout_eq(ls.working(), wide), "…and the user preset back");
-    // A file dropped into <dir>/layouts is a preset: the Phase 9 discovery, by the
+    // A file dropped into <dir>/layouts is a preset, discovered by the
     // domain's own mechanics now.
     const RolltuiLayout* no_panel = builtin_layout_c("no-panel");
     RolltuiStr np_text{};
@@ -919,17 +917,15 @@ int main() {
 
   fs::remove_all(world, ec);
   // ---- THE C-SIDE DOMAIN DESCRIPTORS, which shipped with no checked-in test ---------------
-  // Phase 17 gave Theme/Layout/Bindings C descriptors so a pure-C caller can build a store —
-  // the gap TWO separate agents hit independently. They were verified during the port by a
-  // scratch program that was never checked in, which means ~200 lines of new C entered the
-  // library covered by nothing. **Untested code in a library whose whole argument is its
-  // controls is the one thing this session should not ship**, so this is that coverage.
+  // The Theme, Layout and Bindings C descriptors let a pure-C caller build a store. This
+  // section asserts the SAME descriptors the rest of this file uses — the library's own,
+  // `rolltui_preset_domain(...)`, built through `rolltui_theme_preset_domain_init` and its
+  // siblings — on three properties: the library's domain fills every slot the store calls
+  // through, a clone survives its original, and a NULL report is safe on the failing path.
   //
-  // PHASE 17 m2c / 18 m3: this asserts the SAME descriptors this whole file uses throughout —
-  // the library's own, `rolltui_preset_domain(...)`, built through `rolltui_theme_preset_domain_init`
-  // and its siblings. What the section verifies stands on its own: the library's domain fills
-  // every slot the store calls through, a clone survives its original, and a NULL report is
-  // safe on the failing path.
+  // **UNTESTED CODE IN A LIBRARY WHOSE WHOLE ARGUMENT IS ITS CONTROLS IS THE ONE THING NOT TO
+  // SHIP.** Verifying new C with a scratch program that never gets checked in leaves it
+  // covered by nothing the moment the program is deleted.
   {
     RolltuiPresetDomain& d = *rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME);
     check(d.parse && d.to_json && d.clone && d.destroy && d.equal && d.shipped_at, "the C theme domain fills every slot the store calls through");
@@ -962,9 +958,9 @@ int main() {
     // needed an instrument this suite did not have. The obvious claim — "ASan's leak checker
     // catches a missing release" — was written, CHECKED, and was false: macOS ships ASan with
     // the leak detector off, and `presets_test` never called `rolltui_shutdown`, so deleting
-    // the release leaked through a clean 31/31 sanitizer run (control run 2026-09-05, exit 0,
-    // no report). The library's own counter is the instrument that actually exists, and this
-    // is the first test outside `budget`/`lifetime` to point it at a single call:
+    // the release leaks through a clean sanitizer run (control run: exit 0, no report). The
+    // library's own counter is the instrument that actually exists, pointed here at a single
+    // call:
     //   crash-free  holds the guard   (without it this aborts — control run, exit 134)
     //   byte-exact  holds the release (without it live_bytes grows — nothing else would say)
     static const char kBad[] = "{ this is not a theme";

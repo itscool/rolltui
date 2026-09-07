@@ -40,10 +40,9 @@ using namespace rolltui_test;
 namespace {
 
 // THE ROLE ORDER, FROM THE LIBRARY — expanded from `ROLLTUI_ROLE_LIST`, not reproduced.
-// This block used to open "mirrors rolltui::Role (Style.hpp): NO C form exists for it at all
-// -- the role NAME vocabulary stays C++ on purpose" and then spell all 49 names in order, so
-// the file carried the role ORDER as well as (until 2026-09-05) the role NAMES. Both are C
-// now; a theme's style table is indexed by this ordinal, and the ordinal is the C's.
+// Spelling the 49 names out here would make this file carry the role ORDER and the role NAMES
+// as a second copy of both. A theme's style table is indexed by this ordinal, and the ordinal
+// is the library's.
 enum class Role : unsigned char {
 #define ROLLTUI_TEST_ROLE_(lower, UPPER) lower,
   ROLLTUI_ROLE_LIST(ROLLTUI_TEST_ROLE_)
@@ -59,13 +58,10 @@ static_assert(static_cast<unsigned char>(Role::prompt) == ROLLTUI_ROLE_DEFAULT_P
               "the C side's default input prompt role must be Role::prompt");
 
 // THE ROLE NAMES ARE READ FROM THE LIBRARY WHERE THEY ARE NEEDED (`rolltui_role_name`), and
-// this file holds no table of its own. It used to: a verbatim copy of `Style.hpp`'s table
-// under the comment "reproduced", the FIFTH copy of that vocabulary in the tree, which also
-// silently shadowed `rolltui::kRoleNames` for this whole translation unit — so a check added
-// below it compared the C table against a hand-copy and passed no matter what either side
-// said (found 2026-09-05, by that check's own control failing to fire). The accessor that
-// replaced the copy was itself orphaned once the checks called the C function directly, and
-// is gone; keep it that way — read the library, do not cache it here.
+// this file holds no table of its own, and must not grow one. A hand-copy of the role names
+// here SHADOWS the library's for this whole translation unit, so a check comparing "the
+// library's table" against a hand-copy compares the hand-copy with itself and passes whatever
+// either side says. Read the library; do not cache it here.
 
 // `rolltui::Color`/`rolltui::Style` (Style.hpp) were one-definition aliases over the same C
 // structs -- reproduced verbatim; there was never a second definition to convert away from.
@@ -277,14 +273,11 @@ std::string color_to_string(Color c) {
   const std::size_t n = rolltui_color_to_string(c, buf, sizeof buf);
   return std::string(buf, n);
 }
-// THE LIBRARY'S, not a copy of it — Phase 17 m2a. These two were a VERBATIM 13-line
-// reimplementation of `rolltui::detect_color_depth`/`color_depth_name`, and the nine checks
-// below asserted against THAT: this file has no `using namespace rolltui` and never includes
-// `Theme.hpp`, so the shipped function was not even linked in. The control that showed it
-// needs no build — `nm -C build/rolltui/rolltui-theme-test` found
-// `(anonymous namespace)::detect_color_depth` and ZERO `rolltui::` symbols — and the shipped
-// one runs in `studio.cpp` (5 sites) and `TuiFrontend.cpp:615` with nothing asserting it.
-// Same file, same shape, one day after the role-name shadow (JOURNAL 2026-09-05).
+// THE LIBRARY'S, not a copy of it. A local reimplementation of the depth detector leaves the
+// nine checks below asserting against the LOCAL one while the shipped function — which every
+// host actually runs — is not even linked in, and nothing says so. The control needs no build:
+// `nm -C build/rolltui/rolltui-theme-test` shows whether any `rolltui::` symbol is present at
+// all.
 ColorDepth detect_color_depth(const char* colorterm, const char* term, const char* force) {
   return static_cast<ColorDepth>(rolltui_detect_color_depth(colorterm, term, force));
 }
@@ -410,7 +403,7 @@ int main() {
           "unknown keys named: " + join(rep3.unknown_keys));
     check(contains(rep3.bad_values, "roles.text.bold: expected true or false"), "bad attribute named");
 
-    // PHASE 18 m1 — THE RUNG THAT IS CLOSED ON PURPOSE. Which role pairs must differ is the
+    // THE RUNG THAT IS CLOSED ON PURPOSE. Which role pairs must differ is the
     // library's rule (`kMustDiffer`, rolltui_theme_analysis.c), so a theme file that tries to
     // state it is told the key is not one — the same unknown-key report as any other. This
     // line is what makes "closed by decision" checkable rather than "closed by omission".
@@ -495,16 +488,11 @@ int main() {
 
   // ---- the grep control: no colour literal outside the theme's own files ------------
   //
-  // WIDENED 2026-09-04, because the port would otherwise have walked the
-  // palette out from under it: `rolltui/c/` was never scanned at all, so a colour moved
-  // into a C file would have left the check green while meaning less. It scans both now,
-  // and the exempt files are named with what each of them is.
-  //
-  // NARROWED THE SAME DAY: the three built-in themes' own colours moved from
-  // `Theme.cpp` into `c/rolltui_theme.c` alongside the colour engine m3 already put there, so
-  // `Theme.cpp` is no longer exempted (it carries no colour literal to hide any more — the
-  // pattern no longer matches it at all) and the file below stands for BOTH reasons at once,
-  // named separately so either one going stale is caught on its own.
+  // IT SCANS `rolltui/c/` AS WELL AS THE C++ AT THE EDGE. A control that scans one language's
+  // files stays green while a colour moves into the other's, and means less every time that
+  // happens. The exempt files are named individually, with what each of them is exempt FOR, so
+  // a table quietly moving out of one fails on its own rather than being covered by the other's
+  // exemption.
   {
     std::string dir = ROLLTUI_SOURCE_DIR;
     std::vector<std::string> files;
@@ -530,16 +518,11 @@ int main() {
       if (f == "Style.hpp") continue;  // the constructors themselves (matched only in a comment)
       // c/rolltui_theme.c carries TWO exemptions now, named separately so either going stale
       // is its own failure:
-      // 1. THE COLOUR ENGINE: xterm's published 16-colour palette, which the
-      //      downgrade measures against, plus the constructors it builds a reduced colour
-      //      with — a reference table and computed colours are not a theme naming one. Was
-      //      TWO files until 2026-09-04, when the C++ implementation was deleted and the C
-      //      became the library.
-      //   2. THE BUILT-IN THEMES (Phase 15 m5, the same day): `rolltui::Theme.cpp`'s own
-      //      taste — `make_default_dark`/`_light`/`make_mono`'s colour literals — moved here
-      //      too, so `Theme.cpp` no longer needs (or gets) an exemption of its own; the
-      //      pattern below no longer matches it at all, which is asserted rather than
-      //      assumed a few lines down.
+      //   1. THE COLOUR ENGINE: xterm's published 16-colour palette, which the downgrade
+      //      measures against, plus the constructors it builds a reduced colour with — a
+      //      reference table and computed colours are not a theme naming one.
+      //   2. THE BUILT-IN THEMES: the library's own taste, `make_default_dark`/`_light`/
+      //      `make_mono`'s colour literals.
       // Both are named explicitly so a table quietly moved out of either fails the liveness
       // checks under this loop.
       if (f == "c/rolltui_theme.c") continue;
@@ -596,8 +579,8 @@ int main() {
   // today, and the copy this replaced agreed for months.
   {
     const std::string dir = ROLLTUI_SOURCE_DIR;
-    // Since Phase 19 m2 the list is in `rolltui/rolltui.h`, the definition, where every
-    // vocabulary a public signature speaks lives; `rolltui_style.h` is the library's own.
+    // The list is in `rolltui/rolltui.h`, the definition, where every vocabulary a public
+    // signature speaks lives; `rolltui_style.h` is the library's own.
     const std::string list = read_file(dir + "/rolltui.h");
     check(list.find("ROLLTUI_ROLE_LIST(X)") != std::string::npos,
           "the role list lives in the definition, as the one X-macro both languages expand");
