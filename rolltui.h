@@ -4506,7 +4506,17 @@ RolltuiMenuItem* rolltui_menu_root(RolltuiMenu* m);
 RolltuiMenuItem* rolltui_menu_find(RolltuiMenu* m, const char* id, size_t len);
 
 /* A Choice's options / a Submenu's items, by COPY, then the flat list and the selection are
- * rebuilt. */
+ * rebuilt.
+ *
+ * **THIS IS WHAT MAKES A MENU DYNAMIC, and the header undersold it until 2026-09-06.** "A menu's
+ * structure IS a file" is true of its SKELETON and false of its contents: a file gives the
+ * levels, the labels and the action ids, and a host FILLS the parts that depend on what exists at
+ * runtime by building `RolltuiMenuItem`s and setting them here. **roll already does exactly
+ * that** — its Theme, Layout and Bindings choices are built from the preset store's live listing
+ * (`src/frontends/TuiFrontend.cpp`), so a preset a user saved a moment ago appears in the menu
+ * with no file edited and no rebuild. A list of open buffers, of recent paths, of discovered
+ * models is the same shape. **DO put the skeleton in the file and the runtime contents here;
+ * DON'T read "a menu is a file" as meaning a menu is static.** */
 int rolltui_menu_set_options(RolltuiMenu* m, const char* id, size_t len, const RolltuiMenuItemList* options);
 
 /* THE THREE PLAIN SETTERS, each `find` plus one assignment, 0 when no item has that id. They
