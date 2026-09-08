@@ -503,7 +503,9 @@ ROLLTUI_API(rolltui_layout_to_json_text, INTERNAL)  /* a step of loading, saving
 ROLLTUI_API(rolltui_layout_to_json_value, INTERNAL)  /* a step of loading, saving or resolving a layout */
 ROLLTUI_API(rolltui_load_layout, INTERNAL)  /* the loader over a parsed tree; the text form is the entry point */
 ROLLTUI_API(rolltui_load_layout_text, PUBLIC)
-ROLLTUI_API(rolltui_app_file, PUBLIC)  /* an app that keeps its screen in files cannot start until it knows where its own files are; every host built that way needs this and three of them were building the path themselves */
+ROLLTUI_API(rolltui_app_file, PUBLIC)
+ROLLTUI_API(rolltui_dir_read, INTERNAL)  /* a browser and a picker both read a directory; a host reaches it through the kind that does */
+ROLLTUI_API(rolltui_dir_list_release, INTERNAL)  /* an app that keeps its screen in files cannot start until it knows where its own files are; every host built that way needs this and three of them were building the path themselves */
 ROLLTUI_API(rolltui_loaded_layout_init, INTERNAL)
 ROLLTUI_API(rolltui_loaded_layout_release, INTERNAL)
 ROLLTUI_API(rolltui_loaded_layout_to_layout, INTERNAL)

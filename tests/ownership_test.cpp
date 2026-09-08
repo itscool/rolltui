@@ -291,6 +291,9 @@ int main() {
         {"c/rolltui_menu.h", 0},
         {"c/rolltui_theme_analysis.h", 0},
         {"c/rolltui_presets.h", 0},
+        /* `RolltuiDirList::v` — the entries array, OWNED by the list and freed by `_release`,
+           which is the one raw pointer this header declares. */
+        {"c/rolltui_files.h", 1},
         {"c/rolltui_md_lines.h", 5},
         {"c/rolltui_screen.h", 0},
         {"c/rolltui_render.h", 0},
@@ -370,7 +373,7 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    check(total == 135, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 136, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

@@ -150,7 +150,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 35; /* +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 36; /* +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; +rolltui_files.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -622,7 +622,7 @@ int main() {
     // A public input type whose value cannot be parsed is a contradiction in the surface,
     // which is why the colour parser and printer are public independently of the consumer
     // that found them missing.
-    const int kPublic = 304, kInternal_ = 571, kDelete = 0;
+    const int kPublic = 304, kInternal_ = 573, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
