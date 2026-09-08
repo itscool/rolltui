@@ -4,6 +4,9 @@
   "depth": "auto",
   "colours": {
     "name": "mono",
+    "meta": {
+      "badges": ["mono", "transparent", "attribute-redundant"]
+    },
     "roles": {
       "text": {
         "fg": "none",

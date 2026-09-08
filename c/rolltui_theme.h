@@ -50,6 +50,9 @@ void rolltui_theme_report_set_error(RolltuiThemeReport* r, const char* s, size_t
 void rolltui_theme_report_add_missing_role(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_unknown_key(RolltuiThemeReport* r, const char* s, size_t len);
 void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, size_t len);
+/* One sentence about the theme's own `meta.badges` declaration disagreeing with the colours —
+ * see `RolltuiThemeReport.badge_mismatches` for why this is not a bad value. */
+void rolltui_theme_report_add_badge_mismatch(RolltuiThemeReport* r, const char* s, size_t len);
 
 
 /* ---- INTERNAL: not part of the public API ---------------------------------------------------

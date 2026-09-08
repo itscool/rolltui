@@ -28,6 +28,7 @@
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui_test.hpp"
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
+#include "rolltui/c/rolltui_theme_analysis.h"  // INTERNAL: the classification a theme declares
 
 namespace fs = std::filesystem;
 
@@ -89,6 +90,9 @@ struct ThemeLoadReport {
   std::vector<std::string> missing_roles;
   std::vector<std::string> unknown_keys;
   std::vector<std::string> bad_values;
+  // Where the file's own `meta.badges` disagrees with what its colours compute as. Its own
+  // list and not `bad_values`, so `clean()` below keeps meaning "the colours are as written".
+  std::vector<std::string> badge_mismatches;
   bool clean() const { return error.empty() && missing_roles.empty() && unknown_keys.empty() && bad_values.empty(); }
 };
 
@@ -148,6 +152,7 @@ std::optional<Theme> load_theme(std::string_view json_text, ThemeMode mode, Them
   for (std::size_t i = 0; i < rep.missing_roles_n; ++i) report.missing_roles.push_back(str_of(rep.missing_roles[i]));
   for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) report.unknown_keys.push_back(str_of(rep.unknown_keys[i]));
   for (std::size_t i = 0; i < rep.bad_values_n; ++i) report.bad_values.push_back(str_of(rep.bad_values[i]));
+  for (std::size_t i = 0; i < rep.badge_mismatches_n; ++i) report.badge_mismatches.push_back(str_of(rep.badge_mismatches[i]));
   rolltui_theme_report_release(&rep);
   if (!eff) {
     rolltui_str_free(&name);
@@ -256,6 +261,42 @@ std::string theme_to_json(const Theme& theme) {
   root.set("roles", Value(rolltui_json_clone(rolltui_json_get(c, "roles", 5))));
   rolltui_json_free(c);
   return dump(root, 2) + "\n";
+}
+
+// The same file with a DECLARATION in it — {name, meta, roles}, the order every writer of a
+// theme file uses. `badges` is ADOPTED; nullptr writes no "meta" at all, which is what an
+// undeclared theme looks like.
+std::string theme_to_json_declaring(const Theme& theme, RolltuiJsonValue* badges) {
+  Value root(rolltui_json_object());
+  root.set("name", Value(rolltui_json_string(theme.name.data(), theme.name.size())));
+  if (badges) {
+    Value meta(rolltui_json_object());
+    meta.set("badges", Value(badges));
+    root.set("meta", std::move(meta));
+  }
+  RolltuiJsonValue* c = rolltui_theme_dump(theme.styles.data(), nullptr, nullptr, nullptr, rolltui_theme_default_vocab());
+  root.set("roles", Value(rolltui_json_clone(rolltui_json_get(c, "roles", 5))));
+  rolltui_json_free(c);
+  return dump(root, 2) + "\n";
+}
+
+// The badge names `styles` computes as, in the order the library spells them.
+std::vector<std::string> computed_badge_names(const std::array<RolltuiStyle, kRoleCount>& styles) {
+  std::vector<std::string> out;
+  RolltuiJsonValue* v = rolltui_theme_badges_json(styles.data(), nullptr, kRoleCount);
+  for (std::size_t i = 0, n = rolltui_json_array_size(v); i < n; ++i) {
+    std::size_t len = 0;
+    const char* p = rolltui_json_as_string(rolltui_json_array_at(v, i), "", 0, &len);
+    out.emplace_back(p, len);
+  }
+  rolltui_json_free(v);
+  return out;
+}
+
+RolltuiJsonValue* badge_array(const std::vector<std::string>& names) {
+  RolltuiJsonValue* a = rolltui_json_array();
+  for (const std::string& n : names) rolltui_json_array_push(a, rolltui_json_string(n.data(), n.size()));
+  return a;
 }
 
 // Mirrors Theme.cpp's colour/depth functions exactly, over the same C calls.
@@ -418,6 +459,111 @@ int main() {
     ThemeLoadReport rep5;
     check(!load_theme("{\"name\": \"x\"}", ThemeMode::Dark, rep5) && rep5.error.find("roles") != std::string::npos,
           "no roles object: error");
+  }
+
+  // ---- the classification a theme DECLARES, and cannot lie about -------------------
+  //
+  // `meta.badges` is a required field: a theme states its own contrast and colour-vision
+  // classification so a reader can see it in the file and a reviewer can see it move in a
+  // diff. The loader recomputes it from the colours it just resolved and names every
+  // disagreement; it never refuses the theme, and the styles are the file's either way.
+  {
+    const Theme& dark = *builtin_theme("default-dark");
+    const std::vector<std::string> truth = computed_badge_names(dark.styles);
+    check(truth.size() >= 2, "the built-in classifies as something worth declaring (" + join(truth) + ")");
+
+    // (a) an HONEST declaration is silent.
+    ThemeLoadReport ok_rep;
+    auto honest = load_theme(theme_to_json_declaring(dark, badge_array(truth)), ThemeMode::Dark, ok_rep);
+    check(honest.has_value() && ok_rep.badge_mismatches.empty(),
+          "a declaration that matches the colours is reported as nothing: " + join(ok_rep.badge_mismatches));
+
+    // (b) a LIE is named, and the theme still draws — the Done-when, both halves.
+    std::vector<std::string> lying = truth;
+    lying.push_back("high-contrast");  // default-dark is readable, not high-contrast
+    ThemeLoadReport lie_rep;
+    auto liar = load_theme(theme_to_json_declaring(dark, badge_array(lying)), ThemeMode::Dark, lie_rep);
+    check(contains(lie_rep.badge_mismatches, "meta.badges: claims \'high-contrast\', which does not hold"),
+          "a badge the theme does not have is named: " + join(lie_rep.badge_mismatches));
+    check(liar.has_value() && liar->styles == dark.styles,
+          "…and the theme still loads, with the colours exactly as written");
+    check(lie_rep.clean(), "…and the colours are not reported as bad: a stale badge is not a bad value");
+
+    // (c) the OTHER direction: the declaration is the whole classification, so a badge the
+    // theme earns and does not claim has gone just as stale as one it claims and has not.
+    std::vector<std::string> partial = truth;
+    const std::string dropped = partial.back();
+    partial.pop_back();
+    ThemeLoadReport under_rep;
+    check(load_theme(theme_to_json_declaring(dark, badge_array(partial)), ThemeMode::Dark, under_rep).has_value() &&
+              contains(under_rep.badge_mismatches, "meta.badges: does not claim \'" + dropped + "\', which holds"),
+          "a badge the theme has and does not claim is named: " + join(under_rep.badge_mismatches));
+
+    // (d) a name that is not one of the thirteen is told so rather than read as a failed claim.
+    ThemeLoadReport bogus_rep;
+    check(load_theme(theme_to_json_declaring(dark, badge_array({"shiny"})), ThemeMode::Dark, bogus_rep).has_value() &&
+              contains(bogus_rep.badge_mismatches, "meta.badges: \'shiny\' is not a badge name"),
+          "a name that is not a badge is named as that: " + join(bogus_rep.badge_mismatches));
+
+    // (e) NO declaration at all is incomplete, not silently unclassified — and the sentence
+    // carries what the theme actually computes as, so a writer can paste the answer in.
+    ThemeLoadReport none_rep;
+    check(load_theme(theme_to_json_declaring(dark, nullptr), ThemeMode::Dark, none_rep).has_value() &&
+              none_rep.badge_mismatches.size() == 1 &&
+              none_rep.badge_mismatches[0].find("must state its own classification") != std::string::npos &&
+              none_rep.badge_mismatches[0].find(truth.front()) != std::string::npos,
+          "an undeclared theme is reported once, with what it computes as: " + join(none_rep.badge_mismatches));
+
+    // (f) THE WRONG SHAPE is a shape complaint, not thirteen claim complaints.
+    ThemeLoadReport shape_rep;
+    check(load_theme(theme_to_json_declaring(dark, rolltui_json_string("readable", 8)), ThemeMode::Dark, shape_rep)
+                  .has_value() &&
+              contains(shape_rep.badge_mismatches, "meta.badges: expected an array of badge names"),
+          "a \"badges\" that is not an array says so: " + join(shape_rep.badge_mismatches));
+
+    // (g) THE RENDERER USES THE COMPUTED VALUE AND NEVER THE STORED ONE. Four files whose
+    // declarations disagree wildly resolve to one identical style table, so nothing a theme
+    // says about itself can reach a cell.
+    check(honest->styles == liar->styles && honest->styles == dark.styles,
+          "the declaration changes no style: honest, lying and absent all draw the same theme");
+
+    // (h) THE PAIR FORM resolves per mode, exactly as a role\'s fg/bg pair does — a theme
+    // whose two variants classify differently declares both and each is checked against its
+    // own colours.
+    const Theme& light = *builtin_theme("default-light");
+    RolltuiJsonValue* pair = rolltui_json_object();
+    rolltui_json_set(pair, "dark", 4, badge_array(computed_badge_names(dark.styles)));
+    rolltui_json_set(pair, "light", 5, badge_array(computed_badge_names(light.styles)));
+    // Both variants live in ONE file here only to exercise the resolution; the roles are
+    // dark\'s, so the light claim is checked against dark\'s colours and must disagree.
+    ThemeLoadReport pair_dark, pair_light;
+    const std::string paired = theme_to_json_declaring(dark, pair);
+    check(load_theme(paired, ThemeMode::Dark, pair_dark).has_value() && pair_dark.badge_mismatches.empty(),
+          "the pair form\'s dark half is what dark mode checks: " + join(pair_dark.badge_mismatches));
+    check(load_theme(paired, ThemeMode::Light, pair_light).has_value() && !pair_light.badge_mismatches.empty(),
+          "…and light mode reads the light half, which these colours are not");
+
+    // (i) THE SHIPPED THEMES DECLARE. A required field the library\'s own files do not carry
+    // would make every one of them incomplete on load.
+    for (const fs::directory_entry& e : fs::directory_iterator(std::string(ROLLTUI_SOURCE_DIR) + "/presets/themes")) {
+      if (e.path().extension() != ".json") continue;
+      const std::string text = read_file(e.path().string());
+      std::string err;
+      Value file = parse(text, err);
+      const Value colours = file["colours"];
+      RolltuiStr name{};
+      RolltuiThemeReport rep{};
+      std::array<RolltuiStyle, kRoleCount> styles{};
+      RolltuiEffectMap* eff = rolltui_theme_load(colours.handle(), ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(),
+                                                 styles.data(), &name, &rep);
+      std::string problems;
+      for (std::size_t i = 0; i < rep.badge_mismatches_n; ++i) problems += str_of(rep.badge_mismatches[i]) + "; ";
+      check(eff != nullptr && rep.badge_mismatches_n == 0,
+            e.path().filename().string() + " declares its own classification and it holds: " + problems);
+      rolltui_effect_map_free(eff);
+      rolltui_str_free(&name);
+      rolltui_theme_report_release(&rep);
+    }
   }
 
   // ---- round trip ----------------------------------------------------------------

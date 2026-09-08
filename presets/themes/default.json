@@ -4,6 +4,12 @@
   "depth": "auto",
   "colours": {
     "name": "default",
+    "meta": {
+      "badges": {
+        "dark": ["dark", "readable", "cvd-safe", "protan-safe", "deutan-safe", "tritan-safe", "16-safe", "256-safe"],
+        "light": ["light", "readable", "cvd-safe", "protan-safe", "deutan-safe", "tritan-safe", "256-safe"]
+      }
+    },
     "roles": {
       "text": {
         "fg": {

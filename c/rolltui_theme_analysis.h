@@ -147,6 +147,44 @@ void rolltui_theme_report_text(const RolltuiRoleCheck* roles, size_t role_count,
  * appended. */
 void rolltui_check_claims(const RolltuiJsonValue* meta, const RolltuiBadges* badges, RolltuiStrArray* out);
 
+/* ---- THE CLASSIFICATION A THEME FILE DECLARES ------------------------------------------------
+ *
+ * A theme's contrast and colour-vision classification is a REQUIRED field of the file format:
+ * `meta.badges` is either an array of badge names for a single-variant theme, or
+ * `{"dark": [...], "light": [...]}` when the two variants classify differently — the same
+ * shape a role's fg/bg pair already uses, resolved for the mode being loaded.
+ *
+ * DECLARED AND VERIFIED, which is neither of the two things it looks like. The declaration is
+ * not trusted: `rolltui_theme_load` recomputes it from the colours it just resolved and reports
+ * every disagreement by name, and the renderer uses the COMPUTED classification and never the
+ * stored one. What the field buys is that the classification is in the file — greppable,
+ * diffable, reviewable, so a colour change that moves a theme from readable to not shows up in
+ * a diff instead of needing a tool run to discover.
+ *
+ * A STALE DECLARATION IS NEVER FATAL. The colours still load and still draw; refusing them
+ * would turn an honest edit into a broken app. That is also why the disagreements land in
+ * `RolltuiThemeReport.badge_mismatches` and not in `bad_values`: a badge that has gone stale is
+ * a problem with the DECLARATION, not with the colours, and an otherwise-good theme must not
+ * read as unusable because of it. */
+
+/* Builds the `meta.badges` VALUE for a theme, freshly computed — OWNED (free with
+ * `rolltui_json_free`, or hand it straight to `rolltui_json_set`). `light_styles` NULL dumps
+ * ONE variant's names as a plain array; non-NULL dumps both, as a plain array when the two
+ * classify identically and as `{"dark": [...], "light": [...]}` when they do not — the same
+ * asymmetry `rolltui_theme_dump` already takes for a role. NULL when `role_count` does not
+ * match this file's own role table (`rolltui_theme_analyse`'s own defensive answer). */
+RolltuiJsonValue* rolltui_theme_badges_json(const RolltuiStyle* dark_styles, const RolltuiStyle* light_styles,
+                                            size_t role_count);
+
+/* `meta.badges` for `mode` against what `styles` actually classifies as: appends one sentence
+ * per disagreement to `out` (RESET first) — a claim that does not hold, a computed badge the
+ * file does not claim, a name that is not a badge at all, a "badges" of the wrong shape, and
+ * the missing declaration itself. Appends NOTHING when the declaration is exactly the computed
+ * set, and nothing at all when `role_count` does not match the role table (there is then no
+ * computed set to compare against). */
+void rolltui_theme_check_declaration(const RolltuiJsonValue* meta, int mode, const RolltuiStyle* styles,
+                                     size_t role_count, RolltuiStrArray* out);
+
 void rolltui_fix_array_release(RolltuiFixArray* a);
 
 /* Every failing role and pair, in report order (`rolltui_theme_analyse`'s own role and pair

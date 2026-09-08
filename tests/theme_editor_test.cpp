@@ -20,6 +20,7 @@
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_theme.h"
+#include "rolltui/c/rolltui_theme_analysis.h"
 #include "rolltui_test.hpp"
 #include "theme_editor.hpp"
 
@@ -360,6 +361,50 @@ int main() {
             "the saved file carries the generated theme's provenance (seed 7) and its claimed badges, not just its colours");
       rolltui_json_free(saved);
     }
+  }
+
+  // ---- the writer DECLARES the classification, freshly, every time ------------------
+  //
+  // `meta.badges` is a required field of the theme format, so what this editor writes has to
+  // carry it — and has to carry what the colours BEING SAVED compute as, not what the file it
+  // was loaded from happened to say. A writer that passed the loaded declaration through would
+  // emit one that had already gone stale under the very edit it is saving.
+  {
+    ThemeEditor e{rolltui_test::test_context()};
+    RolltuiJsonValue* before = e.colours_json("t");
+    const RolltuiJsonValue* meta = rolltui_json_get(before, "meta", 4);
+    check(rolltui_json_is_object(meta) && !rolltui_json_is_null(rolltui_json_get(meta, "badges", 6)),
+          "a saved theme states its own classification");
+    // The loader is the oracle: it recomputes and reports, so a file that reports nothing is
+    // one whose declaration matches its colours.
+    auto mismatches = [](const RolltuiJsonValue* colours) {
+      std::array<RolltuiStyle, ROLLTUI_ROLE_COUNT> styles{};
+      RolltuiStr name{};
+      RolltuiThemeReport rep{};
+      std::string out;
+      RolltuiEffectMap* eff =
+          rolltui_theme_load(colours, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), styles.data(), &name, &rep);
+      for (std::size_t i = 0; i < rep.badge_mismatches_n; ++i) out += str_of(rep.badge_mismatches[i]) + "; ";
+      rolltui_effect_map_free(eff);
+      rolltui_str_free(&name);
+      rolltui_theme_report_release(&rep);
+      return out;
+    };
+    check(mismatches(before).empty(), "…and the declaration it writes holds against its own colours: " + mismatches(before));
+
+    // Now change a colour the classification depends on and save again: the declaration must
+    // have MOVED with it, which a carried-through one could not do.
+    ThemeEdit dim = e.committed();
+    RolltuiStyleColor near_black{};
+    rolltui_color_parse("#151515", 7, &near_black);
+    for (RolltuiStyle& st : dim.dark) st.fg = near_black;
+    e.replace(dim);
+    RolltuiJsonValue* after = e.colours_json("t");
+    check(mismatches(after).empty(), "…and again after an edit that changes what the theme classifies as: " + mismatches(after));
+    check(!rolltui_json_equal(rolltui_json_get(before, "meta", 4), rolltui_json_get(after, "meta", 4)),
+          "…and the declaration is not the same one: an unreadable theme does not claim readable");
+    rolltui_json_free(before);
+    rolltui_json_free(after);
   }
   return report("rolltui theme_editor_test");
 }

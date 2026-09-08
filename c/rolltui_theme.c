@@ -27,6 +27,7 @@
 #include "rolltui/c/rolltui_effects.h"
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_style.h"
+#include "rolltui/c/rolltui_theme_analysis.h"
 #include "rolltui/c/rolltui_terminal.h"
 
 /* ---- parsing and printing ---------------------------------------------------------------- */
@@ -735,6 +736,8 @@ void rolltui_theme_report_release(RolltuiThemeReport* r) {
   rolltui_mem_free(r->unknown_keys);
   for (i = 0; i < r->bad_values_n; ++i) rolltui_str_free(&r->bad_values[i]);
   rolltui_mem_free(r->bad_values);
+  for (i = 0; i < r->badge_mismatches_n; ++i) rolltui_str_free(&r->badge_mismatches[i]);
+  rolltui_mem_free(r->badge_mismatches);
   memset(r, 0, sizeof *r);
 }
 
@@ -760,6 +763,12 @@ void rolltui_theme_report_add_bad_value(RolltuiThemeReport* r, const char* s, si
   r->bad_values = (RolltuiStr*)rolltui_grow_zeroed(r->bad_values, &r->bad_values_cap, r->bad_values_n + 1,
                                                    sizeof *r->bad_values);
   rolltui_str_set(&r->bad_values[r->bad_values_n++], s, len);
+}
+
+void rolltui_theme_report_add_badge_mismatch(RolltuiThemeReport* r, const char* s, size_t len) {
+  r->badge_mismatches = (RolltuiStr*)rolltui_grow_zeroed(r->badge_mismatches, &r->badge_mismatches_cap,
+                                                         r->badge_mismatches_n + 1, sizeof *r->badge_mismatches);
+  rolltui_str_set(&r->badge_mismatches[r->badge_mismatches_n++], s, len);
 }
 
 /* ---- the JSON loader ------------------------------------------------------------------------
@@ -1203,6 +1212,20 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
       read_role_style(rolltui_json_get(roles, rn, strlen(rn)), &text_style, defs, mode, where, report,
                       &out_styles[i]);
     }
+  }
+
+  /* THE FILE'S OWN CLASSIFICATION, RECOMPUTED. `meta.badges` says what this theme claims to be;
+   * the colours above say what it is. The stored value is never used for anything — it is read
+   * only to be disagreed with, and every disagreement is named in `report->badge_mismatches`.
+   * A stale declaration is never fatal (see that field): the theme loads and draws either way. */
+  {
+    RolltuiStrArray badge_problems;
+    memset(&badge_problems, 0, sizeof badge_problems);
+    rolltui_theme_check_declaration(rolltui_json_get(root, K("meta")), mode, out_styles, vocab->role_count,
+                                    &badge_problems);
+    for (i = 0; i < badge_problems.n; ++i)
+      rolltui_theme_report_add_badge_mismatch(report, badge_problems.v[i].p, badge_problems.v[i].n);
+    rolltui_str_array_release(&badge_problems);
   }
 
   effects_v = rolltui_json_get(root, K("effects"));

@@ -279,6 +279,7 @@ ROLLTUI_API(rolltui_theme_load, PUBLIC)
 ROLLTUI_API(rolltui_theme_mode_from_name, PUBLIC)
 ROLLTUI_API(rolltui_theme_mode_setting_valid, PUBLIC)
 ROLLTUI_API(rolltui_theme_report_add_bad_value, INTERNAL)  /* the loader's report builder */
+ROLLTUI_API(rolltui_theme_report_add_badge_mismatch, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_report_add_missing_role, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_report_add_unknown_key, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_report_release, PUBLIC)
@@ -290,6 +291,8 @@ ROLLTUI_API(rolltui_apca_contrast, INTERNAL)  /* an analysis step; the studio re
 ROLLTUI_API(rolltui_apply_fix, INTERNAL)
 ROLLTUI_API(rolltui_badge_names, INTERNAL)
 ROLLTUI_API(rolltui_check_claims, INTERNAL)
+ROLLTUI_API(rolltui_theme_badges_json, INTERNAL)  /* what a theme file's writer declares; every writer of one reaches the module's own headers */
+ROLLTUI_API(rolltui_theme_check_declaration, INTERNAL)  /* the loader's own recompute-and-compare step */
 ROLLTUI_API(rolltui_delta_e, INTERNAL)  /* an analysis step; the studio reaches the module's results, not its steps */
 ROLLTUI_API(rolltui_fix_array_release, INTERNAL)
 ROLLTUI_API(rolltui_fix_confusable, INTERNAL)  /* an analysis step; the studio reaches the module's results, not its steps */

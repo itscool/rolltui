@@ -620,7 +620,7 @@ int main() {
     // A public input type whose value cannot be parsed is a contradiction in the surface,
     // which is why the colour parser and printer are public independently of the consumer
     // that found them missing.
-    const int kPublic = 298, kInternal_ = 517, kDelete = 0;
+    const int kPublic = 298, kInternal_ = 520, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +

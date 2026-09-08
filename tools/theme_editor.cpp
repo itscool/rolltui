@@ -200,19 +200,15 @@ RolltuiJsonValue* ThemeEditor::colours_json(std::string_view name) const {
   const ThemeEdit& c = undo_.current();
   RolltuiJsonValue* root = rolltui_json_object();
   rolltui_json_set(root, "name", 4, rolltui_json_string(name.data(), name.size()));
-  if (c.dark_meta && rolltui_json_is_object(c.dark_meta)) {
-    RolltuiJsonValue* meta = rolltui_json_clone(c.dark_meta);
-    // Each variant's claimed badges, as a pair when they differ.
-    if (c.light_meta && rolltui_json_is_object(c.light_meta)) {
-      const RolltuiJsonValue* db = rolltui_json_get(c.dark_meta, "badges", 6);
-      const RolltuiJsonValue* lb = rolltui_json_get(c.light_meta, "badges", 6);
-      if (!rolltui_json_equal(db, lb)) {
-        RolltuiJsonValue* pair = rolltui_json_object();
-        rolltui_json_set(pair, "dark", 4, rolltui_json_clone(db));
-        rolltui_json_set(pair, "light", 5, rolltui_json_clone(lb));
-        rolltui_json_set(meta, "badges", 6, pair);
-      }
-    }
+  {
+    // THE CLASSIFICATION IS WRITTEN FRESH, NEVER CARRIED. `meta.badges` is a required field of
+    // the format and the loader recomputes it, so a writer that passed the loaded value through
+    // would emit a declaration that had already gone stale under the edit being saved. Whatever
+    // else the loaded meta holds (a generated theme's provenance) is kept.
+    RolltuiJsonValue* meta = c.dark_meta && rolltui_json_is_object(c.dark_meta) ? rolltui_json_clone(c.dark_meta)
+                                                                               : rolltui_json_object();
+    if (RolltuiJsonValue* badges = rolltui_theme_badges_json(c.dark.data(), c.light.data(), ROLLTUI_ROLE_COUNT))
+      rolltui_json_set(meta, "badges", 6, badges);
     rolltui_json_set(root, "meta", 4, meta);
   }
   // ONE effects object for both variants (motion is the theme's, not the terminal

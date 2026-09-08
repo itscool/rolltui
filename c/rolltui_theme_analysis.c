@@ -643,6 +643,140 @@ void rolltui_check_claims(const RolltuiJsonValue* meta, const RolltuiBadges* bad
   }
 }
 
+/* ---- the declaration a theme file carries (rolltui_theme_analysis.h states the contract) ----
+ *
+ * THE WORKING ARRAYS ARE VALUE / INLINE, bounded by the role table's own compile-time size:
+ * `rolltui_theme_analyse` answers 0 for any `role_count` but `ROLLTUI_ROLE_COUNT`, so the two
+ * fixed arrays below cannot be overrun and there is no unbounded case to spill. Both functions
+ * run at theme-load rate, never per frame. */
+
+static RolltuiJsonValue* badge_name_array(const RolltuiBadges* b) {
+  RolltuiStrArray names;
+  RolltuiJsonValue* arr;
+  size_t i;
+  memset(&names, 0, sizeof names);
+  rolltui_badge_names(b, &names);
+  arr = rolltui_json_array();
+  for (i = 0; i < names.n; ++i) rolltui_json_array_push(arr, rolltui_json_string(names.v[i].p, names.v[i].n));
+  rolltui_str_array_release(&names);
+  return arr;
+}
+
+RolltuiJsonValue* rolltui_theme_badges_json(const RolltuiStyle* dark_styles, const RolltuiStyle* light_styles,
+                                            size_t role_count) {
+  RolltuiRoleCheck roles[ROLLTUI_ROLE_COUNT];
+  RolltuiPairCheck pairs[ROLLTUI_MUST_DIFFER_COUNT];
+  RolltuiBadges dark_badges, light_badges;
+  RolltuiJsonValue *dark, *light, *pair;
+  if (!dark_styles || !rolltui_theme_analyse(dark_styles, role_count, roles, pairs, &dark_badges)) return NULL;
+  dark = badge_name_array(&dark_badges);
+  if (!light_styles) return dark;
+  if (!rolltui_theme_analyse(light_styles, role_count, roles, pairs, &light_badges)) return dark;
+  light = badge_name_array(&light_badges);
+  if (rolltui_json_equal(dark, light)) {
+    rolltui_json_free(light);
+    return dark;
+  }
+  pair = rolltui_json_object();
+  rolltui_json_set(pair, K("dark"), dark);
+  rolltui_json_set(pair, K("light"), light);
+  return pair;
+}
+
+/* Every badge name, taken from the ONE table that spells them (`rolltui_badge_names` over a
+ * fully-set `RolltuiBadges`) rather than from a second list beside it. */
+static int badge_name_known(const char* s, size_t len) {
+  RolltuiBadges all;
+  memset(&all, 1, sizeof all);
+  return rolltui_has_badge(&all, s, len);
+}
+
+/* `meta.badges` resolved for one mode: the value itself when it is an array, its "dark"/"light"
+ * member when it is the pair object. NULL when there is no declaration to read. */
+static const RolltuiJsonValue* declared_badges(const RolltuiJsonValue* meta, int mode) {
+  const RolltuiJsonValue* b;
+  const char* key = mode == ROLLTUI_MODE_LIGHT ? "light" : "dark";
+  if (!rolltui_json_is_object(meta)) return NULL;
+  b = rolltui_json_get(meta, K("badges"));
+  if (!b || rolltui_json_is_null(b)) return NULL;
+  if (rolltui_json_is_object(b) && rolltui_json_has(b, key, strlen(key))) return rolltui_json_get(b, key, strlen(key));
+  return b;
+}
+
+void rolltui_theme_check_declaration(const RolltuiJsonValue* meta, int mode, const RolltuiStyle* styles,
+                                     size_t role_count, RolltuiStrArray* out) {
+  RolltuiRoleCheck roles[ROLLTUI_ROLE_COUNT];
+  RolltuiPairCheck pairs[ROLLTUI_MUST_DIFFER_COUNT];
+  RolltuiBadges computed;
+  RolltuiStrArray names;
+  const RolltuiJsonValue* claims;
+  size_t i, j, n;
+  char buf[128];
+
+  rolltui_str_array_release(out);
+  if (!styles || !rolltui_theme_analyse(styles, role_count, roles, pairs, &computed)) return;
+  claims = declared_badges(meta, mode);
+  memset(&names, 0, sizeof names);
+  rolltui_badge_names(&computed, &names);
+
+  if (!claims) {
+    RolltuiStr msg;
+    memset(&msg, 0, sizeof msg);
+    rolltui_str_append(&msg, K("meta.badges: a theme must state its own classification; this one computes as"));
+    if (names.n == 0) rolltui_str_append(&msg, K(" (none)"));
+    for (i = 0; i < names.n; ++i) {
+      rolltui_str_append(&msg, K(" "));
+      rolltui_str_append_str(&msg, &names.v[i]);
+    }
+    str_array_add(out, msg.p, msg.n);
+    rolltui_str_free(&msg);
+    rolltui_str_array_release(&names);
+    return;
+  }
+  if (!rolltui_json_is_array(claims)) {
+    str_array_add(out, K("meta.badges: expected an array of badge names"));
+    rolltui_str_array_release(&names);
+    return;
+  }
+
+  n = rolltui_json_array_size(claims);
+  for (i = 0; i < n; ++i) {
+    const RolltuiJsonValue* c = rolltui_json_array_at(claims, i);
+    size_t len = 0;
+    const char* s;
+    if (!rolltui_json_is_string(c)) {
+      str_array_add(out, K("meta.badges: every entry must be a badge name"));
+      continue;
+    }
+    s = rolltui_json_as_string(c, "", 0, &len);
+    if (len >= sizeof buf - 64) continue; /* a name that long is not one of the thirteen */
+    if (rolltui_has_badge(&computed, s, len)) continue;
+    if (badge_name_known(s, len))
+      snprintf(buf, sizeof buf, "meta.badges: claims '%.*s', which does not hold", (int)len, s);
+    else
+      snprintf(buf, sizeof buf, "meta.badges: '%.*s' is not a badge name", (int)len, s);
+    str_array_add(out, buf, strlen(buf));
+  }
+  /* The other direction: the declaration is the WHOLE classification, so a badge the theme
+   * earns and does not claim is as stale as one it claims and does not earn. */
+  for (i = 0; i < names.n; ++i) {
+    int claimed = 0;
+    for (j = 0; j < n && !claimed; ++j) {
+      const RolltuiJsonValue* c = rolltui_json_array_at(claims, j);
+      size_t len = 0;
+      const char* s;
+      if (!rolltui_json_is_string(c)) continue;
+      s = rolltui_json_as_string(c, "", 0, &len);
+      claimed = (len == names.v[i].n && (len == 0 || memcmp(s, names.v[i].p, len) == 0));
+    }
+    if (!claimed) {
+      snprintf(buf, sizeof buf, "meta.badges: does not claim '%.*s', which holds", (int)names.v[i].n, names.v[i].p);
+      str_array_add(out, buf, strlen(buf));
+    }
+  }
+  rolltui_str_array_release(&names);
+}
+
 /* ---- auto-fix ---------------------------------------------------------------------------- */
 
 void rolltui_fix_release(RolltuiFix* f) {

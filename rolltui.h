@@ -1821,12 +1821,26 @@ typedef struct RolltuiThemeVocab {
   unsigned char fallback_effect_role;
 } RolltuiThemeVocab;
 
-/* ---- the load report: mirrors rolltui::ThemeLoadReport field for field -------------------- */
+/* ---- the load report ---------------------------------------------------------------------- */
 typedef struct RolltuiThemeReport {
   RolltuiStr error; /* non-empty: the file was unusable */
   RolltuiStr* missing_roles; size_t missing_roles_n, missing_roles_cap; /* GROWING AMORTISED */
   RolltuiStr* unknown_keys;  size_t unknown_keys_n,  unknown_keys_cap;  /* GROWING AMORTISED */
   RolltuiStr* bad_values;    size_t bad_values_n,    bad_values_cap;    /* GROWING AMORTISED */
+  /* WHERE THE FILE'S OWN CLASSIFICATION DISAGREES WITH THE COLOURS (GROWING AMORTISED). A
+   * theme states its contrast and colour-vision classification in `meta.badges`, and the
+   * loader recomputes it: one sentence here per claim that does not hold, per computed badge
+   * the file does not claim, and for a declaration that is missing or the wrong shape.
+   *
+   * ITS OWN LIST AND NOT `bad_values`, because a stale badge is a problem with the
+   * DECLARATION and not with the colours: the theme still loads, still draws, and is still
+   * exactly as readable as it measures — only the sentence written about it has gone out of
+   * date. Folding it into `bad_values` would make an otherwise-good theme read as unusable to
+   * every caller that treats a bad value as a fault.
+   *
+   * THE RENDERER NEVER READS THE DECLARATION. `out_styles` is the colours as written; what a
+   * theme classifies AS is always recomputed from them. */
+  RolltuiStr* badge_mismatches; size_t badge_mismatches_n, badge_mismatches_cap;
 } RolltuiThemeReport;
 
 /* ========================================================================================
