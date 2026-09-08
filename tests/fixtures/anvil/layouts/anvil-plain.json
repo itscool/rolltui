@@ -1,0 +1,13 @@
+{
+  "name": "anvil-plain", "min_width": 0, "min_height": 0, "focus": "anvil_note",
+  "actions": {
+    "editor.undo": "undo the last binding change",
+    "editor.redo": "redo it",
+    "app.quench": "an action this screen declares and no binary knows"
+  },
+  "root": { "row": [
+    { "id": "anvil_note", "content": "text:  a screen whose right half no line of this binary asked for",
+      "border": "single", "title": "anvil" },
+    { "id": "anvil_edit", "content": "text:  the same screen with the one window changed",
+      "size": 64, "border": "single", "title": "the keys", "focusable": true } ] }
+}

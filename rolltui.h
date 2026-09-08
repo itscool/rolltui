@@ -3721,6 +3721,28 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
 void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
                                      int persist);
 
+/* ---- the `keys` widget kind's one call ------------------------------------------------------
+ * An app gets a keys editor by NAMING `keys` in a layout and binding a key to whatever holds
+ * it. This is the only line of code it writes, it is not editor code, and it does not grow when
+ * the editor does.
+ *
+ * WHAT IT EDITS NEEDS NO CALL AT ALL: the table the stack routes keys through is one the
+ * library already holds, so the editor's baseline is that table and a screen's own `app.*`
+ * actions are in the tree because the screen declared them. What an app must say is WHERE A
+ * COMMIT GOES, and that is this: the Bindings preset store it already keeps. The editor lists
+ * its presets in the Load choice and writes every commit back to it, so an app that watches
+ * `rolltui_preset_store_version` picks a rebinding up exactly the way it picks up a loaded
+ * preset. An app with no store of its own opens one — three lines, and the same three every
+ * host here already writes.
+ *
+ * `content` is the layout's own string for the window ("keys", or "keys:<anything>"); NULL or 0
+ * means the plain "keys". The widget is CREATED if this screen has none yet, exactly as a
+ * window naming that content would create it, so a host may wire the store before its first
+ * draw. `persist` non-zero autosaves each commit, which is what a session wants and a golden
+ * frame does not. The store is BORROWED and must outlive `w`. */
+void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len,
+                                        RolltuiPresetStore* store, int persist);
+
 void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v); /* frees `colours`; zeroes */
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r); /* frees everything; zeroes */

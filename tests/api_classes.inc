@@ -411,6 +411,28 @@ ROLLTUI_API(rolltui_library_action_description, INTERNAL)  /* a step of loading 
 ROLLTUI_API(rolltui_library_action_name, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_undeliverable_reason_fn, INTERNAL)  /* the vocabulary callback a host with its own bindings domain passes */
 
+/* ---- rolltui_keys_editor.h — the keys editor's MODEL. Its consumers are the `keys` widget kind
+ * (this library's own .c) and the studio's C++ shape over it, so nothing here is a promise to a
+ * host: an app reaches the editor by NAMING the kind in a layout, never by calling it. --------- */
+ROLLTUI_API(rolltui_keys_editor_capturing, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_capturing_action, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_committed, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_current, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_free, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_handle, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_load, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_menu, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_new, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_outcome_release, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_redo, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_redo_depth, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_replace, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_set_presets, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_set_shipped, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_status_line, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_undo, INTERNAL)
+ROLLTUI_API(rolltui_keys_editor_undo_depth, INTERNAL)
+
 /* ---- rolltui_keys.h — the chord and protocol vocabulary a host shows; default PUBLIC ----- */
 ROLLTUI_API(rolltui_key_active_protocol, PUBLIC)
 ROLLTUI_API(rolltui_key_decoder_feed, INTERNAL)  /* the terminal's decoder (a test reaches it: opt-in) */
@@ -647,6 +669,9 @@ ROLLTUI_API(rolltui_windows_set_theme_store, PUBLIC)  /* KEPT: `theme` is a libr
    screen names an editor with no host code — but the theme is the APP's (the style table a frame is drawn
    with is handed to the library by the host), so this is the only way an app can say where a commit lands.
    A kind whose edits can reach nothing is a kind nobody can mount. */
+ROLLTUI_API(rolltui_windows_set_bindings_store, PUBLIC)  /* KEPT: same reason one rung over. `keys` is a
+   library widget kind, and the table it edits needs no call — the library holds it — but where a commit
+   LANDS is the app's, so this is the only way an app can say. */
 ROLLTUI_API(rolltui_windows_sync, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript_at, INTERNAL)  /* a hit-test the stack already routes */

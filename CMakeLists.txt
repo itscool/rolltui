@@ -39,7 +39,12 @@
 # library and C++ at its edge (`LayoutTree.cpp`, `MenuTree.cpp`, `DocumentCpp.cpp`).
 set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui_unicode.c
                   c/rolltui_diff.c c/rolltui_effects.c c/rolltui_keys.c
-                  c/rolltui_theme.c c/rolltui_bindings.c
+                  c/rolltui_theme.c c/rolltui_bindings.c c/rolltui_keys_editor.c
+                                         # EDITING a binding table, as a model with no terminal
+                                         #   in it — the `keys` widget kind's half that is not a
+                                         #   draw. Every app has a table and the library ships
+                                         #   the default one, so which key does what is the
+                                         #   library's to offer, not one program's.
                   c/rolltui_presets.c c/rolltui_app_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
                   c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
@@ -257,6 +262,7 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_O
 set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c explorer_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
+  keys_kind_test.cpp
   public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
@@ -491,6 +497,16 @@ add_rolltui_test(rolltui-theme-kind-test tests/theme_kind_test.cpp)
 target_compile_definitions(rolltui-theme-kind-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>")
 add_dependencies(rolltui-theme-kind-test rolltui-studio-selftest)
+
+# THE `keys` KIND'S OWN PROOF, in the same shape: a screen that names it in a layout gets a
+# working editor in a binary that has never heard of the screen, over the table that binary is
+# RUNNING on, and a rebinding lands where the app said it should. Its controls are the one-window
+# change, the bindings file's own chord, an action only the layout declares, the source grep, and
+# a store withheld.
+add_rolltui_test(rolltui-keys-kind-test tests/keys_kind_test.cpp)
+target_compile_definitions(rolltui-keys-kind-test PRIVATE
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>")
+add_dependencies(rolltui-keys-kind-test rolltui-studio-selftest)
 
 add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE

@@ -278,6 +278,7 @@ int main() {
                               the other three. -2 before it: `RolltuiAppProfileReport`'s two array members went with the app profile.
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
         {"c/rolltui_theme_editor.h", 0},
+        {"c/rolltui_keys_editor.h", 0},
         {"c/rolltui_style.h", 0},
         {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},

@@ -10,7 +10,8 @@
     "app.palette": "open the command palette",
     "app.repaint": "repaint the screen",
     "app.find": "find in the transcript",
-    "app.theme": "Edit the theme"
+    "app.theme": "Edit the theme",
+    "app.keys": "Edit the key bindings"
   },
   "root": {
     "column": [
@@ -140,6 +141,25 @@
         "content": "theme",
         "border": "rounded",
         "title": "theme",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "keys",
+      "x": "100%",
+      "y": 0,
+      "w": "45%",
+      "h": "100%",
+      "anchor": "top-right",
+      "min_w": 40,
+      "max_w": 100,
+      "modal": true,
+      "root": {
+        "id": "keys",
+        "content": "keys",
+        "border": "rounded",
+        "title": "keys",
         "focusable": true,
         "background": "panel_background"
       }

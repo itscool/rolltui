@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_widget_kinds.c — see rolltui_widget_kinds.h. The library's own `rows`,
- * `text`, `file`, `help`, `input`, `transcript`, `menu` and `theme` kinds, plus the error/panel
+ * `text`, `file`, `help`, `input`, `transcript`, `menu`, `theme` and `keys` kinds, plus the error/panel
  * fallbacks, each filling `rolltui/c/rolltui_widgets.h`'s plugin contract in real C11 —
  * calling only the C engines (`rolltui_input.h`, `rolltui_transcript.h`, `rolltui_menu.h`,
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
@@ -15,12 +15,14 @@
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_keys.h"
+#include "rolltui/c/rolltui_keys_editor.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_input.h"
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_presets.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
@@ -873,6 +875,7 @@ static RolltuiWidget input_widget_factory(void* c, RolltuiWindows* w, const char
 static RolltuiWidget transcript_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 static RolltuiWidget menu_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
+static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 
 void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   /* THE LIBRARY'S OWN KINDS REGISTER WITH A NULL CTX, and that is the split working rather than
@@ -886,6 +889,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "transcript", 10, transcript_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "menu", 4, menu_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "theme", 5, theme_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "keys", 4, keys_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
@@ -2033,6 +2037,367 @@ void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, siz
   tc->store = store;
   tc->persist = persist;
   theme_ctx_sync_store(tc);
+}
+
+
+/* ============================================================================================
+ * keys — THE KEYS EDITOR AS A WIDGET KIND.
+ *
+ * An app gets a keys editor by naming `keys` in a layout and binding a key to the popup that
+ * holds it. It draws the editor's menu, which preset the table came from and one status line,
+ * and it answers the model's outcomes against the preset store the app handed over — save,
+ * load, reset — so an app writes no editor code at all.
+ *
+ * WHAT IT EDITS IS WHAT THE APP IS RUNNING, and that is the whole reason the baseline is the
+ * live table rather than the store's working copy: an action is editable here only because
+ * something DECLARED it, so a screen's own `app.*` actions are in the tree when the table is
+ * the one the window stack is routing keys through, and absent when it is a file just parsed.
+ *
+ * WHERE A COMMIT GOES IS THE APP'S, AND THAT IS WHY THERE IS ONE CALL. The table a frame is
+ * routed with is passed into the library by the host, so no widget can replace it: an app hands
+ * over the Bindings preset store it already keeps (`rolltui_windows_set_bindings_store`) and
+ * every commit lands in it, which an app watching the store's version picks up like any other
+ * change to its keys. That call is not editor code and does not grow when the editor does.
+ *
+ * WRITE-SHIPPED IS NOT OFFERED HERE. Whether a store may overwrite a preset in the app's own
+ * install directory is a fact the store does not expose, and writing there is a developer's act
+ * with a rebuild behind it — so the choice stays empty and disabled rather than being offered
+ * and refused. `rolltui-studio`, which is that developer's tool, drives the same model and
+ * populates it itself.
+ * ============================================================================================ */
+
+typedef struct RolltuiKeysCtx {
+  RolltuiWindows* w;         /* BORROWED */
+  RolltuiKeysEditor* ed;     /* OWNED */
+  RolltuiPresetStore* store; /* BORROWED; NULL until a host hands one over */
+  RolltuiDrawScratch* draw;  /* OWNED */
+  /* CALLER-FILLED working strings the ctx owns and REFILLS: the draw path builds a preset line
+   * and a status line every frame, and a fresh string per frame would be two allocations a
+   * frame forever. */
+  RolltuiStr line, hint;
+  int hint_is_problem; /* a refusal is drawn in `error`; "saved preset 'x'" is not a refusal */
+  size_t declared_seen;  /* how many actions the live table declared when it was last taken */
+  unsigned char capture_role;
+  int persist;
+} RolltuiKeysCtx;
+
+/* THE BASELINE IS THE LIVE TABLE, AND IT IS RE-TAKEN WHEN THE SCREEN'S ACTIONS ARRIVE. A host
+ * declares what its screen can do AFTER it has built its windows, so a widget built during that
+ * construction has seen only the library's own actions and could never offer an `app.` one. The
+ * count of declared actions is what says a declaration happened; the reload is skipped whenever
+ * there is something to lose — a capture in progress or an undoable edit — because taking the
+ * table again would throw a person's work away to fix a staleness they cannot see. */
+static void keys_ctx_refresh(RolltuiKeysCtx* kc) {
+  const RolltuiBindings* live = rolltui_windows_bindings(kc->w);
+  const size_t n = rolltui_bindings_action_count(live);
+  if (n == kc->declared_seen) return;
+  if (rolltui_keys_editor_capturing(kc->ed) || rolltui_keys_editor_undo_depth(kc->ed) != 0 ||
+      rolltui_keys_editor_redo_depth(kc->ed) != 0)
+    return;
+  kc->declared_seen = n;
+  rolltui_keys_editor_load(kc->ed, live);
+}
+
+/* THE DECLARATIONS ARE THE SCREEN'S AND THE CHORDS ARE THE FILE'S. A preset file carries rows
+ * and knows nothing about which screen is running; the live table carries the declarations that
+ * make an action editable at all. Loading one into the editor therefore takes the live table's
+ * declarations and the file's chords, rather than either alone — a file alone would drop every
+ * `app.*` action out of the tree the moment a preset was chosen. */
+static void keys_ctx_load_rows(RolltuiKeysCtx* kc, const RolltuiBindings* rows) {
+  RolltuiBindings* merged = rolltui_bindings_clone(rolltui_windows_bindings(kc->w));
+  size_t i, j;
+  for (i = 0; i < rolltui_bindings_row_count(merged); ++i) {
+    size_t len = 0;
+    const char* name = rolltui_bindings_row_at(merged, i, &len);
+    rolltui_bindings_clear(merged, name, len);
+  }
+  for (i = 0; i < rolltui_bindings_row_count(rows); ++i) {
+    size_t len = 0;
+    const char* name = rolltui_bindings_row_at(rows, i, &len);
+    const size_t chords = rolltui_bindings_chord_count(rows, name, len);
+    /* `name` BORROWS into `rows`, which nothing below mutates. */
+    for (j = 0; j < chords; ++j) {
+      RolltuiChord k;
+      memset(&k, 0, sizeof k);
+      if (rolltui_bindings_chord_at(rows, name, len, j, &k)) rolltui_bindings_add_chord(merged, name, len, &k);
+    }
+  }
+  rolltui_keys_editor_load(kc->ed, merged);
+  rolltui_bindings_free(merged);
+}
+
+/* The store's preset names into the Load choice. A no-op with no store: the editor still edits
+ * the live table, it just has nowhere to put the result. */
+static void keys_ctx_sync_store(RolltuiKeysCtx* kc) {
+  RolltuiPresetList list;
+  RolltuiStrList names;
+  size_t i;
+  if (!kc->store) return;
+  memset(&list, 0, sizeof list);
+  memset(&names, 0, sizeof names);
+  rolltui_preset_store_list(kc->store, &list);
+  for (i = 0; i < list.n; ++i) rolltui_str_list_add(&names, list.v[i].name.p, list.v[i].name.n);
+  rolltui_keys_editor_set_presets(kc->ed, &names);
+  rolltui_str_list_release(&names);
+  rolltui_preset_list_release(&list);
+}
+
+/* The Bindings domain's value IS a `RolltuiBindings*`, so the working copy is REPLACED rather
+ * than edited in place: there is no member to reach through. */
+static void keys_ctx_write_back(RolltuiKeysCtx* kc) {
+  if (!kc->store) return;
+  rolltui_preset_store_set_working(kc->store, rolltui_bindings_clone(rolltui_keys_editor_committed(kc->ed)),
+                                   kc->persist);
+}
+
+static void keys_ctx_apply(RolltuiKeysCtx* kc, const RolltuiKeysEditorOutcome* o) {
+  char buf[192];
+  rolltui_str_clear(&kc->hint);
+  kc->hint_is_problem = 0;
+  switch (o->kind) {
+    case ROLLTUI_KEYS_EDIT_COMMITTED:
+      keys_ctx_write_back(kc);
+      break;
+    case ROLLTUI_KEYS_EDIT_SAVE_AS: {
+      RolltuiStr err;
+      int r;
+      if (!kc->store) break;
+      memset(&err, 0, sizeof err);
+      keys_ctx_write_back(kc);
+      /* NEVER overwrite: a name already taken comes back as its own answer and the person types
+       * another. Replacing someone's preset because they reused a name is a data loss the store
+       * deliberately offers to refuse, and a widget has nowhere to ask. */
+      r = rolltui_preset_store_save_as(kc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/0, &err);
+      if (r == ROLLTUI_SAVE_SAVED) {
+        snprintf(buf, sizeof buf, "saved preset '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        rolltui_str_set(&kc->hint, buf, strlen(buf));
+        keys_ctx_sync_store(kc); /* the new name joins the Load choice */
+      } else if (r == ROLLTUI_SAVE_EXISTS_ASK) {
+        snprintf(buf, sizeof buf, "'%.*s' already exists \xE2\x80\x94 choose another name", (int)o->value.n,
+                 o->value.p ? o->value.p : "");
+        rolltui_str_set(&kc->hint, buf, strlen(buf));
+        kc->hint_is_problem = 1;
+      } else {
+        rolltui_str_set(&kc->hint, K("cannot save: "));
+        rolltui_str_append_str(&kc->hint, &err);
+        kc->hint_is_problem = 1;
+      }
+      rolltui_str_free(&err);
+      break;
+    }
+    case ROLLTUI_KEYS_EDIT_LOAD_PRESET: {
+      RolltuiBindingsPresetReport rep;
+      if (!kc->store) break;
+      memset(&rep, 0, sizeof rep);
+      if (rolltui_preset_store_load(kc->store, o->value.p ? o->value.p : "", o->value.n, &rep, kc->persist)) {
+        RolltuiBindings* v = (RolltuiBindings*)rolltui_preset_store_working(kc->store);
+        if (v) {
+          keys_ctx_load_rows(kc, v);
+          rolltui_preset_store_value_free(kc->store, v);
+        }
+        keys_ctx_sync_store(kc);
+        snprintf(buf, sizeof buf, "loaded '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+      } else {
+        snprintf(buf, sizeof buf, "cannot load '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        kc->hint_is_problem = 1;
+      }
+      rolltui_str_set(&kc->hint, buf, strlen(buf));
+      rolltui_bindings_preset_report_release(&rep);
+      break;
+    }
+    case ROLLTUI_KEYS_EDIT_RESET_LOADED: {
+      /* THE ORIGIN PRESET, re-read — not the working copy, which is the edited value this is
+       * meant to throw away. */
+      RolltuiBindingsPresetReport rep;
+      RolltuiBindings* v;
+      size_t olen = 0;
+      const char* origin;
+      if (!kc->store) break;
+      memset(&rep, 0, sizeof rep);
+      origin = rolltui_preset_store_origin(kc->store, &olen);
+      v = (RolltuiBindings*)rolltui_preset_store_get(kc->store, origin ? origin : "", olen, &rep);
+      if (v) {
+        keys_ctx_load_rows(kc, v);
+        rolltui_preset_store_value_free(kc->store, v);
+        keys_ctx_write_back(kc);
+        rolltui_str_set(&kc->hint, K("reset to the loaded preset"));
+      } else {
+        rolltui_str_set(&kc->hint, K("the loaded preset is no longer readable"));
+        kc->hint_is_problem = 1;
+      }
+      rolltui_bindings_preset_report_release(&rep);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  RolltuiKeysEditorOutcome o;
+  keys_ctx_refresh(kc);
+  memset(&o, 0, sizeof o);
+  rolltui_keys_editor_handle(kc->ed, e, rolltui_windows_bindings(kc->w), &o);
+  keys_ctx_apply(kc, &o);
+  {
+    const int consumed = o.kind != ROLLTUI_KEYS_EDIT_NONE;
+    rolltui_keys_editor_outcome_release(&o);
+    return consumed;
+  }
+}
+
+/* The bottom three rows are which preset this is, what the editor is doing, and whatever the
+ * last outcome had to say — exactly as the menu's own scrolling assumes: the menu is laid out
+ * into what is left. */
+#define ROLLTUI_KEYS_BOX_ROWS 3
+
+static void keys_ctx_menu_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
+  int box;
+  rolltui_content_rect(rn, out);
+  box = out->h < ROLLTUI_KEYS_BOX_ROWS ? out->h : ROLLTUI_KEYS_BOX_ROWS;
+  out->h -= box;
+}
+
+static void keys_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  const RolltuiWidgetEnv* env = rolltui_windows_env(kc->w);
+  RolltuiMenu* m;
+  RolltuiMenuOptions o;
+  RolltuiRect r;
+  keys_ctx_refresh(kc);
+  m = rolltui_keys_editor_menu(kc->ed);
+  o = *rolltui_menu_options(m);
+  keys_ctx_menu_rect(rn, &r);
+  o.ambiguous_wide = env->ambiguous_wide;
+  o.inset = 0;
+  rolltui_menu_set_options_struct(m, &o);
+  rolltui_menu_layout(m, r);
+}
+
+static int keys_put(RolltuiKeysCtx* kc, RolltuiFrame* f, int x, int y, const char* text, size_t len, RolltuiStyle st,
+                    int max_cells) {
+  const RolltuiWidgetEnv* env = rolltui_windows_env(kc->w);
+  if (max_cells <= 0) return 0;
+  return rolltui_frame_put_text(f, kc->draw, x, y, text, len, st, max_cells, env->ambiguous_wide, 0);
+}
+
+static void keys_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  const RolltuiStyle* styles = rolltui_windows_styles(kc->w);
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(kc->w);
+  RolltuiMenu* m;
+  RolltuiRect r, mr;
+  RolltuiStyle label, value;
+  int y;
+
+  rolltui_content_rect(rn, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  keys_ctx_layout(ctx, rn);
+  m = rolltui_keys_editor_menu(kc->ed);
+  keys_ctx_menu_rect(rn, &mr);
+  if (mr.h > 0) {
+    RolltuiInputRoles iroles;
+    iroles.text = br->input_text;
+    iroles.selection = br->input_selection;
+    iroles.placeholder = br->input_placeholder;
+    rolltui_menu_draw(m, f, kc->draw, styles, rolltui_windows_menu_roles(kc->w), &iroles, rn->focused);
+  }
+  label = styles[br->label];
+  value = styles[br->value];
+  y = r.y + mr.h;
+
+  if (y < r.y + r.h) {
+    rolltui_str_clear(&kc->line);
+    rolltui_str_append(&kc->line, K("preset: "));
+    if (kc->store) rolltui_preset_store_label(kc->store, &kc->line);
+    else rolltui_str_append(&kc->line, K("(this app keeps no bindings presets)"));
+    keys_put(kc, f, r.x, y++, kc->line.p, kc->line.n, label, r.w);
+  }
+  if (y < r.y + r.h) {
+    rolltui_str_clear(&kc->line);
+    rolltui_keys_editor_status_line(kc->ed, &kc->line);
+    keys_put(kc, f, r.x, y++, kc->line.p, kc->line.n,
+             rolltui_keys_editor_capturing(kc->ed) ? styles[kc->capture_role] : value, r.w);
+  }
+  if (y < r.y + r.h) {
+    if (kc->hint.n != 0)
+      keys_put(kc, f, r.x, y++, kc->hint.p, kc->hint.n, styles[kc->hint_is_problem ? br->error : br->value], r.w);
+    else
+      keys_put(kc, f, r.x, y++, K("Actions by scope \xE2\x80\xBA a scope \xE2\x80\xBA an action \xE2\x80\xBA add a chord"), value, r.w);
+  }
+}
+
+static int keys_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  RolltuiMenu* m = rolltui_keys_editor_menu(kc->ed);
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  out->first = (size_t)rolltui_menu_scroll_first(m);
+  out->visible = (size_t)rolltui_menu_scroll_visible(m);
+  out->total = rolltui_menu_visible(m, NULL);
+  return 1;
+}
+
+static void keys_ctx_destroy(void* ctx) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  rolltui_keys_editor_free(kc->ed);
+  rolltui_draw_scratch_free(kc->draw);
+  rolltui_str_free(&kc->line);
+  rolltui_str_free(&kc->hint);
+  rolltui_mem_free(kc);
+}
+
+static const RolltuiWidgetPlugin kKeysPlugin = {
+    keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, NULL, NULL,
+    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL,
+};
+
+static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  RolltuiKeysCtx* kc;
+  RolltuiWidget out;
+  int warning;
+  (void)c;
+  (void)content;
+  (void)n;
+  memset(&out, 0, sizeof out);
+  kc = (RolltuiKeysCtx*)rolltui_mem_alloc(sizeof *kc);
+  memset(kc, 0, sizeof *kc);
+  kc->w = w;
+  /* The LIVE table is the baseline: it is what this app is running on, declarations included. */
+  kc->ed = rolltui_keys_editor_new(rolltui_windows_bindings(w));
+  kc->declared_seen = rolltui_bindings_action_count(rolltui_windows_bindings(w));
+  kc->draw = rolltui_draw_scratch_new();
+  /* A capture prompt is not an error and not an ordinary value, so it is drawn in the theme's
+   * own `warning`. Resolved by NAME once here rather than being a tenth field on
+   * `RolltuiBuiltinRoles` that only this kind would read. */
+  warning = rolltui_role_from_name(K("warning"));
+  kc->capture_role = warning >= 0 ? (unsigned char)warning : rolltui_windows_builtin_roles(w)->value;
+  kc->persist = 1;
+  out.vt = &kKeysPlugin;
+  out.ctx = kc;
+  return out;
+}
+
+/* The widget for `content` when it is a `keys` one, else NULL. `rolltui_windows_widget_for`
+ * creates it if this screen has none, which is what lets a host wire the store before the first
+ * draw; the kind check is what stops the call acting on some other kind's ctx. */
+static RolltuiKeysCtx* keys_ctx_for(RolltuiWindows* w, const char* content, size_t len) {
+  RolltuiWidget* widget;
+  if (!w) return NULL;
+  if (!content || len == 0) { content = "keys"; len = 4; }
+  widget = rolltui_windows_widget_for(w, content, len);
+  if (!widget || widget->vt != &kKeysPlugin) return NULL;
+  return (RolltuiKeysCtx*)widget->ctx;
+}
+
+void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
+                                        int persist) {
+  RolltuiKeysCtx* kc = keys_ctx_for(w, content, len);
+  if (!kc) return;
+  kc->store = store;
+  kc->persist = persist;
+  keys_ctx_refresh(kc);
+  keys_ctx_sync_store(kc);
 }
 
 

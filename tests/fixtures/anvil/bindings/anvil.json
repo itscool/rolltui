@@ -1,5 +1,5 @@
 {
-  "name": "default",
+  "name": "anvil",
   "bindings": {
     "input.submit": [
       "enter"
@@ -196,12 +196,6 @@
     "app.details": [
       "f3"
     ],
-    "app.theme": [
-      "f4"
-    ],
-    "app.keys": [
-      "f5"
-    ],
     "app.palette": [
       "ctrl+p"
     ],
@@ -210,6 +204,12 @@
     ],
     "app.find": [
       "ctrl+f"
+    ],
+    "editor.undo": [
+      "ctrl+o"
+    ],
+    "editor.redo": [
+      "ctrl+g"
     ]
   }
 }
