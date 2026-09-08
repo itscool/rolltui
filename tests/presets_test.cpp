@@ -437,6 +437,28 @@ bool builtin_theme_c(std::string_view name, ThemeFixture& out) {
   out.effects = rolltui_theme_builtin_fill(name.data(), name.size(), out.styles, ROLLTUI_ROLE_COUNT);
   return out.effects != nullptr;
 }
+std::string str_of_json(const RolltuiJsonValue* v) {
+  std::size_t n = 0;
+  const char* p = rolltui_json_as_string(v, "", 0, &n);
+  return std::string(p ? p : "", n);
+}
+// A theme preset file's own bytes, parsed: the OWNED tree, and a BORROW of the "colours"
+// object inside it that `rolltui_theme_load` takes. Reading from disk rather than from the
+// embedded table is the point — the embedded copy is what a build produced, the file is what
+// a person edits, and the two agreeing is a property worth a check rather than an assumption.
+struct OnDiskTheme {
+  RolltuiJsonValue* root = nullptr;
+  const RolltuiJsonValue* colours = nullptr;
+  explicit OnDiskTheme(const std::string& text) {
+    RolltuiStr err{};
+    root = rolltui_json_parse(text.data(), text.size(), &err);
+    rolltui_str_free(&err);
+    if (root) colours = rolltui_json_get(root, "colours", 7);
+  }
+  explicit OnDiskTheme(const fs::path& p) : OnDiskTheme(read_file(p)) {}
+  OnDiskTheme(const OnDiskTheme&) = delete;
+  ~OnDiskTheme() { rolltui_json_free(root); }
+};
 bool styles_eq(const RolltuiStyle* a, const RolltuiStyle* b) {
   for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i)
     if (!(a[i] == b[i])) return false;
@@ -484,33 +506,79 @@ int main() {
       const std::string on_disk = read_file(fs::path(ROLLTUI_PRESETS_DIR) / (n + ".json"));
       check(!on_disk.empty() && on_disk == ThemeStore::shipped_json(n), "shipped '" + n + "' embeds the file in rolltui/presets/themes verbatim");
     }
-    // The shipped colours equal Theme.cpp's built-ins — two definition sites, kept
-    // equal by this check (the theme grep control covers only .cpp/.hpp).
+    // ---- ONE DEFINITION SITE FOR THE DEFAULT LOOK -------------------------------------------
+    // A built-in name is a shipped FILE read at one mode: "default-dark" is default.json at
+    // dark, "default-light" the same file at light, "mono" is mono.json. Nothing in the C
+    // states a colour of its own any more, so this is not "two copies agree" — it is
+    // "the compiled-in table came from the file that is on disk right now", which spans the
+    // embed step and the name-to-(file, mode) table and is the only part that can still be
+    // wrong.
     const RolltuiThemePresetValue* d = ThemeStore::shipped("default");
     ResolvedTheme dark, light, mono;
     ThemeFixture builtin_dark, builtin_light, builtin_mono;
     builtin_theme_c("default-dark", builtin_dark);
     builtin_theme_c("default-light", builtin_light);
     builtin_theme_c("mono", builtin_mono);
-    const bool ok_dark = resolve_colours_c(d->colours, ROLLTUI_MODE_DARK, dark);
-    check(ok_dark && dark.clean() && styles_eq(dark.styles, builtin_dark.styles), "shipped 'default' at dark is the built-in default-dark, role for role");
-    const bool ok_light = resolve_colours_c(d->colours, ROLLTUI_MODE_LIGHT, light);
-    check(ok_light && light.clean() && styles_eq(light.styles, builtin_light.styles), "…and at light the built-in default-light");
-    const RolltuiThemePresetValue* m = ThemeStore::shipped("mono");
-    const bool ok_mono = resolve_colours_c(m->colours, ROLLTUI_MODE_DARK, mono);
-    check(ok_mono && mono.clean() && styles_eq(mono.styles, builtin_mono.styles), "shipped 'mono' is the built-in mono");
-    // the shipped files carry the built-ins' MOTION too. Without this the
-    // two definition sites could drift in exactly the way that matters least visibly and
-    // most: a built-in that spins and a shipped file — the one every session actually
-    // runs — that is silently still.
+    OnDiskTheme disk_default(fs::path(ROLLTUI_PRESETS_DIR) / "default.json");
+    OnDiskTheme disk_mono(fs::path(ROLLTUI_PRESETS_DIR) / "mono.json");
+    check(disk_default.colours != nullptr && disk_mono.colours != nullptr,
+          "the two files a built-in reads are on disk and parse");
+    const bool ok_dark = resolve_colours_c(disk_default.colours, ROLLTUI_MODE_DARK, dark);
+    check(ok_dark && dark.clean() && styles_eq(dark.styles, builtin_dark.styles),
+          "the built-in 'default-dark' IS presets/themes/default.json at dark, role for role");
+    const bool ok_light = resolve_colours_c(disk_default.colours, ROLLTUI_MODE_LIGHT, light);
+    check(ok_light && light.clean() && styles_eq(light.styles, builtin_light.styles),
+          "…and 'default-light' is the same file at light");
+    const bool ok_mono = resolve_colours_c(disk_mono.colours, ROLLTUI_MODE_DARK, mono);
+    check(ok_mono && mono.clean() && styles_eq(mono.styles, builtin_mono.styles),
+          "…and 'mono' is presets/themes/mono.json");
+    // THE CONTROL, and it is what makes the three checks above worth having: a colour changed
+    // in the file's bytes must make the comparison disagree. Without it, a fill that quietly
+    // returned a table of zeroes would pass all three, because a load broken on both sides
+    // breaks identically.
+    {
+      const std::string text = read_file(fs::path(ROLLTUI_PRESETS_DIR) / "default.json");
+      const std::string was = "\"#d8dce2\"", now = "\"#ff00ff\"";
+      check(text.find(was) != std::string::npos, "the plant's anchor is in default.json, so the control can fire");
+      std::string planted_text = text;
+      for (std::size_t at = planted_text.find(was); at != std::string::npos; at = planted_text.find(was, at + 1))
+        planted_text.replace(at, was.size(), now);
+      OnDiskTheme planted_file(planted_text);
+      ResolvedTheme planted;
+      check(planted_file.colours != nullptr && resolve_colours_c(planted_file.colours, ROLLTUI_MODE_DARK, planted) &&
+                !styles_eq(planted.styles, builtin_dark.styles),
+            "…and the same file with one colour changed does NOT match the built-in, so the comparison is armed");
+    }
+    // MOTION comes from the same file. A theme's effects are the half that matters least
+    // visibly and most: a built-in that spins and a shipped file — the one every session
+    // actually runs — that is silently still.
     check(rolltui_effect_map_equal(dark.effects, builtin_dark.effects) && rolltui_effect_map_equal(light.effects, builtin_light.effects),
-          "shipped 'default' carries the built-in's effects at both modes");
-    check(rolltui_effect_map_equal(mono.effects, builtin_mono.effects), "…and shipped 'mono' the mono theme's own");
+          "the file's effects are the built-in's at both modes");
+    check(rolltui_effect_map_equal(mono.effects, builtin_mono.effects), "…and mono.json's are the mono built-in's");
     check(!rolltui_effect_map_empty(dark.effects) && !rolltui_effect_map_empty(mono.effects) && !rolltui_effect_map_equal(dark.effects, mono.effects),
           "…and the two are genuinely different looks, not one map copied twice");
+    // The EMBEDDED copy is the same file too — the shipped preset a chooser offers and the
+    // built-in a host falls back to are now one thing under two names, which is what the
+    // by-name-and-mode table above buys.
+    ResolvedTheme embedded_dark;
+    check(resolve_colours_c(d->colours, ROLLTUI_MODE_DARK, embedded_dark) &&
+              styles_eq(embedded_dark.styles, builtin_dark.styles),
+          "the shipped preset 'default' and the built-in 'default-dark' are one look, not two");
     check(d->mode == "auto" && d->depth == "auto", "shipped 'default' is mode auto, depth auto");
+    // `default-dark` and `default-light` are the shipped `default` with `mode` pinned — one
+    // design under three names, and pinning a mode is what the mode setting already does. They
+    // carry BOTH variants like every other theme file, so the equality holds at both modes; a
+    // colour changed in one of the three and not the others fails here.
+    for (const char* pinned : {"default-dark", "default-light"}) {
+      const RolltuiThemePresetValue* p = ThemeStore::shipped(pinned);
+      ResolvedTheme pd, pl;
+      const bool same = p && resolve_colours_c(p->colours, ROLLTUI_MODE_DARK, pd) &&
+                        resolve_colours_c(p->colours, ROLLTUI_MODE_LIGHT, pl) &&
+                        styles_eq(pd.styles, builtin_dark.styles) && styles_eq(pl.styles, builtin_light.styles);
+      check(same, std::string("'") + pinned + "' is the shipped 'default', colour for colour, at both modes");
+    }
     check(ThemeStore::shipped("default-dark")->mode == "dark" && ThemeStore::shipped("default-light")->mode == "light",
-          "'default-dark' / 'default-light' are the same colours pinned to a mode");
+          "…and each pins the mode its name says");
     // rolltui_theme_dump(both variants) round-trips both exactly (the shipped file was
     // produced by it) — theme_pair_to_json_value's own port.
     RolltuiJsonValue* pair = rolltui_theme_dump(builtin_dark.styles, builtin_dark.effects, builtin_light.styles, builtin_light.effects,
@@ -521,6 +589,82 @@ int main() {
     check(ok_pd && ok_pl && styles_eq(pd.styles, builtin_dark.styles) && styles_eq(pl.styles, builtin_light.styles),
           "theme_pair_to_json_value loads back to each variant exactly");
     rolltui_json_free(pair);
+  }
+
+  // ---- EVERY SHIPPED THEME CLAIMS EXACTLY WHAT IT COMPUTES ---------------------------------
+  //
+  // `meta.badges` is a theme's own statement of what it is — dark or light, readable,
+  // colour-vision safe, high contrast, safe to downgrade, redundant in attributes. The loader
+  // never USES the stored value: it recomputes the classification from the colours and names
+  // every disagreement in BOTH directions, because a declaration is the whole classification
+  // and a badge earned but unclaimed is as stale as one claimed but unearned.
+  //
+  // A shipped theme's declaration is the one a person reads before choosing, so the whole set
+  // is held to equality here rather than left to whoever remembers to run the analyser by
+  // hand. Both variants of every theme, including the ones whose palettes are vendored: their
+  // COLOURS are not ours to change, and what those colours earn is measured the same way.
+  {
+    const std::vector<std::string> shipped = ThemeStore::shipped_names();
+    check(shipped.size() >= 8, "every shipped theme is measured (" + std::to_string(shipped.size()) + ")");
+    const std::pair<int, const char*> variants[] = {{ROLLTUI_MODE_DARK, "dark"}, {ROLLTUI_MODE_LIGHT, "light"}};
+    std::vector<std::string> stale;
+    for (const std::string& n : shipped) {
+      const RolltuiThemePresetValue* v = ThemeStore::shipped(n);
+      for (const auto& [mode, label] : variants) {
+        ResolvedTheme t;
+        if (!resolve_colours_c(v->colours, mode, t)) { stale.push_back(n + ": does not load"); continue; }
+        for (std::size_t j = 0; j < t.report.badge_mismatches_n; ++j)
+          stale.push_back(n + " (" + label + "): " + str_of(t.report.badge_mismatches[j]));
+      }
+    }
+    check(stale.empty(), "every shipped theme claims exactly the badges it computes, at both variants" +
+                             (stale.empty() ? "" : " — " + std::to_string(stale.size()) + ", first: " + stale.front()));
+
+    // THE CONTROL, PLANTED IN A SHIPPED THEME'S OWN BYTES, in both directions — a check that
+    // passes because nothing is wrong and a check that passes because it cannot see are the
+    // same green.
+    const std::string text = read_file(fs::path(ROLLTUI_PRESETS_DIR) / "default.json");
+    auto badges_of = [](RolltuiJsonValue* root, const char* variant) {
+      const RolltuiJsonValue* colours = rolltui_json_get(root, "colours", 7);
+      const RolltuiJsonValue* meta = rolltui_json_get(colours, "meta", 4);
+      const RolltuiJsonValue* badges = rolltui_json_get(meta, "badges", 6);
+      return const_cast<RolltuiJsonValue*>(rolltui_json_get(badges, variant, std::strlen(variant)));
+    };
+    auto mismatches = [&](const RolltuiJsonValue* colours) {
+      ResolvedTheme r;
+      std::vector<std::string> out;
+      if (!colours || !resolve_colours_c(colours, ROLLTUI_MODE_DARK, r)) return out;
+      for (std::size_t j = 0; j < r.report.badge_mismatches_n; ++j) out.push_back(str_of(r.report.badge_mismatches[j]));
+      return out;
+    };
+    {  // a badge it does not earn
+      OnDiskTheme planted(text);
+      RolltuiJsonValue* dark_badges = planted.root ? badges_of(planted.root, "dark") : nullptr;
+      check(dark_badges != nullptr && rolltui_json_array_size(dark_badges) != 0,
+            "the plant reaches default.json's own dark badge list");
+      rolltui_json_array_push(dark_badges, rolltui_json_string("high-contrast", 13));
+      const std::vector<std::string> said = mismatches(planted.colours);
+      check(said.size() == 1 && said[0] == "meta.badges: claims 'high-contrast', which does not hold",
+            "…and a shipped theme claiming a badge it does not earn is named: " + (said.empty() ? "nothing" : said[0]));
+    }
+    {  // a badge it earns and does not claim
+      OnDiskTheme planted(text);
+      RolltuiJsonValue* dark_badges = planted.root ? badges_of(planted.root, "dark") : nullptr;
+      const std::string dropped =
+          dark_badges ? str_of_json(rolltui_json_array_at(dark_badges, rolltui_json_array_size(dark_badges) - 1)) : "";
+      RolltuiJsonValue* shorter = rolltui_json_array();
+      for (std::size_t j = 0; dark_badges && j + 1 < rolltui_json_array_size(dark_badges); ++j) {
+        std::size_t len = 0;
+        const char* one = rolltui_json_as_string(rolltui_json_array_at(dark_badges, j), "", 0, &len);
+        rolltui_json_array_push(shorter, rolltui_json_string(one, len));
+      }
+      const RolltuiJsonValue* colours = rolltui_json_get(planted.root, "colours", 7);
+      const RolltuiJsonValue* meta = rolltui_json_get(colours, "meta", 4);
+      rolltui_json_set(const_cast<RolltuiJsonValue*>(rolltui_json_get(meta, "badges", 6)), "dark", 4, shorter);
+      const std::vector<std::string> said = mismatches(planted.colours);
+      check(said.size() == 1 && said[0] == "meta.badges: does not claim '" + dropped + "', which holds",
+            "…and one it earns and drops is named too: " + (said.empty() ? "nothing" : said[0]));
+    }
   }
 
   // ---- start: no working copy → default (rules 2, 5) ----

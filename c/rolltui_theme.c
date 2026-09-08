@@ -7,20 +7,21 @@
  *     THE COLOUR LITERALS THERE ARE xterm's PUBLISHED PALETTE, not a theme's — the reference
  *     the 16-colour downgrade measures against. Nothing in that part allocates: every result
  *     goes into a caller's buffer sized from a constant in the header.
- *   THE BUILT-IN THEMES AND THE JSON LOADER/DUMPER (below it): this library's own TASTE
- *     (three compiled-in palettes) and its FILE FORMAT. THIS part allocates freely through
- *     `rolltui_alloc.h`'s closed set — a theme loads once per file, never per frame, so it is
- *     not under the budget `rolltui-budget-test` holds the draw path to.
- * Both halves are exempted BY NAME in `theme_test`'s colour-literal grep control (the first
- * for the xterm reference table, the second for the built-in themes' own colours) rather than
- * by sitting in a directory the control does not scan. The control also asserts each half
- * still carries what it is exempt for, so either one moving away fails a test instead of
- * passing everywhere. */
+ *   THE BUILT-IN THEMES AND THE JSON LOADER/DUMPER (below it): this library's FILE FORMAT,
+ *     and the three built-in names that read a shipped file through it. THIS part allocates
+ *     freely through `rolltui_alloc.h`'s closed set — a theme loads once per file, never per
+ *     frame, so it is not under the budget `rolltui-budget-test` holds the draw path to.
+ * NO THEME'S COLOURS ARE WRITTEN HERE. The colour engine's `kSystem16` is xterm's published
+ * palette — the reference the 16-colour downgrade measures against — and it is why this file
+ * is exempted BY NAME in `theme_test`'s colour-literal grep control. That control also asserts
+ * this file still carries `kSystem16` and still names no theme colour of its own, so either
+ * property moving fails a test instead of passing everywhere. */
 #include "rolltui/c/rolltui_widgets.h"  /* the scrollbar glyph default, filled for a theme that states none */
 #include "rolltui/c/rolltui_theme.h"
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -343,26 +344,19 @@ unsigned char rolltui_mode_for_background(RolltuiStyleColor bg) {
   return y > 0.5 ? ROLLTUI_MODE_LIGHT : ROLLTUI_MODE_DARK;
 }
 
-/* ---- role and effect-state ordinals, as file-local ALIASES of the library's own -------------
- * The loader and dumper below never use these: they resolve every role/state through the
- * caller's `RolltuiThemeVocab` table instead, exactly as this header's own comment states.
- * These exist for ONE reason — so the three built-in themes below read as
- * `styles[R_accent_1] = ...` instead of `styles[9] = ...`. `R_<name>` is
- * `ROLLTUI_ROLE_<NAME>` and `ST_<name>` is `ROLLTUI_EFFECT_STATE_<NAME>`, each generated from
- * the X-macro that owns the list (`ROLLTUI_ROLE_LIST`, `ROLLTUI_EFFECT_STATE_LIST`). They are
- * ALIASES rather than hand-written parallel enumerations, because a copy can drift and an
- * alias cannot: a copy needs a comment asking the next person to keep its order in agreement,
- * which is a promise where this is a guarantee.
+/* ---- role ordinals, as file-local ALIASES of the library's own ------------------------------
+ * The loader and dumper below never use these: they resolve every role through the caller's
+ * `RolltuiThemeVocab` table instead, exactly as this header's own comment states. One place
+ * needs a role by name — the fallback an effect map is created with — and `R_accent_1` says
+ * which role that is where `9` would not. `R_<name>` is `ROLLTUI_ROLE_<NAME>`, generated from
+ * the X-macro that owns the list (`ROLLTUI_ROLE_LIST`), so it is an ALIAS rather than a
+ * hand-written parallel enumeration: a copy can drift and an alias cannot.
  * `rolltui_theme_builtin_fill` below still checks `role_count` against `ROLLTUI_ROLE_COUNT`
  * before trusting a caller's array: a mismatch reads as "this theme doesn't exist" rather
  * than writing past its end. */
 #define ROLLTUI_R_ALIAS_(lower, UPPER) R_##lower = ROLLTUI_ROLE_##UPPER,
 enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
 #undef ROLLTUI_R_ALIAS_
-/* "none" is index 0 and never a spec a built-in (or a theme file) may address directly. */
-#define ROLLTUI_ST_ALIAS_(lower, UPPER, Camel) ST_##lower = ROLLTUI_EFFECT_STATE_##UPPER,
-enum { ROLLTUI_EFFECT_STATE_LIST(ROLLTUI_ST_ALIAS_) };
-#undef ROLLTUI_ST_ALIAS_
 
 /* ---- small helpers shared by the built-ins and the loader -------------------------------- */
 
@@ -405,296 +399,39 @@ static void unk(RolltuiThemeReport* r, const char* s) { rolltui_theme_report_add
 static void missing(RolltuiThemeReport* r, const char* s) { rolltui_theme_report_add_missing_role(r, s, strlen(s)); }
 
 /* ---- the built-in themes --------------------------------------------------------------------
- * `rolltui::Theme.cpp`'s own words, kept: this library's TASTE, not its algorithm. Every
- * comment below is that file's, reworded only where the C's shape forced it (`set(Role::x,
- * S(...))` becoming `styles[R_x] = mk(...)`); no reasoning was dropped. */
+ * A BUILT-IN THEME IS A SHIPPED FILE READ AT ONE MODE. `rolltui/presets/themes/default.json`
+ * and `mono.json` are compiled in by cmake as `rolltui_kThemePresets`, and the three built-in
+ * names below read them: "default-dark" is `default.json` at dark, "default-light" the same
+ * file at light, "mono" is `mono.json`. There is no second copy of any of it in this file.
+ *
+ * WHY THE COLLAPSE GOES THIS WAY ROUND — the C reading the file, rather than a tool writing
+ * the file out of the C. The file is what a session actually runs, what the theme editor
+ * writes, and what a person can open and change; the C literals were reachable only through a
+ * rebuild. Generating the file instead would leave two artifacts to keep in agreement plus a
+ * step somebody has to remember to run, which is the shape being removed, not a fix for it.
+ *
+ * A BROKEN EMBEDDED FILE STOPS THE PROCESS rather than half-filling a caller's table: it is
+ * compiled in, so it cannot be wrong at runtime without being wrong at build time, and the
+ * shipped-preset cache already holds that standard. A caller gets 49 styles or it gets
+ * nothing. */
 
-static RolltuiStyleColor rgbc(unsigned char r, unsigned char g, unsigned char b) {
-  RolltuiStyleColor c;
-  c.kind = 2; /* Rgb */
-  c.index = 0;
-  c.r = r;
-  c.g = g;
-  c.b = b;
-  return c;
-}
-
-static RolltuiStyleColor nonec(void) {
-  RolltuiStyleColor c;
-  memset(&c, 0, sizeof c); /* kind 0 == None */
-  return c;
-}
-
-static RolltuiStyle mk(RolltuiStyleColor fg, RolltuiStyleColor bg, int bold, int italic, int underline, int dim,
-                       int reverse) {
-  RolltuiStyle s;
-  s.fg = fg;
-  s.bg = bg;
-  s.bold = (unsigned char)bold;
-  s.italic = (unsigned char)italic;
-  s.underline = (unsigned char)underline;
-  s.dim = (unsigned char)dim;
-  s.reverse = (unsigned char)reverse;
-  return s;
-}
-
-/* ---- motion, moved from Theme.cpp's `fx`/`frames` helpers -----------------------------------
- * The theme's half of the effects contract: a widget says `waiting`, this says what waiting
- * LOOKS like. Every value below is expressible in a theme file (Theme.hpp's "effects"
- * object) and every one of these two maps is written into the shipped preset files that
- * carry the same name — the built-in and the file are one look with two definition sites,
- * kept equal by rolltui-presets-test. */
-
-static void add_frames(RolltuiEffectMap* m, size_t state, size_t i, const char* const* fs, size_t n) {
-  size_t j;
-  for (j = 0; j < n; ++j) rolltui_effect_map_add_frame(m, state, i, fs[j], strlen(fs[j]));
-}
-
-static void add_role_spec(RolltuiEffectMap* m, size_t state, const char* kind, int period_ms, unsigned char role) {
-  const size_t i = rolltui_effect_map_add(m, state, kind, strlen(kind), period_ms, 0, 0, 0);
-  rolltui_effect_map_add_role(m, state, i, role);
-}
-
-/* For the two colour themes. The `waiting` spinner is BRAILLE (East Asian Neutral, so one
- * cell at any ambiguous-width setting — a two-cell frame would be refused by the applier's
- * width guarantee and the theme would silently stop moving). */
-static void colour_effects(RolltuiEffectMap* m) {
-  static const char* const waiting_frames[] = {"\xE2\xA0\x8B", "\xE2\xA0\x99", "\xE2\xA0\xB9", "\xE2\xA0\xB8",
-                                               "\xE2\xA0\xBC", "\xE2\xA0\xB4", "\xE2\xA0\xA6", "\xE2\xA0\xA7"};
-  size_t sweep;
-  add_frames(m, ST_waiting, rolltui_effect_map_add(m, ST_waiting, K("spinner"), 640, 0, 0, 0), waiting_frames,
-            sizeof waiting_frames / sizeof *waiting_frames);
-  /* Bytes arriving move ALONG the text, so the sweep does too — and it is the accent, so a
-   * reader who cannot see the motion still sees which span is live. */
-  sweep = rolltui_effect_map_add(m, ST_streaming, K("shimmer"), 1200, /*width=*/ 6, 0, 0);
-  rolltui_effect_map_add_role(m, ST_streaming, sweep, R_accent_1);
-  /* A bar is a picture of a number and asks for NO tick: the number changing is already a
-   * redraw (Effects.hpp — this is what "the tick runs only while something moves" is worth
-   * in the shipped file, not only in the test). */
-  add_role_spec(m, ST_progress, "bar", 0, R_accent_2);
-  add_role_spec(m, ST_flash, "blink", 400, R_find_current);
-}
-
-/* The same four states, told with what a colourless terminal has. This is the pair the
- * design is FOR: same app, same widget code, a spinner that is ASCII here and braille
- * there, and a `streaming` that is a dim/normal breath rather than a colour sweep. */
-static void mono_effects(RolltuiEffectMap* m) {
-  static const char* const waiting_frames[] = {"|", "/", "-", "\\"};
-  size_t breath;
-  add_frames(m, ST_waiting, rolltui_effect_map_add(m, ST_waiting, K("spinner"), 400, 0, 0, 0), waiting_frames,
-            sizeof waiting_frames / sizeof *waiting_frames);
-  breath = rolltui_effect_map_add(m, ST_streaming, K("pulse"), 1200, 0, 0, 0);
-  rolltui_effect_map_add_role(m, ST_streaming, breath, R_text_muted);
-  rolltui_effect_map_add_role(m, ST_streaming, breath, R_text);
-  add_role_spec(m, ST_progress, "bar", 0, R_menu_selected);  /* reverse video: the only "filled" this theme has */
-  add_role_spec(m, ST_flash, "blink", 400, R_find_current);
-}
-
-/* set(Role::x, S(...)) -> styles[R_x] = mk(...): the C++ built the whole style
- * positionally too (a Role and a Style, nothing named 'set' survives crossing the
- * call), so this is the same construction with the array write spelled out instead
- * of hidden in a lambda capture. */
-static void fill_default_dark(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap* effects) {
-  (void)role_count;
-  // A restrained palette: text on a near-black ground, four accents, muted chrome.
-  // The accents and the muted grey are ThemeAnalysis picks, not taste: a hand-chosen muted
-  // text misses 4.5:1 on the panel by a hair, and hand-chosen blue/purple and green/yellow
-  // come out confusable under protanopia and deuteranopia. These five sit at hues 255/145/90/310/25 in OKLCH with their
-  // lightness spread so every must-differ pair keeps an OKLab dE >= 0.13 under all
-  // three simulations (a grid search, not taste) — rolltui-theme-analysis-test asserts
-  // dark + readable + cvd-safe on this theme.
-  const RolltuiStyleColor bg = rgbc(0x14, 0x16, 0x1A), panel = rgbc(0x1B, 0x1E, 0x24), fg = rgbc(0xD8, 0xDC, 0xE2);
-  const RolltuiStyleColor muted = rgbc(0x85, 0x8D, 0x99), border = rgbc(0x3A, 0x40, 0x4A), border_active = rgbc(0x84, 0xB7, 0xF9);
-  const RolltuiStyleColor blue = rgbc(0x84, 0xB7, 0xF9), green = rgbc(0xAD, 0xEE, 0xAE), yellow = rgbc(0xCB, 0xA6, 0x3A);
-  const RolltuiStyleColor red = rgbc(0xC0, 0x6A, 0x64), purple = rgbc(0x9A, 0x73, 0xB8), cyan = rgbc(0x6C, 0xC8, 0xC8);
-  const RolltuiStyleColor code_bg = rgbc(0x1E, 0x22, 0x28), sel = rgbc(0x2E, 0x44, 0x60), find_bg = rgbc(0x4A, 0x3E, 0x1C);
-  styles[R_text] = mk(fg, bg, 0, 0, 0, 0, 0);
-  styles[R_text_muted] = mk(muted, bg, 0, 0, 0, 0, 0);
-  styles[R_background] = mk(fg, bg, 0, 0, 0, 0, 0);
-  styles[R_panel_background] = mk(fg, panel, 0, 0, 0, 0, 0);
-  styles[R_border] = mk(border, bg, 0, 0, 0, 0, 0);
-  styles[R_border_active] = mk(border_active, bg, 0, 0, 0, 0, 0);
-  styles[R_title] = mk(fg, bg, 1, 0, 0, 0, 0);
-  styles[R_label] = mk(muted, panel, 0, 0, 0, 0, 0);
-  styles[R_value] = mk(fg, panel, 0, 0, 0, 0, 0);
-  styles[R_accent_1] = mk(blue, bg, 0, 0, 0, 0, 0);
-  styles[R_accent_2] = mk(green, bg, 0, 0, 0, 0, 0);
-  styles[R_accent_3] = mk(yellow, bg, 0, 0, 0, 0, 0);
-  styles[R_accent_4] = mk(purple, bg, 0, 0, 0, 0, 0);
-  styles[R_prompt] = mk(cyan, bg, 1, 0, 0, 0, 0);
-  styles[R_note] = mk(muted, bg, 0, 1, 0, 0, 0);
-  styles[R_warning] = mk(yellow, bg, 0, 0, 0, 0, 0);
-  styles[R_error] = mk(red, bg, 1, 0, 0, 0, 0);
-  styles[R_md_heading] = mk(blue, bg, 1, 0, 0, 0, 0);
-  styles[R_md_emphasis] = mk(fg, bg, 0, 1, 0, 0, 0);
-  styles[R_md_strong] = mk(fg, bg, 1, 0, 0, 0, 0);
-  styles[R_md_code_inline] = mk(yellow, code_bg, 0, 0, 0, 0, 0);
-  styles[R_md_code_block] = mk(fg, code_bg, 0, 0, 0, 0, 0);
-  styles[R_md_code_label] = mk(muted, bg, 0, 0, 0, 0, 0);
-  styles[R_md_link] = mk(cyan, bg, 0, 0, 1, 0, 0);
-  styles[R_md_link_url] = mk(muted, bg, 0, 0, 0, 0, 0);
-  styles[R_md_quote] = mk(muted, bg, 0, 1, 0, 0, 0);
-  styles[R_md_list_marker] = mk(blue, bg, 0, 0, 0, 0, 0);
-  styles[R_md_table_border] = mk(border, bg, 0, 0, 0, 0, 0);
-  styles[R_md_table_header] = mk(fg, bg, 1, 0, 0, 0, 0);
-  styles[R_md_rule] = mk(border, bg, 0, 0, 0, 0, 0);
-  styles[R_md_strikethrough] = mk(muted, bg, 0, 0, 0, 1, 0);
-  styles[R_diff_added] = mk(green, bg, 0, 0, 0, 0, 0);
-  styles[R_diff_removed] = mk(red, bg, 0, 0, 0, 0, 0);
-  styles[R_diff_context] = mk(muted, bg, 0, 0, 0, 0, 0);
-  // The word run inside a changed PAIR. Same hue as its line — an emphasis, not a
-  // second signal — so it costs no colour budget and cannot break a must-differ pair.
-  styles[R_diff_added_word] = mk(green, bg, 1, 0, 0, 0, 0);
-  styles[R_diff_removed_word] = mk(red, bg, 1, 0, 0, 0, 0);
-  styles[R_input_text] = mk(fg, bg, 0, 0, 0, 0, 0);
-  styles[R_input_cursor] = mk(bg, fg, 0, 0, 0, 0, 0);
-  styles[R_input_placeholder] = mk(muted, bg, 0, 1, 0, 0, 0);
-  styles[R_scroll_marker] = mk(bg, yellow, 1, 0, 0, 0, 0);
-  styles[R_selection] = mk(fg, sel, 0, 0, 0, 0, 0);
-  styles[R_overlay] = mk(muted, bg, 0, 0, 0, 1, 0);
-  styles[R_menu_item] = mk(fg, panel, 0, 0, 0, 0, 0);
-  styles[R_menu_selected] = mk(bg, blue, 1, 0, 0, 0, 0);
-  styles[R_menu_breadcrumb] = mk(muted, panel, 0, 0, 0, 0, 0);
-  styles[R_menu_shortcut] = mk(yellow, panel, 0, 0, 0, 0, 0);
-  // Find: every match is normal text on a dim amber ground — legible, and it keeps
-  // the line's own shape. The current one is INVERTED on the accent, which is both the
-  // strongest "you are here" a cell grid has and the reason the must-differ pair can be
-  // measured at all (Style.hpp: the check reads `fg`, so a bg-only difference is
-  // invisible to it).
-  styles[R_find_match] = mk(fg, find_bg, 0, 0, 0, 0, 0);
-  styles[R_find_current] = mk(bg, yellow, 1, 0, 0, 0, 0);
-  // The thumb rides in the border column, so it is the border's brighter twin —
-  // legible against the track without becoming a second accent.
-  styles[R_scrollbar] = mk(muted, bg, 0, 0, 0, 0, 0);
-  colour_effects(effects);
-}
-
-static void fill_default_light(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap* effects) {
-  (void)role_count;
-  // Same story as the dark theme: the light accents were confusable in
-  // five pairs under deuteranopia and the muted grey missed 4.5:1 on the panel; these
-  // are the grid search's pick at the same hues (a "yellow" readable on white is an
-  // olive), min dE 0.12 under every simulation.
-  const RolltuiStyleColor bg = rgbc(0xFA, 0xFA, 0xF8), panel = rgbc(0xEF, 0xF0, 0xF2), fg = rgbc(0x22, 0x26, 0x2C);
-  const RolltuiStyleColor muted = rgbc(0x5F, 0x66, 0x70), border = rgbc(0xC8, 0xCC, 0xD2), border_active = rgbc(0x2D, 0x4E, 0x78);
-  const RolltuiStyleColor blue = rgbc(0x2D, 0x4E, 0x78), green = rgbc(0x50, 0x7B, 0x51), yellow = rgbc(0x5E, 0x4B, 0x0C);
-  const RolltuiStyleColor red = rgbc(0x4F, 0x1A, 0x18), purple = rgbc(0x40, 0x14, 0x59), cyan = rgbc(0x00, 0x7A, 0x8A);
-  const RolltuiStyleColor code_bg = rgbc(0xF0, 0xF1, 0xF3), sel = rgbc(0xCC, 0xDF, 0xF5), find_bg = rgbc(0xF7, 0xE4, 0xA8);
-  styles[R_text] = mk(fg, bg, 0, 0, 0, 0, 0);
-  styles[R_text_muted] = mk(muted, bg, 0, 0, 0, 0, 0);
-  styles[R_background] = mk(fg, bg, 0, 0, 0, 0, 0);
-  styles[R_panel_background] = mk(fg, panel, 0, 0, 0, 0, 0);
-  styles[R_border] = mk(border, bg, 0, 0, 0, 0, 0);
-  styles[R_border_active] = mk(border_active, bg, 0, 0, 0, 0, 0);
-  styles[R_title] = mk(fg, bg, 1, 0, 0, 0, 0);
-  styles[R_label] = mk(muted, panel, 0, 0, 0, 0, 0);
-  styles[R_value] = mk(fg, panel, 0, 0, 0, 0, 0);
-  styles[R_accent_1] = mk(blue, bg, 0, 0, 0, 0, 0);
-  styles[R_accent_2] = mk(green, bg, 0, 0, 0, 0, 0);
-  styles[R_accent_3] = mk(yellow, bg, 0, 0, 0, 0, 0);
-  styles[R_accent_4] = mk(purple, bg, 0, 0, 0, 0, 0);
-  styles[R_prompt] = mk(cyan, bg, 1, 0, 0, 0, 0);
-  styles[R_note] = mk(muted, bg, 0, 1, 0, 0, 0);
-  styles[R_warning] = mk(yellow, bg, 0, 0, 0, 0, 0);
-  styles[R_error] = mk(red, bg, 1, 0, 0, 0, 0);
-  styles[R_md_heading] = mk(blue, bg, 1, 0, 0, 0, 0);
-  styles[R_md_emphasis] = mk(fg, bg, 0, 1, 0, 0, 0);
-  styles[R_md_strong] = mk(fg, bg, 1, 0, 0, 0, 0);
-  styles[R_md_code_inline] = mk(purple, code_bg, 0, 0, 0, 0, 0);
-  styles[R_md_code_block] = mk(fg, code_bg, 0, 0, 0, 0, 0);
-  styles[R_md_code_label] = mk(muted, bg, 0, 0, 0, 0, 0);
-  styles[R_md_link] = mk(blue, bg, 0, 0, 1, 0, 0);
-  styles[R_md_link_url] = mk(muted, bg, 0, 0, 0, 0, 0);
-  styles[R_md_quote] = mk(muted, bg, 0, 1, 0, 0, 0);
-  styles[R_md_list_marker] = mk(blue, bg, 0, 0, 0, 0, 0);
-  styles[R_md_table_border] = mk(border, bg, 0, 0, 0, 0, 0);
-  styles[R_md_table_header] = mk(fg, bg, 1, 0, 0, 0, 0);
-  styles[R_md_rule] = mk(border, bg, 0, 0, 0, 0, 0);
-  styles[R_md_strikethrough] = mk(muted, bg, 0, 0, 0, 1, 0);
-  styles[R_diff_added] = mk(green, bg, 0, 0, 0, 0, 0);
-  styles[R_diff_removed] = mk(red, bg, 0, 0, 0, 0, 0);
-  styles[R_diff_context] = mk(muted, bg, 0, 0, 0, 0, 0);
-  // The word run inside a changed PAIR. Same hue as its line — an emphasis, not a
-  // second signal — so it costs no colour budget and cannot break a must-differ pair.
-  styles[R_diff_added_word] = mk(green, bg, 1, 0, 0, 0, 0);
-  styles[R_diff_removed_word] = mk(red, bg, 1, 0, 0, 0, 0);
-  styles[R_input_text] = mk(fg, bg, 0, 0, 0, 0, 0);
-  styles[R_input_cursor] = mk(bg, fg, 0, 0, 0, 0, 0);
-  styles[R_scroll_marker] = mk(bg, yellow, 1, 0, 0, 0, 0);
-  styles[R_input_placeholder] = mk(muted, bg, 0, 1, 0, 0, 0);
-  styles[R_selection] = mk(fg, sel, 0, 0, 0, 0, 0);
-  styles[R_overlay] = mk(muted, bg, 0, 0, 0, 1, 0);
-  styles[R_menu_item] = mk(fg, panel, 0, 0, 0, 0, 0);
-  styles[R_menu_selected] = mk(bg, blue, 1, 0, 0, 0, 0);
-  styles[R_menu_breadcrumb] = mk(muted, panel, 0, 0, 0, 0, 0);
-  styles[R_menu_shortcut] = mk(purple, panel, 0, 0, 0, 0, 0);
-  // Find — the dark theme's rule, read for a light ground: a pale amber wash for
-  // every match, and the current one inverted on the olive that serves as this
-  // palette's yellow.
-  styles[R_find_match] = mk(fg, find_bg, 0, 0, 0, 0, 0);
-  styles[R_find_current] = mk(bg, yellow, 1, 0, 0, 0, 0);
-  styles[R_scrollbar] = mk(muted, bg, 0, 0, 0, 0, 0);
-  colour_effects(effects);
-}
-
-/* Attributes only: every colour is the terminal's default. Emphasis by bold, dim,
- * italic, underline and reverse, which is what a 16-colour or high-contrast setup
- * can rely on. */
-static void fill_mono(RolltuiStyle* styles, size_t role_count, RolltuiEffectMap* effects) {
-  const RolltuiStyleColor n = nonec();
-  memset(styles, 0, role_count * sizeof *styles); /* every role starts none/none, no attrs */
-  // The four accents differ by attribute alone (milestone 15 found them identical):
-  // bold, italic, underline, bold+italic.
-  styles[R_accent_1] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_accent_2] = mk(n, n, 0, 1, 0, 0, 0);
-  styles[R_accent_3] = mk(n, n, 0, 0, 1, 0, 0);
-  styles[R_accent_4] = mk(n, n, 1, 1, 0, 0, 0);
-  styles[R_text_muted] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_border] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_border_active] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_title] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_label] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_prompt] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_note] = mk(n, n, 0, 1, 0, 0, 0);
-  styles[R_warning] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_error] = mk(n, n, 1, 0, 0, 0, 1);
-  styles[R_md_heading] = mk(n, n, 1, 0, 1, 0, 0);
-  styles[R_md_emphasis] = mk(n, n, 0, 1, 0, 0, 0);
-  styles[R_md_strong] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_md_code_inline] = mk(n, n, 0, 0, 0, 0, 1);
-  styles[R_md_code_label] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_md_link] = mk(n, n, 0, 0, 1, 0, 0);
-  styles[R_md_link_url] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_md_quote] = mk(n, n, 0, 1, 0, 0, 0);
-  styles[R_md_list_marker] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_md_table_border] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_md_table_header] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_md_rule] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_md_strikethrough] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_diff_added] = mk(n, n, 1, 0, 0, 0, 0);
-  styles[R_diff_removed] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_diff_context] = mk(n, n, 0, 0, 0, 1, 0);
-  // With no colour to spend, underline is the only attribute left, so it carries
-  // the word run on top of whatever its line already uses.
-  styles[R_diff_added_word] = mk(n, n, 1, 0, 1, 0, 0);
-  styles[R_diff_removed_word] = mk(n, n, 0, 0, 1, 1, 0);
-  styles[R_input_cursor] = mk(n, n, 0, 0, 0, 0, 1);
-  styles[R_input_placeholder] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_scroll_marker] = mk(n, n, 1, 0, 0, 0, 1);
-  styles[R_selection] = mk(n, n, 0, 0, 0, 0, 1);
-  styles[R_overlay] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_menu_selected] = mk(n, n, 1, 0, 0, 0, 1);
-  styles[R_menu_breadcrumb] = mk(n, n, 0, 0, 0, 1, 0);
-  styles[R_menu_shortcut] = mk(n, n, 0, 0, 1, 0, 0);
-  // Find. With no colour to spend, the distinction is carried by attributes and
-  // must still be a distinction: underline marks every match, bold+reverse the current
-  // one — the same "inverted means here" this theme already uses for menu_selected.
-  styles[R_find_match] = mk(n, n, 0, 0, 1, 0, 0);
-  styles[R_find_current] = mk(n, n, 1, 0, 0, 0, 1);
-  // With no colour, the thumb is the glyph's job (a solid block against the border
-  // line); bold is what separates it from the track.
-  styles[R_scrollbar] = mk(n, n, 1, 0, 0, 0, 0);
-  mono_effects(effects);
+/* Which shipped preset a built-in name reads, and the mode it pins. `*mode` is
+ * ROLLTUI_MODE_DARK / ROLLTUI_MODE_LIGHT. 1 when `name` is a built-in, 0 otherwise. */
+static int builtin_source(const char* name, size_t name_len, const char** preset, size_t* preset_len, int* mode) {
+  if (streq(name, name_len, "default-dark")) {
+    *preset = "default";
+    *mode = ROLLTUI_MODE_DARK;
+  } else if (streq(name, name_len, "default-light")) {
+    *preset = "default";
+    *mode = ROLLTUI_MODE_LIGHT;
+  } else if (streq(name, name_len, "mono")) {
+    *preset = "mono";
+    *mode = ROLLTUI_MODE_DARK;
+  } else {
+    return 0;
+  }
+  *preset_len = strlen(*preset);
+  return 1;
 }
 
 size_t rolltui_theme_builtin_count(void) { return ROLLTUI_THEME_BUILTIN_COUNT; }
@@ -707,20 +444,59 @@ const char* rolltui_theme_builtin_name(size_t i) {
   return i < ROLLTUI_THEME_BUILTIN_COUNT ? names[i] : NULL;
 }
 
+/* Says which shipped file was unusable and stops. Reached only when a file compiled into this
+ * binary does not load, which is a build that should not have been produced. */
+static void builtin_broken(const char* preset, size_t preset_len, const char* why, size_t why_len) {
+  fprintf(stderr, "rolltui: the shipped theme '%.*s' a built-in reads is broken: %.*s\n", (int)preset_len, preset,
+          (int)why_len, why_len ? why : "");
+  abort();
+}
+
 RolltuiEffectMap* rolltui_theme_builtin_fill(const char* name, size_t name_len, RolltuiStyle* styles,
                                              size_t role_count) {
+  const char* preset;
+  size_t preset_len;
+  int mode;
+  const char* text;
+  RolltuiJsonValue* root;
+  const RolltuiJsonValue* colours;
+  RolltuiStr err, loaded_name;
+  RolltuiThemeReport report;
   RolltuiEffectMap* m;
-  void (*filler)(RolltuiStyle*, size_t, RolltuiEffectMap*);
+
   if (role_count != ROLLTUI_ROLE_COUNT) return NULL;
-  if (streq(name, name_len, "default-dark")) filler = fill_default_dark;
-  else if (streq(name, name_len, "default-light")) filler = fill_default_light;
-  else if (streq(name, name_len, "mono")) filler = fill_mono;
-  else return NULL;
-  /* OWNED, LONG-LIVED (rolltui_alloc.h strategy 4), through the entry point
-   * `rolltui_effect_map_new` already is. The fallback role is handed over here, once, the
-   * same value `rolltui::EffectMap`'s default constructor already hands it. */
-  m = rolltui_effect_map_new(ROLLTUI_EFFECT_STATE_COUNT, (unsigned char)R_accent_1);
-  filler(styles, role_count, m);
+  if (!builtin_source(name, name_len, &preset, &preset_len, &mode)) return NULL;
+  text = rolltui_embedded_text(rolltui_kThemePresets, rolltui_kThemePresetCount, preset, preset_len);
+  if (!text) builtin_broken(preset, preset_len, K("no such file is compiled in"));
+
+  /* OWNED, SHORT-LIVED (rolltui_alloc.h strategy 4, scoped to this call): the parse tree and
+   * the load report are wanted only long enough to fill the caller's table. A theme is filled
+   * at start and when a look changes, never per frame, so there is nothing here for a cache to
+   * buy that a second lifetime would not cost. */
+  memset(&err, 0, sizeof err);
+  root = rolltui_json_parse(text, strlen(text), &err);
+  if (!root) builtin_broken(preset, preset_len, err.p ? err.p : "", err.n);
+  rolltui_str_free(&err);
+
+  /* The compiled-in bytes are a whole preset FILE — "colours" is the theme inside it, the same
+   * object a preset store hands to `rolltui_theme_load`. */
+  colours = rolltui_json_get(root, K("colours"));
+  memset(&loaded_name, 0, sizeof loaded_name);
+  memset(&report, 0, sizeof report);
+  m = rolltui_theme_load(colours, mode, rolltui_theme_default_vocab(), styles, &loaded_name, &report);
+  if (!m || report.error.n || report.missing_roles_n || report.bad_values_n || report.unknown_keys_n) {
+    const char* why = report.error.n            ? report.error.p
+                      : report.missing_roles_n  ? "a role is missing"
+                      : report.bad_values_n     ? "a value is not one"
+                                                : "a key is not one this format has";
+    builtin_broken(preset, preset_len, why, strlen(why));
+  }
+  /* `report.badge_mismatches` is deliberately NOT fatal here: a stale `meta.badges` is a
+   * declaration about the colours, not a defect in them, and the theme draws either way. The
+   * shipped files' declarations are held to equality by rolltui-presets-test. */
+  rolltui_theme_report_release(&report);
+  rolltui_str_free(&loaded_name);
+  rolltui_json_free(root);
   return m;
 }
 

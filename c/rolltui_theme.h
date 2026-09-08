@@ -67,9 +67,11 @@ void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth);
  * channel, scaled to 8 bits). 1 on success. */
 int rolltui_parse_osc11_reply(const char* reply, size_t len, RolltuiStyleColor* out);
 /* ---- the built-in themes --------------------------------------------------------------------
- * "default-dark", "default-light", "mono", compiled in: this library's own TASTE, not its
- * algorithm (`rolltui::Theme.cpp`'s own words, kept). Enumerated by index like every other
- * closed table a sibling file exposes (`rolltui_widget_kind_name`,
+ * "default-dark", "default-light", "mono": three NAMES over two shipped files. A built-in is
+ * `rolltui/presets/themes/default.json` or `mono.json` — compiled in as `rolltui_kThemePresets`
+ * — read at the mode the name pins, so a built-in and the preset a chooser offers under the
+ * same name are the same bytes rather than two copies held equal by a test. Enumerated by
+ * index like every other closed table a sibling file exposes (`rolltui_widget_kind_name`,
  * `rolltui_effect_kind_name`). */
 #define ROLLTUI_THEME_BUILTIN_COUNT 3
 size_t rolltui_theme_builtin_count(void);

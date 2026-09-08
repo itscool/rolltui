@@ -3,7 +3,8 @@
 // loader's report (a missing role is inherited AND named exactly once; an unknown key
 // is named; a bad value is named), the three built-ins, the colour-downgrade table,
 // SGR golden strings, depth detection, the dump/load round trip — and the grep
-// control: no colour literal exists in the library outside Theme.cpp's built-ins.
+// control: the library's sources name no colour of a theme's, because a theme's colours
+// are stated in rolltui/presets/themes/*.json and read from there.
 //
 #include <filesystem>
 #include <array>
@@ -662,15 +663,11 @@ int main() {
     std::vector<std::string> offenders;
     for (const std::string& f : files) {
       if (f == "Style.hpp") continue;  // the constructors themselves (matched only in a comment)
-      // c/rolltui_theme.c carries TWO exemptions now, named separately so either going stale
-      // is its own failure:
-      //   1. THE COLOUR ENGINE: xterm's published 16-colour palette, which the downgrade
-      //      measures against, plus the constructors it builds a reduced colour with — a
-      //      reference table and computed colours are not a theme naming one.
-      //   2. THE BUILT-IN THEMES: the library's own taste, `make_default_dark`/`_light`/
-      //      `make_mono`'s colour literals.
-      // Both are named explicitly so a table quietly moved out of either fails the liveness
-      // checks under this loop.
+      // c/rolltui_theme.c carries ONE exemption: THE COLOUR ENGINE's `kSystem16`, xterm's
+      // published 16-colour palette, which the downgrade measures against, plus the
+      // constructors it builds a reduced colour with. A reference table and computed colours
+      // are not a theme naming one. It is exempt for that and nothing else — the check under
+      // this loop asserts the file states no theme colour of its own.
       if (f == "c/rolltui_theme.c") continue;
       if (f == "ThemeAnalysis.cpp" || f == "ThemeGen.cpp") continue;  // colour MATHS: they construct colours from numbers they computed, never name one
       std::string src = read_file(dir + "/" + f);
@@ -687,30 +684,26 @@ int main() {
       }
     }
     check(offenders.empty(), "no colour literal outside the theme's own files" + (offenders.empty() ? "" : " — " + join(offenders)));
-    // NEITHER half of c/rolltui_theme.c's exemption can be proven LIVE by asking `literal`
-    // to match it, and that is worth stating rather than leaving as a silent gap: the
-    // pattern is shaped for C++ call syntax (`Color::rgb(`, `Color::indexed(`) and a raw SGR
-    // parameter written byte-by-byte, and C has neither — the colour engine's own
-    // `kSystem16` is plain `{r, g, b}` struct literals and the built-in themes below are
-    // `rgbc(0x.., 0x.., 0x..)` calls with no namespace to spell. That is exactly why the two
-    // liveness checks below are SUBSTRING searches, the same shape the pre-existing
-    // `kSystem16` one already used, rather than a second attempt to make `literal` see C: a
-    // regex that matched both languages' spellings of "a colour literal" would be looser in
-    // the C++ files this control actually polices, which is the trade the control is FOR.
-    //
-    // Theme.cpp, by contrast, IS still C++, so the pattern finding nothing there any more is
-    // exactly the assertion this control can make honestly — the built-ins really left.
-    check(!std::regex_search(read_file(dir + "/Theme.cpp"), literal),
-          "the pattern no longer matches Theme.cpp — the built-ins really left");
-    // …and neither exemption is an empty one. Each file must still carry what it is exempt
-    // for, so a table quietly moved somewhere unscanned fails here instead of passing
-    // everywhere — this is why the c/rolltui_theme.c exemption could not go stale silently
-    // when the second implementation was deleted: it failed on the first run
-    // afterwards, and the same is now true of the built-ins' own move.
-    check(read_file(dir + "/c/rolltui_theme.c").find("kSystem16") != std::string::npos,
+    // c/rolltui_theme.c's exemption cannot be proven LIVE by asking `literal` to match it,
+    // and that is worth stating rather than leaving as a silent gap: the pattern is shaped for
+    // C++ call syntax (`Color::rgb(`, `Color::indexed(`) and a raw SGR parameter written
+    // byte-by-byte, and C has neither — `kSystem16` is plain `{r, g, b}` struct literals. That
+    // is why the two checks below are SUBSTRING searches rather than a second attempt to make
+    // `literal` see C: a regex matching both languages' spellings of "a colour literal" would
+    // be looser in the C++ files this control actually polices, which is the trade it is FOR.
+    const std::string theme_c = read_file(dir + "/c/rolltui_theme.c");
+    // The exemption is not an empty one: the file must still carry what it is exempt for, so a
+    // table quietly moved somewhere unscanned fails here instead of passing everywhere. This
+    // doubles as the armed-ness proof for the check under it — the same substring search finds
+    // what IS there.
+    check(theme_c.find("kSystem16") != std::string::npos,
           "the colour engine still carries the palette it is exempt for");
-    check(read_file(dir + "/c/rolltui_theme.c").find("default-dark") != std::string::npos,
-          "the built-in themes still carry the name that proves they live here now");
+    // …AND THE EXEMPTION COVERS NOTHING ELSE. A theme's colours are stated in
+    // rolltui/presets/themes/*.json and read from there; a built-in name is one of those files
+    // read at one mode. `rgbc(0x..)` was how this file wrote a theme's own colours, so its
+    // absence is what says the second definition site is gone rather than merely unused.
+    check(theme_c.find("rgbc(0x") == std::string::npos,
+          "…and states no theme colour of its own: a shipped file is the only definition site");
   }
 
 
