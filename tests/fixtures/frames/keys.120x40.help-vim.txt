@@ -13,15 +13,15 @@
 │ │                                  │             │ Event, table-tested              │ │                              │
 │ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
 │ │ colour downgrade    │   Right         move one grapheme right                              │                       │
-│ │ Wrap engine         │   Alt-B         move one word left                                   │                       │
-│ │                     │   Alt-F         move one word right                                  •                       │
+│ │ Wrap engine         │   Alt-B         move one word left                                   •                       │
+│ │                     │   Alt-F         move one word right                                  │                       │
 │ │ Windows, layers, pla│   Home, Ctrl-A  start of the line (scrolls when empty)               │                       │
 │ │ abs/rel per axis), f│   End, Ctrl-E   end of the line (scrolls when empty)                 │                       │
 │ │                     │   Up            up a row, or the previous history entry              │                       │
 │ │ Menu widget (hierarc│   Down          down a row, or the next history entry                │                       │
 │ │ filterable) + list/t│   Shift-Left    extend the selection one grapheme left               │                       │
 │ │ Layout files (JSON: │   Shift-Right   extend the selection one grapheme right              │                       │
-│ │ placements + content│   Alt-Shift-B   extend the selection one word left        ▼ 50 more  │                       │
+│ │ placements + content│   Alt-Shift-B   extend the selection one word left        ▼ 51 more  │                       │
 │ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ → styled wrapped lines)          │             │                                  │ ╻                              │
 │ │ Theme (roles → styles, JSON      │ build       │ single header                    │ ┃                              │

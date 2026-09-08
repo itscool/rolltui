@@ -38,6 +38,23 @@
           "kind": "choice"
         },
         {
+          "id": "mode",
+          "label": "Light or dark",
+          "kind": "choice",
+          "items": [
+            {
+              "id": "auto",
+              "label": "auto — follow the terminal"
+            },
+            {
+              "id": "dark"
+            },
+            {
+              "id": "light"
+            }
+          ]
+        },
+        {
           "id": "layout",
           "label": "Layout",
           "kind": "choice"

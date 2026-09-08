@@ -20,9 +20,9 @@
 │ │                                  │             │ Rect is a pure fu│ app.repaint                                  ▸ │
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│ app.find                                     ▸ │
 │ │ filterable) + list/text widgets  │             │ set is deliberate│ app.theme                                    ▸ │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ app.zoom                                     ▸ │
-│ │ placements + content slots)      │             │ parser; hot-reloa│ add an action (name):                          │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ app.keys                                     ▸ │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ app.zoom                                     ▸ │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ add an action (name):                          │
 │ │ → styled wrapped lines)          │             │                  │                                                │
 │ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
 │ │ loader, built-ins)               │             │                  │                                                │

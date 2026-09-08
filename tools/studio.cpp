@@ -432,6 +432,16 @@ class ThemeStore : public PresetStoreBase {
     raw->colours = colours;
     rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
   }
+  // Light or dark is a SETTING and belongs in the working copy beside the colours, not in a
+  // pseudo-theme named after a variant. Same shape as `set_colours`: take the working value,
+  // change the one field, hand it back.
+  void set_mode(std::string_view m, bool persist = true) {
+    ThemeValueHandle v = working();
+    RolltuiThemePresetValue* raw = v.v;
+    v.v = nullptr;
+    rolltui_str_set(&raw->mode, m.data(), m.size());
+    rolltui_preset_store_set_working(s_, raw, persist ? 1 : 0);
+  }
   ThemeValueHandle get(std::string_view name, ThemePresetReport& rep) const {
     return ThemeValueHandle(s_, rolltui_preset_store_get(s_, name.data(), name.size(), &rep));
   }
@@ -910,6 +920,8 @@ struct App {
     set_menu_value("theme", store ? store->label() : "");
     set_menu_value("layout", lstore ? lstore->label() : str_of(layout.name));
     set_menu_value("depth", depth_name(depth));
+    { ThemeValueHandle w = store ? store->working() : ThemeValueHandle(nullptr, nullptr);
+      set_menu_value("mode", w ? std::string(str_of(w->mode)) : std::string("auto")); }
     rolltui_menu_set_checked(menu(), "ambiguous", 9, ambiguous);
   }
   void open_menu(bool palette) {
@@ -936,6 +948,7 @@ struct App {
         if (ev.id == "theme") { theme_arg.clear(); ThemePresetReport rep; if (!store->load(str_of(ev.value), rep, persist)) hint = str_of(rep.error); else hint = rep.summary(); }
         else if (ev.id == "layout") { layout_arg.clear(); LayoutPresetReport rep; if (!lstore->load(str_of(ev.value), rep, persist)) hint = str_of(rep.error); else hint = rep.summary(); }
         else if (ev.id == "depth") depth = rolltui_detect_color_depth(nullptr, nullptr, ev.value.c_str());
+        else if (ev.id == "mode") { mode_flag.reset(); if (store) store->set_mode(str_of(ev.value), persist); }
         return true;
       case ROLLTUI_MENU_EVENT_TOGGLE:
         if (ev.id == "ambiguous") ambiguous = ev.checked != 0;

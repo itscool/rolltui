@@ -7,10 +7,10 @@
 │ │ wrapped      │  │ menu › Appearance                    │s                  │
 │ │ lines)       │  │ ◂ Back                               │uecolor            │
 │ │ Theme (roles │ b│ Theme                default-light ▸ │nu                 │
-│ │ → styles,    │  │ Layout                     default ▸ │                   │
-│ │ JSON loader, │  │ Colour depth             truecolor ▸ │                   │
-│ │ built-ins)   │  │ [ ] Ambiguous width = 2              │                   │
-│ └──────────────┴──│                                      │                   │
+│ │ → styles,    │  │ Light or dark                 dark ▸ │                   │
+│ │ JSON loader, │  │ Layout                     default ▸ │                   │
+│ │ built-ins)   │  │ Colour depth             truecolor ▸ │                   │
+│ └──────────────┴──│ [ ] Ambiguous width = 2              │                   │
 │                   │                                      │                   │
 │ Here is the functi│                                      │                   │
 │                   │                                      │                   │
