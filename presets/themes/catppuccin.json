@@ -1,0 +1,356 @@
+{
+  "name": "catppuccin",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "catppuccin",
+    "meta": {
+      "description": "The Catppuccin Mocha and Latte palettes, taken unaltered. Readable at dark and indexed-safe at both; the role mapping is ours.",
+      "author": "Catppuccin",
+      "source": "https://github.com/catppuccin/catppuccin",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2021 Catppuccin",
+      "license_text": "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+      "note": "The colours are Catppuccin's, unchanged; which role takes which colour is this file's, and follows the author's own naming rather than a search for badges. Mocha clears the 4.5:1 readable floor everywhere; Latte's accents are pale by design and do not, so the light variant claims no readability badge.",
+      "badges": {
+        "dark": [
+          "dark",
+          "readable",
+          "256-safe"
+        ],
+        "light": [
+          "light",
+          "256-safe"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#1e1e2e",
+        "light": "#eff1f5"
+      },
+      "panel": {
+        "dark": "#181825",
+        "light": "#e6e9ef"
+      },
+      "code": {
+        "dark": "#11111b",
+        "light": "#dce0e8"
+      },
+      "fg": {
+        "dark": "#cdd6f4",
+        "light": "#4c4f69"
+      },
+      "dim": {
+        "dark": "#a6adc8",
+        "light": "#5c5f77"
+      },
+      "line": {
+        "dark": "#45475a",
+        "light": "#bcc0cc"
+      },
+      "focus": {
+        "dark": "#89b4fa",
+        "light": "#1e66f5"
+      },
+      "head": {
+        "dark": "#cba6f7",
+        "light": "#8839ef"
+      },
+      "a1": {
+        "dark": "#89b4fa",
+        "light": "#1e66f5"
+      },
+      "a2": {
+        "dark": "#a6e3a1",
+        "light": "#40a02b"
+      },
+      "a3": {
+        "dark": "#f9e2af",
+        "light": "#df8e1d"
+      },
+      "a4": {
+        "dark": "#cba6f7",
+        "light": "#8839ef"
+      },
+      "ok": {
+        "dark": "#a6e3a1",
+        "light": "#40a02b"
+      },
+      "bad": {
+        "dark": "#f38ba8",
+        "light": "#d20f39"
+      },
+      "warn": {
+        "dark": "#fab387",
+        "light": "#fe640b"
+      },
+      "link": {
+        "dark": "#89dceb",
+        "light": "#04a5e5"
+      },
+      "sel": {
+        "dark": "#45475a",
+        "light": "#bcc0cc"
+      },
+      "mark": {
+        "dark": "#585b70",
+        "light": "#acb0be"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg"
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg"
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg"
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg"
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "\u280b",
+          "\u2819",
+          "\u2839",
+          "\u2838",
+          "\u283c",
+          "\u2834",
+          "\u2826",
+          "\u2827"
+        ],
+        "period_ms": 640
+      },
+      "streaming": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_1"
+        ],
+        "period_ms": 1200,
+        "width": 6
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 400
+      }
+    }
+  }
+}

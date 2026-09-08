@@ -8,13 +8,13 @@
 │ │ lines)       │  │ ◂ Back                               █uecolor            │
 │ │ Theme (roles │ b│ default                              █nu                 │
 │ │ → styles,    │  │ beacon                               █                   │
-│ │ JSON loader, │  │ contrast                             █                   │
-│ │ built-ins)   │  │ • default-dark                       █                   │
-│ └──────────────┴──│ default-light                        █                   │
-│                   │ ember                                █                   │
-│ Here is the functi│ harbour                              █                   │
-│                   │ ink                                  █                   │
-│ ┌ cpp ────────────│ mono                               ▼ │                   │
+│ │ JSON loader, │  │ catppuccin                           █                   │
+│ │ built-ins)   │  │ contrast                             █                   │
+│ └──────────────┴──│ • default-dark                       █                   │
+│                   │ default-light                        █                   │
+│ Here is the functi│ ember                                │                   │
+│                   │ harbour                              │                   │
+│ ┌ cpp ────────────│ ink                                ▼ │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │
 │ │   return a + b;                           │ █                              │
 │ └───────────────────────────────────────────┘ █                              │

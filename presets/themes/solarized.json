@@ -1,0 +1,326 @@
+{
+  "name": "solarized",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "solarized",
+    "meta": {
+      "description": "The Solarized palette, taken unaltered. Its own contrast targets predate WCAG 4.5:1, so it earns no readability badge here; the role mapping is ours.",
+      "author": "Ethan Schoonover",
+      "source": "https://github.com/altercation/solarized",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2011 Ethan Schoonover",
+      "license_text": "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.",
+      "note": "The sixteen colours are Solarized's, unchanged; which role takes which colour is this file's, and follows the author's own naming rather than a search for badges. Solarized places its greys for CIELAB spacing rather than for WCAG contrast, so most roles here sit below the 4.5:1 readable floor and the theme claims no readability badge \u2014 run the analyser to see role by role what that costs.",
+      "badges": {
+        "dark": [
+          "dark"
+        ],
+        "light": [
+          "light"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#002b36",
+        "light": "#fdf6e3"
+      },
+      "panel": {
+        "dark": "#073642",
+        "light": "#eee8d5"
+      },
+      "code": {
+        "dark": "#073642",
+        "light": "#eee8d5"
+      },
+      "fg": {
+        "dark": "#839496",
+        "light": "#657b83"
+      },
+      "dim": {
+        "dark": "#586e75",
+        "light": "#93a1a1"
+      },
+      "line": {
+        "dark": "#586e75",
+        "light": "#93a1a1"
+      },
+      "focus": "#268bd2",
+      "head": {
+        "dark": "#93a1a1",
+        "light": "#586e75"
+      },
+      "a1": "#268bd2",
+      "a2": "#859900",
+      "a3": "#b58900",
+      "a4": "#6c71c4",
+      "ok": "#859900",
+      "bad": "#dc322f",
+      "warn": "#cb4b16",
+      "link": "#2aa198",
+      "sel": {
+        "dark": "#073642",
+        "light": "#eee8d5"
+      },
+      "mark": {
+        "dark": "#586e75",
+        "light": "#93a1a1"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg"
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg"
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg"
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg"
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "\u280b",
+          "\u2819",
+          "\u2839",
+          "\u2838",
+          "\u283c",
+          "\u2834",
+          "\u2826",
+          "\u2827"
+        ],
+        "period_ms": 640
+      },
+      "streaming": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_1"
+        ],
+        "period_ms": 1200,
+        "width": 6
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 400
+      }
+    }
+  }
+}
