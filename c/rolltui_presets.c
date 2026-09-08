@@ -1877,6 +1877,21 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out,
 }
 
 /* ---- the library's own three domains (the case is at the header) ------------------------- */
+/* One accessor per library domain, so naming a domain does not mean spelling its id. The domain
+ * a caller wants is known where the call is written — there is no call site that picks between
+ * the three at runtime — so the id is a parameter nobody varies. */
+RolltuiPresetDomain* rolltui_preset_domain_theme(RolltuiContext* c) {
+  return rolltui_preset_domain(c, ROLLTUI_PRESET_DOMAIN_THEME);
+}
+
+RolltuiPresetDomain* rolltui_preset_domain_layout(RolltuiContext* c) {
+  return rolltui_preset_domain(c, ROLLTUI_PRESET_DOMAIN_LAYOUT);
+}
+
+RolltuiPresetDomain* rolltui_preset_domain_bindings(RolltuiContext* c) {
+  return rolltui_preset_domain(c, ROLLTUI_PRESET_DOMAIN_BINDINGS);
+}
+
 RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id) {
   const size_t i = (size_t)id;
   RolltuiPresetDomains* p;

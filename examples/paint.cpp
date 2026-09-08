@@ -1034,9 +1034,9 @@ int main(int argc, char** argv) {
     const std::string store_dir = presets_dir.empty() ? user_presets_dir() : presets_dir;
     RolltuiThemePresetReport trep{};
     RolltuiBindingsPresetReport brep{};
-    app.theme_store = rolltui_preset_store_new(rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_THEME),
+    app.theme_store = rolltui_preset_store_new(rolltui_preset_domain_theme(app.ctx),
                                                store_dir.data(), store_dir.size(), 0, "", 0);
-    app.keys_store = rolltui_preset_store_new(rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_BINDINGS),
+    app.keys_store = rolltui_preset_store_new(rolltui_preset_domain_bindings(app.ctx),
                                               store_dir.data(), store_dir.size(), 0, "", 0);
     rolltui_preset_store_start(app.theme_store, &trep);
     rolltui_preset_store_start(app.keys_store, &brep);

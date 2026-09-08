@@ -935,8 +935,8 @@ int main(int argc, char** argv) {
     // an explicit `--presets` points the SCREEN somewhere, and where a person's presets live is a
     // separate question with its own answer.
     const std::string store_dir = presets_dir.empty() ? user_presets_dir() : presets_dir;
-    RolltuiPresetDomain* td = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_THEME);
-    RolltuiPresetDomain* bd = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_BINDINGS);
+    RolltuiPresetDomain* td = rolltui_preset_domain_theme(app.ctx);
+    RolltuiPresetDomain* bd = rolltui_preset_domain_bindings(app.ctx);
     RolltuiThemePresetReport trep{};
     RolltuiBindingsPresetReport brep{};
     app.theme_store = rolltui_preset_store_new(td, store_dir.data(), store_dir.size(), 0, "", 0);

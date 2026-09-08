@@ -997,6 +997,9 @@ ROLLTUI_API(rolltui_layout_preset_report_clean, PUBLIC)
 ROLLTUI_API(rolltui_layout_preset_report_release, PUBLIC)
 ROLLTUI_API(rolltui_layout_preset_report_summary, PUBLIC)  /* KEPT: matching part — its own `_clean` and `rolltui_theme_preset_report_summary` are consumer-used — same hole, same set of three domains */
 ROLLTUI_API(rolltui_preset_domain, PUBLIC)
+ROLLTUI_API(rolltui_preset_domain_theme, PUBLIC)
+ROLLTUI_API(rolltui_preset_domain_layout, PUBLIC)
+ROLLTUI_API(rolltui_preset_domain_bindings, PUBLIC)
 ROLLTUI_API(rolltui_preset_domain_name, PUBLIC)
 ROLLTUI_API(rolltui_preset_domain_release, INTERNAL)  /* rule 1: the pair */
 ROLLTUI_API(rolltui_preset_is_shipped, PUBLIC)

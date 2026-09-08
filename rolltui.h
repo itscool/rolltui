@@ -3824,6 +3824,15 @@ const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
 
 RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id);
 
+/* The same three, one per library domain. A caller always knows which domain it wants, so these
+ * are what a host writes; `rolltui_preset_domain` above takes the id for the loop that builds
+ * all three at once. */
+RolltuiPresetDomain* rolltui_preset_domain_theme(RolltuiContext* c);
+
+RolltuiPresetDomain* rolltui_preset_domain_layout(RolltuiContext* c);
+
+RolltuiPresetDomain* rolltui_preset_domain_bindings(RolltuiContext* c);
+
 /* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not
  * this domain's). The identity key — the store's own domain's `kind`, "theme"/"layout"/
  * "bindings" — answers with the origin; a Theme store additionally answers "theme_mode" and
