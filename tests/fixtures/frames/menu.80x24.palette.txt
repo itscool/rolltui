@@ -4,9 +4,9 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
-│ │ wrapped      │  │ settings › …  /mono                  │s                  │
-│ │ lines)       │  │ Theme › mono   monochrome            │uecolor            │
-│ │ Theme (roles │ b│ Colour depth › mono                  │nu                 │
+│ │ wrapped      │  │ menu › …  /mono                      │s                  │
+│ │ lines)       │  │ Appearance › Theme › mono   monochro │uecolor            │
+│ │ Theme (roles │ b│ Appearance › Colour depth › mono     │nu                 │
 │ │ → styles,    │  │                                      │                   │
 │ │ JSON loader, │  │                                      │                   │
 │ │ built-ins)   │  │                                      │                   │

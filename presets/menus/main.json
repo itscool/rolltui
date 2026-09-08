@@ -1,16 +1,93 @@
 {
-  "id": "root", "label": "settings", "items": [
-    { "id": "theme", "label": "Theme", "kind": "choice" },
-    { "id": "layout", "label": "Layout", "kind": "choice" },
-    { "id": "depth", "label": "Colour depth", "kind": "choice",
-      "items": [ { "id": "truecolor" }, { "id": "256" }, { "id": "16" }, { "id": "mono" } ] },
-    { "id": "ambiguous", "label": "Ambiguous width = 2", "kind": "toggle" },
-    { "id": "commands", "label": "Commands", "items": [
-      { "id": "editor", "label": "Theme editor", "action": "editor.theme" },
-      { "id": "layout_editor", "label": "Layout editor", "action": "editor.layout" },
-      { "id": "keys_editor", "label": "Keys editor", "action": "editor.keys" },
-      { "id": "menu_editor", "label": "Menu editor", "action": "editor.menu" },
-      { "id": "reload", "label": "Reload the fixture", "action": "studio.reload" },
-      { "id": "help", "label": "Help", "action": "app.help" },
-      { "id": "quit", "label": "Quit", "action": "studio.quit" } ] } ]
+  "id": "root",
+  "label": "menu",
+  "items": [
+    {
+      "id": "editors",
+      "label": "Editors",
+      "items": [
+        {
+          "id": "editor",
+          "label": "Theme editor",
+          "action": "editor.theme"
+        },
+        {
+          "id": "layout_editor",
+          "label": "Layout editor",
+          "action": "editor.layout"
+        },
+        {
+          "id": "keys_editor",
+          "label": "Keys editor",
+          "action": "editor.keys"
+        },
+        {
+          "id": "menu_editor",
+          "label": "Menu editor",
+          "action": "editor.menu"
+        }
+      ]
+    },
+    {
+      "id": "appearance",
+      "label": "Appearance",
+      "items": [
+        {
+          "id": "theme",
+          "label": "Theme",
+          "kind": "choice"
+        },
+        {
+          "id": "layout",
+          "label": "Layout",
+          "kind": "choice"
+        },
+        {
+          "id": "depth",
+          "label": "Colour depth",
+          "kind": "choice",
+          "items": [
+            {
+              "id": "truecolor"
+            },
+            {
+              "id": "256"
+            },
+            {
+              "id": "16"
+            },
+            {
+              "id": "mono"
+            }
+          ]
+        },
+        {
+          "id": "ambiguous",
+          "label": "Ambiguous width = 2",
+          "kind": "toggle"
+        }
+      ]
+    },
+    {
+      "id": "commands",
+      "label": "Commands",
+      "items": [
+        {
+          "id": "reload",
+          "label": "Reload the fixture",
+          "action": "studio.reload"
+        },
+        {
+          "id": "help",
+          "label": "Help",
+          "action": "app.help"
+        },
+        {
+          "id": "quit",
+          "label": "Quit",
+          "action": "studio.quit"
+        }
+      ]
+    }
+  ]
 }

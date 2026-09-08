@@ -7,12 +7,12 @@
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow  yes                  │
 │ │                                  │             │ block tree is the API            │ │ depth   truecolor            │
 │ │ Terminal I/O (raw, alt scr╭ menu ────────────────────────────────────────────────────╮focus   menu                 │
-│ │ size, SIGWINCH, bracketed │ settings                                                 │                             │
-│ │ mouse mode)               │ Theme                                     default-dark ▸ │                             │
-│ │ Key + mouse decoding      │ Layout                                         default ▸ │                             │
-│ │                           │ Colour depth                                 truecolor ▸ │                             │
-│ │ Cell grid + frame diff + S│ [ ] Ambiguous width = 2                                  │                             │
-│ │ colour downgrade          │ Commands                                               ▸ │                             │
+│ │ size, SIGWINCH, bracketed │ menu                                                     │                             │
+│ │ mouse mode)               │ Editors                                                ▸ │                             │
+│ │ Key + mouse decoding      │ Appearance                                             ▸ │                             │
+│ │                           │ Commands                                               ▸ │                             │
+│ │ Cell grid + frame diff + S│                                                          │                             │
+│ │ colour downgrade          │                                                          │                             │
 │ │ Wrap engine               │                                                          │                             │
 │ │                           │                                                          │                             │
 │ │ Windows, layers, placement│                                                          │                             │

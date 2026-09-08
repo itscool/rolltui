@@ -198,7 +198,7 @@ int main(int argc, char** argv) {
       // declared. Loading a bindings file rebuilds the table, so the launch-time case
       // above cannot tell an authoritative declare() from an additive one — this one can.
       {"files-only.80x24.switched",
-       "--frame 80x24 --layout default --bindings kettle --keys \"F2 Type:lay Enter Type:kettle Enter Escape Tab "
+       "--frame 80x24 --layout default --bindings kettle --keys \"F2 Type:Appearance Enter Type:lay Enter Type:kettle Enter Escape Tab "
        "PageDown PageDown PageDown PageDown PageDown PageDown Down Down Down Down Down\""},
       // The VERIFY rung: a layout declaring nothing. The menu item's action is reported
       // by name in the status line and its shortcut is gone.

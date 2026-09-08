@@ -4,8 +4,8 @@
 │ Menu widget (hierarchical,    │ build       │ single header each; the widget │
 │ filterable) + list/text       │             │ set is deliberately this small │
 │ widgets           ╭ menu ────────────────────────────────╮                   │
-│ Layout files (JSON│ settings › …  /stacked               │heme loader's hand │
-│ placements + conte│ Layout › stacked                     │reloaded           │
+│ Layout files (JSON│ menu › …  /stacked                   │heme loader's hand │
+│ placements + conte│ Appearance › Layout › stacked        │reloaded           │
 │ Markdown block ren│                                      │r over md4c + wrap │
 │ (blocks → styled w│                                      │                   │
 │ lines)            │                                      │                   │

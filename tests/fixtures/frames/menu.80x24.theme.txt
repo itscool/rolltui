@@ -4,7 +4,7 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
-│ │ wrapped      │  │ settings › Theme                     ╻s                  │
+│ │ wrapped      │  │ menu › Appearance › Theme            ╻s                  │
 │ │ lines)       │  │ ◂ Back                               ┃uecolor            │
 │ │ Theme (roles │ b│ default   colour-vision safe         ┃nu                 │
 │ │ → styles,    │  │ beacon   high contrast               ┃                   │

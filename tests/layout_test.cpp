@@ -1694,7 +1694,11 @@ int main() {
     // Rung 3, with nothing else present: the library's own shipped menus/main.json.
     check(!shipped_menu_c("main").empty() && shipped_menu_c("nothing-ships-this").empty(),
           "the library ships menus/main.json and nothing under a name it has no file for");
-    check(windows.menu_origin("main") == "a shipped menu" && rolltui_menu_root(windows.menu("main"))->label == "settings",
+    // `menu_origin` is what says WHICH file this came from; the root's label is a word on a
+    // breadcrumb and pinning it here makes an editorial change to the shipped menu look like a
+    // resolution bug. What is checked beside the origin is that the file actually parsed into
+    // something with sections in it.
+    check(windows.menu_origin("main") == "a shipped menu" && !rolltui_menu_root(windows.menu("main"))->children.empty(),
           "with no user file and no host menu, `menu:main` is the SHIPPED one [" + windows.menu_origin("main") + "]");
 
     // Rung 2: a menu the host carries in its binary shadows the shipped one.

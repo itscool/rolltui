@@ -4,9 +4,9 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
-│ │ wrapped      │  │ settings  /lay                       │s                  │
-│ │ lines)       │  │ Layout                     default ▸ │uecolor            │
-│ │ Theme (roles │ b│                                      │nu                 │
+│ │ wrapped      │  │ menu › Appearance  /lay              │s                  │
+│ │ lines)       │  │ ◂ Back                               │uecolor            │
+│ │ Theme (roles │ b│ Layout                     default ▸ │nu                 │
 │ │ → styles,    │  │                                      │                   │
 │ │ JSON loader, │  │                                      │                   │
 │ │ built-ins)   │  │                                      │                   │

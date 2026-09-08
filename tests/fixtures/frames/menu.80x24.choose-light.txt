@@ -4,12 +4,12 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
-│ │ wrapped      │  │ settings                             │s                  │
-│ │ lines)       │  │ Theme                default-light ▸ │uecolor            │
-│ │ Theme (roles │ b│ Layout                     default ▸ │nu                 │
-│ │ → styles,    │  │ Colour depth             truecolor ▸ │                   │
-│ │ JSON loader, │  │ [ ] Ambiguous width = 2              │                   │
-│ │ built-ins)   │  │ Commands                           ▸ │                   │
+│ │ wrapped      │  │ menu › Appearance                    │s                  │
+│ │ lines)       │  │ ◂ Back                               │uecolor            │
+│ │ Theme (roles │ b│ Theme                default-light ▸ │nu                 │
+│ │ → styles,    │  │ Layout                     default ▸ │                   │
+│ │ JSON loader, │  │ Colour depth             truecolor ▸ │                   │
+│ │ built-ins)   │  │ [ ] Ambiguous width = 2              │                   │
 │ └──────────────┴──│                                      │                   │
 │                   │                                      │                   │
 │ Here is the functi│                                      │                   │

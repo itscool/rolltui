@@ -327,15 +327,16 @@ int main(int argc, char** argv) {
       {"tiny.80x2", "--frame 80x2 --theme default-dark --layout default --keys \"Type:hi Enter Up PageUp F1\""},
       // milestone 11 (the menu widget)
       {"menu.80x24.open", "--frame 80x24 --theme default-dark --keys \"F2\""},
-      {"menu.80x24.theme", "--frame 80x24 --theme default-dark --keys \"F2 Enter\""},
-      {"menu.80x24.choose-light", "--frame 80x24 --theme default-dark --keys \"F2 Enter Down Enter\""},
-      {"menu.80x24.filter", "--frame 80x24 --theme default-dark --keys \"F2 Type:lay\""},
-      {"menu.80x24.left", "--frame 80x24 --theme default-dark --keys \"F2 Enter Left\""},
+      {"menu.80x24.theme", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:theme Enter\""},
+      {"menu.80x24.choose-light", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:theme Enter Type:default-light Enter\""},
+      {"menu.80x24.filter", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:lay\""},
+      {"menu.80x24.left", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Left\""},
       {"menu.80x24.escape", "--frame 80x24 --theme default-dark --keys \"F2 Escape\""},
-      {"menu.80x24.toggle", "--frame 80x24 --theme default-dark --keys \"F2 Down Down Down Enter\""},
+      {"menu.80x24.toggle", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:ambig Enter\""},
       // The Commands level, whose shortcuts are the LIVE chords of the actions its
       // items name — nothing in the menu file spells a key out.
       {"menu.80x24.commands", "--frame 80x24 --theme default-dark --keys \"F2 Type:comm Enter\""},
+      {"menu.80x24.editors", "--frame 80x24 --theme default-dark --keys \"F2 Type:Editors Enter\""},
       {"menu.80x24.palette", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:mono\""},
       {"menu.80x24.palette-choose", "--frame 80x24 --theme default-dark --keys \"CtrlP Type:stacked Enter\""},
       {"menu.120x40.open", "--frame 120x40 --theme default-dark --keys \"F2\""},
@@ -421,6 +422,7 @@ int main(int argc, char** argv) {
   std::string tools_top, unfold_click, unfold_ctrl_o, drag_copy, dbl_copy, triple_copy, autoscroll_out;
   std::string typed, multiline, wrapped, stacked_ml, select_all_copy, in_drag_copy, in_dbl_copy, submitted, history, edited, pasted, capped;
   std::string menu_commands;
+  std::string menu_editors;
   std::string menu_open, menu_theme, menu_light, menu_filter, menu_left, menu_escape, menu_toggle, menu_palette, menu_palette_choose, menu_big;
   std::string ed_open, ed_fg, ed_cancel, ed_commit, ed_undo, ed_confirm, ed_save, ed_check, ed_fixes;
   std::string le_open, le_split, le_undo, le_preview, le_cancel, le_drag, le_click, le_save, le_fixed_before, le_fixed_after;
@@ -490,6 +492,7 @@ int main(int argc, char** argv) {
     if (std::string(c.name) == "input.80x24.paste") pasted = out;
     if (std::string(c.name) == "input.80x24.cap") capped = out;
     if (std::string(c.name) == "menu.80x24.open") menu_open = out;
+    if (std::string(c.name) == "menu.80x24.editors") menu_editors = out;
     if (std::string(c.name) == "menu.80x24.theme") menu_theme = out;
     if (std::string(c.name) == "menu.80x24.choose-light") menu_light = out;
     if (std::string(c.name) == "menu.80x24.filter") menu_filter = out;
@@ -655,23 +658,28 @@ int main(int argc, char** argv) {
     check(!tiny_failed, "the 1x1, 2x2, 6x1, 1x6, 20x3 and 80x2 frames render (typed text, a paste, the help popup and Tab included) without a row out of bounds");
     // ---- milestone 11: the menu, asserted beyond the bytes ----
     check(menu_open.find("\xE2\x95\xAD menu ") != std::string::npos && menu_open.find("focus:menu") != std::string::npos &&
-              menu_open.find("settings") != std::string::npos && menu_open.find("Theme") != std::string::npos,
-          "F2 opens the menu popup (rounded ╭ menu title, focus:menu, the settings breadcrumb, the Theme row)");
-    check(menu_theme.find("settings \xE2\x80\xBA Theme") != std::string::npos && menu_theme.find("\xE2\x80\xA2 default-dark") != std::string::npos,
+              menu_open.find("Editors") != std::string::npos && menu_open.find("Appearance") != std::string::npos &&
+              menu_open.find("Commands") != std::string::npos,
+          "F2 opens the menu popup, and its top level names the app's own tools rather than burying them under a category");
+    check(menu_theme.find("Appearance \xE2\x80\xBA Theme") != std::string::npos && menu_theme.find("\xE2\x80\xA2 default-dark") != std::string::npos,
           "Enter descends into the Theme choice: the breadcrumb grows and the current option is marked •");
     check(menu_light.find("theme   default-light") != std::string::npos && menu_light.find("default-light \xE2\x96\xB8") != std::string::npos &&
-              menu_light.find("settings \xE2\x80\xBA Theme") == std::string::npos,
-          "Down + Enter chooses default-light three levels deep by keyboard alone: the status says so, the choice shows its value, the menu is back at the top");
+              menu_light.find("Appearance \xE2\x80\xBA Theme") == std::string::npos,
+          "choosing default-light BY NAME four levels deep by keyboard alone: the status says so, the choice shows its value, the menu is back at the top");
     check(!menu_light.empty() && menu_light != menu_open, "…and the frame changed (it went light)");
-    check(menu_filter.find("settings  /lay") != std::string::npos && menu_filter.find("/lay                       \xE2\x94\x82") != std::string::npos && menu_filter.find("Colour depth") == std::string::npos,
+    check(menu_filter.find("/lay") != std::string::npos && menu_filter.find("Layout") != std::string::npos && menu_filter.find("Colour depth") == std::string::npos,
           "typing \"lay\" filters the level to Layout and shows the filter after the breadcrumb");
     check(!menu_left.empty() && menu_left == menu_open, "Enter then Left gives back exactly the opened frame");
     check(!menu_escape.empty() && menu_escape == bottom, "F2 then Escape gives back exactly the frame without the menu");
     check(menu_toggle.find("[x] Ambiguous width") != std::string::npos, "Enter on the toggle shows [x]");
     // The shipped menu file names ACTIONS, never keys — so these columns are the
     // live table's, and "F1, ?" (two chords) is what app.help actually has.
-    check(menu_commands.find("Theme editor") != std::string::npos && menu_commands.find("F4") != std::string::npos &&
-              menu_commands.find("Help") != std::string::npos && menu_commands.find("F1, ?") != std::string::npos &&
+    // The shortcut column is the LIVE table's either way; what changed is that the four editors
+    // are a level of their own rather than filed under a category word.
+    check(menu_editors.find("Theme editor") != std::string::npos && menu_editors.find("F4") != std::string::npos &&
+              menu_editors.find("Layout editor") != std::string::npos && menu_editors.find("Keys editor") != std::string::npos,
+          "the Editors level lists the four editors with their LIVE chords");
+    check(menu_commands.find("Help") != std::string::npos && menu_commands.find("F1, ?") != std::string::npos &&
               menu_commands.find("Ctrl-Q") != std::string::npos,
           "the Commands level shows each item's LIVE chords, from the action it names");
     check(menu_palette.find("Theme \xE2\x80\xBA mono") != std::string::npos && menu_palette.find("Layout") == std::string::npos,
