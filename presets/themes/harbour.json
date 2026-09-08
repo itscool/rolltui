@@ -1,0 +1,361 @@
+{
+  "name": "harbour",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "harbour",
+    "meta": {
+      "description": "Professional. Cold water and painted steel: slate grounds, a steel blue for structure, teal, sand and iris beside it.",
+      "badges": {
+        "dark": [
+          "dark",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ],
+        "light": [
+          "light",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#0f161e",
+        "light": "#f1f6fa"
+      },
+      "panel": {
+        "dark": "#1e2a36",
+        "light": "#d7e1eb"
+      },
+      "code": {
+        "dark": "#17202a",
+        "light": "#e6eef6"
+      },
+      "fg": {
+        "dark": "#e3eaf1",
+        "light": "#19222b"
+      },
+      "dim": {
+        "dark": "#8c99a4",
+        "light": "#535e68"
+      },
+      "line": {
+        "dark": "#414e5c",
+        "light": "#a7b5c2"
+      },
+      "focus": {
+        "dark": "#1fb5e7",
+        "light": "#005571"
+      },
+      "head": {
+        "dark": "#44c5f6",
+        "light": "#004359"
+      },
+      "a1": {
+        "dark": "#4094f8",
+        "light": "#003c7c"
+      },
+      "a2": {
+        "dark": "#00c4bc",
+        "light": "#006460"
+      },
+      "a3": {
+        "dark": "#fcb100",
+        "light": "#7f5700"
+      },
+      "a4": {
+        "dark": "#d354bd",
+        "light": "#410057"
+      },
+      "ok": {
+        "dark": "#00c97b",
+        "light": "#045c00"
+      },
+      "bad": {
+        "dark": "#f3464a",
+        "light": "#ce164b"
+      },
+      "warn": {
+        "dark": "#ffc67d",
+        "light": "#644200"
+      },
+      "link": {
+        "dark": "#00b9c8",
+        "light": "#005d65"
+      },
+      "sel": {
+        "dark": "#0e3d4f",
+        "light": "#b3def1"
+      },
+      "mark": {
+        "dark": "#543a07",
+        "light": "#ffd89c"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg"
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg"
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg"
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg"
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "⠋",
+          "⠙",
+          "⠹",
+          "⠸",
+          "⠼",
+          "⠴",
+          "⠦",
+          "⠧"
+        ],
+        "period_ms": 640
+      },
+      "streaming": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_1"
+        ],
+        "period_ms": 1200,
+        "width": 6
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 460
+      }
+    }
+  }
+}

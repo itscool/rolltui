@@ -1,0 +1,367 @@
+{
+  "name": "orchard",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "orchard",
+    "meta": {
+      "description": "Fun. Late summer under the trees: a deep green ground, lime for structure, sky, apricot and berry beside it.",
+      "badges": {
+        "dark": [
+          "dark",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ],
+        "light": [
+          "light",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#081810",
+        "light": "#f4f8ee"
+      },
+      "panel": {
+        "dark": "#152e22",
+        "light": "#dbe4d2"
+      },
+      "code": {
+        "dark": "#0f231a",
+        "light": "#eaf1e3"
+      },
+      "fg": {
+        "dark": "#e7ece2",
+        "light": "#15241c"
+      },
+      "dim": {
+        "dark": "#929b8a",
+        "light": "#586050"
+      },
+      "line": {
+        "dark": "#3a5547",
+        "light": "#aeb8a2"
+      },
+      "focus": {
+        "dark": "#8fbd47",
+        "light": "#3f5d00"
+      },
+      "head": {
+        "dark": "#b4ca40",
+        "light": "#4e5a00"
+      },
+      "a1": {
+        "dark": "#00a7cd",
+        "light": "#00627b"
+      },
+      "a2": {
+        "dark": "#89bf27",
+        "light": "#154100"
+      },
+      "a3": {
+        "dark": "#ffb881",
+        "light": "#934d00"
+      },
+      "a4": {
+        "dark": "#e7479b",
+        "light": "#6e007d"
+      },
+      "ok": {
+        "dark": "#60ce55",
+        "light": "#056200"
+      },
+      "bad": {
+        "dark": "#f34450",
+        "light": "#c90a3e"
+      },
+      "warn": {
+        "dark": "#ffc676",
+        "light": "#573700"
+      },
+      "link": {
+        "dark": "#00b7d6",
+        "light": "#005768"
+      },
+      "sel": {
+        "dark": "#00404b",
+        "light": "#abe2ed"
+      },
+      "mark": {
+        "dark": "#593900",
+        "light": "#ffd7a4"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg"
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg"
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg"
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg"
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "⠁",
+          "⠃",
+          "⠇",
+          "⡇",
+          "⡏",
+          "⡟",
+          "⡿",
+          "⣿",
+          "⡿",
+          "⡟",
+          "⡏",
+          "⡇",
+          "⠇",
+          "⠃"
+        ],
+        "period_ms": 560
+      },
+      "streaming": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 1000,
+        "width": 7
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 380
+      }
+    }
+  }
+}

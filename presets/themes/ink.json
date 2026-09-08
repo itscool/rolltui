@@ -1,0 +1,361 @@
+{
+  "name": "ink",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "ink",
+    "meta": {
+      "description": "Professional. Printer's ink on warm paper: near-neutral grounds with a trace of warmth, one blue carrying every piece of structure, three earth accents beside it.",
+      "badges": {
+        "dark": [
+          "dark",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ],
+        "light": [
+          "light",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#14110e",
+        "light": "#faf7f2"
+      },
+      "panel": {
+        "dark": "#27231d",
+        "light": "#e7e2d8"
+      },
+      "code": {
+        "dark": "#1e1a15",
+        "light": "#f3efe5"
+      },
+      "fg": {
+        "dark": "#ebe7e0",
+        "light": "#231e18"
+      },
+      "dim": {
+        "dark": "#969289",
+        "light": "#625e55"
+      },
+      "line": {
+        "dark": "#4f4940",
+        "light": "#bbb4a7"
+      },
+      "focus": {
+        "dark": "#5ea9f9",
+        "light": "#005094"
+      },
+      "head": {
+        "dark": "#79b9ff",
+        "light": "#003f77"
+      },
+      "a1": {
+        "dark": "#389afb",
+        "light": "#004a8a"
+      },
+      "a2": {
+        "dark": "#1dce7a",
+        "light": "#007453"
+      },
+      "a3": {
+        "dark": "#fdc600",
+        "light": "#785c00"
+      },
+      "a4": {
+        "dark": "#cb54c4",
+        "light": "#60005d"
+      },
+      "ok": {
+        "dark": "#00c672",
+        "light": "#007533"
+      },
+      "bad": {
+        "dark": "#f0443e",
+        "light": "#d11f22"
+      },
+      "warn": {
+        "dark": "#ffc448",
+        "light": "#533a00"
+      },
+      "link": {
+        "dark": "#1db1ea",
+        "light": "#005575"
+      },
+      "sel": {
+        "dark": "#1f3751",
+        "light": "#c0daf8"
+      },
+      "mark": {
+        "dark": "#4e3c07",
+        "light": "#f7dd9e"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg"
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg"
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg"
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg"
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "⠋",
+          "⠙",
+          "⠹",
+          "⠸",
+          "⠼",
+          "⠴",
+          "⠦",
+          "⠧"
+        ],
+        "period_ms": 720
+      },
+      "streaming": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_1"
+        ],
+        "period_ms": 1400,
+        "width": 5
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 520
+      }
+    }
+  }
+}

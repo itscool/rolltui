@@ -1,0 +1,371 @@
+{
+  "name": "beacon",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "beacon",
+    "meta": {
+      "description": "High contrast, colour vision first. Two hues only — a blue and an amber — with the accents on four widely spaced lightness rungs, so no pair leans on a hue axis that a colour-vision simulation flattens.",
+      "badges": {
+        "dark": [
+          "dark",
+          "high-contrast",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe",
+          "attribute-redundant"
+        ],
+        "light": [
+          "light",
+          "high-contrast",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe",
+          "attribute-redundant"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#000d18",
+        "light": "#fdfcf6"
+      },
+      "panel": {
+        "dark": "#0b1e2f",
+        "light": "#eceadf"
+      },
+      "code": {
+        "dark": "#041423",
+        "light": "#f6f4ea"
+      },
+      "fg": {
+        "dark": "#f4f8ff",
+        "light": "#0a1119"
+      },
+      "dim": {
+        "dark": "#b9c9d9",
+        "light": "#3a4550"
+      },
+      "line": {
+        "dark": "#7e93a6",
+        "light": "#59646f"
+      },
+      "focus": {
+        "dark": "#73c0ff",
+        "light": "#00436e"
+      },
+      "head": {
+        "dark": "#ffd490",
+        "light": "#503500"
+      },
+      "a1": {
+        "dark": "#49b1ff",
+        "light": "#00529b"
+      },
+      "a2": {
+        "dark": "#ffb934",
+        "light": "#674500"
+      },
+      "a3": {
+        "dark": "#b7deff",
+        "light": "#224063"
+      },
+      "a4": {
+        "dark": "#fffaf1",
+        "light": "#442d00"
+      },
+      "ok": {
+        "dark": "#43f69b",
+        "light": "#00290d"
+      },
+      "bad": {
+        "dark": "#ff7871",
+        "light": "#a80018"
+      },
+      "warn": {
+        "dark": "#ffedce",
+        "light": "#3a2600"
+      },
+      "link": {
+        "dark": "#3fd8f7",
+        "light": "#003d49"
+      },
+      "sel": {
+        "dark": "#00395f",
+        "light": "#cfe2f5"
+      },
+      "mark": {
+        "dark": "#4a3600",
+        "light": "#ffe7a0"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg",
+        "bold": true
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg",
+        "underline": true
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg",
+        "bold": true,
+        "italic": true
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true,
+        "underline": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "underline": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "⠋",
+          "⠙",
+          "⠹",
+          "⠸",
+          "⠼",
+          "⠴",
+          "⠦",
+          "⠧"
+        ],
+        "period_ms": 560
+      },
+      "streaming": {
+        "kind": "pulse",
+        "roles": [
+          "text_muted",
+          "text"
+        ],
+        "period_ms": 1100
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "menu_selected"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 440
+      }
+    }
+  }
+}

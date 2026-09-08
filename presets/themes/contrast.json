@@ -1,0 +1,371 @@
+{
+  "name": "contrast",
+  "mode": "auto",
+  "depth": "auto",
+  "colours": {
+    "name": "contrast",
+    "meta": {
+      "description": "Strictly high contrast. White on black and black on white, every text role at 7:1 or better, and every must-differ pair carrying an attribute as well as a colour so it survives 16 colours and mono.",
+      "badges": {
+        "dark": [
+          "dark",
+          "high-contrast",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe",
+          "attribute-redundant"
+        ],
+        "light": [
+          "light",
+          "high-contrast",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe",
+          "attribute-redundant"
+        ]
+      }
+    },
+    "defs": {
+      "bg": {
+        "dark": "#000000",
+        "light": "#ffffff"
+      },
+      "panel": {
+        "dark": "#1c1c1c",
+        "light": "#e8e8e8"
+      },
+      "code": {
+        "dark": "#101010",
+        "light": "#f2f2f2"
+      },
+      "fg": {
+        "dark": "#ffffff",
+        "light": "#000000"
+      },
+      "dim": {
+        "dark": "#c9c9c9",
+        "light": "#454545"
+      },
+      "line": {
+        "dark": "#8f8f8f",
+        "light": "#5c5c5c"
+      },
+      "focus": {
+        "dark": "#7bbdff",
+        "light": "#00477f"
+      },
+      "head": {
+        "dark": "#b0d7ff",
+        "light": "#00325d"
+      },
+      "a1": {
+        "dark": "#63b2ff",
+        "light": "#1c2587"
+      },
+      "a2": {
+        "dark": "#04f09f",
+        "light": "#00574c"
+      },
+      "a3": {
+        "dark": "#fffcf6",
+        "light": "#673d00"
+      },
+      "a4": {
+        "dark": "#f169ca",
+        "light": "#7d27ac"
+      },
+      "ok": {
+        "dark": "#00e590",
+        "light": "#006123"
+      },
+      "bad": {
+        "dark": "#ff6d67",
+        "light": "#6b002e"
+      },
+      "warn": {
+        "dark": "#ffe4b6",
+        "light": "#5f4100"
+      },
+      "link": {
+        "dark": "#2dcdec",
+        "light": "#004957"
+      },
+      "sel": {
+        "dark": "#00376b",
+        "light": "#bfd9ff"
+      },
+      "mark": {
+        "dark": "#4a3400",
+        "light": "#ffe9a8"
+      }
+    },
+    "roles": {
+      "text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "text_muted": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "background": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "panel_background": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "border_active": {
+        "fg": "focus",
+        "bg": "bg"
+      },
+      "title": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "label": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "value": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "accent_1": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "accent_2": {
+        "fg": "a2",
+        "bg": "bg",
+        "bold": true
+      },
+      "accent_3": {
+        "fg": "a3",
+        "bg": "bg",
+        "underline": true
+      },
+      "accent_4": {
+        "fg": "a4",
+        "bg": "bg",
+        "bold": true,
+        "italic": true
+      },
+      "prompt": {
+        "fg": "link",
+        "bg": "bg",
+        "bold": true
+      },
+      "note": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "warning": {
+        "fg": "warn",
+        "bg": "bg"
+      },
+      "error": {
+        "fg": "bad",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_heading": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_emphasis": {
+        "fg": "fg",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_strong": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_code_inline": {
+        "fg": "a3",
+        "bg": "code"
+      },
+      "md_code_block": {
+        "fg": "fg",
+        "bg": "code"
+      },
+      "md_code_label": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_link": {
+        "fg": "link",
+        "bg": "bg",
+        "underline": true
+      },
+      "md_link_url": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "md_quote": {
+        "fg": "a4",
+        "bg": "bg",
+        "italic": true
+      },
+      "md_list_marker": {
+        "fg": "a1",
+        "bg": "bg"
+      },
+      "md_table_border": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_table_header": {
+        "fg": "head",
+        "bg": "bg",
+        "bold": true
+      },
+      "md_rule": {
+        "fg": "line",
+        "bg": "bg"
+      },
+      "md_strikethrough": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "diff_added": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true
+      },
+      "diff_removed": {
+        "fg": "bad",
+        "bg": "bg"
+      },
+      "diff_context": {
+        "fg": "dim",
+        "bg": "bg"
+      },
+      "diff_added_word": {
+        "fg": "ok",
+        "bg": "bg",
+        "bold": true,
+        "underline": true
+      },
+      "diff_removed_word": {
+        "fg": "bad",
+        "bg": "bg",
+        "underline": true
+      },
+      "input_text": {
+        "fg": "fg",
+        "bg": "bg"
+      },
+      "input_cursor": {
+        "fg": "bg",
+        "bg": "fg"
+      },
+      "input_placeholder": {
+        "fg": "dim",
+        "bg": "bg",
+        "italic": true
+      },
+      "scroll_marker": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "selection": {
+        "fg": "fg",
+        "bg": "sel"
+      },
+      "overlay": {
+        "fg": "dim",
+        "bg": "bg",
+        "dim": true
+      },
+      "menu_item": {
+        "fg": "fg",
+        "bg": "panel"
+      },
+      "menu_selected": {
+        "fg": "panel",
+        "bg": "focus",
+        "bold": true
+      },
+      "menu_breadcrumb": {
+        "fg": "dim",
+        "bg": "panel"
+      },
+      "menu_shortcut": {
+        "fg": "a3",
+        "bg": "panel"
+      },
+      "find_match": {
+        "fg": "fg",
+        "bg": "mark"
+      },
+      "find_current": {
+        "fg": "bg",
+        "bg": "warn",
+        "bold": true
+      },
+      "scrollbar": {
+        "fg": "focus",
+        "bg": "bg"
+      }
+    },
+    "effects": {
+      "waiting": {
+        "kind": "spinner",
+        "frames": [
+          "⠋",
+          "⠙",
+          "⠹",
+          "⠸",
+          "⠼",
+          "⠴",
+          "⠦",
+          "⠧"
+        ],
+        "period_ms": 500
+      },
+      "streaming": {
+        "kind": "pulse",
+        "roles": [
+          "text_muted",
+          "text"
+        ],
+        "period_ms": 1100
+      },
+      "progress": {
+        "kind": "bar",
+        "roles": [
+          "menu_selected"
+        ],
+        "period_ms": 0
+      },
+      "flash": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 400
+      }
+    }
+  }
+}
