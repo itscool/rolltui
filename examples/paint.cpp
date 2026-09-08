@@ -65,6 +65,12 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+
+// ADDITIVE, NOT SUBTRACTIVE: the product cannot drive itself. The shared script vocabulary is the
+// same one the studio and the explorer use, so one spelling drives all three.
+#ifdef ROLLTUI_SELFTEST
+#include "rolltui/selftest/script.hpp"
+#endif
 #include "tool_str.hpp"
 
 namespace {
@@ -153,7 +159,16 @@ struct Tool {
 // app's minimum size is stated once, here, rather than in a second place that could drift.
 constexpr const char* kDefaultLayout = R"({
   "name": "paint", "min_width": 20, "min_height": 6, "focus": "sheet",
-  "actions": {},
+  "actions": { "app.theme": "Edit the theme", "app.keys": "Edit the keys" },
+  "popups": [
+    { "id": "theme", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+      "min_w": 34, "modal": true,
+      "root": { "id": "theme", "content": "theme", "border": "rounded", "title": "theme",
+                "focusable": true, "background": "panel_background" } },
+    { "id": "keys", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+      "min_w": 34, "modal": true,
+      "root": { "id": "keys", "content": "keys", "border": "rounded", "title": "keys",
+                "focusable": true, "background": "panel_background" } } ],
   "root": { "row": [
     { "id": "sheet", "content": "canvas:sheet", "border": "single", "title": "sheet", "focusable": true },
     { "id": "tools", "content": "menu:tools", "size": 22, "border": "single", "title": "tools", "focusable": true } ] }
@@ -402,6 +417,14 @@ RolltuiWidget canvas_factory(void* ctx, RolltuiWindows* /*w*/, const char* conte
 // APP LIFETIME, RELEASED IN ONE DESTRUCTOR — see the header note. Every handle below is
 // created once here and freed once there; none of them is per-frame, which is why no wrapper
 // type is needed for any of them.
+// Where a person's own presets live — the same rungs `rolltui_app_file` walks for an app's files.
+std::string user_presets_dir() {
+  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return std::string(d) + "/rolltui";
+  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return std::string(x) + "/roll/rolltui";
+  const char* home = std::getenv("HOME");
+  return std::string(home && *home ? home : ".") + "/.config/roll/rolltui";
+}
+
 struct App {
   RolltuiContext* ctx = rolltui_context_new();  // OWNED: this app's session (Phase 25)
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
@@ -413,6 +436,11 @@ struct App {
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
   RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
+  // OWNED: this app's own presets. The editors are the library's kinds; the STORE is what gives
+  // them something of this app's to edit.
+  RolltuiPresetStore* theme_store = nullptr;
+  RolltuiPresetStore* keys_store = nullptr;
+  unsigned long long theme_seen = 0;
   CanvasFactoryCtx factory_ctx{};
   // CALLER-FILLED, one per run: the status line's fields, reset and refilled every frame so
   // the array and each row's buffer are reused rather than rebuilt.
@@ -434,6 +462,8 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_preset_store_free(keys_store);
+    rolltui_preset_store_free(theme_store);
     rolltui_rows_release(&status_rows);
     rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
@@ -539,7 +569,36 @@ struct App {
     declare_actions();
   }
 
+  // An edit in the theme editor bumps the store's version; a frame drawing the old styles would
+  // make the editor look broken. Compared by version, so an unchanged frame costs nothing.
+  void sync_theme() {
+    if (!theme_store) return;
+    const unsigned long long v = rolltui_preset_store_version(theme_store);
+    if (v == theme_seen) return;
+    theme_seen = v;
+    RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(theme_store);
+    if (!w) return;
+    RolltuiThemeReport rep{};
+    RolltuiStyle got[ROLLTUI_ROLE_COUNT]{};
+    RolltuiStr name{};
+    const int named = rolltui_theme_mode_from_name(w->mode.p ? w->mode.p : "", w->mode.n);
+    RolltuiEffectMap* eff = rolltui_theme_load(w->colours, named >= 0 ? named : ROLLTUI_MODE_DARK,
+                                               rolltui_theme_default_vocab(), got, &name, &rep);
+    if (eff) {
+      std::copy(std::begin(got), std::end(got), styles);
+      rolltui_effect_map_free(effects);
+      effects = eff;
+      RolltuiScrollbarGlyphs g;
+      rolltui_theme_scrollbar_glyphs(w->colours, &g);
+      rolltui_context_set_scrollbar_glyphs(ctx, &g);
+    }
+    rolltui_str_free(&name);
+    rolltui_theme_report_release(&rep);
+    rolltui_preset_store_value_free(theme_store, w);
+  }
+
   void prepare() {
+    sync_theme();
     const RolltuiWidgetEnv env{static_cast<unsigned char>(tool.ambiguous), effect_ms};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
@@ -556,7 +615,26 @@ struct App {
     }
   }
 
+  void toggle_popup(const std::string& id) {
+    if (rolltui_window_stack_depth(stack) > 1) { rolltui_window_stack_pop(stack); return; }
+    rolltui_window_stack_push_popup(stack, layout, id.data(), id.size());
+  }
+
   void handle(const RolltuiEvent& e) {
+    // The app's own scope first, so a global chord works wherever the focus is. ANY `app.<id>`
+    // naming a popup this screen declares opens it: a panel is a layout entry and a chord, and
+    // this file gains nothing per panel.
+    if (e.kind == ROLLTUI_EVENT_KEY) {
+      std::size_t alen = 0;
+      if (const char* a = rolltui_bindings_action_for(bindings, &e.key, "app", 3, &alen)) {
+        const std::string action(a, alen);
+        if (action.rfind("app.", 0) == 0 &&
+            rolltui_layout_popup(layout, action.data() + 4, action.size() - 4) != nullptr) {
+          toggle_popup(action.substr(4));
+          return;
+        }
+      }
+    }
     RolltuiStr window{};
     const unsigned char kind =
         rolltui_window_stack_route(stack, &e, area(), bindings, rolltui_stack_default_actions(), &window);
@@ -688,6 +766,7 @@ int usage() {
 #ifdef ROLLTUI_SELFTEST
                "                     [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
                "                     [--frame WxH] [--present truecolor|256|16|mono]\n"
+               "                     [--keys \"F4 Down Enter Type:name Click 5,3\"]\n"
                "                     [--ramp ascii|blocks] [--ink #rrggbb] [--size N] [--shape square|round]\n"
                "                     [--stroke X,Y-X,Y] [--drag X,Y-X,Y] [--dot X,Y]\n"
                "                     --stroke presses, drags ONCE to the far end and releases;\n"
@@ -767,7 +846,7 @@ RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth;
+  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec;
   bool ambiguous = false;
   // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
   // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
@@ -782,6 +861,7 @@ int main(int argc, char** argv) {
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
     else if (a == "--frame") frame_spec = next();
+    else if (a == "--keys") keys_spec = next();
     else if (a == "--present") present_depth = next();
     else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||
              a == "--shape" || a == "--dot")
@@ -795,6 +875,25 @@ int main(int argc, char** argv) {
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");  // an unknown --theme keeps the app's own look
   rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
+
+  // The two lines that make the library's editors this app's: a kind is the library's, a store is
+  // what it edits. Opened on a person's own preset directory, which is a different question from
+  // where a `--presets` points the screen.
+  {
+    const std::string store_dir = presets_dir.empty() ? user_presets_dir() : presets_dir;
+    RolltuiThemePresetReport trep{};
+    RolltuiBindingsPresetReport brep{};
+    app.theme_store = rolltui_preset_store_new(rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_THEME),
+                                               store_dir.data(), store_dir.size(), 0, "", 0);
+    app.keys_store = rolltui_preset_store_new(rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_BINDINGS),
+                                              store_dir.data(), store_dir.size(), 0, "", 0);
+    rolltui_preset_store_start(app.theme_store, &trep);
+    rolltui_preset_store_start(app.keys_store, &brep);
+    rolltui_theme_preset_report_release(&trep);
+    rolltui_bindings_preset_report_release(&brep);
+    rolltui_windows_set_theme_store(app.windows, "theme", 5, app.theme_store, /*persist=*/1);
+    rolltui_windows_set_bindings_store(app.windows, "keys", 4, app.keys_store, /*persist=*/1);
+  }
 
   RolltuiLayoutReport rep{};
   RolltuiLayout* loaded = nullptr;  // OWNED
@@ -846,9 +945,17 @@ int main(int argc, char** argv) {
     rolltui_gap_report_release(&gaps);
   }
 
+#ifdef ROLLTUI_SELFTEST
   if (!frame_spec.empty()) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
     app.prepare();
+    // The shared script FIRST, so a chord that opens a panel is in force before the tool flags
+    // paint a picture into whatever is on top.
+    if (!keys_spec.empty()) {
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
+        if (!st.tick) app.handle(st.ev);
+      app.prepare();
+    }
     for (const auto& [flag, val] : script) {
       if (flag == "--ramp") app.tool.ramp = val == "blocks" ? 1 : 0;
       else if (flag == "--size") app.tool.size = std::atoi(val.c_str());
@@ -906,12 +1013,13 @@ int main(int argc, char** argv) {
     rolltui_swap_free(swap);
     return 0;
   }
+#endif
 
   RolltuiTerminalOptions opts{};
   RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
   if (!rolltui_terminal_is_tty(term)) {
     rolltui_terminal_free(term);
-    std::fprintf(stderr, "not a terminal; use --frame WxH\n");
+    std::fprintf(stderr, "not a terminal (rolltui-paint-selftest --frame WxH renders one)\n");
     return 1;
   }
   app.w = rolltui_terminal_width(term);

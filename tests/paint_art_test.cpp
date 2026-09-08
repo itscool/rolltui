@@ -90,6 +90,19 @@ int main() {
     check(in_selftest.substr(0, 1) != "0", "…while the self-test binary has it, so the marker discriminates");
   }
 
+  // ---- 0b. THE LIBRARY'S EDITORS ARE THIS APP'S TOO ----------------------------------------
+  // Paint is the against-the-grain probe and it still gets these for nothing: a popup in its
+  // layout, a chord in the shipped table, and one line handing over a store.
+  {
+    int erc = 0;
+    const std::string th = run(bin + " --frame 70x12 --keys \"F4\" 2>&1", erc);
+    const std::string ke = run(bin + " --frame 70x12 --keys \"F5\" 2>&1", erc);
+    check(th.find("theme editor") != std::string::npos, "F4 opens the theme editor in paint");
+    check(ke.find("keys editor") != std::string::npos, "F5 opens the keys editor in paint");
+    check(th.find("keys editor") == std::string::npos && ke.find("theme editor") == std::string::npos,
+          "…and each chord opens its own, not the other");
+  }
+
   // ---- 1. it draws a picture, in BOTH ramps at once -----------------------------------------
   const std::string art = run(base + kScene + " 2>&1", rc);
   check(rc == 0 && !art.empty(), "paint draws a scene from an ordered tool script (rc " + std::to_string(rc) + ")");
