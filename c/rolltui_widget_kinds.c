@@ -148,7 +148,33 @@ int rolltui_scroll_by_action(const RolltuiScrollTextActions* actions, const Roll
   return 1;
 }
 
+/* A CLICK ON "N more" JUMPS TO THE END. The marker is drawn like a label and behaves like a
+ * control, so it has to BE one — a person who can see "32 more" and click it expects to arrive
+ * there. Its cells are recomputed rather than remembered: the same `below` and the same width
+ * that drew it, so the region tested is the region painted and the two cannot drift. */
+static int scroll_text_marker_hit(RolltuiScrollTextBase* b, int x, int y) {
+  const RolltuiWidgetEnv* env = rolltui_windows_env(b->w);
+  char marker[ROLLTUI_MARKER_MAX];
+  size_t mlen;
+  int below, mw, left;
+  if (b->area.w <= 0 || b->area.h <= 0) return 0;
+  if (y != b->area.y + b->area.h - 1) return 0;
+  below = b->total - (b->top > 0 ? b->top : 0) - b->area.h;
+  mlen = rolltui_scroll_marker_text(below > 0 ? (size_t)below : 0, b->area.w, env->ambiguous_wide, marker,
+                                    sizeof marker);
+  if (mlen == 0) return 0;
+  mw = rolltui_u_display_width(b->uscratch, marker, mlen, env->ambiguous_wide);
+  left = b->area.x + (b->area.w - mw > 0 ? b->area.w - mw : 0);
+  return x >= left && x < b->area.x + b->area.w;
+}
+
 static int scroll_text_base_handle(RolltuiScrollTextBase* b, const RolltuiEvent* e) {
+  if (e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* press */ &&
+      scroll_text_marker_hit(b, e->mouse.x, e->mouse.y)) {
+    const int max_top = b->total - (b->area.h > 0 ? b->area.h : 1);
+    b->top = max_top > 0 ? max_top : 0;
+    return 1;
+  }
   if (e->kind != ROLLTUI_EVENT_KEY) return 0;
   return rolltui_scroll_by_action(&b->actions, rolltui_windows_bindings(b->w), &e->key, b->area.h, b->total,
                                       &b->top);

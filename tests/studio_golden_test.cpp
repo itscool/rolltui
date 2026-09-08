@@ -1064,6 +1064,31 @@ int main(int argc, char** argv) {
       for (const auto& [keys, want] : {std::pair<const char*, const char*>{"F7", "[keys editor]"}, {"F4", "[theme editor]"}, {"F6", "[layout editor]"}})
         check(run(base + " --keys \"" + keys + "\"", rc).find(want) != std::string::npos,
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
+      // "N more" IS A CONTROL, SO IT BEHAVES LIKE ONE. It is drawn like a label at the foot of
+      // any scrolled text view, and a person who can see "74 more" and click it expects to arrive
+      // there. The transcript had this; `text`, `file` and `help` share one engine that had no
+      // mouse handling at all, so in the help popup it was decoration.
+      {
+        const std::string plain = run(base + " --keys \"F1\"", rc);
+        std::size_t row = 0, col = 0;
+        {
+          std::istringstream in(plain);
+          std::size_t y = 0;
+          for (std::string r; std::getline(in, r); ++y) {
+            const std::size_t at = r.find("\xE2\x96\xBC");
+            if (at == std::string::npos) continue;
+            std::size_t cells = 0;
+            for (std::size_t i = 0; i < at; ++i)
+              if ((r[i] & 0xC0) != 0x80) ++cells;
+            row = y; col = cells + 3;  // a few cells into the marker, not its first
+          }
+        }
+        check(row != 0, "the help popup shows a \"N more\" marker to click");
+        const std::string clicked = run(base + " --keys \"F1 Click " + std::to_string(col) + "," +
+                                        std::to_string(row) + "\"", rc);
+        check(clicked != plain, "…and clicking it scrolls the help, rather than being a label that lies");
+      }
+
       // THE THUMB'S SHAPE IS THE THEME'S, not a literal in the drawing code. A thumb is drawn as
       // a capsule — `single` alone, else `top`, `middle`…, `bottom` — and a theme may replace all
       // four. The high-contrast designs do: a capsule's half-height caps trade visible mass for
