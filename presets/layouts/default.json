@@ -12,7 +12,7 @@
     "app.find": "find in the transcript",
     "app.theme": "Edit the theme",
     "app.keys": "Edit the key bindings",
-    "app.filepicker": "Open a file"
+    "app.filepicker": "Preview a different document"
   },
   "root": {
     "row": [
@@ -191,7 +191,7 @@
         "id": "filepicker",
         "content": "filepicker",
         "border": "rounded",
-        "title": "open",
+        "title": "preview",
         "focusable": true,
         "background": "panel_background"
       }
