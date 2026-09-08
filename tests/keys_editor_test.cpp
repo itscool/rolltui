@@ -144,7 +144,7 @@ int main() {
   go(ed, key(ROLLTUI_KEY_ENTER));
   go(ed, key(ROLLTUI_KEY_DOWN));
   o = go(ed, key(ROLLTUI_KEY_ENTER));
-  check(o == KeysEditor::Outcome{O::LoadPreset, "vim-ish"}, "Load preset asks the host");
+  check(o == KeysEditor::Outcome{O::LoadPreset, "vim-ish"}, "Load keys asks the host");
   go(ed, key(ROLLTUI_KEY_ESCAPE));
   go(ed, key(ROLLTUI_KEY_HOME));
   type(ed, "save");

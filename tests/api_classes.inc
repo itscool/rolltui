@@ -1005,12 +1005,7 @@ ROLLTUI_API(rolltui_preset_list_release, PUBLIC)
 ROLLTUI_API(rolltui_preset_looks_like_path, INTERNAL)  /* the store already answers a bad name with a sentence */
 ROLLTUI_API(rolltui_preset_read_file, PUBLIC)
 ROLLTUI_API(rolltui_preset_report_summary, INTERNAL)  /* the generic composer; the per-domain summaries are the API (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_preset_resolve_setting, PUBLIC)
-ROLLTUI_API(rolltui_preset_rung_name, PUBLIC)
 ROLLTUI_API(rolltui_preset_save_result_text, PUBLIC)
-ROLLTUI_API(rolltui_preset_setting_index, PUBLIC)
-ROLLTUI_API(rolltui_preset_settings_at, PUBLIC)
-ROLLTUI_API(rolltui_preset_settings_count, PUBLIC)
 ROLLTUI_API(rolltui_preset_shipped, PUBLIC)
 ROLLTUI_API(rolltui_preset_shipped_names, PUBLIC)
 ROLLTUI_API(rolltui_preset_shipped_text, PUBLIC)
@@ -1036,6 +1031,24 @@ ROLLTUI_API(rolltui_preset_store_working_path, PUBLIC)
 ROLLTUI_API(rolltui_preset_valid_name, INTERNAL)  /* the store already answers a bad name with a sentence */
 ROLLTUI_API(rolltui_preset_working_value, PUBLIC)
 ROLLTUI_API(rolltui_preset_write_file_atomic, PUBLIC)
+
+/* ---- rolltui_settings.c — the keys a person changes; default PUBLIC ------------------------
+ * A HOST'S ENTRY POINT TO ITS OWN SETTINGS, which is the stated reason for every row here and
+ * not the fact that roll reaches them. The five keys, the precedence between rungs and the
+ * routing to a working copy are one subject with one handle, so a host spells keys and never
+ * a store. The rows replace `rolltui_preset_settings_*` and `_resolve_setting`, which made a
+ * host answer which store a key lived in and then switch on the answer. */
+ROLLTUI_API(rolltui_setting_rung_name, PUBLIC)
+ROLLTUI_API(rolltui_settings_at, PUBLIC)
+ROLLTUI_API(rolltui_settings_count, PUBLIC)
+ROLLTUI_API(rolltui_settings_find, PUBLIC)
+ROLLTUI_API(rolltui_settings_free, PUBLIC)
+ROLLTUI_API(rolltui_settings_get, PUBLIC)
+ROLLTUI_API(rolltui_settings_label, PUBLIC)
+ROLLTUI_API(rolltui_settings_new, PUBLIC)
+ROLLTUI_API(rolltui_settings_report_release, PUBLIC)
+ROLLTUI_API(rolltui_settings_resolve, PUBLIC)
+ROLLTUI_API(rolltui_settings_set, PUBLIC)
 ROLLTUI_API(rolltui_theme_preset_domain_init, INTERNAL)  /* the bring-your-own-vocabulary rung */
 ROLLTUI_API(rolltui_theme_preset_parse, PUBLIC)  /* the rung a host that ships its own theme FILES stands on — the C consumer reaches it */
 ROLLTUI_API(rolltui_theme_preset_parse_partial, INTERNAL)  /* the Theme domain's own parse */

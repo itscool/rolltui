@@ -616,14 +616,14 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   it = list_add(&top, ROLLTUI_MENU_ACTION, K("redo"), K("Redo"));
   rolltui_str_set(&it->shortcut, K("Ctrl-Y"));
 
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load preset"));
+  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load theme"));
   memset(&opts, 0, sizeof opts);
   names_to_options(&e->presets, &opts);
   rolltui_menu_list_release(&it->children);
   it->children = opts;
   memset(&opts, 0, sizeof opts);
 
-  it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save as preset"));
+  it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save theme as"));
   it->spec.type = ROLLTUI_INPUT_TYPE_NAME;
 
   it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));

@@ -423,9 +423,9 @@ void LayoutEditor::rebuild_menu() {
   screen.push_back(submenu_of("popups", "Popups", std::move(popups)));
   screen.push_back(submenu_of("actions", "Actions this screen emits", action_items()));
   std::vector<MenuItem> file;
-  file.push_back(MenuItem::input("new", "New layout, from an empty screen (name)", name.clone()));
+  file.push_back(MenuItem::input("new", "New layout, from an empty screen", name.clone()));
   file.push_back(choice_of("load", "Load layout", std::move(loads), ""));
-  file.push_back(MenuItem::input("save", "Save layout file as (layouts/<name>.json)", name.clone()));
+  file.push_back(MenuItem::input("save", "Save layout as", name.clone()));
   file.push_back(MenuItem::action("reset_loaded", "Reset to the loaded layout\xE2\x80\xA6"));
   std::vector<MenuItem> top;
   top.push_back(MenuItem::toggle("visible", "Visible", true));

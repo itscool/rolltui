@@ -294,7 +294,7 @@ int main() {
     act(ed, "layout file", "save layout");
     type(ed, "two");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
-    check(o == LayoutEditor::Outcome{O::SaveAs, "two"}, "Save layout file as asks the host with the name");
+    check(o == LayoutEditor::Outcome{O::SaveAs, "two"}, "Save layout as asks the host with the name");
     // Reset is a Layout file operation, so reaching it is two filters — and this block reads
     // the OUTCOME, which `act` does not return, so the keys are spelled out.
     handle(ed, key(ROLLTUI_KEY_ESCAPE));

@@ -1,0 +1,25 @@
+{
+  "id": "root", "label": "tandem", "items": [
+    { "id": "run", "label": "Run the pair", "action": "app.tandem" },
+    { "id": "orphan", "label": "Names an undeclared action", "action": "app.nowhere" },
+    { "id": "trace", "label": "Trace", "kind": "toggle", "checked": true },
+    { "id": "shade", "label": "Shading", "kind": "choice", "value": "dense",
+      "items": [
+        { "id": "ascii", "label": "ascii" },
+        { "id": "dense", "label": "dense" },
+        { "id": "blocks", "label": "blocks" } ] },
+    { "id": "width", "label": "Width", "kind": "input", "type": "int",
+      "min": 1, "max": 40, "step": 1, "value": "12" },
+    { "id": "title", "label": "Title", "kind": "input", "type": "text", "value": "two of a kind" },
+    { "id": "about", "label": "About", "items": [
+        { "id": "a1", "label": "the library writes its kinds against everything" },
+        { "id": "a2", "label": "a host writes its kinds against nine slots" },
+        { "id": "a3", "label": "nobody had checked those are the same" } ] },
+    { "id": "off", "label": "Disabled on purpose", "enabled": false, "colour": "not a key" },
+    { "id": "five", "label": "Item five" },
+    { "id": "six", "label": "Item six" },
+    { "id": "seven", "label": "Item seven" },
+    { "id": "eight", "label": "Item eight" },
+    { "id": "nine", "label": "Item nine" }
+  ]
+}

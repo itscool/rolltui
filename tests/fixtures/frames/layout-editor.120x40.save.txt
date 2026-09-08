@@ -13,7 +13,7 @@
 │ │ placements │            │ parser;     │ │ │ placements │          │ popup approval                                 │
 │ │ + content  │            │ hot-        │ │ │ + content  │          │ layout editor • transcript › Layout file — new │
 │ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ ◂ Back                                         │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Save layout file as (layouts/<name>.json): two │
+│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Save layout as: two                            │
 │ │ block      │            │ header over │ │ │ block      │          │                                                │
 │ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │                                                │
 │ │ (blocks →  │            │             │ │ │ (blocks →  │          │                                                │

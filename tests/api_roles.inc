@@ -43,7 +43,7 @@ ROLLTUI_ROLE(rolltui_frame_put_text, WIDGET)
  * an action, a chord) is a table in PART 1, and those tables say so on their own line.
  */
 
-/* ---- VOCAB (33) -------------------------------------------------------------------------- */
+/* ---- VOCAB -------------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_color_depth_from_name, VOCAB)
 ROLLTUI_ROLE(rolltui_color_depth_setting_valid, VOCAB)
 ROLLTUI_ROLE(rolltui_color_parse, VOCAB)
@@ -76,7 +76,7 @@ ROLLTUI_ROLE(rolltui_str_put, VOCAB)
 ROLLTUI_ROLE(rolltui_theme_mode_from_name, VOCAB)
 ROLLTUI_ROLE(rolltui_theme_mode_setting_valid, VOCAB)
 
-/* ---- HOST_LOAD (121) --------------------------------------------------------------------- */
+/* ---- HOST_LOAD --------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_bindings_preset_report_clean, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_release, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_bindings_preset_report_summary, HOST_SETTINGS)
@@ -100,12 +100,7 @@ ROLLTUI_ROLE(rolltui_preset_domain_name, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_is_shipped, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_list_release, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_read_file, HOST_SETTINGS)
-ROLLTUI_ROLE(rolltui_preset_resolve_setting, HOST_SETTINGS)
-ROLLTUI_ROLE(rolltui_preset_rung_name, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_save_result_text, HOST_SETTINGS)
-ROLLTUI_ROLE(rolltui_preset_setting_index, HOST_SETTINGS)
-ROLLTUI_ROLE(rolltui_preset_settings_at, HOST_SETTINGS)
-ROLLTUI_ROLE(rolltui_preset_settings_count, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_shipped, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_shipped_names, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_shipped_text, HOST_SETTINGS)
@@ -131,6 +126,17 @@ ROLLTUI_ROLE(rolltui_windows_set_theme_store, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_windows_set_bindings_store, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_working_value, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_preset_write_file_atomic, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_setting_rung_name, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_at, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_count, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_find, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_free, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_get, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_label, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_new, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_report_release, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_resolve, HOST_SETTINGS)
+ROLLTUI_ROLE(rolltui_settings_set, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_stack_default_actions, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_theme_builtin_fill, HOST_LOAD)
 ROLLTUI_ROLE(rolltui_theme_default_vocab, HOST_LOAD)
@@ -143,7 +149,7 @@ ROLLTUI_ROLE(rolltui_theme_preset_to_json, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_theme_preset_value_release, HOST_SETTINGS)
 ROLLTUI_ROLE(rolltui_theme_report_release, HOST_LOAD)
 
-/* ---- HOST_BIND (87) ---------------------------------------------------------------------- */
+/* ---- HOST_BIND ---------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_bindings_action_for, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_bind, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_clone, HOST_BIND)
@@ -226,7 +232,7 @@ ROLLTUI_ROLE(rolltui_windows_set_highlight, HOST_BIND)
 ROLLTUI_ROLE(rolltui_windows_set_input_min_outer, HOST_BIND)
 ROLLTUI_ROLE(rolltui_context_set_library_defaults, HOST_BIND)
 
-/* ---- HOST_RUN (77) ----------------------------------------------------------------------- */
+/* ---- HOST_RUN ----------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_compose_scratch_free, HOST_RUN)
 ROLLTUI_ROLE(rolltui_compose_scratch_new, HOST_RUN)
 ROLLTUI_ROLE(rolltui_effects_apply, HOST_RUN)
@@ -306,13 +312,13 @@ ROLLTUI_ROLE(rolltui_windows_report_summary, HOST_RUN)
 ROLLTUI_ROLE(rolltui_windows_sync, HOST_RUN)
 ROLLTUI_ROLE(rolltui_windows_transcript, HOST_RUN)
 
-/* ---- HOST_RELEASE (4) -------------------------------------------------------------------- */
+/* ---- HOST_RELEASE -------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_mem_alloc, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_mem_free, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_mem_stats, HOST_RELEASE)
 ROLLTUI_ROLE(rolltui_shutdown, HOST_RELEASE)
 
-/* ---- WIDGET (27) ------------------------------------------------------------------------- */
+/* ---- WIDGET ------------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_content_rect, WIDGET)
 ROLLTUI_ROLE(rolltui_diff_default_roles, WIDGET)
 ROLLTUI_ROLE(rolltui_diff_scratch_free, WIDGET)

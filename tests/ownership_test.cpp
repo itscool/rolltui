@@ -273,7 +273,10 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 119}, /* +1: `RolltuiThemeReport.badge_mismatches` BORROWS nothing — it is that report's
+        {"rolltui.h", 120}, /* +1: `RolltuiSetting` carries five BORROWED literals where the row it replaces
+                              carried four, all of them static storage alive for the process. -1 alongside it:
+                              `RolltuiSettingsReport` holds its notes in a `RolltuiStrList`, which owns them.
+                              +1 before: `RolltuiThemeReport.badge_mismatches` BORROWS nothing — it is that report's
                               own growing array of owned strings, freed by `rolltui_theme_report_release` beside
                               the other three. -2 before it: `RolltuiAppProfileReport`'s two array members went with the app profile.
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
@@ -373,7 +376,7 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    check(total == 136, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 137, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

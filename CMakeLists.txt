@@ -45,7 +45,12 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   draw. Every app has a table and the library ships
                                          #   the default one, so which key does what is the
                                          #   library's to offer, not one program's.
-                  c/rolltui_presets.c c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
+                  c/rolltui_presets.c c/rolltui_settings.c
+                                         # THE KEYS A PERSON CHANGES, and the one table that
+                                         #   says which working copy each one lives in. A host
+                                         #   spells keys; the routing, the precedence and the
+                                         #   refusal sentence are all behind the handle.
+                  c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
                   c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
                   c/rolltui_gaps.c
@@ -262,7 +267,7 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_O
 set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c explorer_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
-  keys_kind_test.cpp picker_kind_test.cpp files_test.cpp
+  keys_kind_test.cpp picker_kind_test.cpp files_test.cpp parity_test.cpp
   public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
@@ -303,6 +308,12 @@ set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
 add_rolltui_test(rolltui-files-test tests/files_test.cpp)
 add_rolltui_test(rolltui-picker-kind-test tests/picker_kind_test.cpp)
+
+# THE PARITY PROBE — can a HOST build what the LIBRARY builds? `menu` reimplemented as a host
+# kind through the public API alone, both driven by one script, the presented BYTES compared,
+# and one slot crippled per control run so a match means the two agree rather than that the
+# comparison sees nothing.
+add_rolltui_test(rolltui-parity-test tests/parity_test.cpp)
 target_compile_definitions(rolltui-picker-kind-test PRIVATE ROLLTUI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 
 # THE GAP REPORT — what a screen NAMES that an app does not PROVIDE, reported to

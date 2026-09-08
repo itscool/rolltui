@@ -2950,10 +2950,9 @@ typedef struct RolltuiBindingsPresetReport {
   size_t notes_n, notes_cap;
 } RolltuiBindingsPresetReport;
 
-/* Which of the three a thing belongs to — a setting (`RolltuiPresetSettingSpec` below), or a
- * store. Distinct from `RolltuiPresetDomain` above (that struct is the MECHANICS for one
- * domain — parse/to_json/clone/...; this is a tag naming one of the library's three), hence
- * the `Id` suffix. The library's own closed set, like `Anchor` and `Border`: a host domain
+/* Which of the three a STORE belongs to. Distinct from `RolltuiPresetDomain` above (that struct
+ * is the MECHANICS for one domain — parse/to_json/clone/...; this is a tag naming one of the
+ * library's three), hence the `Id` suffix. The library's own closed set, like `Anchor` and `Border`: a host domain
  * built through `_init` has no id and needs none — a store knows its domain by its `kind`. */
 typedef enum RolltuiPresetDomainId {
   ROLLTUI_PRESET_DOMAIN_THEME = 0,
@@ -2961,28 +2960,59 @@ typedef enum RolltuiPresetDomainId {
   ROLLTUI_PRESET_DOMAIN_BINDINGS,
 } RolltuiPresetDomainId;
 
-typedef enum RolltuiPresetRung {
-  ROLLTUI_PRESET_RUNG_FLAG = 0,
-  ROLLTUI_PRESET_RUNG_ENV,
-  ROLLTUI_PRESET_RUNG_WORKING,
-  ROLLTUI_PRESET_RUNG_BUILTIN,
-} RolltuiPresetRung;
+/* ---- settings: the keys a person changes, over the three working copies ---------------------
+ * WHICH WORKING COPY A KEY LIVES IN IS THE LIBRARY'S BUSINESS. A host holds one
+ * `RolltuiSettings` over its three stores and spells keys; it never spells a store, and the
+ * routing, the precedence and the sentence a bad value is refused with are all behind the
+ * handle. */
+typedef struct RolltuiSettings RolltuiSettings;
 
-/* One row of `kSettings` (Presets.hpp): a setting's key, which domain/store it belongs to, its
- * environment-variable suffix ("THEME" joined to a host's own prefix), its built-in default,
- * and help text for its legal values. BORROWED fields throughout — every string is a literal
- * in the table below, alive for the process's whole life. */
-typedef struct RolltuiPresetSettingSpec {
+/* Where a resolved value came from. THREE rungs: the flag rung a fourth would name is a second
+ * configuration system with neither discoverability nor persistence, competing with the one
+ * that has both. */
+typedef enum RolltuiSettingRung {
+  ROLLTUI_SETTING_RUNG_ENV = 0,
+  ROLLTUI_SETTING_RUNG_WORKING,
+  ROLLTUI_SETTING_RUNG_BUILTIN,
+} RolltuiSettingRung;
+
+/* One key. BORROWED fields throughout — every string is a literal alive for the process's
+ * whole life. */
+typedef struct RolltuiSetting {
   const char* key;
   size_t key_len;
-  RolltuiPresetDomainId domain;
+  /* The tail of the environment variable that fills this key, joined to a host's own prefix:
+   * "THEME" is roll's ROLL_THEME. */
   const char* env_suffix;
   size_t env_suffix_len;
   const char* builtin;
   size_t builtin_len;
-  const char* values; /* help text, e.g. "auto | dark | light" */
+  /* The legal values, e.g. "auto | dark | light" — both the help a listing prints and the
+   * sentence a rejected value is named against, so there is one spelling of the set. */
+  const char* values;
   size_t values_len;
-} RolltuiPresetSettingSpec;
+  /* The working copy this key lives in, by the name its preset files, its store and its own
+   * identity setting all already carry: "theme" | "layout" | "bindings". */
+  const char* store;
+  size_t store_len;
+  /* Non-zero when this key's value IS its store's preset name, so the value and that store's
+   * label describe one thing and saying both says it twice. Zero for a key that is one field
+   * inside a preset. */
+  unsigned char names_preset;
+} RolltuiSetting;
+
+/* What a change had to say, in the words a host would print. Every field is empty after a
+ * clean success.
+ *
+ * IT IS NOT A FOURTH DOMAIN REPORT. A theme's report carries colours, a layout's a window
+ * tree's, a bindings' chords; those three stay three types, are made and destroyed inside the
+ * library, and never reach a host through a `void*` and a tag. This struct holds no domain's
+ * fields and carries no tag. */
+typedef struct RolltuiSettingsReport {
+  RolltuiStr error;     /* why the change did not happen */
+  RolltuiStr problems;  /* the value took effect, and the file it came from said this */
+  RolltuiStrList notes; /* what the load kept, rewrote or ignored — notes are not problems */
+} RolltuiSettingsReport;
 
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
 void rolltui_preset_list_release(RolltuiPresetList* l);
@@ -3788,24 +3818,11 @@ int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r);
 void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out);
 
 /* A BORROW of a static string literal: "theme" | "layout" | "bindings" — and, not by
- * coincidence, exactly the key that is each domain's own IDENTITY setting (`kSettings`
+ * coincidence, exactly the key that is each domain's own IDENTITY setting (`RolltuiSetting`
  * below) AND each library domain's `kind`: one spelling of the name, three readers. */
 const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
 
 RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id);
-
-/* A BORROW of a static string literal, never freed: "flag" | "environment" | "working copy" |
- * "built-in default". */
-const char* rolltui_preset_rung_name(RolltuiPresetRung r, size_t* len);
-
-/* THE WHOLE RULE (Presets.hpp): the first NON-EMPTY rung wins. An empty string at a rung means
- * "not given there". `*out_value`/`*out_value_len` BORROW whichever of the four input strings
- * won — never copied, never allocated, valid exactly as long as that one input buffer is (the
- * same window the caller's own four strings already have). */
-void rolltui_preset_resolve_setting(const char* flag, size_t flag_len, const char* env, size_t env_len,
-                                    const char* working, size_t working_len, const char* builtin,
-                                    size_t builtin_len, const char** out_value, size_t* out_value_len,
-                                    RolltuiPresetRung* out_rung);
 
 /* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not
  * this domain's). The identity key — the store's own domain's `kind`, "theme"/"layout"/
@@ -3815,17 +3832,50 @@ void rolltui_preset_resolve_setting(const char* flag, size_t flag_len, const cha
  * id beside it is a second spelling every caller has to keep in step. */
 void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out);
 
-size_t rolltui_preset_settings_count(void);
+/* ---- the settings handle --------------------------------------------------------------------
+ * The three stores are BORROWED and must outlive the handle. */
+RolltuiSettings* rolltui_settings_new(RolltuiPresetStore* theme, RolltuiPresetStore* layout,
+                                      RolltuiPresetStore* bindings);
+
+void rolltui_settings_free(RolltuiSettings* s);
+
+size_t rolltui_settings_count(void);
 
 /* BORROW, table order ("theme", "layout", "theme_mode", "color_depth", "bindings" — the order
- * a listing offers them in), valid for the process's whole life. */
-const RolltuiPresetSettingSpec* rolltui_preset_settings_at(size_t i);
+ * a listing offers them in), valid for the process's whole life. NULL past the end. */
+const RolltuiSetting* rolltui_settings_at(size_t i);
 
-/* The row named `key`, as an INDEX into the table above (`rolltui_preset_settings_at`) rather
- * than a pointer — the shape a caller whose OWN copy of this table is a different array
- * (`Presets.cpp`'s `kSettings`, built from this one row for row) needs to find the matching
- * row without a second string comparison. -1: `key` is not a known setting. */
-int rolltui_preset_setting_index(const char* key, size_t len);
+/* The row named `key`, or NULL when `key` is not a setting. */
+const RolltuiSetting* rolltui_settings_find(const char* key, size_t key_len);
+
+/* The value `key` currently has, read from whichever working copy owns it. REPLACES `*out`,
+ * and empties it for a key that is not a setting. */
+void rolltui_settings_get(const RolltuiSettings* s, const char* key, size_t key_len, RolltuiStr* out);
+
+/* The label of the working copy `key` lives in — "mono", or "mono (modified)". REPLACES
+ * `*out`. For an identity key (`names_preset`) this describes the same thing `_get` returns;
+ * for a field key it names the preset the field is being edited inside. */
+void rolltui_settings_label(const RolltuiSettings* s, const char* key, size_t key_len, RolltuiStr* out);
+
+/* THE WHOLE RULE: the environment, then the working copy, then the built-in default — the
+ * first non-empty one wins. An empty `env` means "not given there". REPLACES `*out_value` and
+ * sets `*out_rung`, which may be NULL. */
+void rolltui_settings_resolve(const RolltuiSettings* s, const char* key, size_t key_len, const char* env,
+                              size_t env_len, RolltuiStr* out_value, RolltuiSettingRung* out_rung);
+
+/* A BORROW of a static string literal, never freed: "environment" | "working copy" |
+ * "built-in default". */
+const char* rolltui_setting_rung_name(RolltuiSettingRung r, size_t* len);
+
+/* Applies `value` to whichever working copy owns `key` — a preset LOAD for an identity key, a
+ * checked field write otherwise. Returns 1 when the value took effect. `persist` zero fills
+ * this run's copy without writing it, which is what an environment value gets. `report` may be
+ * NULL; when it is not, it is REPLACED, and the caller releases it with
+ * `rolltui_settings_report_release`. */
+int rolltui_settings_set(RolltuiSettings* s, const char* key, size_t key_len, const char* value,
+                         size_t value_len, int persist, RolltuiSettingsReport* report);
+
+void rolltui_settings_report_release(RolltuiSettingsReport* r); /* frees everything; zeroes */
 
 
 /* ========================================================================================

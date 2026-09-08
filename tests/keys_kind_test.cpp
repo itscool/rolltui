@@ -329,7 +329,7 @@ int main() {
     };
     auto save_as = [&](const char* name) {
       to_root();
-      s.type("save");  // the filter reaches "Save as preset"
+      s.type("save");  // the filter reaches "Save keys as"
       s.send(enter);   // start editing the field
       s.type(name);
       s.send(enter);   // commit: the SaveAs outcome
@@ -349,7 +349,7 @@ int main() {
 
     save_as("mine");
     check(preset_holder("mine").empty(),
-          "Save as preset writes one, through the store the app handed over [" + preset_holder("mine") + "]");
+          "Save keys as writes one, through the store the app handed over [" + preset_holder("mine") + "]");
 
     // Now rebind something and try the same name again.
     to_root();

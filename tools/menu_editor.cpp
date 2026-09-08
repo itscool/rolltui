@@ -326,9 +326,9 @@ void MenuEditor::rebuild_menu() {
   top.push_back(MenuItem::action("remove", "Remove this item"));
   top.push_back(MenuItem::action("undo", "Undo", "Ctrl-Z"));
   top.push_back(MenuItem::action("redo", "Redo", "Ctrl-Y"));
-  top.push_back(MenuItem::input("new", "New menu, from an empty tree (name)", name.clone()));
+  top.push_back(MenuItem::input("new", "New menu, from an empty tree", name.clone()));
   top.push_back(choice_of("load", "Load menu", std::move(loads), ""));
-  top.push_back(MenuItem::input("save", "Save menu file as (menus/<name>.json)", name.clone()));
+  top.push_back(MenuItem::input("save", "Save menu as", name.clone()));
   top.push_back(MenuItem::action("reset_loaded", "Reset to the loaded menu\xE2\x80\xA6"));
   MenuItem root = submenu_of("root", "menu editor", std::move(top));
   rolltui_menu_set_root(menu_, &root);

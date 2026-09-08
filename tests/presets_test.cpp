@@ -873,54 +873,109 @@ int main() {
     rolltui_str_free(&depth3);
     rolltui_json_free(whole);
   }
-  // ---- precedence: flag > env > working > builtin, all 8 present/absent combinations ----
+  // ---- THE SETTINGS HANDLE: one table over three working copies -------------------------
+  // The point of the type is that nothing below names a store. A key is spelled, and which
+  // working copy answers for it is the library's business.
   {
-    bool all = true;
-    for (int mask = 0; mask < 8; ++mask) {
-      const std::string_view flag = (mask & 4) ? "F" : "", env = (mask & 2) ? "E" : "", working = (mask & 1) ? "W" : "";
-      const char* value = nullptr;
-      std::size_t value_len = 0;
-      RolltuiPresetRung rung{};
-      rolltui_preset_resolve_setting(flag.data(), flag.size(), env.data(), env.size(), working.data(), working.size(), "B", 1,
-                                     &value, &value_len, &rung);
-      const std::string got(value, value_len);
-      const std::string want_value = (mask & 4) ? "F" : (mask & 2) ? "E" : (mask & 1) ? "W" : "B";
-      const RolltuiPresetRung want_rung = (mask & 4) ? ROLLTUI_PRESET_RUNG_FLAG : (mask & 2) ? ROLLTUI_PRESET_RUNG_ENV
-                                          : (mask & 1)                          ? ROLLTUI_PRESET_RUNG_WORKING
-                                                                                : ROLLTUI_PRESET_RUNG_BUILTIN;
-      if (!(got == want_value && rung == want_rung)) {
-        all = false;
-        std::size_t rn = 0;
-        check(false, "precedence mask " + std::to_string(mask) + ": got " + got + " from " + std::string(rolltui_preset_rung_name(rung, &rn), rn));
-      }
-    }
-    check(all, "the first non-empty rung wins in every one of the 8 combinations, and the answer names its rung");
-    std::size_t fn = 0, bn = 0;
-    check(std::string_view(rolltui_preset_rung_name(ROLLTUI_PRESET_RUNG_FLAG, &fn), fn) == "flag" &&
-              std::string_view(rolltui_preset_rung_name(ROLLTUI_PRESET_RUNG_BUILTIN, &bn), bn) == "built-in default",
-          "rung names");
-    auto setting = [](std::string_view key) -> const RolltuiPresetSettingSpec* {
-      const int i = rolltui_preset_setting_index(key.data(), key.size());
-      return i < 0 ? nullptr : rolltui_preset_settings_at(static_cast<std::size_t>(i));
-    };
-    check(setting("theme") && setting("layout") && setting("theme_mode") && setting("color_depth") && setting("bindings") && !setting("frontend"),
-          "one table holds all five settings across the three domains (frontend is a host's)");
-    std::size_t ln = 0;
-    check(setting("theme")->domain == ROLLTUI_PRESET_DOMAIN_THEME && setting("layout")->domain == ROLLTUI_PRESET_DOMAIN_LAYOUT &&
-              setting("bindings")->domain == ROLLTUI_PRESET_DOMAIN_BINDINGS && setting("theme_mode")->domain == ROLLTUI_PRESET_DOMAIN_THEME &&
-              std::string_view(rolltui_preset_domain_name(ROLLTUI_PRESET_DOMAIN_LAYOUT, &ln), ln) == "layout",
-          "…each row names its own domain (Phase 10 m1: 'layout' is no longer a Theme row)");
-    check(std::string_view(setting("theme")->builtin, setting("theme")->builtin_len) == "default" &&
-              std::string_view(setting("layout")->builtin, setting("layout")->builtin_len) == "default" &&
-              std::string_view(setting("theme_mode")->builtin, setting("theme_mode")->builtin_len) == "auto" &&
-              std::string_view(setting("color_depth")->builtin, setting("color_depth")->builtin_len) == "auto",
-          "built-in defaults: default / default / auto / auto");
     ThemePresetReport lrep;
     store.load("default", lrep);  // (the store from above)
     store.set_mode("dark");
-    check(store.working_value("theme") == "default" && store.working_value("theme_mode") == "dark" && store.working_value("color_depth") == "auto" &&
-              store.working_value("layout").empty(),
-          "working_value reads each of the Theme domain's settings, and none of another domain's");
+    const std::string ldir2 = (world / "settings").string();
+    LayoutStore lset(ldir2, false, "");
+    BindingsStore bset(ldir2, false, "");
+    LayoutPresetReport lsr2;
+    BindingsPresetReport bsr2;
+    lset.start(lsr2);
+    bset.start(bsr2);
+    RolltuiSettings* set = rolltui_settings_new(store.handle(), lset.handle(), bset.handle());
+
+    auto row = [](std::string_view key) { return rolltui_settings_find(key.data(), key.size()); };
+    check(row("theme") && row("layout") && row("theme_mode") && row("color_depth") && row("bindings") && !row("frontend"),
+          "one table holds all five settings across the three working copies (frontend is a host's)");
+    check(rolltui_settings_count() == 5 && rolltui_settings_at(0) == row("theme") && rolltui_settings_at(4) == row("bindings") &&
+              rolltui_settings_at(5) == nullptr,
+          "…in listing order, and nothing past the end");
+    check(std::string_view(row("theme")->store, row("theme")->store_len) == "theme" &&
+              std::string_view(row("theme_mode")->store, row("theme_mode")->store_len) == "theme" &&
+              std::string_view(row("layout")->store, row("layout")->store_len) == "layout" &&
+              std::string_view(row("bindings")->store, row("bindings")->store_len) == "bindings",
+          "…each row names the working copy it lives in, so a host never picks one");
+    check(row("theme")->names_preset && row("layout")->names_preset && row("bindings")->names_preset &&
+              !row("theme_mode")->names_preset && !row("color_depth")->names_preset,
+          "…and says whether its value IS that copy's preset name or one field inside it");
+    check(std::string_view(row("theme")->builtin, row("theme")->builtin_len) == "default" &&
+              std::string_view(row("layout")->builtin, row("layout")->builtin_len) == "default" &&
+              std::string_view(row("theme_mode")->builtin, row("theme_mode")->builtin_len) == "auto" &&
+              std::string_view(row("color_depth")->builtin, row("color_depth")->builtin_len) == "auto" &&
+              std::string_view(row("theme")->env_suffix, row("theme")->env_suffix_len) == "THEME",
+          "built-in defaults: default / default / auto / auto, and the environment tail a host prefixes");
+
+    auto get = [&](std::string_view key) {
+      RolltuiStr out{};
+      rolltui_settings_get(set, key.data(), key.size(), &out);
+      std::string v = str_of(out);
+      rolltui_str_free(&out);
+      return v;
+    };
+    check(get("theme") == "default" && get("theme_mode") == "dark" && get("color_depth") == "auto" &&
+              get("layout") == "default" && get("bindings") == "default" && get("frontend").empty(),
+          "a key is read from whichever working copy owns it, and a key that is not a setting reads empty");
+    RolltuiStr label{};
+    rolltui_settings_label(set, "theme_mode", 10, &label);
+    check(str_of(label) == "default (modified)", "the label names the preset a FIELD key is being edited inside");
+    rolltui_str_free(&label);
+
+    // PRECEDENCE: three rungs, each one reached and each one named. A flag is not a rung — a
+    // flag that sets a setting is a second configuration system with neither discoverability
+    // nor persistence, competing with the one that has both.
+    auto resolve = [&](RolltuiSettings* h, std::string_view key, std::string_view env) {
+      RolltuiStr value{};
+      RolltuiSettingRung rung{};
+      rolltui_settings_resolve(h, key.data(), key.size(), env.data(), env.size(), &value, &rung);
+      std::size_t rn = 0;
+      const char* nm = rolltui_setting_rung_name(rung, &rn);
+      std::string got = str_of(value) + " from the " + std::string(nm, rn);
+      rolltui_str_free(&value);
+      return got;
+    };
+    // A handle over stores a host did not open: its keys have no working copy, which is how
+    // the built-in rung is reached at all.
+    RolltuiSettings* partial = rolltui_settings_new(store.handle(), nullptr, nullptr);
+    check(resolve(set, "theme_mode", "light") == "light from the environment" &&
+              resolve(set, "theme_mode", "") == "dark from the working copy" &&
+              resolve(partial, "layout", "") == "default from the built-in default" &&
+              resolve(partial, "layout", "stacked") == "stacked from the environment",
+          "environment > working copy > built-in: the first non-empty rung wins, and the answer names its rung");
+    check(resolve(set, "frontend", "") == " from the built-in default",
+          "…and a key this table does not hold resolves to nothing rather than guessing a rung");
+
+    // A CHANGE IS ROUTED, and what comes back is the text a host prints — never a domain's
+    // report through a `void*`.
+    RolltuiSettingsReport srep{};
+    check(rolltui_settings_set(set, "theme_mode", 10, "light", 5, 1, &srep) && get("theme_mode") == "light" &&
+              srep.error.empty() && srep.problems.empty(),
+          "a FIELD key is written into the working copy that owns it");
+    check(!rolltui_settings_set(set, "theme_mode", 10, "sideways", 8, 1, &srep) &&
+              str_of(srep.error) == "theme_mode must be auto | dark | light, not 'sideways'" && get("theme_mode") == "light",
+          "…and a value outside the row's own help text is refused by name, leaving the copy alone");
+    check(rolltui_settings_set(set, "layout", 6, "stacked", 7, 1, &srep) && get("layout") == "stacked" && srep.error.empty(),
+          "an IDENTITY key loads a preset into the copy it names");
+    check(!rolltui_settings_set(set, "bindings", 8, "nope", 4, 1, &srep) &&
+              str_of(srep.error).find("no bindings preset 'nope'") == 0,
+          "…and a preset that is not there is the store's own error, unwrapped");
+    check(!rolltui_settings_set(set, "frontend", 8, "tui", 3, 1, &srep) &&
+              str_of(srep.error) == "'frontend' is not a setting",
+          "a key this table does not hold is refused rather than routed nowhere");
+    rolltui_settings_report_release(&srep);
+
+    // A HANDLE OVER STORES IT DOES NOT HAVE still answers, because a host may open fewer.
+    RolltuiSettingsReport prep{};
+    check(!rolltui_settings_set(partial, "layout", 6, "stacked", 7, 1, &prep) &&
+              str_of(prep.error) == "no layout working copy",
+          "…and a key whose working copy was never opened says so");
+    rolltui_settings_report_release(&prep);
+    rolltui_settings_free(partial);
+    rolltui_settings_free(set);
   }
   // ---- the Layout domain: the same five rules on the third domain ----
   {
@@ -1016,9 +1071,9 @@ int main() {
               rep.bindings.bad_chords_n == 1 && action_for_c(bs.working().get(), *parse_chord_c("enter"), "input") == "input.submit",
           "a file binding Enter elsewhere loads with Enter refused by name and restored on submit [" + rep.summary() + "]");
     check(!bs.load("nothing", rep) && str_of(rep.error).find("no bindings preset 'nothing'") == 0, "an unknown bindings preset is a named error");
-    const int bidx = rolltui_preset_setting_index("bindings", 8);
-    const RolltuiPresetSettingSpec* bspec = bidx < 0 ? nullptr : rolltui_preset_settings_at(static_cast<std::size_t>(bidx));
-    check(bs.working_value("bindings") == "bad" && bspec && bspec->domain == ROLLTUI_PRESET_DOMAIN_BINDINGS &&
+    const RolltuiSetting* bspec = rolltui_settings_find("bindings", 8);
+    check(bs.working_value("bindings") == "bad" && bspec &&
+              std::string_view(bspec->store, bspec->store_len) == "bindings" &&
               std::string_view(bspec->builtin, bspec->builtin_len) == "default",
           "the Bindings domain's one setting: 'bindings', built-in 'default'");
     // All three domains in one directory, three working files, none touching another.

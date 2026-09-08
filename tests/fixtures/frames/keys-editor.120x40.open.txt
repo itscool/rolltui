@@ -3,8 +3,8 @@
 │ │ grapheme property,               │             │ unicode_tables.hp│ Actions by scope                             ▸ │
 │ │ Extended_Pictographic, InCB)     │             │                  │ Undo                                    Ctrl-Z │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Redo                                    Ctrl-Y │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ Load preset                                  ▸ │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Save as preset:                                │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ Load keys                                    ▸ │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Save keys as:                                  │
 │ │                                  │             │ block tree is the│ Write a SHIPPED preset (the editor's privil  ▸ │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ Reset to the loaded preset…                    │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │

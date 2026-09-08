@@ -7,8 +7,8 @@
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Generate a theme (seeded)                    ▸ │
 │ │                                  │             │ block tree is the│ Undo                                    Ctrl-Z │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ Redo                                    Ctrl-Y │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Load preset                                  ▸ │
-│ │ mouse mode)                      │             │                  │ Save as preset:                                │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Load theme                                   ▸ │
+│ │ mouse mode)                      │             │                  │ Save theme as:                                 │
 │ │ Key + mouse decoding             │ build       │ single header, pu│ Write a SHIPPED preset (the editor's privil  ▸ │
 │ │                                  │             │ Event, table-test│ Reset to the loaded preset…                    │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Reset to the built-in default…                 │

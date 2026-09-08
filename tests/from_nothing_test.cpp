@@ -149,14 +149,14 @@ const char* kKeys =
     "F7 Type:actions_by Enter Type:app Enter Enter "
     "Enter CtrlG "
     "Escape Escape Escape "
-    "Type:save_as Enter Type:sundial Enter";
+    "Type:save Enter Type:sundial Enter";
 
 const char* kTheme =
     "F4 Type:generate Enter "
     "Type:seed Enter CtrlU Type:7 Enter Escape "
     "Type:ruleset Enter Type:complementary Enter "
     "Type:generate_ Enter "
-    "Type:save_as Enter Type:sundial Enter";
+    "Type:save Enter Type:sundial Enter";
 
 }  // namespace
 
