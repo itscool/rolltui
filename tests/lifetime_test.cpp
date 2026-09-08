@@ -76,6 +76,7 @@
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -447,5 +448,5 @@ int main() {
   rolltui_shutdown();
   check(live_bytes() == 0, "a second session freed and a second shutdown() still land on zero");
 
-  return report("rolltui lifetime_test");
+  return report("rolltui_lifetime_test");
 }

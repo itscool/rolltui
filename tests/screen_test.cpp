@@ -27,6 +27,7 @@
 #include "rolltui/c/rolltui_screen.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -506,5 +507,5 @@ int main() {
     rolltui_rows_release(&rows);
   }
 
-  return report("rolltui screen_test");
+  return report("rolltui_screen_test");
 }

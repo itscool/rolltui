@@ -41,6 +41,7 @@
 #include "source_scan.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 namespace fs = std::filesystem;
 
 #ifndef ROLLTUI_SOURCE_DIR
@@ -591,5 +592,5 @@ int main() {
                         (worst.empty() ? "" : " in " + worst) + ")");
   }
 
-  return report("rolltui ownership_test");
+  return report("rolltui_ownership_test");
 }

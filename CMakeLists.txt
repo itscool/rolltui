@@ -178,7 +178,10 @@ set(ROLLTUI_FIXTURE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
 
 function(add_rolltui_test name source)
   add_executable(${name} ${source})
-  target_link_libraries(${name} PRIVATE rolltui)
+  # `testkit` is the shared test module at the repository root — a LEAF that includes nothing of
+  # roll's and nothing of rolltui's, so linking it here does not make the library depend on the
+  # program that consumes it. The LIBRARY target does not link it; only its suites do.
+  target_link_libraries(${name} PRIVATE rolltui testkit)
   target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests)
   target_compile_options(${name} PRIVATE -Wall -Wextra)
   target_compile_definitions(${name} PRIVATE
@@ -587,6 +590,6 @@ add_dependencies(rolltui-from-nothing-test rolltui-studio rolltui-studio-selftes
 add_executable(rolltui-c-consumer-test tests/c_consumer_test.c)
 set_source_files_properties(tests/c_consumer_test.c PROPERTIES LANGUAGE C)
 set_target_properties(rolltui-c-consumer-test PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(rolltui-c-consumer-test PRIVATE rolltui)
+target_link_libraries(rolltui-c-consumer-test PRIVATE rolltui testkit)
 target_compile_options(rolltui-c-consumer-test PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME rolltui-c-consumer-test COMMAND rolltui-c-consumer-test)

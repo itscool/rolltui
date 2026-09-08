@@ -29,6 +29,7 @@
 #include "rolltui/c/rolltui_transcript.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -1034,5 +1035,5 @@ int main() {
   }
 
   rolltui_draw_scratch_free(scratch);
-  return report("rolltui transcript_test");
+  return report("rolltui_transcript_test");
 }

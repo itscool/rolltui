@@ -51,6 +51,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_FIXTURE_DIR
 #error "ROLLTUI_FIXTURE_DIR must point at rolltui/tests/fixtures"
@@ -920,5 +921,5 @@ int main() {
     check(!any_diff_role, "a bare fence over content that looks EXACTLY like a diff renders plain");
   }
 
-  return report("rolltui markdown_test");
+  return report("rolltui_markdown_test");
 }

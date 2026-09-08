@@ -15,6 +15,7 @@
 #include "ucd_test_file.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_UCD_DIR
 #error "ROLLTUI_UCD_DIR must point at rolltui/ucd"
@@ -63,7 +64,7 @@ int main() {
     for (std::size_t i = 0; i < got.size(); ++i) marks[i] = (got[i] != ROLLTUI_BREAK_PROHIBITED);
     bool ok = (marks == c.breaks);
     if (!ok && ++failures_shown > 60) {  // keep the log readable; the count is exact
-      ++g_fail;
+      fail_unprinted();
       continue;
     }
     check_quiet(ok, "LineBreakTest.txt:" + std::to_string(c.line_number) + "  " +
@@ -92,5 +93,5 @@ int main() {
     check(lb.before[1] == ROLLTUI_BREAK_PROHIBITED, "none inside a Latin word");
   }
   rolltui_u_scratch_free(scratch);
-  return report("rolltui line_break_test");
+  return report("rolltui_line_break_test");
 }

@@ -44,7 +44,7 @@
 #include "rolltui_test.hpp"
 
 namespace fs = std::filesystem;
-using rolltui_test::check;
+using testkit::check;
 
 namespace {
 
@@ -198,5 +198,5 @@ int main() {
         "no source under rolltui/ includes a file from roll's include/ or src/" +
             (crossings.empty() ? "" : " — " + crossings.front()));
 
-  return rolltui_test::report("boundary_test");
+  return testkit::report("boundary_test");
 }

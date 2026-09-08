@@ -45,6 +45,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -385,5 +386,5 @@ int main() {
           "theme_to_json keeps meta, and the loader accepts it as a known key");
     check(text.find("\"generator\"") != std::string::npos && text.find("\"chaos\": 0.25") != std::string::npos, "…with the generator inputs in the file");
   }
-  return report("rolltui theme_gen_test");
+  return report("rolltui_theme_gen_test");
 }

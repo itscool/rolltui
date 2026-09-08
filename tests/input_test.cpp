@@ -39,7 +39,7 @@
 #include "rolltui/c/rolltui_input.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
-using rolltui_test::check;
+using testkit::check;
 
 namespace {
 
@@ -1041,5 +1041,5 @@ int main() {
   test_undo_redo_and_history_never_touch_each_other();
   test_undo_group_closes_on_select_all_and_mouse();
   test_degenerate_sizes();
-  return rolltui_test::report("rolltui input_test");
+  return testkit::report("rolltui_input_test");
 }

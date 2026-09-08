@@ -42,6 +42,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 namespace fs = std::filesystem;
 
 #ifndef ROLLTUI_PRESETS_DIR
@@ -1233,5 +1234,5 @@ int main() {
     rolltui_str_free(&err);
   }
 
-  return report("rolltui presets_test");
+  return report("rolltui_presets_test");
 }

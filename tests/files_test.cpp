@@ -38,7 +38,7 @@ std::string names_of(const RolltuiDirList& l) {
 }  // namespace
 
 int main() {
-  using rolltui_test::check;
+  using testkit::check;
   // A UNIQUE root per run: two concurrent invocations of this suite would otherwise write and
   // delete each other's fixtures, which is the collision three roll suites already pay a lock for.
   const std::string tmp = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
@@ -94,5 +94,5 @@ int main() {
   rolltui_str_free(&err);
   rolltui_dir_list_release(&l);
   fs::remove_all(root, ec);
-  return rolltui_test::report("files_test");
+  return testkit::report("files_test");
 }

@@ -36,6 +36,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 

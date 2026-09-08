@@ -43,6 +43,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_BINDINGS_DIR
 #error "ROLLTUI_BINDINGS_DIR must point at rolltui/presets/bindings"
@@ -858,5 +859,5 @@ int main() {
     check(ma->input == ia, "…and the menu's input table IS the input table, not a copy of it");
   }
 
-  return report("rolltui bindings_test");
+  return report("rolltui_bindings_test");
 }

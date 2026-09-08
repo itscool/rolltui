@@ -30,6 +30,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -202,5 +203,5 @@ int main() {
                               " code points): " + known[i].why);
 
   rolltui_u_scratch_free(scratch);
-  return report("rolltui width_test");
+  return report("rolltui_width_test");
 }

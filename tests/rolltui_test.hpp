@@ -1,34 +1,34 @@
 #pragma once
 //
-// rolltui_test.hpp — the whole test harness for the rolltui library. Deliberately the
-// same shape as roll's tests/test_util.hpp and deliberately not that file: the
-// library's tests include nothing of roll's, so that "rolltui builds and passes with roll's
-// include/ absent" is a property of the build rather than a promise.
+// rolltui_test.hpp — the library's side of the shared test module.
 //
-#include <cstdio>
+// THE HARNESS IS NOT HERE ANY MORE. `check`, `check_quiet`, `report`, the assertion count and
+// the report line live in `testkit/testkit.hpp`, which roll's suites include too. This file
+// used to be a near-copy of roll's, and the two copies DISAGREED about what a passing test
+// means: a suite here that ran zero assertions printed `0 passed, 0 failed — ALL PASS` and
+// exited 0, and its report line carried no count the `check_counts` guard could parse, so 44
+// binaries were invisible to it. Both are gone by having one definition rather than two.
+//
+// TESTKIT IS NOT ROLL. It is a leaf at the repository root that includes nothing of either
+// side, so `rolltui` still builds and passes with roll's `include/` and `src/` deleted —
+// asserted by `rolltui-boundary-test`, which was written before any of this moved and which
+// scans this file among the rest.
+//
+// WHAT IS LEFT HERE is what only the library's own suites need: a session to register kinds
+// into, and the std:: bridge over the library's C shapes. The bridge cannot move into the
+// module: it is about `RolltuiStr`, so a module holding it would depend on rolltui, and rolltui
+// is a CONSUMER of the module.
+//
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "testkit/testkit.hpp"
 
 namespace rolltui_test {
-
-inline int g_fail = 0;
-inline int g_pass = 0;
-
-inline void check(bool cond, const std::string& name) {
-  std::fprintf(stdout, "  [%s] %s\n", cond ? "PASS" : "FAIL", name.c_str());
-  if (cond) ++g_pass; else ++g_fail;
-}
-
-// For suites with thousands of cases: count silently, print only failures.
-inline void check_quiet(bool cond, const std::string& name) {
-  if (cond) { ++g_pass; return; }
-  ++g_fail;
-  std::fprintf(stdout, "  [FAIL] %s\n", name.c_str());
-}
 
 // ONE SESSION FOR A SUITE. A registry is a CONTEXT's now, so a suite that
 // registers a widget or effect kind needs a session to register it INTO. Two suites had
@@ -49,12 +49,6 @@ inline RolltuiContext* test_context() {
   };
   static Holder h;
   return h.c;
-}
-
-inline int report(const char* suite) {
-  std::fprintf(stdout, "\n%s: %d passed, %d failed — %s\n", suite, g_pass, g_fail,
-               g_fail == 0 ? "ALL PASS" : "FAILURES");
-  return g_fail == 0 ? 0 : 1;
 }
 
 }  // namespace rolltui_test

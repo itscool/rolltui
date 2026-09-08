@@ -30,6 +30,7 @@
 
 using namespace rolltui::tools;
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 RolltuiChord key(unsigned char k) {
@@ -409,5 +410,5 @@ int main() {
     rolltui_json_free(before);
     rolltui_json_free(after);
   }
-  return report("rolltui theme_editor_test");
+  return report("rolltui_theme_editor_test");
 }

@@ -31,6 +31,7 @@
 using namespace rolltui;
 using namespace rolltui::tools;
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -270,5 +271,5 @@ int main() {
           "…and the file carrying it is a clean menu file: the gap is the APP's to report at start-up");
   }
 
-  return report("rolltui menu_editor_test");
+  return report("rolltui_menu_editor_test");
 }

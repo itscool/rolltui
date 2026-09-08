@@ -49,6 +49,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 // The embedded preset tables: permanent generated C++ data (rolltui/cmake/embed_presets.cmake),
 // redeclared here exactly as Bindings.cpp/Layout.cpp/Menu.cpp/Presets.cpp each already do
@@ -1201,5 +1202,5 @@ int main() {
     const MenuEvent ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "…so Enter gets out");
   }
-  return report("rolltui menu_test");
+  return report("rolltui_menu_test");
 }

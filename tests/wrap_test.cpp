@@ -24,6 +24,7 @@
 #include "rolltui/c/rolltui_wrap.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -397,5 +398,5 @@ int main() {
   }
 
   rolltui_u_scratch_free(u_scratch);
-  return report("rolltui wrap_test");
+  return report("rolltui_wrap_test");
 }

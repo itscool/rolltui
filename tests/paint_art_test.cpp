@@ -26,6 +26,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_PAINT_BIN
 #error "ROLLTUI_PAINT_BIN must name the paint binary"
@@ -276,5 +277,5 @@ int main() {
   check(rc == 0 && has(out, "Size:") && !has(out, "\xE2\x97\x82 Back"),
         "…and clicking that row returns to the top level, where there is nowhere to go back to");
 
-  return report("rolltui paint_art_test");
+  return report("rolltui_paint_art_test");
 }

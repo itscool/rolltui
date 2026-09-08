@@ -64,6 +64,7 @@
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 

@@ -54,6 +54,7 @@
 using namespace rolltui;
 using namespace rolltui::tools;
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -225,5 +226,5 @@ int main() {
   }
 
   rolltui_context_free(ctx);
-  return report("rolltui designable_test");
+  return report("rolltui_designable_test");
 }

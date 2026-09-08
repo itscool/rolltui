@@ -34,6 +34,7 @@
 namespace fs = std::filesystem;
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_SOURCE_DIR
 #error "ROLLTUI_SOURCE_DIR must point at rolltui/"
@@ -806,5 +807,5 @@ int main() {
   }
 
 
-  return report("rolltui theme_test");
+  return report("rolltui_theme_test");
 }

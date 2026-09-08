@@ -37,6 +37,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #if !defined(ROLLTUI_STUDIO_PRODUCT_BIN) || !defined(ROLLTUI_PAINT_PRODUCT_BIN) || \
     !defined(ROLLTUI_EXPLORER_PRODUCT_BIN)
@@ -144,5 +145,5 @@ int main() {
     }
   }
 
-  return report("rolltui product_flags_test");
+  return report("rolltui_product_flags_test");
 }

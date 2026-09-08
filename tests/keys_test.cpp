@@ -17,6 +17,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -254,5 +255,5 @@ int main() {
           "…while 'space', which IS an alias for a Char chord, still round-trips");
   }
 
-  return report("rolltui keys_test");
+  return report("rolltui_keys_test");
 }

@@ -23,6 +23,7 @@
 
 using namespace rolltui::tools;
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -203,5 +204,5 @@ int main() {
           "…and mounting a tool declares nothing else: the app scope is a layout's");
     rolltui_bindings_free(b);
   }
-  return report("rolltui keys_editor_test");
+  return report("rolltui_keys_editor_test");
 }

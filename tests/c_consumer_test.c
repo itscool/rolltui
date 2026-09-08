@@ -52,27 +52,19 @@ which is precisely the padding this file exists to run without."
 #include <unistd.h>
 
 #include "rolltui/rolltui.h"
+/* THE HARNESS IS THE SHARED ONE, AND IT IS THE REASON THAT MODULE IS C. This file used to
+ * carry its own fifteen-line copy — a THIRD implementation of the same four ideas — because
+ * every other harness in the repository was C++ and this file may include no C++ header. That
+ * copy was the argument for extracting a C core rather than sharing a C++ one, and now that
+ * the core exists the copy has no reason to. `testkit/` is a leaf: it includes nothing of
+ * rolltui's and nothing of roll's, so including it here breaks nothing this file asserts.
+ * The zero-assertion rule the copy carried is the module's now, for every suite on both sides.
+ * `check` and `report` below are one-line names for the module's calls, kept so the ~70 call
+ * sites in this file read as they did. */
+#include "testkit/testkit.h"
 
-/* ---- the harness: fifteen lines, and it fails on zero assertions ----------------------------
- * The same rule roll's `tests/test_util.hpp` has and `rolltui/tests/rolltui_test.hpp` does not
- * a suite that ran NOTHING must not read as success. It is three lines, and a file whose
- * whole subject is a check that never fired should not ship without it. */
-static int g_pass = 0;
-static int g_fail = 0;
-
-static void check(int cond, const char* name) {
-  printf("  [%s] %s\n", cond ? "PASS" : "FAIL", name);
-  if (cond) ++g_pass; else ++g_fail;
-}
-
-static int report(const char* suite) {
-  if (g_pass == 0 && g_fail == 0) {
-    printf("\n%s: ZERO ASSERTIONS — that is a failure, not a pass\n", suite);
-    return 1;
-  }
-  printf("\n%s: %d passed, %d failed — %s\n", suite, g_pass, g_fail, g_fail == 0 ? "ALL PASS" : "FAILURES");
-  return g_fail == 0 ? 0 : 1;
-}
+static void check(int cond, const char* name) { testkit_check(cond, name); }
+static int report(const char* suite) { return testkit_report(suite); }
 
 static size_t live_bytes(void) {
   size_t v = 0;

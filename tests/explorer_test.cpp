@@ -28,6 +28,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 namespace fs = std::filesystem;
 
 #ifndef ROLLTUI_EXPLORER_BIN
@@ -284,5 +285,5 @@ int main() {
   }
 
   fs::remove_all(scratch);
-  return report("rolltui explorer_test");
+  return report("rolltui_explorer_test");
 }

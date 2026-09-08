@@ -25,6 +25,7 @@
 #include "rolltui/c/rolltui_terminal.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -117,7 +118,7 @@ int main() {
   ws.ws_row = 24;
   ws.ws_col = 80;
   check(openpty(&master, &slave, nullptr, nullptr, &ws) == 0, "openpty");
-  if (master < 0) return report("rolltui terminal_test");
+  if (master < 0) return report("rolltui_terminal_test");
 
   // ---- in-process: modes, termios, size, events ----------------------------------
   std::string enter, leave;
@@ -213,5 +214,5 @@ int main() {
   }
   ::close(master);
   ::close(slave);
-  return report("rolltui terminal_test");
+  return report("rolltui_terminal_test");
 }

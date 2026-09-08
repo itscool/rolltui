@@ -62,6 +62,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_STUDIO_BIN
 #error "ROLLTUI_STUDIO_BIN must name the studio binary"
@@ -292,6 +293,6 @@ int main() {
   }
 
   // The scratch survives a failure so the four files can be read; a green run cleans up.
-  if (g_fail == 0) fs::remove_all(scratch);
-  return report("rolltui from_nothing_test");
+  if (!any_failed()) fs::remove_all(scratch);
+  return report("rolltui_from_nothing_test");
 }

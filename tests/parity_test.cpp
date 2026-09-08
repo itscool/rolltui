@@ -42,7 +42,7 @@
 
 namespace {
 
-using rolltui_test::check;
+using testkit::check;
 
 std::string read_all(const std::string& path) {
   std::string out;
@@ -1198,5 +1198,5 @@ int main() {
               " bytes in " + std::to_string(live_blocks) + " blocks)");
   }
 
-  return rolltui_test::report("parity_test");
+  return testkit::report("parity_test");
 }

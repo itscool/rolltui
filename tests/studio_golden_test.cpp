@@ -62,6 +62,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_STUDIO_BIN
 #error "ROLLTUI_STUDIO_BIN must name the studio binary"
@@ -1311,5 +1312,5 @@ int main(int argc, char** argv) {
               std::to_string(row_of(menu_open, "\xE2\x95\xAD menu ")) + ", " + std::to_string(row_of(menu_big, "\xE2\x95\xAD menu ")) + ")");
   }
   std::filesystem::remove_all(scratch);
-  return report("rolltui studio_golden_test");
+  return report("rolltui_studio_golden_test");
 }

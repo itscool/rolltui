@@ -94,6 +94,7 @@
 
 using namespace rolltui;
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -2229,5 +2230,5 @@ int main() {
     check(degenerate_seen, "…and the sweep did reach the too-short case the guard excludes, so the guard is not hiding an empty set");
   }
 
-  return report("rolltui layout_test");
+  return report("rolltui_layout_test");
 }

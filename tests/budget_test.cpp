@@ -82,6 +82,7 @@
 #include "rolltui/c/rolltui_layout.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 // ---- the counter ----------------------------------------------------------------------
 // Global replacement operators. `g_on` gates COUNTING, never the allocation itself, so a
@@ -644,5 +645,5 @@ int main() {
           "allocations and nothing a C++ container does");
   }
 
-  return report("rolltui budget_test");
+  return report("rolltui_budget_test");
 }

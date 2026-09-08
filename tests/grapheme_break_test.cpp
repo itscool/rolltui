@@ -18,6 +18,7 @@
 #include "ucd_test_file.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_UCD_DIR
 #error "ROLLTUI_UCD_DIR must point at rolltui/ucd"
@@ -118,5 +119,5 @@ int main() {
   }
 
   rolltui_u_scratch_free(scratch);
-  return report("rolltui grapheme_break_test");
+  return report("rolltui_grapheme_break_test");
 }

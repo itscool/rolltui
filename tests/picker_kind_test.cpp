@@ -55,7 +55,7 @@ const RolltuiEvent* press(unsigned char k) {
 }  // namespace
 
 int main() {
-  using rolltui_test::check;
+  using testkit::check;
   const std::string tmp = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
   const fs::path root = fs::path(tmp) / ("rolltui_picker_test_" + std::to_string(::getpid()));
   std::error_code ec;
@@ -139,5 +139,5 @@ int main() {
   rolltui_layout_free(layout);
   rolltui_context_free(ctx);
   fs::remove_all(root, ec);
-  return rolltui_test::report("picker_kind_test");
+  return testkit::report("picker_kind_test");
 }

@@ -49,6 +49,7 @@
 #include "rolltui/c/rolltui_theme_analysis.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 bool near(double a, double b, double tol) { return std::fabs(a - b) <= tol; }
@@ -603,5 +604,5 @@ int main() {
           "a pair told apart by an attribute is not proposed again; it is attribute-redundant, still colour-confusable, and cvd-safe is withheld");
     check(propose_fixes(*builtin_theme("default-dark")).empty(), "…and nothing for a theme that passes");
   }
-  return report("rolltui theme_analysis_test");
+  return report("rolltui_theme_analysis_test");
 }

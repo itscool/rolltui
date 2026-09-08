@@ -30,6 +30,7 @@
 using namespace rolltui;
 using namespace rolltui::tools;
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 RolltuiChord key(unsigned char k, bool shift = false, bool alt = false) {
@@ -642,5 +643,5 @@ int main() {
   }
 
   rolltui_context_free(ctx);
-  return report("rolltui layout_editor_test");
+  return report("rolltui_layout_editor_test");
 }

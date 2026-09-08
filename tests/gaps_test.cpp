@@ -24,7 +24,7 @@
 #include "rolltui/rolltui.h"
 #include "rolltui_test.hpp"
 
-using rolltui_test::check;
+using testkit::check;
 
 namespace {
 
@@ -118,7 +118,7 @@ int main() {
         { "id": "sheet", "content": "browser" },
         { "id": "side", "content": "rows:telemetry" } ] } })");
     check(static_cast<bool>(l), "the fixture screen loads — naming what an app lacks is not a load failure");
-    if (!l) return rolltui_test::report("rolltui gaps_test");
+    if (!l) return testkit::report("rolltui_gaps_test");
 
     RolltuiWindows* w = rolltui_windows_new(ctx());
     RolltuiBindings* b = rolltui_bindings_clone(rolltui_bindings_default(ctx()));
@@ -267,5 +267,5 @@ int main() {
     }
   }
 
-  return rolltui_test::report("rolltui gaps_test");
+  return testkit::report("rolltui_gaps_test");
 }

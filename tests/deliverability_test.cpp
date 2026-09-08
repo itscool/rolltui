@@ -66,6 +66,7 @@
 // the embedding.
 
 using namespace rolltui_test;
+using namespace testkit;
 
 namespace {
 
@@ -618,5 +619,5 @@ int main() {
           "…and so does one that answers something nobody asked for: every uncertainty degrades DOWN");
   }
 
-  return report("rolltui deliverability_test");
+  return report("rolltui_deliverability_test");
 }

@@ -81,6 +81,7 @@
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
+using namespace testkit;
 
 #ifndef ROLLTUI_STUDIO_BIN
 #error "ROLLTUI_STUDIO_BIN must name the studio binary"
@@ -532,5 +533,5 @@ int main(int argc, char** argv) {
 
   fs::remove_all(scratch);
   rolltui_u_scratch_free(u_scratch);
-  return report("rolltui files_only_test");
+  return report("rolltui_files_only_test");
 }
