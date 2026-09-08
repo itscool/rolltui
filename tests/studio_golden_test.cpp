@@ -1097,6 +1097,30 @@ int main(int argc, char** argv) {
         check(clicked != plain, "…and clicking it scrolls the help, rather than being a label that lies");
       }
 
+      // PREVIEWING A DIFFERENT DOCUMENT ACTUALLY SHOWS IT. The parser reuses `e0`, `e1`, … for
+      // every document it reads, and the transcript's parse cache is keyed by an entry's id and
+      // validated by its VERSION — so a second document arriving under the first one's keys with
+      // an unmoved version was served the first one's text. The same defect is why reloading a
+      // changed file on disk showed the old content.
+      {
+        const std::string doc_dir = std::string(ROLLTUI_FIXTURE_DIR) + "/session";
+        auto lines_of = [&](const std::string& file, const std::string& keys) {
+          const std::string out = run(bin + " '" + doc_dir + "/" + file + "' --frame 90x12 --presets '" + p +
+                                      "'" + (keys.empty() ? "" : " --keys \"" + keys + "\""), rc);
+          const std::size_t at = out.rfind("line ");
+          return at == std::string::npos ? std::string() : out.substr(at, 16);
+        };
+        const std::string demo = lines_of("demo.md", "");
+        const std::string effects = lines_of("effects.md", "");
+        check(!demo.empty() && demo != effects,
+              "the two fixture documents are different lengths, so a swap is visible at all");
+        // Ctrl-E opens the picker on the document's own directory; `..` is row 0, so two Downs
+        // reach the second entry, and the entries are sorted with directories first.
+        const std::string picked = lines_of("demo.md", "CtrlE Down Down Enter");
+        check(picked == effects,
+              "…and choosing another one SHOWS it, rather than keeping the first [" + picked + " vs " + effects + "]");
+      }
+
       // THE THUMB'S SHAPE IS THE THEME'S, not a literal in the drawing code. A thumb is drawn as
       // a capsule — `single` alone, else `top`, `middle`…, `bottom` — and a theme may replace all
       // four. The high-contrast designs do: a capsule's half-height caps trade visible mass for

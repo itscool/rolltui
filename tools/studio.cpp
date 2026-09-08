@@ -534,7 +534,10 @@ class BindingsStore : public PresetStoreBase {
   }
 };
 
+unsigned long long g_load_seq = 0;  // bumped per read: see the version note below
+
 RolltuiDocument parse_fixture(const std::string& text) {
+  const unsigned long long load_seq = ++g_load_seq;
   RolltuiDocument doc;
   std::string kind = "assistant", summary;
   unsigned char state = ROLLTUI_EFFECT_STATE_NONE;  // m6: what the NEXT entry is doing, if anything
@@ -549,6 +552,12 @@ RolltuiDocument parse_fixture(const std::string& text) {
     if (body.empty()) { buf.clear(); return; }
     RolltuiDocEntry* e = rolltui_document_add(&doc);
     set_str(e->id, "e" + std::to_string(n++));
+    // THE VERSION MOVES PER LOAD, and it has to. An id is a stable identity across FRAMES, and
+    // this parser reuses `e0`, `e1`, … for every document it reads — so a second document arrives
+    // under the first one's keys, and the transcript's parse cache, which is keyed by id and
+    // validated by version, serves the previous document's text. That is why reloading a changed
+    // file, or previewing a different one, showed the old content.
+    e->version = load_seq;
     set_str(e->text, body);
     if (kind == "user") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_TEXT); e->prefix = "> "; e->prefix_role = to_role(ROLLTUI_ROLE_PROMPT); }
     else if (kind == "note") { e->markdown = 0; e->role = to_role(ROLLTUI_ROLE_NOTE); }
