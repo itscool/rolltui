@@ -16,6 +16,8 @@
  * is exempted BY NAME in `theme_test`'s colour-literal grep control. That control also asserts
  * this file still carries `kSystem16` and still names no theme colour of its own, so either
  * property moving fails a test instead of passing everywhere. */
+#include "testkit/testctl.h"
+
 #include "rolltui/c/rolltui_widgets.h"  /* the scrollbar glyph default, filled for a theme that states none */
 #include "rolltui/c/rolltui_theme.h"
 
@@ -209,6 +211,11 @@ void rolltui_color_downgrade(RolltuiStyleColor* c, unsigned char depth) {
       else if (c->index >= 16) *c = indexed(nearest_16(rgb_of_index(c->index)));
       return;
     case ROLLTUI_DEPTH_MONO:
+      /* ON = the mono case does nothing, which is the defect state: a terminal that reported no
+       * colour is sent colour anyway. It is invisible from inside the library — every value is
+       * a legal colour and every SGR string is well formed — and shows up only as a screen that
+       * is wrong on the one machine nobody tests on. */
+      if (testkit_ctl_on("theme.mono_keeps_colour")) return;
       c->kind = 0;
       c->index = 0;
       c->r = c->g = c->b = 0;

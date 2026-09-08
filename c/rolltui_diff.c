@@ -12,6 +12,8 @@
 
 #include <string.h>
 
+#include "testkit/testctl.h"
+
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
@@ -74,6 +76,16 @@ void rolltui_diff_scratch_free(RolltuiDiffScratch* s) {
 static int kind_of(const char* line, size_t len) {
   if (len == 0) return kOther;
   if (len >= 3 && (memcmp(line, "+++", 3) == 0 || memcmp(line, "---", 3) == 0)) return kOther;
+  /* ON = the classification inverted, which is the state this guarantee was built against: an
+   * added line read as a removed one and vice versa. Everything downstream still works — the
+   * pairing runs, the word diff runs, the frame draws — and every colour is the wrong one. This
+   * is the shape a diff cannot fail loudly on, which is why it earns a control rather than a
+   * comment. */
+  if (testkit_ctl_on("diff.added_and_removed_are_swapped")) {
+    if (line[0] == '+') return kRemoved;
+    if (line[0] == '-') return kAdded;
+    return kOther;
+  }
   if (line[0] == '+') return kAdded;
   if (line[0] == '-') return kRemoved;
   return kOther;
