@@ -238,9 +238,12 @@ int main(int argc, char** argv) {
 
   // ---- THE PRODUCT BINARY CANNOT DRIVE ITSELF ----------------------------------------------
   // Additive, not compiled out: `rolltui-studio-selftest` is this same source plus the script
-  // vocabulary, and the shipped studio does not contain it. `--check` and `--generate` went the
-  // same way: the theme editor offers both from inside the app, so a flag for them is a second
-  // way to reach a feature that already has a home, and only a golden frame ever called it.
+  // vocabulary, and the shipped studio does not contain it.
+  //
+  // `--check` and `--generate` are the OTHER side of that line and stay in the product. They run
+  // the accessibility checker and the seeded generator, which the theme editor also offers from
+  // inside the app — that makes them a non-interactive entry to a shipped capability, and a
+  // headless entry is the whole point of one: CI has no terminal to open the editor in.
   {
     int prc = 0;
     const std::string product = std::string("'") + ROLLTUI_STUDIO_PRODUCT_BIN + "'";
@@ -249,8 +252,11 @@ int main(int argc, char** argv) {
     const std::string in_selftest = run(std::string("strings '") + ROLLTUI_STUDIO_BIN + "' | grep -cx TripleClick", prc);
     check(in_selftest.substr(0, 1) != "0", "…while the self-test binary has it, so the marker discriminates");
     const std::string feat = run(product + " --check default 2>&1", prc);
-    check(feat.find("usage:") != std::string::npos,
-          "…and --check is gone from the shipped studio too: the theme editor offers it in-app, and nothing but a golden frame called the flag");
+    check(feat.find("badges:") != std::string::npos,
+          "…while --check RUNS in the shipped studio: it is a feature reached headlessly, not a hook");
+    const std::string hook = run(product + " --dump-role md_heading 2>&1", prc);
+    check(hook.find("usage:") != std::string::npos,
+          "…and --dump-role, which only a golden frame ever wanted, is not there");
   }
   const Case cases[] = {
       {"demo.80x24", "--frame 80x24 --theme default-dark"},

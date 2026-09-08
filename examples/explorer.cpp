@@ -736,6 +736,11 @@ struct App {
     return s;
   }
 
+  // How this terminal draws East Asian AMBIGUOUS glyphs. Not a preference and not a test hook:
+  // it is a fact about the terminal the process cannot yet ask for, and a widget that guesses it
+  // wrong cuts a two-cell glyph into one column.
+  int ambiguous = 0;
+
   void prepare() {
     // RE-RESOLVE ONLY WHEN THE STORE MOVED. An edit made in the theme editor bumps the store's
     // version, and a frame that draws the old styles would make the editor look broken. A
@@ -744,7 +749,7 @@ struct App {
       const unsigned long long v = rolltui_preset_store_version(theme_store);
       if (v != theme_seen) { theme_seen = v; sync_theme(); }
     }
-    const RolltuiWidgetEnv env{0, 0};
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), 0};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
@@ -891,7 +896,7 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, Ro
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-explorer [PATH]\n"
+               "usage: rolltui-explorer [PATH] [--ambiguous-wide]\n"
 #ifdef ROLLTUI_SELFTEST
                "                        [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
                "                        [--frame WxH] [--keys \"Down Right CtrlD\"]\n"
@@ -904,11 +909,26 @@ int usage() {
 
 int main(int argc, char** argv) {
   std::string start;
+  bool ambiguous = false;
   [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] std::string frame_spec, keys_spec;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
+    //   1. A SELF-TEST HOOK — compiled in only for `rolltui-explorer-selftest`, which is this same
+    //      source built again WITH them. The shipped binary does not contain them, so the binary
+    //      that gets verified is not the one that ships.
+    //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
+    //   3. A TERMINAL FACT — something true of the terminal the process cannot yet ask for.
+    //      `--ambiguous-wide` is the last one; it becomes an auto-detected setting.
+    //   4. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
+    //      depth. **These may never come back.** Each names something the preset system already
+    //      holds, autosaves and offers a UI for, and a flag beside it is a second configuration
+    //      system with neither discoverability nor persistence, competing with the one that has
+    //      both — and winning by accident, because a flag is what a person finds first.
+    // `rolltui-product-flags-test` holds all three products to this.
+    if (a == "--ambiguous-wide") { ambiguous = true; continue; }  // a terminal fact, not a hook
 #ifdef ROLLTUI_SELFTEST
     if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
@@ -922,6 +942,7 @@ int main(int argc, char** argv) {
   }
 
   App app;
+  app.ambiguous = ambiguous ? 1 : 0;
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");
   rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());

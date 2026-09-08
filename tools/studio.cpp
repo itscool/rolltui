@@ -2455,8 +2455,8 @@ void print_frame_plain(const RolltuiFrame* f) {
 int usage() {
   std::fprintf(stderr,
                "usage: rolltui-studio [FIXTURE.md] [--ambiguous-wide]\n"
-#ifdef ROLLTUI_SELFTEST
                "       --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
+#ifdef ROLLTUI_SELFTEST
                "       [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--frame WxH | --frame-sgr WxH]\n"
                "       [--tick MS] [--dump-tick] [--dump-role ROLE] [--code-fold FOLD,CAP]\n"
@@ -2535,20 +2535,34 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
-    // THE PRODUCT'S WHOLE COMMAND LINE: what to open, and one fact about the terminal.
+    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
+    //   1. A SELF-TEST HOOK — compiled in only for `rolltui-studio-selftest`, which is this same
+    //      source built again WITH them. The shipped binary does not contain them, so the binary
+    //      that gets verified is not the one that ships.
+    //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
+    //   3. A TERMINAL FACT — something true of the terminal the process cannot yet ask for.
+    //      `--ambiguous-wide` is the last one; it becomes an auto-detected setting.
+    //   4. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
+    //      depth. **These may never come back.** Each names something the preset system already
+    //      holds, autosaves and offers a UI for, and a flag beside it is a second configuration
+    //      system with neither discoverability nor persistence, competing with the one that has
+    //      both — and winning by accident, because a flag is what a person finds first.
+    // `rolltui-product-flags-test` holds all three products to this.
     // `--ambiguous-wide` says how this terminal draws East Asian ambiguous glyphs, which is not
     // a preference and not a hook; it belongs beside `mode` and `depth` as an auto-detected
     // setting, and is the last thing here that should not be.
     if (a == "--ambiguous-wide") app.ambiguous = true;
-#ifdef ROLLTUI_SELFTEST
-    // `--check` and `--generate` run the analyser and the seeded generator. The theme editor
-    // offers both from inside the app — "Check: contrast, colour-vision, badges" and "Generate a
-    // theme (seeded)" — so these are a second way to reach a feature that already has a home,
-    // and nothing but a golden frame calls them.
+    // `--check` and `--generate` run the analyser and the seeded generator, with `--seed` and
+    // `--chaos` as the generator's own parameters. The theme editor offers both from inside the
+    // app, which makes these a NON-INTERACTIVE ENTRY TO A SHIPPED FEATURE rather than a test
+    // hook: a theme author checks a theme from a script, and CI checks one without a terminal.
+    // A feature nothing but a golden frame happens to call today is still a feature — what a
+    // caller reaches is evidence about the API, never the reason a capability exists.
     else if (a == "--check") check_arg = next();
     else if (a == "--generate") generate_arg = next();
     else if (a == "--seed") seed_arg = next();
     else if (a == "--chaos") chaos_arg = next();
+#ifdef ROLLTUI_SELFTEST
     // Prints a role's resolved style. Reached by golden frames and nothing else — the theme
     // editor shows the same thing live, which is where a person looks.
     else if (a == "--dump-role") dump_role = next();

@@ -268,6 +268,7 @@ set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c explorer_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
   keys_kind_test.cpp picker_kind_test.cpp files_test.cpp parity_test.cpp
+  product_flags_test.cpp
   public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
@@ -499,6 +500,17 @@ add_rolltui_test(rolltui-paint-art-test tests/paint_art_test.cpp)
 target_compile_definitions(rolltui-paint-art-test PRIVATE ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint-selftest>"
   ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>")
 add_dependencies(rolltui-paint-art-test rolltui-paint rolltui-paint-selftest)
+
+# WHAT A FLAG ON A PRODUCT COMMAND LINE MAY BE: a self-test hook (absent from the product), a
+# real feature run headlessly, a terminal fact, or configuration -- and configuration is the one
+# that must not come back. Holds all three products to it from one place, because the rule is one
+# rule and a copy of it per app is three things to drift.
+add_rolltui_test(rolltui-product-flags-test tests/product_flags_test.cpp)
+target_compile_definitions(rolltui-product-flags-test PRIVATE
+  ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
+  ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
+  ROLLTUI_EXPLORER_PRODUCT_BIN="$<TARGET_FILE:rolltui-explorer>")
+add_dependencies(rolltui-product-flags-test rolltui-studio rolltui-paint rolltui-explorer)
 
 add_rolltui_test(rolltui-explorer-test tests/explorer_test.cpp)
 target_compile_definitions(rolltui-explorer-test PRIVATE

@@ -1005,6 +1005,19 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
+    //   1. A SELF-TEST HOOK — compiled in only for `rolltui-paint-selftest`, which is this same
+    //      source built again WITH them. The shipped binary does not contain them, so the binary
+    //      that gets verified is not the one that ships.
+    //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
+    //   3. A TERMINAL FACT — something true of the terminal the process cannot yet ask for.
+    //      `--ambiguous-wide` is the last one; it becomes an auto-detected setting.
+    //   4. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
+    //      depth. **These may never come back.** Each names something the preset system already
+    //      holds, autosaves and offers a UI for, and a flag beside it is a second configuration
+    //      system with neither discoverability nor persistence, competing with the one that has
+    //      both — and winning by accident, because a flag is what a person finds first.
+    // `rolltui-product-flags-test` holds all three products to this.
     if (a == "--ambiguous-wide") ambiguous = true;  // a fact about the terminal, not a test hook
 #ifdef ROLLTUI_SELFTEST
     else if (a == "--presets") presets_dir = next();
