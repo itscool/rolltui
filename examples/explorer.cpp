@@ -6,8 +6,10 @@
 // It is a READ-ONLY file-system browser in the shape macOS calls column view (Miller
 // columns): side-by-side lists, the selection in a column filling the one to its right, a
 // horizontal scroll when the path is deeper than the window, and a vertical scroll per column.
-// It never writes, renames, moves or deletes anything — `opendir`, `readdir` and `lstat` are
-// the whole of its contact with the file system.
+// It never writes, renames, moves or deletes anything. Reading a directory is the LIBRARY's
+// (`rolltui_dir_read`), so this file's whole remaining contact with the file system is one `stat`
+// asking whether a typed path is a directory before jumping to it — a different question from
+// "what is in this directory", and the only one the reader does not answer.
 //
 // ============================================================================================
 // WHY IT EXISTS, AND WHY IT IS NOT A DEMO
@@ -77,14 +79,14 @@ struct Options {
   const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
 };
 
-struct Entry {
-  std::string name;
-  bool is_dir = false;
-  bool unreadable = false;   // lstat failed: shown, never guessed about
-  long long size = 0;
-  long long mtime = 0;
-  unsigned int mode = 0;
-};
+// A `RolltuiStr` as a `std::string`, at the sites that want one. The library's own vocabulary
+// never names a std:: type, so a host that composes with std::string converts here — one line,
+// judged per call site, which is the boundary rule rather than a wrapper around the API.
+std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
+
+// NO `Entry` OF ITS OWN. `RolltuiDirEntry` carries exactly what this app kept — the name, whether
+// it is a directory, whether it could be described, its size, its time and its mode — so a
+// parallel struct would be a second thing to drift and a copy per directory to keep it in step.
 
 // ---- text measured and cut to a column's width ---------------------------------------------
 // "HOW MANY BYTES OF THIS FIT IN N CELLS" is `rolltui_u_fit`, and it is public because every
@@ -113,55 +115,43 @@ struct Measure {
 // ---- one column: a directory, its entries, and where the eye is -----------------------------
 struct Column {
   std::string dir;
-  std::vector<Entry> entries;
+  RolltuiDirList entries{};  // OWNED; released in the destructor
   std::size_t sel = 0;
   std::size_t top = 0;   // the first visible row: this column's own vertical scroll
   int width = 18;        // derived from the content, clamped
   std::size_t hidden_n = 0;
   std::string error;     // opendir failed: a NOTE, never a crash
+  Column() = default;
+  Column(const Column&) = delete;
+  Column& operator=(const Column&) = delete;
+  Column(Column&& o) noexcept { *this = std::move(o); }
+  Column& operator=(Column&& o) noexcept {
+    if (this != &o) {
+      rolltui_dir_list_release(&entries);
+      dir = std::move(o.dir); entries = o.entries; sel = o.sel; top = o.top;
+      width = o.width; hidden_n = o.hidden_n; error = std::move(o.error);
+      o.entries = RolltuiDirList{};
+    }
+    return *this;
+  }
+  ~Column() { rolltui_dir_list_release(&entries); }
 };
 
+// THE READ IS THE LIBRARY'S. What is left here is this app's own two choices: it describes the
+// LINK rather than what it points at, because a browser shows what is on disk, and it keeps the
+// count of what it hid so the status line can say so.
 bool read_dir(const std::string& path, const Options& opt, Column& out) {
-  out.entries.clear();
-  out.hidden_n = 0;
+  RolltuiStr err{};
+  const int flags = (opt.hidden ? ROLLTUI_DIR_HIDDEN : 0) | ROLLTUI_DIR_LINKS;
+  const int sort = opt.sort == Sort::Size      ? ROLLTUI_SORT_SIZE
+                   : opt.sort == Sort::Modified ? ROLLTUI_SORT_MODIFIED
+                                                : ROLLTUI_SORT_NAME;
   out.error.clear();
-  DIR* d = opendir(path.c_str());
-  if (!d) {
-    out.error = "cannot open " + path;
-    return false;
-  }
-  while (const dirent* e = readdir(d)) {
-    const std::string name = e->d_name;
-    if (name == "." || name == "..") continue;
-    if (!name.empty() && name[0] == '.' && !opt.hidden) {
-      ++out.hidden_n;
-      continue;
-    }
-    Entry en;
-    en.name = name;
-    struct stat st {};
-    const std::string full = path == "/" ? "/" + name : path + "/" + name;
-    if (lstat(full.c_str(), &st) == 0) {
-      en.is_dir = S_ISDIR(st.st_mode);
-      en.size = static_cast<long long>(st.st_size);
-      en.mtime = static_cast<long long>(st.st_mtime);
-      en.mode = static_cast<unsigned int>(st.st_mode);
-    } else {
-      en.unreadable = true;
-    }
-    out.entries.push_back(std::move(en));
-  }
-  closedir(d);
-  // Directories first, then the chosen order — and NAME always breaks a tie, so a frame is a
-  // pure function of the tree rather than of readdir's order.
-  const Sort s = opt.sort;
-  std::sort(out.entries.begin(), out.entries.end(), [s](const Entry& a, const Entry& b) {
-    if (a.is_dir != b.is_dir) return a.is_dir;
-    if (s == Sort::Size && a.size != b.size) return a.size > b.size;
-    if (s == Sort::Modified && a.mtime != b.mtime) return a.mtime > b.mtime;
-    return a.name < b.name;
-  });
-  return true;
+  const bool ok = rolltui_dir_read(path.data(), path.size(), sort, flags, &out.entries, &err) != 0;
+  if (!ok) out.error.assign(err.p ? err.p : "", err.n);
+  out.hidden_n = out.entries.hidden_n;
+  rolltui_str_free(&err);
+  return ok;
 }
 
 // ---- the widget ----------------------------------------------------------------------------
@@ -180,14 +170,15 @@ struct Browser {
   const Column* focused() const { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
   Column* focused() { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
 
-  const Entry* selected() const {
+  const RolltuiDirEntry* selected() const {
     const Column* c = focused();
-    return c && c->sel < c->entries.size() ? &c->entries[c->sel] : nullptr;
+    return c && c->sel < c->entries.n ? &c->entries.v[c->sel] : nullptr;
   }
   std::string selected_path() const {
     const Column* c = focused();
-    if (!c || c->sel >= c->entries.size()) return c ? c->dir : root;
-    return c->dir == "/" ? "/" + c->entries[c->sel].name : c->dir + "/" + c->entries[c->sel].name;
+    if (!c || c->sel >= c->entries.n) return c ? c->dir : root;
+    return c->dir == "/" ? "/" + str_of(c->entries.v[c->sel].name)
+                         : c->dir + "/" + str_of(c->entries.v[c->sel].name);
   }
 
   void set_root(const std::string& path) {
@@ -207,27 +198,28 @@ struct Browser {
     // Re-read every column in place, keeping the selection BY NAME rather than by index, so a
     // sort change or a dotfile toggle does not move the eye to a different file.
     std::vector<std::string> keep;
-    for (const Column& c : cols) keep.push_back(c.sel < c.entries.size() ? c.entries[c.sel].name : std::string());
+    for (const Column& c : cols) keep.push_back(c.sel < c.entries.n ? str_of(c.entries.v[c.sel].name) : std::string());
     for (std::size_t i = 0; i < cols.size(); ++i) {
       read_dir(cols[i].dir, *opt, cols[i]);
       measure_width(cols[i]);
       cols[i].sel = 0;
-      for (std::size_t j = 0; j < cols[i].entries.size(); ++j)
-        if (cols[i].entries[j].name == keep[i]) cols[i].sel = j;
+      for (std::size_t j = 0; j < cols[i].entries.n; ++j)
+        if (str_of(cols[i].entries.v[j].name) == keep[i]) cols[i].sel = j;
       clamp_scroll(cols[i]);
     }
   }
 
   void measure_width(Column& c) {
     int longest = 0;
-    for (const Entry& e : c.entries) longest = std::max(longest, measure.width(e.name) + (e.is_dir ? 2 : 0));
+    for (std::size_t i = 0; i < c.entries.n; ++i)
+      longest = std::max(longest, measure.width(str_of(c.entries.v[i].name)) + (c.entries.v[i].is_dir ? 2 : 0));
     c.width = std::min(28, std::max(12, longest + 2));
   }
 
   // The column to the right of the focused one exists exactly when a directory is selected.
   void open_selected() {
     cols.resize(focus_col + 1);
-    const Entry* e = selected();
+    const RolltuiDirEntry* e = selected();
     if (!e || !e->is_dir) return;
     Column c;
     c.dir = selected_path();
@@ -246,7 +238,7 @@ struct Browser {
     }
     if (c.sel < c.top) c.top = c.sel;
     if (c.sel >= c.top + static_cast<std::size_t>(vis)) c.top = c.sel - static_cast<std::size_t>(vis) + 1;
-    if (c.entries.size() <= static_cast<std::size_t>(vis)) c.top = 0;
+    if (c.entries.n <= static_cast<std::size_t>(vis)) c.top = 0;
   }
 
   // Keep the focused column on screen: the horizontal scroll follows the eye, so a deep path
@@ -268,22 +260,22 @@ struct Browser {
 
   void move(int delta) {
     Column* c = focused();
-    if (!c || c->entries.empty()) return;
+    if (!c || c->entries.n == 0) return;
     long long at = static_cast<long long>(c->sel) + delta;
-    at = std::max<long long>(0, std::min<long long>(at, static_cast<long long>(c->entries.size()) - 1));
+    at = std::max<long long>(0, std::min<long long>(at, static_cast<long long>(c->entries.n) - 1));
     c->sel = static_cast<std::size_t>(at);
     clamp_scroll(*c);
     open_selected();
   }
   void select(std::size_t i) {
     Column* c = focused();
-    if (!c || i >= c->entries.size()) return;
+    if (!c || i >= c->entries.n) return;
     c->sel = i;
     clamp_scroll(*c);
     open_selected();
   }
   void into() {
-    const Entry* e = selected();
+    const RolltuiDirEntry* e = selected();
     if (!e || !e->is_dir) return;
     open_selected();
     if (focus_col + 1 < cols.size()) {
@@ -307,8 +299,8 @@ struct Browser {
     set_root(parent);
     Column* c = focused();
     if (!c) return;
-    for (std::size_t i = 0; i < c->entries.size(); ++i)
-      if (c->entries[i].name == child) c->sel = i;
+    for (std::size_t i = 0; i < c->entries.n; ++i)
+      if (str_of(c->entries.v[i].name) == child) c->sel = i;
     clamp_scroll(*c);
     open_selected();
   }
@@ -380,19 +372,19 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       const std::size_t i = c.top + static_cast<std::size_t>(row);
       const int y = r.y + 1 + row;
       if (y >= r.y + r.h) break;
-      if (i >= c.entries.size()) break;
-      const Entry& e = c.entries[i];
+      if (i >= c.entries.n) break;
+      const RolltuiDirEntry& e = c.entries.v[i];
       const bool is_sel = i == c.sel;
       const bool is_focus_col = ci == b->focus_col;
       const RolltuiStyle st = is_sel ? (is_focus_col ? here : trail) : (e.is_dir ? text : (e.unreadable ? dim : text));
       if (is_sel) rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{x, y, cw, 1}, st, nullptr, 0);
       // A directory is marked with a trailing chevron rather than a colour, so the shape
       // survives `mono` and a colour-blind reader alike.
-      const std::string label = e.name + (e.is_dir ? " \xE2\x80\xBA" : "");
+      const std::string label = str_of(e.name) + (e.is_dir ? " \xE2\x80\xBA" : "");
       const std::string cut = b->measure.fit(label, cw - 1);
       rolltui_frame_put_text(f, b->draw_scratch, x + 1, y, cut.data(), cut.size(), st, cw - 1, 0, 0);
     }
-    if (c.entries.empty()) {
+    if (c.entries.n == 0) {
       // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
       // entries, and drawing "(empty)" for both is a wrong answer that reports itself as a
       // success. The widget draws this itself rather than leaving it to the library's error
@@ -424,7 +416,7 @@ int browser_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* ou
     if (!c) return 0;
     out->first = c->top;
     out->visible = static_cast<std::size_t>(b->rows_visible());
-    out->total = c->entries.size();
+    out->total = c->entries.n;
     return 1;
   }
   out->first = b->first_col;
@@ -439,8 +431,8 @@ int browser_scroll_to(void* ctx, unsigned char axis, std::size_t first) {
   Column* c = b->focused();
   if (!c) return 0;
   const int vis = b->rows_visible();
-  const std::size_t max_top = c->entries.size() > static_cast<std::size_t>(vis)
-                                  ? c->entries.size() - static_cast<std::size_t>(vis)
+  const std::size_t max_top = c->entries.n > static_cast<std::size_t>(vis)
+                                  ? c->entries.n - static_cast<std::size_t>(vis)
                                   : 0;
   c->top = first > max_top ? max_top : first;  // rule 4: anything that accepts must CLAMP
   return 1;
@@ -492,7 +484,7 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
   else if (action == "browser.page_up") b->move(-page);
   else if (action == "browser.page_down") b->move(page);
   else if (action == "browser.first") b->select(0);
-  else if (action == "browser.last") { const Column* c = b->focused(); if (c && !c->entries.empty()) b->select(c->entries.size() - 1); }
+  else if (action == "browser.last") { const Column* c = b->focused(); if (c && !c->entries.n == 0) b->select(c->entries.n - 1); }
   else if (action == "browser.into") b->into();
   else if (action == "browser.out") b->out();
   else return 0;
@@ -671,19 +663,19 @@ struct App {
   static void entry_rows(void* ctx, RolltuiRows* out) {
     App& a = *static_cast<App*>(ctx);
     Browser* b = a.browser();
-    const Entry* e = b ? b->selected() : nullptr;
+    const RolltuiDirEntry* e = b ? b->selected() : nullptr;
     if (!e) {
       rolltui_rows_add(out, "entry", 5, "(none)", 6);
       return;
     }
     const std::string path = b->selected_path();
-    rolltui_rows_add(out, "name", 4, e->name.data(), e->name.size());
+    rolltui_rows_add(out, "name", 4, e->name.p ? e->name.p : "", e->name.n);
     rolltui_rows_add(out, "folder", 6, path.data(), path.size());
     const char* kind = e->unreadable ? "unreadable" : e->is_dir ? "directory" : "file";
     rolltui_rows_add(out, "kind", 4, kind, std::strlen(kind));
     const std::string size = e->is_dir ? std::string("-") : human_size(e->size);
     rolltui_rows_add(out, "size", 4, size.data(), size.size());
-    const std::string when = stamp(e->mtime);
+    const std::string when = stamp(e->modified);
     rolltui_rows_add(out, "modified", 8, when.data(), when.size());
     const std::string perm = permissions(e->mode);
     rolltui_rows_add(out, "mode", 4, perm.data(), perm.size());
@@ -842,7 +834,7 @@ struct App {
     if (!hint.empty()) rolltui_rows_add(&status_rows, "", 0, hint.data(), hint.size());
     if (b) {
       const Column* c = b->focused();
-      std::snprintf(num, sizeof num, "%zu", c ? c->entries.size() : 0);
+      std::snprintf(num, sizeof num, "%zu", c ? c->entries.n : 0);
       status_rows.add("entries", num);
       std::snprintf(num, sizeof num, "%d/%zu", b->focus_col + 1, b->cols.size());
       status_rows.add("column", num);
