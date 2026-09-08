@@ -2165,7 +2165,14 @@ int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout
     while (rolltui_window_stack_depth(s) > 1) rolltui_window_stack_pop(s);
     return 1;
   }
-  return rolltui_window_stack_push_popup(s, layout, id, id_len) ? 1 : 1;
+  if (!rolltui_window_stack_push_popup(s, layout, id, id_len)) return 1;
+  /* AND FOCUS IT. A panel that opens without the focus is a panel a person cannot use: the next
+   * key goes wherever it was going before, which for a screen with an input means their choice is
+   * typed into the prompt. Focusing by the popup's own id works because a popup's root carries the
+   * id the layout gave it; a popup whose root is not focusable keeps the focus where it was, which
+   * is the right answer for one that only displays. */
+  rolltui_window_stack_focus(s, id, id_len);
+  return 1;
 }
 
 RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len) {

@@ -21,9 +21,9 @@
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│ app.find                                     ▸ │
 │ │ filterable) + list/text widgets  │             │ set is deliberate│ app.theme                                    ▸ │
 │ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ app.keys                                     ▸ │
-│ │ placements + content slots)      │             │ parser; hot-reloa│ app.zoom                                     ▸ │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ add an action (name):                          │
-│ │ → styled wrapped lines)          │             │                  │                                                │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ app.filepicker                               ▸ │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ app.zoom                                     ▸ │
+│ │ → styled wrapped lines)          │             │                  │ add an action (name):                          │
 │ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
 │ │ loader, built-ins)               │             │                  │                                                │
 │ └──────────────────────────────────┴─────────────┴──────────────────│                                                │

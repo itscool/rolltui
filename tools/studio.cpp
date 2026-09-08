@@ -1835,7 +1835,23 @@ struct App {
   // The frame's terminal facts and clock, then: instantiate each window's widget from
   // its content, let the widgets that size their window do so, and lay them all out — so
   // an event is hit-tested against exactly the geometry the frame will draw.
+  // WHAT THE PICKER ANSWERS WITH. Polled where the preset stores' versions are polled, which is
+  // the same shape for the same reason: a widget the layout owns tells the host something once,
+  // and the host decides what it means. Here it means "preview this instead", which is the thing
+  // that stopped needing a relaunch.
+  void take_picked_file() {
+    RolltuiStr got{};
+    if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
+      fixture_path.assign(got.p, got.n);
+      if (load_fixture()) hint = "opened " + fixture_path;
+      else hint = "cannot read " + fixture_path;
+      while (rolltui_window_stack_depth(stack) > 1) rolltui_window_stack_pop(stack);
+    }
+    rolltui_str_free(&got);
+  }
+
   void ensure_layout() {
+    take_picked_file();
     RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous ? 1 : 0), clock_ms};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
@@ -2113,6 +2129,11 @@ struct App {
       if (app_a == "app.palette") { open_menu(true); return true; }
       if (app_a == "app.find") { toggle_find(); return true; }
       if (app_a == "app.repaint") return true;  // the loop repaints
+      // Any other `app.<id>` naming a popup this screen declares is the library's to open. The
+      // four above stay here because each does more than push — building menu items, syncing the
+      // find query, choosing between two help sources.
+      if (rolltui_window_stack_action_popup(stack, &effective_layout(), app_a.data(), app_a.size()))
+        return true;
     }
     ensure_layout();
     if (ev.kind == ROLLTUI_EVENT_PASTE) {
@@ -2669,6 +2690,15 @@ int main(int argc, char** argv) {
   }
   app.load_theme_arg();
   app.load_bindings_arg();
+  {
+    // Where the picker opens: beside the document being previewed, which is where a person
+    // looking for another one is almost always looking. Set once — setting it per frame would
+    // throw away wherever they had navigated to.
+    const std::string at = app.fixture_path.empty()
+                               ? std::string(".")
+                               : app.fixture_path.substr(0, app.fixture_path.find_last_of('/') + 1);
+    rolltui_windows_set_picker_dir(app.windows, "filepicker", 10, at.data(), at.empty() ? 0 : at.size());
+  }
   app.refresh_menu();
 
 #ifdef ROLLTUI_SELFTEST
@@ -2680,6 +2710,7 @@ int main(int argc, char** argv) {
     app.sync_look();
     app.ensure_layout();
     { std::vector<Step> steps = scripted_keys(keys_spec, fw, fh); run_steps(app, steps); }
+    app.ensure_layout();  // collects whatever the script chose, the way a frame of the loop would
     app.effect_ms = tick_ms;  // --tick: the frame is rendered AT this elapsed time
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));

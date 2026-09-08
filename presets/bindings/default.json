@@ -202,6 +202,9 @@
     "app.keys": [
       "f5"
     ],
+    "app.filepicker": [
+      "ctrl+e"
+    ],
     "app.palette": [
       "ctrl+p"
     ],

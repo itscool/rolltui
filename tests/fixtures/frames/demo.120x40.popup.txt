@@ -21,7 +21,7 @@
 │ │ Menu widget (hierarc│   Alt-D, Ctrl-Delete      kill the word after the caret              │                       │
 │ │ filterable) + list/t│   Ctrl-U                  kill to the start of the line              │                       │
 │ │ Layout files (JSON: │   Ctrl-K                  kill to the end of the line                │                       │
-│ │ placements + content│   Left                    move one grapheme left          ▼ 65 more  │                       │
+│ │ placements + content│   Left                    move one grapheme left          ▼ 66 more  │                       │
 │ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ → styled wrapped lines)          │             │                                  │ ╻                              │
 │ │ Theme (roles → styles, JSON      │ build       │ single header                    │ ┃                              │

@@ -1525,7 +1525,7 @@ int main() {
     // change which keys work.
     bool same = true;
     for (std::string_view n : builtin_layout_names_c()) same &= builtin_layout_c(n)->actions == shipped_default_actions_c();
-    check(same && shipped_default_actions_c().size() == 8, "every shipped layout declares the same eight app actions");
+    check(same && shipped_default_actions_c().size() == 9, "every shipped layout declares the same nine app actions");
   }
 
   std::printf("-- widgets: one per content, by kind\n");

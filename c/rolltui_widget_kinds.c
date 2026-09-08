@@ -948,21 +948,32 @@ static void picker_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFra
     return;
   }
   y = r.y + 1;
-  /* `..` is a row rather than a key nobody was told about. */
+  /* THE SELECTION IS A GLYPH, not only a colour. A row marked by style alone is invisible at
+   * `mono` and to a colour-blind reader, which is the same rule the browser's trailing chevron
+   * already follows for directories. */
   if (y < r.y + r.h) {
     const int on = p->sel == 0;
-    rolltui_frame_put_text(f, p->draw, r.x, y++, "..", 2,
-                           styles[on ? p->roles.input_selection : p->roles.text], r.w, env->ambiguous_wide, 0);
+    rolltui_frame_put_text(f, p->draw, r.x, y, on ? "\xE2\x80\xBA " : "  ", on ? 4 : 2,
+                           styles[on ? p->roles.input_selection : p->roles.text_muted], 2,
+                           env->ambiguous_wide, 0);
+    /* `..` is a row rather than a key nobody was told about. */
+    rolltui_frame_put_text(f, p->draw, r.x + 2, y++, "..", 2,
+                           styles[on ? p->roles.input_selection : p->roles.text], r.w - 2,
+                           env->ambiguous_wide, 0);
   }
   for (i = p->top; i < (int)p->list.n && y < r.y + r.h; ++i, ++y) {
     const RolltuiDirEntry* e = &p->list.v[i];
     const int on = p->sel == i + 1;
+    const RolltuiStyle st = styles[on ? p->roles.input_selection : p->roles.text];
+    rolltui_frame_put_text(f, p->draw, r.x, y, on ? "\xE2\x80\xBA " : "  ", on ? 4 : 2, st, 2,
+                           env->ambiguous_wide, 0);
+    rolltui_frame_put_text(f, p->draw, r.x + 2, y, e->name.p ? e->name.p : "", e->name.n, st, r.w - 2,
+                           env->ambiguous_wide, 0);
     /* A trailing separator is how a directory says so without a second column. */
-    rolltui_frame_put_text(f, p->draw, r.x, y, e->name.p ? e->name.p : "", e->name.n,
-                           styles[on ? p->roles.input_selection : p->roles.text], r.w, env->ambiguous_wide, 0);
     if (e->is_dir)
-      rolltui_frame_put_text(f, p->draw, r.x + (int)e->name.n, y, "/", 1,
-                             styles[on ? p->roles.input_selection : p->roles.text_muted], 1, env->ambiguous_wide, 0);
+      rolltui_frame_put_text(f, p->draw, r.x + 2 + (int)e->name.n, y, "/", 1,
+                             styles[on ? p->roles.input_selection : p->roles.text_muted], 1,
+                             env->ambiguous_wide, 0);
   }
 }
 

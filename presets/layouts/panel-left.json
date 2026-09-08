@@ -11,7 +11,8 @@
     "app.repaint": "repaint the screen",
     "app.find": "find in the transcript",
     "app.theme": "Edit the theme",
-    "app.keys": "Edit the key bindings"
+    "app.keys": "Edit the key bindings",
+    "app.filepicker": "Open a file"
   },
   "root": {
     "row": [
@@ -172,6 +173,25 @@
         "content": "keys",
         "border": "rounded",
         "title": "keys",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "filepicker",
+      "x": "100%",
+      "y": 0,
+      "w": "45%",
+      "h": "100%",
+      "anchor": "top-right",
+      "min_w": 40,
+      "max_w": 100,
+      "modal": true,
+      "root": {
+        "id": "filepicker",
+        "content": "filepicker",
+        "border": "rounded",
+        "title": "open",
         "focusable": true,
         "background": "panel_background"
       }

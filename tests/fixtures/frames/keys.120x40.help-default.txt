@@ -21,7 +21,7 @@
 │ │ Menu widget (hierarc│   Down                    down a row, or the next history entry      │                       │
 │ │ filterable) + list/t│   Shift-Left              extend the selection one grapheme left     │                       │
 │ │ Layout files (JSON: │   Shift-Right             extend the selection one grapheme right    │                       │
-│ │ placements + content│   Ctrl-Shift-Left, Alt-Shift-Left  extend the selection on▼ 55 more  │                       │
+│ │ placements + content│   Ctrl-Shift-Left, Alt-Shift-Left  extend the selection on▼ 56 more  │                       │
 │ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
 │ │ → styled wrapped lines)          │             │                                  │ ╻                              │
 │ │ Theme (roles → styles, JSON      │ build       │ single header                    │ ┃                              │
