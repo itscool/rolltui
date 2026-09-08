@@ -20,6 +20,7 @@
 //
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
 #include <string>
 
 #include "rolltui_test.hpp"
@@ -88,6 +89,51 @@ int main() {
     const std::string in_selftest = run("strings " + bin + " | grep -cx -- --stroke", prc);
     check(in_product.substr(0, 1) == "0", "…and the driving code is absent from the shipped binary");
     check(in_selftest.substr(0, 1) != "0", "…while the self-test binary has it, so the marker discriminates");
+  }
+
+  // ---- 0c. A PNG BECOMES ASCII ART ---------------------------------------------------------
+  // Pure app-side code over a documented format and a system zlib, so nothing is vendored and no
+  // licence question arises. The fixture is a radial blob: bright in the middle, dark at the rim.
+  {
+    int prc = 0;
+    const std::string pic = std::string(ROLLTUI_FIXTURE_DIR) + "/blob.png";
+    const std::string art = run(bin + " --frame 54x16 --open '" + pic + "' 2>&1", prc);
+    check(art.find("opened") != std::string::npos && art.find("48x48") != std::string::npos,
+          "paint opens a PNG and says what it read");
+    // THE PICTURE IS THE POINT, so assert its SHAPE rather than that something was drawn. The rim
+    // is dark and the centre is light, so the densest glyphs must ring the sparser ones — a
+    // picture drawn upside down would pass a "some ink appeared" check.
+    // THE PICTURE'S SHAPE, measured rather than sampled. Looking for one glyph in one row does
+    // not discriminate: an inverted ramp draws a perfect negative and still contains that glyph
+    // somewhere. Score each row by how DENSE its glyphs are on the ascii ramp and compare the
+    // middle of the picture against its edge — a blob that is bright in the centre must score
+    // LOWER there, and an upside-down one fails by that number.
+    std::vector<std::string> rows;
+    {
+      std::istringstream in(art);
+      for (std::string r; std::getline(in, r);)
+        if (r.find("\xE2\x94\x82") != std::string::npos) rows.push_back(r);
+    }
+    check(rows.size() > 8, "…and it filled the sheet with rows of ink");
+    const std::string kRamp = " .:-=+*#%@";  // lightest to darkest, paint's own ascii ramp
+    auto density = [&](const std::string& r) {
+      long long sum = 0, n = 0;
+      const std::size_t end = r.find("\xE2\x94\x82", 3);  // the sheet's own column only
+      for (std::size_t i = 2; i < (end == std::string::npos ? r.size() : end); ++i) {
+        const std::size_t at = kRamp.find(r[i]);
+        if (at != std::string::npos) { sum += (long long)at; ++n; }
+      }
+      return n ? (double)sum / (double)n : 0.0;
+    };
+    const double centre = density(rows[rows.size() / 2]);
+    const double edge = density(rows[1]);
+    check(edge > centre + 1.0,
+          "…and the picture's DARK RIM is denser than its BRIGHT CENTRE, so it is not a negative "
+          "(rim " + std::to_string(edge).substr(0, 4) + " vs centre " + std::to_string(centre).substr(0, 4) + ")");
+    const std::string bad = run(bin + " --frame 40x8 --open '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                                "/frames/menu.80x24.theme.txt' 2>&1", prc);
+    check(bad.find("not a PNG") != std::string::npos,
+          "…and a file that is not a PNG is refused BY NAME rather than half-decoded");
   }
 
   // ---- 0b. THE LIBRARY'S EDITORS ARE THIS APP'S TOO ----------------------------------------

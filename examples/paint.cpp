@@ -64,6 +64,8 @@
 #include <utility>
 #include <vector>
 
+#include <zlib.h>
+
 #include "rolltui/rolltui.h"
 
 // ADDITIVE, NOT SUBTRACTIVE: the product cannot drive itself. The shared script vocabulary is the
@@ -96,6 +98,7 @@ constexpr const char* kToolsMenu = R"({
       "min": 1, "max": 5, "step": 1, "value": "1", "hint": "cells across" },
     { "id": "shape", "label": "Shape", "kind": "choice", "value": "square",
       "items": [ { "id": "square", "label": "square" }, { "id": "round", "label": "round" } ] },
+    { "id": "open", "label": "Open a picture", "kind": "input", "type": "text", "value": "" },
     { "id": "clear", "label": "Clear the sheet" } ] }
 )";
 
@@ -189,6 +192,103 @@ constexpr const char* kCanvasDescribes = "a sheet the app paints on";
 // as an unbound `rows:` source is — a host's own kind is not exempt) and `handle`. The other
 // four are NULL, and `rolltui_widgets.h` states what each NULL means; that is the whole
 // difference from a virtual nobody was asked about.
+// Defined below, beside the other file helpers; declared here because the PNG loader is the
+// first thing that needs it.
+std::string read_file(const std::string& path, bool& ok);
+
+// ---- a PNG, as ASCII ------------------------------------------------------------------------
+// PNG is a documented format and zlib is a system library, so this needs nothing vendored and
+// answers no licence question. Deliberately NARROW: 8-bit non-interlaced truecolour, with or
+// without alpha, which is what almost every screenshot and export is. Anything else is REFUSED
+// BY NAME rather than half-decoded — a picture that comes out wrong is worse than one that does
+// not come out, and "unsupported" is a sentence a person can act on.
+struct Image {
+  int w = 0, h = 0;
+  std::vector<unsigned char> rgb;  // GROWING HEAP, one per load: w*h*3, freed with the vector
+};
+
+std::string load_png(const std::string& path, Image& out) {
+  bool ok = false;
+  const std::string bytes = read_file(path, ok);
+  if (!ok) return "cannot open " + path;
+  if (bytes.size() < 8 || std::memcmp(bytes.data(), "\x89PNG\r\n\x1a\n", 8) != 0) return "not a PNG: " + path;
+  const unsigned char* p = reinterpret_cast<const unsigned char*>(bytes.data());
+  const std::size_t n = bytes.size();
+  auto be32 = [](const unsigned char* q) {
+    return (static_cast<unsigned long>(q[0]) << 24) | (static_cast<unsigned long>(q[1]) << 16) |
+           (static_cast<unsigned long>(q[2]) << 8) | static_cast<unsigned long>(q[3]);
+  };
+  int depth = 0, colour = 0, interlace = 0;
+  std::string idat;
+  for (std::size_t at = 8; at + 8 <= n;) {
+    const unsigned long len = be32(p + at);
+    if (at + 12 + len > n) break;
+    const char* type = bytes.data() + at + 4;
+    const unsigned char* data = p + at + 8;
+    if (std::memcmp(type, "IHDR", 4) == 0 && len >= 13) {
+      out.w = static_cast<int>(be32(data));
+      out.h = static_cast<int>(be32(data + 4));
+      depth = data[8];
+      colour = data[9];
+      interlace = data[12];
+    } else if (std::memcmp(type, "IDAT", 4) == 0) {
+      idat.append(reinterpret_cast<const char*>(data), len);
+    } else if (std::memcmp(type, "IEND", 4) == 0) {
+      break;
+    }
+    at += 12 + len;
+  }
+  if (out.w <= 0 || out.h <= 0) return "no image header in " + path;
+  if (depth != 8) return "only 8-bit PNGs are supported (this one is " + std::to_string(depth) + "-bit)";
+  if (colour != 2 && colour != 6) return "only truecolour PNGs are supported (colour type " + std::to_string(colour) + ")";
+  if (interlace != 0) return "interlaced PNGs are not supported";
+  if (idat.empty()) return "no image data in " + path;
+
+  const int chan = colour == 6 ? 4 : 3;
+  const std::size_t stride = static_cast<std::size_t>(out.w) * chan;
+  std::vector<unsigned char> raw((stride + 1) * static_cast<std::size_t>(out.h));
+  uLongf got = static_cast<uLongf>(raw.size());
+  if (uncompress(raw.data(), &got, reinterpret_cast<const Bytef*>(idat.data()),
+                 static_cast<uLong>(idat.size())) != Z_OK || got != raw.size())
+    return "the image data in " + path + " did not decompress";
+
+  // UN-FILTER, in place, row by row. Each scanline states its own filter in its first byte and
+  // refers to the row above, so this cannot be done per row in isolation.
+  out.rgb.assign(static_cast<std::size_t>(out.w) * out.h * 3, 0);
+  std::vector<unsigned char> prev(stride, 0), cur(stride, 0);
+  for (int y = 0; y < out.h; ++y) {
+    const unsigned char f = raw[(stride + 1) * static_cast<std::size_t>(y)];
+    const unsigned char* src = raw.data() + (stride + 1) * static_cast<std::size_t>(y) + 1;
+    for (std::size_t i = 0; i < stride; ++i) {
+      const int a = i >= static_cast<std::size_t>(chan) ? cur[i - chan] : 0;
+      const int b = prev[i];
+      const int c = i >= static_cast<std::size_t>(chan) ? prev[i - chan] : 0;
+      int v = src[i];
+      switch (f) {
+        case 0: break;
+        case 1: v += a; break;
+        case 2: v += b; break;
+        case 3: v += (a + b) / 2; break;
+        case 4: {
+          const int pa = std::abs(b - c), pb = std::abs(a - c), pc = std::abs(a + b - 2 * c);
+          v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
+          break;
+        }
+        default: return "unknown scanline filter in " + path;
+      }
+      cur[i] = static_cast<unsigned char>(v & 0xff);
+    }
+    for (int x = 0; x < out.w; ++x) {
+      const std::size_t s = static_cast<std::size_t>(x) * chan, d = (static_cast<std::size_t>(y) * out.w + x) * 3;
+      out.rgb[d] = cur[s];
+      out.rgb[d + 1] = cur[s + 1];
+      out.rgb[d + 2] = cur[s + 2];
+    }
+    prev = cur;
+  }
+  return {};
+}
+
 struct Canvas {
   std::string source;            // what the layout named after the colon
   const Tool* tool;              // the host's current tool, read at paint time — BORROWED
@@ -392,6 +492,51 @@ constexpr RolltuiWidgetPlugin kCanvasPlugin = {
 
 // What the factory is registered WITH: the two borrows a canvas needs and nothing else. One
 // per app, held by `App`, so the factory's `ctx` outlives every widget it builds.
+// FIT A PICTURE TO THE SHEET. The image is resampled by BOX AVERAGE rather than by nearest
+// neighbour: a terminal cell is enormous next to a pixel, so nearest picks one pixel out of
+// thousands and the result is noise rather than a picture.
+//
+// Two things come out of each cell and both are kept. The AVERAGE COLOUR goes in as the cell's
+// ink, and the LUMINANCE picks the ramp step — so the picture survives a mono terminal, where
+// the colour is gone and the ramp is all that is left. That is the same reason a stroke carries
+// a ramp per cell rather than one for the sheet.
+//
+// Aspect: a terminal cell is about twice as tall as it is wide, so the vertical sample is half
+// the height it would otherwise be. Without that every picture comes out stretched.
+void fit_image_into(const Image& img, Canvas& c, int ramp) {
+  if (img.w <= 0 || img.h <= 0 || c.inner.w <= 0 || c.inner.h <= 0) return;
+  c.pixels.clear();
+  const int steps = kRamps[ramp % 2].steps;
+  for (int cy = 0; cy < c.inner.h; ++cy) {
+    for (int cx = 0; cx < c.inner.w; ++cx) {
+      const int x0 = (int)((long long)cx * img.w / c.inner.w);
+      const int x1 = (int)((long long)(cx + 1) * img.w / c.inner.w);
+      const int y0 = (int)((long long)cy * img.h / c.inner.h);
+      const int y1 = (int)((long long)(cy + 1) * img.h / c.inner.h);
+      long long r = 0, g = 0, b = 0, n = 0;
+      for (int y = y0; y < (y1 > y0 ? y1 : y0 + 1) && y < img.h; ++y)
+        for (int x = x0; x < (x1 > x0 ? x1 : x0 + 1) && x < img.w; ++x) {
+          const std::size_t at = ((std::size_t)y * img.w + x) * 3;
+          r += img.rgb[at];
+          g += img.rgb[at + 1];
+          b += img.rgb[at + 2];
+          ++n;
+        }
+      if (n == 0) continue;
+      r /= n; g /= n; b /= n;
+      // Rec. 601 luma, which is what a person means by "how dark is this".
+      const int luma = (int)((299 * r + 587 * g + 114 * b) / 1000);
+      Ink ink;
+      ink.ramp = ramp % 2;
+      // DARKEST pixel gets the DENSEST glyph: the ramp runs light to dark, and a picture drawn
+      // the other way up reads as its own negative.
+      ink.level = (255 - luma) * (steps - 1) / 255;
+      ink.color = RolltuiStyleColor::rgb((unsigned char)r, (unsigned char)g, (unsigned char)b);
+      if (ink.level > 0) c.pixels[{c.inner.x + cx, c.inner.y + cy}] = ink;
+    }
+  }
+}
+
 struct CanvasFactoryCtx {
   const Tool* tool;
   RolltuiWindows* windows;
@@ -620,6 +765,21 @@ struct App {
     rolltui_window_stack_push_popup(stack, layout, id.data(), id.size());
   }
 
+  // A PICTURE IS A DRAWING SOMEBODY ELSE MADE, so it lands as ordinary ink: the same cells a
+  // stroke sets, in the same ramp, which is why a loaded picture can be painted over and cleared
+  // like anything else. A failure is SAID rather than swallowed — a sheet that stays blank with
+  // no reason given is the wrong answer wearing a success.
+  std::string picture_note;
+  void open_picture(const std::string& path) {
+    Canvas* c = canvas();
+    if (!c) { picture_note = "no sheet to open it into"; return; }
+    Image img;
+    const std::string why = load_png(path, img);
+    if (!why.empty()) { picture_note = why; return; }
+    fit_image_into(img, *c, tool.ramp);
+    picture_note = "opened " + path + " (" + std::to_string(img.w) + "x" + std::to_string(img.h) + ")";
+  }
+
   void handle(const RolltuiEvent& e) {
     // The app's own scope first, so a global chord works wherever the focus is. ANY `app.<id>`
     // naming a popup this screen declares opens it: a panel is a layout entry and a chord, and
@@ -659,6 +819,7 @@ struct App {
         const std::string v = str_of(ev.value);
         if (view_of(ev.id) == "size") tool.size = std::atoi(v.c_str());
         if (view_of(ev.id) == "ink") rolltui_color_parse(v.data(), v.size(), &tool.color);
+        if (view_of(ev.id) == "open") open_picture(v);
       }
       if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "clear" && canvas()) canvas()->pixels.clear();
       rolltui_menu_event_release(&ev);
@@ -766,7 +927,7 @@ int usage() {
 #ifdef ROLLTUI_SELFTEST
                "                     [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
                "                     [--frame WxH] [--present truecolor|256|16|mono]\n"
-               "                     [--keys \"F4 Down Enter Type:name Click 5,3\"]\n"
+               "                     [--keys \"F4 Down Enter Type:name Click 5,3\"] [--open PICTURE.png]\n"
                "                     [--ramp ascii|blocks] [--ink #rrggbb] [--size N] [--shape square|round]\n"
                "                     [--stroke X,Y-X,Y] [--drag X,Y-X,Y] [--dot X,Y]\n"
                "                     --stroke presses, drags ONCE to the far end and releases;\n"
@@ -846,7 +1007,7 @@ RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec;
+  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec, open_path;
   bool ambiguous = false;
   // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
   // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
@@ -862,6 +1023,7 @@ int main(int argc, char** argv) {
     else if (a == "--theme") theme_arg = next();
     else if (a == "--frame") frame_spec = next();
     else if (a == "--keys") keys_spec = next();
+    else if (a == "--open") open_path = next();
     else if (a == "--present") present_depth = next();
     else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||
              a == "--shape" || a == "--dot")
@@ -951,6 +1113,11 @@ int main(int argc, char** argv) {
     app.prepare();
     // The shared script FIRST, so a chord that opens a panel is in force before the tool flags
     // paint a picture into whatever is on top.
+    // `--open` before the tool script, so a picture can be painted over the way a person would.
+    if (!open_path.empty()) {
+      app.open_picture(open_path);
+      std::fprintf(stderr, "%s\n", app.picture_note.c_str());
+    }
     if (!keys_spec.empty()) {
       for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
         if (!st.tick) app.handle(st.ev);

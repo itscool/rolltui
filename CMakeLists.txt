@@ -363,11 +363,14 @@ target_compile_definitions(rolltui-studio-selftest PRIVATE ROLLTUI_SHIPPED_DIR="
 # synthesises a press, the drags between and a release, so a canvas can be shown to
 # receive them with no terminal.
 add_executable(rolltui-paint examples/paint.cpp)
-target_link_libraries(rolltui-paint PRIVATE rolltui)
+# zlib is a SYSTEM library on every platform this builds on, so the PNG decoder needs nothing
+# vendored and raises no licence question. PNG is a documented format; the decoder is ours.
+find_package(ZLIB REQUIRED)
+target_link_libraries(rolltui-paint PRIVATE rolltui ZLIB::ZLIB)
 
 # The SELF-TEST build: the same source plus its scripted strokes and headless frame.
 add_executable(rolltui-paint-selftest examples/paint.cpp)
-target_link_libraries(rolltui-paint-selftest PRIVATE rolltui)
+target_link_libraries(rolltui-paint-selftest PRIVATE rolltui ZLIB::ZLIB)
 target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE -Wall -Wextra)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
@@ -467,7 +470,8 @@ target_compile_definitions(rolltui-authored-screen-test PRIVATE
   ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>"
   ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
   ROLLTUI_PAINT_BIN="$<TARGET_FILE:rolltui-paint-selftest>"
-  ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>")
+  ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
+  ROLLTUI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
 
 # the explorer's golden frames and its files-only control — the screen's own
