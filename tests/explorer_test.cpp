@@ -90,6 +90,19 @@ int main() {
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
   const std::string base = bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
 
+  // ---- 0. THE LIBRARY'S EDITORS ARE THIS APP'S TOO -----------------------------------------
+  // A kind is the library's; a STORE is what makes it an app's. Before this app opened one, the
+  // theme and keys editors existed and had nothing to edit here — "built into any rolltui app"
+  // was true of the library and false of every app but two.
+  {
+    int erc = 0;
+    const std::string th = run(bin + " '" + tree.string() + "' --frame 80x14 --keys \"F4\" 2>&1", erc);
+    check(has(th, "theme editor") && has(th, "Roles"), "F4 opens the theme editor in the explorer");
+    const std::string ke = run(bin + " '" + tree.string() + "' --frame 80x14 --keys \"F5\" 2>&1", erc);
+    check(has(ke, "keys editor") && has(ke, "Actions by scope"), "F5 opens the keys editor in the explorer");
+    check(!has(th, "keys editor") && !has(ke, "theme editor"), "…and each chord opens its own, not the other");
+  }
+
   // ---- 0a. THE PRODUCT BINARY CANNOT TEST ITSELF -------------------------------------------
   // Additive, not compiled out: rolltui-explorer-selftest is this same source plus the script
   // vocabulary, and the shipped binary simply does not contain it. Asserted on the ARTIFACT

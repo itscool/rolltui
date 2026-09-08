@@ -1,5 +1,8 @@
 {
-  "name": "explorer", "min_width": 24, "min_height": 6, "focus": "columns",
+  "name": "explorer",
+  "min_width": 24,
+  "min_height": 6,
+  "focus": "columns",
   "actions": {
     "app.details": "show what is known about the selected entry",
     "app.jump": "type a path and go to it",
@@ -14,18 +17,104 @@
     "browser.first": "select the first entry",
     "browser.last": "select the last entry",
     "browser.page_up": "a screenful up",
-    "browser.page_down": "a screenful down"
+    "browser.page_down": "a screenful down",
+    "app.theme": "Edit the theme",
+    "app.keys": "Edit the keys"
   },
-  "root": { "column": [
-    { "id": "columns", "content": "browser:tree", "border": "single", "title": "columns", "focusable": true },
-    { "id": "where", "content": "input:path", "size": 3, "border": "single", "title": "go to", "focusable": true } ] },
+  "root": {
+    "column": [
+      {
+        "id": "columns",
+        "content": "browser:tree",
+        "border": "single",
+        "title": "columns",
+        "focusable": true
+      },
+      {
+        "id": "where",
+        "content": "input:path",
+        "size": 3,
+        "border": "single",
+        "title": "go to",
+        "focusable": true
+      }
+    ]
+  },
   "popups": [
-    { "id": "details", "x": "50%", "y": "50%", "w": "60%", "h": 11, "anchor": "center",
-      "min_w": 28, "max_w": 76, "modal": true,
-      "root": { "id": "details", "content": "rows:entry", "border": "rounded", "title": "entry",
-                "focusable": true, "background": "panel_background" } },
-    { "id": "help", "x": "50%", "y": "50%", "w": "60%", "h": 12, "anchor": "center",
-      "min_w": 24, "max_w": 72, "modal": true,
-      "root": { "content": "help", "border": "rounded", "title": "keys", "focusable": true,
-                "background": "panel_background" } } ]
+    {
+      "id": "details",
+      "x": "50%",
+      "y": "50%",
+      "w": "60%",
+      "h": 11,
+      "anchor": "center",
+      "min_w": 28,
+      "max_w": 76,
+      "modal": true,
+      "root": {
+        "id": "details",
+        "content": "rows:entry",
+        "border": "rounded",
+        "title": "entry",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "help",
+      "x": "50%",
+      "y": "50%",
+      "w": "60%",
+      "h": 12,
+      "anchor": "center",
+      "min_w": 24,
+      "max_w": 72,
+      "modal": true,
+      "root": {
+        "content": "help",
+        "border": "rounded",
+        "title": "keys",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "theme",
+      "x": "50%",
+      "y": "50%",
+      "w": "60%",
+      "h": 11,
+      "anchor": "center",
+      "min_w": 28,
+      "max_w": 76,
+      "modal": true,
+      "root": {
+        "id": "theme",
+        "content": "theme",
+        "border": "rounded",
+        "title": "theme",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "keys",
+      "x": "50%",
+      "y": "50%",
+      "w": "60%",
+      "h": 11,
+      "anchor": "center",
+      "min_w": 28,
+      "max_w": 76,
+      "modal": true,
+      "root": {
+        "id": "keys",
+        "content": "keys",
+        "border": "rounded",
+        "title": "keys",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    }
+  ]
 }

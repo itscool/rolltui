@@ -552,6 +552,12 @@ struct App {
   RolltuiWindowStack* stack = rolltui_window_stack_new();
   RolltuiComposeScratch* compose_scratch = rolltui_compose_scratch_new();
   RolltuiLayout* layout = nullptr;  // OWNED (Phase 23: a layout is a handle)
+  // OWNED: the user's own theme and key presets. An app that cannot change how it looks is an
+  // app the library's editors have nothing to edit — the kinds are the library's, the STORE is
+  // what makes them this app's.
+  RolltuiPresetStore* theme_store = nullptr;
+  RolltuiPresetStore* keys_store = nullptr;
+  unsigned long long theme_seen = 0;
   Options opt;
   BrowserFactoryCtx factory_ctx{};
   std::string root;
@@ -570,6 +576,8 @@ struct App {
   App(const App&) = delete;
   App& operator=(const App&) = delete;
   ~App() {
+    rolltui_preset_store_free(keys_store);
+    rolltui_preset_store_free(theme_store);
     rolltui_rows_release(&status_rows);
     rolltui_layout_free(layout);
     rolltui_compose_scratch_free(compose_scratch);
@@ -588,6 +596,34 @@ struct App {
   void set_theme(const char* name) {
     rolltui_effect_map_free(effects);
     effects = rolltui_theme_builtin_fill(name, std::strlen(name), styles, ROLLTUI_ROLE_COUNT);
+  }
+
+  // The look comes from the STORE once there is one, so an edit made in the theme editor is what
+  // the next frame draws. Falls back to the built-in when the store has nothing loadable, which
+  // is what keeps a broken preset directory from being a blank screen.
+  void sync_theme() {
+    if (!theme_store) return;
+    RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(theme_store);
+    if (!w) return;
+    RolltuiThemeReport rep{};
+    RolltuiStyle got[ROLLTUI_ROLE_COUNT]{};
+    RolltuiStr name{};
+    // "auto" is not a mode, so it resolves to dark here; a terminal probe would do better and
+    // this app does not have one yet.
+    const int named = rolltui_theme_mode_from_name(w->mode.p ? w->mode.p : "", w->mode.n);
+    const int mode = named >= 0 ? named : ROLLTUI_MODE_DARK;
+    RolltuiEffectMap* eff = rolltui_theme_load(w->colours, mode, rolltui_theme_default_vocab(), got, &name, &rep);
+    if (eff) {
+      std::copy(std::begin(got), std::end(got), styles);
+      rolltui_effect_map_free(effects);
+      effects = eff;
+      RolltuiScrollbarGlyphs g;
+      rolltui_theme_scrollbar_glyphs(w->colours, &g);
+      rolltui_context_set_scrollbar_glyphs(ctx, &g);
+    }
+    rolltui_str_free(&name);
+    rolltui_theme_report_release(&rep);
+    rolltui_preset_store_value_free(theme_store, w);
   }
 
   // the kind table belongs to a CONTEXT, so this registers into this app's session.
@@ -709,6 +745,13 @@ struct App {
   }
 
   void prepare() {
+    // RE-RESOLVE ONLY WHEN THE STORE MOVED. An edit made in the theme editor bumps the store's
+    // version, and a frame that draws the old styles would make the editor look broken. A
+    // version compare rather than a deep one, so an unchanged frame costs nothing.
+    if (theme_store) {
+      const unsigned long long v = rolltui_preset_store_version(theme_store);
+      if (v != theme_seen) { theme_seen = v; sync_theme(); }
+    }
     const RolltuiWidgetEnv env{0, 0};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
@@ -741,8 +784,12 @@ struct App {
       rolltui_window_stack_focus(stack, "where", 5);
       hint = "type a path";
     }
-    else if (action == "app.details") toggle_popup("details");
-    else if (action == "app.help") toggle_popup("help");
+    // ANY `app.<id>` NAMING A POPUP THIS SCREEN DECLARES OPENS IT. `details` and `help` were
+    // hand-written and `theme` and `keys` would each have been another line; a screen gains a
+    // panel by adding one to its layout and one chord, and this app gains nothing.
+    else if (action.rfind("app.", 0) == 0 &&
+             rolltui_layout_popup(layout, action.data() + 4, action.size() - 4) != nullptr)
+      toggle_popup(std::string(action.substr(4)).c_str());
     else if (action == "app.hidden") { opt.hidden = !opt.hidden; if (b) b->reload(); hint = opt.hidden ? "dotfiles shown" : "dotfiles hidden"; }
     else if (action == "app.sort") {
       opt.sort = opt.sort == Sort::Name ? Sort::Size : opt.sort == Sort::Size ? Sort::Modified : Sort::Name;
@@ -825,6 +872,15 @@ extern const RolltuiEmbeddedFile explorer_kAppFiles[];
 extern const size_t explorer_kAppFileCount;
 }
 
+// Where a person's own presets live, the same three rungs `rolltui_app_file` walks for an app's
+// own files: an explicit configuration directory, then the XDG one, then the home default.
+std::string user_presets_dir() {
+  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return std::string(d) + "/rolltui";
+  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return std::string(x) + "/roll/rolltui";
+  const char* home = std::getenv("HOME");
+  return std::string(home && *home ? home : ".") + "/.config/roll/rolltui";
+}
+
 RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
@@ -879,6 +935,32 @@ int main(int argc, char** argv) {
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");
   rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
+
+  // THE STORES, and the two lines that make the library's editors this app's. A kind is the
+  // library's; what it edits is whatever store the host hands over, so an app with no store gets
+  // an editor with nowhere to commit. Opened on the same directory the context resolves presets
+  // through, so what the editors write is what the next start reads.
+  {
+    // The STORES read a person's own directory whether or not one was named on the command line —
+    // an explicit `--presets` points the SCREEN somewhere, and where a person's presets live is a
+    // separate question with its own answer.
+    const std::string store_dir = presets_dir.empty() ? user_presets_dir() : presets_dir;
+    RolltuiPresetDomain* td = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_THEME);
+    RolltuiPresetDomain* bd = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_BINDINGS);
+    RolltuiThemePresetReport trep{};
+    RolltuiBindingsPresetReport brep{};
+    app.theme_store = rolltui_preset_store_new(td, store_dir.data(), store_dir.size(), 0, "", 0);
+    app.keys_store = rolltui_preset_store_new(bd, store_dir.data(), store_dir.size(), 0, "", 0);
+    // A report is REQUIRED, not optional: a store that cannot say what it did on start would make
+    // a missing preset directory look like a successful one.
+    rolltui_preset_store_start(app.theme_store, &trep);
+    rolltui_preset_store_start(app.keys_store, &brep);
+    rolltui_theme_preset_report_release(&trep);
+    rolltui_bindings_preset_report_release(&brep);
+    rolltui_windows_set_theme_store(app.windows, "theme", 5, app.theme_store, /*persist=*/1);
+    rolltui_windows_set_bindings_store(app.windows, "keys", 4, app.keys_store, /*persist=*/1);
+    app.sync_theme();
+  }
 
   {
     char cwd[4096];

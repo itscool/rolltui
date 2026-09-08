@@ -1,19 +1,57 @@
 {
   "name": "explorer",
   "bindings": {
-    "browser.up": ["up", "ctrl+p"],
-    "browser.down": ["down", "ctrl+n"],
-    "browser.out": ["left", "backspace"],
-    "browser.into": ["right", "enter"],
-    "browser.first": ["home"],
-    "browser.last": ["end"],
-    "browser.page_up": ["pageup"],
-    "browser.page_down": ["pagedown"],
-    "app.details": ["ctrl+d"],
-    "app.jump": ["ctrl+g"],
-    "app.hidden": ["alt+h"],
-    "app.sort": ["ctrl+s"],
-    "app.help": ["f1"],
-    "app.quit": ["ctrl+q"]
+    "browser.up": [
+      "up",
+      "ctrl+p"
+    ],
+    "browser.down": [
+      "down",
+      "ctrl+n"
+    ],
+    "browser.out": [
+      "left",
+      "backspace"
+    ],
+    "browser.into": [
+      "right",
+      "enter"
+    ],
+    "browser.first": [
+      "home"
+    ],
+    "browser.last": [
+      "end"
+    ],
+    "browser.page_up": [
+      "pageup"
+    ],
+    "browser.page_down": [
+      "pagedown"
+    ],
+    "app.details": [
+      "ctrl+d"
+    ],
+    "app.theme": [
+      "f4"
+    ],
+    "app.keys": [
+      "f5"
+    ],
+    "app.jump": [
+      "ctrl+g"
+    ],
+    "app.hidden": [
+      "alt+h"
+    ],
+    "app.sort": [
+      "ctrl+s"
+    ],
+    "app.help": [
+      "f1"
+    ],
+    "app.quit": [
+      "ctrl+q"
+    ]
   }
 }
