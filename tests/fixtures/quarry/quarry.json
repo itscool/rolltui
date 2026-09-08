@@ -1,0 +1,7 @@
+{
+  "name": "quarry", "min_width": 20, "min_height": 6, "focus": "pick",
+  "actions": { "app.pick": "Choose a file" },
+  "root": { "row": [
+    { "id": "pick", "content": "filepicker", "border": "single", "title": "pick", "focusable": true },
+    { "id": "note", "content": "text:choose one", "size": 22, "border": "single", "title": "note" } ] }
+}

@@ -521,7 +521,7 @@ int main() {
       for (int i = 0; i < 14; ++i) handle(e, key(ROLLTUI_KEY_BACKSPACE));
       type(e, name);
     };
-    check(kind_hint(te) == "this tool previews: transcript | input | menu | rows | text | file | help | theme | keys",
+    check(kind_hint(te) == "this tool previews: transcript | input | menu | rows | text | file | help | theme | keys | filepicker",
           "told nothing about a target, the HINT is this binary's own table [" + kind_hint(te) + "]");
     // A host that has registered kinds of its own says so, and the hint grows — it is a list of
     // what can be PREVIEWED here, never a list of what may be named.

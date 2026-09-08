@@ -4,6 +4,7 @@
  * calling only the C engines (`rolltui_input.h`, `rolltui_transcript.h`, `rolltui_menu.h`,
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
  * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
+#include "rolltui/c/rolltui_files.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 
 #include <stdio.h>
@@ -877,6 +878,179 @@ static RolltuiWidget menu_widget_factory(void* c, RolltuiWindows* w, const char*
 static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 
+/* ---- `filepicker`: choosing a path -----------------------------------------------------------
+ *
+ * A picker is a LIST, not a tree: one directory at a time, `..` to leave it, Enter to go in or to
+ * take. That is deliberately less than a browser — a browser is for looking, and a picker is for
+ * one answer, so the columns, the metadata and the sorting a browser earns would be in the way.
+ * Both read a directory through `rolltui_dir_read`, which is where the sharing belongs.
+ *
+ * The ANSWER is polled rather than pushed: a host asks `rolltui_windows_picker_taken` on the frame
+ * after it opened the panel, which is where it already asks a preset store for its version. A
+ * callback would need a host to keep one alive across a screen swap for a widget it may not own.
+ */
+typedef struct RolltuiPickerCtx {
+  RolltuiWindows* w;      /* BORROWED */
+  RolltuiDrawScratch* draw;
+  RolltuiUnicodeScratch* u;
+  RolltuiStr dir;         /* where it is looking */
+  RolltuiDirList list;
+  RolltuiStr err;         /* why the directory could not be read, if it could not */
+  RolltuiStr taken;       /* the chosen path, until a host collects it */
+  int has_taken;
+  int sel, top;
+  RolltuiRect area;
+  RolltuiBuiltinRoles roles;
+} RolltuiPickerCtx;
+
+static void picker_reload(RolltuiPickerCtx* p) {
+  rolltui_dir_read(p->dir.p ? p->dir.p : ".", p->dir.n, ROLLTUI_SORT_NAME, 0, &p->list, &p->err);
+  p->sel = 0;
+  p->top = 0;
+}
+
+static void picker_set_dir(RolltuiPickerCtx* p, const char* d, size_t n) {
+  while (n > 1 && d[n - 1] == '/') --n; /* a trailing slash makes ".." climb nowhere */
+  rolltui_str_set(&p->dir, d, n);
+  picker_reload(p);
+}
+
+static void picker_ctx_destroy(void* ctx) {
+  RolltuiPickerCtx* p = (RolltuiPickerCtx*)ctx;
+  rolltui_dir_list_release(&p->list);
+  rolltui_str_free(&p->dir);
+  rolltui_str_free(&p->err);
+  rolltui_str_free(&p->taken);
+  rolltui_draw_scratch_free(p->draw);
+  rolltui_u_scratch_free(p->u);
+  rolltui_mem_free(p);
+}
+
+static void picker_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  rolltui_content_rect(rn, &((RolltuiPickerCtx*)ctx)->area);
+}
+
+static void picker_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiPickerCtx* p = (RolltuiPickerCtx*)ctx;
+  const RolltuiStyle* styles = rolltui_windows_styles(p->w);
+  const RolltuiWidgetEnv* env = rolltui_windows_env(p->w);
+  RolltuiRect r;
+  int y, i;
+  rolltui_content_rect(rn, &r);
+  p->area = r;
+  if (r.w <= 0 || r.h <= 0) return;
+  /* WHERE IT IS LOOKING, always, on the first row. A picker that shows only names asks a person
+   * to choose a file without saying which directory they are in. */
+  rolltui_frame_put_text(f, p->draw, r.x, r.y, p->dir.p ? p->dir.p : "", p->dir.n,
+                         styles[p->roles.text_muted], r.w, env->ambiguous_wide, 0);
+  if (p->err.n) {
+    rolltui_frame_put_text(f, p->draw, r.x, r.y + 1, p->err.p, p->err.n, styles[ROLLTUI_ROLE_ERROR], r.w,
+                           env->ambiguous_wide, 0);
+    return;
+  }
+  y = r.y + 1;
+  /* `..` is a row rather than a key nobody was told about. */
+  if (y < r.y + r.h) {
+    const int on = p->sel == 0;
+    rolltui_frame_put_text(f, p->draw, r.x, y++, "..", 2,
+                           styles[on ? p->roles.input_selection : p->roles.text], r.w, env->ambiguous_wide, 0);
+  }
+  for (i = p->top; i < (int)p->list.n && y < r.y + r.h; ++i, ++y) {
+    const RolltuiDirEntry* e = &p->list.v[i];
+    const int on = p->sel == i + 1;
+    /* A trailing separator is how a directory says so without a second column. */
+    rolltui_frame_put_text(f, p->draw, r.x, y, e->name.p ? e->name.p : "", e->name.n,
+                           styles[on ? p->roles.input_selection : p->roles.text], r.w, env->ambiguous_wide, 0);
+    if (e->is_dir)
+      rolltui_frame_put_text(f, p->draw, r.x + (int)e->name.n, y, "/", 1,
+                             styles[on ? p->roles.input_selection : p->roles.text_muted], 1, env->ambiguous_wide, 0);
+  }
+}
+
+static void picker_join(const RolltuiStr* dir, const RolltuiStr* name, RolltuiStr* out) {
+  rolltui_str_set(out, dir->p ? dir->p : "", dir->n);
+  if (!(dir->n == 1 && dir->p && dir->p[0] == '/')) rolltui_str_append(out, "/", 1);
+  rolltui_str_append(out, name->p ? name->p : "", name->n);
+}
+
+static int picker_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiPickerCtx* p = (RolltuiPickerCtx*)ctx;
+  const int rows = (int)p->list.n + 1;
+  if (e->kind != ROLLTUI_EVENT_KEY) return 0;
+  if (e->key.key == ROLLTUI_KEY_DOWN) { if (p->sel + 1 < rows) ++p->sel; return 1; }
+  if (e->key.key == ROLLTUI_KEY_UP) { if (p->sel > 0) --p->sel; return 1; }
+  if (e->key.key == ROLLTUI_KEY_ENTER) {
+    if (p->sel == 0) {
+      /* Out. The parent of "/" is "/", so climbing past the root stays put rather than emptying. */
+      size_t n = p->dir.n;
+      while (n > 1 && p->dir.p[n - 1] != '/') --n;
+      while (n > 1 && p->dir.p[n - 1] == '/') --n;
+      picker_set_dir(p, p->dir.p, n ? n : 1);
+      return 1;
+    }
+    {
+      const RolltuiDirEntry* sel = &p->list.v[p->sel - 1];
+      RolltuiStr full = {0};
+      picker_join(&p->dir, &sel->name, &full);
+      if (sel->is_dir) {
+        picker_set_dir(p, full.p, full.n);
+      } else {
+        /* THE ANSWER, held until a host collects it. */
+        rolltui_str_set(&p->taken, full.p, full.n);
+        p->has_taken = 1;
+      }
+      rolltui_str_free(&full);
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static const RolltuiWidgetPlugin kPickerPlugin = {
+    picker_ctx_destroy, picker_ctx_layout, picker_ctx_draw, NULL, NULL,
+    NULL,               picker_ctx_handle, NULL,            NULL,
+};
+
+static RolltuiWidget picker_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  RolltuiPickerCtx* p;
+  RolltuiWidget out;
+  (void)c;
+  (void)content;
+  (void)n;
+  memset(&out, 0, sizeof out);
+  p = (RolltuiPickerCtx*)rolltui_mem_alloc(sizeof *p);
+  memset(p, 0, sizeof *p);
+  p->w = w;
+  p->draw = rolltui_draw_scratch_new();
+  p->u = rolltui_u_scratch_new();
+  p->roles = *rolltui_windows_builtin_roles(w);
+  picker_set_dir(p, ".", 1);
+  out.vt = &kPickerPlugin;
+  out.ctx = p;
+  return out;
+}
+
+static RolltuiPickerCtx* picker_ctx_for(RolltuiWindows* w, const char* content, size_t len) {
+  RolltuiWidget* widget = rolltui_windows_widget_for(w, content, len);
+  if (!widget || widget->vt != &kPickerPlugin) return NULL;
+  return (RolltuiPickerCtx*)widget->ctx;
+}
+
+void rolltui_windows_set_picker_dir(RolltuiWindows* w, const char* content, size_t len, const char* dir,
+                                    size_t dir_len) {
+  RolltuiPickerCtx* p = picker_ctx_for(w, content, len);
+  if (!p) return;
+  picker_set_dir(p, dir && dir_len ? dir : ".", dir && dir_len ? dir_len : 1);
+}
+
+int rolltui_windows_picker_taken(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* out) {
+  RolltuiPickerCtx* p = picker_ctx_for(w, content, len);
+  if (!p || !p->has_taken) return 0;
+  if (out) rolltui_str_set(out, p->taken.p ? p->taken.p : "", p->taken.n);
+  p->has_taken = 0; /* collected once: a host that asks every frame must not act twice */
+  return 1;
+}
+
 void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   /* THE LIBRARY'S OWN KINDS REGISTER WITH A NULL CTX, and that is the split working rather than
    * a shortcut: these factories need the SCREEN, which they are handed as `w`, and they need
@@ -890,6 +1064,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "menu", 4, menu_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "theme", 5, theme_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "keys", 4, keys_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "filepicker", 10, picker_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }

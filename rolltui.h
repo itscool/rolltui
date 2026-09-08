@@ -4487,6 +4487,22 @@ int rolltui_window_stack_has_popup(const RolltuiWindowStack* s, const char* id, 
 int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout* layout,
                                       const char* action, size_t len);
 
+/* ---- `filepicker`: the two calls a host makes ---------------------------------------------
+ * A picker is a LIST, not a tree: one directory at a time, `..` to leave, Enter to go in or to
+ * take. Deliberately less than a browser, because a browser is for looking and a picker is for
+ * one answer. Both read a directory the same way, which is where the sharing belongs.
+ *
+ * Where it starts. A picker with nowhere to start looks at the working directory, which is
+ * almost never where a person means. */
+void rolltui_windows_set_picker_dir(RolltuiWindows* w, const char* content, size_t len, const char* dir,
+                                    size_t dir_len);
+
+/* The answer, POLLED. 1 exactly once per choice, filling `out` with the chosen path; 0 otherwise.
+ * A host asks on the frame after it opened the panel, which is where it already asks a preset
+ * store for its version. Collected once on purpose: a host that asks every frame must not act on
+ * one choice twice. */
+int rolltui_windows_picker_taken(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* out);
+
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
 
 void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t len);

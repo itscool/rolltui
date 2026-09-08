@@ -1350,7 +1350,7 @@ int main() {
                 ROLLTUI_REGISTER_IS_LIBRARY,
             std::string("…and a host is REFUSED when it tries to shadow ") + n);
     }
-    check(lib == 9 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has nine kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
+    check(lib == 10 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has ten kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
     for (std::size_t i = 0; i < lib; ++i) {
       int rung = ROLLTUI_KIND_UNKNOWN;
       check(widget_kind_row_c(widget_kind_name_c(i), &rung) == i && rung == ROLLTUI_KIND_LIBRARY,
@@ -1364,10 +1364,12 @@ int main() {
       bool shapes = true;
       for (std::size_t i = 0; i < lib; ++i) {
         const std::string_view n = widget_kind_name_c(i);
-        const bool text = n == "text" || n == "file";
+        // A PATH IS FREE TEXT: `file` reads one and `filepicker` opens in one, so neither can
+        // be a bound name. Everything else names something the host bound.
+        const bool text = n == "text" || n == "file" || n == "filepicker";
         shapes = shapes && rolltui_widget_kind_source_shape(i) == (text ? ROLLTUI_SOURCE_SHAPE_TEXT : ROLLTUI_SOURCE_SHAPE_NAME);
       }
-      check(shapes, "text and file take free text (a literal, a path); every other library kind's source is a Name");
+      check(shapes, "text, file and filepicker take free text (a literal, a path, a directory); every other library kind's source is a Name");
       check(widget_kind_name_c(lib + 500).empty() && rolltui_widget_kind_rule(test_ctx(), lib + 500) == ROLLTUI_SOURCE_REQUIRED &&
                 rolltui_widget_kind_source_shape(lib + 500) == ROLLTUI_SOURCE_SHAPE_NAME &&
                 std::string_view(rolltui_widget_kind_source_is(test_ctx(), lib + 500, nullptr)).empty(),

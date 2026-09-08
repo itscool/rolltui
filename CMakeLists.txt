@@ -262,7 +262,7 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_O
 set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c explorer_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
-  keys_kind_test.cpp
+  keys_kind_test.cpp picker_kind_test.cpp
   public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
@@ -302,6 +302,8 @@ set_tests_properties(rolltui-deliverability-test PROPERTIES TIMEOUT 60)
 # layout loader and the four built-ins, border joining, the stack's focus routing.
 add_rolltui_test(rolltui-layout-test tests/layout_test.cpp)
 add_rolltui_test(rolltui-files-test tests/files_test.cpp)
+add_rolltui_test(rolltui-picker-kind-test tests/picker_kind_test.cpp)
+target_compile_definitions(rolltui-picker-kind-test PRIVATE ROLLTUI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 
 # THE GAP REPORT — what a screen NAMES that an app does not PROVIDE, reported to
 # the app's own DEVELOPER and never fatal. Its sharpest assertion is the one `rolltui_windows_sync`

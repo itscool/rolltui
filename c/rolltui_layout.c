@@ -661,6 +661,9 @@ static const KindRow kKinds[] = {
      * editor draws with nowhere to commit and says so. */
     {"theme", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
     {"keys", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
+    /* OPTIONAL and a PATH: where a picker starts is the one thing a screen can usefully say about
+     * it, and a screen that says nothing gets the host's answer instead. */
+    {"filepicker", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_TEXT, "the directory it opens in"},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 
