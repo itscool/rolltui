@@ -22,9 +22,9 @@
 │ │ lines)     │            │             │ │ │ lines)     │          │ Menu file:                                     │
 │ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ Size (Alt+arrows nudge): fill                  │
 │ │ (roles →   │            │ header      │ │ │ (roles →   │          │ [x] Focusable                                  │
-│ │ styles,    │            │             │ │ │ styles,    │          │ Tree                                         ▸ │
-│ │ JSON       │            │             │ │ │ JSON       │          │ This screen                                  ▸ │
-│ │ loader,    │            │             │ │ │ loader,    │          │ Layout file                                  ▸ │
+│ │ styles,    │            │             │ │ │ styles,    │          │ Tree — split, swap, delete                   ▸ │
+│ │ JSON       │            │             │ │ │ JSON       │          │ This screen — sizes, focus, popups, actions  ▸ │
+│ │ loader,    │            │             │ │ │ loader,    │          │ Layout file — new, load, save                ▸ │
 │ │ built-ins) │            │             │ │ │ built-ins) │          │ Undo                                    Ctrl-Z │
 │ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│ Redo                                    Ctrl-Y │
 │                                           │                         │                                                │
@@ -33,7 +33,7 @@
 │ ┌ cpp ──────────────────────────────────┐ ┃ ┌ cpp ──────────────────│                                                │
 │ │ int add(int a, int b) {               │ ┃ │ int add(int a, int b) │                                                │
 │ │   return a + b;                       │ ┃ │   return a + b;       │ selected: transcript  size fill  border single │
-│ └───────────────────────────────────────┘ ╹ └───────────────────────│ Tab next node · click selects · drag an edge r │
+│ └───────────────────────────────────────┘ ╹ └───────────────────────│ Tab · click · drag an edge · Alt+arrows        │
 ├───────────────────────────────────────────┴─────────────────────────│ split transcript side by side · undo 1 · redo  │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

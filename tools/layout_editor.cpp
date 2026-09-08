@@ -453,9 +453,13 @@ void LayoutEditor::rebuild_menu() {
   top.push_back(MenuItem::input("menu_file", "Menu file", name.clone()));
   top.push_back(MenuItem::input("size", "Size (Alt+arrows nudge)", size.clone()));
   top.push_back(MenuItem::toggle("focusable", "Focusable", false));
-  top.push_back(submenu_of("tree", "Tree", std::move(tree)));
-  top.push_back(submenu_of("screen", "This screen", std::move(screen)));
-  top.push_back(submenu_of("file", "Layout file", std::move(file)));
+  // A LABEL SAYS WHAT IS BEHIND IT. `Tree`, `This screen` and `Layout file` name categories, and
+  // a category tells someone who already knows the answer nothing they needed and someone who
+  // does not nothing at all — `New layout` lived behind the last of them, eleven rows down, with
+  // no way to guess it was there.
+  top.push_back(submenu_of("tree", "Tree — split, swap, delete", std::move(tree)));
+  top.push_back(submenu_of("screen", "This screen — sizes, focus, popups, actions", std::move(screen)));
+  top.push_back(submenu_of("file", "Layout file — new, load, save", std::move(file)));
   top.push_back(MenuItem::action("undo", "Undo", "Ctrl-Z"));
   top.push_back(MenuItem::action("redo", "Redo", "Ctrl-Y"));
   MenuItem root = submenu_of("root", "layout editor", std::move(top));

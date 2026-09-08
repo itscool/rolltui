@@ -11,7 +11,7 @@
 │ │ mouse mode)                      │             │                  │ popup approval                                 │
 │ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
 │ │                                  │             │ Event, table-test│ popup menu                                     │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • transcript › This screen › Act │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • transcript › This screen — siz │
 │ │ colour downgrade                 │             │ tested           │ ◂ Back                                         │
 │ │ Wrap engine                      │ build       │ single header ove│ app.help                                     ▸ │
 │ │                                  │             │ header           │ app.menu                                     ▸ │
@@ -33,7 +33,7 @@
 │ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
 │ │ int add(int a, int b) {                                           │                                                │
 │ │   return a + b;                                                   │ selected: transcript  size fill  border single │
-│ └───────────────────────────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+│ └───────────────────────────────────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
 ├─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 1 · redo 0   │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

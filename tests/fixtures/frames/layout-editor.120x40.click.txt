@@ -22,9 +22,9 @@
 │ │ filterable) + list/text widgets  │             │ set is deliberate│ Menu file:                                     │
 │ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ Size (Alt+arrows nudge): 3                     │
 │ │ placements + content slots)      │             │ parser; hot-reloa│ [x] Focusable                                  │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ Tree                                         ▸ │
-│ │ → styled wrapped lines)          │             │                  │ This screen                                  ▸ │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │ Layout file                                  ▸ │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ Tree — split, swap, delete                   ▸ │
+│ │ → styled wrapped lines)          │             │                  │ This screen — sizes, focus, popups, actions  ▸ │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │ Layout file — new, load, save                ▸ │
 │ │ loader, built-ins)               │             │                  │ Undo                                    Ctrl-Z │
 │ └──────────────────────────────────┴─────────────┴──────────────────│ Redo                                    Ctrl-Y │
 │                                                                     │                                                │
@@ -33,7 +33,7 @@
 │ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
 │ │ int add(int a, int b) {                                           │                                                │
 │ │   return a + b;                                                   │ selected: input  size 3  border single  input: │
-│ └───────────────────────────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+│ └───────────────────────────────────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
 ├─────────────────────────────────────────────────────────────────────│ previewing — Enter commits, Esc cancels · undo │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

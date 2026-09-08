@@ -15,9 +15,9 @@
 │ Menu file:                                     ││                                                                    │
 │ Size (Alt+arrows nudge): 70                    ││                                                                    │
 │ [ ] Focusable                                  ││                                                                    │
-│ Tree                                         ▸ ││                                                                    │
-│ This screen                                  ▸ ││                                                                    │
-│ Layout file                                  ▸ ││                                                                    │
+│ Tree — split, swap, delete                   ▸ ││                                                                    │
+│ This screen — sizes, focus, popups, actions  ▸ ││                                                                    │
+│ Layout file — new, load, save                ▸ ││                                                                    │
 │ Undo                                    Ctrl-Z ││                                                                    │
 │ Redo                                    Ctrl-Y ││                                                                    │
 │                                                ││                                                                    │
@@ -33,7 +33,7 @@
 │                                                │┃                                                                    │
 │                                                │┃                                                                    │
 │ selected: status  size 70  border single  rows │┃                                                                    │
-│ Tab next node · click selects · drag an edge r │╹                                                                    │
+│ Tab · click · drag an edge · Alt+arrows        │╹                                                                    │
 │ loaded wide-right · undo 1 · redo 0            │┤                                                                    │
 │                                                ││                                                                    │
 └────────────────────────────────────────────────┘┴────────────────────────────────────────────────────────────────────┘

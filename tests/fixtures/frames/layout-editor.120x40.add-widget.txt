@@ -22,9 +22,9 @@
 │ │ lines)     │            │             │ │ grapheme right          │ Menu file:                                     │
 │ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Size (Alt+arrows nudge): fill                  │
 │ │ (roles →   │            │ header      │ │ left                    │ [x] Focusable                                  │
-│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ Tree                                         ▸ │
-│ │ JSON       │            │             │ │ right                   │ This screen                                  ▸ │
-│ │ loader,    │            │             │ │   Home                  │ Layout file                                  ▸ │
+│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ Tree — split, swap, delete                   ▸ │
+│ │ JSON       │            │             │ │ right                   │ This screen — sizes, focus, popups, actions  ▸ │
+│ │ loader,    │            │             │ │   Home                  │ Layout file — new, load, save                ▸ │
 │ │ built-ins) │            │             │ │ line (scrolls when empty│ Undo                                    Ctrl-Z │
 │ └────────────┴────────────┴─────────────┘ │   End                   │ Redo                                    Ctrl-Y │
 │                                           │ (scrolls when empty)    │                                                │
@@ -33,7 +33,7 @@
 │ ┌ cpp ──────────────────────────────────┐ ┃   Down                  │                                                │
 │ │ int add(int a, int b) {               │ ┃ the next history entry  │                                                │
 │ │   return a + b;                       │ ┃   Shift-Left            │ selected: transcript-2  size fill  border sing │
-│ └───────────────────────────────────────┘ ╹ selection one grapheme l│ Tab next node · click selects · drag an edge r │
+│ └───────────────────────────────────────┘ ╹ selection one grapheme l│ Tab · click · drag an edge · Alt+arrows        │
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

@@ -22,9 +22,9 @@
 │                   │ │ filterable) + list/text widgets       │       │ Menu file:                                     │
 │                   │ │ Layout files (JSON: windows +         │ build │ Size (Alt+arrows nudge): 21                    │
 │                   │ │ placements + content slots)           │       │ [ ] Focusable                                  │
-│                   │ │ Markdown block renderer (blocks →     │ build │ Tree                                         ▸ │
-│                   │ │ styled wrapped lines)                 │       │ This screen                                  ▸ │
-│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Layout file                                  ▸ │
+│                   │ │ Markdown block renderer (blocks →     │ build │ Tree — split, swap, delete                   ▸ │
+│                   │ │ styled wrapped lines)                 │       │ This screen — sizes, focus, popups, actions  ▸ │
+│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Layout file — new, load, save                ▸ │
 │                   │ │ built-ins)                            │       │ Undo                                    Ctrl-Z │
 │                   │ └───────────────────────────────────────┴───────│ Redo                                    Ctrl-Y │
 │                   │                                                 │                                                │
@@ -33,7 +33,7 @@
 │                   │ ┌ cpp ──────────────────────────────────────────│                                                │
 │                   │ │ int add(int a, int b) {                       │                                                │
 │                   │ │   return a + b;                               │ selected: status  size 21  border single  rows │
-│                   │ └───────────────────────────────────────────────│ Tab next node · click selects · drag an edge r │
+│                   │ └───────────────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
 │                   ├─────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
 │                   │ > type here                                     │                                                │
 └───────────────────┴─────────────────────────────────────────────────└────────────────────────────────────────────────┘

@@ -1669,7 +1669,11 @@ struct App {
     // preview its content at all.
     if (const std::string line = leditor.selection_line(); !line.empty() && y < r.y + r.h)
       put_text(f, r.x, y++, line, label, r.w);
-    if (y < r.y + r.h) put_text(f, r.x, y++, "Tab next node \xC2\xB7 click selects \xC2\xB7 drag an edge resizes \xC2\xB7 Alt+arrows nudge", value, r.w);
+    // SHORT ENOUGH TO FINISH. A hint cut off mid-instruction is worse than a shorter one that
+    // ends: "drag an edge r" teaches nobody anything and looks like a defect. The panel is
+    // narrow by design, so the hint is written to the width it actually gets.
+    if (y < r.y + r.h)
+      put_text(f, r.x, y++, "Tab \xC2\xB7 click \xC2\xB7 drag an edge \xC2\xB7 Alt+arrows", value, r.w);
     if (y < r.y + r.h) { leditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h && !hint.empty()) put_text(f, r.x, y++, hint, style(ROLLTUI_ROLE_WARNING), r.w);
   }
