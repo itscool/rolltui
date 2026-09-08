@@ -9,6 +9,13 @@
  * and is handed back by `rolltui_preset_domain_release`. */
 #include "rolltui/c/rolltui_presets.h"
 
+/* THE WORD, ONCE. A working copy that differs from its origin says so in two places — the note
+ * the load report carries, and the label a status panel draws — and a second spelling is a
+ * second thing to drift. It has already drifted once: a host hand-wrote this suffix and its
+ * panel and its status line disagreed about one layout in one frame. */
+static const char kModifiedSuffix[] = " (modified)";
+#define ROLLTUI_MODIFIED_SUFFIX_LEN (sizeof kModifiedSuffix - 1)
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -674,7 +681,7 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
   buf_add(&msg, "loaded the working copy (", 25);
   buf_add(&msg, s->origin.p, s->origin.len);
   s->modified = !s->d->equal(s->working, s->origin_content);
-  if (s->modified) buf_add(&msg, " (modified)", 11);
+  if (s->modified) buf_add(&msg, kModifiedSuffix, ROLLTUI_MODIFIED_SUFFIX_LEN);
   buf_add(&msg, ")", 1);
   s->rep->add_note(report, msg.p, msg.len);
   ++s->version;
@@ -2020,7 +2027,7 @@ void rolltui_preset_store_label(const RolltuiPresetStore* s, RolltuiStr* out) {
   rolltui_str_clear(out); /* REPLACES; the buffer is kept for the next frame */
   origin = rolltui_preset_store_origin(s, &len);
   rolltui_str_append(out, origin, len);
-  if (rolltui_preset_store_modified(s)) rolltui_str_append(out, " (modified)", 11);
+  if (rolltui_preset_store_modified(s)) rolltui_str_append(out, kModifiedSuffix, ROLLTUI_MODIFIED_SUFFIX_LEN);
 }
 
 /* ============================================================================================
