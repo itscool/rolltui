@@ -1086,12 +1086,48 @@ static int handle_scrollbar(RolltuiWindows* w, const char* window, size_t len, R
   return 0;
 }
 
+/* THE WHEEL MOVES ANYTHING THAT SHOWS A SCROLLBAR, and the WINDOW does it so that no widget
+ * has to remember to. A kind that reports a scroll extent gets a bar drawn for it, and a person
+ * who can see a bar expects the wheel to move it; leaving that to each kind means a kind that
+ * forgets has a bar which looks like a control and is not one. `text`, `file` and `help` were
+ * exactly that — their shared handler took key events only and dropped every mouse event.
+ *
+ * The widget is asked FIRST, so one with better wheel behaviour of its own keeps it: the
+ * transcript scrolls by ENTRY rather than by line, which a generic line step would break. This
+ * is the floor, not the policy.
+ *
+ * Requires `scroll_to` as well as `scroll_extent`, the same rule the scrollbar track uses: a
+ * widget that only REPORTS gets an accurate bar that is not a handle, and the wheel must not
+ * pretend otherwise. */
+static int handle_wheel(RolltuiWidget* wd, const RolltuiEvent* e) {
+  RolltuiScrollExtent ex;
+  long long first, max_first;
+  int dir;
+  /* One notch, the same distance `RolltuiTranscriptOptions::wheel_lines` defaults to, so the
+   * wheel does not travel two different distances in two windows of one screen. */
+  const int lines = 3;
+  if (!wd->vt || e->kind != ROLLTUI_EVENT_MOUSE) return 0;
+  if (e->mouse.kind == 4) dir = -1;        /* wheel up scrolls toward the start */
+  else if (e->mouse.kind == 5) dir = 1;
+  else return 0;
+  if (!wd->vt->scroll_extent || !wd->vt->scroll_to) return 0;
+  if (!wd->vt->scroll_extent(wd->ctx, ROLLTUI_AXIS_VERTICAL, &ex)) return 0;
+  if (ex.total <= ex.visible) return 0; /* nothing to scroll; leave the event for someone else */
+  max_first = (long long)(ex.total - ex.visible);
+  first = (long long)ex.first + (long long)dir * lines;
+  if (first < 0) first = 0;
+  if (first > max_first) first = max_first;
+  if ((size_t)first == ex.first) return 0; /* already at that end */
+  return wd->vt->scroll_to(wd->ctx, ROLLTUI_AXIS_VERTICAL, (size_t)first);
+}
+
 int rolltui_windows_handle(RolltuiWindows* w, const char* window, size_t len, const RolltuiEvent* e) {
   RolltuiWidget* wd = rolltui_windows_at(w, window, len);
   if (!wd || !wd->vt) return 0;
   if (wd->vt->problem && wd->vt->problem(wd->ctx, &w->scratch)) return 0;
   if (handle_scrollbar(w, window, len, wd, e)) return 1;
-  return wd->vt->handle ? wd->vt->handle(wd->ctx, e) : 0;
+  if (wd->vt->handle && wd->vt->handle(wd->ctx, e)) return 1;
+  return handle_wheel(wd, e);
 }
 
 /* ---- the report's one-line form ---------------------------------------------------------- */

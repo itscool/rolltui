@@ -4,17 +4,17 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
-│ │ wrapped      │  │ settings › Theme                     │s                  │
-│ │ lines)       │  │ ◂ Back                               │uecolor            │
-│ │ Theme (roles │ b│ default                              │nu                 │
-│ │ → styles,    │  │ • default-dark                       │                   │
-│ │ JSON loader, │  │ default-light                        │                   │
-│ │ built-ins)   │  │ mono                                 │                   │
-│ └──────────────┴──│                                      │                   │
-│                   │                                      │                   │
-│ Here is the functi│                                      │                   │
-│                   │                                      │                   │
-│ ┌ cpp ────────────│                                      │                   │
+│ │ wrapped      │  │ settings › Theme                     █s                  │
+│ │ lines)       │  │ ◂ Back                               █uecolor            │
+│ │ Theme (roles │ b│ default                              █nu                 │
+│ │ → styles,    │  │ beacon                               █                   │
+│ │ JSON loader, │  │ contrast                             █                   │
+│ │ built-ins)   │  │ • default-dark                       █                   │
+│ └──────────────┴──│ default-light                        █                   │
+│                   │ ember                                █                   │
+│ Here is the functi│ harbour                              █                   │
+│                   │ ink                                  █                   │
+│ ┌ cpp ────────────│ mono                               ▼ │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │
 │ │   return a + b;                           │ █                              │
 │ └───────────────────────────────────────────┘ █                              │

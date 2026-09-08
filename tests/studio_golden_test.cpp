@@ -45,6 +45,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -1063,8 +1064,53 @@ int main(int argc, char** argv) {
       for (const auto& [keys, want] : {std::pair<const char*, const char*>{"F7", "[keys editor]"}, {"F4", "[theme editor]"}, {"F6", "[layout editor]"}})
         check(run(base + " --keys \"" + keys + "\"", rc).find(want) != std::string::npos,
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
-      check(run(base + " --keys \"F3 F3\"", rc).find("default-light") != std::string::npos,
-            "F3 still cycles the shipped themes (studio.cycle_theme), two presses on from default-dark");
+      // THE WHEEL MOVES ANYTHING THAT SHOWS A SCROLLBAR. A kind reporting a scroll extent gets a
+      // bar drawn for it, and a bar a person can see but not move is a control that lies. The
+      // window does this rather than each kind, so a kind cannot forget: `help` never handled a
+      // mouse event at all, and its bar was exactly that.
+      {
+        const std::string plain = run(base + " --keys \"F1\"", rc);
+        const std::string rolled = run(base + " --keys \"F1 WheelDown WheelDown\"", rc);
+        check(plain.find("focus:help") != std::string::npos, "the help popup opens");
+        check(rolled != plain, "…and the WHEEL scrolls it, though `help` implements no mouse handling of its own");
+        const std::string back = run(base + " --keys \"F1 WheelDown WheelDown WheelUp WheelUp\"", rc);
+        check(back == plain, "…and rolling back the same distance returns the same frame, so it is a position and not a drift");
+      }
+
+      // A CYCLE IS THE CLAIM, SO A CYCLE IS WHAT IS ASSERTED. Naming the theme two presses along
+      // tests which themes happen to ship, so adding one breaks a test about the KEY. Press it
+      // until the starting theme comes back: that is what "cycles" means, and it holds for any
+      // shipped set. The bound is a failure, not a limit — a key that never returns is not
+      // cycling.
+      {
+        auto theme_after = [&](int presses) {
+          std::string keys;
+          for (int k = 0; k < presses; ++k) keys += (k ? " F3" : "F3");
+          const std::string out = run(base + (presses ? " --keys \"" + keys + "\"" : ""), rc);
+          const std::size_t nl = out.find_last_of('\n', out.size() - 2);
+          const std::string line = nl == std::string::npos ? out : out.substr(nl + 1);
+          const std::size_t a = line.find_first_not_of(' ');
+          const std::size_t b = line.find(' ', a);
+          return a == std::string::npos ? std::string() : line.substr(a, b - a);
+        };
+        const std::string start = theme_after(0);
+        check(start == "default-dark", "the studio starts on the theme it was given [" + start + "]");
+        check(theme_after(1) != start, "F3 changes the theme (studio.cycle_theme)");
+        int closed_at = 0;
+        std::vector<std::string> seen{start};
+        for (int k = 1; k <= 24 && !closed_at; ++k) {
+          const std::string t = theme_after(k);
+          if (t == start) { closed_at = k; break; }
+          seen.push_back(t);
+        }
+        check(closed_at > 1, "…and pressing it returns to where it started, which is what cycling means (closed at " +
+                                 std::to_string(closed_at) + ")");
+        std::vector<std::string> sorted = seen;
+        std::sort(sorted.begin(), sorted.end());
+        check(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end(),
+              "…visiting each shipped theme once before it comes round, never revisiting one early (" +
+                  std::to_string(seen.size()) + " themes)");
+      }
       // The keys editor lists what the studio declares, and `app` is in it even while empty.
       // It edits the LIVE table; handing it the store's undeclared working copy instead is
       // what made the app scope unrebindable.
