@@ -9,6 +9,17 @@
 // milestone 8 built, and the layout being edited is the base layer the host draws, so
 // the preview is the real thing floating under the editor's side popup.
 //
+// THIS ONE STAYS A TOOL'S, and the reason is the test the theme editor passes and this
+// fails: a widget belongs in the library when EVERY APP NEEDS IT. An app's user wants to
+// change what things look like and which key does what; re-architecting the app's window
+// tree is a designer's act, not a user's, and where it is wanted the studio is the program
+// for it. Two things follow from that and neither is incidental: this editor's vocabulary
+// is the TARGET app's — the kinds it may name, its sources, its menu files, the actions its
+// screens declare — which is what an app profile publishes and a widget mounted inside that
+// app would already have; and its output is a FILE that ships, which is a save-and-review
+// flow rather than a live edit. An app that wants to offer its user a different arrangement
+// ships more than one layout preset and lets them pick, which needs no editor at all.
+//
 // SELECTION: one node id (a window or a split), drawn by the host in border_active
 // (a borderless node is tinted with the selection role). Tab / Shift-Tab step through
 // the tree in order; a click on a window selects it (the host maps the pointer).

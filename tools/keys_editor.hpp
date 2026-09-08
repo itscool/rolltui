@@ -10,6 +10,21 @@
 // (there is no half-typed state to preview). Load / Save as / Write shipped / Reset are
 // the host's, as in the theme editor.
 //
+// WHERE THIS BELONGS, AND IT IS NOT HERE. A theme editor is a LIBRARY WIDGET KIND
+// (`theme`, rolltui_widget_kinds.c) because every app has a theme and every app's user
+// wants to change it. A bindings table meets the same test on every clause: every app has
+// one, the library ships the default, the Bindings preset domain and its store already
+// exist beside the Theme one, deliverability and the Enter rule are the library's own
+// answers, and "which key does this" is exactly as much a user's preference as "what
+// colour is a warning". So `keys` belongs in the library on the same rule that put the
+// menu, the input and the transcript there, and this file is the shape it will keep when
+// its model moves — the same move `tools/theme_editor.hpp` has already made.
+//
+// WHAT IT WAITS FOR: a second app asking. The theme editor moved on a request; this one
+// moves on the rule alone, and a capability built for no consumer is the shape this repo
+// has been wrong about before. The move is mechanical — the model is already terminal-free
+// and already speaks only C — so waiting costs a day, not a design.
+//
 // calls `rolltui/c/*.h` directly — no `rolltui/*.hpp`.
 //
 #include "rolltui/rolltui.h"

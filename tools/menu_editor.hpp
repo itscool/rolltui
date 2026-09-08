@@ -7,7 +7,9 @@
 //
 // MENUS ARE THE DESIGNER'S TO AUTHOR, the same reason layouts are. Not "a menu is not a
 // user-editable format" — it is one — but that authoring it belongs in the design tool rather
-// than in a text editor beside it.
+// than in a text editor beside it. That is also why this stays a tool's while the theme
+// editor became a library widget kind: the test is whether EVERY APP NEEDS IT, and the
+// argument is written once, at `layout_editor.hpp`.
 //
 // THE SAME SHAPE AS ITS THREE SIBLINGS, deliberately and to the letter: a MODEL with no
 // terminal in it, a rolltui::Menu over the SELECTED item, one UndoStack<T>, an Outcome the

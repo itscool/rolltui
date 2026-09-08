@@ -113,6 +113,61 @@ unsigned int text_fg(const RolltuiJsonValue* colours) {
          (static_cast<unsigned int>(c.g) << 8) | c.b;
 }
 
+// A screen that names `theme`, with the store handed over, held open so a caller can send its
+// own keystrokes and read the store back. The two scenarios below want different keys and the
+// same twelve lines of setup.
+struct Screen {
+  RolltuiContext* ctx = nullptr;
+  RolltuiWindows* windows = nullptr;
+  RolltuiWindowStack* stack = nullptr;
+  RolltuiBindings* bindings = nullptr;
+  RolltuiLayout* layout = nullptr;
+  RolltuiPresetStore* store = nullptr;
+
+  void open(const std::string& dir, bool hand_over_the_store) {
+    ctx = rolltui_context_new();
+    rolltui_context_set_library_defaults(ctx);
+    rolltui_context_set_dir(ctx, dir.data(), dir.size());
+    store = rolltui_preset_store_new(rolltui_preset_domain(ctx, ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
+                                     0, "", 0);
+    RolltuiThemePresetReport start{};
+    rolltui_preset_store_start(store, &start);
+    rolltui_theme_preset_report_release(&start);
+
+    RolltuiLayoutReport lrep{};
+    layout = rolltui_load_layout_text(kInProcessLayout, std::strlen(kInProcessLayout), nullptr, 0, nullptr, &lrep);
+    rolltui_layout_report_release(&lrep);
+
+    windows = rolltui_windows_new(ctx);
+    stack = rolltui_window_stack_new();
+    bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));
+    rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
+
+    RolltuiWidgetEnv env{};
+    rolltui_context_set_env(ctx, &env);
+    rolltui_context_set_bindings(ctx, bindings);
+    rolltui_windows_sync(windows, stack);
+    rolltui_windows_layout(windows, stack, RolltuiRect{0, 0, 80, 30});
+
+    // THE ONE LINE AN APP WRITES. Everything after it is the editor driving itself.
+    if (hand_over_the_store) rolltui_windows_set_theme_store(windows, "theme", 5, store, /*persist=*/0);
+  }
+
+  void send(const RolltuiEvent& e) { rolltui_windows_handle(windows, "kiln_edit", 9, &e); }
+  void type(const char* text) {
+    for (const char* p = text; *p; ++p) send(key_event(ROLLTUI_KEY_CHAR, static_cast<RolltuiCodepoint>(*p)));
+  }
+
+  ~Screen() {
+    rolltui_bindings_free(bindings);
+    rolltui_window_stack_free(stack);
+    rolltui_windows_free(windows);
+    rolltui_layout_free(layout);
+    rolltui_preset_store_free(store);
+    rolltui_context_free(ctx);
+  }
+};
+
 // One editing session over a screen that names `theme`: build the windows, hand over the store
 // (or not), send the keystrokes, and report the store's version and its `text` colour after.
 struct Session {
@@ -122,72 +177,31 @@ struct Session {
 
 Session drive(const std::string& dir, bool hand_over_the_store) {
   Session out;
-  RolltuiContext* ctx = rolltui_context_new();
-  rolltui_context_set_library_defaults(ctx);
-  rolltui_context_set_dir(ctx, dir.data(), dir.size());
+  Screen s;
+  s.open(dir, hand_over_the_store);
 
-  RolltuiPresetStore* store = rolltui_preset_store_new(rolltui_preset_domain(ctx, ROLLTUI_PRESET_DOMAIN_THEME),
-                                                       dir.data(), dir.size(), 0, "", 0);
-  RolltuiThemePresetReport start{};
-  rolltui_preset_store_start(store, &start);
-  rolltui_theme_preset_report_release(&start);
-
-  RolltuiLayoutReport lrep{};
-  RolltuiLayout* layout =
-      rolltui_load_layout_text(kInProcessLayout, std::strlen(kInProcessLayout), nullptr, 0, nullptr, &lrep);
-  rolltui_layout_report_release(&lrep);
-
-  RolltuiWindows* windows = rolltui_windows_new(ctx);
-  RolltuiWindowStack* stack = rolltui_window_stack_new();
-  RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));
-  rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
-
-  RolltuiWidgetEnv env{};
-  env.ambiguous_wide = 0;
-  env.now_ms = 0;
-  rolltui_context_set_env(ctx, &env);
-  rolltui_context_set_bindings(ctx, bindings);
-  rolltui_windows_sync(windows, stack);
-  const RolltuiRect screen{0, 0, 80, 30};
-  rolltui_windows_layout(windows, stack, screen);
-
-  // THE ONE LINE AN APP WRITES. Everything else below is the editor driving itself.
-  if (hand_over_the_store) rolltui_windows_set_theme_store(windows, "theme", 5, store, /*persist=*/0);
-
-  out.version_before = rolltui_preset_store_version(store);
-  {
-    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_working(store));
+  auto snapshot = [&](unsigned int& fg) {
+    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_working(s.store));
     if (v) {
-      out.text_fg_before = text_fg(v->colours);
-      rolltui_preset_store_value_free(store, v);
+      fg = text_fg(v->colours);
+      rolltui_preset_store_value_free(s.store, v);
     }
-  }
+  };
+  out.version_before = rolltui_preset_store_version(s.store);
+  snapshot(out.text_fg_before);
 
   // Roles › the first role › fg › the next colour, committed.
   const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
   const RolltuiEvent down = key_event(ROLLTUI_KEY_DOWN);
-  rolltui_windows_handle(windows, "kiln_edit", 9, &enter);
-  rolltui_windows_handle(windows, "kiln_edit", 9, &enter);
-  rolltui_windows_handle(windows, "kiln_edit", 9, &enter);
-  rolltui_windows_handle(windows, "kiln_edit", 9, &down);
-  rolltui_windows_handle(windows, "kiln_edit", 9, &down);
-  rolltui_windows_handle(windows, "kiln_edit", 9, &enter);
+  s.send(enter);
+  s.send(enter);
+  s.send(enter);
+  s.send(down);
+  s.send(down);
+  s.send(enter);
 
-  out.version_after = rolltui_preset_store_version(store);
-  {
-    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_working(store));
-    if (v) {
-      out.text_fg_after = text_fg(v->colours);
-      rolltui_preset_store_value_free(store, v);
-    }
-  }
-
-  rolltui_bindings_free(bindings);
-  rolltui_window_stack_free(stack);
-  rolltui_windows_free(windows);
-  rolltui_layout_free(layout);
-  rolltui_preset_store_free(store);
-  rolltui_context_free(ctx);
+  out.version_after = rolltui_preset_store_version(s.store);
+  snapshot(out.text_fg_after);
   return out;
 }
 
@@ -262,6 +276,85 @@ int main() {
           "…and withheld, the same keystrokes leave it untouched: the theme is the APP's");
     check(given.text_fg_after != withheld.text_fg_after,
           "…and the two runs started from the same theme, so what landed is the edit");
+  }
+
+  // ---- 7. A SAVE NEVER SILENTLY REPLACES SOMEONE ELSE'S PRESET ------------------------------
+  //
+  // The store offers to refuse a name already taken, and a widget has nowhere to ask, so the
+  // kind takes the refusal and says so. Overwriting a preset because a name was reused is a data
+  // loss with no undo behind it — so the assertion is on what is IN the file after a second save
+  // of the same name, not on whether one exists.
+  {
+    const fs::path dir = scratch / "save-as";
+    fs::create_directories(dir);
+    Screen s;
+    s.open(dir.string(), true);
+    const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
+    const RolltuiEvent down = key_event(ROLLTUI_KEY_DOWN);
+    const RolltuiEvent home = key_event(ROLLTUI_KEY_HOME);
+    const RolltuiEvent left = key_event(ROLLTUI_KEY_LEFT);
+
+    // BACK TO THE TOP LEVEL, and Left rather than Escape: Escape at the root CLOSES the menu,
+    // and one of either only ascends ONE level — the fields below are three deep. A filter typed
+    // at the wrong level matches nothing and the Enter after it does nothing, which is a save
+    // that silently never happened.
+    auto to_root = [&]() {
+      for (int i = 0; i < 4; ++i) s.send(left);
+      s.send(home);
+    };
+    auto save_as = [&](const char* name) {
+      to_root();
+      s.type("save");  // the filter reaches "Save as preset"
+      s.send(enter);   // start editing the field
+      s.type(name);
+      s.send(enter);   // commit: the SaveAs outcome
+    };
+    auto preset_text_fg = [&](const char* name) {
+      RolltuiThemePresetReport rep{};
+      RolltuiThemePresetValue* v =
+          static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_get(s.store, name, std::strlen(name), &rep));
+      unsigned int fg = 0;
+      if (v) {
+        fg = text_fg(v->colours);
+        rolltui_preset_store_value_free(s.store, v);
+      }
+      rolltui_theme_preset_report_release(&rep);
+      return fg;
+    };
+
+    save_as("mine");
+    const unsigned int first = preset_text_fg("mine");
+    check(first != 0, "Save as preset writes one, through the store the app handed over");
+
+    // Now change the theme and try the same name again.
+    to_root();
+    s.send(enter);  // Roles
+    s.send(enter);  // the first role
+    s.send(enter);  // fg
+    s.send(down);
+    s.send(down);
+    s.send(enter);  // commit
+    save_as("mine");
+    check(preset_text_fg("mine") == first,
+          "…and the same name again leaves the saved preset as it was, rather than replacing it");
+
+    // ---- 8. RESET GOES BACK TO THE PRESET, not to the edit it is meant to throw away --------
+    auto working_text_fg = [&]() {
+      RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(rolltui_preset_store_working(s.store));
+      unsigned int fg = 0;
+      if (v) {
+        fg = text_fg(v->colours);
+        rolltui_preset_store_value_free(s.store, v);
+      }
+      return fg;
+    };
+    const unsigned int edited = working_text_fg();
+    check(edited != first, "the working copy is the edited theme, so a reset has something to undo");
+    to_root();
+    s.type("loaded");  // "Reset to the loaded preset…"
+    s.send(enter);
+    check(working_text_fg() == first,
+          "Reset to the loaded preset re-reads the PRESET: the working copy is what the file says again");
   }
 
   fs::remove_all(scratch);

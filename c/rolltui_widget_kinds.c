@@ -1637,6 +1637,7 @@ typedef struct RolltuiThemeCtx {
    * and two status lines every frame, and a fresh string per frame would be three allocations
    * a frame forever. */
   RolltuiStr line, hint;
+  int hint_is_problem; /* a refusal is drawn in `error`; "saved preset 'x'" is not a refusal */
   int persist;
 } RolltuiThemeCtx;
 
@@ -1685,6 +1686,7 @@ static void theme_ctx_write_back(RolltuiThemeCtx* tc) {
 static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome* o) {
   char buf[192];
   rolltui_str_clear(&tc->hint);
+  tc->hint_is_problem = 0;
   switch (o->kind) {
     case ROLLTUI_THEME_EDIT_COMMITTED:
       theme_ctx_write_back(tc);
@@ -1695,14 +1697,23 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
       if (!tc->store) break;
       memset(&err, 0, sizeof err);
       theme_ctx_write_back(tc);
-      r = rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/1, &err);
+      /* NEVER overwrite: a name already taken comes back as its own answer and the person
+       * types another. Replacing someone's preset because they reused a name is a data loss
+       * the store deliberately offers to refuse, and a widget has nowhere to ask. */
+      r = rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/0, &err);
       if (r == ROLLTUI_SAVE_SAVED) {
         snprintf(buf, sizeof buf, "saved preset '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
         rolltui_str_set(&tc->hint, buf, strlen(buf));
         theme_ctx_sync_store(tc); /* the new name joins the Load choice */
+      } else if (r == ROLLTUI_SAVE_EXISTS_ASK) {
+        snprintf(buf, sizeof buf, "'%.*s' already exists \xE2\x80\x94 choose another name",
+                 (int)o->value.n, o->value.p ? o->value.p : "");
+        rolltui_str_set(&tc->hint, buf, strlen(buf));
+        tc->hint_is_problem = 1;
       } else {
         rolltui_str_set(&tc->hint, K("cannot save: "));
         rolltui_str_append_str(&tc->hint, &err);
+        tc->hint_is_problem = 1;
       }
       rolltui_str_free(&err);
       break;
@@ -1716,16 +1727,38 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
         snprintf(buf, sizeof buf, "loaded '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
       } else {
         snprintf(buf, sizeof buf, "cannot load '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        tc->hint_is_problem = 1;
       }
       rolltui_str_set(&tc->hint, buf, strlen(buf));
       rolltui_theme_preset_report_release(&rep);
       break;
     }
-    case ROLLTUI_THEME_EDIT_RESET_LOADED:
-      theme_ctx_sync_store(tc);
-      theme_ctx_write_back(tc);
-      rolltui_str_set(&tc->hint, K("reset to the loaded preset (undoable)"));
+    case ROLLTUI_THEME_EDIT_RESET_LOADED: {
+      /* THE ORIGIN PRESET, re-read — not the working copy, which is the edited value this is
+       * meant to throw away. */
+      RolltuiThemePresetReport rep;
+      RolltuiThemePresetValue* v;
+      size_t olen = 0;
+      const char* origin;
+      if (!tc->store) break;
+      memset(&rep, 0, sizeof rep);
+      origin = rolltui_preset_store_origin(tc->store, &olen);
+      v = (RolltuiThemePresetValue*)rolltui_preset_store_get(tc->store, origin ? origin : "", olen, &rep);
+      if (v) {
+        RolltuiThemeReport tr;
+        memset(&tr, 0, sizeof tr);
+        rolltui_theme_editor_load(tc->ed, v->colours, &tr);
+        rolltui_theme_report_release(&tr);
+        rolltui_preset_store_value_free(tc->store, v);
+        theme_ctx_write_back(tc);
+        rolltui_str_set(&tc->hint, K("reset to the loaded preset (undoable)"));
+      } else {
+        rolltui_str_set(&tc->hint, K("the loaded preset is no longer readable"));
+        tc->hint_is_problem = 1;
+      }
+      rolltui_theme_preset_report_release(&rep);
       break;
+    }
     case ROLLTUI_THEME_EDIT_RESET_BUILTIN: {
       RolltuiStyle dark[ROLLTUI_ROLE_COUNT], light[ROLLTUI_ROLE_COUNT];
       RolltuiEffectMap* eff = rolltui_theme_builtin_fill(K("default-dark"), dark, ROLLTUI_ROLE_COUNT);
@@ -1737,17 +1770,20 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
     }
     case ROLLTUI_THEME_EDIT_WRITE_SHIPPED:
       /* A shipped preset is read-only unless the store was opened with the privilege; the
-       * store refuses on its own and says so. */
+       * store refuses on its own and says so. Overwriting IS the operation here — the name
+       * chosen is one that already ships — so this is the one save that asks for it. */
       if (!tc->store) break;
       {
         RolltuiStr err;
         memset(&err, 0, sizeof err);
         theme_ctx_write_back(tc);
-        if (rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, 1, &err) ==
-            ROLLTUI_SAVE_SAVED)
+        if (rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/1,
+                                         &err) == ROLLTUI_SAVE_SAVED) {
           snprintf(buf, sizeof buf, "wrote shipped '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
-        else
+        } else {
           snprintf(buf, sizeof buf, "refused: %.*s", (int)err.n, err.p ? err.p : "");
+          tc->hint_is_problem = 1;
+        }
         rolltui_str_set(&tc->hint, buf, strlen(buf));
         rolltui_str_free(&err);
       }
@@ -1780,12 +1816,11 @@ static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
  * scrolling assumes: the menu is laid out into what is left. */
 #define ROLLTUI_THEME_BOX_ROWS 6
 
-static void theme_ctx_menu_rect(const RolltuiThemeCtx* tc, const RolltuiResolvedNode* rn, RolltuiRect* out) {
+static void theme_ctx_menu_rect(const RolltuiResolvedNode* rn, RolltuiRect* out) {
   int box;
   rolltui_content_rect(rn, out);
   box = out->h < ROLLTUI_THEME_BOX_ROWS ? out->h : ROLLTUI_THEME_BOX_ROWS;
   out->h -= box;
-  (void)tc;
 }
 
 static void theme_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
@@ -1794,7 +1829,7 @@ static void theme_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
   RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
   RolltuiMenuOptions o = *rolltui_menu_options(m);
   RolltuiRect r;
-  theme_ctx_menu_rect(tc, rn, &r);
+  theme_ctx_menu_rect(rn, &r);
   o.ambiguous_wide = env->ambiguous_wide;
   o.inset = 0;
   rolltui_menu_set_options_struct(m, &o);
@@ -1830,7 +1865,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
   rolltui_content_rect(rn, &r);
   if (r.w <= 0 || r.h <= 0) return;
   theme_ctx_layout(ctx, rn);
-  theme_ctx_menu_rect(tc, rn, &mr);
+  theme_ctx_menu_rect(rn, &mr);
   if (mr.h > 0) {
     RolltuiInputRoles iroles;
     iroles.text = br->input_text;
@@ -1902,7 +1937,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
   }
   if (y < r.y + r.h) {
     if (tc->hint.n != 0) {
-      theme_put(tc, f, r.x, y++, tc->hint.p, tc->hint.n, styles[br->error], r.w);
+      theme_put(tc, f, r.x, y++, tc->hint.p, tc->hint.n, styles[tc->hint_is_problem ? br->error : br->value], r.w);
     } else {
       rolltui_str_clear(&tc->line);
       rolltui_theme_editor_badges_line(tc->ed, &tc->line);
