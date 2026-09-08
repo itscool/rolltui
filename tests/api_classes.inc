@@ -286,6 +286,41 @@ ROLLTUI_API(rolltui_theme_report_release, PUBLIC)
 ROLLTUI_API(rolltui_theme_report_set_error, INTERNAL)  /* the loader's report builder */
 ROLLTUI_API(rolltui_theme_style, PUBLIC)
 
+/* ---- rolltui_theme_editor.h — the theme editor's MODEL. Its consumers are the `theme` widget
+ * kind (this library's own .c) and the studio's C++ shape over it, so nothing here is a promise
+ * to a host: an app reaches the editor by NAMING the kind in a layout, never by calling it. --- */
+ROLLTUI_API(rolltui_theme_editor_badges_line, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_colours_json, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_fix_at, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_fix_count, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_focused_role, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_free, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_handle, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_highlighted_color, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_load, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_menu, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_mode, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_new, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_outcome_release, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_palette_color, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_palette_count, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_palette_id, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_palette_label, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_previewing, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_redo, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_redo_depth, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_replace, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_report, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_set_mode, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_set_presets, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_set_shipped, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_status_line, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_styles, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_undo, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_undo_depth, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_variant_meta, INTERNAL)
+ROLLTUI_API(rolltui_theme_editor_variant_name, INTERNAL)
+
 /* ---- rolltui_theme_analysis.h — the studio and the theme editor check themes; roll never does; default TOOL_FACING --- */
 ROLLTUI_API(rolltui_apca_contrast, INTERNAL)  /* an analysis step; the studio reaches the module's results, not its steps */
 ROLLTUI_API(rolltui_apply_fix, INTERNAL)
@@ -604,6 +639,10 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+ROLLTUI_API(rolltui_windows_set_theme_store, PUBLIC)  /* KEPT: `theme` is a library widget kind, so a
+   screen names an editor with no host code — but the theme is the APP's (the style table a frame is drawn
+   with is handed to the library by the host), so this is the only way an app can say where a commit lands.
+   A kind whose edits can reach nothing is a kind nobody can mount. */
 ROLLTUI_API(rolltui_windows_sync, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript, PUBLIC)
 ROLLTUI_API(rolltui_windows_transcript_at, INTERNAL)  /* a hit-test the stack already routes */

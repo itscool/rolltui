@@ -1,5 +1,5 @@
 /* rolltui/c/rolltui_widget_kinds.c — see rolltui_widget_kinds.h. The library's own `rows`,
- * `text`, `file`, `help`, `input`, `transcript` and `menu` kinds, plus the error/panel
+ * `text`, `file`, `help`, `input`, `transcript`, `menu` and `theme` kinds, plus the error/panel
  * fallbacks, each filling `rolltui/c/rolltui_widgets.h`'s plugin contract in real C11 —
  * calling only the C engines (`rolltui_input.h`, `rolltui_transcript.h`, `rolltui_menu.h`,
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
@@ -22,7 +22,9 @@
 #include "rolltui/c/rolltui_menu.h"
 #include "rolltui/c/rolltui_menu_tree.h"
 #include "rolltui/c/rolltui_str.h"
+#include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_theme_editor.h"
 #include "rolltui/c/rolltui_transcript.h"
 #include "rolltui/c/rolltui_widgets.h"
 
@@ -118,6 +120,8 @@ static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolved
   }
   return total;
 }
+
+#define K(s) (s), strlen(s)
 
 static int str_eq_lit(const char* a, size_t alen, const char* b) { return b && alen == strlen(b) && memcmp(a, b, alen) == 0; }
 
@@ -842,6 +846,7 @@ static RolltuiWidget panel_widget_factory(void* c, RolltuiWindows* w, const char
 static RolltuiWidget input_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 static RolltuiWidget transcript_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 static RolltuiWidget menu_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
+static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n);
 
 void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   /* THE LIBRARY'S OWN KINDS REGISTER WITH A NULL CTX, and that is the split working rather than
@@ -854,6 +859,7 @@ void rolltui_widget_kinds_register(RolltuiContext* ctx) {
   rolltui_context_register_kind(ctx, "input", 5, input_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "transcript", 10, transcript_widget_factory, NULL, NULL);
   rolltui_context_register_kind(ctx, "menu", 4, menu_widget_factory, NULL, NULL);
+  rolltui_context_register_kind(ctx, "theme", 5, theme_widget_factory, NULL, NULL);
   rolltui_context_set_error_factory(ctx, error_widget_factory, NULL);
   rolltui_context_set_panel_factory(ctx, panel_widget_factory, NULL);
 }
@@ -1605,6 +1611,369 @@ static RolltuiWidget menu_widget_factory(void* c, RolltuiWindows* w, const char*
   out.ctx = mc;
   return out;
 }
+
+
+/* ============================================================================================
+ * theme — THE THEME EDITOR AS A WIDGET KIND.
+ *
+ * An app gets a theme editor by naming `theme` in a layout and binding a key to the popup that
+ * holds it. It draws the editor's menu with a role sample, a status line and the badges the
+ * theme computes as, and it answers the model's outcomes against the preset store the app
+ * handed over — save, load, reset, write-shipped — so an app writes no editor code at all.
+ *
+ * THE THEME IS THE APP'S, AND THAT IS WHY THERE IS ONE CALL. The styles a frame is drawn with
+ * are passed into `rolltui_windows_draw` by the host, so no widget can reach them: an app hands
+ * over the Theme preset store it already keeps (`rolltui_windows_set_theme_store`) and every
+ * commit lands in it, which an app watching the store's version picks up like any other change
+ * to its theme. That call is not editor code and does not grow when the editor does.
+ * ============================================================================================ */
+
+typedef struct RolltuiThemeCtx {
+  RolltuiWindows* w;         /* BORROWED */
+  RolltuiThemeEditor* ed;    /* OWNED */
+  RolltuiPresetStore* store; /* BORROWED; NULL until a host hands one over */
+  RolltuiDrawScratch* draw;  /* OWNED */
+  /* CALLER-FILLED working strings the ctx owns and REFILLS: the draw path builds a role line
+   * and two status lines every frame, and a fresh string per frame would be three allocations
+   * a frame forever. */
+  RolltuiStr line, hint;
+  int persist;
+} RolltuiThemeCtx;
+
+/* The store's working colours into the editor, and the store's preset names into the Load
+ * choice. A no-op with no store: the editor keeps the built-in pair it starts on. */
+static void theme_ctx_sync_store(RolltuiThemeCtx* tc) {
+  RolltuiThemePresetValue* v;
+  RolltuiPresetList list;
+  RolltuiStrList names;
+  RolltuiThemeReport rep;
+  size_t i;
+  if (!tc->store) return;
+  v = (RolltuiThemePresetValue*)rolltui_preset_store_working(tc->store);
+  if (v) {
+    memset(&rep, 0, sizeof rep);
+    rolltui_theme_editor_load(tc->ed, v->colours, &rep);
+    rolltui_theme_report_release(&rep);
+    rolltui_preset_store_value_free(tc->store, v);
+  }
+  memset(&list, 0, sizeof list);
+  memset(&names, 0, sizeof names);
+  rolltui_preset_store_list(tc->store, &list);
+  for (i = 0; i < list.n; ++i) rolltui_str_list_add(&names, list.v[i].name.p, list.v[i].name.n);
+  rolltui_theme_editor_set_presets(tc->ed, &names);
+  rolltui_str_list_release(&names);
+  rolltui_preset_list_release(&list);
+}
+
+/* `rolltui_preset_store_edit` hands the domain's value to a callback; for the Theme domain
+ * that is a `RolltuiThemePresetValue`, whose `colours` this replaces. */
+static void theme_set_colours(void* value, void* c) {
+  RolltuiThemePresetValue* v = (RolltuiThemePresetValue*)value;
+  rolltui_json_free(v->colours);
+  v->colours = (RolltuiJsonValue*)c;
+}
+
+static void theme_ctx_write_back(RolltuiThemeCtx* tc) {
+  size_t olen = 0;
+  const char* origin;
+  if (!tc->store) return;
+  origin = rolltui_preset_store_origin(tc->store, &olen);
+  rolltui_preset_store_edit(tc->store, theme_set_colours,
+                            rolltui_theme_editor_colours_json(tc->ed, origin ? origin : "", olen), tc->persist);
+}
+
+static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome* o) {
+  char buf[192];
+  rolltui_str_clear(&tc->hint);
+  switch (o->kind) {
+    case ROLLTUI_THEME_EDIT_COMMITTED:
+      theme_ctx_write_back(tc);
+      break;
+    case ROLLTUI_THEME_EDIT_SAVE_AS: {
+      RolltuiStr err;
+      int r;
+      if (!tc->store) break;
+      memset(&err, 0, sizeof err);
+      theme_ctx_write_back(tc);
+      r = rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, /*overwrite=*/1, &err);
+      if (r == ROLLTUI_SAVE_SAVED) {
+        snprintf(buf, sizeof buf, "saved preset '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        rolltui_str_set(&tc->hint, buf, strlen(buf));
+        theme_ctx_sync_store(tc); /* the new name joins the Load choice */
+      } else {
+        rolltui_str_set(&tc->hint, K("cannot save: "));
+        rolltui_str_append_str(&tc->hint, &err);
+      }
+      rolltui_str_free(&err);
+      break;
+    }
+    case ROLLTUI_THEME_EDIT_LOAD_PRESET: {
+      RolltuiThemePresetReport rep;
+      if (!tc->store) break;
+      memset(&rep, 0, sizeof rep);
+      if (rolltui_preset_store_load(tc->store, o->value.p ? o->value.p : "", o->value.n, &rep, tc->persist)) {
+        theme_ctx_sync_store(tc);
+        snprintf(buf, sizeof buf, "loaded '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+      } else {
+        snprintf(buf, sizeof buf, "cannot load '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+      }
+      rolltui_str_set(&tc->hint, buf, strlen(buf));
+      rolltui_theme_preset_report_release(&rep);
+      break;
+    }
+    case ROLLTUI_THEME_EDIT_RESET_LOADED:
+      theme_ctx_sync_store(tc);
+      theme_ctx_write_back(tc);
+      rolltui_str_set(&tc->hint, K("reset to the loaded preset (undoable)"));
+      break;
+    case ROLLTUI_THEME_EDIT_RESET_BUILTIN: {
+      RolltuiStyle dark[ROLLTUI_ROLE_COUNT], light[ROLLTUI_ROLE_COUNT];
+      RolltuiEffectMap* eff = rolltui_theme_builtin_fill(K("default-dark"), dark, ROLLTUI_ROLE_COUNT);
+      rolltui_effect_map_free(rolltui_theme_builtin_fill(K("default-light"), light, ROLLTUI_ROLE_COUNT));
+      rolltui_theme_editor_replace(tc->ed, dark, light, K("default-dark"), K("default-light"), NULL, NULL, eff);
+      theme_ctx_write_back(tc);
+      rolltui_str_set(&tc->hint, K("reset to the built-in default (undoable)"));
+      break;
+    }
+    case ROLLTUI_THEME_EDIT_WRITE_SHIPPED:
+      /* A shipped preset is read-only unless the store was opened with the privilege; the
+       * store refuses on its own and says so. */
+      if (!tc->store) break;
+      {
+        RolltuiStr err;
+        memset(&err, 0, sizeof err);
+        theme_ctx_write_back(tc);
+        if (rolltui_preset_store_save_as(tc->store, o->value.p ? o->value.p : "", o->value.n, 1, &err) ==
+            ROLLTUI_SAVE_SAVED)
+          snprintf(buf, sizeof buf, "wrote shipped '%.*s'", (int)o->value.n, o->value.p ? o->value.p : "");
+        else
+          snprintf(buf, sizeof buf, "refused: %.*s", (int)err.n, err.p ? err.p : "");
+        rolltui_str_set(&tc->hint, buf, strlen(buf));
+        rolltui_str_free(&err);
+      }
+      break;
+    case ROLLTUI_THEME_EDIT_CHECK:
+      /* The report is the badges line's long form; a window this size cannot hold it, so the
+       * one-line answer stands and a host that wants the whole thing draws a `text:` window
+       * over `rolltui_theme_editor_report`. */
+      rolltui_theme_editor_badges_line(tc->ed, &tc->hint);
+      break;
+    default:
+      break;
+  }
+}
+
+static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  RolltuiThemeEditorOutcome o;
+  memset(&o, 0, sizeof o);
+  rolltui_theme_editor_handle(tc->ed, e, rolltui_windows_bindings(tc->w), &o);
+  theme_ctx_apply(tc, &o);
+  {
+    const int consumed = o.kind != ROLLTUI_THEME_EDIT_NONE;
+    rolltui_theme_editor_outcome_release(&o);
+    return consumed;
+  }
+}
+
+/* The bottom six rows are the sample box and the two status lines, exactly as the menu's own
+ * scrolling assumes: the menu is laid out into what is left. */
+#define ROLLTUI_THEME_BOX_ROWS 6
+
+static void theme_ctx_menu_rect(const RolltuiThemeCtx* tc, const RolltuiResolvedNode* rn, RolltuiRect* out) {
+  int box;
+  rolltui_content_rect(rn, out);
+  box = out->h < ROLLTUI_THEME_BOX_ROWS ? out->h : ROLLTUI_THEME_BOX_ROWS;
+  out->h -= box;
+  (void)tc;
+}
+
+static void theme_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
+  RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
+  RolltuiMenuOptions o = *rolltui_menu_options(m);
+  RolltuiRect r;
+  theme_ctx_menu_rect(tc, rn, &r);
+  o.ambiguous_wide = env->ambiguous_wide;
+  o.inset = 0;
+  rolltui_menu_set_options_struct(m, &o);
+  rolltui_menu_layout(m, r);
+}
+
+static int theme_put(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, const char* text, size_t len,
+                     RolltuiStyle st, int max_cells) {
+  const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
+  if (max_cells <= 0) return 0;
+  return rolltui_frame_put_text(f, tc->draw, x, y, text, len, st, max_cells, env->ambiguous_wide, 0);
+}
+
+/* One colour swatch: a run of spaces whose BACKGROUND is the colour, which is the only way to
+ * show a colour that does not depend on a glyph being legible in it. */
+static int theme_swatch(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, RolltuiStyleColor c, int max_cells) {
+  RolltuiStyle st;
+  memset(&st, 0, sizeof st);
+  st.bg = c;
+  return theme_put(tc, f, x, y, "      ", 6, st, max_cells);
+}
+
+static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  const RolltuiStyle* styles = rolltui_windows_styles(tc->w);
+  const RolltuiBuiltinRoles* br = rolltui_windows_builtin_roles(tc->w);
+  RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
+  RolltuiRect r, mr;
+  RolltuiStyle label, value;
+  unsigned char role = 0;
+  int y;
+
+  rolltui_content_rect(rn, &r);
+  if (r.w <= 0 || r.h <= 0) return;
+  theme_ctx_layout(ctx, rn);
+  theme_ctx_menu_rect(tc, rn, &mr);
+  if (mr.h > 0) {
+    RolltuiInputRoles iroles;
+    iroles.text = br->input_text;
+    iroles.selection = br->input_selection;
+    iroles.placeholder = br->input_placeholder;
+    rolltui_menu_draw(m, f, tc->draw, styles, rolltui_windows_menu_roles(tc->w), &iroles, rn->focused);
+  }
+  label = styles[br->label];
+  value = styles[br->value];
+  y = r.y + mr.h;
+
+  if (rolltui_theme_editor_focused_role(tc->ed, &role)) {
+    const RolltuiStyle s = rolltui_theme_editor_styles(tc->ed, rolltui_theme_editor_mode(tc->ed), 0)[role];
+    size_t rn_len = 0, a;
+    const char* rn_p = rolltui_role_name(role, &rn_len);
+    char buf[ROLLTUI_COLOR_STRING_MAX];
+    size_t clen = 0;
+    RolltuiStyleColor highlighted;
+    rolltui_str_clear(&tc->line);
+    rolltui_str_append(&tc->line, rn_p ? rn_p : "", rn_len);
+    rolltui_str_append(&tc->line, K("  fg "));
+    clen = rolltui_color_to_string(s.fg, buf, sizeof buf);
+    rolltui_str_append(&tc->line, buf, clen);
+    rolltui_str_append(&tc->line, K("  bg "));
+    clen = rolltui_color_to_string(s.bg, buf, sizeof buf);
+    rolltui_str_append(&tc->line, buf, clen);
+    {
+      /* The five attributes, in the order the editor's menu lists them. */
+      const char* const attrs[5] = {"bold", "italic", "underline", "dim", "reverse"};
+      const unsigned char on[5] = {s.bold, s.italic, s.underline, s.dim, s.reverse};
+      for (a = 0; a < 5; ++a)
+        if (on[a]) {
+          rolltui_str_append(&tc->line, K("  "));
+          rolltui_str_append(&tc->line, attrs[a], strlen(attrs[a]));
+        }
+    }
+    if (y < r.y + r.h) theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
+    if (y < r.y + r.h)
+      theme_put(tc, f, r.x, y++, K(" Aa  the quick brown fox \xE2\x80\x94 sample in this role "), s, r.w);
+    if (y < r.y + r.h) {
+      int x = r.x;
+      x += theme_put(tc, f, x, y, K("fg "), label, r.w - (x - r.x));
+      x += theme_swatch(tc, f, x, y, s.fg, r.w - (x - r.x));
+      x += theme_put(tc, f, x, y, K("  bg "), label, r.w - (x - r.x));
+      x += theme_swatch(tc, f, x, y, s.bg, r.w - (x - r.x));
+      if (rolltui_theme_editor_highlighted_color(tc->ed, &highlighted)) {
+        x += theme_put(tc, f, x, y, K("  \xE2\x96\xB6 "), label, r.w - (x - r.x));
+        theme_swatch(tc, f, x, y, highlighted, r.w - (x - r.x));
+      }
+      ++y;
+    }
+  } else {
+    if (y < r.y + r.h) {
+      rolltui_str_clear(&tc->line);
+      rolltui_str_append(&tc->line, K("preset: "));
+      if (tc->store) rolltui_preset_store_label(tc->store, &tc->line);
+      else rolltui_str_append(&tc->line, K("(this app keeps no theme presets)"));
+      theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
+    }
+    if (y < r.y + r.h)
+      theme_put(tc, f, r.x, y++, K("Roles \xE2\x80\xBA a role \xE2\x80\xBA fg \xE2\x80\xBA a colour; the screen is the preview"), value, r.w);
+    if (y < r.y + r.h)
+      theme_put(tc, f, r.x, y++, K("type to filter \xC2\xB7 Enter commits \xC2\xB7 Esc cancels \xC2\xB7 Ctrl-Z / Ctrl-Y"), value, r.w);
+  }
+  if (y < r.y + r.h) {
+    rolltui_str_clear(&tc->line);
+    rolltui_theme_editor_status_line(tc->ed, &tc->line);
+    theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, value, r.w);
+  }
+  if (y < r.y + r.h) {
+    if (tc->hint.n != 0) {
+      theme_put(tc, f, r.x, y++, tc->hint.p, tc->hint.n, styles[br->error], r.w);
+    } else {
+      rolltui_str_clear(&tc->line);
+      rolltui_theme_editor_badges_line(tc->ed, &tc->line);
+      theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
+    }
+  }
+}
+
+static int theme_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  RolltuiMenu* m = rolltui_theme_editor_menu(tc->ed);
+  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
+  out->first = (size_t)rolltui_menu_scroll_first(m);
+  out->visible = (size_t)rolltui_menu_scroll_visible(m);
+  out->total = rolltui_menu_visible(m, NULL);
+  return 1;
+}
+
+static void theme_ctx_destroy(void* ctx) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  rolltui_theme_editor_free(tc->ed);
+  rolltui_draw_scratch_free(tc->draw);
+  rolltui_str_free(&tc->line);
+  rolltui_str_free(&tc->hint);
+  rolltui_mem_free(tc);
+}
+
+static const RolltuiWidgetPlugin kThemePlugin = {
+    theme_ctx_destroy, theme_ctx_layout, theme_ctx_draw, NULL, NULL,
+    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL,
+};
+
+static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
+  RolltuiThemeCtx* tc;
+  RolltuiWidget out;
+  (void)c;
+  (void)content;
+  (void)n;
+  memset(&out, 0, sizeof out);
+  tc = (RolltuiThemeCtx*)rolltui_mem_alloc(sizeof *tc);
+  memset(tc, 0, sizeof *tc);
+  tc->w = w;
+  tc->ed = rolltui_theme_editor_new();
+  tc->draw = rolltui_draw_scratch_new();
+  tc->persist = 1;
+  out.vt = &kThemePlugin;
+  out.ctx = tc;
+  return out;
+}
+
+/* The widget for `content` when it is a `theme` one, else NULL. `rolltui_windows_widget_for`
+ * creates it if this screen has none, which is what lets a host wire the store before the first
+ * draw; the kind check is what stops the call acting on some other kind's ctx. */
+static RolltuiThemeCtx* theme_ctx_for(RolltuiWindows* w, const char* content, size_t len) {
+  RolltuiWidget* widget;
+  if (!w) return NULL;
+  if (!content || len == 0) { content = "theme"; len = 5; }
+  widget = rolltui_windows_widget_for(w, content, len);
+  if (!widget || widget->vt != &kThemePlugin) return NULL;
+  return (RolltuiThemeCtx*)widget->ctx;
+}
+
+void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
+                                     int persist) {
+  RolltuiThemeCtx* tc = theme_ctx_for(w, content, len);
+  if (!tc) return;
+  tc->store = store;
+  tc->persist = persist;
+  theme_ctx_sync_store(tc);
+}
+
 
 void rolltui_menu_widget_ctx_refresh(void* ctx) { menu_ctx_refresh((RolltuiMenuCtx*)ctx); }
 

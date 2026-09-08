@@ -6,7 +6,7 @@
 /*
  * rolltui/c/rolltui_widget_kinds.h — THE LIBRARY'S OWN WIDGET KINDS.
  *
- * `rows`, `text`, `file`, `help`, `input`, `transcript` and `menu`, and the error/panel
+ * `rows`, `text`, `file`, `help`, `input`, `transcript`, `menu` and `theme`, and the error/panel
  * fallbacks, fill the plugin contract (`rolltui/c/rolltui_widgets.h`) here, in real C11,
  * calling only the already-C engines (`rolltui_input.h`, `rolltui_transcript.h`,
  * `rolltui_menu.h`, `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`,
@@ -78,8 +78,8 @@ const RolltuiScrollTextActions* rolltui_windows_scroll_text_actions(const Rolltu
 void rolltui_context_set_input_actions(RolltuiContext* ctx, const RolltuiInputActions* a);
 const RolltuiInputActions* rolltui_windows_input_actions(const RolltuiWindows* w);
 
-/* Registers ALL EIGHT built-in kinds — `rows`, `text`, `file`, `help`, `input`, `transcript`,
- * `menu` — and the error/panel fallbacks. Called once, at construction, AFTER every setter in
+/* Registers ALL NINE built-in kinds — `rows`, `text`, `file`, `help`, `input`, `transcript`,
+ * `menu`, `theme` — and the error/panel fallbacks. Called once, at construction, AFTER every setter in
  * this file: each kind reads the roles and action names back through `w`, not through its own
  * `ctx`, which is `w` itself for all of them. */
 void rolltui_widget_kinds_register(RolltuiContext* ctx);

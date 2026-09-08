@@ -152,7 +152,8 @@ int main() {
     }
     check(all, "every role has fg, bg, custom fg and the attribute toggles");
     check(view_of(find(ed.menu(), "role.md_heading.fg")->value) == color_to_string(base_dark[md_heading].fg), "a choice shows the role's current colour as its value");
-    check(ed.palette().size() > 5 && ed.palette()[0].id == "none", "the palette is every colour in use, none first (" + std::to_string(ed.palette().size()) + " entries)");
+    check(ed.palette_count() > 5 && ed.palette_at(0).id == "none",
+          "the palette is every colour in use, none first (" + std::to_string(ed.palette_count()) + " entries)");
   }
   // ---- three levels deep: Roles › md_heading › fg › entry; preview, cancel, commit ----
   const Color original = base_dark[md_heading].fg;
@@ -216,8 +217,9 @@ int main() {
     ThemeEditor::Outcome o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o.kind == ThemeEditor::Outcome::Kind::Committed && ed.committed().dark[md_heading].fg == Color::rgb(0x12, 0x34, 0x56), "Enter commits the custom colour");
     bool in_palette = false;
-    for (const PaletteEntry& p : ed.palette()) in_palette |= p.id == "#123456";
-    check(in_palette && find(ed.menu(), "role.text.fg")->children.size() == ed.palette().size(), "…and it joins the palette offered to every role");
+    for (std::size_t i = 0; i < ed.palette_count(); ++i) in_palette |= ed.palette_at(i).id == "#123456";
+    check(in_palette && find(ed.menu(), "role.text.fg")->children.size() == ed.palette_count(),
+          "…and it joins the palette offered to every role");
     handle(ed, key(ROLLTUI_KEY_ENTER));
     type(ed, "orange");
     // Prefix validity, one key at a time: o, r, a refused (no colour starts so), n
@@ -305,7 +307,7 @@ int main() {
     e2.load(broken_shipped, &r);
     rolltui_theme_report_release(&r);
     rolltui_json_free(broken_shipped);
-    check(e2.fixes().empty() && e2.badges_line().find("readable") != std::string::npos && e2.badges_line().find("cvd-safe") != std::string::npos,
+    check(e2.fix_count() == 0 && e2.badges_line().find("readable") != std::string::npos && e2.badges_line().find("cvd-safe") != std::string::npos,
           "the shipped default has nothing to fix and its badges read dark + readable + cvd-safe [" + e2.badges_line() + "]");
     check(e2.report().find("badges: dark") == 0, "report() is the analysis text");
     ThemeEdit bad = e2.committed();
@@ -313,7 +315,8 @@ int main() {
     bad.dark[md_link].fg = Color::rgb(0x30, 0x34, 0x3a);
     bad.dark[diff_removed].fg = bad.dark[diff_added].fg;
     e2.replace(bad);
-    check(e2.fixes().size() == 2 && find(e2.menu(), "fixes")->children.size() == 2, "a broken variant lists its proposals under Fixes (" + std::to_string(e2.fixes().size()) + ")");
+    check(e2.fix_count() == 2 && find(e2.menu(), "fixes")->children.size() == 2,
+          "a broken variant lists its proposals under Fixes (" + std::to_string(e2.fix_count()) + ")");
     type(e2, "check");
     ThemeEditor::Outcome o = handle(e2, key(ROLLTUI_KEY_ENTER));
     check(o.kind == ThemeEditor::Outcome::Kind::Check, "Check asks the host to show the report");
@@ -323,10 +326,10 @@ int main() {
     handle(e2, key(ROLLTUI_KEY_ENTER));  // Fixes level
     const std::string first(view_of(rolltui_menu_selected_item(e2.menu())->label));
     o = handle(e2, key(ROLLTUI_KEY_ENTER));
-    check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.fixes().size() == 1 && e2.undo_depth() == 2,
+    check(o.kind == ThemeEditor::Outcome::Kind::Committed && e2.fix_count() == 1 && e2.undo_depth() == 2,
           "Enter on a proposal applies it as a commit (undoable) and the list shrinks: applied [" + first + "]");
     handle(e2, ctrl('z'));
-    check(e2.fixes().size() == 2, "Ctrl-Z brings the proposal back");
+    check(e2.fix_count() == 2, "Ctrl-Z brings the proposal back");
     handle(e2, key(ROLLTUI_KEY_HOME));
     handle(e2, key(ROLLTUI_KEY_ESCAPE));
     handle(e2, key(ROLLTUI_KEY_HOME));
@@ -344,7 +347,7 @@ int main() {
           "Generate replaces both variants with the seeded theme (dark and light grounds from one seed) [" + e2.committed().dark_name + "]");
     check(e2.status_line().find("generated gen-analogous-7") != std::string::npos && e2.badges_line().find("readable") != std::string::npos,
           "…the status names it and the generated variant is readable [" + e2.badges_line() + "]");
-    check(e2.fixes().empty(), "…with nothing left to fix at chaos 0");
+    check(e2.fix_count() == 0, "…with nothing left to fix at chaos 0");
     // A generated theme's provenance and claimed badges are "meta" (Theme.cpp's own
     // shape); ThemeEdit carries it now (dark_meta/light_meta) specifically so a save does
     // not lose it — the loss the first attempt at this milestone made a different way.

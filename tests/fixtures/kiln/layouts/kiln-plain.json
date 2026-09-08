@@ -1,0 +1,9 @@
+{
+  "name": "kiln-plain", "min_width": 0, "min_height": 0, "focus": "kiln_note",
+  "actions": {},
+  "root": { "row": [
+    { "id": "kiln_note", "content": "text:  a screen whose right half no line of this binary asked for",
+      "border": "single", "title": "kiln" },
+    { "id": "kiln_edit", "content": "text:  the same screen with the one window changed",
+      "size": 64, "border": "single", "title": "the theme", "focusable": true } ] }
+}

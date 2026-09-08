@@ -50,7 +50,12 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   per frame. Reports; never fails.
                   c/rolltui_json.c
                                          # the parser.
-                  c/rolltui_theme_analysis.c c/rolltui_theme_gen.c
+                  c/rolltui_theme_analysis.c c/rolltui_theme_gen.c c/rolltui_theme_editor.c
+                                         # EDITING a theme, as a model with no terminal in it —
+                                         #   the `theme` widget kind's half that is not a draw.
+                                         #   It is the library's because every app needs it; it
+                                         #   was one program's, and every other app could load a
+                                         #   theme and not change one.
                                          # the colour maths and the generator's
                                          #   PRNG/ruleset lookup — the parts of
                                          #   ThemeAnalysis/ThemeGen with no Theme, Role or
@@ -251,7 +256,7 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_O
 # whole-host suite, and that no function it reaches is INTERNAL.
 set(ROLLTUI_PUBLIC_ONLY_TESTS
   c_consumer_test.c explorer_test.cpp paint_art_test.cpp
-  authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp
+  authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
   public_header_test.cpp ownership_test.cpp)
 list(JOIN ROLLTUI_PUBLIC_ONLY_TESTS "," ROLLTUI_PUBLIC_ONLY_TESTS_JOINED)
 target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_PUBLIC_ONLY_TESTS="${ROLLTUI_PUBLIC_ONLY_TESTS_JOINED}")
@@ -477,6 +482,15 @@ target_compile_definitions(rolltui-explorer-test PRIVATE
   ROLLTUI_EXPLORER_PRODUCT_BIN="$<TARGET_FILE:rolltui-explorer>"
   ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")
 add_dependencies(rolltui-explorer-test rolltui-explorer rolltui-explorer-selftest)
+
+# THE `theme` KIND'S OWN PROOF: a screen that names it in a layout gets a working editor in a
+# binary that has never heard of the screen, and a commit lands where the app said it should.
+# Its controls are the one-window change, the bindings file's own chord, the source grep, and a
+# store withheld.
+add_rolltui_test(rolltui-theme-kind-test tests/theme_kind_test.cpp)
+target_compile_definitions(rolltui-theme-kind-test PRIVATE
+  ROLLTUI_STUDIO_BIN="$<TARGET_FILE:rolltui-studio-selftest>")
+add_dependencies(rolltui-theme-kind-test rolltui-studio-selftest)
 
 add_rolltui_test(rolltui-files-only-test tests/files_only_test.cpp)
 target_compile_definitions(rolltui-files-only-test PRIVATE

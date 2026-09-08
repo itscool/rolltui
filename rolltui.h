@@ -3700,6 +3700,27 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
                                                const char* depth, size_t depth_len, const char* name,
                                                size_t name_len);
 
+/* ---- the `theme` widget kind's one call -----------------------------------------------------
+ * An app gets a theme editor by NAMING `theme` in a layout and binding a key to whatever holds
+ * it. This is the only line of code it writes, it is not editor code, and it does not grow when
+ * the editor does.
+ *
+ * IT EXISTS BECAUSE THE THEME IS THE APP'S. The style table a frame is drawn with is passed
+ * into `rolltui_windows_draw` by the host, so no widget can reach it. What an app hands over
+ * instead is the Theme preset store it already keeps: the editor loads its working copy, lists
+ * its presets in the Load choice, and writes every commit back to it, so an app that watches
+ * `rolltui_preset_store_version` picks a theme edit up exactly the way it picks up a `//theme`.
+ * An app with no store of its own opens one — that is three lines and the same three every host
+ * here already writes, not a second mechanism.
+ *
+ * `content` is the layout's own string for the window ("theme", or "theme:<anything>"); NULL or
+ * 0 means the plain "theme". The widget is CREATED if this screen has none yet, exactly as a
+ * window naming that content would create it, so a host may wire the store before its first
+ * draw. `persist` non-zero autosaves each commit, which is what a session wants and a golden
+ * frame does not. The store is BORROWED and must outlive `w`. */
+void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
+                                     int persist);
+
 void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v); /* frees `colours`; zeroes */
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r); /* frees everything; zeroes */
