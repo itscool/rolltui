@@ -139,6 +139,26 @@ void rolltui_bindings_preset_domain_init(RolltuiPresetDomain* out,
                                          RolltuiReasonFn reason,
                                          void* reason_ctx);
 
+/* Which of the three a STORE belongs to. Distinct from `RolltuiPresetDomain` above (that struct
+ * is the MECHANICS for one domain — parse/to_json/clone/...; this is a tag naming one of the
+ * library's three), hence the `Id` suffix. The library's own closed set, like `Anchor` and `Border`: a host domain
+ * built through `_init` has no id and needs none — a store knows its domain by its `kind`. */
+typedef enum RolltuiPresetDomainId {
+  ROLLTUI_PRESET_DOMAIN_THEME = 0,
+  ROLLTUI_PRESET_DOMAIN_LAYOUT,
+  ROLLTUI_PRESET_DOMAIN_BINDINGS,
+} RolltuiPresetDomainId;
+
+/* A BORROW of a static string literal: "theme" | "layout" | "bindings" — and, not by
+ * coincidence, exactly the key that is each domain's own IDENTITY setting AND each library
+ * domain's `kind`: one spelling of the name, three readers. */
+const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
+
+/* The indexed lookup the three public accessors wrap, and the one the library's own loop over
+ * all three calls. A host names a domain instead (`rolltui_preset_domain_theme` and its two
+ * siblings, in `rolltui.h`). */
+RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

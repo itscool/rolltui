@@ -414,7 +414,7 @@ inline RolltuiContext* studio_ctx() {
 
 class ThemeStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain_theme(studio_ctx()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -450,11 +450,11 @@ class ThemeStore : public PresetStoreBase {
   }
 
   static bool is_shipped(std::string_view name) {
-    return rolltui_preset_is_shipped(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()) != 0;
+    return rolltui_preset_is_shipped(rolltui_preset_domain_theme(studio_ctx()), name.data(), name.size()) != 0;
   }
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_THEME), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain_theme(studio_ctx()), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
@@ -463,7 +463,7 @@ class ThemeStore : public PresetStoreBase {
 
 class LayoutStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_LAYOUT), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain_layout(studio_ctx()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -488,7 +488,7 @@ class LayoutStore : public PresetStoreBase {
   }
 
   static bool is_shipped(std::string_view name) {
-    return rolltui_preset_is_shipped(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_LAYOUT), name.data(), name.size()) != 0;
+    return rolltui_preset_is_shipped(rolltui_preset_domain_layout(studio_ctx()), name.data(), name.size()) != 0;
   }
 };
 
@@ -505,7 +505,7 @@ struct BindingsHandle {
 
 class BindingsStore : public PresetStoreBase {
   static RolltuiPresetStore* make(const std::string& dir, bool may_write_shipped, const std::string& shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_BINDINGS), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain_bindings(studio_ctx()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -527,7 +527,7 @@ class BindingsStore : public PresetStoreBase {
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain(studio_ctx(), ROLLTUI_PRESET_DOMAIN_BINDINGS), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain_bindings(studio_ctx()), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;

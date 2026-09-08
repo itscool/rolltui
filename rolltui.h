@@ -2950,16 +2950,6 @@ typedef struct RolltuiBindingsPresetReport {
   size_t notes_n, notes_cap;
 } RolltuiBindingsPresetReport;
 
-/* Which of the three a STORE belongs to. Distinct from `RolltuiPresetDomain` above (that struct
- * is the MECHANICS for one domain — parse/to_json/clone/...; this is a tag naming one of the
- * library's three), hence the `Id` suffix. The library's own closed set, like `Anchor` and `Border`: a host domain
- * built through `_init` has no id and needs none — a store knows its domain by its `kind`. */
-typedef enum RolltuiPresetDomainId {
-  ROLLTUI_PRESET_DOMAIN_THEME = 0,
-  ROLLTUI_PRESET_DOMAIN_LAYOUT,
-  ROLLTUI_PRESET_DOMAIN_BINDINGS,
-} RolltuiPresetDomainId;
-
 /* ---- settings: the keys a person changes, over the three working copies ---------------------
  * WHICH WORKING COPY A KEY LIVES IN IS THE LIBRARY'S BUSINESS. A host holds one
  * `RolltuiSettings` over its three stores and spells keys; it never spells a store, and the
@@ -3817,16 +3807,13 @@ int rolltui_bindings_preset_report_clean(const RolltuiBindingsPresetReport* r);
 
 void rolltui_bindings_preset_report_summary(const RolltuiBindingsPresetReport* r, RolltuiStr* out);
 
-/* A BORROW of a static string literal: "theme" | "layout" | "bindings" — and, not by
- * coincidence, exactly the key that is each domain's own IDENTITY setting (`RolltuiSetting`
- * below) AND each library domain's `kind`: one spelling of the name, three readers. */
-const char* rolltui_preset_domain_name(RolltuiPresetDomainId d, size_t* len);
-
-RolltuiPresetDomain* rolltui_preset_domain(RolltuiContext* c, RolltuiPresetDomainId id);
-
-/* The same three, one per library domain. A caller always knows which domain it wants, so these
- * are what a host writes; `rolltui_preset_domain` above takes the id for the loop that builds
- * all three at once. */
+/* One per library domain. A caller always knows which domain it wants — no call site anywhere
+ * picks between the three at runtime — so a domain is named, never spelled as an id. The
+ * indexed form and the id itself are internal: two ways to say "the theme domain" would be two
+ * spellings of one identity, and the wrappers are the one a host can reach.
+ *
+ * A domain's name is its `kind`, so a host that wants the word reads `dom->kind` rather than
+ * asking a second function for it. */
 RolltuiPresetDomain* rolltui_preset_domain_theme(RolltuiContext* c);
 
 RolltuiPresetDomain* rolltui_preset_domain_layout(RolltuiContext* c);
@@ -3836,7 +3823,7 @@ RolltuiPresetDomain* rolltui_preset_domain_bindings(RolltuiContext* c);
 /* A setting's value in a store's WORKING COPY, APPENDED to `out` (empty when this key is not
  * this domain's). The identity key — the store's own domain's `kind`, "theme"/"layout"/
  * "bindings" — answers with the origin; a Theme store additionally answers "theme_mode" and
- * "color_depth". It takes NO `RolltuiPresetDomainId` beside the store. "The caller knows, and
+ * "color_depth". It takes NO domain tag beside the store. "The caller knows, and
  * the store does not carry its own tag" is wrong on the second half: `kind` IS the name, and an
  * id beside it is a second spelling every caller has to keep in step. */
 void rolltui_preset_working_value(const RolltuiPresetStore* s, const char* key, size_t key_len, RolltuiStr* out);

@@ -334,11 +334,11 @@ void use_the_ported_modules(const char* when) {
 
   constexpr std::string_view kDefaultPreset = "default";
   const bool presets_ok =
-      rolltui_preset_shipped(rolltui_preset_domain(session(), ROLLTUI_PRESET_DOMAIN_THEME), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain_theme(session()), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain(session(), ROLLTUI_PRESET_DOMAIN_LAYOUT), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain_layout(session()), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr &&
-      rolltui_preset_shipped(rolltui_preset_domain(session(), ROLLTUI_PRESET_DOMAIN_BINDINGS), kDefaultPreset.data(),
+      rolltui_preset_shipped(rolltui_preset_domain_bindings(session()), kDefaultPreset.data(),
                              kDefaultPreset.size()) != nullptr;
   check(presets_ok, std::string("…and every domain's shipped presets are parsed and cached — ") + when);
 

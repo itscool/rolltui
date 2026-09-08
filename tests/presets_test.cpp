@@ -193,12 +193,12 @@ struct ThemeValueHandle {
   explicit operator bool() const { return v != nullptr; }
 };
 bool theme_value_eq(const RolltuiThemePresetValue* a, const RolltuiThemePresetValue* b) {
-  return a && b && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME)->equal(a, b) != 0;
+  return a && b && rolltui_preset_domain_theme(rolltui_test::test_context())->equal(a, b) != 0;
 }
 
 class ThemeStore : public StoreBase {
   static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain_theme(rolltui_test::test_context()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -239,14 +239,14 @@ class ThemeStore : public StoreBase {
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain_theme(rolltui_test::test_context()), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
   }
-  static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()) != 0; }
+  static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain_theme(rolltui_test::test_context()), name.data(), name.size()) != 0; }
   static std::string shipped_json(std::string_view name) {
-    RolltuiPresetDomain& d = *rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME);
+    RolltuiPresetDomain& d = *rolltui_preset_domain_theme(rolltui_test::test_context());
     for (std::size_t i = 0; i < d.shipped_count(); ++i) {
       const char *n = nullptr, *t = nullptr;
       std::size_t nl = 0, tl = 0;
@@ -259,7 +259,7 @@ class ThemeStore : public StoreBase {
   // is not shipped.
   static const RolltuiThemePresetValue* shipped(std::string_view name) {
     return static_cast<const RolltuiThemePresetValue*>(
-        rolltui_preset_shipped(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME), name.data(), name.size()));
+        rolltui_preset_shipped(rolltui_preset_domain_theme(rolltui_test::test_context()), name.data(), name.size()));
   }
 };
 
@@ -270,7 +270,7 @@ class ThemeStore : public StoreBase {
 // domains' opaque/JSON-backed values — this store can hand back a `RolltuiLayout` BY VALUE.
 class LayoutStore : public StoreBase {
   static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain_layout(rolltui_test::test_context()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -303,13 +303,13 @@ class LayoutStore : public StoreBase {
 
   static std::vector<std::string> shipped_names() {
     RolltuiStrList names;
-    rolltui_preset_shipped_names(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT), &names);
+    rolltui_preset_shipped_names(rolltui_preset_domain_layout(rolltui_test::test_context()), &names);
     std::vector<std::string> out;
     for (const RolltuiStr& n : names) out.push_back(str_of(n));
     return out;
   }
   static std::string shipped_json(std::string_view name) {
-    RolltuiPresetDomain& d = *rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT);
+    RolltuiPresetDomain& d = *rolltui_preset_domain_layout(rolltui_test::test_context());
     for (std::size_t i = 0; i < d.shipped_count(); ++i) {
       const char *n = nullptr, *t = nullptr;
       std::size_t nl = 0, tl = 0;
@@ -320,7 +320,7 @@ class LayoutStore : public StoreBase {
   }
   static const RolltuiLayout* shipped(std::string_view name) {
     return static_cast<const RolltuiLayout*>(
-        rolltui_preset_shipped(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT), name.data(), name.size()));
+        rolltui_preset_shipped(rolltui_preset_domain_layout(rolltui_test::test_context()), name.data(), name.size()));
   }
 };
 
@@ -382,7 +382,7 @@ bool layout_eq(const RolltuiLayout& a, const RolltuiLayout& b) { return rolltui_
 
 class BindingsStore : public StoreBase {
   static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
-    return rolltui_preset_store_new(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS), dir.data(), dir.size(),
+    return rolltui_preset_store_new(rolltui_preset_domain_bindings(rolltui_test::test_context()), dir.data(), dir.size(),
                                     may_write_shipped ? 1 : 0, shipped_dir.data(), shipped_dir.size());
   }
 
@@ -401,9 +401,9 @@ class BindingsStore : public StoreBase {
     return rolltui_preset_store_load(s_, name.data(), name.size(), &rep, persist ? 1 : 0) != 0;
   }
 
-  static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS), name.data(), name.size()) != 0; }
+  static bool is_shipped(std::string_view name) { return rolltui_preset_is_shipped(rolltui_preset_domain_bindings(rolltui_test::test_context()), name.data(), name.size()) != 0; }
   static std::string shipped_json(std::string_view name) {
-    RolltuiPresetDomain& d = *rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS);
+    RolltuiPresetDomain& d = *rolltui_preset_domain_bindings(rolltui_test::test_context());
     for (std::size_t i = 0; i < d.shipped_count(); ++i) {
       const char *n = nullptr, *t = nullptr;
       std::size_t nl = 0, tl = 0;
@@ -1126,10 +1126,12 @@ int main() {
   // SHIP.** Verifying new C with a scratch program that never gets checked in leaves it
   // covered by nothing the moment the program is deleted.
   {
-    RolltuiPresetDomain& d = *rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_THEME);
+    RolltuiPresetDomain& d = *rolltui_preset_domain_theme(rolltui_test::test_context());
     check(d.parse && d.to_json && d.clone && d.destroy && d.equal && d.shipped_at, "the C theme domain fills every slot the store calls through");
-    check(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT)->parse && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT)->clone && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT)->destroy && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_LAYOUT)->equal, "…and so does the C layout domain");
-    check(rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS)->parse && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS)->clone && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS)->destroy && rolltui_preset_domain(rolltui_test::test_context(), ROLLTUI_PRESET_DOMAIN_BINDINGS)->equal, "…and the C bindings domain");
+    check(rolltui_preset_domain(rolltui_test::test_context(), (RolltuiPresetDomainId)3) == NULL,
+          "an id that is not one of the three is NULL \u2014 the indexed lookup is internal, so this is the only suite that can still ask");
+    check(rolltui_preset_domain_layout(rolltui_test::test_context())->parse && rolltui_preset_domain_layout(rolltui_test::test_context())->clone && rolltui_preset_domain_layout(rolltui_test::test_context())->destroy && rolltui_preset_domain_layout(rolltui_test::test_context())->equal, "…and so does the C layout domain");
+    check(rolltui_preset_domain_bindings(rolltui_test::test_context())->parse && rolltui_preset_domain_bindings(rolltui_test::test_context())->clone && rolltui_preset_domain_bindings(rolltui_test::test_context())->destroy && rolltui_preset_domain_bindings(rolltui_test::test_context())->equal, "…and the C bindings domain");
     // A CLONE MUST SURVIVE ITS ORIGINAL, which is the exact bug ASan caught during the port:
     // theme_domain_clone allocated without zeroing, and rolltui_str_set then read the
     // uninitialised RolltuiStr as if it were valid. A clone that is merely allocated is not a

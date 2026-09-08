@@ -485,9 +485,9 @@ int main(void) {
   {
     char dir[512];
     size_t dir_len = 0;
-    RolltuiPresetDomain* theme_dom = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_THEME);
-    RolltuiPresetDomain* layout_dom = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_LAYOUT);
-    RolltuiPresetDomain* bindings_dom = rolltui_preset_domain(app.ctx, ROLLTUI_PRESET_DOMAIN_BINDINGS);
+    RolltuiPresetDomain* theme_dom = rolltui_preset_domain_theme(app.ctx);
+    RolltuiPresetDomain* layout_dom = rolltui_preset_domain_layout(app.ctx);
+    RolltuiPresetDomain* bindings_dom = rolltui_preset_domain_bindings(app.ctx);
 
     /* A scratch directory of this file's own. `mkdtemp` is POSIX, not rolltui; the store
      * takes a directory it did not create and creates the files under it itself. */
@@ -505,13 +505,14 @@ int main(void) {
               layout_dom->parse != NULL && bindings_dom->parse != NULL && theme_dom->report != NULL &&
               layout_dom->report != NULL && bindings_dom->report != NULL,
           "the library's own three preset domains are reachable from C, assembled by the library, each carrying its report ops");
-    check(rolltui_preset_domain(app.ctx, (RolltuiPresetDomainId)3) == NULL, "…and an id that is not one of the three is NULL");
-    {
-      size_t nl = 0;
-      const char* nm = rolltui_preset_domain_name(ROLLTUI_PRESET_DOMAIN_THEME, &nl);
-      check(nl == theme_dom->kind_len && memcmp(nm, theme_dom->kind, nl) == 0,
-            "…and a domain's `kind` IS its name, in the one spelling `rolltui_preset_domain_name` gives");
-    }
+    /* THE ACCESSORS ARE NOT SWAPPED. Three one-line wrappers over one indexed lookup is exactly
+     * the shape where a copy-paste returns the wrong domain and every later call still works,
+     * against the wrong files. A domain's `kind` is its name, so each wrapper can be asked
+     * which domain it actually returned. */
+    check(theme_dom->kind_len == 5 && memcmp(theme_dom->kind, "theme", 5) == 0 &&
+              layout_dom->kind_len == 6 && memcmp(layout_dom->kind, "layout", 6) == 0 &&
+              bindings_dom->kind_len == 8 && memcmp(bindings_dom->kind, "bindings", 8) == 0,
+          "…and each of the three accessors answers with the domain it is named for");
 
     /* ---- the Theme store, through its whole life ----------------------------------------- */
     {

@@ -128,7 +128,7 @@ struct Screen {
     ctx = rolltui_context_new();
     rolltui_context_set_library_defaults(ctx);
     rolltui_context_set_dir(ctx, dir.data(), dir.size());
-    store = rolltui_preset_store_new(rolltui_preset_domain(ctx, ROLLTUI_PRESET_DOMAIN_THEME), dir.data(), dir.size(),
+    store = rolltui_preset_store_new(rolltui_preset_domain_theme(ctx), dir.data(), dir.size(),
                                      0, "", 0);
     RolltuiThemePresetReport start{};
     rolltui_preset_store_start(store, &start);
