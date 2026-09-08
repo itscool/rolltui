@@ -320,10 +320,16 @@ void browser_destroy(void* ctx) {
   delete b;
 }
 
+// `problem()` answers ONE question: what does this kind NEED that the app has not provided. Its
+// reader is whoever builds the app, and it feeds the end-of-init gap report, whose whole sentence
+// is "this screen names N things this app must provide". A directory that does not exist is not
+// something the app failed to provide — it is DATA, and a person who mistyped a path is not the
+// audience for a sentence about what an app must provide. That failure is drawn in the panel and
+// said in the status line, where the person who caused it is looking.
 int browser_problem(void* ctx, RolltuiStr* out) {
   const Browser* b = static_cast<const Browser*>(ctx);
-  if (!b->cols.empty() && b->cols[0].error.empty()) return 0;
-  const std::string why = b->cols.empty() ? "nothing is bound to '" + b->source + "'" : b->cols[0].error;
+  if (!b->cols.empty()) return 0;
+  const std::string why = "nothing is bound to '" + b->source + "'";
   rolltui_str_set(out, why.data(), why.size());
   return 1;
 }
@@ -387,8 +393,24 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       rolltui_frame_put_text(f, b->draw_scratch, x + 1, y, cut.data(), cut.size(), st, cw - 1, 0, 0);
     }
     if (c.entries.empty()) {
-      const char* empty = "(empty)";
-      rolltui_frame_put_text(f, b->draw_scratch, x + 1, r.y + 1, empty, std::strlen(empty), dim, cw - 1, 0, 0);
+      // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
+      // entries, and drawing "(empty)" for both is a wrong answer that reports itself as a
+      // success. The widget draws this itself rather than leaving it to the library's error
+      // panel, because that panel is driven by `problem()`, whose reader is the app's author.
+      // ROW r.y + 1 IS NOT ALWAYS INSIDE THIS RECT. A column one row tall has no second row, and
+      // writing to it lands on whatever is drawn below — a neighbour's border. Every view here has
+      // to survive being one cell.
+      if (r.h > 1) {
+        // AN ERROR IS NOT A FILENAME AND DOES NOT RESPECT THE COLUMN GRID. A column is sized for
+        // names, so "cannot open /very/long/path" truncates to "cannot ope…" and tells nobody
+        // anything. It gets the rest of the panel instead, which is space no name needed.
+        const bool failed = !c.error.empty();
+        const std::string say = failed ? c.error : std::string("(empty)");
+        const RolltuiStyle es = failed ? S(ROLLTUI_ROLE_ERROR) : dim;
+        const int room = failed ? (r.x + r.w - (x + 1)) : (cw - 1);
+        const std::string cut = b->measure.fit(say, room);
+        rolltui_frame_put_text(f, b->draw_scratch, x + 1, r.y + 1, cut.data(), cut.size(), es, room, 0, 0);
+      }
     }
     x += cw + 1;
   }
@@ -767,6 +789,11 @@ struct App {
     // A REPORT OUTRANKS EVERY FACT BELOW IT: the line is truncated from the right, so anything
     // that must be read goes before anything that is merely useful.
     if (!note.empty()) rolltui_rows_add(&status_rows, "", 0, note.data(), note.size());
+    // A DATA failure said the way the person who caused it will read it. The window report above
+    // is the app author's channel and names a window and a content string; someone who mistyped a
+    // path needs the path back, not the plumbing that carried it.
+    if (b && !b->cols.empty() && !b->cols[0].error.empty())
+      rolltui_rows_add(&status_rows, "", 0, b->cols[0].error.data(), b->cols[0].error.size());
     if (!hint.empty()) rolltui_rows_add(&status_rows, "", 0, hint.data(), hint.size());
     if (b) {
       const Column* c = b->focused();

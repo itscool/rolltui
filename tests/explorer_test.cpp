@@ -84,6 +84,7 @@ int main() {
   write_file(tree / "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E.txt", "wide\n");              // CJK: two cells a glyph
   write_file(tree / "cafe\xCC\x81.txt", "combining\n");                                  // e + U+0301
   write_file(tree / "a-very-long-name-that-will-not-fit-inside-one-column.txt", "long\n");
+  std::filesystem::create_directories(tree / "empty-dir");
 
   const std::string bin = std::string("'") + ROLLTUI_EXPLORER_BIN + "'";
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
@@ -123,6 +124,28 @@ int main() {
     check(has(miss, "cannot load its layout"), "a miss says what it could not load [" + miss.substr(0, 50) + "]");
     check(has(miss, "tried:") && has(miss, "/nonexistent-xyz/layouts/explorer.json"),
           "…and NAMES the path it tried, rather than an empty parenthesis");
+  }
+
+  // ---- 0b. A DATA ERROR IS NOT A CAPABILITY GAP --------------------------------------------
+  // `problem()` answers "what does this kind NEED that the app has not provided", and it feeds
+  // the end-of-init gap report, whose sentence is "this screen names N things this app must
+  // provide". A mistyped path is DATA: the app provides `browser` perfectly well. Routing it
+  // through that channel hands a person a message written for whoever builds the app.
+  {
+    int drc = 0;
+    const std::string bad = tree.string() + "/no-such-dir-xyz";
+    const std::string err = run(bin + " '" + bad + "' --frame 60x10 2>&1 1>/dev/null", drc);
+    check(err.find("must provide") == std::string::npos,
+          "a missing directory is NOT reported as a capability gap [" + err.substr(0, 60) + "]");
+    const std::string shown = run(bin + " '" + bad + "' --frame 150x10 2>/dev/null", drc);
+    check(has(shown, "cannot open " + bad),
+          "…the panel says it cannot open the path IN FULL — an error is not a filename and gets the "
+          "panel width, because a column sized for names truncates it to nothing useful");
+    check(!has(shown, "(empty)"),
+          "…and a directory that CANNOT BE OPENED does not look like an EMPTY one — both have no "
+          "entries, and drawing the same thing for both is a wrong answer reporting itself as success");
+    const std::string ok_empty = run(bin + " '" + (tree / "empty-dir").string() + "' --frame 60x10 2>/dev/null", drc);
+    check(has(ok_empty, "(empty)"), "…while a genuinely empty directory still says so, so the two are distinguishable");
   }
 
   // ---- 1. it renders a directory ------------------------------------------------------------
