@@ -1,38 +1,160 @@
 {
-  "name": "panel-left", "min_width": 60, "min_height": 8, "focus": "input",
+  "name": "panel-left",
+  "min_width": 60,
+  "min_height": 8,
+  "focus": "input",
   "actions": {
     "app.help": "open help",
     "app.menu": "open the settings and commands menu",
     "app.details": "open the session details",
     "app.palette": "open the command palette",
     "app.repaint": "repaint the screen",
-    "app.find": "find in the transcript"
+    "app.find": "find in the transcript",
+    "app.theme": "Edit the theme"
   },
-  "root": { "row": [
-    { "id": "status", "content": "rows:status", "size": 32, "border": "single", "title": "status",
-      "background": "panel_background" },
-    { "column": [
-      { "id": "transcript", "content": "transcript:session", "border": "single", "title": "transcript", "focusable": true },
-      { "id": "input", "content": "input:prompt", "size": 3, "border": "single", "focusable": true } ] } ] },
+  "root": {
+    "row": [
+      {
+        "id": "status",
+        "content": "rows:status",
+        "size": 32,
+        "border": "single",
+        "title": "status",
+        "background": "panel_background"
+      },
+      {
+        "column": [
+          {
+            "id": "transcript",
+            "content": "transcript:session",
+            "border": "single",
+            "title": "transcript",
+            "focusable": true
+          },
+          {
+            "id": "input",
+            "content": "input:prompt",
+            "size": 3,
+            "border": "single",
+            "focusable": true
+          }
+        ]
+      }
+    ]
+  },
   "popups": [
-    { "id": "find", "x": "50%", "y": 0, "w": "60%", "h": 3, "anchor": "top",
-      "min_w": 24, "max_w": 72,
-      "root": { "id": "find", "content": "input:find", "border": "rounded", "title": "find", "focusable": true,
-                "background": "panel_background" } },
-    { "id": "help", "x": "50%", "y": "50%", "w": "60%", "h": 12, "anchor": "center",
-      "min_w": 24, "max_w": 72, "modal": true,
-      "root": { "content": "help", "border": "rounded", "title": "help", "focusable": true,
-                "background": "panel_background" } },
-    { "id": "approval", "x": "50%", "y": "100%", "w": "70%", "h": 5, "anchor": "bottom",
-      "min_w": 44, "max_w": 96, "modal": true,
-      "root": { "id": "approval", "content": "approval", "border": "rounded", "title": "approval", "focusable": true,
-                "background": "panel_background" } },
-    { "id": "menu", "x": "50%", "y": "50%", "w": "50%", "h": "60%", "anchor": "center",
-      "min_w": 30, "max_w": 80, "min_h": 5, "modal": true,
-      "root": { "id": "menu", "content": "menu:main", "border": "rounded", "title": "menu", "focusable": true,
-                "background": "panel_background" } },
-    { "id": "details", "x": "100%", "y": 0, "w": "45%", "h": "100%", "anchor": "top-right",
-      "min_w": 40, "max_w": 100, "modal": true,
-      "root": { "id": "details", "content": "details", "border": "rounded", "title": "session", "focusable": true,
-                "background": "panel_background" } } ]
+    {
+      "id": "find",
+      "x": "50%",
+      "y": 0,
+      "w": "60%",
+      "h": 3,
+      "anchor": "top",
+      "min_w": 24,
+      "max_w": 72,
+      "root": {
+        "id": "find",
+        "content": "input:find",
+        "border": "rounded",
+        "title": "find",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "help",
+      "x": "50%",
+      "y": "50%",
+      "w": "60%",
+      "h": 12,
+      "anchor": "center",
+      "min_w": 24,
+      "max_w": 72,
+      "modal": true,
+      "root": {
+        "content": "help",
+        "border": "rounded",
+        "title": "help",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "approval",
+      "x": "50%",
+      "y": "100%",
+      "w": "70%",
+      "h": 5,
+      "anchor": "bottom",
+      "min_w": 44,
+      "max_w": 96,
+      "modal": true,
+      "root": {
+        "id": "approval",
+        "content": "approval",
+        "border": "rounded",
+        "title": "approval",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "menu",
+      "x": "50%",
+      "y": "50%",
+      "w": "50%",
+      "h": "60%",
+      "anchor": "center",
+      "min_w": 30,
+      "max_w": 80,
+      "min_h": 5,
+      "modal": true,
+      "root": {
+        "id": "menu",
+        "content": "menu:main",
+        "border": "rounded",
+        "title": "menu",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "details",
+      "x": "100%",
+      "y": 0,
+      "w": "45%",
+      "h": "100%",
+      "anchor": "top-right",
+      "min_w": 40,
+      "max_w": 100,
+      "modal": true,
+      "root": {
+        "id": "details",
+        "content": "details",
+        "border": "rounded",
+        "title": "session",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
+      "id": "theme",
+      "x": "100%",
+      "y": 0,
+      "w": "45%",
+      "h": "100%",
+      "anchor": "top-right",
+      "min_w": 40,
+      "max_w": 100,
+      "modal": true,
+      "root": {
+        "id": "theme",
+        "content": "theme",
+        "border": "rounded",
+        "title": "theme",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    }
+  ]
 }

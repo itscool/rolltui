@@ -472,8 +472,8 @@ int main() {
           "…and the rest are the base layer's FOCUSABLE windows [" + str_of(ed.committed().base.focus) + "]");
     // The skeleton itself, as a value: nothing carried, whatever was open.
     const Layout before = ed.current().clone();
-    check(before.popups.size() == 5 && before.actions.size() == 6 && before.min_width == 72,
-          "the screen it is created FROM has five popups, six actions and a threshold");
+    check(before.popups.size() == 6 && before.actions.size() == 7 && before.min_width == 72,
+          "the screen it is created FROM has six popups, seven actions and a threshold");
     act(ed, "layout file", "new layout");
     type(ed, "kiosk");
     o = handle(ed, key(ROLLTUI_KEY_ENTER));

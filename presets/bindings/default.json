@@ -1,70 +1,212 @@
 {
   "name": "default",
   "bindings": {
-    "input.submit": ["enter"],
-    "input.newline": ["alt+enter"],
-    "input.backspace": ["backspace"],
-    "input.delete": ["delete"],
-    "input.kill_word_backward": ["ctrl+w", "alt+backspace"],
-    "input.kill_word_forward": ["alt+d", "ctrl+delete"],
-    "input.kill_to_line_start": ["ctrl+u"],
-    "input.kill_to_line_end": ["ctrl+k"],
-    "input.left": ["left"],
-    "input.right": ["right"],
-    "input.word_left": ["ctrl+left", "alt+left"],
-    "input.word_right": ["ctrl+right", "alt+right"],
-    "input.line_start": ["home"],
-    "input.line_end": ["end"],
-    "input.up": ["up"],
-    "input.down": ["down"],
-    "input.select_left": ["shift+left"],
-    "input.select_right": ["shift+right"],
-    "input.select_word_left": ["ctrl+shift+left", "alt+shift+left"],
-    "input.select_word_right": ["ctrl+shift+right", "alt+shift+right"],
-    "input.select_line_start": ["shift+home"],
-    "input.select_line_end": ["shift+end"],
-    "input.select_up": ["shift+up"],
-    "input.select_down": ["shift+down"],
-    "input.select_all": ["ctrl+a"],
-    "input.clear_selection": ["escape"],
-    "input.copy": ["alt+c"],
-    "input.eof": ["ctrl+d"],
-    "input.undo": ["ctrl+z"],
-    "input.redo": ["ctrl+y"],
-    "transcript.page_up": ["pageup"],
-    "transcript.page_down": ["pagedown"],
-    "transcript.top": ["home", "ctrl+home"],
-    "transcript.bottom": ["end", "ctrl+end"],
-    "transcript.line_up": ["up"],
-    "transcript.line_down": ["down"],
-    "transcript.find_next": ["ctrl+g"],
-    "transcript.find_prev": ["alt+g"],
-    "transcript.fold": ["ctrl+o"],
-    "transcript.copy": ["alt+c"],
-    "transcript.clear_selection": ["escape"],
-    "menu.up": ["up"],
-    "menu.down": ["down"],
-    "menu.page_up": ["pageup"],
-    "menu.page_down": ["pagedown"],
-    "menu.first": ["home"],
-    "menu.last": ["end"],
-    "menu.activate": ["enter"],
-    "menu.descend": ["right"],
-    "menu.ascend": ["left"],
-    "menu.back": ["escape"],
-    "menu.erase": ["backspace"],
-    "edit.commit": ["enter"],
-    "edit.cancel": ["escape"],
-    "edit.step_up": ["up"],
-    "edit.step_down": ["down"],
-    "stack.close_popup": ["escape"],
-    "stack.focus_next": ["tab"],
-    "stack.focus_prev": ["shift+tab"],
-    "app.help": ["f1", "?"],
-    "app.menu": ["f2"],
-    "app.details": ["f3"],
-    "app.palette": ["ctrl+p"],
-    "app.repaint": ["ctrl+l"],
-    "app.find": ["ctrl+f"]
+    "input.submit": [
+      "enter"
+    ],
+    "input.newline": [
+      "alt+enter"
+    ],
+    "input.backspace": [
+      "backspace"
+    ],
+    "input.delete": [
+      "delete"
+    ],
+    "input.kill_word_backward": [
+      "ctrl+w",
+      "alt+backspace"
+    ],
+    "input.kill_word_forward": [
+      "alt+d",
+      "ctrl+delete"
+    ],
+    "input.kill_to_line_start": [
+      "ctrl+u"
+    ],
+    "input.kill_to_line_end": [
+      "ctrl+k"
+    ],
+    "input.left": [
+      "left"
+    ],
+    "input.right": [
+      "right"
+    ],
+    "input.word_left": [
+      "ctrl+left",
+      "alt+left"
+    ],
+    "input.word_right": [
+      "ctrl+right",
+      "alt+right"
+    ],
+    "input.line_start": [
+      "home"
+    ],
+    "input.line_end": [
+      "end"
+    ],
+    "input.up": [
+      "up"
+    ],
+    "input.down": [
+      "down"
+    ],
+    "input.select_left": [
+      "shift+left"
+    ],
+    "input.select_right": [
+      "shift+right"
+    ],
+    "input.select_word_left": [
+      "ctrl+shift+left",
+      "alt+shift+left"
+    ],
+    "input.select_word_right": [
+      "ctrl+shift+right",
+      "alt+shift+right"
+    ],
+    "input.select_line_start": [
+      "shift+home"
+    ],
+    "input.select_line_end": [
+      "shift+end"
+    ],
+    "input.select_up": [
+      "shift+up"
+    ],
+    "input.select_down": [
+      "shift+down"
+    ],
+    "input.select_all": [
+      "ctrl+a"
+    ],
+    "input.clear_selection": [
+      "escape"
+    ],
+    "input.copy": [
+      "alt+c"
+    ],
+    "input.eof": [
+      "ctrl+d"
+    ],
+    "input.undo": [
+      "ctrl+z"
+    ],
+    "input.redo": [
+      "ctrl+y"
+    ],
+    "transcript.page_up": [
+      "pageup"
+    ],
+    "transcript.page_down": [
+      "pagedown"
+    ],
+    "transcript.top": [
+      "home",
+      "ctrl+home"
+    ],
+    "transcript.bottom": [
+      "end",
+      "ctrl+end"
+    ],
+    "transcript.line_up": [
+      "up"
+    ],
+    "transcript.line_down": [
+      "down"
+    ],
+    "transcript.find_next": [
+      "ctrl+g"
+    ],
+    "transcript.find_prev": [
+      "alt+g"
+    ],
+    "transcript.fold": [
+      "ctrl+o"
+    ],
+    "transcript.copy": [
+      "alt+c"
+    ],
+    "transcript.clear_selection": [
+      "escape"
+    ],
+    "menu.up": [
+      "up"
+    ],
+    "menu.down": [
+      "down"
+    ],
+    "menu.page_up": [
+      "pageup"
+    ],
+    "menu.page_down": [
+      "pagedown"
+    ],
+    "menu.first": [
+      "home"
+    ],
+    "menu.last": [
+      "end"
+    ],
+    "menu.activate": [
+      "enter"
+    ],
+    "menu.descend": [
+      "right"
+    ],
+    "menu.ascend": [
+      "left"
+    ],
+    "menu.back": [
+      "escape"
+    ],
+    "menu.erase": [
+      "backspace"
+    ],
+    "edit.commit": [
+      "enter"
+    ],
+    "edit.cancel": [
+      "escape"
+    ],
+    "edit.step_up": [
+      "up"
+    ],
+    "edit.step_down": [
+      "down"
+    ],
+    "stack.close_popup": [
+      "escape"
+    ],
+    "stack.focus_next": [
+      "tab"
+    ],
+    "stack.focus_prev": [
+      "shift+tab"
+    ],
+    "app.help": [
+      "f1",
+      "?"
+    ],
+    "app.menu": [
+      "f2"
+    ],
+    "app.details": [
+      "f3"
+    ],
+    "app.theme": [
+      "f4"
+    ],
+    "app.palette": [
+      "ctrl+p"
+    ],
+    "app.repaint": [
+      "ctrl+l"
+    ],
+    "app.find": [
+      "ctrl+f"
+    ]
   }
 }

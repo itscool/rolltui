@@ -19,9 +19,9 @@
 │ │ abs/rel per axis), focus         │             │ resolve(Placement│ app.palette                                  ▸ │
 │ │                                  │             │ Rect is a pure fu│ app.repaint                                  ▸ │
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│ app.find                                     ▸ │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ app.zoom                                     ▸ │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ add an action (name):                          │
-│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ app.theme                                    ▸ │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ app.zoom                                     ▸ │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ add an action (name):                          │
 │ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
 │ │ → styled wrapped lines)          │             │                  │                                                │
 │ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
