@@ -366,6 +366,20 @@
         ],
         "period_ms": 400
       }
+    },
+    "glyphs": {
+      "scrollbar": {
+        "single": "█",
+        "top": "█",
+        "middle": "█",
+        "bottom": "█",
+        "ascii": {
+          "single": "#",
+          "top": "#",
+          "middle": "#",
+          "bottom": "#"
+        }
+      }
     }
   }
 }

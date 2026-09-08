@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > read the manager header and tell me what    █ theme   default-dark         │
+│ > read the manager header and tell me what    ▄ theme   default-dark         │
 │   stop_heartbeat does                         █ keys    default              │
 │                                               █ layout  default              │
 │ ▸ read_file include/ResilientModelManager.hpp █ size    80x24                │
@@ -11,7 +11,7 @@
 │ for a handler that is already running.        █                              │
 │                                               █                              │
 │ Without the drain a poll() blocked on the     █                              │
-│ state lock could resume after release()       █                              │
+│ state lock could resume after release()       ▀                              │
 │ decided it was the last client, re-register   │                              │
 │ itself and respawn the server release just    │                              │
 │ killed — a permanent orphan. The rule is      │                              │

@@ -951,6 +951,9 @@ struct App {
       RolltuiStyle new_styles[ROLLTUI_ROLE_COUNT]{};
       RolltuiStr new_name{};
       RolltuiEffectMap* new_effects = rolltui_theme_load(working->colours, mode, rolltui_theme_default_vocab(), new_styles, &new_name, &rep);
+      // The thumb's shape is the theme's, the same as its colour.
+      { RolltuiScrollbarGlyphs g; rolltui_theme_scrollbar_glyphs(working->colours, &g);
+        rolltui_context_set_scrollbar_glyphs(ctx, &g); }
       if (new_effects) {
         std::copy(std::begin(new_styles), std::end(new_styles), resolved_styles);
         resolved_name = str_of(new_name);

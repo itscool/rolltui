@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ # Two blocks that look identical, and are not                     █ theme   default-dark         │
+│ # Two blocks that look identical, and are not                     ▄ theme   default-dark         │
 │                                                                   █ keys    default              │
 │ The first is under a ```diff fence, so it colours through the     █ layout  default              │
 │ diff roles. The second is under a bare fence and holds the SAME   █ size    100x30               │
@@ -14,7 +14,7 @@
 │ │  class TranscriptWidget : public WidgetBase {                 │ █                              │
 │ │   public:                                                     │ █                              │
 │ │    using WidgetBase::WidgetBase;                              │ █                              │
-│ │    Transcript t;                                              │ █                              │
+│ │    Transcript t;                                              │ ▀                              │
 │ │ -  void layout(const ResolvedNode& rn) {                      │ │                              │
 │ │ +  void layout(const ResolvedNode& rn) override {             │ │                              │
 │ │ +    sync_highlighter();                                      │ │                              │

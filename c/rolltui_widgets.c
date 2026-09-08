@@ -176,6 +176,7 @@ struct RolltuiWindowConfig {
   RolltuiCodeFold code_fold;
   RolltuiTranscriptActions transcript_actions;
   RolltuiMenuRoles menu_roles;
+  RolltuiScrollbarGlyphs scrollbar_glyphs;
   const RolltuiInputActions* input_actions; /* BORROWED, process lifetime */
 };
 
@@ -189,6 +190,8 @@ RolltuiWindowConfig* rolltui_context_window_config(RolltuiContext* ctx) {
 RolltuiWindowConfig* rolltui_window_config_new(void) {
   RolltuiWindowConfig* c = (RolltuiWindowConfig*)rolltui_mem_alloc(sizeof *c);
   memset(c, 0, sizeof *c);
+  /* A program that sets no glyphs still draws a shaped thumb; zeroed slots would draw nothing. */
+  rolltui_scrollbar_glyphs_default(&c->scrollbar_glyphs);
   return c;
 }
 
@@ -769,6 +772,31 @@ void rolltui_context_set_menu_roles(RolltuiContext* ctx, const RolltuiMenuRoles*
   rolltui_context_window_config(ctx)->menu_roles = *r;
 }
 const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w) { return &w->cfg->menu_roles; }
+
+void rolltui_scrollbar_glyphs_default(RolltuiScrollbarGlyphs* out) {
+  if (!out) return;
+  memset(out, 0, sizeof *out);
+  /* ● is an oval in one cell; ▄ fills the lower half so a thumb STARTS mid-cell, ▀ the upper
+   * half so it ENDS mid-cell, and █ between them is the body. */
+  memcpy(out->single, "\xE2\x97\x8F", 4);
+  memcpy(out->top, "\xE2\x96\x84", 4);
+  memcpy(out->middle, "\xE2\x96\x88", 4);
+  memcpy(out->bottom, "\xE2\x96\x80", 4);
+  memcpy(out->ascii_single, "o", 2);
+  memcpy(out->ascii_top, "#", 2);
+  memcpy(out->ascii_middle, "#", 2);
+  memcpy(out->ascii_bottom, "#", 2);
+}
+
+void rolltui_context_set_scrollbar_glyphs(RolltuiContext* ctx, const RolltuiScrollbarGlyphs* g) {
+  RolltuiWindowConfig* cfg = rolltui_context_window_config(ctx);
+  if (g) cfg->scrollbar_glyphs = *g;
+  else rolltui_scrollbar_glyphs_default(&cfg->scrollbar_glyphs);
+}
+
+const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWindows* w) {
+  return &w->cfg->scrollbar_glyphs;
+}
 void rolltui_context_set_input_actions(RolltuiContext* ctx, const RolltuiInputActions* a) {
   rolltui_context_window_config(ctx)->input_actions = a;
 }
@@ -966,7 +994,6 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   RolltuiScrollThumb t;
   RolltuiStyle style, ground;
   int track, x, i;
-  const char* thumb;
   /* THE TRACK IS ZEROED, NOT ERASED: an erase-and-reinsert destroys a table node and
    * allocates a new one every frame for every window with a scrollbar. `h == 0` is what "no
    * track this frame" means. */
@@ -991,13 +1018,24 @@ static void draw_scrollbar(RolltuiWindows* w, const RolltuiResolvedNode* rn, Rol
   style = styles[roles->scrollbar];
   ground = styles[rn->node->background];
   if (style.bg.kind == 0 /* Color::Kind::None */) style.bg = ground.bg;
-  /* █ (U+2588) is East Asian AMBIGUOUS, exactly like the box-drawing set the border is made
-   * of — so it follows the border's rule: with `ambiguous_wide` the thumb is ASCII. */
-  thumb = w->cfg->env.ambiguous_wide ? "#" : "\xE2\x96\x88";
-  for (i = 0; i < t.length; ++i) {
-    const int y = rn->outer.y + 1 + t.offset + i;
-    if (y >= rn->outer.y + rn->outer.h - 1) break;
-    rolltui_frame_put(f, x, y, thumb, strlen(thumb), 1, style, 0);
+  /* A CAPSULE, not a run of one glyph: the ends are half-height so a bar of any length reads as
+   * a shape rather than a gap punched in the border. Every glyph worth using is East Asian
+   * AMBIGUOUS, exactly like the box-drawing set the border is made of, so it takes the border's
+   * rule — with `ambiguous_wide` the thumb is ASCII. */
+  {
+    const RolltuiScrollbarGlyphs* g = &w->cfg->scrollbar_glyphs;
+    const int wide = w->cfg->env.ambiguous_wide;
+    for (i = 0; i < t.length; ++i) {
+      const int y = rn->outer.y + 1 + t.offset + i;
+      const char* cell;
+      if (y >= rn->outer.y + rn->outer.h - 1) break;
+      if (t.length == 1) cell = wide ? g->ascii_single : g->single;
+      else if (i == 0) cell = wide ? g->ascii_top : g->top;
+      else if (i == t.length - 1) cell = wide ? g->ascii_bottom : g->bottom;
+      else cell = wide ? g->ascii_middle : g->middle;
+      if (!cell[0]) cell = wide ? "#" : "\xE2\x96\x88"; /* an empty slot falls back, never draws nothing */
+      rolltui_frame_put(f, x, y, cell, strlen(cell), 1, style, 0);
+    }
   }
 }
 

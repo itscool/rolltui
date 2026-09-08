@@ -188,6 +188,12 @@ const char* rolltui_windows_dir(const RolltuiWindows* w, size_t* len);
 size_t rolltui_windows_host_menu_count(const RolltuiWindows* w);
 const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i, size_t* len);
 
+/* The shipped capsule, and what is in force. INTERNAL: a host reads a theme's answer with
+ * `rolltui_theme_scrollbar_glyphs` and applies it with `rolltui_context_set_scrollbar_glyphs`,
+ * and never needs to ask for the default or read one back. */
+void rolltui_scrollbar_glyphs_default(RolltuiScrollbarGlyphs* out);
+const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWindows* w);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

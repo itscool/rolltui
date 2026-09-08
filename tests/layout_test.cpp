@@ -2127,14 +2127,20 @@ int main() {
       // The thumb is IN the right border column, which the widget never sees.
       const int track_x = 39;
       bool thumb_drawn = false, thumb_coloured = false;
-      for (int y = 1; y < 11; ++y)
-        if (f.glyph(track_x, y) == "\xE2\x96\x88") {
+      // ANY OF THE CAPSULE'S FOUR CELLS COUNTS. A thumb is `single` alone, or `top`/`middle`/
+      // `bottom` — asserting one glyph would make this test a statement about the thumb's LENGTH,
+      // which is the layout's business and not this check's.
+      const RolltuiScrollbarGlyphs* sg = rolltui_windows_scrollbar_glyphs(windows.handle());
+      for (int y = 1; y < 11; ++y) {
+        const std::string_view got = f.glyph(track_x, y);
+        if (got == sg->single || got == sg->top || got == sg->middle || got == sg->bottom) {
           thumb_drawn = true;
           // THE GLYPH IS NOT ENOUGH. With the glyph asserted and the colour not,
           // `RolltuiWindowRoles::scrollbar` could name any role at all and every suite would
           // stay green. Pointing it at `error` turns this red.
           if (f.at(track_x, y).style.fg == th.style(ROLLTUI_ROLE_SCROLLBAR).fg) thumb_coloured = true;
         }
+      }
       check(thumb_drawn, "the window drew a thumb in its right border column");
       check(thumb_coloured && th.style(ROLLTUI_ROLE_SCROLLBAR).fg != th.style(ROLLTUI_ROLE_ERROR).fg,
             "…painted with `scrollbar`, the role the window draws its own chrome with");

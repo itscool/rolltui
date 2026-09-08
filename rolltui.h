@@ -4515,6 +4515,34 @@ void rolltui_windows_layout(RolltuiWindows* w, const RolltuiWindowStack* stack, 
  * scrollbar from another role still passes its own struct. */
 const RolltuiWindowRoles* rolltui_windows_default_roles(void);
 
+/* THE FOUR CELLS A SCROLLBAR THUMB IS MADE OF, so a look is a theme's rather than a literal.
+ * A thumb is drawn as a CAPSULE: `single` when it is one cell tall, otherwise `top`, then
+ * `middle` repeated, then `bottom`. Half-blocks give the ends a rounded edge because each fills
+ * only the half of its cell facing inward, so a bar of any length has soft ends and a solid body.
+ *
+ * VALUE / INLINE with a stated bound: each glyph is one grapheme, and eight bytes holds any
+ * sequence worth putting in a one-cell track. Copied on set, so a theme's parsed text need not
+ * outlive the call.
+ *
+ * `ascii_*` is used when the terminal draws East Asian AMBIGUOUS glyphs two cells wide — every
+ * glyph worth using here is ambiguous, the box-drawing borders included, so this is the same
+ * fallback the border already takes rather than a concession this feature invents. */
+typedef struct RolltuiScrollbarGlyphs {
+  char single[8], top[8], middle[8], bottom[8];
+  char ascii_single[4], ascii_top[4], ascii_middle[4], ascii_bottom[4];
+} RolltuiScrollbarGlyphs;
+
+/* What a host does with the pair: READ a theme's answer, APPLY it. The default set and the
+ * read-back live in the library's own header — a host never needs either, because a theme it did
+ * not write still fills every slot. */
+void rolltui_context_set_scrollbar_glyphs(RolltuiContext* ctx, const RolltuiScrollbarGlyphs* g);
+
+/* Reads a theme's `glyphs.scrollbar` object into `out`, filling every key it does not state with
+ * the shipped default, so `out` is always complete. Returns 0 when the theme says nothing.
+ * Separate from `rolltui_theme_load` because it answers a different question and a host that does
+ * not care never has to pass an argument for it. */
+int rolltui_theme_scrollbar_glyphs(const RolltuiJsonValue* root, RolltuiScrollbarGlyphs* out);
+
 void rolltui_windows_draw(RolltuiWindows* w, const RolltuiResolvedNode* rn, RolltuiFrame* f,
                           const RolltuiStyle* styles, const RolltuiWindowRoles* roles);
 

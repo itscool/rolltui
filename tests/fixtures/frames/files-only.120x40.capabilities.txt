@@ -1,6 +1,6 @@
   a screen with no code behind it — six files, no rebuild
 ┌ the transcript ─────────────────────────────────────────────────────────────────────┬ menus/kettle.json ─────────────┐
-│ ⠸ waiting for the kettle to boil                                                    █ commands                       │
+│ ⠸ waiting for the kettle to boil                                                    ▄ commands                       │
 │                                                                                     █ Put the kettle on       Ctrl-J │
 │ > raise the target temperature                                                      █ About this screen            ▸ │
 │                                                                                     █                                │
@@ -11,7 +11,7 @@
 │ │ --- a/kettle.c                                                                  │ █                                │
 │ │ +++ b/kettle.c                                                                  │ █                                │
 │ │ @@ -12,7 +12,7 @@ static void heat(void) {                                      │ █                                │
-│ │    element_on();                                                                │ █                                │
+│ │    element_on();                                                                │ ▀                                │
 │ │ -  int target = 80;                                                             │ │                                │
 │ │ +  int target = 100;                                                            │ │                                │
 │ │    while (probe() < target) {                                                   │ │                                │
@@ -20,8 +20,8 @@
 │ │    element_off();                                                               │ │                                │
 │ └────────────────────────────────────────────────────────────────────────▼ 12 more  │                                │
 ├ docs/kettle.md ─────────────────────────────────────────────────────────────────────┤                                │
-│ A screen that exists only as files.                                                 █                                │
-│                                                                                     █                                │
+│ A screen that exists only as files.                                                 ▄                                │
+│                                                                                     ▀                                │
 │ Nothing in the host binary knows this screen. No source file names these window     │                                │
 │ ids, this menu, this action or this document, and no host was rebuilt to show it.   │                                │
 │ Six files in a preset directory are the whole application.                          │                                │
@@ -30,7 +30,7 @@
 │ this screen emits (app.kettle and app.find).                                        │                                │
 │                                                                          ▼ 26 more  │                                │
 ├ the live key table ─────────────────────────────────────────────────────────────────┴────────────────────────────────┤
-│ input:                                                                                                               █
+│ input:                                                                                                               ●
 │   Enter                   send the line (always Enter)                                                               │
 │   Alt-Enter               insert a newline                                                                           │
 │   Backspace               erase before the caret (or the selection)                                                  │

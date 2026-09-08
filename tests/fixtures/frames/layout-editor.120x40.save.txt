@@ -28,12 +28,12 @@
 │ │ built-ins) │            │             │ │ │ built-ins) │          │                                                │
 │ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│                                                │
 │                                           │                         │                                                │
-│ Here is the function you asked for:       █ Here is the function you│                                                │
+│ Here is the function you asked for:       ▄ Here is the function you│                                                │
 │                                           █                         │                                                │
 │ ┌ cpp ──────────────────────────────────┐ █ ┌ cpp ──────────────────│                                                │
 │ │ int add(int a, int b) {               │ █ │ int add(int a, int b) │                                                │
 │ │   return a + b;                       │ █ │   return a + b;       │ selected: transcript  size fill  border single │
-│ └───────────────────────────────────────┘ █ └───────────────────────│ Tab next node · click selects · drag an edge r │
+│ └───────────────────────────────────────┘ ▀ └───────────────────────│ Tab next node · click selects · drag an edge r │
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │ saved layout file /var/folders/13/ydj6w4yj2xs0 │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

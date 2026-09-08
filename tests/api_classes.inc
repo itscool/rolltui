@@ -603,6 +603,10 @@ ROLLTUI_API(rolltui_windows_call_submit, INTERNAL)  /* only the library's own .c
 ROLLTUI_API(rolltui_context_clear_help_scopes, PUBLIC)
 ROLLTUI_API(rolltui_windows_content_at, PUBLIC)
 ROLLTUI_API(rolltui_windows_default_roles, PUBLIC)
+ROLLTUI_API(rolltui_scrollbar_glyphs_default, INTERNAL)  /* the shipped capsule; a host never asks for it, because a theme's answer always arrives complete */
+ROLLTUI_API(rolltui_context_set_scrollbar_glyphs, PUBLIC)  /* the look of the thumb is a theme's, and this is where a theme's answer lands */
+ROLLTUI_API(rolltui_theme_scrollbar_glyphs, PUBLIC)  /* the read half: every host resolving a theme reads its glyphs beside its styles */
+ROLLTUI_API(rolltui_windows_scrollbar_glyphs, INTERNAL)  /* what the draw path reads; no host asks what is in force, it just set it */
 ROLLTUI_API(rolltui_windows_dir, INTERNAL)
 ROLLTUI_API(rolltui_windows_document, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_draw, PUBLIC)

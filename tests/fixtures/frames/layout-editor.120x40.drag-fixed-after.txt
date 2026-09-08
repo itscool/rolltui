@@ -27,13 +27,13 @@
 │                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │
-│                                                │█                                                                    │
+│                                                │▄                                                                    │
 │                                                │█                                                                    │
 │                                                │█                                                                    │
 │                                                │█                                                                    │
 │                                                │█                                                                    │
 │ selected: status  size 70  border single  rows │█                                                                    │
-│ Tab next node · click selects · drag an edge r │█                                                                    │
+│ Tab next node · click selects · drag an edge r │▀                                                                    │
 │ loaded wide-right · undo 1 · redo 0            │┤                                                                    │
 │                                                ││                                                                    │
 └────────────────────────────────────────────────┘┴────────────────────────────────────────────────────────────────────┘

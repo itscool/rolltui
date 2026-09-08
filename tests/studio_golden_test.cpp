@@ -1064,6 +1064,41 @@ int main(int argc, char** argv) {
       for (const auto& [keys, want] : {std::pair<const char*, const char*>{"F7", "[keys editor]"}, {"F4", "[theme editor]"}, {"F6", "[layout editor]"}})
         check(run(base + " --keys \"" + keys + "\"", rc).find(want) != std::string::npos,
               std::string(keys) + " still opens the " + want + " — editor.* is declared by the host that mounts the editors");
+      // THE THUMB'S SHAPE IS THE THEME'S, not a literal in the drawing code. A thumb is drawn as
+      // a capsule — `single` alone, else `top`, `middle`…, `bottom` — and a theme may replace all
+      // four. The high-contrast designs do: a capsule's half-height caps trade visible mass for
+      // softness, and mass is the point of a high-contrast design.
+      {
+        // Finds the thumb wherever it is: the caps and body appear in one column and nowhere
+        // else on the frame, so reading the first one per row spells the thumb top to bottom
+        // without this test needing to know the layout's geometry.
+        auto thumb_of = [&](const char* theme) {
+          const std::string out = run(bin + " '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                                      "/session/demo.md' --frame 120x40 --presets '" + p +
+                                      "' --theme " + theme + " --keys \"PageUp\"", rc);
+          static const char* kCells[] = {"\xE2\x96\x88", "\xE2\x96\x84", "\xE2\x96\x80", "\xE2\x97\x8F"};
+          std::string col;
+          std::istringstream in(out);
+          for (std::string r; std::getline(in, r);) {
+            std::size_t best = std::string::npos;
+            const char* which = nullptr;
+            for (const char* c : kCells) {
+              const std::size_t at = r.find(c);
+              if (at != std::string::npos && (best == std::string::npos || at < best)) { best = at; which = c; }
+            }
+            if (which) col += which;
+          }
+          return col;
+        };
+        const std::string capsule = thumb_of("ink");
+        const std::string solid = thumb_of("contrast");
+        check(capsule.find("\xE2\x96\x84") == 0, "the shipped thumb is a CAPSULE: its first cell is the lower-half cap [" + capsule + "]");
+        check(capsule.size() > 2 && capsule.rfind("\xE2\x96\x80") == capsule.size() - 3,
+              "…and its last is the upper-half cap, so a bar of any length has soft ends");
+        check(!solid.empty() && solid.find("\xE2\x96\x84") == std::string::npos,
+              "…while a theme that asks for a SOLID thumb gets one, with no caps at all [" + solid + "]");
+      }
+
       // THE WHEEL MOVES ANYTHING THAT SHOWS A SCROLLBAR. A kind reporting a scroll extent gets a
       // bar drawn for it, and a bar a person can see but not move is a control that lies. The
       // window does this rather than each kind, so a kind cannot forget: `help` never handled a

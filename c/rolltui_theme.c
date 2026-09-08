@@ -16,6 +16,7 @@
  * by sitting in a directory the control does not scan. The control also asserts each half
  * still carries what it is exempt for, so either one moving away fails a test instead of
  * passing everywhere. */
+#include "rolltui/c/rolltui_widgets.h"  /* the scrollbar glyph default, filled for a theme that states none */
 #include "rolltui/c/rolltui_theme.h"
 
 #include <math.h>
@@ -906,6 +907,49 @@ static void read_role_style(const RolltuiJsonValue* v, const RolltuiStyle* base,
       unk(report, buf);
     }
   }
+}
+
+/* ---- "glyphs": what the window's own chrome is DRAWN WITH -----------------------------------
+ * A scrollbar thumb is a shape, and which shape is a look — so it belongs to the theme beside
+ * the colours rather than in a C literal a theme author cannot reach.
+ *
+ *   "glyphs": { "scrollbar": { "single": "●", "top": "▄", "middle": "█", "bottom": "▀",
+ *                              "ascii": { "single": "o", "top": "#", … } } }
+ *
+ * Every key is OPTIONAL and an absent one keeps the default, so a theme states only what it
+ * changes. A value longer than the field is IGNORED rather than truncated — half a UTF-8
+ * sequence is not a glyph, and drawing one would put a replacement character in the border of
+ * every scrollable window. */
+static void take_glyph(const RolltuiJsonValue* obj, const char* key, char* out, size_t cap) {
+  const RolltuiJsonValue* v = obj ? rolltui_json_get(obj, key, strlen(key)) : NULL;
+  size_t n;
+  const char* g;
+  if (!v || !rolltui_json_is_string(v)) return;
+  g = rolltui_json_as_string(v, "", 0, &n);
+  if (n == 0 || n >= cap) return;
+  memcpy(out, g, n);
+  out[n] = 0;
+}
+
+int rolltui_theme_scrollbar_glyphs(const RolltuiJsonValue* root, RolltuiScrollbarGlyphs* out) {
+  const RolltuiJsonValue* glyphs;
+  const RolltuiJsonValue* bar;
+  const RolltuiJsonValue* ascii_;
+  if (!out) return 0;
+  rolltui_scrollbar_glyphs_default(out);
+  glyphs = root ? rolltui_json_get(root, K("glyphs")) : NULL;
+  bar = glyphs ? rolltui_json_get(glyphs, K("scrollbar")) : NULL;
+  if (!bar) return 0;
+  take_glyph(bar, "single", out->single, sizeof out->single);
+  take_glyph(bar, "top", out->top, sizeof out->top);
+  take_glyph(bar, "middle", out->middle, sizeof out->middle);
+  take_glyph(bar, "bottom", out->bottom, sizeof out->bottom);
+  ascii_ = rolltui_json_get(bar, K("ascii"));
+  take_glyph(ascii_, "single", out->ascii_single, sizeof out->ascii_single);
+  take_glyph(ascii_, "top", out->ascii_top, sizeof out->ascii_top);
+  take_glyph(ascii_, "middle", out->ascii_middle, sizeof out->ascii_middle);
+  take_glyph(ascii_, "bottom", out->ascii_bottom, sizeof out->ascii_bottom);
+  return 1;
 }
 
 /* ---- "effects": state -> what it looks like while it lasts ----------------------------------

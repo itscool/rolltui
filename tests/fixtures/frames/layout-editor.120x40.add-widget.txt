@@ -28,12 +28,12 @@
 │ │ built-ins) │            │             │ │ line (scrolls when empty│ Undo                                    Ctrl-Z │
 │ └────────────┴────────────┴─────────────┘ │   End                   │ Redo                                    Ctrl-Y │
 │                                           │ (scrolls when empty)    │                                                │
-│ Here is the function you asked for:       █   Up                    │                                                │
+│ Here is the function you asked for:       ▄   Up                    │                                                │
 │                                           █ the previous history ent│                                                │
 │ ┌ cpp ──────────────────────────────────┐ █   Down                  │                                                │
 │ │ int add(int a, int b) {               │ █ the next history entry  │                                                │
 │ │   return a + b;                       │ █   Shift-Left            │ selected: transcript-2  size fill  border sing │
-│ └───────────────────────────────────────┘ █ selection one grapheme l│ Tab next node · click selects · drag an edge r │
+│ └───────────────────────────────────────┘ ▀ selection one grapheme l│ Tab next node · click selects · drag an edge r │
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘

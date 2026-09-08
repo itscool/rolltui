@@ -1,5 +1,5 @@
 ╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ theme   default-dark         ││ │ styled  ┃ input:                           █
+│ theme   default-dark         ││ │ styled  ┃ input:                           ●
 │ keys    default              ││ │ wrapped ┃   Enter                   send   ┃
 │ layout  wide-left            ││ │ lines)  ┃ the line (always Enter)          ┃
 │ size    80x24                ││ │ Theme   ┃   Alt-Enter               insert ┃
@@ -15,7 +15,7 @@
 │                              ││ ┌ cpp ─────────────────────────────────────┐ │
 │                              ││ │ int add(int a, int b) {                  │ │
 │                              ││ │   return a + b;                          │ │
-│                              ││ └──────────────────────────────────────────┘ █
+│                              ││ └──────────────────────────────────────────┘ ●
 │                              │╰──────────────────────────────────────────────╯
 ╰──────────────────────────────╯ a label a layout file put here
 ╔══════════════════════════════════════════════════════════════════════════════╗

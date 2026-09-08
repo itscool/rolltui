@@ -1,6 +1,6 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > write me a plan for the wrap engine, with a █ theme   default-dark         │
-│   table and some code                         █ keys    default              │
+│ > write me a plan for the wrap engine, with a ▄ theme   default-dark         │
+│   table and some code                         ▀ keys    default              │
 │                                               │ layout  default              │
 │ # Plan                                        │ size    80x24                │
 │                                               │ line    1/191                │
