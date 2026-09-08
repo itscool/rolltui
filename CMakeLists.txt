@@ -193,6 +193,26 @@ function(add_rolltui_test name source)
 endfunction()
 
 # Milestone 2: the Unicode conformance suites, in full, and the width table.
+# THE BOUNDARY, AS A TEST RATHER THAN A BUILD-CONFIG PROMISE. "rolltui builds and passes with
+# roll's include/ and src/ absent" held only because nothing here happened to put them on a
+# target's include path — a property a refactor erodes with the build still green. The test reads
+# the REAL include list through a generator expression, so it checks what the compiler is given
+# rather than a second reading of this file, and it resolves every #include under rolltui/ —
+# necessary because the library exports the repository ROOT (that is how `rolltui/rolltui.h`
+# resolves), so `#include "include/Provider.hpp"` would compile and no path check could see it.
+add_rolltui_test(rolltui-boundary-test tests/boundary_test.cpp)
+# THE LIST GOES THROUGH A FILE, NOT THROUGH A -D. It was a `$<JOIN:...,;>` compile definition for
+# about ten minutes, which works with ONE include directory and breaks the build with two: the
+# generated command line carries the `;` unquoted and `/bin/sh` reads it as a statement
+# separator. The first arming control found it — the plant that adds a second directory is
+# exactly the case that breaks — so the instrument failed on the input it exists to detect and
+# would have looked like a passing boundary forever. `file(GENERATE)` is the supported way to
+# spill a generator expression, one directory per line, with no shell in the path.
+file(GENERATE OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/rolltui_target_includes.txt
+     CONTENT "$<JOIN:$<TARGET_PROPERTY:rolltui,INCLUDE_DIRECTORIES>,\n>\n")
+target_compile_definitions(rolltui-boundary-test PRIVATE
+  ROLLTUI_TARGET_INCLUDES_FILE="${CMAKE_CURRENT_BINARY_DIR}/rolltui_target_includes.txt")
+
 add_rolltui_test(rolltui-grapheme-break-test tests/grapheme_break_test.cpp)
 add_rolltui_test(rolltui-line-break-test tests/line_break_test.cpp)
 add_rolltui_test(rolltui-width-test tests/width_test.cpp)
