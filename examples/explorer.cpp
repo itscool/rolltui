@@ -784,12 +784,10 @@ struct App {
       rolltui_window_stack_focus(stack, "where", 5);
       hint = "type a path";
     }
-    // ANY `app.<id>` NAMING A POPUP THIS SCREEN DECLARES OPENS IT. `details` and `help` were
-    // hand-written and `theme` and `keys` would each have been another line; a screen gains a
-    // panel by adding one to its layout and one chord, and this app gains nothing.
-    else if (action.rfind("app.", 0) == 0 &&
-             rolltui_layout_popup(layout, action.data() + 4, action.size() - 4) != nullptr)
-      toggle_popup(std::string(action.substr(4)).c_str());
+    // A panel this screen declares is the library's to open — see
+    // `rolltui_window_stack_action_popup`. `details`, `help`, `theme` and `keys` are four lines
+    // this file does not have.
+    else if (rolltui_window_stack_action_popup(stack, layout, action.data(), action.size())) {}
     else if (action == "app.hidden") { opt.hidden = !opt.hidden; if (b) b->reload(); hint = opt.hidden ? "dotfiles shown" : "dotfiles hidden"; }
     else if (action == "app.sort") {
       opt.sort = opt.sort == Sort::Name ? Sort::Size : opt.sort == Sort::Size ? Sort::Modified : Sort::Name;
@@ -888,7 +886,7 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, Ro
                                   rolltui_layout_default_hooks(), rep);
 }
 
-bool parse_size(const std::string& s, int& w, int& h) {
+[[maybe_unused]] bool parse_size(const std::string& s, int& w, int& h) {
   const std::size_t x = s.find('x');
   if (x == std::string::npos) return false;
   w = std::atoi(s.substr(0, x).c_str());

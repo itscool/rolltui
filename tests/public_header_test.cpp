@@ -622,7 +622,7 @@ int main() {
     // A public input type whose value cannot be parsed is a contradiction in the surface,
     // which is why the colour parser and printer are public independently of the consumer
     // that found them missing.
-    const int kPublic = 303, kInternal_ = 571, kDelete = 0;
+    const int kPublic = 304, kInternal_ = 571, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -821,9 +821,9 @@ int main() {
     // A NAMED EMPTY STAGE STAYS IN THE TABLE. An empty row asserts that nothing is filed
     // there; deleting the row would make a future arrival unremarkable.
     check(rt["VOCAB"] == 33 && rt["HOST_LOAD"] == 28 && rt["HOST_SETTINGS"] == 47 &&
-              rt["HOST_BIND"] == 86 && rt["HOST_RUN"] == 77 && rt["HOST_RELEASE"] == 6 &&
+              rt["HOST_BIND"] == 86 && rt["HOST_RUN"] == 78 && rt["HOST_RELEASE"] == 6 &&
               rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 26,
-          "the roles are the recorded shape — vocab 33, host load 28 / settings 47 / bind 86 / run 77 / "
+          "the roles are the recorded shape — vocab 33, host load 28 / settings 47 / bind 86 / run 78 / "
           "release 6, tool interop 0, widget 26 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +
               "/" + std::to_string(rt["HOST_BIND"]) + "/" + std::to_string(rt["HOST_RUN"]) + "/" +

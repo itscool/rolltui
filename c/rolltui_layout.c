@@ -2144,6 +2144,27 @@ int rolltui_window_stack_has_popup(const RolltuiWindowStack* s, const char* id, 
   return 0;
 }
 
+/* Three hosts hand-wrote these six lines, one per panel, so they are here instead. An `app.<id>`
+ * whose id names a popup the screen declares toggles it; anything else is not this function's and
+ * returns 0 so the caller can go on to its own actions. */
+int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout* layout,
+                                      const char* action, size_t len) {
+  const char* id;
+  size_t id_len;
+  if (!s || !layout || !action || len <= 4) return 0;
+  if (memcmp(action, "app.", 4) != 0) return 0;
+  id = action + 4;
+  id_len = len - 4;
+  if (rolltui_layout_popup(layout, id, id_len) == NULL) return 0;
+  if (rolltui_window_stack_has_popup(s, id, id_len)) {
+    /* Pop back to the base rather than popping once: a panel key pressed over a stack of panels
+     * means "put this away", and popping one would leave whatever it was covering. */
+    while (rolltui_window_stack_depth(s) > 1) rolltui_window_stack_pop(s);
+    return 1;
+  }
+  return rolltui_window_stack_push_popup(s, layout, id, id_len) ? 1 : 1;
+}
+
 RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const char* id, size_t len) {
   size_t i;
   for (i = 0; i < s->n; ++i) {

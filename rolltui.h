@@ -4472,6 +4472,21 @@ const RolltuiLayer* rolltui_window_stack_layer(const RolltuiWindowStack* s, size
 
 int rolltui_window_stack_has_popup(const RolltuiWindowStack* s, const char* id, size_t len);
 
+/* AN `app.<id>` ACTION NAMING A POPUP THE SCREEN DECLARES OPENS IT — the whole of what a host used
+ * to hand-write per panel. Pass the action name (`"app.theme"`); when the part after `app.` names
+ * a popup in `layout`, it is toggled and this returns 1. Otherwise nothing happens and it returns
+ * 0, so a host tests its own actions after calling this and a name it does not know falls through.
+ *
+ * It exists because three hosts wrote the same six lines. A screen gains a panel by adding one to
+ * its layout and one chord to its bindings, and no host code grows — which is the same claim the
+ * layout files already make about windows, applied to the key that opens one.
+ *
+ * TOGGLES, and that is the whole behaviour: pressing the key that opened a panel closes it, which
+ * is what every one of the three did by hand and what a person expects of a panel key. A host that
+ * wants something other than a toggle owns that action itself and does not route it here. */
+int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout* layout,
+                                      const char* action, size_t len);
+
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
 
 void rolltui_window_stack_focus(RolltuiWindowStack* s, const char* id, size_t len);

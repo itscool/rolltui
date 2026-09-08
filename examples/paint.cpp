@@ -760,11 +760,6 @@ struct App {
     }
   }
 
-  void toggle_popup(const std::string& id) {
-    if (rolltui_window_stack_depth(stack) > 1) { rolltui_window_stack_pop(stack); return; }
-    rolltui_window_stack_push_popup(stack, layout, id.data(), id.size());
-  }
-
   // A PICTURE IS A DRAWING SOMEBODY ELSE MADE, so it lands as ordinary ink: the same cells a
   // stroke sets, in the same ramp, which is why a loaded picture can be painted over and cleared
   // like anything else. A failure is SAID rather than swallowed — a sheet that stays blank with
@@ -786,14 +781,8 @@ struct App {
     // this file gains nothing per panel.
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t alen = 0;
-      if (const char* a = rolltui_bindings_action_for(bindings, &e.key, "app", 3, &alen)) {
-        const std::string action(a, alen);
-        if (action.rfind("app.", 0) == 0 &&
-            rolltui_layout_popup(layout, action.data() + 4, action.size() - 4) != nullptr) {
-          toggle_popup(action.substr(4));
-          return;
-        }
-      }
+      const char* a = rolltui_bindings_action_for(bindings, &e.key, "app", 3, &alen);
+      if (a && rolltui_window_stack_action_popup(stack, layout, a, alen)) return;
     }
     RolltuiStr window{};
     const unsigned char kind =
@@ -903,7 +892,7 @@ std::string read_file(const std::string& path, bool& ok) {
   return ss.str();
 }
 
-bool parse_size(const std::string& s, int& w, int& h) {
+[[maybe_unused]] bool parse_size(const std::string& s, int& w, int& h) {
   const std::size_t x = s.find('x');
   if (x == std::string::npos) return false;
   w = std::atoi(s.substr(0, x).c_str());
@@ -994,7 +983,7 @@ void collect_event(void* ctx, const RolltuiTermEvent* e) {
   p.events.push_back(ev);
 }
 
-RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
+[[maybe_unused]] RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
   RolltuiEvent e{};
   e.kind = ROLLTUI_EVENT_MOUSE;
   e.mouse.kind = kind;

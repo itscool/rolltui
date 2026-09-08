@@ -535,6 +535,7 @@ ROLLTUI_API(rolltui_window_stack_focus_layer, INTERNAL)  /* a step of loading, s
 ROLLTUI_API(rolltui_window_stack_focused, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_free, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_has_popup, PUBLIC)
+ROLLTUI_API(rolltui_window_stack_action_popup, PUBLIC)  /* three hosts wrote the same six lines; the tell says fix the API rather than ship the wrapper a fourth time */
 ROLLTUI_API(rolltui_window_stack_layer, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_new, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_pop, PUBLIC)
