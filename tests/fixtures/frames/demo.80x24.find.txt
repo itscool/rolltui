@@ -1,12 +1,12 @@
 ┌ transcript ───╭ find ────────────────────────────────────────╮───────────────┐
-│ │ Wrap engine │ > wrap                                       │t-dark         │
-│ │             ╰──────────────────────────────────────────────╯t              │
-│ │              │             │ the Unicode  │ │ layout  default              │
-│ │              │             │ header       │ │ size    80x24                │
-│ │ Windows,     │ build       │ single       │ │ line    149/191              │
-│ │ layers,      │             │ header;      │ │ follow  no                   │
-│ │ placement    │             │ resolve(Plac │ │ depth   truecolor            │
-│ │ (Dim abs/rel │             │ ement,       │ │ focus   find                 │
+│ │ Wrap engine │ > wrap                                       │ault-dark      │
+│ │             ╰──────────────────────────────────────────────╯ault           │
+│ │              │             │ the Unicode  │ │ layout F6  default           │
+│ │              │             │ header       │ │ size       80x24             │
+│ │ Windows,     │ build       │ single       │ │ line       149/191           │
+│ │ layers,      │             │ header;      │ │ follow     no                │
+│ │ placement    │             │ resolve(Plac │ │ depth      truecolor         │
+│ │ (Dim abs/rel │             │ ement,       │ │ focus      find              │
 │ │ per axis),   │             │ parent) →    │ │                              │
 │ │ focus        │             │ Rect is a    │ │                              │
 │ │              │             │ pure         │ │                              │

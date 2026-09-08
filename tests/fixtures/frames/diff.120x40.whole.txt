@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ # Two blocks that look identical, and are not                                         │ theme   default-dark         │
-│                                                                                       │ keys    default              │
-│ The first is under a ```diff fence, so it colours through the diff roles. The second  │ layout  default              │
-│ is under a bare fence and holds the SAME SHAPE of text, so it must render plain —     │ size    120x40               │
-│ content is never sniffed (rolltui/Diff.hpp).                                          │ line    1/25                 │
-│                                                                                       │ follow  yes                  │
-│ ▸ diff · 13 lines · 420 B                                                             │ depth   truecolor            │
-│                                                                                       │ focus   input                │
+│ # Two blocks that look identical, and are not                                         │ theme F4   default-dark      │
+│                                                                                       │ keys F7    default           │
+│ The first is under a ```diff fence, so it colours through the diff roles. The second  │ layout F6  default           │
+│ is under a bare fence and holds the SAME SHAPE of text, so it must render plain —     │ size       120x40            │
+│ content is never sniffed (rolltui/Diff.hpp).                                          │ line       1/25              │
+│                                                                                       │ follow     yes               │
+│ ▸ diff · 13 lines · 420 B                                                             │ depth      truecolor         │
+│                                                                                       │ focus      input             │
 │ A bare fence over the same shape of text:                                             │                              │
 │                                                                                       │                              │
 │ ┌───────────────────────────────────────────────────────────────────────────────────┐ │                              │

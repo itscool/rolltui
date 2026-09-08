@@ -1,12 +1,12 @@
 ╭ session ─────────────────────╮╭ chat ────────────────────────────────────────╮
-│ theme   default-dark         ││ │ styled      │             │              │ │
-│ keys    default              ││ │ wrapped     │             │              │ │
-│ layout  wide-left            ││ │ lines)      │             │              │ │
-│ size    80x24                ││ │ Theme       │ build       │ single       │ │
-│ line    181/197              ││ │ (roles →    │             │ header       │ │
-│ follow  yes                  ││ │ styles,     │             │              │ │
-│ depth   truecolor            ││ │ JSON        │             │              │ │
-│ focus   input                ││ │ loader,     │             │              │ │
+│ theme F4   default-dark      ││ │ styled      │             │              │ │
+│ keys F7    default           ││ │ wrapped     │             │              │ │
+│ layout F6  wide-left         ││ │ lines)      │             │              │ │
+│ size       80x24             ││ │ Theme       │ build       │ single       │ │
+│ line       181/197           ││ │ (roles →    │             │ header       │ │
+│ follow     yes               ││ │ styles,     │             │              │ │
+│ depth      truecolor         ││ │ JSON        │             │              │ │
+│ focus      input             ││ │ loader,     │             │              │ │
 │                              ││ │ built-ins)  │             │              │ │
 │                              ││ └─────────────┴─────────────┴──────────────┘ │
 │                              ││                                              │

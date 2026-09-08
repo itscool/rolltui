@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > show me what a state looks like             │ theme   still                │
-│                                               │ keys    default              │
-│ · waiting for the first token                 │ layout  default              │
-│                                               │ size    80x24                │
-│ streaming a reply now ...                     │ line    1/15                 │
-│                                               │ follow  yes                  │
-│ indexing the corpus, 45 percent of the way    │ depth   truecolor            │
-│ through it                                    │ focus   input                │
+│ > show me what a state looks like             │ theme F4   still             │
+│                                               │ keys F7    default           │
+│ · waiting for the first token                 │ layout F6  default           │
+│                                               │ size       80x24             │
+│ streaming a reply now ...                     │ line       1/15              │
+│                                               │ follow     yes               │
+│ indexing the corpus, 45 percent of the way    │ depth      truecolor         │
+│ through it                                    │ focus      input             │
 │                                               │                              │
 │ saved                                         │                              │
 │                                               │                              │

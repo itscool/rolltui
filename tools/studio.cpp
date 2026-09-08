@@ -1966,15 +1966,42 @@ struct App {
   // ---- the sources the studio binds ----
   // `rows:status`: the studio's own facts. The widget draws them — this says only what
   // they are.
+  // A LABEL TEACHES AND A VALUE INFORMS, in one row and with nothing to dismiss. The panel already
+  // named the three editable things and was the one part of the screen that told you nothing about
+  // reaching them — the keys lived only in the placeholder document, which the user's first real
+  // action deletes and the menu popup covers. Carrying the chord in the label means a beginner
+  // reads the left column and an expert reads the right.
+  //
+  // The chord is the BINDINGS' to say, never this file's: an action nobody bound shows no chord
+  // at all rather than a key that does nothing.
+  void label_with_chord(const char* text, const char* action, std::string& into) {
+    into.assign(text);
+    const std::size_t n = rolltui_bindings_chord_count(bindings, action, std::strlen(action));
+    if (n == 0) return;
+    RolltuiChord c{};
+    rolltui_bindings_chord_at(bindings, action, std::strlen(action), 0, &c);
+    char buf[ROLLTUI_CHORD_STRING_MAX];
+    const std::size_t bn = rolltui_chord_display(&c, buf, sizeof buf);
+    into += ' ';
+    into.append(buf, bn);
+  }
+
+  std::string theme_key_label, keys_key_label, layout_key_label;
+
   void status_rows(RolltuiRows& out) {
     // Formatted on the stack or refilled into held strings; the rows copy once into their own
     // reused buffers, so a warm frame allocates nothing here.
     const std::size_t total = rolltui_transcript_total_lines(transcript());
     char b[64];
-    if (store) { store->label(theme_label_str); out.add("theme", theme_label_str); } else out.add("theme", resolved_name.data(), resolved_name.size());
-    if (bstore) { bstore->label(keys_label_str); out.add("keys", keys_label_str); } else out.add("keys", "default");
+    label_with_chord("theme", "editor.theme", theme_key_label);
+    label_with_chord("keys", "editor.keys", keys_key_label);
+    label_with_chord("layout", "editor.layout", layout_key_label);
+    if (store) { store->label(theme_label_str); out.add(theme_key_label.c_str(), theme_label_str); }
+    else out.add(theme_key_label.c_str(), resolved_name.data(), resolved_name.size());
+    if (bstore) { bstore->label(keys_label_str); out.add(keys_key_label.c_str(), keys_label_str); }
+    else out.add(keys_key_label.c_str(), "default");
     layout_status(layout_row);
-    out.add("layout", layout_row.data(), layout_row.size());
+    out.add(layout_key_label.c_str(), layout_row.data(), layout_row.size());
     std::snprintf(b, sizeof b, "%dx%d", w, h);
     out.add("size", b);
     std::snprintf(b, sizeof b, "%llu/%llu", static_cast<unsigned long long>(total == 0 ? 0 : rolltui_transcript_top_line(transcript()) + 1),

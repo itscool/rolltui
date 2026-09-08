@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme   default-dark         │
-│ │ block        │             │ header over  │ │ keys    default              │
-│ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
-│ │ (blocks →    │             │              │ │ size    80x24                │
-│ │ styled      ╭ help ────────────────────────────────────────╮1              │
+│ │ Markdown     │ build       │ single       │ │ theme F4   default-dark      │
+│ │ block        │             │ header over  │ │ keys F7    default           │
+│ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
+│ │ (blocks →    │             │              │ │ size       80x24             │
+│ │ styled      ╭ help ────────────────────────────────────────╮/191           │
 │ │ wrapped     │ input:                                       •               │
-│ │ lines)      │   Enter                   send the line      │lor            │
-│ │ Theme (roles│ (always Enter)                               │               │
+│ │ lines)      │   Enter                   send the line      │ecolor         │
+│ │ Theme (roles│ (always Enter)                               │p              │
 │ │ → styles,   │   Alt-Enter               insert a newline   │               │
 │ │ JSON loader,│   Backspace               erase before the   │               │
 │ │ built-ins)  │ caret (or the selection)                     │               │

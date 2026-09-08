@@ -590,6 +590,25 @@ static void rows_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
   {
     RolltuiWrapOptions wo;
     int y = r.y;
+    /* THE LABEL COLUMN IS THE WIDEST LABEL, not a number. It was 8 cells, which is invisible
+     * until a host writes a label that teaches — "layout F6" is nine — and then the value runs
+     * into the label or the label is cut mid-word. A panel one column wide must still draw
+     * something, so the width is clamped to half the inner rect. */
+    int labw = 0, valx;
+    for (i = 0; i < rc->rows.n; ++i) {
+      const RolltuiRow* lr = &rc->rows.v[i];
+      const int lw = rolltui_frame_text_width(rc->draw, lr->label.p ? lr->label.p : "", lr->label.n,
+                                              env->ambiguous_wide);
+      if (lw > labw) labw = lw;
+    }
+    /* Two cells of gutter, and a FLOOR of eight. The floor is what keeps a panel steady: rows
+     * come and go between frames (a count that only appears once there is something to count),
+     * so a column sized purely by what is present today would step left and right as they do. */
+    labw += 2;
+    if (labw < 8) labw = 8;
+    if (r.w - 1 > 1 && labw > (r.w - 1) / 2) labw = (r.w - 1) / 2;
+    if (labw < 1) labw = 1;
+    valx = r.x + 1 + labw;
     memset(&wo, 0, sizeof wo);
     wo.ambiguous_wide = env->ambiguous_wide;
     wo.tab_width = 8;
@@ -598,8 +617,9 @@ static void rows_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
       size_t n, j;
       if (y >= r.y + r.h) break;
       rolltui_frame_put_text(f, rc->draw, r.x + 1, y, row->label.p ? row->label.p : "", row->label.n,
-                             styles[rc->role_label], r.w - 1 > 0 ? r.w - 1 : 0, env->ambiguous_wide, 0);
-      rolltui_wrap(rc->wrap, row->value.p ? row->value.p : "", row->value.n, r.w - 9 > 0 ? r.w - 9 : 1, wo);
+                             styles[rc->role_label], labw, env->ambiguous_wide, 0);
+      rolltui_wrap(rc->wrap, row->value.p ? row->value.p : "", row->value.n,
+                   r.x + r.w - valx > 0 ? r.x + r.w - valx : 1, wo);
       n = rolltui_wrap_line_count(rc->wrap);
       if (n == 0) {
         ++y;
@@ -613,8 +633,8 @@ static void rows_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
         int width, indent, hard;
         if (y >= r.y + r.h) break;
         rolltui_wrap_line(rc->wrap, j, &ltext, &ltext_len, &g, &gn, &width, &indent, &hard);
-        rolltui_frame_put_text(f, rc->draw, r.x + 9, y, ltext, ltext_len, styles[rc->role_value],
-                               r.w - 9 > 0 ? r.w - 9 : 0, env->ambiguous_wide, 0);
+        rolltui_frame_put_text(f, rc->draw, valx, y, ltext, ltext_len, styles[rc->role_value],
+                               r.x + r.w - valx > 0 ? r.x + r.w - valx : 0, env->ambiguous_wide, 0);
         ++y;
       }
     }

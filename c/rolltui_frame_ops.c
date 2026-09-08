@@ -52,6 +52,17 @@ int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y,
   return used;
 }
 
+int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len, int ambiguous_wide) {
+  size_t count, i;
+  int w = 0;
+  if (!s || len == 0) return 0;
+  s->gs = (RolltuiUnicodeGrapheme*)rolltui_grow(s->gs, &s->gs_cap, len, sizeof *s->gs);
+  count = rolltui_u_graphemes(s->u, utf8, len, ambiguous_wide, s->gs);
+  for (i = 0; i < count; ++i)
+    if (s->gs[i].width > 0) w += s->gs[i].width;
+  return w;
+}
+
 int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,
                              RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
                              int ambiguous_wide) {

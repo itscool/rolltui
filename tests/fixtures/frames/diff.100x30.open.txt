@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ # Two blocks that look identical, and are not                     ╻ theme   default-dark         │
-│                                                                   ┃ keys    default              │
-│ The first is under a ```diff fence, so it colours through the     ┃ layout  default              │
-│ diff roles. The second is under a bare fence and holds the SAME   ┃ size    100x30               │
-│ SHAPE of text, so it must render plain — content is never sniffed ┃ line    1/40                 │
-│ (rolltui/Diff.hpp).                                               ┃ follow  no                   │
-│                                                                   ┃ depth   truecolor            │
-│ ▾ diff · 13 lines · 420 B                                         ┃ focus   transcript           │
+│ # Two blocks that look identical, and are not                     ╻ theme F4   default-dark      │
+│                                                                   ┃ keys F7    default           │
+│ The first is under a ```diff fence, so it colours through the     ┃ layout F6  default           │
+│ diff roles. The second is under a bare fence and holds the SAME   ┃ size       100x30            │
+│ SHAPE of text, so it must render plain — content is never sniffed ┃ line       1/40              │
+│ (rolltui/Diff.hpp).                                               ┃ follow     no                │
+│                                                                   ┃ depth      truecolor         │
+│ ▾ diff · 13 lines · 420 B                                         ┃ focus      transcript        │
 │ ┌───────────────────────────────────────────────────────────────┐ ┃                              │
 │ │ --- a/rolltui/Widgets.cpp                                     │ ┃                              │
 │ │ +++ b/rolltui/Widgets.cpp                                     │ ┃                              │

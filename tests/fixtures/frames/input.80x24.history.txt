@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ styled       │             │              │ │ theme   default-dark         │
-│ │ wrapped      │             │              │ │ keys    default              │
-│ │ lines)       │             │              │ │ layout  default              │
-│ │ Theme (roles │ build       │ single       │ │ size    80x24                │
-│ │ → styles,    │             │ header       │ │ line    177/195              │
-│ │ JSON loader, │             │              │ │ follow  yes                  │
-│ │ built-ins)   │             │              │ │ depth   truecolor            │
-│ └──────────────┴─────────────┴──────────────┘ │ focus   input                │
+│ │ styled       │             │              │ │ theme F4   default-dark      │
+│ │ wrapped      │             │              │ │ keys F7    default           │
+│ │ lines)       │             │              │ │ layout F6  default           │
+│ │ Theme (roles │ build       │ single       │ │ size       80x24             │
+│ │ → styles,    │             │ header       │ │ line       177/195           │
+│ │ JSON loader, │             │              │ │ follow     yes               │
+│ │ built-ins)   │             │              │ │ depth      truecolor         │
+│ └──────────────┴─────────────┴──────────────┘ │ focus      input             │
 │                                               │                              │
 │ Here is the function you asked for:           │                              │
 │                                               │                              │

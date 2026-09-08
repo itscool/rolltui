@@ -1,13 +1,13 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ because dispatch_source_cancel does not wait  │ theme   default-dark         │
-│ for a handler that is already running.        │ keys    default              │
-│                                               │ layout  default              │
-│ Without the drain a poll() blocked on the     │ size    80x24                │
-│ state lock could resume after release()       │ line    9/27                 │
-│ decided it was the last client, re-register   │ follow  yes                  │
-│ itself and respawn the server release just    ╻ depth   truecolor            │
-│ killed — a permanent orphan. The rule is      ┃ focus   transcript           │
-│ recorded in CLAUDE.md (https://example.com/   ┃ copied  743 bytes            │
+│ because dispatch_source_cancel does not wait  │ theme F4   default-dark      │
+│ for a handler that is already running.        │ keys F7    default           │
+│                                               │ layout F6  default           │
+│ Without the drain a poll() blocked on the     │ size       80x24             │
+│ state lock could resume after release()       │ line       9/27              │
+│ decided it was the last client, re-register   │ follow     yes               │
+│ itself and respawn the server release just    ╻ depth      truecolor         │
+│ killed — a permanent orphan. The rule is      ┃ focus      transcript        │
+│ recorded in CLAUDE.md (https://example.com/   ┃ copied     743 bytes         │
 │ roll/CLAUDE.md#hard-constraints) under hard   ┃                              │
 │ constraints.                                  ┃                              │
 │                                               ┃                              │

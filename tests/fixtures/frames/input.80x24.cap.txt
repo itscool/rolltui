@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ → styles,    │             │ header       │ │ theme   default-dark         │
-│ │ JSON loader, │             │              │ │ keys    default              │
-│ │ built-ins)   │             │              │ │ layout  default              │
-│ └──────────────┴─────────────┴──────────────┘ │ size    80x24                │
-│                                               │ line    181/191              │
-│ Here is the function you asked for:           │ follow  yes                  │
-│                                               │ depth   truecolor            │
-│ ┌ cpp ──────────────────────────────────────┐ │ focus   input                │
+│ │ → styles,    │             │ header       │ │ theme F4   default-dark      │
+│ │ JSON loader, │             │              │ │ keys F7    default           │
+│ │ built-ins)   │             │              │ │ layout F6  default           │
+│ └──────────────┴─────────────┴──────────────┘ │ size       80x24             │
+│                                               │ line       181/191           │
+│ Here is the function you asked for:           │ follow     yes               │
+│                                               │ depth      truecolor         │
+│ ┌ cpp ──────────────────────────────────────┐ │ focus      input             │
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ │                              │
 │ └───────────────────────────────────────────┘ •                              │

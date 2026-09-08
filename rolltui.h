@@ -4922,6 +4922,14 @@ int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int 
                              RolltuiStyle name_style, RolltuiStyle value_style, int max_cells,
                              int ambiguous_wide);
 
+/* The cells `utf8` WOULD occupy, measured with the same cluster walk that draws it.
+ *
+ * `rolltui_frame_put_text` takes a cell budget and answers with the cells it used, so a caller
+ * can only learn a string's width by DRAWING it — and a caller sizing a column has to know
+ * before it draws anything. Measuring here rather than in each widget is also what keeps the
+ * two answers from disagreeing: same walk, same ambiguous-width rule, same result. */
+int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len, int ambiguous_wide);
+
 /* ---- theme ---------------------------------------------------------------------------------*/
 
 /* A BORROW into the caller's own table, valid exactly as long as `styles` is. NULL when

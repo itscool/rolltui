@@ -1,12 +1,12 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme   default-dark         │
-│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys    default              │
-│ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout  default              │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size    120x40               │
-│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ line    75/109               │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow  yes                  │
-│ │                                  │             │ block tree is the API            │ │ depth   truecolor            │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │ focus   help                 │
+│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default-dark      │
+│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys F7    default           │
+│ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout F6  default           │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size       120x40            │
+│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ line       75/109            │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow     yes               │
+│ │                                  │             │ block tree is the API            │ │ depth      truecolor         │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │ focus      help              │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineReader/StatusPane  │ │                              │
 │ │ mouse mode)                      │             │                                  │ │                              │
 │ │ Key + mouse decoding             │ build       │ single header, pure bytes →      │ │                              │

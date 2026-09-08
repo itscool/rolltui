@@ -1,12 +1,12 @@
 ┌ transcript ───╭ find ────────────────────────────────────────╮───────────────┐
-│ │ per axis),  │ > wrap                                       │t-dark         │
-│ │ focus       ╰──────────────────────────────────────────────╯t              │
-│ │              │             │ pure         │ │ layout  default              │
-│ │              │             │ function     │ │ size    80x24                │
-│ │ Menu widget  │ build       │ single       │ │ line    157/191              │
-│ │ (hierarchica │             │ header each; │ │ follow  no                   │
-│ │ l,           │             │ the widget   │ │ depth   truecolor            │
-│ │ filterable)  │             │ set is       │ │ focus   find                 │
+│ │ per axis),  │ > wrap                                       │ault-dark      │
+│ │ focus       ╰──────────────────────────────────────────────╯ault           │
+│ │              │             │ pure         │ │ layout F6  default           │
+│ │              │             │ function     │ │ size       80x24             │
+│ │ Menu widget  │ build       │ single       │ │ line       157/191           │
+│ │ (hierarchica │             │ header each; │ │ follow     no                │
+│ │ l,           │             │ the widget   │ │ depth      truecolor         │
+│ │ filterable)  │             │ set is       │ │ focus      find              │
 │ │ + list/text  │             │ deliberately │ │                              │
 │ │ widgets      │             │ this small   │ │                              │
 │ │ Layout files │ build       │ reuses the   │ │                              │

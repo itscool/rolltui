@@ -669,10 +669,34 @@ int main(int argc, char** argv) {
           "F2 opens the menu popup, and its top level names the app's own tools rather than burying them under a category");
     check(menu_theme.find("Appearance \xE2\x80\xBA Theme") != std::string::npos && menu_theme.find("\xE2\x80\xA2 default-dark") != std::string::npos,
           "Enter descends into the Theme choice: the breadcrumb grows and the current option is marked •");
-    check(menu_light.find("theme   default-light") != std::string::npos && menu_light.find("default-light \xE2\x96\xB8") != std::string::npos &&
+    check(menu_light.find("theme F4   default-light") != std::string::npos && menu_light.find("default-light \xE2\x96\xB8") != std::string::npos &&
               menu_light.find("Appearance \xE2\x80\xBA Theme") == std::string::npos,
           "choosing default-light BY NAME four levels deep by keyboard alone: the status says so, the choice shows its value, the menu is back at the top");
     check(!menu_light.empty() && menu_light != menu_open, "…and the frame changed (it went light)");
+
+    // ---- THE PANEL TEACHES AND THE CHORD IS THE BINDINGS' TO SAY --------------------------
+    // The status panel names the three editable things and never disappears; the keys used to
+    // live only in the placeholder document, which a user's first real action deletes and the
+    // menu popup covers. So the label carries the chord — but it must carry the LIVE one, or it
+    // is a third place a key is written down and the first to go stale.
+    {
+      int rc2 = 0;
+      const std::string dir = scratch + "/pk";
+      std::filesystem::create_directories(dir + "/bindings");
+      const std::string bin = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) +
+                              "/session/demo.md' --frame 100x14 --presets '" + dir + "'";
+      const std::string plain = run(bin + " 2>/dev/null", rc2);
+      check(plain.find("theme F4") != std::string::npos && plain.find("layout F6") != std::string::npos &&
+                plain.find("keys F7") != std::string::npos,
+            "the status panel's labels carry the editors' chords, so the keys survive the document being replaced");
+
+      // REBIND, and the label must follow. A hardcoded "F4" passes the check above and fails this.
+      std::ofstream(dir + "/bindings/moved.json")
+          << "{\n  \"name\": \"moved\",\n  \"bindings\": {\n    \"editor.theme\": [\"f9\"]\n  }\n}\n";
+      const std::string moved = run(bin + " --bindings moved 2>/dev/null", rc2);
+      check(moved.find("theme F9") != std::string::npos && moved.find("theme F4") == std::string::npos,
+            "…and rebinding the theme editor to F9 moves the label with it");
+    }
     check(menu_filter.find("/lay") != std::string::npos && menu_filter.find("Layout") != std::string::npos && menu_filter.find("Colour depth") == std::string::npos,
           "typing \"lay\" filters the level to Layout and shows the filter after the breadcrumb");
     check(!menu_left.empty() && menu_left == menu_open, "Enter then Left gives back exactly the opened frame");
