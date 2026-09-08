@@ -1117,5 +1117,64 @@ int main() {
           "…and the report it had nowhere to put is released: the allocator is back to baseline");
   }
 
+  // ---- ADD: a preset from somewhere else ---------------------------------------------------
+  // Additive, so nothing it does can lose what was already there — which is why it needed none of
+  // the questions a whole-directory swap did, and why refusing a taken name is the whole of its
+  // safety.
+  {
+    const fs::path outside = world / "elsewhere";
+    fs::create_directories(outside);
+    const std::string gift = (outside / "gift.json").string();
+    {
+      // A real theme, made by saving one, so this exercises ADDING rather than parsing.
+      ThemeStore src(dir);
+      ThemePresetReport rep;
+      src.start(rep);
+      RolltuiStr out{};
+      src.save_as("gift", false, out);
+      rolltui_str_free(&out);
+      fs::copy_file(dir + "/themes/gift.json", gift, fs::copy_options::overwrite_existing);
+      fs::remove(dir + "/themes/gift.json");
+    }
+    ThemeStore store(dir);
+    ThemePresetReport rep;
+    store.start(rep);
+    RolltuiStr err{};
+    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), nullptr, 0, &err) ==
+              ROLLTUI_SAVE_SAVED,
+          "a theme file from OUTSIDE the preset directory is added");
+    check(fs::exists(dir + "/themes/gift.json"),
+          "…COPIED in, named by the file's own stem — not referenced, so the other file may go away");
+    {
+      RolltuiPresetList l;
+      store.list(l);
+      bool found = false;
+      for (const RolltuiPresetInfo& p : l) found = found || str_of(p.name) == "gift";
+      check(found, "…and it is in the list beside the shipped ones");
+    }
+    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), nullptr, 0, &err) ==
+              ROLLTUI_SAVE_EXISTS_ASK,
+          "adding it AGAIN is refused, never overwritten");
+    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), "mine", 4, &err) ==
+              ROLLTUI_SAVE_SAVED,
+          "…and another name works, which is what makes the refusal useful rather than a dead end");
+    check(rolltui_preset_store_add(store.handle(), gift.data(), gift.size(), "default", 7, &err) ==
+              ROLLTUI_SAVE_REFUSED_SHIPPED,
+          "a SHIPPED name is refused, so nothing added can shadow what the library ships");
+    // NOT THIS DOMAIN'S. Written now and found broken at the next start is the failure; refused
+    // now, by name, is the fix.
+    const std::string wrong = (outside / "notatheme.json").string();
+    { std::ofstream f(wrong); f << "{\"windows\": []}"; }
+    check(rolltui_preset_store_add(store.handle(), wrong.data(), wrong.size(), nullptr, 0, &err) ==
+              ROLLTUI_SAVE_BAD_NAME && err.n != 0,
+          "a file that is not a theme is refused BEFORE it lands, with the reason [" +
+              std::string(err.p ? err.p : "", err.n).substr(0, 36) + "]");
+    const std::string missing = (outside / "nothing-here.json").string();
+    check(rolltui_preset_store_add(store.handle(), missing.data(), missing.size(), nullptr, 0, &err) ==
+              ROLLTUI_SAVE_WRITE_FAILED,
+          "…and a file that is not there says so rather than adding an empty preset");
+    rolltui_str_free(&err);
+  }
+
   return report("rolltui presets_test");
 }

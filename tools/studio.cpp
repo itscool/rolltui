@@ -1842,9 +1842,36 @@ struct App {
   void take_picked_file() {
     RolltuiStr got{};
     if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
-      fixture_path.assign(got.p, got.n);
-      if (load_fixture()) hint = "opened " + fixture_path;
-      else hint = "cannot read " + fixture_path;
+      const std::string path(got.p, got.n);
+      // THE FILE SAYS WHAT IT IS. A theme, a layout and a bindings file each parse as exactly one
+      // domain and as nothing else, so offering a second chord for "add" rather than "preview"
+      // would ask a person to classify a file the library can classify itself. Each store refuses
+      // by name what is not its own, which is the whole mechanism.
+      struct Try { const char* what; RolltuiPresetStore* store; };
+      const Try tries[] = {{"theme", store ? store->handle() : nullptr},
+                           {"layout", lstore ? lstore->handle() : nullptr},
+                           {"bindings", bstore ? bstore->handle() : nullptr}};
+      bool handled = false;
+      for (const Try& t : tries) {
+        if (!t.store || handled) continue;
+        RolltuiStr err{};
+        const int r = rolltui_preset_store_add(t.store, path.data(), path.size(), nullptr, 0, &err);
+        if (r == ROLLTUI_SAVE_SAVED) {
+          hint = std::string("added the ") + t.what + " " + path;
+          handled = true;
+        } else if (r == ROLLTUI_SAVE_EXISTS_ASK || r == ROLLTUI_SAVE_REFUSED_SHIPPED) {
+          // It IS this domain's — the name is what stopped it, and saying so is the point.
+          hint = std::string("that ") + t.what + " name is taken: " + str_of(err);
+          handled = true;
+        }
+        rolltui_str_free(&err);
+      }
+      // Not a preset of any kind, so it is content to look at.
+      if (!handled) {
+        fixture_path = path;
+        hint = load_fixture() ? "previewing " + path : "cannot read " + path;
+      }
+      refresh_menu();  // an added preset joins the chooser without waiting for anything else
       while (rolltui_window_stack_depth(stack) > 1) rolltui_window_stack_pop(stack);
     }
     rolltui_str_free(&got);

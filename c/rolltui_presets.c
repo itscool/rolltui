@@ -852,6 +852,112 @@ static int save_result(int code, RolltuiStr* err) {
   return code;
 }
 
+/* ADD a preset that came from somewhere else — someone sent you a theme, or you want a layout out
+ * of another directory. ADDITIVE: nothing is closed and nothing is replaced, so there is no way to
+ * lose what you had, which is what makes this simpler than swapping a whole directory.
+ *
+ * COPIED IN, not referenced where it lies. A reference would survive until the other file moved
+ * and then a preset would stop existing for a reason nobody could see, and resolving one would add
+ * a rung to a precedence chain that is deliberately three deep. Copying makes it yours.
+ *
+ * REFUSED when the name is taken, never overwritten — `save_as`'s rule and for its reason: a
+ * silent overwrite is this project's characteristic failure, and the same call with another name
+ * is one keystroke away. The name is the file's own stem unless `as` gives another.
+ *
+ * VALIDATED BEFORE IT LANDS. The text must parse as THIS domain, so adding a layout to the theme
+ * store is refused by name rather than written and discovered at the next start. */
+int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t path_len, const char* as,
+                             size_t as_len, RolltuiStr* err) {
+  Buf text = {NULL, 0, 0}, dest = {NULL, 0, 0};
+  const char *name, *slash, *dot;
+  size_t name_len;
+  void* parsed;
+  void* report;
+  int result = ROLLTUI_SAVE_SAVED;
+  struct stat st;
+  if (!s || !path || path_len == 0) return save_result(ROLLTUI_SAVE_BAD_NAME, err);
+  if (err) rolltui_str_clear(err);
+  if (!rolltui_preset_read_file(path, path_len, buf_put, &text)) {
+    if (err) {
+      rolltui_str_set(err, "cannot read ", 12);
+      rolltui_str_append(err, path, path_len);
+    }
+    buf_free(&text);
+    return ROLLTUI_SAVE_WRITE_FAILED;
+  }
+  /* The name: what was asked for, else the file's own stem. */
+  if (as && as_len) {
+    name = as;
+    name_len = as_len;
+  } else {
+    size_t i;
+    /* `memrchr` is a GNU extension; walking back is portable and this runs once per add. */
+    slash = NULL;
+    for (i = path_len; i > 0; --i)
+      if (path[i - 1] == '/') { slash = path + i - 1; break; }
+    name = slash ? slash + 1 : path;
+    name_len = path_len - (size_t)(name - path);
+    dot = NULL;
+    for (i = name_len; i > 1; --i)
+      if (name[i - 1] == '.') { dot = name + i - 1; break; }
+    if (dot) name_len = (size_t)(dot - name);
+  }
+  if (!rolltui_preset_valid_name(name, name_len)) {
+    buf_free(&text);
+    return save_result(ROLLTUI_SAVE_BAD_NAME, err);
+  }
+  pthread_mutex_lock(&s->mu);
+  if (rolltui_preset_is_shipped(s->d, name, name_len)) {
+    pthread_mutex_unlock(&s->mu);
+    buf_free(&text);
+    return save_result(ROLLTUI_SAVE_REFUSED_SHIPPED, err);
+  }
+  store_preset_path(s, name, name_len, &dest);
+  if (stat(cstr(&dest), &st) == 0) {
+    /* Its OWN sentence, not `save_as`'s. That one offers an overwrite, and adding never overwrites
+     * — a message naming a way out that does not exist is worse than a short one. */
+    if (err) {
+      rolltui_str_set(err, "a preset named '", 16);
+      rolltui_str_append(err, name, name_len);
+      rolltui_str_append(err, "' is already here", 17);
+    }
+    pthread_mutex_unlock(&s->mu);
+    buf_free(&text);
+    buf_free(&dest);
+    return ROLLTUI_SAVE_EXISTS_ASK;
+  }
+  /* PARSE IT FIRST. A file that is not this domain's is refused here rather than written and
+   * found broken at the next start, when nobody remembers adding it. */
+  report = s->rep->create();
+  parsed = s->d->parse(s->d, text.p, text.len, report);
+  if (!parsed) {
+    Buf why = {NULL, 0, 0};
+    s->rep->get_error(report, buf_put, &why);
+    if (err) {
+      rolltui_str_set(err, "not a ", 6);
+      rolltui_str_append(err, s->d->kind, strlen(s->d->kind));
+      rolltui_str_append(err, " preset: ", 9);
+      rolltui_str_append(err, why.len ? why.p : "unreadable", why.len ? why.len : 10);
+    }
+    buf_free(&why);
+    s->rep->destroy(report);
+    pthread_mutex_unlock(&s->mu);
+    buf_free(&text);
+    buf_free(&dest);
+    return ROLLTUI_SAVE_BAD_NAME;
+  }
+  s->d->destroy(parsed);
+  s->rep->destroy(report);
+  if (!write_file_atomic_put(dest.p, dest.len, text.p, text.len, rolltui_str_put, err))
+    result = ROLLTUI_SAVE_WRITE_FAILED;
+  else
+    ++s->version; /* the chooser rebuilds on a version change, so the new name appears */
+  pthread_mutex_unlock(&s->mu);
+  buf_free(&text);
+  buf_free(&dest);
+  return result;
+}
+
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err) {
   Buf path = {NULL, 0, 0}, bytes = {NULL, 0, 0};
   int result = ROLLTUI_SAVE_SAVED;

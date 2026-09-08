@@ -1026,6 +1026,7 @@ ROLLTUI_API(rolltui_preset_store_new, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_origin, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_preset_path, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_save_as, PUBLIC)
+ROLLTUI_API(rolltui_preset_store_add, PUBLIC)  /* three hosts hold stores; without it each writes its own read-file-guess-domain-copy-in */
 ROLLTUI_API(rolltui_preset_store_set_working, INTERNAL)
 ROLLTUI_API(rolltui_preset_store_start, PUBLIC)
 ROLLTUI_API(rolltui_preset_store_value_free, PUBLIC)

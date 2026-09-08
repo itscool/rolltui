@@ -3656,6 +3656,18 @@ const char* rolltui_preset_save_result_text(int result, size_t* len);
  * (`studio_golden_test`). There is deliberately no `persist` parameter: no caller wants 0. */
 int rolltui_preset_store_save_as(RolltuiPresetStore* s, const char* name, size_t len, int overwrite, RolltuiStr* err);
 
+/* ADD a preset from elsewhere — a theme someone sent you, a layout from another directory.
+ * ADDITIVE: nothing is closed and nothing is replaced, so nothing can be lost. The file is COPIED
+ * in rather than referenced, because a reference that dangles is a preset that stops existing for
+ * a reason nobody can see. Named by `as`, or by the file's own stem when `as` is empty.
+ *
+ * Returns the same codes `save_as` does: `EXISTS_ASK` when the name is taken (refused, never
+ * overwritten — the same call with another name is one keystroke away), `REFUSED_SHIPPED` for a
+ * shipped name, `BAD_NAME` for an unusable name OR a file that does not parse as this domain, and
+ * `WRITE_FAILED` when it could not be read or written. `err` carries the sentence either way. */
+int rolltui_preset_store_add(RolltuiPresetStore* s, const char* path, size_t path_len, const char* as,
+                             size_t as_len, RolltuiStr* err);
+
 /* The two paths. Both REPLACE `*out` — text out, rule 3(b), the same shape
  * `rolltui_preset_store_label` beside them uses. A `RolltuiPutFn` here costs every consumer a
  * lambda-and-append around it. */
