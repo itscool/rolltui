@@ -404,6 +404,10 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     }
   }
   if (a.w >= 1 && rows >= 1) {
+    // ▲ and ▼ ARE EAST ASIAN AMBIGUOUS. `put_text` measures and will not cut a two-cell glyph into
+    // a one-cell slot, so with `ambiguous_wide` on it lays down nothing here. The library's own menu
+    // writes these through `rolltui_frame_put`, which takes the width as a parameter and forces one
+    // — a call no host can make.
     const RolltuiStyle mark = style(m->roles.scroll_marker);
     if (m->top > 0) put(a.x + a.w - 1, y, "\xE2\x96\xB2", mark, 1);
     if (static_cast<std::size_t>(m->top + rows) < vis_n) put(a.x + a.w - 1, y + rows - 1, "\xE2\x96\xBC", mark, 1);
