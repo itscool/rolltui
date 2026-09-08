@@ -31,7 +31,7 @@
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│ md_heading  fg #84b7f9  bg #14161a  bold       │
-│ │ int add(int a, int b) {                                           │  Aa  the quick brown fox â sample in this role │
+│ │ int add(int a, int b) {                                           │  Aa  the quick brown fox — sample in this role │
 │ │   return a + b;                                                   │ fg         bg                                  │
 │ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
