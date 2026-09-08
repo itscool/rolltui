@@ -6,8 +6,25 @@
     "name": "default",
     "meta": {
       "badges": {
-        "dark": ["dark", "readable", "cvd-safe", "protan-safe", "deutan-safe", "tritan-safe", "16-safe", "256-safe"],
-        "light": ["light", "readable", "cvd-safe", "protan-safe", "deutan-safe", "tritan-safe", "256-safe"]
+        "dark": [
+          "dark",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "16-safe",
+          "256-safe"
+        ],
+        "light": [
+          "light",
+          "readable",
+          "cvd-safe",
+          "protan-safe",
+          "deutan-safe",
+          "tritan-safe",
+          "256-safe"
+        ]
       }
     },
     "roles": {
@@ -47,14 +64,14 @@
           "light": "#22262c"
         },
         "bg": {
-          "dark": "#1b1e24",
-          "light": "#eff0f2"
+          "dark": "#22252b",
+          "light": "#e3e4e6"
         }
       },
       "border": {
         "fg": {
-          "dark": "#3a404a",
-          "light": "#c8ccd2"
+          "dark": "#444b55",
+          "light": "#adb1b7"
         },
         "bg": {
           "dark": "#14161a",
@@ -73,8 +90,8 @@
       },
       "title": {
         "fg": {
-          "dark": "#d8dce2",
-          "light": "#22262c"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -84,12 +101,12 @@
       },
       "label": {
         "fg": {
-          "dark": "#858d99",
-          "light": "#5f6670"
+          "dark": "#8f97a3",
+          "light": "#565d67"
         },
         "bg": {
-          "dark": "#1b1e24",
-          "light": "#eff0f2"
+          "dark": "#22252b",
+          "light": "#e3e4e6"
         }
       },
       "value": {
@@ -98,8 +115,8 @@
           "light": "#22262c"
         },
         "bg": {
-          "dark": "#1b1e24",
-          "light": "#eff0f2"
+          "dark": "#22252b",
+          "light": "#e3e4e6"
         }
       },
       "accent_1": {
@@ -209,8 +226,8 @@
       },
       "md_strong": {
         "fg": {
-          "dark": "#d8dce2",
-          "light": "#22262c"
+          "dark": "#f1f5fb",
+          "light": "#11141a"
         },
         "bg": {
           "dark": "#14161a",
@@ -224,8 +241,8 @@
           "light": "#401459"
         },
         "bg": {
-          "dark": "#1e2228",
-          "light": "#f0f1f3"
+          "dark": "#32363c",
+          "light": "#cecfd1"
         }
       },
       "md_code_block": {
@@ -234,8 +251,8 @@
           "light": "#22262c"
         },
         "bg": {
-          "dark": "#1e2228",
-          "light": "#f0f1f3"
+          "dark": "#32363c",
+          "light": "#cecfd1"
         }
       },
       "md_code_label": {
@@ -302,8 +319,8 @@
       },
       "md_table_header": {
         "fg": {
-          "dark": "#d8dce2",
-          "light": "#22262c"
+          "dark": "#84b7f9",
+          "light": "#2d4e78"
         },
         "bg": {
           "dark": "#14161a",
@@ -453,8 +470,8 @@
           "light": "#22262c"
         },
         "bg": {
-          "dark": "#1b1e24",
-          "light": "#eff0f2"
+          "dark": "#22252b",
+          "light": "#e3e4e6"
         }
       },
       "menu_selected": {
@@ -474,8 +491,8 @@
           "light": "#5f6670"
         },
         "bg": {
-          "dark": "#1b1e24",
-          "light": "#eff0f2"
+          "dark": "#22252b",
+          "light": "#e3e4e6"
         }
       },
       "menu_shortcut": {
@@ -484,8 +501,8 @@
           "light": "#401459"
         },
         "bg": {
-          "dark": "#1b1e24",
-          "light": "#eff0f2"
+          "dark": "#22252b",
+          "light": "#e3e4e6"
         }
       },
       "find_match": {
@@ -524,14 +541,14 @@
       "waiting": {
         "kind": "spinner",
         "frames": [
-          "⠋",
-          "⠙",
-          "⠹",
-          "⠸",
-          "⠼",
-          "⠴",
-          "⠦",
-          "⠧"
+          "\u280b",
+          "\u2819",
+          "\u2839",
+          "\u2838",
+          "\u283c",
+          "\u2834",
+          "\u2826",
+          "\u2827"
         ],
         "period_ms": 640
       },

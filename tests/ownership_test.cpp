@@ -534,5 +534,62 @@ int main() {
           "…and c/rolltui_widgets.h states it beside the type that does the owning");
   }
 
+  // ---- NO DOUBLE-ENCODED UTF-8 IN ANY SOURCE ----------------------------------------
+  // A string read as Latin-1 and written back as UTF-8 turns one character into two or three,
+  // and a terminal then draws each of them in its own cell: `\xE2\x80\xBA` becomes two visible
+  // glyphs, `\xC2\xB7` becomes two, and an em dash loses both continuation bytes and survives as
+  // a bare `\xC3\xA2`. The line it sits on overflows and the text after it is cut short.
+  //
+  // It is invisible in a diff to anyone not looking for it, and a GOLDEN FRAME RE-RECORDS IT AS
+  // CORRECT, so the usual instrument confirms it instead of catching it.
+  //
+  // The tell is exact rather than a guess: U+00C2, U+00C3 and U+00E2 are the characters a
+  // Latin-1 misread leaves in front of another non-ASCII byte, and no English source puts one
+  // there on purpose. Spell a non-ASCII glyph as hex escapes and this cannot happen to it.
+  {
+    const auto offenders = [](const std::string& bytes) {
+      std::size_t n = 0;
+      for (std::size_t i = 0; i + 2 < bytes.size(); ++i) {
+        const unsigned char a = static_cast<unsigned char>(bytes[i]);
+        const unsigned char b = static_cast<unsigned char>(bytes[i + 1]);
+        const unsigned char c = static_cast<unsigned char>(bytes[i + 2]);
+        if (a != 0xC3) continue;
+        if (b != 0x82 && b != 0x83 && b != 0xA2) continue;  // U+00C2, U+00C3, U+00E2
+        if (c < 0x80) continue;                             // ...in front of another non-ASCII byte
+        ++n;
+      }
+      return n;
+    };
+
+    // THE CONTROL, first: a scanner that finds nothing and a scanner that cannot see are the
+    // same output. This is the real corruption, spelled as the bytes it actually was.
+    check(offenders(std::string("Roles \xC3\xA2\xC2\xBA a role")) == 1,
+          "the double-encoding scanner sees a planted `\xE2\x80\xBA` that was read as Latin-1");
+    check(offenders(std::string("filter \xC3\x82\xC2\xB7 Enter")) == 1,
+          "\xE2\x80\xA6" "and a planted `\xC2\xB7`");
+    check(offenders(std::string("Roles \xE2\x80\xBA a role \xC2\xB7 fine \xE2\x80\x94 fine")) == 0,
+          "\xE2\x80\xA6" "and passes correctly encoded text carrying the same three characters");
+
+    std::size_t scanned = 0, bad = 0;
+    std::string worst;
+    for (const fs::directory_entry& e : fs::recursive_directory_iterator(ROLLTUI_SOURCE_DIR)) {
+      const std::string p = e.path().string();
+      const std::string rel = p.substr(std::string(ROLLTUI_SOURCE_DIR).size() + 1);
+      if (rel.rfind("third_party/", 0) == 0 || rel.rfind("ucd/", 0) == 0) continue;
+      const std::string ext = e.path().extension().string();
+      if (ext != ".c" && ext != ".h" && ext != ".cpp" && ext != ".hpp" && ext != ".json") continue;
+      ++scanned;
+      const std::size_t n = offenders(read_file(p));
+      if (n != 0) {
+        bad += n;
+        if (worst.empty()) worst = rel;
+      }
+    }
+    check(scanned >= 50, "scanned the library's sources and shipped files for double-encoded UTF-8 (" +
+                             std::to_string(scanned) + " files)");
+    check(bad == 0, "no source or shipped file carries double-encoded UTF-8 (" + std::to_string(bad) +
+                        (worst.empty() ? "" : " in " + worst) + ")");
+  }
+
   return report("rolltui ownership_test");
 }

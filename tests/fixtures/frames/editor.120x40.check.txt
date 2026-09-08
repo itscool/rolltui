@@ -7,9 +7,9 @@
 │ │ CommonMa│ roles (fg on bg; WCAG 4.5 readable, 7.0 high; APCA Lc):                                      │           │
 │ │         │   text                 13.16:1  APCA -84  high  (#d8dce2 on #14161a)                         │           │
 │ │ Terminal│   text_muted           5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
-│ │ size, SI│   title                13.16:1  APCA -84  high  (#d8dce2 on #14161a)                         │           │
-│ │ mouse mo│   label                4.98:1  APCA -39  readable  (#858d99 on #1b1e24)                      │           │
-│ │ Key + mo│   value                12.13:1  APCA -83  high  (#d8dce2 on #1b1e24)                         │           │
+│ │ size, SI│   title                8.73:1  APCA -61  high  (#84b7f9 on #14161a)                          │           │
+│ │ mouse mo│   label                5.21:1  APCA -43  readable  (#8f97a3 on #22252b)                      │           │
+│ │ Key + mo│   value                11.16:1  APCA -82  high  (#d8dce2 on #22252b)                         │           │
 │ │         │   accent_1             8.73:1  APCA -61  high  (#84b7f9 on #14161a)                          │           │
 │ │ Cell gri│   accent_2             13.47:1  APCA -86  high  (#adeeae on #14161a)                         │           │
 │ │ colour d│   accent_3             7.81:1  APCA -56  high  (#cba63a on #14161a)                          │           │
@@ -20,15 +20,15 @@
 │ │         │   error                4.73:1  APCA -35  readable  (#c06a64 on #14161a)                      │           │
 │ │ Menu wid│   md_heading           8.73:1  APCA -61  high  (#84b7f9 on #14161a)                          │           │
 │ │ filterab│   md_emphasis          13.16:1  APCA -84  high  (#d8dce2 on #14161a)                         │           │
-│ │ Layout f│   md_strong            13.16:1  APCA -84  high  (#d8dce2 on #14161a)                         │           │
-│ │ placemen│   md_code_inline       6.89:1  APCA -54  readable  (#cba63a on #1e2228)                      │           │
-│ │ Markdown│   md_code_block        11.60:1  APCA -83  high  (#d8dce2 on #1e2228)                         │           │
+│ │ Layout f│   md_strong            16.55:1  APCA -100  high  (#f1f5fb on #14161a)                        │           │
+│ │ placemen│   md_code_inline       5.24:1  APCA -50  readable  (#cba63a on #32363c)                      │           │
+│ │ Markdown│   md_code_block        8.83:1  APCA -79  high  (#d8dce2 on #32363c)                          │           │
 │ │ → styled│   md_code_label        5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
 │ │ Theme (r│   md_link              9.26:1  APCA -64  high  (#6cc8c8 on #14161a)                          │           │
 │ │ loader, │   md_link_url          5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
 │ └─────────│   md_quote             5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
 │           │   md_list_marker       8.73:1  APCA -61  high  (#84b7f9 on #14161a)                          │           │
-│ Here is th│   md_table_header      13.16:1  APCA -84  high  (#d8dce2 on #14161a)                         │           │
+│ Here is th│   md_table_header      8.73:1  APCA -61  high  (#84b7f9 on #14161a)                          │           │
 │           │   md_strikethrough     5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
 │ ┌ cpp ────│   diff_added           13.47:1  APCA -86  high  (#adeeae on #14161a)                         │           │
 │ │ int add(│   diff_removed         4.73:1  APCA -35  readable  (#c06a64 on #14161a)                      │transcript │

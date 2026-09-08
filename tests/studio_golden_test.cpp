@@ -690,13 +690,13 @@ int main(int argc, char** argv) {
     // ---- milestone 14: the theme editor, asserted beyond the bytes ----
     check(ed_open.find("\xE2\x94\x8C theme editor ") != std::string::npos && ed_open.find("focus:editor") != std::string::npos && ed_open.find("Roles") != std::string::npos,
           "F4 opens the theme editor popup with focus and the Roles level");
-    check(ed_fg.find("Roles \xE2\x80\xBA md_heading \xE2\x80\xBA fg") != std::string::npos && role_part(ed_fg) == "md_heading fg=#cba63a bg=#14161a bold" &&
+    check(ed_fg.find("Roles \xE2\x80\xBA md_heading \xE2\x80\xBA fg") != std::string::npos && role_part(ed_fg) == "md_heading fg=#adeeae bg=#14161a bold" &&
               ed_fg.find("previewing") != std::string::npos,
-          "Roles › md_heading › fg two entries down previews #cba63a on the heading and says previewing [" + role_part(ed_fg) + "]");
+          "Roles › md_heading › fg two entries down previews #adeeae on the heading and says previewing [" + role_part(ed_fg) + "]");
     check(role_part(ed_cancel) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_cancel.find("focus:editor") != std::string::npos,
           "Escape puts the committed #84b7f9 back and stays in the editor [" + role_part(ed_cancel) + "]");
-    check(role_part(ed_commit) == "md_heading fg=#cba63a bg=#14161a bold" && ed_commit.find("undo 1") != std::string::npos,
-          "Enter commits: the heading is #cba63a, undo depth 1 [" + role_part(ed_commit) + "]");
+    check(role_part(ed_commit) == "md_heading fg=#adeeae bg=#14161a bold" && ed_commit.find("undo 1") != std::string::npos,
+          "Enter commits: the heading is #adeeae, undo depth 1 [" + role_part(ed_commit) + "]");
     check(role_part(ed_undo) == "md_heading fg=#84b7f9 bg=#14161a bold" && ed_undo.find("undo 0") != std::string::npos && ed_undo.find("redo 1") != std::string::npos,
           "Ctrl-Z undoes it: #84b7f9, undo 0, redo 1");
     check(ed_confirm.find("\xE2\x95\xAD confirm ") != std::string::npos && ed_confirm.find("built-in default? (y/n)") != std::string::npos,
@@ -708,7 +708,7 @@ int main(int argc, char** argv) {
       const std::string relaunch = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 80x24 --presets '" +
                                    scratch + "/p2' --theme '" + scratch + "/p/themes/mine.json' --dump-role md_heading";
       const std::string again = run(relaunch, rc);
-      check(rc == 0 && role_part(again) == "md_heading fg=#cba63a bg=#14161a bold", "a relaunch with --theme <that file> shows the saved heading colour [" + role_part(again) + "]");
+      check(rc == 0 && role_part(again) == "md_heading fg=#adeeae bg=#14161a bold", "a relaunch with --theme <that file> shows the saved heading colour [" + role_part(again) + "]");
       // Under --frame nothing autosaves from an edit; the explicit save-as records its
       // new origin in the working copy, which is the one write the frame runs made.
       bool ok = false;
@@ -911,7 +911,8 @@ int main(int argc, char** argv) {
                   "/session/long_diff.md' --frame-sgr 120x40 --theme default-dark --code-fold 6,10 --presets '" +
                   scratch + "/p8' 2>/dev/null",
               rc);
-      // default-dark's diff_added is #adeeae and diff_removed is #c06a64 (Theme.cpp).
+      // default-dark's diff_added is #adeeae and diff_removed is #c06a64, and the code ground
+      // is #32363c — all three from presets/themes/default.json, where the design lives.
       const std::string added = "\x1b[0;38;2;173;238;174";
       const std::string removed = "\x1b[0;38;2;192;106;100";
       const std::string plain_code = "\x1b[0;38;2;216;220;226";  // md_code_block
@@ -922,7 +923,7 @@ int main(int argc, char** argv) {
       // THE CONTROL. The bare fence's lines are the same shape — "-milk", "+oat milk",
       // "@@ -1,3 +1,3 @@" — and every one of them is md_code_block, like any other code.
       for (const char* line : {"-milk", "+oat milk", " bread", "@@ -1,3 +1,3 @@"}) {
-        const std::string at = plain_code + ";48;2;30;34;40m" + line;
+        const std::string at = plain_code + ";48;2;50;54;60m" + line;
         check(sgr.find(at) != std::string::npos,
               std::string("a bare fence renders \"") + line + "\" as plain code, whatever it looks like");
         check(sgr.find(added + ";48;2;20;22;26m" + line) == std::string::npos &&
