@@ -655,6 +655,12 @@ static const KindRow kKinds[] = {
     {"text", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_TEXT, "the literal text"},
     {"file", ROLLTUI_SOURCE_REQUIRED, ROLLTUI_SOURCE_SHAPE_TEXT, "a path"},
     {"help", ROLLTUI_SOURCE_OPTIONAL, ROLLTUI_SOURCE_SHAPE_NAME, "one key scope, or every one when empty"},
+    /* The two editors. FORBIDDEN, not optional: what each edits is handed over by the host as a
+     * store, so a source on the window would be a second way to say the same thing and the two
+     * could disagree. A screen names `theme` or `keys` and the host hands over a store, or the
+     * editor draws with nowhere to commit and says so. */
+    {"theme", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
+    {"keys", ROLLTUI_SOURCE_FORBIDDEN, ROLLTUI_SOURCE_SHAPE_NAME, ""},
 };
 #define KIND_COUNT (sizeof kKinds / sizeof kKinds[0])
 

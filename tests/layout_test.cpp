@@ -1331,7 +1331,26 @@ int main() {
     // Every library kind is in the table under its own name, AT ITS OWN ROW, and nothing
     // else is: the name is the identity, and the row is where the kind's rules live.
     const std::size_t lib = rolltui_widget_kind_library_count();
-    check(lib == 7 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has seven kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
+    // A KIND IS ONE THING, so it is in ONE table. `theme` and `keys` arrived as widget FACTORIES
+    // and were absent from the name table beside them, which is two spellings of one identity:
+    // the resolver called them unknown, the design editor never offered them, and the guard that
+    // refuses a host shadowing a library kind did not cover them — a host could register its own
+    // `theme` and take the name.
+    for (const char* n : {"theme", "keys"}) {
+      std::size_t row = 0;
+      unsigned char rule = 0;
+      const char* si = nullptr;
+      std::size_t si_len = 0;
+      check(rolltui_widget_kind_resolve(test_ctx(), n, std::strlen(n), &row, &rule, &si, &si_len) != 0 &&
+                row < static_cast<std::size_t>(lib),
+            std::string(n) + " resolves as a LIBRARY kind, in the closed table's own rows");
+      check(rule == ROLLTUI_SOURCE_FORBIDDEN,
+            std::string("…taking no source, because what it edits is a store the host hands over"));
+      check(rolltui_widget_kind_register(test_ctx(), n, std::strlen(n), ROLLTUI_SOURCE_OPTIONAL, "", 0) ==
+                ROLLTUI_REGISTER_IS_LIBRARY,
+            std::string("…and a host is REFUSED when it tries to shadow ") + n);
+    }
+    check(lib == 9 && rolltui_widget_kind_count(test_ctx()) == lib, "the library's closed table has nine kinds and, before any host registers, they are the whole enumeration (" + std::to_string(lib) + ")");
     for (std::size_t i = 0; i < lib; ++i) {
       int rung = ROLLTUI_KIND_UNKNOWN;
       check(widget_kind_row_c(widget_kind_name_c(i), &rung) == i && rung == ROLLTUI_KIND_LIBRARY,
