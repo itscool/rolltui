@@ -1061,6 +1061,7 @@ ROLLTUI_API(rolltui_terminal_negotiate_keyboard, INTERNAL)  /* a step of enter *
 ROLLTUI_API(rolltui_terminal_new, PUBLIC)
 ROLLTUI_API(rolltui_terminal_poll, PUBLIC)
 ROLLTUI_API(rolltui_terminal_query_background, PUBLIC)
+ROLLTUI_API(rolltui_terminal_query_ambiguous_wide, PUBLIC)  /* how wide this terminal draws an ambiguous glyph is a FACT a host must know before it draws, and only the terminal can answer */
 ROLLTUI_API(rolltui_terminal_refresh_size, INTERNAL)  /* a step of the terminal's own loop */
 ROLLTUI_API(rolltui_terminal_restore_now, INTERNAL)  /* a step of leave */
 ROLLTUI_API(rolltui_terminal_wake, PUBLIC)

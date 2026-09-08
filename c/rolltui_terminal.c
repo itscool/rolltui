@@ -458,6 +458,88 @@ static size_t find_char(const char* s, size_t n, char c, size_t from) {
   return (size_t)-1;
 }
 
+/* HOW WIDE THIS TERMINAL DRAWS AN AMBIGUOUS GLYPH, asked rather than assumed.
+ *
+ * East Asian AMBIGUOUS characters are one cell on most terminals and two on others, and nothing
+ * in the environment says which. Guessing wrong splits a two-cell glyph across a one-cell track
+ * or leaves a hole: the border set, the block elements and the scrollbar thumb are all in that
+ * class. It is not a preference, so it is not a setting to type — it is a fact, and a terminal
+ * that answers CPR will tell you.
+ *
+ * Draw one ambiguous glyph at a known column, ask where the cursor ended up, put it back. A
+ * reply of column 3 means the glyph took two cells, column 2 means one. Anything else — no
+ * reply, a terminal that does not answer, a timeout — leaves `*out` untouched, so the caller's
+ * own default stands and a silent terminal never becomes a wrong answer.
+ *
+ * Drawn inside a save/restore pair and erased, and every host repaints the whole screen on its
+ * first frame regardless, so nothing of this survives into the session. */
+int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, int* out) {
+  char* buf = NULL;
+  size_t buf_len = 0, buf_cap = 0;
+  int found = 0;
+  struct timespec deadline;
+  if (!t->tty || !out) return 0;
+  /* DECSC, home, one ambiguous glyph (U+2588), CPR, erase the line, DECRC. */
+  rolltui_terminal_write(t, "\x1b" "7\x1b[1;1H\xE2\x96\x88\x1b[6n\x1b[1;1H\x1b[K\x1b" "8", 20);
+  deadline = deadline_from(timeout_ms);
+  for (;;) {
+    long left = ms_until(&deadline);
+    struct pollfd one;
+    int n;
+    ssize_t k;
+    char b[512];
+    size_t at, end, i;
+    if (left <= 0) break;
+    one.fd = t->in_fd;
+    one.events = POLLIN;
+    one.revents = 0;
+    n = poll(&one, 1, (int)left);
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    if (n == 0) break;
+    k = read(t->in_fd, b, sizeof b);
+    if (k <= 0) break;
+    buf = rolltui_grow(buf, &buf_cap, buf_len + (size_t)k, 1);
+    memcpy(buf + buf_len, b, (size_t)k);
+    buf_len += (size_t)k;
+    at = find_sub(buf, buf_len, "\x1b[", 2, 0);
+    if (at == (size_t)-1) continue;
+    end = (size_t)-1;
+    for (i = at + 2; i < buf_len; ++i)
+      if (buf[i] == 'R') { end = i; break; }
+    if (end == (size_t)-1) continue;
+    {
+      /* ESC [ row ; col R — only the column matters. */
+      size_t semi = (size_t)-1;
+      for (i = at + 2; i < end; ++i)
+        if (buf[i] == ';') { semi = i; break; }
+      if (semi != (size_t)-1) {
+        int col = 0;
+        for (i = semi + 1; i < end; ++i) {
+          if (buf[i] < '0' || buf[i] > '9') { col = 0; break; }
+          col = col * 10 + (buf[i] - '0');
+        }
+        if (col >= 2) {
+          *out = col >= 3 ? 1 : 0;
+          found = 1;
+        }
+      }
+    }
+    memmove(buf + at, buf + end + 1, buf_len - (end + 1));
+    buf_len -= (end + 1 - at);
+    break;
+  }
+  if (buf_len) {
+    QueueCtx qc;
+    qc.t = t;
+    rolltui_key_decoder_feed(t->decoder, buf, buf_len, queue_from_decoder, &qc);
+  }
+  rolltui_mem_free(buf);
+  return found;
+}
+
 int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out) {
   if (!t->tty) return 0;
   rolltui_terminal_write(t, "\x1b]11;?\x1b\\", 8); /* ESC ] 1 1 ; ? ESC \ */

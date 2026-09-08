@@ -2723,6 +2723,12 @@ int main(int argc, char** argv) {
     const int have_bg = rolltui_terminal_query_background(term, 150, &bg);
     app.detected_mode = have_bg ? rolltui_mode_for_background(bg) : ROLLTUI_MODE_DARK;
   }
+  // ASK THE TERMINAL HOW WIDE IT DRAWS AN AMBIGUOUS GLYPH rather than making a person say. A
+  // silent terminal leaves the value alone, so the default stands.
+  {
+    int wide = app.ambiguous ? 1 : 0;
+    if (rolltui_terminal_query_ambiguous_wide(term, 100, &wide)) app.ambiguous = wide != 0;
+  }
   app.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
   app.load_layout_arg();
   app.sync_look();

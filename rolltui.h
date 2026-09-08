@@ -4645,6 +4645,12 @@ void rolltui_terminal_write(RolltuiTerminal* t, const char* bytes, size_t len);
  * event loop, once. */
 int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, RolltuiStyleColor* out);
 
+/* Asks the terminal how wide it draws an East Asian AMBIGUOUS glyph: 1 for two cells, 0 for one.
+ * Leaves `*out` untouched and returns 0 when the terminal does not answer, so a silent terminal
+ * keeps the caller's default instead of becoming a wrong answer. Draws and erases one glyph at
+ * the home position inside a save/restore pair. */
+int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, int* out);
+
 
 /* ========================================================================================
  * RELEASE — and the number that proves you did
