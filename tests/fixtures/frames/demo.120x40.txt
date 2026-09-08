@@ -23,17 +23,17 @@
 │ │ Layout files (JSON: windows +    │ build       │ reuses the theme loader's hand   │ │                              │
 │ │ placements + content slots)      │             │ parser; hot-reloaded             │ │                              │
 │ │ Markdown block renderer (blocks  │ build       │ single header over md4c + wrap   │ │                              │
-│ │ → styled wrapped lines)          │             │                                  │ ▄                              │
-│ │ Theme (roles → styles, JSON      │ build       │ single header                    │ █                              │
-│ │ loader, built-ins)               │             │                                  │ █                              │
-│ └──────────────────────────────────┴─────────────┴──────────────────────────────────┘ █                              │
-│                                                                                       █                              │
-│ Here is the function you asked for:                                                   █                              │
-│                                                                                       █                              │
-│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ █                              │
-│ │ int add(int a, int b) {                                                           │ █                              │
-│ │   return a + b;                                                                   │ █                              │
-│ └───────────────────────────────────────────────────────────────────────────────────┘ ▀                              │
+│ │ → styled wrapped lines)          │             │                                  │ ╻                              │
+│ │ Theme (roles → styles, JSON      │ build       │ single header                    │ ┃                              │
+│ │ loader, built-ins)               │             │                                  │ ┃                              │
+│ └──────────────────────────────────┴─────────────┴──────────────────────────────────┘ ┃                              │
+│                                                                                       ┃                              │
+│ Here is the function you asked for:                                                   ┃                              │
+│                                                                                       ┃                              │
+│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ ┃                              │
+│ │ int add(int a, int b) {                                                           │ ┃                              │
+│ │   return a + b;                                                                   │ ┃                              │
+│ └───────────────────────────────────────────────────────────────────────────────────┘ ╹                              │
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘

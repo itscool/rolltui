@@ -13,7 +13,7 @@
 │ │                                  │             │ Event, table-tested              │ │                              │
 │ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
 │ │ colour downgrade    │   Right                   move one grapheme right                    │                       │
-│ │ Wrap engine         │   Ctrl-Left, Alt-Left     move one word left                         ●                       │
+│ │ Wrap engine         │   Ctrl-Left, Alt-Left     move one word left                         •                       │
 │ │                     │   Ctrl-Right, Alt-Right   move one word right                        │                       │
 │ │ Windows, layers, pla│   Home                    start of the line (scrolls when empty)     │                       │
 │ │ abs/rel per axis), f│   End                     end of the line (scrolls when empty)       │                       │
@@ -23,17 +23,17 @@
 │ │ Layout files (JSON: │   Shift-Right             extend the selection one grapheme right    │                       │
 │ │ placements + content│   Ctrl-Shift-Left, Alt-Shift-Left  extend the selection on▼ 54 more  │                       │
 │ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
-│ │ → styled wrapped lines)          │             │                                  │ ▄                              │
-│ │ Theme (roles → styles, JSON      │ build       │ single header                    │ █                              │
-│ │ loader, built-ins)               │             │                                  │ █                              │
-│ └──────────────────────────────────┴─────────────┴──────────────────────────────────┘ █                              │
-│                                                                                       █                              │
-│ Here is the function you asked for:                                                   █                              │
-│                                                                                       █                              │
-│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ █                              │
-│ │ int add(int a, int b) {                                                           │ █                              │
-│ │   return a + b;                                                                   │ █                              │
-│ └───────────────────────────────────────────────────────────────────────────────────┘ ▀                              │
+│ │ → styled wrapped lines)          │             │                                  │ ╻                              │
+│ │ Theme (roles → styles, JSON      │ build       │ single header                    │ ┃                              │
+│ │ loader, built-ins)               │             │                                  │ ┃                              │
+│ └──────────────────────────────────┴─────────────┴──────────────────────────────────┘ ┃                              │
+│                                                                                       ┃                              │
+│ Here is the function you asked for:                                                   ┃                              │
+│                                                                                       ┃                              │
+│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ ┃                              │
+│ │ int add(int a, int b) {                                                           │ ┃                              │
+│ │   return a + b;                                                                   │ ┃                              │
+│ └───────────────────────────────────────────────────────────────────────────────────┘ ╹                              │
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘

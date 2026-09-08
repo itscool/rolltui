@@ -1101,7 +1101,7 @@ int main(int argc, char** argv) {
           const std::string out = run(bin + " '" + std::string(ROLLTUI_FIXTURE_DIR) +
                                       "/session/demo.md' --frame 120x40 --presets '" + p +
                                       "' --theme " + theme + " --keys \"PageUp\"", rc);
-          static const char* kCells[] = {"\xE2\x96\x88", "\xE2\x96\x84", "\xE2\x96\x80", "\xE2\x97\x8F"};
+          static const char* kCells[] = {"\xE2\x94\x83", "\xE2\x95\xBB", "\xE2\x95\xB9", "\xE2\x80\xA2"};
           std::string col;
           std::istringstream in(out);
           for (std::string r; std::getline(in, r);) {
@@ -1117,10 +1117,10 @@ int main(int argc, char** argv) {
         };
         const std::string capsule = thumb_of("ink");
         const std::string solid = thumb_of("contrast");
-        check(capsule.find("\xE2\x96\x84") == 0, "the shipped thumb is a CAPSULE: its first cell is the lower-half cap [" + capsule + "]");
-        check(capsule.size() > 2 && capsule.rfind("\xE2\x96\x80") == capsule.size() - 3,
-              "…and its last is the upper-half cap, so a bar of any length has soft ends");
-        check(!solid.empty() && solid.find("\xE2\x96\x84") == std::string::npos,
+        check(capsule.find("\xE2\x95\xBB") == 0, "the shipped thumb is a CAPSULE: its first cell is the half-height DOWN stroke [" + capsule + "]");
+        check(capsule.size() > 2 && capsule.rfind("\xE2\x95\xB9") == capsule.size() - 3,
+              "…and its last is the half-height UP stroke, so a bar of any length has soft ends");
+        check(!solid.empty() && solid.find("\xE2\x95\xBB") == std::string::npos,
               "…while a theme that asks for a SOLID thumb gets one, with no caps at all [" + solid + "]");
       }
 

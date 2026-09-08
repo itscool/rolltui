@@ -369,10 +369,10 @@
     },
     "glyphs": {
       "scrollbar": {
-        "single": "█",
-        "top": "█",
-        "middle": "█",
-        "bottom": "█",
+        "single": "┃",
+        "top": "┃",
+        "middle": "┃",
+        "bottom": "┃",
         "ascii": {
           "single": "#",
           "top": "#",

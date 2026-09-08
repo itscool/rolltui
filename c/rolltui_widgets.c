@@ -776,12 +776,17 @@ const RolltuiMenuRoles* rolltui_windows_menu_roles(const RolltuiWindows* w) { re
 void rolltui_scrollbar_glyphs_default(RolltuiScrollbarGlyphs* out) {
   if (!out) return;
   memset(out, 0, sizeof *out);
-  /* ● is an oval in one cell; ▄ fills the lower half so a thumb STARTS mid-cell, ▀ the upper
-   * half so it ENDS mid-cell, and █ between them is the body. */
-  memcpy(out->single, "\xE2\x97\x8F", 4);
-  memcpy(out->top, "\xE2\x96\x84", 4);
-  memcpy(out->middle, "\xE2\x96\x88", 4);
-  memcpy(out->bottom, "\xE2\x96\x80", 4);
+  /* BOX DRAWING, NOT BLOCK ELEMENTS, and the reason is coverage rather than taste. Every window
+   * here is already framed in box drawing, so a terminal that shows this library at all shows
+   * `│ ┌ ┐ └`; the Block Elements a solid thumb is made of are a separate range that some fonts
+   * ship without, and a thumb nobody can see is worse than a plain one.
+   * The heavy set draws the same capsule: ╻ is a half-height stroke going DOWN, so a thumb starts
+   * mid-cell; ╹ goes UP, so it ends mid-cell; ┃ between them is the body, heavy enough to read
+   * against the light │ of the border it sits in. • is the one-cell case. */
+  memcpy(out->single, "\xE2\x80\xA2", 4);
+  memcpy(out->top, "\xE2\x95\xBB", 4);
+  memcpy(out->middle, "\xE2\x94\x83", 4);
+  memcpy(out->bottom, "\xE2\x95\xB9", 4);
   memcpy(out->ascii_single, "o", 2);
   memcpy(out->ascii_top, "#", 2);
   memcpy(out->ascii_middle, "#", 2);

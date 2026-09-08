@@ -370,8 +370,8 @@ int main(int argc, char** argv) {
     // and an upper-half cap — naming one of them would make this a statement about the thumb's
     // LENGTH, which belongs to the layout and not to this check. A theme may replace all four,
     // so this is the shipped set and a theme that changes them re-records the frames with it.
-    const bool has_thumb = has(marked_row, "\xE2\x96\x88") || has(marked_row, "\xE2\x96\x84") ||
-                           has(marked_row, "\xE2\x96\x80") || has(marked_row, "\xE2\x97\x8F");
+    const bool has_thumb = has(marked_row, "\xE2\x94\x83") || has(marked_row, "\xE2\x95\xBB") ||
+                           has(marked_row, "\xE2\x95\xB9") || has(marked_row, "\xE2\x80\xA2");
     check(has_thumb && has(marked_row, "commands"),
           "a SCROLLBAR: the thumb is in the transcript's right border column — the one it SHARES with the menu [" +
               marked_row.substr(0, 40) + " … ]");

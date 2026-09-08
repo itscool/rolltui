@@ -1,17 +1,17 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ # Two blocks that look identical, and are not ▄ theme   default-dark         │
-│                                               █ keys    default              │
-│ The first is under a ```diff fence, so it     █ layout  default              │
-│ colours through the diff roles. The second is █ size    80x24                │
-│ under a bare fence and holds the SAME SHAPE   █ line    1/28                 │
-│ of text, so it must render plain — content is █ follow  no                   │
-│ never sniffed (rolltui/Diff.hpp).             █ depth   truecolor            │
-│                                               █ focus   input                │
-│ ▸ diff · 13 lines · 420 B                     █                              │
-│                                               █                              │
-│ A bare fence over the same shape of text:     █                              │
-│                                               █                              │
-│ ┌───────────────────────────────────────────┐ ▀                              │
+│ # Two blocks that look identical, and are not ╻ theme   default-dark         │
+│                                               ┃ keys    default              │
+│ The first is under a ```diff fence, so it     ┃ layout  default              │
+│ colours through the diff roles. The second is ┃ size    80x24                │
+│ under a bare fence and holds the SAME SHAPE   ┃ line    1/28                 │
+│ of text, so it must render plain — content is ┃ follow  no                   │
+│ never sniffed (rolltui/Diff.hpp).             ┃ depth   truecolor            │
+│                                               ┃ focus   input                │
+│ ▸ diff · 13 lines · 420 B                     ┃                              │
+│                                               ┃                              │
+│ A bare fence over the same shape of text:     ┃                              │
+│                                               ┃                              │
+│ ┌───────────────────────────────────────────┐ ╹                              │
 │ │ --- a/notes/shopping.txt                  │ │                              │
 │ │ +++ b/notes/shopping.txt                  │ │                              │
 │ │ @@ -1,3 +1,3 @@                           │ │                              │

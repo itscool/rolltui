@@ -14,8 +14,8 @@
 │ │ Menu widget  │ build       │ single       │ │                              │
 │ │ (hierarchica │             │ header each; │ │                              │
 │ │ l,           │             │ the widget   │ │                              │
-│ │ filterable)  │             │ set is       │ ▄                              │
-│ │ + list/text  │             │ deliberately │ ▀                              │
+│ │ filterable)  │             │ set is       │ ╻                              │
+│ │ + list/text  │             │ deliberately │ ╹                              │
 │ │ widgets      │             │ this small   │ │                              │
 │ │ Layout files │ build       │ reus▼ 24 more  │                              │
 ├───────────────────────────────────────────────┤                              │

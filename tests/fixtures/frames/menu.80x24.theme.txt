@@ -4,20 +4,20 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout  default              │
 │ │ (blocks →    │             │              │ │ size    80x24                │
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
-│ │ wrapped      │  │ settings › Theme                     ▄s                  │
-│ │ lines)       │  │ ◂ Back                               █uecolor            │
-│ │ Theme (roles │ b│ default                              █nu                 │
-│ │ → styles,    │  │ beacon                               █                   │
-│ │ JSON loader, │  │ catppuccin                           █                   │
-│ │ built-ins)   │  │ contrast                             █                   │
-│ └──────────────┴──│ • default-dark                       █                   │
-│                   │ default-light                        ▀                   │
+│ │ wrapped      │  │ settings › Theme                     ╻s                  │
+│ │ lines)       │  │ ◂ Back                               ┃uecolor            │
+│ │ Theme (roles │ b│ default                              ┃nu                 │
+│ │ → styles,    │  │ beacon                               ┃                   │
+│ │ JSON loader, │  │ catppuccin                           ┃                   │
+│ │ built-ins)   │  │ contrast                             ┃                   │
+│ └──────────────┴──│ • default-dark                       ┃                   │
+│                   │ default-light                        ╹                   │
 │ Here is the functi│ ember                                │                   │
 │                   │ harbour                              │                   │
 │ ┌ cpp ────────────│ ink                                ▼ │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │
-│ │   return a + b;                           │ ▄                              │
-│ └───────────────────────────────────────────┘ ▀                              │
+│ │   return a + b;                           │ ╻                              │
+│ └───────────────────────────────────────────┘ ╹                              │
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
