@@ -850,10 +850,60 @@ struct App {
 
   // The menu's STRUCTURE is menus/main.json; what is left here is the part a file cannot
   // hold — the options that are runtime facts (which presets exist) and the current values.
+  // What a theme SAYS it is. `meta.badges` is either one list, or a dark/light pair when the
+  // variants differ — the same pair form a role's colours use. Read rather than recomputed: the
+  // loader already verifies the declaration against the colours, so a stale one is a reported
+  // problem elsewhere and not this menu's to re-derive.
+  static std::string declared_badges(const RolltuiJsonValue* colours, int for_mode) {
+    const RolltuiJsonValue* meta = colours ? rolltui_json_get(colours, "meta", 4) : nullptr;
+    const RolltuiJsonValue* b = meta ? rolltui_json_get(meta, "badges", 6) : nullptr;
+    if (!b) return {};
+    if (rolltui_json_array_size(b) == 0) {
+      const char* k = for_mode == ROLLTUI_MODE_LIGHT ? "light" : "dark";
+      b = rolltui_json_get(b, k, std::strlen(k));
+    }
+    std::string out;
+    for (std::size_t i = 0; b && i < rolltui_json_array_size(b); ++i) {
+      std::size_t n = 0;
+      const char* w = rolltui_json_as_string(rolltui_json_array_at(b, i), "", 0, &n);
+      out.append(w, n).push_back(' ');
+    }
+    return out;
+  }
+
   void refresh_menu() {
     RolltuiMenuItemList themes, layouts;
     RolltuiPresetList tl, ll;
-    if (store) { store->list(tl); for (const RolltuiPresetInfo& p : tl) themes.push_back(RolltuiMenuItem::action(std::string(str_of(p.name)).c_str(), std::string(str_of(p.name) + (p.shipped ? "" : "  (yours)")).c_str())); }
+    // A THEME'S CLASSIFICATION BELONGS WHERE IT IS CHOSEN. Every theme declares what it is and
+    // the loader verifies it, so the fact is already trustworthy and was only ever invisible.
+    // One short phrase, most-important first: a theme that is NOT readable is a warning and
+    // outranks anything good about it; high contrast and colour-vision safety are the two
+    // reasons a person reaches for a particular theme.
+    if (store) {
+      store->list(tl);
+      for (const RolltuiPresetInfo& p : tl) {
+        const std::string name = std::string(str_of(p.name));
+        std::string note;
+        {
+          ThemePresetReport rep;
+          const ThemeValueHandle v = store->get(name, rep);
+          if (v) {
+            const std::string b = declared_badges(v->colours, mode);
+            const auto says = [&](const char* w) { return b.find(w) != std::string::npos; };
+            // `mono` FIRST: a monochrome theme carries no colour on purpose and separates by
+            // attribute instead, so reading its missing `readable` as a fault would call a
+            // design decision a defect.
+            if (says("mono")) note = "monochrome";
+            else if (!b.empty() && !says("readable")) note = "low contrast";
+            else if (says("high-contrast")) note = "high contrast";
+            else if (says("cvd-safe")) note = "colour-vision safe";
+          }
+        }
+        if (!p.shipped) note = note.empty() ? "yours" : note + " · yours";
+        themes.push_back(RolltuiMenuItem::action(name.c_str(),
+                                                (note.empty() ? name : name + "   " + note).c_str()));
+      }
+    }
     if (lstore) { lstore->list(ll); for (const RolltuiPresetInfo& p : ll) layouts.push_back(RolltuiMenuItem::action(std::string(str_of(p.name)).c_str(), std::string(str_of(p.name) + (p.shipped ? "" : "  (yours)")).c_str())); }
     rolltui_menu_set_options(menu(), "theme", 5, &themes);
     rolltui_menu_set_options(menu(), "layout", 6, &layouts);

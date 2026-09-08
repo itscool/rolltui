@@ -6,15 +6,15 @@
 │ │ styled       │  ╭ menu ────────────────────────────────╮3/191              │
 │ │ wrapped      │  │ settings › Theme                     ╻s                  │
 │ │ lines)       │  │ ◂ Back                               ┃uecolor            │
-│ │ Theme (roles │ b│ default                              ┃nu                 │
-│ │ → styles,    │  │ beacon                               ┃                   │
+│ │ Theme (roles │ b│ default   colour-vision safe         ┃nu                 │
+│ │ → styles,    │  │ beacon   high contrast               ┃                   │
 │ │ JSON loader, │  │ catppuccin                           ┃                   │
-│ │ built-ins)   │  │ contrast                             ┃                   │
-│ └──────────────┴──│ • default-dark                       ┃                   │
-│                   │ default-light                        ╹                   │
-│ Here is the functi│ ember                                │                   │
-│                   │ harbour                              │                   │
-│ ┌ cpp ────────────│ ink                                ▼ │                   │
+│ │ built-ins)   │  │ contrast   high contrast             ┃                   │
+│ └──────────────┴──│ • default-dark   colour-vision safe  ┃                   │
+│                   │ default-light   colour-vision safe   ╹                   │
+│ Here is the functi│ ember   colour-vision safe           │                   │
+│                   │ harbour   colour-vision safe         │                   │
+│ ┌ cpp ────────────│ ink   colour-vision safe           ▼ │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │
 │ │   return a + b;                           │ ╻                              │
 │ └───────────────────────────────────────────┘ ╹                              │
