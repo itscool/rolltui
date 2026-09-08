@@ -3,7 +3,9 @@
 // Its point is the DISTINCTIONS, because each one is a wrong answer if it collapses: a directory
 // that cannot be read is not an empty one, a dotfile is not absent, and "sorted" has to mean the
 // same thing every time or a list reorders under a person's cursor.
-#include "rolltui/c/rolltui_files.h"
+// ONLY the public header: reading a directory is public because a host writing its own browser
+// needs it, so this suite is consumer-shaped and its reach is evidence.
+#include "rolltui/rolltui.h"
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -65,7 +67,7 @@ int main() {
         "…and `.` and `..` are never entries: they are this directory and its parent");
 
   // ---- 2. asking for the hidden ones --------------------------------------------------------
-  check(rolltui_dir_read(root.c_str(), std::strlen(root.c_str()), ROLLTUI_SORT_NAME, 1, &l, &err) == 1 &&
+  check(rolltui_dir_read(root.c_str(), std::strlen(root.c_str()), ROLLTUI_SORT_NAME, ROLLTUI_DIR_HIDDEN, &l, &err) == 1 &&
             names_of(l).find(".hidden") != std::string::npos,
         "…they appear when asked for, so hidden means hidden and not gone");
 

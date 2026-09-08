@@ -4,7 +4,6 @@
  * calling only the C engines (`rolltui_input.h`, `rolltui_transcript.h`, `rolltui_menu.h`,
  * `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`, `rolltui_marker.h`,
  * `rolltui_unicode.h`, `rolltui_embedded.h`), never a C++ header. */
-#include "rolltui/c/rolltui_files.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 
 #include <stdio.h>

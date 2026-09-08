@@ -1,4 +1,4 @@
-#include "rolltui/c/rolltui_files.h"
+#include "rolltui/rolltui.h"
 
 #include <dirent.h>
 #include <stdlib.h>
@@ -42,14 +42,17 @@ static int cmp_modified(const void* a, const void* b) {
   return cmp_name(a, b);
 }
 
-int rolltui_dir_read(const char* path, size_t len, int sort, int hidden, RolltuiDirList* out,
+int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiDirList* out,
                      RolltuiStr* err) {
+  const int hidden = (flags & ROLLTUI_DIR_HIDDEN) != 0;
+  const int links = (flags & ROLLTUI_DIR_LINKS) != 0;
   char* dir;
   DIR* d;
   struct dirent* e;
   if (!out) return 0;
   for (size_t i = 0; i < out->n; ++i) rolltui_str_free(&out->v[i].name);
   out->n = 0;
+  out->hidden_n = 0;
   if (err) err->n = 0;
   /* OWNED, short-lived: `opendir` needs a NUL-terminated path and the caller's is a slice. */
   dir = (char*)rolltui_mem_alloc(len + 1);
@@ -73,26 +76,31 @@ int rolltui_dir_read(const char* path, size_t len, int sort, int hidden, Rolltui
     /* `.` and `..` are never entries: they are the same directory and its parent, and a browser
      * walks out by its own means. A dotfile is hidden unless asked for. */
     if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
-    if (!hidden && e->d_name[0] == '.') continue;
+    if (!hidden && e->d_name[0] == '.') { ++out->hidden_n; continue; }
     out->v = (RolltuiDirEntry*)rolltui_grow_zeroed(out->v, &out->cap, out->n + 1, sizeof *out->v);
     slot = &out->v[out->n];
     rolltui_str_set(&slot->name, e->d_name, nlen);
-    /* `stat`, not `d_type`: a symlink's d_type says LNK and a person walking a tree means the
-     * thing it points at. A stat that fails leaves the entry as a zero-size file, which is what
-     * a broken link is from here. */
+    /* Never `d_type`: it says LNK for a symlink and answers neither question. `stat` follows the
+     * link, `lstat` describes it, and which one a caller wants is the whole reason for the flag. */
     full = (char*)rolltui_mem_alloc(len + 1 + nlen + 1);
     memcpy(full, dir, len);
     full[len] = '/';
     memcpy(full + len + 1, e->d_name, nlen);
     full[len + 1 + nlen] = 0;
-    if (stat(full, &st) == 0) {
+    if ((links ? lstat(full, &st) : stat(full, &st)) == 0) {
       slot->is_dir = S_ISDIR(st.st_mode) ? 1 : 0;
       slot->size = slot->is_dir ? 0 : (long long)st.st_size;
       slot->modified = (long long)st.st_mtime;
+      slot->mode = (unsigned int)st.st_mode;
+      slot->unreadable = 0;
     } else {
+      /* THE ENTRY IS STILL THERE. A broken link is a thing on disk that cannot be described, and
+       * dropping it would make a browser show fewer files than `ls` does. */
       slot->is_dir = 0;
       slot->size = 0;
       slot->modified = 0;
+      slot->mode = 0;
+      slot->unreadable = 1;
     }
     rolltui_mem_free(full);
     ++out->n;

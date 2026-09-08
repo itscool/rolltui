@@ -4487,6 +4487,56 @@ int rolltui_window_stack_has_popup(const RolltuiWindowStack* s, const char* id, 
 int rolltui_window_stack_action_popup(RolltuiWindowStack* s, const RolltuiLayout* layout,
                                       const char* action, size_t len);
 
+#define ROLLTUI_SORT_NAME 0
+#define ROLLTUI_SORT_SIZE 1
+#define ROLLTUI_SORT_MODIFIED 2
+
+typedef struct RolltuiDirEntry {
+  RolltuiStr name;      /* OWNED by the list */
+  int is_dir;
+  long long size;       /* bytes; 0 for a directory */
+  long long modified;   /* seconds, for sorting and for a host to format */
+  unsigned int mode;    /* the permission bits, for a browser that shows them; 0 if unreadable */
+  int unreadable;       /* the entry is there and could not be described — a broken link, say */
+} RolltuiDirEntry;
+
+/* GROWING AMORTISED. Zero-initialise before first use; `_release` frees every name and the array
+ * and zeroes it, and is a no-op on a zeroed list and on NULL. REUSED across reads rather than
+ * rebuilt, so walking a tree does not allocate per directory. */
+typedef struct RolltuiDirList {
+  RolltuiDirEntry* v;
+  size_t n, cap;
+  /* HOW MANY WERE HIDDEN, so a browser can say so. "3 hidden" and "nothing here" are different
+   * answers and a count is the only way to tell them apart after the fact. */
+  size_t hidden_n;
+} RolltuiDirList;
+
+void rolltui_dir_list_release(RolltuiDirList* l);
+
+/* Fills `out` with `path`'s entries, sorted by `sort`, `.`-prefixed names included only when
+ * `hidden` is non-zero. Directories sort before files at every sort, because a person walking a
+ * tree is looking for the next directory far more often than for the largest file.
+ *
+ * Returns 1 on success. On failure `out` is left EMPTY and `err` (may be NULL) is given the
+ * reason — a directory that cannot be read and one that is empty are different answers, and a
+ * caller that cannot tell them apart draws "(empty)" over a permission error. */
+#define ROLLTUI_DIR_HIDDEN 1  /* include `.`-prefixed names */
+#define ROLLTUI_DIR_LINKS 2   /* describe a symlink itself rather than what it points at */
+
+/* READING A DIRECTORY, and it is PUBLIC because the aligned probe needs it. `filepicker` is the
+ * library's answer for CHOOSING a path; a host writing a rich browser — Miller columns, metadata,
+ * its own sort — needs the same four things underneath and must not re-implement them: the
+ * entries, sorted, dotfiles shown or hidden, and a NAMED reason when the directory cannot be read.
+ *
+ * The last of those is the one that matters. An unreadable directory and an empty one both yield
+ * no entries, and a host that cannot tell them apart draws "(empty)" over a permission error.
+ *
+ * `flags` is a bitmask of the two above. Separate flags rather than a bool, because a browser and
+ * a picker disagree about symlinks: a picker wants the TARGET, so choosing a link to a directory
+ * enters it; a browser is showing what is on disk and wants the LINK. */
+int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiDirList* out,
+                     RolltuiStr* err);
+
 /* ---- `filepicker`: the two calls a host makes ---------------------------------------------
  * A picker is a LIST, not a tree: one directory at a time, `..` to leave, Enter to go in or to
  * take. Deliberately less than a browser, because a browser is for looking and a picker is for

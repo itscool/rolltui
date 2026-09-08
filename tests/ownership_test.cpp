@@ -273,7 +273,7 @@ int main() {
     // The per-row numbers are MEASURED (`ROLLTUI_CENSUS=1` prints this table), never guessed.
     // A row that rises still owes a sentence saying what the new member BORROWS or OWNS.
     const Row recorded[] = {
-        {"rolltui.h", 118}, /* +1: `RolltuiThemeReport.badge_mismatches` BORROWS nothing — it is that report's
+        {"rolltui.h", 119}, /* +1: `RolltuiThemeReport.badge_mismatches` BORROWS nothing — it is that report's
                               own growing array of owned strings, freed by `rolltui_theme_report_release` beside
                               the other three. -2 before it: `RolltuiAppProfileReport`'s two array members went with the app profile.
                               +4 before that: none — `RolltuiGapReport` stores a `RolltuiStr*` it OWNS, counted below. */
@@ -293,7 +293,7 @@ int main() {
         {"c/rolltui_presets.h", 0},
         /* `RolltuiDirList::v` — the entries array, OWNED by the list and freed by `_release`,
            which is the one raw pointer this header declares. */
-        {"c/rolltui_files.h", 1},
+        
         {"c/rolltui_md_lines.h", 5},
         {"c/rolltui_screen.h", 0},
         {"c/rolltui_render.h", 0},
