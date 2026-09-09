@@ -672,6 +672,8 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+ROLLTUI_API(rolltui_windows_set_theme_hint, INTERNAL)
+ROLLTUI_API(rolltui_windows_theme_editor, INTERNAL)
 ROLLTUI_API(rolltui_windows_set_theme_store, PUBLIC)  /* KEPT: `theme` is a library widget kind, so a
    screen names an editor with no host code — but the theme is the APP's (the style table a frame is drawn
    with is handed to the library by the host), so this is the only way an app can say where a commit lands.

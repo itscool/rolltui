@@ -136,6 +136,17 @@ int rolltui_input_max_rows(int parent_extent, int border_rows);
 
 int rolltui_input_window_rows(int text_rows, int end_col, int note_width, int width, int max_rows);
 
+/* The editor behind a `theme` window, BORROWED — the window table owns it and it survives the
+ * popup closing. INTERNAL: a host names the kind in a layout and hands it a store, and the kind
+ * does the rest; only rolltui's own tool needs the object, because only it also saves, lists
+ * presets and previews the screen it is editing. */
+typedef struct RolltuiThemeEditor RolltuiThemeEditor;  /* the full type is in rolltui_theme_editor.h */
+/* The hint line a host that DRIVES this editor wants said. INTERNAL, same reason. */
+void rolltui_windows_set_theme_hint(RolltuiWindows* w, const char* content, size_t len,
+                                    const char* text, size_t text_len, int is_problem);
+
+RolltuiThemeEditor* rolltui_windows_theme_editor(RolltuiWindows* w, const char* content, size_t len);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

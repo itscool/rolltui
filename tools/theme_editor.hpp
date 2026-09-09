@@ -111,7 +111,26 @@ class ThemeEditor {
   // `ctx` is the session this editor edits within. The model needs none; the parameter stays
   // because a host holds one and the studio's other three editors take it.
   explicit ThemeEditor(RolltuiContext* ctx) : ctx_(ctx), e_(rolltui_theme_editor_new()) {}
-  ~ThemeEditor() { rolltui_theme_editor_free(e_); }
+  ~ThemeEditor() { if (owned_) rolltui_theme_editor_free(e_); }
+
+  // ADOPT THE EDITOR BEHIND A `theme` WINDOW, rather than keeping a second one beside it.
+  //
+  // The studio used to draw its own theme editor next to the library's `theme` kind — two
+  // implementations of one screen, which drifted: three of the studio's copies of the shared
+  // strings were UTF-8 read as Latin-1 and shipped that way for months while the library's
+  // stayed right. One editor now, drawn by the kind, and this class is the studio's view onto
+  // it — because the studio ALSO saves, lists presets and previews the screen it is editing,
+  // which a plain host does not.
+  //
+  // BORROWED: the window table owns the editor, and it outlives the popup being closed, because
+  // a widget is keyed by its content rather than by whether a popup is on the stack.
+  void adopt(RolltuiThemeEditor* borrowed) {
+    if (!borrowed || borrowed == e_) return;
+    if (owned_) rolltui_theme_editor_free(e_);
+    e_ = borrowed;
+    owned_ = false;
+  }
+  bool adopted() const { return !owned_; }
   ThemeEditor(const ThemeEditor&) = delete;
   ThemeEditor& operator=(const ThemeEditor&) = delete;
 
@@ -177,6 +196,7 @@ class ThemeEditor {
  private:
   RolltuiContext* ctx_;  // BORROWED: the session this editor edits within
   RolltuiThemeEditor* e_;
+  bool owned_ = true;  // false once `adopt` points this at a window's own editor
 };
 
 }  // namespace rolltui::tools

@@ -2235,6 +2235,33 @@ static RolltuiThemeCtx* theme_ctx_for(RolltuiWindows* w, const char* content, si
   return (RolltuiThemeCtx*)widget->ctx;
 }
 
+/* THE HINT LINE, SET BY THE HOST. The kind writes this itself for outcomes it handles; a host
+ * that DRIVES the editor (rolltui's studio does, because it also saves and lists presets) handles
+ * those outcomes instead, and then has no way to say what happened. Without this the kind draws
+ * its own stale hint and a host's "saved preset 'mine'" never reaches the screen — which is a
+ * silent loss, since the save itself worked. */
+void rolltui_windows_set_theme_hint(RolltuiWindows* w, const char* content, size_t len, const char* text,
+                                    size_t text_len, int is_problem) {
+  RolltuiThemeCtx* tc = theme_ctx_for(w, content, len);
+  if (!tc) return;
+  rolltui_str_clear(&tc->hint);
+  if (text && text_len) rolltui_str_append(&tc->hint, text, text_len);
+  tc->hint_is_problem = is_problem ? 1 : 0;
+}
+
+/* The editor BEHIND a `theme` window, BORROWED — the window table owns it, and it outlives the
+ * popup being closed and reopened, because a widget is keyed by content rather than by whether
+ * some popup is currently on the stack.
+ *
+ * This exists so rolltui's own studio can stop drawing a second theme editor beside the library's.
+ * A HOST does not need it: a host names `theme` in a layout, hands over a store, and the kind
+ * does the rest. The studio needs the editor OBJECT because it also saves, lists presets and
+ * previews the screen it is editing. */
+RolltuiThemeEditor* rolltui_windows_theme_editor(RolltuiWindows* w, const char* content, size_t len) {
+  RolltuiThemeCtx* tc = theme_ctx_for(w, content, len);
+  return tc ? tc->ed : NULL;
+}
+
 void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, size_t len, RolltuiPresetStore* store,
                                      int persist) {
   RolltuiThemeCtx* tc = theme_ctx_for(w, content, len);

@@ -1080,7 +1080,7 @@ struct App {
   // WHICH SIDE, and it is a question because the panel floats over the design. A node under
   // the panel is a node you are editing blind, which is the one thing a design tool may not
   // do — so the panel moves rather than the selection being lost behind it.
-  static RolltuiLayer editor_popup(const char* title, bool left = false) {
+  static RolltuiLayer editor_popup(const char* title, bool left = false, const char* content = "editor") {
     RolltuiLayer l;
     l.id = "editor";
     l.placement = {left ? RolltuiDim::abs(0) : RolltuiDim::rel(1), RolltuiDim::abs(0),
@@ -1088,7 +1088,10 @@ struct App {
                    left ? rolltui::Anchor::TopLeft : rolltui::Anchor::TopRight,
                    true, RolltuiDim::abs(24), RolltuiDim::abs(6), {}, {}};
     l.modal = false;
-    RolltuiLayoutNode n = RolltuiLayoutNode::window_id("editor", "editor");
+    // The window id stays `editor` so focus and routing are unchanged; the CONTENT is what
+    // decides who draws. The theme editor names the library's `theme` kind rather than the
+    // studio's own, which is how there came to be one implementation instead of two.
+    RolltuiLayoutNode n = RolltuiLayoutNode::window_id("editor", content);
     n.border = rolltui::Border::Single;
     n.title = title;
     n.focusable = true;
@@ -1149,7 +1152,12 @@ struct App {
     teditor.set_mode(mode == ROLLTUI_MODE_DARK ? ROLLTUI_MODE_DARK : ROLLTUI_MODE_LIGHT);
     editor_open = true;
     editor_mode = EditorMode::Theme;
-    { RolltuiLayer popup = editor_popup("theme editor"); rolltui_window_stack_push(stack, &popup); }
+    { RolltuiLayer popup = editor_popup("theme editor", false, "theme"); rolltui_window_stack_push(stack, &popup); }
+    // ONE EDITOR, and the window table owns it. `set_theme_store` also CREATES the widget if this
+    // screen has none yet, so the editor exists to be adopted before the first draw.
+    rolltui_windows_set_theme_store(windows, "theme", 5, store ? store->handle() : nullptr, 0);
+    if (RolltuiThemeEditor* borrowed = rolltui_windows_theme_editor(windows, "theme", 5)) teditor.adopt(borrowed);
+    push_theme_hint();
     sync_look();
   }
   void toggle_keys_editor() {
@@ -1694,57 +1702,20 @@ struct App {
     }
   }
   void draw_editor(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
+    // THE THEME EDITOR IS NOT HERE ANY MORE, and its absence is the point. This file drew one
+    // beside the library's `theme` kind — two implementations of one screen — and they drifted:
+    // three of this file's copies of the shared strings were UTF-8 read as Latin-1 and shipped
+    // that way for months while the library's stayed correct, which only a visibly broken glyph
+    // caught. `toggle_editor` names `theme` as the popup's CONTENT now and adopts the editor the
+    // window table owns, so there is one editor and one drawing of it.
+    //
+    // The other three stay: the layout, keys and menu editors are this application's, not the
+    // library's, and no kind draws them.
     if (editor_mode == EditorMode::Layout) { draw_layout_editor(rn, f); return; }
     if (editor_mode == EditorMode::Keys) { draw_keys_editor(rn, f); return; }
     if (editor_mode == EditorMode::Menu) { draw_menu_editor(rn, f); return; }
-    RolltuiRect r = content_rect(rn);
-    if (r.w <= 0 || r.h <= 0) return;
-    const int box = std::min(6, r.h);
-    RolltuiRect m = r;
-    m.h = r.h - box;
-    RolltuiMenuOptions mo{};
-    mo.ambiguous_wide = ambiguous ? 1 : 0;
-    rolltui_menu_set_options_struct(teditor.menu(), &mo);
-    rolltui_menu_layout(teditor.menu(), m);
-    if (m.h > 0) draw_raw_menu(teditor.menu(), f, rn.focused != 0);
-    int y = r.y + m.h;
-    const RolltuiStyle label = style(ROLLTUI_ROLE_LABEL), value = style(ROLLTUI_ROLE_VALUE);
-    if (std::optional<unsigned char> role = teditor.focused_role()) {
-      const RolltuiStyle& s = style(*role);
-      std::size_t rn_len = 0;
-      const char* rn_p = rolltui_role_name(*role, &rn_len);
-      std::string line = std::string(rn_p, rn_len) + "  fg " + color_to_string(s.fg) + "  bg " + color_to_string(s.bg);
-      for (const char* a : {"bold", "italic", "underline", "dim", "reverse"}) {
-        const bool on = std::string_view(a) == "bold" ? s.bold : std::string_view(a) == "italic" ? s.italic : std::string_view(a) == "underline" ? s.underline : std::string_view(a) == "dim" ? s.dim : s.reverse;
-        if (on) line += std::string("  ") + a;
-      }
-      if (y < r.y + r.h) put_text(f, r.x, y++, line, label, r.w);
-      if (y < r.y + r.h) put_text(f, r.x, y++, ROLLTUI_THEME_EDITOR_SAMPLE, s, r.w);
-      if (y < r.y + r.h) {
-        int x = r.x;
-        x += put_text(f, x, y, "fg ", label, std::max(r.w - (x - r.x), 0));
-        RolltuiStyle sw{}; sw.bg = s.fg; x += put_text(f, x, y, "      ", sw, std::max(r.w - (x - r.x), 0));
-        x += put_text(f, x, y, "  bg ", label, std::max(r.w - (x - r.x), 0));
-        RolltuiStyle sb{}; sb.bg = s.bg; x += put_text(f, x, y, "      ", sb, std::max(r.w - (x - r.x), 0));
-        if (std::optional<RolltuiStyleColor> hc = teditor.highlighted_color()) {
-          x += put_text(f, x, y, ROLLTUI_THEME_EDITOR_SWATCH_MARK, label, std::max(r.w - (x - r.x), 0));
-          RolltuiStyle sh{}; sh.bg = *hc; put_text(f, x, y, "      ", sh, std::max(r.w - (x - r.x), 0));
-        }
-        ++y;
-      }
-    } else {
-      if (y < r.y + r.h) {
-        editor_line.assign("preset: ");
-        store->label(theme_label_str);
-        editor_line += view_of(theme_label_str);
-        put_text(f, r.x, y++, editor_line, label, r.w);
-      }
-      if (y < r.y + r.h) put_text(f, r.x, y++, ROLLTUI_THEME_EDITOR_BREADCRUMB, value, r.w);
-      if (y < r.y + r.h) put_text(f, r.x, y++, ROLLTUI_THEME_EDITOR_KEYS_HINT, value, r.w);
-    }
-    if (y < r.y + r.h) { teditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
-    if (y < r.y + r.h) put_text(f, r.x, y++, hint.empty() ? teditor.badges_line() : hint, hint.empty() ? label : style(ROLLTUI_ROLE_WARNING), r.w);
   }
+
   void draw_confirm(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
     const RolltuiRect r = content_rect(rn);
     RolltuiWrapOptions wo{};
@@ -1852,6 +1823,14 @@ struct App {
   // the same shape for the same reason: a widget the layout owns tells the host something once,
   // and the host decides what it means. Here it means "preview this instead", which is the thing
   // that stopped needing a relaunch.
+  // WHAT THIS FILE WANTS SAID on the editor's hint line. The kind draws the line; this file
+  // handles the outcomes, so it is the only one that knows there was anything to say.
+  void push_theme_hint() {
+    // This file has no problem/notice distinction on `hint` — it drew every one the same way —
+    // so it does not invent one here.
+    rolltui_windows_set_theme_hint(windows, "theme", 5, hint.data(), hint.size(), 0);
+  }
+
   void take_picked_file() {
     RolltuiStr got{};
     if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
@@ -1892,6 +1871,8 @@ struct App {
 
   void ensure_layout() {
     take_picked_file();
+    // Every frame, not just on open: the hint changes when an action lands, and the kind draws it.
+    if (editor_open && editor_mode == EditorMode::Theme) push_theme_hint();
     RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous ? 1 : 0), clock_ms};
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
@@ -2225,6 +2206,20 @@ struct App {
           if (editor_mode != EditorMode::Theme || sa == "stack.close_popup") route_editor_event(&ev);
           return true;
         }
+      }
+    }
+    // THE LIBRARY KIND DRAWS THE THEME EDITOR; THIS FILE DRIVES IT, and they share one editor
+    // object — adopted in `toggle_editor` from the window that owns it. The kind's own `handle`
+    // must not also consume these keys, because the studio reacts to OUTCOMES the kind has no
+    // notion of: a reset to the built-in that must ASK before it applies, and a check that opens
+    // a report popup. Deleting this branch turns both back into silent no-ops, which is exactly
+    // what two assertions caught when the drawing first moved.
+    if (ev.kind == ROLLTUI_EVENT_KEY && editor_open && editor_mode == EditorMode::Theme) {
+      const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
+      if (focused && focused->id == "editor") {
+        hint.clear();
+        route_editor_event(&ev);
+        return true;
       }
     }
     // The layout editor's mouse: a press on a seam starts a resize drag, a press on a
