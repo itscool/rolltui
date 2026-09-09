@@ -323,14 +323,14 @@
       "waiting": {
         "kind": "spinner",
         "frames": [
-          "⠈",
-          "⠐",
-          "⠠",
-          "⢀",
-          "⡀",
-          "⠄",
-          "⠂",
-          "⠁"
+          "\u2808",
+          "\u2810",
+          "\u2820",
+          "\u2880",
+          "\u2840",
+          "\u2804",
+          "\u2802",
+          "\u2801"
         ],
         "period_ms": 480
       },
@@ -355,6 +355,15 @@
           "find_current"
         ],
         "period_ms": 320
+      },
+      "streamed": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_3"
+        ],
+        "period_ms": 1800,
+        "width": 8,
+        "jitter": 55
       }
     }
   }

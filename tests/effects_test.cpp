@@ -45,6 +45,8 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <filesystem>
+#include <fstream>
 #include <set>
 #include <string>
 #include <string_view>
@@ -988,6 +990,32 @@ int main() {
     const Theme& mono = *builtin_theme("mono");
     check(dark.effects == light.effects, "motion is a property of the THEME, not of dark vs light");
     check(!(dark.effects == mono.effects), "…and the mono theme tells the same states a different way");
+    // EVERY SHIPPED THEME MAPS EVERY STATE, not just the three built-ins. The narrower check is
+    // what let `streamed` ship half-done: it was added to `default` and `mono`, the built-ins the
+    // loop below covers, and the eight other shipped themes silently had no mapping — so anyone
+    // on `catppuccin` or `ink` got no effect at all and nothing failed. A state is added to the
+    // vocabulary once and every theme owes it an answer.
+    {
+      namespace fs = std::filesystem;
+      std::vector<std::string> missing;
+      std::size_t scanned = 0;
+      for (const fs::directory_entry& de : fs::directory_iterator(ROLLTUI_PRESETS_DIR)) {
+        if (de.path().extension() != ".json") continue;
+        ++scanned;
+        std::ifstream in(de.path());
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        for (std::size_t i = 1; i < kEffectStateCount; ++i) {
+          const std::string name = std::string("\"") + std::string(effect_state_name(static_cast<EffectState>(i))) + "\"";
+          if (text.find(name) == std::string::npos)
+            missing.push_back(de.path().stem().string() + " is missing " + name);
+        }
+      }
+      check(scanned >= 8, "scanned the shipped themes (" + std::to_string(scanned) + ")");
+      check(missing.empty(), "every SHIPPED theme maps every effect state" +
+                                 (missing.empty() ? std::string() : " — " + missing.front() +
+                                                        " (and " + std::to_string(missing.size() - 1) + " more)"));
+    }
+
     for (const Theme* t : {&dark, &light, &mono})
       for (std::size_t i = 1; i < kEffectStateCount; ++i) {
         const EffectState state = static_cast<EffectState>(i);

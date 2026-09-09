@@ -320,6 +320,15 @@
           "find_current"
         ],
         "period_ms": 400
+      },
+      "streamed": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_1"
+        ],
+        "period_ms": 2400,
+        "width": 6,
+        "jitter": 55
       }
     }
   }
