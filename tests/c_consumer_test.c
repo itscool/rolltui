@@ -734,6 +734,33 @@ int main(void) {
      * `rolltui_shutdown()` is what says the library let go of what it built for this section. */
   }
 
+  /* ---- 4c. A MENU A C CONSUMER BUILDS, AND CAN FREE --------------------------------------
+   * `rolltui_menu_item_init` is public and `rolltui_menu_load_json` FILLS a caller-owned item,
+   * allocating into it. The matching `_release` was INTERNAL, so a C consumer
+   * could build one and had no way to free it — `rolltui.h` rule 1 broken in the surface itself.
+   *
+   * IT SURVIVED A PROBE THAT REIMPLEMENTED THIS ENTIRE WIDGET. C++'s implicit destructor absorbs
+   * the missing call, so the parity test could not feel the gap; only a consumer written in C
+   * can. That is the same absorber that hid `rolltui_layer_copy`, one surface further out. */
+  {
+    const char* kMenu =
+        "{\"root\":{\"kind\":\"submenu\",\"id\":\"root\",\"label\":\"top\","
+        "\"items\":[{\"kind\":\"action\",\"id\":\"go\",\"label\":\"Go\"}]}}";
+    const size_t before = live_bytes();
+    RolltuiMenuItem it;
+    RolltuiMenuLoadReport rep;
+    memset(&rep, 0, sizeof rep);
+    rolltui_menu_item_init(&it);
+    check(rolltui_menu_parse_json(kMenu, strlen(kMenu), &it, &rep) != 0,
+          "a C consumer parses a menu file into an item it owns");
+    check(live_bytes() > before, "…and that allocated, so there is something to free");
+    rolltui_menu_item_release(&it);
+    rolltui_menu_load_report_release(&rep);
+    check(live_bytes() == before,
+          "…and `rolltui_menu_item_release` gives every byte back — the pair `_init` needs, "
+          "reachable from C at last");
+  }
+
   /* ---- 5. RELEASE, BY HAND, AND THE NUMBER THAT SAYS THE HAND WAS RIGHT ------------------ */
   rolltui_context_free(app.ctx);
   rolltui_compose_scratch_free(app.compose_scratch);

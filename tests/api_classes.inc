@@ -876,7 +876,7 @@ ROLLTUI_API(rolltui_menu_item_new, INTERNAL)  /* rule 1: a public type's lifecyc
 ROLLTUI_API(rolltui_menu_item_set, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */
-ROLLTUI_API(rolltui_menu_item_release, INTERNAL)  /* rule 1: a public type's lifecycle; only the library reaches it today */
+ROLLTUI_API(rolltui_menu_item_release, PUBLIC)  /* rule 1: the pair to `_init`, which is public and which the public parser fills into */
 ROLLTUI_API(rolltui_menu_list_add, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* called from a public C++ member, so every C++ consumer already reaches it; a C consumer needs the same operation */

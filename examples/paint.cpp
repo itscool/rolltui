@@ -146,6 +146,11 @@ constexpr int kMaxLevel = 9;    // the ramp's darkest step
 
 struct Tool {
   int ambiguous = 0;  // the app's --ambiguous-wide, lent to the canvas (wall 8)
+  // CELLS PAINTED, EVER. The app owns this and every canvas borrows it, so a scripted step can
+  // ask "did that put ink anywhere" without reaching into a widget the window table owns.
+  // `mutable` because a canvas holds the tool by const pointer: it reads a setting and reports
+  // a count, which is the only thing it writes back.
+  mutable unsigned long long painted = 0;
   int ramp = 0;
   RolltuiStyleColor color = RolltuiStyleColor::rgb(0xd8, 0xdc, 0xe2);
   int size = 1;
@@ -416,6 +421,7 @@ void canvas_stamp(Canvas* c, int cx, int cy) {
       laid.color = c->tool->color;
       laid.level = it == c->pixels.end() ? kFirstLevel : std::min(it->second.level + 1, kMaxLevel);
       c->pixels[{x, y}] = laid;
+      ++c->tool->painted;
     }
   c->stamped = true;  // AFTER the loop: the whole footprint is tested against the OLD centre
   c->stamp_x = cx;
@@ -998,6 +1004,7 @@ void collect_event(void* ctx, const RolltuiTermEvent* e) {
 int main(int argc, char** argv) {
   std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec, open_path;
   bool ambiguous = false;
+  unsigned long long painted_before = 0;
   // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
   // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
   // flags and the strokes are collected as an ordered list and replayed after the app is built.
@@ -1138,6 +1145,12 @@ int main(int argc, char** argv) {
       } else {
         int x1, y1, x2, y2;
         if (std::sscanf(val.c_str(), "%d,%d-%d,%d", &x1, &y1, &x2, &y2) != 4) return usage();
+        // A WELL-FORMED STEP THAT PAINTS NOTHING IS THE SILENT CASE, and it is not a parse
+        // error: `sscanf` reads "-5,-5-40,20" as four perfectly good numbers, so a stroke laid
+        // entirely off the sheet is refused by nobody and simply clips away. Clipping is right —
+        // a stroke crossing the edge must draw its visible part — so the answer is to SAY the
+        // step put no ink down, not to reject the coordinates.
+        painted_before = app.tool.painted;
         // THREE EVENTS FOR THE WHOLE STROKE, AND THAT IS THE POINT. This used to synthesise a
         // drag at every cell along the line, which meant the script drew the line and the
         // widget only stamped — so a golden frame proved nothing about what happens when a
@@ -1155,6 +1168,12 @@ int main(int argc, char** argv) {
           app.handle(mouse_event(RolltuiMouseEvent::Kind::Drag, x2, y2));
           app.handle(mouse_event(RolltuiMouseEvent::Kind::Release, x2, y2));
         }
+        // ONLY FOR `--stroke`. `--drag` is the deliberate no-paint case — a pointer crossing
+        // the sheet with the button up must paint nothing, and two of this app's own assertions
+        // exist to prove it. A warning there would cry wolf at correct behaviour.
+        if (flag == "--stroke" && app.tool.painted == painted_before)
+          std::fprintf(stderr, "rolltui-paint: %s %s painted nothing — the sheet is %dx%d\n",
+                       flag.c_str(), val.c_str(), app.w, app.h);
       }
     }
     // Even the one-shot path goes through the swap: it is the only place a frame is made, so

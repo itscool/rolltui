@@ -47,7 +47,6 @@ RolltuiMenuItem* rolltui_menu_list_at(const RolltuiMenuItemList* l, size_t i);
 void rolltui_input_spec_init(RolltuiInputSpec* s);
 void rolltui_input_spec_release(RolltuiInputSpec* s);
 
-void rolltui_menu_item_release(RolltuiMenuItem* it); /* everything below and inside; leaves it clean */
 
 RolltuiMenuItem* rolltui_menu_item_new(void);
 void rolltui_menu_item_free(RolltuiMenuItem* it); /* a no-op on NULL */

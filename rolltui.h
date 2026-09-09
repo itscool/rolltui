@@ -4067,6 +4067,12 @@ void rolltui_menu_item_set(RolltuiMenuItem* it, unsigned char kind, const char* 
 
 void rolltui_menu_item_init(RolltuiMenuItem* it);
 
+/* Frees everything below and inside `it` and leaves it clean — the pair to `_init`, and to the
+ * parser that FILLS a caller-owned item. Without it a C consumer can build one and cannot free
+ * it: C++ absorbs that through the implicit destructor, which is why the gap survived a probe
+ * that reimplemented this whole widget and never noticed. */
+void rolltui_menu_item_release(RolltuiMenuItem* it);
+
 void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from);
 
 int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b);
