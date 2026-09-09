@@ -31,7 +31,7 @@
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│ preset: default-dark                           │
-│ │ int add(int a, int b) {                                           │ Roles › a role › fg › a colour; the transcript │
+│ │ int add(int a, int b) {                                           │ Roles › a role › fg › a colour; the screen is  │
 │ │   return a + b;                                                   │ type to filter · Enter commits · Esc cancels · │
 │ └───────────────────────────────────────────────────────────────────│ loaded · undo 0 · redo 0 · dark                │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │

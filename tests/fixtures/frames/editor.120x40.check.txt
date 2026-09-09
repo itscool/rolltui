@@ -31,7 +31,7 @@
 │ Here is th│   md_table_header      8.73:1  APCA -61  high  (#84b7f9 on #14161a)                          │           │
 │           │   md_strikethrough     5.41:1  APCA -40  readable  (#858d99 on #14161a)                      │           │
 │ ┌ cpp ────│   diff_added           13.47:1  APCA -86  high  (#adeeae on #14161a)                         │           │
-│ │ int add(│   diff_removed         4.73:1  APCA -35  readable  (#c06a64 on #14161a)                      │transcript │
+│ │ int add(│   diff_removed         4.73:1  APCA -35  readable  (#c06a64 on #14161a)                      │screen is  │
 │ │   return│   diff_context         5.41:1  APCA -40  readable  (#858d99 on #14161a)           ▼ 24 more  │ cancels · │
 │ └─────────╰──────────────────────────────────────────────────────────────────────────────────────────────╯· redo 0 · │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │

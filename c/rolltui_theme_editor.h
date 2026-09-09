@@ -157,6 +157,25 @@ int rolltui_theme_editor_palette_color(const RolltuiThemeEditor* e, size_t i, Ro
 size_t rolltui_theme_editor_fix_count(const RolltuiThemeEditor* e);
 const RolltuiFix* rolltui_theme_editor_fix_at(const RolltuiThemeEditor* e, size_t i);
 
+/* ---- THE LINES A THEME EDITOR DRAWS, IN ONE PLACE -------------------------------------------
+ *
+ * The library's `theme` widget kind and rolltui's own studio both draw a theme editor, and both
+ * used to spell these four strings themselves. THEY DRIFTED, and not subtly: three of the
+ * studio's copies were UTF-8 read as Latin-1 and shipped that way for months, while the
+ * library's stayed correct — two spellings of one thing, and only one of them wrong, which is
+ * the failure the vocabulary rule names.
+ *
+ * Spelled as hex escapes so no encoding round trip can corrupt them again, and defined once so a
+ * change reaches both drawings. The two editors are still two implementations — collapsing THAT
+ * is a restructure, and it is recorded rather than pretended away — but they can no longer
+ * disagree about their own words. */
+#define ROLLTUI_THEME_EDITOR_SAMPLE " Aa  the quick brown fox \xE2\x80\x94 sample in this role "
+#define ROLLTUI_THEME_EDITOR_SWATCH_MARK "  \xE2\x96\xB6 "
+#define ROLLTUI_THEME_EDITOR_BREADCRUMB \
+  "Roles \xE2\x80\xBA a role \xE2\x80\xBA fg \xE2\x80\xBA a colour; the screen is the preview"
+#define ROLLTUI_THEME_EDITOR_KEYS_HINT \
+  "type to filter \xC2\xB7 Enter commits \xC2\xB7 Esc cancels \xC2\xB7 Ctrl-Z / Ctrl-Y"
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

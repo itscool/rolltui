@@ -2139,7 +2139,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     }
     if (y < r.y + r.h) theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
     if (y < r.y + r.h)
-      theme_put(tc, f, r.x, y++, K(" Aa  the quick brown fox \xE2\x80\x94 sample in this role "), s, r.w);
+      theme_put(tc, f, r.x, y++, K(ROLLTUI_THEME_EDITOR_SAMPLE), s, r.w);
     if (y < r.y + r.h) {
       int x = r.x;
       x += theme_put(tc, f, x, y, K("fg "), label, r.w - (x - r.x));
@@ -2147,7 +2147,7 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
       x += theme_put(tc, f, x, y, K("  bg "), label, r.w - (x - r.x));
       x += theme_swatch(tc, f, x, y, s.bg, r.w - (x - r.x));
       if (rolltui_theme_editor_highlighted_color(tc->ed, &highlighted)) {
-        x += theme_put(tc, f, x, y, K("  \xE2\x96\xB6 "), label, r.w - (x - r.x));
+        x += theme_put(tc, f, x, y, K(ROLLTUI_THEME_EDITOR_SWATCH_MARK), label, r.w - (x - r.x));
         theme_swatch(tc, f, x, y, highlighted, r.w - (x - r.x));
       }
       ++y;
@@ -2161,9 +2161,9 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
       theme_put(tc, f, r.x, y++, tc->line.p, tc->line.n, label, r.w);
     }
     if (y < r.y + r.h)
-      theme_put(tc, f, r.x, y++, K("Roles \xE2\x80\xBA a role \xE2\x80\xBA fg \xE2\x80\xBA a colour; the screen is the preview"), value, r.w);
+      theme_put(tc, f, r.x, y++, K(ROLLTUI_THEME_EDITOR_BREADCRUMB), value, r.w);
     if (y < r.y + r.h)
-      theme_put(tc, f, r.x, y++, K("type to filter \xC2\xB7 Enter commits \xC2\xB7 Esc cancels \xC2\xB7 Ctrl-Z / Ctrl-Y"), value, r.w);
+      theme_put(tc, f, r.x, y++, K(ROLLTUI_THEME_EDITOR_KEYS_HINT), value, r.w);
   }
   if (y < r.y + r.h) {
     rolltui_str_clear(&tc->line);

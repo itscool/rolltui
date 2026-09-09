@@ -1719,7 +1719,7 @@ struct App {
         if (on) line += std::string("  ") + a;
       }
       if (y < r.y + r.h) put_text(f, r.x, y++, line, label, r.w);
-      if (y < r.y + r.h) put_text(f, r.x, y++, " Aa  the quick brown fox \xE2\x80\x94 sample in this role ", s, r.w);
+      if (y < r.y + r.h) put_text(f, r.x, y++, ROLLTUI_THEME_EDITOR_SAMPLE, s, r.w);
       if (y < r.y + r.h) {
         int x = r.x;
         x += put_text(f, x, y, "fg ", label, std::max(r.w - (x - r.x), 0));
@@ -1727,7 +1727,7 @@ struct App {
         x += put_text(f, x, y, "  bg ", label, std::max(r.w - (x - r.x), 0));
         RolltuiStyle sb{}; sb.bg = s.bg; x += put_text(f, x, y, "      ", sb, std::max(r.w - (x - r.x), 0));
         if (std::optional<RolltuiStyleColor> hc = teditor.highlighted_color()) {
-          x += put_text(f, x, y, "  \xE2\x96\xB6 ", label, std::max(r.w - (x - r.x), 0));
+          x += put_text(f, x, y, ROLLTUI_THEME_EDITOR_SWATCH_MARK, label, std::max(r.w - (x - r.x), 0));
           RolltuiStyle sh{}; sh.bg = *hc; put_text(f, x, y, "      ", sh, std::max(r.w - (x - r.x), 0));
         }
         ++y;
@@ -1739,8 +1739,8 @@ struct App {
         editor_line += view_of(theme_label_str);
         put_text(f, r.x, y++, editor_line, label, r.w);
       }
-      if (y < r.y + r.h) put_text(f, r.x, y++, "Roles \xE2\x80\xBA a role \xE2\x80\xBA fg \xE2\x80\xBA a colour; the transcript is the preview", value, r.w);
-      if (y < r.y + r.h) put_text(f, r.x, y++, "type to filter \xC2\xB7 Enter commits \xC2\xB7 Esc cancels \xC2\xB7 Ctrl-Z / Ctrl-Y", value, r.w);
+      if (y < r.y + r.h) put_text(f, r.x, y++, ROLLTUI_THEME_EDITOR_BREADCRUMB, value, r.w);
+      if (y < r.y + r.h) put_text(f, r.x, y++, ROLLTUI_THEME_EDITOR_KEYS_HINT, value, r.w);
     }
     if (y < r.y + r.h) { teditor.status_line(editor_status); put_text(f, r.x, y++, editor_status, value, r.w); }
     if (y < r.y + r.h) put_text(f, r.x, y++, hint.empty() ? teditor.badges_line() : hint, hint.empty() ? label : style(ROLLTUI_ROLE_WARNING), r.w);
