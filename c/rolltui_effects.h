@@ -85,6 +85,10 @@ const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t
  * a builder is what keeps them the MAP's allocations instead of a caller's. */
 size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kind, size_t kind_len, int period_ms,
                               int width, int steps, int backward);
+/* 0..100: how much a sweeping kind's speed varies from pass to pass. A property rather than an
+ * `_add` parameter, the same as frames and roles — that call already carries eight. */
+void rolltui_effect_map_set_jitter(RolltuiEffectMap* m, size_t state, size_t i, int jitter);
+
 void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len);
 void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, unsigned char role);
 /* BORROWS a static literal. An out-of-range state reads back as "none", which is what the

@@ -240,6 +240,7 @@ ROLLTUI_API(rolltui_effect_kind_count, INTERNAL)  /* an effect step; a host mark
 ROLLTUI_API(rolltui_effect_kind_name, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_kind_resolves, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_add, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
+ROLLTUI_API(rolltui_effect_map_set_jitter, INTERNAL)
 ROLLTUI_API(rolltui_effect_map_add_frame, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_add_role, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_at, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */

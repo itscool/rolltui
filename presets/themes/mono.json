@@ -5,7 +5,11 @@
   "colours": {
     "name": "mono",
     "meta": {
-      "badges": ["mono", "transparent", "attribute-redundant"]
+      "badges": [
+        "mono",
+        "transparent",
+        "attribute-redundant"
+      ]
     },
     "roles": {
       "text": {
@@ -287,6 +291,14 @@
           "find_current"
         ],
         "period_ms": 400
+      },
+      "streamed": {
+        "kind": "pulse",
+        "roles": [
+          "text_muted",
+          "text"
+        ],
+        "period_ms": 2400
       }
     }
   }

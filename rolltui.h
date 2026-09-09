@@ -1481,6 +1481,16 @@ typedef struct RolltuiEffectSpec {
   int period_ms; /* one full cycle; 0 or less: a STILL effect, no tick */
   int width;     /* shimmer: the sweeping window, in cells */
   int steps;     /* how many distinct pictures a period has (0 → the kind's own) */
+  /* 0..100: how much a sweeping kind's SPEED varies from pass to pass, as a percentage.
+   * 0 (the default) is a metronome, and every theme that does not say otherwise keeps it.
+   *
+   * THE VARIATION IS DETERMINISTIC, which is not a compromise but the requirement: an effect
+   * is a pure function of `(elapsed, index, length, fraction, style)`, and that purity is what
+   * makes `--tick N` turn a moving frame into a golden frame. A real RNG would take the
+   * golden-frame harness with it. So the wobble is derived from the PASS NUMBER — each sweep
+   * eases differently, pass boundaries stay exact, and the same tick always draws the same
+   * cell. */
+  int jitter;
   unsigned char backward;
 
 #ifdef __cplusplus
@@ -1530,13 +1540,25 @@ typedef void (*RolltuiEffectFn)(void* ctx, const RolltuiEffectSpec* spec, const 
  * is one edit. */
 /* FOR THE FOURTH READER: a THEME FILE maps these state names to effects, and a DOCUMENT marks a
  * span with one (`<!-- state: waiting -->` in the fixtures). A theme that maps nothing is a
- * still UI, which is the default. Shipped files: `rolltui/presets/themes/`. */
+ * still UI, which is the default. Shipped files: `rolltui/presets/themes/`.
+ *
+ * `streaming` and `streamed` are two states and not one with a flag: a span that IS arriving and
+ * a span that HAS arrived are different claims, and a widget that kept saying `streaming` after
+ * the tokens stopped would be lying to every theme that reads it. `streamed` is what lets an
+ * effect outlive the stream that caused it.
+ *
+ * AN EFFECT ON `streamed` RUNS FOR AS LONG AS THE SPAN IS ON SCREEN, which is bounded without
+ * needing a duration: `rolltui_effects_tick_ms` reads the marks in the FRAME, so a span scrolled
+ * out of view asks for no wakeup and the UI goes still. Scrolled back, it resumes where it would
+ * have been — `elapsed_ms` is measured from when the span entered the state, so nothing is kept
+ * between the two. */
 #define ROLLTUI_EFFECT_STATE_LIST(X) \
   X(none, NONE, None) \
   X(waiting, WAITING, Waiting) \
   X(streaming, STREAMING, Streaming) \
   X(progress, PROGRESS, Progress) \
-  X(flash, FLASH, Flash)
+  X(flash, FLASH, Flash) \
+  X(streamed, STREAMED, Streamed)
 
 typedef enum RolltuiEffectState {
 #define ROLLTUI_EFFECT_STATE_ENUM_(lower, UPPER, Camel) ROLLTUI_EFFECT_STATE_##UPPER,

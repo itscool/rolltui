@@ -45,6 +45,7 @@
 #include <cstring>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -169,6 +170,10 @@ class EffectMap {
   }
   void add_role(EffectState s, std::size_t i, Role r) {
     rolltui_effect_map_add_role(m_.get(), index(s), i, static_cast<unsigned char>(r));
+  }
+
+  void set_jitter(EffectState st, std::size_t i, int j) {
+    rolltui_effect_map_set_jitter(m_.get(), index(st), i, j);
   }
 
   const RolltuiEffectMap* handle() const { return m_.get(); }
@@ -912,13 +917,77 @@ int main() {
           "a theme with no motion writes no \"effects\" key: absent and empty are the same answer here");
   }
 
+  // ---- jitter: a sweep that varies its speed and still lands on the same frame ---------
+  // The ask was "a little more random in speed". The constraint is that an effect stays a PURE
+  // function of its inputs, because that is what makes `--tick N` a golden frame — so the
+  // variation is derived from the pass number, not from a generator. These four assertions are
+  // what separate those two things.
+  {
+    const Theme& base = *builtin_theme("default-dark");
+    const std::size_t n = base.effects.count(EffectState::Streamed);
+    check(n != 0, "default-dark maps `streamed`, the state a span enters when its tokens stop");
+
+    check(base.effects.at(EffectState::Streamed, 0).jitter > 0,
+          "…and the theme FILE's jitter survived parsing (got " +
+              std::to_string(base.effects.at(EffectState::Streamed, 0).jitter) + ")");
+
+    // A span wide enough that a shifted sweep lands on different cells.
+    const auto sweep_at = [](const Theme& th, EffectState st, std::uint64_t tick) {
+      FramePtr plain_f = make_frame(40, 3, th);
+      const std::vector<CellShot> plain = shoot(plain_f.get());
+      FramePtr f = make_frame(40, 3, th);
+      rolltui_frame_mark(f.get(), 0, 1, 32, static_cast<int>(st), 0, 0.0);
+      apply_effects(f.get(), th, tick);
+      const std::vector<CellShot> after = shoot(f.get());
+      std::string row;
+      for (int x = 0; x < 32; ++x) {
+        const std::size_t i = static_cast<std::size_t>(1 * 40 + x);
+        row += (after[i].style == plain[i].style) ? '.' : '#';
+      }
+      return row;
+    };
+
+    // 1. DETERMINISM. The same tick draws the same cells, every time — no hidden state.
+    check(sweep_at(base, EffectState::Streamed, 700) == sweep_at(base, EffectState::Streamed, 700) &&
+              sweep_at(base, EffectState::Streamed, 5300) == sweep_at(base, EffectState::Streamed, 5300),
+          "a jittered sweep is DETERMINISTIC: the same elapsed always draws the same cells");
+
+    // 2. IT ACTUALLY VARIES. Same offset into the period, different passes — at least one pair
+    //    must differ, or `jitter` is a field that does nothing.
+    const int period = base.effects.at(EffectState::Streamed, 0).period_ms;
+    std::set<std::string> at_same_offset;
+    for (int pass = 0; pass < 8; ++pass)
+      at_same_offset.insert(sweep_at(base, EffectState::Streamed,
+                                     static_cast<std::uint64_t>(pass) * period + period / 3));
+    check(at_same_offset.size() > 1,
+          "…and it VARIES from pass to pass: the same offset into the period draws " +
+              std::to_string(at_same_offset.size()) + " different sweeps across 8 passes");
+
+    // 3. THE CONTROL. With jitter off, that same measurement must collapse to one — otherwise
+    //    assertion 2 is measuring something else entirely.
+    Theme still = base;
+    for (std::size_t k = 0; k < still.effects.count(EffectState::Streamed); ++k)
+      still.effects.set_jitter(EffectState::Streamed, k, 0);
+    std::set<std::string> unjittered;
+    for (int pass = 0; pass < 8; ++pass)
+      unjittered.insert(sweep_at(still, EffectState::Streamed,
+                                 static_cast<std::uint64_t>(pass) * period + period / 3));
+    check(unjittered.size() == 1,
+          "…and with jitter 0 the same measurement collapses to one sweep, so it is the jitter being seen");
+
+    // 4. PASS BOUNDARIES ARE EXACT. The warp is zero at both ends, so a pass still starts where
+    //    an unjittered one would — the wobble changes the journey, never the arrival.
+    check(sweep_at(base, EffectState::Streamed, 0) == sweep_at(still, EffectState::Streamed, 0),
+          "…and a pass BEGINS where an unjittered pass would: the warp is zero at the ends");
+  }
+
   // ---- the built-ins ------------------------------------------------------------------
   {
     const Theme& dark = *builtin_theme("default-dark");
     const Theme& light = *builtin_theme("default-light");
     const Theme& mono = *builtin_theme("mono");
     check(dark.effects == light.effects, "motion is a property of the THEME, not of dark vs light");
-    check(!(dark.effects == mono.effects), "…and the mono theme tells the same four states a different way");
+    check(!(dark.effects == mono.effects), "…and the mono theme tells the same states a different way");
     for (const Theme* t : {&dark, &light, &mono})
       for (std::size_t i = 1; i < kEffectStateCount; ++i) {
         const EffectState state = static_cast<EffectState>(i);

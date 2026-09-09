@@ -81,10 +81,41 @@ static int name_eq(const char* a, size_t alen, const char* b, size_t blen) {
 /* Which of `steps` pictures of one period `elapsed` falls in. A still spec (period 0) is
  * always its first picture — which is what makes "a theme that maps nothing moving" a
  * legible still frame rather than a blank one. */
+/* THE WOBBLE, and why it is shaped this way.
+ *
+ * `jitter` varies a sweep's SPEED from pass to pass without moving the pass boundaries: each
+ * pass still takes exactly `period_ms`, and within it the sweep eases forward or hangs back by
+ * an amount that differs every time. Warping the phase rather than the period is what keeps
+ * this O(1) — a per-pass period would make "which pass is it" a walk from zero.
+ *
+ * The warp is `p + a*p*(1-p)`, a parabola that is ZERO AT BOTH ENDS, so a pass begins and ends
+ * exactly where it would have. `a` comes from hashing the pass number, so it is deterministic:
+ * the same tick always draws the same cell, which is what `--tick N` and every golden frame
+ * depend on. A real RNG here would take the golden-frame harness with it.
+ *
+ * Integer arithmetic throughout: no libm, and no float in a per-cell path. */
+static unsigned int pass_mix(unsigned long long pass) {
+  unsigned int h = (unsigned int)(pass ^ (pass >> 32));
+  h *= 2654435761u; /* Knuth's multiplicative hash */
+  h ^= h >> 15;
+  return h;
+}
+
 static int step_index(const RolltuiEffectSpec* s, unsigned long long elapsed, int steps) {
   if (steps <= 1 || s->period_ms <= 0) return 0;
   const unsigned long long period = (unsigned long long)s->period_ms;
-  const unsigned long long phase = elapsed % period;
+  unsigned long long phase = elapsed % period;
+  if (s->jitter > 0) {
+    /* p and the warp in PERMILLE, so the whole thing stays in integers. */
+    const long long p = (long long)(phase * 1000u / period);
+    const long long bulge = p * (1000 - p) / 1000; /* 0 at both ends, 250 at the middle */
+    /* `a` in [-jitter, +jitter] percent, fixed for this pass. */
+    const long long a = (long long)(pass_mix(elapsed / period) % 201u) - 100; /* -100..100 */
+    long long warped = p + (bulge * a * (long long)s->jitter) / 10000;
+    if (warped < 0) warped = 0;
+    if (warped > 999) warped = 999;
+    phase = (unsigned long long)warped * period / 1000u;
+  }
   int i = (int)(phase * (unsigned long long)steps / period);
   if (i >= steps) i = steps - 1;
   return s->backward ? steps - 1 - i : i;
@@ -510,6 +541,12 @@ size_t rolltui_effect_map_add(RolltuiEffectMap* m, size_t state, const char* kin
   return i;
 }
 
+void rolltui_effect_map_set_jitter(RolltuiEffectMap* m, size_t state, size_t i, int jitter) {
+  /* A scalar, so it lives on the VIEW: `refresh_views` rewrites only the pointer fields. */
+  if (!m || state >= m->states || i >= m->count[state]) return;
+  m->view[state][i].jitter = jitter < 0 ? 0 : (jitter > 100 ? 100 : jitter);
+}
+
 void rolltui_effect_map_add_frame(RolltuiEffectMap* m, size_t state, size_t i, const char* bytes, size_t len) {
   SpecStore* st;
   char* copy;
@@ -544,6 +581,11 @@ RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m) {
       const RolltuiEffectSpec* v = &m->view[s][i];
       const size_t k = rolltui_effect_map_add(out, s, st->kind, st->kind_len, v->period_ms, v->width, v->steps,
                                               v->backward);
+      /* EVERY SCALAR ON THE SPEC MUST BE COPIED HERE AND COMPARED IN `_equal` BELOW. `jitter`
+       * was added and neither was updated: a clone silently dropped it, so a theme lost its
+       * motion the moment anything copied it, and two maps differing only in jitter compared
+       * EQUAL. The scalars not passed to `_add` are the ones to check when adding the next. */
+      rolltui_effect_map_set_jitter(out, s, k, v->jitter);
       for (j = 0; j < st->frame_count; ++j)
         rolltui_effect_map_add_frame(out, s, k, st->frames[j].bytes, st->frames[j].len);
       for (j = 0; j < st->role_count; ++j) rolltui_effect_map_add_role(out, s, k, st->roles[j]);
@@ -564,7 +606,7 @@ int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* 
       const RolltuiEffectSpec* vy = &b->view[s][i];
       if (!name_eq(x->kind, x->kind_len, y->kind, y->kind_len)) return 0;
       if (vx->period_ms != vy->period_ms || vx->width != vy->width || vx->steps != vy->steps ||
-          vx->backward != vy->backward)
+          vx->backward != vy->backward || vx->jitter != vy->jitter)
         return 0;
       if (x->frame_count != y->frame_count || x->role_count != y->role_count) return 0;
       for (j = 0; j < x->frame_count; ++j)

@@ -755,7 +755,7 @@ typedef struct {
   size_t frames_n, frames_cap; /* GROWING AMORTISED (strategy 2): a handful of borrows */
   unsigned char* roles;
   size_t roles_n, roles_cap; /* GROWING AMORTISED (strategy 2) */
-  int period_ms, width, steps;
+  int period_ms, width, steps, jitter;
   unsigned char backward;
 } EffectDraft;
 
@@ -859,7 +859,8 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
       char at[ROLLTUI_THEME_WHERE_MAX];
       snprintf(at, sizeof at, "%s.%s", where, k);
       roles_from(x, at, vocab, report, out);
-    } else if (streq(k, klen, "period_ms") || streq(k, klen, "width") || streq(k, klen, "steps")) {
+    } else if (streq(k, klen, "period_ms") || streq(k, klen, "width") || streq(k, klen, "steps") ||
+               streq(k, klen, "jitter")) {
       int val;
       if (!rolltui_json_is_number(x)) {
         snprintf(buf, sizeof buf, "%s.%s: expected a number", where, k);
@@ -869,6 +870,7 @@ static int read_effect(const RolltuiJsonValue* v, const char* where, const Rollt
       val = (int)rolltui_json_as_number(x, 0);
       if (streq(k, klen, "period_ms")) out->period_ms = val;
       else if (streq(k, klen, "width")) out->width = val;
+      else if (streq(k, klen, "jitter")) out->jitter = val < 0 ? 0 : (val > 100 ? 100 : val);
       else out->steps = val;
     } else if (streq(k, klen, "backward")) {
       if (!rolltui_json_is_bool(x)) {
@@ -912,6 +914,7 @@ static void commit_draft(RolltuiEffectMap* map, size_t state, const EffectDraft*
   size_t i;
   const size_t idx = rolltui_effect_map_add(map, state, d->kind, d->kind_len, d->period_ms, d->width, d->steps,
                                             d->backward);
+  if (d->jitter) rolltui_effect_map_set_jitter(map, state, idx, d->jitter);
   for (i = 0; i < d->frames_n; ++i) rolltui_effect_map_add_frame(map, state, idx, d->frames[i].p, d->frames[i].n);
   for (i = 0; i < d->roles_n; ++i) rolltui_effect_map_add_role(map, state, idx, d->roles[i]);
 }
@@ -1149,6 +1152,7 @@ static RolltuiJsonValue* effect_spec_to_json(const RolltuiEffectSpec* s, const R
   }
   rolltui_json_set(o, K("period_ms"), rolltui_json_number(s->period_ms));
   if (s->width) rolltui_json_set(o, K("width"), rolltui_json_number(s->width));
+  if (s->jitter) rolltui_json_set(o, K("jitter"), rolltui_json_number(s->jitter));
   if (s->steps) rolltui_json_set(o, K("steps"), rolltui_json_number(s->steps));
   if (s->backward) rolltui_json_set(o, K("backward"), rolltui_json_bool(1));
   return o;
