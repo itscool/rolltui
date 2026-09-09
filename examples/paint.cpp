@@ -167,7 +167,8 @@ struct Tool {
 // app's minimum size is stated once, here, rather than in a second place that could drift.
 constexpr const char* kDefaultLayout = R"({
   "name": "paint", "min_width": 20, "min_height": 6, "focus": "sheet",
-  "actions": { "app.theme": "Edit the theme", "app.keys": "Edit the keys" },
+  "actions": { "app.theme": "Edit the theme", "app.keys": "Edit the keys",
+               "app.filepicker": "Open a picture" },
   "popups": [
     { "id": "theme", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
@@ -176,7 +177,12 @@ constexpr const char* kDefaultLayout = R"({
     { "id": "keys", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
       "root": { "id": "keys", "content": "keys", "border": "rounded", "title": "keys",
-                "focusable": true, "background": "panel_background" } } ],
+                "focusable": true, "background": "panel_background" } },
+    { "id": "filepicker", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+      "min_w": 40, "max_w": 100, "modal": true,
+      "root": { "id": "filepicker", "content": "filepicker", "border": "rounded",
+                "title": "open a picture", "focusable": true,
+                "background": "panel_background" } } ],
   "root": { "row": [
     { "id": "sheet", "content": "canvas:sheet", "border": "single", "title": "sheet", "focusable": true },
     { "id": "tools", "content": "menu:tools", "size": 22, "border": "single", "title": "tools", "focusable": true } ] }
@@ -748,7 +754,21 @@ struct App {
     rolltui_preset_store_value_free(theme_store, w);
   }
 
+  // WHAT THE PICKER HANDED BACK, taken once. The popup is opened by the library — any
+  // `app.<id>` naming a declared popup opens it, so `ctrl+e` needed no code here — and closing
+  // the loop is the one thing a host must do: the picker knows a path was chosen, and only this
+  // app knows that a path means a picture.
+  void take_picked_file() {
+    RolltuiStr got{};
+    if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
+      open_picture(std::string(got.p, got.n));
+      while (rolltui_window_stack_has_popup(stack, "filepicker", 10)) rolltui_window_stack_pop(stack);
+    }
+    rolltui_str_free(&got);
+  }
+
   void prepare() {
+    take_picked_file();
     sync_theme();
     const RolltuiWidgetEnv env{static_cast<unsigned char>(tool.ambiguous), effect_ms};
     rolltui_context_set_env(ctx, &env);
@@ -1128,9 +1148,16 @@ int main(int argc, char** argv) {
       std::fprintf(stderr, "%s\n", app.picture_note.c_str());
     }
     if (!keys_spec.empty()) {
+      // A FRAME AFTER EVERY KEY, because that is what the interactive loop does. Preparing once
+      // at the END sent every key after a popup-opening one to the wrong window: `prepare()`
+      // is what runs sync/autosize/layout, so until it has run the stack has a popup that has
+      // never been placed, and the router cannot deliver to a window it has not resolved. Keys
+      // reached the canvas instead, silently, and a script could only ever test the first one.
       for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
-        if (!st.tick) app.handle(st.ev);
-      app.prepare();
+        if (!st.tick) {
+          app.handle(st.ev);
+          app.prepare();
+        }
     }
     for (const auto& [flag, val] : script) {
       if (flag == "--ramp") app.tool.ramp = val == "blocks" ? 1 : 0;
