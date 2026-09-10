@@ -1279,8 +1279,13 @@ int main(int argc, char** argv) {
       const std::string root = std::string(ROLLTUI_SOURCE_DIR) + "/..";
       std::vector<std::string> scanned, hits;
       int sentinel = 0;  // the arming word: `rolltui` appears in every source here
-      for (const fs::directory_entry& e : fs::recursive_directory_iterator(root)) {
+      for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
+        const fs::directory_entry& e = *it;
         const std::string rel = fs::relative(e.path(), root).string();
+        // A nested checkout — a `git worktree add` inside this tree, an agent's worktree under
+        // `.claude/worktrees/` — carries its own `.git` entry and is not a source these binaries
+        // are built from; its copy of THIS file names the word on purpose. Skip the subtree.
+        if (e.is_directory() && fs::exists(e.path() / ".git")) { it.disable_recursion_pending(); continue; }
         if (rel.rfind("build", 0) == 0 || rel.rfind(".git", 0) == 0 || rel.rfind("plan/", 0) == 0 ||
             rel.rfind("journal/", 0) == 0 || rel.rfind("artifacts/", 0) == 0 || rel.rfind("rolltui/tests/", 0) == 0 ||
             rel.rfind("tests/", 0) == 0 || rel.rfind("rolltui/third_party/", 0) == 0 || rel.rfind("rolltui/ucd/", 0) == 0)
