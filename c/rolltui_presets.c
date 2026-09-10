@@ -524,11 +524,62 @@ static int autosave_locked(RolltuiPresetStore* s) {
   return ok;
 }
 
+/* Does this working-copy FILE say it follows its origin rather than carrying content? Generic,
+ * like `origin_of`: no domain's own format says anything about it. Absent means "no", which is
+ * what makes every file written before this key existed parse exactly as it used to. */
+static int follows_origin_of(const char* text, size_t len) {
+  RolltuiStr err = {0};
+  RolltuiJsonValue* root = rolltui_json_parse(text, len, &err);
+  int follows = 0;
+  if (root) {
+    follows = rolltui_json_as_bool(rolltui_json_get(root, "follows_origin", 14), 0) != 0;
+    rolltui_json_free(root);
+  }
+  rolltui_str_free(&err);
+  return follows;
+}
+
+/* CHOOSING A PRESET IS NOT EDITING ONE, and the file now says which happened.
+ *
+ * A store used to write a whole SNAPSHOT of its origin the moment a preset was chosen, and that
+ * snapshot then outranked the shipped file forever: a theme improved in a release never reached
+ * anyone who had ever picked a theme, restart or not. Worse, it is not recoverable after the
+ * fact — a stale snapshot and a deliberate edit are the same bytes, which is exactly why a
+ * snapshot was the wrong thing to store.
+ *
+ * An unmodified store writes only WHICH preset it follows. The content comes from the origin at
+ * every start, so the origin's improvements arrive. The moment anything diverges, the full copy
+ * is written and it belongs to whoever made the edit from then on. */
+static int autosave_pointer_locked(RolltuiPresetStore* s) {
+  Buf path = {NULL, 0, 0}, bytes = {NULL, 0, 0}, err = {NULL, 0, 0};
+  int ok;
+  store_working_path(s, &path);
+  /* `strlen`, not a hand-counted literal: the first version of this line said 31 for a 30-byte
+   * string, which appended one stray byte and made every working copy unparseable — reported as
+   * "line 5: trailing characters after the value", which is at least an honest error. */
+  {
+    static const char kHead[] = "{\n  \"preset\": \"";
+    static const char kTail[] = "\",\n  \"follows_origin\": true\n}\n";
+    buf_add(&bytes, kHead, sizeof kHead - 1);
+    buf_add(&bytes, s->origin.p ? s->origin.p : "default", s->origin.len ? s->origin.len : 7);
+    buf_add(&bytes, kTail, sizeof kTail - 1);
+  }
+  ok = write_file_atomic_put(path.p, path.len, bytes.p, bytes.len, buf_put, &err);
+  if (ok) s->last_error.len = 0;
+  else buf_set(&s->last_error, err.p, err.len);
+  buf_free(&path);
+  buf_free(&bytes);
+  buf_free(&err);
+  return ok;
+}
+
 static void touch_locked(RolltuiPresetStore* s, int persist) {
   /* The one deep compare, at the one place the answer can change — never on a read. */
   s->modified = !s->d->equal(s->working, s->origin_content);
   ++s->version;
-  if (persist) autosave_locked(s);
+  /* The content is written only when it has diverged. Otherwise the file records the CHOICE
+   * and the origin supplies the content on the next start. */
+  if (persist) { if (s->modified) autosave_locked(s); else autosave_pointer_locked(s); }
 }
 
 /* The one read that both `get` and `load` and `start` go through. `partial` may be NULL. */
@@ -630,6 +681,38 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
     buf_add(&msg, "no working copy at ", 19);
     buf_add(&msg, path.p, path.len);
     buf_add(&msg, "; started from the shipped 'default'", 36);
+    s->rep->add_note(report, msg.p, msg.len);
+    buf_free(&path);
+    buf_free(&text);
+    buf_free(&msg);
+    pthread_mutex_unlock(&s->mu);
+    return;
+  }
+  /* A FILE THAT FOLLOWS ITS ORIGIN carries no content to parse: read which preset it names and
+   * take that preset's CURRENT content. This is the whole point of the pointer — an improvement
+   * shipped in the origin arrives here, where a snapshot would have shadowed it forever. */
+  if (follows_origin_of(text.p, text.len)) {
+    void* oc;
+    s->origin.len = 0;
+    s->d->origin_of(text.p, text.len, buf_put, &s->origin);
+    if (s->origin.len == 0) buf_set(&s->origin, "default", 7);
+    oc = get_locked(s, s->origin.p, s->origin.len, report, NULL);
+    msg.len = 0;
+    if (oc) {
+      s->d->destroy(s->working);
+      s->working = oc;
+      s->d->destroy(s->origin_content);
+      s->origin_content = s->d->clone(oc);
+      s->modified = 0;
+      ++s->version;
+      buf_add(&msg, "following the preset '", 22);
+      buf_add(&msg, s->origin.p, s->origin.len);
+      buf_add(&msg, "'", 1);
+    } else {
+      buf_add(&msg, "the working copy follows the preset '", 36);
+      buf_add(&msg, s->origin.p, s->origin.len);
+      buf_add(&msg, "', which no longer exists", 25);
+    }
     s->rep->add_note(report, msg.p, msg.len);
     buf_free(&path);
     buf_free(&text);
