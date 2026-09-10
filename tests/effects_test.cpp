@@ -989,6 +989,10 @@ int main() {
     const Theme& light = *builtin_theme("default-light");
     const Theme& mono = *builtin_theme("mono");
     check(dark.effects == light.effects, "motion is a property of the THEME, not of dark vs light");
+    // MONO IS THE ONE THEME WITHOUT `jitter`, and that is chosen rather than missed. It pulses
+    // instead of shimmering because it has no colour to sweep, and a steady pulse is what the
+    // plainest theme should do — a wobble there is decoration on a theme whose point is having
+    // none. Do not "finish" it by adding jitter to match the other eleven.
     check(!(dark.effects == mono.effects), "…and the mono theme tells the same states a different way");
     // EVERY SHIPPED THEME MAPS EVERY STATE, not just the three built-ins. The narrower check is
     // what let `streamed` ship half-done: it was added to `default` and `mono`, the built-ins the
