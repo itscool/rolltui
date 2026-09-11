@@ -321,7 +321,8 @@ set(ROLLTUI_INTERNAL_OPT_IN
   frame_allocs.cpp
   # THE NEGATIVE CONTROLS. A control asserts a guarantee at the place the library makes it, and
   # some of those places are internal by design — `rolltui_sgr` and `rolltui_color_downgrade` are
-  # the colour engine's, and no host has ever asked for either. Routing a control through a
+  # the colour engine's, `rolltui_scroll_thumb` and `rolltui_check_input` are the widgets' and the
+  # menu's, and no host has ever asked for any of them. Routing a control through a
   # public call it does not belong to would make it assert something adjacent to the guarantee
   # instead of the guarantee, which is the one failure this whole mechanism exists to rule out.
   controls_test.cpp)

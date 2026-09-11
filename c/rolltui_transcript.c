@@ -17,6 +17,7 @@
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "testkit/testctl.h"
 
 static int imax(int a, int b) { return a > b ? a : b; }
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -656,7 +657,12 @@ static void searchable_text(RolltuiTranscript* t, const RolltuiDocEntry* e, size
                             const char** out, size_t* out_n) {
   FindText* ft;
   CacheKey key;
-  if (!(e->foldable && rolltui_transcript_is_folded(t, e))) {
+  /* ON = the unfolded-text cache is never consulted, so find searches the DRAWN text. A
+   * folded entry draws its header row and nothing else, so text inside it cannot be found at
+   * all - the search reports fewer matches, which reads exactly like a document that does not
+   * contain the word. */
+  if (testkit_ctl_on("transcript.find_searches_the_drawn_text") ||
+      !(e->foldable && rolltui_transcript_is_folded(t, e))) {
     layout_text(t->layouts_[entry], out, out_n);
     return;
   }
@@ -827,8 +833,12 @@ static void reveal_current(RolltuiTranscript* t, const RolltuiDocument* doc, int
   g = t->starts_[m->entry] + gapn + line;
   h = (size_t)imax(t->area_.h, 1);
   top = top_line(t);
-  /* Minimal movement: already in view, nothing moves. */
-  if (g < top) set_top(t, g);
+  /* Minimal movement: already in view, nothing moves.
+   * ON = an unconditional scroll, so revealing a match that is ALREADY on screen jumps it to
+   * the top row. Every match is still found and still revealed; the view just moves under the
+   * reader on every next-match, which no assertion about the match itself can see. */
+  if (testkit_ctl_on("transcript.reveal_always_scrolls")) set_top(t, g);
+  else if (g < top) set_top(t, g);
   else if (g >= top + h) set_top(t, g - h + 1);
 }
 

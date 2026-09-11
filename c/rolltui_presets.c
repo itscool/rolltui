@@ -36,6 +36,7 @@ static const char kModifiedSuffix[] = " (modified)";
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/rolltui.h"
+#include "testkit/testctl.h"
 
 /* ---- a growing byte buffer, the one shape everything here builds a string in ------------- */
 /* GROWING, AMORTISED (rolltui_alloc.h strategy 2). Not NUL-terminated by construction —
@@ -864,7 +865,14 @@ void rolltui_preset_store_list(const RolltuiPresetStore* s, RolltuiPresetList* o
       RolltuiPresetInfo* e;
       s->d->shipped_at(i, &nm, &nlen, &text, &tlen);
       is_default = nlen == 7 && memcmp(nm, "default", 7) == 0;
-      if ((pass == 0) != (is_default != 0)) continue;
+      /* ON = the two passes swapped, so "default" is listed LAST instead of first. Every
+       * name is still present and every entry is still well formed; only the order a chooser
+       * offers them in is wrong, which no consumer of this list can detect. */
+      if (testkit_ctl_on("presets.default_is_not_offered_first")) {
+        if ((pass == 0) == (is_default != 0)) continue;
+      } else if ((pass == 0) != (is_default != 0)) {
+        continue;
+      }
       e = list_add(out);
       rolltui_str_set(&e->name, nm, nlen);
       rolltui_str_set(&e->path, "", 0);

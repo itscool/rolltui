@@ -20,6 +20,7 @@
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_unicode.h"
+#include "testkit/testctl.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_bindings.c` and
  * `rolltui_layout.c` each name locally rather than share — a menu loads once per file,
@@ -571,8 +572,12 @@ static void check_text(const RolltuiInputSpec* spec, const char* text, size_t n,
   /* The same empty rule as every other type. `min_len` is a length rule, never the
    * emptiness rule. */
   if (n == 0) {
-    c->valid = spec->optional;
-    if (!spec->optional) str_add(&c->reason, "a value is needed");
+    /* ON = the empty rule made unconditional, which is the state this guarantee was built
+     * against: a Text field commits empty whether or not its spec is `optional`. A `file:`
+     * source is a Text field, so the commit succeeds and hands the host an empty path
+     * instead of refusing - a legal-looking event carrying a value nothing can use. */
+    c->valid = testkit_ctl_on("menu.empty_text_is_always_valid") ? 1 : spec->optional;
+    if (!c->valid) str_add(&c->reason, "a value is needed");
     return;
   }
   if (spec->min_len && len < spec->min_len) {
@@ -1273,7 +1278,13 @@ static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
   if (m->palette) {
     const FlatEntry* fe = &m->flat[m->vis[vis_index]];
     if (fe->path_n >= 2) {
-      RolltuiMenuItem* p = by_path(m, fe->path, fe->path_n - 1);
+      /* ON = the path resolved one level short, so a palette row's parent is its
+       * GRANDPARENT. That item is not a Choice, so the branch falls through and choosing a
+       * value in the palette activates it as if it were an ordinary action: an event of the
+       * wrong kind, with the choice's value never set. */
+      RolltuiMenuItem* p =
+          by_path(m, fe->path,
+                  fe->path_n - (testkit_ctl_on("menu.palette_choice_resolves_one_level_short") ? 2 : 1));
       if (p && p->kind == ROLLTUI_MENU_CHOICE) {
         rolltui_str_set(&p->value, it->id.p, it->id.n);
         out->kind = ROLLTUI_MENU_EVENT_CHOOSE;

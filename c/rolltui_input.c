@@ -10,6 +10,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "testkit/testctl.h"
 
 /* How long an open "ordinary editing" group stays open with no further edit before the next
  * one is treated as a fresh group instead of a continuation (Input.hpp's UNDO). */
@@ -461,7 +462,11 @@ static void note_edit(RolltuiInput* in, int kind, const Snapshot* pre) {
     return;
   }
   elapsed = in->now_ms >= in->undo_last_ms ? in->now_ms - in->undo_last_ms : UNDO_GROUP_TIMEOUT_MS + 1;
-  continues = kind == EDIT_ORDINARY && in->undo_pending && elapsed <= UNDO_GROUP_TIMEOUT_MS;
+  /* ON = the group never times out, so every ordinary edit for the rest of the session
+   * continues the SAME undo step. Undo still works and the stack is still consistent - one
+   * ctrl-Z just throws away an hour of typing instead of the last word. */
+  continues = kind == EDIT_ORDINARY && in->undo_pending &&
+              (testkit_ctl_on("input.undo_group_never_closes") || elapsed <= UNDO_GROUP_TIMEOUT_MS);
   if (!continues) {
     if (in->undo_pending) {
       undo_commit(in, pre); /* an open group closes as a REAL step */
@@ -686,7 +691,11 @@ static int build_flow(RolltuiInput* in, int width, int keep) {
       continue;
     }
     w = c0 == '\t' ? tab - ((col - indent) % tab) : g->width;
-    if (w > 0 && col + w > cap && col > indent) {
+    /* ON = the break rule is a no-op, so a run of text never wraps at the edge: every
+     * grapheme keeps its column and the flow reports one row for a line of any length.
+     * Nothing overflows a buffer - the caret arithmetic and the drawn rows simply disagree
+     * with each other about where the text is. */
+    if (!testkit_ctl_on("input.cell_wrap_never_breaks") && w > 0 && col + w > cap && col > indent) {
       row_end_push(in, g->offset);
       ++row;
       col = indent;

@@ -16,6 +16,7 @@
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/c/rolltui_transcript.h"
+#include "testkit/testctl.h"
 
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
@@ -42,7 +43,13 @@ int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollT
    * cells are RESERVED for the ends and everything between is squeezed into what is left;
    * below a 2-cell span there is nothing to reserve and the honest answer is the ends alone.
    * (Widgets.hpp states the whole of it.) */
-  if (span >= 2) {
+  /* ON = the reservation gone, so the rounded position stands as-is: a view one line from
+   * the top rounds to offset 0 and the thumb touches the end while the document does not.
+   * The thumb is still inside the track and still the right length - it simply lies about
+   * being at the end, which is the one thing a scrollbar is for. */
+  if (testkit_ctl_on("widgets.scrollbar_ends_are_not_reserved")) {
+    /* the rounded offset stands */
+  } else if (span >= 2) {
     if (first == 0) off = 0;
     else if (first == max_first) off = span;
     else off = iclamp(off, 1, span - 1);
@@ -396,7 +403,13 @@ static size_t kind_len(const char* content, size_t len) {
 }
 
 RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content, size_t len) {
-  RolltuiWidget* wd = (RolltuiWidget*)rolltui_map_get(&w->by_content, content, len);
+  /* ON = the lookup always misses, so a content string builds a FRESH widget every time it is
+   * asked for instead of returning the one this table already owns. Nothing crashes and every
+   * widget drawn is a valid widget - it is a new one, so scroll position, selection and edit
+   * state are reset on every frame that asks. */
+  RolltuiWidget* wd = testkit_ctl_on("widgets.widget_lookup_always_misses")
+                          ? NULL
+                          : (RolltuiWidget*)rolltui_map_get(&w->by_content, content, len);
   const size_t kl = kind_len(content, len);
   RolltuiWidget built;
   size_t i;

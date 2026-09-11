@@ -18,6 +18,7 @@
 #include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/third_party/md4c/md4c.h"
+#include "testkit/testctl.h"
 
 #define NONE ((size_t)-1)
 
@@ -562,7 +563,11 @@ static int leave_span(MD_SPANTYPE type, void* det, void* ud) {
       --st->hrefs_n;
     }
     if (st->spans_n) --st->spans_n;
-    if (!autolink && href_n) {
+    /* ON = the " (url)" run is never appended, which is the defect state: a link whose text
+     * differs from its target renders as the text alone, so the destination is invisible in a
+     * terminal that cannot be hovered. The document is still well formed and nothing reports
+     * anything. */
+    if (!autolink && href_n && !testkit_ctl_on("md.link_url_is_dropped")) {
       st->tmp_n = 0;
       tmp_append(st, " (", 2);
       tmp_append(st, st->d->bytes + href_off, href_n);
@@ -1208,7 +1213,13 @@ static void decide_fold(const RolltuiMdRenderOptions* o, size_t lines, RolltuiMd
   size_t i;
   *cap = 0;
   if (!o) return;
-  over = o->fold_over_lines > 0 && lines > (size_t)o->fold_over_lines;
+  /* ON = the threshold folds a block that is exactly AT the limit, not over it. A block of
+   * `fold_over_lines` lines gets a header row and hides itself; the render is legal and the
+   * only symptom is that a block short enough to show is folded. */
+  over = o->fold_over_lines > 0 &&
+         (testkit_ctl_on("md.fold_threshold_folds_at_the_limit")
+              ? lines >= (size_t)o->fold_over_lines
+              : lines > (size_t)o->fold_over_lines);
   folded = over;
   for (i = 0; i < o->state_count; ++i)
     if (o->states[i].index == info->index) {

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "rolltui/c/rolltui_unicode.h"
+#include "testkit/testctl.h"
 
 /* The marker is an arrow, ASCII digits and ASCII words, so its display width is its byte
  * count less two for the three-byte arrow — no Unicode scratch, and no allocation, on a
@@ -23,7 +24,13 @@ size_t rolltui_scroll_marker_text(size_t below, int max_width, int ambiguous_wid
   /* The full form only when it costs at most HALF the width; then the count alone; then
    * the arrow, which still says "there is more" and costs one cell. */
   n = snprintf(buf, sizeof buf, "\xE2\x96\xBC %zu more ", below);
-  if (n > 0 && (size_t)n <= sizeof buf && ascii_plus_arrow_width(buf, (size_t)n) * 2 <= max_width) {
+  /* ON = the HALF rule gone, so the full form is taken whenever it merely FITS. It never
+   * overflows the row and every byte written is legal - it just eats most of a narrow row to
+   * say something the count alone already said. */
+  if (n > 0 && (size_t)n <= sizeof buf &&
+      ascii_plus_arrow_width(buf, (size_t)n) *
+              (testkit_ctl_on("marker.full_form_ignores_the_half_width_rule") ? 1 : 2) <=
+          max_width) {
     if ((size_t)n > cap) return 0;
     memcpy(out, buf, (size_t)n);
     return (size_t)n;

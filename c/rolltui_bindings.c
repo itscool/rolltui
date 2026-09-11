@@ -24,6 +24,7 @@
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "testkit/testctl.h"
 
 /* A literal C string plus its length, the same one-time convenience `rolltui_menu.c` and
  * `rolltui_json.c` each name locally rather than share — a load happens once per file,
@@ -413,7 +414,12 @@ const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiC
     size_t rs = 0;
     const char* rp = rolltui_bindings_scope_of(r->action.p, r->action.len, &rs);
     if (rs != scope_len || (rs && memcmp(rp, scope, rs) != 0)) continue;
-    if (!rolltui_bindings_has(b, r->action.p, r->action.len)) continue; /* kept, never emitted */
+    /* ON = the kept-and-inert guard gone: a row for an action NOTHING declares claims its
+     * chord anyway. The row is legal, the file round-trips, and the key silently belongs to a
+     * screen that is not running - which is exactly what "kept, never emitted" prevents. */
+    if (!testkit_ctl_on("bindings.undeclared_action_claims_a_key") &&
+        !rolltui_bindings_has(b, r->action.p, r->action.len))
+      continue; /* kept, never emitted */
     for (j = 0; j < r->chord_count; ++j)
       /* A chord this terminal cannot deliver is kept and inert for the same reason: the
        * row survives save, and nothing can emit it, so it must not claim a key. */

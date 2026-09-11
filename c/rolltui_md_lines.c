@@ -8,6 +8,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "testkit/testctl.h"
 
 /* A span WHILE IT IS BEING BUILT: offsets, never pointers, so a pool that grows cannot
  * leave a dangling span behind it (rolltui_md_lines.h, safety rule 2). */
@@ -171,8 +172,13 @@ static SpanRec* push_rec(RolltuiMdLines* L) {
   return &L->rec[L->rec_n++];
 }
 
-/* True when `s` is the tail of both pools, so appending to it stays contiguous. */
+/* True when `s` is the tail of both pools, so appending to it stays contiguous.
+ * ON = nothing is ever the tail, so no span merges into its predecessor. `layout_runs` feeds
+ * a link's cells in ONE GRAPHEME AT A TIME, so a four-cell link becomes four one-cell spans:
+ * every span is legal, the text renders identically, and only the span STRUCTURE a consumer
+ * reads roles and hrefs out of is wrong. */
 static int is_tail(const RolltuiMdLines* L, const SpanRec* s) {
+  if (testkit_ctl_on("md.spans_never_merge_into_the_pool_tail")) return 0;
   return s->owns && s->text_off + s->text_n == L->bytes_n && s->src_off + s->src_n == L->srcs_n;
 }
 

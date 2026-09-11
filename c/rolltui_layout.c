@@ -19,6 +19,7 @@
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_terminal.h"
 #include "rolltui/rolltui.h"
+#include "testkit/testctl.h"
 
 #define ROLLTUI_BORDER_NONE 0
 #define ROLLTUI_BORDER_SINGLE 1
@@ -349,6 +350,10 @@ static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect scree
   for (i = 0; i + 1 < visible; ++i) {
     kid[i].shared = row ? (edge_bordered(kid[i].node, SIDE_RIGHT) && edge_bordered(kid[i + 1].node, SIDE_LEFT))
                         : (edge_bordered(kid[i].node, SIDE_BOTTOM) && edge_bordered(kid[i + 1].node, SIDE_TOP));
+    /* ON = the rule inverted: two bordered siblings each keep their own edge and two
+     * unbordered ones are given one to share. Every rect stays inside its parent and the
+     * frame still composes - the columns are just the wrong widths, by one cell each. */
+    if (testkit_ctl_on("layout.shared_edges_are_inverted")) kid[i].shared = !kid[i].shared;
     if (kid[i].shared) ++shared_count;
   }
   ext = imax(extent, 0) + shared_count;
@@ -2187,7 +2192,10 @@ RolltuiLayoutNode* rolltui_window_stack_find(const RolltuiWindowStack* s, const 
 size_t rolltui_window_stack_focus_layer(const RolltuiWindowStack* s) {
   const size_t top = s->n - 1;
   size_t i;
-  if (s->layers[top].modal) return top;
+  /* ON = the confinement gone, so focus falls through a modal to whatever layer under it
+   * happens to hold it. The modal is still drawn and still tints the screen; keys just go
+   * somewhere behind it, which looks like the modal ignoring input rather than like a bug. */
+  if (!testkit_ctl_on("layout.a_modal_does_not_confine_focus") && s->layers[top].modal) return top;
   for (i = s->n; i-- > 0;)
     if (layer_focused(&s->layers[i])) return i;
   return top;

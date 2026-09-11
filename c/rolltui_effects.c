@@ -26,6 +26,7 @@
 #include "rolltui/c/rolltui_lifetime.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "testkit/testctl.h"
 
 /* ---- working memory ---------------------------------------------------------------------- */
 
@@ -200,7 +201,15 @@ static void kind_bar(RolltuiEffectScratch* sc, const RolltuiEffectSpec* s, const
                      const RolltuiEffectCell* in, RolltuiEffectOut* out) {
   (void)sc;
   const int filled = (int)lround(clamp01(in->fraction) * in->length);
-  if (in->index >= filled) return;
+  /* ON = the fill boundary off by one: the cell AT `filled` is coloured too, so a bar drawn
+   * for a fraction reads one cell fuller than the number it is a picture of. Every cell is
+   * still a legal cell and the span is still the right width - the only symptom is that the
+   * bar and the number disagree, which nothing downstream can notice. */
+  if (testkit_ctl_on("effects.bar_fills_one_cell_too_many")) {
+    if (in->index > filled) return;
+  } else if (in->index >= filled) {
+    return;
+  }
   out->has_style = 1;
   out->style = role_style(styles, s, 0);
 }

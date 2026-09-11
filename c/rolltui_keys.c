@@ -14,6 +14,7 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "testkit/testctl.h"
 
 /* ---- the decoder's own storage ----------------------------------------------------------- */
 
@@ -598,7 +599,14 @@ static RolltuiCodepoint transmitted_char(const RolltuiChord* k) {
   return (k->shift && k->ch >= 'a' && k->ch <= 'z') ? k->ch - 'a' + 'A' : k->ch;
 }
 
-static int starts_a_sequence(RolltuiCodepoint c) { return c == '[' || c == 'O'; }
+/* ON = no character introduces a sequence, which is the defect state: `alt+[` transmits
+ * ESC '[' - the CSI introducer - so the terminal reads the pair as the start of an escape
+ * sequence and the chord never arrives. Answering "deliverable" hands a binding a key that
+ * silently does something else; nothing errors and no row is refused. */
+static int starts_a_sequence(RolltuiCodepoint c) {
+  if (testkit_ctl_on("keys.alt_csi_introducer_claims_deliverable")) return 0;
+  return c == '[' || c == 'O';
+}
 
 /* Deliverable under LEGACY, for the keys legacy did not parameterise — the floor all three
  * protocols stand on. */
