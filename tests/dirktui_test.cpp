@@ -302,6 +302,24 @@ int main() {
   check(has(deep, "column 3/3"), "…the status line counts the columns it is showing");
 
   // ---- 3. wide, combining and over-long names ------------------------------------------------
+  // ---- THE ANCHOR RULE: the focused column and its whole preview are always on screen ----------
+  // Wide enough for the root column (28 cells: the long name) and one preview, not for three: after Right the focus is `alpha` and the column
+  // the selection fills (`nested`) must END at the right edge, with the root column shown
+  // partially on the left — so its title, which starts at its left edge, is off screen.
+  {
+    const std::string narrow = run(base + " --frame 46x10 --keys \"Right\" 2>&1", rc);
+    check(rc == 0 && has(narrow, "nested") && has(narrow, "deep.txt"),
+          "Right opens the NEW focus's preview at once, so the column to the right is never empty");
+    check(!has(narrow, "\xE2\x94\x82 tree"),
+          "…and the root column is scrolled partly off the left edge to make room for it");
+    const std::string roomy = run(base + " --frame 150x30 --keys \"Right\" 2>&1", rc);
+    check(has(roomy, "\xE2\x94\x82 tree"),
+          "…while a window that fits every column packs them from the left and scrolls nothing");
+    const std::string back = run(base + " --frame 46x10 --keys \"Right Left\" 2>&1", rc);
+    check(rc == 0 && has(back, "\xE2\x94\x82 tree") && has(back, "alpha"),
+          "Left slides the columns back so the root column is whole again");
+  }
+
   check(has(wide, "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E"), "a CJK name is drawn, and the row it is on is not torn");
   check(has(wide, "cafe\xCC\x81") || has(wide, "caf"), "a combining sequence survives the column");
   check(has(wide, "\xE2\x80\xA6"), "a name too long for its column is cut with an ellipsis, not clipped silently");

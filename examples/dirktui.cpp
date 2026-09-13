@@ -43,6 +43,8 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -102,6 +104,19 @@ struct Measure {
   // The longest prefix of `s` that fits in `cells`, as a byte count.
   std::size_t prefix_bytes(const std::string& s, int cells) {
     return rolltui_u_fit(u, s.data(), s.size(), cells, 0, nullptr);
+  }
+
+  // The byte offset that drops AT LEAST `cells` cells from the left of `s`, and how many cells
+  // were actually dropped (one more than asked when a wide glyph straddles the cut — a glyph
+  // is never split, so the cut lands after it). For the column half-scrolled off the left edge.
+  std::size_t skip_bytes(const std::string& s, int cells, int& dropped) {
+    std::size_t at = prefix_bytes(s, cells);
+    dropped = width(s.substr(0, at));
+    if (dropped < cells && at < s.size()) {
+      at = prefix_bytes(s, cells + 1);
+      dropped = width(s.substr(0, at));
+    }
+    return at;
   }
 
   // `s`, or a prefix of it with a single-cell ellipsis, fitting `cells`.
@@ -165,8 +180,21 @@ struct Browser {
   RolltuiRect inner{};
   std::vector<Column> cols;
   std::size_t focus_col = 0;
-  std::size_t first_col = 0;  // the leftmost visible column: the horizontal scroll
   std::string root;
+  // THE HORIZONTAL SCROLL IS ONE NUMBER: where column 0's left edge sits relative to the inner
+  // rect, in cells, never positive. The ANCHOR RULE picks its target: when every column fits,
+  // nothing scrolls and the columns pack from the left; otherwise the column to the RIGHT of the
+  // focused one — the one the selection is filling — ends exactly at the right edge, so the eye
+  // always has the focused column and its whole preview, and whatever fits to the left is shown
+  // partially rather than not at all. A change of target is ANIMATED, quickly (`kScrollMs`): the
+  // columns slide to where they belong, so the eye follows a column rather than re-finding it.
+  int scroll_x = 0;
+  int scroll_target = 0;
+  int scroll_from = 0;
+  unsigned long long scroll_start_ms = 0;
+  bool scrolling = false;
+  unsigned long long now_ms = 0;  // the frame clock, set by the app before each frame; 0 = headless, no motion
+  static constexpr unsigned long long kScrollMs = 120;
   // THE OUTCOME. Set by an action, read by the app once the poll's events are handled. The widget
   // cannot end the process and must not decide what a chosen path MEANS — printing it, and what
   // the shell does with it, are the app's and the shell's. Two flags rather than one enum with an
@@ -192,13 +220,13 @@ struct Browser {
     root = path;
     cols.clear();
     focus_col = 0;
-    first_col = 0;
     Column c;
     c.dir = path;
     read_dir(path, *opt, c);
     measure_width(c);
     cols.push_back(std::move(c));
     open_selected();
+    retarget();
   }
 
   void reload() {
@@ -248,21 +276,48 @@ struct Browser {
     if (c.entries.n <= static_cast<std::size_t>(vis)) c.top = 0;
   }
 
-  // Keep the focused column on screen: the horizontal scroll follows the eye, so a deep path
-  // scrolls left exactly as a column view does.
-  void clamp_columns() {
-    if (focus_col < first_col) first_col = focus_col;
-    for (;;) {
-      int used = 0;
-      std::size_t last = first_col;
-      for (std::size_t i = first_col; i < cols.size(); ++i) {
-        if (used + cols[i].width > inner.w && i > first_col) break;
-        used += cols[i].width + 1;
-        last = i;
-      }
-      if (focus_col <= last || first_col + 1 >= cols.size()) break;
-      ++first_col;
+  // Column `ci`'s left edge, in the inner rect's x, at the CURRENT scroll (mid-slide included).
+  int column_x(std::size_t ci) const {
+    int x = inner.x + scroll_x;
+    for (std::size_t j = 0; j < ci && j < cols.size(); ++j) x += cols[j].width + 1;
+    return x;
+  }
+
+  // The anchor rule, as a target. Called after anything that changes which columns exist, which
+  // is focused, or how wide the rect is; the slide toward it is `advance()`'s.
+  void retarget() {
+    int total = 0;
+    for (const Column& c : cols) total += c.width + 1;
+    total = total > 0 ? total - 1 : 0;
+    int target = 0;
+    if (total > inner.w && !cols.empty()) {
+      const std::size_t last = std::min(focus_col + 1, cols.size() - 1);
+      int right_end = 0;
+      for (std::size_t j = 0; j <= last; ++j) right_end += cols[j].width + 1;
+      right_end -= 1;
+      target = std::min(0, inner.w - right_end);
+      // A focused column wider than what is left of the window still starts on screen.
+      int focus_start = 0;
+      for (std::size_t j = 0; j < focus_col; ++j) focus_start += cols[j].width + 1;
+      if (focus_start + target < 0 && cols[focus_col].width >= inner.w) target = -focus_start;
     }
+    if (target == scroll_target) return;
+    scroll_target = target;
+    if (now_ms == 0) { scroll_x = target; scrolling = false; return; }  // headless: no motion
+    scroll_from = scroll_x;
+    scroll_start_ms = now_ms;
+    scrolling = true;
+  }
+
+  // Where the slide has got to at `now_ms`. Ease-out: fast away from where it was, settling
+  // into place, which reads as "the columns moved" rather than "the screen jumped".
+  void advance() {
+    if (!scrolling) return;
+    const unsigned long long t = now_ms >= scroll_start_ms ? now_ms - scroll_start_ms : kScrollMs;
+    if (t >= kScrollMs || now_ms == 0) { scroll_x = scroll_target; scrolling = false; return; }
+    const double u = static_cast<double>(t) / static_cast<double>(kScrollMs);
+    const double eased = 1.0 - (1.0 - u) * (1.0 - u) * (1.0 - u);
+    scroll_x = scroll_from + static_cast<int>(std::lround((scroll_target - scroll_from) * eased));
   }
 
   void move(int delta) {
@@ -273,6 +328,7 @@ struct Browser {
     c->sel = static_cast<std::size_t>(at);
     clamp_scroll(*c);
     open_selected();
+    retarget();
   }
   void select(std::size_t i) {
     Column* c = focused();
@@ -280,6 +336,7 @@ struct Browser {
     c->sel = i;
     clamp_scroll(*c);
     open_selected();
+    retarget();
   }
   void into() {
     const RolltuiDirEntry* e = selected();
@@ -287,14 +344,15 @@ struct Browser {
     open_selected();
     if (focus_col + 1 < cols.size()) {
       ++focus_col;
-      clamp_columns();
+      open_selected();  // the NEW focus's own preview, so the column to its right is never empty
+      retarget();
     }
   }
   void out() {
     if (focus_col > 0) {
       --focus_col;
       cols.resize(focus_col + 2 <= cols.size() ? focus_col + 2 : cols.size());
-      clamp_columns();
+      retarget();
       return;
     }
     // At the leftmost column, going out means the parent directory becomes the new root — the
@@ -310,6 +368,7 @@ struct Browser {
       if (str_of(c->entries.v[i].name) == child) c->sel = i;
     clamp_scroll(*c);
     open_selected();
+    retarget();
   }
 };
 
@@ -348,7 +407,8 @@ void browser_layout(void* ctx, const RolltuiResolvedNode* rn) {
   Browser* b = static_cast<Browser*>(ctx);
   rolltui_content_rect(rn, &b->inner);
   for (Column& c : b->cols) b->clamp_scroll(c);
-  b->clamp_columns();
+  b->retarget();
+  b->advance();
 }
 
 void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
@@ -364,16 +424,29 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   const RolltuiStyle here = S(ROLLTUI_ROLE_MENU_SELECTED);
   const RolltuiStyle trail = S(ROLLTUI_ROLE_SELECTION);
 
-  int x = r.x;
-  for (std::size_t ci = b->first_col; ci < b->cols.size() && x < r.x + r.w; ++ci) {
+  for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
     const Column& c = b->cols[ci];
+    const int x = b->column_x(ci);
+    if (x >= r.x + r.w) break;
+    if (x + c.width <= r.x) continue;  // wholly off the left edge
     const int cw = std::min(c.width, r.x + r.w - x);
     if (cw <= 0) break;
+    // A column partly off the LEFT edge shows its right part: `hidden` cells of every line are
+    // dropped, never drawn outside the rect. The title starts at x; the rows at x + 1.
+    const int hidden = r.x - x;  // ≤ 0 when the column starts on screen
+    auto put_clipped = [&](int at, int y, const std::string& text, const RolltuiStyle& st, int room) {
+      const int drop = r.x - at;
+      if (drop <= 0) { rolltui_frame_put_text(f, b->draw_scratch, at, y, text.data(), text.size(), st, room, 0, 0); return; }
+      if (drop >= room) return;
+      int dropped = 0;
+      const std::size_t from = b->measure.skip_bytes(text, drop, dropped);
+      rolltui_frame_put_text(f, b->draw_scratch, at + dropped, y, text.data() + from, text.size() - from, st,
+                             room - dropped, 0, 0);
+    };
     // The column's own head: the directory's last component, so a deep path stays readable.
     const std::size_t slash = c.dir.find_last_of('/');
     const std::string title = c.dir == "/" ? "/" : c.dir.substr(slash == std::string::npos ? 0 : slash + 1);
-    rolltui_frame_put_text(f, b->draw_scratch, x, r.y, b->measure.fit(title, cw).data(),
-                           b->measure.fit(title, cw).size(), head, cw, 0, 0);
+    put_clipped(x, r.y, b->measure.fit(title, cw), head, cw);
     const int rows = b->rows_visible();
     for (int row = 0; row < rows; ++row) {
       const std::size_t i = c.top + static_cast<std::size_t>(row);
@@ -384,12 +457,14 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       const bool is_sel = i == c.sel;
       const bool is_focus_col = ci == b->focus_col;
       const RolltuiStyle st = is_sel ? (is_focus_col ? here : trail) : (e.is_dir ? text : (e.unreadable ? dim : text));
-      if (is_sel) rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{x, y, cw, 1}, st, nullptr, 0);
+      if (is_sel) {
+        const int fx = std::max(x, r.x);
+        rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, x + cw - fx, 1}, st, nullptr, 0);
+      }
       // A directory is marked with a trailing chevron rather than a colour, so the shape
       // survives `mono` and a colour-blind reader alike.
       const std::string label = str_of(e.name) + (e.is_dir ? " \xE2\x80\xBA" : "");
-      const std::string cut = b->measure.fit(label, cw - 1);
-      rolltui_frame_put_text(f, b->draw_scratch, x + 1, y, cut.data(), cut.size(), st, cw - 1, 0, 0);
+      put_clipped(x + 1, y, b->measure.fit(label, cw - 1), st, cw - 1);
     }
     if (c.entries.n == 0) {
       // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
@@ -407,11 +482,10 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
         const std::string say = failed ? c.error : std::string("(empty)");
         const RolltuiStyle es = failed ? S(ROLLTUI_ROLE_ERROR) : dim;
         const int room = failed ? (r.x + r.w - (x + 1)) : (cw - 1);
-        const std::string cut = b->measure.fit(say, room);
-        rolltui_frame_put_text(f, b->draw_scratch, x + 1, r.y + 1, cut.data(), cut.size(), es, room, 0, 0);
+        put_clipped(x + 1, r.y + 1, b->measure.fit(say, room), es, room);
       }
     }
-    x += cw + 1;
+    (void)hidden;
   }
 }
 
@@ -426,8 +500,14 @@ int browser_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* ou
     out->total = c->entries.n;
     return 1;
   }
-  out->first = b->first_col;
-  out->visible = 1;
+  std::size_t first = 0, visible = 0;
+  for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
+    const int x = b->column_x(ci);
+    if (x + b->cols[ci].width <= b->inner.x) { first = ci + 1; continue; }
+    if (x >= b->inner.x && x + b->cols[ci].width <= b->inner.x + b->inner.w) ++visible;
+  }
+  out->first = first;
+  out->visible = visible > 0 ? visible : 1;
   out->total = b->cols.size();
   return 1;
 }
@@ -460,19 +540,18 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
     if (k != K::Press) return 0;
     // Which column was clicked, and which row in it — the widget's own hit test, because the
     // columns are its structure and the library has no way to know about them.
-    int x = b->inner.x;
-    for (std::size_t ci = b->first_col; ci < b->cols.size(); ++ci) {
+    for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
+      const int x = b->column_x(ci);
       const int cw = b->cols[ci].width;
-      if (e->mouse.x >= x && e->mouse.x < x + cw) {
+      if (e->mouse.x >= x && e->mouse.x < x + cw && e->mouse.x >= b->inner.x) {
         b->focus_col = ci;
         b->cols.resize(ci + 1);
         const int row = e->mouse.y - b->inner.y - 1;
         if (row >= 0) b->select(b->cols[ci].top + static_cast<std::size_t>(row));
         else b->open_selected();
-        b->clamp_columns();
+        b->retarget();
         return 1;
       }
-      x += cw + 1;
     }
     return 0;
   }
@@ -569,6 +648,12 @@ struct App {
   RolltuiRows status_rows{};
   int w = 100, h = 30;
   bool quit = false;
+  unsigned long long now_ms = 0;  // the frame clock; 0 in a headless frame, where nothing moves
+  // How soon this frame wants redrawing: a sliding column asks for the next tick, else `idle`.
+  int poll_timeout_ms(int idle) {
+    Browser* b = browser();
+    return b && b->scrolling ? 16 : idle;
+  }
   // THE EXIT CONTRACT: `chosen` is printed and the status is 0 ONLY when an accept happened.
   // Every other way out — cancel, a global quit — prints nothing and exits 1. The shell function
   // reads exactly this pair, and an empty path with status 0 would send it to `cd ""`.
@@ -763,8 +848,9 @@ struct App {
       const unsigned long long v = rolltui_preset_store_version(theme_store);
       if (v != theme_seen) { theme_seen = v; sync_theme(); }
     }
-    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), 0};
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms};
     rolltui_context_set_env(ctx, &env);
+    if (Browser* b = browser()) b->now_ms = now_ms;
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
     rolltui_windows_autosize(windows, stack, area());
@@ -1387,8 +1473,11 @@ int main(int argc, char** argv) {
   } pending;
   const std::size_t kNone = static_cast<std::size_t>(-1);
   while (!app.quit) {
+    app.now_ms = static_cast<unsigned long long>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
+    const int timeout = app.poll_timeout_ms(250);
     out.clear();
     rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &out);
     rolltui_terminal_write(term, out.c_str(), out.size());
@@ -1399,7 +1488,7 @@ int main(int argc, char** argv) {
     pending.w = app.w;
     pending.h = app.h;
     rolltui_terminal_poll(
-        term, 250,
+        term, timeout,
         [](void* ctx, const RolltuiTermEvent* e) {
           Pending& p = *static_cast<Pending*>(ctx);
           if (e->kind == ROLLTUI_TERM_EVENT_RESIZE) { p.w = e->w; p.h = e->h; p.resized = true; return; }
