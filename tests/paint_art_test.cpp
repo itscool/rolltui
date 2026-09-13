@@ -4,7 +4,7 @@
 // PAINT IS THE ADVERSARIAL PROBE, and this suite is written to that: a canvas of arbitrary
 // coloured cells uses no theme role, marks no state and fits none of the library's document /
 // list / field vocabulary, so what it hits are LIMITS to report rather than requirements to
-// meet. The explorer is the aligned probe and its suite is `explorer_test.cpp`.
+// meet. The explorer is the aligned probe and its suite is `dirktui_test.cpp`.
 //
 // The three things asserted here are the three that answer a question:
 //   1. the ramps make a real picture, and the picture is one the library DREW rather than a

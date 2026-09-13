@@ -342,7 +342,7 @@ target_compile_definitions(rolltui-public-header-test PRIVATE ROLLTUI_INTERNAL_O
 # `public_header_test` asserts this set is non-empty, contains the C consumer and at least one
 # whole-host suite, and that no function it reaches is INTERNAL.
 set(ROLLTUI_PUBLIC_ONLY_TESTS
-  c_consumer_test.c explorer_test.cpp paint_art_test.cpp
+  c_consumer_test.c dirktui_test.cpp paint_art_test.cpp
   authored_screen_test.cpp files_only_test.cpp studio_golden_test.cpp theme_kind_test.cpp
   keys_kind_test.cpp picker_kind_test.cpp files_test.cpp parity_test.cpp
   product_flags_test.cpp
@@ -469,45 +469,45 @@ target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
 target_include_directories(rolltui-paint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 target_include_directories(rolltui-paint-selftest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
-# THE FOURTH CONSUMER — a read-only file-system browser whose custom widget is a
-# macOS-style column view. It is the first widget in this repo with INTERNAL STRUCTURE the
-# library does not already model (children of its own, a selection that propagates sideways,
-# two scroll axes, a content-dependent width), which is what makes it an instrument rather
-# than a demo: what it could NOT do through `rolltui/rolltui.h` alone is the phase's finding.
-# It is a CONSUMER like `rolltui-paint` — it never opts in to an internal header.
-# The explorer's OWN default files, compiled in from the very files a user's preset directory
+# `dirktui` — a shell directory picker: a read-only column-view browser that prints the chosen
+# path on stdout and draws on /dev/tty, so a shell function can `cd "$(dirktui)"`. Its widget
+# has INTERNAL STRUCTURE the library does not model (children of its own, a selection that
+# propagates sideways, two scroll axes, a content-dependent width), which is what makes it the
+# library's aligned probe: what it cannot do through `rolltui/rolltui.h` alone is a wall to
+# record. It is a CONSUMER like `rolltui-paint` — it never opts in to an internal header.
+# dirktui's OWN default files, compiled in from the very files a user's preset directory
 # would shadow — so the words of its screen stay in JSON and never in its source, and it still
 # runs with no arguments. NAMES maps each file to the KIND an app asks for.
-set(ROLLTUI_EXPLORER_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/layouts/explorer.json
+set(DIRKTUI_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/layouts/dirktui.json
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/bindings/default.json
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/menus/places.json)
-set(ROLLTUI_EXPLORER_EMBEDDED ${CMAKE_CURRENT_BINARY_DIR}/embedded_explorer.c)
-add_custom_command(OUTPUT ${ROLLTUI_EXPLORER_EMBEDDED}
-  COMMAND ${CMAKE_COMMAND} -DOUT=${ROLLTUI_EXPLORER_EMBEDDED} -DTABLE=kAppFiles -DPREFIX=explorer_
-          "-DFILES=${ROLLTUI_EXPLORER_FILES}" "-DNAMES=layout;bindings;menu"
+set(DIRKTUI_EMBEDDED ${CMAKE_CURRENT_BINARY_DIR}/embedded_dirktui.c)
+add_custom_command(OUTPUT ${DIRKTUI_EMBEDDED}
+  COMMAND ${CMAKE_COMMAND} -DOUT=${DIRKTUI_EMBEDDED} -DTABLE=kAppFiles -DPREFIX=dirktui_
+          "-DFILES=${DIRKTUI_FILES}" "-DNAMES=layout;bindings;menu"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
-  DEPENDS ${ROLLTUI_EXPLORER_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
-  COMMENT "Embedding the explorer's own files"
+  DEPENDS ${DIRKTUI_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
+  COMMENT "Embedding dirktui's own files"
   VERBATIM)
 
 # One owner for the generated file, for the reason `rolltui_embedded` states above: listed in
-# both explorer binaries it was generated twice under a parallel build and compiled torn.
-add_library(rolltui_explorer_embedded OBJECT ${ROLLTUI_EXPLORER_EMBEDDED})
-target_include_directories(rolltui_explorer_embedded PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_compile_options(rolltui_explorer_embedded PRIVATE -Wall -Wextra)
+# both dirktui binaries it was generated twice under a parallel build and compiled torn.
+add_library(rolltui_dirktui_embedded OBJECT ${DIRKTUI_EMBEDDED})
+target_include_directories(rolltui_dirktui_embedded PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_compile_options(rolltui_dirktui_embedded PRIVATE -Wall -Wextra)
 
-add_executable(rolltui-explorer examples/explorer.cpp $<TARGET_OBJECTS:rolltui_explorer_embedded>)
-target_link_libraries(rolltui-explorer PRIVATE rolltui)
+add_executable(dirktui examples/dirktui.cpp $<TARGET_OBJECTS:rolltui_dirktui_embedded>)
+target_link_libraries(dirktui PRIVATE rolltui)
 
 # The SELF-TEST build: the same source plus the script vocabulary, so a golden frame has a driver
 # and the shipped binary has none. Additive rather than compiled out, so the app code the product
 # runs is the code the tests ran.
-add_executable(rolltui-explorer-selftest examples/explorer.cpp $<TARGET_OBJECTS:rolltui_explorer_embedded>)
-target_link_libraries(rolltui-explorer-selftest PRIVATE rolltui)
-target_compile_definitions(rolltui-explorer-selftest PRIVATE ROLLTUI_SELFTEST=1)
-target_compile_options(rolltui-explorer-selftest PRIVATE -Wall -Wextra)
-target_compile_options(rolltui-explorer PRIVATE -Wall -Wextra)
+add_executable(dirktui-selftest examples/dirktui.cpp $<TARGET_OBJECTS:rolltui_dirktui_embedded>)
+target_link_libraries(dirktui-selftest PRIVATE rolltui)
+target_compile_definitions(dirktui-selftest PRIVATE ROLLTUI_SELFTEST=1)
+target_compile_options(dirktui-selftest PRIVATE -Wall -Wextra)
+target_compile_options(dirktui PRIVATE -Wall -Wextra)
 
 # Milestone 14: the theme editor's model — every role reachable, live preview, commit,
 # cancel, undo/redo, the palette, the written-back pair object — driven without a
@@ -572,7 +572,7 @@ target_compile_definitions(rolltui-authored-screen-test PRIVATE
   ROLLTUI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 add_dependencies(rolltui-authored-screen-test rolltui-studio rolltui-paint)
 
-# the explorer's golden frames and its files-only control — the screen's own
+# dirktui's headless frames, its accept/cancel exit contract and its files-only control — the screen's own
 # words (the window ids, the browser scope's actions, the titles) appear in no source the
 # binary is built from, exactly as `files_only_test` asserts for the studio's fixture screen.
 # paint as the ADVERSARIAL probe — the ramps make a real picture, a hand-picked RGB
@@ -592,15 +592,15 @@ add_rolltui_test(rolltui-product-flags-test tests/product_flags_test.cpp)
 target_compile_definitions(rolltui-product-flags-test PRIVATE
   ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
   ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
-  ROLLTUI_EXPLORER_PRODUCT_BIN="$<TARGET_FILE:rolltui-explorer>")
-add_dependencies(rolltui-product-flags-test rolltui-studio rolltui-paint rolltui-explorer)
+  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
+add_dependencies(rolltui-product-flags-test rolltui-studio rolltui-paint dirktui)
 
-add_rolltui_test(rolltui-explorer-test tests/explorer_test.cpp)
-target_compile_definitions(rolltui-explorer-test PRIVATE
-  ROLLTUI_EXPLORER_BIN="$<TARGET_FILE:rolltui-explorer-selftest>"
-  ROLLTUI_EXPLORER_PRODUCT_BIN="$<TARGET_FILE:rolltui-explorer>"
+add_rolltui_test(rolltui-dirktui-test tests/dirktui_test.cpp)
+target_compile_definitions(rolltui-dirktui-test PRIVATE
+  DIRKTUI_BIN="$<TARGET_FILE:dirktui-selftest>"
+  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>"
   ROLLTUI_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/examples")
-add_dependencies(rolltui-explorer-test rolltui-explorer rolltui-explorer-selftest)
+add_dependencies(rolltui-dirktui-test dirktui dirktui-selftest)
 
 # THE `theme` KIND'S OWN PROOF: a screen that names it in a layout gets a working editor in a
 # binary that has never heard of the screen, and a commit lands where the app said it should.

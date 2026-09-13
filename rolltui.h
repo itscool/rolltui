@@ -2225,7 +2225,7 @@ struct RolltuiLayoutNode;
  * REVERSIBLE; transparent now and opaque later is a BREAK.**
  *
  * **THE SEVEN DOORS BELOW ARE THE WHOLE OF WHAT FOUR CONSUMERS DO WITH A LAYOUT** — measured,
- * not guessed, across roll, `rolltui-paint`, `rolltui-explorer` and the pure-C consumer. Hand
+ * not guessed, across roll, `rolltui-paint`, `dirktui` and the pure-C consumer. Hand
  * the base to a window stack; declare the actions; show the name and the minimum size; read an
  * id off a node or a layer the library just handed back. **If a real need appears, add the
  * eighth door and say who forced it** — that is the same rule the rest of this header keeps.
@@ -3942,7 +3942,7 @@ void rolltui_bindings_report_release(RolltuiBindingsReport* r); /* frees everyth
  *
  * PUBLIC, and the INTERNAL reason it once carried — "a step of loading or building a table; a
  * host loads a file or clones the default" — argued for the opposite of what it concluded, since
- * a host that loads its own bindings FILE is exactly that case. `rolltui/examples/explorer.cpp`
+ * a host that loads its own bindings FILE is exactly that case. `rolltui/examples/dirktui.cpp`
  * hand-wrote six loops over the report's arrays to say what this one call says. **That is `rolltui.h` rule 5's tell** —
  * a consumer writing the wrapper an API already has — and it is the same shape as the gap report
  * beside it: a host tells its own developer what a FILE asked for that this app cannot give. */

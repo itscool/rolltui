@@ -1,5 +1,5 @@
 {
-  "name": "explorer",
+  "name": "dirktui",
   "bindings": {
     "browser.up": [
       "up",
@@ -14,8 +14,7 @@
       "backspace"
     ],
     "browser.into": [
-      "right",
-      "enter"
+      "right"
     ],
     "browser.first": [
       "home"
@@ -51,7 +50,14 @@
       "f1"
     ],
     "app.quit": [
-      "ctrl+q"
+      "ctrl+q",
+      "ctrl+c"
+    ],
+    "browser.accept": [
+      "enter"
+    ],
+    "browser.cancel": [
+      "escape"
     ]
   }
 }

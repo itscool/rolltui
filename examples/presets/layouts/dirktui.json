@@ -1,5 +1,5 @@
 {
-  "name": "explorer",
+  "name": "dirktui",
   "min_width": 24,
   "min_height": 6,
   "focus": "columns",
@@ -9,7 +9,7 @@
     "app.hidden": "show or hide dotfiles",
     "app.sort": "cycle name / size / modified",
     "app.help": "the live key table",
-    "app.quit": "leave",
+    "app.quit": "leave without choosing",
     "browser.up": "select the entry above",
     "browser.down": "select the entry below",
     "browser.out": "go to the column on the left",
@@ -19,7 +19,9 @@
     "browser.page_up": "a screenful up",
     "browser.page_down": "a screenful down",
     "app.theme": "Edit the theme",
-    "app.keys": "Edit the keys"
+    "app.keys": "Edit the keys",
+    "browser.accept": "choose the selected entry: print its path and leave",
+    "browser.cancel": "leave without choosing"
   },
   "root": {
     "column": [

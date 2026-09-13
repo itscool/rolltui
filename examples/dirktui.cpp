@@ -1,47 +1,48 @@
 //
-// rolltui/examples/explorer.cpp — `rolltui-explorer`, the library's FOURTH consumer
-// and the first host whose widget has INTERNAL STRUCTURE the library does
-// not already model.
+// rolltui/examples/dirktui.cpp — `dirktui`, a directory picker for the shell; `dirk` is its shell function.
 //
-// It is a READ-ONLY file-system browser in the shape macOS calls column view (Miller
-// columns): side-by-side lists, the selection in a column filling the one to its right, a
-// horizontal scroll when the path is deeper than the window, and a vertical scroll per column.
-// It never writes, renames, moves or deletes anything. Reading a directory is the LIBRARY's
+// It is a READ-ONLY file-system browser in the shape macOS calls column view (Miller columns):
+// side-by-side lists, the selection in a column filling the one to its right, a horizontal
+// scroll when the path is deeper than the window, and a vertical scroll per column. It never
+// writes, renames, moves or deletes anything. Reading a directory is the LIBRARY's
 // (`rolltui_dir_read`), so this file's whole remaining contact with the file system is one `stat`
-// asking whether a typed path is a directory before jumping to it — a different question from
-// "what is in this directory", and the only one the reader does not answer.
+// asking whether a typed path is a directory before jumping to it.
 //
 // ============================================================================================
-// WHY IT EXISTS, AND WHY IT IS NOT A DEMO
+// THE CONTRACT WITH THE SHELL, which is the whole reason it is a utility and not a demo
 //
-// roll and the studio are both a document with a prompt under it; `rolltui-paint` is a canvas
-// that owns its own pixels and fills ONE rectangle. So every property the library grew could
-// still have been a property of those two shapes, and the widget plugin's nine slots had never
-// been asked to carry a widget with children, two scroll axes, a selection that propagates
-// sideways and a width that depends on its contents. This app asks them.
-//
-// Its value is therefore the WALL LOG in the plan, not the screenshots: every place
-// the public header could not do something, and what was done instead. It includes
-// `rolltui/rolltui.h` and NOTHING else of the library's — it is a consumer like paint, not
-// like the studio, and `public_header_test` asserts that rather than trusting it.
+//   * It DRAWS on /dev/tty and ANSWERS on stdout, always. A shell function captures stdout with
+//     `$(dirktui)`, so no frame may ever reach it; the terminal is opened by name rather than
+//     inherited. fzf does the same, for the same reason.
+//   * Enter ACCEPTS the selected entry: its path is printed on stdout, one line, and the exit
+//     status is 0. A selected file is printed as itself — the shell side decides that a file
+//     means its directory, because that is a decision about `cd`, not about browsing.
+//   * Escape (or Ctrl-Q / Ctrl-C anywhere) CANCELS: nothing is printed and the exit status is 1.
+//     "Nothing printed" and "exit 0" never coincide, because `cd ""` is `cd ~`, silently.
+//   * `dirktui init zsh|bash|fish` prints the shell integration: a `dirk` function that browses
+//     then goes where you chose, and a Right Arrow binding that opens the browser only when the
+//     cursor is already at the end of the line. Usage/no-terminal is exit 2.
 //
 // ============================================================================================
 // WHAT IS THE APP'S AND WHAT IS THE SCREEN'S
 //
 // The screen is FILES (`examples/presets/`): the layout names the windows and DECLARES every
 // action, the bindings file says which chord runs each one, and the menu is a file too. No
-// string below names a window id, and `explorer_test`'s grep asserts it — the same control
+// string below names a window id, and `dirktui_test`'s grep asserts it — the same control
 // `files_only_test` runs for the studio.
 //
-// The BROWSER OWNS ITS MODEL, deliberately. It could have been a `rows:` binding refilled by
-// the host, and that would have proved nothing: the point is a plugin with data and structure
-// of its own, which is the case a two-callback adapter cannot serve.
+// The BROWSER OWNS ITS MODEL, deliberately. It is the library's aligned probe: a widget with
+// data and structure of its own — children, two scroll axes, a selection that propagates
+// sideways, a width that depends on its contents — which is the case a two-callback adapter
+// cannot serve. Every place the public header could not do something is a wall to record.
 //
 #include <dirent.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -53,8 +54,8 @@
 
 #include "rolltui/rolltui.h"
 
-// ADDITIVE, NOT SUBTRACTIVE. `rolltui-explorer` is the product and cannot drive itself: the
-// script vocabulary is not compiled into it. `rolltui-explorer-selftest` is the same source plus
+// ADDITIVE, NOT SUBTRACTIVE. `dirk` is the product and cannot drive itself: the
+// script vocabulary is not compiled into it. `dirk-selftest` is the same source plus
 // this, which is what a golden frame is rendered by. The app code either binary runs is the
 // same code, so the product binary is the one the app was verified through.
 #ifdef ROLLTUI_SELFTEST
@@ -166,6 +167,12 @@ struct Browser {
   std::size_t focus_col = 0;
   std::size_t first_col = 0;  // the leftmost visible column: the horizontal scroll
   std::string root;
+  // THE OUTCOME. Set by an action, read by the app once the poll's events are handled. The widget
+  // cannot end the process and must not decide what a chosen path MEANS — printing it, and what
+  // the shell does with it, are the app's and the shell's. Two flags rather than one enum with an
+  // "open" state, so a reader of either asks one question.
+  bool accepted = false;
+  bool cancelled = false;
 
   const Column* focused() const { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
   Column* focused() { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
@@ -484,9 +491,11 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
   else if (action == "browser.page_up") b->move(-page);
   else if (action == "browser.page_down") b->move(page);
   else if (action == "browser.first") b->select(0);
-  else if (action == "browser.last") { const Column* c = b->focused(); if (c && !c->entries.n == 0) b->select(c->entries.n - 1); }
+  else if (action == "browser.last") { const Column* c = b->focused(); if (c && c->entries.n != 0) b->select(c->entries.n - 1); }
   else if (action == "browser.into") b->into();
   else if (action == "browser.out") b->out();
+  else if (action == "browser.accept") b->accepted = true;
+  else if (action == "browser.cancel") b->cancelled = true;
   else return 0;
   return 1;
 }
@@ -560,6 +569,11 @@ struct App {
   RolltuiRows status_rows{};
   int w = 100, h = 30;
   bool quit = false;
+  // THE EXIT CONTRACT: `chosen` is printed and the status is 0 ONLY when an accept happened.
+  // Every other way out — cancel, a global quit — prints nothing and exits 1. The shell function
+  // reads exactly this pair, and an empty path with status 0 would send it to `cd ""`.
+  std::string chosen;
+  int exit_code = 1;
 
   App() {
     layout = rolltui_layout_new();
@@ -764,6 +778,23 @@ struct App {
     }
   }
 
+  // Once after each batch of events: did the browser end the session? An accept takes the
+  // selected entry's path — or the column's own directory when the column is empty, which is
+  // what the eye is on when there is nothing to select.
+  void settle() {
+    Browser* b = browser();
+    if (!b) return;
+    if (b->accepted) { chosen = b->selected_path(); exit_code = 0; quit = true; }
+    else if (b->cancelled) quit = true;
+  }
+
+  // What the process leaves behind on stdout: the chosen path and a newline, or nothing at all.
+  // Called after the terminal is restored, so the line lands on a normal screen.
+  int finish() const {
+    if (exit_code == 0) { std::fwrite(chosen.data(), 1, chosen.size(), stdout); std::fputc('\n', stdout); }
+    return exit_code;
+  }
+
   void toggle_popup(const char* id) {
     const std::size_t len = std::strlen(id);
     if (rolltui_window_stack_depth(stack) > 1) { rolltui_window_stack_pop(stack); return; }
@@ -841,7 +872,7 @@ struct App {
       const Column* c = b->focused();
       std::snprintf(num, sizeof num, "%zu", c ? c->entries.n : 0);
       status_rows.add("entries", num);
-      std::snprintf(num, sizeof num, "%d/%zu", b->focus_col + 1, b->cols.size());
+      std::snprintf(num, sizeof num, "%zu/%zu", b->focus_col + 1, b->cols.size());
       status_rows.add("column", num);
       status_rows.add("sort", opt.sort == Sort::Name ? "name" : opt.sort == Sort::Size ? "size" : "modified");
       if (opt.hidden) rolltui_rows_add(&status_rows, "", 0, "+dotfiles", 9);
@@ -863,8 +894,8 @@ std::string read_file(const std::string& path, bool& ok) {
 // cmake/embed_presets.cmake. Compiled in rather than written here, so the screen's words live in
 // the JSON a user's preset directory shadows and in no hand-written source.
 extern "C" {
-extern const RolltuiEmbeddedFile explorer_kAppFiles[];
-extern const size_t explorer_kAppFileCount;
+extern const RolltuiEmbeddedFile dirktui_kAppFiles[];
+extern const size_t dirktui_kAppFileCount;
 }
 
 // Where a person's own presets live, the same three rungs `rolltui_app_file` walks for an app's
@@ -896,18 +927,234 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, Ro
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-explorer [PATH] [--ambiguous-wide]\n"
+               "usage: dirktui [PATH] [--ambiguous-wide]   browse from PATH (default: the current directory)\n"
+               "                                           Enter prints the selection on stdout and exits 0;\n"
+               "                                           Esc prints nothing and exits 1\n"
+               "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
+               "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
+               "                                           fish: dirktui init fish | source\n"
 #ifdef ROLLTUI_SELFTEST
-               "                        [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
-               "                        [--frame WxH] [--keys \"Down Right CtrlD\"]\n"
+               "       [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
+               "       [--frame WxH] [--keys \"Down Right CtrlD\"]\n"
 #endif
                );
   return 2;
 }
 
+// THE SHELL SIDE, printed by `dirktui init <shell>` so it is versioned with the binary it drives
+// (zoxide, atuin and fzf all ship their shell code this way). The three scripts say the same
+// thing in three dialects; what they say, so a reader of the C++ knows the other half:
+//   * A CHOSEN PATH MEANS ONE COMMAND LINE: a folder is `cd`'d into; an executable file means
+//     `cd` to its folder; any other file means `cd` to its folder AND open it ($DIRK_OPEN,
+//     defaulting to xdg-open where that exists and `open` otherwise). The line is composed once
+//     (`_dirk_command`) and is what runs, what goes into history, and what a person sees.
+//   * `dirk [PATH]` at a prompt browses, then runs that line; a chosen file is printed first so
+//     the eye knows what it is now beside. `dirk init …` passes through to the binary.
+//   * Right Arrow with the cursor at the END of the line opens the browser. On an empty line the
+//     composed command runs — in zsh through accept-line (fzf's alt-c), in bash through
+//     `history -s` + eval, in fish directly — so it is in history where the shell allows. On a
+//     line with text the choice is inserted at the cursor, quoted, starting from and replacing
+//     the last word when that word names a folder (`ls src/<Right>`). Fish keeps its own Right
+//     on a non-empty line, because a pending autosuggestion cannot be asked about there.
+//   * Right Arrow anywhere else, or with an autosuggestion showing, is what it always was.
+constexpr const char* kZshInit = R"zsh(# dirk — zsh integration for dirktui. In ~/.zshrc:   eval "$(dirktui init zsh)"
+: "${DIRK_OPEN:=$( (( $+commands[xdg-open] )) && print xdg-open || print open )}"
+
+# A chosen path as the ONE command line that acts on it: the line that runs and the line history keeps.
+_dirk_command() {
+  local out="$1"
+  if [[ -d "$out" ]]; then
+    print -r -- "builtin cd -- ${(q)out}"
+  elif [[ -x "$out" ]]; then
+    print -r -- "builtin cd -- ${(q)out:h}"
+  else
+    print -r -- "builtin cd -- ${(q)out:h} && ${DIRK_OPEN} ${(q)out}"
+  fi
+}
+
+dirk() {
+  if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
+  local out
+  out="$(command dirktui "$@")" || return $?
+  [[ -n "$out" ]] || return 1
+  [[ -d "$out" ]] || print -r -- "$out"
+  eval "$(_dirk_command "$out")"
+}
+
+_dirk_widget() {
+  emulate -L zsh
+  local start='' word='' out
+  if [[ -n "$LBUFFER" ]]; then
+    word="${LBUFFER##* }"
+    local probe="$word"
+    [[ "$probe" == '~' || "$probe" == '~/'* ]] && probe="$HOME${probe#\~}"
+    [[ -n "$probe" && -d "$probe" ]] && start="$probe"
+  fi
+  out="$(command dirktui ${start:+"$start"} < /dev/tty)"
+  if [[ -z "$out" ]]; then
+    zle redisplay
+    return 0
+  fi
+  if [[ -z "$BUFFER" ]]; then
+    zle push-line
+    BUFFER="$(_dirk_command "$out")"
+    zle accept-line
+    local ret=$?
+    zle reset-prompt
+    return $ret
+  fi
+  [[ -n "$start" ]] && LBUFFER="${LBUFFER%"$word"}"
+  LBUFFER+="${(q)out}"
+  zle reset-prompt
+}
+zle -N _dirk_widget
+
+_dirk_forward_char() {
+  if (( CURSOR < ${#BUFFER} )) || [[ -n "$POSTDISPLAY" ]]; then
+    zle forward-char
+  else
+    zle _dirk_widget
+  fi
+}
+zle -N _dirk_forward_char
+bindkey -M emacs '^[[C' _dirk_forward_char
+bindkey -M emacs '^[OC' _dirk_forward_char
+bindkey -M viins '^[[C' _dirk_forward_char
+bindkey -M viins '^[OC' _dirk_forward_char
+)zsh";
+
+constexpr const char* kBashInit = R"bash(# dirk — bash integration for dirktui. In ~/.bashrc:   eval "$(dirktui init bash)"
+: "${DIRK_OPEN:=$(command -v xdg-open >/dev/null 2>&1 && echo xdg-open || echo open)}"
+
+# A chosen path as the ONE command line that acts on it: the line that runs and the line history keeps.
+_dirk_command() {
+  local out="$1" dir
+  dir="$(dirname -- "$out")"
+  if [[ -d "$out" ]]; then
+    printf 'builtin cd -- %q' "$out"
+  elif [[ -x "$out" ]]; then
+    printf 'builtin cd -- %q' "$dir"
+  else
+    printf 'builtin cd -- %q && %s %q' "$dir" "$DIRK_OPEN" "$out"
+  fi
+}
+
+dirk() {
+  if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
+  local out
+  out="$(command dirktui "$@")" || return $?
+  [[ -n "$out" ]] || return 1
+  [[ -d "$out" ]] || printf '%s\n' "$out"
+  eval "$(_dirk_command "$out")"
+}
+
+# READLINE_POINT is a BYTE offset into READLINE_LINE; lengths compared to it are measured in bytes.
+_dirk_bytes() { local LC_ALL=C; printf '%s' "${#1}"; }
+
+_dirk_forward_char() {
+  local len
+  len="$(_dirk_bytes "$READLINE_LINE")"
+  if (( READLINE_POINT < len )); then
+    # One CHARACTER forward, however many bytes it is.
+    local head next
+    head="$(LC_ALL=C; printf '%s' "${READLINE_LINE:0:READLINE_POINT}")"
+    next="${READLINE_LINE:${#head}:1}"
+    READLINE_POINT=$(( READLINE_POINT + $(_dirk_bytes "$next") ))
+    return 0
+  fi
+  local start='' word='' out
+  if [[ -n "$READLINE_LINE" ]]; then
+    word="${READLINE_LINE##* }"
+    local probe="$word"
+    [[ "$probe" == '~' || "$probe" == '~/'* ]] && probe="$HOME${probe#\~}"
+    [[ -n "$probe" && -d "$probe" ]] && start="$probe"
+  fi
+  out="$(command dirktui ${start:+"$start"} < /dev/tty)" || return 0
+  [[ -n "$out" ]] || return 0
+  if [[ -z "$READLINE_LINE" ]]; then
+    local cmd
+    cmd="$(_dirk_command "$out")"
+    history -s "$cmd"
+    eval "$cmd"
+    return 0
+  fi
+  [[ -n "$start" ]] && READLINE_LINE="${READLINE_LINE%"$word"}"
+  READLINE_LINE+="$(printf '%q' "$out")"
+  READLINE_POINT="$(_dirk_bytes "$READLINE_LINE")"
+}
+bind -m emacs-standard -x '"\e[C": _dirk_forward_char'
+bind -m emacs-standard -x '"\eOC": _dirk_forward_char'
+bind -m vi-insert -x '"\e[C": _dirk_forward_char'
+bind -m vi-insert -x '"\eOC": _dirk_forward_char'
+)bash";
+
+constexpr const char* kFishInit = R"fish(# dirk — fish integration for dirktui. In config.fish:   dirktui init fish | source
+if not set -q DIRK_OPEN
+    if type -q xdg-open
+        set -g DIRK_OPEN xdg-open
+    else
+        set -g DIRK_OPEN open
+    end
+end
+
+# What a chosen path means: a folder is entered; a file lands in its folder, is printed, and is
+# opened unless it is executable.
+function _dirk_go --argument-names out
+    if test -d "$out"
+        builtin cd -- "$out"
+        return
+    end
+    printf '%s\n' "$out"
+    builtin cd -- (dirname -- "$out"); or return
+    test -x "$out"; or $DIRK_OPEN "$out"
+end
+
+function dirk
+    if test "$argv[1]" = init
+        command dirktui $argv
+        return
+    end
+    set -l out (command dirktui $argv); or return
+    test -n "$out"; or return 1
+    _dirk_go "$out"
+end
+
+# Right Arrow opens the browser only on an EMPTY line. With text on the line fish may be showing
+# an autosuggestion, which cannot be asked about here, so Right stays fish's own.
+function _dirk_forward_char
+    if test -n (commandline)
+        commandline -f forward-char
+        return
+    end
+    set -l out (command dirktui </dev/tty)
+    commandline -f repaint
+    test -n "$out"; or return
+    _dirk_go "$out"
+    commandline -f repaint
+end
+bind \e\[C _dirk_forward_char
+bind \eOC _dirk_forward_char
+)fish";
+
+// `dirktui init <shell>`: the integration for that shell on stdout. A name this binary has no
+// script for is refused with the list it has, never answered with another shell's.
+int init_command(int argc, char** argv) {
+  const std::string shell = argc == 3 ? argv[2] : "";
+  const char* script = shell == "zsh" ? kZshInit : shell == "bash" ? kBashInit : shell == "fish" ? kFishInit : nullptr;
+  if (!script) {
+    std::fprintf(stderr, "usage: dirktui init zsh|bash|fish\n");
+    return 2;
+  }
+  std::fputs(script, stdout);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+  // A subcommand is the FIRST word and nothing else: a directory literally called `init` is
+  // still reachable as `dirktui ./init`.
+  if (argc >= 2 && std::string(argv[1]) == "init") return init_command(argc, argv);
   std::string start;
   bool ambiguous = false;
   [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
@@ -916,7 +1163,7 @@ int main(int argc, char** argv) {
     const std::string a = argv[i];
     [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
     // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
-    //   1. A SELF-TEST HOOK — compiled in only for `rolltui-explorer-selftest`, which is this same
+    //   1. A SELF-TEST HOOK — compiled in only for `dirk-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
     //      that gets verified is not the one that ships.
     //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
@@ -987,7 +1234,7 @@ int main(int argc, char** argv) {
     // neither, the app asks the library where its OWN default lives, which is what lets it run bare.
     const bool named = !layout_arg.empty() || !presets_dir.empty();
     if (named) {
-      const std::string name = layout_arg.empty() ? std::string("explorer") : layout_arg;
+      const std::string name = layout_arg.empty() ? std::string("dirktui") : layout_arg;
       const bool path = name.find('/') != std::string::npos || name.find(".json") != std::string::npos;
       const std::string file = path ? name : presets_dir + "/layouts/" + name + ".json";
       bool ok = false;
@@ -997,8 +1244,8 @@ int main(int argc, char** argv) {
                  rolltui_str_append(&layout_tried, file.data(), file.size()); }
     } else {
       RolltuiStr text{};
-      if (rolltui_app_file(argv[0], "rolltui-explorer", "layout",
-                           explorer_kAppFiles, explorer_kAppFileCount, &text, &layout_tried)) {
+      if (rolltui_app_file(argv[0], "dirktui", "layout",
+                           dirktui_kAppFiles, dirktui_kAppFileCount, &text, &layout_tried)) {
         loaded = load_layout_text(app.ctx, std::string(text.p ? text.p : "", text.n), &rep);
         have = loaded != nullptr;
       }
@@ -1008,7 +1255,7 @@ int main(int argc, char** argv) {
   if (!have) {
     // NAME WHAT WAS WANTED AND EVERY PLACE IT WAS SOUGHT. "no layout ()" was this message, and
     // an empty parenthesis is the standard this library enforces on everyone else, failed here.
-    std::fprintf(stderr, "rolltui-explorer: cannot load its layout%s%s\n",
+    std::fprintf(stderr, "dirktui: cannot load its layout%s%s\n",
                  rep.error.empty() ? "" : ": ", rep.error.c_str());
     if (layout_tried.n) std::fprintf(stderr, "tried:\n%.*s\n", (int)layout_tried.n, layout_tried.p);
     rolltui_str_free(&layout_tried);
@@ -1034,8 +1281,8 @@ int main(int argc, char** argv) {
     if (!presets_dir.empty()) text = read_file(presets_dir + "/bindings/default.json", ok);
     else {
       RolltuiStr t{};
-      ok = rolltui_app_file(argv[0], "rolltui-explorer", "bindings",
-                            explorer_kAppFiles, explorer_kAppFileCount, &t, nullptr) != 0;
+      ok = rolltui_app_file(argv[0], "dirktui", "bindings",
+                            dirktui_kAppFiles, dirktui_kAppFileCount, &t, nullptr) != 0;
       if (ok) text.assign(t.p ? t.p : "", t.n);
       rolltui_str_free(&t);
     }
@@ -1054,7 +1301,7 @@ int main(int argc, char** argv) {
       RolltuiStr why{};
       rolltui_bindings_report_summary(&brep, &why);
       if (why.size() != 0)
-        std::fprintf(stderr, "rolltui-explorer: bindings/default.json: %s\n", why.c_str());
+        std::fprintf(stderr, "dirktui: bindings/default.json: %s\n", why.c_str());
       rolltui_str_free(&why);
       rolltui_bindings_report_release(&brep);
     }
@@ -1071,7 +1318,7 @@ int main(int argc, char** argv) {
     if (!rolltui_gap_report_clean(&gaps)) {
       RolltuiStr say{};
       rolltui_gap_report_summary(&gaps, &say);
-      std::fprintf(stderr, "rolltui-explorer: %s\n", say.c_str());
+      std::fprintf(stderr, "dirktui: %s\n", say.c_str());
       rolltui_str_free(&say);
     }
     rolltui_gap_report_release(&gaps);
@@ -1084,6 +1331,10 @@ int main(int argc, char** argv) {
     if (!keys_spec.empty()) {
       for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
         if (!st.tick) app.handle(st.ev);
+      app.settle();
+      // A script that accepts or cancels gets the PRODUCT's answer — the path or nothing, with
+      // its exit status — and no frame, so the headless run and the real one leave the same bytes.
+      if (app.quit) return app.finish();
       app.prepare();
     }
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
@@ -1098,12 +1349,30 @@ int main(int argc, char** argv) {
   }
 #endif
 
+  // A PERSON AT A KEYBOARD IS THE PRECONDITION, checked on stdin BEFORE the terminal is touched.
+  // dirk takes its keys from whoever is typing, and a stdin that is a pipe means there is nobody —
+  // a script, a test harness, `yes | dirk`. Refusing here is what keeps a headless run from
+  // opening the controlling terminal and sitting in raw mode waiting for a key nobody will press.
+  // The shell side redirects `< /dev/tty` for the same reason fzf's widget does.
+  if (!isatty(STDIN_FILENO)) {
+    std::fprintf(stderr, "dirktui: stdin is not a terminal, and dirk takes its keys from the keyboard\n");
+    return 2;
+  }
+  // THE SCREEN IS /dev/tty, ALWAYS — not stdout when stdout happens to be a terminal. One
+  // behaviour, whether run bare or inside `$(dirk)`, and stdout carries nothing but the answer.
+  // No /dev/tty means nowhere to draw: said by name, exit 2, never a hang reading a pipe.
+  const int tty = open("/dev/tty", O_RDWR | O_CLOEXEC);
+  if (tty < 0) {
+    std::fprintf(stderr, "dirktui: cannot open /dev/tty (%s): no terminal to draw on\n", std::strerror(errno));
+    return 2;
+  }
   RolltuiTerminalOptions opts{};
-  RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
+  RolltuiTerminal* term = rolltui_terminal_new(tty, tty, opts);
   if (!rolltui_terminal_is_tty(term)) {
     rolltui_terminal_free(term);
-    std::fprintf(stderr, "not a terminal; use --frame WxH\n");
-    return 1;
+    close(tty);
+    std::fprintf(stderr, "dirktui: /dev/tty is not a terminal\n");
+    return 2;
   }
   app.w = rolltui_terminal_width(term);
   app.h = rolltui_terminal_height(term);
@@ -1147,10 +1416,12 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < pending.events.size(); ++i)
       if (pending.text_of[i] != kNone) pending.events[i].text = pending.texts[pending.text_of[i]].data();
     for (const RolltuiEvent& e : pending.events) app.handle(e);
+    app.settle();
     if (pending.resized) { app.w = pending.w; app.h = pending.h; }
   }
   rolltui_str_free(&out);
   rolltui_swap_free(swap);
-  rolltui_terminal_free(term);
-  return 0;
+  rolltui_terminal_free(term);  // restores the screen BEFORE the answer is written
+  close(tty);
+  return app.finish();
 }

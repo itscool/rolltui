@@ -1,11 +1,13 @@
 //
-// explorer_test.cpp — the FOURTH CONSUMER, driven headlessly.
+// dirk_test.cpp — `dirk`, the shell directory picker, driven headlessly.
 //
-// `rolltui-explorer` is a read-only column-view file browser whose custom widget is the first
-// in this repo with internal structure the library does not model. This suite runs the real
-// binary against a FIXTURE TREE it builds under $TMPDIR — never the machine's own files, so a
-// frame is a pure function of the fixture — and asserts what the app does, plus the two
-// controls that make the screen's file-ness checkable.
+// `dirk` is a read-only column-view file browser that prints the chosen path on stdout: its
+// custom widget is the first in this repo with internal structure the library does not model.
+// This suite runs the real binary against a FIXTURE TREE it builds under $TMPDIR — never the
+// machine's own files, so a frame is a pure function of the fixture — and asserts what the app
+// does, the CONTRACT its shell function reads (path + exit 0, or nothing + exit 1, and the two
+// never blur), that the `init zsh` script parses and its `dirk` function actually changes
+// directory, plus the two controls that make the screen's file-ness checkable.
 //
 // WHY THESE ARE CONTENT ASSERTIONS AND NOT BYTE GOLDENS, decided here with its reason: the
 // details page renders a file's real size and modification time, which no fixture can make
@@ -14,6 +16,7 @@
 // `studio_golden_test` keeps the byte-level guarantee for the library's own rendering.
 //
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdio>
@@ -31,8 +34,8 @@ using namespace rolltui_test;
 using namespace testkit;
 namespace fs = std::filesystem;
 
-#ifndef ROLLTUI_EXPLORER_BIN
-#error "ROLLTUI_EXPLORER_BIN must name the explorer binary"
+#ifndef DIRKTUI_BIN
+#error "DIRKTUI_BIN must name the dirktui binary"
 #endif
 #ifndef ROLLTUI_EXAMPLES_DIR
 #error "ROLLTUI_EXAMPLES_DIR must point at rolltui/examples"
@@ -49,6 +52,10 @@ std::string run(const std::string& cmd, int& rc) {
   rc = pclose(p);
   return out;
 }
+
+// The child's EXIT STATUS, which is what a shell's `||` reads. `pclose` returns a wait status,
+// and `rc == 1` on one is never true — a test comparing it to 1 would pass on nothing.
+int status_of(int rc) { return rc == -1 ? -1 : (WIFEXITED(rc) ? WEXITSTATUS(rc) : 128); }
 
 bool has(const std::string& hay, const std::string& needle) { return hay.find(needle) != std::string::npos; }
 
@@ -70,7 +77,7 @@ void write_file(const fs::path& p, const std::string& s) {
 
 int main() {
   const char* tmp = std::getenv("TMPDIR");
-  const fs::path scratch = fs::path(tmp && *tmp ? tmp : "/tmp") / ("rolltui-explorer-test-" + std::to_string(getpid()));
+  const fs::path scratch = fs::path(tmp && *tmp ? tmp : "/tmp") / ("dirk-test-" + std::to_string(getpid()));
   fs::remove_all(scratch);
   fs::create_directories(scratch);
 
@@ -87,7 +94,7 @@ int main() {
   write_file(tree / "a-very-long-name-that-will-not-fit-inside-one-column.txt", "long\n");
   std::filesystem::create_directories(tree / "empty-dir");
 
-  const std::string bin = std::string("'") + ROLLTUI_EXPLORER_BIN + "'";
+  const std::string bin = std::string("'") + DIRKTUI_BIN + "'";
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
   const std::string base = bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
 
@@ -98,24 +105,24 @@ int main() {
   {
     int erc = 0;
     const std::string th = run(bin + " '" + tree.string() + "' --frame 80x14 --keys \"F4\" 2>&1", erc);
-    check(has(th, "theme editor") && has(th, "Roles"), "F4 opens the theme editor in the explorer");
+    check(has(th, "theme editor") && has(th, "Roles"), "F4 opens the theme editor in dirktui");
     const std::string ke = run(bin + " '" + tree.string() + "' --frame 80x14 --keys \"F5\" 2>&1", erc);
-    check(has(ke, "keys editor") && has(ke, "Actions by scope"), "F5 opens the keys editor in the explorer");
+    check(has(ke, "keys editor") && has(ke, "Actions by scope"), "F5 opens the keys editor in dirktui");
     check(!has(th, "keys editor") && !has(ke, "theme editor"), "…and each chord opens its own, not the other");
   }
 
   // ---- 0a. THE PRODUCT BINARY CANNOT TEST ITSELF -------------------------------------------
-  // Additive, not compiled out: rolltui-explorer-selftest is this same source plus the script
+  // Additive, not compiled out: dirk-selftest is this same source plus the script
   // vocabulary, and the shipped binary simply does not contain it. Asserted on the ARTIFACT
   // rather than on the source, because what ships is a binary and that is what the claim is
   // about. TripleClick is a marker the vocabulary owns; a key NAME like PageDown would not
   // discriminate, since the library's own key table carries those and both binaries link it.
   {
     int prc = 0;
-    const std::string product = std::string("'") + ROLLTUI_EXPLORER_PRODUCT_BIN + "'";
+    const std::string product = std::string("'") + DIRKTUI_PRODUCT_BIN + "'";
     const std::string refused = run(product + " --frame 40x6 2>&1", prc);
     check(has(refused, "usage:") && !has(refused, "--frame"),
-          "the shipped explorer refuses --frame and does not advertise it");
+          "the shipped dirktui refuses --frame and does not advertise it");
     const std::string in_product = run("strings " + product + " | grep -cx TripleClick", prc);
     const std::string in_selftest = run("strings " + bin + " | grep -cx TripleClick", prc);
     check(in_product.substr(0, 1) == "0", "…and the script vocabulary is absent from the shipped binary [" + in_product.substr(0, 3) + "]");
@@ -124,19 +131,19 @@ int main() {
 
   // ---- 0. it runs BARE, and a miss names every path it tried --------------------------------
   // The app keeps its screen in files rather than in its source, so with no --presets it has to
-  // ask where its own files are. It used to build "/layouts/explorer.json" from an empty string
+  // ask where its own files are. It used to build "/layouts/dirktui.json" from an empty string
   // and print "no layout ()" — a message naming neither what it wanted nor where it looked.
   {
     int brc = 0;
     const std::string bare = run(bin + " '" + tree.string() + "' --frame 70x10 2>&1", brc);
     check(!has(bare, "no layout") && !has(bare, "cannot load"),
-          "the explorer runs with NO arguments: it finds its own embedded layout [" + bare.substr(0, 60) + "]");
+          "dirktui runs with NO arguments: it finds its own embedded layout [" + bare.substr(0, 60) + "]");
     check(has(bare, "columns"), "…and draws its own screen, whose title lives only in its layout file");
 
     int mrc = 0;
     const std::string miss = run(bin + " '" + tree.string() + "' --presets '/nonexistent-xyz' --frame 40x6 2>&1", mrc);
     check(has(miss, "cannot load its layout"), "a miss says what it could not load [" + miss.substr(0, 50) + "]");
-    check(has(miss, "tried:") && has(miss, "/nonexistent-xyz/layouts/explorer.json"),
+    check(has(miss, "tried:") && has(miss, "/nonexistent-xyz/layouts/dirktui.json"),
           "…and NAMES the path it tried, rather than an empty parenthesis");
   }
 
@@ -163,9 +170,116 @@ int main() {
   }
 
   // ---- 1. it renders a directory ------------------------------------------------------------
+  // ---- THE SHELL CONTRACT: what `$(dirk)` receives and what `|| return` sees -------------------
+  // Everything the `init zsh` function relies on, asserted on the product's answer rather than on
+  // a frame. "Nothing printed" and "exit 0" must never coincide: `cd ""` is `cd ~`, silently.
+  {
+    int crc = 0;
+    const std::string here = tree.string();
+    const std::string dir = run(bin + " '" + here + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && dir == (tree / "alpha").string() + "\n",
+          "Enter prints the selected directory, one line, exit 0 [" + dir.substr(0, 60) + "]");
+    const std::string deeper = run(bin + " '" + here + "' --frame 80x20 --keys \"Right Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && deeper == (tree / "alpha" / "nested").string() + "\n",
+          "…and Right then Enter prints the directory one column in — the path is the eye's, not the root's");
+    const std::string file = run(bin + " '" + here + "' --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string file_path = file.empty() ? file : file.substr(0, file.size() - 1);
+    check(status_of(crc) == 0 && !file_path.empty() && fs::is_regular_file(file_path),
+          "a selected FILE is printed as itself — what a file means for `cd` is the shell side's call [" +
+              file_path.substr(file_path.rfind('/') + 1) + "]");
+    const std::string empty = run(bin + " '" + (tree / "empty-dir").string() + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && empty == (tree / "empty-dir").string() + "\n",
+          "Enter in an EMPTY directory prints that directory: the eye is on it and there is nothing else to choose");
+    for (const char* cancel : {"Escape", "CtrlQ", "CtrlC"}) {
+      const std::string none = run(bin + " '" + here + "' --frame 80x20 --keys \"" + cancel + "\" 2>/dev/null", crc);
+      check(status_of(crc) == 1 && none.empty(),
+            std::string(cancel) + " prints NOTHING and exits 1 — the shell function's `|| return` needs both");
+    }
+    const std::string popup = run(bin + " '" + here + "' --frame 80x20 --keys \"F1 Escape\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && has(popup, "alpha") && !has(popup, "the live key table"),
+          "…while Escape over a POPUP closes the popup and the session goes on — cancel is the browser's key, not a global one");
+    const std::string typing = run(bin + " '" + here + "' --frame 80x20 --keys \"CtrlG Type:abc Escape\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && has(typing, "abc"),
+          "…and Escape in the path input stays the input's, so typing a path is never one key from leaving");
+  }
+
+  // ---- `dirktui init <shell>`: the shell side, parsed by each shell and RUN through a stand-in ----
+  // The Right Arrow bindings need a line editor and are not exercised here; the `dirk` function
+  // is, in zsh and bash, with `command dirktui` resolved to a script on PATH that answers what the
+  // real binary would, and `$DIRK_OPEN` resolved to a script that RECORDS what it was asked to open.
+  {
+    int irc = 0;
+    const std::string product = std::string("'") + DIRKTUI_PRODUCT_BIN + "'";
+    const std::string other = run(product + " init nushell 2>&1", irc);
+    check(status_of(irc) == 2 && has(other, "usage: dirktui init zsh|bash|fish"),
+          "a shell it has no script for is refused with the list it has, never answered with another's");
+
+    const fs::path fake = scratch / "fake";
+    fs::create_directories(fake);
+    write_file(tree / "alpha" / "run.sh", "#!/bin/sh\necho hi\n");
+    chmod((tree / "alpha" / "run.sh").c_str(), 0755);
+    // The stand-in: `FAKE=dir` answers a directory, `FAKE=file` a plain file, `FAKE=exe` an
+    // executable file, anything else cancels (exit 1, nothing printed) — the answers the real
+    // binary can give.
+    write_file(fake / "dirktui", "#!/bin/sh\ncase \"$FAKE\" in\n  dir) printf '%s\\n' '" + (tree / "alpha").string() +
+                                     "';;\n  file) printf '%s\\n' '" + (tree / "alpha" / "one.txt").string() +
+                                     "';;\n  exe) printf '%s\\n' '" + (tree / "alpha" / "run.sh").string() +
+                                     "';;\n  *) exit 1;;\nesac\n");
+    chmod((fake / "dirktui").c_str(), 0755);
+    const fs::path opened = scratch / "opened.log";
+    write_file(fake / "openlog", "#!/bin/sh\nprintf '%s\\n' \"$1\" >> '" + opened.string() + "'\n");
+    chmod((fake / "openlog").c_str(), 0755);
+
+    struct Shell { const char* name; const char* source; };
+    for (const Shell& sh : {Shell{"zsh", "source"}, Shell{"bash", "source"}}) {
+      const std::string script = run(product + " init " + sh.name + " 2>/dev/null", irc);
+      check(status_of(irc) == 0 && has(script, "_dirk_forward_char") && has(script, "_dirk_command") &&
+                has(script, "command dirktui"),
+            std::string("`dirktui init ") + sh.name + "` prints the wrapper, the composed command, and the Right Arrow binding");
+      const fs::path init = scratch / (std::string("init.") + sh.name);
+      write_file(init, script);
+      run(std::string(sh.name) + " -n '" + init.string() + "' 2>&1", irc);
+      check(status_of(irc) == 0, std::string("…and ") + sh.name + " -n accepts the script it printed");
+      fs::remove(opened);
+      const std::string drive = "PATH='" + fake.string() + "':\"$PATH\" DIRK_OPEN='" + (fake / "openlog").string() + "' " +
+                                sh.name + " -c '" + sh.source + " \"" + init.string() + "\"; " +
+                                "cd /; FAKE=dir dirk; echo \"dir=$? $PWD\"; " +
+                                "cd /; FAKE=file dirk >/dev/null; echo \"file=$? $PWD\"; " +
+                                "cd /; FAKE=exe dirk >/dev/null; echo \"exe=$? $PWD\"; " +
+                                "cd /; FAKE=no dirk; echo \"cancel=$? $PWD\"' 2>&1";
+      const std::string drove = run(drive, irc);
+      const std::string alpha = (tree / "alpha").string();
+      check(has(drove, "dir=0 " + alpha + "\n"),
+            std::string(sh.name) + ": the `dirk` function cd's to the folder the binary printed [" + drove.substr(0, 90) + "]");
+      check(has(drove, "file=0 " + alpha + "\n"), std::string(sh.name) + ": a chosen FILE lands in its folder");
+      check(has(drove, "exe=0 " + alpha + "\n"), std::string(sh.name) + ": so does an executable file");
+      check(has(drove, "cancel=1 /\n"), std::string(sh.name) + ": a cancel changes nothing and returns 1");
+      bool ok = false;
+      const std::string log = read_file(opened.string(), ok);
+      check(ok && log == (tree / "alpha" / "one.txt").string() + "\n",
+            std::string(sh.name) + ": the plain file was OPENED through $DIRK_OPEN and the executable was NOT [" +
+                log.substr(0, 80) + "]");
+    }
+
+    // fish is not on every machine. When it is, its script must parse; when it is not, the script
+    // is still asserted to exist — a check that silently did nothing would look like a pass.
+    const std::string fish = run(product + " init fish 2>/dev/null", irc);
+    check(status_of(irc) == 0 && has(fish, "function dirk") && has(fish, "_dirk_forward_char"),
+          "`dirktui init fish` prints the wrapper and the Right Arrow binding");
+    const std::string have_fish = run("command -v fish 2>/dev/null", irc);
+    if (!have_fish.empty()) {
+      const fs::path init = scratch / "init.fish";
+      write_file(init, fish);
+      run("fish -n '" + init.string() + "' 2>&1", irc);
+      check(status_of(irc) == 0, "…and fish -n accepts the script it printed");
+    } else {
+      std::fprintf(stderr, "  [SKIP] fish is not installed here, so its script was not parsed\n");
+    }
+  }
+
   int rc = 0;
   const std::string wide = run(base + " --frame 150x30 2>&1", rc);
-  check(rc == 0 && !wide.empty(), "the explorer renders a directory headlessly (rc " + std::to_string(rc) + ")");
+  check(rc == 0 && !wide.empty(), "dirktui renders a directory headlessly (rc " + std::to_string(rc) + ")");
   check(has(wide, "alpha") && has(wide, "beta") && has(wide, "zeta.txt"),
         "…the first column lists the fixture's entries");
   check(has(wide, "one.txt") || has(wide, "two.txt"),
@@ -254,7 +368,7 @@ int main() {
           if (line.find(w) != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln) + ": " + w);
       }
     }
-    check(scanned >= 30, "scanned every source the explorer is built from (" + std::to_string(scanned) + " files)");
+    check(scanned >= 30, "scanned every source dirktui is built from (" + std::to_string(scanned) + " files)");
     check(hits.empty(), "no source names this screen's window ids or titles — they exist only in the layout file" +
                             (hits.empty() ? "" : " [" + hits.front() + "]"));
   }
@@ -285,5 +399,5 @@ int main() {
   }
 
   fs::remove_all(scratch);
-  return report("rolltui_explorer_test");
+  return report("rolltui_dirktui_test");
 }

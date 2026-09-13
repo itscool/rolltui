@@ -270,7 +270,7 @@ int main() {
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tools", {".cpp", ".hpp"}, files);
     // `rolltui/examples/` is scanned too, and NOTHING in it may opt in. It holds the
     // two CONSUMERS — `rolltui-paint` (moved here from `tools/` when the directory's name
-    // finally misled someone) and `rolltui-explorer` — and a consumer that reaches past the
+    // finally misled someone) and `dirktui` — and a consumer that reaches past the
     // definition is what makes this zero worth asserting.
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/examples", {".cpp", ".hpp"}, files);
     list_files(std::string(ROLLTUI_SOURCE_DIR) + "/tests", {".cpp", ".hpp", ".c"}, files);
@@ -431,7 +431,7 @@ int main() {
     std::set<std::string> paint_reach;
     {
       std::map<std::string, int> counts;
-      for (const char* f : {"/examples/paint.cpp", "/examples/explorer.cpp", "/tools/tool_str.hpp"})
+      for (const char* f : {"/examples/paint.cpp", "/examples/dirktui.cpp", "/tools/tool_str.hpp"})
         count_idents(strip_comments_and_literals(read(root + f)), counts);
       for (const auto& [k, v] : counts) paint_reach.insert(k);
     }

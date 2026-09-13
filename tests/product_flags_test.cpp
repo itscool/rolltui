@@ -40,7 +40,7 @@ using namespace rolltui_test;
 using namespace testkit;
 
 #if !defined(ROLLTUI_STUDIO_PRODUCT_BIN) || !defined(ROLLTUI_PAINT_PRODUCT_BIN) || \
-    !defined(ROLLTUI_EXPLORER_PRODUCT_BIN)
+    !defined(DIRKTUI_PRODUCT_BIN)
 #error "the three product binaries must be named"
 #endif
 
@@ -82,7 +82,7 @@ int main() {
   const std::vector<Product> products = {
       {"rolltui-studio", ROLLTUI_STUDIO_PRODUCT_BIN, "--check"},
       {"rolltui-paint", ROLLTUI_PAINT_PRODUCT_BIN, "--ambiguous-wide"},
-      {"rolltui-explorer", ROLLTUI_EXPLORER_PRODUCT_BIN, "--ambiguous-wide"},
+      {"dirktui", DIRKTUI_PRODUCT_BIN, "--ambiguous-wide"},
   };
 
   // ---- the control: the usage line IS an inventory, and the search finds what is in it -----
@@ -109,7 +109,11 @@ int main() {
   for (const Product& p : products) {
     if (std::string(p.keeps) != "--ambiguous-wide") continue;  // the studio's is asserted below
     int rc = 0;
-    const std::string out = run(std::string("'") + p.bin + "' " + p.keeps + " 2>&1", rc);
+    // stdin from /dev/null, stated rather than inherited: a product that draws on /dev/tty (dirktui)
+    // must refuse before it touches the terminal, and "stdin is not a terminal" is the
+    // precondition it refuses on. Inheriting ctest's stdin would make this probe's safety depend
+    // on how ctest was launched.
+    const std::string out = run(std::string("'") + p.bin + "' " + p.keeps + " < /dev/null 2>&1", rc);
     check(out.find("usage:") == std::string::npos && out.find("terminal") != std::string::npos,
           std::string(p.name) + " ACCEPTS '" + p.keeps + "' and gets past argv to the terminal check");
   }
