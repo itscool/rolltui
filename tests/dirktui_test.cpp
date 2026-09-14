@@ -427,6 +427,13 @@ int main() {
       check(faded_of(narrow) > 0, "a column clipped at the left edge is drawn faded [faded=" + std::to_string(faded_of(narrow)) + "]");
       check(faded_of(wide_report) == 0, "…and a window that fits every column fades nothing — the control");
     }
+    // A START INSIDE A LEAF — a folder with no folders — is anchored like any other start: the leaf
+    // at the right, its ancestors to the left, never the leaf alone at the far left.
+    const std::string leaf_start = run(home_env + bin + " '" + (tree / "alpha" / "nested").string() + "'" + presets +
+                                           " --theme default-dark --frame 60x10 2>&1", rc);
+    check(has(leaf_start, "alpha") && has(leaf_start, "deep.txt") && col_of_word(leaf_start, "deep.txt") > 30,
+          "a start inside a leaf folder shows its ancestors, with the leaf at the right [deep.txt at " +
+              std::to_string(col_of_word(leaf_start, "deep.txt")) + "]");
     // A DEEP START SHOWS ITS ANCESTORS: the columns run from the root down to the start folder,
     // each with the next component selected — the reason the focus sits one in from the edge.
     const std::string deep_start = run(base + " --frame 200x10 2>&1", rc);

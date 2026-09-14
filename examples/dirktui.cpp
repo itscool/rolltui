@@ -369,6 +369,7 @@ struct Browser {
   int scroll_from = 0;
   unsigned long long scroll_start_ms = 0;
   bool scrolling = false;
+  bool anchored_once = false;     // a real anchor has run against a known window; until then nothing is "kept"
   unsigned long long now_ms = 0;  // the frame clock, set by the app before each frame; 0 = headless, no motion
   std::size_t faded_cells = 0;    // how many cells the last frame drew faded at the left edge: a self-test reads it
   static constexpr unsigned long long kScrollMs = 120;
@@ -555,6 +556,7 @@ struct Browser {
     return false;
   }
   void retarget() {
+    if (inner.w <= 0) return;  // no window yet: the first layout anchors, and nothing before it counts
     int total = 0;
     for (std::size_t j = 0; j < cols.size(); ++j) total += width_for_anchor(j) + 1;
     total = total > 0 ? total - 1 : 0;
@@ -569,11 +571,15 @@ struct Browser {
     // ENTERING A LEAF SHIFTS NOTHING. A focused last column with no folders gives up the slot,
     // and re-anchoring would pull every column right to fill it — a shift for a move that opens
     // nothing after it. If the leaf is already whole on screen where it is, the target stays.
-    if (!cols.empty() && focus_col + 1 == cols.size() && !slot) {
+    // Only once a real anchor has placed the columns: a start INSIDE a leaf must be anchored like
+    // any other start — the leaf at the right, its ancestors to the left — not kept at wherever
+    // the walk left it before the window was known.
+    if (anchored_once && !cols.empty() && focus_col + 1 == cols.size() && !slot) {
       int focus_x = scroll_target;
       for (std::size_t j = 0; j < focus_col; ++j) focus_x += cols[j].width + 1;
       if (focus_x >= 0 && focus_x < inner.w) return;  // it starts on screen: leave it where it was as the preview
     }
+    anchored_once = true;
     if (total > inner.w && !cols.empty()) {
       const std::size_t last = std::min(focus_col + 1, cols.size() - 1);
       int right_end = 0;
