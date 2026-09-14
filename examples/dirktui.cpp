@@ -147,47 +147,102 @@ void spark(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const Rolltui
   if (pop) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
 }
 
-// `dirk_sparkle`: every cell has its own slow rhythm — a period of one and a half to four
-// seconds and a phase, both hashed from the cell — and once a period it sparks: pops and fades.
-// A row of twenty cells sparks every hundred and fifty milliseconds or so, never twice in the
-// same place, and the name stays legible, because a spark is one cell for a tenth of a second.
-void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
-                RolltuiEffectOut* out) {
-  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 2654435761u + static_cast<unsigned>(in->length) * 40503u + 7u);
-  const unsigned long long period = 1500 + seed % 2500;
-  const unsigned long long phase = (seed >> 8) % period;
-  const unsigned long long life = 600;
-  const unsigned long long t = (in->elapsed_ms + phase) % period;
-  if (t >= life) return;
-  const double u = static_cast<double>(t) / life;         // 0 at the pop, 1 when it is over
-  const double k = (1.0 - u) * (1.0 - u);                 // fades fast at first, then lingers
-  spark(s, styles, in, 0, k, u < 0.15, out);
+// `dirk_glow`: the cursor's word, TINTED in the first role from end to end, with a soft bright
+// band in the second role that bounces left and right across it — the shimmer a text UI puts on
+// a word that is live, rather than a block of background behind it. The band's centre follows a
+// triangle over the period, so it turns at the ends instead of wrapping; its brightness falls
+// off as a bell around the centre, `width` cells wide, so it is a glow and not a stripe.
+void fx_glow(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+             RolltuiEffectOut* out) {
+  const int period = s->period_ms > 0 ? s->period_ms : 2000;
+  const double width = s->width > 0 ? s->width : 3.0;
+  const double u = static_cast<double>(in->elapsed_ms % static_cast<unsigned long long>(period)) / period;
+  const double tri = u < 0.5 ? u * 2.0 : (1.0 - u) * 2.0;
+  const double centre = tri * (in->length > 1 ? in->length - 1 : 0);
+  const double d = (in->index - centre) / width;
+  const double peak = std::exp(-d * d * 2.0);
+  const RolltuiStyleColor tint = styles[s->roles[0]].fg;
+  const RolltuiStyleColor bright = styles[s->roles[1 % s->role_count]].fg;
+  out->has_style = 1;
+  out->style = in->base;
+  out->style.fg = blend_to(tint, bright, peak);
+  out->style.bold = peak > 0.6 ? 1 : in->base.bold;
 }
 
-// `dirk_burst`: ONE shot on the row just opened — a wave runs from the centre outward, each
-// cell POPPING as the front reaches it and FADING back behind it, with a few late twinkles in
-// its wake; past the period, nothing. A one-cell glyph over a wide glyph is refused by the
-// applier and keeps its own shape, which is the rule and not a special case.
+// `dirk_sparkle`: the name is TINTED with the spark colour all the time — a floor of a third,
+// so a trail row reads as the path — and every cell has its own slow rhythm, a period of two to
+// five seconds and a phase both hashed from the cell; once a period it sparks: pops a `✦` for
+// a tenth of a second and fades back to the floor over a second and a half. A row of twenty
+// cells sparks every two hundred milliseconds or so, never twice in the same place.
+void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+                RolltuiEffectOut* out) {
+  static constexpr double kFloor = 0.35;   // how much of the spark colour the name keeps between sparks
+  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 2654435761u + static_cast<unsigned>(in->length) * 40503u + 7u);
+  const unsigned long long period = 2000 + seed % 3000;
+  const unsigned long long phase = (seed >> 8) % period;
+  const unsigned long long life = 1500;
+  const unsigned long long t = (in->elapsed_ms + phase) % period;
+  double k = kFloor;
+  bool pop = false;
+  if (t < life) {
+    const double u = static_cast<double>(t) / life;       // 0 at the pop, 1 when it is over
+    k = kFloor + (1.0 - kFloor) * (1.0 - u) * (1.0 - u); // down to the floor, fast at first
+    pop = u < 0.07;
+  }
+  spark(s, styles, in, 0, k, pop, out);
+}
+
+// A HUE AS A COLOUR, for the one effect that is allowed to invent one. The library's rule that
+// an effect never invents a colour keeps a mono screen legible and a theme in charge; it holds
+// here everywhere it can be checked — on a screen without RGB this kind falls back to the theme's
+// roles — and is set aside, deliberately, for the celebration below in 24-bit colour, where a
+// rainbow has no role to be named by. `h` in [0,1), saturated, full value.
+RolltuiStyleColor hue(double h) {
+  h -= std::floor(h);
+  const double x = h * 6.0;
+  const int i = static_cast<int>(x);
+  const double f = x - i, s = 0.75;
+  const double p = 1.0 - s, q = 1.0 - s * f, t = 1.0 - s * (1.0 - f);
+  double r = 1, g = 1, b = 1;
+  switch (i % 6) {
+    case 0: r = 1; g = t; b = p; break;
+    case 1: r = q; g = 1; b = p; break;
+    case 2: r = p; g = 1; b = t; break;
+    case 3: r = p; g = q; b = 1; break;
+    case 4: r = t; g = p; b = 1; break;
+    default: r = 1; g = p; b = q; break;
+  }
+  RolltuiStyleColor c{};
+  c.kind = RolltuiStyleColor::Kind::Rgb;
+  c.r = static_cast<unsigned char>(r * 255 + 0.5);
+  c.g = static_cast<unsigned char>(g * 255 + 0.5);
+  c.b = static_cast<unsigned char>(b * 255 + 0.5);
+  return c;
+}
+
+// `dirk_burst`: ONE shot on the name just opened — a RAINBOW slides across the word, rising
+// fast, holding, and fading back to the name's own colour by the end of the period, with a
+// scatter of `✦` on the pop. Past the period, nothing. Without RGB the word cycles the theme's
+// roles instead, so the moment still happens on every screen.
 void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
               RolltuiEffectOut* out) {
-  const int period = s->period_ms > 0 ? s->period_ms : 900;
+  const int period = s->period_ms > 0 ? s->period_ms : 1200;
   if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
-  const double centre = (in->length - 1) / 2.0;
-  const double d = std::fabs(in->index - centre);
-  const double reach = centre + 1.0;
-  const double wave_ms = period * 0.45;                    // the front takes this long to reach the ends
-  const double arrives = d / reach * wave_ms;              // when the front reaches this cell
-  const double since = static_cast<double>(in->elapsed_ms) - arrives;
-  if (since < 0) return;                                   // the front has not reached it yet
-  const double life = period - arrives;                    // it fades until the burst is over
-  const double u = since / life;
-  double k = (1.0 - u) * (1.0 - u);
-  // a late twinkle in the wake, hashed per cell, so the fade is not a uniform dimming
+  const double u = static_cast<double>(in->elapsed_ms) / period;
+  const double k = u < 0.15 ? u / 0.15 : u < 0.45 ? 1.0 : (1.0 - u) / 0.55;   // rise, hold, fade
+  const double along = in->length > 1 ? static_cast<double>(in->index) / (in->length - 1) : 0.0;
+  const double h = along * 0.9 - u * 1.6;                                      // the gradient slides left
+  out->has_style = 1;
+  out->style = in->base;
+  if (in->base.fg.kind == RolltuiStyleColor::Kind::Rgb) {
+    out->style.fg = blend_to(in->base.fg, hue(h), k * k);
+  } else {
+    const std::size_t which = (static_cast<std::size_t>(in->index) + static_cast<std::size_t>(u * 12)) % s->role_count;
+    if (k > 0.5) out->style.fg = styles[s->roles[which]].fg;
+  }
+  out->style.bold = k > 0.4 ? 1 : in->base.bold;
   const unsigned seed = hash32(static_cast<unsigned>(in->index) * 7919u + 11u);
-  const double twinkle_at = 0.3 + (seed % 100) / 200.0;   // 30%..80% of the way through
-  const double tw = std::fabs(u - twinkle_at);
-  if ((seed >> 8) % 3 == 0 && tw < 0.06) k = std::max(k, 0.8 - tw * 8.0);
-  spark(s, styles, in, u < 0.5 ? 0 : 1, k, since < 70.0, out);
+  if (u < 0.08 && seed % 5 < 2) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
 }
 
 // ---- text measured and cut to a column's width ---------------------------------------------
@@ -304,7 +359,7 @@ struct Browser {
   unsigned long long opened_since_ms = 0;
   std::size_t opened_col = static_cast<std::size_t>(-1);
   std::size_t opened_sel = 0;
-  static constexpr unsigned long long kOpenedMs = 900;  // the burst on an opened file is over by then
+  static constexpr unsigned long long kOpenedMs = 1300;  // the burst on an opened file is over by then (its period is 1200)
   void eye_moved() { cursor_since_ms = now_ms; }
   void file_opened() { opened_since_ms = now_ms; opened_col = focus_col; opened_sel = focused() ? focused()->sel : 0; }
 
@@ -647,7 +702,16 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     // is drawn FADED, cell by cell, each grapheme in its own colour by its distance from the edge.
     const int hidden = r.x - x;  // ≤ 0 when the column starts on screen
     const bool clipped = x < r.x;
-    auto keep_at = [&](int sx) { const double t = (sx - r.x + 0.5) / kFadeCells; return t < 0 ? 0.0 : t > 1 ? 1.0 : t; };
+    // A ROLL-OFF, NOT A RAMP: the colour eases toward the edge on a cosine, and bottoms out one
+    // step above nothing — the eye continues the curve to zero past the border on its own, and a
+    // cell that reached zero would read as missing rather than as fading.
+    auto keep_at = [&](int sx) {
+      const double t = (sx - r.x + 0.5) / kFadeCells;
+      const double u = t < 0 ? 0.0 : t > 1 ? 1.0 : t;
+      const double eased = 0.5 - 0.5 * std::cos(u * 3.14159265358979323846);
+      const double floor = 1.0 / kFadeCells;
+      return floor + (1.0 - floor) * eased;
+    };
     auto put_faded = [&](int at, int y, const std::string& text, const RolltuiStyle& st, int room) {
       // one grapheme at a time: `rolltui_u_fit` gives the byte boundary of every cell count
       std::size_t from = 0;
@@ -703,26 +767,35 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       // column to the RIGHT is a preview the cursor has not entered, and its first entry is not
       // a choice anyone made: it draws no selection at all until the cursor arrives.
       const bool is_trail = is_sel && ci < b->focus_col;
-      const bool trail_still = is_trail && !b->opt->motion;
-      const RolltuiStyle st = is_sel && is_focus_col ? here : trail_still ? trail
+      // WITH MOTION ON, NEITHER SELECTION IS A BLOCK OF BACKGROUND: the theme's effect on the
+      // NAME is the marker — the cursor's glow, the trail's sparkle. With motion off both are
+      // still highlights, the cursor's and the trail's, as a still screen needs.
+      const bool still = !b->opt->motion;
+      const RolltuiStyle st = is_sel && is_focus_col && still ? here : is_trail && still ? trail
                             : (e.is_dir ? text : (e.unreadable ? dim : text));
-      if (is_sel && (is_focus_col || is_trail)) {
-        const int fx = std::max(x, r.x);
-        if (is_focus_col || trail_still) fill_row(fx, y, x + cw - fx, st);
-        // THE CURSOR'S MARK, folder or file alike, for as long as the eye is on the row; and
-        // the trail's, for as long as the row is a trail row.
-        if (is_focus_col) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_cursor, b->cursor_since_ms, 0);
-        else rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_trail, 0, 0);
-        // THE OPENED MOMENT: one burst on the row whose file was just opened, then nothing.
-        if (ci == b->opened_col && i == b->opened_sel) {
-          const unsigned long long age = b->now_ms >= b->opened_since_ms ? b->now_ms - b->opened_since_ms : 0;
-          if (age < Browser::kOpenedMs) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_opened, b->opened_since_ms, 0);
-        }
-      }
       // A directory is marked with a trailing chevron rather than a colour, so the shape
       // survives `mono` and a colour-blind reader alike.
       const std::string label = str_of(e.name) + (e.is_dir ? " \xE2\x80\xBA" : "");
-      put_clipped(x + 1, y, b->measure.fit(label, cw - 1), st, cw - 1);
+      const std::string shown_label = b->measure.fit(label, cw - 1);
+      if (is_sel && (is_focus_col || is_trail)) {
+        const int fx = std::max(x, r.x);
+        if (still) fill_row(fx, y, x + cw - fx, st);
+        // THE MARKS COVER THE NAME AND NOTHING ELSE — a spark in empty space is a spark on
+        // nothing. The cursor's, folder or file alike, for as long as the eye is on the row;
+        // the trail's, for as long as the row is a trail row.
+        const int lx = std::max(x + 1, r.x);
+        const int lw = std::min(b->measure.width(shown_label), x + cw - lx);
+        if (lw > 0) {
+          if (is_focus_col) rolltui_frame_mark(f, lx, y, lw, b->opt->st_cursor, b->cursor_since_ms, 0);
+          else rolltui_frame_mark(f, lx, y, lw, b->opt->st_trail, 0, 0);
+          // THE OPENED MOMENT: one burst on the row whose file was just opened, then nothing.
+          if (ci == b->opened_col && i == b->opened_sel) {
+            const unsigned long long age = b->now_ms >= b->opened_since_ms ? b->now_ms - b->opened_since_ms : 0;
+            if (age < Browser::kOpenedMs) rolltui_frame_mark(f, lx, y, lw, b->opt->st_opened, b->opened_since_ms, 0);
+          }
+        }
+      }
+      put_clipped(x + 1, y, shown_label, st, cw - 1);
     }
     if (c.entries.n == 0) {
       // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
@@ -962,6 +1035,7 @@ struct App {
     rolltui_effect_state_register(ctx, "dirk.trail", 10, &opt.st_trail);
     rolltui_effect_state_register(ctx, "dirk.opened", 11, &opt.st_opened);
     rolltui_effect_register(ctx, "dirk_sparkle", 12, fx_sparkle, nullptr, nullptr);
+    rolltui_effect_register(ctx, "dirk_glow", 9, fx_glow, nullptr, nullptr);
     rolltui_effect_register(ctx, "dirk_burst", 10, fx_burst, nullptr, nullptr);
   }
   App(const App&) = delete;
