@@ -112,6 +112,7 @@ typedef struct QueuedEvent {
 
 struct RolltuiTerminal {
   int in_fd, out_fd;
+  int owned_fd; /* a reopened terminal (see reopen_if_unpollable), closed at free; else -1 */
   int tty;
   int entered;
   int w, h;
@@ -239,11 +240,47 @@ static void term_leave(RolltuiTerminal* t) {
 
 /* ---- lifetime ---------------------------------------------------------------------------- */
 
+/* A DESCRIPTOR THAT CANNOT BE POLLED IS REOPENED BY ITS REAL NAME. On Darwin, poll(2) on a
+ * descriptor opened from the `/dev/tty` alias answers POLLNVAL every time, while read(2) on
+ * it works — so a host that opened `/dev/tty` (the ordinary way to draw on the terminal while
+ * stdout carries an answer) gets a loop that never sees a key and a negotiation that blocks
+ * in read until one arrives by luck. The same device reached through its own name
+ * (`/dev/ttys003`, what ttyname(3) gives for the alias) polls normally. Detected rather than
+ * assumed, with a zero-timeout poll, so a descriptor that polls is never touched; the
+ * reopened one is OWNED here and closed at `rolltui_terminal_free`. */
+static int reopen_if_unpollable(int fd) {
+  struct pollfd p;
+  int std_fd;
+  p.fd = fd;
+  p.events = POLLIN;
+  p.revents = 0;
+  if (poll(&p, 1, 0) < 0 || !(p.revents & POLLNVAL)) return -1;
+  if (!isatty(fd)) return -1;
+  /* ttyname(3) of the alias answers "/dev/tty" again, so the real name has to come from a
+   * descriptor that was opened by it: the controlling terminal is the one the standard
+   * descriptors sit on, whichever of them is still a terminal. */
+  for (std_fd = 0; std_fd < 3; ++std_fd) {
+    const char* name = isatty(std_fd) ? ttyname(std_fd) : NULL;
+    if (name && strcmp(name, "/dev/tty") != 0) return open(name, O_RDWR | O_CLOEXEC);
+  }
+  return -1;
+}
+
 RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts) {
   RolltuiTerminal* t = (RolltuiTerminal*)rolltui_mem_alloc(sizeof *t);
   memset(t, 0, sizeof *t);
   t->in_fd = in_fd;
   t->out_fd = out_fd;
+  {
+    const int r = reopen_if_unpollable(in_fd);
+    if (r >= 0) {
+      t->owned_fd = r;
+      t->in_fd = r;
+      if (out_fd == in_fd) t->out_fd = r;
+    } else {
+      t->owned_fd = -1;
+    }
+  }
   t->tty = isatty(out_fd) != 0;
   t->w = 80;
   t->h = 24;
@@ -277,6 +314,7 @@ RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOpti
 void rolltui_terminal_free(RolltuiTerminal* t) {
   if (!t) return;
   term_leave(t);
+  if (t->owned_fd >= 0) close(t->owned_fd); /* after leave: the restore bytes went down it */
   if (t->wake_r >= 0) close(t->wake_r);
   if (t->wake_w >= 0) close(t->wake_w);
   rolltui_key_decoder_free(t->decoder);

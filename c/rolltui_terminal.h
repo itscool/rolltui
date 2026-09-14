@@ -19,6 +19,12 @@
  *                              // so the process dies as it would have but never leaves the
  *                              // user staring at an alternate screen with a raw tty.
  *
+ * A HOST MAY HAND OVER A DESCRIPTOR OPENED FROM `/dev/tty` — the ordinary way to draw on the
+ * terminal while stdout carries an answer for a shell — and on Darwin poll(2) answers POLLNVAL
+ * for that alias while read(2) works. The constructor detects it with a zero-timeout poll and
+ * reopens the same terminal by its real name (from whichever standard descriptor is a tty),
+ * owning that descriptor until free. A descriptor that polls is never touched.
+ *
  * Raw mode here means cfmakeraw: ISIG is off, so Ctrl-C arrives as a key event
  * and SIGINT only ever comes from
  * outside. Ctrl-Z likewise. The restore path is async-signal-safe: precomputed bytes

@@ -212,7 +212,66 @@ int main() {
     ::close(p[1]);
     rolltui_terminal_free(t);
   }
-  ::close(master);
-  ::close(slave);
+  // ---- a descriptor opened from /dev/tty is reopened by its real name --------------------
+  // On Darwin, poll(2) on the `/dev/tty` alias answers POLLNVAL, so a host that opens it (the
+  // ordinary way to draw on the terminal while stdout carries an answer) would never see a key
+  // and would leave without its restore bytes landing. The child below owns the slave as its
+  // controlling terminal, opens `/dev/tty` exactly as such a host does, and must get Enter
+  // through the ordinary poll and leave the terminal restored.
+  {
+    int sig[2];
+    check(::pipe(sig) == 0, "pipe");
+    pid_t pid = fork();
+    if (pid == 0) {
+      close(sig[0]);
+      ::close(master);  // a session leader exiting while it holds its own terminal's MASTER never finishes
+      setsid();
+      ioctl(slave, TIOCSCTTY, 0);
+      signal(SIGTTOU, SIG_IGN);       // taking the foreground from a fresh session is otherwise a stop
+      tcsetpgrp(slave, getpgrp());
+      dup2(slave, 0);
+      dup2(slave, 1);
+      dup2(slave, 2);
+      ::close(slave);
+      const int tty = open("/dev/tty", O_RDWR | O_CLOEXEC);
+      if (tty < 0) _exit(4);
+      RolltuiTerminalOptions o;
+      RolltuiTerminal* t = rolltui_terminal_new(tty, tty, o);
+      rolltui_terminal_write(t, "READY", 5);
+      int got_enter = 0;
+      for (int i = 0; i < 40 && !got_enter; ++i) {
+        std::vector<std::string> ev;
+        rolltui_terminal_poll(t, 50, collect_term, &ev);
+        for (const std::string& e : ev)
+          if (e == "Enter") got_enter = 1;
+      }
+      rolltui_terminal_free(t);
+      close(tty);
+      const char* word = got_enter ? "GOT" : "NOT";
+      write(sig[1], word, 3);
+      _exit(got_enter ? 0 : 1);
+    }
+    close(sig[1]);
+    std::string got = read_until(master, "READY", 2000);
+    // The parent's own copy of the slave is released before the child exits: a session leader
+    // leaving its controlling terminal waits for the last reference, and this case is last.
+    ::close(slave);
+    write(master, "\r", 1);
+    char word[4] = {0};
+    read(sig[0], word, 3);
+    close(sig[0]);
+    // The restore bytes were written before the word; read them, then release the MASTER too:
+    // the child is a session leader, and its exit revokes its terminal, which waits for the
+    // last holder of either side. Only then wait for it.
+    got += read_until(master, "\x1b[?1049l", 2000);
+    ::close(master);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    check(std::string(word) == "GOT" && WIFEXITED(status) && WEXITSTATUS(status) == 0,
+          "Enter reaches a terminal opened from /dev/tty through the ordinary poll [" + std::string(word) + "]");
+    check(got.find("\x1b[?1049l") != std::string::npos && got.find("\x1b[?1006l") != std::string::npos,
+          "…and its restore bytes (alt screen off, mouse off) reach the terminal on the way out");
+  }
+
   return report("rolltui_terminal_test");
 }
