@@ -149,49 +149,39 @@ RolltuiStyleColor brighter(RolltuiStyleColor c, double amount) {
 }
 
 // A SPARK, at `k` of the way up: the floor is the role's own colour, the top is a near-white
-// version of it. Colour only — except the one spark in five that FLICKERS on its way in, a
-// burst collapsing onto the letter: `✸`, then `✦`, then `·`, then the letter, forty
-// milliseconds each, in the brightest colour. The letter is what is being decorated and it
-// comes straight back; every glyph here is one cell wide, so none is ever refused.
+// version of it. COLOUR ONLY: a glyph flickered onto the letter was tried twice and taken out
+// twice — the letter is what is being decorated, and it stays the letter.
 void spark(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in, std::size_t role, double k,
-           int flicker, RolltuiEffectOut* out) {
+           RolltuiEffectOut* out) {
   const RolltuiStyleColor lit = brighter(styles[s->roles[role % s->role_count]].fg, k > 0.5 ? (k - 0.5) * 1.6 : 0.0);
   out->has_style = 1;
   out->style = in->base;
   out->style.fg = blend_to(in->base.fg, lit, k);
   out->style.bold = k > 0.5 ? 1 : in->base.bold;
-  static const char* const kFlicker[] = {"", "\xE2\x9C\xB8", "\xE2\x9C\xA6", "\xC2\xB7"};  // ✸ ✦ ·
-  if (flicker >= 1 && flicker <= 3) {
-    const std::size_t n = std::strlen(kFlicker[flicker]);
-    out->has_glyph = 1;
-    std::memcpy(out->glyph, kFlicker[flicker], n);
-    out->glyph_len = n;
-  }
 }
 
 // `dirk_sparkle`: the name is TINTED with the spark colour all the time — a floor of a third,
-// so a trail row reads as the path — and sparks at a rate PER WORD, not per cell: each cell's
-// period is the word's length times one to two seconds, with a phase hashed from the cell, so
-// a three-letter name sparks as often as a thirty-letter one. A spark pops to near-white and
-// fades back to the floor over a second and a half; one in five flickers a glyph on its way in.
+// so a trail row reads as the path — and sparks at a rate PER WORD, not per cell: two sparks a
+// second on every word whatever its length, so each cell's period is the word's length times
+// half a second, with a phase and a little jitter hashed from the cell so words do not tick in
+// step. A spark pops to near-white and fades back to the floor over a second and a half.
 void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
                 RolltuiEffectOut* out) {
-  static constexpr double kFloor = 0.35;   // how much of the spark colour the name keeps between sparks
+  static constexpr double kFloor = 0.35;          // how much of the spark colour the name keeps between sparks
+  static constexpr double kSparksPerSecond = 2.0; // per WORD
   const unsigned seed = hash32(static_cast<unsigned>(in->index) * 2654435761u + static_cast<unsigned>(in->length) * 40503u + 7u);
   const unsigned long long len = in->length > 0 ? static_cast<unsigned long long>(in->length) : 1;
-  const unsigned long long period = len * (1000 + seed % 1000);
+  const unsigned long long base = static_cast<unsigned long long>(1000.0 / kSparksPerSecond);
+  const unsigned long long period = len * (base * 8 / 10 + seed % (base * 4 / 10 + 1));   // ±20% jitter
   const unsigned long long phase = (seed >> 8) % period;
   const unsigned long long life = 1500;
   const unsigned long long t = (in->elapsed_ms + phase) % period;
-  const unsigned long long nth = (in->elapsed_ms + phase) / period;   // which spark this is, for the one in five
   double k = kFloor;
-  int flicker = 0;
   if (t < life) {
     const double u = static_cast<double>(t) / life;       // 0 at the pop, 1 when it is over
     k = kFloor + (1.0 - kFloor) * (1.0 - u) * (1.0 - u); // down to the floor, fast at first
-    if (hash32(seed ^ static_cast<unsigned>(nth * 2246822519u)) % 5 == 0) flicker = t < 40 ? 1 : t < 80 ? 2 : t < 120 ? 3 : 0;
   }
-  spark(s, styles, in, 0, k, flicker, out);
+  spark(s, styles, in, 0, k, out);
 }
 
 // `dirk_glow`: the cursor's word, TINTED in the role from end to end, with a soft band that
@@ -531,7 +521,7 @@ struct Browser {
   // Column `ci`'s left edge, in the inner rect's x, at the CURRENT scroll (mid-slide included).
   int column_x(std::size_t ci) const {
     int x = inner.x + scroll_x;
-    for (std::size_t j = 0; j < ci && j < cols.size(); ++j) x += cols[j].width + 1;
+    for (std::size_t j = 0; j < ci && j < cols.size(); ++j) x += shown_width(j) + 1;
     return x;
   }
 
@@ -542,13 +532,18 @@ struct Browser {
   // if the anchor followed that width the focused column would shuffle left and right under the
   // eye as the cursor moved. So the anchor counts the last column as `kMaxColumnWidth` wide,
   // whatever it holds: the focused column stays put, and a narrow preview leaves room beside it.
-  // The PREVIEW — the column right of the focus, when it is the last — counts as the maximum
-  // width whatever it holds, so nothing moves while the cursor stays in a column. The focused
-  // column itself always counts as its own width: widening it would move it, which is the one
-  // thing the reserve exists to prevent.
-  int width_for_anchor(std::size_t ci) const {
-    const bool preview_last = ci == focus_col + 1 && ci + 1 == cols.size();
-    return preview_last ? std::max(kMaxColumnWidth, cols[ci].width) : cols[ci].width;
+  // ONE WIDTH PER COLUMN, read by the anchor, the draw, the hit test and the scroll alike —
+  // there used to be three (the content measure, the anchor's idea of the last column, and
+  // what was drawn), and they disagreed: the slot was 28 wide while the column in it stayed 12.
+  // The rule: the LAST SLOT is `kMaxColumnWidth` wide and whoever occupies it is drawn that
+  // wide — the preview, or the focused column when it is a leaf, since nothing can come after
+  // it. A focused column with folders keeps its content width, because a slot is reserved after
+  // it and widening it would move it, which is the one thing the reserve exists to prevent.
+  int shown_width(std::size_t ci) const {
+    const bool last = ci + 1 == cols.size();
+    const bool preview = ci == focus_col + 1;
+    const bool focused_leaf = ci == focus_col && !column_has_folder(cols[ci]);
+    return last && (preview || focused_leaf) ? std::max(kMaxColumnWidth, cols[ci].width) : cols[ci].width;
   }
   static bool column_has_folder(const Column& c) {
     for (std::size_t i = 0; i < c.entries.n; ++i)
@@ -558,7 +553,7 @@ struct Browser {
   void retarget() {
     if (inner.w <= 0) return;  // no window yet: the first layout anchors, and nothing before it counts
     int total = 0;
-    for (std::size_t j = 0; j < cols.size(); ++j) total += width_for_anchor(j) + 1;
+    for (std::size_t j = 0; j < cols.size(); ++j) total += shown_width(j) + 1;
     total = total > 0 ? total - 1 : 0;
     int target = 0;
     // THE SLOT IS HELD WHILE A FOLDER COULD BE SELECTED. With a file under the cursor there is
@@ -568,22 +563,21 @@ struct Browser {
     // folder at all, and only a column with none — a leaf — gives the space up.
     const bool slot = !cols.empty() && (focus_col + 1 < cols.size() || column_has_folder(cols[focus_col]));
     if (!cols.empty() && focus_col + 1 == cols.size() && slot) total += 1 + kMaxColumnWidth;
-    // ENTERING A LEAF SHIFTS NOTHING. A focused last column with no folders gives up the slot,
-    // and re-anchoring would pull every column right to fill it — a shift for a move that opens
-    // nothing after it. If the leaf is already whole on screen where it is, the target stays.
-    // Only once a real anchor has placed the columns: a start INSIDE a leaf must be anchored like
-    // any other start — the leaf at the right, its ancestors to the left — not kept at wherever
-    // the walk left it before the window was known.
+    // ENTERING A LEAF KEEPS THE COLUMNS WHERE THEY ARE. As the preview it was drawn at the slot's
+    // width and as the focus it still is (`shown_width`), so the anchor would land within a cell
+    // of where it was — the cell is the window's scrollbar, which the column being left may have
+    // needed and the leaf does not. A re-anchor for that one cell is still a shift under the eye.
+    // Only after a real anchor has run: a start INSIDE a leaf is anchored like any other start.
     if (anchored_once && !cols.empty() && focus_col + 1 == cols.size() && !slot) {
       int focus_x = scroll_target;
-      for (std::size_t j = 0; j < focus_col; ++j) focus_x += cols[j].width + 1;
-      if (focus_x >= 0 && focus_x < inner.w) return;  // it starts on screen: leave it where it was as the preview
+      for (std::size_t j = 0; j < focus_col; ++j) focus_x += shown_width(j) + 1;
+      if (focus_x >= 0 && focus_x < inner.w) return;
     }
     anchored_once = true;
     if (total > inner.w && !cols.empty()) {
       const std::size_t last = std::min(focus_col + 1, cols.size() - 1);
       int right_end = 0;
-      for (std::size_t j = 0; j <= last; ++j) right_end += width_for_anchor(j) + 1;
+      for (std::size_t j = 0; j <= last; ++j) right_end += shown_width(j) + 1;
       right_end -= 1;
       if (last == focus_col && slot) right_end += 1 + kMaxColumnWidth;
       target = std::min(0, inner.w - right_end);
@@ -591,7 +585,7 @@ struct Browser {
       // having only while it fits beside the focus; in a window too narrow for both, the focus
       // wins and the preview is what gets cut, never the column the eye is in.
       int focus_start = 0;
-      for (std::size_t j = 0; j < focus_col; ++j) focus_start += cols[j].width + 1;
+      for (std::size_t j = 0; j < focus_col; ++j) focus_start += shown_width(j) + 1;
       if (focus_start + target < 0) target = -focus_start;
     }
     if (target == scroll_target) return;
@@ -749,9 +743,10 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
     const Column& c = b->cols[ci];
     const int x = b->column_x(ci);
+    const int sw = b->shown_width(ci);
     if (x >= r.x + r.w) break;
-    if (x + c.width <= r.x) continue;  // wholly off the left edge
-    const int cw = std::min(c.width, r.x + r.w - x);
+    if (x + sw <= r.x) continue;  // wholly off the left edge
+    const int cw = std::min(sw, r.x + r.w - x);
     if (cw <= 0) break;
     // A column partly off the LEFT edge shows its right part: `hidden` cells of every line are
     // dropped, never drawn outside the rect. The title starts at x; the rows at x + 1. And it
@@ -921,8 +916,8 @@ int browser_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* ou
   std::size_t first = 0, visible = 0;
   for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
     const int x = b->column_x(ci);
-    if (x + b->cols[ci].width <= b->inner.x) { first = ci + 1; continue; }
-    if (x >= b->inner.x && x + b->cols[ci].width <= b->inner.x + b->inner.w) ++visible;
+    if (x + b->shown_width(ci) <= b->inner.x) { first = ci + 1; continue; }
+    if (x >= b->inner.x && x + b->shown_width(ci) <= b->inner.x + b->inner.w) ++visible;
   }
   out->first = first;
   out->visible = visible > 0 ? visible : 1;
@@ -960,7 +955,7 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
     // columns are its structure and the library has no way to know about them.
     for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
       const int x = b->column_x(ci);
-      const int cw = b->cols[ci].width;
+      const int cw = b->shown_width(ci);
       if (e->mouse.x >= x && e->mouse.x < x + cw && e->mouse.x >= b->inner.x) {
         b->focus_col = ci;
         b->cols.resize(ci + 1);

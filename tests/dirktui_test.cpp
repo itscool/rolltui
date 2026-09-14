@@ -95,6 +95,7 @@ int main() {
   write_file(tree / "alpha" / "one.txt", "one\n");
   write_file(tree / "alpha" / "two.txt", "two\n");
   write_file(tree / "alpha" / "nested" / "deep.txt", std::string(300, 'x'));
+  write_file(tree / "alpha" / "nested" / "leaf-file-long-name.txt", "in a leaf\n");
   fs::create_directories(tree / "beta");
   write_file(tree / "zeta.txt", "zeta\n");
   write_file(tree / "beta" / "a-quite-long-name-so-this-preview-is-wide.txt", "wide preview\n");
@@ -434,6 +435,8 @@ int main() {
     check(has(leaf_start, "alpha") && has(leaf_start, "deep.txt") && col_of_word(leaf_start, "deep.txt") > 30,
           "a start inside a leaf folder shows its ancestors, with the leaf at the right [deep.txt at " +
               std::to_string(col_of_word(leaf_start, "deep.txt")) + "]");
+    check(has(leaf_start, "leaf-file-long-name.txt"),
+          "…and the leaf is drawn at the slot's full width, so a name longer than a content-sized column shows whole");
     // A DEEP START SHOWS ITS ANCESTORS: the columns run from the root down to the start folder,
     // each with the next component selected — the reason the focus sits one in from the edge.
     const std::string deep_start = run(base + " --frame 200x10 2>&1", rc);
