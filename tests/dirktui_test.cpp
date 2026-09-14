@@ -203,6 +203,14 @@ int main() {
       write_file(cfg / "rolltui" / "dirktui" / "settings.json", json);
       return "ROLL_CONFIG_DIR='" + cfg.string() + "' " + stubs + bin + " '" + here + "'" + presets + " --theme default-dark";
     };
+    // THE CONTROL FIRST: a headless run with NO stand-in named reaches no real opener — it says so
+    // on the status line and the log stays empty — so a test can never put a window on a screen.
+    const std::string bare_env = "ROLL_CONFIG_DIR='" + (scratch / "file-enter-cfg").string() + "' ";
+    fs::create_directories(scratch / "file-enter-cfg" / "rolltui" / "dirktui");
+    write_file(scratch / "file-enter-cfg" / "rolltui" / "dirktui" / "settings.json", "{}");
+    const std::string unopened = run(bare_env + bin + " '" + here + "'" + presets + " --theme default-dark --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    check(has(unopened, "could not open") && stublines().empty(),
+          "a headless run with no stand-in opener opens NOTHING and says so — the control that keeps a test off the screen");
     const std::string stay = run(with_setting("{}") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     const std::string stay_log = stublines();
     check(status_of(crc) == 0 && has(stay, "columns") && has(stay_log, "open ") && has(stay_log, ".txt"),

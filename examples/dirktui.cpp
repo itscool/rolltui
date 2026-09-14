@@ -1100,7 +1100,7 @@ struct App {
       const std::string path = b->selected_path();
       if (!e || e->is_dir) { chosen = path; exit_code = 0; quit = true; }
       else switch (opt.file_enter) {
-        case Options::FileEnter::OpenStay: open_path(path); hint = "opened " + str_of(e->name); break;
+        case Options::FileEnter::OpenStay: hint = (open_path(path) ? "opened " : "could not open ") + str_of(e->name); break;
         case Options::FileEnter::OpenLeave: open_path(path); exit_code = 1; quit = true; break;
         case Options::FileEnter::Parent: chosen = path; exit_code = 0; quit = true; break;
         case Options::FileEnter::Insert: chosen = relative_to_start(path); exit_code = 3; quit = true; break;
@@ -1158,7 +1158,12 @@ struct App {
     return "xdg-open";
 #endif
   }
+  // A HEADLESS RUN REACHES NO REAL OPENER AND NO REAL CLIPBOARD. A `--frame` run is a test, and
+  // a test that presses Enter on a file must not put a window on someone's screen or a path on
+  // their clipboard: without a stand-in named in the environment, both are refused and said.
+  static bool headless;
   static bool open_path(const std::string& path) {
+    if (headless && !std::getenv("DIRK_OPEN")) return false;
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
@@ -1174,6 +1179,7 @@ struct App {
   // THE CLIPBOARD: `$DIRK_CLIPBOARD`, else the platform's, fed the text on stdin.
   static bool copy_to_clipboard(const std::string& text) {
     const char* cmd = std::getenv("DIRK_CLIPBOARD");
+    if (headless && !cmd) return false;
     if (!cmd || !*cmd) {
 #ifdef __APPLE__
       cmd = "pbcopy";
@@ -1328,6 +1334,8 @@ struct App {
     rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, now_ms, ambiguous, &last_fx, nullptr, nullptr);
   }
 };
+
+bool App::headless = false;
 
 std::string read_file(const std::string& path, bool& ok) {
   std::ifstream in(path, std::ios::binary);
@@ -1806,6 +1814,7 @@ int main(int argc, char** argv) {
 #ifdef ROLLTUI_SELFTEST
   if (!frame_spec.empty()) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
+    App::headless = true;
     app.prepare();
     if (!keys_spec.empty()) {
       // THE CLOCK IS THE SCRIPT'S: every step carries the moment it happens at, and a `Tick`
