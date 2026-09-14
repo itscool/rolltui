@@ -376,8 +376,8 @@ ROLLTUI_API(rolltui_bindings_add_chord, INTERNAL)  /* a step of loading or build
 ROLLTUI_API(rolltui_bindings_add_row, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
 ROLLTUI_API(rolltui_bindings_bind, PUBLIC)
 ROLLTUI_API(rolltui_bindings_breaks_enter_rule, INTERNAL)  /* a step of bind */
-ROLLTUI_API(rolltui_bindings_chord_at, INTERNAL)
-ROLLTUI_API(rolltui_bindings_chord_count, INTERNAL)
+ROLLTUI_API(rolltui_bindings_chord_at, PUBLIC)  /* a host says "F2 settings" from the live table (dirktui's status line) */
+ROLLTUI_API(rolltui_bindings_chord_count, PUBLIC)
 ROLLTUI_API(rolltui_bindings_chords_text, INTERNAL)
 ROLLTUI_API(rolltui_bindings_clear, INTERNAL)
 ROLLTUI_API(rolltui_bindings_clone, PUBLIC)
@@ -411,7 +411,7 @@ ROLLTUI_API(rolltui_bindings_set_enter_rule, INTERNAL)  /* a step of loading or 
 ROLLTUI_API(rolltui_bindings_suggest, INTERNAL)  /* a step of declare */
 ROLLTUI_API(rolltui_bindings_unbind, INTERNAL)
 ROLLTUI_API(rolltui_bindings_undeclare_others, INTERNAL)  /* a step of declare (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_chord_display, INTERNAL)
+ROLLTUI_API(rolltui_chord_display, PUBLIC)  /* the spelling the help popup uses, for a host that spells one itself */
 ROLLTUI_API(rolltui_chord_parse, PUBLIC)
 ROLLTUI_API(rolltui_chord_to_string, INTERNAL)
 ROLLTUI_API(rolltui_library_action_count, INTERNAL)  /* a step of loading or building a table; a host loads a file or clones the default */
@@ -853,6 +853,8 @@ ROLLTUI_API(rolltui_menu_scroll_first, INTERNAL)  /* a step of the menu widget *
 ROLLTUI_API(rolltui_menu_scroll_visible, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_selected, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 ROLLTUI_API(rolltui_menu_selected_item, INTERNAL)
+ROLLTUI_API(rolltui_menu_dropdown_open, INTERNAL)  /* a test reads the dropdown back */
+ROLLTUI_API(rolltui_menu_dropdown_selected, INTERNAL)
 ROLLTUI_API(rolltui_menu_set_checked, PUBLIC)  /* the third plain setter: a host opens its menu with a toggle set from its own saved setting (dirktui) */
 ROLLTUI_API(rolltui_menu_set_enabled, PUBLIC)
 ROLLTUI_API(rolltui_menu_set_options, PUBLIC)

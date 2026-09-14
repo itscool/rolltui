@@ -1291,6 +1291,11 @@ typedef struct RolltuiMenuItem {
   RolltuiStr shortcut;    /* display only; with `action_name` set it is the live chords */
   unsigned char enabled ROLLTUI_DEFAULT(1);
   unsigned char checked ROLLTUI_DEFAULT(0); /* Toggle */
+  /* Choice: its options open as a DROPDOWN — a small box over the menu, the menu still in view —
+   * rather than as a level of their own. A level is right for a set that IS a place (a submenu);
+   * a dropdown for a set that is an ANSWER (sort by name / size / modified), where leaving the
+   * screen to give it loses the context the answer belongs to. File key: `"dropdown": true`. */
+  unsigned char dropdown ROLLTUI_DEFAULT(0);
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpec spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */
@@ -3952,6 +3957,15 @@ int rolltui_bindings_has(const RolltuiBindings* b, const char* action, size_t le
  * the table and written back, so neither may claim a key. A BORROW, as above. */
 const char* rolltui_bindings_action_for(const RolltuiBindings* b, const RolltuiChord* k, const char* scope,
                                         size_t scope_len, size_t* out_len);
+
+/* THE OTHER DIRECTION: which chords run an action. What a host's own status line or help
+ * text needs to say "F2 settings" from the live table rather than from a string that goes
+ * stale the moment a person rebinds the key. `rolltui_chord_display` spells a chord the way
+ * the help popup does. */
+size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
+size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action, size_t len);
+/* Chord `i` of the row, into `out`. 0 when there is none. */
+int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out);
 
 /* Binds `chord`; a chord already bound to another action of the same scope MOVES, and
  * `moved_from` (a BORROW, valid until the next change) says which. Refused (0) for an

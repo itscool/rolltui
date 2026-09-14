@@ -33,6 +33,7 @@
 //   label                input, Text, optional — falls back to the id, as the file format does
 //   action               input, Name, optional — the BINDINGS action this item stands for
 //   checked              toggle (Toggle only)
+//   dropdown             toggle (Choice only): the options open as a box over the menu, not as a level
 //   value                input, Text, optional — a Choice's current option id, an Input's text
 //   enabled              toggle
 //   input type           choice: text | int | float | color | size | dim | name (Input only)

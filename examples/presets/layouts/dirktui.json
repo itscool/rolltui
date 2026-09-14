@@ -32,7 +32,7 @@
         "id": "columns",
         "content": "browser:tree",
         "border": "single",
-        "title": "columns",
+        "title": "dirktui",
         "focusable": true
       },
       {

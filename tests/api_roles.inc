@@ -155,6 +155,9 @@ ROLLTUI_ROLE(rolltui_theme_report_release, HOST_LOAD)
 
 /* ---- HOST_BIND ---------------------------------------------------------------------- */
 ROLLTUI_ROLE(rolltui_bindings_action_for, HOST_BIND)
+ROLLTUI_ROLE(rolltui_bindings_chord_count, HOST_BIND)
+ROLLTUI_ROLE(rolltui_bindings_chord_at, HOST_BIND)
+ROLLTUI_ROLE(rolltui_chord_display, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_bind, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_clone, HOST_BIND)
 ROLLTUI_ROLE(rolltui_bindings_declare, HOST_BIND)

@@ -137,6 +137,9 @@ void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root); /* by C
 
 
 const RolltuiMenuItem* rolltui_menu_level(const RolltuiMenu* m);
+/* Whether a dropdown is open over the menu, and which of its options is under the cursor. */
+int rolltui_menu_dropdown_open(const RolltuiMenu* m);
+size_t rolltui_menu_dropdown_selected(const RolltuiMenu* m);
 const RolltuiMenuItem* rolltui_menu_selected_item(const RolltuiMenu* m);
 
 void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out);

@@ -626,6 +626,77 @@ std::string row(const Frame& f, int y) {
 }  // namespace
 
 int main() {
+  // ---- A DROPDOWN CHOICE: its options open over the menu, the menu still in view ------------
+  // A level is right for a set that IS a place; a dropdown for a set that is an ANSWER. Enter,
+  // Right or a click on the item opens the box; Up/Down move in it; Enter chooses and closes;
+  // Escape closes without choosing; a click outside it closes it and is consumed.
+  {
+    const char* text = R"({ "id": "root", "label": "settings", "items": [
+      { "id": "sort", "label": "Sort by", "kind": "choice", "dropdown": true, "value": "name",
+        "items": [ { "id": "name", "label": "name" }, { "id": "size", "label": "size" }, { "id": "modified", "label": "modified" } ] },
+      { "id": "hidden", "label": "Show dotfiles", "kind": "toggle" } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0 && root.children.n == 2 && root.children.v[0]->dropdown == 1,
+          "a choice may say it is a dropdown in the file");
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    RolltuiRect area{0, 0, 40, 10};
+    rolltui_menu_layout(m, area);
+    RolltuiMenuEvent ev{};
+    const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiEvent enter = key(Key::Enter), down = key(Key::Down), right = key(Key::Right), esc = key(Key::Escape);
+    rolltui_menu_handle(m, &enter, b, A, &ev);
+    const size_t* path = nullptr;
+    check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_path(m, &path) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE,
+          "Enter on it opens the dropdown and does NOT descend: the level is unchanged");
+    check(rolltui_menu_dropdown_selected(m) == 0, "…with the cursor on the current answer");
+    {
+      Frame f(40, 10);
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      RolltuiStr text{};
+      rolltui_frame_to_text(f.handle(), &text);
+      const std::string t(text.p ? text.p : "", text.n);
+      rolltui_str_free(&text);
+      // The box sits in the middle of the menu's area and covers what is under it; the row it
+      // answers for, "Sort by … name ▸", is above it and stays in view.
+      check(t.find("\xE2\x97\x8F name") != std::string::npos && t.find("\xE2\x97\x8B size") != std::string::npos &&
+                t.find("name \xE2\x96\xB8") != std::string::npos,
+            "…the box lists the options with the current one marked, and the menu is still drawn around it");
+    }
+    rolltui_menu_handle(m, &down, b, A, &ev);
+    check(rolltui_menu_dropdown_selected(m) == 1, "Down moves inside the box, not the menu");
+    rolltui_menu_handle(m, &enter, b, A, &ev);
+    check(ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && std::string(ev.id.p, ev.id.n) == "sort" && std::string(ev.value.p, ev.value.n) == "size" &&
+              rolltui_menu_dropdown_open(m) == 0,
+          "Enter chooses: the same CHOOSE event a level would have produced, and the box is closed");
+    rolltui_menu_event_release(&ev);
+    check(rolltui_menu_selected(m) == 0, "…and the menu's own cursor is still on the choice");
+    rolltui_menu_handle(m, &right, b, A, &ev);
+    check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_dropdown_selected(m) == 1, "Right opens it too, on the answer just chosen");
+    rolltui_menu_handle(m, &esc, b, A, &ev);
+    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE, "Escape closes it without choosing and without closing the menu");
+    rolltui_menu_event_release(&ev);
+    // by mouse: a click on the item opens, a click outside closes and is consumed
+    RolltuiEvent click{};
+    click.kind = ROLLTUI_EVENT_MOUSE;
+    click.mouse.kind = RolltuiMouseEvent::Kind::Press;
+    click.mouse.button = 1;
+    click.mouse.x = 3; click.mouse.y = 1;  // the first item row
+    rolltui_menu_handle(m, &click, b, A, &ev);
+    check(rolltui_menu_dropdown_open(m) != 0, "a click on the choice opens the dropdown");
+    click.mouse.x = 0; click.mouse.y = 9;  // the corner: outside the box
+    rolltui_menu_handle(m, &click, b, A, &ev);
+    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE, "…and a click outside it closes it, consumed, choosing nothing");
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_free(m);
+  }
+
   const Theme& theme = *builtin_theme("default-dark");
 
   // ---- navigation ----

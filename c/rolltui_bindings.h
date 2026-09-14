@@ -120,7 +120,6 @@ const char* rolltui_library_action_description(size_t i, size_t* len);
  * tests this module's implementation — never by a host. The library does not promise these,
  * so their shape can change without breaking a consumer. */
 size_t rolltui_chord_to_string(const RolltuiChord* k, char* out, size_t cap);
-size_t rolltui_chord_display(const RolltuiChord* k, char* out, size_t cap);
 
 RolltuiBindings* rolltui_bindings_new(void);
 
@@ -132,7 +131,6 @@ size_t rolltui_bindings_action_count(const RolltuiBindings* b);
 
 const char* rolltui_bindings_action_at(const RolltuiBindings* b, size_t i, size_t* len);
 
-size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action, size_t len);
 
 /* The HELP spelling: every chord bound to `action` that THIS TERMINAL can deliver, in display
  * form ("Ctrl-W, Alt-Backspace"), comma-separated. CLEARS `out`. The undeliverable filter is
@@ -140,8 +138,6 @@ size_t rolltui_bindings_chord_count(const RolltuiBindings* b, const char* action
  * easy to get subtly wrong and easy to forget entirely. */
 void rolltui_bindings_chords_text(const RolltuiBindings* b, const char* action, size_t alen, RolltuiStr* out);
 
-/* Chord `i` of the row, into `out`. 0 when there is none. */
-int rolltui_bindings_chord_at(const RolltuiBindings* b, const char* action, size_t len, size_t i, RolltuiChord* out);
 
 int rolltui_bindings_unbind(RolltuiBindings* b, const char* action, size_t len, const RolltuiChord* chord);
 

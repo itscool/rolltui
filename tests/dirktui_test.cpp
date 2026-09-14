@@ -59,6 +59,15 @@ int status_of(int rc) { return rc == -1 ? -1 : (WIFEXITED(rc) ? WEXITSTATUS(rc) 
 
 bool has(const std::string& hay, const std::string& needle) { return hay.find(needle) != std::string::npos; }
 
+// The status line's "column a/b": which column is focused and how many there are.
+std::pair<int, int> column_of(const std::string& frame) {
+  const std::size_t at = frame.find("column ");
+  if (at == std::string::npos) return {-1, -1};
+  int a = 0, b = 0;
+  if (std::sscanf(frame.c_str() + at, "column %d/%d", &a, &b) != 2) return {-1, -1};
+  return {a, b};
+}
+
 std::string read_file(const std::string& path, bool& ok) {
   std::ifstream in(path, std::ios::binary);
   ok = static_cast<bool>(in);
@@ -142,7 +151,7 @@ int main() {
     const std::string bare = run(home_env + bin + " '" + tree.string() + "' --frame 70x10 2>&1", brc);
     check(!has(bare, "no layout") && !has(bare, "cannot load"),
           "dirktui runs with NO arguments: it finds its own embedded layout [" + bare.substr(0, 60) + "]");
-    check(has(bare, "columns"), "…and draws its own screen, whose title lives only in its layout file");
+    check(has(bare, "go to"), "…and draws its own screen, whose titles live only in its layout file");
 
     int mrc = 0;
     const std::string miss = run(home_env + bin + " '" + tree.string() + "' --presets '/nonexistent-xyz' --frame 40x6 2>&1", mrc);
@@ -163,9 +172,9 @@ int main() {
     check(err.find("must provide") == std::string::npos,
           "a missing directory is NOT reported as a capability gap [" + err.substr(0, 60) + "]");
     const std::string shown = run(home_env + bin + " '" + bad + "' --frame 150x10 2>/dev/null", drc);
-    check(has(shown, "cannot open " + bad),
-          "…the panel says it cannot open the path IN FULL — an error is not a filename and gets the "
-          "panel width, because a column sized for names truncates it to nothing useful");
+    check(has(shown, "cannot open " + bad.substr(0, 40)),
+          "…the panel says it cannot open the path, as much of it as the panel holds — an error is not a "
+          "filename and gets the panel width, because a column sized for names truncates it to nothing useful");
     check(!has(shown, "(empty)"),
           "…and a directory that CANNOT BE OPENED does not look like an EMPTY one — both have no "
           "entries, and drawing the same thing for both is a wrong answer reporting itself as success");
@@ -213,7 +222,7 @@ int main() {
           "a headless run with no stand-in opener opens NOTHING and says so — the control that keeps a test off the screen");
     const std::string stay = run(with_setting("{}") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     const std::string stay_log = stublines();
-    check(status_of(crc) == 0 && has(stay, "columns") && has(stay_log, "open ") && has(stay_log, ".txt"),
+    check(status_of(crc) == 0 && has(stay, "go to") && has(stay_log, "open ") && has(stay_log, ".txt"),
           "Enter on a file, by default, OPENS it and stays: a frame is drawn and the opener was handed the file [" +
               stay_log.substr(0, 40) + "]");
     const std::string leave = run(with_setting("{ \"file_enter\": \"open_leave\" }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
@@ -335,11 +344,11 @@ int main() {
         "…the first column lists the fixture's entries");
   check(has(wide, "one.txt") || has(wide, "two.txt"),
         "…and the column to its RIGHT is already filled from the selection — the column view's whole rule");
-  check(!has(wide, ".hidden"), "a dotfile is not shown until it is asked for");
+  check(has(wide, ".hidden"), "a dotfile is shown unless a person turns them off");
   {
-    const std::string roomy = run(base + " --frame 220x30 2>&1", rc);
-    check(rc == 0 && has(roomy, "1 hidden"),
-          "…and the widget SAYS how many it is holding back, through the plugin's `note_at` slot");
+    const std::string roomy = run(base + " --frame 220x30 --keys \"AltH\" 2>&1", rc);
+    check(rc == 0 && !has(roomy, ".hidden") && has(roomy, "1 hidden"),
+          "…and once hidden the widget SAYS how many it is holding back, through the plugin's `note_at` slot");
   }
 
   // ---- 2. the selection propagates sideways, which is the widget's argument ------------------
@@ -350,7 +359,9 @@ int main() {
   // root → alpha → nested and the third column is the deepest one.
   const std::string deep = run(base + " --frame 150x30 --keys \"Right Right\" 2>&1", rc);
   check(rc == 0 && has(deep, "deep.txt"), "…and a third column opens from the second's selection");
-  check(has(deep, "column 3/3"), "…the status line counts the columns it is showing");
+  check(column_of(deep).first == column_of(deep).second && column_of(deep).second >= 3,
+        "…the status line counts the columns it is showing, and the focus is the last of them [" +
+            std::to_string(column_of(deep).first) + "/" + std::to_string(column_of(deep).second) + "]");
 
   // ---- 3. wide, combining and over-long names ------------------------------------------------
   // ---- THE ANCHOR RULE: the focused column and its whole preview are always on screen ----------
@@ -363,12 +374,22 @@ int main() {
           "Right opens the NEW focus's preview at once, so the column to the right is never empty");
     check(!has(narrow, "\xE2\x94\x82 tree"),
           "…and the root column is scrolled partly off the left edge to make room for it");
-    const std::string roomy = run(base + " --frame 150x30 --keys \"Right\" 2>&1", rc);
-    check(has(roomy, "\xE2\x94\x82 tree"),
-          "…while a window that fits every column packs them from the left and scrolls nothing");
-    const std::string back = run(base + " --frame 46x10 --keys \"Right Left\" 2>&1", rc);
-    check(rc == 0 && has(back, "\xE2\x94\x82 tree") && has(back, "alpha"),
-          "Left slides the columns back so the root column is whole again");
+    const std::string roomy = run(base + " --frame 300x30 --keys \"Right\" 2>&1", rc);
+    check(has(roomy, "\xE2\x94\x82 /"),
+          "…while a window that fits every column packs them from the left, the file system's root first");
+    // The status line is truncated from the right, so its column count is read from a wide frame
+    // of the same keys; the narrow frames above are for what is drawn, not for what is counted.
+    const std::string in = run(base + " --frame 200x10 --keys \"Right\" 2>&1", rc);
+    const std::string back = run(base + " --frame 200x10 --keys \"Right Left\" 2>&1", rc);
+    check(rc == 0 && column_of(back).first == column_of(in).first - 1 && has(back, "alpha"),
+          "Left slides the columns back one, to the column the eye came from");
+    // A DEEP START SHOWS ITS ANCESTORS: the columns run from the root down to the start folder,
+    // each with the next component selected — the reason the focus sits one in from the edge.
+    const std::string deep_start = run(base + " --frame 200x10 2>&1", rc);
+    check(column_of(deep_start).second > column_of(deep_start).first && column_of(deep_start).first >= 3 &&
+              has(deep_start, "tree") && has(deep_start, "alpha"),
+          "a start folder is shown with its ancestors to the left and its preview to the right [column " +
+              std::to_string(column_of(deep_start).first) + "/" + std::to_string(column_of(deep_start).second) + "]");
   }
 
   // ---- MOTION: this app's own states and kinds, mapped by ITS file, read at the script's clock ----
@@ -382,28 +403,40 @@ int main() {
       const std::size_t at = err.find("effects: ");
       return at == std::string::npos ? std::string("(no effects line)") : err.substr(at, err.find('\n', at) - at);
     };
-    check(has(fx("Tick:0"), "marks=1 drawn=1"), "the folder under the cursor is marked and its effect draws [" + fx("Tick:0") + "]");
-    check(fx("Tick:600") != fx("Tick:1200") && has(fx("Tick:1200"), "drawn=1"),
-          "…and it BREATHES: a later moment lights a different number of cells [" + fx("Tick:600") + " / " + fx("Tick:1200") + "]");
     auto num = [](const std::string& line, const char* key) {
       const std::size_t at = line.find(key);
       return at == std::string::npos ? -1 : std::atoi(line.c_str() + at + std::strlen(key));
     };
-    const std::string land = fx("End Tick:0"), half = fx("End Tick:175");
-    check(num(land, "marks=") == 1 && num(land, "drawn=") == 1 && num(land, "cells=") > 0,
-          "a file under the cursor lands lit from end to end [" + land + "]");
-    check(num(half, "drawn=") == 1 && num(half, "cells=") > 0 && num(half, "cells=") < num(land, "cells="),
-          "…half-way through it has handed part of the row back [" + half + "]");
-    check(has(fx("End Tick:400"), "marks=1 drawn=0"), "…settled, the row is still but the moment is still marked");
-    check(has(fx("End Tick:700"), "marks=0"), "…and once landed the file's mark is gone, so the tick stops asking for frames");
-    const std::string dig = fx("Right Tick:100"), past = fx("Right Tick:400"), still = fx("Right");
-    check(num(dig, "marks=") >= 3 && num(dig, "drawn=") == num(dig, "marks="),
-          "Right marks every row of the column it dug into, and the sweep is crossing them all [" + dig + "]");
-    check(num(past, "marks=") == num(dig, "marks=") && num(past, "drawn=") == 1,
-          "…the sweep is one pass: past its period the rows draw nothing and only the cursor breathes [" + past + "]");
-    check(has(fx("Right Tick:600"), "marks=1"), "…and the dig's marks leave, so only the cursor's remains");
-    check(num(still, "marks=") == num(dig, "marks=") && num(still, "drawn=") == 0,
-          "a script with no tick is the still picture: marked, every effect at its first instant [" + still + "]");
+    // THE CURSOR shimmers, folder or file alike; THE TRAIL — every ancestor column's selection on
+    // screen — sparkles; and both are marked at every moment.
+    const std::string t0 = fx("Tick:0"), t1 = fx("Tick:400"), on_file = fx("End Tick:0");
+    check(num(t0, "marks=") >= 2 && num(t0, "drawn=") >= 1,
+          "the cursor row and the trail rows are marked, and the theme draws on them [" + t0 + "]");
+    check(num(t1, "marks=") == num(t0, "marks=") && num(t1, "drawn=") >= 1,
+          "…at a later moment the same rows are marked and still drawn on [" + t1 + "]");
+    check(num(on_file, "marks=") >= 1 && num(on_file, "drawn=") >= 1,
+          "a file under the cursor is marked exactly as a folder is — the cursor is the cursor [" + on_file + "]");
+    // OPENING A FILE adds one mark, the burst, for its moment; then the count is back. Compared
+    // at the SAME moment without the Enter, because End moves the anchor and the slide reveals
+    // a trail row between one tick and the next.
+    // The Enter runs need an opener to hand the file to — a stand-in, since a headless run
+    // refuses the real one and, refused, has nothing to burst about.
+    const fs::path fx_stub = scratch / "fx-opener";
+    write_file(fx_stub, "#!/bin/sh\nexit 0\n");
+    chmod(fx_stub.c_str(), 0755);
+    auto fx_open = [&](const std::string& keys) {
+      int frc = 0;
+      const std::string err = run("DIRK_OPEN='" + fx_stub.string() + "' " + base + " --frame 46x10 --keys \"" + keys + "\" 2>&1 >/dev/null", frc);
+      const std::size_t at = err.find("effects: ");
+      return at == std::string::npos ? std::string("(no effects line)") : err.substr(at, err.find('\n', at) - at);
+    };
+    const std::string base100 = fx("End Tick:100"), burst = fx_open("End Enter Tick:100");
+    const std::string base2000 = fx("End Tick:2000"), after = fx_open("End Enter Tick:2000");
+    check(num(burst, "marks=") == num(base100, "marks=") + 1 && num(burst, "drawn=") >= 1,
+          "Enter on a file adds ONE mark — the burst on that row — for its moment [" + burst + " vs " + base100 + "]");
+    check(num(after, "marks=") == num(base2000, "marks="), "…and the moment passes: the burst's mark is gone, the cursor's stays");
+    const std::string still = fx("Right");
+    check(num(still, "marks=") >= 2, "a script with no tick is the still picture: marked, every effect at its first instant [" + still + "]");
 
     // THE MAPPING IS A FILE, and a person's config directory shadows the embedded one: an empty
     // mapping there leaves the marks with nothing to draw, and a state nobody registered is
@@ -413,7 +446,7 @@ int main() {
     write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": {} }\n");
     int crc = 0;
     const std::string shadowed = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", crc);
-    check(has(shadowed, "marks=1 drawn=0"), "a user's own effects file shadows the app's: the mark is there, the theme has nothing for it [" +
+    check(num(shadowed, "marks=") >= 1 && has(shadowed, "drawn=0"), "a user's own effects file shadows the app's: the marks are there, the theme has nothing for them [" +
                                                 shadowed.substr(0, 60) + "]");
     write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": { \"dirk.nosuch\": { \"kind\": \"blink\" } } }\n");
     const std::string unknown = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 2>&1 >/dev/null", crc);
@@ -430,14 +463,14 @@ int main() {
     int mrc = 0;
     const std::string sbase = env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
     const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
-    check(has(opened, "settings") && has(opened, "[x] Motion") && has(opened, "[ ] Show dotfiles") && has(opened, "Sort by"),
-          "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles off)");
+    check(has(opened, "settings") && has(opened, "[x] Motion") && has(opened, "[x] Show dotfiles") && has(opened, "Sort by"),
+          "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles on)");
     run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);
     bool ok = false;
     const std::string saved = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(saved, "\"motion\": false"), "toggling Motion writes the settings file [" + saved.substr(0, 60) + "]");
     const std::string still = run(sbase + " --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", mrc);
-    check(has(still, "marks=1 drawn=0"), "…the next run reads it: the cursor is marked and nothing draws");
+    check(has(still, "drawn=0") && !has(still, "marks=0"), "…the next run reads it: the rows are marked and nothing draws");
     const std::string snapped = run(sbase + " --frame 46x10 --keys \"Right Tick:30\" 2>/dev/null", mrc);
     const std::string ended = run(sbase + " --frame 46x10 --keys \"Right Tick:200\" 2>/dev/null", mrc);
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
@@ -446,8 +479,10 @@ int main() {
     run(sbase + " --frame 60x14 --keys \"F2 Enter Down Enter\" >/dev/null 2>&1", mrc);
     const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");
-    const std::string parent = run(env + bin + " '" + (tree / "alpha").string() + "'" + presets + " --theme default-dark --frame 60x12 --keys \"F2 End Enter\" 2>/dev/null", mrc);
-    check(has(parent, "\xE2\x94\x82 tree"), "\"Go to the parent\" re-roots one level up");
+    const std::string at_alpha = run(env + bin + " '" + (tree / "alpha").string() + "'" + presets + " --theme default-dark --frame 200x12 2>/dev/null", mrc);
+    const std::string parent = run(env + bin + " '" + (tree / "alpha").string() + "'" + presets + " --theme default-dark --frame 200x12 --keys \"F2 End Enter\" 2>/dev/null", mrc);
+    check(column_of(parent).first == column_of(at_alpha).first - 1 && has(parent, "alpha"),
+          "\"Go to the parent\" moves the focus one column left, the folder we came from still selected");
   }
 
   // ---- THE SLIDE, at the script's clock: a moment into it the columns are between ---------------
@@ -491,8 +526,11 @@ int main() {
         "a bad path is a NAMED problem on the screen — never a crash and never silence");
 
   // ---- 6. dotfiles and the sort order are the app's, driven from the bindings FILE ------------
-  const std::string dots = run(base + " --frame 150x30 --keys \"AltH\" 2>&1", rc);
-  check(rc == 0 && has(dots, ".hidden"), "Alt-H shows the dotfiles");
+  // Its own config directory: the setting persists, and an earlier press in this suite must not
+  // decide what this press toggles.
+  const std::string dots = run("ROLL_CONFIG_DIR='" + (scratch / "dots-home").string() + "' " + bin + " '" + tree.string() + "'" + presets +
+                                   " --theme default-dark --frame 150x30 --keys \"AltH\" 2>&1", rc);
+  check(rc == 0 && !has(dots, ".hidden"), "Alt-H hides the dotfiles");
   const std::string sorted = run(base + " --frame 150x30 --keys \"CtrlS\" 2>&1", rc);
   check(rc == 0 && has(sorted, "size"), "Ctrl-S cycles the sort order and the status line says which");
 

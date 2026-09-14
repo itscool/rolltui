@@ -130,6 +130,7 @@ void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from) {
   rolltui_str_set(&to->value, from->value.p, from->value.n);
   to->enabled = from->enabled;
   to->checked = from->checked;
+  to->dropdown = from->dropdown;
   rolltui_input_spec_copy(&to->spec, &from->spec);
   rolltui_menu_list_copy(&to->children, &from->children);
 }
@@ -137,7 +138,7 @@ void rolltui_menu_item_copy(RolltuiMenuItem* to, const RolltuiMenuItem* from) {
 int rolltui_menu_item_equal(const RolltuiMenuItem* a, const RolltuiMenuItem* b) {
   size_t i;
   if (a == b) return 1;
-  if (a->kind != b->kind || a->enabled != b->enabled || a->checked != b->checked) return 0;
+  if (a->kind != b->kind || a->enabled != b->enabled || a->checked != b->checked || a->dropdown != b->dropdown) return 0;
   if (!rolltui_str_eq(&a->id, b->id.p, b->id.n) || !rolltui_str_eq(&a->label, b->label.p, b->label.n) ||
       !rolltui_str_eq(&a->action_name, b->action_name.p, b->action_name.n) ||
       !rolltui_str_eq(&a->shortcut, b->shortcut.p, b->shortcut.n) ||

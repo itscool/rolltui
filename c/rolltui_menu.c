@@ -632,6 +632,11 @@ struct RolltuiMenu {
   RolltuiMenuOptions opt;
   RolltuiRect area;
   int top;
+  /* THE DROPDOWN: open over the selected Choice, its cursor and its scroll. One at a time, and
+   * only for the item under the menu's own cursor, so its box is always where the eye is. */
+  int dd_open;
+  size_t dd_sel;
+  int dd_top;
 
   /* the visible list, rebuilt on demand and LENT to a caller */
   size_t* vis;
@@ -974,6 +979,9 @@ void rolltui_menu_reset(RolltuiMenu* m) {
   m->path_n = 0;
   m->sel = 0;
   m->top = 0;
+  m->dd_open = 0;
+  m->dd_sel = 0;
+  m->dd_top = 0;
   rolltui_str_clear(&m->filter);
   m->editing = 0;
   rolltui_str_clear(&m->edit_reason);
@@ -1267,6 +1275,164 @@ static void handle_edit(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBind
 
 /* ---- acting ------------------------------------------------------------------------------ */
 
+/* ---- the dropdown ------------------------------------------------------------------------ */
+static void open_dropdown(RolltuiMenu* m, const RolltuiMenuItem* it) {
+  size_t i;
+  m->dd_open = 1;
+  m->dd_sel = 0;
+  m->dd_top = 0;
+  for (i = 0; i < it->children.n; ++i)
+    if (rolltui_str_eq(&it->children.v[i]->id, it->value.p, it->value.n)) m->dd_sel = i;
+}
+
+static void close_dropdown(RolltuiMenu* m) {
+  m->dd_open = 0;
+  m->dd_sel = 0;
+  m->dd_top = 0;
+}
+
+int rolltui_menu_dropdown_open(const RolltuiMenu* m) { return m->dd_open; }
+size_t rolltui_menu_dropdown_selected(const RolltuiMenu* m) { return m->dd_sel; }
+
+/* The Choice a dropdown is open over: the item under the menu's cursor, or NULL if that item
+ * is not a dropdown Choice any more (a caller moved the cursor under it), in which case the
+ * dropdown is closed. */
+static RolltuiMenuItem* dropdown_item(RolltuiMenu* m) {
+  RolltuiMenuItem* it = m->dd_open ? item_at(m, m->sel) : NULL;
+  if (!it || it->kind != ROLLTUI_MENU_CHOICE || !it->dropdown) {
+    close_dropdown(m);
+    return NULL;
+  }
+  return it;
+}
+
+/* The box: as wide as its widest option plus its marker and border, as tall as its options plus
+ * a title row and the border, clamped to the menu's area and centred in it — "a smaller thing in
+ * the middle", so the answer's context stays in view around it. */
+static int dropdown_box(const RolltuiMenu* m, const RolltuiMenuItem* it, RolltuiRect* box, int* rows) {
+  const RolltuiRect a = m->area;
+  int widest = rolltui_u_display_width(m->u, it->label.p ? it->label.p : "", it->label.n, m->opt.ambiguous_wide);
+  int w, h;
+  size_t i;
+  for (i = 0; i < it->children.n; ++i) {
+    const RolltuiStr* l = it->children.v[i]->label.n ? &it->children.v[i]->label : &it->children.v[i]->id;
+    const int lw = rolltui_u_display_width(m->u, l->p ? l->p : "", l->n, m->opt.ambiguous_wide) + 2; /* marker */
+    if (lw > widest) widest = lw;
+  }
+  w = widest + 4;                    /* border + a space each side */
+  h = (int)it->children.n + 3;       /* border, title, options, border */
+  if (w > a.w) w = a.w;
+  if (h > a.h) h = a.h;
+  if (w < 4 || h < 4) return 0;
+  box->x = a.x + (a.w - w) / 2;
+  box->y = a.y + (a.h - h) / 2;
+  box->w = w;
+  box->h = h;
+  *rows = h - 3;
+  return 1;
+}
+
+static void dropdown_ensure_visible(RolltuiMenu* m, int rows) {
+  if (rows < 1) rows = 1;
+  if ((int)m->dd_sel < m->dd_top) m->dd_top = (int)m->dd_sel;
+  if ((int)m->dd_sel >= m->dd_top + rows) m->dd_top = (int)m->dd_sel - rows + 1;
+}
+
+static void dropdown_choose(RolltuiMenu* m, RolltuiMenuItem* it, size_t option, RolltuiMenuEvent* out) {
+  const RolltuiMenuItem* o;
+  if (option >= it->children.n) return;
+  o = it->children.v[option];
+  rolltui_str_set(&it->value, o->id.p, o->id.n);
+  out->kind = ROLLTUI_MENU_EVENT_CHOOSE;
+  rolltui_str_set(&out->id, it->id.p, it->id.n);
+  rolltui_str_set(&out->value, o->id.p, o->id.n);
+  close_dropdown(m);
+}
+
+static void handle_dropdown_key(RolltuiMenu* m, RolltuiMenuItem* it, const RolltuiChord* k, const RolltuiBindings* b,
+                                const RolltuiMenuActions* A, RolltuiMenuEvent* out) {
+  size_t alen = 0;
+  const size_t n = it->children.n;
+  const char* a = rolltui_bindings_action_for(b, k, "menu", 4, &alen);
+  RolltuiRect box;
+  int rows = 1;
+  if (!a) return;
+  dropdown_box(m, it, &box, &rows);
+  if (action_is(a, alen, A->up)) { if (m->dd_sel > 0) --m->dd_sel; }
+  else if (action_is(a, alen, A->down)) { if (n && m->dd_sel + 1 < n) ++m->dd_sel; }
+  else if (action_is(a, alen, A->first)) m->dd_sel = 0;
+  else if (action_is(a, alen, A->last)) m->dd_sel = n ? n - 1 : 0;
+  else if (action_is(a, alen, A->activate) || action_is(a, alen, A->descend)) { dropdown_choose(m, it, m->dd_sel, out); return; }
+  else if (action_is(a, alen, A->back) || action_is(a, alen, A->ascend)) { close_dropdown(m); return; }
+  dropdown_ensure_visible(m, rows);
+}
+
+/* A click on an option chooses it; a click anywhere else closes the dropdown and is consumed —
+ * the menu underneath does not act on a click that was aimed at closing the box over it. */
+static void handle_dropdown_mouse(RolltuiMenu* m, RolltuiMenuItem* it, const RolltuiMouseEvent* e, RolltuiMenuEvent* out) {
+  RolltuiRect box;
+  int rows = 1;
+  if (!dropdown_box(m, it, &box, &rows)) { close_dropdown(m); return; }
+  if (e->kind == 4 /* WheelUp */) { if (m->dd_sel > 0) --m->dd_sel; dropdown_ensure_visible(m, rows); return; }
+  if (e->kind == 5 /* WheelDown */) { if (it->children.n && m->dd_sel + 1 < it->children.n) ++m->dd_sel; dropdown_ensure_visible(m, rows); return; }
+  if (e->kind != 0 /* Press */ || e->button != 1) return;
+  if (e->x >= box.x + 1 && e->x < box.x + box.w - 1 && e->y >= box.y + 2 && e->y < box.y + 2 + rows) {
+    const size_t option = (size_t)m->dd_top + (size_t)(e->y - (box.y + 2));
+    if (option < it->children.n) { dropdown_choose(m, it, option, out); return; }
+  }
+  close_dropdown(m);
+}
+
+static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw, const RolltuiStyle* styles,
+                          const RolltuiMenuRoles* roles, const RolltuiMenuItem* it) {
+  RolltuiRect box;
+  int rows = 1, r;
+  RolltuiStr line;
+  const int aw = m->opt.ambiguous_wide;
+  RolltuiStyle ground = styles[roles->item];
+  RolltuiStyle frame_style = styles[roles->breadcrumb];
+  RolltuiStyle title = styles[roles->item];
+  RolltuiRect row_rect;
+  if (!dropdown_box(m, it, &box, &rows)) return;
+  frame_style.bg = ground.bg;
+  title.fg = styles[roles->label].fg;
+  title.bold = 1;
+  memset(&line, 0, sizeof line);
+  rolltui_frame_fill(f, draw, box, ground, NULL, 0);
+  /* the border: rounded, the same corners the layout's popups draw */
+  str_add(&line, "\xE2\x95\xAD");
+  for (r = 0; r < box.w - 2; ++r) str_add(&line, "\xE2\x94\x80");
+  str_add(&line, "\xE2\x95\xAE");
+  rolltui_frame_put_text(f, draw, box.x, box.y, line.p, line.n, frame_style, box.w, aw, 0);
+  rolltui_str_clear(&line);
+  str_add(&line, "\xE2\x95\xB0");
+  for (r = 0; r < box.w - 2; ++r) str_add(&line, "\xE2\x94\x80");
+  str_add(&line, "\xE2\x95\xAF");
+  rolltui_frame_put_text(f, draw, box.x, box.y + box.h - 1, line.p, line.n, frame_style, box.w, aw, 0);
+  for (r = 1; r < box.h - 1; ++r) {
+    rolltui_frame_put_text(f, draw, box.x, box.y + r, "\xE2\x94\x82", 3, frame_style, 1, aw, 0);
+    rolltui_frame_put_text(f, draw, box.x + box.w - 1, box.y + r, "\xE2\x94\x82", 3, frame_style, 1, aw, 0);
+  }
+  /* the title: the choice's own label */
+  rolltui_frame_put_text(f, draw, box.x + 2, box.y + 1, it->label.p ? it->label.p : "", it->label.n, title, box.w - 4, aw, 0);
+  /* the options: the current answer marked, the cursor highlighted */
+  for (r = 0; r < rows; ++r) {
+    const size_t i = (size_t)m->dd_top + (size_t)r;
+    const RolltuiMenuItem* o;
+    RolltuiStyle st;
+    if (i >= it->children.n) break;
+    o = it->children.v[i];
+    st = i == m->dd_sel ? styles[roles->selected] : ground;
+    row_rect.x = box.x + 1; row_rect.y = box.y + 2 + r; row_rect.w = box.w - 2; row_rect.h = 1;
+    rolltui_frame_fill(f, draw, row_rect, st, NULL, 0);
+    rolltui_str_clear(&line);
+    str_add(&line, rolltui_str_eq(&o->id, it->value.p, it->value.n) ? "\xE2\x97\x8F " : "\xE2\x97\x8B "); /* current / not */
+    rolltui_str_append_str(&line, o->label.n ? &o->label : &o->id);
+    rolltui_frame_put_text(f, draw, box.x + 2, box.y + 2 + r, line.p, line.n, st, box.w - 4, aw, 0);
+  }
+  rolltui_str_free(&line);
+}
+
 static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
   RolltuiMenuItem* it;
   if (vis_index < build_visible(m) && m->vis[vis_index] == BACK_ROW) {
@@ -1316,6 +1482,11 @@ static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
     case ROLLTUI_MENU_SUBMENU:
     case ROLLTUI_MENU_CHOICE:
       if (m->palette) return;
+      if (it->kind == ROLLTUI_MENU_CHOICE && it->dropdown) {
+        m->sel = vis_index;
+        open_dropdown(m, it);
+        return;
+      }
       build_visible(m);
       descend(m, m->vis[vis_index]);
       return;
@@ -1396,6 +1567,7 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
     const RolltuiMenuItem* it = item_at(m, m->sel);
     if (it && it->enabled && !m->palette &&
         (it->kind == ROLLTUI_MENU_SUBMENU || it->kind == ROLLTUI_MENU_CHOICE)) {
+      if (it->kind == ROLLTUI_MENU_CHOICE && it->dropdown) { open_dropdown(m, it); return; }
       build_visible(m);
       descend(m, m->vis[m->sel]);
     }
@@ -1475,6 +1647,14 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
   if (m->editing) {
     handle_edit(m, e, b, A, out);
     return;
+  }
+  if (m->dd_open) {
+    RolltuiMenuItem* it = dropdown_item(m);
+    if (it) {
+      if (e->kind == ROLLTUI_EVENT_KEY) handle_dropdown_key(m, it, &e->key, b, A, out);
+      else if (e->kind == ROLLTUI_EVENT_MOUSE) handle_dropdown_mouse(m, it, &e->mouse, out);
+      return;
+    }
   }
   if (e->kind == ROLLTUI_EVENT_KEY) {
     handle_key(m, &e->key, b, A, out);
@@ -1740,6 +1920,10 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
       rolltui_frame_put(f, x0 + w - 1, y + rows - 1, "\xE2\x96\xBC", 3, 1, styles[roles->scroll_marker], 0);
   }
   rolltui_str_free(&line);
+  if (m->dd_open) {
+    const RolltuiMenuItem* it = dropdown_item(mm);
+    if (it) draw_dropdown(m, f, draw, styles, roles, it);
+  }
 }
 
 /* ---- the file format --------------------------------------------------------------------- */
@@ -1908,12 +2092,13 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         it->kind = kd;
         kind_given = 1;
       }
-    } else if (streq(k, klen, "enabled") || streq(k, klen, "checked")) {
+    } else if (streq(k, klen, "enabled") || streq(k, klen, "checked") || streq(k, klen, "dropdown")) {
       if (!rolltui_json_is_bool(x)) {
         bad_value_at(rep, at.p, at.n, K(": expected true or false"));
       } else {
         const unsigned char bv = (unsigned char)rolltui_json_as_bool(x, 0);
         if (streq(k, klen, "enabled")) it->enabled = bv;
+        else if (streq(k, klen, "dropdown")) it->dropdown = bv;
         else it->checked = bv;
       }
     } else if (streq(k, klen, "items")) {
@@ -2101,6 +2286,7 @@ static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
     rolltui_json_set(o, K("shortcut"), rolltui_json_string(it->shortcut.p, it->shortcut.n));
   if (!it->enabled) rolltui_json_set(o, K("enabled"), rolltui_json_bool(0));
   if (it->checked) rolltui_json_set(o, K("checked"), rolltui_json_bool(1));
+  if (it->dropdown) rolltui_json_set(o, K("dropdown"), rolltui_json_bool(1));
   if (it->value.n != 0) rolltui_json_set(o, K("value"), rolltui_json_string(it->value.p, it->value.n));
 
   if (it->kind == ROLLTUI_MENU_INPUT) {

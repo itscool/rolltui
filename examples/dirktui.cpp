@@ -83,7 +83,7 @@ constexpr const char* kBrowserDescribes = "a column view of a directory tree";
 enum class Sort { Name, Size, Modified };
 
 struct Options {
-  bool hidden = false;
+  bool hidden = true;  // dotfiles shown unless a person turns them off
   Sort sort = Sort::Name;
   bool motion = true;  // the effects and the column slide; off is a still app
   // WHAT ENTER ON A FILE DOES. A folder is always entered; a file is a leaf, and what a person
@@ -96,64 +96,13 @@ struct Options {
   // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
   // and stay untouched. The indices are whatever the registry handed back: nothing here
   // assumes a number, and 0 (None) marks nothing, which is what an unregistered state does.
-  int st_folder = 0;
-  int st_file = 0;
-  int st_dig = 0;
+  //   cursor — the row under the cursor in the focused column, folder or file alike
+  //   trail  — a row we drilled through: the selection in every column left of the focus
+  //   opened — the row whose file was just opened, for one moment
+  int st_cursor = 0;
+  int st_trail = 0;
+  int st_opened = 0;
 };
-
-// ---- the three effect KINDS this app brings, rung 2 of the effects table -----------------------
-// Each is a pure function of (elapsed, index, length, base style) and answers for ONE cell — the
-// contract every kind is held to. Each picks a colour the THEME named: the role's foreground
-// on the cell's own background, so a lit cell on the cursor row keeps the row's highlight. A
-// kind never invents a colour and never changes a glyph's width.
-RolltuiStyle lit(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in) {
-  RolltuiStyle st = in->base;
-  st.fg = styles[s->roles[0]].fg;
-  return st;
-}
-
-// `dirk_breathe`: a fill that BREATHES. The first k cells wear the role, k rising from none to
-// the whole span and back over one period — a triangle, so it turns without a jump. The folder
-// under the cursor: alive, slow, and never finished.
-void fx_breathe(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
-                RolltuiEffectOut* out) {
-  const int period = s->period_ms > 0 ? s->period_ms : 2400;
-  const unsigned long long t = in->elapsed_ms % static_cast<unsigned long long>(period);
-  const double u = static_cast<double>(t) / period;
-  const double tri = u < 0.5 ? u * 2.0 : (1.0 - u) * 2.0;
-  const int k = static_cast<int>(std::lround(tri * in->length));
-  if (in->index >= k) return;
-  out->has_style = 1;
-  out->style = lit(s, styles, in);
-}
-
-// `dirk_sweep`: ONE pass of a band, `width` cells wide, left to right across the span over the
-// period — and then nothing, for as long as the span stays marked. The column just dug into.
-void fx_sweep(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
-              RolltuiEffectOut* out) {
-  const int period = s->period_ms > 0 ? s->period_ms : 320;
-  if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
-  const int width = s->width > 0 ? s->width : 3;
-  const double u = static_cast<double>(in->elapsed_ms) / period;
-  const int front = static_cast<int>(std::lround(u * (in->length + width))) - 1;
-  if (in->index > front || in->index <= front - width) return;
-  out->has_style = 1;
-  out->style = lit(s, styles, in);
-}
-
-// `dirk_settle`: the span LANDS. Every cell wears the role at first; from the right end inward
-// they hand back to the base over the period, and then the span is still. A file under the
-// cursor: a leaf, so the motion ends.
-void fx_settle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
-               RolltuiEffectOut* out) {
-  const int period = s->period_ms > 0 ? s->period_ms : 350;
-  if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
-  const double u = static_cast<double>(in->elapsed_ms) / period;
-  const int still_lit = static_cast<int>(std::lround((1.0 - u) * in->length));
-  if (in->index >= still_lit) return;
-  out->has_style = 1;
-  out->style = lit(s, styles, in);
-}
 
 // A `RolltuiStr` as a `std::string`, at the sites that want one. The library's own vocabulary
 // never names a std:: type, so a host that composes with std::string converts here — one line,
@@ -163,6 +112,66 @@ std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n
 // NO `Entry` OF ITS OWN. `RolltuiDirEntry` carries exactly what this app kept — the name, whether
 // it is a directory, whether it could be described, its size, its time and its mode — so a
 // parallel struct would be a second thing to drift and a copy per directory to keep it in step.
+
+// ---- the two effect KINDS this app brings, rung 2 of the effects table -------------------------
+// Each is a pure function of (elapsed, index, length, base style) and answers for ONE cell — the
+// contract every kind is held to. Each picks a colour the THEME named: the role's foreground on
+// the cell's own background, so a lit cell on a highlighted row keeps the row's highlight. A
+// kind never invents a colour and never changes a glyph's width. What LOOKS random is a hash of
+// (step, cell), so the same tick always draws the same picture — which is what makes a moving
+// frame a golden frame.
+unsigned hash32(unsigned x) {
+  x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16;
+  return x;
+}
+RolltuiStyle lit(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in, std::size_t role) {
+  RolltuiStyle st = in->base;
+  st.fg = styles[s->roles[role % s->role_count]].fg;
+  st.bold = 1;
+  return st;
+}
+
+// `dirk_sparkle`: a few cells at a time catch the light, and which ones changes every step —
+// a row we drilled through glitters rather than glows. No glyph changes: the name stays legible.
+void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+                RolltuiEffectOut* out) {
+  const int period = s->period_ms > 0 ? s->period_ms : 2000;
+  const int steps = s->steps > 0 ? s->steps : 20;
+  const unsigned step = static_cast<unsigned>((in->elapsed_ms % static_cast<unsigned long long>(period)) * steps / period);
+  const unsigned h = hash32(step * 7919u + static_cast<unsigned>(in->index) * 104729u + static_cast<unsigned>(in->length) * 31u);
+  if (h % 100 >= 12) return;
+  out->has_style = 1;
+  out->style = lit(s, styles, in, 0);
+}
+
+// `dirk_burst`: ONE shot on the row just opened — a bright wave runs from the centre outward,
+// its front marked with a spark, leaving twinkles that thin out as it goes; past the period,
+// nothing. The spark is a one-cell glyph, so a wide glyph under it is refused by the applier and
+// keeps its own shape, which is the rule and not a special case.
+void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+              RolltuiEffectOut* out) {
+  const int period = s->period_ms > 0 ? s->period_ms : 900;
+  if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
+  const double u = static_cast<double>(in->elapsed_ms) / period;
+  const double centre = (in->length - 1) / 2.0;
+  const double radius = u * (centre + 3.0);
+  const double d = std::fabs(in->index - centre);
+  if (d <= radius && d > radius - 2.5) {  // the wave front
+    out->has_style = 1;
+    out->style = lit(s, styles, in, 0);
+    if (d > radius - 1.2) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
+    return;
+  }
+  if (d < radius) {  // behind it: twinkles that thin out
+    const int steps = s->steps > 0 ? s->steps : 30;
+    const unsigned step = static_cast<unsigned>(u * steps);
+    const unsigned h = hash32(step * 6007u + static_cast<unsigned>(in->index) * 9973u + 17u);
+    if (h % 100 < static_cast<unsigned>(35.0 * (1.0 - u))) {
+      out->has_style = 1;
+      out->style = lit(s, styles, in, 1);
+    }
+  }
+}
 
 // ---- text measured and cut to a column's width ---------------------------------------------
 // "HOW MANY BYTES OF THIS FIT IN N CELLS" is `rolltui_u_fit`, and it is public because every
@@ -273,11 +282,52 @@ struct Browser {
   // MARK WITH A LIFETIME — the widget stops marking once the moment is old enough, so the tick
   // stops asking for frames; what the effect looks like inside that window is the theme's.
   unsigned long long cursor_since_ms = 0;
-  unsigned long long dig_since_ms = 0;
-  std::size_t dig_col = static_cast<std::size_t>(-1);
-  static constexpr unsigned long long kSettleMs = 600;  // a file's landing is over by then
-  static constexpr unsigned long long kDigMs = 500;     // a dig's sweep is over by then
+  unsigned long long opened_since_ms = 0;
+  std::size_t opened_col = static_cast<std::size_t>(-1);
+  std::size_t opened_sel = 0;
+  static constexpr unsigned long long kOpenedMs = 900;  // the burst on an opened file is over by then
   void eye_moved() { cursor_since_ms = now_ms; }
+  void file_opened() { opened_since_ms = now_ms; opened_col = focus_col; opened_sel = focused() ? focused()->sel : 0; }
+
+  // GO TO A PATH WITH ITS ANCESTORS SHOWING. The columns start at the file system's root and
+  // run down to `path`, each with the next component selected, so a deep start shows where it
+  // sits — the reason the focused column sits one in from the right edge is that the columns to
+  // its LEFT are worth seeing without pressing Left. A component that cannot be entered ends the
+  // walk where it is, with what it could open on screen.
+  void go_to(const std::string& path) {
+    set_root("/");
+    std::size_t at = 1;
+    while (at <= path.size()) {
+      const std::size_t next = path.find('/', at);
+      const std::string part = path.substr(at, next == std::string::npos ? std::string::npos : next - at);
+      at = next == std::string::npos ? path.size() + 1 : next + 1;
+      if (part.empty()) continue;
+      Column* c = focused();
+      if (!c) return;
+      bool found = false;
+      for (std::size_t i = 0; i < c->entries.n; ++i)
+        if (str_of(c->entries.v[i].name) == part) { c->sel = i; found = true; break; }
+      if (!found || !folder_like(c->dir, c->entries.v[c->sel])) {
+        // The path goes on where the disk does not: the rest of it becomes one column that
+        // cannot be opened, said in full, so a mistyped start is shown and not silently trimmed.
+        Column bad;
+        bad.dir = path;
+        read_dir(path, *opt, bad);
+        measure_width(bad);
+        cols.resize(focus_col + 1);
+        cols.push_back(std::move(bad));
+        ++focus_col;
+        break;
+      }
+      clamp_scroll(*c);
+      open_selected();
+      if (focus_col + 1 >= cols.size()) return;
+      ++focus_col;
+      open_selected();
+    }
+    eye_moved();
+    retarget();
+  }
   // THE OUTCOME. Set by an action, read by the app once the poll's events are handled. The widget
   // cannot end the process and must not decide what a chosen path MEANS — printing it, and what
   // the shell does with it, are the app's and the shell's. Two flags rather than one enum with an
@@ -293,6 +343,22 @@ struct Browser {
   const RolltuiDirEntry* selected() const {
     const Column* c = focused();
     return c && c->sel < c->entries.n ? &c->entries.v[c->sel] : nullptr;
+  }
+  // A FOLDER, OR A LINK TO ONE. The reader describes the link itself (a browser shows what is on
+  // disk), so a symlinked folder reads as "not a directory" and could never be entered — `/var`
+  // on macOS, every `node_modules/.bin`. Entering follows the link; the column is still named by
+  // the path a person walked, never by where the link went.
+  static bool folder_like(const std::string& dir, const RolltuiDirEntry& e) {
+    if (e.is_dir) return true;
+    if (!S_ISLNK(e.mode)) return false;
+    struct stat st {};
+    const std::string path = dir == "/" ? "/" + str_of(e.name) : dir + "/" + str_of(e.name);
+    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+  }
+  bool selected_is_folder() const {
+    const Column* c = focused();
+    const RolltuiDirEntry* e = selected();
+    return c && e && folder_like(c->dir, *e);
   }
   std::string selected_path() const {
     const Column* c = focused();
@@ -335,13 +401,16 @@ struct Browser {
     for (std::size_t i = 0; i < c.entries.n; ++i)
       longest = std::max(longest, measure.width(str_of(c.entries.v[i].name)) + (c.entries.v[i].is_dir ? 2 : 0));
     c.width = std::min(28, std::max(12, longest + 2));
+    // A COLUMN THAT COULD NOT BE OPENED IS AS WIDE AS ITS REASON, up to the window: it is the
+    // last column and the anchor puts it at the right edge, so a name-sized width would leave
+    // "cannot ope…" of a message whose whole point is the path.
+    if (!c.error.empty()) c.width = std::max(c.width, std::min(inner.w > 0 ? inner.w : 80, measure.width(c.error) + 2));
   }
 
   // The column to the right of the focused one exists exactly when a directory is selected.
   void open_selected() {
     cols.resize(focus_col + 1);
-    const RolltuiDirEntry* e = selected();
-    if (!e || !e->is_dir) return;
+    if (!selected_is_folder()) return;
     Column c;
     c.dir = selected_path();
     read_dir(c.dir, *opt, c);
@@ -427,15 +496,12 @@ struct Browser {
     retarget();
   }
   void into() {
-    const RolltuiDirEntry* e = selected();
-    if (!e || !e->is_dir) return;
+    if (!selected_is_folder()) return;
     open_selected();
     if (focus_col + 1 < cols.size()) {
       ++focus_col;
       open_selected();  // the NEW focus's own preview, so the column to its right is never empty
       eye_moved();
-      dig_since_ms = now_ms;
-      dig_col = focus_col;
       retarget();
     }
   }
@@ -548,28 +614,29 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       const RolltuiDirEntry& e = c.entries.v[i];
       const bool is_sel = i == c.sel;
       const bool is_focus_col = ci == b->focus_col;
-      const RolltuiStyle st = is_sel ? (is_focus_col ? here : trail) : (e.is_dir ? text : (e.unreadable ? dim : text));
+      // A TRAIL ROW — the selection in a column left of the focus, the path we drilled through —
+      // is a HIGHLIGHT only when nothing moves; with motion on, the theme's effect on `dirk.trail`
+      // IS the marker (a sparkle, in the shipped mapping), and the row keeps its plain style.
+      const bool trail_still = is_sel && !is_focus_col && !b->opt->motion;
+      const RolltuiStyle st = is_sel && is_focus_col ? here : trail_still ? trail
+                            : (e.is_dir ? text : (e.unreadable ? dim : text));
       if (is_sel) {
         const int fx = std::max(x, r.x);
-        rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, x + cw - fx, 1}, st, nullptr, 0);
-        // THE CURSOR'S MARK: a folder is marked for as long as the eye is on it; a file only
-        // while it is landing, after which the row is still and asks for no frames.
-        if (is_focus_col) {
-          const unsigned long long age = b->now_ms >= b->cursor_since_ms ? b->now_ms - b->cursor_since_ms : 0;
-          if (e.is_dir) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_folder, b->cursor_since_ms, 0);
-          else if (age < Browser::kSettleMs) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_file, b->cursor_since_ms, 0);
+        if (is_focus_col || trail_still) rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, x + cw - fx, 1}, st, nullptr, 0);
+        // THE CURSOR'S MARK, folder or file alike, for as long as the eye is on the row; and
+        // the trail's, for as long as the row is a trail row.
+        if (is_focus_col) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_cursor, b->cursor_since_ms, 0);
+        else rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_trail, 0, 0);
+        // THE OPENED MOMENT: one burst on the row whose file was just opened, then nothing.
+        if (ci == b->opened_col && i == b->opened_sel) {
+          const unsigned long long age = b->now_ms >= b->opened_since_ms ? b->now_ms - b->opened_since_ms : 0;
+          if (age < Browser::kOpenedMs) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_opened, b->opened_since_ms, 0);
         }
       }
       // A directory is marked with a trailing chevron rather than a colour, so the shape
       // survives `mono` and a colour-blind reader alike.
       const std::string label = str_of(e.name) + (e.is_dir ? " \xE2\x80\xBA" : "");
       put_clipped(x + 1, y, b->measure.fit(label, cw - 1), st, cw - 1);
-      // THE DIG'S MARK: every row of the column just entered, for the sweep's window.
-      if (ci == b->dig_col) {
-        const unsigned long long age = b->now_ms >= b->dig_since_ms ? b->now_ms - b->dig_since_ms : 0;
-        const int fx = std::max(x + 1, r.x);
-        if (age < Browser::kDigMs && x + cw - fx > 0) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_dig, b->dig_since_ms, 0);
-      }
     }
     if (c.entries.n == 0) {
       // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
@@ -717,7 +784,7 @@ RolltuiWidget browser_factory(void* ctx, RolltuiWindows* /*w*/, const char* cont
   b->source.assign(source, source_len);
   b->opt = fc->opt;
   b->windows = fc->windows;
-  b->set_root(*fc->root);
+  b->go_to(*fc->root);
   return RolltuiWidget{&kBrowserPlugin, b};
 }
 
@@ -756,6 +823,24 @@ struct App {
   // CALLER-FILLED, one per run: the status line's fields, reset and refilled every frame so
   // the array and each row's buffer are reused rather than rebuilt.
   RolltuiRows status_rows{};
+  std::string keys_hint;  // "F1 help · F2 settings · c copy", from the live bindings, built once
+  void build_keys_hint() {
+    struct Row { const char* action; const char* what; };
+    static const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"browser.copy", "copy"}, {"app.jump", "jump"}};
+    keys_hint.clear();
+    for (const Row& r : rows) {
+      const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
+      if (n == 0) continue;
+      RolltuiChord c{};
+      rolltui_bindings_chord_at(bindings, r.action, std::strlen(r.action), 0, &c);
+      char buf[ROLLTUI_CHORD_STRING_MAX];
+      const std::size_t bn = rolltui_chord_display(&c, buf, sizeof buf);
+      if (!keys_hint.empty()) keys_hint += "  ";
+      keys_hint.append(buf, bn);
+      keys_hint += ' ';
+      keys_hint += r.what;
+    }
+  }
   int w = 100, h = 30;
   bool quit = false;
   unsigned long long now_ms = 0;  // the frame clock; 0 in a headless frame, where nothing moves
@@ -787,12 +872,11 @@ struct App {
   App() {
     layout = rolltui_layout_new();
     rolltui_context_set_library_defaults(ctx);
-    rolltui_effect_state_register(ctx, "dirk.folder", 11, &opt.st_folder);
-    rolltui_effect_state_register(ctx, "dirk.file", 9, &opt.st_file);
-    rolltui_effect_state_register(ctx, "dirk.dig", 8, &opt.st_dig);
-    rolltui_effect_register(ctx, "dirk_breathe", 12, fx_breathe, nullptr, nullptr);
-    rolltui_effect_register(ctx, "dirk_sweep", 10, fx_sweep, nullptr, nullptr);
-    rolltui_effect_register(ctx, "dirk_settle", 11, fx_settle, nullptr, nullptr);
+    rolltui_effect_state_register(ctx, "dirk.cursor", 11, &opt.st_cursor);
+    rolltui_effect_state_register(ctx, "dirk.trail", 10, &opt.st_trail);
+    rolltui_effect_state_register(ctx, "dirk.opened", 11, &opt.st_opened);
+    rolltui_effect_register(ctx, "dirk_sparkle", 12, fx_sparkle, nullptr, nullptr);
+    rolltui_effect_register(ctx, "dirk_burst", 10, fx_burst, nullptr, nullptr);
   }
   App(const App&) = delete;
   App& operator=(const App&) = delete;
@@ -911,7 +995,7 @@ struct App {
       RolltuiStr err{};
       if (RolltuiJsonValue* root = rolltui_json_parse(t.p ? t.p : "", t.n, &err)) {
         opt.motion = rolltui_json_as_bool(rolltui_json_get(root, "motion", 6), 1) != 0;
-        opt.hidden = rolltui_json_as_bool(rolltui_json_get(root, "hidden", 6), 0) != 0;
+        opt.hidden = rolltui_json_as_bool(rolltui_json_get(root, "hidden", 6), 1) != 0;
         std::size_t n = 0;
         const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
         const std::string sort(sv, n);
@@ -1023,7 +1107,7 @@ struct App {
     if (!S_ISDIR(st.st_mode)) { hint = "not a directory: " + path; return; }
     if (Browser* b = browser()) {
       root = path;
-      b->set_root(path);
+      b->go_to(path);
       hint = "at " + path;
     }
   }
@@ -1098,9 +1182,12 @@ struct App {
       b->accepted = false;
       const RolltuiDirEntry* e = b->selected();
       const std::string path = b->selected_path();
-      if (!e || e->is_dir) { chosen = path; exit_code = 0; quit = true; }
+      if (!e || b->selected_is_folder()) { chosen = path; exit_code = 0; quit = true; }
       else switch (opt.file_enter) {
-        case Options::FileEnter::OpenStay: hint = (open_path(path) ? "opened " : "could not open ") + str_of(e->name); break;
+        case Options::FileEnter::OpenStay:
+          if (open_path(path)) { hint = "opened " + str_of(e->name); b->file_opened(); }
+          else hint = "could not open " + str_of(e->name);
+          break;
         case Options::FileEnter::OpenLeave: open_path(path); exit_code = 1; quit = true; break;
         case Options::FileEnter::Parent: chosen = path; exit_code = 0; quit = true; break;
         case Options::FileEnter::Insert: chosen = relative_to_start(path); exit_code = 3; quit = true; break;
@@ -1274,7 +1361,7 @@ struct App {
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "parent") {
-        if (Browser* b = browser()) { while (b->focus_col > 0) b->out(); b->out(); root = b->root; }
+        if (Browser* b = browser()) b->out();
         rolltui_window_stack_pop(stack);
       }
       rolltui_menu_event_release(&ev);
@@ -1300,7 +1387,14 @@ struct App {
     Browser* b = browser();
     char num[64];
     status_rows.reset();
-    rolltui_rows_add(&status_rows, "", 0, root.data(), root.size());
+    // The start folder, with the home directory as `~` so the keys beside it are not pushed off
+    // a narrow screen by a long path.
+    const char* home = std::getenv("HOME");
+    const std::string shown = home && *home && root.rfind(home, 0) == 0 && (root.size() == std::strlen(home) || root[std::strlen(home)] == '/')
+                                  ? "~" + root.substr(std::strlen(home)) : root;
+    rolltui_rows_add(&status_rows, "", 0, shown.data(), shown.size());
+    if (keys_hint.empty()) build_keys_hint();
+    rolltui_rows_add(&status_rows, "", 0, keys_hint.data(), keys_hint.size());
     // A REPORT OUTRANKS EVERY FACT BELOW IT: the line is truncated from the right, so anything
     // that must be read goes before anything that is merely useful.
     if (!note.empty()) rolltui_rows_add(&status_rows, "", 0, note.data(), note.size());
