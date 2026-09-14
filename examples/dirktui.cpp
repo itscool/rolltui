@@ -447,6 +447,7 @@ struct Browser {
   bool copy_requested = false;  // `browser.copy`; `copy_inverse` says the Option chord asked
   bool copy_inverse = false;
 
+
   const Column* focused() const { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
   Column* focused() { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
 
@@ -977,7 +978,7 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
       const long long top = static_cast<long long>(c->top) + step;
       return browser_scroll_to(ctx, ROLLTUI_AXIS_VERTICAL, static_cast<std::size_t>(std::max<long long>(0, top)));
     }
-    if (k != K::Press) return 0;
+    if (k != K::Press && k != K::DoubleClick) return 0;
     // Which column was clicked, and which row in it — the widget's own hit test, because the
     // columns are its structure and the library has no way to know about them.
     for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
@@ -990,6 +991,8 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
         if (row >= 0) b->select(b->cols[ci].top + static_cast<std::size_t>(row));
         else b->open_selected();
         b->retarget();
+        // A DOUBLE-CLICK IS ENTER ON THAT ROW — the terminal pairs the presses, the widget acts.
+        if (k == K::DoubleClick && row >= 0) b->accepted = true;
         return 1;
       }
     }

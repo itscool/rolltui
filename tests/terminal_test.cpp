@@ -57,7 +57,7 @@ std::string term_event_to_string(const RolltuiTermEvent& e) {
   // THE LIBRARY'S TitleCase names, not a hand-copy of them. There were three
   // copies of this 28-entry table and no source: the lowercase half was already in C, the
   // TitleCase half was in `Keys.cpp`, and nothing said the two spellings were deliberate.
-  static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
+  static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight", "DoubleClick"};
   switch (e.kind) {
     case ROLLTUI_TERM_EVENT_MOUSE: {
       std::string s = "Mouse ";
@@ -145,6 +145,19 @@ int main() {
     (void)!::write(master, "\x03", 1);
     check(names(t, 500) == "Ctrl+c", "Ctrl-C arrives as a key, not a signal");
     check(names(t, 30).empty(), "poll times out empty");
+    // A DOUBLE-CLICK IS THE TERMINAL'S: two presses on one cell close together deliver both
+    // presses and then a DoubleClick; two presses on different cells never do.
+    write(master, "\x1b[<0;10;5M\x1b[<0;10;5m\x1b[<0;10;5M", 10 * 3);
+    {
+      const std::string got = names(t, 500);
+      check(got == "Mouse Press 1 @9,4 | Mouse Release 1 @9,4 | Mouse Press 1 @9,4 | Mouse DoubleClick 1 @9,4",
+            "two presses on one cell within the window: both presses, then a DoubleClick after the second [" + got + "]");
+    }
+    write(master, "\x1b[<0;12;5M\x1b[<0;14;5M", 10 * 2);
+    {
+      const std::string got = names(t, 500);
+      check(got == "Mouse Press 1 @11,4 | Mouse Press 1 @13,4", "…two presses on different cells: no DoubleClick [" + got + "]");
+    }
     // OSC 11: the query goes to the master; a reply written there (with a key typed
     // ahead of it) comes back as a colour, and the key is not lost.
     (void)!::write(master, "q\x1b]11;rgb:1414/1616/1a1a\x1b\\", 1 + 5 + 18 + 2);

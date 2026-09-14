@@ -246,6 +246,26 @@ int main() {
     const std::string parent_path = parent.empty() ? parent : parent.substr(0, parent.size() - 1);
     check(status_of(crc) == 0 && fs::is_regular_file(parent_path) && stublines().empty(),
           "…`parent` leaves with the file's path and exit 0 — the shell lands in its folder — and opens nothing");
+    // A DOUBLE-CLICK IS ENTER ON THAT ROW: the same file, opened by the mouse, hands its path over
+    // exactly as Enter does; a single click only selects it.
+    // The row's cell is read off the frame, since where alpha's column sits depends on how many
+    // ancestors the fixture's own path has.
+    int cx = -1, cy = -1;
+    {
+      const std::string frame = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 2>/dev/null", crc);
+      std::istringstream in(frame);
+      std::string l;
+      for (int y = 0; std::getline(in, l); ++y) {
+        const std::size_t at = l.find("one.txt");
+        if (at != std::string::npos) { cx = static_cast<int>(at); cy = y; break; }
+      }
+    }
+    const std::string where = std::to_string(cx) + "," + std::to_string(cy);
+    const std::string dbl = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"DblClick " + where + "\" 2>/dev/null", crc);
+    check(cx > 0 && status_of(crc) == 0 && dbl.find("/alpha/one.txt\n") != std::string::npos,
+          "a double-click on a row is Enter on it [" + dbl.substr(dbl.rfind('/') + 1) + " at " + where + "]");
+    const std::string single = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Click " + where + "\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && has(single, "go to"), "…while a single click only selects: the frame is still up");
     // THE CURSOR REMEMBERS WHERE IT WAS, PER FOLDER: down into alpha, onto one.txt, back out,
     // over to beta and back to alpha, in again — one.txt is still under the cursor. Into beta
     // instead, and it is beta's own memory (none yet: its first entry), never alpha's.

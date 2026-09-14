@@ -111,6 +111,8 @@ typedef struct QueuedEvent {
 #define TERM_SEQ_MAX 256 /* generous over the ~55-byte worst case every option can add */
 
 struct RolltuiTerminal {
+  int last_press_x, last_press_y, last_press_button; /* the press a second one is paired with */
+  unsigned long long last_press_ms;                   /* 0: none */
   int in_fd, out_fd;
   int owned_fd; /* a reopened terminal (see reopen_if_unpollable), closed at free; else -1 */
   int tty;
@@ -179,8 +181,19 @@ static void queue_from_decoder(void* ctx, const RolltuiEvent* e) {
 typedef struct EmitCtx {
   RolltuiTermEventFn fn;
   void* ctx;
+  RolltuiTerminal* t; /* for the double-click pairing; NULL where there is no terminal */
 } EmitCtx;
 
+static unsigned long long monotonic_ms(void) {
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  return (unsigned long long)now.tv_sec * 1000ULL + (unsigned long long)now.tv_nsec / 1000000ULL;
+}
+
+/* A DOUBLE-CLICK IS MADE HERE, from two presses. The decoder sees bytes and knows no clock; this
+ * is the one place that has both the event and the time. The press itself is delivered first,
+ * as it arrives; the DoubleClick follows it. Pairing is by button and cell, within
+ * ROLLTUI_DOUBLE_CLICK_MS, and the pair is spent once made so a third press starts afresh. */
 static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   EmitCtx* ec = (EmitCtx*)vctx;
   RolltuiTermEvent ev;
@@ -191,6 +204,23 @@ static void emit_from_decoder(void* vctx, const RolltuiEvent* e) {
   ev.text = e->text;
   ev.text_len = e->text_len;
   ec->fn(ec->ctx, &ev);
+  if (ec->t && e->kind == ROLLTUI_EVENT_MOUSE && e->mouse.kind == 0 /* Press */) {
+    RolltuiTerminal* t = ec->t;
+    const unsigned long long now = monotonic_ms();
+    const int same = t->last_press_ms != 0 && e->mouse.x == t->last_press_x && e->mouse.y == t->last_press_y &&
+                     e->mouse.button == t->last_press_button && now - t->last_press_ms <= ROLLTUI_DOUBLE_CLICK_MS;
+    if (same) {
+      RolltuiTermEvent dbl = ev;
+      dbl.mouse.kind = 8; /* DoubleClick */
+      ec->fn(ec->ctx, &dbl);
+      t->last_press_ms = 0;
+    } else {
+      t->last_press_ms = now;
+      t->last_press_x = e->mouse.x;
+      t->last_press_y = e->mouse.y;
+      t->last_press_button = e->mouse.button;
+    }
+  }
 }
 
 /* ---- enter / leave ----------------------------------------------------------------------- */
@@ -670,6 +700,7 @@ void rolltui_terminal_poll(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventF
       EmitCtx ec;
       ec.fn = emit;
       ec.ctx = ctx;
+      ec.t = t;
       rolltui_key_decoder_flush(t->decoder, emit_from_decoder, &ec);
     }
     return;
@@ -699,6 +730,7 @@ void rolltui_terminal_poll(RolltuiTerminal* t, int timeout_ms, RolltuiTermEventF
       EmitCtx ec;
       ec.fn = emit;
       ec.ctx = ctx;
+      ec.t = t;
       rolltui_key_decoder_feed(t->decoder, buf, (size_t)k, emit_from_decoder, &ec);
       /* A lone ESC (or a sequence cut by the read boundary) waits for the next read, but
        * not forever: give it 30 ms and then resolve it. */

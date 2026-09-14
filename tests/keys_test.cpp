@@ -28,7 +28,7 @@ std::string event_to_string(const RolltuiEvent& e) {
   // THE LIBRARY'S TitleCase names, not a hand-copy of them. There were three
   // copies of this 28-entry table and no source: the lowercase half was already in C, the
   // TitleCase half was in `Keys.cpp`, and nothing said the two spellings were deliberate.
-  static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight"};
+  static const char* mouse_kinds[] = {"Press", "Release", "Drag", "Move", "WheelUp", "WheelDown", "WheelLeft", "WheelRight", "DoubleClick"};
   switch (e.kind) {
     case ROLLTUI_EVENT_MOUSE: {
       std::string s = "Mouse ";

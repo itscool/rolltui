@@ -416,10 +416,14 @@ typedef struct RolltuiChord {
  * standard rather than by convention. */
 typedef struct RolltuiMouseEvent {
 #ifdef __cplusplus
-  enum class Kind : unsigned char { Press = 0, Release, Drag, Move, WheelUp, WheelDown, WheelLeft, WheelRight };
+  /* DoubleClick is the TERMINAL's: two presses of the same button on the same cell within
+   * `ROLLTUI_DOUBLE_CLICK_MS` of each other. Both presses are delivered as they arrive; the
+   * DoubleClick follows the second, so a widget that never asks for it sees two clicks and one
+   * that does asks nobody for a clock. */
+  enum class Kind : unsigned char { Press = 0, Release, Drag, Move, WheelUp, WheelDown, WheelLeft, WheelRight, DoubleClick };
   Kind kind = Kind::Press;
 #else
-  unsigned char kind; /* 0 press, 1 release, 2 drag, 3 move, 4-7 wheel up/down/left/right */
+  unsigned char kind; /* 0 press, 1 release, 2 drag, 3 move, 4-7 wheel up/down/left/right, 8 double-click */
 #endif
   int x ROLLTUI_DEFAULT(0), y ROLLTUI_DEFAULT(0); /* 0-based cells */
   int button ROLLTUI_DEFAULT(0);                  /* 1 left, 2 middle, 3 right; 0 for motion/wheel */
@@ -3064,6 +3068,8 @@ typedef struct RolltuiSwap RolltuiSwap;
  * `_Bool` and C++'s `bool` are the same byte on every toolchain this will ever see, and that
  * is exactly the "layout-compatible by fiat" this project keeps being burned by — one type
  * in both languages, nothing to assume. */
+#define ROLLTUI_DOUBLE_CLICK_MS 400 /* two presses of one button on one cell this close together are a double-click */
+
 typedef struct RolltuiTerminalOptions {
   unsigned char alt_screen ROLLTUI_DEFAULT(1);
   unsigned char mouse ROLLTUI_DEFAULT(1);        /* SGR 1006 + button + drag reporting */

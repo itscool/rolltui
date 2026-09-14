@@ -163,9 +163,12 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
       if (xy(x, y)) push(mouse_ev(RolltuiMouseEvent::Kind::Press, x, y, 1, tok == "ShiftClick"));
     } else if (tok == "DblClick" || tok == "TripleClick") {
       if (xy(x, y)) {
+        // What a terminal delivers: press, release, press — and the DoubleClick the terminal
+        // makes from the second press (a third press is paired the same way).
         const int presses = tok == "DblClick" ? 2 : 3;
         for (int i = 0; i < presses; ++i) {
           push(mouse_ev(RolltuiMouseEvent::Kind::Press, x, y), false);
+          if (i == 1) push(mouse_ev(RolltuiMouseEvent::Kind::DoubleClick, x, y), false);
           if (i + 1 < presses) push(mouse_ev(RolltuiMouseEvent::Kind::Release, x, y), false);
         }
         clock += 1000;
