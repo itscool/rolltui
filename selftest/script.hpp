@@ -20,7 +20,7 @@
 //   Paste:a\nb           ONE paste event, newlines included
 //   Click x,y            press at a cell; ShiftClick, DblClick, TripleClick likewise
 //   Drag x,y / Release   a held move and the end of it
-//   WheelUp / WheelDown  over the middle of the screen
+//   WheelUp / WheelDown  over the middle of the screen, or at a cell: WheelDown 12,3
 //   Tick                 a tick at the current clock, without an event
 //   Tick:MS              a tick MS after the PREVIOUS step — the frame 60 ms into a slide is `Right Tick:60`
 //
@@ -157,8 +157,19 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
       clock += 1000;
     } else if (named(tok, k)) push(k);
     else if (tok == "WheelUp" || tok == "WheelDown") {
-      // Over the middle of the screen, which every built-in layout gives to the transcript.
-      push(mouse_ev(tok == "WheelUp" ? RolltuiMouseEvent::Kind::WheelUp : RolltuiMouseEvent::Kind::WheelDown, w / 4, h / 3, 0));
+      // Over the middle of the screen, which every built-in layout gives to the transcript —
+      // or at a named cell, for a widget whose wheel depends on where the pointer is.
+      int wx = w / 4, wy = h / 3;
+      std::streampos here = in.tellg();
+      std::string maybe;
+      if (in >> maybe && maybe.find(',') != std::string::npos) {
+        wx = std::atoi(maybe.substr(0, maybe.find(',')).c_str());
+        wy = std::atoi(maybe.substr(maybe.find(',') + 1).c_str());
+      } else {
+        in.clear();
+        in.seekg(here);
+      }
+      push(mouse_ev(tok == "WheelUp" ? RolltuiMouseEvent::Kind::WheelUp : RolltuiMouseEvent::Kind::WheelDown, wx, wy, 0));
     } else if (tok == "Click" || tok == "ShiftClick") {
       if (xy(x, y)) push(mouse_ev(RolltuiMouseEvent::Kind::Press, x, y, 1, tok == "ShiftClick"));
     } else if (tok == "DblClick" || tok == "TripleClick") {

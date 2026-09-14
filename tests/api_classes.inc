@@ -622,7 +622,7 @@ ROLLTUI_API(rolltui_rows_release, PUBLIC)  /* KEPT: a public C++ member in the d
 ROLLTUI_API(rolltui_rows_reset, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_scroll_first_for_cell, INTERNAL)  /* scrollbar arithmetic (a test reaches it: opt-in) */
+ROLLTUI_API(rolltui_scroll_first_for_cell, PUBLIC)  /* the drag half of the thumb pair a widget with several lists needs: dirktui */
 ROLLTUI_API(rolltui_scroll_thumb, PUBLIC)  /* a widget scrolling several lists draws a thumb per list with the window's arithmetic: dirktui */
 ROLLTUI_API(rolltui_context_add_help_scope, PUBLIC)
 ROLLTUI_API(rolltui_context_add_menu, PUBLIC)

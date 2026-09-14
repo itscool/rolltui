@@ -492,6 +492,38 @@ struct Browser {
   bool anchored_once = false;     // a real anchor has run against a known window; until then nothing is "kept"
   unsigned long long now_ms = 0;  // the frame clock, set by the app before each frame; 0 = headless, no motion
   std::size_t faded_cells = 0;    // how many cells the last frame drew faded at the left edge: a self-test reads it
+  // A DRAG ON A DIVIDER'S THUMB: which column, and where on the thumb the press landed, so the
+  // thumb follows the pointer from where it was grabbed rather than jumping to it. -1: no drag.
+  long long drag_col = -1;
+  int drag_grab = 0;
+  RolltuiScrollExtent extent_of(std::size_t ci) const {
+    RolltuiScrollExtent e{};
+    e.first = cols[ci].top;
+    e.visible = static_cast<std::size_t>(rows_visible());
+    e.total = cols[ci].entries.n;
+    return e;
+  }
+  // Which column's DIVIDER a cell is on: the one-cell margin after column `ci`, over its rows.
+  long long divider_at(int mx, int my) const {
+    if (!opt->dividers || my < inner.y + 1 || my >= inner.y + 1 + rows_visible()) return -1;
+    for (std::size_t ci = 0; ci + 1 < cols.size(); ++ci)
+      if (mx == column_x(ci) + shown_width(ci) && mx >= inner.x) return static_cast<long long>(ci);
+    return -1;
+  }
+  // Which column a cell is IN, for the wheel: its rows or its divider, whichever the pointer is over.
+  long long column_at(int mx) const {
+    for (std::size_t ci = 0; ci < cols.size(); ++ci) {
+      const int x = column_x(ci);
+      if (mx >= x && mx <= x + shown_width(ci) && mx >= inner.x) return static_cast<long long>(ci);
+    }
+    return -1;
+  }
+  void scroll_column(std::size_t ci, std::size_t first) {
+    Column& c = cols[ci];
+    const std::size_t vis = static_cast<std::size_t>(rows_visible());
+    const std::size_t max_top = c.entries.n > vis ? c.entries.n - vis : 0;
+    c.top = first > max_top ? max_top : first;
+  }
   static constexpr unsigned long long kScrollMs = 120;
   static constexpr int kMaxColumnWidth = 28;  // a column is never wider; the LAST slot is always this wide
   // WHEN THE EYE MOVED, for the marks: the cursor's span carries the moment it landed on this
@@ -643,6 +675,15 @@ struct Browser {
 
   int rows_visible() const { return inner.h > 1 ? inner.h - 1 : (inner.h > 0 ? inner.h : 0); }
 
+  // TWO CLAMPS, because they answer two questions. `clamp_scroll` keeps the SELECTION on
+  // screen and is what a key or a click that moved it calls. `clamp_top` keeps the top IN RANGE
+  // and is what the per-frame layout calls: a column scrolled away from its selection by the
+  // wheel or its thumb stays there until the selection moves — a frame must not scroll it back.
+  void clamp_top(Column& c) {
+    const int vis = rows_visible();
+    const std::size_t max_top = vis > 0 && c.entries.n > static_cast<std::size_t>(vis) ? c.entries.n - static_cast<std::size_t>(vis) : 0;
+    if (c.top > max_top) c.top = max_top;
+  }
   void clamp_scroll(Column& c) {
     const int vis = rows_visible();
     if (vis <= 0) {
@@ -834,9 +875,14 @@ int browser_note_at(void* ctx, std::size_t i, RolltuiStr* out) {
 
 void browser_layout(void* ctx, const RolltuiResolvedNode* rn) {
   Browser* b = static_cast<Browser*>(ctx);
+  const int was_h = b->inner.h;
   rolltui_content_rect(rn, &b->inner);
+  // A NEW HEIGHT brings every selection back on screen — a column opened before any layout had
+  // no rows to clamp against, and a resize can push a selection out. The same height keeps each
+  // column where the wheel or its thumb left it.
+  const bool resized = b->inner.h != was_h;
   for (Column& c : b->cols) {
-    b->clamp_scroll(c);
+    if (resized) b->clamp_scroll(c); else b->clamp_top(c);
     if (!c.error.empty()) b->measure_width(c);  // an error column is sized to the window, known only here
   }
   b->retarget();
@@ -1126,14 +1172,49 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
   if (e->kind == ROLLTUI_EVENT_MOUSE) {
     using K = RolltuiMouseEvent::Kind;
     const K k = e->mouse.kind;
+    // THE GEOMETRY A POINTER IS TESTED AGAINST IS THE ONE ON SCREEN NOW: a slide the last key
+    // began has moved on since the last frame, so the columns are advanced to this moment first.
+    b->advance();
     if (k == K::WheelUp || k == K::WheelDown) {
-      Column* c = b->focused();
-      if (!c) return 0;
+      // THE COLUMN UNDER THE POINTER, not the focused one: every column scrolls on its own, and the
+      // wheel is where the mouse is. Nowhere in particular scrolls the focused column.
+      long long ci = b->column_at(e->mouse.x);
+      if (ci < 0) ci = b->focused() ? static_cast<long long>(b->focus_col) : -1;
+      if (ci < 0) return 0;
       const long long step = k == K::WheelUp ? -3 : 3;
-      const long long top = static_cast<long long>(c->top) + step;
-      return browser_scroll_to(ctx, ROLLTUI_AXIS_VERTICAL, static_cast<std::size_t>(std::max<long long>(0, top)));
+      const long long top = static_cast<long long>(b->cols[static_cast<std::size_t>(ci)].top) + step;
+      b->scroll_column(static_cast<std::size_t>(ci), static_cast<std::size_t>(std::max<long long>(0, top)));
+      return 1;
     }
+    // A DRAG ON A DIVIDER'S THUMB, from the press that grabbed it to the release: the stack sends
+    // the drags and the release to the pressed window wherever the pointer is, so the thumb
+    // follows past the column's edges and rests at the track's ends.
+    if (k == K::Drag && b->drag_col >= 0) {
+      const std::size_t ci = static_cast<std::size_t>(b->drag_col);
+      if (ci < b->cols.size()) {
+        const RolltuiScrollExtent ex = b->extent_of(ci);
+        b->scroll_column(ci, rolltui_scroll_first_for_cell(&ex, b->rows_visible(), e->mouse.y - (b->inner.y + 1) - b->drag_grab));
+      }
+      return 1;
+    }
+    if (k == K::Release) { const bool was = b->drag_col >= 0; b->drag_col = -1; return was ? 1 : 0; }
     if (k != K::Press && k != K::DoubleClick) return 0;
+    if (const long long dc = b->divider_at(e->mouse.x, e->mouse.y); dc >= 0) {
+      // ON THE THUMB: grab it where it was pressed. ON THE TRACK: bring the thumb's middle to the
+      // pointer and hold it there, so a click jumps and a drag that starts on the track still drags.
+      const std::size_t ci = static_cast<std::size_t>(dc);
+      const RolltuiScrollExtent ex = b->extent_of(ci);
+      RolltuiScrollThumb t{};
+      if (!rolltui_scroll_thumb(&ex, b->rows_visible(), &t)) return 1;  // nothing to scroll: the press is spent
+      const int cell = e->mouse.y - (b->inner.y + 1);
+      if (cell >= t.offset && cell < t.offset + t.length) b->drag_grab = cell - t.offset;
+      else {
+        b->drag_grab = t.length / 2;
+        b->scroll_column(ci, rolltui_scroll_first_for_cell(&ex, b->rows_visible(), cell - b->drag_grab));
+      }
+      b->drag_col = dc;
+      return 1;
+    }
     // Which column was clicked, and which row in it — the widget's own hit test, because the
     // columns are its structure and the library has no way to know about them.
     for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {

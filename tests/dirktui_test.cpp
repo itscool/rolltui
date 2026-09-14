@@ -714,6 +714,35 @@ int main() {
     check(capsules(short_off) > 0 && capsules(short_on) > capsules(short_off),
           "with dividers, each scrolled column carries its own thumb on its divider; without, one bar in the border [" +
               std::to_string(capsules(short_on)) + " vs " + std::to_string(capsules(short_off)) + " capsule cells]");
+    // THE DIVIDER IS A SCROLL TRACK: a click at the bottom of the tree column's divider scrolls
+    // THAT column to its end while the cursor stays in alpha; a drag from there back to the top
+    // of the track brings it back; the wheel scrolls the column under the pointer, not the focused
+    // one. Ten rows high: four entry rows (frame rows 2..5), so the tree's eight entries scroll.
+    {
+      const std::string tall = run(sbase + " --frame 100x10 --keys \"Right\" 2>/dev/null", mrc);
+      int dx = -1;
+      {
+        std::istringstream in(tall);
+        std::string l;
+        for (int y = 0; std::getline(in, l); ++y) {
+          if (y != 1) continue;  // the head row: ASCII heads, 3-byte box glyphs
+          const std::size_t head = l.find(" tree");
+          const std::size_t bar = head == std::string::npos ? std::string::npos : l.find("\xE2\x94\x82", head);
+          if (bar == std::string::npos) break;
+          int cells = 0;
+          for (std::size_t i = 0; i < bar; ++i) if ((static_cast<unsigned char>(l[i]) & 0xC0) != 0x80) ++cells;  // UTF-8 lead bytes = cells here
+          dx = cells;
+        }
+      }
+      const std::string at = std::to_string(dx);
+      const std::string jumped = run(sbase + " --frame 100x10 --keys \"Right Click " + at + ",5\" 2>/dev/null", mrc);
+      check(dx > 0 && !has(tall, "zeta.txt") && has(jumped, "zeta.txt") && has(jumped, "nested"),
+            "a click at the bottom of a divider's track scrolls THAT column to its end — the tree shows zeta.txt — while the cursor stays in alpha [x " + at + "]");
+      const std::string dragged = run(sbase + " --frame 100x10 --keys \"Right Click " + at + ",5 Drag " + at + ",2 Release\" 2>/dev/null", mrc);
+      check(!has(dragged, "zeta.txt") && has(dragged, "alpha"), "…and dragging the thumb back to the top of the track scrolls it back");
+      const std::string wheeled = run(sbase + " --frame 100x10 --keys \"Right WheelDown " + std::to_string(dx - 1) + ",3 WheelDown " + std::to_string(dx - 1) + ",3\" 2>/dev/null", mrc);
+      check(has(wheeled, "zeta.txt"), "the wheel scrolls the column under the pointer — the tree — not the focused alpha");
+    }
     run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Motion, dividers, Sort by: its dropdown, the second option
     const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");

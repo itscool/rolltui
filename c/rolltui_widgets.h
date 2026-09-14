@@ -119,9 +119,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* The inverse, for a click or a drag: the `first` line that puts the thumb's START at `cell`
- * of the track. Clamped to a valid first line. */
-size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, int cell);
 
 /* THE TWO FALLBACKS, and they are two because their ARGUMENT means two different things —
  * which is exactly the implicit resolution CLAUDE.md's corollary says to spell out rather

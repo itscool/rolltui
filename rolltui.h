@@ -5106,6 +5106,9 @@ typedef struct RolltuiScrollThumb {
   int length ROLLTUI_DEFAULT(0); /* cells, always >= 1 when drawn */
 } RolltuiScrollThumb;
 int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out);
+/* The inverse, for a click or a drag: the `first` line that puts the thumb's START at `cell` of
+ * the track. Clamped to a valid first line, so a drag past either end rests at that end. */
+size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, int cell);
 
 /* THE CURRENT FRAME'S STYLE TABLE, indexed by Role ordinal — a BORROW valid for the length of
  * one `rolltui_windows_draw` call, set at its top from the `styles` it is already handed (the
