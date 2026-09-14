@@ -97,6 +97,7 @@ int main() {
   write_file(tree / "alpha" / "nested" / "deep.txt", std::string(300, 'x'));
   fs::create_directories(tree / "beta");
   write_file(tree / "zeta.txt", "zeta\n");
+  write_file(tree / "beta" / "a-quite-long-name-so-this-preview-is-wide.txt", "wide preview\n");
   write_file(tree / ".hidden", "dot\n");
   write_file(tree / "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E.txt", "wide\n");              // CJK: two cells a glyph
   write_file(tree / "cafe\xCC\x81.txt", "combining\n");                                  // e + U+0301
@@ -383,6 +384,32 @@ int main() {
     const std::string back = run(base + " --frame 200x10 --keys \"Right Left\" 2>&1", rc);
     check(rc == 0 && column_of(back).first == column_of(in).first - 1 && has(back, "alpha"),
           "Left slides the columns back one, to the column the eye came from");
+    // THE LAST SLOT IS RESERVED AT THE MAXIMUM WIDTH: moving the cursor from a folder with a narrow
+    // preview to one with a wide preview does not move the focused column.
+    const std::string on_alpha = run(base + " --frame 60x10 2>&1", rc);
+    const std::string on_beta = run(base + " --frame 60x10 --keys \"Down\" 2>&1", rc);
+    auto col_of_word = [](const std::string& frame, const char* word) {
+      std::istringstream in(frame);
+      std::string l;
+      while (std::getline(in, l)) { const std::size_t at = l.find(word); if (at != std::string::npos) return static_cast<int>(at); }
+      return -1;
+    };
+    check(has(on_beta, "a-quite-long-name") && !has(on_alpha, "a-quite-long-name"),
+          "the control: Down really changed the preview, to a wider column");
+    check(col_of_word(on_alpha, "alpha \xE2\x80\xBA") == col_of_word(on_beta, "alpha \xE2\x80\xBA") && col_of_word(on_alpha, "alpha \xE2\x80\xBA") > 0,
+          "…and the focused column did not move: the last slot is reserved at the maximum width [" +
+              std::to_string(col_of_word(on_alpha, "alpha \xE2\x80\xBA")) + " = " + std::to_string(col_of_word(on_beta, "alpha \xE2\x80\xBA")) + "]");
+    // THE FADE: a column partly off the left edge is drawn faded, cell by cell; a window wide enough
+    // for every column fades nothing. Read from the self-test's report, since a text frame shows
+    // no colour — the CONTROL is the wide frame.
+    {
+      int frc = 0;
+      const std::string narrow = run(base + " --frame 60x10 --keys \"Right\" 2>&1 >/dev/null", frc);
+      const std::string wide_report = run(base + " --frame 300x10 --keys \"Right\" 2>&1 >/dev/null", frc);
+      auto faded_of = [](const std::string& s) { const std::size_t at = s.find("faded="); return at == std::string::npos ? -1 : std::atoi(s.c_str() + at + 6); };
+      check(faded_of(narrow) > 0, "a column clipped at the left edge is drawn faded [faded=" + std::to_string(faded_of(narrow)) + "]");
+      check(faded_of(wide_report) == 0, "…and a window that fits every column fades nothing — the control");
+    }
     // A DEEP START SHOWS ITS ANCESTORS: the columns run from the root down to the start folder,
     // each with the next component selected — the reason the focus sits one in from the edge.
     const std::string deep_start = run(base + " --frame 200x10 2>&1", rc);
@@ -410,10 +437,25 @@ int main() {
     // THE CURSOR shimmers, folder or file alike; THE TRAIL — every ancestor column's selection on
     // screen — sparkles; and both are marked at every moment.
     const std::string t0 = fx("Tick:0"), t1 = fx("Tick:400"), on_file = fx("End Tick:0");
-    check(num(t0, "marks=") >= 2 && num(t0, "drawn=") >= 1,
-          "the cursor row and the trail rows are marked, and the theme draws on them [" + t0 + "]");
+    check(num(t0, "marks=") >= 1 && num(t0, "drawn=") >= 1,
+          "the cursor row is marked, and the theme draws on it [" + t0 + "]");
     check(num(t1, "marks=") == num(t0, "marks=") && num(t1, "drawn=") >= 1,
           "…at a later moment the same rows are marked and still drawn on [" + t1 + "]");
+    // EXACTLY WHICH ROWS ARE MARKED, in a window wide enough to show every column: the cursor,
+    // and one trail row per column LEFT of the focus — never the preview to its right, whose
+    // first entry is not a choice anyone made. So the count is the focused column's index.
+    auto fx_wide = [&](const std::string& keys) {
+      int frc = 0;
+      const std::string out = run(base + " --frame 300x10 --keys \"" + keys + "\" 2>&1", frc);
+      const std::size_t at = out.find("effects: ");
+      return std::make_pair(at == std::string::npos ? std::string() : out.substr(at, out.find('\n', at) - at), column_of(out).first);
+    };
+    const auto w0 = fx_wide("Tick:0"), w1 = fx_wide("Right Tick:0");
+    check(num(w0.first, "marks=") == w0.second && w0.second >= 2,
+          "the marks are the cursor plus one trail row per ancestor column, and NOT the preview's first entry [marks " +
+              std::to_string(num(w0.first, "marks=")) + " = column " + std::to_string(w0.second) + "]");
+    check(num(w1.first, "marks=") == w1.second && w1.second == w0.second + 1,
+          "…and after Right the column we left is a trail row and the new preview still is not");
     check(num(on_file, "marks=") >= 1 && num(on_file, "drawn=") >= 1,
           "a file under the cursor is marked exactly as a folder is — the cursor is the cursor [" + on_file + "]");
     // OPENING A FILE adds one mark, the burst, for its moment; then the count is back. Compared
@@ -436,7 +478,7 @@ int main() {
           "Enter on a file adds ONE mark — the burst on that row — for its moment [" + burst + " vs " + base100 + "]");
     check(num(after, "marks=") == num(base2000, "marks="), "…and the moment passes: the burst's mark is gone, the cursor's stays");
     const std::string still = fx("Right");
-    check(num(still, "marks=") >= 2, "a script with no tick is the still picture: marked, every effect at its first instant [" + still + "]");
+    check(num(still, "marks=") >= 1, "a script with no tick is the still picture: marked, every effect at its first instant [" + still + "]");
 
     // THE MAPPING IS A FILE, and a person's config directory shadows the embedded one: an empty
     // mapping there leaves the marks with nothing to draw, and a state nobody registered is

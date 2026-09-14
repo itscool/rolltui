@@ -124,53 +124,70 @@ unsigned hash32(unsigned x) {
   x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16;
   return x;
 }
-RolltuiStyle lit(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in, std::size_t role) {
-  RolltuiStyle st = in->base;
-  st.fg = styles[s->roles[role % s->role_count]].fg;
-  st.bold = 1;
-  return st;
+// A SPARK'S LIFE: it POPS — a `✦` in the role's colour, bold — and then FADES back to the cell's
+// own colour over the rest of its life. `k` is how much of the role is left, 1 at the pop and 0
+// when it is over. In 24-bit colour the fade is a real blend; on an indexed or mono screen the
+// spark is the role while `k` is above a half and the cell's own colour after, since a blend is
+// a colour the theme did not name.
+RolltuiStyleColor blend_to(RolltuiStyleColor from, RolltuiStyleColor to, double k) {
+  if (from.kind != RolltuiStyleColor::Kind::Rgb || to.kind != RolltuiStyleColor::Kind::Rgb) return k > 0.5 ? to : from;
+  auto mix = [&](unsigned char a, unsigned char b) { return static_cast<unsigned char>(a + (b - a) * k + 0.5); };
+  from.r = mix(from.r, to.r);
+  from.g = mix(from.g, to.g);
+  from.b = mix(from.b, to.b);
+  return from;
+}
+void spark(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in, std::size_t role, double k,
+           bool pop, RolltuiEffectOut* out) {
+  const RolltuiStyleColor lit = styles[s->roles[role % s->role_count]].fg;
+  out->has_style = 1;
+  out->style = in->base;
+  out->style.fg = blend_to(in->base.fg, lit, k);
+  out->style.bold = k > 0.5 ? 1 : in->base.bold;
+  if (pop) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
 }
 
-// `dirk_sparkle`: a few cells at a time catch the light, and which ones changes every step —
-// a row we drilled through glitters rather than glows. No glyph changes: the name stays legible.
+// `dirk_sparkle`: every cell has its own slow rhythm — a period of one and a half to four
+// seconds and a phase, both hashed from the cell — and once a period it sparks: pops and fades.
+// A row of twenty cells sparks every hundred and fifty milliseconds or so, never twice in the
+// same place, and the name stays legible, because a spark is one cell for a tenth of a second.
 void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
                 RolltuiEffectOut* out) {
-  const int period = s->period_ms > 0 ? s->period_ms : 2000;
-  const int steps = s->steps > 0 ? s->steps : 20;
-  const unsigned step = static_cast<unsigned>((in->elapsed_ms % static_cast<unsigned long long>(period)) * steps / period);
-  const unsigned h = hash32(step * 7919u + static_cast<unsigned>(in->index) * 104729u + static_cast<unsigned>(in->length) * 31u);
-  if (h % 100 >= 12) return;
-  out->has_style = 1;
-  out->style = lit(s, styles, in, 0);
+  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 2654435761u + static_cast<unsigned>(in->length) * 40503u + 7u);
+  const unsigned long long period = 1500 + seed % 2500;
+  const unsigned long long phase = (seed >> 8) % period;
+  const unsigned long long life = 600;
+  const unsigned long long t = (in->elapsed_ms + phase) % period;
+  if (t >= life) return;
+  const double u = static_cast<double>(t) / life;         // 0 at the pop, 1 when it is over
+  const double k = (1.0 - u) * (1.0 - u);                 // fades fast at first, then lingers
+  spark(s, styles, in, 0, k, u < 0.15, out);
 }
 
-// `dirk_burst`: ONE shot on the row just opened — a bright wave runs from the centre outward,
-// its front marked with a spark, leaving twinkles that thin out as it goes; past the period,
-// nothing. The spark is a one-cell glyph, so a wide glyph under it is refused by the applier and
-// keeps its own shape, which is the rule and not a special case.
+// `dirk_burst`: ONE shot on the row just opened — a wave runs from the centre outward, each
+// cell POPPING as the front reaches it and FADING back behind it, with a few late twinkles in
+// its wake; past the period, nothing. A one-cell glyph over a wide glyph is refused by the
+// applier and keeps its own shape, which is the rule and not a special case.
 void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
               RolltuiEffectOut* out) {
   const int period = s->period_ms > 0 ? s->period_ms : 900;
   if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
-  const double u = static_cast<double>(in->elapsed_ms) / period;
   const double centre = (in->length - 1) / 2.0;
-  const double radius = u * (centre + 3.0);
   const double d = std::fabs(in->index - centre);
-  if (d <= radius && d > radius - 2.5) {  // the wave front
-    out->has_style = 1;
-    out->style = lit(s, styles, in, 0);
-    if (d > radius - 1.2) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
-    return;
-  }
-  if (d < radius) {  // behind it: twinkles that thin out
-    const int steps = s->steps > 0 ? s->steps : 30;
-    const unsigned step = static_cast<unsigned>(u * steps);
-    const unsigned h = hash32(step * 6007u + static_cast<unsigned>(in->index) * 9973u + 17u);
-    if (h % 100 < static_cast<unsigned>(35.0 * (1.0 - u))) {
-      out->has_style = 1;
-      out->style = lit(s, styles, in, 1);
-    }
-  }
+  const double reach = centre + 1.0;
+  const double wave_ms = period * 0.45;                    // the front takes this long to reach the ends
+  const double arrives = d / reach * wave_ms;              // when the front reaches this cell
+  const double since = static_cast<double>(in->elapsed_ms) - arrives;
+  if (since < 0) return;                                   // the front has not reached it yet
+  const double life = period - arrives;                    // it fades until the burst is over
+  const double u = since / life;
+  double k = (1.0 - u) * (1.0 - u);
+  // a late twinkle in the wake, hashed per cell, so the fade is not a uniform dimming
+  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 7919u + 11u);
+  const double twinkle_at = 0.3 + (seed % 100) / 200.0;   // 30%..80% of the way through
+  const double tw = std::fabs(u - twinkle_at);
+  if ((seed >> 8) % 3 == 0 && tw < 0.06) k = std::max(k, 0.8 - tw * 8.0);
+  spark(s, styles, in, u < 0.5 ? 0 : 1, k, since < 70.0, out);
 }
 
 // ---- text measured and cut to a column's width ---------------------------------------------
@@ -276,7 +293,9 @@ struct Browser {
   unsigned long long scroll_start_ms = 0;
   bool scrolling = false;
   unsigned long long now_ms = 0;  // the frame clock, set by the app before each frame; 0 = headless, no motion
+  std::size_t faded_cells = 0;    // how many cells the last frame drew faded at the left edge: a self-test reads it
   static constexpr unsigned long long kScrollMs = 120;
+  static constexpr int kMaxColumnWidth = 28;  // a column is never wider; the LAST slot is always this wide
   // WHEN THE EYE MOVED, for the marks: the cursor's span carries the moment it landed on this
   // entry, and the column just entered carries the moment of the dig. A one-shot effect is a
   // MARK WITH A LIFETIME — the widget stops marking once the moment is old enough, so the tick
@@ -400,7 +419,7 @@ struct Browser {
     int longest = 0;
     for (std::size_t i = 0; i < c.entries.n; ++i)
       longest = std::max(longest, measure.width(str_of(c.entries.v[i].name)) + (c.entries.v[i].is_dir ? 2 : 0));
-    c.width = std::min(28, std::max(12, longest + 2));
+    c.width = std::min(kMaxColumnWidth, std::max(12, longest + 2));
     // A COLUMN THAT COULD NOT BE OPENED IS AS WIDE AS ITS REASON, up to the window: it is the
     // last column and the anchor puts it at the right edge, so a name-sized width would leave
     // "cannot ope…" of a message whose whole point is the path.
@@ -440,15 +459,23 @@ struct Browser {
 
   // The anchor rule, as a target. Called after anything that changes which columns exist, which
   // is focused, or how wide the rect is; the slide toward it is `advance()`'s.
+  // THE LAST SLOT IS RESERVED AT THE MAXIMUM WIDTH. The column to the right of the focus is the
+  // preview of whatever the cursor is on, and its content width changes with every Up and Down;
+  // if the anchor followed that width the focused column would shuffle left and right under the
+  // eye as the cursor moved. So the anchor counts the last column as `kMaxColumnWidth` wide,
+  // whatever it holds: the focused column stays put, and a narrow preview leaves room beside it.
+  int width_for_anchor(std::size_t ci) const {
+    return ci + 1 == cols.size() ? std::max(kMaxColumnWidth, cols[ci].width) : cols[ci].width;
+  }
   void retarget() {
     int total = 0;
-    for (const Column& c : cols) total += c.width + 1;
+    for (std::size_t j = 0; j < cols.size(); ++j) total += width_for_anchor(j) + 1;
     total = total > 0 ? total - 1 : 0;
     int target = 0;
     if (total > inner.w && !cols.empty()) {
       const std::size_t last = std::min(focus_col + 1, cols.size() - 1);
       int right_end = 0;
-      for (std::size_t j = 0; j <= last; ++j) right_end += cols[j].width + 1;
+      for (std::size_t j = 0; j <= last; ++j) right_end += width_for_anchor(j) + 1;
       right_end -= 1;
       target = std::min(0, inner.w - right_end);
       // A focused column wider than what is left of the window still starts on screen.
@@ -564,18 +591,44 @@ int browser_note_at(void* ctx, std::size_t i, RolltuiStr* out) {
 void browser_layout(void* ctx, const RolltuiResolvedNode* rn) {
   Browser* b = static_cast<Browser*>(ctx);
   rolltui_content_rect(rn, &b->inner);
-  for (Column& c : b->cols) b->clamp_scroll(c);
+  for (Column& c : b->cols) {
+    b->clamp_scroll(c);
+    if (!c.error.empty()) b->measure_width(c);  // an error column is sized to the window, known only here
+  }
   b->retarget();
   b->advance();
+}
+
+// THE FADE AT THE LEFT EDGE. A column partly off the left edge is a column the eye has left
+// behind, and cutting it dead at the border reads as a tear. Its visible cells are drawn with
+// their colours pulled toward the panel's background, most at the border and none a dozen
+// cells in, so the column looks like it goes on past the edge. ONLY IN 24-BIT COLOUR: a blend
+// is a colour the theme did not name, which an indexed palette cannot hold and a mono screen
+// must not invent, so a colour that is not RGB is left exactly as it was.
+RolltuiStyleColor toward(RolltuiStyleColor c, RolltuiStyleColor ground, double keep) {
+  if (c.kind != RolltuiStyleColor::Kind::Rgb || ground.kind != RolltuiStyleColor::Kind::Rgb) return c;
+  auto mix = [&](unsigned char a, unsigned char g) { return static_cast<unsigned char>(g + (a - g) * keep + 0.5); };
+  c.r = mix(c.r, ground.r);
+  c.g = mix(c.g, ground.g);
+  c.b = mix(c.b, ground.b);
+  return c;
+}
+RolltuiStyle faded(RolltuiStyle st, RolltuiStyleColor ground, double keep) {
+  st.fg = toward(st.fg, ground, keep);
+  st.bg = toward(st.bg, ground, keep);
+  return st;
 }
 
 void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   Browser* b = static_cast<Browser*>(ctx);
   RolltuiRect r{};
   rolltui_content_rect(rn, &r);
+  b->faded_cells = 0;
   if (r.w <= 0 || r.h <= 0) return;  // the standing rule: every view shrinks to nothing gracefully
   const RolltuiStyle* styles = rolltui_windows_styles(b->windows);
   auto S = [&](unsigned char role) { return *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, role); };
+  const RolltuiStyleColor ground = S(ROLLTUI_ROLE_BACKGROUND).bg;
+  static constexpr int kFadeCells = 12;
   const RolltuiStyle text = S(ROLLTUI_ROLE_TEXT);
   const RolltuiStyle dim = S(ROLLTUI_ROLE_TEXT_MUTED);
   const RolltuiStyle head = S(ROLLTUI_ROLE_LABEL);
@@ -590,16 +643,45 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     const int cw = std::min(c.width, r.x + r.w - x);
     if (cw <= 0) break;
     // A column partly off the LEFT edge shows its right part: `hidden` cells of every line are
-    // dropped, never drawn outside the rect. The title starts at x; the rows at x + 1.
+    // dropped, never drawn outside the rect. The title starts at x; the rows at x + 1. And it
+    // is drawn FADED, cell by cell, each grapheme in its own colour by its distance from the edge.
     const int hidden = r.x - x;  // ≤ 0 when the column starts on screen
+    const bool clipped = x < r.x;
+    auto keep_at = [&](int sx) { const double t = (sx - r.x + 0.5) / kFadeCells; return t < 0 ? 0.0 : t > 1 ? 1.0 : t; };
+    auto put_faded = [&](int at, int y, const std::string& text, const RolltuiStyle& st, int room) {
+      // one grapheme at a time: `rolltui_u_fit` gives the byte boundary of every cell count
+      std::size_t from = 0;
+      int used = 0;
+      while (from < text.size() && used < room) {
+        const std::size_t to = b->measure.prefix_bytes(text.substr(from), 1) + from;
+        std::size_t next = to;
+        int w = 1;
+        if (next == from) { next = b->measure.prefix_bytes(text.substr(from), 2) + from; w = 2; }  // a wide glyph
+        if (next == from) break;
+        if (used + w > room) break;
+        rolltui_frame_put_text(f, b->draw_scratch, at + used, y, text.data() + from, next - from,
+                               faded(st, ground, keep_at(at + used)), w, 0, 0);
+        b->faded_cells += static_cast<std::size_t>(w);
+        used += w;
+        from = next;
+      }
+    };
     auto put_clipped = [&](int at, int y, const std::string& text, const RolltuiStyle& st, int room) {
       const int drop = r.x - at;
-      if (drop <= 0) { rolltui_frame_put_text(f, b->draw_scratch, at, y, text.data(), text.size(), st, room, 0, 0); return; }
+      if (drop <= 0) {
+        if (clipped) put_faded(at, y, text, st, room);
+        else rolltui_frame_put_text(f, b->draw_scratch, at, y, text.data(), text.size(), st, room, 0, 0);
+        return;
+      }
       if (drop >= room) return;
       int dropped = 0;
       const std::size_t from = b->measure.skip_bytes(text, drop, dropped);
-      rolltui_frame_put_text(f, b->draw_scratch, at + dropped, y, text.data() + from, text.size() - from, st,
-                             room - dropped, 0, 0);
+      put_faded(at + dropped, y, text.substr(from), st, room - dropped);
+    };
+    auto fill_row = [&](int fx, int y, int w, const RolltuiStyle& st) {
+      if (!clipped) { rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, w, 1}, st, nullptr, 0); return; }
+      for (int k = 0; k < w; ++k)
+        rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx + k, y, 1, 1}, faded(st, ground, keep_at(fx + k)), nullptr, 0);
     };
     // The column's own head: the directory's last component, so a deep path stays readable.
     const std::size_t slash = c.dir.find_last_of('/');
@@ -617,12 +699,16 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       // A TRAIL ROW — the selection in a column left of the focus, the path we drilled through —
       // is a HIGHLIGHT only when nothing moves; with motion on, the theme's effect on `dirk.trail`
       // IS the marker (a sparkle, in the shipped mapping), and the row keeps its plain style.
-      const bool trail_still = is_sel && !is_focus_col && !b->opt->motion;
+      // A row is a TRAIL row only in a column LEFT of the focus — the path we came down. The
+      // column to the RIGHT is a preview the cursor has not entered, and its first entry is not
+      // a choice anyone made: it draws no selection at all until the cursor arrives.
+      const bool is_trail = is_sel && ci < b->focus_col;
+      const bool trail_still = is_trail && !b->opt->motion;
       const RolltuiStyle st = is_sel && is_focus_col ? here : trail_still ? trail
                             : (e.is_dir ? text : (e.unreadable ? dim : text));
-      if (is_sel) {
+      if (is_sel && (is_focus_col || is_trail)) {
         const int fx = std::max(x, r.x);
-        if (is_focus_col || trail_still) rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, x + cw - fx, 1}, st, nullptr, 0);
+        if (is_focus_col || trail_still) fill_row(fx, y, x + cw - fx, st);
         // THE CURSOR'S MARK, folder or file alike, for as long as the eye is on the row; and
         // the trail's, for as long as the row is a trail row.
         if (is_focus_col) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_cursor, b->cursor_since_ms, 0);
@@ -1936,8 +2022,8 @@ int main(int argc, char** argv) {
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
     // What this frame's motion touched, for a test that cannot see a colour in a text frame.
-    std::fprintf(stderr, "effects: marks=%zu drawn=%d cells=%d refused=%d\n", app.last_marks, app.last_fx.marks_drawn,
-                 app.last_fx.cells_touched, app.last_fx.glyphs_refused);
+    std::fprintf(stderr, "effects: marks=%zu drawn=%d cells=%d refused=%d faded=%zu\n", app.last_marks, app.last_fx.marks_drawn,
+                 app.last_fx.cells_touched, app.last_fx.glyphs_refused, app.browser() ? app.browser()->faded_cells : 0);
     RolltuiStr text{};
     rolltui_frame_to_text(f, &text);
     std::fwrite(text.c_str(), 1, text.size(), stdout);
