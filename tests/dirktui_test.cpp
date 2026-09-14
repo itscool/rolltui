@@ -371,15 +371,17 @@ int main() {
     {
       const fs::path ihome = scratch / "home-install";
       fs::create_directories(ihome);
-      write_file(ihome / ".zshrc", "# mine\nexport FOO=1\n");
+      write_file(ihome / ".zshrc", "# mine\nexport FOO=1\nsource ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh\n");
       const std::string ienv = "HOME='" + ihome.string() + "' SHELL=/bin/zsh ";
       const std::string said = run(ienv + product + " install 2>&1", irc);
       const fs::path link = ihome / ".local" / "bin" / "dirktui";
       check(status_of(irc) == 0 && fs::is_symlink(link) && fs::canonical(link) == fs::canonical(DIRKTUI_PRODUCT_BIN),
             "`dirktui install` links THIS binary into ~/.local/bin, the shell taken from $SHELL [" + said.substr(0, 60) + "]");
+      check(has(said, "zsh-autosuggestions is here too") && has(said, "Right to accept, Right to browse"),
+            "…and, seeing zsh-autosuggestions in the rc file, says once how Right Arrow is shared");
       bool ok = false;
       const std::string zrc = read_file((ihome / ".zshrc").string(), ok);
-      check(ok && zrc.rfind("# mine\nexport FOO=1\n", 0) == 0 && has(zrc, "command -v dirktui >/dev/null 2>&1 && eval \"$(dirktui init zsh)\"") && has(zrc, ".local/bin"),
+      check(ok && zrc.rfind("# mine\nexport FOO=1\nsource ~/.zsh/", 0) == 0 && has(zrc, "command -v dirktui >/dev/null 2>&1 && eval \"$(dirktui init zsh)\"") && has(zrc, ".local/bin"),
             "…and appends ONE marked block to ~/.zshrc — PATH, then the shell side GUARDED on the binary existing — after what was there");
       run(ienv + product + " install zsh 2>&1", irc);
       check(read_file((ihome / ".zshrc").string(), ok) == zrc, "…a second install writes nothing twice");
@@ -396,7 +398,7 @@ int main() {
       const std::string bad = run(ienv + product + " install nushell 2>&1", irc);
       check(status_of(irc) == 2 && has(bad, "usage: dirktui install zsh|bash|fish"), "a shell it has no script for is refused");
       run(ienv + product + " uninstall zsh 2>&1", irc);
-      check(status_of(irc) == 0 && !fs::exists(fs::symlink_status(link)) && read_file((ihome / ".zshrc").string(), ok) == "# mine\nexport FOO=1\n" &&
+      check(status_of(irc) == 0 && !fs::exists(fs::symlink_status(link)) && read_file((ihome / ".zshrc").string(), ok) == "# mine\nexport FOO=1\nsource ~/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh\n" &&
                 has(read_file((ihome / ".bashrc").string(), ok), "init bash"),
             "`dirktui uninstall zsh` removes the link and the block, leaving the file as it was and the other shells alone");
     }

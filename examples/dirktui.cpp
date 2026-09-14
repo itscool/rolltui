@@ -263,7 +263,11 @@ RolltuiStyleColor brighter(RolltuiStyleColor c, double amount) {
 // twice — the letter is what is being decorated, and it stays the letter.
 void spark(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in, std::size_t role, double k,
            RolltuiEffectOut* out) {
-  const RolltuiStyleColor lit = brighter(styles[s->roles[role % s->role_count]].fg, k > 0.5 ? (k - 0.5) * 1.6 : 0.0);
+  // The top of a spark is WHITE, not most of the way there: the climb from the role's colour to
+  // white runs over the upper 60% of `k`, so a fresh spark pops white and the fade back passes
+  // through the colour before it settles at the floor.
+  const double toward_white = k > 0.4 ? (k - 0.4) / 0.6 : 0.0;
+  const RolltuiStyleColor lit = brighter(styles[s->roles[role % s->role_count]].fg, toward_white > 1.0 ? 1.0 : toward_white);
   out->has_style = 1;
   out->style = in->base;
   out->style.fg = blend_to(in->base.fg, lit, k);
@@ -274,7 +278,7 @@ void spark(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const Rolltui
 // so a trail row reads as the path — and sparks at a rate PER WORD, not per cell: two sparks a
 // second on every word whatever its length, so each cell's period is the word's length times
 // half a second, with a phase and a little jitter hashed from the cell so words do not tick in
-// step. A spark pops to near-white and fades back to the floor over a second and a half.
+// step. A spark pops to white and fades back to the floor over a second and a half.
 void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
                 RolltuiEffectOut* out) {
   static constexpr double kFloor = 0.35;          // how much of the spark colour the name keeps between sparks
@@ -2318,6 +2322,12 @@ int install_command(int argc, char** argv, bool remove) {
     if (in) text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
   }
   const std::string next = with_block(text, block);
+  if (!remove && shell == "zsh" && text.find("zsh-autosuggestions") != std::string::npos)
+    // The two share Right Arrow at the end of the line. The widget defers: a suggestion that is
+    // showing is accepted first, and Right again opens dirk. Said once here, at the one moment a
+    // person is reading; never at shell start.
+    std::fprintf(stderr, "dirktui: note: zsh-autosuggestions is here too — Right Arrow accepts a suggestion that is showing; "
+                         "with none showing, at the end of the line, it opens dirk (so: Right to accept, Right to browse)\n");
   if (remove && next == text) {
     std::fprintf(stderr, "dirktui: no dirk block in %s\n", rc.c_str());
   } else if (remove && shell == "fish" && next.empty()) {
