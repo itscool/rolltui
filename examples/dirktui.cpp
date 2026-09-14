@@ -89,9 +89,16 @@ struct Options {
   bool motion = true;  // the effects and the column slide; off is a still app
   // WHAT ENTER ON A FILE DOES. A folder is always entered; a file is a leaf, and what a person
   // wants from it is a setting. `OpenStay` is the default: try to open it and stay here.
-  enum class FileEnter { OpenStay, OpenLeave, Parent, Insert };
-  FileEnter file_enter = FileEnter::OpenStay;
-  bool copy_relative = false;  // the copy command's path: relative to where dirk started, or absolute
+  // `Smart` is the default: a known DOCUMENT type opens and the cursor stays; anything else — a
+  // script, a binary, a type nobody listed — goes to the command line typed out, so arguments can
+  // follow. A picker never runs anything; it hands the shell a line to run.
+  enum class FileEnter { Smart, OpenStay, OpenLeave, Parent, Insert };
+  FileEnter file_enter = FileEnter::Smart;
+  bool copy_relative = false;  // paths handed out (copy, the command line): relative to where dirk started, or absolute
+  // Where the command line lands when a file goes to it: where dirk started, or in the file's
+  // own folder with `./name` — exit 3 and exit 4 respectively, on the shell side.
+  enum class InsertAt { Start, File };
+  InsertAt insert_at = InsertAt::Start;
   const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
   // THE STATES THE BROWSER MARKS WITH — this app's own, registered by name on the session so a
   // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
@@ -1245,12 +1252,14 @@ struct App {
   static const char* sort_name(Sort s) { return s == Sort::Name ? "name" : s == Sort::Size ? "size" : "modified"; }
   static const char* file_enter_name(Options::FileEnter f) {
     return f == Options::FileEnter::OpenLeave ? "open_leave" : f == Options::FileEnter::Parent ? "parent"
-         : f == Options::FileEnter::Insert  ? "insert"     : "open_stay";
+         : f == Options::FileEnter::Insert  ? "insert"     : f == Options::FileEnter::OpenStay ? "open_stay" : "smart";
   }
   static Options::FileEnter file_enter_of(const std::string& s) {
     return s == "open_leave" ? Options::FileEnter::OpenLeave : s == "parent" ? Options::FileEnter::Parent
-         : s == "insert"     ? Options::FileEnter::Insert    : Options::FileEnter::OpenStay;
+         : s == "insert"     ? Options::FileEnter::Insert    : s == "open_stay" ? Options::FileEnter::OpenStay
+                                                            : Options::FileEnter::Smart;
   }
+  static const char* insert_at_name(Options::InsertAt a) { return a == Options::InsertAt::File ? "file" : "start"; }
   void load_settings(const char* argv0) {
     RolltuiStr t{};
     if (rolltui_app_file(argv0, "dirktui", "settings", nullptr, 0, &t, nullptr)) {
@@ -1262,8 +1271,10 @@ struct App {
         const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
         const std::string sort(sv, n);
         opt.sort = sort == "size" ? Sort::Size : sort == "modified" ? Sort::Modified : Sort::Name;
-        const char* fv = rolltui_json_as_string(rolltui_json_get(root, "file_enter", 10), "open_stay", 9, &n);
+        const char* fv = rolltui_json_as_string(rolltui_json_get(root, "file_enter", 10), "smart", 5, &n);
         opt.file_enter = file_enter_of(std::string(fv, n));
+        const char* av = rolltui_json_as_string(rolltui_json_get(root, "insert_at", 9), "start", 5, &n);
+        opt.insert_at = std::string(av, n) == "file" ? Options::InsertAt::File : Options::InsertAt::Start;
         const char* cv = rolltui_json_as_string(rolltui_json_get(root, "copy_path", 9), "absolute", 8, &n);
         opt.copy_relative = std::string(cv, n) == "relative";
         rolltui_json_free(root);
@@ -1282,6 +1293,7 @@ struct App {
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
     out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"file_enter\": \"" << file_enter_name(opt.file_enter)
+        << "\", \"insert_at\": \"" << insert_at_name(opt.insert_at)
         << "\", \"copy_path\": \"" << (opt.copy_relative ? "relative" : "absolute") << "\" }\n";
     if (!out) hint = "could not write " + dir + "/settings.json";
   }
@@ -1302,6 +1314,8 @@ struct App {
     rolltui_menu_set_value(m, "file_enter", 10, fe, std::strlen(fe));
     const char* cp = opt.copy_relative ? "relative" : "absolute";
     rolltui_menu_set_value(m, "copy_path", 9, cp, std::strlen(cp));
+    const char* ia = insert_at_name(opt.insert_at);
+    rolltui_menu_set_value(m, "insert_at", 9, ia, std::strlen(ia));
   }
 
   void mount() {
@@ -1446,13 +1460,19 @@ struct App {
       const std::string path = b->selected_path();
       if (!e || b->selected_is_folder()) { chosen = path; exit_code = 0; quit = true; }
       else switch (opt.file_enter) {
+        case Options::FileEnter::Smart:
+          if (is_document(str_of(e->name))) {
+            if (open_path(path)) { hint = "opened " + str_of(e->name); b->file_opened(); }
+            else hint = "could not open " + str_of(e->name);
+          } else to_command_line(path);
+          break;
         case Options::FileEnter::OpenStay:
           if (open_path(path)) { hint = "opened " + str_of(e->name); b->file_opened(); }
           else hint = "could not open " + str_of(e->name);
           break;
         case Options::FileEnter::OpenLeave: open_path(path); exit_code = 1; quit = true; break;
         case Options::FileEnter::Parent: chosen = path; exit_code = 0; quit = true; break;
-        case Options::FileEnter::Insert: chosen = relative_to_start(path); exit_code = 3; quit = true; break;
+        case Options::FileEnter::Insert: to_command_line(path); break;
       }
     } else if (b->cancelled) quit = true;
     if (b->copy_requested) {
@@ -1468,8 +1488,35 @@ struct App {
   // hands the shell something (0: go there; 3: put it on the line), or nothing at all. Called
   // after the terminal is restored, so the line lands on a normal screen.
   int finish() const {
-    if (exit_code == 0 || exit_code == 3) { std::fwrite(chosen.data(), 1, chosen.size(), stdout); std::fputc('\n', stdout); }
+    if (exit_code == 0 || exit_code == 3 || exit_code == 4) { std::fwrite(chosen.data(), 1, chosen.size(), stdout); std::fputc('\n', stdout); }
     return exit_code;
+  }
+
+  // ---- what a file IS, for Enter --------------------------------------------------------------
+  // A known document type opens; everything else goes to the command line. An ALLOWLIST rather
+  // than a list of what not to open, because the failure the list guards against — handing a
+  // script to an opener that runs it — is the one that must not happen for a type nobody
+  // thought of. Lower-case, by extension.
+  static bool is_document(const std::string& name) {
+    static const char* const kDocs[] = {"txt", "md", "markdown", "rst", "html", "htm", "css", "json", "xml", "yaml", "yml",
+                                        "toml", "ini", "cfg", "conf", "log", "csv", "tsv", "pdf", "png", "jpg", "jpeg",
+                                        "gif", "svg", "webp", "bmp", "tiff", "heic", "mp3", "wav", "m4a", "mp4", "mov",
+                                        "m4v", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers",
+                                        "key", "epub"};
+    const std::size_t dot = name.rfind('.');
+    if (dot == std::string::npos || dot + 1 >= name.size()) return false;
+    std::string ext = name.substr(dot + 1);
+    for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    for (const char* d : kDocs) if (ext == d) return true;
+    return false;
+  }
+  // A file to the command line: exit 3 with the path as the path setting says (from where dirk
+  // started), or exit 4 with the file's absolute path for the shell to `cd` beside and type
+  // `./name` — the setting `insert_at` decides which.
+  void to_command_line(const std::string& path) {
+    if (opt.insert_at == Options::InsertAt::File) { chosen = path; exit_code = 4; }
+    else { chosen = opt.copy_relative ? relative_to_start(path) : path; exit_code = 3; }
+    quit = true;
   }
 
   // ---- where dirk started, and paths said from there ------------------------------------------
@@ -1616,6 +1663,10 @@ struct App {
         opt.file_enter = file_enter_of(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
         hint = std::string("enter on a file: ") + file_enter_name(opt.file_enter);
         save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "insert_at") {
+        opt.insert_at = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "file" ? Options::InsertAt::File : Options::InsertAt::Start;
+        hint = opt.insert_at == Options::InsertAt::File ? "command line: in the file's folder, ./name" : "command line: where dirk started";
+        save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "copy_path") {
         opt.copy_relative = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "relative";
         hint = opt.copy_relative ? "copy: relative to where dirk started" : "copy: absolute path";
@@ -1741,7 +1792,8 @@ int usage() {
                "usage: dirktui [PATH] [--ambiguous-wide]   browse from PATH (default: the current directory)\n"
                "                                           Enter on a folder prints it on stdout and exits 0;\n"
                "                                           on a file it does what the settings say (F2);\n"
-               "                                           exit 3: put the printed path on the command line.\n"
+               "                                           exit 3: put the printed path on the command line;\n"
+               "                                           exit 4: into the printed file's folder, then ./name\n"
                "                                           Esc prints nothing and exits 1\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
@@ -1785,6 +1837,10 @@ dirk() {
   if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
   local out rc
   out="$(command dirktui "$@")"; rc=$?
+  if (( rc == 4 )); then   # into the file's folder, then ./name onto the line
+    builtin cd -- "${out:h}" || return 1
+    out="./${out:t}"; rc=3
+  fi
   if (( rc == 3 )); then   # onto the next command line where there is one; shown where there is not
     if [[ -o zle ]]; then print -z -- "$out"; else print -r -- "$out"; fi
     return 0
@@ -1805,6 +1861,9 @@ _dirk_widget() {
   fi
   local rc
   out="$(command dirktui ${start:+"$start"} < /dev/tty)"; rc=$?
+  if (( rc == 4 )) && [[ -n "$out" ]]; then   # exit 4: into the file's folder, then ./name onto the line
+    builtin cd -- "${out:h}" && out="./${out:t}" && rc=3
+  fi
   if (( rc == 3 )) && [[ -n "$out" ]]; then   # exit 3: onto the command line, wherever the cursor is
     [[ -n "$start" ]] && LBUFFER="${LBUFFER%"$word"}"
     LBUFFER+="${(q)out}"
@@ -1857,6 +1916,7 @@ dirk() {
   if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
   local out rc
   out="$(command dirktui "$@")"; rc=$?
+  if (( rc == 4 )); then builtin cd -- "$(dirname -- "$out")" || return 1; out="./$(basename -- "$out")"; rc=3; fi
   if (( rc == 3 )); then printf '%s\n' "$out"; return 0; fi   # bash cannot push a next line from a command: shown instead
   (( rc == 0 )) || return $rc
   [[ -n "$out" ]] || return 1
@@ -1886,6 +1946,9 @@ _dirk_forward_char() {
   fi
   local rc
   out="$(command dirktui ${start:+"$start"} < /dev/tty)"; rc=$?
+  if (( rc == 4 )) && [[ -n "$out" ]]; then   # exit 4: into the file's folder, then ./name onto the line
+    builtin cd -- "$(dirname -- "$out")" && out="./$(basename -- "$out")" && rc=3
+  fi
   if (( rc == 3 )) && [[ -n "$out" ]]; then   # exit 3: onto the command line
     [[ -n "$start" ]] && READLINE_LINE="${READLINE_LINE%"$word"}"
     READLINE_LINE+="$(printf '%q' "$out")"
@@ -1930,6 +1993,11 @@ function dirk
     end
     set -l out (command dirktui $argv)
     set -l rc $status
+    if test $rc -eq 4
+        builtin cd -- (dirname -- "$out"); or return 1
+        set out "./"(basename -- "$out")
+        set rc 3
+    end
     if test $rc -eq 3
         printf '%s\n' "$out"   # fish cannot push a next line from a command: shown instead
         return 0
@@ -1950,6 +2018,9 @@ function _dirk_forward_char
     set -l rc $status
     commandline -f repaint
     test -n "$out"; or return
+    if test $rc -eq 4
+        builtin cd -- (dirname -- "$out"); and set out "./"(basename -- "$out"); and set rc 3
+    end
     if test $rc -eq 3
         commandline -i -- (string escape -- $out)   # exit 3: onto the command line
         return

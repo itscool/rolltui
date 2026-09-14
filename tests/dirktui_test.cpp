@@ -94,6 +94,8 @@ int main() {
   const fs::path tree = scratch / "tree";
   write_file(tree / "alpha" / "one.txt", "one\n");
   write_file(tree / "alpha" / "two.txt", "two\n");
+  write_file(tree / "alpha" / "run.sh", "#!/bin/sh\necho hi\n");
+  chmod((tree / "alpha" / "run.sh").c_str(), 0755);
   write_file(tree / "alpha" / "nested" / "deep.txt", std::string(300, 'x'));
   write_file(tree / "alpha" / "nested" / "leaf-file-long-name.txt", "in a leaf\n");
   fs::create_directories(tree / "beta");
@@ -225,8 +227,18 @@ int main() {
     const std::string stay = run(with_setting("{}") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     const std::string stay_log = stublines();
     check(status_of(crc) == 0 && has(stay, "go to") && has(stay_log, "open ") && has(stay_log, ".txt"),
-          "Enter on a file, by default, OPENS it and stays: a frame is drawn and the opener was handed the file [" +
+          "Enter on a DOCUMENT, by default, opens it and stays: a frame is drawn and the opener was handed the file [" +
               stay_log.substr(0, 40) + "]");
+    // …AND A SCRIPT GOES TO THE COMMAND LINE, never to an opener: exit 3 with its path, so arguments
+    // can follow; with the landing set to the file's folder, exit 4 with the file's absolute path.
+    const std::string script = run(with_setting("{}") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && script.find("/alpha/run.sh\n") != std::string::npos && stublines().empty(),
+          "…while Enter on a SCRIPT, by default, hands it to the command line (exit 3) and opens nothing [" + script.substr(script.rfind('/') + 1) + "]");
+    const std::string script_rel = run(with_setting("{ \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && script_rel == "./alpha/run.sh\n", "…relative to where dirk started when the path setting says so");
+    const std::string script_at = run(with_setting("{ \"insert_at\": \"file\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 4 && script_at.find("/alpha/run.sh\n") != std::string::npos,
+          "…and with the landing set to the file's folder, exit 4 with the absolute path for the shell to cd beside");
     const std::string leave = run(with_setting("{ \"file_enter\": \"open_leave\" }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     const std::string leave_log = stublines();
     check(status_of(crc) == 1 && leave.empty() && has(leave_log, "open "), "…`open_leave` opens it and leaves with nothing printed, exit 1");
@@ -244,9 +256,9 @@ int main() {
     const std::string sibling = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Right Down Left Down Right Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && sibling.find("/beta/") != std::string::npos && sibling.find("one.txt") == std::string::npos,
           "…while a sibling folder entered instead starts on its own first entry, not on alpha's memory");
-    const std::string insert = run(with_setting("{ \"file_enter\": \"insert\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
+    const std::string insert = run(with_setting("{ \"file_enter\": \"insert\", \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && insert.rfind("./alpha/", 0) == 0,
-          "…`insert` leaves with the path RELATIVE to where dirk started and exit 3: the verb is the status [" + insert + "]");
+          "…`insert` leaves with the path for the command line — relative here, by the path setting — and exit 3: the verb is the status [" + insert + "]");
 
     // COPY: `c` puts the path on the clipboard, absolute by default; the Option chord inverts
     // the setting, and the setting inverts the chord.
@@ -296,7 +308,8 @@ int main() {
     write_file(fake / "dirktui", "#!/bin/sh\ncase \"$FAKE\" in\n  dir) printf '%s\\n' '" + (tree / "alpha").string() +
                                      "';;\n  file) printf '%s\\n' '" + (tree / "alpha" / "one.txt").string() +
                                      "';;\n  exe) printf '%s\\n' '" + (tree / "alpha" / "run.sh").string() +
-                                     "';;\n  insert) printf './alpha/one.txt\\n'; exit 3;;\n  *) exit 1;;\nesac\n");
+                                     "';;\n  insert) printf './alpha/one.txt\\n'; exit 3;;\n  beside) printf '%s\\n' '" + (tree / "alpha" / "one.txt").string() +
+                                     "'; exit 4;;\n  *) exit 1;;\nesac\n");
     chmod((fake / "dirktui").c_str(), 0755);
     const fs::path opened = scratch / "opened.log";
     write_file(fake / "openlog", "#!/bin/sh\nprintf '%s\\n' \"$1\" >> '" + opened.string() + "'\n");
@@ -319,6 +332,7 @@ int main() {
                                 "cd /; FAKE=file dirk >/dev/null; echo \"file=$? $PWD\"; " +
                                 "cd /; FAKE=exe dirk >/dev/null; echo \"exe=$? $PWD\"; " +
                                 "cd /; FAKE=insert dirk; echo \"insert=$? $PWD\"; " +
+                                "cd /; FAKE=beside dirk; echo \"beside=$? $PWD\"; " +
                                 "cd /; FAKE=no dirk; echo \"cancel=$? $PWD\"' 2>&1";
       const std::string drove = run(drive, irc);
       const std::string alpha = (tree / "alpha").string();
@@ -330,6 +344,9 @@ int main() {
       check(has(drove, "insert=0 /\n") && has(drove, "./alpha/one.txt"),
             std::string(sh.name) + ": exit 3 changes no directory and hands the path to the line (or shows it) [" +
                 drove.substr(drove.find("insert="), 30) + "]");
+      check(has(drove, "beside=0 " + alpha + "\n") && has(drove, "./one.txt"),
+            std::string(sh.name) + ": exit 4 lands in the file's folder with ./name on the line (or shown) [" +
+                drove.substr(drove.find("beside="), 40) + "]");
       check(!fs::exists(opened), std::string(sh.name) + ": the shell side opens NOTHING any more — opening is the binary's");
     }
 
