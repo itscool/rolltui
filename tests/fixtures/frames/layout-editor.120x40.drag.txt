@@ -1,4 +1,4 @@
-┌ transcript ─────────────────┬ transcript-2 ─────────────────────────┌ layout editor ─────────────────────────────────┐
+┌ transcript ─────────────────┬ transcript-2 ─────────────────────────┌ layout editor • transcript ────────────────────┐
 │ │ nt    │        │        │ │ │ diff + SGR/colour │             │ pu│ (row) row                                      │
 │ │ slots │        │        │ │ │ downgrade         │             │ te│   (column) column                              │
 │ │ )     │        │        │ │ │ Wrap engine       │ build       │ si│     transcript-row row                         │
@@ -11,22 +11,22 @@
 │ │ ks →  │        │        │ │ │                   │             │ fu│ popup help                                     │
 │ │ style │        │        │ │ │ Menu widget       │ build       │ si│   help help                                    │
 │ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ popup approval                                 │
-│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ layout editor • transcript                     │
-│ │ ed    │        │        │ │ │ list/text widgets │             │ de│ [x] Visible                                    │
-│ │ lines │        │        │ │ │                   │             │ sm│ Border                                single ▸ │
-│ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Background role                   background ▸ │
-│ │ Theme │ build  │ single │ │ │ (JSON: windows +  │             │ lo│ Node id: transcript                            │
-│ │ (role │        │ header │ │ │ placements +      │             │ pa│ Title: transcript                              │
-│ │ s →   │        │        │ │ │ content slots)    │             │ re│ Widget kind: transcript                        │
-│ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Source: session                                │
-│ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│ Menu file:                                     │
-│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │ Size (Alt+arrows nudge): 31                    │
-│ │ loade │        │        │ │ │ lines)            │             │   │ [x] Focusable                                  │
-│ │ r,    │        │        │ │ │ Theme (roles →    │ build       │ si│ Tree — split, swap, delete                   ▸ │
-│ │ built │        │        │ │ │ styles, JSON      │             │   │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ -ins) │        │        │ │ │ loader, built-    │             │   │ Layout file — new, load, save                ▸ │
-│ └───────┴────────┴────────┘ │ │ ins)              │             │   │ Undo                                    Ctrl-Z │
-│                             │ └───────────────────┴─────────────┴───│ Redo                                    Ctrl-Y │
+│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ [x] Visible                                    │
+│ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Border                                single ▸ │
+│ │ lines │        │        │ │ │                   │             │ sm│ Background role                   background ▸ │
+│ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Node id: transcript                            │
+│ │ Theme │ build  │ single │ │ │ (JSON: windows +  │             │ lo│ Title: transcript                              │
+│ │ (role │        │ header │ │ │ placements +      │             │ pa│ Widget kind: transcript                        │
+│ │ s →   │        │        │ │ │ content slots)    │             │ re│ Source: session                                │
+│ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Menu file:                                     │
+│ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│ Size (Alt+arrows nudge): 31                    │
+│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │ [x] Focusable                                  │
+│ │ loade │        │        │ │ │ lines)            │             │   │ Tree — split, swap, delete                   ▸ │
+│ │ r,    │        │        │ │ │ Theme (roles →    │ build       │ si│ This screen — sizes, focus, popups, actions  ▸ │
+│ │ built │        │        │ │ │ styles, JSON      │             │   │ Layout file — new, load, save                ▸ │
+│ │ -ins) │        │        │ │ │ loader, built-    │             │   │ Undo                                    Ctrl-Z │
+│ └───────┴────────┴────────┘ │ │ ins)              │             │   │ Redo                                    Ctrl-Y │
+│                             │ └───────────────────┴─────────────┴───│                                                │
 │ Here is the function you    │                                       │                                                │
 │ asked for:                  │ Here is the function you asked for:   │                                                │
 │                             │                                       │                                                │

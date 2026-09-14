@@ -1,6 +1,7 @@
 /* rolltui/c/rolltui_menu.c — the menu widget, the typed-field rules and the file format.
  * See rolltui_menu.h. */
 #include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_frame_ops.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -42,6 +43,13 @@ static size_t zmin(size_t a, size_t b) { return a < b ? a : b; }
 /* ---- small text helpers ------------------------------------------------------------------ */
 
 static void str_add(RolltuiStr* s, const char* z) { rolltui_str_append(s, z, strlen(z)); }
+
+/* A SECTION or a SEPARATOR: a row that says how the level is organised. It takes no cursor, no
+ * click, no filter match and no palette entry. */
+static int divider(const RolltuiMenuItem* it) {
+  return it->kind == ROLLTUI_MENU_SECTION || it->kind == ROLLTUI_MENU_SEPARATOR;
+}
+static void settle(RolltuiMenu* m, int dir);
 
 /* A number as text: `precision` digits after the point, or the shortest exact form. */
 static void num_text(double v, int precision, char* out, size_t cap) {
@@ -726,6 +734,7 @@ static void flat_walk(RolltuiMenu* m, const RolltuiMenuItem* it, const RolltuiSt
   for (i = 0; i < it->children.n; ++i) {
     const RolltuiMenuItem* c = it->children.v[i];
     RolltuiStr label;
+    if (divider(c)) continue; /* organisation, not a thing to find */
     memset(&label, 0, sizeof label);
     if (*p_n < p_cap) p[(*p_n)++] = i;
     if (prefix->n) {
@@ -816,6 +825,19 @@ static int contains_ci(const char* hay, size_t hn, const char* needle, size_t nn
 
 static int has_back(const RolltuiMenu* m) { return !m->palette && m->path_n > 0; }
 
+
+/* THE STATUS ROW: the filter being typed, or a field's guidance while editing. It exists only
+ * while there is something to say, at the BOTTOM, so the item rows above it never move; a
+ * palette keeps its prompt at the TOP always, where a search box belongs. The breadcrumb is
+ * never drawn here: it is the window's TITLE, through the widget's `title` slot, so a level is
+ * named once. */
+static int status_rows(const RolltuiMenu* m) {
+  return m->area.h >= 2 && (m->palette || m->editing || m->filter.n) ? 1 : 0;
+}
+static int status_on_top(const RolltuiMenu* m) { return m->palette; }
+static int status_y(const RolltuiMenu* m) { return status_on_top(m) ? m->area.y : m->area.y + m->area.h - 1; }
+static int first_item_y(const RolltuiMenu* m) { return m->area.y + (status_rows(m) && status_on_top(m) ? 1 : 0); }
+
 /* Where the FIRST real child sits in the visible list. Every place that computes a selection
  * from a child index goes through this, so the offset exists once. */
 static size_t first_child_row(const RolltuiMenu* m) { return has_back(m) ? 1 : 0; }
@@ -842,9 +864,12 @@ static size_t build_visible(RolltuiMenu* m) {
      * one of the things you are looking for, and hiding it behind a typed prefix would strand
      * exactly the person who typed one by mistake. */
     if (has_back(m)) vis_push(m, BACK_ROW);
-    for (i = 0; i < lv->children.n; ++i)
+    for (i = 0; i < lv->children.n; ++i) {
+      /* A filtered level is a list of hits; a heading over none of them would be a lie. */
+      if (m->filter.n && divider(lv->children.v[i])) continue;
       if (contains_ci(lv->children.v[i]->label.p, lv->children.v[i]->label.n, m->filter.p, m->filter.n))
         vis_push(m, i);
+    }
   }
   return m->vis_n;
 }
@@ -875,7 +900,32 @@ const RolltuiMenuItem* rolltui_menu_selected_item(const RolltuiMenu* m) {
 
 size_t rolltui_menu_selected(const RolltuiMenu* m) { return m->sel; }
 
-static int item_rows(const RolltuiMenu* m) { return m->area.h >= 2 ? m->area.h - 1 : m->area.h; }
+static int item_rows(const RolltuiMenu* m) { return m->area.h - status_rows(m); }
+
+/* Whether the cursor may rest on visible row `vis`: the back row and every item but a divider. */
+static int selectable_row(RolltuiMenu* m, size_t vis) {
+  const RolltuiMenuItem* it;
+  if (vis >= build_visible(m)) return 0;
+  if (m->vis[vis] == BACK_ROW) return 1;
+  it = item_at(m, vis);
+  return it != NULL && !divider(it);
+}
+
+/* Moves the cursor off a divider, onward in `dir` and, at the end of the level, back the
+ * other way — so Down past a heading lands on the first row under it and Up on the last row
+ * above. A level of nothing but dividers leaves the cursor where it is. */
+static void settle(RolltuiMenu* m, int dir) {
+  const long n = (long)build_visible(m);
+  long s = (long)m->sel;
+  if (n == 0 || dir == 0) return;
+  while (s >= 0 && s < n && !selectable_row(m, (size_t)s)) s += dir;
+  if (s < 0 || s >= n) {
+    s = (long)m->sel;
+    while (s >= 0 && s < n && !selectable_row(m, (size_t)s)) s -= dir;
+    if (s < 0 || s >= n) return;
+  }
+  m->sel = (size_t)s;
+}
 
 static void ensure_visible(RolltuiMenu* m) {
   const int rows = item_rows(m);
@@ -894,6 +944,7 @@ static void clamp_selection(RolltuiMenu* m) {
   const size_t n = build_visible(m);
   if (n == 0) m->sel = 0;
   else if (m->sel >= n) m->sel = n - 1;
+  settle(m, 1);
   ensure_visible(m);
 }
 
@@ -910,21 +961,25 @@ const char* rolltui_menu_edit_reason(const RolltuiMenu* m, size_t* len) {
 }
 int rolltui_menu_palette(const RolltuiMenu* m) { return m->palette; }
 
-void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out) {
+void rolltui_menu_title(const RolltuiMenu* m, const char* base, size_t base_len, RolltuiStr* out) {
   const RolltuiMenuItem* it = &m->root;
   size_t k;
   rolltui_str_clear(out);
+  if (base_len == 0) {
+    base = m->root.label.p;
+    base_len = m->root.label.n;
+  }
   if (m->palette) {
-    if (m->root.label.n == 0) {
+    if (base_len == 0) {
       str_add(out, "\xE2\x80\xBA");
       return;
     }
-    rolltui_str_append_str(out, &m->root.label);
+    rolltui_str_append(out, base, base_len);
     str_add(out, CRUMB);
     str_add(out, ELLIPSIS);
     return;
   }
-  rolltui_str_append_str(out, &m->root.label);
+  if (base_len) rolltui_str_append(out, base, base_len);
   for (k = 0; k < m->path_n; ++k) {
     if (m->path[k] >= it->children.n) break;
     it = it->children.v[m->path[k]];
@@ -932,6 +987,8 @@ void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out) {
     rolltui_str_append_str(out, &it->label);
   }
 }
+
+void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out) { rolltui_menu_title(m, NULL, 0, out); }
 
 /* ---- lifetime ---------------------------------------------------------------------------- */
 
@@ -987,6 +1044,7 @@ void rolltui_menu_reset(RolltuiMenu* m) {
   rolltui_str_clear(&m->edit_reason);
   m->palette = 0;
   rebuild_flat(m);
+  settle(m, 1); /* a level that opens under a heading opens on the first row below it */
 }
 
 void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root) {
@@ -1130,6 +1188,7 @@ static void begin_edit(RolltuiMenu* m, RolltuiMenuItem* it) {
   rolltui_str_clear(&m->edit_reason);
   rolltui_input_set_text(m->edit, it->value.p, it->value.n);
   rolltui_input_select_all(m->edit); /* typing replaces; a first arrow key places the caret */
+  ensure_visible(m);                 /* the guidance row takes the bottom row: the field must not be under it */
 }
 
 static int try_insert(RolltuiMenu* m, const char* text, size_t len) {
@@ -1394,6 +1453,9 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
   RolltuiStyle title = styles[roles->item];
   RolltuiRect row_rect;
   if (!dropdown_box(m, it, &box, &rows)) return;
+  /* The menu under the box steps half a pace back — still the thing being edited, no longer
+   * the thing being looked at. Half the modal's shade, so the two depths read as two. */
+  rolltui_frame_shade(f, m->area, styles[ROLLTUI_ROLE_OVERLAY], ROLLTUI_SHADE_DROPDOWN);
   frame_style.bg = ground.bg;
   title.fg = styles[roles->label].fg;
   title.bold = 1;
@@ -1440,7 +1502,7 @@ static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
     return;
   }
   it = item_at(m, vis_index);
-  if (!it || !it->enabled) return;
+  if (!it || !it->enabled || divider(it)) return;
   if (m->palette) {
     const FlatEntry* fe = &m->flat[m->vis[vis_index]];
     if (fe->path_n >= 2) {
@@ -1531,19 +1593,27 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
   n = build_visible(m);
   if (action_is(a, alen, A->up)) {
     move_to(m, m->sel == 0 ? 0 : m->sel - 1, n);
+    settle(m, -1);
+    ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->down)) {
     move_to(m, m->sel + 1, n);
+    settle(m, 1);
+    ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->page_up)) {
     const size_t s = (size_t)imax(item_rows(m), 1);
     move_to(m, m->sel < s ? 0 : m->sel - s, n);
+    settle(m, -1);
+    ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->page_down)) {
     move_to(m, m->sel + (size_t)imax(item_rows(m), 1), n);
+    settle(m, 1);
+    ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->first)) {
@@ -1553,10 +1623,14 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
      * the row itself. Home then Enter is how a person picks the first thing; landing it on the
      * exit would make that gesture leave the level. */
     move_to(m, first_child_row(m), n);
+    settle(m, 1);
+    ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->last)) {
     move_to(m, n == 0 ? 0 : n - 1, n);
+    settle(m, -1);
+    ensure_visible(m);
     return;
   }
   if (action_is(a, alen, A->activate)) {
@@ -1614,6 +1688,7 @@ static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenu
   if (e->kind == 4 /* WheelUp */) {
     if (m->sel > 0) {
       --m->sel;
+      settle(m, -1);
       ensure_visible(m);
     }
     return;
@@ -1622,6 +1697,7 @@ static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenu
     n = build_visible(m);
     if (n && m->sel + 1 < n) {
       ++m->sel;
+      settle(m, 1);
       ensure_visible(m);
     }
     return;
@@ -1630,10 +1706,10 @@ static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenu
   if (!(e->x >= m->area.x && e->y >= m->area.y && e->x < m->area.x + m->area.w &&
         e->y < m->area.y + m->area.h))
     return;
-  first_item_row = m->area.h >= 2 ? m->area.y + 1 : m->area.y;
-  if (e->y < first_item_row) return;
+  first_item_row = first_item_y(m);
+  if (e->y < first_item_row || e->y >= first_item_row + item_rows(m)) return;
   idx = (size_t)m->top + (size_t)(e->y - first_item_row);
-  if (idx >= build_visible(m)) return;
+  if (!selectable_row(m, idx)) return; /* out of range, or a divider */
   m->sel = idx;
   act(m, m->sel, out);
 }
@@ -1744,7 +1820,8 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
   if (a.w <= 0 || a.h <= 0 || w <= 0) return;
   memset(&line, 0, sizeof line);
   vis_n = build_visible(mm);
-  if (a.h >= 2) {
+  if (status_rows(m)) {
+    const int sy = status_y(m);
     if (m->editing) {
       /* The breadcrumb yields to the field's guidance: the reason a key or a commit was
        * refused when there is one, else the constraint. */
@@ -1761,22 +1838,28 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
         else str_add(&line, "Enter commits, Esc cancels");
         rolltui_str_free(&hint);
       }
-      rolltui_frame_put_text(f, draw, x0, y, line.p, line.n,
+      rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n,
                              styles[m->edit_reason.n ? roles->warning : roles->shortcut], w, aw, 0);
-    } else {
+    } else if (m->palette) {
+      /* The prompt: where the search is rooted, then what has been typed. */
       int used;
       rolltui_menu_breadcrumb(m, &line);
-      used = rolltui_frame_put_text(f, draw, x0, y, line.p, line.n, styles[roles->breadcrumb], w, aw, 0);
+      used = rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n, styles[roles->breadcrumb], w, aw, 0);
       if (m->filter.n) {
         rolltui_str_clear(&line);
         str_add(&line, "  /");
         rolltui_str_append_str(&line, &m->filter);
-        rolltui_frame_put_text(f, draw, x0 + used, y, line.p, line.n, styles[roles->shortcut],
+        rolltui_frame_put_text(f, draw, x0 + used, sy, line.p, line.n, styles[roles->shortcut],
                                imax(w - used, 0), aw, 0);
       }
+    } else {
+      rolltui_str_clear(&line);
+      str_add(&line, "/");
+      rolltui_str_append_str(&line, &m->filter);
+      rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n, styles[roles->shortcut], w, aw, 0);
     }
-    ++y;
   }
+  y = first_item_y(m);
   rows = item_rows(m);
   if (vis_n == 0) {
     if (rows > 0) {
@@ -1823,6 +1906,24 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     row_rect.w = w;
     row_rect.h = 1;
     rolltui_frame_fill(f, draw, row_rect, base, NULL, 0);
+    if (divider(it)) {
+      /* A SECTION names the rows under it — its label, bold, then a rule to the edge. A
+       * SEPARATOR is the rule alone. The rule is muted and the name is the breadcrumb's role:
+       * chrome that says where things are, the same as a level's name on the border. */
+      RolltuiStyle rule = styles[roles->text_muted], head = styles[roles->breadcrumb];
+      int used = 0, k;
+      rule.bg = base.bg;
+      head.bg = base.bg;
+      head.bold = 1;
+      if (it->kind == ROLLTUI_MENU_SECTION && it->label.n) {
+        used = rolltui_frame_put_text(f, draw, x0, y + r, it->label.p, it->label.n, head, w, aw, 0);
+        if (used < w) used += rolltui_frame_put_text(f, draw, x0 + used, y + r, " ", 1, rule, w - used, aw, 0);
+      }
+      rolltui_str_clear(&line);
+      for (k = used; k < w; ++k) str_add(&line, "\xE2\x94\x80");
+      if (line.n) rolltui_frame_put_text(f, draw, x0 + used, y + r, line.p, line.n, rule, w - used, aw, 0);
+      continue;
+    }
     if (is_sel && m->editing) {
       /* The field: its label, then the input widget's own drawing (caret, selection). */
       int used;
@@ -1858,22 +1959,18 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
       RolltuiStr right;
       int rw, left_max, used, rx;
       size_t split = 0;
-      /* A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE, and drawing both in one style
-       * makes a settings list read as a wall. The name goes muted and the answer bright, the
-       * same way the rows widget already draws its two columns — so a menu of fields matches
-       * the panel beside it instead of being the one place the distinction is missing.
+      /* A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. The name is drawn as every other
+       * row's is — a muted name beside a bright toggle reads as a DISABLED row, which is the
+       * one thing the muted role means everywhere else — and only the answer takes the value
+       * role, so the eye finds the answers without mistaking the questions for dead rows.
        *
-       * ONLY ROWS THAT HAVE BOTH HALVES. An action or a submenu is a name alone; muting those
-       * would dim the menu rather than structure it, because there is no second half for the
-       * eye to travel to.
-       *
-       * THE ROW KEEPS ITS OWN BACKGROUND — only the foreground and the attributes come from
-       * the role, the same move the border draw makes with `line.bg = ground.bg`. A selected
-       * row is one solid block and must stay one; a role's background would punch a hole in it.
-       */
+       * THE VALUE KEEPS THE ROW'S OWN BACKGROUND — only the foreground and the attributes come
+       * from the role, the same move the border draw makes with `line.bg = ground.bg`. A
+       * selected row is one solid block and must stay one; a role's background would punch a
+       * hole in it. */
       const int two_part = !m->palette && !is_sel && it->value.n != 0 &&
                            (it->kind == ROLLTUI_MENU_INPUT || it->kind == ROLLTUI_MENU_CHOICE);
-      RolltuiStyle name_style = two_part ? styles[roles->label] : base;
+      RolltuiStyle name_style = base;
       RolltuiStyle value_style = styles[roles->value];
       name_style.bg = base.bg;
       value_style.bg = base.bg;
@@ -2016,6 +2113,8 @@ static const char* kind_name(unsigned char k) {
     case ROLLTUI_MENU_TOGGLE: return "toggle";
     case ROLLTUI_MENU_CHOICE: return "choice";
     case ROLLTUI_MENU_INPUT: return "input";
+    case ROLLTUI_MENU_SECTION: return "section";
+    case ROLLTUI_MENU_SEPARATOR: return "separator";
     default: return "action";
   }
 }
@@ -2026,6 +2125,8 @@ static int kind_from_name(const char* s, size_t len, unsigned char* out) {
   if (streq(s, len, "toggle")) { *out = ROLLTUI_MENU_TOGGLE; return 1; }
   if (streq(s, len, "choice")) { *out = ROLLTUI_MENU_CHOICE; return 1; }
   if (streq(s, len, "input")) { *out = ROLLTUI_MENU_INPUT; return 1; }
+  if (streq(s, len, "section")) { *out = ROLLTUI_MENU_SECTION; return 1; }
+  if (streq(s, len, "separator")) { *out = ROLLTUI_MENU_SEPARATOR; return 1; }
   return 0;
 }
 
@@ -2087,7 +2188,7 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
       const char* s = rolltui_json_is_string(x) ? rolltui_json_as_string(x, "", 0, &slen) : NULL;
       unsigned char kd = 0;
       if (!s || !kind_from_name(s, slen, &kd)) {
-        bad_value_at(rep, at.p, at.n, K(": expected action | submenu | toggle | choice | input"));
+        bad_value_at(rep, at.p, at.n, K(": expected action | submenu | toggle | choice | input | section | separator"));
       } else {
         it->kind = kd;
         kind_given = 1;

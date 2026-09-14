@@ -1,4 +1,4 @@
-┌ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+┌ transcript ─────────────────────────────────────────────────────────┌ layout editor • transcript › This screen — size┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ (row) row                                      │
 │ │ grapheme property,               │             │ unicode_tables.hp│   (column) column                              │
 │ │ Extended_Pictographic, InCB)     │             │                  │     transcript transcript:session              │
@@ -11,19 +11,19 @@
 │ │ mouse mode)                      │             │                  │ popup approval                                 │
 │ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
 │ │                                  │             │ Event, table-test│ popup menu                                     │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • transcript › This screen — siz │
-│ │ colour downgrade                 │             │ tested           │ ◂ Back                                         │
-│ │ Wrap engine                      │ build       │ single header ove│ app.help                                     ▸ │
-│ │                                  │             │ header           │ app.menu                                     ▸ │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ app.details                                  ▸ │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│ app.palette                                  ▸ │
-│ │                                  │             │ Rect is a pure fu│ app.repaint                                  ▸ │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│ app.find                                     ▸ │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ app.theme                                    ▸ │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ app.keys                                     ▸ │
-│ │ placements + content slots)      │             │ parser; hot-reloa│ app.filepicker                               ▸ │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ app.zoom                                     ▸ │
-│ │ → styled wrapped lines)          │             │                  │ add an action (name):                          │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ ◂ Back                                         │
+│ │ colour downgrade                 │             │ tested           │ app.help                                     ▸ │
+│ │ Wrap engine                      │ build       │ single header ove│ app.menu                                     ▸ │
+│ │                                  │             │ header           │ app.details                                  ▸ │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ app.palette                                  ▸ │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ app.repaint                                  ▸ │
+│ │                                  │             │ Rect is a pure fu│ app.find                                     ▸ │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ app.theme                                    ▸ │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ app.keys                                     ▸ │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ app.filepicker                               ▸ │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ app.zoom                                     ▸ │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ add an action (name):                          │
+│ │ → styled wrapped lines)          │             │                  │                                                │
 │ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
 │ │ loader, built-ins)               │             │                  │                                                │
 │ └──────────────────────────────────┴─────────────┴──────────────────│                                                │

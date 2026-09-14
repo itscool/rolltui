@@ -963,7 +963,15 @@ void rolltui_windows_autosize(RolltuiWindows* w, RolltuiWindowStack* stack, Roll
     int row, extent, border, want = 0;
     if (rn->node->kind != 0) continue;
     wd = rolltui_windows_at(w, rn->node->id.p, rn->node->id.n);
-    if (!wd || !wd->vt || !wd->vt->desired_outer) continue;
+    if (!wd || !wd->vt) continue;
+    if (wd->vt->title) {
+      /* Into the node's own buffer, reused frame to frame; a widget answering 0 hands the
+       * title back to the layout. */
+      RolltuiLayoutNode* nd = rolltui_window_stack_find(stack, rn->node->id.p, rn->node->id.n);
+      if (nd && !wd->vt->title(wd->ctx, nd->title.p ? nd->title.p : "", nd->title.n, &nd->live_title))
+        rolltui_str_clear(&nd->live_title);
+    }
+    if (!wd->vt->desired_outer) continue;
     /* The parent split is the INNERMOST one that contains this window — the last in tree
      * order, since a container precedes its children and siblings never overlap. */
     for (j = 0; j < w->node_n; ++j) {

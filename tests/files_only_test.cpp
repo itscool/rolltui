@@ -330,7 +330,8 @@ int main(int argc, char** argv) {
           "…the screen we switched away from left no action of its own behind");
 
     // Menu navigation, with nothing in the host knowing this tree.
-    check(has(menu_open, "commands › About this screen") && has(menu_open, "layouts/kettle.json") &&
+    // The level's path is the menu WINDOW's title — the layout's own title, then the path.
+    check(has(menu_open, "menus/kettle.json \xE2\x80\xBA About this") && has(menu_open, "layouts/kettle.json") &&
               has(menu_open, "bindings/kettle.json"),
           "Down + Enter descends a level of a menu that is only a file");
   }
@@ -373,7 +374,7 @@ int main(int argc, char** argv) {
     // so this is the shipped set and a theme that changes them re-records the frames with it.
     const bool has_thumb = has(marked_row, "\xE2\x94\x83") || has(marked_row, "\xE2\x95\xBB") ||
                            has(marked_row, "\xE2\x95\xB9") || has(marked_row, "\xE2\x80\xA2");
-    check(has_thumb && has(marked_row, "commands"),
+    check(has_thumb && has(marked_row, "Put the kettle on"),
           "a SCROLLBAR: the thumb is in the transcript's right border column — the one it SHARES with the menu [" +
               marked_row.substr(0, 40) + " … ]");
 
@@ -460,7 +461,7 @@ int main(int argc, char** argv) {
         << R"({"id":"root","label":"a menu written after the binary was built","items":[{"id":"a","label":"row one"}]})";
     std::ofstream(presets + "/layouts/second.json") << R"({"name":"second","min_width":0,"min_height":0,
         "actions":{},"root":{"column":[
-          {"id":"second_menu","content":"menu:second","border":"single","title":"menus/second.json","focusable":true}]}})";
+          {"id":"second_menu","content":"menu:second","border":"single","focusable":true}]}})";  // untitled: the menu's own root label names the window
     int rc = 0;
     const std::string out = run(play("--frame 60x8 --layout second --bindings kettle"), rc);
     check(rc == 0 && has(out, "a menu written after the binary was built") && has(out, "row one") && !has(status_line(out), "["),

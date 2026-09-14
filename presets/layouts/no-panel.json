@@ -141,7 +141,6 @@
         "id": "theme",
         "content": "theme",
         "border": "rounded",
-        "title": "theme",
         "focusable": true,
         "background": "panel_background"
       }
@@ -160,7 +159,6 @@
         "id": "keys",
         "content": "keys",
         "border": "rounded",
-        "title": "keys",
         "focusable": true,
         "background": "panel_background"
       }

@@ -112,6 +112,8 @@ ROLLTUI_API(rolltui_frame_text_width, PUBLIC)
 ROLLTUI_API(rolltui_frame_put_fields, PUBLIC)
 ROLLTUI_API(rolltui_frame_put_text, PUBLIC)
 ROLLTUI_API(rolltui_frame_tint, INTERNAL)
+ROLLTUI_API(rolltui_frame_shade, INTERNAL)
+ROLLTUI_API(rolltui_frame_unmark_rect, INTERNAL)
 
 /* ---- rolltui_render.h — the grid to bytes; default PUBLIC -------------------------------- */
 ROLLTUI_API(rolltui_frame_to_text, PUBLIC)
@@ -821,6 +823,7 @@ ROLLTUI_API(rolltui_menu_action_list_release, PUBLIC)  /* KEPT: a public C++ mem
    can, which is how every row with this reason was found. */  /* a public C++ member calls it (~RolltuiMenuActionList); a C consumer must be able to do the same */
 ROLLTUI_API(rolltui_menu_apply_shortcuts, PUBLIC)  /* KEPT: matching part — `rolltui_bindings_declare` is consumer-used — a menu shows an action's LIVE chords, and this is how a host refreshes them after the table changes */
 ROLLTUI_API(rolltui_menu_breadcrumb, INTERNAL)
+ROLLTUI_API(rolltui_menu_title, INTERNAL)
 ROLLTUI_API(rolltui_menu_default_actions, PUBLIC)
 ROLLTUI_API(rolltui_menu_draw, INTERNAL)
 ROLLTUI_API(rolltui_menu_dump_json, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */

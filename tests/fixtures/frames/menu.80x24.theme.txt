@@ -3,18 +3,18 @@
 │ │ block        │             │ header over  │ │ keys F7    default           │
 │ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
 │ │ (blocks →    │             │              │ │ size       80x24             │
-│ │ styled       │  ╭ menu ────────────────────────────────╮ 173/191           │
-│ │ wrapped      │  │ menu › Appearance › Theme            ╻ yes               │
-│ │ lines)       │  │ ◂ Back                               ┃ truecolor         │
-│ │ Theme (roles │ b│ default   colour-vision safe         ┃ menu              │
-│ │ → styles,    │  │ beacon   high contrast               ┃                   │
-│ │ JSON loader, │  │ catppuccin                           ┃                   │
-│ │ built-ins)   │  │ contrast   high contrast             ┃                   │
-│ └──────────────┴──│ • default-dark   colour-vision safe  ┃                   │
-│                   │ default-light   colour-vision safe   ╹                   │
-│ Here is the functi│ ember   colour-vision safe           │                   │
-│                   │ harbour   colour-vision safe         │                   │
-│ ┌ cpp ────────────│ ink   colour-vision safe           ▼ │                   │
+│ │ styled       │  ╭ menu › Appearance › Theme ───────────╮ 173/191           │
+│ │ wrapped      │  │ ◂ Back                               ╻ yes               │
+│ │ lines)       │  │ default   colour-vision safe         ┃ truecolor         │
+│ │ Theme (roles │ b│ beacon   high contrast               ┃ menu              │
+│ │ → styles,    │  │ catppuccin                           ┃                   │
+│ │ JSON loader, │  │ contrast   high contrast             ┃                   │
+│ │ built-ins)   │  │ • default-dark   colour-vision safe  ┃                   │
+│ └──────────────┴──│ default-light   colour-vision safe   ┃                   │
+│                   │ ember   colour-vision safe           ┃                   │
+│ Here is the functi│ harbour   colour-vision safe         ╹                   │
+│                   │ ink   colour-vision safe             │                   │
+│ ┌ cpp ────────────│ mono   monochrome                  ▼ │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │
 │ │   return a + b;                           │ ╻                              │
 │ └───────────────────────────────────────────┘ ╹                              │

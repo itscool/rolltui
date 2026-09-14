@@ -1,6 +1,6 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ theme editor  /check                           │
-│ │ grapheme property,               │             │ unicode_tables.hp│ Check: contrast, colour-vision, badges         │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ Check: contrast, colour-vision, badges         │
+│ │ grapheme property,               │             │ unicode_tables.hp│                                                │
 │ │ Extended╭ report ──────────────────────────────────────────────────────────────────────────────────────╮           │
 │ │ UAX #14 │ badges: dark readable cvd-safe protan-safe deutan-safe tritan-safe 16-safe 256-safe          │           │
 │ │ grapheme│                                                                                              │           │

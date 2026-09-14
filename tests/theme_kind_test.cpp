@@ -221,7 +221,7 @@ int main() {
   int rc = 0;
   const std::string open = run(base + " --layout kiln --bindings kiln 2>&1", rc);
   check(rc == 0 && !open.empty(), "the studio runs a screen it has never heard of (rc " + std::to_string(rc) + ")");
-  check(has(open, "theme editor") && has(open, "Roles") && has(open, "Generate a theme (seeded)"),
+  check(has(open, "the theme") && has(open, "Roles") && has(open, "Generate a theme (seeded)"),
         "…and the window whose content is `theme` draws the editor's own menu");
   check(has(open, "badges:") && has(open, "Enter commits, Esc cancels"),
         "…with the classification and the recovery model it states, drawn by the kind and not by the host");

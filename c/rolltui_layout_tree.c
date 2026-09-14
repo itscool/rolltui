@@ -77,6 +77,7 @@ void rolltui_layout_node_release(RolltuiLayoutNode* n) {
   rolltui_str_free(&n->id);
   rolltui_str_free(&n->content);
   rolltui_str_free(&n->title);
+  rolltui_str_free(&n->live_title);
   rolltui_node_list_release(&n->children);
   rolltui_layout_node_init(n);
 }

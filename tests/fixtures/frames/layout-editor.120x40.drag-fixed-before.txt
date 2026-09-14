@@ -1,4 +1,4 @@
-┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor • status ────────────────────────┐
 │ theme F4 default- │ │ component                             │ decisi│ (row) row                                      │
 │          dark     │ ├───────────────────────────────────────┼───────│   status rows:status                           │
 │ keys F7  default  │ │ Unicode tables (line-break class,     │ genera│   (column) column                              │
@@ -11,22 +11,22 @@
 │ follow   yes      │ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
 │ depth    truecolor│ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
 │ focus    editor   │ │ mode)                                 │       │ popup menu                                     │
-│                   │ │ Key + mouse decoding                  │ build │ layout editor • status                         │
-│                   │ │                                       │       │ [x] Visible                                    │
-│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Border                                single ▸ │
-│                   │ │ downgrade                             │       │ Background role             panel_background ▸ │
-│                   │ │ Wrap engine                           │ build │ Node id: status                                │
-│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Title: status                                  │
-│                   │ │ rel per axis), focus                  │       │ Widget kind: rows                              │
-│                   │ │ Menu widget (hierarchical,            │ build │ Source: status                                 │
-│                   │ │ filterable) + list/text widgets       │       │ Menu file:                                     │
-│                   │ │ Layout files (JSON: windows +         │ build │ Size (Alt+arrows nudge): 21                    │
-│                   │ │ placements + content slots)           │       │ [ ] Focusable                                  │
-│                   │ │ Markdown block renderer (blocks →     │ build │ Tree — split, swap, delete                   ▸ │
-│                   │ │ styled wrapped lines)                 │       │ This screen — sizes, focus, popups, actions  ▸ │
-│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Layout file — new, load, save                ▸ │
-│                   │ │ built-ins)                            │       │ Undo                                    Ctrl-Z │
-│                   │ └───────────────────────────────────────┴───────│ Redo                                    Ctrl-Y │
+│                   │ │ Key + mouse decoding                  │ build │ [x] Visible                                    │
+│                   │ │                                       │       │ Border                                single ▸ │
+│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Background role             panel_background ▸ │
+│                   │ │ downgrade                             │       │ Node id: status                                │
+│                   │ │ Wrap engine                           │ build │ Title: status                                  │
+│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Widget kind: rows                              │
+│                   │ │ rel per axis), focus                  │       │ Source: status                                 │
+│                   │ │ Menu widget (hierarchical,            │ build │ Menu file:                                     │
+│                   │ │ filterable) + list/text widgets       │       │ Size (Alt+arrows nudge): 21                    │
+│                   │ │ Layout files (JSON: windows +         │ build │ [ ] Focusable                                  │
+│                   │ │ placements + content slots)           │       │ Tree — split, swap, delete                   ▸ │
+│                   │ │ Markdown block renderer (blocks →     │ build │ This screen — sizes, focus, popups, actions  ▸ │
+│                   │ │ styled wrapped lines)                 │       │ Layout file — new, load, save                ▸ │
+│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Undo                                    Ctrl-Z │
+│                   │ │ built-ins)                            │       │ Redo                                    Ctrl-Y │
+│                   │ └───────────────────────────────────────┴───────│                                                │
 │                   │                                                 │                                                │
 │                   │ Here is the function you asked for:             │                                                │
 │                   │                                                 │                                                │

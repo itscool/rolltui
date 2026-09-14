@@ -1,6 +1,5 @@
-┌─────────────────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+┌─────────────────────────────────────────────────────────────────────┌ layout editor • main ──────────────────────────┐
 │                                                                     │ main text:                                     │
-│                                                                     │ layout editor • main                           │
 │                                                                     │ [x] Visible                                    │
 │                                                                     │ Border                                single ▸ │
 │                                                                     │ Background role                   background ▸ │
@@ -16,6 +15,7 @@
 │                                                                     │ Layout file — new, load, save                ▸ │
 │                                                                     │ Undo                                    Ctrl-Z │
 │                                                                     │ Redo                                    Ctrl-Y │
+│                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │
 │                                                                     │                                                │

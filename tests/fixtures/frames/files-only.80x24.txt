@@ -1,8 +1,8 @@
   a screen with no code behind it — six files, no rebuild
 ┌ the transcript ─────────────────────────────┬ menus/kettle.json ─────────────┐
-│ in its right border column                  │ commands                       │
-│                                             │ Put the kettle on       Ctrl-J │
-│ A screen is a set of files. This document   │ About this screen            ▸ │
+│ in its right border column                  │ Put the kettle on       Ctrl-J │
+│                                             │ About this screen            ▸ │
+│ A screen is a set of files. This document   │                                │
 │ is one of them, and everything on it — the  │                                │
 │ marked span above, the coloured block, the  │                                │
 │ thumb in the border and the find bar —      │                                │

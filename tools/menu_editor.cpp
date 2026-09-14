@@ -36,6 +36,8 @@ std::string kind_name(unsigned char k) {
     case ROLLTUI_MENU_TOGGLE: return "toggle";
     case ROLLTUI_MENU_CHOICE: return "choice";
     case ROLLTUI_MENU_INPUT: return "input";
+    case ROLLTUI_MENU_SECTION: return "section";
+    case ROLLTUI_MENU_SEPARATOR: return "separator";
     default: return "action";
   }
 }
@@ -45,6 +47,8 @@ std::optional<unsigned char> kind_from_name(std::string_view s) {
   if (s == "toggle") return ROLLTUI_MENU_TOGGLE;
   if (s == "choice") return ROLLTUI_MENU_CHOICE;
   if (s == "input") return ROLLTUI_MENU_INPUT;
+  if (s == "section") return ROLLTUI_MENU_SECTION;
+  if (s == "separator") return ROLLTUI_MENU_SEPARATOR;
   return std::nullopt;
 }
 std::string input_type_name(unsigned char t) {
@@ -277,7 +281,8 @@ bool MenuEditor::remove_item() {
 
 void MenuEditor::rebuild_menu() {
   std::vector<MenuItem> kinds, types, loads;
-  for (const char* k : {"action", "submenu", "toggle", "choice", "input"}) kinds.push_back(MenuItem::action(k, k));
+  for (const char* k : {"action", "submenu", "toggle", "choice", "input", "section", "separator"})
+    kinds.push_back(MenuItem::action(k, k));
   for (unsigned char t = 0; t < ROLLTUI_INPUT_TYPE_COUNT; ++t) {
     const std::string n = input_type_name(t);
     types.push_back(MenuItem::action(n.c_str(), n.c_str()));

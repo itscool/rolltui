@@ -1037,7 +1037,7 @@ constexpr RolltuiWidgetPlugin kBrowserPlugin = {
     /*desired_outer=*/nullptr,
     /*handle=*/browser_handle,
     /*scroll_extent=*/browser_scroll_extent,
-    /*scroll_to=*/browser_scroll_to,
+    /*scroll_to=*/browser_scroll_to, nullptr /* title: the layout's */
 };
 
 struct BrowserFactoryCtx {

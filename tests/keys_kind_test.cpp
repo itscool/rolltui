@@ -234,7 +234,7 @@ int main() {
   int rc = 0;
   const std::string open = run(base + " --layout anvil --bindings anvil 2>&1", rc);
   check(rc == 0 && !open.empty(), "the studio runs a screen it has never heard of (rc " + std::to_string(rc) + ")");
-  check(has(open, "keys editor") && has(open, "Actions by scope") && has(open, "Reset to the loaded preset"),
+  check(has(open, "the keys") && has(open, "Actions by scope") && has(open, "Reset to the loaded preset"),
         "…and the window whose content is `keys` draws the editor's own menu");
   check(has(open, "Enter on an action: add, remove or clear its chords") &&
             has(open, "preset: (this app keeps no bindings presets)"),

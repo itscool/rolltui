@@ -1,8 +1,8 @@
   a screen with no code ╭ find ────────────────────────────────────────────────────────────────╮
 ┌ the transcript ───────│ > target                                                             │ttle.json ─────────────┐
-│ │ -  int target = 80; ╰──────────────────────────────────────────────────────────────────────╯                       │
-│ │ +  int target = 100;                                                            │ │ Put the kettle on       Ctrl-J │
-│ │    while (probe() < target) {                                                   │ │ About this screen            ▸ │
+│ │ -  int target = 80; ╰──────────────────────────────────────────────────────────────────────╯kettle on       Ctrl-J │
+│ │ +  int target = 100;                                                            │ │ About this screen            ▸ │
+│ │    while (probe() < target) {                                                   │ │                                │
 │ │      wait_ms(200);                                                              │ │                                │
 │ │    }                                                                            │ │                                │
 │ │    element_off();                                                               │ │                                │

@@ -3,7 +3,7 @@
 │                               │             │ Rect is a pure function        │
 │ Menu widget (hierarchical,    │ build       │ single header each; the widget │
 │ filterable) + list/text       │             │ set is deliberately this small │
-│ widgets           ╭ menu ────────────────────────────────╮                   │
+│ widgets           ╭ menu › … ────────────────────────────╮                   │
 │ Layout files (JSON│ menu › …  /stacked                   │heme loader's hand │
 │ placements + conte│ Appearance › Layout › stacked        │reloaded           │
 │ Markdown block ren│                                      │r over md4c + wrap │

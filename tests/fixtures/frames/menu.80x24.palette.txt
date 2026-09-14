@@ -3,7 +3,7 @@
 │ │ block        │             │ header over  │ │ keys F7    default           │
 │ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
 │ │ (blocks →    │             │              │ │ size       80x24             │
-│ │ styled       │  ╭ menu ────────────────────────────────╮ 173/191           │
+│ │ styled       │  ╭ menu › … ────────────────────────────╮ 173/191           │
 │ │ wrapped      │  │ menu › …  /mono                      │ yes               │
 │ │ lines)       │  │ Appearance › Theme › mono   monochro │ truecolor         │
 │ │ Theme (roles │ b│ Appearance › Colour depth › mono     │ menu              │

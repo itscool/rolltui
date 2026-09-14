@@ -630,8 +630,12 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     line.bg = ground.bg;
     title = styles[roles->title];
     title.bg = ground.bg;
-    draw_border_impl(f, scratch->draw, rn->outer, n->border, line, n->title.p, n->title.n, title,
-                     ambiguous_wide, scratch->map, scratch->before);
+    /* The widget's own title when it has one this frame, else the file's. */
+    {
+      const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
+      draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title,
+                       ambiguous_wide, scratch->map, scratch->before);
+    }
   }
   if (!render) return;
   for (i = 0; i < count; ++i)
@@ -2281,9 +2285,12 @@ void rolltui_window_stack_compose(const RolltuiWindowStack* s, RolltuiFrame* f, 
   w.focused = rolltui_window_stack_focused(s);
   for (i = 0; i < s->n; ++i) {
     RolltuiRect box;
-    if (s->layers[i].modal) rolltui_frame_tint(f, screen, styles[roles->overlay]);
+    if (s->layers[i].modal) rolltui_frame_shade(f, screen, styles[roles->overlay], ROLLTUI_SHADE_MODAL);
     scratch->nodes.n = 0;
     rolltui_placement_resolve(&s->layers[i].placement, screen, &box);
+    /* The cells this popup covers are its now: a mark a lower layer left on them would put
+     * that layer's motion onto the popup when the effects are applied to the finished frame. */
+    if (i > 0) rolltui_frame_unmark_rect(f, box);
     rolltui_resolve_tree(&s->layers[i].root, box, screen, i, stack_sink, &w);
     rolltui_compose_layer(f, scratch->nodes.v, scratch->nodes.n, styles, roles, render, ctx, ambiguous_wide,
                           scratch);

@@ -1,12 +1,12 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ keys editor ───────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ keys editor                                    │
-│ │ grapheme property,               │             │ unicode_tables.hp│ Actions by scope                             ▸ │
-│ │ Extended_Pictographic, InCB)     │             │                  │ Undo                                    Ctrl-Z │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Redo                                    Ctrl-Y │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ Load keys                                    ▸ │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Save keys as:                                  │
-│ │                                  │             │ block tree is the│ Write a SHIPPED preset (the editor's privil  ▸ │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ Reset to the loaded preset…                    │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ Actions by scope                             ▸ │
+│ │ grapheme property,               │             │ unicode_tables.hp│ Undo                                    Ctrl-Z │
+│ │ Extended_Pictographic, InCB)     │             │                  │ Redo                                    Ctrl-Y │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Load keys                                    ▸ │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ Save keys as:                                  │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Write a SHIPPED preset (the editor's privil  ▸ │
+│ │                                  │             │ block tree is the│ Reset to the loaded preset…                    │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
 │ │ mouse mode)                      │             │                  │                                                │
 │ │ Key + mouse decoding             │ build       │ single header, pu│                                                │

@@ -7,10 +7,10 @@
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow     yes               │
 │ │                                  │             │ block tree is the API            │ │ depth      truecolor         │
 │ │ Terminal I/O (raw, alt scr╭ menu ────────────────────────────────────────────────────╮focus      menu              │
-│ │ size, SIGWINCH, bracketed │ menu                                                     │                             │
-│ │ mouse mode)               │ Editors                                                ▸ │                             │
-│ │ Key + mouse decoding      │ Appearance                                             ▸ │                             │
-│ │                           │ Commands                                               ▸ │                             │
+│ │ size, SIGWINCH, bracketed │ Editors                                                ▸ │                             │
+│ │ mouse mode)               │ Appearance                                             ▸ │                             │
+│ │ Key + mouse decoding      │ Commands                                               ▸ │                             │
+│ │                           │                                                          │                             │
 │ │ Cell grid + frame diff + S│                                                          │                             │
 │ │ colour downgrade          │                                                          │                             │
 │ │ Wrap engine               │                                                          │                             │

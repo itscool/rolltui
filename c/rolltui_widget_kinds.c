@@ -235,7 +235,7 @@ static int text_ctx_scroll_to(void* ctx, unsigned char axis, size_t first) {
 
 static const RolltuiWidgetPlugin kTextPlugin = {
     text_ctx_destroy, text_ctx_layout, text_ctx_draw, NULL, NULL, NULL, text_ctx_handle, text_ctx_scroll_extent,
-    text_ctx_scroll_to,
+    text_ctx_scroll_to, NULL /* title: the layout's */
 };
 
 /* ============================================================================================
@@ -352,7 +352,7 @@ static void file_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kFilePlugin = {
     file_ctx_destroy, file_ctx_layout, file_ctx_draw, file_ctx_problem, NULL, NULL, file_ctx_handle,
-    file_ctx_scroll_extent, file_ctx_scroll_to,
+    file_ctx_scroll_extent, file_ctx_scroll_to, NULL /* title: the layout's */
 };
 
 /* ============================================================================================
@@ -540,7 +540,7 @@ static void help_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kHelpPlugin = {
     help_ctx_destroy, help_ctx_layout, help_ctx_draw, help_ctx_problem, NULL, NULL, help_ctx_handle,
-    help_ctx_scroll_extent, help_ctx_scroll_to,
+    help_ctx_scroll_extent, help_ctx_scroll_to, NULL /* title: the layout's */
 };
 
 /* ============================================================================================
@@ -651,7 +651,7 @@ static void rows_ctx_destroy(void* ctx) {
 }
 
 static const RolltuiWidgetPlugin kRowsPlugin = {
-    rows_ctx_destroy, rows_ctx_layout, rows_ctx_draw, rows_ctx_problem, NULL, NULL, NULL, NULL, NULL,
+    rows_ctx_destroy, rows_ctx_layout, rows_ctx_draw, rows_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */
 };
 
 /* ============================================================================================
@@ -709,7 +709,7 @@ static void error_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
 }
 
 static const RolltuiWidgetPlugin kErrorPlugin = {
-    error_ctx_destroy, error_ctx_layout, error_ctx_draw, error_ctx_problem, NULL, NULL, NULL, NULL, NULL,
+    error_ctx_destroy, error_ctx_layout, error_ctx_draw, error_ctx_problem, NULL, NULL, NULL, NULL, NULL, NULL /* title: the layout's */
 };
 
 static RolltuiWidget make_error_widget(RolltuiWindows* w, unsigned char role_error, const char* why, size_t len) {
@@ -1038,7 +1038,7 @@ static int picker_ctx_handle(void* ctx, const RolltuiEvent* e) {
 
 static const RolltuiWidgetPlugin kPickerPlugin = {
     picker_ctx_destroy, picker_ctx_layout, picker_ctx_draw, NULL, NULL,
-    NULL,               picker_ctx_handle, NULL,            NULL,
+    NULL,               picker_ctx_handle, NULL,            NULL, NULL /* title: the layout's */
 };
 
 static RolltuiWidget picker_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
@@ -1337,7 +1337,7 @@ static void input_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kInputPlugin = {
     input_ctx_destroy,  input_ctx_layout, input_ctx_draw, input_ctx_problem, NULL,
-    input_ctx_desired_outer, input_ctx_handle, NULL, NULL,
+    input_ctx_desired_outer, input_ctx_handle, NULL, NULL, NULL /* title: the layout's */
 };
 
 const RolltuiWidgetPlugin* rolltui_input_widget_plugin(void) { return &kInputPlugin; }
@@ -1469,7 +1469,7 @@ static void transcript_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kTranscriptPlugin = {
     transcript_ctx_destroy, transcript_ctx_layout, transcript_ctx_draw, transcript_ctx_problem, NULL,
-    NULL,                   transcript_ctx_handle, transcript_ctx_scroll_extent, transcript_ctx_scroll_to,
+    NULL,                   transcript_ctx_handle, transcript_ctx_scroll_extent, transcript_ctx_scroll_to, NULL /* title: the layout's */
 };
 
 static const RolltuiWidgetPlugin* transcript_widget_plugin(void) { return &kTranscriptPlugin; }
@@ -1790,6 +1790,15 @@ static void menu_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
                     rn->focused);
 }
 
+/* The breadcrumb IS the window's title: "settings › Sort by". A menu never draws it inside
+ * itself, so a window with a menu in it names the level once, on its border. */
+static int menu_ctx_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
+  RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
+  menu_ctx_refresh(mc);
+  rolltui_menu_title(mc->m, given, given_len, out);
+  return out->n != 0;
+}
+
 static void menu_ctx_destroy(void* ctx) {
   RolltuiMenuCtx* mc = (RolltuiMenuCtx*)ctx;
   size_t i;
@@ -1806,7 +1815,7 @@ static void menu_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kMenuPlugin = {
     menu_ctx_destroy, menu_ctx_layout, menu_ctx_draw, menu_ctx_problem, menu_ctx_note_at,
-    NULL,             NULL,            menu_ctx_scroll_extent, NULL,
+    NULL,             NULL,            menu_ctx_scroll_extent, NULL, menu_ctx_title,
 };
 
 const RolltuiWidgetPlugin* rolltui_menu_widget_plugin(void) { return &kMenuPlugin; }
@@ -2191,6 +2200,13 @@ static int theme_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollE
   return 1;
 }
 
+/* The editor's menu names the window, as a `menu` window's does: "theme editor › Roles". */
+static int theme_ctx_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  rolltui_menu_title(rolltui_theme_editor_menu(tc->ed), given, given_len, out);
+  return out->n != 0;
+}
+
 static void theme_ctx_destroy(void* ctx) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
   rolltui_theme_editor_free(tc->ed);
@@ -2202,7 +2218,7 @@ static void theme_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kThemePlugin = {
     theme_ctx_destroy, theme_ctx_layout, theme_ctx_draw, NULL, NULL,
-    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL,
+    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL, theme_ctx_title
 };
 
 static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
@@ -2570,6 +2586,12 @@ static int keys_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollEx
   return 1;
 }
 
+static int keys_ctx_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  rolltui_menu_title(rolltui_keys_editor_menu(kc->ed), given, given_len, out);
+  return out->n != 0;
+}
+
 static void keys_ctx_destroy(void* ctx) {
   RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
   rolltui_keys_editor_free(kc->ed);
@@ -2581,7 +2603,7 @@ static void keys_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kKeysPlugin = {
     keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, NULL, NULL,
-    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL,
+    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL, keys_ctx_title
 };
 
 static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {

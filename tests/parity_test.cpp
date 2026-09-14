@@ -170,7 +170,10 @@ RolltuiMenuItem* item_at(HostMenu* m, std::size_t i) {
   return &level_of(m)->children[m->vis[i]];
 }
 
-int item_rows(const HostMenu* m) { return m->area.h >= 2 ? m->area.h - 1 : m->area.h; }
+// The status row exists only while a filter is typed, at the bottom; the breadcrumb is the
+// window's title, through the `title` slot below.
+int status_rows(const HostMenu* m) { return m->area.h >= 2 && !m->filter.empty() ? 1 : 0; }
+int item_rows(const HostMenu* m) { return m->area.h - status_rows(m); }
 
 int imax(int a, int b) { return a > b ? a : b; }
 
@@ -225,8 +228,8 @@ std::string row_text(HostMenu* m, const RolltuiMenuItem* it, std::size_t* value_
   return out;
 }
 
-std::string breadcrumb(HostMenu* m) {
-  std::string out = str_of(m->root.label);
+std::string breadcrumb(HostMenu* m, const std::string& base = "") {
+  std::string out = base.empty() ? str_of(m->root.label) : base;
   const RolltuiMenuItem* it = &m->root;
   for (std::size_t k = 0; k < m->path.size(); ++k) {
     if (m->path[k] >= it->children.size()) break;
@@ -316,6 +319,14 @@ void host_layout(void* ctx, const RolltuiResolvedNode* rn) {
   ensure_visible(m);
 }
 
+// The window's title: the author's, with the level's path after it.
+int host_title(void* ctx, const char* given, size_t given_len, RolltuiStr* out) {
+  HostMenu* m = static_cast<HostMenu*>(ctx);
+  const std::string t = breadcrumb(m, std::string(given, given_len));
+  rolltui_str_set(out, t.data(), t.size());
+  return out->n != 0;
+}
+
 void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   HostMenu* m = static_cast<HostMenu*>(ctx);
   host_layout(ctx, rn);
@@ -332,13 +343,7 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 
   const std::size_t vis_n = build_visible(m);
   int y = a.y;
-  if (a.h >= 2) {
-    const std::string crumb = breadcrumb(m);
-    const int used = put(a.x, y, crumb, style(m->roles.breadcrumb), a.w);
-    if (!m->filter.empty())
-      put(a.x + used, y, "  /" + m->filter, style(m->roles.shortcut), imax(a.w - used, 0));
-    ++y;
-  }
+  if (status_rows(m)) put(a.x, a.y + a.h - 1, "/" + m->filter, style(m->roles.shortcut), a.w);
   const int rows = item_rows(m);
   if (vis_n == 0) {
     if (rows > 0)
@@ -369,7 +374,7 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
         !is_sel && it->value.n != 0 &&
         (static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_INPUT ||
          static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_CHOICE);
-    RolltuiStyle name_style = two_part ? style(m->roles.label) : base;
+    RolltuiStyle name_style = base;
     RolltuiStyle value_style = style(m->roles.value);
     name_style.bg = base.bg;
     value_style.bg = base.bg;
@@ -639,8 +644,8 @@ void handle_mouse(HostMenu* m, const RolltuiMouseEvent& e, Outcome* out) {
   }
   if (e.kind != RolltuiMouseEvent::Kind::Press || e.button != 1) return;
   if (!(e.x >= m->hit.x && e.y >= m->hit.y && e.x < m->hit.x + m->hit.w && e.y < m->hit.y + m->hit.h)) return;
-  const int first_item_row = m->hit.h >= 2 ? m->hit.y + 1 : m->hit.y;
-  if (e.y < first_item_row) return;
+  const int first_item_row = m->hit.y;
+  if (e.y < first_item_row || e.y >= first_item_row + item_rows(m)) return;
   const std::size_t idx = static_cast<std::size_t>(m->top) + static_cast<std::size_t>(e.y - first_item_row);
   if (idx >= build_visible(m)) return;
   m->sel = idx;
@@ -688,6 +693,7 @@ constexpr RolltuiWidgetPlugin kHostMenuPlugin = {
     /*handle=*/host_handle,
     /*scroll_extent=*/host_scroll_extent,
     /*scroll_to=*/nullptr,  // a menu's scroll follows its selection: an accurate bar, not a handle
+    /*title=*/host_title,
 };
 
 struct HostFactoryCtx {
@@ -954,7 +960,7 @@ std::vector<Step> script() {
   step("filtering to the submenu: abo", ch('o'));
   step("enter descends into it", key(ROLLTUI_KEY_ENTER));
   step("down inside the submenu", key(ROLLTUI_KEY_DOWN));
-  step("a click on the last row", click(4, 5));
+  step("a click on the last row", click(4, 4));  // items start on the area's first row
   step("left ascends", key(ROLLTUI_KEY_LEFT));
   step("page down", key(ROLLTUI_KEY_PAGEDOWN));
   step("page down again", key(ROLLTUI_KEY_PAGEDOWN));

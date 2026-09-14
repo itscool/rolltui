@@ -1,8 +1,8 @@
   the same screen, declaring no actions at all
 ┌ docs/kettle.md ─────────────────────────────────────────────────┬ menus/kettle.json ─────────────┐
-│ A screen that exists only as files.                             ╻ commands                       │
-│                                                                 ╹ Put the kettle on              │
-│ Nothing in the host binary knows this screen. No source file    │ About this screen            ▸ │
+│ A screen that exists only as files.                             ╻ Put the kettle on              │
+│                                                                 ╹ About this screen            ▸ │
+│ Nothing in the host binary knows this screen. No source file    │                                │
 │ names these window ids, this menu, this action or this          │                                │
 │ document, and no host was rebuilt to show it. Six files in a    │                                │
 │ preset directory are the whole application.                     │                                │

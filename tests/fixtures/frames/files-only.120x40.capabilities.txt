@@ -1,8 +1,8 @@
   a screen with no code behind it — six files, no rebuild
 ┌ the transcript ─────────────────────────────────────────────────────────────────────┬ menus/kettle.json ─────────────┐
-│ ⠸ waiting for the kettle to boil                                                    ╻ commands                       │
-│                                                                                     ┃ Put the kettle on       Ctrl-J │
-│ > raise the target temperature                                                      ┃ About this screen            ▸ │
+│ ⠸ waiting for the kettle to boil                                                    ╻ Put the kettle on       Ctrl-J │
+│                                                                                     ┃ About this screen            ▸ │
+│ > raise the target temperature                                                      ┃                                │
 │                                                                                     ┃                                │
 │ Here is the change to kettle.c. The fence says diff, so the renderer asks the       ┃                                │
 │ highlighter the host registered; nothing sniffed the content to decide that.        ┃                                │

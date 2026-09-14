@@ -4,10 +4,10 @@
 │ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
 │ │ (blocks →    │             │              │ │ size       80x24             │
 │ │ styled       │  ╭ menu ────────────────────────────────╮ 173/191           │
-│ │ wrapped      │  │ menu                                 │ yes               │
-│ │ lines)       │  │ Editors                            ▸ │ truecolor         │
-│ │ Theme (roles │ b│ Appearance                         ▸ │ menu              │
-│ │ → styles,    │  │ Commands                           ▸ │                   │
+│ │ wrapped      │  │ Editors                            ▸ │ yes               │
+│ │ lines)       │  │ Appearance                         ▸ │ truecolor         │
+│ │ Theme (roles │ b│ Commands                           ▸ │ menu              │
+│ │ → styles,    │  │                                      │                   │
 │ │ JSON loader, │  │                                      │                   │
 │ │ built-ins)   │  │                                      │                   │
 │ └──────────────┴──│                                      │                   │

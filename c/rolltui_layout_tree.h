@@ -206,6 +206,11 @@ typedef struct RolltuiLayoutNode {
   unsigned char border;
 #endif
   RolltuiStr title;
+  /* What the WIDGET in this window says it is called, this frame — a menu's breadcrumb — set by
+   * `rolltui_windows_autosize` from the widget's `title` slot and drawn instead of `title` while
+   * it is non-empty. Screen state, not layout: never read from a file, never written to one,
+   * never compared, never copied with the node. */
+  RolltuiStr live_title;
   unsigned char focusable ROLLTUI_DEFAULT(0);
   unsigned char visible ROLLTUI_DEFAULT(1); /* hidden: takes no space, draws nothing */
 #ifdef __cplusplus

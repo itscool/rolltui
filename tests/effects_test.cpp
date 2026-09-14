@@ -62,6 +62,7 @@
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_effects.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_frame_ops.h"  /* INTERNAL: shade, the frame-level half of "a mark never paints a popup" */
 
 #include "rolltui_test.hpp"
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
@@ -1057,6 +1058,73 @@ int main() {
     //    an unjittered one would — the wobble changes the journey, never the arrival.
     check(sweep_at(base, EffectState::Streamed, 0) == sweep_at(still, EffectState::Streamed, 0),
           "…and a pass BEGINS where an unjittered pass would: the warp is zero at the ends");
+  }
+
+  // ---- a popup covers the marks under it: the frame's half ------------------------------
+  // `rolltui_frame_unmark_rect` is what the window stack calls for each popup's box before the
+  // popup draws, so the effects applier — which runs over the FINISHED frame — never paints a
+  // lower layer's motion onto a window drawn over it.
+  {
+    FramePtr f = new_frame(40, 6);
+    auto mark = [&](int x, int y, int cells) { rolltui_frame_mark(f.get(), x, y, cells, static_cast<int>(EffectState::Waiting), 0, 0); };
+    mark(2, 0, 5);    // above the box: untouched
+    mark(12, 1, 6);   // wholly inside: gone
+    mark(6, 2, 10);   // crosses the left edge: keeps 6..9
+    mark(16, 3, 10);  // crosses the right edge: keeps 20..25
+    mark(0, 4, 40);   // spans the whole row: two pieces
+    rolltui_frame_unmark_rect(f.get(), RolltuiRect{10, 1, 10, 4});  // x 10..19, y 1..4
+    struct M { int x, y, cells; };
+    std::vector<M> got;
+    for (std::size_t i = 0; i < rolltui_frame_mark_count(f.get()); ++i) {
+      int x = 0, y = 0, cells = 0, state = 0; unsigned long long since = 0; double fr = 0;
+      rolltui_frame_mark_at(f.get(), i, &x, &y, &cells, &state, &since, &fr);
+      got.push_back({x, y, cells});
+    }
+    auto is = [&](std::size_t i, int x, int y, int cells) { return i < got.size() && got[i].x == x && got[i].y == y && got[i].cells == cells; };
+    check(got.size() == 5, "five marks survive a box over five: the covered one is gone, the straddler is two (" + std::to_string(got.size()) + ")");
+    check(is(0, 2, 0, 5), "a mark outside the box is untouched");
+    check(is(1, 6, 2, 4), "a mark the box cuts on the right keeps its left part [" + (got.size() > 1 ? std::to_string(got[1].x) + "+" + std::to_string(got[1].cells) : std::string("-")) + "]");
+    check(is(2, 20, 3, 6), "a mark the box cuts on the left keeps its right part");
+    check(is(3, 0, 4, 10) && is(4, 20, 4, 20), "a mark the box takes the middle of is two marks, the order of the rest kept");
+    // the control: a rect that touches nothing changes nothing
+    rolltui_frame_unmark_rect(f.get(), RolltuiRect{30, 0, 5, 1});
+    check(rolltui_frame_mark_count(f.get()) == 5, "…and a rect over no mark removes none");
+  }
+
+  // ---- shade: a tint at a strength keeps what the cells said about each other ----------
+  // A modal's overlay REPLACING every foreground erases a gradient drawn under it — a fade
+  // becomes one flat colour and reads as gone rather than as dimmed. Moving each colour PART of
+  // the way keeps the gradient a gradient, quieter.
+  {
+    FramePtr f = new_frame(8, 1);
+    RolltuiStyle over{};
+    over.fg = RolltuiStyleColor::rgb(0, 0, 0);
+    for (int x = 0; x < 8; ++x) {
+      RolltuiStyle st{};
+      st.fg = RolltuiStyleColor::rgb(static_cast<unsigned char>(x * 30), 100, 200);
+      rolltui_frame_set_style(f.get(), x, 0, st);
+    }
+    rolltui_frame_shade(f.get(), RolltuiRect{0, 0, 8, 1}, over, 0.5);
+    RolltuiCell a{}, b{};
+    rolltui_frame_cell(f.get(), 1, 0, &a);
+    rolltui_frame_cell(f.get(), 7, 0, &b);
+    check(a.style.fg.kind == RolltuiStyleColor::Kind::Rgb && a.style.fg.r == 15 && a.style.fg.g == 50 && a.style.fg.b == 100,
+          "at half strength an RGB colour moves half way toward the overlay's [" + std::to_string(a.style.fg.r) + "," + std::to_string(a.style.fg.g) + "," + std::to_string(a.style.fg.b) + "]");
+    check(b.style.fg.r == 105 && a.style.fg.r != b.style.fg.r, "…and two cells that differed still differ: the gradient survives, halved");
+    rolltui_frame_shade(f.get(), RolltuiRect{0, 0, 8, 1}, over, 1.0);
+    rolltui_frame_cell(f.get(), 7, 0, &b);
+    check(b.style.fg.r == 0 && b.style.fg.g == 0 && b.style.fg.b == 0, "at full strength shade IS tint: the overlay's colour replaces");
+    // no RGB on one side: nothing to move along, so a strong shade replaces and a weak one dims
+    RolltuiStyle idx{};
+    idx.fg = RolltuiStyleColor::indexed(3);
+    rolltui_frame_set_style(f.get(), 0, 0, idx);
+    rolltui_frame_shade(f.get(), RolltuiRect{0, 0, 1, 1}, over, 0.3);
+    rolltui_frame_cell(f.get(), 0, 0, &a);
+    check(a.style.fg.kind == RolltuiStyleColor::Kind::Indexed && a.style.fg.index == 3 && a.style.dim == 1,
+          "an indexed colour under a weak shade keeps its colour and takes the DIM attribute");
+    rolltui_frame_shade(f.get(), RolltuiRect{0, 0, 1, 1}, over, 0.7);
+    rolltui_frame_cell(f.get(), 0, 0, &a);
+    check(a.style.fg.kind == RolltuiStyleColor::Kind::Rgb && a.style.fg.r == 0, "…and under a strong one is replaced, as a tint would");
   }
 
   // ---- the built-ins ------------------------------------------------------------------

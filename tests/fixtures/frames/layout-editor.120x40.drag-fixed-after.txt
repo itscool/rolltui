@@ -1,13 +1,12 @@
-┌ layout editor ─────────────────────────────────┐┬ status ────────────────────────────────────────────────────────────┐
+┌ layout editor • status ────────────────────────┐┬ status ────────────────────────────────────────────────────────────┐
 │ (row) row                                      ││ theme F4   default-dark                                            │
 │   (column) column                              ││ keys F7    default                                                 │
 │     transcript transcript:session              ││ layout F6  wide-right (modified)                                   │
 │     input input:prompt                         ││ size       120x40                                                  │
 │   status rows:status                           ││ line       146/180                                                 │
-│ layout editor • status                         ││ follow     yes                                                     │
-│ [x] Visible                                    ││ depth      truecolor                                               │
-│ Border                                single ▸ ││ focus      editor                                                  │
-│ Background role             panel_background ▸ ││                                                                    │
+│ [x] Visible                                    ││ follow     yes                                                     │
+│ Border                                single ▸ ││ depth      truecolor                                               │
+│ Background role             panel_background ▸ ││ focus      editor                                                  │
 │ Node id: status                                ││                                                                    │
 │ Title: status                                  ││                                                                    │
 │ Widget kind: rows                              ││                                                                    │
@@ -20,6 +19,7 @@
 │ Layout file — new, load, save                ▸ ││                                                                    │
 │ Undo                                    Ctrl-Z ││                                                                    │
 │ Redo                                    Ctrl-Y ││                                                                    │
+│                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │

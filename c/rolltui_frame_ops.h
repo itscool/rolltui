@@ -22,6 +22,19 @@ extern "C" {
 /* Amends every cell's style in `r` (clipped): a set colour replaces, an attribute bit is
  * OR'd in. Needs no scratch — it reads and writes styles and never looks at text. */
 void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style);
+/* The same amendment at a STRENGTH, 0..1. Where both the cell's colour and the style's are RGB
+ * the cell's is moved that fraction of the way toward the style's, so what the cells said
+ * about each other — a gradient, a fade, a highlight — is still said, more quietly. Where one
+ * side is not RGB there is nothing to move along: a strength of one half or more replaces, as
+ * `tint` does, and less than that leaves the colour and sets the DIM attribute. 1.0 is `tint`.
+ *
+ * Two strengths are named here rather than at their call sites, because they are one decision:
+ * the screen behind a MODAL keeps enough of its own colour that a gradient drawn into it is
+ * still a gradient, and a menu with a DROPDOWN open is shaded half as far as that — it is still
+ * the thing being edited, only not the thing being looked at. */
+#define ROLLTUI_SHADE_MODAL 0.7
+#define ROLLTUI_SHADE_DROPDOWN 0.35
+void rolltui_frame_shade(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style, double strength);
 
 #ifdef __cplusplus
 } /* extern "C" */

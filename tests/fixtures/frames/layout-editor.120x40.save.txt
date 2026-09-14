@@ -1,4 +1,4 @@
-┌ chat ─────────────────────────────────────┬ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
+┌ chat ─────────────────────────────────────┬ transcript-2 ───────────┌ layout editor • transcript › Layout file — new,┐
 │ │ widget     │            │ header      │ │ │ widget     │          │ (row) row                                      │
 │ │ (hierarchi │            │ each; the   │ │ │ (hierarchi │          │   (column) column                              │
 │ │ cal,       │            │ widget set  │ │ │ cal,       │          │     transcript-row row                         │
@@ -11,9 +11,9 @@
 │ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ popup help                                     │
 │ │ windows +  │            │ hand        │ │ │ windows +  │          │   help help                                    │
 │ │ placements │            │ parser;     │ │ │ placements │          │ popup approval                                 │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ layout editor • transcript › Layout file — new │
-│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ ◂ Back                                         │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Save layout as: two                            │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ ◂ Back                                         │
+│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Save layout as: two                            │
+│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │                                                │
 │ │ block      │            │ header over │ │ │ block      │          │                                                │
 │ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │                                                │
 │ │ (blocks →  │            │             │ │ │ (blocks →  │          │                                                │
@@ -31,7 +31,7 @@
 │ Here is the function you asked for:       ╻ Here is the function you│                                                │
 │                                           ┃                         │                                                │
 │ ┌ cpp ──────────────────────────────────┐ ┃ ┌ cpp ──────────────────│                                                │
-│ │ int add(int a, int b) {               │ ┃ │ int add(int a, int b) │                                                │
+│ │ int add(int a, int b) {               │ ┃ │ int add(int a, int b) │ /save                                          │
 │ │   return a + b;                       │ ┃ │   return a + b;       │ selected: transcript  size fill  border single │
 │ └───────────────────────────────────────┘ ╹ └───────────────────────│ Tab · click · drag an edge · Alt+arrows        │
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │

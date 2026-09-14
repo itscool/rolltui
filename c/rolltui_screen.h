@@ -58,6 +58,10 @@ extern "C" {
 #endif
 void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int* cells,
                            int* state, unsigned long long* since_ms, double* fraction);
+/* Clips every mark to what lies OUTSIDE `r`: what a window drawn over marked cells calls, so
+ * an effect never paints through it. Whole marks under it go; a mark it cuts keeps the part
+ * that shows, in two pieces when the rect takes its middle. */
+void rolltui_frame_unmark_rect(RolltuiFrame* f, RolltuiRect r);
 
 
 

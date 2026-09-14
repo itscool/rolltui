@@ -3,10 +3,10 @@
 | │ block        │             │ header over | keys F7    default           |
 | │ renderer     │             │ md4c + wrap | layout F6  default           |
 | │ (blocks →   │             │             | size       80x24             |
-| │ styled       │+ menu --------------------------------+ 173/191           |
-| │ wrapped      │| menu › Appearance  /ambig            | yes               |
-| │ lines)       │| ◂ Back                               | truecolor         |
-| │ Theme (roles │| [x] Ambiguous width = 2              | menu              |
+| │ styled       │+ menu › Appearance -------------------+ 173/191           |
+| │ wrapped      │| ◂ Back                               | yes               |
+| │ lines)       │| [x] Ambiguous width = 2              | truecolor         |
+| │ Theme (roles │|                                      | menu              |
 | │ → styles,   │|                                      |                   |
 | │ JSON loader, │|                                      |                   |
 | │ built-ins)   │|                                      |                   |
@@ -14,7 +14,7 @@
 |                   |                                      |                   |
 | Here is the functi|                                      |                   |
 |                   |                                      |                   |
-| ┌ cpp ───── |                                      |                   |
+| ┌ cpp ───── | /ambig                               |                   |
 | │ int add(int a, +--------------------------------------+                   |
 | │   return a + b;                            #                              |
 | └─────────────────────  #                              |

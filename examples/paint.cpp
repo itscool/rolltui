@@ -172,11 +172,11 @@ constexpr const char* kDefaultLayout = R"({
   "popups": [
     { "id": "theme", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
-      "root": { "id": "theme", "content": "theme", "border": "rounded", "title": "theme",
+      "root": { "id": "theme", "content": "theme", "border": "rounded",
                 "focusable": true, "background": "panel_background" } },
     { "id": "keys", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
-      "root": { "id": "keys", "content": "keys", "border": "rounded", "title": "keys",
+      "root": { "id": "keys", "content": "keys", "border": "rounded",
                 "focusable": true, "background": "panel_background" } },
     { "id": "filepicker", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 40, "max_w": 100, "modal": true,
@@ -499,7 +499,7 @@ constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*desired_outer=*/nullptr,
     /*handle=*/canvas_handle,
     /*scroll_extent=*/nullptr,
-    /*scroll_to=*/nullptr,
+    /*scroll_to=*/nullptr, nullptr /* title: the layout's */
 };
 
 // What the factory is registered WITH: the two borrows a canvas needs and nothing else. One

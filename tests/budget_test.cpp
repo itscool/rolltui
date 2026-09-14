@@ -335,7 +335,7 @@ void wasteful_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 }
 
 constexpr RolltuiWidgetPlugin kWastefulPlugin = {
-    wasteful_destroy, wasteful_layout, wasteful_draw, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+    wasteful_destroy, wasteful_layout, wasteful_draw, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr /* title: the layout's */
 };
 
 RolltuiWidget wasteful_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {

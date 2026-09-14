@@ -1,4 +1,4 @@
-┌ transcript ───────────────────────────────┬ transcript-2 ───────────┌ layout editor ─────────────────────────────────┐
+┌ transcript ───────────────────────────────┬ transcript-2 ───────────┌ layout editor • transcript-2 ──────────────────┐
 │ │ widget     │            │ header      │ │ input:                  │ (row) row                                      │
 │ │ (hierarchi │            │ each; the   │ │   Enter                 │   (column) column                              │
 │ │ cal,       │            │ widget set  │ │ (always Enter)          │     transcript-row row                         │
@@ -11,22 +11,22 @@
 │ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ popup help                                     │
 │ │ windows +  │            │ hand        │ │ before the caret        │   help help                                    │
 │ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ popup approval                                 │
-│ │ + content  │            │ hot-        │ │ after the caret         │ layout editor • transcript-2                   │
-│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ [x] Visible                                    │
-│ │ Markdown   │ build      │ single      │ │ start of the line       │ Border                                single ▸ │
-│ │ block      │            │ header over │ │   Ctrl-K                │ Background role                   background ▸ │
-│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Node id: transcript-2                          │
-│ │ (blocks →  │            │             │ │   Left                  │ Title: transcript-2                            │
-│ │ styled     │            │             │ │ grapheme left           │ Widget kind: help                              │
-│ │ wrapped    │            │             │ │   Right                 │ Source:                                        │
-│ │ lines)     │            │             │ │ grapheme right          │ Menu file:                                     │
-│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ Size (Alt+arrows nudge): fill                  │
-│ │ (roles →   │            │ header      │ │ left                    │ [x] Focusable                                  │
-│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ Tree — split, swap, delete                   ▸ │
-│ │ JSON       │            │             │ │ right                   │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ loader,    │            │             │ │   Home                  │ Layout file — new, load, save                ▸ │
-│ │ built-ins) │            │             │ │ line (scrolls when empty│ Undo                                    Ctrl-Z │
-│ └────────────┴────────────┴─────────────┘ │   End                   │ Redo                                    Ctrl-Y │
+│ │ + content  │            │ hot-        │ │ after the caret         │ [x] Visible                                    │
+│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Border                                single ▸ │
+│ │ Markdown   │ build      │ single      │ │ start of the line       │ Background role                   background ▸ │
+│ │ block      │            │ header over │ │   Ctrl-K                │ Node id: transcript-2                          │
+│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Title: transcript-2                            │
+│ │ (blocks →  │            │             │ │   Left                  │ Widget kind: help                              │
+│ │ styled     │            │             │ │ grapheme left           │ Source:                                        │
+│ │ wrapped    │            │             │ │   Right                 │ Menu file:                                     │
+│ │ lines)     │            │             │ │ grapheme right          │ Size (Alt+arrows nudge): fill                  │
+│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ [x] Focusable                                  │
+│ │ (roles →   │            │ header      │ │ left                    │ Tree — split, swap, delete                   ▸ │
+│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ This screen — sizes, focus, popups, actions  ▸ │
+│ │ JSON       │            │             │ │ right                   │ Layout file — new, load, save                ▸ │
+│ │ loader,    │            │             │ │   Home                  │ Undo                                    Ctrl-Z │
+│ │ built-ins) │            │             │ │ line (scrolls when empty│ Redo                                    Ctrl-Y │
+│ └────────────┴────────────┴─────────────┘ │   End                   │                                                │
 │                                           │ (scrolls when empty)    │                                                │
 │ Here is the function you asked for:       ╻   Up                    │                                                │
 │                                           ┃ the previous history ent│                                                │

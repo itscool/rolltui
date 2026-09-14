@@ -1282,9 +1282,16 @@ typedef struct RolltuiMenuItemList {
 
 #define ROLLTUI_MENU_INPUT 4
 
+/* A SECTION is a heading over the rows below it — its label, then a rule to the edge; a
+ * SEPARATOR is the rule alone. They say how a level is organised and nothing else: neither
+ * takes the cursor or a click, matches a typed filter, or appears in a palette. File keys:
+ * `"kind": "section"` with a `label`, `"kind": "separator"`. */
+#define ROLLTUI_MENU_SECTION 5
+#define ROLLTUI_MENU_SEPARATOR 6
+
 typedef struct RolltuiMenuItem {
 #ifdef __cplusplus
-  enum class Kind : unsigned char { Action = 0, Submenu, Toggle, Choice, Input };
+  enum class Kind : unsigned char { Action = 0, Submenu, Toggle, Choice, Input, Section, Separator };
   Kind kind = Kind::Action;
 #else
   unsigned char kind;
@@ -1317,6 +1324,8 @@ typedef struct RolltuiMenuItem {
   static RolltuiMenuItem choice(const char* id, const char* label, const char* value);  /* options: children.push_back */
   static RolltuiMenuItem input(const char* id, const char* label, const char* value = "");
   static RolltuiMenuItem input(const char* id, const char* label, RolltuiInputSpec spec, const char* value = "");
+  static RolltuiMenuItem section(const char* id, const char* label);
+  static RolltuiMenuItem separator(const char* id);
 #endif
 } RolltuiMenuItem;
 
@@ -1414,6 +1423,16 @@ inline RolltuiMenuItem RolltuiMenuItem::toggle(const char* id, const char* label
   RolltuiMenuItem it;
   rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Toggle), id, std::strlen(id), label, std::strlen(label), nullptr, 0);
   it.checked = static_cast<unsigned char>(checked);
+  return it;
+}
+inline RolltuiMenuItem RolltuiMenuItem::section(const char* id, const char* label) {
+  RolltuiMenuItem it;
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Section), id, std::strlen(id), label, std::strlen(label), nullptr, 0);
+  return it;
+}
+inline RolltuiMenuItem RolltuiMenuItem::separator(const char* id) {
+  RolltuiMenuItem it;
+  rolltui_menu_item_set(&it, static_cast<unsigned char>(Kind::Separator), id, std::strlen(id), "", 0, nullptr, 0);
   return it;
 }
 
@@ -2506,6 +2525,12 @@ typedef struct RolltuiWidgetPlugin {
   /* ACCEPTS a new first line, so the bar may be dragged; 0 to decline being driven. Anything
    * that returns 1 must CLAMP. NULL: reports but will not be driven (rule 4). */
   int (*scroll_to)(void* ctx, unsigned char axis, size_t first);
+  /* The window's TITLE this frame, into `out`, given the layout's own (`given`, which may be
+   * empty) — what only the widget knows, said after what the author said: a menu's title is
+   * the window's title with the level's path after it, "settings › Sort by". 0 keeps the
+   * layout's title as it is. Read once per frame by `rolltui_windows_autosize`, the call that
+   * already carries what a widget wants of its window. NULL: the layout's title. */
+  int (*title)(void* ctx, const char* given, size_t given_len, RolltuiStr* out);
 } RolltuiWidgetPlugin;
 
 /* One widget: what it IS and how to talk to it. The plugin is a BORROW of a table the

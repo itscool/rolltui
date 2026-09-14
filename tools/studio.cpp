@@ -1716,6 +1716,18 @@ struct App {
     if (editor_mode == EditorMode::Menu) { draw_menu_editor(rn, f); return; }
   }
 
+  // The editors' menus carry their state in the root label ("layout editor • transcript"), so
+  // the window's title is that breadcrumb and not the layout's own name for the popup.
+  int editor_title(RolltuiStr* out) {
+    RolltuiMenu* m = editor_mode == EditorMode::Layout ? leditor.menu()
+                   : editor_mode == EditorMode::Keys   ? keditor.menu()
+                   : editor_mode == EditorMode::Menu   ? meditor.menu()
+                                                       : nullptr;
+    if (!m) return 0;
+    rolltui_menu_breadcrumb(m, out);
+    return out->n != 0;
+  }
+
   void draw_confirm(const RolltuiResolvedNode& rn, RolltuiFrame* f) {
     const RolltuiRect r = content_rect(rn);
     RolltuiWrapOptions wo{};
@@ -2345,6 +2357,7 @@ struct App {
 void editor_destroy(void*) {}
 void editor_layout(void*, const RolltuiResolvedNode*) {}
 void editor_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) { static_cast<App*>(ctx)->draw_editor(*rn, f); }
+int editor_title(void* ctx, const char*, std::size_t, RolltuiStr* out) { return static_cast<App*>(ctx)->editor_title(out); }
 int editor_handle(void* ctx, const RolltuiEvent* e) {
   App* app = static_cast<App*>(ctx);
   app->hint.clear();
@@ -2357,7 +2370,7 @@ int editor_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kEditorPlugin = {
     /*destroy=*/editor_destroy, /*layout=*/editor_layout, /*draw=*/editor_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/editor_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+    /*handle=*/editor_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, /*title=*/editor_title,
 };
 RolltuiWidget editor_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kEditorPlugin, ctx}; }
 
@@ -2375,7 +2388,7 @@ int confirm_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kConfirmPlugin = {
     /*destroy=*/confirm_destroy, /*layout=*/confirm_layout, /*draw=*/confirm_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
 };
 RolltuiWidget confirm_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kConfirmPlugin, ctx}; }
 
@@ -2396,7 +2409,7 @@ int report_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kReportPlugin = {
     /*destroy=*/report_destroy, /*layout=*/report_layout, /*draw=*/report_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
 };
 RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
 
@@ -2427,7 +2440,7 @@ void placeholder_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f)
 constexpr RolltuiWidgetPlugin kPlaceholderPlugin = {
     /*destroy=*/placeholder_destroy, /*layout=*/placeholder_layout, /*draw=*/placeholder_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
 };
 RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* content, std::size_t len) {
   PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), "[" + std::string(content, len) + "]"};

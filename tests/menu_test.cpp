@@ -507,6 +507,7 @@ class Menu {
     return std::vector<std::size_t>(p, p + n);
   }
   std::size_t selected() const { return rolltui_menu_selected(m_); }
+  RolltuiMenu* raw() const { return m_; }
   const MenuItem* selected_item() const { return rolltui_menu_selected_item(m_); }
   std::vector<std::size_t> visible() const {
     const std::size_t* v = nullptr;
@@ -687,7 +688,7 @@ int main() {
     click.kind = ROLLTUI_EVENT_MOUSE;
     click.mouse.kind = RolltuiMouseEvent::Kind::Press;
     click.mouse.button = 1;
-    click.mouse.x = 3; click.mouse.y = 1;  // the first item row
+    click.mouse.x = 3; click.mouse.y = 0;  // the first item row: the breadcrumb is the window's title, not a row
     rolltui_menu_handle(m, &click, b, A, &ev);
     check(rolltui_menu_dropdown_open(m) != 0, "a click on the choice opens the dropdown");
     click.mouse.x = 0; click.mouse.y = 9;  // the corner: outside the box
@@ -809,9 +810,17 @@ int main() {
     Frame f(40, 6);
     m.layout({0, 0, 40, 6});
     m.draw(f, theme, true);
-    check(row(f, 0) == "settings \xE2\x80\xBA Layout  /st", "the breadcrumb row shows the filter [" + row(f, 0) + "]");
-    check(row(f, 1) == "\xE2\x97\x82 Back", "the way back is the first row of a level below the root [" + row(f, 1) + "]");
-    check(row(f, 2) == "stacked                               F2", "the one match is drawn with its shortcut right-aligned [" + row(f, 2) + "]");
+    // THE FILTER IS THE BOTTOM ROW, shown only while one is typed, so the rows above never move;
+    // the breadcrumb is the window's TITLE (`rolltui_menu_title`), never a row of the widget.
+    check(row(f, 5) == "/st", "the filter shows on the bottom row [" + row(f, 5) + "]");
+    check(row(f, 0) == "\xE2\x97\x82 Back", "the way back is the first row of a level below the root [" + row(f, 0) + "]");
+    check(row(f, 1) == "stacked                               F2", "the one match is drawn with its shortcut right-aligned [" + row(f, 1) + "]");
+    {
+      RolltuiStr t{};
+      rolltui_menu_title(m.raw(), "the window", 10, &t);
+      check(std::string(t.p, t.n) == "the window \xE2\x80\xBA Layout", "the title rooted at the window's own name carries the level's path [" + std::string(t.p, t.n) + "]");
+      rolltui_str_free(&t);
+    }
   }
   // ---- drawing ----
   {
@@ -820,57 +829,56 @@ int main() {
     Frame f(30, 8);
     m.layout({0, 0, 30, 8});
     m.draw(f, theme, true);
-    check(row(f, 0) == "settings", "row 0 is the breadcrumb");
-    check(row(f, 1) == "Theme                default \xE2\x96\xB8", "a choice shows its value and the arrow [" + row(f, 1) + "]");
-    check(row(f, 2) == "Layout                       \xE2\x96\xB8", "a submenu ends in the arrow [" + row(f, 2) + "]");
-    check(row(f, 3) == "[ ] Wrap long lines", "a toggle shows its box [" + row(f, 3) + "]");
-    check(row(f, 4) == "Save as:", "an input shows label: value [" + row(f, 4) + "]");
-    check(row(f, 5) == "Quit                    Ctrl-Q", "a shortcut is right-aligned [" + row(f, 5) + "]");
-    check(f.at(0, 1).style == theme.style(Role::menu_selected) && f.at(0, 2).style == theme.style(Role::menu_item) &&
-              f.at(0, 6).style == theme.style(Role::text_muted),
+    check(m.breadcrumb() == "settings" && row(f, 0) != "settings", "the breadcrumb is not a row: at the root there is nothing to say twice");
+    check(row(f, 0) == "Theme                default \xE2\x96\xB8", "a choice shows its value and the arrow [" + row(f, 0) + "]");
+    check(row(f, 1) == "Layout                       \xE2\x96\xB8", "a submenu ends in the arrow [" + row(f, 1) + "]");
+    check(row(f, 2) == "[ ] Wrap long lines", "a toggle shows its box [" + row(f, 2) + "]");
+    check(row(f, 3) == "Save as:", "an input shows label: value [" + row(f, 3) + "]");
+    check(row(f, 4) == "Quit                    Ctrl-Q", "a shortcut is right-aligned [" + row(f, 4) + "]");
+    check(f.at(0, 0).style == theme.style(Role::menu_selected) && f.at(0, 1).style == theme.style(Role::menu_item) &&
+              f.at(0, 5).style == theme.style(Role::text_muted),
           "the selected row is menu_selected, others menu_item, a disabled one text_muted");
 
-    // A ROW THAT CARRIES AN ANSWER IS TWO THINGS. `Theme  default ▸` is a name and a value,
-    // and drawing both in one style is what makes a settings list read as a wall — the eye has
-    // nothing to travel to. Only the FOREGROUND comes from the role: the row keeps its own
-    // background, so this stays one continuous row rather than a patch of a different colour.
+    // A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. `Theme  default ▸`: the name is drawn
+    // as every other row's name is — a muted name beside a bright toggle reads as a DISABLED row —
+    // and only the answer takes the value role. Only the FOREGROUND comes from that role: the row
+    // keeps its own background, so this stays one continuous row rather than a patch of colour.
     // A field with nothing in it yet is a name alone, so give this one an answer to show.
     rolltui_str_set(&m.find("save")->value, "notes.md", 8);
     m.handle(key(Key::Down));  // off the Theme and Layout rows, so both draw as ordinary ones
     m.handle(key(Key::Down));
     Frame two(30, 8);
     m.draw(two, theme, true);
-    RolltuiStyle want_name = theme.style(Role::label);
-    want_name.bg = theme.style(Role::menu_item).bg;
+    RolltuiStyle want_name = theme.style(Role::menu_item);
     RolltuiStyle want_value = theme.style(Role::value);
     want_value.bg = theme.style(Role::menu_item).bg;
-    check(two.at(0, 1).style == want_name, "an unselected CHOICE draws its name in the label role");
-    check(two.at(21, 1).style == want_value && two.glyph(21, 1) == "d",
-          "…and its current answer in the value role [" + std::string(two.glyph(21, 1)) + "]");
-    check(two.at(0, 1).style.bg == theme.style(Role::menu_item).bg &&
-              two.at(21, 1).style.bg == theme.style(Role::menu_item).bg,
+    check(two.at(0, 0).style == want_name, "an unselected CHOICE draws its name in the row's own style, never muted");
+    check(two.at(21, 0).style == want_value && two.glyph(21, 0) == "d",
+          "…and its current answer in the value role [" + std::string(two.glyph(21, 0)) + "]");
+    check(two.at(0, 0).style.bg == theme.style(Role::menu_item).bg &&
+              two.at(21, 0).style.bg == theme.style(Role::menu_item).bg,
           "…both on the ROW's background, so the row is one block and not two");
-    check(two.at(0, 2).style == theme.style(Role::menu_item),
+    check(two.at(0, 1).style == theme.style(Role::menu_item),
           "a SUBMENU is a name alone, so it keeps the ordinary item style — muting it would dim the "
           "menu rather than structure it");
-    check(two.at(0, 4).style == want_name && two.at(9, 4).style == want_value,
-          "an unselected INPUT splits at its colon too [" + row(two, 4) + "]");
+    check(two.at(0, 3).style == want_name && two.at(9, 3).style == want_value,
+          "an unselected INPUT splits at its colon too [" + row(two, 3) + "]");
     // A FIELD WITH NOTHING IN IT IS A NAME ALONE. Muting a row whose second half is empty
     // makes it read as disabled, which is the opposite of what the split is for.
     rolltui_str_clear(&m.find("save")->value);
     Frame blank(30, 8);
     m.draw(blank, theme, true);
-    check(blank.at(0, 4).style == theme.style(Role::menu_item),
+    check(blank.at(0, 3).style == theme.style(Role::menu_item),
           "…and an empty one is a name alone, not a muted row that looks disabled");
     m.handle(key(Key::Home));
-    // Scrolling: three item rows for six items.
-    Frame g(30, 4);
-    m.layout({0, 0, 30, 4});
+    // Scrolling: three item rows for six items — every row is an item row until a filter is typed.
+    Frame g(30, 3);
+    m.layout({0, 0, 30, 3});
     m.handle(key(Key::End));
     m.draw(g, theme, true);
-    check(row(g, 3).rfind("Nothing here", 0) == 0 && row(g, 1).rfind("Save as", 0) == 0,
-          "with three item rows and the last selected, the view scrolls to show it [" + row(g, 1) + " | " + row(g, 3) + "]");
-    check(g.glyph(29, 1) == "\xE2\x96\xB2", "a ▲ marker says items are hidden above");
+    check(row(g, 2).rfind("Nothing here", 0) == 0 && row(g, 0).rfind("Save as", 0) == 0,
+          "with three item rows and the last selected, the view scrolls to show it [" + row(g, 0) + " | " + row(g, 2) + "]");
+    check(g.glyph(29, 0) == "\xE2\x96\xB2", "a ▲ marker says items are hidden above");
     m.handle(key(Key::PageUp));
     check(m.selected() == 2, "PageUp moves by the item rows (5 → 2)");
     m.handle(key(Key::PageUp));
@@ -884,12 +892,12 @@ int main() {
     p.kind = MouseEvent::Kind::Press;
     p.button = 1;
     p.x = 5;
-    p.y = 6;  // row 4 of the items: Quit (breadcrumb at y=1, items from y=2)
+    p.y = 5;  // row 4 of the items: Quit (items from y=1, the area's top)
     MenuEvent ev = m.handle(p);
     check(ev.kind == MenuEvent::Kind::Activate && ev.id == "quit", "a click on an item row selects and activates it");
-    p.y = 1;
+    p.y = 8;  // below the last item
     ev = m.handle(p);
-    check(ev.kind == MenuEvent::Kind::None, "a click on the breadcrumb row does nothing");
+    check(ev.kind == MenuEvent::Kind::None, "a click on an empty row does nothing");
     MouseEvent w;
     w.kind = MouseEvent::Kind::WheelDown;
     m.handle(key(Key::Home));
@@ -1165,11 +1173,95 @@ int main() {
       type("7x");
       m.layout({0, 0, 48, 4});
       m.draw(f, theme, true);
-      check(row(f, 0).find("0..100") != std::string::npos && row(f, 0).find("\xE2\x9C\x97") != std::string::npos, "the breadcrumb shows the hint and the refusal [" + row(f, 0) + "]");
-      check(row(f, 1).rfind("Percent: 7", 0) == 0, "the field row is the label and the editing text [" + row(f, 1) + "]");
+      check(row(f, 3).find("0..100") != std::string::npos && row(f, 3).find("\xE2\x9C\x97") != std::string::npos, "the bottom row shows the hint and the refusal while editing [" + row(f, 3) + "]");
+      check(row(f, 0).rfind("Percent: 7", 0) == 0, "the field row is the label and the editing text [" + row(f, 0) + "]");
       m.handle(key(Key::Escape));
     }
   }
+  // ---- SECTIONS AND SEPARATORS: how a level is organised, and nothing else -----------------
+  // A section is a heading with a rule after it; a separator is the rule alone. Neither takes
+  // the cursor, a click, a filter match or a palette entry — Down from the row above a heading
+  // lands on the row below it, Home on the first real row, and a filter hides them.
+  {
+    const char* text = R"({ "id": "root", "label": "settings", "items": [
+      { "id": "general", "label": "General", "kind": "section" },
+      { "id": "hidden", "label": "Show dotfiles", "kind": "toggle" },
+      { "id": "motion", "label": "Motion", "kind": "toggle" },
+      { "id": "rule", "kind": "separator" },
+      { "id": "open", "label": "Open with", "kind": "section" },
+      { "id": "text", "label": "Text", "kind": "choice", "dropdown": true, "value": "vim",
+        "items": [ { "id": "vim", "label": "vim" }, { "id": "code", "label": "code" } ] } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0 && root.children.n == 6 &&
+              static_cast<unsigned char>(root.children.v[0]->kind) == ROLLTUI_MENU_SECTION &&
+              static_cast<unsigned char>(root.children.v[3]->kind) == ROLLTUI_MENU_SEPARATOR,
+          "a file may say section and separator, and a separator needs no label");
+    rolltui_menu_load_report_release(&rep);
+    {
+      RolltuiStr dumped{};
+      rolltui_menu_dump_json(&root, &dumped);
+      const std::string d(dumped.p, dumped.n);
+      check(d.find("\"section\"") != std::string::npos && d.find("\"separator\"") != std::string::npos, "…and both round-trip through dump");
+      rolltui_str_free(&dumped);
+    }
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    rolltui_menu_layout(m, RolltuiRect{0, 0, 30, 8});
+    const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiMenuEvent ev{};
+    RolltuiEvent down = key(Key::Down), up = key(Key::Up), home = key(Key::Home), end = key(Key::End), enter = key(Key::Enter);
+    check(rolltui_menu_selected(m) == 1, "a level that opens under a heading puts the cursor on the first row below it (" + std::to_string(rolltui_menu_selected(m)) + ")");
+    rolltui_menu_handle(m, &down, b, A, &ev);
+    rolltui_menu_handle(m, &down, b, A, &ev);
+    check(rolltui_menu_selected(m) == 5, "Down over a separator and a heading lands on the next real row (" + std::to_string(rolltui_menu_selected(m)) + ")");
+    rolltui_menu_handle(m, &down, b, A, &ev);
+    check(rolltui_menu_selected(m) == 5, "…and stays at the last real row");
+    rolltui_menu_handle(m, &up, b, A, &ev);
+    check(rolltui_menu_selected(m) == 2, "Up back over both lands on the row above them");
+    rolltui_menu_handle(m, &end, b, A, &ev);
+    rolltui_menu_handle(m, &home, b, A, &ev);
+    check(rolltui_menu_selected(m) == 1, "Home is the first real row, never the heading over it");
+    {
+      Frame f(30, 8);
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      check(row(f, 0).rfind("General \xE2\x94\x80\xE2\x94\x80", 0) == 0 && row(f, 0).size() > 20, "a section draws its label and a rule to the edge [" + row(f, 0) + "]");
+      check(row(f, 3).find("\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80") == 0 && row(f, 3).find("Motion") == std::string::npos,
+            "a separator is a rule alone [" + row(f, 3) + "]");
+      check(row(f, 4).rfind("Open with \xE2\x94\x80", 0) == 0, "the second section likewise [" + row(f, 4) + "]");
+    }
+    // a click on a divider is not a click on anything
+    RolltuiEvent click{};
+    click.kind = ROLLTUI_EVENT_MOUSE;
+    click.mouse.kind = RolltuiMouseEvent::Kind::Press;
+    click.mouse.button = 1;
+    click.mouse.x = 2;
+    click.mouse.y = 3;  // the separator's row
+    rolltui_menu_handle(m, &click, b, A, &ev);
+    check(rolltui_menu_selected(m) == 1 && ev.kind == ROLLTUI_MENU_EVENT_NONE, "a click on a separator selects nothing and does nothing");
+    // a filter hides them
+    RolltuiEvent o = ch('o');
+    rolltui_menu_handle(m, &o, b, A, &ev);
+    {
+      const size_t* vis = nullptr;
+      const size_t n = rolltui_menu_visible(m, &vis);
+      bool divider_shown = false;
+      for (size_t i = 0; i < n; ++i) divider_shown |= (vis[i] == 0 || vis[i] == 3 || vis[i] == 4);
+      check(n == 2 && !divider_shown, "a filter shows only the rows that match, never a heading over none of them (" + std::to_string(n) + ")");
+    }
+    RolltuiEvent esc = key(Key::Escape);
+    rolltui_menu_handle(m, &esc, b, A, &ev);
+    // the palette lists things to do, and a heading is not one
+    rolltui_menu_set_palette(m, 1);
+    check(rolltui_menu_flat_count(m) == 4, "the palette lists the toggles and the choice's options and no divider (" + std::to_string(rolltui_menu_flat_count(m)) + ")");
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_free(m);
+  }
+
   // ---- degenerate sizes ----
   {
     Menu m(sample());
@@ -1209,14 +1301,14 @@ int main() {
     Frame f(30, 8);
     m.layout({0, 0, 30, 8});
     m.draw(f, theme, true);
-    check(row(f, 1).rfind("Theme", 0) == 0, "the ROOT offers no way back — there is nowhere above it [" + row(f, 1) + "]");
+    check(row(f, 0).rfind("Theme", 0) == 0, "the ROOT offers no way back — there is nowhere above it [" + row(f, 0) + "]");
 
     m.handle(key(Key::Down));  // Layout
     m.handle(key(Key::Enter));
     Frame down(30, 8);
     m.draw(down, theme, true);
-    check(row(down, 1).rfind("\xE2\x97\x82 Back", 0) == 0,
-          "one level down, the FIRST row is the way back [" + row(down, 1) + "]");
+    check(row(down, 0).rfind("\xE2\x97\x82 Back", 0) == 0,
+          "one level down, the FIRST row is the way back [" + row(down, 0) + "]");
     check(m.selected() == 1 && m.selected_item() && view_of(m.selected_item()->id) == "layout.default",
           "…and descending lands on the first ITEM, not on the way out");
 
@@ -1234,7 +1326,7 @@ int main() {
     click.kind = MouseEvent::Kind::Press;
     click.button = 1;
     click.x = 3;
-    click.y = 1;  // the first item row: breadcrumb at 0, items from 1
+    click.y = 0;  // the first item row: the area's top, since the breadcrumb is the window's title
     ev = m.handle(click);
     check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "a CLICK on it ascends too");
 
@@ -1243,8 +1335,8 @@ int main() {
     m.handle(ch('z'));           // matches no child
     Frame filtered(30, 8);
     m.draw(filtered, theme, true);
-    check(row(filtered, 1).rfind("\xE2\x97\x82 Back", 0) == 0,
-          "a filter matching NOTHING still leaves the way out [" + row(filtered, 1) + "]");
+    check(row(filtered, 0).rfind("\xE2\x97\x82 Back", 0) == 0,
+          "a filter matching NOTHING still leaves the way out [" + row(filtered, 0) + "]");
     m.handle(key(Key::Escape));
     m.handle(key(Key::Escape));
 
@@ -1267,8 +1359,8 @@ int main() {
     m.handle(key(Key::Enter));
     Frame f(30, 8);
     m.draw(f, theme, true);
-    check(row(f, 1).rfind("\xE2\x97\x82 Back", 0) == 0,
-          "an EMPTY submenu still offers the way out, and it is the only thing in it [" + row(f, 1) + "]");
+    check(row(f, 0).rfind("\xE2\x97\x82 Back", 0) == 0,
+          "an EMPTY submenu still offers the way out, and it is the only thing in it [" + row(f, 0) + "]");
     check(m.selected() == 0, "…and the selection is on it, because there is nothing else to be on");
     const MenuEvent ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "…so Enter gets out");

@@ -143,6 +143,9 @@ size_t rolltui_menu_dropdown_selected(const RolltuiMenu* m);
 const RolltuiMenuItem* rolltui_menu_selected_item(const RolltuiMenu* m);
 
 void rolltui_menu_breadcrumb(const RolltuiMenu* m, RolltuiStr* out);
+/* The breadcrumb rooted at `base` instead of the root's label — the WINDOW's title, so a level
+ * reads "settings › Sort by" on the border and nowhere else; an empty base is the root's label. */
+void rolltui_menu_title(const RolltuiMenu* m, const char* base, size_t base_len, RolltuiStr* out);
 int rolltui_menu_editing(const RolltuiMenu* m);
 const char* rolltui_menu_edit_reason(const RolltuiMenu* m, size_t* len);
 

@@ -114,6 +114,55 @@ void rolltui_frame_fill(RolltuiFrame* f, RolltuiDrawScratch* s, RolltuiRect r, R
     for (xx = c.x; xx < c.x + c.w; xx += gw) rolltui_frame_put(f, xx, yy, glyph, glyph_len, gw, style, 0);
 }
 
+static unsigned char toward(unsigned char from, unsigned char to, double t) {
+  const double v = (double)from + ((double)to - (double)from) * t;
+  return (unsigned char)(v < 0 ? 0 : (v > 255 ? 255 : v + 0.5));
+}
+
+/* One colour of a style, shaded: see `rolltui_frame_shade` in the header for the three cases. */
+static void shade_color(RolltuiStyleColor* c, RolltuiStyleColor to, double t, unsigned char* dim) {
+  if (to.kind == 0 /* Color::Kind::None */) return;
+  if (t >= 1.0) { *c = to; return; }
+  if (c->kind == 2 /* Rgb */ && to.kind == 2) {
+    c->r = toward(c->r, to.r, t);
+    c->g = toward(c->g, to.g, t);
+    c->b = toward(c->b, to.b, t);
+    return;
+  }
+  if (t >= 0.5) *c = to;
+  else *dim = 1;
+}
+
+void rolltui_frame_shade(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style, double strength) {
+  RolltuiRect c;
+  int xx, yy;
+  if (strength <= 0) return;
+  {
+    int out[4];
+    rolltui_rect_intersect(r.x, r.y, r.w, r.h, 0, 0, rolltui_frame_width(f), rolltui_frame_height(f), out);
+    c.x = out[0];
+    c.y = out[1];
+    c.w = out[2];
+    c.h = out[3];
+  }
+  for (yy = c.y; yy < c.y + c.h; ++yy)
+    for (xx = c.x; xx < c.x + c.w; ++xx) {
+      RolltuiCell cell;
+      RolltuiStyle st;
+      unsigned char dim_fg = 0, dim_bg = 0;
+      rolltui_frame_cell(f, xx, yy, &cell);
+      st = cell.style;
+      shade_color(&st.fg, style.fg, strength, &dim_fg);
+      shade_color(&st.bg, style.bg, strength, &dim_bg);
+      st.bold |= style.bold;
+      st.italic |= style.italic;
+      st.underline |= style.underline;
+      st.dim |= style.dim | dim_fg; /* a background has no dim to fall back on */
+      st.reverse |= style.reverse;
+      rolltui_frame_set_style(f, xx, yy, st);
+    }
+}
+
 void rolltui_frame_tint(RolltuiFrame* f, RolltuiRect r, RolltuiStyle style) {
   RolltuiRect c;
   int xx, yy;

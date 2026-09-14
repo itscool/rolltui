@@ -327,6 +327,46 @@ void rolltui_frame_mark_at(const RolltuiFrame* f, size_t i, int* x, int* y, int*
   *fraction = m->fraction;
 }
 
+/* A mark under a window drawn LATER is a mark on cells that window now owns: an effect applied
+ * to it would paint motion onto the popup. Each mark is clipped to what is still visible —
+ * dropped when the rect covers it, shortened when the rect takes one end, split in two when it
+ * takes the middle. The order of the marks that survive is kept, so two frames drawn the same
+ * way still compare equal. A split's second piece needs one more slot, counted first so the
+ * array grows once (AMORTISED, strategy 2). */
+void rolltui_frame_unmark_rect(RolltuiFrame* f, RolltuiRect r) {
+  const int x0 = r.x, x1 = r.x + r.w, y0 = r.y, y1 = r.y + r.h;
+  const size_t n = f->mark_count;
+  size_t i, w = 0, extra = 0, tail = 0;
+  if (r.w <= 0 || r.h <= 0 || n == 0) return;
+  for (i = 0; i < n; ++i) {
+    const Mark* m = &f->marks[i];
+    if (m->y >= y0 && m->y < y1 && m->x < x0 && m->x + m->cells > x1) ++extra;
+  }
+  if (extra) f->marks = rolltui_grow(f->marks, &f->mark_cap, n + extra, sizeof *f->marks);
+  for (i = 0; i < n; ++i) {
+    const Mark m = f->marks[i]; /* a COPY, read before anything is written at or after i */
+    const int mx1 = m.x + m.cells;
+    if (m.y < y0 || m.y >= y1 || mx1 <= x0 || m.x >= x1) {
+      f->marks[w++] = m;
+      continue;
+    }
+    if (m.x < x0) { /* the piece left of the rect stays */
+      Mark left = m;
+      left.cells = x0 - m.x;
+      f->marks[w++] = left;
+    }
+    if (mx1 > x1) { /* the piece right of it stays too: after the others, keeping the order */
+      Mark right = m;
+      right.x = x1;
+      right.cells = mx1 - x1;
+      if (m.x < x0) f->marks[n + tail++] = right; /* a split: its second piece parks past the end */
+      else f->marks[w++] = right;
+    }
+  }
+  for (i = 0; i < tail; ++i) f->marks[w++] = f->marks[n + i];
+  f->mark_count = w;
+}
+
 /* ---- cursor ------------------------------------------------------------------------------ */
 
 void rolltui_frame_set_cursor(RolltuiFrame* f, int x, int y, int visible) {

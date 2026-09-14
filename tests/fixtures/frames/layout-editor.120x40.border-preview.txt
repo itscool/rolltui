@@ -1,4 +1,4 @@
-╭ transcript ─────────────────────────────────────────────────────────┌ layout editor ─────────────────────────────────┐
+╭ transcript ─────────────────────────────────────────────────────────┌ layout editor • transcript › Border ───────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ (row) row                                      │
 │ │ grapheme property,               │             │ unicode_tables.hp│   (column) column                              │
 │ │ Extended_Pictographic, InCB)     │             │                  │     transcript transcript:session              │
@@ -11,13 +11,13 @@
 │ │ mouse mode)                      │             │                  │ popup approval                                 │
 │ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
 │ │                                  │             │ Event, table-test│ popup menu                                     │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ layout editor • transcript › Border            │
-│ │ colour downgrade                 │             │ tested           │ ◂ Back                                         │
-│ │ Wrap engine                      │ build       │ single header ove│ none                                           │
-│ │                                  │             │ header           │ • single                                       │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ rounded                                        │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│ double                                         │
-│ │                                  │             │ Rect is a pure fu│ heavy                                          │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ ◂ Back                                         │
+│ │ colour downgrade                 │             │ tested           │ none                                           │
+│ │ Wrap engine                      │ build       │ single header ove│ • single                                       │
+│ │                                  │             │ header           │ rounded                                        │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ double                                         │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ heavy                                          │
+│ │                                  │             │ Rect is a pure fu│                                                │
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
 │ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
 │ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │

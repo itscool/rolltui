@@ -1,15 +1,15 @@
-┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ theme editor › Roles › md_heading              │
-│ │ grapheme property,               │             │ unicode_tables.hp│ ◂ Back                                         │
-│ │ Extended_Pictographic, InCB)     │             │                  │ fg                                   #adeeae ▸ │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ bg                                   #14161a ▸ │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ custom fg:                                     │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ custom bg:                                     │
-│ │                                  │             │ block tree is the│ [x] bold                                       │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [ ] italic                                     │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ [ ] underline                                  │
-│ │ mouse mode)                      │             │                  │ [ ] dim                                        │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ [ ] reverse                                    │
+┌ transcript ─────────────────────────────────────────────────────────┌ theme editor › Roles › md_heading ─────────────┐
+│ │ class, East-Asian width,         │             │ +, not Python) → │ ◂ Back                                         │
+│ │ grapheme property,               │             │ unicode_tables.hp│ fg                                   #adeeae ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ bg                                   #14161a ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ custom fg:                                     │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ custom bg:                                     │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ [x] bold                                       │
+│ │                                  │             │ block tree is the│ [ ] italic                                     │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [ ] underline                                  │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ [ ] dim                                        │
+│ │ mouse mode)                      │             │                  │ [ ] reverse                                    │
+│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
 │ │                                  │             │ Event, table-test│                                                │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
 │ │ colour downgrade                 │             │ tested           │                                                │

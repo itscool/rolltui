@@ -791,7 +791,7 @@ void mine_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 constexpr RolltuiWidgetPlugin kMinePlugin = {
     /*destroy=*/mine_destroy, /*layout=*/mine_layout, /*draw=*/mine_draw,
     /*problem=*/nullptr,      /*note_at=*/nullptr,    /*desired_outer=*/nullptr,
-    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
 };
 RolltuiWidget mine_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {
   return RolltuiWidget{&kMinePlugin, new MineCtx(*static_cast<const MineCtx*>(ctx))};
@@ -844,7 +844,7 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*destroy=*/canvas_destroy,   /*layout=*/canvas_layout, /*draw=*/canvas_draw,
     /*problem=*/canvas_problem,   /*note_at=*/nullptr,      /*desired_outer=*/canvas_desired_outer,
-    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr,
+    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
 };
 struct CanvasFactoryCtx {
   RolltuiWindows* windows;
@@ -2062,6 +2062,57 @@ int main() {
     windows.prepare(st2, box);
     check(built == before && windows.at("z")->ctx == c, "a layout reload keeps the pixels: same instance under a new window id");
     clear_registered_widget_kinds_c();
+  }
+
+  // ---- a popup covers the marks under it, and a modal SHADES what is behind it ----------
+  // The base layer marks a span through its transcript; a modal popup is pushed over part of
+  // it. After compose, the marks under the popup's box are gone or cut to what still shows, so
+  // the effects applied to the finished frame never paint the popup — and the transcript's own
+  // colours are moved TOWARD the overlay's, not replaced by it, so a gradient drawn there is
+  // still a gradient.
+  {
+    ThemeFixture th;
+    builtin_theme_c("default-dark", th);
+    StackC s(*builtin_layout_c("no-panel"));  // the transcript spans the width, so the popup sits inside it
+    const RolltuiRect scr{0, 0, 80, 24};
+    check(rolltui_window_stack_push_popup(s.s, builtin_layout_c("no-panel"), "help", 4), "the modal help popup is pushed over the base");
+    RolltuiRect box{};
+    for (const RolltuiResolvedNode& rn : resolve_stack_c(s.s, scr))
+      if (rn.layer == 1) { box = rn.outer; break; }
+    check(box.w > 4 && box.h > 2, "…and it resolves to a box on the screen [" + std::to_string(box.w) + "x" + std::to_string(box.h) + "]");
+    FrameC frame(80, 24);
+    int row = -1, x0 = 0, x1 = 0;
+    const SlotRendererC render = [&](const RolltuiResolvedNode& rn, FrameC& fr) {
+      if (rn.layer != 0 || !(rn.node->id == "transcript") || rn.inner.w <= 0 || rn.inner.h <= 0) return;
+      row = box.y + box.h / 2;  // a row the popup crosses
+      if (row < rn.inner.y || row >= rn.inner.y + rn.inner.h) row = rn.inner.y;
+      x0 = rn.inner.x;
+      x1 = rn.inner.x + rn.inner.w;
+      for (int x = x0; x < x1; ++x) {
+        RolltuiStyle st = th.style(ROLLTUI_ROLE_TEXT);
+        st.fg = RolltuiStyleColor::rgb(static_cast<unsigned char>((x * 3) & 0xFF), 120, 60);
+        rolltui_frame_set_style(fr, x, row, st);
+      }
+      rolltui_frame_mark(fr, x0, row, x1 - x0, 1 /* waiting */, 0, 0);
+    };
+    compose_c(s.s, frame, scr, th, render);
+    check(row >= 0 && box.x > x0 && box.x + box.w < x1, "the marked row runs under the popup and out both sides [row " + std::to_string(row) + "]");
+    std::vector<std::pair<int, int>> marks;
+    for (std::size_t i = 0; i < rolltui_frame_mark_count(frame); ++i) {
+      int x = 0, y = 0, cells = 0, state = 0; unsigned long long since = 0; double fr = 0;
+      rolltui_frame_mark_at(frame, i, &x, &y, &cells, &state, &since, &fr);
+      if (y == row) marks.push_back({x, x + cells});
+    }
+    check(marks.size() == 2 && marks[0].first == x0 && marks[0].second == box.x && marks[1].first == box.x + box.w && marks[1].second == x1,
+          "after compose the span is two marks, one each side of the popup, and none under it (" + std::to_string(marks.size()) + ")");
+    const RolltuiStyle over = th.style(kRoles_c.overlay);
+    const RolltuiCell left = frame.at(x0 + 1, row), left2 = frame.at(x0 + 2, row);
+    if (over.fg.kind == RolltuiStyleColor::Kind::Rgb) {
+      check(left.style.fg.kind == RolltuiStyleColor::Kind::Rgb && !(left.style.fg == over.fg) && !(left.style.fg == left2.style.fg),
+            "a cell beside the popup is shaded toward the overlay, not painted with it: two cells that differed still differ");
+    } else {
+      check(left.style.fg == over.fg, "without RGB the overlay replaces, as before");
+    }
   }
 
   // ---- the scrollbar's geometry ----------------------------------------
