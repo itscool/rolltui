@@ -698,6 +698,82 @@ int main() {
           "…and a NULL context is a session with no host kinds: rung 1 answers, rung 2 is empty");
   }
 
+  // ---- RUNG 2 FOR STATES: a host names what its widget marks with -----------------------
+  // The library's six states are a transcript's. A host whose widget has states of its own
+  // registers them by name, marks with the index it is handed, and a theme file maps them under
+  // `effects` exactly as it maps the library's — read against the SESSION's vocabulary.
+  {
+    RolltuiContext* a = rolltui_context_new();
+    int folder = -1, again = -1, none = -1;
+    check(rolltui_effect_state_register(a, "dirk.folder", 11, &folder) == ROLLTUI_EFFECT_OK &&
+              folder == static_cast<int>(ROLLTUI_EFFECT_STATE_COUNT),
+          "a host state is registered and handed the first index past the library's six");
+    check(rolltui_effect_state_register(a, "waiting", 7, &none) == ROLLTUI_EFFECT_IS_BUILTIN && none == -1,
+          "…a library state's name is refused: rung 1 is never shadowed");
+    check(rolltui_effect_state_register(a, "none", 4, &none) == ROLLTUI_EFFECT_IS_BUILTIN,
+          "…and so is \"none\", which is rung 1's too");
+    check(rolltui_effect_state_register(a, "dirk.folder", 11, &again) == ROLLTUI_EFFECT_DUPLICATE && again == folder,
+          "…a second registration is refused and says which index the name already has");
+    check(rolltui_effect_state_resolve(a, "dirk.folder", 11) == folder && rolltui_effect_state_resolve(a, "flash", 5) == ROLLTUI_EFFECT_STATE_FLASH &&
+              rolltui_effect_state_resolve(a, "dirk.nope", 9) == -1,
+          "resolution walks both rungs and answers -1 for neither");
+    check(rolltui_effect_state_count(a) == ROLLTUI_EFFECT_STATE_COUNT + 1, "the session's state count is the library's plus the host's");
+    const RolltuiThemeVocab* v = rolltui_theme_vocab(a);
+    check(v->state_count == ROLLTUI_EFFECT_STATE_COUNT + 1 && std::string(v->state_names[folder]) == "dirk.folder" &&
+              std::string(v->state_names[ROLLTUI_EFFECT_STATE_WAITING]) == "waiting" && v->role_count == ROLLTUI_ROLE_COUNT,
+          "the session's vocabulary names the host state after the library's, roles untouched");
+    RolltuiContext* b = rolltui_context_new();
+    check(rolltui_theme_vocab(b) == rolltui_theme_default_vocab() && rolltui_effect_state_resolve(b, "dirk.folder", 11) == -1,
+          "…and a session that registered nothing has the default vocabulary and cannot see another's state");
+
+    // A THEME FILE maps the host state by name — through the session's vocabulary, and NOT
+    // through the default one, where the same key is unknown.
+    const char* text = R"({ "name": "fx", "roles": { "text": { "fg": "none" } },
+      "effects": { "dirk.folder": { "kind": "gauge", "roles": ["accent_1"], "period_ms": 500 } } })";
+    RolltuiStr err{};
+    RolltuiJsonValue* root = rolltui_json_parse(text, std::strlen(text), &err);
+    check(root != nullptr, "the theme text parses");
+    RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+    RolltuiStr name{};
+    RolltuiThemeReport rep{};
+    RolltuiEffectMap* m = rolltui_theme_load(root, ROLLTUI_MODE_DARK, rolltui_theme_vocab(a), styles, &name, &rep);
+    check(m != nullptr && rolltui_effect_map_count(m, static_cast<std::size_t>(folder)) == 1 && rep.unknown_keys_n == 0,
+          "a theme read against the session's vocabulary maps the host state");
+    rolltui_str_free(&name);
+    rolltui_theme_report_release(&rep);
+    RolltuiThemeReport rep2{};
+    RolltuiEffectMap* m2 = rolltui_theme_load(root, ROLLTUI_MODE_DARK, rolltui_theme_default_vocab(), styles, &name, &rep2);
+    check(m2 != nullptr && rep2.unknown_keys_n == 1 && std::string(rep2.unknown_keys[0].c_str()).find("dirk.folder") != std::string::npos,
+          "…and the same file read against the DEFAULT vocabulary reports the state as an unknown key — the control");
+    rolltui_str_free(&name);
+    rolltui_theme_report_release(&rep2);
+    rolltui_json_free(root);
+
+    // THE MERGE: an app's own mapping file onto a map built without its states — the map is
+    // widened, the rows added, the theme's own rows kept.
+    const char* app_file = R"({ "effects": { "dirk.folder": { "kind": "gauge", "role": "accent_2" }, "nosuch": { "kind": "blink" } } })";
+    RolltuiThemeReport rep3{};
+    check(rolltui_theme_effects_merge(m2, app_file, std::strlen(app_file), rolltui_theme_vocab(a), &rep3) == 1 &&
+              rolltui_effect_map_count(m2, static_cast<std::size_t>(folder)) == 1 && rolltui_effect_map_count(m2, ROLLTUI_EFFECT_STATE_WAITING) == 0,
+          "a mapping file merges onto a six-state map: widened to the session's states, the row added");
+    check(rep3.unknown_keys_n == 1 && std::string(rep3.unknown_keys[0].c_str()).find("nosuch") != std::string::npos,
+          "…a state nobody registered is reported by name, and the rest still lands");
+    rolltui_theme_report_release(&rep3);
+    RolltuiThemeReport rep4{};
+    check(rolltui_theme_effects_merge(m, app_file, std::strlen(app_file), rolltui_theme_vocab(a), &rep4) == 1 &&
+              rolltui_effect_map_count(m, static_cast<std::size_t>(folder)) == 2,
+          "…and merged onto a map that already has the state, the specs STACK rather than replace");
+    rolltui_theme_report_release(&rep4);
+    RolltuiThemeReport rep5{};
+    check(rolltui_theme_effects_merge(m, "{ not json", 10, rolltui_theme_vocab(a), &rep5) == 0 && rep5.error.n != 0,
+          "…and an unparseable file is refused with the parse error, never half-applied");
+    rolltui_theme_report_release(&rep5);
+    rolltui_effect_map_free(m);
+    rolltui_effect_map_free(m2);
+    rolltui_context_free(b);
+    rolltui_context_free(a);
+  }
+
   // ---- THE TWO PROPERTIES, over every registered kind -------------------------------
   {
     int refused_total = 0, kinds = 0;

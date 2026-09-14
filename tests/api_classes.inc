@@ -251,7 +251,11 @@ ROLLTUI_API(rolltui_effect_map_empty, PUBLIC)
 ROLLTUI_API(rolltui_effect_map_equal, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_free, PUBLIC)
 ROLLTUI_API(rolltui_effect_map_new, INTERNAL)
-ROLLTUI_API(rolltui_effect_register, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
+ROLLTUI_API(rolltui_effect_register, PUBLIC)  /* rung 2 of the kind table is a HOST's: dirktui registers three kinds of its own */
+ROLLTUI_API(rolltui_effect_state_register, PUBLIC)  /* rung 2 of the STATE table: a widget with states of its own names them, and a theme maps them by name */
+ROLLTUI_API(rolltui_effect_state_resolve, INTERNAL)  /* a test reads back; no consumer marks by a name it did not register */
+ROLLTUI_API(rolltui_effect_state_count, INTERNAL)
+ROLLTUI_API(rolltui_effect_map_grow, INTERNAL)  /* a step of the merge */
 ROLLTUI_API(rolltui_effect_scratch_free, PUBLIC)
 ROLLTUI_API(rolltui_effect_scratch_new, PUBLIC)
 ROLLTUI_API(rolltui_effect_state_from_name, INTERNAL)
@@ -276,6 +280,8 @@ ROLLTUI_API(rolltui_theme_builtin_count, INTERNAL)  /* a theme-loading step */
 ROLLTUI_API(rolltui_theme_builtin_fill, PUBLIC)
 ROLLTUI_API(rolltui_theme_builtin_name, INTERNAL)  /* a theme-loading step */
 ROLLTUI_API(rolltui_theme_default_vocab, PUBLIC)
+ROLLTUI_API(rolltui_theme_vocab, PUBLIC)  /* the SESSION's vocabulary: the library's states, then the host's */
+ROLLTUI_API(rolltui_theme_effects_merge, PUBLIC)  /* an app's own mapping file, added onto a person's theme */
 ROLLTUI_API(rolltui_theme_dump, INTERNAL)
 ROLLTUI_API(rolltui_theme_load, PUBLIC)
 ROLLTUI_API(rolltui_theme_mode_from_name, PUBLIC)
@@ -1141,6 +1147,8 @@ ROLLTUI_API(rolltui_context_free, PUBLIC)   /* rule 1's pair */
 ROLLTUI_API(rolltui_kind_registry_new, INTERNAL)
 ROLLTUI_API(rolltui_kind_registry_free, INTERNAL)
 ROLLTUI_API(rolltui_effect_registry_new, INTERNAL)
+ROLLTUI_API(rolltui_effect_states_new, INTERNAL)
+ROLLTUI_API(rolltui_effect_states_free, INTERNAL)
 ROLLTUI_API(rolltui_effect_registry_free, INTERNAL)
 ROLLTUI_API(rolltui_layout_cache_new, INTERNAL)
 ROLLTUI_API(rolltui_layout_cache_free, INTERNAL)

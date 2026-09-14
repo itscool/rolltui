@@ -320,6 +320,76 @@ int main() {
           "Left slides the columns back so the root column is whole again");
   }
 
+  // ---- MOTION: this app's own states and kinds, mapped by ITS file, read at the script's clock ----
+  // A text frame cannot show a colour, so the self-test binary prints what the frame's effects
+  // touched. The states are dirktui's (`dirk.folder`, `dirk.file`, `dirk.dig`), registered on the
+  // session; the kinds are dirktui's; the mapping is `examples/presets/effects/dirktui.json`.
+  {
+    auto fx = [&](const std::string& keys) {
+      int frc = 0;
+      const std::string err = run(base + " --frame 46x10 --keys \"" + keys + "\" 2>&1 >/dev/null", frc);
+      const std::size_t at = err.find("effects: ");
+      return at == std::string::npos ? std::string("(no effects line)") : err.substr(at, err.find('\n', at) - at);
+    };
+    check(has(fx("Tick:0"), "marks=1 drawn=1"), "the folder under the cursor is marked and its effect draws [" + fx("Tick:0") + "]");
+    check(fx("Tick:600") != fx("Tick:1200") && has(fx("Tick:1200"), "drawn=1"),
+          "…and it BREATHES: a later moment lights a different number of cells [" + fx("Tick:600") + " / " + fx("Tick:1200") + "]");
+    auto num = [](const std::string& line, const char* key) {
+      const std::size_t at = line.find(key);
+      return at == std::string::npos ? -1 : std::atoi(line.c_str() + at + std::strlen(key));
+    };
+    const std::string land = fx("End Tick:0"), half = fx("End Tick:175");
+    check(num(land, "marks=") == 1 && num(land, "drawn=") == 1 && num(land, "cells=") > 0,
+          "a file under the cursor lands lit from end to end [" + land + "]");
+    check(num(half, "drawn=") == 1 && num(half, "cells=") > 0 && num(half, "cells=") < num(land, "cells="),
+          "…half-way through it has handed part of the row back [" + half + "]");
+    check(has(fx("End Tick:400"), "marks=1 drawn=0"), "…settled, the row is still but the moment is still marked");
+    check(has(fx("End Tick:700"), "marks=0"), "…and once landed the file's mark is gone, so the tick stops asking for frames");
+    const std::string dig = fx("Right Tick:100"), past = fx("Right Tick:400"), still = fx("Right");
+    check(num(dig, "marks=") >= 3 && num(dig, "drawn=") == num(dig, "marks="),
+          "Right marks every row of the column it dug into, and the sweep is crossing them all [" + dig + "]");
+    check(num(past, "marks=") == num(dig, "marks=") && num(past, "drawn=") == 1,
+          "…the sweep is one pass: past its period the rows draw nothing and only the cursor breathes [" + past + "]");
+    check(has(fx("Right Tick:600"), "marks=1"), "…and the dig's marks leave, so only the cursor's remains");
+    check(num(still, "marks=") == num(dig, "marks=") && num(still, "drawn=") == 0,
+          "a script with no tick is the still picture: marked, every effect at its first instant [" + still + "]");
+
+    // THE MAPPING IS A FILE, and a person's config directory shadows the embedded one: an empty
+    // mapping there leaves the marks with nothing to draw, and a state nobody registered is
+    // reported by name where a developer is looking.
+    const fs::path cfg = scratch / "cfg";
+    fs::create_directories(cfg / "rolltui" / "dirktui");
+    write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": {} }\n");
+    int crc = 0;
+    const std::string shadowed = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + base + " --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", crc);
+    check(has(shadowed, "marks=1 drawn=0"), "a user's own effects file shadows the app's: the mark is there, the theme has nothing for it [" +
+                                                shadowed.substr(0, 60) + "]");
+    write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": { \"dirk.nosuch\": { \"kind\": \"blink\" } } }\n");
+    const std::string unknown = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + base + " --frame 46x10 2>&1 >/dev/null", crc);
+    check(has(unknown, "effects file") && has(unknown, "dirk.nosuch"), "…and a state the app never registered is named as unknown");
+  }
+
+  // ---- THE SLIDE, at the script's clock: a moment into it the columns are between ---------------
+  {
+    auto row = [&](const std::string& keys) {
+      int src = 0;
+      const std::string out = run(base + " --frame 46x10 --keys \"" + keys + "\" 2>/dev/null", src);
+      std::istringstream in(out);
+      std::string l0, l1;
+      std::getline(in, l0);
+      std::getline(in, l1);
+      return l1;
+    };
+    const std::size_t at0 = row("Right Tick:0").find("alpha"), at30 = row("Right Tick:30").find("alpha"),
+                      done = row("Right Tick:200").find("alpha"), still = row("Right").find("alpha");
+    check(at0 != std::string::npos && done != std::string::npos && done < at0,
+          "the instant Right is pressed the columns are where they were; later they have moved left");
+    check(at30 != std::string::npos && done < at30 && at30 < at0,
+          "…and 30 ms in they are BETWEEN: the slide is a slide, not a jump [" + std::to_string(at0) + " > " +
+              std::to_string(at30) + " > " + std::to_string(done) + "]");
+    check(still == done, "…while a script with no tick draws the slide already ended");
+  }
+
   check(has(wide, "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E"), "a CJK name is drawn, and the row it is on is not torn");
   check(has(wide, "cafe\xCC\x81") || has(wide, "caf"), "a combining sequence survives the column");
   check(has(wide, "\xE2\x80\xA6"), "a name too long for its column is cut with an ellipsis, not clipped silently");

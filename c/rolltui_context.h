@@ -31,6 +31,10 @@ void rolltui_kind_registry_free(RolltuiKindRegistry* r); /* a no-op on NULL */
 typedef struct RolltuiEffectRegistry RolltuiEffectRegistry;
 RolltuiEffectRegistry* rolltui_effect_registry_new(void);
 void rolltui_effect_registry_free(RolltuiEffectRegistry* r); /* a no-op on NULL */
+/* The effect STATES a host registered, and the theme vocabulary that names them (rolltui_effects.c). */
+typedef struct RolltuiEffectStates RolltuiEffectStates;
+RolltuiEffectStates* rolltui_effect_states_new(void);
+void rolltui_effect_states_free(RolltuiEffectStates* s); /* a no-op on NULL */
 
 /* THE BUILT-IN CACHES, and they are here because of contract point 4 rather than for tidiness:
  * a cached built-in belongs to the context that cached it. The bytes are identical for every
@@ -65,6 +69,7 @@ RolltuiWindowConfig* rolltui_context_window_config(RolltuiContext* ctx); /* made
 struct RolltuiContext {
   RolltuiKindRegistry* kinds;     /* rolltui_layout.c   — the host WIDGET kinds, rung 2 */
   RolltuiEffectRegistry* effects; /* rolltui_effects.c  — the host EFFECT kinds, rung 2 */
+  RolltuiEffectStates* states;    /* rolltui_effects.c  — the host EFFECT STATES, rung 2, and the vocabulary naming them */
   RolltuiLayoutCache* layouts;    /* rolltui_layout.c   — the built-ins, parsed once per session */
   RolltuiBindings* bindings;      /* rolltui_bindings.c — the shipped default table */
   RolltuiPresetDomains* presets;  /* rolltui_presets.c  — the library's three descriptors */

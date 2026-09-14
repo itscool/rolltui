@@ -1,0 +1,7 @@
+{
+  "effects": {
+    "dirk.folder": { "kind": "dirk_breathe", "roles": ["accent_1"], "period_ms": 2400, "steps": 48 },
+    "dirk.file":   { "kind": "dirk_settle",  "roles": ["accent_2"], "period_ms": 350, "steps": 24 },
+    "dirk.dig":    { "kind": "dirk_sweep",   "roles": ["find_current"], "period_ms": 320, "width": 4, "steps": 32 }
+  }
+}

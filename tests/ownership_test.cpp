@@ -312,7 +312,7 @@ int main() {
         {"c/rolltui_effects.h", 0},
         {"c/rolltui_bindings.h", 0},
         {"c/rolltui_alloc.h", 0},
-        {"c/rolltui_context.h", 6},  /* the six subsystems a context OWNS, each freed by name in `rolltui_context_free` */
+        {"c/rolltui_context.h", 7},  /* the seven subsystems a context OWNS (the host effect STATES joined the kinds), each freed by name in `rolltui_context_free` */
         {"c/rolltui_map.h", 2},
         {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
@@ -377,7 +377,7 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    check(total == 137, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 138, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

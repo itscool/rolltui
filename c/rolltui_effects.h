@@ -94,11 +94,14 @@ void rolltui_effect_map_add_role(RolltuiEffectMap* m, size_t state, size_t i, un
 /* BORROWS a static literal. An out-of-range state reads back as "none", which is what the
  * C++ `effect_state_name` did and what a mark of an unknown state means. */
 const char* rolltui_effect_state_name(unsigned char state, size_t* len);
-/* Registers a kind. The registry COPIES the name and takes ownership of `ctx`, releasing
- * it with `free_ctx` at `clear` or at `rolltui_context_free`. On any refusal it takes
- * nothing: `ctx` is still the caller's, and `free_ctx` is not called. */
-int rolltui_effect_register(RolltuiContext* c, const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
-                            void (*free_ctx)(void*));
+/* Widens a map to `states` rows, keeping its specs; 0 when it was already that wide. */
+int rolltui_effect_map_grow(RolltuiEffectMap* m, size_t states);
+/* The state of that name through both rungs — the library's six, then the host's — or -1;
+ * and how many there are. Internal until a consumer needs to mark with a name it did not
+ * register itself (a document's `<!-- state: … -->`, say), which is the reason that would
+ * make them public. */
+int rolltui_effect_state_resolve(const RolltuiContext* c, const char* name, size_t len);
+size_t rolltui_effect_state_count(const RolltuiContext* c);
 /* Every kind name that resolves right now, in RESOLUTION ORDER: the library's closed seven
  * first and never shadowed, then the host's. `name` is a BORROW, valid until the registry
  * next changes. */

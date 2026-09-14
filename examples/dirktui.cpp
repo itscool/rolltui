@@ -80,7 +80,68 @@ struct Options {
   bool hidden = false;
   Sort sort = Sort::Name;
   const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
+  // THE STATES THE BROWSER MARKS WITH — this app's own, registered by name on the session so a
+  // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
+  // and stay untouched. The indices are whatever the registry handed back: nothing here
+  // assumes a number, and 0 (None) marks nothing, which is what an unregistered state does.
+  int st_folder = 0;
+  int st_file = 0;
+  int st_dig = 0;
 };
+
+// ---- the three effect KINDS this app brings, rung 2 of the effects table -----------------------
+// Each is a pure function of (elapsed, index, length, base style) and answers for ONE cell — the
+// contract every kind is held to. Each picks a colour the THEME named: the role's foreground
+// on the cell's own background, so a lit cell on the cursor row keeps the row's highlight. A
+// kind never invents a colour and never changes a glyph's width.
+RolltuiStyle lit(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in) {
+  RolltuiStyle st = in->base;
+  st.fg = styles[s->roles[0]].fg;
+  return st;
+}
+
+// `dirk_breathe`: a fill that BREATHES. The first k cells wear the role, k rising from none to
+// the whole span and back over one period — a triangle, so it turns without a jump. The folder
+// under the cursor: alive, slow, and never finished.
+void fx_breathe(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+                RolltuiEffectOut* out) {
+  const int period = s->period_ms > 0 ? s->period_ms : 2400;
+  const unsigned long long t = in->elapsed_ms % static_cast<unsigned long long>(period);
+  const double u = static_cast<double>(t) / period;
+  const double tri = u < 0.5 ? u * 2.0 : (1.0 - u) * 2.0;
+  const int k = static_cast<int>(std::lround(tri * in->length));
+  if (in->index >= k) return;
+  out->has_style = 1;
+  out->style = lit(s, styles, in);
+}
+
+// `dirk_sweep`: ONE pass of a band, `width` cells wide, left to right across the span over the
+// period — and then nothing, for as long as the span stays marked. The column just dug into.
+void fx_sweep(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+              RolltuiEffectOut* out) {
+  const int period = s->period_ms > 0 ? s->period_ms : 320;
+  if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
+  const int width = s->width > 0 ? s->width : 3;
+  const double u = static_cast<double>(in->elapsed_ms) / period;
+  const int front = static_cast<int>(std::lround(u * (in->length + width))) - 1;
+  if (in->index > front || in->index <= front - width) return;
+  out->has_style = 1;
+  out->style = lit(s, styles, in);
+}
+
+// `dirk_settle`: the span LANDS. Every cell wears the role at first; from the right end inward
+// they hand back to the base over the period, and then the span is still. A file under the
+// cursor: a leaf, so the motion ends.
+void fx_settle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+               RolltuiEffectOut* out) {
+  const int period = s->period_ms > 0 ? s->period_ms : 350;
+  if (in->elapsed_ms >= static_cast<unsigned long long>(period)) return;
+  const double u = static_cast<double>(in->elapsed_ms) / period;
+  const int still_lit = static_cast<int>(std::lround((1.0 - u) * in->length));
+  if (in->index >= still_lit) return;
+  out->has_style = 1;
+  out->style = lit(s, styles, in);
+}
 
 // A `RolltuiStr` as a `std::string`, at the sites that want one. The library's own vocabulary
 // never names a std:: type, so a host that composes with std::string converts here — one line,
@@ -195,6 +256,16 @@ struct Browser {
   bool scrolling = false;
   unsigned long long now_ms = 0;  // the frame clock, set by the app before each frame; 0 = headless, no motion
   static constexpr unsigned long long kScrollMs = 120;
+  // WHEN THE EYE MOVED, for the marks: the cursor's span carries the moment it landed on this
+  // entry, and the column just entered carries the moment of the dig. A one-shot effect is a
+  // MARK WITH A LIFETIME — the widget stops marking once the moment is old enough, so the tick
+  // stops asking for frames; what the effect looks like inside that window is the theme's.
+  unsigned long long cursor_since_ms = 0;
+  unsigned long long dig_since_ms = 0;
+  std::size_t dig_col = static_cast<std::size_t>(-1);
+  static constexpr unsigned long long kSettleMs = 600;  // a file's landing is over by then
+  static constexpr unsigned long long kDigMs = 500;     // a dig's sweep is over by then
+  void eye_moved() { cursor_since_ms = now_ms; }
   // THE OUTCOME. Set by an action, read by the app once the poll's events are handled. The widget
   // cannot end the process and must not decide what a chosen path MEANS — printing it, and what
   // the shell does with it, are the app's and the shell's. Two flags rather than one enum with an
@@ -226,6 +297,7 @@ struct Browser {
     measure_width(c);
     cols.push_back(std::move(c));
     open_selected();
+    eye_moved();
     retarget();
   }
 
@@ -325,6 +397,7 @@ struct Browser {
     if (!c || c->entries.n == 0) return;
     long long at = static_cast<long long>(c->sel) + delta;
     at = std::max<long long>(0, std::min<long long>(at, static_cast<long long>(c->entries.n) - 1));
+    if (static_cast<std::size_t>(at) != c->sel) eye_moved();
     c->sel = static_cast<std::size_t>(at);
     clamp_scroll(*c);
     open_selected();
@@ -333,6 +406,7 @@ struct Browser {
   void select(std::size_t i) {
     Column* c = focused();
     if (!c || i >= c->entries.n) return;
+    if (i != c->sel) eye_moved();
     c->sel = i;
     clamp_scroll(*c);
     open_selected();
@@ -345,6 +419,9 @@ struct Browser {
     if (focus_col + 1 < cols.size()) {
       ++focus_col;
       open_selected();  // the NEW focus's own preview, so the column to its right is never empty
+      eye_moved();
+      dig_since_ms = now_ms;
+      dig_col = focus_col;
       retarget();
     }
   }
@@ -352,6 +429,7 @@ struct Browser {
     if (focus_col > 0) {
       --focus_col;
       cols.resize(focus_col + 2 <= cols.size() ? focus_col + 2 : cols.size());
+      eye_moved();
       retarget();
       return;
     }
@@ -460,11 +538,24 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       if (is_sel) {
         const int fx = std::max(x, r.x);
         rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, x + cw - fx, 1}, st, nullptr, 0);
+        // THE CURSOR'S MARK: a folder is marked for as long as the eye is on it; a file only
+        // while it is landing, after which the row is still and asks for no frames.
+        if (is_focus_col) {
+          const unsigned long long age = b->now_ms >= b->cursor_since_ms ? b->now_ms - b->cursor_since_ms : 0;
+          if (e.is_dir) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_folder, b->cursor_since_ms, 0);
+          else if (age < Browser::kSettleMs) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_file, b->cursor_since_ms, 0);
+        }
       }
       // A directory is marked with a trailing chevron rather than a colour, so the shape
       // survives `mono` and a colour-blind reader alike.
       const std::string label = str_of(e.name) + (e.is_dir ? " \xE2\x80\xBA" : "");
       put_clipped(x + 1, y, b->measure.fit(label, cw - 1), st, cw - 1);
+      // THE DIG'S MARK: every row of the column just entered, for the sweep's window.
+      if (ci == b->dig_col) {
+        const unsigned long long age = b->now_ms >= b->dig_since_ms ? b->now_ms - b->dig_since_ms : 0;
+        const int fx = std::max(x + 1, r.x);
+        if (age < Browser::kDigMs && x + cw - fx > 0) rolltui_frame_mark(f, fx, y, x + cw - fx, b->opt->st_dig, b->dig_since_ms, 0);
+      }
     }
     if (c.entries.n == 0) {
       // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
@@ -626,6 +717,7 @@ struct App {
   RolltuiContext* ctx = rolltui_context_new();  // OWNED: this app's session (Phase 25)
   RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
   RolltuiEffectMap* effects = nullptr;
+  RolltuiEffectScratch* effect_scratch = rolltui_effect_scratch_new();  // OWNED: the applier's working memory
   RolltuiDrawScratch* draw_scratch = rolltui_draw_scratch_new();
   RolltuiBindings* bindings = rolltui_bindings_clone(rolltui_bindings_default(ctx));
   RolltuiWindows* windows = rolltui_windows_new(ctx);
@@ -649,10 +741,18 @@ struct App {
   int w = 100, h = 30;
   bool quit = false;
   unsigned long long now_ms = 0;  // the frame clock; 0 in a headless frame, where nothing moves
-  // How soon this frame wants redrawing: a sliding column asks for the next tick, else `idle`.
-  int poll_timeout_ms(int idle) {
+  RolltuiEffectReport last_fx{};  // what the last frame's effects touched: a self-test reads it
+  std::size_t last_marks = 0;
+  // How soon this frame wants redrawing: a sliding column asks for the next tick, a marked span
+  // whose effect moves asks for its own interval, else `idle`.
+  int poll_timeout_ms(const RolltuiFrame* f, int idle) {
     Browser* b = browser();
-    return b && b->scrolling ? 16 : idle;
+    int want = b && b->scrolling ? 16 : idle;
+    if (f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
+      const int tick = rolltui_effects_tick_ms(ctx, f, effects);
+      if (tick > 0 && tick < want) want = tick;
+    }
+    return want;
   }
   // THE EXIT CONTRACT: `chosen` is printed and the status is 0 ONLY when an accept happened.
   // Every other way out — cancel, a global quit — prints nothing and exits 1. The shell function
@@ -660,9 +760,19 @@ struct App {
   std::string chosen;
   int exit_code = 1;
 
+  // THIS APP'S OWN MOTION VOCABULARY, on the session: three states its widget marks with, three
+  // kinds a theme may name. Registered before any theme loads, because the vocabulary a theme
+  // file is read against (`rolltui_theme_vocab`) is built from what has been registered.
+  std::string effects_json;  // the app's mapping file, state -> kind + role; merged onto every theme
   App() {
     layout = rolltui_layout_new();
     rolltui_context_set_library_defaults(ctx);
+    rolltui_effect_state_register(ctx, "dirk.folder", 11, &opt.st_folder);
+    rolltui_effect_state_register(ctx, "dirk.file", 9, &opt.st_file);
+    rolltui_effect_state_register(ctx, "dirk.dig", 8, &opt.st_dig);
+    rolltui_effect_register(ctx, "dirk_breathe", 12, fx_breathe, nullptr, nullptr);
+    rolltui_effect_register(ctx, "dirk_sweep", 10, fx_sweep, nullptr, nullptr);
+    rolltui_effect_register(ctx, "dirk_settle", 11, fx_settle, nullptr, nullptr);
   }
   App(const App&) = delete;
   App& operator=(const App&) = delete;
@@ -676,6 +786,7 @@ struct App {
     rolltui_windows_free(windows);
     rolltui_bindings_free(bindings);
     rolltui_draw_scratch_free(draw_scratch);
+    rolltui_effect_scratch_free(effect_scratch);
     rolltui_effect_map_free(effects);
     rolltui_context_free(ctx);  // LAST: the registries every handle above resolved through
   }
@@ -687,6 +798,25 @@ struct App {
   void set_theme(const char* name) {
     rolltui_effect_map_free(effects);
     effects = rolltui_theme_builtin_fill(name, std::strlen(name), styles, ROLLTUI_ROLE_COUNT);
+    merge_effects();
+  }
+
+  // THE APP'S MAPPING ONTO A PERSON'S THEME. The theme names the colours; this app's file says
+  // which role and which kind each of its own states wears; the merge widens the map to the
+  // session's vocabulary and adds the rows. A theme that already maps a `dirk.*` state keeps
+  // its row too (the specs STACK), so a person's theme can restyle this app without editing
+  // the app's file. What the file gets wrong is said, once, where a developer is looking.
+  void merge_effects() {
+    if (!effects || effects_json.empty()) return;
+    RolltuiThemeReport rep{};
+    rolltui_theme_effects_merge(effects, effects_json.data(), effects_json.size(), rolltui_theme_vocab(ctx), &rep);
+    if (rep.error.n || rep.unknown_keys_n || rep.bad_values_n) {
+      std::fprintf(stderr, "dirktui: effects file: %s", rep.error.n ? rep.error.c_str() : "");
+      for (std::size_t i = 0; i < rep.unknown_keys_n; ++i) std::fprintf(stderr, " unknown %s", rep.unknown_keys[i].c_str());
+      for (std::size_t i = 0; i < rep.bad_values_n; ++i) std::fprintf(stderr, " bad %s", rep.bad_values[i].c_str());
+      std::fputc('\n', stderr);
+    }
+    rolltui_theme_report_release(&rep);
   }
 
   // The look comes from the STORE once there is one, so an edit made in the theme editor is what
@@ -703,11 +833,13 @@ struct App {
     // this app does not have one yet.
     const int named = rolltui_theme_mode_from_name(w->mode.p ? w->mode.p : "", w->mode.n);
     const int mode = named >= 0 ? named : ROLLTUI_MODE_DARK;
-    RolltuiEffectMap* eff = rolltui_theme_load(w->colours, mode, rolltui_theme_default_vocab(), got, &name, &rep);
+    // The SESSION's vocabulary, so a person's theme may map this app's states by name.
+    RolltuiEffectMap* eff = rolltui_theme_load(w->colours, mode, rolltui_theme_vocab(ctx), got, &name, &rep);
     if (eff) {
       std::copy(std::begin(got), std::end(got), styles);
       rolltui_effect_map_free(effects);
       effects = eff;
+      merge_effects();
       RolltuiScrollbarGlyphs g;
       rolltui_theme_scrollbar_glyphs(w->colours, &g);
       rolltui_context_set_scrollbar_glyphs(ctx, &g);
@@ -911,6 +1043,7 @@ struct App {
   }
 
   void handle(const RolltuiEvent& e) {
+    if (Browser* b = browser()) b->now_ms = now_ms;  // the moment an event lands is this frame's
     // The app's OWN scope first, so a global chord works wherever the focus is — roll's rule.
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t len = 0;
@@ -965,6 +1098,17 @@ struct App {
     }
     rolltui_frame_put_fields(f, draw_scratch, 1, h - 1, &status_rows, style(ROLLTUI_ROLE_LABEL),
                              style(ROLLTUI_ROLE_VALUE), w - 1, 0);
+    apply_effects(f);
+  }
+
+  // The one line every host has: after the whole screen composed and before the diff, the
+  // theme's motion is applied to whatever was marked. Also run for a headless frame, so a
+  // self-test can read what a tick touched.
+  void apply_effects(RolltuiFrame* f) {
+    last_fx = RolltuiEffectReport{};
+    last_marks = rolltui_frame_mark_count(f);
+    if (last_marks == 0 || !effects || rolltui_effect_map_empty(effects)) return;
+    rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, now_ms, ambiguous, &last_fx, nullptr, nullptr);
   }
 };
 
@@ -1276,6 +1420,15 @@ int main(int argc, char** argv) {
 
   App app;
   app.ambiguous = ambiguous ? 1 : 0;
+  {
+    // The app's own MOTION file, through the same three rungs as its layout — embedded, beside
+    // the binary, a person's config directory — and read BEFORE any theme, since every theme
+    // load merges it. A missing file is a still app, not an error.
+    RolltuiStr t{};
+    if (rolltui_app_file(argv[0], "dirktui", "effects", dirktui_kAppFiles, dirktui_kAppFileCount, &t, nullptr))
+      app.effects_json.assign(t.p ? t.p : "", t.n);
+    rolltui_str_free(&t);
+  }
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");
   rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
@@ -1415,8 +1568,18 @@ int main(int argc, char** argv) {
     if (!parse_size(frame_spec, app.w, app.h)) return usage();
     app.prepare();
     if (!keys_spec.empty()) {
-      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
-        if (!st.tick) app.handle(st.ev);
+      // THE CLOCK IS THE SCRIPT'S: every step carries the moment it happens at, and a `Tick`
+      // step is a moment with no event. A script with no tick draws the STILL picture — the
+      // clock is switched off for the frame, so a slide is at its end and every effect at its
+      // first instant — and one with a tick draws that moment: `Right Tick:60` is the frame 60
+      // ms into the slide the Right began.
+      bool moving = false;
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h)) {
+        app.now_ms = st.ms;
+        if (st.tick) { moving = true; continue; }
+        app.handle(st.ev);
+      }
+      if (!moving) app.now_ms = 0;
       app.settle();
       // A script that accepts or cancels gets the PRODUCT's answer — the path or nothing, with
       // its exit status — and no frame, so the headless run and the real one leave the same bytes.
@@ -1426,6 +1589,9 @@ int main(int argc, char** argv) {
     RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
+    // What this frame's motion touched, for a test that cannot see a colour in a text frame.
+    std::fprintf(stderr, "effects: marks=%zu drawn=%d cells=%d refused=%d\n", app.last_marks, app.last_fx.marks_drawn,
+                 app.last_fx.cells_touched, app.last_fx.glyphs_refused);
     RolltuiStr text{};
     rolltui_frame_to_text(f, &text);
     std::fwrite(text.c_str(), 1, text.size(), stdout);
@@ -1477,7 +1643,7 @@ int main(int argc, char** argv) {
         std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
-    const int timeout = app.poll_timeout_ms(250);
+    const int timeout = app.poll_timeout_ms(f, 250);
     out.clear();
     rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &out);
     rolltui_terminal_write(term, out.c_str(), out.size());

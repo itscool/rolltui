@@ -1542,6 +1542,13 @@ typedef void (*RolltuiEffectFn)(void* ctx, const RolltuiEffectSpec* spec, const 
  * span with one (`<!-- state: waiting -->` in the fixtures). A theme that maps nothing is a
  * still UI, which is the default. Shipped files: `rolltui/presets/themes/`.
  *
+ * THESE SIX ARE RUNG 1. A host whose widget has states of its own registers them by name
+ * (`rolltui_effect_state_register`), marks with the index it is handed, and a theme file — or
+ * the app's own mapping file, merged onto the theme (`rolltui_theme_effects_merge`) — maps
+ * them under `effects` by that name, read against the session's vocabulary
+ * (`rolltui_theme_vocab`). `dirktui` is the worked example: `dirk.folder`, `dirk.file`,
+ * `dirk.dig`, and three kinds of its own.
+ *
  * `streaming` and `streamed` are two states and not one with a flag: a span that IS arriving and
  * a span that HAS arrived are different claims, and a widget that kept saying `streaming` after
  * the tokens stopped would be lying to every theme that reads it. `streamed` is what lets an
@@ -3411,6 +3418,12 @@ unsigned char rolltui_mode_for_background(RolltuiStyleColor bg);
  * The PARAMETER stays on every function that takes one: a host with its own roles is what the
  * vocab was for. This is the default, not a policy. BORROWS static storage. */
 const RolltuiThemeVocab* rolltui_theme_default_vocab(void);
+/* THE SESSION'S vocabulary: the library's roles and states, then every state the host
+ * registered (`rolltui_effect_state_register`), in order. A BORROW, valid until the next state
+ * registration. With nothing registered it IS the default vocabulary. Hand this, not the
+ * default, to `rolltui_theme_load` and `rolltui_theme_effects_merge` in a host that has states
+ * of its own, or a theme file naming them reports every one as an unknown key. */
+const RolltuiThemeVocab* rolltui_theme_vocab(const RolltuiContext* c);
 
 /* Fills `styles[0..role_count)` (CALLER-FILLED: `styles` is the caller's own table, the
  * `Theme::styles` array itself — no allocation) for the named built-in theme, and returns a
@@ -3445,6 +3458,17 @@ void rolltui_theme_report_release(RolltuiThemeReport* r);
  * naming each), `out_name` gets the theme's own "name" ("unnamed" when absent or not a
  * string), and the return is a freshly built, OWNED, non-NULL effect map (empty — a still UI
  * — for a file with no usable "effects" key), with every problem in `report`. */
+/* ADDS the `effects` of a JSON document to an existing map — `{ "effects": { state: spec } }`, or
+ * a bare state → spec object — resolving state and role names through `vocab`, and widening the
+ * map to the vocabulary's state count first. This is how an APP ships the motion for its own
+ * states as a file of its own (embedded, beside the binary, or in a person's config directory)
+ * while the colours stay that person's theme: the theme names the roles, the app's file says which
+ * role and which kind each of its states wears. Every borrowed `RolltuiEffectSpec*` into `map`
+ * is invalidated. Returns 1 when the text parsed; `report` carries an unparseable text as
+ * `error`, an unknown state or key as `unknown_keys`, a bad value as `bad_values`. */
+int rolltui_theme_effects_merge(RolltuiEffectMap* map, const char* text, size_t len, const RolltuiThemeVocab* vocab,
+                                RolltuiThemeReport* report);
+
 RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, const RolltuiThemeVocab* vocab,
                                      RolltuiStyle* out_styles, RolltuiStr* out_name, RolltuiThemeReport* report);
 
@@ -4396,6 +4420,28 @@ void rolltui_context_set_code_fold(RolltuiContext* ctx, const RolltuiCodeFold* c
 
 
 /* ---- effects -------------------------------------------------------------------------------*/
+
+/* ---- REGISTERING: a host's own kinds and a host's own states ----------------------------------
+ * A KIND is how a span moves; a STATE is what a widget says about a span. The library ships
+ * seven kinds and six states, both named for a transcript, and both are rung 1 of a two-rung
+ * table a host extends by registration — rung 1 first and never shadowed, then the host's in
+ * registration order, the same rule as a widget kind.
+ *
+ * WHY STATES ARE REGISTRABLE AND NOT ONLY KINDS: a file browser marking its cursor row
+ * `streaming` so a theme can move it is two readings of one name, and a theme author reading
+ * `streaming: shimmer` cannot tell the transcript's tokens from a browser's cursor. A host
+ * registers `dirk.folder` instead, marks with the index it is handed, and a theme file maps
+ * `"dirk.folder"` under `effects` exactly as it maps `"waiting"`. The vocabulary a theme file is
+ * read against is then the SESSION's — `rolltui_theme_vocab(ctx)` — and a host that registers
+ * nothing gets the library's, unchanged.
+ *
+ * Registration takes ownership of nothing but a copy of the name. Both return one of the
+ * ROLLTUI_EFFECT_* codes below; a state registration also hands back the index to mark with
+ * (on DUPLICATE, the index the name already has). */
+int rolltui_effect_register(RolltuiContext* c, const char* name, size_t name_len, RolltuiEffectFn fn, void* ctx,
+                            void (*free_ctx)(void*));
+int rolltui_effect_state_register(RolltuiContext* c, const char* name, size_t name_len, int* out_state);
+
 
 /* A mark names its state as an int the frame stored and never interpreted
  * (rolltui_screen.h), so the C indexes the map with it and still knows nothing about the

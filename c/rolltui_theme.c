@@ -1066,6 +1066,31 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
   return map;
 }
 
+int rolltui_theme_effects_merge(RolltuiEffectMap* map, const char* text, size_t len, const RolltuiThemeVocab* vocab,
+                                RolltuiThemeReport* report) {
+  RolltuiStr err;
+  RolltuiJsonValue* root;
+  const RolltuiJsonValue* v;
+  RolltuiUnicodeScratch* scratch;
+  if (!map || !vocab || !report) return 0;
+  memset(&err, 0, sizeof err);
+  root = rolltui_json_parse(text, len, &err);
+  if (!root) {
+    rolltui_str_set(&report->error, err.p ? err.p : "", err.n);
+    rolltui_str_free(&err);
+    return 0;
+  }
+  rolltui_str_free(&err);
+  v = rolltui_json_get(root, K("effects"));
+  if (rolltui_json_is_null(v)) v = root; /* a bare state -> spec object */
+  rolltui_effect_map_grow(map, vocab->state_count);
+  scratch = rolltui_u_scratch_new();
+  read_effects(v, vocab, scratch, report, map);
+  rolltui_u_scratch_free(scratch);
+  rolltui_json_free(root);
+  return 1;
+}
+
 /* ---- the dumper -----------------------------------------------------------------------------
  * A direct port of `style_to_json`/`effect_to_json`/`effects_to_json` and the "roles"/
  * "effects" halves of `theme_to_json_value`/`theme_pair_to_json_value`, building a

@@ -481,11 +481,12 @@ target_include_directories(rolltui-paint-selftest PRIVATE ${CMAKE_CURRENT_SOURCE
 set(DIRKTUI_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/layouts/dirktui.json
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/bindings/default.json
-  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/menus/places.json)
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/menus/places.json
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/effects/dirktui.json)
 set(DIRKTUI_EMBEDDED ${CMAKE_CURRENT_BINARY_DIR}/embedded_dirktui.c)
 add_custom_command(OUTPUT ${DIRKTUI_EMBEDDED}
   COMMAND ${CMAKE_COMMAND} -DOUT=${DIRKTUI_EMBEDDED} -DTABLE=kAppFiles -DPREFIX=dirktui_
-          "-DFILES=${DIRKTUI_FILES}" "-DNAMES=layout;bindings;menu"
+          "-DFILES=${DIRKTUI_FILES}" "-DNAMES=layout;bindings;menu;effects"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
   DEPENDS ${DIRKTUI_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
   COMMENT "Embedding dirktui's own files"

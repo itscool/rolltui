@@ -21,7 +21,8 @@
 //   Click x,y            press at a cell; ShiftClick, DblClick, TripleClick likewise
 //   Drag x,y / Release   a held move and the end of it
 //   WheelUp / WheelDown  over the middle of the screen
-//   Tick:MS              advance the clock without an event
+//   Tick                 a tick at the current clock, without an event
+//   Tick:MS              a tick MS after the PREVIOUS step — the frame 60 ms into a slide is `Right Tick:60`
 //
 // `_` means space because an identifier is the thing you most often type into a name field, and
 // a script is whitespace-separated so a literal space cannot appear in a token. **A PATH IS THE
@@ -56,6 +57,7 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   std::istringstream in(spec);
   std::string tok;
   std::uint64_t clock = 1000;
+  std::uint64_t last = 1000;  // the clock of the step most recently pushed: what `Tick:MS` counts from
   auto key_ev = [](unsigned char k, bool shift = false, bool ctrl = false, bool alt = false) {
     RolltuiEvent e{};
     e.kind = ROLLTUI_EVENT_KEY;
@@ -114,6 +116,7 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
     return e;
   };
   auto push = [&](RolltuiEvent e, bool advance = true) {
+    last = clock;
     out.push_back({false, e, clock, ""});
     if (advance) clock += 1000;
   };
@@ -129,8 +132,12 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
   while (in >> tok) {
     int x = 0, y = 0;
     RolltuiEvent k{};
-    if (tok == "Tick") out.push_back({true, {}, clock, ""});
-    else if (tok.rfind("Type:", 0) == 0) {
+    if (tok == "Tick") { last = clock; out.push_back({true, {}, clock, ""}); }
+    else if (tok.rfind("Tick:", 0) == 0) {
+      clock = last + static_cast<std::uint64_t>(std::atoll(tok.substr(5).c_str()));
+      last = clock;
+      out.push_back({true, {}, clock, ""});
+    } else if (tok.rfind("Type:", 0) == 0) {
       const std::string s = unescape(tok.substr(5), false);
       std::vector<RolltuiDecodedChar> chars(s.size());
       const std::size_t n = rolltui_u_decode_utf8_chars(s.data(), s.size(), chars.data());
@@ -145,6 +152,7 @@ std::vector<Step> scripted_keys(const std::string& spec, int w, int h) {
     } else if (tok.rfind("Paste:", 0) == 0) {
       RolltuiEvent e{};
       e.kind = ROLLTUI_EVENT_PASTE;
+      last = clock;
       out.push_back({false, e, clock, unescape(tok.substr(6), true)});
       clock += 1000;
     } else if (named(tok, k)) push(k);

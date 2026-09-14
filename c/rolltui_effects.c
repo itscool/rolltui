@@ -396,6 +396,105 @@ int rolltui_effect_kind_resolves(const RolltuiContext* c, const char* name, size
   return resolve(c, name, len, &r);
 }
 
+/* ---- rung 2 for STATES: the states a HOST registered ------------------------------------- */
+/* A STATE is what a widget marks a span with. The library's six are named for a transcript
+ * (waiting, streaming, …); a host whose widget has states of its own — a file browser's cursor
+ * on a folder, on a file, a column just dug into — registers them here BY NAME, and a theme file
+ * then maps them exactly as it maps the library's, under the same `effects` key. Two rungs, one
+ * order: the library's six first and never shadowed, then the host's in registration order —
+ * the rule a widget kind and an effect kind already follow. The index a registration hands back
+ * is what the widget marks with, and it is stable for the life of the context.
+ *
+ * THE VOCABULARY IS REBUILT AT REGISTRATION, NOT AT READ. `rolltui_theme_vocab` sits on the
+ * theme-load path and a getter that allocates is a getter a caller cannot reason about;
+ * registration is a handful of calls at start-up. Each host name is stored NUL-terminated
+ * because the vocabulary's names are read with strlen, as the library's six literals are. */
+typedef struct {
+  char* name; /* OWNED, NUL-terminated */
+  size_t name_len;
+} HostState;
+
+struct RolltuiEffectStates {
+  HostState* v;
+  size_t n, cap;
+  const char** names; /* OWNED array of BORROWS: the six literals, then each host copy */
+  RolltuiThemeVocab vocab;
+};
+
+RolltuiEffectStates* rolltui_effect_states_new(void) {
+  RolltuiEffectStates* s = (RolltuiEffectStates*)rolltui_mem_alloc(sizeof *s);
+  memset(s, 0, sizeof *s);
+  s->vocab = *rolltui_theme_default_vocab();
+  return s;
+}
+
+void rolltui_effect_states_free(RolltuiEffectStates* s) {
+  size_t i;
+  if (s == NULL) return;
+  for (i = 0; i < s->n; ++i) rolltui_mem_free(s->v[i].name);
+  rolltui_mem_free(s->v);
+  rolltui_mem_free(s->names);
+  rolltui_mem_free(s);
+}
+
+static void rebuild_vocab(RolltuiEffectStates* s) {
+  const RolltuiThemeVocab* d = rolltui_theme_default_vocab();
+  size_t i;
+  rolltui_mem_free(s->names);
+  s->names = (const char**)rolltui_mem_alloc((d->state_count + s->n) * sizeof *s->names);
+  for (i = 0; i < d->state_count; ++i) s->names[i] = d->state_names[i];
+  for (i = 0; i < s->n; ++i) s->names[d->state_count + i] = s->v[i].name;
+  s->vocab = *d;
+  s->vocab.state_names = s->names;
+  s->vocab.state_count = d->state_count + s->n;
+}
+
+int rolltui_effect_state_register(RolltuiContext* c, const char* name, size_t name_len, int* out_state) {
+  RolltuiEffectStates* s;
+  HostState* h;
+  size_t i;
+  if (out_state) *out_state = -1;
+  if (!c || name_len == 0) return ROLLTUI_EFFECT_NO_NAME;
+  /* Rung 1 is never shadowed — and "none" is rung 1's too. */
+  if (rolltui_effect_state_from_name(name, name_len) >= 0) return ROLLTUI_EFFECT_IS_BUILTIN;
+  if (c->states)
+    for (i = 0; i < c->states->n; ++i)
+      if (name_eq(c->states->v[i].name, c->states->v[i].name_len, name, name_len)) {
+        if (out_state) *out_state = (int)(ROLLTUI_EFFECT_STATE_COUNT + i); /* the row it already has */
+        return ROLLTUI_EFFECT_DUPLICATE;
+      }
+  if (c->states == NULL) c->states = rolltui_effect_states_new();
+  s = c->states;
+  s->v = rolltui_grow_zeroed(s->v, &s->cap, s->n + 1, sizeof *s->v);
+  h = &s->v[s->n];
+  h->name = (char*)rolltui_mem_alloc(name_len + 1);
+  memcpy(h->name, name, name_len);
+  h->name[name_len] = '\0';
+  h->name_len = name_len;
+  ++s->n;
+  rebuild_vocab(s);
+  if (out_state) *out_state = (int)(ROLLTUI_EFFECT_STATE_COUNT + s->n - 1);
+  return ROLLTUI_EFFECT_OK;
+}
+
+int rolltui_effect_state_resolve(const RolltuiContext* c, const char* name, size_t len) {
+  const int lib = rolltui_effect_state_from_name(name, len);
+  size_t i;
+  if (lib >= 0) return lib;
+  if (c && c->states)
+    for (i = 0; i < c->states->n; ++i)
+      if (name_eq(c->states->v[i].name, c->states->v[i].name_len, name, len)) return (int)(ROLLTUI_EFFECT_STATE_COUNT + i);
+  return -1;
+}
+
+size_t rolltui_effect_state_count(const RolltuiContext* c) {
+  return ROLLTUI_EFFECT_STATE_COUNT + ((c && c->states) ? c->states->n : 0);
+}
+
+const RolltuiThemeVocab* rolltui_theme_vocab(const RolltuiContext* c) {
+  return (c && c->states) ? &c->states->vocab : rolltui_theme_default_vocab();
+}
+
 static void call_kind(RolltuiEffectScratch* sc, const Resolved* r, const RolltuiEffectSpec* spec,
                       const RolltuiStyle* styles, const void* host, const RolltuiEffectCell* in,
                       RolltuiEffectOut* out) {
@@ -450,6 +549,42 @@ RolltuiEffectMap* rolltui_effect_map_new(size_t states, unsigned char fallback_r
   memset(m->count, 0, states * sizeof *m->count);
   memset(m->cap, 0, states * sizeof *m->cap);
   return m;
+}
+
+/* Widens a map to `states` rows, keeping every spec it holds; a map already that wide is left
+ * alone. What lets a map built from a theme that knows six states take a host's mapping for
+ * its seventh: the four arrays are EXACT (never resized) by construction, so this is the one
+ * place they move, and every borrowed `RolltuiEffectSpec*` is invalidated by it — the same
+ * window `rolltui_effect_map_at` already states for any change to the map. */
+int rolltui_effect_map_grow(RolltuiEffectMap* m, size_t states) {
+  RolltuiEffectSpec** view;
+  SpecStore** store;
+  size_t *count, *cap;
+  if (!m || states <= m->states) return 0;
+  view = (RolltuiEffectSpec**)rolltui_mem_alloc(states * sizeof *view);
+  store = (SpecStore**)rolltui_mem_alloc(states * sizeof *store);
+  count = (size_t*)rolltui_mem_alloc(states * sizeof *count);
+  cap = (size_t*)rolltui_mem_alloc(states * sizeof *cap);
+  memset(view, 0, states * sizeof *view);
+  memset(store, 0, states * sizeof *store);
+  memset(count, 0, states * sizeof *count);
+  memset(cap, 0, states * sizeof *cap);
+  if (m->states) {
+    memcpy(view, m->view, m->states * sizeof *view);
+    memcpy(store, m->store, m->states * sizeof *store);
+    memcpy(count, m->count, m->states * sizeof *count);
+    memcpy(cap, m->cap, m->states * sizeof *cap);
+  }
+  rolltui_mem_free(m->view);
+  rolltui_mem_free(m->store);
+  rolltui_mem_free(m->count);
+  rolltui_mem_free(m->cap);
+  m->view = view;
+  m->store = store;
+  m->count = count;
+  m->cap = cap;
+  m->states = states;
+  return 1;
 }
 
 static void spec_release(SpecStore* st) {

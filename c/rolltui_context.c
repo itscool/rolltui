@@ -16,6 +16,7 @@ void rolltui_context_free(RolltuiContext* c) {
   /* By NAME, in one place, so the set a context owns is readable rather than discovered. */
   rolltui_kind_registry_free(c->kinds);
   rolltui_effect_registry_free(c->effects);
+  rolltui_effect_states_free(c->states);
   rolltui_layout_cache_free(c->layouts);
   rolltui_bindings_free(c->bindings);
   rolltui_preset_domains_free(c->presets);
