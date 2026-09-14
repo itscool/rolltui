@@ -61,6 +61,12 @@
     ],
     "app.menu": [
       "f2"
+    ],
+    "browser.copy": [
+      "c"
+    ],
+    "browser.copy_inverse": [
+      "alt+c"
     ]
   }
 }

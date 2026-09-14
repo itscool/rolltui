@@ -14,9 +14,11 @@
 //   * It DRAWS on /dev/tty and ANSWERS on stdout, always. A shell function captures stdout with
 //     `$(dirktui)`, so no frame may ever reach it; the terminal is opened by name rather than
 //     inherited. fzf does the same, for the same reason.
-//   * Enter ACCEPTS the selected entry: its path is printed on stdout, one line, and the exit
-//     status is 0. A selected file is printed as itself — the shell side decides that a file
-//     means its directory, because that is a decision about `cd`, not about browsing.
+//   * Enter on a FOLDER leaves with its path on stdout, one line, exit 0. Enter on a FILE does
+//     what the `file_enter` setting says: open it and stay (the default), open it and leave
+//     with nothing printed, leave with its path (exit 0: the shell lands in its folder), or
+//     leave with its path RELATIVE to where dirk started and exit 3 — THE STATUS IS THE VERB:
+//     0 is "go there", 3 is "put this on the command line". The shell never opens anything.
 //   * Escape (or Ctrl-Q / Ctrl-C anywhere) CANCELS: nothing is printed and the exit status is 1.
 //     "Nothing printed" and "exit 0" never coincide, because `cd ""` is `cd ~`, silently.
 //   * `dirktui init zsh|bash|fish` prints the shell integration: a `dirk` function that browses
@@ -38,6 +40,8 @@
 //
 #include <dirent.h>
 #include <fcntl.h>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -55,6 +59,8 @@
 #include <vector>
 
 #include "rolltui/rolltui.h"
+
+extern char** environ;  // for posix_spawnp: not declared by any header on Darwin
 
 // ADDITIVE, NOT SUBTRACTIVE. `dirk` is the product and cannot drive itself: the
 // script vocabulary is not compiled into it. `dirk-selftest` is the same source plus
@@ -80,6 +86,11 @@ struct Options {
   bool hidden = false;
   Sort sort = Sort::Name;
   bool motion = true;  // the effects and the column slide; off is a still app
+  // WHAT ENTER ON A FILE DOES. A folder is always entered; a file is a leaf, and what a person
+  // wants from it is a setting. `OpenStay` is the default: try to open it and stay here.
+  enum class FileEnter { OpenStay, OpenLeave, Parent, Insert };
+  FileEnter file_enter = FileEnter::OpenStay;
+  bool copy_relative = false;  // the copy command's path: relative to where dirk started, or absolute
   const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
   // THE STATES THE BROWSER MARKS WITH — this app's own, registered by name on the session so a
   // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
@@ -273,6 +284,8 @@ struct Browser {
   // "open" state, so a reader of either asks one question.
   bool accepted = false;
   bool cancelled = false;
+  bool copy_requested = false;  // `browser.copy`; `copy_inverse` says the Option chord asked
+  bool copy_inverse = false;
 
   const Column* focused() const { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
   Column* focused() { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
@@ -667,6 +680,8 @@ int browser_handle(void* ctx, const RolltuiEvent* e) {
   else if (action == "browser.out") b->out();
   else if (action == "browser.accept") b->accepted = true;
   else if (action == "browser.cancel") b->cancelled = true;
+  else if (action == "browser.copy") { b->copy_requested = true; b->copy_inverse = false; }
+  else if (action == "browser.copy_inverse") { b->copy_requested = true; b->copy_inverse = true; }
   else return 0;
   return 1;
 }
@@ -882,6 +897,14 @@ struct App {
   // app's own facts (sort, dotfiles, motion), and a theme is a look shared by every host.
   static std::string settings_dir() { return user_presets_dir() + "/dirktui"; }
   static const char* sort_name(Sort s) { return s == Sort::Name ? "name" : s == Sort::Size ? "size" : "modified"; }
+  static const char* file_enter_name(Options::FileEnter f) {
+    return f == Options::FileEnter::OpenLeave ? "open_leave" : f == Options::FileEnter::Parent ? "parent"
+         : f == Options::FileEnter::Insert  ? "insert"     : "open_stay";
+  }
+  static Options::FileEnter file_enter_of(const std::string& s) {
+    return s == "open_leave" ? Options::FileEnter::OpenLeave : s == "parent" ? Options::FileEnter::Parent
+         : s == "insert"     ? Options::FileEnter::Insert    : Options::FileEnter::OpenStay;
+  }
   void load_settings(const char* argv0) {
     RolltuiStr t{};
     if (rolltui_app_file(argv0, "dirktui", "settings", nullptr, 0, &t, nullptr)) {
@@ -893,6 +916,10 @@ struct App {
         const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
         const std::string sort(sv, n);
         opt.sort = sort == "size" ? Sort::Size : sort == "modified" ? Sort::Modified : Sort::Name;
+        const char* fv = rolltui_json_as_string(rolltui_json_get(root, "file_enter", 10), "open_stay", 9, &n);
+        opt.file_enter = file_enter_of(std::string(fv, n));
+        const char* cv = rolltui_json_as_string(rolltui_json_get(root, "copy_path", 9), "absolute", 8, &n);
+        opt.copy_relative = std::string(cv, n) == "relative";
         rolltui_json_free(root);
       } else {
         std::fprintf(stderr, "dirktui: settings file: %s (defaults kept)\n", err.c_str());
@@ -908,7 +935,8 @@ struct App {
       if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
     out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"hidden\": " << (opt.hidden ? "true" : "false")
-        << ", \"sort\": \"" << sort_name(opt.sort) << "\" }\n";
+        << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"file_enter\": \"" << file_enter_name(opt.file_enter)
+        << "\", \"copy_path\": \"" << (opt.copy_relative ? "relative" : "absolute") << "\" }\n";
     if (!out) hint = "could not write " + dir + "/settings.json";
   }
 
@@ -924,6 +952,10 @@ struct App {
     rolltui_menu_set_value(m, "sort", 4, sort_name(opt.sort), std::strlen(sort_name(opt.sort)));
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
+    const char* fe = file_enter_name(opt.file_enter);
+    rolltui_menu_set_value(m, "file_enter", 10, fe, std::strlen(fe));
+    const char* cp = opt.copy_relative ? "relative" : "absolute";
+    rolltui_menu_set_value(m, "copy_path", 9, cp, std::strlen(cp));
   }
 
   void mount() {
@@ -1053,21 +1085,106 @@ struct App {
     }
   }
 
-  // Once after each batch of events: did the browser end the session? An accept takes the
-  // selected entry's path — or the column's own directory when the column is empty, which is
-  // what the eye is on when there is nothing to select.
+  // Once after each batch of events: did the browser end the session, or ask for a copy?
+  // An accept on a FOLDER (or on an empty column, which is what the eye is on) leaves with its
+  // path. An accept on a FILE does what the `file_enter` setting says — and only `Parent` and
+  // `Insert` leave, the two that hand the shell something to do. THE EXIT STATUS IS THE VERB:
+  // 0 means "go there", 3 means "put this on the command line"; a path's shape is never read
+  // to guess which, because a relative path and an absolute one are both valid answers to both.
   void settle() {
     Browser* b = browser();
     if (!b) return;
-    if (b->accepted) { chosen = b->selected_path(); exit_code = 0; quit = true; }
-    else if (b->cancelled) quit = true;
+    if (b->accepted) {
+      b->accepted = false;
+      const RolltuiDirEntry* e = b->selected();
+      const std::string path = b->selected_path();
+      if (!e || e->is_dir) { chosen = path; exit_code = 0; quit = true; }
+      else switch (opt.file_enter) {
+        case Options::FileEnter::OpenStay: open_path(path); hint = "opened " + str_of(e->name); break;
+        case Options::FileEnter::OpenLeave: open_path(path); exit_code = 1; quit = true; break;
+        case Options::FileEnter::Parent: chosen = path; exit_code = 0; quit = true; break;
+        case Options::FileEnter::Insert: chosen = relative_to_start(path); exit_code = 3; quit = true; break;
+      }
+    } else if (b->cancelled) quit = true;
+    if (b->copy_requested) {
+      b->copy_requested = false;
+      const std::string path = b->selected_path();
+      const bool relative = opt.copy_relative != b->copy_inverse;  // the Option chord inverts the setting
+      const std::string text = relative ? relative_to_start(path) : path;
+      hint = copy_to_clipboard(text) ? "copied " + text : "could not copy: no clipboard command";
+    }
   }
 
-  // What the process leaves behind on stdout: the chosen path and a newline, or nothing at all.
-  // Called after the terminal is restored, so the line lands on a normal screen.
+  // What the process leaves behind on stdout: the chosen path and a newline when the status
+  // hands the shell something (0: go there; 3: put it on the line), or nothing at all. Called
+  // after the terminal is restored, so the line lands on a normal screen.
   int finish() const {
-    if (exit_code == 0) { std::fwrite(chosen.data(), 1, chosen.size(), stdout); std::fputc('\n', stdout); }
+    if (exit_code == 0 || exit_code == 3) { std::fwrite(chosen.data(), 1, chosen.size(), stdout); std::fputc('\n', stdout); }
     return exit_code;
+  }
+
+  // ---- where dirk started, and paths said from there ------------------------------------------
+  std::string start_dir;  // absolute, set once at start
+  static std::vector<std::string> parts(const std::string& p) {
+    std::vector<std::string> v;
+    std::string cur;
+    for (char c : p) {
+      if (c == '/') { if (!cur.empty()) v.push_back(cur); cur.clear(); }
+      else cur += c;
+    }
+    if (!cur.empty()) v.push_back(cur);
+    return v;
+  }
+  // `path` as a relative path from `start_dir`, always with a leading `./` or `../` so it reads
+  // as a place and never as a command.
+  std::string relative_to_start(const std::string& path) const {
+    const std::vector<std::string> a = parts(start_dir), b = parts(path);
+    std::size_t common = 0;
+    while (common < a.size() && common < b.size() && a[common] == b[common]) ++common;
+    std::string out;
+    for (std::size_t i = common; i < a.size(); ++i) out += out.empty() ? ".." : "/..";
+    for (std::size_t i = common; i < b.size(); ++i) out += (out.empty() ? "" : "/") + b[i];
+    if (out.empty()) return ".";
+    return out.rfind("..", 0) == 0 ? out : "./" + out;
+  }
+
+  // THE OPENER: `$DIRK_OPEN`, else the platform's. Spawned with its three streams on /dev/null,
+  // so nothing it prints lands on the screen dirk is drawing.
+  static const char* opener() {
+    if (const char* o = std::getenv("DIRK_OPEN"); o && *o) return o;
+#ifdef __APPLE__
+    return "open";
+#else
+    return "xdg-open";
+#endif
+  }
+  static bool open_path(const std::string& path) {
+    posix_spawn_file_actions_t fa;
+    posix_spawn_file_actions_init(&fa);
+    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    const char* argv[] = {opener(), path.c_str(), nullptr};
+    pid_t pid = 0;
+    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+    posix_spawn_file_actions_destroy(&fa);
+    if (rc == 0) waitpid(pid, nullptr, 0);  // `open` and `xdg-open` return at once; a stand-in likewise
+    return rc == 0;
+  }
+  // THE CLIPBOARD: `$DIRK_CLIPBOARD`, else the platform's, fed the text on stdin.
+  static bool copy_to_clipboard(const std::string& text) {
+    const char* cmd = std::getenv("DIRK_CLIPBOARD");
+    if (!cmd || !*cmd) {
+#ifdef __APPLE__
+      cmd = "pbcopy";
+#else
+      cmd = "wl-copy 2>/dev/null || xclip -selection clipboard";
+#endif
+    }
+    FILE* p = popen(cmd, "w");
+    if (!p) return false;
+    std::fwrite(text.data(), 1, text.size(), p);
+    return pclose(p) == 0;
   }
 
   void toggle_popup(const char* id) {
@@ -1140,6 +1257,14 @@ struct App {
       if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "sort") {
         const std::string v(ev.value.p ? ev.value.p : "", ev.value.n);
         set_sort(v == "size" ? Sort::Size : v == "modified" ? Sort::Modified : Sort::Name);
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "file_enter") {
+        opt.file_enter = file_enter_of(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
+        hint = std::string("enter on a file: ") + file_enter_name(opt.file_enter);
+        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "copy_path") {
+        opt.copy_relative = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "relative";
+        hint = opt.copy_relative ? "copy: relative to where dirk started" : "copy: absolute path";
+        save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "parent") {
@@ -1250,7 +1375,9 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, Ro
 int usage() {
   std::fprintf(stderr,
                "usage: dirktui [PATH] [--ambiguous-wide]   browse from PATH (default: the current directory)\n"
-               "                                           Enter prints the selection on stdout and exits 0;\n"
+               "                                           Enter on a folder prints it on stdout and exits 0;\n"
+               "                                           on a file it does what the settings say (F2);\n"
+               "                                           exit 3: put the printed path on the command line.\n"
                "                                           Esc prints nothing and exits 1\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
@@ -1266,12 +1393,13 @@ int usage() {
 // THE SHELL SIDE, printed by `dirktui init <shell>` so it is versioned with the binary it drives
 // (zoxide, atuin and fzf all ship their shell code this way). The three scripts say the same
 // thing in three dialects; what they say, so a reader of the C++ knows the other half:
-//   * A CHOSEN PATH MEANS ONE COMMAND LINE: a folder is `cd`'d into; an executable file means
-//     `cd` to its folder; any other file means `cd` to its folder AND open it ($DIRK_OPEN,
-//     defaulting to xdg-open where that exists and `open` otherwise). The line is composed once
+//   * A CHOSEN PATH MEANS ONE COMMAND LINE: a folder is `cd`'d into; a file means `cd` to its
+//     folder (opening is the BINARY's, by its own setting). The line is composed once
 //     (`_dirk_command`) and is what runs, what goes into history, and what a person sees.
-//   * `dirk [PATH]` at a prompt browses, then runs that line; a chosen file is printed first so
-//     the eye knows what it is now beside. `dirk init …` passes through to the binary.
+//     Exit status 3 carries a different verb: the printed path goes onto the command line —
+//     inserted at the cursor from the widget, pushed as the next line from `dirk` at a prompt
+//     where the shell can (`print -z` in zsh), and printed where it cannot.
+//   * `dirk [PATH]` at a prompt browses, then runs that line. `dirk init …` passes through.
 //   * Right Arrow with the cursor at the END of the line opens the browser. On an empty line the
 //     composed command runs — in zsh through accept-line (fzf's alt-c), in bash through
 //     `history -s` + eval, in fish directly — so it is in history where the shell allows. On a
@@ -1280,26 +1408,25 @@ int usage() {
 //     on a non-empty line, because a pending autosuggestion cannot be asked about there.
 //   * Right Arrow anywhere else, or with an autosuggestion showing, is what it always was.
 constexpr const char* kZshInit = R"zsh(# dirk — zsh integration for dirktui. In ~/.zshrc:   eval "$(dirktui init zsh)"
-: "${DIRK_OPEN:=$( (( $+commands[xdg-open] )) && print xdg-open || print open )}"
 
-# A chosen path as the ONE command line that acts on it: the line that runs and the line history keeps.
+# A chosen path as the ONE command line that acts on it: the line that runs and the line history
+# keeps. A folder is entered; a file means its folder (opening a file is the binary's, by its
+# own setting).
 _dirk_command() {
   local out="$1"
-  if [[ -d "$out" ]]; then
-    print -r -- "builtin cd -- ${(q)out}"
-  elif [[ -x "$out" ]]; then
-    print -r -- "builtin cd -- ${(q)out:h}"
-  else
-    print -r -- "builtin cd -- ${(q)out:h} && ${DIRK_OPEN} ${(q)out}"
-  fi
+  if [[ -d "$out" ]]; then print -r -- "builtin cd -- ${(q)out}"; else print -r -- "builtin cd -- ${(q)out:h}"; fi
 }
 
 dirk() {
   if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
-  local out
-  out="$(command dirktui "$@")" || return $?
+  local out rc
+  out="$(command dirktui "$@")"; rc=$?
+  if (( rc == 3 )); then   # onto the next command line where there is one; shown where there is not
+    if [[ -o zle ]]; then print -z -- "$out"; else print -r -- "$out"; fi
+    return 0
+  fi
+  (( rc == 0 )) || return $rc
   [[ -n "$out" ]] || return 1
-  [[ -d "$out" ]] || print -r -- "$out"
   eval "$(_dirk_command "$out")"
 }
 
@@ -1312,8 +1439,15 @@ _dirk_widget() {
     [[ "$probe" == '~' || "$probe" == '~/'* ]] && probe="$HOME${probe#\~}"
     [[ -n "$probe" && -d "$probe" ]] && start="$probe"
   fi
-  out="$(command dirktui ${start:+"$start"} < /dev/tty)"
-  if [[ -z "$out" ]]; then
+  local rc
+  out="$(command dirktui ${start:+"$start"} < /dev/tty)"; rc=$?
+  if (( rc == 3 )) && [[ -n "$out" ]]; then   # exit 3: onto the command line, wherever the cursor is
+    [[ -n "$start" ]] && LBUFFER="${LBUFFER%"$word"}"
+    LBUFFER+="${(q)out}"
+    zle reset-prompt
+    return 0
+  fi
+  if (( rc != 0 )) || [[ -z "$out" ]]; then
     zle redisplay
     return 0
   fi
@@ -1346,27 +1480,22 @@ bindkey -M viins '^[OC' _dirk_forward_char
 )zsh";
 
 constexpr const char* kBashInit = R"bash(# dirk — bash integration for dirktui. In ~/.bashrc:   eval "$(dirktui init bash)"
-: "${DIRK_OPEN:=$(command -v xdg-open >/dev/null 2>&1 && echo xdg-open || echo open)}"
 
-# A chosen path as the ONE command line that acts on it: the line that runs and the line history keeps.
+# A chosen path as the ONE command line that acts on it: the line that runs and the line history
+# keeps. A folder is entered; a file means its folder (opening a file is the binary's, by its
+# own setting).
 _dirk_command() {
-  local out="$1" dir
-  dir="$(dirname -- "$out")"
-  if [[ -d "$out" ]]; then
-    printf 'builtin cd -- %q' "$out"
-  elif [[ -x "$out" ]]; then
-    printf 'builtin cd -- %q' "$dir"
-  else
-    printf 'builtin cd -- %q && %s %q' "$dir" "$DIRK_OPEN" "$out"
-  fi
+  local out="$1"
+  if [[ -d "$out" ]]; then printf 'builtin cd -- %q' "$out"; else printf 'builtin cd -- %q' "$(dirname -- "$out")"; fi
 }
 
 dirk() {
   if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
-  local out
-  out="$(command dirktui "$@")" || return $?
+  local out rc
+  out="$(command dirktui "$@")"; rc=$?
+  if (( rc == 3 )); then printf '%s\n' "$out"; return 0; fi   # bash cannot push a next line from a command: shown instead
+  (( rc == 0 )) || return $rc
   [[ -n "$out" ]] || return 1
-  [[ -d "$out" ]] || printf '%s\n' "$out"
   eval "$(_dirk_command "$out")"
 }
 
@@ -1391,7 +1520,15 @@ _dirk_forward_char() {
     [[ "$probe" == '~' || "$probe" == '~/'* ]] && probe="$HOME${probe#\~}"
     [[ -n "$probe" && -d "$probe" ]] && start="$probe"
   fi
-  out="$(command dirktui ${start:+"$start"} < /dev/tty)" || return 0
+  local rc
+  out="$(command dirktui ${start:+"$start"} < /dev/tty)"; rc=$?
+  if (( rc == 3 )) && [[ -n "$out" ]]; then   # exit 3: onto the command line
+    [[ -n "$start" ]] && READLINE_LINE="${READLINE_LINE%"$word"}"
+    READLINE_LINE+="$(printf '%q' "$out")"
+    READLINE_POINT="$(_dirk_bytes "$READLINE_LINE")"
+    return 0
+  fi
+  (( rc == 0 )) || return 0
   [[ -n "$out" ]] || return 0
   if [[ -z "$READLINE_LINE" ]]; then
     local cmd
@@ -1411,24 +1548,15 @@ bind -m vi-insert -x '"\eOC": _dirk_forward_char'
 )bash";
 
 constexpr const char* kFishInit = R"fish(# dirk — fish integration for dirktui. In config.fish:   dirktui init fish | source
-if not set -q DIRK_OPEN
-    if type -q xdg-open
-        set -g DIRK_OPEN xdg-open
-    else
-        set -g DIRK_OPEN open
-    end
-end
 
-# What a chosen path means: a folder is entered; a file lands in its folder, is printed, and is
-# opened unless it is executable.
+# What a chosen path means: a folder is entered; a file means its folder (opening a file is the
+# binary's, by its own setting).
 function _dirk_go --argument-names out
     if test -d "$out"
         builtin cd -- "$out"
-        return
+    else
+        builtin cd -- (dirname -- "$out")
     end
-    printf '%s\n' "$out"
-    builtin cd -- (dirname -- "$out"); or return
-    test -x "$out"; or $DIRK_OPEN "$out"
 end
 
 function dirk
@@ -1436,7 +1564,13 @@ function dirk
         command dirktui $argv
         return
     end
-    set -l out (command dirktui $argv); or return
+    set -l out (command dirktui $argv)
+    set -l rc $status
+    if test $rc -eq 3
+        printf '%s\n' "$out"   # fish cannot push a next line from a command: shown instead
+        return 0
+    end
+    test $rc -eq 0; or return $rc
     test -n "$out"; or return 1
     _dirk_go "$out"
 end
@@ -1449,8 +1583,14 @@ function _dirk_forward_char
         return
     end
     set -l out (command dirktui </dev/tty)
+    set -l rc $status
     commandline -f repaint
     test -n "$out"; or return
+    if test $rc -eq 3
+        commandline -i -- (string escape -- $out)   # exit 3: onto the command line
+        return
+    end
+    test $rc -eq 0; or return
     _dirk_go "$out"
     commandline -f repaint
 end
@@ -1558,7 +1698,10 @@ int main(int argc, char** argv) {
 
   {
     char cwd[4096];
-    app.root = start.empty() ? (getcwd(cwd, sizeof cwd) ? cwd : ".") : start;
+    const std::string here = getcwd(cwd, sizeof cwd) ? cwd : ".";
+    app.root = start.empty() ? here : (start[0] == '/' ? start : here + "/" + start);
+    while (app.root.size() > 1 && app.root.back() == '/') app.root.pop_back();
+    app.start_dir = app.root;  // what a relative path is said from, for the whole session
   }
 
   RolltuiLayoutReport rep{};

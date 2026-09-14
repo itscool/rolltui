@@ -186,11 +186,50 @@ int main() {
     const std::string deeper = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"Right Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && deeper == (tree / "alpha" / "nested").string() + "\n",
           "…and Right then Enter prints the directory one column in — the path is the eye's, not the root's");
-    const std::string file = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
-    const std::string file_path = file.empty() ? file : file.substr(0, file.size() - 1);
-    check(status_of(crc) == 0 && !file_path.empty() && fs::is_regular_file(file_path),
-          "a selected FILE is printed as itself — what a file means for `cd` is the shell side's call [" +
-              file_path.substr(file_path.rfind('/') + 1) + "]");
+    // ENTER ON A FILE is a setting; every mode runs against a stand-in opener and clipboard that
+    // RECORD what they were handed, so "opened" and "copied" are facts and not hopes.
+    const fs::path stub = scratch / "stub";
+    fs::create_directories(stub);
+    const fs::path stublog = scratch / "stub.log";
+    write_file(stub / "opener", "#!/bin/sh\nprintf 'open %s\\n' \"$1\" >> '" + stublog.string() + "'\n");
+    write_file(stub / "clip", "#!/bin/sh\n{ printf 'clip '; cat; printf '\\n'; } >> '" + stublog.string() + "'\n");
+    chmod((stub / "opener").c_str(), 0755);
+    chmod((stub / "clip").c_str(), 0755);
+    const std::string stubs = "DIRK_OPEN='" + (stub / "opener").string() + "' DIRK_CLIPBOARD='" + (stub / "clip").string() + "' ";
+    auto stublines = [&]() { bool ok = false; const std::string t = read_file(stublog.string(), ok); fs::remove(stublog); return ok ? t : std::string(); };
+    auto with_setting = [&](const std::string& json) {
+      const fs::path cfg = scratch / "file-enter-cfg";
+      fs::create_directories(cfg / "rolltui" / "dirktui");
+      write_file(cfg / "rolltui" / "dirktui" / "settings.json", json);
+      return "ROLL_CONFIG_DIR='" + cfg.string() + "' " + stubs + bin + " '" + here + "'" + presets + " --theme default-dark";
+    };
+    const std::string stay = run(with_setting("{}") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string stay_log = stublines();
+    check(status_of(crc) == 0 && has(stay, "columns") && has(stay_log, "open ") && has(stay_log, ".txt"),
+          "Enter on a file, by default, OPENS it and stays: a frame is drawn and the opener was handed the file [" +
+              stay_log.substr(0, 40) + "]");
+    const std::string leave = run(with_setting("{ \"file_enter\": \"open_leave\" }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string leave_log = stublines();
+    check(status_of(crc) == 1 && leave.empty() && has(leave_log, "open "), "…`open_leave` opens it and leaves with nothing printed, exit 1");
+    const std::string parent = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string parent_path = parent.empty() ? parent : parent.substr(0, parent.size() - 1);
+    check(status_of(crc) == 0 && fs::is_regular_file(parent_path) && stublines().empty(),
+          "…`parent` leaves with the file's path and exit 0 — the shell lands in its folder — and opens nothing");
+    const std::string insert = run(with_setting("{ \"file_enter\": \"insert\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && insert.rfind("./alpha/", 0) == 0,
+          "…`insert` leaves with the path RELATIVE to where dirk started and exit 3: the verb is the status [" + insert + "]");
+
+    // COPY: `c` puts the path on the clipboard, absolute by default; the Option chord inverts
+    // the setting, and the setting inverts the chord.
+    run(with_setting("{}") + " --frame 80x20 --keys \"Right End c\" >/dev/null 2>&1", crc);
+    const std::string abs_log = stublines();
+    check(abs_log.rfind("clip /", 0) == 0 && has(abs_log, "/alpha/"), "c copies the absolute path [" + abs_log.substr(0, 30) + "]");
+    run(with_setting("{}") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
+    check(stublines().rfind("clip ./alpha/", 0) == 0, "…Alt-c copies it relative to where dirk started: the inverse of the setting");
+    run(with_setting("{ \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End c\" >/dev/null 2>&1", crc);
+    check(stublines().rfind("clip ./alpha/", 0) == 0, "…with the setting on relative, c copies relative");
+    run(with_setting("{ \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
+    check(stublines().rfind("clip /", 0) == 0, "…and Alt-c then copies the absolute path");
     const std::string empty = run(home_env + bin + " '" + (tree / "empty-dir").string() + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && empty == (tree / "empty-dir").string() + "\n",
           "Enter in an EMPTY directory prints that directory: the eye is on it and there is nothing else to choose");
@@ -228,7 +267,7 @@ int main() {
     write_file(fake / "dirktui", "#!/bin/sh\ncase \"$FAKE\" in\n  dir) printf '%s\\n' '" + (tree / "alpha").string() +
                                      "';;\n  file) printf '%s\\n' '" + (tree / "alpha" / "one.txt").string() +
                                      "';;\n  exe) printf '%s\\n' '" + (tree / "alpha" / "run.sh").string() +
-                                     "';;\n  *) exit 1;;\nesac\n");
+                                     "';;\n  insert) printf './alpha/one.txt\\n'; exit 3;;\n  *) exit 1;;\nesac\n");
     chmod((fake / "dirktui").c_str(), 0755);
     const fs::path opened = scratch / "opened.log";
     write_file(fake / "openlog", "#!/bin/sh\nprintf '%s\\n' \"$1\" >> '" + opened.string() + "'\n");
@@ -250,6 +289,7 @@ int main() {
                                 "cd /; FAKE=dir dirk; echo \"dir=$? $PWD\"; " +
                                 "cd /; FAKE=file dirk >/dev/null; echo \"file=$? $PWD\"; " +
                                 "cd /; FAKE=exe dirk >/dev/null; echo \"exe=$? $PWD\"; " +
+                                "cd /; FAKE=insert dirk; echo \"insert=$? $PWD\"; " +
                                 "cd /; FAKE=no dirk; echo \"cancel=$? $PWD\"' 2>&1";
       const std::string drove = run(drive, irc);
       const std::string alpha = (tree / "alpha").string();
@@ -258,11 +298,10 @@ int main() {
       check(has(drove, "file=0 " + alpha + "\n"), std::string(sh.name) + ": a chosen FILE lands in its folder");
       check(has(drove, "exe=0 " + alpha + "\n"), std::string(sh.name) + ": so does an executable file");
       check(has(drove, "cancel=1 /\n"), std::string(sh.name) + ": a cancel changes nothing and returns 1");
-      bool ok = false;
-      const std::string log = read_file(opened.string(), ok);
-      check(ok && log == (tree / "alpha" / "one.txt").string() + "\n",
-            std::string(sh.name) + ": the plain file was OPENED through $DIRK_OPEN and the executable was NOT [" +
-                log.substr(0, 80) + "]");
+      check(has(drove, "insert=0 /\n") && has(drove, "./alpha/one.txt"),
+            std::string(sh.name) + ": exit 3 changes no directory and hands the path to the line (or shows it) [" +
+                drove.substr(drove.find("insert="), 30) + "]");
+      check(!fs::exists(opened), std::string(sh.name) + ": the shell side opens NOTHING any more — opening is the binary's");
     }
 
     // fish is not on every machine. When it is, its script must parse; when it is not, the script

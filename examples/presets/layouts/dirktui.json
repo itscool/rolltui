@@ -22,7 +22,9 @@
     "app.keys": "Edit the keys",
     "browser.accept": "choose the selected entry: print its path and leave",
     "browser.cancel": "leave without choosing",
-    "app.menu": "settings: sort, dotfiles, motion"
+    "app.menu": "settings: sort, dotfiles, motion",
+    "browser.copy": "copy the selection's path (absolute or relative: a setting)",
+    "browser.copy_inverse": "copy the selection's path the other way round"
   },
   "root": {
     "column": [
