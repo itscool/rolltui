@@ -1,7 +1,7 @@
 {
   "effects": {
-    "dirk.cursor": { "kind": "dirk_glow",    "roles": ["accent_1", "find_current"], "period_ms": 2200, "width": 3, "steps": 60 },
-    "dirk.trail":  { "kind": "dirk_sparkle", "roles": ["accent_2"], "period_ms": 5000, "steps": 100 },
+    "dirk.cursor": { "kind": "dirk_glow",    "roles": ["accent_1"], "period_ms": 2200, "width": 3, "steps": 60 },
+    "dirk.trail":  { "kind": "dirk_sparkle", "roles": ["accent_2"], "period_ms": 3000, "steps": 100 },
     "dirk.opened": { "kind": "dirk_burst",   "roles": ["find_current", "accent_1", "accent_2"], "period_ms": 1200, "steps": 40 }
   }
 }

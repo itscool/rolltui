@@ -124,7 +124,7 @@ unsigned hash32(unsigned x) {
   x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16;
   return x;
 }
-// A SPARK'S LIFE: it POPS — a `✦` in the role's colour, bold — and then FADES back to the cell's
+// A SPARK'S LIFE: it POPS — a a brighter colour in the role's colour, bold — and then FADES back to the cell's
 // own colour over the rest of its life. `k` is how much of the role is left, 1 at the pop and 0
 // when it is over. In 24-bit colour the fade is a real blend; on an indexed or mono screen the
 // spark is the role while `k` is above a half and the cell's own colour after, since a blend is
@@ -137,21 +137,69 @@ RolltuiStyleColor blend_to(RolltuiStyleColor from, RolltuiStyleColor to, double 
   from.b = mix(from.b, to.b);
   return from;
 }
+// A BRIGHTER VERSION OF A COLOUR: pulled toward white by `amount`. What a shimmer or a spark
+// goes UP to — never toward the background, which is where it would disappear. Without RGB
+// the colour is returned as it is and boldness carries the brightening.
+RolltuiStyleColor brighter(RolltuiStyleColor c, double amount) {
+  if (c.kind != RolltuiStyleColor::Kind::Rgb) return c;
+  RolltuiStyleColor white{};
+  white.kind = RolltuiStyleColor::Kind::Rgb;
+  white.r = white.g = white.b = 255;
+  return blend_to(c, white, amount);
+}
+
+// A SPARK, at `k` of the way up: the floor is the role's own colour, the top is a near-white
+// version of it. Colour only — except the one spark in five that FLICKERS on its way in, a
+// burst collapsing onto the letter: `✸`, then `✦`, then `·`, then the letter, forty
+// milliseconds each, in the brightest colour. The letter is what is being decorated and it
+// comes straight back; every glyph here is one cell wide, so none is ever refused.
 void spark(const RolltuiEffectSpec* s, const RolltuiStyle* styles, const RolltuiEffectCell* in, std::size_t role, double k,
-           bool pop, RolltuiEffectOut* out) {
-  const RolltuiStyleColor lit = styles[s->roles[role % s->role_count]].fg;
+           int flicker, RolltuiEffectOut* out) {
+  const RolltuiStyleColor lit = brighter(styles[s->roles[role % s->role_count]].fg, k > 0.5 ? (k - 0.5) * 1.6 : 0.0);
   out->has_style = 1;
   out->style = in->base;
   out->style.fg = blend_to(in->base.fg, lit, k);
   out->style.bold = k > 0.5 ? 1 : in->base.bold;
-  if (pop) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
+  static const char* const kFlicker[] = {"", "\xE2\x9C\xB8", "\xE2\x9C\xA6", "\xC2\xB7"};  // ✸ ✦ ·
+  if (flicker >= 1 && flicker <= 3) {
+    const std::size_t n = std::strlen(kFlicker[flicker]);
+    out->has_glyph = 1;
+    std::memcpy(out->glyph, kFlicker[flicker], n);
+    out->glyph_len = n;
+  }
 }
 
-// `dirk_glow`: the cursor's word, TINTED in the first role from end to end, with a soft bright
-// band in the second role that bounces left and right across it — the shimmer a text UI puts on
-// a word that is live, rather than a block of background behind it. The band's centre follows a
-// triangle over the period, so it turns at the ends instead of wrapping; its brightness falls
-// off as a bell around the centre, `width` cells wide, so it is a glow and not a stripe.
+// `dirk_sparkle`: the name is TINTED with the spark colour all the time — a floor of a third,
+// so a trail row reads as the path — and sparks at a rate PER WORD, not per cell: each cell's
+// period is the word's length times one to two seconds, with a phase hashed from the cell, so
+// a three-letter name sparks as often as a thirty-letter one. A spark pops to near-white and
+// fades back to the floor over a second and a half; one in five flickers a glyph on its way in.
+void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
+                RolltuiEffectOut* out) {
+  static constexpr double kFloor = 0.35;   // how much of the spark colour the name keeps between sparks
+  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 2654435761u + static_cast<unsigned>(in->length) * 40503u + 7u);
+  const unsigned long long len = in->length > 0 ? static_cast<unsigned long long>(in->length) : 1;
+  const unsigned long long period = len * (1000 + seed % 1000);
+  const unsigned long long phase = (seed >> 8) % period;
+  const unsigned long long life = 1500;
+  const unsigned long long t = (in->elapsed_ms + phase) % period;
+  const unsigned long long nth = (in->elapsed_ms + phase) / period;   // which spark this is, for the one in five
+  double k = kFloor;
+  int flicker = 0;
+  if (t < life) {
+    const double u = static_cast<double>(t) / life;       // 0 at the pop, 1 when it is over
+    k = kFloor + (1.0 - kFloor) * (1.0 - u) * (1.0 - u); // down to the floor, fast at first
+    if (hash32(seed ^ static_cast<unsigned>(nth * 2246822519u)) % 5 == 0) flicker = t < 40 ? 1 : t < 80 ? 2 : t < 120 ? 3 : 0;
+  }
+  spark(s, styles, in, 0, k, flicker, out);
+}
+
+// `dirk_glow`: the cursor's word, TINTED in the role from end to end, with a soft band that
+// bounces left and right across it — the shimmer a text UI puts on a word that is live, rather
+// than a block of background behind it. The band is a BRIGHTER version of the same colour,
+// pulled toward white, never a second role: a band that went toward the background would make
+// the word vanish where it passed. Its centre follows a triangle over the period, so it turns at
+// the ends instead of wrapping; its brightness falls off as a bell, `width` cells wide.
 void fx_glow(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
              RolltuiEffectOut* out) {
   const int period = s->period_ms > 0 ? s->period_ms : 2000;
@@ -162,34 +210,10 @@ void fx_glow(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, cons
   const double d = (in->index - centre) / width;
   const double peak = std::exp(-d * d * 2.0);
   const RolltuiStyleColor tint = styles[s->roles[0]].fg;
-  const RolltuiStyleColor bright = styles[s->roles[1 % s->role_count]].fg;
   out->has_style = 1;
   out->style = in->base;
-  out->style.fg = blend_to(tint, bright, peak);
+  out->style.fg = brighter(tint, peak * 0.75);
   out->style.bold = peak > 0.6 ? 1 : in->base.bold;
-}
-
-// `dirk_sparkle`: the name is TINTED with the spark colour all the time — a floor of a third,
-// so a trail row reads as the path — and every cell has its own slow rhythm, a period of two to
-// five seconds and a phase both hashed from the cell; once a period it sparks: pops a `✦` for
-// a tenth of a second and fades back to the floor over a second and a half. A row of twenty
-// cells sparks every two hundred milliseconds or so, never twice in the same place.
-void fx_sparkle(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
-                RolltuiEffectOut* out) {
-  static constexpr double kFloor = 0.35;   // how much of the spark colour the name keeps between sparks
-  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 2654435761u + static_cast<unsigned>(in->length) * 40503u + 7u);
-  const unsigned long long period = 2000 + seed % 3000;
-  const unsigned long long phase = (seed >> 8) % period;
-  const unsigned long long life = 1500;
-  const unsigned long long t = (in->elapsed_ms + phase) % period;
-  double k = kFloor;
-  bool pop = false;
-  if (t < life) {
-    const double u = static_cast<double>(t) / life;       // 0 at the pop, 1 when it is over
-    k = kFloor + (1.0 - kFloor) * (1.0 - u) * (1.0 - u); // down to the floor, fast at first
-    pop = u < 0.07;
-  }
-  spark(s, styles, in, 0, k, pop, out);
 }
 
 // A HUE AS A COLOUR, for the one effect that is allowed to invent one. The library's rule that
@@ -221,8 +245,8 @@ RolltuiStyleColor hue(double h) {
 }
 
 // `dirk_burst`: ONE shot on the name just opened — a RAINBOW slides across the word, rising
-// fast, holding, and fading back to the name's own colour by the end of the period, with a
-// scatter of `✦` on the pop. Past the period, nothing. Without RGB the word cycles the theme's
+// fast, holding, and fading back to the name's own colour by the end of the period, Colour only, like every
+// effect here. Past the period, nothing. Without RGB the word cycles the theme's
 // roles instead, so the moment still happens on every screen.
 void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, const void*, const RolltuiEffectCell* in,
               RolltuiEffectOut* out) {
@@ -241,8 +265,6 @@ void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, con
     if (k > 0.5) out->style.fg = styles[s->roles[which]].fg;
   }
   out->style.bold = k > 0.4 ? 1 : in->base.bold;
-  const unsigned seed = hash32(static_cast<unsigned>(in->index) * 7919u + 11u);
-  if (u < 0.08 && seed % 5 < 2) { out->has_glyph = 1; std::memcpy(out->glyph, "\xE2\x9C\xA6", 3); out->glyph_len = 3; }  // ✦
 }
 
 // ---- text measured and cut to a column's width ---------------------------------------------
@@ -519,24 +541,52 @@ struct Browser {
   // if the anchor followed that width the focused column would shuffle left and right under the
   // eye as the cursor moved. So the anchor counts the last column as `kMaxColumnWidth` wide,
   // whatever it holds: the focused column stays put, and a narrow preview leaves room beside it.
+  // The PREVIEW — the column right of the focus, when it is the last — counts as the maximum
+  // width whatever it holds, so nothing moves while the cursor stays in a column. The focused
+  // column itself always counts as its own width: widening it would move it, which is the one
+  // thing the reserve exists to prevent.
   int width_for_anchor(std::size_t ci) const {
-    return ci + 1 == cols.size() ? std::max(kMaxColumnWidth, cols[ci].width) : cols[ci].width;
+    const bool preview_last = ci == focus_col + 1 && ci + 1 == cols.size();
+    return preview_last ? std::max(kMaxColumnWidth, cols[ci].width) : cols[ci].width;
+  }
+  static bool column_has_folder(const Column& c) {
+    for (std::size_t i = 0; i < c.entries.n; ++i)
+      if (folder_like(c.dir, c.entries.v[i])) return true;
+    return false;
   }
   void retarget() {
     int total = 0;
     for (std::size_t j = 0; j < cols.size(); ++j) total += width_for_anchor(j) + 1;
     total = total > 0 ? total - 1 : 0;
     int target = 0;
+    // THE SLOT IS HELD WHILE A FOLDER COULD BE SELECTED. With a file under the cursor there is
+    // no preview column, but the next Up or Down may land on a folder and open one; if the
+    // slot came and went with the selection, the focused column would jump every time the
+    // cursor crossed a file. So the slot is reserved as long as the focused column holds any
+    // folder at all, and only a column with none — a leaf — gives the space up.
+    const bool slot = !cols.empty() && (focus_col + 1 < cols.size() || column_has_folder(cols[focus_col]));
+    if (!cols.empty() && focus_col + 1 == cols.size() && slot) total += 1 + kMaxColumnWidth;
+    // ENTERING A LEAF SHIFTS NOTHING. A focused last column with no folders gives up the slot,
+    // and re-anchoring would pull every column right to fill it — a shift for a move that opens
+    // nothing after it. If the leaf is already whole on screen where it is, the target stays.
+    if (!cols.empty() && focus_col + 1 == cols.size() && !slot) {
+      int focus_x = scroll_target;
+      for (std::size_t j = 0; j < focus_col; ++j) focus_x += cols[j].width + 1;
+      if (focus_x >= 0 && focus_x < inner.w) return;  // it starts on screen: leave it where it was as the preview
+    }
     if (total > inner.w && !cols.empty()) {
       const std::size_t last = std::min(focus_col + 1, cols.size() - 1);
       int right_end = 0;
       for (std::size_t j = 0; j <= last; ++j) right_end += width_for_anchor(j) + 1;
       right_end -= 1;
+      if (last == focus_col && slot) right_end += 1 + kMaxColumnWidth;
       target = std::min(0, inner.w - right_end);
-      // A focused column wider than what is left of the window still starts on screen.
+      // THE FOCUSED COLUMN ALWAYS STARTS ON SCREEN. The reserve for the last slot is worth
+      // having only while it fits beside the focus; in a window too narrow for both, the focus
+      // wins and the preview is what gets cut, never the column the eye is in.
       int focus_start = 0;
       for (std::size_t j = 0; j < focus_col; ++j) focus_start += cols[j].width + 1;
-      if (focus_start + target < 0 && cols[focus_col].width >= inner.w) target = -focus_start;
+      if (focus_start + target < 0) target = -focus_start;
     }
     if (target == scroll_target) return;
     scroll_target = target;
@@ -780,19 +830,50 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       if (is_sel && (is_focus_col || is_trail)) {
         const int fx = std::max(x, r.x);
         if (still) fill_row(fx, y, x + cw - fx, st);
-        // THE MARKS COVER THE NAME AND NOTHING ELSE — a spark in empty space is a spark on
-        // nothing. The cursor's, folder or file alike, for as long as the eye is on the row;
-        // the trail's, for as long as the row is a trail row.
-        const int lx = std::max(x + 1, r.x);
-        const int lw = std::min(b->measure.width(shown_label), x + cw - lx);
-        if (lw > 0) {
-          if (is_focus_col) rolltui_frame_mark(f, lx, y, lw, b->opt->st_cursor, b->cursor_since_ms, 0);
-          else rolltui_frame_mark(f, lx, y, lw, b->opt->st_trail, 0, 0);
-          // THE OPENED MOMENT: one burst on the row whose file was just opened, then nothing.
-          if (ci == b->opened_col && i == b->opened_sel) {
-            const unsigned long long age = b->now_ms >= b->opened_since_ms ? b->now_ms - b->opened_since_ms : 0;
-            if (age < Browser::kOpenedMs) rolltui_frame_mark(f, lx, y, lw, b->opt->st_opened, b->opened_since_ms, 0);
+        // THE MARKS COVER THE LETTERS AND NOTHING ELSE — not the chevron, not a space: a spark
+        // in empty space is a spark on nothing. Each run of letters is its own span, so the
+        // effect's cells are all letters and every spark lands on one. The cursor's, folder or
+        // file alike, for as long as the eye is on the row; the trail's, for as long as the row
+        // is a trail row; the opened moment's, once.
+        const unsigned long long opened_age = b->now_ms >= b->opened_since_ms ? b->now_ms - b->opened_since_ms : 0;
+        const bool opened_now = ci == b->opened_col && i == b->opened_sel && opened_age < Browser::kOpenedMs;
+        const std::string shown_name = e.is_dir && shown_label.size() >= 4 && shown_label.compare(shown_label.size() - 4, 4, " \xE2\x80\xBA") == 0
+                                           ? shown_label.substr(0, shown_label.size() - 4) : shown_label;
+        int cell = 0;
+        std::size_t at = 0;
+        while (at < shown_name.size()) {
+          // one grapheme: its bytes and its cells
+          std::size_t next = b->measure.prefix_bytes(shown_name.substr(at), 1) + at;
+          int w = 1;
+          if (next == at) { next = b->measure.prefix_bytes(shown_name.substr(at), 2) + at; w = 2; }
+          if (next == at) break;
+          const bool letter = !(next - at == 1 && (shown_name[at] == ' ' || shown_name[at] == '\t'));
+          if (letter) {
+            // extend the run to the end of this word
+            int run = w;
+            std::size_t stop = next;
+            while (stop < shown_name.size() && shown_name[stop] != ' ' && shown_name[stop] != '\t') {
+              std::size_t n2 = b->measure.prefix_bytes(shown_name.substr(stop), 1) + stop;
+              int w2 = 1;
+              if (n2 == stop) { n2 = b->measure.prefix_bytes(shown_name.substr(stop), 2) + stop; w2 = 2; }
+              if (n2 == stop) break;
+              run += w2;
+              stop = n2;
+            }
+            const int sx = x + 1 + cell;
+            const int lx = std::max(sx, r.x);
+            const int lw = std::min(sx + run, x + cw) - lx;
+            if (lw > 0) {
+              if (is_focus_col) rolltui_frame_mark(f, lx, y, lw, b->opt->st_cursor, b->cursor_since_ms, 0);
+              else rolltui_frame_mark(f, lx, y, lw, b->opt->st_trail, 0, 0);
+              if (opened_now) rolltui_frame_mark(f, lx, y, lw, b->opt->st_opened, b->opened_since_ms, 0);
+            }
+            cell += run;
+            at = stop;
+            continue;
           }
+          cell += w;
+          at = next;
         }
       }
       put_clipped(x + 1, y, shown_label, st, cw - 1);

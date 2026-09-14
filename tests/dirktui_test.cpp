@@ -399,6 +399,23 @@ int main() {
     check(col_of_word(on_alpha, "alpha \xE2\x80\xBA") == col_of_word(on_beta, "alpha \xE2\x80\xBA") && col_of_word(on_alpha, "alpha \xE2\x80\xBA") > 0,
           "…and the focused column did not move: the last slot is reserved at the maximum width [" +
               std::to_string(col_of_word(on_alpha, "alpha \xE2\x80\xBA")) + " = " + std::to_string(col_of_word(on_beta, "alpha \xE2\x80\xBA")) + "]");
+    // …AND THE SLOT IS HELD WHILE A FOLDER COULD BE SELECTED: a file under the cursor has no
+    // preview, but the focused column keeps its place as long as it holds any folder; only a
+    // column with no folders at all (beta: files only) gives the space up and moves right.
+    const std::string on_nested = run(base + " --frame 60x10 --keys \"Right\" 2>&1", rc);
+    const std::string on_one = run(base + " --frame 60x10 --keys \"Right Down\" 2>&1", rc);
+    check(has(on_one, "one.txt") && col_of_word(on_nested, "nested \xE2\x80\xBA") == col_of_word(on_one, "nested \xE2\x80\xBA") &&
+              col_of_word(on_one, "nested \xE2\x80\xBA") > 0,
+          "a file under the cursor still reserves the slot: the focused column does not move when the cursor crosses a file");
+    const std::string in_beta = run(base + " --frame 60x10 --keys \"Down Right\" 2>&1", rc);
+    check(col_of_word(in_beta, "a-quite-long-name") > col_of_word(on_one, "one.txt"),
+          "…while a column with no folders at all gives the slot up and sits further right [" +
+              std::to_string(col_of_word(in_beta, "a-quite-long-name")) + " > " + std::to_string(col_of_word(on_one, "one.txt")) + "]");
+    // …AND A LEAF PREVIEW IS LAID OUT AT ITS FINAL WIDTH BEFORE THE CURSOR ENTERS IT: beta, files
+    // only, sits where it will sit once entered, so Right into it shifts nothing.
+    check(col_of_word(on_beta, "a-quite-long-name") == col_of_word(in_beta, "a-quite-long-name") && col_of_word(in_beta, "a-quite-long-name") > 0,
+          "a preview with no folders is already at its final place: entering it does not move it [" +
+              std::to_string(col_of_word(on_beta, "a-quite-long-name")) + " = " + std::to_string(col_of_word(in_beta, "a-quite-long-name")) + "]");
     // THE FADE: a column partly off the left edge is drawn faded, cell by cell; a window wide enough
     // for every column fades nothing. Read from the self-test's report, since a text frame shows
     // no colour — the CONTROL is the wide frame.
@@ -451,11 +468,22 @@ int main() {
       return std::make_pair(at == std::string::npos ? std::string() : out.substr(at, out.find('\n', at) - at), column_of(out).first);
     };
     const auto w0 = fx_wide("Tick:0"), w1 = fx_wide("Right Tick:0");
+    // A row's mark is one span per WORD of its name (a spark never lands on a space or the
+    // chevron), and no name on this path has a space, so one row is one mark.
     check(num(w0.first, "marks=") == w0.second && w0.second >= 2,
           "the marks are the cursor plus one trail row per ancestor column, and NOT the preview's first entry [marks " +
               std::to_string(num(w0.first, "marks=")) + " = column " + std::to_string(w0.second) + "]");
     check(num(w1.first, "marks=") == w1.second && w1.second == w0.second + 1,
           "…and after Right the column we left is a trail row and the new preview still is not");
+    // A name with a space is two spans; a chevron is none.
+    fs::create_directories(tree / "two words");
+    const std::string spaced = run(base + "/two\\ words --frame 300x10 --keys \"Tick:0\" 2>&1", rc);
+    // Started INSIDE the empty folder "two words": its column has no row to be a cursor, so the
+    // marks are the ancestors' trail rows, one each — except `tree`'s, whose selection "two
+    // words" is two runs. One row of two marks: the count is the focused column's index.
+    check(num(spaced.substr(spaced.find("effects: ")), "marks=") == column_of(spaced).first,
+          "a name with a space is marked as two runs of letters, so a spark never lands on the space [" +
+              spaced.substr(spaced.find("effects: "), 40) + " column " + std::to_string(column_of(spaced).first) + "]");
     check(num(on_file, "marks=") >= 1 && num(on_file, "drawn=") >= 1,
           "a file under the cursor is marked exactly as a folder is — the cursor is the cursor [" + on_file + "]");
     // OPENING A FILE adds one mark, the burst, for its moment; then the count is back. Compared
