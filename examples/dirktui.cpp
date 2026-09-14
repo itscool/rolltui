@@ -417,6 +417,9 @@ struct Browser {
       bool found = false;
       for (std::size_t i = 0; i < c->entries.n; ++i)
         if (str_of(c->entries.v[i].name) == part) { c->sel = i; found = true; break; }
+      // The walk IS a visit: each ancestor's selection goes into the memory, so Left out of a
+      // deep start and Right again lands on the same entry rather than on the folder's first.
+      if (found) remember(*c);
       if (!found || !folder_like(c->dir, c->entries.v[c->sel])) {
         // The path goes on where the disk does not: the rest of it becomes one column that
         // cannot be opened, said in full, so a mistyped start is shown and not silently trimmed.
@@ -684,6 +687,7 @@ struct Browser {
     if (!c) return;
     for (std::size_t i = 0; i < c->entries.n; ++i)
       if (str_of(c->entries.v[i].name) == child) c->sel = i;
+    remember(*c);
     clamp_scroll(*c);
     open_selected();
     retarget();
@@ -1599,7 +1603,6 @@ struct App {
   }
 
   void run_action(const std::string& action) {
-    Browser* b = browser();
     if (action == "app.quit") quit = true;
     else if (action == "app.jump") {
       // WALL 4 (phase file): `rolltui_window_stack_focus` takes a window ID, so an app that

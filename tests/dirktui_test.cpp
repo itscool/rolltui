@@ -276,6 +276,14 @@ int main() {
     const std::string sibling = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Right Down Left Down Right Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && sibling.find("/beta/") != std::string::npos && sibling.find("one.txt") == std::string::npos,
           "…while a sibling folder entered instead starts on its own first entry, not on alpha's memory");
+    // A DEEP START SEEDS THE MEMORY: the ancestors' selections the walk made count as visits, so
+    // Left out of the start folder and Right again is back on it — beta, the SECOND entry of
+    // tree, not alpha, its first. A folder chosen with Enter is printed with exit 0.
+    const std::string deep_back = run(home_env + bin + " '" + (tree / "beta").string() + "'" + presets +
+                                      " --theme default-dark --frame 80x20 --keys \"Left Left Right Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && deep_back == (tree / "beta").string() + "\n",
+          "started deep, Left twice and Right again lands on the start folder, not on its parent's first entry [" +
+              deep_back.substr(deep_back.rfind('/') + 1) + "]");
     const std::string insert = run(with_setting("{ \"file_enter\": \"insert\", \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && insert.rfind("./alpha/", 0) == 0,
           "…`insert` leaves with the path for the command line — relative here, by the path setting — and exit 3: the verb is the status [" + insert + "]");
