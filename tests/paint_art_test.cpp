@@ -18,6 +18,7 @@
 //      correct and it is reported the only way a draw call can — the returned cell count — and
 //      paint falls back to the ascii step of the same darkness.
 //
+#include <unistd.h>
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
@@ -135,6 +136,28 @@ int main() {
                                 "/frames/menu.80x24.theme.txt' 2>&1", prc);
     check(bad.find("not a PNG") != std::string::npos,
           "…and a file that is not a PNG is refused BY NAME rather than half-decoded");
+  }
+
+  // ---- 0d. THE SHEET IS SAVED AS TEXT, THROUGH A SAVE DIALOG THE LAYOUT DECLARES -------------
+  // Ctrl-S opens a popup of two windows — a name, and the library's column browser for the
+  // folder, pointed at where the last picture came from — and Enter in the name is the save. The
+  // one line of host code is the name's submit; the picker is the same kind the open dialog uses.
+  {
+    int src = 0;
+    std::string tmp = std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp";
+    while (tmp.size() > 1 && tmp.back() == '/') tmp.pop_back();  // a saved path is said with single slashes
+    const std::string dir = tmp + "/rolltui_paint_save_" + std::to_string(::getpid());
+    run("rm -rf '" + dir + "' && mkdir -p '" + dir + "' && cp '" + std::string(ROLLTUI_FIXTURE_DIR) + "/blob.png' '" + dir + "/blob.png'", src);
+    const std::string saved = run(bin + " --frame 54x16 --open '" + dir + "/blob.png' --keys \"CtrlS Type:art.txt Enter\" 2>&1 >/dev/null", src);
+    check(saved.find("saved " + dir + "/art.txt") != std::string::npos,
+          "Ctrl-S, a name, Enter: the sheet is saved as text beside the picture it came from [" + saved.substr(saved.find("saved") == std::string::npos ? 0 : saved.find("saved"), 60) + "]");
+    const std::string art = run("cat '" + dir + "/art.txt' 2>/dev/null", src);
+    std::size_t lines = 0, inked = 0;
+    for (char ch : art) { if (ch == '\n') ++lines; if (ch == '@' || ch == '#' || ch == '%' || ch == '*') ++inked; }
+    check(lines >= 8 && inked > 20, "…and the file is the picture's rows of ramp glyphs (" + std::to_string(lines) + " rows, " + std::to_string(inked) + " dark cells)");
+    const std::string none = run(bin + " --frame 54x16 --keys \"CtrlS Enter\" 2>&1 >/dev/null", src);
+    check(none.find("a name, then Enter") != std::string::npos, "…while Enter with no name saves nothing and says what it wants");
+    run("rm -rf '" + dir + "'", src);
   }
 
   // ---- 0b. THE LIBRARY'S EDITORS ARE THIS APP'S TOO ----------------------------------------

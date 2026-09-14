@@ -168,7 +168,7 @@ struct Tool {
 constexpr const char* kDefaultLayout = R"({
   "name": "paint", "min_width": 20, "min_height": 6, "focus": "sheet",
   "actions": { "app.theme": "Edit the theme", "app.keys": "Edit the keys",
-               "app.filepicker": "Open a picture" },
+               "app.filepicker": "Open a picture", "app.save": "Save the sheet as text" },
   "popups": [
     { "id": "theme", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
@@ -182,7 +182,14 @@ constexpr const char* kDefaultLayout = R"({
       "min_w": 40, "max_w": 100, "modal": true,
       "root": { "id": "filepicker", "content": "filepicker", "border": "rounded",
                 "title": "open a picture", "focusable": true,
-                "background": "panel_background" } } ],
+                "background": "panel_background" } },
+    { "id": "save", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+      "min_w": 40, "max_w": 100, "modal": true,
+      "root": { "column": [
+        { "id": "save_name", "content": "input:save_name", "size": 3, "border": "rounded",
+          "title": "save the sheet as text: the name", "focusable": true, "background": "panel_background" },
+        { "id": "save_folder", "content": "filepicker:.", "border": "rounded",
+          "title": "in the folder", "focusable": true, "background": "panel_background" } ] } } ],
   "root": { "row": [
     { "id": "sheet", "content": "canvas:sheet", "border": "single", "title": "sheet", "focusable": true },
     { "id": "tools", "content": "menu:tools", "size": 22, "border": "single", "title": "tools", "focusable": true } ] }
@@ -653,6 +660,11 @@ struct App {
     rolltui_context_register_kind(ctx, kCanvasKind, std::strlen(kCanvasKind), canvas_factory, &factory_ctx,
                                   nullptr);
     rolltui_context_add_menu(ctx, "tools", 5, kToolsMenu, std::strlen(kToolsMenu));
+    // THE SAVE DIALOG is two windows of the layout — a name, and the library's picker for the
+    // folder — and this one binding: Enter in the name is the save. The picker is the same kind
+    // the open dialog uses, pointed at a folder of its own (`filepicker:.` is its content, and
+    // the app re-points it at the last picture's folder when the dialog opens).
+    rolltui_windows_bind_submit(windows, "save_name", 9, on_save_name, this, nullptr, /*on_submit=*/0);
     rolltui_windows_bind_rows(
         windows, "brush", 5,
         [](void* ctx, RolltuiRows* out) {
@@ -694,9 +706,20 @@ struct App {
   }
   // `RolltuiLayout::actions` is already the flat array `rolltui_bindings_declare` takes, so
   // the `action_decls()` conversion the C++ shim needed has no counterpart here at all.
+  // THIS APP'S OWN CHORD, for this app's own action. The shipped bindings file belongs to every
+  // host and refuses a row for an action no shipped layout declares — a tool's chords are the
+  // tool's — so paint carries the one it adds and loads it onto the table at start.
+  static constexpr const char* kOwnBindings = R"({ "bindings": { "app.save": ["ctrl+s"] } })";
+  void load_own_bindings() {
+    RolltuiBindingsReport brep{};
+    rolltui_bindings_load_json(bindings, kOwnBindings, std::strlen(kOwnBindings), ROLLTUI_PROTOCOL_LEGACY,
+                               rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &brep);
+    rolltui_bindings_report_release(&brep);
+  }
   void declare_actions() {
     std::size_t n = 0;
     const RolltuiLayoutAction* a = rolltui_layout_actions(layout, &n);
+    load_own_bindings();
     rolltui_bindings_declare(bindings, a, n, nullptr, 0);
   }
 
@@ -758,6 +781,54 @@ struct App {
   // `app.<id>` naming a declared popup opens it, so `ctrl+e` needed no code here — and closing
   // the loop is the one thing a host must do: the picker knows a path was chosen, and only this
   // app knows that a path means a picture.
+  // ---- the save dialog -------------------------------------------------------------------------
+  static void on_save_name(void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->save_sheet(std::string(text, len)); }
+  std::string last_dir;  // where the last picture came from: where the save dialog opens
+  bool save_pointed = false;
+  static constexpr const char* kSaveFolder = "filepicker:.";
+  void save_sheet(const std::string& name) {
+    Canvas* c = canvas();
+    if (name.empty()) { picture_note = "a name, then Enter"; return; }
+    if (!c) { picture_note = "no sheet to save"; return; }
+    RolltuiStr dir{};
+    if (!rolltui_windows_picker_dir(windows, kSaveFolder, std::strlen(kSaveFolder), &dir)) { picture_note = "no folder chosen"; return; }
+    const std::string folder(dir.p ? dir.p : "", dir.n);
+    rolltui_str_free(&dir);
+    const std::string path = (folder == "/" ? "" : folder) + "/" + name;
+    // THE SHEET AS TEXT: one row per row of the sheet, each cell's ramp glyph or a space, the
+    // trailing spaces dropped — what a person pastes into a README.
+    std::string text;
+    for (int y = 0; y < c->inner.h; ++y) {
+      std::string row;
+      for (int x = 0; x < c->inner.w; ++x) {
+        const auto it = c->pixels.find({x, y});
+        if (it == c->pixels.end()) { row += ' '; continue; }
+        const Ramp& ramp = kRamps[it->second.ramp % 2];
+        const int step = it->second.level < 0 ? 0 : (it->second.level >= ramp.steps ? ramp.steps - 1 : it->second.level);
+        row += ramp.cells[step];
+      }
+      while (!row.empty() && row.back() == ' ') row.pop_back();
+      text += row + '\n';
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << text;
+    if (!out) { picture_note = "could not write " + path; return; }
+    picture_note = "saved " + path + " (" + std::to_string(c->inner.w) + "x" + std::to_string(c->inner.h) + ")";
+    last_dir = folder;
+    while (rolltui_window_stack_has_popup(stack, "save", 4)) rolltui_window_stack_pop(stack);
+    save_pointed = false;
+  }
+  // The dialog's picker is pointed once per opening, after the sync that built it.
+  void point_save_dialog() {
+    const bool open = rolltui_window_stack_has_popup(stack, "save", 4) != 0;
+    if (!open) { save_pointed = false; return; }
+    if (save_pointed) return;
+    std::string at = last_dir;
+    if (at.empty()) { char cwd[4096]; at = getcwd(cwd, sizeof cwd) ? cwd : "/"; }
+    rolltui_windows_set_picker_dir(windows, kSaveFolder, std::strlen(kSaveFolder), at.data(), at.size());
+    save_pointed = true;
+  }
+
   void take_picked_file() {
     RolltuiStr got{};
     if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
@@ -774,6 +845,7 @@ struct App {
     rolltui_context_set_env(ctx, &env);
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
+    point_save_dialog();
     rolltui_windows_autosize(windows, stack, area());
     rolltui_windows_layout(windows, stack, area());
     if (rolltui_windows_report_count(windows) == 0) {
@@ -799,6 +871,8 @@ struct App {
     if (!why.empty()) { picture_note = why; return; }
     fit_image_into(img, *c, tool.ramp);
     picture_note = "opened " + path + " (" + std::to_string(img.w) + "x" + std::to_string(img.h) + ")";
+    const std::size_t slash = path.find_last_of('/');
+    last_dir = slash == std::string::npos ? std::string() : (slash == 0 ? "/" : path.substr(0, slash));
   }
 
   void handle(const RolltuiEvent& e) {
@@ -1224,6 +1298,9 @@ int main(int argc, char** argv) {
     RolltuiStr text{};
     rolltui_frame_to_text(f, &text);
     std::fwrite(text.p ? text.p : "", 1, text.n, stdout);
+    // What the run ended saying about a picture — a save's path, or why there was none — so a
+    // test reads the outcome rather than the frame.
+    if (!app.picture_note.empty()) std::fprintf(stderr, "%s\n", app.picture_note.c_str());
     rolltui_str_free(&text);
     rolltui_swap_free(swap);
     return 0;
