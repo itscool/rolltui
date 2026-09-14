@@ -367,6 +367,39 @@ int main() {
   {
     int irc = 0;
     const std::string product = std::string("'") + DIRKTUI_PRODUCT_BIN + "'";
+    // ---- `dirktui install`: the binary on PATH and the shell side in the rc file, once ----
+    {
+      const fs::path ihome = scratch / "home-install";
+      fs::create_directories(ihome);
+      write_file(ihome / ".zshrc", "# mine\nexport FOO=1\n");
+      const std::string ienv = "HOME='" + ihome.string() + "' SHELL=/bin/zsh ";
+      const std::string said = run(ienv + product + " install 2>&1", irc);
+      const fs::path link = ihome / ".local" / "bin" / "dirktui";
+      check(status_of(irc) == 0 && fs::is_symlink(link) && fs::canonical(link) == fs::canonical(DIRKTUI_PRODUCT_BIN),
+            "`dirktui install` links THIS binary into ~/.local/bin, the shell taken from $SHELL [" + said.substr(0, 60) + "]");
+      bool ok = false;
+      const std::string zrc = read_file((ihome / ".zshrc").string(), ok);
+      check(ok && zrc.rfind("# mine\nexport FOO=1\n", 0) == 0 && has(zrc, "command -v dirktui >/dev/null 2>&1 && eval \"$(dirktui init zsh)\"") && has(zrc, ".local/bin"),
+            "…and appends ONE marked block to ~/.zshrc — PATH, then the shell side GUARDED on the binary existing — after what was there");
+      run(ienv + product + " install zsh 2>&1", irc);
+      check(read_file((ihome / ".zshrc").string(), ok) == zrc, "…a second install writes nothing twice");
+      run("zsh -n '" + (ihome / ".zshrc").string() + "' 2>&1", irc);
+      check(status_of(irc) == 0, "…and zsh -n accepts the rc file it wrote");
+      write_file(ihome / ".bash_profile", "export BAR=2\n");
+      const std::string bsaid = run(ienv + product + " install bash 2>&1", irc);
+      check(has(read_file((ihome / ".bashrc").string(), ok), "eval \"$(dirktui init bash)\"") && has(bsaid, ".bash_profile, which does not source ~/.bashrc"),
+            "bash: the block goes into ~/.bashrc, and a profile that never reads it is NAMED, not edited [" + bsaid.substr(bsaid.find("note"), 50) + "]");
+      check(read_file((ihome / ".bash_profile").string(), ok) == "export BAR=2\n", "…the profile is untouched");
+      run(ienv + product + " install fish 2>&1", irc);
+      check(has(read_file((ihome / ".config" / "fish" / "conf.d" / "dirk.fish").string(), ok), "dirktui init fish | source"),
+            "fish: a conf.d file of its own, since fish sources the directory");
+      const std::string bad = run(ienv + product + " install nushell 2>&1", irc);
+      check(status_of(irc) == 2 && has(bad, "usage: dirktui install zsh|bash|fish"), "a shell it has no script for is refused");
+      run(ienv + product + " uninstall zsh 2>&1", irc);
+      check(status_of(irc) == 0 && !fs::exists(fs::symlink_status(link)) && read_file((ihome / ".zshrc").string(), ok) == "# mine\nexport FOO=1\n" &&
+                has(read_file((ihome / ".bashrc").string(), ok), "init bash"),
+            "`dirktui uninstall zsh` removes the link and the block, leaving the file as it was and the other shells alone");
+    }
     const std::string other = run(product + " init nushell 2>&1", irc);
     check(status_of(irc) == 2 && has(other, "usage: dirktui init zsh|bash|fish"),
           "a shell it has no script for is refused with the list it has, never answered with another's");

@@ -39,6 +39,10 @@
 // cannot serve. Every place the public header could not do something is a wall to record.
 //
 #include <dirent.h>
+#include <limits.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -1968,6 +1972,9 @@ int usage() {
                "                                           exit 3: put the printed path on the command line;\n"
                "                                           exit 4: into the printed file's folder, then ./name\n"
                "                                           Esc prints nothing and exits 1\n"
+               "       dirktui install [zsh|bash|fish]     link this binary into ~/.local/bin and put the shell\n"
+               "                                           side into the shell's rc file ($SHELL's by default);\n"
+               "                                           `dirktui uninstall` takes both out again\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
                "                                           fish: dirktui init fish | source\n"
@@ -2007,7 +2014,7 @@ _dirk_command() {
 }
 
 dirk() {
-  if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
+  case "$1" in init|install|uninstall) command dirktui "$@"; return $?;; esac
   local out rc
   out="$(command dirktui "$@")"; rc=$?
   if (( rc == 4 )); then   # into the file's folder, then ./name onto the line
@@ -2086,7 +2093,7 @@ _dirk_command() {
 }
 
 dirk() {
-  if [[ "$1" == init ]]; then command dirktui "$@"; return $?; fi
+  case "$1" in init|install|uninstall) command dirktui "$@"; return $?;; esac
   local out rc
   out="$(command dirktui "$@")"; rc=$?
   if (( rc == 4 )); then builtin cd -- "$(dirname -- "$out")" || return 1; out="./$(basename -- "$out")"; rc=3; fi
@@ -2160,7 +2167,7 @@ function _dirk_go --argument-names out
 end
 
 function dirk
-    if test "$argv[1]" = init
+    if contains -- "$argv[1]" init install uninstall
         command dirktui $argv
         return
     end
@@ -2208,6 +2215,147 @@ bind \eOC _dirk_forward_char
 
 // `dirktui init <shell>`: the integration for that shell on stdout. A name this binary has no
 // script for is refused with the list it has, never answered with another shell's.
+// ---- `dirktui install [zsh|bash|fish]` and `uninstall` --------------------------------------
+// Puts the binary where a shell finds it and the shell side where the shell reads it, ONCE:
+//   * `~/.local/bin/dirktui` — a SYMLINK to this very binary, so the next build is what runs;
+//     a link pointing elsewhere is replaced, a real file there is left alone and named;
+//   * the shell's rc file gets one MARKED block: PATH gains ~/.local/bin (guarded), and the
+//     shell side is evaluated from the binary — zsh: ~/.zshrc, bash: ~/.bashrc, fish:
+//     ~/.config/fish/conf.d/dirk.fish (fish sources conf.d, so no file of the person's is
+//     edited). The block is found by its markers and replaced, so a second install writes it
+//     once. The shell is the one $SHELL names unless given.
+// `uninstall` removes the block and the link. Nothing else is touched.
+static std::string self_path(const char* argv0) {
+  char real[PATH_MAX];
+#ifdef __APPLE__
+  char buf[PATH_MAX];
+  uint32_t n = sizeof buf;
+  if (_NSGetExecutablePath(buf, &n) == 0) return realpath(buf, real) ? std::string(real) : std::string(buf);
+#else
+  char buf[PATH_MAX];
+  const ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
+  if (n > 0) { buf[n] = '\0'; return buf; }
+#endif
+  return realpath(argv0, real) ? std::string(real) : std::string(argv0);
+}
+static const char* kInstallBegin = "# >>> dirk (written by `dirktui install`; `dirktui uninstall` removes it) >>>";
+static const char* kInstallEnd = "# <<< dirk <<<";
+static std::string shell_of(int argc, char** argv) {
+  if (argc >= 3) return argv[2];
+  const char* sh = std::getenv("SHELL");
+  if (!sh) return "";
+  const std::string s(sh);
+  return s.substr(s.rfind('/') + 1);
+}
+static bool mkdirs(const std::string& dir) {
+  for (std::size_t i = 1; i <= dir.size(); ++i)
+    if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
+  struct stat st{};
+  return stat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+// `text` with the marked block replaced by `block` (empty: removed), or appended.
+static std::string with_block(const std::string& text, const std::string& block) {
+  const std::size_t b = text.find(kInstallBegin);
+  std::size_t e = b == std::string::npos ? std::string::npos : text.find(kInstallEnd, b);
+  if (e != std::string::npos) {
+    e += std::strlen(kInstallEnd);
+    if (e < text.size() && text[e] == '\n') ++e;
+    std::size_t bb = b;
+    if (bb > 0 && text[bb - 1] == '\n' && block.empty()) --bb;  // take the blank line the block brought
+    return text.substr(0, bb) + block + text.substr(e);
+  }
+  if (block.empty()) return text;
+  std::string out = text;
+  if (!out.empty() && out.back() != '\n') out += '\n';
+  if (!out.empty()) out += '\n';
+  return out + block;
+}
+int install_command(int argc, char** argv, bool remove) {
+  const std::string shell = shell_of(argc, argv);
+  const bool known = shell == "zsh" || shell == "bash" || shell == "fish";
+  const char* home = std::getenv("HOME");
+  if (!known || !home || !*home) {
+    std::fprintf(stderr, "usage: dirktui %s zsh|bash|fish   (the shell defaults to $SHELL%s)\n",
+                 remove ? "uninstall" : "install", home && *home ? "" : "; HOME is unset");
+    return 2;
+  }
+  const std::string bin_dir = std::string(home) + "/.local/bin", link = bin_dir + "/dirktui";
+  const std::string rc = shell == "zsh" ? std::string(home) + "/.zshrc"
+                       : shell == "bash" ? std::string(home) + "/.bashrc"
+                                         : std::string(home) + "/.config/fish/conf.d/dirk.fish";
+  const std::string block =
+      remove ? std::string()
+      : shell == "fish"
+          // GUARDED: a binary that is gone (the build tree moved) costs `dirk`, never a shell start.
+          ? std::string(kInstallBegin) + "\nfish_add_path -g $HOME/.local/bin\ncommand -q dirktui; and dirktui init fish | source\n" + kInstallEnd + "\n"
+          : std::string(kInstallBegin) + "\ncase \":$PATH:\" in *\":$HOME/.local/bin:\"*) ;; *) export PATH=\"$HOME/.local/bin:$PATH\" ;; esac\n"
+                "command -v dirktui >/dev/null 2>&1 && eval \"$(dirktui init " + shell + ")\"\n" + kInstallEnd + "\n";
+  // the link
+  struct stat st{};
+  const bool is_link = lstat(link.c_str(), &st) == 0 && S_ISLNK(st.st_mode);
+  const bool is_other = lstat(link.c_str(), &st) == 0 && !S_ISLNK(st.st_mode);
+  if (remove) {
+    if (is_link) { unlink(link.c_str()); std::fprintf(stderr, "dirktui: removed %s\n", link.c_str()); }
+    else if (is_other) std::fprintf(stderr, "dirktui: %s is not a link this command made; left alone\n", link.c_str());
+  } else {
+    const std::string self = self_path(argv[0]);
+    if (is_other) {
+      std::fprintf(stderr, "dirktui: %s exists and is not a link; move it aside first\n", link.c_str());
+      return 1;
+    }
+    if (!mkdirs(bin_dir)) { std::fprintf(stderr, "dirktui: cannot create %s\n", bin_dir.c_str()); return 1; }
+    if (is_link) unlink(link.c_str());
+    if (symlink(self.c_str(), link.c_str()) != 0) {
+      std::fprintf(stderr, "dirktui: cannot link %s -> %s (%s)\n", link.c_str(), self.c_str(), std::strerror(errno));
+      return 1;
+    }
+    std::fprintf(stderr, "dirktui: linked %s -> %s\n", link.c_str(), self.c_str());
+  }
+  // the rc file
+  std::string text;
+  {
+    std::ifstream in(rc, std::ios::binary);
+    if (in) text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+  }
+  const std::string next = with_block(text, block);
+  if (remove && next == text) {
+    std::fprintf(stderr, "dirktui: no dirk block in %s\n", rc.c_str());
+  } else if (remove && shell == "fish" && next.empty()) {
+    unlink(rc.c_str());
+    std::fprintf(stderr, "dirktui: removed %s\n", rc.c_str());
+  } else if (next != text) {
+    if (!mkdirs(rc.substr(0, rc.rfind('/')))) { std::fprintf(stderr, "dirktui: cannot create the directory of %s\n", rc.c_str()); return 1; }
+    std::ofstream out(rc, std::ios::binary | std::ios::trunc);
+    out << next;
+    if (!out) { std::fprintf(stderr, "dirktui: cannot write %s\n", rc.c_str()); return 1; }
+    std::fprintf(stderr, "dirktui: %s the dirk block in %s\n", remove ? "removed" : (text.find(kInstallBegin) != std::string::npos ? "refreshed" : "wrote"), rc.c_str());
+  } else {
+    std::fprintf(stderr, "dirktui: %s already has the dirk block\n", rc.c_str());
+  }
+  if (!remove && shell == "bash") {
+    // A LOGIN bash reads a profile and never ~/.bashrc unless the profile sources it — and a
+    // terminal on macOS opens a login shell. Said, not done: the profile is the person's.
+    const char* profiles[] = {"/.bash_profile", "/.bash_login", "/.profile"};
+    std::string found, ptext;
+    for (const char* pf : profiles) {
+      std::ifstream in(std::string(home) + pf, std::ios::binary);
+      if (in) { found = std::string(home) + pf; ptext.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()); break; }
+    }
+    const bool sources = ptext.find(".bashrc") != std::string::npos;
+#ifdef __APPLE__
+    const bool login_shells = true;
+#else
+    const bool login_shells = false;
+#endif
+    if (!found.empty() && !sources)
+      std::fprintf(stderr, "dirktui: note: a login bash reads %s, which does not source ~/.bashrc — add to it:  [ -f ~/.bashrc ] && . ~/.bashrc\n", found.c_str());
+    else if (found.empty() && login_shells)
+      std::fprintf(stderr, "dirktui: note: a terminal here opens a LOGIN bash, which reads ~/.bash_profile and not ~/.bashrc — create it with:  [ -f ~/.bashrc ] && . ~/.bashrc\n");
+  }
+  if (!remove) std::fprintf(stderr, "dirktui: open a new shell, or: %s\n", shell == "fish" ? "source ~/.config/fish/conf.d/dirk.fish" : ("source " + rc).c_str());
+  return 0;
+}
+
 int init_command(int argc, char** argv) {
   const std::string shell = argc == 3 ? argv[2] : "";
   const char* script = shell == "zsh" ? kZshInit : shell == "bash" ? kBashInit : shell == "fish" ? kFishInit : nullptr;
@@ -2225,6 +2373,8 @@ int main(int argc, char** argv) {
   // A subcommand is the FIRST word and nothing else: a directory literally called `init` is
   // still reachable as `dirktui ./init`.
   if (argc >= 2 && std::string(argv[1]) == "init") return init_command(argc, argv);
+  if (argc >= 2 && std::string(argv[1]) == "install") return install_command(argc, argv, false);
+  if (argc >= 2 && std::string(argv[1]) == "uninstall") return install_command(argc, argv, true);
   std::string start;
   bool ambiguous = false;
   [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
