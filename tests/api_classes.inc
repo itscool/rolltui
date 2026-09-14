@@ -623,7 +623,7 @@ ROLLTUI_API(rolltui_rows_reset, PUBLIC)  /* KEPT: a public C++ member in the def
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 ROLLTUI_API(rolltui_scroll_first_for_cell, INTERNAL)  /* scrollbar arithmetic (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_scroll_thumb, INTERNAL)  /* scrollbar arithmetic (a test reaches it: opt-in) */
+ROLLTUI_API(rolltui_scroll_thumb, PUBLIC)  /* a widget scrolling several lists draws a thumb per list with the window's arithmetic: dirktui */
 ROLLTUI_API(rolltui_context_add_help_scope, PUBLIC)
 ROLLTUI_API(rolltui_context_add_menu, PUBLIC)
 ROLLTUI_API(rolltui_windows_at, INTERNAL)  /* a hit-test the stack already routes */
@@ -643,7 +643,6 @@ ROLLTUI_API(rolltui_windows_default_roles, PUBLIC)
 ROLLTUI_API(rolltui_scrollbar_glyphs_default, INTERNAL)  /* the shipped capsule; a host never asks for it, because a theme's answer always arrives complete */
 ROLLTUI_API(rolltui_context_set_scrollbar_glyphs, PUBLIC)  /* the look of the thumb is a theme's, and this is where a theme's answer lands */
 ROLLTUI_API(rolltui_theme_scrollbar_glyphs, PUBLIC)  /* the read half: every host resolving a theme reads its glyphs beside its styles */
-ROLLTUI_API(rolltui_windows_scrollbar_glyphs, INTERNAL)  /* what the draw path reads; no host asks what is in force, it just set it */
 ROLLTUI_API(rolltui_windows_dir, INTERNAL)
 ROLLTUI_API(rolltui_windows_document, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_draw, PUBLIC)
@@ -680,6 +679,7 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+ROLLTUI_API(rolltui_windows_scrollbar_glyphs, PUBLIC)  /* the same widget draws the same capsule the window does */
 ROLLTUI_API(rolltui_windows_set_theme_hint, INTERNAL)
 ROLLTUI_API(rolltui_windows_theme_editor, INTERNAL)
 ROLLTUI_API(rolltui_windows_set_theme_store, PUBLIC)  /* KEPT: `theme` is a library widget kind, so a

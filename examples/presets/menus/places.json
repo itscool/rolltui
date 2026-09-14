@@ -3,6 +3,7 @@
     { "id": "general", "label": "General", "kind": "section" },
     { "id": "hidden", "label": "Show dotfiles", "kind": "toggle" },
     { "id": "motion", "label": "Motion: the effects and the column slide", "kind": "toggle" },
+    { "id": "dividers", "label": "A line between the columns", "kind": "toggle" },
     { "id": "sort", "label": "Sort by", "kind": "choice", "dropdown": true,
       "items": [ { "id": "name", "label": "name" }, { "id": "size", "label": "size" },
                  { "id": "modified", "label": "modified" } ] },

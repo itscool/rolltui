@@ -119,14 +119,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* Where the thumb sits and how long it is, in the track's own cells. 0 when no bar should be
- * drawn at all. A pure function, so the degenerate sizes are a table test. */
-typedef struct RolltuiScrollThumb {
-  int offset ROLLTUI_DEFAULT(0); /* cells from the track's start */
-  int length ROLLTUI_DEFAULT(0); /* cells, always >= 1 when drawn */
-} RolltuiScrollThumb;
-
-int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out);
 /* The inverse, for a click or a drag: the `first` line that puts the thumb's START at `cell`
  * of the track. Clamped to a valid first line. */
 size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, int cell);
@@ -192,7 +184,6 @@ const char* rolltui_windows_host_menu_name_at(const RolltuiWindows* w, size_t i,
  * `rolltui_theme_scrollbar_glyphs` and applies it with `rolltui_context_set_scrollbar_glyphs`,
  * and never needs to ask for the default or read one back. */
 void rolltui_scrollbar_glyphs_default(RolltuiScrollbarGlyphs* out);
-const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWindows* w);
 
 #ifdef __cplusplus
 } /* extern "C" */

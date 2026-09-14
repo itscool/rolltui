@@ -623,7 +623,7 @@ int main() {
     // A public input type whose value cannot be parsed is a contradiction in the surface,
     // which is why the colour parser and printer are public independently of the consumer
     // that found them missing.
-    const int kPublic = 329, kInternal_ = 579, kDelete = 0;
+    const int kPublic = 331, kInternal_ = 577, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -823,7 +823,7 @@ int main() {
     // there; deleting the row would make a future arrival unremarkable.
     check(rt["VOCAB"] == 34 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 55 &&
               rt["HOST_BIND"] == 93 && rt["HOST_RUN"] == 83 && rt["HOST_RELEASE"] == 7 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 27,
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 29,
           "the roles are the recorded shape — vocab 34, host load 30 / settings 55 / bind 93 / run 81 / "
           "release 7, tool interop 0, widget 27 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +

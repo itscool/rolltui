@@ -191,7 +191,8 @@ static std::set<std::string> detect_programs(const std::string& apps_dirs) {
 struct Options {
   bool hidden = true;  // dotfiles shown unless a person turns them off
   Sort sort = Sort::Name;
-  bool motion = true;  // the effects and the column slide; off is a still app
+  bool motion = true;    // the effects and the column slide; off is a still app
+  bool dividers = true;  // a hairline in the margin between columns, in the border colour
   // WHAT ENTER ON A FILE DOES. A folder is always entered. A file is a leaf: an EXECUTABLE goes
   // to the command line typed out, so arguments can follow (a picker never runs anything); a
   // document opens with the program chosen for its TYPE (`open_with`, from what is installed, see
@@ -936,10 +937,46 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       for (int k = 0; k < w; ++k)
         rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx + k, y, 1, 1}, faded(st, ground, keep_at(fx + k)), nullptr, 0);
     };
+    // THE DIVIDER: a hairline in the one-cell margin after this column, the full height, in the
+    // border colour — chrome, so it fades with a clipped column rather than standing over it.
+    // Only between columns: nothing to the right of the last one.
+    if (b->opt->dividers && ci + 1 < b->cols.size()) {
+      const int dx = x + sw;
+      if (dx >= r.x && dx < r.x + r.w) {
+        RolltuiStyle line = S(ROLLTUI_ROLE_BORDER);
+        line.bg = S(ROLLTUI_ROLE_BACKGROUND).bg;
+        const RolltuiStyle ls = clipped ? faded(line, ground, keep_at(dx)) : line;
+        for (int y = r.y; y < r.y + r.h; ++y) rolltui_frame_put_text(f, b->draw_scratch, dx, y, "\xE2\x94\x82", 3, ls, 1, 0, 0);
+        // …AND THIS COLUMN'S OWN THUMB ON IT: the window's arithmetic and the window's capsule,
+        // over the rows (not the head), so every column says where it is scrolled, in place.
+        RolltuiScrollExtent e{};
+        e.first = c.top;
+        e.visible = static_cast<std::size_t>(b->rows_visible());
+        e.total = c.entries.n;
+        RolltuiScrollThumb t{};
+        if (b->rows_visible() > 0 && rolltui_scroll_thumb(&e, b->rows_visible(), &t)) {
+          const RolltuiScrollbarGlyphs* g = rolltui_windows_scrollbar_glyphs(b->windows);
+          const bool wide = false;  // the browser draws at ambiguous width 1 throughout (every put_text above passes 0)
+          RolltuiStyle bar = S(ROLLTUI_ROLE_SCROLLBAR);
+          if (bar.bg.kind == RolltuiStyleColor::Kind::None) bar.bg = ground;
+          const RolltuiStyle bs = clipped ? faded(bar, ground, keep_at(dx)) : bar;
+          for (int i = 0; i < t.length; ++i) {
+            const int y = r.y + 1 + t.offset + i;
+            if (y >= r.y + r.h) break;
+            const char* cell = t.length == 1 ? (wide ? g->ascii_single : g->single)
+                             : i == 0 ? (wide ? g->ascii_top : g->top)
+                             : i == t.length - 1 ? (wide ? g->ascii_bottom : g->bottom)
+                                                 : (wide ? g->ascii_middle : g->middle);
+            if (!cell[0]) cell = wide ? "#" : "\xE2\x96\x88";
+            rolltui_frame_put_text(f, b->draw_scratch, dx, y, cell, std::strlen(cell), bs, 1, wide ? 1 : 0, 0);
+          }
+        }
+      }
+    }
     // The column's own head: the directory's last component, so a deep path stays readable.
     const std::size_t slash = c.dir.find_last_of('/');
     const std::string title = c.dir == "/" ? "/" : c.dir.substr(slash == std::string::npos ? 0 : slash + 1);
-    put_clipped(x, r.y, b->measure.fit(title, cw), head, cw);
+    put_clipped(x + 1, r.y, b->measure.fit(title, cw - 1), head, cw - 1);  // one in, like the rows: " name", never "│name"
     const int rows = b->rows_visible();
     for (int row = 0; row < rows; ++row) {
       const std::size_t i = c.top + static_cast<std::size_t>(row);
@@ -1041,10 +1078,18 @@ void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 }
 
 // Two axes, which is what a column view needs and what the slot's `axis` parameter is for.
+// WHICH COLUMN THE WINDOW'S OWN BAR IS FOR. With dividers on, every column's thumb sits on the
+// line to its right, and the last column's "line to its right" is the window's border — so the
+// border's bar is the LAST column's, and it never hops to wherever the cursor is. With dividers
+// off there is one bar, and it follows the cursor.
+static Column* bar_column(Browser* b) {
+  if (b->opt->dividers) return b->cols.empty() ? nullptr : &b->cols.back();
+  return b->focused();
+}
 int browser_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
-  const Browser* b = static_cast<const Browser*>(ctx);
+  Browser* b = static_cast<Browser*>(ctx);
   if (axis == ROLLTUI_AXIS_VERTICAL) {
-    const Column* c = b->focused();
+    const Column* c = bar_column(b);
     if (!c) return 0;
     out->first = c->top;
     out->visible = static_cast<std::size_t>(b->rows_visible());
@@ -1066,7 +1111,7 @@ int browser_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* ou
 int browser_scroll_to(void* ctx, unsigned char axis, std::size_t first) {
   Browser* b = static_cast<Browser*>(ctx);
   if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
-  Column* c = b->focused();
+  Column* c = bar_column(b);
   if (!c) return 0;
   const int vis = b->rows_visible();
   const std::size_t max_top = c->entries.n > static_cast<std::size_t>(vis)
@@ -1369,6 +1414,7 @@ struct App {
       RolltuiStr err{};
       if (RolltuiJsonValue* root = rolltui_json_parse(t.p ? t.p : "", t.n, &err)) {
         opt.motion = rolltui_json_as_bool(rolltui_json_get(root, "motion", 6), 1) != 0;
+        opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
         opt.hidden = rolltui_json_as_bool(rolltui_json_get(root, "hidden", 6), 1) != 0;
         std::size_t n = 0;
         const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
@@ -1399,7 +1445,8 @@ struct App {
     for (std::size_t i = 1; i <= dir.size(); ++i)
       if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
-    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"hidden\": " << (opt.hidden ? "true" : "false")
+    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
+        << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"leave\": " << (opt.leave ? "true" : "false")
         << ", \"land\": \"" << (opt.land_in_file_folder ? "file" : "start")
         << "\", \"paths\": \"" << (opt.copy_relative ? "relative" : "absolute") << "\", \"open\": {";
@@ -1424,6 +1471,7 @@ struct App {
     rolltui_menu_set_value(m, "sort", 4, sort_name(opt.sort), std::strlen(sort_name(opt.sort)));
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
+    rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
     rolltui_menu_set_checked(m, "leave", 5, opt.leave ? 1 : 0);
     rolltui_menu_set_checked(m, "land", 4, opt.land_in_file_folder ? 1 : 0);
     rolltui_menu_set_checked(m, "relative", 8, opt.copy_relative ? 1 : 0);
@@ -1856,6 +1904,11 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "dividers") {
+        opt.dividers = ev.checked != 0;
+        hint = opt.dividers ? "column dividers on" : "column dividers off";
+        save_settings();
+      }
       rolltui_menu_event_release(&ev);
       return;
     }

@@ -5097,6 +5097,16 @@ void rolltui_content_rect(const RolltuiResolvedNode* rn, RolltuiRect* out);
  * (Widgets.hpp: two windows on one content are two views of one widget). */
 RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content, size_t len);
 
+/* Where a thumb sits and how long it is, in the track's own cells; 0 when no bar should be
+ * drawn at all. The window draws its own bar with this in its border column; a widget that
+ * scrolls several lists at once — a column browser — draws a thumb per list with the same
+ * arithmetic, so the two agree. A pure function: the degenerate sizes are a table test. */
+typedef struct RolltuiScrollThumb {
+  int offset ROLLTUI_DEFAULT(0); /* cells from the track's start */
+  int length ROLLTUI_DEFAULT(0); /* cells, always >= 1 when drawn */
+} RolltuiScrollThumb;
+int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out);
+
 /* THE CURRENT FRAME'S STYLE TABLE, indexed by Role ordinal — a BORROW valid for the length of
  * one `rolltui_windows_draw` call, set at its top from the `styles` it is already handed (the
  * same array `draw_scrollbar` inside this module reads). This is what lets a widget's `draw`
@@ -5105,6 +5115,10 @@ RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content
  * shape one level up, generalised to the one thing every drawing kind needs. NULL outside a
  * draw call. */
 const RolltuiStyle* rolltui_windows_styles(const RolltuiWindows* w);
+/* THE SCROLLBAR GLYPHS the window's own bar is drawn with — the theme's, or the shipped set — so a
+ * widget drawing a thumb of its own draws the same capsule. A BORROW, valid for the session;
+ * with `ambiguous_wide` the window uses the `ascii_*` slots, and so should the widget. */
+const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWindows* w);
 
 /* ---- diff ----------------------------------------------------------------------------------*/
 

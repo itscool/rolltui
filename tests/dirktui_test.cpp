@@ -509,10 +509,10 @@ int main() {
     const std::string narrow = run(base + " --frame 46x10 --keys \"Right\" 2>&1", rc);
     check(rc == 0 && has(narrow, "nested") && has(narrow, "deep.txt"),
           "Right opens the NEW focus's preview at once, so the column to the right is never empty");
-    check(!has(narrow, "\xE2\x94\x82 tree"),
+    check(!has(narrow, "\xE2\x94\x82  tree"),  // a head starts one in, like the rows
           "…and the root column is scrolled partly off the left edge to make room for it");
     const std::string roomy = run(base + " --frame 300x30 --keys \"Right\" 2>&1", rc);
-    check(has(roomy, "\xE2\x94\x82 /"),
+    check(has(roomy, "\xE2\x94\x82  /"),
           "…while a window that fits every column packs them from the left, the file system's root first");
     // The status line is truncated from the right, so its column count is read from a wide frame
     // of the same keys; the narrow frames above are for what is drawn, not for what is counted.
@@ -691,7 +691,30 @@ int main() {
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
     const std::string reopened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
     check(has(reopened, "[ ] Motion"), "…and the box reads back unchecked");
-    run(sbase + " --frame 60x18 --keys \"F2 Down Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // Sort by, its dropdown, the second option
+    // COLUMN DIVIDERS: a hairline in the margin after every column that has a neighbour, on by
+    // default; the checkbox under Motion turns them off, and the frame loses exactly those cells.
+    auto bars = [](const std::string& frame) { std::size_t n = 0, at = 0; while ((at = frame.find("\xE2\x94\x82", at)) != std::string::npos) { ++n; at += 3; } return n; };
+    const std::string with_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Motion, dividers
+    const std::string no_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
+    check(has(read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok), "\"dividers\": false"), "the dividers checkbox is saved");
+    check(bars(with_lines) > bars(no_lines) && bars(with_lines) - bars(no_lines) >= 8,
+          "a line runs the height of the margin between columns, and the checkbox removes it [" + std::to_string(bars(with_lines)) + " vs " + std::to_string(bars(no_lines)) + " bars]");
+    // EVERY COLUMN'S THUMB IS ON ITS OWN DIVIDER, in the window's capsule: a frame too short for
+    // the root and alpha columns shows two more capsules with dividers than without — where the
+    // one bar in the window's border is the focused column's.
+    auto capsules = [](const std::string& frame) {
+      std::size_t n = 0;
+      for (const char* g : {"\xE2\x94\x83", "\xE2\x95\xBB", "\xE2\x95\xB9", "\xE2\x80\xA2"}) { std::size_t at = 0; while ((at = frame.find(g, at)) != std::string::npos) { ++n; at += 3; } }
+      return n;
+    };
+    const std::string short_off = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
+    const std::string short_on = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
+    check(capsules(short_off) > 0 && capsules(short_on) > capsules(short_off),
+          "with dividers, each scrolled column carries its own thumb on its divider; without, one bar in the border [" +
+              std::to_string(capsules(short_on)) + " vs " + std::to_string(capsules(short_off)) + " capsule cells]");
+    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Motion, dividers, Sort by: its dropdown, the second option
     const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");
   }
