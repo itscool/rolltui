@@ -234,6 +234,16 @@ int main() {
     const std::string parent_path = parent.empty() ? parent : parent.substr(0, parent.size() - 1);
     check(status_of(crc) == 0 && fs::is_regular_file(parent_path) && stublines().empty(),
           "…`parent` leaves with the file's path and exit 0 — the shell lands in its folder — and opens nothing");
+    // THE CURSOR REMEMBERS WHERE IT WAS, PER FOLDER: down into alpha, onto one.txt, back out,
+    // over to beta and back to alpha, in again — one.txt is still under the cursor. Into beta
+    // instead, and it is beta's own memory (none yet: its first entry), never alpha's.
+    const std::string back_again = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Right Down Left Down Up Right Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && back_again.find("/alpha/one.txt\n") != std::string::npos,
+          "a folder left and re-entered — even after visiting a sibling — puts the cursor back where it was [" +
+              back_again.substr(back_again.rfind('/') + 1) + "]");
+    const std::string sibling = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Right Down Left Down Right Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && sibling.find("/beta/") != std::string::npos && sibling.find("one.txt") == std::string::npos,
+          "…while a sibling folder entered instead starts on its own first entry, not on alpha's memory");
     const std::string insert = run(with_setting("{ \"file_enter\": \"insert\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && insert.rfind("./alpha/", 0) == 0,
           "…`insert` leaves with the path RELATIVE to where dirk started and exit 3: the verb is the status [" + insert + "]");

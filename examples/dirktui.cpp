@@ -56,6 +56,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "rolltui/rolltui.h"
@@ -347,6 +348,21 @@ struct Browser {
   std::vector<Column> cols;
   std::size_t focus_col = 0;
   std::string root;
+  // WHERE THE CURSOR WAS, PER FOLDER, for the session. A column that opens for a folder the
+  // cursor has been in puts the cursor back on the entry it left — so Left then Right lands
+  // where you were, and so does moving to a sibling and back. Keyed by the folder rather than
+  // by depth, so "no longer valid" needs no stack to pop: another folder is another key, and a
+  // name that is gone falls back to the top. Never written to disk: it is the path of one run.
+  std::unordered_map<std::string, std::string> remembered;
+  void remember(const Column& c) {
+    if (c.sel < c.entries.n) remembered[c.dir] = str_of(c.entries.v[c.sel].name);
+  }
+  void recall(Column& c) const {
+    const auto it = remembered.find(c.dir);
+    if (it == remembered.end()) return;
+    for (std::size_t i = 0; i < c.entries.n; ++i)
+      if (str_of(c.entries.v[i].name) == it->second) { c.sel = i; return; }
+  }
   // THE HORIZONTAL SCROLL IS ONE NUMBER: where column 0's left edge sits relative to the inner
   // rect, in cells, never positive. The ANCHOR RULE picks its target: when every column fits,
   // nothing scrolls and the columns pack from the left; otherwise the column to the RIGHT of the
@@ -502,6 +518,8 @@ struct Browser {
     c.dir = selected_path();
     read_dir(c.dir, *opt, c);
     measure_width(c);
+    recall(c);
+    clamp_scroll(c);
     cols.push_back(std::move(c));
   }
 
@@ -614,6 +632,7 @@ struct Browser {
     at = std::max<long long>(0, std::min<long long>(at, static_cast<long long>(c->entries.n) - 1));
     if (static_cast<std::size_t>(at) != c->sel) eye_moved();
     c->sel = static_cast<std::size_t>(at);
+    remember(*c);
     clamp_scroll(*c);
     open_selected();
     retarget();
@@ -623,6 +642,7 @@ struct Browser {
     if (!c || i >= c->entries.n) return;
     if (i != c->sel) eye_moved();
     c->sel = i;
+    remember(*c);
     clamp_scroll(*c);
     open_selected();
     retarget();
