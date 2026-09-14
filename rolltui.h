@@ -1282,8 +1282,8 @@ typedef struct RolltuiMenuItemList {
 
 #define ROLLTUI_MENU_INPUT 4
 
-/* A SECTION is a heading over the rows below it — its label, then a rule to the edge; a
- * SEPARATOR is the rule alone. They say how a level is organised and nothing else: neither
+/* A SECTION is a heading over the rows below it — its label, then a rule to the edge, with a
+ * blank row before it unless it is the level's first row; a SEPARATOR is the rule alone. They say how a level is organised and nothing else: neither
  * takes the cursor or a click, matches a typed filter, or appears in a palette. File keys:
  * `"kind": "section"` with a `label`, `"kind": "separator"`. */
 #define ROLLTUI_MENU_SECTION 5

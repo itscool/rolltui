@@ -822,6 +822,10 @@ static int contains_ci(const char* hay, size_t hn, const char* needle, size_t nn
  * a tool, and a row that appeared in all of those would be the widget writing into someone
  * else's file. The visible list is the widget's own, which is where a widget's own row belongs. */
 #define BACK_ROW ((size_t)-1)
+/* A BLANK ROW before a section that is not the level's first row: a heading straight under the
+ * previous section's last row reads as part of it. The gap is a row of the visible list that
+ * stands for no item, like the back row, and takes no cursor and no click. */
+#define GAP_ROW ((size_t)-2)
 
 static int has_back(const RolltuiMenu* m) { return !m->palette && m->path_n > 0; }
 
@@ -867,8 +871,10 @@ static size_t build_visible(RolltuiMenu* m) {
     for (i = 0; i < lv->children.n; ++i) {
       /* A filtered level is a list of hits; a heading over none of them would be a lie. */
       if (m->filter.n && divider(lv->children.v[i])) continue;
-      if (contains_ci(lv->children.v[i]->label.p, lv->children.v[i]->label.n, m->filter.p, m->filter.n))
+      if (contains_ci(lv->children.v[i]->label.p, lv->children.v[i]->label.n, m->filter.p, m->filter.n)) {
+        if (lv->children.v[i]->kind == ROLLTUI_MENU_SECTION && m->vis_n > first_child_row(m)) vis_push(m, GAP_ROW);
         vis_push(m, i);
+      }
     }
   }
   return m->vis_n;
@@ -886,7 +892,7 @@ size_t rolltui_menu_visible(const RolltuiMenu* m, const size_t** out) {
 static RolltuiMenuItem* item_at(RolltuiMenu* m, size_t vis_index) {
   const size_t n = build_visible(m);
   if (vis_index >= n) return NULL;
-  if (m->vis[vis_index] == BACK_ROW) return NULL;
+  if (m->vis[vis_index] == BACK_ROW || m->vis[vis_index] == GAP_ROW) return NULL;
   if (m->palette) {
     const FlatEntry* e = &m->flat[m->vis[vis_index]];
     return by_path(m, e->path, e->path_n);
@@ -907,6 +913,7 @@ static int selectable_row(RolltuiMenu* m, size_t vis) {
   const RolltuiMenuItem* it;
   if (vis >= build_visible(m)) return 0;
   if (m->vis[vis] == BACK_ROW) return 1;
+  if (m->vis[vis] == GAP_ROW) return 0;
   it = item_at(m, vis);
   return it != NULL && !divider(it);
 }
@@ -1887,6 +1894,15 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     RolltuiStyle base;
     RolltuiRect row_rect;
     if (i >= vis_n) break;
+    if (m->vis[i] == GAP_ROW) {
+      RolltuiRect gap_rect;
+      gap_rect.x = x0;
+      gap_rect.y = y + r;
+      gap_rect.w = w;
+      gap_rect.h = 1;
+      rolltui_frame_fill(f, draw, gap_rect, styles[roles->item], NULL, 0);
+      continue;
+    }
     if (m->vis[i] == BACK_ROW) {
       RolltuiRect back_rect;
       const RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut];

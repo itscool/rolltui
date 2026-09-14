@@ -1255,9 +1255,9 @@ int main() {
     check(rolltui_menu_selected(m) == 1, "a level that opens under a heading puts the cursor on the first row below it (" + std::to_string(rolltui_menu_selected(m)) + ")");
     rolltui_menu_handle(m, &down, b, A, &ev);
     rolltui_menu_handle(m, &down, b, A, &ev);
-    check(rolltui_menu_selected(m) == 5, "Down over a separator and a heading lands on the next real row (" + std::to_string(rolltui_menu_selected(m)) + ")");
+    check(rolltui_menu_selected(m) == 6, "Down over a separator, the gap and a heading lands on the next real row (" + std::to_string(rolltui_menu_selected(m)) + ")");
     rolltui_menu_handle(m, &down, b, A, &ev);
-    check(rolltui_menu_selected(m) == 5, "…and stays at the last real row");
+    check(rolltui_menu_selected(m) == 6, "…and stays at the last real row");
     rolltui_menu_handle(m, &up, b, A, &ev);
     check(rolltui_menu_selected(m) == 2, "Up back over both lands on the row above them");
     rolltui_menu_handle(m, &end, b, A, &ev);
@@ -1270,7 +1270,8 @@ int main() {
       check(row(f, 0).rfind("General \xE2\x94\x80\xE2\x94\x80", 0) == 0 && row(f, 0).size() > 20, "a section draws its label and a rule to the edge [" + row(f, 0) + "]");
       check(row(f, 3).find("\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80") == 0 && row(f, 3).find("Motion") == std::string::npos,
             "a separator is a rule alone [" + row(f, 3) + "]");
-      check(row(f, 4).rfind("Open with \xE2\x94\x80", 0) == 0, "the second section likewise [" + row(f, 4) + "]");
+      check(row(f, 4).empty() && row(f, 5).rfind("Open with \xE2\x94\x80", 0) == 0,
+            "the second section has a blank row before it, the first section none [" + row(f, 4) + "|" + row(f, 5) + "]");
     }
     // a click on a divider is not a click on anything
     RolltuiEvent click{};
