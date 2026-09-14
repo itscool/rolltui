@@ -377,6 +377,9 @@ void rolltui_terminal_wake(RolltuiTerminal* t) {
   (void)r;
 }
 
+void rolltui_terminal_suspend(RolltuiTerminal* t) { term_leave(t); }
+void rolltui_terminal_resume(RolltuiTerminal* t) { term_enter(t, 0); /* the handlers, if asked for, are installed */ }
+
 const char* rolltui_terminal_enter_sequence(const RolltuiTerminal* t, size_t* len) {
   *len = t->enter_len;
   return t->enter_seq;

@@ -4873,6 +4873,13 @@ const RolltuiFrame* rolltui_swap_front(const RolltuiSwap* s);
  * negotiates the keyboard protocol before returning, exactly as the C++ constructor did.
  * Never returns NULL: an allocation failure aborts inside rolltui::mem. */
 RolltuiTerminal* rolltui_terminal_new(int in_fd, int out_fd, RolltuiTerminalOptions opts);
+/* HANDS THE TERMINAL TO ANOTHER PROGRAM AND TAKES IT BACK. `suspend` leaves the alternate screen
+ * and restores the tty's own modes exactly as `free` does, freeing nothing; `resume` enters again
+ * — raw mode, the alternate screen, the keyboard protocol. Between the two a child may run on the
+ * same descriptors: an editor, a pager. What was on the screen is gone when it returns, so the
+ * host redraws whole (`rolltui_swap_invalidate`). Both are no-ops when already in that state. */
+void rolltui_terminal_suspend(RolltuiTerminal* t);
+void rolltui_terminal_resume(RolltuiTerminal* t);
 
 /* Restores the terminal (see rolltui_terminal_restore_now) and releases everything `t` holds. */
 void rolltui_terminal_free(RolltuiTerminal* t);

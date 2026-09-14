@@ -101,6 +101,9 @@ int main() {
   fs::create_directories(tree / "beta");
   write_file(tree / "zeta.txt", "zeta\n");
   write_file(tree / "beta" / "a-quite-long-name-so-this-preview-is-wide.txt", "wide preview\n");
+  write_file(tree / "beta" / "data.bin", std::string("\x00\x01\x02", 3));  // a type nobody listed
+  write_file(tree / "beta" / "page.html", "<p>hi</p>\n");               // web: the browser's
+  write_file(tree / "beta" / "tool.py", "print(1)\n");                    // code, not executable
   write_file(tree / ".hidden", "dot\n");
   write_file(tree / "\xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E.txt", "wide\n");              // CJK: two cells a glyph
   write_file(tree / "cafe\xCC\x81.txt", "combining\n");                                  // e + U+0301
@@ -204,7 +207,7 @@ int main() {
     const fs::path stub = scratch / "stub";
     fs::create_directories(stub);
     const fs::path stublog = scratch / "stub.log";
-    write_file(stub / "opener", "#!/bin/sh\nprintf 'open %s\\n' \"$1\" >> '" + stublog.string() + "'\n");
+    write_file(stub / "opener", "#!/bin/sh\nprintf 'ran %s\\n' \"$*\" >> '" + stublog.string() + "'\n");
     write_file(stub / "clip", "#!/bin/sh\n{ printf 'clip '; cat; printf '\\n'; } >> '" + stublog.string() + "'\n");
     chmod((stub / "opener").c_str(), 0755);
     chmod((stub / "clip").c_str(), 0755);
@@ -216,43 +219,85 @@ int main() {
       write_file(cfg / "rolltui" / "dirktui" / "settings.json", json);
       return "ROLL_CONFIG_DIR='" + cfg.string() + "' " + stubs + bin + " '" + here + "'" + presets + " --theme default-dark";
     };
+    // WHAT IS INSTALLED IS A FIXTURE: a PATH holding a `nvim` and a `code`, and an applications
+    // directory holding a TextEdit — or a PATH holding nothing. The stand-in opener records the
+    // COMMAND it stood in for, so "opened with Neovim" is a line saying `nvim <path>`.
+    const fs::path fakebin = scratch / "fakebin";
+    fs::create_directories(fakebin);
+    for (const char* exe : {"nvim", "code"}) {
+      write_file(fakebin / exe, "#!/bin/sh\nexit 0\n");
+      chmod((fakebin / exe).c_str(), 0755);
+    }
+    const fs::path apps = scratch / "apps";
+    fs::create_directories(apps / "TextEdit.app");
+    const std::string editors = "PATH='" + fakebin.string() + "' ";
+    const std::string no_editors = "PATH='" + (scratch / "nowhere").string() + "' ";
+    const std::string apps_flag = " --apps '" + apps.string() + "'";
+    const std::string no_apps_flag = " --apps '" + (scratch / "noapps").string() + "'";
     // THE CONTROL FIRST: a headless run with NO stand-in named reaches no real opener — it says so
     // on the status line and the log stays empty — so a test can never put a window on a screen.
     const std::string bare_env = "ROLL_CONFIG_DIR='" + (scratch / "file-enter-cfg").string() + "' ";
     fs::create_directories(scratch / "file-enter-cfg" / "rolltui" / "dirktui");
     write_file(scratch / "file-enter-cfg" / "rolltui" / "dirktui" / "settings.json", "{}");
-    const std::string unopened = run(bare_env + bin + " '" + here + "'" + presets + " --theme default-dark --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string unopened = run(editors + bare_env + bin + " '" + here + "'" + presets + " --theme default-dark --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     check(has(unopened, "could not open") && stublines().empty(),
           "a headless run with no stand-in opener opens NOTHING and says so — the control that keeps a test off the screen");
-    const std::string stay = run(with_setting("{}") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
-    const std::string stay_log = stublines();
-    check(status_of(crc) == 0 && has(stay, "go to") && has(stay_log, "open ") && has(stay_log, ".txt"),
-          "Enter on a DOCUMENT, by default, opens it and stays: a frame is drawn and the opener was handed the file [" +
-              stay_log.substr(0, 40) + "]");
-    // …AND A SCRIPT GOES TO THE COMMAND LINE, never to an opener: exit 3 with its path, so arguments
-    // can follow; with the landing set to the file's folder, exit 4 with the file's absolute path.
-    const std::string script = run(with_setting("{}") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+    // A DOCUMENT OPENS WITH THE PROGRAM CHOSEN FOR ITS TYPE, FROM WHAT IS INSTALLED, and the
+    // cursor stays. Text: the first editor of the type's preference found on PATH.
+    const std::string txt = run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string txt_log = stublines();
+    check(status_of(crc) == 0 && has(txt, "go to") && txt_log.rfind("ran nvim ", 0) == 0 && has(txt_log, ".txt"),
+          "Enter on a text file opens it with the editor found first — Neovim — and stays: a frame is drawn [" + txt_log.substr(0, 40) + "]");
+    run(no_editors + with_setting("{}") + no_apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
+    const std::string bare_log = stublines();
+    check(bare_log.rfind("ran open ", 0) == 0 && has(bare_log, ".txt"), "…with no editor installed, with the system opener [" + bare_log.substr(0, 30) + "]");
+    // beta: a-quite…txt, data.bin, page.html, tool.py — Down Right enters it on the first
+    run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"Down Right Down Down Down Enter\" >/dev/null 2>&1", crc);
+    const std::string py_log = stublines();
+    check(py_log.rfind("ran code ", 0) == 0 && has(py_log, "tool.py"),
+          "…a source file opens with the CODE group's first choice — Visual Studio Code over Neovim, both installed [" + py_log.substr(0, 40) + "]");
+    run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"Down Right Down Down Enter\" >/dev/null 2>&1", crc);
+    const std::string html_log = stublines();
+    check(html_log.rfind("ran open ", 0) == 0 && has(html_log, "page.html"),
+          "…a web page goes to the system opener — the browser — even with editors installed");
+    const std::string unknown = run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"Down Right Down Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && has(unknown, "/beta/data.bin\n") && stublines().empty(),
+          "…and a type nobody listed goes to the command line (exit 3), opened by nothing");
+    // THE CHOICE IS THE PERSON'S, PER TYPE — the setting `open` names a program per group.
+    run(editors + with_setting("{ \"open\": { \"text\": \"system\" } }") + apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
+    check(stublines().rfind("ran open ", 0) == 0, "the setting picks the program for a type: text to the system opener although Neovim is installed");
+    run(editors + with_setting("{ \"open\": { \"text\": \"textedit\" } }") + apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
+    const std::string app_log = stublines();
+    check(app_log.rfind("ran open -a TextEdit ", 0) == 0, "…an application found in the applications directory runs through `open -a` [" + app_log.substr(0, 30) + "]");
+    const std::string to_shell = run(editors + with_setting("{ \"open\": { \"text\": \"shell\" } }") + apps_flag + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && has(to_shell, ".txt\n") && stublines().empty(), "…and 'the command line' hands the file to the shell instead, exit 3");
+    run(no_editors + with_setting("{ \"open\": { \"text\": \"nvim\" } }") + no_apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
+    check(stublines().rfind("ran open ", 0) == 0, "a chosen program that is not installed any more falls back to the type's default, never to nothing");
+    // THE MENU OFFERS WHAT WAS FOUND, per type, with the choice shown.
+    const std::string menu = run(editors + with_setting("{}") + apps_flag + " --frame 100x24 --keys \"F2\" 2>/dev/null", crc);
+    check(has(menu, "Open with") && has(menu, "Neovim") && has(menu, "Visual Studio Code") && has(menu, "General") && has(menu, "Enter on a file"),
+          "F2: the settings are three sections, and the open-with rows show the program chosen from what is installed");
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 100x24 --keys \"F2 Down Down Down Down Down Down Enter\" 2>/dev/null", crc);  // dotfiles, motion, sort, leave, land, relative, Text — then its dropdown
+    check(has(bare_menu, "the system opener") && !has(bare_menu, "Neovim") && has(bare_menu, "the command line"),
+          "…and with nothing installed a type's dropdown offers the system opener and the command line, nothing invented");
+    // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
+    // arguments can follow; with the landing set to the file's folder, exit 4 with the absolute path.
+    const std::string script = run(editors + with_setting("{}") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && script.find("/alpha/run.sh\n") != std::string::npos && stublines().empty(),
-          "…while Enter on a SCRIPT, by default, hands it to the command line (exit 3) and opens nothing [" + script.substr(script.rfind('/') + 1) + "]");
-    const std::string script_rel = run(with_setting("{ \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+          "Enter on an EXECUTABLE hands it to the command line (exit 3) and opens nothing, whatever its type [" + script.substr(script.rfind('/') + 1) + "]");
+    const std::string script_rel = run(with_setting("{ \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && script_rel == "./alpha/run.sh\n", "…relative to where dirk started when the path setting says so");
-    const std::string script_at = run(with_setting("{ \"insert_at\": \"file\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+    const std::string script_at = run(with_setting("{ \"land\": \"file\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 4 && script_at.find("/alpha/run.sh\n") != std::string::npos,
           "…and with the landing set to the file's folder, exit 4 with the absolute path for the shell to cd beside");
-    const std::string leave = run(with_setting("{ \"file_enter\": \"open_leave\" }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
-    const std::string leave_log = stublines();
-    check(status_of(crc) == 1 && leave.empty() && has(leave_log, "open "), "…`open_leave` opens it and leaves with nothing printed, exit 1");
-    const std::string parent = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
-    const std::string parent_path = parent.empty() ? parent : parent.substr(0, parent.size() - 1);
-    check(status_of(crc) == 0 && fs::is_regular_file(parent_path) && stublines().empty(),
-          "…`parent` leaves with the file's path and exit 0 — the shell lands in its folder — and opens nothing");
-    // A DOUBLE-CLICK IS ENTER ON THAT ROW: the same file, opened by the mouse, hands its path over
+    // LEAVE: every file goes to the command line, a document included.
+    const std::string leave = run(editors + with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && has(leave, ".txt\n") && stublines().empty(), "`leave` on: Enter on a document leaves with it on the command line too, opening nothing");
+    // A DOUBLE-CLICK IS ENTER ON THAT ROW: the same file, chosen by the mouse, hands its path over
     // exactly as Enter does; a single click only selects it.
-    // The row's cell is read off the frame, since where alpha's column sits depends on how many
-    // ancestors the fixture's own path has.
     int cx = -1, cy = -1;
     {
-      const std::string frame = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 2>/dev/null", crc);
+      const std::string frame = run(with_setting("{ \"leave\": true }") + " --frame 80x20 2>/dev/null", crc);
       std::istringstream in(frame);
       std::string l;
       for (int y = 0; std::getline(in, l); ++y) {
@@ -261,20 +306,20 @@ int main() {
       }
     }
     const std::string where = std::to_string(cx) + "," + std::to_string(cy);
-    const std::string dbl = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"DblClick " + where + "\" 2>/dev/null", crc);
-    check(cx > 0 && status_of(crc) == 0 && dbl.find("/alpha/one.txt\n") != std::string::npos,
+    const std::string dbl = run(with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"DblClick " + where + "\" 2>/dev/null", crc);
+    check(cx > 0 && status_of(crc) == 3 && dbl.find("/alpha/one.txt\n") != std::string::npos,
           "a double-click on a row is Enter on it [" + dbl.substr(dbl.rfind('/') + 1) + " at " + where + "]");
-    const std::string single = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Click " + where + "\" 2>/dev/null", crc);
+    const std::string single = run(with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"Click " + where + "\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && has(single, "go to"), "…while a single click only selects: the frame is still up");
     // THE CURSOR REMEMBERS WHERE IT WAS, PER FOLDER: down into alpha, onto one.txt, back out,
     // over to beta and back to alpha, in again — one.txt is still under the cursor. Into beta
     // instead, and it is beta's own memory (none yet: its first entry), never alpha's.
-    const std::string back_again = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Right Down Left Down Up Right Enter\" 2>/dev/null", crc);
-    check(status_of(crc) == 0 && back_again.find("/alpha/one.txt\n") != std::string::npos,
+    const std::string back_again = run(with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"Right Down Left Down Up Right Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && back_again.find("/alpha/one.txt\n") != std::string::npos,
           "a folder left and re-entered — even after visiting a sibling — puts the cursor back where it was [" +
               back_again.substr(back_again.rfind('/') + 1) + "]");
-    const std::string sibling = run(with_setting("{ \"file_enter\": \"parent\" }") + " --frame 80x20 --keys \"Right Down Left Down Right Enter\" 2>/dev/null", crc);
-    check(status_of(crc) == 0 && sibling.find("/beta/") != std::string::npos && sibling.find("one.txt") == std::string::npos,
+    const std::string sibling = run(with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"Right Down Left Down Right Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 3 && sibling.find("/beta/") != std::string::npos && sibling.find("one.txt") == std::string::npos,
           "…while a sibling folder entered instead starts on its own first entry, not on alpha's memory");
     // A DEEP START SEEDS THE MEMORY: the ancestors' selections the walk made count as visits, so
     // Left out of the start folder and Right again is back on it — beta, the SECOND entry of
@@ -284,9 +329,9 @@ int main() {
     check(status_of(crc) == 0 && deep_back == (tree / "beta").string() + "\n",
           "started deep, Left twice and Right again lands on the start folder, not on its parent's first entry [" +
               deep_back.substr(deep_back.rfind('/') + 1) + "]");
-    const std::string insert = run(with_setting("{ \"file_enter\": \"insert\", \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
+    const std::string insert = run(with_setting("{ \"leave\": true, \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right End Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && insert.rfind("./alpha/", 0) == 0,
-          "…`insert` leaves with the path for the command line — relative here, by the path setting — and exit 3: the verb is the status [" + insert + "]");
+          "…`leave` with relative paths leaves with `./alpha/…` for the command line and exit 3: the verb is the status [" + insert + "]");
 
     // COPY: `c` puts the path on the clipboard, absolute by default; the Option chord inverts
     // the setting, and the setting inverts the chord.
@@ -295,9 +340,9 @@ int main() {
     check(abs_log.rfind("clip /", 0) == 0 && has(abs_log, "/alpha/"), "c copies the absolute path [" + abs_log.substr(0, 30) + "]");
     run(with_setting("{}") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
     check(stublines().rfind("clip ./alpha/", 0) == 0, "…Alt-c copies it relative to where dirk started: the inverse of the setting");
-    run(with_setting("{ \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End c\" >/dev/null 2>&1", crc);
+    run(with_setting("{ \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right End c\" >/dev/null 2>&1", crc);
     check(stublines().rfind("clip ./alpha/", 0) == 0, "…with the setting on relative, c copies relative");
-    run(with_setting("{ \"copy_path\": \"relative\" }") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
+    run(with_setting("{ \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
     check(stublines().rfind("clip /", 0) == 0, "…and Alt-c then copies the absolute path");
     const std::string empty = run(home_env + bin + " '" + (tree / "empty-dir").string() + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && empty == (tree / "empty-dir").string() + "\n",
@@ -600,7 +645,7 @@ int main() {
     const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
     check(has(opened, "settings") && has(opened, "[x] Motion") && has(opened, "[x] Show dotfiles") && has(opened, "Sort by"),
           "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles on)");
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);
+    run(sbase + " --frame 60x18 --keys \"F2 Down Enter\" >/dev/null 2>&1", mrc);  // the cursor opens on the first row under the heading: dotfiles; Down is Motion
     bool ok = false;
     const std::string saved = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(saved, "\"motion\": false"), "toggling Motion writes the settings file [" + saved.substr(0, 60) + "]");
@@ -611,13 +656,9 @@ int main() {
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
     const std::string reopened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
     check(has(reopened, "[ ] Motion"), "…and the box reads back unchecked");
-    run(sbase + " --frame 60x14 --keys \"F2 Enter Down Enter\" >/dev/null 2>&1", mrc);
+    run(sbase + " --frame 60x18 --keys \"F2 Down Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // Sort by, its dropdown, the second option
     const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");
-    const std::string at_alpha = run(env + bin + " '" + (tree / "alpha").string() + "'" + presets + " --theme default-dark --frame 200x12 2>/dev/null", mrc);
-    const std::string parent = run(env + bin + " '" + (tree / "alpha").string() + "'" + presets + " --theme default-dark --frame 200x12 --keys \"F2 End Enter\" 2>/dev/null", mrc);
-    check(column_of(parent).first == column_of(at_alpha).first - 1 && has(parent, "alpha"),
-          "\"Go to the parent\" moves the focus one column left, the folder we came from still selected");
   }
 
   // ---- THE SLIDE, at the script's clock: a moment into it the columns are between ---------------

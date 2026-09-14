@@ -54,6 +54,8 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -83,22 +85,118 @@ constexpr const char* kBrowserDescribes = "a column view of a directory tree";
 // and hands it over here (wall 1 in the phase file).
 enum class Sort { Name, Size, Modified };
 
+// ---- WHAT OPENS WHAT: known software, detected, chosen per type ----------------------------
+// A document is opened by a PROGRAM chosen for its TYPE GROUP. The programs are a table of known
+// software; which of them exist on this machine is detected once at start (a command on PATH, or
+// an application bundle in the applications directories), and the settings menu offers, per
+// group, exactly what was found — plus the system opener, always, and "the command line", which
+// is not opening at all. A person's choice is kept per group; a choice that is no longer
+// installed falls back to the group's default rather than to nothing. No environment variable
+// is read for any of this: $EDITOR names one program for every type, and that is the question
+// this table exists to answer per type.
+struct Program {
+  const char* id;
+  const char* label;
+  const char* exe;   // a command on PATH, or (`mac_app`) an application bundle's name
+  const char* arg;   // one fixed argument before the file, or NULL
+  bool terminal;     // takes the terminal over: dirktui steps aside and comes back when it exits
+  bool mac_app;      // runs through `open -a`
+};
+static const Program kPrograms[] = {
+    {"nvim", "Neovim", "nvim", nullptr, true, false},
+    {"vim", "Vim", "vim", nullptr, true, false},
+    {"hx", "Helix", "hx", nullptr, true, false},
+    {"micro", "micro", "micro", nullptr, true, false},
+    {"nano", "nano", "nano", nullptr, true, false},
+    {"emacs", "Emacs (in the terminal)", "emacs", "-nw", true, false},
+    {"less", "less", "less", nullptr, true, false},
+    {"code", "Visual Studio Code", "code", nullptr, false, false},
+    {"zed", "Zed", "zed", nullptr, false, false},
+    {"subl", "Sublime Text", "subl", nullptr, false, false},
+    {"textedit", "TextEdit", "TextEdit", nullptr, false, true},
+    {"preview", "Preview", "Preview", nullptr, false, true},
+};
+static constexpr const char* kSystemProgram = "system";  // the platform's opener: `open`, `xdg-open`
+static constexpr const char* kShellProgram = "shell";    // not opened: handed to the command line
+struct TypeGroup {
+  const char* id;
+  const char* label;
+  const char* exts;    // space-separated, lower-case
+  const char* prefer;  // program ids in the order the group's DEFAULT is picked from what is installed
+};
+static const TypeGroup kGroups[] = {
+    {"text", "Text (txt, md, json, log…)",
+     "txt md markdown rst log csv tsv json yaml yml toml ini cfg conf xml rtf tex",
+     "nvim hx micro code zed subl vim nano emacs textedit less system"},
+    {"code", "Code (py, js, c, sh…)",
+     "py rb js ts tsx jsx mjs c cc cpp cxx h hpp hh m mm swift go rs java kt scala lua sql php pl sh bash zsh fish cmake mk",
+     "code zed subl nvim hx micro vim nano emacs textedit system"},
+    {"web", "Web (html, svg, css)", "html htm svg css", "system code zed subl nvim hx micro vim"},
+    {"docs", "Pictures, PDFs, media and office files",
+     "pdf png jpg jpeg gif webp bmp tiff heic mp3 wav m4a mp4 mov m4v doc docx xls xlsx ppt pptx pages numbers key epub",
+     "system preview"},
+};
+static const Program* program_named(const std::string& id) {
+  for (const Program& p : kPrograms) if (id == p.id) return &p;
+  return nullptr;
+}
+static bool word_in(const char* list, const std::string& word) {
+  std::istringstream in(list);
+  std::string w;
+  while (in >> w) if (w == word) return true;
+  return false;
+}
+static const TypeGroup* group_of(const std::string& name) {
+  const std::size_t dot = name.rfind('.');
+  if (dot == std::string::npos || dot + 1 >= name.size()) return nullptr;
+  std::string ext = name.substr(dot + 1);
+  for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  for (const TypeGroup& g : kGroups) if (word_in(g.exts, ext)) return &g;
+  return nullptr;
+}
+// Which known programs are installed: a command on PATH, or a bundle under one of `apps_dirs`
+// (colon-separated). Read once; the answer is the menu's contents.
+static std::set<std::string> detect_programs(const std::string& apps_dirs) {
+  std::set<std::string> out;
+  std::vector<std::string> path, apps;
+  auto split = [](const char* s, std::vector<std::string>& into) {
+    std::string cur;
+    for (const char* p = s ? s : ""; ; ++p) {
+      if (*p == ':' || *p == '\0') { if (!cur.empty()) into.push_back(cur); cur.clear(); if (!*p) break; }
+      else cur += *p;
+    }
+  };
+  split(std::getenv("PATH"), path);
+  split(apps_dirs.c_str(), apps);
+  for (const Program& p : kPrograms) {
+    bool found = false;
+    if (p.mac_app) {
+      for (const std::string& d : apps) {
+        struct stat st{};
+        if (stat((d + "/" + p.exe + ".app").c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { found = true; break; }
+      }
+    } else {
+      for (const std::string& d : path)
+        if (access((d + "/" + p.exe).c_str(), X_OK) == 0) { found = true; break; }
+    }
+    if (found) out.insert(p.id);
+  }
+  return out;
+}
+
 struct Options {
   bool hidden = true;  // dotfiles shown unless a person turns them off
   Sort sort = Sort::Name;
   bool motion = true;  // the effects and the column slide; off is a still app
-  // WHAT ENTER ON A FILE DOES. A folder is always entered; a file is a leaf, and what a person
-  // wants from it is a setting. `OpenStay` is the default: try to open it and stay here.
-  // `Smart` is the default: a known DOCUMENT type opens and the cursor stays; anything else — a
-  // script, a binary, a type nobody listed — goes to the command line typed out, so arguments can
-  // follow. A picker never runs anything; it hands the shell a line to run.
-  enum class FileEnter { Smart, OpenStay, OpenLeave, Parent, Insert };
-  FileEnter file_enter = FileEnter::Smart;
-  bool copy_relative = false;  // paths handed out (copy, the command line): relative to where dirk started, or absolute
-  // Where the command line lands when a file goes to it: where dirk started, or in the file's
-  // own folder with `./name` — exit 3 and exit 4 respectively, on the shell side.
-  enum class InsertAt { Start, File };
-  InsertAt insert_at = InsertAt::Start;
+  // WHAT ENTER ON A FILE DOES. A folder is always entered. A file is a leaf: an EXECUTABLE goes
+  // to the command line typed out, so arguments can follow (a picker never runs anything); a
+  // document opens with the program chosen for its TYPE (`open_with`, from what is installed, see
+  // `kGroups`); a type nobody listed goes to the command line too. `leave` overrides all of it:
+  // every file goes to the command line, and the cursor leaves with it.
+  bool leave = false;
+  bool land_in_file_folder = false;  // the command line lands in the file's folder with `./name` (exit 4), else where dirk started (exit 3)
+  bool copy_relative = false;        // paths handed out (copy, the command line): relative to where dirk started, or absolute
+  std::map<std::string, std::string> open_with;  // type group id -> program id; absent means the group's own default
   const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
   // THE STATES THE BROWSER MARKS WITH — this app's own, registered by name on the session so a
   // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
@@ -1257,16 +1355,6 @@ struct App {
   // app's own facts (sort, dotfiles, motion), and a theme is a look shared by every host.
   static std::string settings_dir() { return user_presets_dir() + "/dirktui"; }
   static const char* sort_name(Sort s) { return s == Sort::Name ? "name" : s == Sort::Size ? "size" : "modified"; }
-  static const char* file_enter_name(Options::FileEnter f) {
-    return f == Options::FileEnter::OpenLeave ? "open_leave" : f == Options::FileEnter::Parent ? "parent"
-         : f == Options::FileEnter::Insert  ? "insert"     : f == Options::FileEnter::OpenStay ? "open_stay" : "smart";
-  }
-  static Options::FileEnter file_enter_of(const std::string& s) {
-    return s == "open_leave" ? Options::FileEnter::OpenLeave : s == "parent" ? Options::FileEnter::Parent
-         : s == "insert"     ? Options::FileEnter::Insert    : s == "open_stay" ? Options::FileEnter::OpenStay
-                                                            : Options::FileEnter::Smart;
-  }
-  static const char* insert_at_name(Options::InsertAt a) { return a == Options::InsertAt::File ? "file" : "start"; }
   void load_settings(const char* argv0) {
     RolltuiStr t{};
     if (rolltui_app_file(argv0, "dirktui", "settings", nullptr, 0, &t, nullptr)) {
@@ -1278,12 +1366,17 @@ struct App {
         const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
         const std::string sort(sv, n);
         opt.sort = sort == "size" ? Sort::Size : sort == "modified" ? Sort::Modified : Sort::Name;
-        const char* fv = rolltui_json_as_string(rolltui_json_get(root, "file_enter", 10), "smart", 5, &n);
-        opt.file_enter = file_enter_of(std::string(fv, n));
-        const char* av = rolltui_json_as_string(rolltui_json_get(root, "insert_at", 9), "start", 5, &n);
-        opt.insert_at = std::string(av, n) == "file" ? Options::InsertAt::File : Options::InsertAt::Start;
-        const char* cv = rolltui_json_as_string(rolltui_json_get(root, "copy_path", 9), "absolute", 8, &n);
+        opt.leave = rolltui_json_as_bool(rolltui_json_get(root, "leave", 5), 0) != 0;
+        const char* lv = rolltui_json_as_string(rolltui_json_get(root, "land", 4), "start", 5, &n);
+        opt.land_in_file_folder = std::string(lv, n) == "file";
+        const char* cv = rolltui_json_as_string(rolltui_json_get(root, "paths", 5), "absolute", 8, &n);
         opt.copy_relative = std::string(cv, n) == "relative";
+        opt.open_with.clear();
+        if (const RolltuiJsonValue* open = rolltui_json_get(root, "open", 4))  // Null when absent: every lookup below is then empty
+          for (const TypeGroup& g : kGroups) {
+            const char* pv = rolltui_json_as_string(rolltui_json_get(open, g.id, std::strlen(g.id)), "", 0, &n);
+            if (n) opt.open_with[g.id] = std::string(pv, n);
+          }
         rolltui_json_free(root);
       } else {
         std::fprintf(stderr, "dirktui: settings file: %s (defaults kept)\n", err.c_str());
@@ -1299,9 +1392,15 @@ struct App {
       if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
     out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"hidden\": " << (opt.hidden ? "true" : "false")
-        << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"file_enter\": \"" << file_enter_name(opt.file_enter)
-        << "\", \"insert_at\": \"" << insert_at_name(opt.insert_at)
-        << "\", \"copy_path\": \"" << (opt.copy_relative ? "relative" : "absolute") << "\" }\n";
+        << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"leave\": " << (opt.leave ? "true" : "false")
+        << ", \"land\": \"" << (opt.land_in_file_folder ? "file" : "start")
+        << "\", \"paths\": \"" << (opt.copy_relative ? "relative" : "absolute") << "\", \"open\": {";
+    bool first = true;
+    for (const auto& [group, prog] : opt.open_with) {
+      out << (first ? " " : ", ") << '"' << group << "\": \"" << prog << '"';
+      first = false;
+    }
+    out << (first ? "" : " ") << "} }\n";
     if (!out) hint = "could not write " + dir + "/settings.json";
   }
 
@@ -1317,12 +1416,54 @@ struct App {
     rolltui_menu_set_value(m, "sort", 4, sort_name(opt.sort), std::strlen(sort_name(opt.sort)));
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
-    const char* fe = file_enter_name(opt.file_enter);
-    rolltui_menu_set_value(m, "file_enter", 10, fe, std::strlen(fe));
-    const char* cp = opt.copy_relative ? "relative" : "absolute";
-    rolltui_menu_set_value(m, "copy_path", 9, cp, std::strlen(cp));
-    const char* ia = insert_at_name(opt.insert_at);
-    rolltui_menu_set_value(m, "insert_at", 9, ia, std::strlen(ia));
+    rolltui_menu_set_checked(m, "leave", 5, opt.leave ? 1 : 0);
+    rolltui_menu_set_checked(m, "land", 4, opt.land_in_file_folder ? 1 : 0);
+    rolltui_menu_set_checked(m, "relative", 8, opt.copy_relative ? 1 : 0);
+    // THE "OPEN WITH" CHOICES ARE FILLED HERE, not in the file: their options are what this
+    // machine has. The skeleton (one choice per type group) is the file's; the contents are
+    // what `detect_programs` found, the same move roll makes with its preset listings.
+    for (const TypeGroup& g : kGroups) {
+      const std::string id = std::string("open_") + g.id;
+      RolltuiMenuItemList options{};
+      for (const auto& [pid, label] : options_for(g)) {
+        RolltuiMenuItem* o = rolltui_menu_list_add(&options);
+        rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, pid.c_str(), pid.size(), label.c_str(), label.size(), nullptr, 0);
+      }
+      rolltui_menu_set_options(m, id.c_str(), id.size(), &options);
+      rolltui_menu_list_release(&options);
+      const std::string cur = program_for(g);
+      rolltui_menu_set_value(m, id.c_str(), id.size(), cur.c_str(), cur.size());
+    }
+  }
+  // What the menu offers for a group: the installed programs in the group's own order, the
+  // system opener, then the command line — and what is chosen, which is the setting when it is
+  // still on offer and the first offer otherwise.
+  std::set<std::string> installed;  // program ids found on this machine
+  std::vector<std::pair<std::string, std::string>> options_for(const TypeGroup& g) const {
+    std::vector<std::pair<std::string, std::string>> out;
+    std::istringstream in(g.prefer);
+    std::string id;
+    while (in >> id) {
+      if (id == kSystemProgram) continue;
+      if (const Program* p = program_named(id); p && installed.count(id)) out.emplace_back(id, p->label);
+    }
+    out.emplace_back(kSystemProgram, "the system opener");
+    out.emplace_back(kShellProgram, "the command line (not opened)");
+    return out;
+  }
+  std::string program_for(const TypeGroup& g) const {
+    const auto offered = options_for(g);
+    if (const auto it = opt.open_with.find(g.id); it != opt.open_with.end())
+      for (const auto& [pid, label] : offered) if (pid == it->second) return pid;
+    // the default: the first of the group's preferences that is installed; `system` is always
+    std::istringstream in(g.prefer);
+    std::string id;
+    while (in >> id) if (id == kSystemProgram || installed.count(id)) return id;
+    return kSystemProgram;
+  }
+  static std::string program_label(const std::string& id) {
+    if (const Program* p = program_named(id)) return p->label;
+    return id == kSystemProgram ? "the system opener" : id;
   }
 
   void mount() {
@@ -1454,10 +1595,11 @@ struct App {
 
   // Once after each batch of events: did the browser end the session, or ask for a copy?
   // An accept on a FOLDER (or on an empty column, which is what the eye is on) leaves with its
-  // path. An accept on a FILE does what the `file_enter` setting says — and only `Parent` and
-  // `Insert` leave, the two that hand the shell something to do. THE EXIT STATUS IS THE VERB:
-  // 0 means "go there", 3 means "put this on the command line"; a path's shape is never read
-  // to guess which, because a relative path and an absolute one are both valid answers to both.
+  // path. An accept on a FILE: to the command line when `leave` says so, when it is executable,
+  // when its type is nobody's, or when the type's program is "the command line"; otherwise it
+  // opens with that program and the cursor stays. THE EXIT STATUS IS THE VERB: 0 means "go
+  // there", 3 means "put this on the command line", 4 "beside it, then ./name"; a path's shape
+  // is never read to guess which.
   void settle() {
     Browser* b = browser();
     if (!b) return;
@@ -1465,21 +1607,15 @@ struct App {
       b->accepted = false;
       const RolltuiDirEntry* e = b->selected();
       const std::string path = b->selected_path();
+      const std::string name = e ? str_of(e->name) : std::string();
       if (!e || b->selected_is_folder()) { chosen = path; exit_code = 0; quit = true; }
-      else switch (opt.file_enter) {
-        case Options::FileEnter::Smart:
-          if (is_document(str_of(e->name))) {
-            if (open_path(path)) { hint = "opened " + str_of(e->name); b->file_opened(); }
-            else hint = "could not open " + str_of(e->name);
-          } else to_command_line(path);
-          break;
-        case Options::FileEnter::OpenStay:
-          if (open_path(path)) { hint = "opened " + str_of(e->name); b->file_opened(); }
-          else hint = "could not open " + str_of(e->name);
-          break;
-        case Options::FileEnter::OpenLeave: open_path(path); exit_code = 1; quit = true; break;
-        case Options::FileEnter::Parent: chosen = path; exit_code = 0; quit = true; break;
-        case Options::FileEnter::Insert: to_command_line(path); break;
+      else if (opt.leave || is_executable(path)) to_command_line(path);
+      else {
+        const TypeGroup* g = group_of(name);
+        const std::string prog = g ? program_for(*g) : std::string(kShellProgram);
+        if (prog == kShellProgram) to_command_line(path);
+        else if (open_with(prog, path)) { hint = "opened " + name + " with " + program_label(prog); b->file_opened(); }
+        else hint = "could not open " + name + " with " + program_label(prog);
       }
     } else if (b->cancelled) quit = true;
     if (b->copy_requested) {
@@ -1500,28 +1636,18 @@ struct App {
   }
 
   // ---- what a file IS, for Enter --------------------------------------------------------------
-  // A known document type opens; everything else goes to the command line. An ALLOWLIST rather
-  // than a list of what not to open, because the failure the list guards against — handing a
-  // script to an opener that runs it — is the one that must not happen for a type nobody
-  // thought of. Lower-case, by extension.
-  static bool is_document(const std::string& name) {
-    static const char* const kDocs[] = {"txt", "md", "markdown", "rst", "html", "htm", "css", "json", "xml", "yaml", "yml",
-                                        "toml", "ini", "cfg", "conf", "log", "csv", "tsv", "pdf", "png", "jpg", "jpeg",
-                                        "gif", "svg", "webp", "bmp", "tiff", "heic", "mp3", "wav", "m4a", "mp4", "mov",
-                                        "m4v", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers",
-                                        "key", "epub"};
-    const std::size_t dot = name.rfind('.');
-    if (dot == std::string::npos || dot + 1 >= name.size()) return false;
-    std::string ext = name.substr(dot + 1);
-    for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-    for (const char* d : kDocs) if (ext == d) return true;
-    return false;
+  // An executable is never handed to an opener: the failure that must not happen — a script run
+  // by the program that was meant to show it — is decided by the file's own bit, not by a list
+  // of names. What a document opens with is `group_of` + `program_for`.
+  static bool is_executable(const std::string& path) {
+    struct stat st{};
+    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && access(path.c_str(), X_OK) == 0;
   }
   // A file to the command line: exit 3 with the path as the path setting says (from where dirk
   // started), or exit 4 with the file's absolute path for the shell to `cd` beside and type
-  // `./name` — the setting `insert_at` decides which.
+  // `./name` — the setting `land` decides which.
   void to_command_line(const std::string& path) {
-    if (opt.insert_at == Options::InsertAt::File) { chosen = path; exit_code = 4; }
+    if (opt.land_in_file_folder) { chosen = path; exit_code = 4; }
     else { chosen = opt.copy_relative ? relative_to_start(path) : path; exit_code = 3; }
     quit = true;
   }
@@ -1551,10 +1677,9 @@ struct App {
     return out.rfind("..", 0) == 0 ? out : "./" + out;
   }
 
-  // THE OPENER: `$DIRK_OPEN`, else the platform's. Spawned with its three streams on /dev/null,
-  // so nothing it prints lands on the screen dirk is drawing.
+  // THE SYSTEM OPENER: the platform's. A stand-in (`$DIRK_OPEN`) is put in front of the whole
+  // command by `open_with`, never substituted here, so the stand-in sees "open <path>".
   static const char* opener() {
-    if (const char* o = std::getenv("DIRK_OPEN"); o && *o) return o;
 #ifdef __APPLE__
     return "open";
 #else
@@ -1565,18 +1690,58 @@ struct App {
   // a test that presses Enter on a file must not put a window on someone's screen or a path on
   // their clipboard: without a stand-in named in the environment, both are refused and said.
   static bool headless;
-  static bool open_path(const std::string& path) {
-    if (headless && !std::getenv("DIRK_OPEN")) return false;
+  // THE TERMINAL AND THE SCREEN, for a program that takes the terminal over: set by main once
+  // there is a terminal; NULL in a headless run, where such a program is never launched.
+  RolltuiTerminal* term = nullptr;
+  RolltuiSwap* swap = nullptr;
+  int tty_fd = -1;
+  // Opens `path` with the program `id`. A program that takes the terminal over runs on this
+  // process's own tty with dirktui stepped aside, and the screen is redrawn whole when it
+  // returns; any other returns at once (`open`, `code`, a stand-in). With `$DIRK_OPEN` set the
+  // stand-in is run INSTEAD, handed the command it would have been — so a test sees "nvim
+  // <path>" without a Neovim, and nothing takes the terminal over.
+  bool open_with(const std::string& id, const std::string& path) {
+    const char* stand_in = std::getenv("DIRK_OPEN");
+    if (stand_in && !*stand_in) stand_in = nullptr;
+    if (headless && !stand_in) return false;
+    std::vector<std::string> cmd;
+    const Program* p = program_named(id);
+    if (id == kSystemProgram) cmd = {opener(), path};
+    else if (!p) return false;
+    else if (p->mac_app) cmd = {"open", "-a", p->exe, path};
+    else {
+      cmd = {p->exe};
+      if (p->arg) cmd.push_back(p->arg);
+      cmd.push_back(path);
+    }
+    const bool takes_terminal = p && p->terminal && !stand_in;
+    if (stand_in) cmd.insert(cmd.begin(), stand_in);
+    if (takes_terminal && (!term || tty_fd < 0)) return false;
+    std::vector<const char*> argv;
+    for (const std::string& a : cmd) argv.push_back(a.c_str());
+    argv.push_back(nullptr);
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-    const char* argv[] = {opener(), path.c_str(), nullptr};
+    if (takes_terminal) {
+      // The editor gets the terminal itself, not the pipe `$(dirk)` is reading this process's
+      // stdout through: all three streams on the tty.
+      posix_spawn_file_actions_adddup2(&fa, tty_fd, 0);
+      posix_spawn_file_actions_adddup2(&fa, tty_fd, 1);
+      posix_spawn_file_actions_adddup2(&fa, tty_fd, 2);
+      rolltui_terminal_suspend(term);
+    } else {
+      posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+      posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+      posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
+    }
     pid_t pid = 0;
-    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv), environ);
+    const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv.data()), environ);
     posix_spawn_file_actions_destroy(&fa);
-    if (rc == 0) waitpid(pid, nullptr, 0);  // `open` and `xdg-open` return at once; a stand-in likewise
+    if (rc == 0) waitpid(pid, nullptr, 0);
+    if (takes_terminal) {
+      rolltui_terminal_resume(term);
+      if (swap) rolltui_swap_invalidate(swap);  // the editor's screen is gone; draw ours whole
+    }
     return rc == 0;
   }
   // THE CLIPBOARD: `$DIRK_CLIPBOARD`, else the platform's, fed the text on stdin.
@@ -1665,24 +1830,24 @@ struct App {
       if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "sort") {
         const std::string v(ev.value.p ? ev.value.p : "", ev.value.n);
         set_sort(v == "size" ? Sort::Size : v == "modified" ? Sort::Modified : Sort::Name);
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "file_enter") {
-        opt.file_enter = file_enter_of(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
-        hint = std::string("enter on a file: ") + file_enter_name(opt.file_enter);
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id.rfind("open_", 0) == 0) {
+        opt.open_with[id.substr(5)] = std::string(ev.value.p ? ev.value.p : "", ev.value.n);
+        hint = id.substr(5) + " opens with " + program_label(opt.open_with[id.substr(5)]);
         save_settings();
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "insert_at") {
-        opt.insert_at = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "file" ? Options::InsertAt::File : Options::InsertAt::Start;
-        hint = opt.insert_at == Options::InsertAt::File ? "command line: in the file's folder, ./name" : "command line: where dirk started";
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "leave") {
+        opt.leave = ev.checked != 0;
+        hint = opt.leave ? "enter on a file: leave with it on the command line" : "enter on a file: open it, stay here";
         save_settings();
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "copy_path") {
-        opt.copy_relative = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "relative";
-        hint = opt.copy_relative ? "copy: relative to where dirk started" : "copy: absolute path";
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "land") {
+        opt.land_in_file_folder = ev.checked != 0;
+        hint = opt.land_in_file_folder ? "command line: in the file's folder, ./name" : "command line: where dirk started";
+        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "relative") {
+        opt.copy_relative = ev.checked != 0;
+        hint = opt.copy_relative ? "paths: relative to where dirk started" : "paths: absolute";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
-      else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "parent") {
-        if (Browser* b = browser()) b->out();
-        rolltui_window_stack_pop(stack);
-      }
       rolltui_menu_event_release(&ev);
       return;
     }
@@ -1797,7 +1962,9 @@ int usage() {
   std::fprintf(stderr,
                "usage: dirktui [PATH] [--ambiguous-wide]   browse from PATH (default: the current directory)\n"
                "                                           Enter on a folder prints it on stdout and exits 0;\n"
-               "                                           on a file it does what the settings say (F2);\n"
+               "                                           on a file: a document opens with the program chosen\n"
+               "                                           for its type (F2: from what is installed); a script,\n"
+               "                                           a binary or an unknown type goes to the command line;\n"
                "                                           exit 3: put the printed path on the command line;\n"
                "                                           exit 4: into the printed file's folder, then ./name\n"
                "                                           Esc prints nothing and exits 1\n"
@@ -1806,7 +1973,7 @@ int usage() {
                "                                           fish: dirktui init fish | source\n"
 #ifdef ROLLTUI_SELFTEST
                "       [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
-               "       [--frame WxH] [--keys \"Down Right CtrlD\"]\n"
+               "       [--frame WxH] [--keys \"Down Right CtrlD\"] [--apps DIR[:DIR]]\n"
 #endif
                );
   return 2;
@@ -2062,6 +2229,7 @@ int main(int argc, char** argv) {
   bool ambiguous = false;
   [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] std::string frame_spec, keys_spec;
+  std::string apps_dirs = std::string("/Applications:") + (std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications";  // where application bundles live
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
@@ -2085,6 +2253,7 @@ int main(int argc, char** argv) {
     else if (a == "--theme") theme_arg = next();
     else if (a == "--frame") frame_spec = next();
     else if (a == "--keys") keys_spec = next();
+    else if (a == "--apps") apps_dirs = next();  // where application bundles are looked for, instead of /Applications
     else
 #endif
     if (!a.empty() && a[0] != '-' && start.empty()) start = a;
@@ -2106,6 +2275,7 @@ int main(int argc, char** argv) {
       app.menu_json.assign(m.p ? m.p : "", m.n);
     rolltui_str_free(&m);
     app.load_settings(argv[0]);  // before the browser exists: it reads sort and dotfiles as it opens
+    app.installed = detect_programs(apps_dirs);
   }
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");
@@ -2314,6 +2484,9 @@ int main(int argc, char** argv) {
   app.w = rolltui_terminal_width(term);
   app.h = rolltui_terminal_height(term);
   RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
+  app.term = term;   // for a program that takes the terminal over
+  app.swap = swap;
+  app.tty_fd = tty;
   RolltuiStr out{};
   struct Pending {
     std::vector<RolltuiEvent> events;

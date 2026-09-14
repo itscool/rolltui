@@ -138,6 +138,16 @@ int main() {
     termios tio{};
     check(tcgetattr(slave, &tio) == 0 && !(tio.c_lflag & ICANON) && !(tio.c_lflag & ECHO) && !(tio.c_lflag & ISIG),
           "raw mode: ICANON, ECHO and ISIG off (Ctrl-C is a key)");
+    // HANDING THE TERMINAL TO A CHILD AND TAKING IT BACK: suspend is leave without free — the
+    // tty is cooked again and the alternate screen left — and resume is enter again.
+    rolltui_terminal_suspend(t);
+    got = read_until(master, leave, 500);
+    check(got.find("\x1b[?1049l") != std::string::npos && tcgetattr(slave, &tio) == 0 && (tio.c_lflag & ICANON) && (tio.c_lflag & ECHO),
+          "suspend: the alternate screen is left and the tty is cooked, for a child to use");
+    rolltui_terminal_resume(t);
+    got = read_until(master, enter, 500);
+    check(got.find("\x1b[?1049h") != std::string::npos && tcgetattr(slave, &tio) == 0 && !(tio.c_lflag & ICANON),
+          "resume: the alternate screen and raw mode are back");
     (void)!::write(master, "\x1b[A", 3);
     check(names(t, 500) == "Up", "bytes on the master decode to Up");
     (void)!::write(master, "\x1b", 1);

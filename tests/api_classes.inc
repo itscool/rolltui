@@ -1090,6 +1090,8 @@ ROLLTUI_API(rolltui_mem_stats, PUBLIC)
 /* ---- rolltui_terminal.h — the one fd; default PUBLIC ------------------------------------- */
 ROLLTUI_API(rolltui_terminal_enter_sequence, INTERNAL)  /* an escape sequence the library writes itself */
 ROLLTUI_API(rolltui_terminal_free, PUBLIC)
+ROLLTUI_API(rolltui_terminal_suspend, PUBLIC)  /* a host runs an editor on its own terminal and comes back: dirktui */
+ROLLTUI_API(rolltui_terminal_resume, PUBLIC)   /* the other half of that pair */
 ROLLTUI_API(rolltui_terminal_height, PUBLIC)
 ROLLTUI_API(rolltui_terminal_is_tty, PUBLIC)
 ROLLTUI_API(rolltui_terminal_key_protocol, INTERNAL)  /* an escape sequence the library writes itself */

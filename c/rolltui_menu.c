@@ -1978,7 +1978,16 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
       row_text(m, it, m->palette, i, &line, &split);
       if (!m->palette) {
         if (it->kind == ROLLTUI_MENU_CHOICE) {
-          rolltui_str_append_str(&right, &it->value);
+          /* The answer as the option SAYS it — its label — and the raw value only when no
+           * option carries it (a value set from a file that names none of them). */
+          const RolltuiStr* shown = &it->value;
+          size_t k;
+          for (k = 0; k < it->children.n; ++k)
+            if (it->children.v[k]->label.n && rolltui_str_eq(&it->children.v[k]->id, it->value.p, it->value.n)) {
+              shown = &it->children.v[k]->label;
+              break;
+            }
+          rolltui_str_append_str(&right, shown);
           str_add(&right, " \xE2\x96\xB8");
         } else if (it->kind == ROLLTUI_MENU_SUBMENU) {
           str_add(&right, "\xE2\x96\xB8");

@@ -5,16 +5,16 @@
 │ │ (blocks →    │             │              │ │ size       80x24             │
 │ │ styled       │  ╭ menu › Appearance › Theme ───────────╮ 173/191           │
 │ │ wrapped      │  │ ◂ Back                               ╻ yes               │
-│ │ lines)       │  │ default   colour-vision safe         ┃ truecolor         │
-│ │ Theme (roles │ b│ beacon   high contrast               ┃ menu              │
+│ │ lines)       │  │ default           colour-vision safe ┃ truecolor         │
+│ │ Theme (roles │ b│ beacon                 high contrast ┃ menu              │
 │ │ → styles,    │  │ catppuccin                           ┃                   │
-│ │ JSON loader, │  │ contrast   high contrast             ┃                   │
-│ │ built-ins)   │  │ • default-dark   colour-vision safe  ┃                   │
-│ └──────────────┴──│ default-light   colour-vision safe   ┃                   │
-│                   │ ember   colour-vision safe           ┃                   │
-│ Here is the functi│ harbour   colour-vision safe         ╹                   │
-│                   │ ink   colour-vision safe             │                   │
-│ ┌ cpp ────────────│ mono   monochrome                  ▼ │                   │
+│ │ JSON loader, │  │ contrast               high contrast ┃                   │
+│ │ built-ins)   │  │ • default-dark    colour-vision safe ┃                   │
+│ └──────────────┴──│ default-light     colour-vision safe ┃                   │
+│                   │ ember             colour-vision safe ┃                   │
+│ Here is the functi│ harbour           colour-vision safe ╹                   │
+│                   │ ink               colour-vision safe │                   │
+│ ┌ cpp ────────────│ mono                      monochrom▼ │                   │
 │ │ int add(int a, i╰──────────────────────────────────────╯                   │
 │ │   return a + b;                           │ ╻                              │
 │ └───────────────────────────────────────────┘ ╹                              │

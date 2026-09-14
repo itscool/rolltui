@@ -5,7 +5,7 @@
 │ │ (blocks →    │             │              │ │ size       80x24             │
 │ │ styled       │  ╭ menu › … ────────────────────────────╮ 173/191           │
 │ │ wrapped      │  │ menu › …  /mono                      │ yes               │
-│ │ lines)       │  │ Appearance › Theme › mono   monochro │ truecolor         │
+│ │ lines)       │  │ Appearance › Theme › mono            │ truecolor         │
 │ │ Theme (roles │ b│ Appearance › Colour depth › mono     │ menu              │
 │ │ → styles,    │  │                                      │                   │
 │ │ JSON loader, │  │                                      │                   │

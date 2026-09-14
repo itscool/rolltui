@@ -919,11 +919,12 @@ struct App {
           }
         }
         if (!p.shipped) note = note.empty() ? "yours" : note + " · yours";
-        themes.push_back(RolltuiMenuItem::action(name.c_str(),
-                                                (note.empty() ? name : name + "   " + note).c_str()));
+        // The note rides in the SHORTCUT column, right-aligned and muted, so the option's label is
+        // its name alone — which is what the choice row shows as its value once one is chosen.
+        themes.push_back(RolltuiMenuItem::action(name.c_str(), name.c_str(), note.c_str()));
       }
     }
-    if (lstore) { lstore->list(ll); for (const RolltuiPresetInfo& p : ll) layouts.push_back(RolltuiMenuItem::action(std::string(str_of(p.name)).c_str(), std::string(str_of(p.name) + (p.shipped ? "" : "  (yours)")).c_str())); }
+    if (lstore) { lstore->list(ll); for (const RolltuiPresetInfo& p : ll) layouts.push_back(RolltuiMenuItem::action(std::string(str_of(p.name)).c_str(), std::string(str_of(p.name)).c_str(), p.shipped ? "" : "yours")); }
     rolltui_menu_set_options(menu(), "theme", 5, &themes);
     rolltui_menu_set_options(menu(), "layout", 6, &layouts);
     set_menu_value("theme", store ? store->label() : "");
