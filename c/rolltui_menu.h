@@ -135,7 +135,6 @@ void rolltui_menu_free(RolltuiMenu* m);
 
 void rolltui_menu_set_root(RolltuiMenu* m, const RolltuiMenuItem* root); /* by COPY; also resets */
 
-int rolltui_menu_set_checked(RolltuiMenu* m, const char* id, size_t len, int checked);
 
 const RolltuiMenuItem* rolltui_menu_level(const RolltuiMenu* m);
 const RolltuiMenuItem* rolltui_menu_selected_item(const RolltuiMenu* m);

@@ -58,6 +58,9 @@
     ],
     "browser.cancel": [
       "escape"
+    ],
+    "app.menu": [
+      "f2"
     ]
   }
 }

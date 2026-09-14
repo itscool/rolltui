@@ -79,6 +79,7 @@ enum class Sort { Name, Size, Modified };
 struct Options {
   bool hidden = false;
   Sort sort = Sort::Name;
+  bool motion = true;  // the effects and the column slide; off is a still app
   const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
   // THE STATES THE BROWSER MARKS WITH — this app's own, registered by name on the session so a
   // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
@@ -375,7 +376,7 @@ struct Browser {
     }
     if (target == scroll_target) return;
     scroll_target = target;
-    if (now_ms == 0) { scroll_x = target; scrolling = false; return; }  // headless: no motion
+    if (now_ms == 0 || !opt->motion) { scroll_x = target; scrolling = false; return; }  // headless, or motion off: no slide
     scroll_from = scroll_x;
     scroll_start_ms = now_ms;
     scrolling = true;
@@ -709,6 +710,8 @@ RolltuiWidget browser_factory(void* ctx, RolltuiWindows* /*w*/, const char* cont
 
 namespace {
 
+std::string user_presets_dir();  // defined below, with the file loaders
+
 // ---- the app ---------------------------------------------------------------------------
 // APP LIFETIME, RELEASED IN ONE DESTRUCTOR — paint's shape, and for its reason: none of these
 // is per-frame, so no wrapper type earns its place. A missed release leaks once and
@@ -748,7 +751,7 @@ struct App {
   int poll_timeout_ms(const RolltuiFrame* f, int idle) {
     Browser* b = browser();
     int want = b && b->scrolling ? 16 : idle;
-    if (f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
+    if (opt.motion && f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       const int tick = rolltui_effects_tick_ms(ctx, f, effects);
       if (tick > 0 && tick < want) want = tick;
     }
@@ -764,6 +767,8 @@ struct App {
   // kinds a theme may name. Registered before any theme loads, because the vocabulary a theme
   // file is read against (`rolltui_theme_vocab`) is built from what has been registered.
   std::string effects_json;  // the app's mapping file, state -> kind + role; merged onto every theme
+  std::string menu_json;     // the app's settings menu, a file like the rest of its screen
+  bool menu_dirty = false;   // the settings popup was just opened: its boxes need the live values
   App() {
     layout = rolltui_layout_new();
     rolltui_context_set_library_defaults(ctx);
@@ -867,8 +872,58 @@ struct App {
   }
 
   static const std::vector<std::string>& help_scopes() {
-    static const std::vector<std::string> s = {"app", "browser", "input", "stack"};
+    static const std::vector<std::string> s = {"app", "browser", "input", "menu", "stack"};
     return s;
+  }
+
+  // ---- THE SETTINGS FILE: what a person chose, kept between runs ------------------------------
+  // `<config>/rolltui/dirktui/settings.json`, three fields, written whole on every change and
+  // read once at start through rung 3 of the app's files. Not the theme store: these are this
+  // app's own facts (sort, dotfiles, motion), and a theme is a look shared by every host.
+  static std::string settings_dir() { return user_presets_dir() + "/dirktui"; }
+  static const char* sort_name(Sort s) { return s == Sort::Name ? "name" : s == Sort::Size ? "size" : "modified"; }
+  void load_settings(const char* argv0) {
+    RolltuiStr t{};
+    if (rolltui_app_file(argv0, "dirktui", "settings", nullptr, 0, &t, nullptr)) {
+      RolltuiStr err{};
+      if (RolltuiJsonValue* root = rolltui_json_parse(t.p ? t.p : "", t.n, &err)) {
+        opt.motion = rolltui_json_as_bool(rolltui_json_get(root, "motion", 6), 1) != 0;
+        opt.hidden = rolltui_json_as_bool(rolltui_json_get(root, "hidden", 6), 0) != 0;
+        std::size_t n = 0;
+        const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
+        const std::string sort(sv, n);
+        opt.sort = sort == "size" ? Sort::Size : sort == "modified" ? Sort::Modified : Sort::Name;
+        rolltui_json_free(root);
+      } else {
+        std::fprintf(stderr, "dirktui: settings file: %s (defaults kept)\n", err.c_str());
+      }
+      rolltui_str_free(&err);
+    }
+    rolltui_str_free(&t);
+  }
+  void save_settings() {
+    const std::string dir = settings_dir();
+    std::string made;
+    for (std::size_t i = 1; i <= dir.size(); ++i)
+      if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
+    std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
+    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"hidden\": " << (opt.hidden ? "true" : "false")
+        << ", \"sort\": \"" << sort_name(opt.sort) << "\" }\n";
+    if (!out) hint = "could not write " + dir + "/settings.json";
+  }
+
+  // The settings popup's boxes, set from the live values the moment the popup exists — which is
+  // after the frame's sync has built its widget, so this runs from `prepare()`. The window is
+  // found through the FOCUS, never by a name this source would otherwise have to carry.
+  void sync_menu() {
+    const RolltuiLayoutNode* n = rolltui_window_stack_focused(stack);
+    std::size_t len = 0;
+    const char* id = n ? rolltui_layout_node_id(n, &len) : nullptr;
+    RolltuiMenu* m = id ? rolltui_windows_menu_at(windows, id, len) : nullptr;
+    if (!m) return;
+    rolltui_menu_set_value(m, "sort", 4, sort_name(opt.sort), std::strlen(sort_name(opt.sort)));
+    rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
+    rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
   }
 
   void mount() {
@@ -877,6 +932,7 @@ struct App {
     register_browser_kind();
     rolltui_context_register_kind(ctx, kBrowserKind, std::strlen(kBrowserKind), browser_factory, &factory_ctx,
                                   nullptr);
+    if (!menu_json.empty()) rolltui_context_add_menu(ctx, "places", 6, menu_json.data(), menu_json.size());
     rolltui_windows_bind_rows(windows, "entry", 5, entry_rows, this, nullptr);
     rolltui_windows_bind_submit(windows, "path", 4, on_submit, this, nullptr, /*on_submit=*/0);
     rolltui_windows_bind_note(windows, "path", 4, path_note, this, nullptr);
@@ -985,6 +1041,7 @@ struct App {
     if (Browser* b = browser()) b->now_ms = now_ms;
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
+    if (menu_dirty) { sync_menu(); menu_dirty = false; }
     rolltui_windows_autosize(windows, stack, area());
     rolltui_windows_layout(windows, stack, area());
     note.clear();
@@ -1033,13 +1090,30 @@ struct App {
     // A panel this screen declares is the library's to open — see
     // `rolltui_window_stack_action_popup`. `details`, `help`, `theme` and `keys` are four lines
     // this file does not have.
-    else if (rolltui_window_stack_action_popup(stack, layout, action.data(), action.size())) {}
-    else if (action == "app.hidden") { opt.hidden = !opt.hidden; if (b) b->reload(); hint = opt.hidden ? "dotfiles shown" : "dotfiles hidden"; }
-    else if (action == "app.sort") {
-      opt.sort = opt.sort == Sort::Name ? Sort::Size : opt.sort == Sort::Size ? Sort::Modified : Sort::Name;
-      if (b) b->reload();
-      hint = std::string("sorted by ") + (opt.sort == Sort::Name ? "name" : opt.sort == Sort::Size ? "size" : "modified");
+    else if (rolltui_window_stack_action_popup(stack, layout, action.data(), action.size())) {
+      if (action == "app.menu") menu_dirty = true;
     }
+    else if (action == "app.hidden") set_hidden(!opt.hidden);
+    else if (action == "app.sort") set_sort(opt.sort == Sort::Name ? Sort::Size : opt.sort == Sort::Size ? Sort::Modified : Sort::Name);
+  }
+
+  // The three settings, each changed in ONE place whether a chord or the menu asked, and saved.
+  void set_hidden(bool on) {
+    opt.hidden = on;
+    if (Browser* b = browser()) b->reload();
+    hint = opt.hidden ? "dotfiles shown" : "dotfiles hidden";
+    save_settings();
+  }
+  void set_sort(Sort s) {
+    opt.sort = s;
+    if (Browser* b = browser()) b->reload();
+    hint = std::string("sorted by ") + sort_name(opt.sort);
+    save_settings();
+  }
+  void set_motion(bool on) {
+    opt.motion = on;
+    hint = on ? "motion on" : "motion off";
+    save_settings();
   }
 
   void handle(const RolltuiEvent& e) {
@@ -1057,6 +1131,24 @@ struct App {
     const std::string target(window.c_str(), window.size());
     rolltui_str_free(&window);
     if (kind != ROLLTUI_ROUTE_DELIVER) return;
+    // The settings menu is the host's to drive, BEFORE the window table sees the event — the
+    // menu widget would otherwise consume the key and the host would never learn what was chosen.
+    if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
+      RolltuiMenuEvent ev{};
+      rolltui_menu_handle(m, &e, bindings, rolltui_menu_default_actions(), &ev);
+      const std::string id(ev.id.p ? ev.id.p : "", ev.id.n);
+      if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "sort") {
+        const std::string v(ev.value.p ? ev.value.p : "", ev.value.n);
+        set_sort(v == "size" ? Sort::Size : v == "modified" ? Sort::Modified : Sort::Name);
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
+      else if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "parent") {
+        if (Browser* b = browser()) { while (b->focus_col > 0) b->out(); b->out(); root = b->root; }
+        rolltui_window_stack_pop(stack);
+      }
+      rolltui_menu_event_release(&ev);
+      return;
+    }
     rolltui_windows_handle(windows, target.data(), target.size(), &e);
   }
 
@@ -1107,7 +1199,7 @@ struct App {
   void apply_effects(RolltuiFrame* f) {
     last_fx = RolltuiEffectReport{};
     last_marks = rolltui_frame_mark_count(f);
-    if (last_marks == 0 || !effects || rolltui_effect_map_empty(effects)) return;
+    if (!opt.motion || last_marks == 0 || !effects || rolltui_effect_map_empty(effects)) return;
     rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, now_ms, ambiguous, &last_fx, nullptr, nullptr);
   }
 };
@@ -1428,6 +1520,11 @@ int main(int argc, char** argv) {
     if (rolltui_app_file(argv[0], "dirktui", "effects", dirktui_kAppFiles, dirktui_kAppFileCount, &t, nullptr))
       app.effects_json.assign(t.p ? t.p : "", t.n);
     rolltui_str_free(&t);
+    RolltuiStr m{};
+    if (rolltui_app_file(argv[0], "dirktui", "menu", dirktui_kAppFiles, dirktui_kAppFileCount, &m, nullptr))
+      app.menu_json.assign(m.p ? m.p : "", m.n);
+    rolltui_str_free(&m);
+    app.load_settings(argv[0]);  // before the browser exists: it reads sort and dotfiles as it opens
   }
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");
@@ -1578,6 +1675,9 @@ int main(int argc, char** argv) {
         app.now_ms = st.ms;
         if (st.tick) { moving = true; continue; }
         app.handle(st.ev);
+        // A FRAME BETWEEN EVENTS, as the live loop has: a popup opened by one key has its widget
+        // built at the next sync, and the key after must find it there.
+        app.prepare();
       }
       if (!moving) app.now_ms = 0;
       app.settle();

@@ -32,7 +32,6 @@ int rolltui_json_is_string(const RolltuiJsonValue* v);
 int rolltui_json_is_array(const RolltuiJsonValue* v);
 int rolltui_json_is_object(const RolltuiJsonValue* v);
 
-const char* rolltui_json_as_string(const RolltuiJsonValue* v, const char* def, size_t def_len, size_t* out_len);
 double rolltui_json_as_number(const RolltuiJsonValue* v, double def);
 
 int rolltui_json_has(const RolltuiJsonValue* v, const char* key, size_t key_len);

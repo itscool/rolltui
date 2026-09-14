@@ -853,7 +853,7 @@ ROLLTUI_API(rolltui_menu_scroll_first, INTERNAL)  /* a step of the menu widget *
 ROLLTUI_API(rolltui_menu_scroll_visible, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_selected, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 ROLLTUI_API(rolltui_menu_selected_item, INTERNAL)
-ROLLTUI_API(rolltui_menu_set_checked, INTERNAL)
+ROLLTUI_API(rolltui_menu_set_checked, PUBLIC)  /* the third plain setter: a host opens its menu with a toggle set from its own saved setting (dirktui) */
 ROLLTUI_API(rolltui_menu_set_enabled, PUBLIC)
 ROLLTUI_API(rolltui_menu_set_options, PUBLIC)
 ROLLTUI_API(rolltui_menu_set_options_struct, INTERNAL)
@@ -972,7 +972,7 @@ ROLLTUI_API(rolltui_json_array_push, PUBLIC)
 ROLLTUI_API(rolltui_json_array_size, PUBLIC)  /* KEPT: matching part — `rolltui_json_array_push` is host-suite-reached — an array you can build and not read back is a hole */
 ROLLTUI_API(rolltui_json_as_bool, PUBLIC)  /* KEPT: matching part — `rolltui_json_get` is host-suite-reached and returns a value only an `_as_*` can read */
 ROLLTUI_API(rolltui_json_as_number, INTERNAL)
-ROLLTUI_API(rolltui_json_as_string, INTERNAL)
+ROLLTUI_API(rolltui_json_as_string, PUBLIC)  /* a host reads a string from its own settings file (dirktui): the matching read for a value only an `_as_*` can read */
 ROLLTUI_API(rolltui_json_bool, INTERNAL)  /* the JSON API's constructors */
 ROLLTUI_API(rolltui_json_clone, PUBLIC)
 ROLLTUI_API(rolltui_json_dump, PUBLIC)

@@ -1668,6 +1668,7 @@ int rolltui_json_is_number(const RolltuiJsonValue* v);
 
 /* Typed reads with defaults; never fail. A BORROW valid as long as `v` (or `def`) is. */
 int rolltui_json_as_bool(const RolltuiJsonValue* v, int def);
+const char* rolltui_json_as_string(const RolltuiJsonValue* v, const char* def, size_t def_len, size_t* out_len);
 
 /* Object lookup; a BORROW, and never NULL — a static Null (also a BORROW, valid forever)
  * when `v` is not an object or the key is absent, the same "missing keys are Null and
@@ -4150,6 +4151,9 @@ int rolltui_menu_set_options(RolltuiMenu* m, const char* id, size_t len, const R
 int rolltui_menu_set_value(RolltuiMenu* m, const char* id, size_t len, const char* value, size_t value_len);
 
 int rolltui_menu_set_enabled(RolltuiMenu* m, const char* id, size_t len, int enabled);
+/* A toggle's state — what a host sets from its own saved setting when the menu opens, so the
+ * box reads the way the app already behaves. */
+int rolltui_menu_set_checked(RolltuiMenu* m, const char* id, size_t len, int checked);
 
 /* ---- navigation state --------------------------------------------------------------------------- */
 void rolltui_menu_reset(RolltuiMenu* m);

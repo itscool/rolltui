@@ -21,7 +21,8 @@
     "app.theme": "Edit the theme",
     "app.keys": "Edit the keys",
     "browser.accept": "choose the selected entry: print its path and leave",
-    "browser.cancel": "leave without choosing"
+    "browser.cancel": "leave without choosing",
+    "app.menu": "settings: sort, dotfiles, motion"
   },
   "root": {
     "column": [
@@ -43,6 +44,26 @@
     ]
   },
   "popups": [
+    {
+      "id": "menu",
+      "x": "50%",
+      "y": "50%",
+      "w": "50%",
+      "h": "60%",
+      "anchor": "center",
+      "min_w": 30,
+      "max_w": 72,
+      "min_h": 5,
+      "modal": true,
+      "root": {
+        "id": "menu",
+        "content": "menu:places",
+        "border": "rounded",
+        "title": "settings",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
     {
       "id": "details",
       "x": "50%",

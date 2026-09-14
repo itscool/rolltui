@@ -1,7 +1,8 @@
 {
-  "id": "root", "label": "places", "items": [
+  "id": "root", "label": "settings", "items": [
     { "id": "sort", "label": "Sort by", "kind": "choice",
       "items": [ { "id": "name", "label": "name" }, { "id": "size", "label": "size" },
                  { "id": "modified", "label": "modified" } ] },
     { "id": "hidden", "label": "Show dotfiles", "kind": "toggle" },
-    { "id": "up", "label": "Go to the parent" } ] }
+    { "id": "motion", "label": "Motion: the effects and the column slide", "kind": "toggle" },
+    { "id": "parent", "label": "Go to the parent" } ] }

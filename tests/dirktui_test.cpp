@@ -96,7 +96,11 @@ int main() {
 
   const std::string bin = std::string("'") + DIRKTUI_BIN + "'";
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
-  const std::string base = bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
+  // EVERY RUN GETS ITS OWN CONFIG DIRECTORY. The app writes its settings file and its preset
+  // stores under ROLL_CONFIG_DIR; without this, a test pressing Ctrl-S writes into the person's
+  // home and the next run reads it back — which is how one assertion here failed once.
+  const std::string home_env = "ROLL_CONFIG_DIR='" + (scratch / "home").string() + "' ";
+  const std::string base = home_env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
 
   // ---- 0. THE LIBRARY'S EDITORS ARE THIS APP'S TOO -----------------------------------------
   // A kind is the library's; a STORE is what makes it an app's. Before this app opened one, the
@@ -104,9 +108,9 @@ int main() {
   // was true of the library and false of every app but two.
   {
     int erc = 0;
-    const std::string th = run(bin + " '" + tree.string() + "' --frame 80x14 --keys \"F4\" 2>&1", erc);
+    const std::string th = run(home_env + bin + " '" + tree.string() + "' --frame 80x14 --keys \"F4\" 2>&1", erc);
     check(has(th, "theme editor") && has(th, "Roles"), "F4 opens the theme editor in dirktui");
-    const std::string ke = run(bin + " '" + tree.string() + "' --frame 80x14 --keys \"F5\" 2>&1", erc);
+    const std::string ke = run(home_env + bin + " '" + tree.string() + "' --frame 80x14 --keys \"F5\" 2>&1", erc);
     check(has(ke, "keys editor") && has(ke, "Actions by scope"), "F5 opens the keys editor in dirktui");
     check(!has(th, "keys editor") && !has(ke, "theme editor"), "…and each chord opens its own, not the other");
   }
@@ -135,13 +139,13 @@ int main() {
   // and print "no layout ()" — a message naming neither what it wanted nor where it looked.
   {
     int brc = 0;
-    const std::string bare = run(bin + " '" + tree.string() + "' --frame 70x10 2>&1", brc);
+    const std::string bare = run(home_env + bin + " '" + tree.string() + "' --frame 70x10 2>&1", brc);
     check(!has(bare, "no layout") && !has(bare, "cannot load"),
           "dirktui runs with NO arguments: it finds its own embedded layout [" + bare.substr(0, 60) + "]");
     check(has(bare, "columns"), "…and draws its own screen, whose title lives only in its layout file");
 
     int mrc = 0;
-    const std::string miss = run(bin + " '" + tree.string() + "' --presets '/nonexistent-xyz' --frame 40x6 2>&1", mrc);
+    const std::string miss = run(home_env + bin + " '" + tree.string() + "' --presets '/nonexistent-xyz' --frame 40x6 2>&1", mrc);
     check(has(miss, "cannot load its layout"), "a miss says what it could not load [" + miss.substr(0, 50) + "]");
     check(has(miss, "tried:") && has(miss, "/nonexistent-xyz/layouts/dirktui.json"),
           "…and NAMES the path it tried, rather than an empty parenthesis");
@@ -155,17 +159,17 @@ int main() {
   {
     int drc = 0;
     const std::string bad = tree.string() + "/no-such-dir-xyz";
-    const std::string err = run(bin + " '" + bad + "' --frame 60x10 2>&1 1>/dev/null", drc);
+    const std::string err = run(home_env + bin + " '" + bad + "' --frame 60x10 2>&1 1>/dev/null", drc);
     check(err.find("must provide") == std::string::npos,
           "a missing directory is NOT reported as a capability gap [" + err.substr(0, 60) + "]");
-    const std::string shown = run(bin + " '" + bad + "' --frame 150x10 2>/dev/null", drc);
+    const std::string shown = run(home_env + bin + " '" + bad + "' --frame 150x10 2>/dev/null", drc);
     check(has(shown, "cannot open " + bad),
           "…the panel says it cannot open the path IN FULL — an error is not a filename and gets the "
           "panel width, because a column sized for names truncates it to nothing useful");
     check(!has(shown, "(empty)"),
           "…and a directory that CANNOT BE OPENED does not look like an EMPTY one — both have no "
           "entries, and drawing the same thing for both is a wrong answer reporting itself as success");
-    const std::string ok_empty = run(bin + " '" + (tree / "empty-dir").string() + "' --frame 60x10 2>/dev/null", drc);
+    const std::string ok_empty = run(home_env + bin + " '" + (tree / "empty-dir").string() + "' --frame 60x10 2>/dev/null", drc);
     check(has(ok_empty, "(empty)"), "…while a genuinely empty directory still says so, so the two are distinguishable");
   }
 
@@ -176,29 +180,29 @@ int main() {
   {
     int crc = 0;
     const std::string here = tree.string();
-    const std::string dir = run(bin + " '" + here + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
+    const std::string dir = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && dir == (tree / "alpha").string() + "\n",
           "Enter prints the selected directory, one line, exit 0 [" + dir.substr(0, 60) + "]");
-    const std::string deeper = run(bin + " '" + here + "' --frame 80x20 --keys \"Right Enter\" 2>/dev/null", crc);
+    const std::string deeper = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"Right Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && deeper == (tree / "alpha" / "nested").string() + "\n",
           "…and Right then Enter prints the directory one column in — the path is the eye's, not the root's");
-    const std::string file = run(bin + " '" + here + "' --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
+    const std::string file = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     const std::string file_path = file.empty() ? file : file.substr(0, file.size() - 1);
     check(status_of(crc) == 0 && !file_path.empty() && fs::is_regular_file(file_path),
           "a selected FILE is printed as itself — what a file means for `cd` is the shell side's call [" +
               file_path.substr(file_path.rfind('/') + 1) + "]");
-    const std::string empty = run(bin + " '" + (tree / "empty-dir").string() + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
+    const std::string empty = run(home_env + bin + " '" + (tree / "empty-dir").string() + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && empty == (tree / "empty-dir").string() + "\n",
           "Enter in an EMPTY directory prints that directory: the eye is on it and there is nothing else to choose");
     for (const char* cancel : {"Escape", "CtrlQ", "CtrlC"}) {
-      const std::string none = run(bin + " '" + here + "' --frame 80x20 --keys \"" + cancel + "\" 2>/dev/null", crc);
+      const std::string none = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"" + cancel + "\" 2>/dev/null", crc);
       check(status_of(crc) == 1 && none.empty(),
             std::string(cancel) + " prints NOTHING and exits 1 — the shell function's `|| return` needs both");
     }
-    const std::string popup = run(bin + " '" + here + "' --frame 80x20 --keys \"F1 Escape\" 2>/dev/null", crc);
+    const std::string popup = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"F1 Escape\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && has(popup, "alpha") && !has(popup, "the live key table"),
           "…while Escape over a POPUP closes the popup and the session goes on — cancel is the browser's key, not a global one");
-    const std::string typing = run(bin + " '" + here + "' --frame 80x20 --keys \"CtrlG Type:abc Escape\" 2>/dev/null", crc);
+    const std::string typing = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"CtrlG Type:abc Escape\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && has(typing, "abc"),
           "…and Escape in the path input stays the input's, so typing a path is never one key from leaving");
   }
@@ -361,12 +365,42 @@ int main() {
     fs::create_directories(cfg / "rolltui" / "dirktui");
     write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": {} }\n");
     int crc = 0;
-    const std::string shadowed = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + base + " --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", crc);
+    const std::string shadowed = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", crc);
     check(has(shadowed, "marks=1 drawn=0"), "a user's own effects file shadows the app's: the mark is there, the theme has nothing for it [" +
                                                 shadowed.substr(0, 60) + "]");
     write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": { \"dirk.nosuch\": { \"kind\": \"blink\" } } }\n");
-    const std::string unknown = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + base + " --frame 46x10 2>&1 >/dev/null", crc);
+    const std::string unknown = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 2>&1 >/dev/null", crc);
     check(has(unknown, "effects file") && has(unknown, "dirk.nosuch"), "…and a state the app never registered is named as unknown");
+  }
+
+  // ---- THE SETTINGS MENU: a file, driven by the host, and a settings file the choices land in ----
+  // F2 opens `menu:places`; its items are the app's three settings and a jump. A toggle writes
+  // `<config>/rolltui/dirktui/settings.json`, the next run reads it, and the box reads back the
+  // way the app behaves. Motion off is a STILL app: the marks stay, nothing draws, the slide snaps.
+  {
+    const fs::path cfg = scratch / "settings-cfg";
+    const std::string env = "ROLL_CONFIG_DIR='" + cfg.string() + "' ";
+    int mrc = 0;
+    const std::string sbase = env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
+    const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
+    check(has(opened, "settings") && has(opened, "[x] Motion") && has(opened, "[ ] Show dotfiles") && has(opened, "Sort by"),
+          "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles off)");
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);
+    bool ok = false;
+    const std::string saved = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
+    check(ok && has(saved, "\"motion\": false"), "toggling Motion writes the settings file [" + saved.substr(0, 60) + "]");
+    const std::string still = run(sbase + " --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", mrc);
+    check(has(still, "marks=1 drawn=0"), "…the next run reads it: the cursor is marked and nothing draws");
+    const std::string snapped = run(sbase + " --frame 46x10 --keys \"Right Tick:30\" 2>/dev/null", mrc);
+    const std::string ended = run(sbase + " --frame 46x10 --keys \"Right Tick:200\" 2>/dev/null", mrc);
+    check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
+    const std::string reopened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
+    check(has(reopened, "[ ] Motion"), "…and the box reads back unchecked");
+    run(sbase + " --frame 60x14 --keys \"F2 Enter Down Enter\" >/dev/null 2>&1", mrc);
+    const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
+    check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");
+    const std::string parent = run(env + bin + " '" + (tree / "alpha").string() + "'" + presets + " --theme default-dark --frame 60x12 --keys \"F2 End Enter\" 2>/dev/null", mrc);
+    check(has(parent, "\xE2\x94\x82 tree"), "\"Go to the parent\" re-roots one level up");
   }
 
   // ---- THE SLIDE, at the script's clock: a moment into it the columns are between ---------------
@@ -452,7 +486,7 @@ int main() {
         // `"where"` is deliberately NOT in this list, and its absence is wall 4's evidence:
         // `rolltui_window_stack_focus` takes an ID, so `app.jump` must name the layout's input
         // window in the source. Every other id and every title stays in the file.
-        for (const char* w : {"\"columns\"", "go to", "the live key table", "the vestibule"})
+        for (const char* w : {"\"columns\"", "go to", "the live key table", "the vestibule", "Go to the parent", "Show dotfiles"})
           if (line.find(w) != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln) + ": " + w);
       }
     }
@@ -479,7 +513,7 @@ int main() {
       "title": "the vestibule", "focusable": true } ] }
 })");
     int vrc = 0;
-    const std::string v = run(bin + " '" + tree.string() + "' --presets '" + own.string() +
+    const std::string v = run(home_env + bin + " '" + tree.string() + "' --presets '" + own.string() +
                                   "' --layout vestibule --theme default-dark --frame 90x20 2>&1",
                               vrc);
     check(vrc == 0 && has(v, "the vestibule") && has(v, "never seen") && has(v, "alpha"),
