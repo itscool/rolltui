@@ -11,7 +11,7 @@
 │ │ ks →  │        │        │ │ │                   │             │ fu│ popup help                                     │
 │ │ style │        │        │ │ │ Menu widget       │ build       │ si│   help help                                    │
 │ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ popup approval                                 │
-│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ [x] Visible                                    │
+│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ ☒ Visible                                      │
 │ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Border                                single ▸ │
 │ │ lines │        │        │ │ │                   │             │ sm│ Background role                   background ▸ │
 │ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Node id: transcript                            │
@@ -20,7 +20,7 @@
 │ │ s →   │        │        │ │ │ content slots)    │             │ re│ Source: session                                │
 │ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Menu file:                                     │
 │ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│ Size (Alt+arrows nudge): 31                    │
-│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │ [x] Focusable                                  │
+│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │ ☒ Focusable                                    │
 │ │ loade │        │        │ │ │ lines)            │             │   │ Tree — split, swap, delete                   ▸ │
 │ │ r,    │        │        │ │ │ Theme (roles →    │ build       │ si│ This screen — sizes, focus, popups, actions  ▸ │
 │ │ built │        │        │ │ │ styles, JSON      │             │   │ Layout file — new, load, save                ▸ │

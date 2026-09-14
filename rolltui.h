@@ -1305,7 +1305,11 @@ typedef struct RolltuiMenuItem {
   /* Choice: its options open as a DROPDOWN — a small box over the menu, the menu still in view —
    * rather than as a level of their own. A level is right for a set that IS a place (a submenu);
    * a dropdown for a set that is an ANSWER (sort by name / size / modified), where leaving the
-   * screen to give it loses the context the answer belongs to. File key: `"dropdown": true`. */
+   * screen to give it loses the context the answer belongs to. Choosing in the box sets the
+   * answer and keeps the box open (a selection is not an action); Escape, Left, or choosing the
+   * answer that already stands closes it. A disabled option is listed, muted, never landed on
+   * and never chosen; a choice whose every option is disabled is disabled itself. File key:
+   * `"dropdown": true`. */
   unsigned char dropdown ROLLTUI_DEFAULT(0);
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpec spec;  /* Input: the type and its constraints */

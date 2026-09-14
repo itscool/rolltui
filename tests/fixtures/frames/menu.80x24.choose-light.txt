@@ -9,7 +9,7 @@
 │ │ Theme (roles │ b│ Light or dark                 dark ▸ │ menu              │
 │ │ → styles,    │  │ Layout                     default ▸ │                   │
 │ │ JSON loader, │  │ Colour depth             truecolor ▸ │                   │
-│ │ built-ins)   │  │ [ ] Ambiguous width = 2              │                   │
+│ │ built-ins)   │  │ ☐ Ambiguous width = 2                │                   │
 │ └──────────────┴──│                                      │                   │
 │                   │                                      │                   │
 │ Here is the functi│                                      │                   │

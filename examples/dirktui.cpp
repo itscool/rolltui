@@ -124,6 +124,8 @@ static const Program kPrograms[] = {
     {"idea", "IntelliJ IDEA", "idea", "IntelliJ IDEA", nullptr, false},
     {"pycharm", "PyCharm", "pycharm", "PyCharm", nullptr, false},
     {"xcode", "Xcode", nullptr, "Xcode", nullptr, false},
+    {"studio", "Android Studio", "studio", "Android Studio", nullptr, false},
+    {"notes", "Notes", nullptr, "Notes", nullptr, false},
     {"bbedit", "BBEdit", "bbedit", "BBEdit", nullptr, false},
     {"mate", "TextMate", "mate", "TextMate", nullptr, false},
     {"nova", "Nova", "nova", "Nova", nullptr, false},
@@ -140,13 +142,13 @@ struct TypeGroup {
   const char* exts;    // space-separated, lower-case
   const char* prefer;  // program ids in the order the group's DEFAULT is picked from what is installed
 };
-#define EDITORS "nvim hx micro code zed subl bbedit nova mate vim nano emacs textedit less bat"
-#define IDE_FIRST "code zed subl idea nvim hx micro bbedit nova mate vim nano emacs textedit"
+#define EDITORS "nvim hx micro code zed subl bbedit nova mate vim nano emacs xcode textedit notes less bat"
+#define IDE_FIRST "code zed subl idea nvim hx micro bbedit nova mate vim nano emacs xcode textedit"
 static const TypeGroup kGroups[] = {
     {"text", "txt md markdown rst log tex", EDITORS},
     {"data", "json yaml yml toml csv tsv xml ini cfg conf plist", EDITORS},
-    {"c", "c h cc cpp cxx hpp hh m mm", "code zed subl xcode nvim hx micro bbedit nova mate vim nano emacs"},
-    {"java", "java kt kts scala", "idea code zed subl nvim hx micro vim nano emacs"},
+    {"c", "c h cc cpp cxx hpp hh m mm", "xcode code zed subl nvim hx micro bbedit nova mate vim nano emacs"},
+    {"java", "java kt kts scala", "idea studio code zed subl nvim hx micro vim nano emacs"},
     {"python", "py pyi", "pycharm code zed subl nvim hx micro vim nano emacs"},
     {"js", "js ts jsx tsx mjs cjs", IDE_FIRST},
     {"shell", "sh bash zsh fish", "nvim hx micro code zed subl vim nano emacs"},

@@ -674,10 +674,15 @@ int main() {
     check(rolltui_menu_dropdown_selected(m) == 1, "Down moves inside the box, not the menu");
     rolltui_menu_handle(m, &enter, b, A, &ev);
     check(ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && std::string(ev.id.p, ev.id.n) == "sort" && std::string(ev.value.p, ev.value.n) == "size" &&
-              rolltui_menu_dropdown_open(m) == 0,
-          "Enter chooses: the same CHOOSE event a level would have produced, and the box is closed");
+              rolltui_menu_dropdown_open(m) != 0,
+          "Enter chooses: the same CHOOSE event a level would have produced — and the box STAYS OPEN, a selection not being an action");
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_handle(m, &enter, b, A, &ev);
+    check(ev.kind == ROLLTUI_MENU_EVENT_NONE && rolltui_menu_dropdown_open(m) == 0, "…Enter again on the answer that stands closes it, choosing nothing new");
+    rolltui_menu_handle(m, &enter, b, A, &ev);  // reopen for the checks below
     rolltui_menu_event_release(&ev);
     check(rolltui_menu_selected(m) == 0, "…and the menu's own cursor is still on the choice");
+    rolltui_menu_handle(m, &esc, b, A, &ev);  // the box stayed open on the choice: close it, then Right reopens it
     rolltui_menu_handle(m, &right, b, A, &ev);
     check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_dropdown_selected(m) == 1, "Right opens it too, on the answer just chosen");
     rolltui_menu_handle(m, &esc, b, A, &ev);
@@ -708,15 +713,12 @@ int main() {
     m.handle(key(Key::Up));
     check(m.selected() == 0, "Up at the first item stays (clamped, no wrap)");
     for (int i = 0; i < 10; ++i) m.handle(key(Key::Down));
-    check(m.selected() == 5, "Down clamps at the last item");
+    check(m.selected() == 4, "Down clamps at the last item the cursor may rest on — the disabled one below it is passed over");
     m.handle(key(Key::Home));
     check(m.selected() == 0, "Home selects the first");
     m.handle(key(Key::End));
-    check(m.selected() == 5, "End selects the last");
+    check(m.selected() == 4, "End selects the last enabled item, never the disabled one");
     MenuEvent ev = m.handle(key(Key::Enter));
-    check(ev.kind == MenuEvent::Kind::None, "Enter on a disabled item emits nothing");
-    m.handle(key(Key::Up));  // quit
-    ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::Activate && ev.id == "quit", "Enter on an action emits Activate with its id");
     m.handle(key(Key::Home));
     m.handle(key(Key::Down));  // layout
@@ -832,7 +834,7 @@ int main() {
     check(m.breadcrumb() == "settings" && row(f, 0) != "settings", "the breadcrumb is not a row: at the root there is nothing to say twice");
     check(row(f, 0) == "Theme                default \xE2\x96\xB8", "a choice shows its value and the arrow [" + row(f, 0) + "]");
     check(row(f, 1) == "Layout                       \xE2\x96\xB8", "a submenu ends in the arrow [" + row(f, 1) + "]");
-    check(row(f, 2) == "[ ] Wrap long lines", "a toggle shows its box [" + row(f, 2) + "]");
+    check(row(f, 2) == "\xE2\x98\x90 Wrap long lines", "a toggle shows its box — a ballot box, narrow everywhere [" + row(f, 2) + "]");
     check(row(f, 3) == "Save as:", "an input shows label: value [" + row(f, 3) + "]");
     check(row(f, 4) == "Quit                    Ctrl-Q", "a shortcut is right-aligned [" + row(f, 4) + "]");
     check(f.at(0, 0).style == theme.style(Role::menu_selected) && f.at(0, 1).style == theme.style(Role::menu_item) &&
@@ -880,7 +882,7 @@ int main() {
           "with three item rows and the last selected, the view scrolls to show it [" + row(g, 0) + " | " + row(g, 2) + "]");
     check(g.glyph(29, 0) == "\xE2\x96\xB2", "a ▲ marker says items are hidden above");
     m.handle(key(Key::PageUp));
-    check(m.selected() == 2, "PageUp moves by the item rows (5 → 2)");
+    check(m.selected() == 1, "PageUp moves by the item rows (4 → 1)");
     m.handle(key(Key::PageUp));
     check(m.selected() == 0, "…and clamps at 0");
   }
@@ -1207,11 +1209,12 @@ int main() {
       for (int y = 0; y < 8; ++y) listed |= row(f, y).find("Neovim") != std::string::npos;
       check(rolltui_menu_dropdown_open(m) && listed, "the disabled option is in the box, to be seen");
     }
-    rolltui_menu_handle(m, &up, b, A, &ev);     // onto Neovim
+    rolltui_menu_handle(m, &up, b, A, &ev);     // toward Neovim: the cursor will not rest on it
+    check(rolltui_menu_dropdown_selected(m) == 1, "…and the cursor never lands on it: Up from the answer stays on the answer");
     rolltui_menu_handle(m, &enter, b, A, &ev);
-    check(rolltui_menu_dropdown_open(m) != 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE &&
+    check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE &&
               std::string(rolltui_menu_root(m)->children.v[0]->value.p, rolltui_menu_root(m)->children.v[0]->value.n) == "system",
-          "…and Enter on it chooses nothing: the value stays, the box stays open");
+          "…so Enter is on the answer that stands, which closes the box and chooses nothing new");
     rolltui_menu_event_release(&ev);
     rolltui_menu_free(m);
   }

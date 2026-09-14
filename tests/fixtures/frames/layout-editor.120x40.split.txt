@@ -11,7 +11,7 @@
 │ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ popup help                                     │
 │ │ windows +  │            │ hand        │ │ │ windows +  │          │   help help                                    │
 │ │ placements │            │ parser;     │ │ │ placements │          │ popup approval                                 │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ [x] Visible                                    │
+│ │ + content  │            │ hot-        │ │ │ + content  │          │ ☒ Visible                                      │
 │ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Border                                single ▸ │
 │ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │ Background role                   background ▸ │
 │ │ block      │            │ header over │ │ │ block      │          │ Node id: transcript                            │
@@ -20,7 +20,7 @@
 │ │ styled     │            │             │ │ │ styled     │          │ Source: session                                │
 │ │ wrapped    │            │             │ │ │ wrapped    │          │ Menu file:                                     │
 │ │ lines)     │            │             │ │ │ lines)     │          │ Size (Alt+arrows nudge): fill                  │
-│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ [x] Focusable                                  │
+│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │ ☒ Focusable                                    │
 │ │ (roles →   │            │ header      │ │ │ (roles →   │          │ Tree — split, swap, delete                   ▸ │
 │ │ styles,    │            │             │ │ │ styles,    │          │ This screen — sizes, focus, popups, actions  ▸ │
 │ │ JSON       │            │             │ │ │ JSON       │          │ Layout file — new, load, save                ▸ │

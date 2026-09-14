@@ -207,7 +207,7 @@ std::string row_text(HostMenu* m, const RolltuiMenuItem* it, std::size_t* value_
   *value_at = 0;
   switch (static_cast<unsigned char>(it->kind)) {
     case ROLLTUI_MENU_TOGGLE:
-      out += it->checked ? "[x] " : "[ ] ";
+      out += it->checked ? (m->ambiguous ? "[x] " : "\xE2\x98\x92 ") : (m->ambiguous ? "[ ] " : "\xE2\x98\x90 ");
       out += str_of(it->label);
       break;
     case ROLLTUI_MENU_INPUT:
@@ -528,6 +528,17 @@ void move_to(HostMenu* m, std::size_t i, std::size_t n) {
   m->sel = i < n - 1 ? i : n - 1;
   ensure_visible(m);
 }
+// The cursor never rests on a disabled row: onward in `dir`, and back the other way at the end.
+void settle(HostMenu* m, int dir) {
+  const long long n = static_cast<long long>(build_visible(m));
+  auto ok = [&](long long i) { const RolltuiMenuItem* it = item_at(m, static_cast<std::size_t>(i)); return it == nullptr || it->enabled; };
+  long long s = static_cast<long long>(m->sel);
+  if (n == 0) return;
+  while (s >= 0 && s < n && !ok(s)) s += dir;
+  if (s < 0 || s >= n) { s = static_cast<long long>(m->sel); while (s >= 0 && s < n && !ok(s)) s -= dir; if (s < 0 || s >= n) return; }
+  m->sel = static_cast<std::size_t>(s);
+  ensure_visible(m);
+}
 
 bool action_is(const char* a, std::size_t n, const char* name) {
   return name && std::strlen(name) == n && std::memcmp(a, name, n) == 0;
@@ -572,12 +583,12 @@ void handle_key(HostMenu* m, const RolltuiChord& k, Outcome* out) {
   if (!a) return;
   const std::size_t n = build_visible(m);
   const std::size_t page = static_cast<std::size_t>(imax(item_rows(m), 1));
-  if (action_is(a, alen, A->up)) return move_to(m, m->sel == 0 ? 0 : m->sel - 1, n);
-  if (action_is(a, alen, A->down)) return move_to(m, m->sel + 1, n);
-  if (action_is(a, alen, A->page_up)) return move_to(m, m->sel < page ? 0 : m->sel - page, n);
-  if (action_is(a, alen, A->page_down)) return move_to(m, m->sel + page, n);
-  if (action_is(a, alen, A->first)) return move_to(m, first_child_row(m), n);
-  if (action_is(a, alen, A->last)) return move_to(m, n == 0 ? 0 : n - 1, n);
+  if (action_is(a, alen, A->up)) { move_to(m, m->sel == 0 ? 0 : m->sel - 1, n); return settle(m, -1); }
+  if (action_is(a, alen, A->down)) { move_to(m, m->sel + 1, n); return settle(m, 1); }
+  if (action_is(a, alen, A->page_up)) { move_to(m, m->sel < page ? 0 : m->sel - page, n); return settle(m, -1); }
+  if (action_is(a, alen, A->page_down)) { move_to(m, m->sel + page, n); return settle(m, 1); }
+  if (action_is(a, alen, A->first)) { move_to(m, first_child_row(m), n); return settle(m, 1); }
+  if (action_is(a, alen, A->last)) { move_to(m, n == 0 ? 0 : n - 1, n); return settle(m, -1); }
   if (action_is(a, alen, A->activate)) return act(m, m->sel, out);
   if (action_is(a, alen, A->descend)) {
     const RolltuiMenuItem* it = item_at(m, m->sel);

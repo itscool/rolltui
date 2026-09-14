@@ -1,6 +1,6 @@
 ┌─────────────────────────────────────────────────────────────────────┌ layout editor • main ──────────────────────────┐
 │                                                                     │ main text:                                     │
-│                                                                     │ [x] Visible                                    │
+│                                                                     │ ☒ Visible                                      │
 │                                                                     │ Border                                single ▸ │
 │                                                                     │ Background role                   background ▸ │
 │                                                                     │ Node id: main                                  │
@@ -9,7 +9,7 @@
 │                                                                     │ Source:                                        │
 │                                                                     │ Menu file:                                     │
 │                                                                     │ Size (Alt+arrows nudge): fill                  │
-│                                                                     │ [x] Focusable                                  │
+│                                                                     │ ☒ Focusable                                    │
 │                                                                     │ Tree — split, swap, delete                   ▸ │
 │                                                                     │ This screen — sizes, focus, popups, actions  ▸ │
 │                                                                     │ Layout file — new, load, save                ▸ │

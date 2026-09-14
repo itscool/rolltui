@@ -702,7 +702,8 @@ int main(int argc, char** argv) {
           "typing \"lay\" filters the level to Layout and shows the filter after the breadcrumb");
     check(!menu_left.empty() && menu_left == menu_open, "Enter then Left gives back exactly the opened frame");
     check(!menu_escape.empty() && menu_escape == bottom, "F2 then Escape gives back exactly the frame without the menu");
-    check(menu_toggle.find("[x] Ambiguous width") != std::string::npos, "Enter on the toggle shows [x]");
+    // THIS toggle switches the menu to ambiguous-wide drawing, so the box it shows is the ASCII one.
+    check(menu_toggle.find("[x] Ambiguous width") != std::string::npos, "Enter on the toggle shows the box with an X — ASCII, since the toggle itself made the row ambiguous-wide");
     // The shipped menu file names ACTIONS, never keys — so these columns are the
     // live table's, and "F1, ?" (two chords) is what app.help actually has.
     // The shortcut column is the LIVE table's either way; what changed is that the four editors

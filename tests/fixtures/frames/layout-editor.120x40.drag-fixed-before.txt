@@ -11,7 +11,7 @@
 │ follow   yes      │ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
 │ depth    truecolor│ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
 │ focus    editor   │ │ mode)                                 │       │ popup menu                                     │
-│                   │ │ Key + mouse decoding                  │ build │ [x] Visible                                    │
+│                   │ │ Key + mouse decoding                  │ build │ ☒ Visible                                      │
 │                   │ │                                       │       │ Border                                single ▸ │
 │                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Background role             panel_background ▸ │
 │                   │ │ downgrade                             │       │ Node id: status                                │
@@ -20,7 +20,7 @@
 │                   │ │ rel per axis), focus                  │       │ Source: status                                 │
 │                   │ │ Menu widget (hierarchical,            │ build │ Menu file:                                     │
 │                   │ │ filterable) + list/text widgets       │       │ Size (Alt+arrows nudge): 21                    │
-│                   │ │ Layout files (JSON: windows +         │ build │ [ ] Focusable                                  │
+│                   │ │ Layout files (JSON: windows +         │ build │ ☐ Focusable                                    │
 │                   │ │ placements + content slots)           │       │ Tree — split, swap, delete                   ▸ │
 │                   │ │ Markdown block renderer (blocks →     │ build │ This screen — sizes, focus, popups, actions  ▸ │
 │                   │ │ styled wrapped lines)                 │       │ Layout file — new, load, save                ▸ │

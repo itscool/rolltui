@@ -674,7 +674,7 @@ int main() {
     int mrc = 0;
     const std::string sbase = env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
     const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
-    check(has(opened, "settings") && has(opened, "[x] Motion") && has(opened, "[x] Show dotfiles") && has(opened, "Sort by"),
+    check(has(opened, "settings") && has(opened, "\xE2\x98\x92 Motion") && has(opened, "\xE2\x98\x92 Show dotfiles") && has(opened, "Sort by"),
           "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles on)");
     run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, Motion
     bool ok = false;
@@ -686,7 +686,7 @@ int main() {
     const std::string ended = run(sbase + " --frame 46x10 --keys \"Right Tick:200\" 2>/dev/null", mrc);
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
     const std::string reopened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
-    check(has(reopened, "[ ] Motion"), "…and the box reads back unchecked");
+    check(has(reopened, "\xE2\x98\x90 Motion"), "…and the box reads back unchecked");
     // COLUMN DIVIDERS: a hairline in the margin after every column that has a neighbour, on by
     // default; the checkbox under Motion turns them off, and the frame loses exactly those cells.
     auto bars = [](const std::string& frame) { std::size_t n = 0, at = 0; while ((at = frame.find("\xE2\x94\x82", at)) != std::string::npos) { ++n; at += 3; } return n; };

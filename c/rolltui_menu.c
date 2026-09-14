@@ -51,6 +51,20 @@ static int divider(const RolltuiMenuItem* it) {
 }
 static void settle(RolltuiMenu* m, int dir);
 
+/* Whether an item can be acted on: enabled, and — for a CHOICE — holding at least one option
+ * that is. A choice whose every option is disabled is disabled as a whole, so the row that would
+ * open it says so before anyone tries. A SUBMENU is a place and stays enterable whatever is in
+ * it: a level whose only row is a disabled "nothing to fix" is how that sentence gets read. */
+static int usable(const RolltuiMenuItem* it) {
+  size_t i;
+  if (!it->enabled) return 0;
+  if (it->kind != ROLLTUI_MENU_CHOICE) return 1;
+  if (it->children.n == 0) return 1; /* options may arrive at runtime */
+  for (i = 0; i < it->children.n; ++i)
+    if (!divider(it->children.v[i]) && usable(it->children.v[i])) return 1;
+  return 0;
+}
+
 /* A number as text: `precision` digits after the point, or the shortest exact form. */
 static void num_text(double v, int precision, char* out, size_t cap) {
   if (precision >= 0) snprintf(out, cap, "%.*f", precision, v);
@@ -915,7 +929,8 @@ static int selectable_row(RolltuiMenu* m, size_t vis) {
   if (m->vis[vis] == BACK_ROW) return 1;
   if (m->vis[vis] == GAP_ROW) return 0;
   it = item_at(m, vis);
-  return it != NULL && !divider(it);
+  /* A DISABLED row is seen and never landed on: the cursor passes over it as it does a heading. */
+  return it != NULL && !divider(it) && usable(it);
 }
 
 /* Moves the cursor off a divider, onward in `dir` and, at the end of the level, back the
@@ -1342,6 +1357,15 @@ static void handle_edit(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBind
 /* ---- acting ------------------------------------------------------------------------------ */
 
 /* ---- the dropdown ------------------------------------------------------------------------ */
+/* The next enabled option from `from` in `dir`, or `from` when there is none. */
+static size_t dd_step(const RolltuiMenuItem* it, size_t from, int dir) {
+  long long i = (long long)from + dir;
+  while (i >= 0 && i < (long long)it->children.n) {
+    if (it->children.v[i]->enabled) return (size_t)i;
+    i += dir;
+  }
+  return from;
+}
 static void open_dropdown(RolltuiMenu* m, const RolltuiMenuItem* it) {
   size_t i;
   m->dd_open = 1;
@@ -1349,6 +1373,11 @@ static void open_dropdown(RolltuiMenu* m, const RolltuiMenuItem* it) {
   m->dd_top = 0;
   for (i = 0; i < it->children.n; ++i)
     if (rolltui_str_eq(&it->children.v[i]->id, it->value.p, it->value.n)) m->dd_sel = i;
+  /* the cursor never rests on a disabled option, the current answer included */
+  if (it->children.n && !it->children.v[m->dd_sel]->enabled) {
+    const size_t next = dd_step(it, m->dd_sel, 1);
+    m->dd_sel = next != m->dd_sel ? next : dd_step(it, m->dd_sel, -1);
+  }
 }
 
 static void close_dropdown(RolltuiMenu* m) {
@@ -1409,11 +1438,16 @@ static void dropdown_choose(RolltuiMenu* m, RolltuiMenuItem* it, size_t option, 
   if (option >= it->children.n) return;
   o = it->children.v[option];
   if (!o->enabled) return; /* listed so it is seen; refused so it is never the answer */
+  /* A SELECTION IS NOT AN ACTION. Choosing an option sets the answer and the box STAYS OPEN, so
+   * the next option is one key away and a host that applies the answer at once — a theme, a
+   * sort — is previewed in place; Escape or Left closes it, as does choosing the answer that
+   * already stands. A level of options (a choice without `dropdown`) still returns on Enter: a
+   * level is a place, and Enter there is the way back. */
+  if (rolltui_str_eq(&it->value, o->id.p, o->id.n)) { close_dropdown(m); return; }
   rolltui_str_set(&it->value, o->id.p, o->id.n);
   out->kind = ROLLTUI_MENU_EVENT_CHOOSE;
   rolltui_str_set(&out->id, it->id.p, it->id.n);
   rolltui_str_set(&out->value, o->id.p, o->id.n);
-  close_dropdown(m);
 }
 
 static void handle_dropdown_key(RolltuiMenu* m, RolltuiMenuItem* it, const RolltuiChord* k, const RolltuiBindings* b,
@@ -1425,10 +1459,10 @@ static void handle_dropdown_key(RolltuiMenu* m, RolltuiMenuItem* it, const Rollt
   int rows = 1;
   if (!a) return;
   dropdown_box(m, it, &box, &rows);
-  if (action_is(a, alen, A->up)) { if (m->dd_sel > 0) --m->dd_sel; }
-  else if (action_is(a, alen, A->down)) { if (n && m->dd_sel + 1 < n) ++m->dd_sel; }
-  else if (action_is(a, alen, A->first)) m->dd_sel = 0;
-  else if (action_is(a, alen, A->last)) m->dd_sel = n ? n - 1 : 0;
+  if (action_is(a, alen, A->up)) m->dd_sel = dd_step(it, m->dd_sel, -1);
+  else if (action_is(a, alen, A->down)) m->dd_sel = dd_step(it, m->dd_sel, 1);
+  else if (action_is(a, alen, A->first)) { m->dd_sel = n && it->children.v[0]->enabled ? 0 : dd_step(it, 0, 1); }
+  else if (action_is(a, alen, A->last)) { m->dd_sel = n ? n - 1 : 0; if (n && !it->children.v[m->dd_sel]->enabled) m->dd_sel = dd_step(it, m->dd_sel, -1); }
   else if (action_is(a, alen, A->activate) || action_is(a, alen, A->descend)) { dropdown_choose(m, it, m->dd_sel, out); return; }
   else if (action_is(a, alen, A->back) || action_is(a, alen, A->ascend)) { close_dropdown(m); return; }
   dropdown_ensure_visible(m, rows);
@@ -1440,8 +1474,8 @@ static void handle_dropdown_mouse(RolltuiMenu* m, RolltuiMenuItem* it, const Rol
   RolltuiRect box;
   int rows = 1;
   if (!dropdown_box(m, it, &box, &rows)) { close_dropdown(m); return; }
-  if (e->kind == 4 /* WheelUp */) { if (m->dd_sel > 0) --m->dd_sel; dropdown_ensure_visible(m, rows); return; }
-  if (e->kind == 5 /* WheelDown */) { if (it->children.n && m->dd_sel + 1 < it->children.n) ++m->dd_sel; dropdown_ensure_visible(m, rows); return; }
+  if (e->kind == 4 /* WheelUp */) { m->dd_sel = dd_step(it, m->dd_sel, -1); dropdown_ensure_visible(m, rows); return; }
+  if (e->kind == 5 /* WheelDown */) { m->dd_sel = dd_step(it, m->dd_sel, 1); dropdown_ensure_visible(m, rows); return; }
   if (e->kind != 0 /* Press */ || e->button != 1) return;
   if (e->x >= box.x + 1 && e->x < box.x + box.w - 1 && e->y >= box.y + 2 && e->y < box.y + 2 + rows) {
     const size_t option = (size_t)m->dd_top + (size_t)(e->y - (box.y + 2));
@@ -1513,7 +1547,7 @@ static void act(RolltuiMenu* m, size_t vis_index, RolltuiMenuEvent* out) {
     return;
   }
   it = item_at(m, vis_index);
-  if (!it || !it->enabled || divider(it)) return;
+  if (!it || !usable(it) || divider(it)) return;
   if (m->palette) {
     const FlatEntry* fe = &m->flat[m->vis[vis_index]];
     if (fe->path_n >= 2) {
@@ -1650,7 +1684,7 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
   }
   if (action_is(a, alen, A->descend)) {
     const RolltuiMenuItem* it = item_at(m, m->sel);
-    if (it && it->enabled && !m->palette &&
+    if (it && usable(it) && !m->palette &&
         (it->kind == ROLLTUI_MENU_SUBMENU || it->kind == ROLLTUI_MENU_CHOICE)) {
       if (it->kind == ROLLTUI_MENU_CHOICE && it->dropdown) { open_dropdown(m, it); return; }
       build_visible(m);
@@ -1785,14 +1819,18 @@ static void row_text(const RolltuiMenu* m, const RolltuiMenuItem* it, int in_pal
                      RolltuiStr* out, size_t* value_at) {
   rolltui_str_clear(out);
   if (value_at) *value_at = 0;
+  /* A CHECKBOX IS A GLYPH: a ballot box, empty or with an X — both narrow everywhere, and the
+   * shape survives mono. Under `ambiguous_wide` the row is ASCII, the same rule the scrollbar's
+   * capsule and the border's box-drawing follow. */
+  const char* box = it->checked ? (m->opt.ambiguous_wide ? "[x] " : "\xE2\x98\x92 ") : (m->opt.ambiguous_wide ? "[ ] " : "\xE2\x98\x90 ");
   if (in_palette) {
-    if (it->kind == ROLLTUI_MENU_TOGGLE) str_add(out, it->checked ? "[x] " : "[ ] ");
+    if (it->kind == ROLLTUI_MENU_TOGGLE) str_add(out, box);
     rolltui_str_append_str(out, &m->flat[m->vis[vis_index]].label);
     return;
   }
   switch (it->kind) {
     case ROLLTUI_MENU_TOGGLE:
-      str_add(out, it->checked ? "[x] " : "[ ] ");
+      str_add(out, box);
       rolltui_str_append_str(out, &it->label);
       break;
     case ROLLTUI_MENU_INPUT:
@@ -1920,7 +1958,7 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     it = item_at(mm, i);
     if (!it) break;
     is_sel = i == m->sel;
-    base = styles[is_sel ? roles->selected : (it->enabled ? roles->item : roles->text_muted)];
+    base = styles[is_sel ? roles->selected : (usable(it) ? roles->item : roles->text_muted)];
     row_rect.x = x0;
     row_rect.y = y + r;
     row_rect.w = w;
