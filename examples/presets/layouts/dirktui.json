@@ -39,10 +39,10 @@
       "x": "50%",
       "y": "50%",
       "w": "72%",
-      "h": 17,
+      "h": 34,
       "anchor": "center",
-      "min_w": 58,
-      "max_w": 88,
+      "min_w": 64,
+      "max_w": 96,
       "min_h": 5,
       "modal": true,
       "root": {

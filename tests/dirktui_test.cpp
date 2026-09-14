@@ -274,12 +274,14 @@ int main() {
     run(no_editors + with_setting("{ \"open\": { \"text\": \"nvim\" } }") + no_apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
     check(stublines().rfind("ran open ", 0) == 0, "a chosen program that is not installed any more falls back to the type's default, never to nothing");
     // THE MENU OFFERS WHAT WAS FOUND, per type, with the choice shown.
-    const std::string menu = run(editors + with_setting("{}") + apps_flag + " --frame 100x24 --keys \"F2\" 2>/dev/null", crc);
-    check(has(menu, "Open with") && has(menu, "Neovim") && has(menu, "Visual Studio Code") && has(menu, "General") && has(menu, "Enter on a file"),
-          "F2: the settings are three sections, and the open-with rows show the program chosen from what is installed");
-    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 100x24 --keys \"F2 Down Down Down Down Down Down Enter\" 2>/dev/null", crc);  // dotfiles, motion, sort, leave, land, relative, Text — then its dropdown
-    check(has(bare_menu, "the system opener") && !has(bare_menu, "Neovim") && has(bare_menu, "the command line"),
-          "…and with nothing installed a type's dropdown offers the system opener and the command line, nothing invented");
+    const std::string menu = run(editors + with_setting("{}") + apps_flag + " --frame 110x40 --keys \"F2\" 2>/dev/null", crc);
+    check(has(menu, "General") && has(menu, "Look") && has(menu, "Enter on a file") && has(menu, "Open with") &&
+              has(menu, "Key bindings") && has(menu, "Theme") && has(menu, "Neovim") && has(menu, "Visual Studio Code"),
+          "F2: four sections — General, Look, Enter on a file, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
+    // dotfiles, sort, keys, theme, motion, dividers, leave, land, relative, then Text: its dropdown
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
+    check(has(bare_menu, "the system opener") && has(bare_menu, "Neovim") && has(bare_menu, "Helix") && has(bare_menu, "the command line"),
+          "…and with nothing installed a type's dropdown still LISTS every known program — disabled, so a person sees what could open it — plus the system opener and the command line");
     // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
     // arguments can follow; with the landing set to the file's folder, exit 4 with the absolute path.
     const std::string script = run(editors + with_setting("{}") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
@@ -674,7 +676,7 @@ int main() {
     const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
     check(has(opened, "settings") && has(opened, "[x] Motion") && has(opened, "[x] Show dotfiles") && has(opened, "Sort by"),
           "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles on)");
-    run(sbase + " --frame 60x18 --keys \"F2 Down Enter\" >/dev/null 2>&1", mrc);  // the cursor opens on the first row under the heading: dotfiles; Down is Motion
+    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, Motion
     bool ok = false;
     const std::string saved = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(saved, "\"motion\": false"), "toggling Motion writes the settings file [" + saved.substr(0, 60) + "]");
@@ -689,7 +691,7 @@ int main() {
     // default; the checkbox under Motion turns them off, and the frame loses exactly those cells.
     auto bars = [](const std::string& frame) { std::size_t n = 0, at = 0; while ((at = frame.find("\xE2\x94\x82", at)) != std::string::npos) { ++n; at += 3; } return n; };
     const std::string with_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Motion, dividers
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, motion, dividers
     const std::string no_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
     check(has(read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok), "\"dividers\": false"), "the dividers checkbox is saved");
     check(bars(with_lines) > bars(no_lines) && bars(with_lines) - bars(no_lines) >= 8,
@@ -703,7 +705,7 @@ int main() {
       return n;
     };
     const std::string short_off = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
     const std::string short_on = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
     check(capsules(short_off) > 0 && capsules(short_on) > capsules(short_off),
           "with dividers, each scrolled column carries its own thumb on its divider; without, one bar in the border [" +
@@ -737,7 +739,7 @@ int main() {
       const std::string wheeled = run(sbase + " --frame 100x10 --keys \"Right WheelDown " + std::to_string(dx - 1) + ",3 WheelDown " + std::to_string(dx - 1) + ",3\" 2>/dev/null", mrc);
       check(has(wheeled, "zeta.txt"), "the wheel scrolls the column under the pointer — the tree — not the focused alpha");
     }
-    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Motion, dividers, Sort by: its dropdown, the second option
+    run(sbase + " --frame 60x18 --keys \"F2 Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Sort by: its dropdown, the second option
     const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");
   }

@@ -1401,6 +1401,7 @@ static void dropdown_choose(RolltuiMenu* m, RolltuiMenuItem* it, size_t option, 
   const RolltuiMenuItem* o;
   if (option >= it->children.n) return;
   o = it->children.v[option];
+  if (!o->enabled) return; /* listed so it is seen; refused so it is never the answer */
   rolltui_str_set(&it->value, o->id.p, o->id.n);
   out->kind = ROLLTUI_MENU_EVENT_CHOOSE;
   rolltui_str_set(&out->id, it->id.p, it->id.n);
@@ -1484,7 +1485,10 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
     RolltuiStyle st;
     if (i >= it->children.n) break;
     o = it->children.v[i];
-    st = i == m->dd_sel ? styles[roles->selected] : ground;
+    /* A DISABLED option is listed, muted, and cannot be chosen: a list that shows what COULD be
+     * picked says more than one that hides it — a program not installed is still a program. */
+    st = i == m->dd_sel ? styles[roles->selected] : (o->enabled ? ground : styles[roles->text_muted]);
+    if (!o->enabled) st.bg = ground.bg;
     row_rect.x = box.x + 1; row_rect.y = box.y + 2 + r; row_rect.w = box.w - 2; row_rect.h = 1;
     rolltui_frame_fill(f, draw, row_rect, st, NULL, 0);
     rolltui_str_clear(&line);

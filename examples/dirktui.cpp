@@ -100,44 +100,64 @@ enum class Sort { Name, Size, Modified };
 struct Program {
   const char* id;
   const char* label;
-  const char* exe;   // a command on PATH, or (`mac_app`) an application bundle's name
-  const char* arg;   // one fixed argument before the file, or NULL
-  bool terminal;     // takes the terminal over: dirktui steps aside and comes back when it exits
-  bool mac_app;      // runs through `open -a`
+  const char* exe;     // a command on PATH, or NULL
+  const char* bundle;  // an application bundle's name under the applications directories, or NULL
+  const char* arg;     // one fixed argument before the file, or NULL
+  bool terminal;       // takes the terminal over: dirktui steps aside and comes back when it exits
 };
+// EVERY KNOWN PROGRAM IS LISTED, installed or not: the menu shows the ones that are not as
+// disabled, so a person sees what COULD open a type and what is missing. Detection: the command
+// on PATH, or the bundle in an applications directory; a program found by its bundle only is
+// run through `open -a`.
 static const Program kPrograms[] = {
-    {"nvim", "Neovim", "nvim", nullptr, true, false},
-    {"vim", "Vim", "vim", nullptr, true, false},
-    {"hx", "Helix", "hx", nullptr, true, false},
-    {"micro", "micro", "micro", nullptr, true, false},
-    {"nano", "nano", "nano", nullptr, true, false},
-    {"emacs", "Emacs (in the terminal)", "emacs", "-nw", true, false},
-    {"less", "less", "less", nullptr, true, false},
-    {"code", "Visual Studio Code", "code", nullptr, false, false},
-    {"zed", "Zed", "zed", nullptr, false, false},
-    {"subl", "Sublime Text", "subl", nullptr, false, false},
-    {"textedit", "TextEdit", "TextEdit", nullptr, false, true},
-    {"preview", "Preview", "Preview", nullptr, false, true},
+    {"nvim", "Neovim", "nvim", nullptr, nullptr, true},
+    {"vim", "Vim", "vim", nullptr, nullptr, true},
+    {"hx", "Helix", "hx", nullptr, nullptr, true},
+    {"micro", "micro", "micro", nullptr, nullptr, true},
+    {"nano", "nano", "nano", nullptr, nullptr, true},
+    {"emacs", "Emacs, in the terminal", "emacs", nullptr, "-nw", true},
+    {"less", "less", "less", nullptr, nullptr, true},
+    {"bat", "bat", "bat", nullptr, "--paging=always", true},
+    {"code", "Visual Studio Code", "code", "Visual Studio Code", nullptr, false},
+    {"zed", "Zed", "zed", "Zed", nullptr, false},
+    {"subl", "Sublime Text", "subl", "Sublime Text", nullptr, false},
+    {"idea", "IntelliJ IDEA", "idea", "IntelliJ IDEA", nullptr, false},
+    {"pycharm", "PyCharm", "pycharm", "PyCharm", nullptr, false},
+    {"xcode", "Xcode", nullptr, "Xcode", nullptr, false},
+    {"bbedit", "BBEdit", "bbedit", "BBEdit", nullptr, false},
+    {"mate", "TextMate", "mate", "TextMate", nullptr, false},
+    {"nova", "Nova", "nova", "Nova", nullptr, false},
+    {"textedit", "TextEdit", nullptr, "TextEdit", nullptr, false},
+    {"preview", "Preview", nullptr, "Preview", nullptr, false},
+    {"safari", "Safari", nullptr, "Safari", nullptr, false},
+    {"chrome", "Google Chrome", nullptr, "Google Chrome", nullptr, false},
+    {"firefox", "Firefox", nullptr, "Firefox", nullptr, false},
 };
 static constexpr const char* kSystemProgram = "system";  // the platform's opener: `open`, `xdg-open`
 static constexpr const char* kShellProgram = "shell";    // not opened: handed to the command line
 struct TypeGroup {
   const char* id;
-  const char* label;
   const char* exts;    // space-separated, lower-case
   const char* prefer;  // program ids in the order the group's DEFAULT is picked from what is installed
 };
+#define EDITORS "nvim hx micro code zed subl bbedit nova mate vim nano emacs textedit less bat"
+#define IDE_FIRST "code zed subl idea nvim hx micro bbedit nova mate vim nano emacs textedit"
 static const TypeGroup kGroups[] = {
-    {"text", "Text (txt, md, json, log…)",
-     "txt md markdown rst log csv tsv json yaml yml toml ini cfg conf xml rtf tex",
-     "nvim hx micro code zed subl vim nano emacs textedit less system"},
-    {"code", "Code (py, js, c, sh…)",
-     "py rb js ts tsx jsx mjs c cc cpp cxx h hpp hh m mm swift go rs java kt scala lua sql php pl sh bash zsh fish cmake mk",
-     "code zed subl nvim hx micro vim nano emacs textedit system"},
-    {"web", "Web (html, svg, css)", "html htm svg css", "system code zed subl nvim hx micro vim"},
-    {"docs", "Pictures, PDFs, media and office files",
-     "pdf png jpg jpeg gif webp bmp tiff heic mp3 wav m4a mp4 mov m4v doc docx xls xlsx ppt pptx pages numbers key epub",
-     "system preview"},
+    {"text", "txt md markdown rst log tex", EDITORS},
+    {"data", "json yaml yml toml csv tsv xml ini cfg conf plist", EDITORS},
+    {"c", "c h cc cpp cxx hpp hh m mm", "code zed subl xcode nvim hx micro bbedit nova mate vim nano emacs"},
+    {"java", "java kt kts scala", "idea code zed subl nvim hx micro vim nano emacs"},
+    {"python", "py pyi", "pycharm code zed subl nvim hx micro vim nano emacs"},
+    {"js", "js ts jsx tsx mjs cjs", IDE_FIRST},
+    {"shell", "sh bash zsh fish", "nvim hx micro code zed subl vim nano emacs"},
+    {"rust_go", "rs go", IDE_FIRST},
+    {"swift", "swift", "xcode code zed subl nvim hx vim nano emacs"},
+    {"scripts", "rb php pl lua", IDE_FIRST},
+    {"build", "cmake mk make ninja", EDITORS},
+    {"web", "html htm svg css", "system safari chrome firefox code zed subl nvim hx vim"},
+    {"images", "png jpg jpeg gif webp bmp tiff heic", "system preview"},
+    {"docs", "pdf doc docx xls xlsx ppt pptx pages numbers key epub rtf", "system preview"},
+    {"media", "mp3 wav m4a flac mp4 mov m4v", "system"},
 };
 static const Program* program_named(const std::string& id) {
   for (const Program& p : kPrograms) if (id == p.id) return &p;
@@ -157,10 +177,15 @@ static const TypeGroup* group_of(const std::string& name) {
   for (const TypeGroup& g : kGroups) if (word_in(g.exts, ext)) return &g;
   return nullptr;
 }
-// Which known programs are installed: a command on PATH, or a bundle under one of `apps_dirs`
-// (colon-separated). Read once; the answer is the menu's contents.
-static std::set<std::string> detect_programs(const std::string& apps_dirs) {
-  std::set<std::string> out;
+// Which known programs are installed, and how: `on_path` for a command, `bundled` for an
+// application bundle under one of `apps_dirs` (colon-separated). Read once; the answer is the
+// menu's contents.
+struct Installed {
+  std::set<std::string> on_path, bundled;
+  bool has(const std::string& id) const { return on_path.count(id) || bundled.count(id); }
+};
+static Installed detect_programs(const std::string& apps_dirs) {
+  Installed out;
   std::vector<std::string> path, apps;
   auto split = [](const char* s, std::vector<std::string>& into) {
     std::string cur;
@@ -172,17 +197,14 @@ static std::set<std::string> detect_programs(const std::string& apps_dirs) {
   split(std::getenv("PATH"), path);
   split(apps_dirs.c_str(), apps);
   for (const Program& p : kPrograms) {
-    bool found = false;
-    if (p.mac_app) {
+    if (p.exe)
+      for (const std::string& d : path)
+        if (access((d + "/" + p.exe).c_str(), X_OK) == 0) { out.on_path.insert(p.id); break; }
+    if (p.bundle)
       for (const std::string& d : apps) {
         struct stat st{};
-        if (stat((d + "/" + p.exe + ".app").c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { found = true; break; }
+        if (stat((d + "/" + p.bundle + ".app").c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { out.bundled.insert(p.id); break; }
       }
-    } else {
-      for (const std::string& d : path)
-        if (access((d + "/" + p.exe).c_str(), X_OK) == 0) { found = true; break; }
-    }
-    if (found) out.insert(p.id);
   }
   return out;
 }
@@ -618,15 +640,20 @@ struct App {
     rolltui_menu_set_checked(m, "leave", 5, opt.leave ? 1 : 0);
     rolltui_menu_set_checked(m, "land", 4, opt.land_in_file_folder ? 1 : 0);
     rolltui_menu_set_checked(m, "relative", 8, opt.copy_relative ? 1 : 0);
+    // THE THEME AND THE KEY BINDINGS are the stores' presets, listed live — a preset saved a
+    // moment ago in the editor is in the list — with the current one as the value.
+    fill_store_choice(m, "theme", 5, theme_store);
+    fill_store_choice(m, "keys", 4, keys_store);
     // THE "OPEN WITH" CHOICES ARE FILLED HERE, not in the file: their options are what this
     // machine has. The skeleton (one choice per type group) is the file's; the contents are
     // what `detect_programs` found, the same move roll makes with its preset listings.
     for (const TypeGroup& g : kGroups) {
       const std::string id = std::string("open_") + g.id;
       RolltuiMenuItemList options{};
-      for (const auto& [pid, label] : options_for(g)) {
+      for (const Offer& of : options_for(g)) {
         RolltuiMenuItem* o = rolltui_menu_list_add(&options);
-        rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, pid.c_str(), pid.size(), label.c_str(), label.size(), nullptr, 0);
+        rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, of.id.c_str(), of.id.size(), of.label.c_str(), of.label.size(), nullptr, 0);
+        o->enabled = of.enabled ? 1 : 0;
       }
       rolltui_menu_set_options(m, id.c_str(), id.size(), &options);
       rolltui_menu_list_release(&options);
@@ -637,28 +664,74 @@ struct App {
   // What the menu offers for a group: the installed programs in the group's own order, the
   // system opener, then the command line — and what is chosen, which is the setting when it is
   // still on offer and the first offer otherwise.
-  std::set<std::string> installed;  // program ids found on this machine
-  std::vector<std::pair<std::string, std::string>> options_for(const TypeGroup& g) const {
-    std::vector<std::pair<std::string, std::string>> out;
+  Installed installed;  // what is on this machine, and how it was found
+  // What the menu offers for a group: EVERY program in the group's own order, the ones not
+  // installed disabled, then the system opener and the command line. What is chosen is the
+  // setting when it is installed, and the first installed preference otherwise.
+  struct Offer { std::string id, label; bool enabled; };
+  std::vector<Offer> options_for(const TypeGroup& g) const {
+    std::vector<Offer> out;
     std::istringstream in(g.prefer);
     std::string id;
     while (in >> id) {
       if (id == kSystemProgram) continue;
-      if (const Program* p = program_named(id); p && installed.count(id)) out.emplace_back(id, p->label);
+      if (const Program* p = program_named(id)) out.push_back({id, p->label, installed.has(id)});
     }
-    out.emplace_back(kSystemProgram, "the system opener");
-    out.emplace_back(kShellProgram, "the command line (not opened)");
+    out.push_back({kSystemProgram, "the system opener", true});
+    out.push_back({kShellProgram, "the command line (not opened)", true});
     return out;
   }
   std::string program_for(const TypeGroup& g) const {
-    const auto offered = options_for(g);
-    if (const auto it = opt.open_with.find(g.id); it != opt.open_with.end())
-      for (const auto& [pid, label] : offered) if (pid == it->second) return pid;
-    // the default: the first of the group's preferences that is installed; `system` is always
+    if (const auto it = opt.open_with.find(g.id); it != opt.open_with.end()) {
+      const std::string& want = it->second;
+      if (want == kSystemProgram || want == kShellProgram || installed.has(want)) return want;
+    }
     std::istringstream in(g.prefer);
     std::string id;
-    while (in >> id) if (id == kSystemProgram || installed.count(id)) return id;
+    while (in >> id) if (id == kSystemProgram || installed.has(id)) return id;
     return kSystemProgram;
+  }
+  static void fill_store_choice(RolltuiMenu* m, const char* id, std::size_t id_len, const RolltuiPresetStore* store) {
+    if (!store) return;
+    RolltuiMenuItemList options{};
+    RolltuiPresetList presets{};
+    rolltui_preset_store_list(store, &presets);
+    for (std::size_t i = 0; i < presets.n; ++i) {
+      const RolltuiPresetInfo& p = presets.v[i];
+      RolltuiMenuItem* o = rolltui_menu_list_add(&options);
+      rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, p.name.p, p.name.n, p.name.p, p.name.n, p.shipped ? nullptr : "yours", p.shipped ? 0 : 5);
+    }
+    rolltui_preset_list_release(&presets);
+    rolltui_menu_set_options(m, id, id_len, &options);
+    rolltui_menu_list_release(&options);
+    RolltuiStr label{};
+    rolltui_preset_store_label(store, &label);  // "name", or "name (modified)": the name is the value
+    std::string cur(label.p ? label.p : "", label.n);
+    if (const std::size_t sp = cur.find(" ("); sp != std::string::npos) cur.erase(sp);
+    rolltui_menu_set_value(m, id, id_len, cur.data(), cur.size());
+    rolltui_str_free(&label);
+  }
+  // A CHOSEN KEY-BINDINGS PRESET becomes the live table the way the start built it: the store's
+  // working copy, then this app's own bindings file on top, then the layout's declarations.
+  std::string bindings_json;  // the app's bindings file, kept for that rebuild
+  void rebuild_bindings() {
+    if (!keys_store) return;
+    RolltuiBindings* w = static_cast<RolltuiBindings*>(rolltui_preset_store_working(keys_store));
+    if (!w) return;
+    rolltui_bindings_free(bindings);
+    bindings = rolltui_bindings_clone(w);
+    rolltui_preset_store_value_free(keys_store, w);
+    if (!bindings_json.empty()) {
+      RolltuiBindingsReport brep{};
+      rolltui_bindings_load_json(bindings, bindings_json.data(), bindings_json.size(), ROLLTUI_PROTOCOL_LEGACY,
+                                 rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &brep);
+      rolltui_bindings_report_release(&brep);
+    }
+    std::size_t an = 0;
+    const RolltuiLayoutAction* av = rolltui_layout_actions(layout, &an);
+    rolltui_bindings_declare(bindings, av, an, nullptr, 0);
+    rolltui_context_set_bindings(ctx, bindings);
+    keys_hint.clear();
   }
   static std::string program_label(const std::string& id) {
     if (const Program* p = program_named(id)) return p->label;
@@ -912,12 +985,12 @@ struct App {
     const Program* p = program_named(id);
     if (id == kSystemProgram) cmd = {opener(), path};
     else if (!p) return false;
-    else if (p->mac_app) cmd = {"open", "-a", p->exe, path};
-    else {
+    else if (p->exe && installed.on_path.count(id)) {
       cmd = {p->exe};
       if (p->arg) cmd.push_back(p->arg);
       cmd.push_back(path);
-    }
+    } else if (p->bundle) cmd = {"open", "-a", p->bundle, path};
+    else return false;
     const bool takes_terminal = p && p->terminal && !stand_in;
     if (stand_in) cmd.insert(cmd.begin(), stand_in);
     if (takes_terminal && (!term || tty_fd < 0)) return false;
@@ -1037,6 +1110,20 @@ struct App {
       if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "sort") {
         const std::string v(ev.value.p ? ev.value.p : "", ev.value.n);
         set_sort(v == "size" ? Sort::Size : v == "modified" ? Sort::Modified : Sort::Name);
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
+        const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
+        RolltuiThemePresetReport trep{};
+        if (theme_store && rolltui_preset_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = "theme: " + name;
+        else hint = "could not load the theme " + name;
+        rolltui_theme_preset_report_release(&trep);
+        menu_dirty = true;
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "keys") {
+        const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
+        RolltuiBindingsPresetReport brep{};
+        if (keys_store && rolltui_preset_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = "key bindings: " + name; }
+        else hint = "could not load the key bindings " + name;
+        rolltui_bindings_preset_report_release(&brep);
+        menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id.rfind("open_", 0) == 0) {
         opt.open_with[id.substr(5)] = std::string(ev.value.p ? ev.value.p : "", ev.value.n);
         hint = id.substr(5) + " opens with " + program_label(opt.open_with[id.substr(5)]);
@@ -1051,7 +1138,7 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "relative") {
         opt.copy_relative = ev.checked != 0;
-        hint = opt.copy_relative ? "paths: relative to where dirk started" : "paths: absolute";
+        hint = opt.copy_relative ? "paths: relative to where the command line lands" : "paths: absolute";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
@@ -1742,6 +1829,7 @@ int main(int argc, char** argv) {
     }
     if (ok) {
       RolltuiBindingsReport brep{};
+      app.bindings_json = text;
       rolltui_bindings_load_json(app.bindings, text.data(), text.size(), ROLLTUI_PROTOCOL_LEGACY,
                                  rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &brep);
       // EVERY category, not just the one that bit first (wall 5): a chord the library's shipped

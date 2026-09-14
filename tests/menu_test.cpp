@@ -1178,6 +1178,44 @@ int main() {
       m.handle(key(Key::Escape));
     }
   }
+  // ---- A DISABLED DROPDOWN OPTION is listed and refused --------------------------------------
+  // A list that shows what COULD be picked says more than one that hides it: a program that is
+  // not installed is still a program. Enter on it chooses nothing and the box stays open.
+  {
+    const char* text = R"({ "id": "root", "label": "open", "items": [
+      { "id": "text", "label": "Text", "kind": "choice", "dropdown": true, "value": "system",
+        "items": [ { "id": "nvim", "label": "Neovim", "enabled": false }, { "id": "system", "label": "the system opener" } ] } ] })";
+    RolltuiMenuItem root;
+    rolltui_menu_item_init(&root);
+    RolltuiMenuLoadReport rep{};
+    check(rolltui_menu_parse_json(text, std::strlen(text), &root, &rep) != 0, "an option may be disabled in the file");
+    rolltui_menu_load_report_release(&rep);
+    RolltuiMenu* m = rolltui_menu_new();
+    rolltui_menu_set_root(m, &root);
+    rolltui_menu_item_release(&root);
+    rolltui_menu_layout(m, RolltuiRect{0, 0, 40, 8});
+    const RolltuiBindings* b = rolltui_bindings_default(rolltui_test::test_context());
+    const RolltuiMenuActions* A = rolltui_menu_default_actions();
+    RolltuiMenuEvent ev{};
+    RolltuiEvent enter = key(Key::Enter), up = key(Key::Up);
+    rolltui_menu_handle(m, &enter, b, A, &ev);  // the box opens on the current answer
+    {
+      Frame f(40, 8);
+      RolltuiStyle styles[ROLLTUI_ROLE_COUNT]{};
+      rolltui_menu_draw(m, f.handle(), draw_scratch(), styles, &kMenuRoles, &kInputRoles, 1);
+      bool listed = false;
+      for (int y = 0; y < 8; ++y) listed |= row(f, y).find("Neovim") != std::string::npos;
+      check(rolltui_menu_dropdown_open(m) && listed, "the disabled option is in the box, to be seen");
+    }
+    rolltui_menu_handle(m, &up, b, A, &ev);     // onto Neovim
+    rolltui_menu_handle(m, &enter, b, A, &ev);
+    check(rolltui_menu_dropdown_open(m) != 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE &&
+              std::string(rolltui_menu_root(m)->children.v[0]->value.p, rolltui_menu_root(m)->children.v[0]->value.n) == "system",
+          "…and Enter on it chooses nothing: the value stays, the box stays open");
+    rolltui_menu_event_release(&ev);
+    rolltui_menu_free(m);
+  }
+
   // ---- SECTIONS AND SEPARATORS: how a level is organised, and nothing else -----------------
   // A section is a heading with a rule after it; a separator is the rule alone. Neither takes
   // the cursor, a click, a filter match or a palette entry — Down from the row above a heading
