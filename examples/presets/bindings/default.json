@@ -1,31 +1,31 @@
 {
   "name": "dirktui",
   "bindings": {
-    "browser.up": [
+    "picker.up": [
       "up",
       "ctrl+p"
     ],
-    "browser.down": [
+    "picker.down": [
       "down",
       "ctrl+n"
     ],
-    "browser.out": [
+    "picker.out": [
       "left",
       "backspace"
     ],
-    "browser.into": [
+    "picker.into": [
       "right"
     ],
-    "browser.first": [
+    "picker.first": [
       "home"
     ],
-    "browser.last": [
+    "picker.last": [
       "end"
     ],
-    "browser.page_up": [
+    "picker.page_up": [
       "pageup"
     ],
-    "browser.page_down": [
+    "picker.page_down": [
       "pagedown"
     ],
     "app.details": [
@@ -53,19 +53,19 @@
       "ctrl+q",
       "ctrl+c"
     ],
-    "browser.accept": [
+    "picker.take": [
       "enter"
     ],
-    "browser.cancel": [
+    "picker.cancel": [
       "escape"
     ],
     "app.menu": [
       "f2"
     ],
-    "browser.copy": [
+    "picker.copy": [
       "c"
     ],
-    "browser.copy_inverse": [
+    "picker.copy_inverse": [
       "alt+c"
     ]
   }

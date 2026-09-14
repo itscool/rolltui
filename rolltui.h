@@ -1593,7 +1593,10 @@ typedef void (*RolltuiEffectFn)(void* ctx, const RolltuiEffectSpec* spec, const 
   X(streaming, STREAMING, Streaming) \
   X(progress, PROGRESS, Progress) \
   X(flash, FLASH, Flash) \
-  X(streamed, STREAMED, Streamed)
+  X(streamed, STREAMED, Streamed) \
+  X(picker_cursor, PICKER_CURSOR, PickerCursor) \
+  X(picker_trail, PICKER_TRAIL, PickerTrail) \
+  X(picker_opened, PICKER_OPENED, PickerOpened)
 
 typedef enum RolltuiEffectState {
 #define ROLLTUI_EFFECT_STATE_ENUM_(lower, UPPER, Camel) ROLLTUI_EFFECT_STATE_##UPPER,
@@ -4718,21 +4721,97 @@ void rolltui_dir_list_release(RolltuiDirList* l);
 int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiDirList* out,
                      RolltuiStr* err);
 
-/* ---- `filepicker`: the two calls a host makes ---------------------------------------------
- * A picker is a LIST, not a tree: one directory at a time, `..` to leave, Enter to go in or to
- * take. Deliberately less than a browser, because a browser is for looking and a picker is for
- * one answer. Both read a directory the same way, which is where the sharing belongs.
+/* ---- `filepicker`: the column browser, and the calls a host makes ---------------------------
+ * Miller columns: every column is one directory with its own cursor and scroll, the column right
+ * of the focus previews what the cursor is on, and the columns run from `/` down to where the
+ * picker was pointed so a deep start shows its ancestors. A divider after each column carries
+ * that column's thumb; a column clipped at the left edge fades. What a chosen path MEANS is the
+ * host's: the picker records an event and a host reads it — it opens nothing and ends nothing.
  *
- * Where it starts. A picker with nowhere to start looks at the working directory, which is
- * almost never where a person means. */
+ * Where it starts, at any time — "the initial path is bindable at runtime". A picker with nowhere
+ * to start looks at the working directory. */
 void rolltui_windows_set_picker_dir(RolltuiWindows* w, const char* content, size_t len, const char* dir,
                                     size_t dir_len);
 
 /* The answer, POLLED. 1 exactly once per choice, filling `out` with the chosen path; 0 otherwise.
  * A host asks on the frame after it opened the panel, which is where it already asks a preset
  * store for its version. Collected once on purpose: a host that asks every frame must not act on
- * one choice twice. */
+ * one choice twice. The narrow form of `rolltui_windows_picker_event`: a cancel or a copy asked
+ * for is dropped here, so a dialog that wants only the path never has to say so. */
 int rolltui_windows_picker_taken(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* out);
+
+/* WHAT THE PICKER'S KEYS SAID, and only a host can do: a path TAKEN (Enter on a file, or on a
+ * folder when `take_folders` is set — else Enter enters it), CANCELLED (the `picker.cancel`
+ * chord), or a COPY of the selection's path asked for (`picker.copy`; `inverse` set by the
+ * `copy_inverse` chord, which a host reads as "the other way round from my setting"). Collected
+ * once, like `_taken`. `path` is OWNED by the event: release it. */
+#define ROLLTUI_PICKER_EVENT_NONE 0
+#define ROLLTUI_PICKER_EVENT_TAKEN 1
+#define ROLLTUI_PICKER_EVENT_CANCELLED 2
+#define ROLLTUI_PICKER_EVENT_COPY 3
+typedef struct RolltuiPickerEvent {
+  unsigned char kind ROLLTUI_DEFAULT(0);
+  unsigned char inverse ROLLTUI_DEFAULT(0);
+  RolltuiStr path;
+} RolltuiPickerEvent;
+void rolltui_picker_event_release(RolltuiPickerEvent* e);
+int rolltui_windows_picker_event(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerEvent* out);
+
+/* THE PICKER'S SETTINGS, a host's to set: dotfiles shown, the sort (`ROLLTUI_SORT_*`), motion
+ * (the slide and the marks; off is a still picker), the dividers, and whether Enter on a folder
+ * TAKES it (a directory picker) or ENTERS it (a file dialog, the default). `_init` fills the
+ * defaults, so a host sets only what it means to. */
+typedef struct RolltuiPickerOptions {
+  unsigned char hidden ROLLTUI_DEFAULT(1);
+  unsigned char sort ROLLTUI_DEFAULT(0);
+  unsigned char motion ROLLTUI_DEFAULT(1);
+  unsigned char dividers ROLLTUI_DEFAULT(1);
+  unsigned char take_folders ROLLTUI_DEFAULT(0);
+} RolltuiPickerOptions;
+void rolltui_picker_options_init(RolltuiPickerOptions* o);
+void rolltui_windows_set_picker_options(RolltuiWindows* w, const char* content, size_t len,
+                                        const RolltuiPickerOptions* o);
+
+/* What is under the cursor — the focused column's directory when that column is empty — and
+ * whether it is a folder (a link to one counts); and the focused column's directory itself, which
+ * is what a save dialog joins a typed name onto. Both fill a caller's string and return 1 when
+ * there is a picker to ask. */
+int rolltui_windows_picker_selected(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* path,
+                                    int* is_dir);
+int rolltui_windows_picker_dir(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* out);
+
+/* THE FACTS A STATUS LINE WANTS, in one query: how many entries the focused column shows and
+ * hid, which column of how many the cursor is in, whether the columns are mid-slide (a host's
+ * frame timer asks for the next frame soon while they are), and why the first column could not be
+ * read, when it could not — a person who mistyped a path needs the path back, not the plumbing.
+ * `error` is OWNED by the status: release it. */
+typedef struct RolltuiPickerStatus {
+  size_t entries ROLLTUI_DEFAULT(0);
+  size_t hidden ROLLTUI_DEFAULT(0);
+  size_t column ROLLTUI_DEFAULT(0);  /* 1-based */
+  size_t columns ROLLTUI_DEFAULT(0);
+  unsigned char moving ROLLTUI_DEFAULT(0);
+  RolltuiStr error;
+} RolltuiPickerStatus;
+void rolltui_picker_status_release(RolltuiPickerStatus* s);
+int rolltui_windows_picker_status(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerStatus* out);
+
+/* THE TWELVE ACTION NAMES the picker's keys are resolved against, in the `picker` scope. */
+typedef struct RolltuiPickerActions {
+  const char* up;
+  const char* down;
+  const char* page_up;
+  const char* page_down;
+  const char* first;
+  const char* last;
+  const char* into;
+  const char* out;
+  const char* take;
+  const char* cancel;
+  const char* copy;
+  const char* copy_inverse;
+} RolltuiPickerActions;
+
 
 const RolltuiLayoutNode* rolltui_window_stack_focused(const RolltuiWindowStack* s);
 
@@ -5097,19 +5176,6 @@ void rolltui_content_rect(const RolltuiResolvedNode* rn, RolltuiRect* out);
  * (Widgets.hpp: two windows on one content are two views of one widget). */
 RolltuiWidget* rolltui_windows_widget_for(RolltuiWindows* w, const char* content, size_t len);
 
-/* Where a thumb sits and how long it is, in the track's own cells; 0 when no bar should be
- * drawn at all. The window draws its own bar with this in its border column; a widget that
- * scrolls several lists at once — a column browser — draws a thumb per list with the same
- * arithmetic, so the two agree. A pure function: the degenerate sizes are a table test. */
-typedef struct RolltuiScrollThumb {
-  int offset ROLLTUI_DEFAULT(0); /* cells from the track's start */
-  int length ROLLTUI_DEFAULT(0); /* cells, always >= 1 when drawn */
-} RolltuiScrollThumb;
-int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out);
-/* The inverse, for a click or a drag: the `first` line that puts the thumb's START at `cell` of
- * the track. Clamped to a valid first line, so a drag past either end rests at that end. */
-size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, int cell);
-
 /* THE CURRENT FRAME'S STYLE TABLE, indexed by Role ordinal — a BORROW valid for the length of
  * one `rolltui_windows_draw` call, set at its top from the `styles` it is already handed (the
  * same array `draw_scrollbar` inside this module reads). This is what lets a widget's `draw`
@@ -5118,10 +5184,6 @@ size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, in
  * shape one level up, generalised to the one thing every drawing kind needs. NULL outside a
  * draw call. */
 const RolltuiStyle* rolltui_windows_styles(const RolltuiWindows* w);
-/* THE SCROLLBAR GLYPHS the window's own bar is drawn with — the theme's, or the shipped set — so a
- * widget drawing a thumb of its own draws the same capsule. A BORROW, valid for the session;
- * with `ambiguous_wide` the window uses the `ascii_*` slots, and so should the widget. */
-const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWindows* w);
 
 /* ---- diff ----------------------------------------------------------------------------------*/
 

@@ -52,7 +52,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_input.c c/rolltui_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_transcript.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_picker.c c/rolltui_transcript.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
@@ -311,7 +311,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp
-  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp
+  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp
   # the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
@@ -365,6 +365,7 @@ add_rolltui_test(rolltui-budget-test tests/budget_test.cpp)
 # changes a span's width and never writes outside its span), the built-in kind table, and
 # "no wakeups with no marks".
 add_rolltui_test(rolltui-effects-test tests/effects_test.cpp)
+add_rolltui_test(rolltui-picker-test tests/picker_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
 # (table), and Terminal on a real pty with a forked child killed by SIGTERM.

@@ -90,6 +90,18 @@ typedef struct { const char* name; const char* desc; } LibAction;
   X(edit,      cancel,            "edit.cancel",                 "cancel the edit (the value returns)") \
   X(edit,      step_up,           "edit.step_up",                "a number field: step up") \
   X(edit,      step_down,         "edit.step_down",              "a number field: step down") \
+  X(picker,    up,                "picker.up",                   "the row above") \
+  X(picker,    down,              "picker.down",                 "the row below") \
+  X(picker,    page_up,           "picker.page_up",              "a page up") \
+  X(picker,    page_down,         "picker.page_down",            "a page down") \
+  X(picker,    first,             "picker.first",                "the first row") \
+  X(picker,    last,              "picker.last",                 "the last row") \
+  X(picker,    into,              "picker.into",                 "into the selected folder") \
+  X(picker,    out,               "picker.out",                  "out to the parent folder") \
+  X(picker,    take,              "picker.take",                 "choose what is under the cursor") \
+  X(picker,    cancel,            "picker.cancel",               "choose nothing") \
+  X(picker,    copy,              "picker.copy",                 "copy the selection's path") \
+  X(picker,    copy_inverse,      "picker.copy_inverse",         "copy the path the other way round (absolute / relative)") \
   X(stack,     close_popup,       "stack.close_popup",           "close the topmost popup") \
   X(stack,     focus_next,        "stack.focus_next",            "move focus to the next window") \
   X(stack,     focus_prev,        "stack.focus_prev",            "move focus to the previous window")
@@ -140,6 +152,7 @@ const char* rolltui_library_action_description(size_t i, size_t* len) {
 #define ROLLTUI_LA_menu(field, name)
 #define ROLLTUI_LA_edit(field, name)
 #define ROLLTUI_LA_stack(field, name)
+#define ROLLTUI_LA_picker(field, name)
 #define ROLLTUI_LA_PICK_(group, field, name, desc) ROLLTUI_LA_##group(field, name)
 
 #undef ROLLTUI_LA_input
@@ -196,6 +209,13 @@ static const RolltuiStackActions kStackActions = {ROLLTUI_LIBRARY_ACTION_LIST(RO
 #define ROLLTUI_LA_stack(field, name)
 
 /* All five BORROW static storage, valid for the life of the process, never freed. */
+#undef ROLLTUI_LA_picker
+#define ROLLTUI_LA_picker(field, name) .field = name,
+static const RolltuiPickerActions kPickerActions = {ROLLTUI_LIBRARY_ACTION_LIST(ROLLTUI_LA_PICK_)};
+#undef ROLLTUI_LA_picker
+#define ROLLTUI_LA_picker(field, name)
+
+const RolltuiPickerActions* rolltui_picker_default_actions(void) { return &kPickerActions; }
 const RolltuiInputActions* rolltui_input_default_actions(void) { return &kInputActions; }
 const RolltuiMenuActions* rolltui_menu_default_actions(void) { return &kMenuActions; }
 const RolltuiTranscriptActions* rolltui_transcript_default_actions(void) { return &kTranscriptActions; }

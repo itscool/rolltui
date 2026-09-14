@@ -120,6 +120,21 @@
 extern "C" {
 #endif
 
+/* Where a thumb sits and how long it is, in the track's own cells; 0 when no bar should be drawn
+ * at all. The window draws its own bar with this in its border column, and the picker draws a
+ * thumb per column with the same arithmetic, so the two agree. A pure function. */
+typedef struct RolltuiScrollThumb {
+  int offset ROLLTUI_DEFAULT(0); /* cells from the track's start */
+  int length ROLLTUI_DEFAULT(0); /* cells, always >= 1 when drawn */
+} RolltuiScrollThumb;
+int rolltui_scroll_thumb(const RolltuiScrollExtent* e, int track, RolltuiScrollThumb* out);
+/* The inverse, for a click or a drag: the `first` line that puts the thumb's START at `cell` of
+ * the track. Clamped to a valid first line, so a drag past either end rests at that end. */
+size_t rolltui_scroll_first_for_cell(const RolltuiScrollExtent* e, int track, int cell);
+/* THE SCROLLBAR GLYPHS the window's own bar is drawn with — the theme's, or the shipped set — so
+ * the picker's thumbs are the same capsule. A BORROW, valid for the session. */
+const RolltuiScrollbarGlyphs* rolltui_windows_scrollbar_glyphs(const RolltuiWindows* w);
+
 /* THE TWO FALLBACKS, and they are two because their ARGUMENT means two different things —
  * which is exactly the implicit resolution CLAUDE.md's corollary says to spell out rather
  * than let one function guess between.

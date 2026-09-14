@@ -151,7 +151,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 35; /* +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 36; /* +rolltui_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
@@ -562,7 +562,11 @@ int main() {
     // is gone, which is the cheapest way a kept row ever resolves.
     // 65 -> 66: the `theme` widget kind's one, which is how an app says where its theme lives.
     // 66 -> 67: the `keys` widget kind's, for the same reason one rung over — where a rebinding lands.
-    check(kept.size() == 67,
+    // 67 -> 70: the picker's event and status releases and its options' defaults — the release
+    // halves of pairs a consumer holds, and the defaults so a host sets only what it means to.
+    // 70 -> 71: `rolltui_effect_state_register`, kept as the capability it is once the picker's
+    // states moved into the library and no host registered any.
+    check(kept.size() == 71,
           "the KEPT rows — PUBLIC for a stated reason, not for a consumer's reach — are the recorded " +
               std::to_string(kept.size()) + "; a new one is a decision that re-records this number");
     std::vector<std::string> unclassified, stale, roll_not_public, tool_internal, deleted_but_reached, internal_reached, misplaced, public_for_a_test;
@@ -623,7 +627,7 @@ int main() {
     // A public input type whose value cannot be parsed is a contradiction in the surface,
     // which is why the colour parser and printer are public independently of the consumer
     // that found them missing.
-    const int kPublic = 332, kInternal_ = 576, kDelete = 0;
+    const int kPublic = 337, kInternal_ = 600, kDelete = 0;
     check(totals["PUBLIC"] == kPublic && totals["INTERNAL"] == kInternal_ && totals["DELETE"] == kDelete && totals["TOOL_FACING"] == 0,
           "the class totals are the recorded ones (PUBLIC " + std::to_string(totals["PUBLIC"]) +
               ", INTERNAL " + std::to_string(totals["INTERNAL"]) + ", DELETE " + std::to_string(totals["DELETE"]) +
@@ -822,8 +826,8 @@ int main() {
     // A NAMED EMPTY STAGE STAYS IN THE TABLE. An empty row asserts that nothing is filed
     // there; deleting the row would make a future arrival unremarkable.
     check(rt["VOCAB"] == 34 && rt["HOST_LOAD"] == 30 && rt["HOST_SETTINGS"] == 55 &&
-              rt["HOST_BIND"] == 93 && rt["HOST_RUN"] == 83 && rt["HOST_RELEASE"] == 7 &&
-              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 30,
+              rt["HOST_BIND"] == 93 && rt["HOST_RUN"] == 89 && rt["HOST_RELEASE"] == 9 &&
+              rt["TOOL_INTEROP"] == 0 && rt["WIDGET"] == 27,
           "the roles are the recorded shape — vocab 34, host load 30 / settings 55 / bind 93 / run 81 / "
           "release 7, tool interop 0, widget 27 (got " +
               std::to_string(rt["VOCAB"]) + "/" + std::to_string(rt["HOST_LOAD"]) + "/" + std::to_string(rt["HOST_SETTINGS"]) +

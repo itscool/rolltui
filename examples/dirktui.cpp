@@ -79,8 +79,7 @@ extern char** environ;  // for posix_spawnp: not declared by any header on Darwi
 
 namespace {
 
-constexpr const char* kBrowserKind = "browser";
-constexpr const char* kBrowserDescribes = "a column view of a directory tree";
+constexpr const char* kPicker = "filepicker";  // the library's column browser, the base window's content
 
 // ---- what the host and the widget agree on ------------------------------------------------
 // One struct, owned by the app, BORROWED by the widget through its factory ctx. This is how a
@@ -202,17 +201,6 @@ struct Options {
   bool land_in_file_folder = false;  // the command line lands in the file's folder with `./name` (exit 4), else where dirk started (exit 3)
   bool copy_relative = false;        // paths handed out (copy, the command line): relative to where dirk started, or absolute
   std::map<std::string, std::string> open_with;  // type group id -> program id; absent means the group's own default
-  const RolltuiBindings* bindings = nullptr;  // BORROWED: the app's live table
-  // THE STATES THE BROWSER MARKS WITH — this app's own, registered by name on the session so a
-  // theme or this app's effects file maps them BY NAME; the library's six are a transcript's
-  // and stay untouched. The indices are whatever the registry handed back: nothing here
-  // assumes a number, and 0 (None) marks nothing, which is what an unregistered state does.
-  //   cursor — the row under the cursor in the focused column, folder or file alike
-  //   trail  — a row we drilled through: the selection in every column left of the focus
-  //   opened — the row whose file was just opened, for one moment
-  int st_cursor = 0;
-  int st_trail = 0;
-  int st_opened = 0;
 };
 
 // A `RolltuiStr` as a `std::string`, at the sites that want one. The library's own vocabulary
@@ -372,929 +360,6 @@ void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, con
   out->style.bold = k > 0.4 ? 1 : in->base.bold;
 }
 
-// ---- text measured and cut to a column's width ---------------------------------------------
-// "HOW MANY BYTES OF THIS FIT IN N CELLS" is `rolltui_u_fit`, and it is public because every
-// list, tree, table and column view truncates and would otherwise write this loop itself.
-// `rolltui_frame_put_text` computes exactly that offset to honour `max_cells`; returning only
-// the count leaves a caller placing an ellipsis at a cut it has to find some other way — by
-// driving the WRAP ENGINE as a grapheme iterator, which is public, correct and indirect.
-struct Measure {
-  RolltuiUnicodeScratch* u = rolltui_u_scratch_new();
-  ~Measure() { rolltui_u_scratch_free(u); }
-  int width(const std::string& s) { return rolltui_u_display_width(u, s.data(), s.size(), 0); }
-  // The longest prefix of `s` that fits in `cells`, as a byte count.
-  std::size_t prefix_bytes(const std::string& s, int cells) {
-    return rolltui_u_fit(u, s.data(), s.size(), cells, 0, nullptr);
-  }
-
-  // The byte offset that drops AT LEAST `cells` cells from the left of `s`, and how many cells
-  // were actually dropped (one more than asked when a wide glyph straddles the cut — a glyph
-  // is never split, so the cut lands after it). For the column half-scrolled off the left edge.
-  std::size_t skip_bytes(const std::string& s, int cells, int& dropped) {
-    std::size_t at = prefix_bytes(s, cells);
-    dropped = width(s.substr(0, at));
-    if (dropped < cells && at < s.size()) {
-      at = prefix_bytes(s, cells + 1);
-      dropped = width(s.substr(0, at));
-    }
-    return at;
-  }
-
-  // `s`, or a prefix of it with a single-cell ellipsis, fitting `cells`.
-  std::string fit(const std::string& s, int cells) {
-    if (cells <= 0) return std::string();
-    if (width(s) <= cells) return s;
-    const std::size_t keep = prefix_bytes(s, cells - 1);
-    return s.substr(0, keep) + "\xE2\x80\xA6";  // U+2026
-  }
-};
-
-// ---- one column: a directory, its entries, and where the eye is -----------------------------
-struct Column {
-  std::string dir;
-  RolltuiDirList entries{};  // OWNED; released in the destructor
-  std::size_t sel = 0;
-  std::size_t top = 0;   // the first visible row: this column's own vertical scroll
-  int width = 18;        // derived from the content, clamped
-  std::size_t hidden_n = 0;
-  std::string error;     // opendir failed: a NOTE, never a crash
-  Column() = default;
-  Column(const Column&) = delete;
-  Column& operator=(const Column&) = delete;
-  Column(Column&& o) noexcept { *this = std::move(o); }
-  Column& operator=(Column&& o) noexcept {
-    if (this != &o) {
-      rolltui_dir_list_release(&entries);
-      dir = std::move(o.dir); entries = o.entries; sel = o.sel; top = o.top;
-      width = o.width; hidden_n = o.hidden_n; error = std::move(o.error);
-      o.entries = RolltuiDirList{};
-    }
-    return *this;
-  }
-  ~Column() { rolltui_dir_list_release(&entries); }
-};
-
-// THE READ IS THE LIBRARY'S. What is left here is this app's own two choices: it describes the
-// LINK rather than what it points at, because a browser shows what is on disk, and it keeps the
-// count of what it hid so the status line can say so.
-bool read_dir(const std::string& path, const Options& opt, Column& out) {
-  RolltuiStr err{};
-  const int flags = (opt.hidden ? ROLLTUI_DIR_HIDDEN : 0) | ROLLTUI_DIR_LINKS;
-  const int sort = opt.sort == Sort::Size      ? ROLLTUI_SORT_SIZE
-                   : opt.sort == Sort::Modified ? ROLLTUI_SORT_MODIFIED
-                                                : ROLLTUI_SORT_NAME;
-  out.error.clear();
-  const bool ok = rolltui_dir_read(path.data(), path.size(), sort, flags, &out.entries, &err) != 0;
-  if (!ok) out.error.assign(err.p ? err.p : "", err.n);
-  out.hidden_n = out.entries.hidden_n;
-  rolltui_str_free(&err);
-  return ok;
-}
-
-// ---- the widget ----------------------------------------------------------------------------
-struct Browser {
-  std::string source;
-  const Options* opt = nullptr;        // BORROWED
-  RolltuiWindows* windows = nullptr;   // BORROWED: where `draw` asks for the style table
-  RolltuiDrawScratch* draw_scratch = rolltui_draw_scratch_new();
-  Measure measure;
-  RolltuiRect inner{};
-  std::vector<Column> cols;
-  std::size_t focus_col = 0;
-  std::string root;
-  // WHERE THE CURSOR WAS, PER FOLDER, for the session. A column that opens for a folder the
-  // cursor has been in puts the cursor back on the entry it left — so Left then Right lands
-  // where you were, and so does moving to a sibling and back. Keyed by the folder rather than
-  // by depth, so "no longer valid" needs no stack to pop: another folder is another key, and a
-  // name that is gone falls back to the top. Never written to disk: it is the path of one run.
-  std::unordered_map<std::string, std::string> remembered;
-  void remember(const Column& c) {
-    if (c.sel < c.entries.n) remembered[c.dir] = str_of(c.entries.v[c.sel].name);
-  }
-  void recall(Column& c) const {
-    const auto it = remembered.find(c.dir);
-    if (it == remembered.end()) return;
-    for (std::size_t i = 0; i < c.entries.n; ++i)
-      if (str_of(c.entries.v[i].name) == it->second) { c.sel = i; return; }
-  }
-  // THE HORIZONTAL SCROLL IS ONE NUMBER: where column 0's left edge sits relative to the inner
-  // rect, in cells, never positive. The ANCHOR RULE picks its target: when every column fits,
-  // nothing scrolls and the columns pack from the left; otherwise the column to the RIGHT of the
-  // focused one — the one the selection is filling — ends exactly at the right edge, so the eye
-  // always has the focused column and its whole preview, and whatever fits to the left is shown
-  // partially rather than not at all. A change of target is ANIMATED, quickly (`kScrollMs`): the
-  // columns slide to where they belong, so the eye follows a column rather than re-finding it.
-  int scroll_x = 0;
-  int scroll_target = 0;
-  int scroll_from = 0;
-  unsigned long long scroll_start_ms = 0;
-  bool scrolling = false;
-  bool anchored_once = false;     // a real anchor has run against a known window; until then nothing is "kept"
-  unsigned long long now_ms = 0;  // the frame clock, set by the app before each frame; 0 = headless, no motion
-  std::size_t faded_cells = 0;    // how many cells the last frame drew faded at the left edge: a self-test reads it
-  // A DRAG ON A DIVIDER'S THUMB: which column, and where on the thumb the press landed, so the
-  // thumb follows the pointer from where it was grabbed rather than jumping to it. -1: no drag.
-  long long drag_col = -1;
-  int drag_grab = 0;
-  RolltuiScrollExtent extent_of(std::size_t ci) const {
-    RolltuiScrollExtent e{};
-    e.first = cols[ci].top;
-    e.visible = static_cast<std::size_t>(rows_visible());
-    e.total = cols[ci].entries.n;
-    return e;
-  }
-  // Which column's DIVIDER a cell is on: the one-cell margin after column `ci`, over its rows.
-  long long divider_at(int mx, int my) const {
-    if (!opt->dividers || my < inner.y + 1 || my >= inner.y + 1 + rows_visible()) return -1;
-    for (std::size_t ci = 0; ci + 1 < cols.size(); ++ci)
-      if (mx == column_x(ci) + shown_width(ci) && mx >= inner.x) return static_cast<long long>(ci);
-    return -1;
-  }
-  // Which column a cell is IN, for the wheel: its rows or its divider, whichever the pointer is over.
-  long long column_at(int mx) const {
-    for (std::size_t ci = 0; ci < cols.size(); ++ci) {
-      const int x = column_x(ci);
-      if (mx >= x && mx <= x + shown_width(ci) && mx >= inner.x) return static_cast<long long>(ci);
-    }
-    return -1;
-  }
-  void scroll_column(std::size_t ci, std::size_t first) {
-    Column& c = cols[ci];
-    const std::size_t vis = static_cast<std::size_t>(rows_visible());
-    const std::size_t max_top = c.entries.n > vis ? c.entries.n - vis : 0;
-    c.top = first > max_top ? max_top : first;
-  }
-  static constexpr unsigned long long kScrollMs = 120;
-  static constexpr int kMaxColumnWidth = 28;  // a column is never wider; the LAST slot is always this wide
-  // WHEN THE EYE MOVED, for the marks: the cursor's span carries the moment it landed on this
-  // entry, and the column just entered carries the moment of the dig. A one-shot effect is a
-  // MARK WITH A LIFETIME — the widget stops marking once the moment is old enough, so the tick
-  // stops asking for frames; what the effect looks like inside that window is the theme's.
-  unsigned long long cursor_since_ms = 0;
-  unsigned long long opened_since_ms = 0;
-  std::size_t opened_col = static_cast<std::size_t>(-1);
-  std::size_t opened_sel = 0;
-  static constexpr unsigned long long kOpenedMs = 1300;  // the burst on an opened file is over by then (its period is 1200)
-  void eye_moved() { cursor_since_ms = now_ms; }
-  void file_opened() { opened_since_ms = now_ms; opened_col = focus_col; opened_sel = focused() ? focused()->sel : 0; }
-
-  // GO TO A PATH WITH ITS ANCESTORS SHOWING. The columns start at the file system's root and
-  // run down to `path`, each with the next component selected, so a deep start shows where it
-  // sits — the reason the focused column sits one in from the right edge is that the columns to
-  // its LEFT are worth seeing without pressing Left. A component that cannot be entered ends the
-  // walk where it is, with what it could open on screen.
-  void go_to(const std::string& path) {
-    set_root("/");
-    std::size_t at = 1;
-    while (at <= path.size()) {
-      const std::size_t next = path.find('/', at);
-      const std::string part = path.substr(at, next == std::string::npos ? std::string::npos : next - at);
-      at = next == std::string::npos ? path.size() + 1 : next + 1;
-      if (part.empty()) continue;
-      Column* c = focused();
-      if (!c) return;
-      bool found = false;
-      for (std::size_t i = 0; i < c->entries.n; ++i)
-        if (str_of(c->entries.v[i].name) == part) { c->sel = i; found = true; break; }
-      // The walk IS a visit: each ancestor's selection goes into the memory, so Left out of a
-      // deep start and Right again lands on the same entry rather than on the folder's first.
-      if (found) remember(*c);
-      if (!found || !folder_like(c->dir, c->entries.v[c->sel])) {
-        // The path goes on where the disk does not: the rest of it becomes one column that
-        // cannot be opened, said in full, so a mistyped start is shown and not silently trimmed.
-        Column bad;
-        bad.dir = path;
-        read_dir(path, *opt, bad);
-        measure_width(bad);
-        cols.resize(focus_col + 1);
-        cols.push_back(std::move(bad));
-        ++focus_col;
-        break;
-      }
-      clamp_scroll(*c);
-      open_selected();
-      if (focus_col + 1 >= cols.size()) return;
-      ++focus_col;
-      open_selected();
-    }
-    eye_moved();
-    retarget();
-  }
-  // THE OUTCOME. Set by an action, read by the app once the poll's events are handled. The widget
-  // cannot end the process and must not decide what a chosen path MEANS — printing it, and what
-  // the shell does with it, are the app's and the shell's. Two flags rather than one enum with an
-  // "open" state, so a reader of either asks one question.
-  bool accepted = false;
-  bool cancelled = false;
-  bool copy_requested = false;  // `browser.copy`; `copy_inverse` says the Option chord asked
-  bool copy_inverse = false;
-
-
-  const Column* focused() const { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
-  Column* focused() { return focus_col < cols.size() ? &cols[focus_col] : nullptr; }
-
-  const RolltuiDirEntry* selected() const {
-    const Column* c = focused();
-    return c && c->sel < c->entries.n ? &c->entries.v[c->sel] : nullptr;
-  }
-  // A FOLDER, OR A LINK TO ONE. The reader describes the link itself (a browser shows what is on
-  // disk), so a symlinked folder reads as "not a directory" and could never be entered — `/var`
-  // on macOS, every `node_modules/.bin`. Entering follows the link; the column is still named by
-  // the path a person walked, never by where the link went.
-  static bool folder_like(const std::string& dir, const RolltuiDirEntry& e) {
-    if (e.is_dir) return true;
-    if (!S_ISLNK(e.mode)) return false;
-    struct stat st {};
-    const std::string path = dir == "/" ? "/" + str_of(e.name) : dir + "/" + str_of(e.name);
-    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-  }
-  bool selected_is_folder() const {
-    const Column* c = focused();
-    const RolltuiDirEntry* e = selected();
-    return c && e && folder_like(c->dir, *e);
-  }
-  std::string selected_path() const {
-    const Column* c = focused();
-    if (!c || c->sel >= c->entries.n) return c ? c->dir : root;
-    return c->dir == "/" ? "/" + str_of(c->entries.v[c->sel].name)
-                         : c->dir + "/" + str_of(c->entries.v[c->sel].name);
-  }
-
-  void set_root(const std::string& path) {
-    root = path;
-    cols.clear();
-    focus_col = 0;
-    Column c;
-    c.dir = path;
-    read_dir(path, *opt, c);
-    measure_width(c);
-    cols.push_back(std::move(c));
-    open_selected();
-    eye_moved();
-    retarget();
-  }
-
-  void reload() {
-    // Re-read every column in place, keeping the selection BY NAME rather than by index, so a
-    // sort change or a dotfile toggle does not move the eye to a different file.
-    std::vector<std::string> keep;
-    for (const Column& c : cols) keep.push_back(c.sel < c.entries.n ? str_of(c.entries.v[c.sel].name) : std::string());
-    for (std::size_t i = 0; i < cols.size(); ++i) {
-      read_dir(cols[i].dir, *opt, cols[i]);
-      measure_width(cols[i]);
-      cols[i].sel = 0;
-      for (std::size_t j = 0; j < cols[i].entries.n; ++j)
-        if (str_of(cols[i].entries.v[j].name) == keep[i]) cols[i].sel = j;
-      clamp_scroll(cols[i]);
-    }
-  }
-
-  void measure_width(Column& c) {
-    int longest = 0;
-    for (std::size_t i = 0; i < c.entries.n; ++i)
-      longest = std::max(longest, measure.width(str_of(c.entries.v[i].name)) + (c.entries.v[i].is_dir ? 2 : 0));
-    c.width = std::min(kMaxColumnWidth, std::max(12, longest + 2));
-    // A COLUMN THAT COULD NOT BE OPENED IS AS WIDE AS ITS REASON, up to the window: it is the
-    // last column and the anchor puts it at the right edge, so a name-sized width would leave
-    // "cannot ope…" of a message whose whole point is the path.
-    if (!c.error.empty()) c.width = std::max(c.width, std::min(inner.w > 0 ? inner.w : 80, measure.width(c.error) + 2));
-  }
-
-  // The column to the right of the focused one exists exactly when a directory is selected.
-  void open_selected() {
-    cols.resize(focus_col + 1);
-    if (!selected_is_folder()) return;
-    Column c;
-    c.dir = selected_path();
-    read_dir(c.dir, *opt, c);
-    measure_width(c);
-    recall(c);
-    clamp_scroll(c);
-    cols.push_back(std::move(c));
-  }
-
-  int rows_visible() const { return inner.h > 1 ? inner.h - 1 : (inner.h > 0 ? inner.h : 0); }
-
-  // TWO CLAMPS, because they answer two questions. `clamp_scroll` keeps the SELECTION on
-  // screen and is what a key or a click that moved it calls. `clamp_top` keeps the top IN RANGE
-  // and is what the per-frame layout calls: a column scrolled away from its selection by the
-  // wheel or its thumb stays there until the selection moves — a frame must not scroll it back.
-  void clamp_top(Column& c) {
-    const int vis = rows_visible();
-    const std::size_t max_top = vis > 0 && c.entries.n > static_cast<std::size_t>(vis) ? c.entries.n - static_cast<std::size_t>(vis) : 0;
-    if (c.top > max_top) c.top = max_top;
-  }
-  void clamp_scroll(Column& c) {
-    const int vis = rows_visible();
-    if (vis <= 0) {
-      c.top = 0;
-      return;
-    }
-    if (c.sel < c.top) c.top = c.sel;
-    if (c.sel >= c.top + static_cast<std::size_t>(vis)) c.top = c.sel - static_cast<std::size_t>(vis) + 1;
-    if (c.entries.n <= static_cast<std::size_t>(vis)) c.top = 0;
-  }
-
-  // Column `ci`'s left edge, in the inner rect's x, at the CURRENT scroll (mid-slide included).
-  int column_x(std::size_t ci) const {
-    int x = inner.x + scroll_x;
-    for (std::size_t j = 0; j < ci && j < cols.size(); ++j) x += shown_width(j) + 1;
-    return x;
-  }
-
-  // The anchor rule, as a target. Called after anything that changes which columns exist, which
-  // is focused, or how wide the rect is; the slide toward it is `advance()`'s.
-  // THE LAST SLOT IS RESERVED AT THE MAXIMUM WIDTH. The column to the right of the focus is the
-  // preview of whatever the cursor is on, and its content width changes with every Up and Down;
-  // if the anchor followed that width the focused column would shuffle left and right under the
-  // eye as the cursor moved. So the anchor counts the last column as `kMaxColumnWidth` wide,
-  // whatever it holds: the focused column stays put, and a narrow preview leaves room beside it.
-  // ONE WIDTH PER COLUMN, read by the anchor, the draw, the hit test and the scroll alike —
-  // there used to be three (the content measure, the anchor's idea of the last column, and
-  // what was drawn), and they disagreed: the slot was 28 wide while the column in it stayed 12.
-  // The rule: the LAST SLOT is `kMaxColumnWidth` wide and whoever occupies it is drawn that
-  // wide — the preview, or the focused column when it is a leaf, since nothing can come after
-  // it. A focused column with folders keeps its content width, because a slot is reserved after
-  // it and widening it would move it, which is the one thing the reserve exists to prevent.
-  int shown_width(std::size_t ci) const {
-    const bool last = ci + 1 == cols.size();
-    const bool preview = ci == focus_col + 1;
-    const bool focused_leaf = ci == focus_col && !column_has_folder(cols[ci]);
-    return last && (preview || focused_leaf) ? std::max(kMaxColumnWidth, cols[ci].width) : cols[ci].width;
-  }
-  static bool column_has_folder(const Column& c) {
-    for (std::size_t i = 0; i < c.entries.n; ++i)
-      if (folder_like(c.dir, c.entries.v[i])) return true;
-    return false;
-  }
-  void retarget() {
-    if (inner.w <= 0) return;  // no window yet: the first layout anchors, and nothing before it counts
-    int total = 0;
-    for (std::size_t j = 0; j < cols.size(); ++j) total += shown_width(j) + 1;
-    total = total > 0 ? total - 1 : 0;
-    int target = 0;
-    // THE SLOT IS HELD WHILE A FOLDER COULD BE SELECTED. With a file under the cursor there is
-    // no preview column, but the next Up or Down may land on a folder and open one; if the
-    // slot came and went with the selection, the focused column would jump every time the
-    // cursor crossed a file. So the slot is reserved as long as the focused column holds any
-    // folder at all, and only a column with none — a leaf — gives the space up.
-    const bool slot = !cols.empty() && (focus_col + 1 < cols.size() || column_has_folder(cols[focus_col]));
-    if (!cols.empty() && focus_col + 1 == cols.size() && slot) total += 1 + kMaxColumnWidth;
-    // ENTERING A LEAF KEEPS THE COLUMNS WHERE THEY ARE. As the preview it was drawn at the slot's
-    // width and as the focus it still is (`shown_width`), so the anchor would land within a cell
-    // of where it was — the cell is the window's scrollbar, which the column being left may have
-    // needed and the leaf does not. A re-anchor for that one cell is still a shift under the eye.
-    // Only after a real anchor has run: a start INSIDE a leaf is anchored like any other start.
-    if (anchored_once && !cols.empty() && focus_col + 1 == cols.size() && !slot) {
-      int focus_x = scroll_target;
-      for (std::size_t j = 0; j < focus_col; ++j) focus_x += shown_width(j) + 1;
-      if (focus_x >= 0 && focus_x < inner.w) return;
-    }
-    anchored_once = true;
-    if (total > inner.w && !cols.empty()) {
-      const std::size_t last = std::min(focus_col + 1, cols.size() - 1);
-      int right_end = 0;
-      for (std::size_t j = 0; j <= last; ++j) right_end += shown_width(j) + 1;
-      right_end -= 1;
-      if (last == focus_col && slot) right_end += 1 + kMaxColumnWidth;
-      target = std::min(0, inner.w - right_end);
-      // THE FOCUSED COLUMN ALWAYS STARTS ON SCREEN. The reserve for the last slot is worth
-      // having only while it fits beside the focus; in a window too narrow for both, the focus
-      // wins and the preview is what gets cut, never the column the eye is in.
-      int focus_start = 0;
-      for (std::size_t j = 0; j < focus_col; ++j) focus_start += shown_width(j) + 1;
-      if (focus_start + target < 0) target = -focus_start;
-    }
-    if (target == scroll_target) return;
-    scroll_target = target;
-    if (now_ms == 0 || !opt->motion) { scroll_x = target; scrolling = false; return; }  // headless, or motion off: no slide
-    scroll_from = scroll_x;
-    scroll_start_ms = now_ms;
-    scrolling = true;
-  }
-
-  // Where the slide has got to at `now_ms`. Ease-out: fast away from where it was, settling
-  // into place, which reads as "the columns moved" rather than "the screen jumped".
-  void advance() {
-    if (!scrolling) return;
-    const unsigned long long t = now_ms >= scroll_start_ms ? now_ms - scroll_start_ms : kScrollMs;
-    if (t >= kScrollMs || now_ms == 0) { scroll_x = scroll_target; scrolling = false; return; }
-    const double u = static_cast<double>(t) / static_cast<double>(kScrollMs);
-    const double eased = 1.0 - (1.0 - u) * (1.0 - u) * (1.0 - u);
-    scroll_x = scroll_from + static_cast<int>(std::lround((scroll_target - scroll_from) * eased));
-  }
-
-  void move(int delta) {
-    Column* c = focused();
-    if (!c || c->entries.n == 0) return;
-    long long at = static_cast<long long>(c->sel) + delta;
-    at = std::max<long long>(0, std::min<long long>(at, static_cast<long long>(c->entries.n) - 1));
-    if (static_cast<std::size_t>(at) != c->sel) eye_moved();
-    c->sel = static_cast<std::size_t>(at);
-    remember(*c);
-    clamp_scroll(*c);
-    open_selected();
-    retarget();
-  }
-  void select(std::size_t i) {
-    Column* c = focused();
-    if (!c || i >= c->entries.n) return;
-    if (i != c->sel) eye_moved();
-    c->sel = i;
-    remember(*c);
-    clamp_scroll(*c);
-    open_selected();
-    retarget();
-  }
-  void into() {
-    if (!selected_is_folder()) return;
-    open_selected();
-    if (focus_col + 1 < cols.size()) {
-      ++focus_col;
-      open_selected();  // the NEW focus's own preview, so the column to its right is never empty
-      eye_moved();
-      retarget();
-    }
-  }
-  void out() {
-    if (focus_col > 0) {
-      --focus_col;
-      cols.resize(focus_col + 2 <= cols.size() ? focus_col + 2 : cols.size());
-      eye_moved();
-      retarget();
-      return;
-    }
-    // At the leftmost column, going out means the parent directory becomes the new root — the
-    // one place this app follows a path upward, and it never leaves the file system's root.
-    const std::size_t slash = root.find_last_of('/');
-    if (root == "/" || slash == std::string::npos) return;
-    const std::string child = root.substr(slash + 1);
-    const std::string parent = slash == 0 ? "/" : root.substr(0, slash);
-    set_root(parent);
-    Column* c = focused();
-    if (!c) return;
-    for (std::size_t i = 0; i < c->entries.n; ++i)
-      if (str_of(c->entries.v[i].name) == child) c->sel = i;
-    remember(*c);
-    clamp_scroll(*c);
-    open_selected();
-    retarget();
-  }
-};
-
-void browser_destroy(void* ctx) {
-  Browser* b = static_cast<Browser*>(ctx);
-  rolltui_draw_scratch_free(b->draw_scratch);
-  delete b;
-}
-
-// `problem()` answers ONE question: what does this kind NEED that the app has not provided. Its
-// reader is whoever builds the app, and it feeds the end-of-init gap report, whose whole sentence
-// is "this screen names N things this app must provide". A directory that does not exist is not
-// something the app failed to provide — it is DATA, and a person who mistyped a path is not the
-// audience for a sentence about what an app must provide. That failure is drawn in the panel and
-// said in the status line, where the person who caused it is looking.
-int browser_problem(void* ctx, RolltuiStr* out) {
-  const Browser* b = static_cast<const Browser*>(ctx);
-  if (!b->cols.empty()) return 0;
-  const std::string why = "nothing is bound to '" + b->source + "'";
-  rolltui_str_set(out, why.data(), why.size());
-  return 1;
-}
-
-// Notes do NOT stop the widget drawing — the dotfile count is exactly that kind of remark.
-int browser_note_at(void* ctx, std::size_t i, RolltuiStr* out) {
-  const Browser* b = static_cast<const Browser*>(ctx);
-  if (i != 0) return 0;
-  const Column* c = b->focused();
-  if (!c || c->hidden_n == 0) return 0;
-  const std::string s = std::to_string(c->hidden_n) + " hidden";
-  rolltui_str_set(out, s.data(), s.size());
-  return 1;
-}
-
-void browser_layout(void* ctx, const RolltuiResolvedNode* rn) {
-  Browser* b = static_cast<Browser*>(ctx);
-  const int was_h = b->inner.h;
-  rolltui_content_rect(rn, &b->inner);
-  // A NEW HEIGHT brings every selection back on screen — a column opened before any layout had
-  // no rows to clamp against, and a resize can push a selection out. The same height keeps each
-  // column where the wheel or its thumb left it.
-  const bool resized = b->inner.h != was_h;
-  for (Column& c : b->cols) {
-    if (resized) b->clamp_scroll(c); else b->clamp_top(c);
-    if (!c.error.empty()) b->measure_width(c);  // an error column is sized to the window, known only here
-  }
-  b->retarget();
-  b->advance();
-}
-
-// THE FADE AT THE LEFT EDGE. A column partly off the left edge is a column the eye has left
-// behind, and cutting it dead at the border reads as a tear. Its visible cells are drawn with
-// their colours pulled toward the panel's background, most at the border and none a dozen
-// cells in, so the column looks like it goes on past the edge. ONLY IN 24-BIT COLOUR: a blend
-// is a colour the theme did not name, which an indexed palette cannot hold and a mono screen
-// must not invent, so a colour that is not RGB is left exactly as it was.
-RolltuiStyleColor toward(RolltuiStyleColor c, RolltuiStyleColor ground, double keep) {
-  if (c.kind != RolltuiStyleColor::Kind::Rgb || ground.kind != RolltuiStyleColor::Kind::Rgb) return c;
-  auto mix = [&](unsigned char a, unsigned char g) { return static_cast<unsigned char>(g + (a - g) * keep + 0.5); };
-  c.r = mix(c.r, ground.r);
-  c.g = mix(c.g, ground.g);
-  c.b = mix(c.b, ground.b);
-  return c;
-}
-RolltuiStyle faded(RolltuiStyle st, RolltuiStyleColor ground, double keep) {
-  st.fg = toward(st.fg, ground, keep);
-  st.bg = toward(st.bg, ground, keep);
-  return st;
-}
-
-void browser_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
-  Browser* b = static_cast<Browser*>(ctx);
-  RolltuiRect r{};
-  rolltui_content_rect(rn, &r);
-  b->faded_cells = 0;
-  if (r.w <= 0 || r.h <= 0) return;  // the standing rule: every view shrinks to nothing gracefully
-  const RolltuiStyle* styles = rolltui_windows_styles(b->windows);
-  auto S = [&](unsigned char role) { return *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, role); };
-  const RolltuiStyleColor ground = S(ROLLTUI_ROLE_BACKGROUND).bg;
-  static constexpr int kFadeCells = 12;
-  const RolltuiStyle text = S(ROLLTUI_ROLE_TEXT);
-  const RolltuiStyle dim = S(ROLLTUI_ROLE_TEXT_MUTED);
-  const RolltuiStyle head = S(ROLLTUI_ROLE_LABEL);
-  const RolltuiStyle here = S(ROLLTUI_ROLE_MENU_SELECTED);
-  const RolltuiStyle trail = S(ROLLTUI_ROLE_SELECTION);
-
-  for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
-    const Column& c = b->cols[ci];
-    const int x = b->column_x(ci);
-    const int sw = b->shown_width(ci);
-    if (x >= r.x + r.w) break;
-    if (x + sw <= r.x) continue;  // wholly off the left edge
-    const int cw = std::min(sw, r.x + r.w - x);
-    if (cw <= 0) break;
-    // A column partly off the LEFT edge shows its right part: `hidden` cells of every line are
-    // dropped, never drawn outside the rect. The title starts at x; the rows at x + 1. And it
-    // is drawn FADED, cell by cell, each grapheme in its own colour by its distance from the edge.
-    const int hidden = r.x - x;  // ≤ 0 when the column starts on screen
-    const bool clipped = x < r.x;
-    // A ROLL-OFF, NOT A RAMP: the colour eases toward the edge on a cosine, and bottoms out one
-    // step above nothing — the eye continues the curve to zero past the border on its own, and a
-    // cell that reached zero would read as missing rather than as fading.
-    auto keep_at = [&](int sx) {
-      const double t = (sx - r.x + 0.5) / kFadeCells;
-      const double u = t < 0 ? 0.0 : t > 1 ? 1.0 : t;
-      const double eased = 0.5 - 0.5 * std::cos(u * 3.14159265358979323846);
-      const double floor = 1.0 / kFadeCells;
-      return floor + (1.0 - floor) * eased;
-    };
-    auto put_faded = [&](int at, int y, const std::string& text, const RolltuiStyle& st, int room) {
-      // one grapheme at a time: `rolltui_u_fit` gives the byte boundary of every cell count
-      std::size_t from = 0;
-      int used = 0;
-      while (from < text.size() && used < room) {
-        const std::size_t to = b->measure.prefix_bytes(text.substr(from), 1) + from;
-        std::size_t next = to;
-        int w = 1;
-        if (next == from) { next = b->measure.prefix_bytes(text.substr(from), 2) + from; w = 2; }  // a wide glyph
-        if (next == from) break;
-        if (used + w > room) break;
-        rolltui_frame_put_text(f, b->draw_scratch, at + used, y, text.data() + from, next - from,
-                               faded(st, ground, keep_at(at + used)), w, 0, 0);
-        b->faded_cells += static_cast<std::size_t>(w);
-        used += w;
-        from = next;
-      }
-    };
-    auto put_clipped = [&](int at, int y, const std::string& text, const RolltuiStyle& st, int room) {
-      const int drop = r.x - at;
-      if (drop <= 0) {
-        if (clipped) put_faded(at, y, text, st, room);
-        else rolltui_frame_put_text(f, b->draw_scratch, at, y, text.data(), text.size(), st, room, 0, 0);
-        return;
-      }
-      if (drop >= room) return;
-      int dropped = 0;
-      const std::size_t from = b->measure.skip_bytes(text, drop, dropped);
-      put_faded(at + dropped, y, text.substr(from), st, room - dropped);
-    };
-    auto fill_row = [&](int fx, int y, int w, const RolltuiStyle& st) {
-      if (!clipped) { rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx, y, w, 1}, st, nullptr, 0); return; }
-      for (int k = 0; k < w; ++k)
-        rolltui_frame_fill(f, b->draw_scratch, RolltuiRect{fx + k, y, 1, 1}, faded(st, ground, keep_at(fx + k)), nullptr, 0);
-    };
-    // THE DIVIDER: a hairline in the one-cell margin after this column, the full height, in the
-    // border colour — chrome, so it fades with a clipped column rather than standing over it.
-    // Only between columns: nothing to the right of the last one.
-    if (b->opt->dividers && ci + 1 < b->cols.size()) {
-      const int dx = x + sw;
-      if (dx >= r.x && dx < r.x + r.w) {
-        RolltuiStyle line = S(ROLLTUI_ROLE_BORDER);
-        line.bg = S(ROLLTUI_ROLE_BACKGROUND).bg;
-        const RolltuiStyle ls = clipped ? faded(line, ground, keep_at(dx)) : line;
-        for (int y = r.y; y < r.y + r.h; ++y) rolltui_frame_put_text(f, b->draw_scratch, dx, y, "\xE2\x94\x82", 3, ls, 1, 0, 0);
-        // …AND THIS COLUMN'S OWN THUMB ON IT: the window's arithmetic and the window's capsule,
-        // over the rows (not the head), so every column says where it is scrolled, in place.
-        RolltuiScrollExtent e{};
-        e.first = c.top;
-        e.visible = static_cast<std::size_t>(b->rows_visible());
-        e.total = c.entries.n;
-        RolltuiScrollThumb t{};
-        if (b->rows_visible() > 0 && rolltui_scroll_thumb(&e, b->rows_visible(), &t)) {
-          const RolltuiScrollbarGlyphs* g = rolltui_windows_scrollbar_glyphs(b->windows);
-          const bool wide = false;  // the browser draws at ambiguous width 1 throughout (every put_text above passes 0)
-          RolltuiStyle bar = S(ROLLTUI_ROLE_SCROLLBAR);
-          if (bar.bg.kind == RolltuiStyleColor::Kind::None) bar.bg = ground;
-          const RolltuiStyle bs = clipped ? faded(bar, ground, keep_at(dx)) : bar;
-          for (int i = 0; i < t.length; ++i) {
-            const int y = r.y + 1 + t.offset + i;
-            if (y >= r.y + r.h) break;
-            const char* cell = t.length == 1 ? (wide ? g->ascii_single : g->single)
-                             : i == 0 ? (wide ? g->ascii_top : g->top)
-                             : i == t.length - 1 ? (wide ? g->ascii_bottom : g->bottom)
-                                                 : (wide ? g->ascii_middle : g->middle);
-            if (!cell[0]) cell = wide ? "#" : "\xE2\x96\x88";
-            rolltui_frame_put_text(f, b->draw_scratch, dx, y, cell, std::strlen(cell), bs, 1, wide ? 1 : 0, 0);
-          }
-        }
-      }
-    }
-    // The column's own head: the directory's last component, so a deep path stays readable.
-    const std::size_t slash = c.dir.find_last_of('/');
-    const std::string title = c.dir == "/" ? "/" : c.dir.substr(slash == std::string::npos ? 0 : slash + 1);
-    put_clipped(x + 1, r.y, b->measure.fit(title, cw - 1), head, cw - 1);  // one in, like the rows: " name", never "│name"
-    const int rows = b->rows_visible();
-    for (int row = 0; row < rows; ++row) {
-      const std::size_t i = c.top + static_cast<std::size_t>(row);
-      const int y = r.y + 1 + row;
-      if (y >= r.y + r.h) break;
-      if (i >= c.entries.n) break;
-      const RolltuiDirEntry& e = c.entries.v[i];
-      const bool is_sel = i == c.sel;
-      const bool is_focus_col = ci == b->focus_col;
-      // A TRAIL ROW — the selection in a column left of the focus, the path we drilled through —
-      // is a HIGHLIGHT only when nothing moves; with motion on, the theme's effect on `dirk.trail`
-      // IS the marker (a sparkle, in the shipped mapping), and the row keeps its plain style.
-      // A row is a TRAIL row only in a column LEFT of the focus — the path we came down. The
-      // column to the RIGHT is a preview the cursor has not entered, and its first entry is not
-      // a choice anyone made: it draws no selection at all until the cursor arrives.
-      const bool is_trail = is_sel && ci < b->focus_col;
-      // WITH MOTION ON, NEITHER SELECTION IS A BLOCK OF BACKGROUND: the theme's effect on the
-      // NAME is the marker — the cursor's glow, the trail's sparkle. With motion off both are
-      // still highlights, the cursor's and the trail's, as a still screen needs.
-      const bool still = !b->opt->motion;
-      const RolltuiStyle st = is_sel && is_focus_col && still ? here : is_trail && still ? trail
-                            : (e.is_dir ? text : (e.unreadable ? dim : text));
-      // A directory is marked with a trailing chevron rather than a colour, so the shape
-      // survives `mono` and a colour-blind reader alike.
-      const std::string label = str_of(e.name) + (e.is_dir ? " \xE2\x80\xBA" : "");
-      const std::string shown_label = b->measure.fit(label, cw - 1);
-      if (is_sel && (is_focus_col || is_trail)) {
-        const int fx = std::max(x, r.x);
-        if (still) fill_row(fx, y, x + cw - fx, st);
-        // THE MARKS COVER THE LETTERS AND NOTHING ELSE — not the chevron, not a space: a spark
-        // in empty space is a spark on nothing. Each run of letters is its own span, so the
-        // effect's cells are all letters and every spark lands on one. The cursor's, folder or
-        // file alike, for as long as the eye is on the row; the trail's, for as long as the row
-        // is a trail row; the opened moment's, once.
-        const unsigned long long opened_age = b->now_ms >= b->opened_since_ms ? b->now_ms - b->opened_since_ms : 0;
-        const bool opened_now = ci == b->opened_col && i == b->opened_sel && opened_age < Browser::kOpenedMs;
-        const std::string shown_name = e.is_dir && shown_label.size() >= 4 && shown_label.compare(shown_label.size() - 4, 4, " \xE2\x80\xBA") == 0
-                                           ? shown_label.substr(0, shown_label.size() - 4) : shown_label;
-        int cell = 0;
-        std::size_t at = 0;
-        while (at < shown_name.size()) {
-          // one grapheme: its bytes and its cells
-          std::size_t next = b->measure.prefix_bytes(shown_name.substr(at), 1) + at;
-          int w = 1;
-          if (next == at) { next = b->measure.prefix_bytes(shown_name.substr(at), 2) + at; w = 2; }
-          if (next == at) break;
-          const bool letter = !(next - at == 1 && (shown_name[at] == ' ' || shown_name[at] == '\t'));
-          if (letter) {
-            // extend the run to the end of this word
-            int run = w;
-            std::size_t stop = next;
-            while (stop < shown_name.size() && shown_name[stop] != ' ' && shown_name[stop] != '\t') {
-              std::size_t n2 = b->measure.prefix_bytes(shown_name.substr(stop), 1) + stop;
-              int w2 = 1;
-              if (n2 == stop) { n2 = b->measure.prefix_bytes(shown_name.substr(stop), 2) + stop; w2 = 2; }
-              if (n2 == stop) break;
-              run += w2;
-              stop = n2;
-            }
-            const int sx = x + 1 + cell;
-            const int lx = std::max(sx, r.x);
-            const int lw = std::min(sx + run, x + cw) - lx;
-            if (lw > 0) {
-              if (is_focus_col) rolltui_frame_mark(f, lx, y, lw, b->opt->st_cursor, b->cursor_since_ms, 0);
-              else rolltui_frame_mark(f, lx, y, lw, b->opt->st_trail, 0, 0);
-              if (opened_now) rolltui_frame_mark(f, lx, y, lw, b->opt->st_opened, b->opened_since_ms, 0);
-            }
-            cell += run;
-            at = stop;
-            continue;
-          }
-          cell += w;
-          at = next;
-        }
-      }
-      put_clipped(x + 1, y, shown_label, st, cw - 1);
-    }
-    if (c.entries.n == 0) {
-      // A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE. Both have no
-      // entries, and drawing "(empty)" for both is a wrong answer that reports itself as a
-      // success. The widget draws this itself rather than leaving it to the library's error
-      // panel, because that panel is driven by `problem()`, whose reader is the app's author.
-      // ROW r.y + 1 IS NOT ALWAYS INSIDE THIS RECT. A column one row tall has no second row, and
-      // writing to it lands on whatever is drawn below — a neighbour's border. Every view here has
-      // to survive being one cell.
-      if (r.h > 1) {
-        // AN ERROR IS NOT A FILENAME AND DOES NOT RESPECT THE COLUMN GRID. A column is sized for
-        // names, so "cannot open /very/long/path" truncates to "cannot ope…" and tells nobody
-        // anything. It gets the rest of the panel instead, which is space no name needed.
-        const bool failed = !c.error.empty();
-        const std::string say = failed ? c.error : std::string("(empty)");
-        const RolltuiStyle es = failed ? S(ROLLTUI_ROLE_ERROR) : dim;
-        const int room = failed ? (r.x + r.w - (x + 1)) : (cw - 1);
-        put_clipped(x + 1, r.y + 1, b->measure.fit(say, room), es, room);
-      }
-    }
-    (void)hidden;
-  }
-}
-
-// Two axes, which is what a column view needs and what the slot's `axis` parameter is for.
-// WHICH COLUMN THE WINDOW'S OWN BAR IS FOR. With dividers on, every column's thumb sits on the
-// line to its right, and the last column's "line to its right" is the window's border — so the
-// border's bar is the LAST column's, and it never hops to wherever the cursor is. With dividers
-// off there is one bar, and it follows the cursor.
-static Column* bar_column(Browser* b) {
-  if (b->opt->dividers) return b->cols.empty() ? nullptr : &b->cols.back();
-  return b->focused();
-}
-int browser_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
-  Browser* b = static_cast<Browser*>(ctx);
-  if (axis == ROLLTUI_AXIS_VERTICAL) {
-    const Column* c = bar_column(b);
-    if (!c) return 0;
-    out->first = c->top;
-    out->visible = static_cast<std::size_t>(b->rows_visible());
-    out->total = c->entries.n;
-    return 1;
-  }
-  std::size_t first = 0, visible = 0;
-  for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
-    const int x = b->column_x(ci);
-    if (x + b->shown_width(ci) <= b->inner.x) { first = ci + 1; continue; }
-    if (x >= b->inner.x && x + b->shown_width(ci) <= b->inner.x + b->inner.w) ++visible;
-  }
-  out->first = first;
-  out->visible = visible > 0 ? visible : 1;
-  out->total = b->cols.size();
-  return 1;
-}
-
-int browser_scroll_to(void* ctx, unsigned char axis, std::size_t first) {
-  Browser* b = static_cast<Browser*>(ctx);
-  if (axis != ROLLTUI_AXIS_VERTICAL) return 0;
-  Column* c = bar_column(b);
-  if (!c) return 0;
-  const int vis = b->rows_visible();
-  const std::size_t max_top = c->entries.n > static_cast<std::size_t>(vis)
-                                  ? c->entries.n - static_cast<std::size_t>(vis)
-                                  : 0;
-  c->top = first > max_top ? max_top : first;  // rule 4: anything that accepts must CLAMP
-  return 1;
-}
-
-int browser_handle(void* ctx, const RolltuiEvent* e) {
-  Browser* b = static_cast<Browser*>(ctx);
-  if (e->kind == ROLLTUI_EVENT_MOUSE) {
-    using K = RolltuiMouseEvent::Kind;
-    const K k = e->mouse.kind;
-    // THE GEOMETRY A POINTER IS TESTED AGAINST IS THE ONE ON SCREEN NOW: a slide the last key
-    // began has moved on since the last frame, so the columns are advanced to this moment first.
-    b->advance();
-    if (k == K::WheelUp || k == K::WheelDown) {
-      // THE COLUMN UNDER THE POINTER, not the focused one: every column scrolls on its own, and the
-      // wheel is where the mouse is. Nowhere in particular scrolls the focused column.
-      long long ci = b->column_at(e->mouse.x);
-      if (ci < 0) ci = b->focused() ? static_cast<long long>(b->focus_col) : -1;
-      if (ci < 0) return 0;
-      const long long step = k == K::WheelUp ? -3 : 3;
-      const long long top = static_cast<long long>(b->cols[static_cast<std::size_t>(ci)].top) + step;
-      b->scroll_column(static_cast<std::size_t>(ci), static_cast<std::size_t>(std::max<long long>(0, top)));
-      return 1;
-    }
-    // A DRAG ON A DIVIDER'S THUMB, from the press that grabbed it to the release: the stack sends
-    // the drags and the release to the pressed window wherever the pointer is, so the thumb
-    // follows past the column's edges and rests at the track's ends.
-    if (k == K::Drag && b->drag_col >= 0) {
-      const std::size_t ci = static_cast<std::size_t>(b->drag_col);
-      if (ci < b->cols.size()) {
-        const RolltuiScrollExtent ex = b->extent_of(ci);
-        b->scroll_column(ci, rolltui_scroll_first_for_cell(&ex, b->rows_visible(), e->mouse.y - (b->inner.y + 1) - b->drag_grab));
-      }
-      return 1;
-    }
-    if (k == K::Release) { const bool was = b->drag_col >= 0; b->drag_col = -1; return was ? 1 : 0; }
-    if (k != K::Press && k != K::DoubleClick) return 0;
-    if (const long long dc = b->divider_at(e->mouse.x, e->mouse.y); dc >= 0) {
-      // ON THE THUMB: grab it where it was pressed. ON THE TRACK: bring the thumb's middle to the
-      // pointer and hold it there, so a click jumps and a drag that starts on the track still drags.
-      const std::size_t ci = static_cast<std::size_t>(dc);
-      const RolltuiScrollExtent ex = b->extent_of(ci);
-      RolltuiScrollThumb t{};
-      if (!rolltui_scroll_thumb(&ex, b->rows_visible(), &t)) return 1;  // nothing to scroll: the press is spent
-      const int cell = e->mouse.y - (b->inner.y + 1);
-      if (cell >= t.offset && cell < t.offset + t.length) b->drag_grab = cell - t.offset;
-      else {
-        b->drag_grab = t.length / 2;
-        b->scroll_column(ci, rolltui_scroll_first_for_cell(&ex, b->rows_visible(), cell - b->drag_grab));
-      }
-      b->drag_col = dc;
-      return 1;
-    }
-    // Which column was clicked, and which row in it — the widget's own hit test, because the
-    // columns are its structure and the library has no way to know about them.
-    for (std::size_t ci = 0; ci < b->cols.size(); ++ci) {
-      const int x = b->column_x(ci);
-      const int cw = b->shown_width(ci);
-      if (e->mouse.x >= x && e->mouse.x < x + cw && e->mouse.x >= b->inner.x) {
-        b->focus_col = ci;
-        b->cols.resize(ci + 1);
-        const int row = e->mouse.y - b->inner.y - 1;
-        if (row >= 0) b->select(b->cols[ci].top + static_cast<std::size_t>(row));
-        else b->open_selected();
-        b->retarget();
-        // A DOUBLE-CLICK IS ENTER ON THAT ROW — the terminal pairs the presses, the widget acts.
-        if (k == K::DoubleClick && row >= 0) b->accepted = true;
-        return 1;
-      }
-    }
-    return 0;
-  }
-  if (e->kind != ROLLTUI_EVENT_KEY) return 0;
-  // THE KEYS ARE THE BINDINGS FILE'S. A host kind resolves its own scope from the table the
-  // app holds and lends through the factory ctx — see wall 1: `rolltui_windows_bindings` is
-  // INTERNAL, and it turns out not to be needed, because the host already owns the table.
-  if (!b->opt->bindings) return 0;
-  std::size_t len = 0;
-  const char* a = rolltui_bindings_action_for(b->opt->bindings, &e->key, kBrowserKind, std::strlen(kBrowserKind), &len);
-  if (!a || len == 0) return 0;
-  const std::string action(a, len);
-  const int page = std::max(1, b->rows_visible() - 1);
-  if (action == "browser.up") b->move(-1);
-  else if (action == "browser.down") b->move(1);
-  else if (action == "browser.page_up") b->move(-page);
-  else if (action == "browser.page_down") b->move(page);
-  else if (action == "browser.first") b->select(0);
-  else if (action == "browser.last") { const Column* c = b->focused(); if (c && c->entries.n != 0) b->select(c->entries.n - 1); }
-  else if (action == "browser.into") b->into();
-  else if (action == "browser.out") b->out();
-  else if (action == "browser.accept") b->accepted = true;
-  else if (action == "browser.cancel") b->cancelled = true;
-  else if (action == "browser.copy") { b->copy_requested = true; b->copy_inverse = false; }
-  else if (action == "browser.copy_inverse") { b->copy_requested = true; b->copy_inverse = true; }
-  else return 0;
-  return 1;
-}
-
-constexpr RolltuiWidgetPlugin kBrowserPlugin = {
-    /*destroy=*/browser_destroy,
-    /*layout=*/browser_layout,
-    /*draw=*/browser_draw,
-    /*problem=*/browser_problem,
-    /*note_at=*/browser_note_at,
-    /*desired_outer=*/nullptr,
-    /*handle=*/browser_handle,
-    /*scroll_extent=*/browser_scroll_extent,
-    /*scroll_to=*/browser_scroll_to, nullptr /* title: the layout's */
-};
-
-struct BrowserFactoryCtx {
-  const Options* opt;
-  RolltuiWindows* windows;
-  const std::string* root;
-};
-
-RolltuiWidget browser_factory(void* ctx, RolltuiWindows* /*w*/, const char* content, size_t len) {
-  const BrowserFactoryCtx* fc = static_cast<const BrowserFactoryCtx*>(ctx);
-  const char* source = nullptr;
-  std::size_t source_len = 0;
-  RolltuiStr why{};
-  unsigned char problem = 0;
-  if (!rolltui_content_parse(rolltui_windows_context(fc->windows), content, len, nullptr, nullptr, nullptr, nullptr,
-                             &source, &source_len, &problem, &why))
-    return RolltuiWidget{};
-  Browser* b = new Browser();
-  b->source.assign(source, source_len);
-  b->opt = fc->opt;
-  b->windows = fc->windows;
-  b->go_to(*fc->root);
-  return RolltuiWidget{&kBrowserPlugin, b};
-}
-
 }  // namespace
 
 namespace {
@@ -1323,7 +388,6 @@ struct App {
   RolltuiPresetStore* keys_store = nullptr;
   unsigned long long theme_seen = 0;
   Options opt;
-  BrowserFactoryCtx factory_ctx{};
   std::string root;
   std::string note;   // the library's own report for this frame
   std::string hint;   // this app's own last word (a bad path, a jump)
@@ -1333,7 +397,7 @@ struct App {
   std::string keys_hint;  // "F1 help · F2 settings · c copy", from the live bindings, built once
   void build_keys_hint() {
     struct Row { const char* action; const char* what; };
-    static const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"browser.copy", "copy"}, {"app.jump", "jump"}};
+    static const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.jump", "jump"}};
     keys_hint.clear();
     for (const Row& r : rows) {
       const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
@@ -1356,8 +420,10 @@ struct App {
   // How soon this frame wants redrawing: a sliding column asks for the next tick, a marked span
   // whose effect moves asks for its own interval, else `idle`.
   int poll_timeout_ms(const RolltuiFrame* f, int idle) {
-    Browser* b = browser();
-    int want = b && b->scrolling ? 16 : idle;
+    RolltuiPickerStatus st{};
+    const bool moving = rolltui_windows_picker_status(windows, kPicker, 10, &st) && st.moving;
+    rolltui_picker_status_release(&st);
+    int want = moving ? 16 : idle;
     if (opt.motion && f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       const int tick = rolltui_effects_tick_ms(ctx, f, effects);
       if (tick > 0 && tick < want) want = tick;
@@ -1379,9 +445,6 @@ struct App {
   App() {
     layout = rolltui_layout_new();
     rolltui_context_set_library_defaults(ctx);
-    rolltui_effect_state_register(ctx, "dirk.cursor", 11, &opt.st_cursor);
-    rolltui_effect_state_register(ctx, "dirk.trail", 10, &opt.st_trail);
-    rolltui_effect_state_register(ctx, "dirk.opened", 11, &opt.st_opened);
     rolltui_effect_register(ctx, "dirk_sparkle", 12, fx_sparkle, nullptr, nullptr);
     rolltui_effect_register(ctx, "dirk_glow", 9, fx_glow, nullptr, nullptr);
     rolltui_effect_register(ctx, "dirk_burst", 10, fx_burst, nullptr, nullptr);
@@ -1461,25 +524,24 @@ struct App {
     rolltui_preset_store_value_free(theme_store, w);
   }
 
-  // the kind table belongs to a CONTEXT, so this registers into this app's session.
-  void register_browser_kind() {
-    rolltui_widget_kind_register(ctx, kBrowserKind, std::strlen(kBrowserKind), ROLLTUI_SOURCE_REQUIRED,
-                                 kBrowserDescribes, std::strlen(kBrowserDescribes));
-  }
-
-  // WALL 3 (phase file): reaching one's OWN widget means composing the content string the
-  // library keyed it under and comparing the plugin pointer. That is paint's `canvas()` almost
-  // verbatim — a second consumer writing the same wrapper, which is rule 5's tell.
-  Browser* browser() {
-    RolltuiStr content{};
-    rolltui_content_format(kBrowserKind, std::strlen(kBrowserKind), "tree", 4, ROLLTUI_SOURCE_REQUIRED, &content);
-    RolltuiWidget* wi = rolltui_windows_widget_for(windows, content.c_str(), content.size());
-    rolltui_str_free(&content);
-    return wi && wi->vt == &kBrowserPlugin ? static_cast<Browser*>(wi->ctx) : nullptr;
+  // THE PICKER IS THE LIBRARY'S, reached through the window calls by its content string. This
+  // app tells it where to start, what its settings are, and reads what its keys said; the
+  // columns, the anchor, the fade, the dividers and the memory are the kind's.
+  bool picker_started = false;
+  void picker_go(const std::string& path) { rolltui_windows_set_picker_dir(windows, kPicker, 10, path.data(), path.size()); }
+  void apply_picker_options() {
+    RolltuiPickerOptions o{};
+    rolltui_picker_options_init(&o);
+    o.hidden = opt.hidden ? 1 : 0;
+    o.sort = opt.sort == Sort::Size ? ROLLTUI_SORT_SIZE : opt.sort == Sort::Modified ? ROLLTUI_SORT_MODIFIED : ROLLTUI_SORT_NAME;
+    o.motion = opt.motion ? 1 : 0;
+    o.dividers = opt.dividers ? 1 : 0;
+    o.take_folders = 1;  // a directory picker: Enter on a folder CHOOSES it, and Right enters it
+    rolltui_windows_set_picker_options(windows, kPicker, 10, &o);
   }
 
   static const std::vector<std::string>& help_scopes() {
-    static const std::vector<std::string> s = {"app", "browser", "input", "menu", "stack"};
+    static const std::vector<std::string> s = {"app", "picker", "input", "menu", "stack"};
     return s;
   }
 
@@ -1604,11 +666,6 @@ struct App {
   }
 
   void mount() {
-    opt.bindings = bindings;
-    factory_ctx = {&opt, windows, &root};
-    register_browser_kind();
-    rolltui_context_register_kind(ctx, kBrowserKind, std::strlen(kBrowserKind), browser_factory, &factory_ctx,
-                                  nullptr);
     if (!menu_json.empty()) rolltui_context_add_menu(ctx, "places", 6, menu_json.data(), menu_json.size());
     rolltui_windows_bind_rows(windows, "entry", 5, entry_rows, this, nullptr);
     rolltui_windows_bind_submit(windows, "path", 4, on_submit, this, nullptr, /*on_submit=*/0);
@@ -1626,22 +683,30 @@ struct App {
   // an ordinary rows source, so the details page needs no host-side window code at all.
   static void entry_rows(void* ctx, RolltuiRows* out) {
     App& a = *static_cast<App*>(ctx);
-    Browser* b = a.browser();
-    const RolltuiDirEntry* e = b ? b->selected() : nullptr;
-    if (!e) {
+    RolltuiStr sel{};
+    int is_dir = 0;
+    if (!rolltui_windows_picker_selected(a.windows, kPicker, 10, &sel, &is_dir) || sel.n == 0) {
       rolltui_rows_add(out, "entry", 5, "(none)", 6);
+      rolltui_str_free(&sel);
       return;
     }
-    const std::string path = b->selected_path();
-    rolltui_rows_add(out, "name", 4, e->name.p ? e->name.p : "", e->name.n);
+    const std::string path(sel.p, sel.n);
+    rolltui_str_free(&sel);
+    // The facts are the file's, read here: the picker answers with a PATH, and what a path
+    // is on disk is one stat away.
+    struct stat st {};
+    const bool known = lstat(path.c_str(), &st) == 0;
+    const std::size_t slash = path.find_last_of('/');
+    const std::string name = path == "/" ? path : path.substr(slash == std::string::npos ? 0 : slash + 1);
+    rolltui_rows_add(out, "name", 4, name.data(), name.size());
     rolltui_rows_add(out, "folder", 6, path.data(), path.size());
-    const char* kind = e->unreadable ? "unreadable" : e->is_dir ? "directory" : "file";
+    const char* kind = !known ? "unreadable" : is_dir ? "directory" : "file";
     rolltui_rows_add(out, "kind", 4, kind, std::strlen(kind));
-    const std::string size = e->is_dir ? std::string("-") : human_size(e->size);
+    const std::string size = is_dir || !known ? std::string("-") : human_size(static_cast<long long>(st.st_size));
     rolltui_rows_add(out, "size", 4, size.data(), size.size());
-    const std::string when = stamp(e->modified);
+    const std::string when = stamp(known ? static_cast<long long>(st.st_mtime) : 0);
     rolltui_rows_add(out, "modified", 8, when.data(), when.size());
-    const std::string perm = permissions(e->mode);
+    const std::string perm = permissions(known ? static_cast<unsigned>(st.st_mode) : 0u);
     rolltui_rows_add(out, "mode", 4, perm.data(), perm.size());
   }
 
@@ -1666,11 +731,9 @@ struct App {
     struct stat st {};
     if (stat(path.c_str(), &st) != 0) { hint = "no such path: " + path; return; }
     if (!S_ISDIR(st.st_mode)) { hint = "not a directory: " + path; return; }
-    if (Browser* b = browser()) {
-      root = path;
-      b->go_to(path);
-      hint = "at " + path;
-    }
+    root = path;
+    picker_go(path);
+    hint = "at " + path;
   }
 
   static std::string human_size(long long n) {
@@ -1715,9 +778,12 @@ struct App {
     }
     const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms};
     rolltui_context_set_env(ctx, &env);
-    if (Browser* b = browser()) b->now_ms = now_ms;
     rolltui_context_set_bindings(ctx, bindings);
     rolltui_windows_sync(windows, stack);
+    // The picker exists once the sync built it: its settings every frame (cheap, and it re-reads
+    // only when a setting that changes the listing moved) and its start once.
+    apply_picker_options();
+    if (!picker_started) { picker_go(root); picker_started = true; }
     if (menu_dirty) { sync_menu(); menu_dirty = false; }
     rolltui_windows_autosize(windows, stack, area());
     rolltui_windows_layout(windows, stack, area());
@@ -1738,30 +804,31 @@ struct App {
   // there", 3 means "put this on the command line", 4 "beside it, then ./name"; a path's shape
   // is never read to guess which.
   void settle() {
-    Browser* b = browser();
-    if (!b) return;
-    if (b->accepted) {
-      b->accepted = false;
-      const RolltuiDirEntry* e = b->selected();
-      const std::string path = b->selected_path();
-      const std::string name = e ? str_of(e->name) : std::string();
-      if (!e || b->selected_is_folder()) { chosen = path; exit_code = 0; quit = true; }
+    RolltuiPickerEvent ev{};
+    if (!rolltui_windows_picker_event(windows, kPicker, 10, &ev)) return;
+    const std::string path(ev.path.p ? ev.path.p : "", ev.path.n);
+    if (ev.kind == ROLLTUI_PICKER_EVENT_TAKEN) {
+      struct stat st {};
+      const bool folder = stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+      const std::size_t slash = path.find_last_of('/');
+      const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
+      if (folder || path.empty()) { chosen = path; exit_code = 0; quit = true; }
       else if (opt.leave || is_executable(path)) to_command_line(path);
       else {
         const TypeGroup* g = group_of(name);
         const std::string prog = g ? program_for(*g) : std::string(kShellProgram);
         if (prog == kShellProgram) to_command_line(path);
-        else if (open_with(prog, path)) { hint = "opened " + name + " with " + program_label(prog); b->file_opened(); }
+        else if (open_with(prog, path)) hint = "opened " + name + " with " + program_label(prog);
         else hint = "could not open " + name + " with " + program_label(prog);
       }
-    } else if (b->cancelled) quit = true;
-    if (b->copy_requested) {
-      b->copy_requested = false;
-      const std::string path = b->selected_path();
-      const bool relative = opt.copy_relative != b->copy_inverse;  // the Option chord inverts the setting
+    } else if (ev.kind == ROLLTUI_PICKER_EVENT_CANCELLED) {
+      quit = true;
+    } else if (ev.kind == ROLLTUI_PICKER_EVENT_COPY) {
+      const bool relative = opt.copy_relative != (ev.inverse != 0);  // the Option chord inverts the setting
       const std::string text = relative ? relative_to_start(path) : path;
       hint = copy_to_clipboard(text) ? "copied " + text : "could not copy: no clipboard command";
     }
+    rolltui_picker_event_release(&ev);
   }
 
   // What the process leaves behind on stdout: the chosen path and a newline when the status
@@ -1927,24 +994,27 @@ struct App {
   // The three settings, each changed in ONE place whether a chord or the menu asked, and saved.
   void set_hidden(bool on) {
     opt.hidden = on;
-    if (Browser* b = browser()) b->reload();
+    apply_picker_options();
     hint = opt.hidden ? "dotfiles shown" : "dotfiles hidden";
     save_settings();
   }
   void set_sort(Sort s) {
     opt.sort = s;
-    if (Browser* b = browser()) b->reload();
+    apply_picker_options();
     hint = std::string("sorted by ") + sort_name(opt.sort);
     save_settings();
   }
   void set_motion(bool on) {
     opt.motion = on;
+    apply_picker_options();
     hint = on ? "motion on" : "motion off";
     save_settings();
   }
 
   void handle(const RolltuiEvent& e) {
-    if (Browser* b = browser()) b->now_ms = now_ms;  // the moment an event lands is this frame's
+    // The moment an event lands is this frame's: the widgets read the clock from the env.
+    const RolltuiWidgetEnv env{static_cast<unsigned char>(ambiguous), now_ms};
+    rolltui_context_set_env(ctx, &env);
     // The app's OWN scope first, so a global chord works wherever the focus is — roll's rule.
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t len = 0;
@@ -2010,7 +1080,8 @@ struct App {
     // NAMED FACTS, DRAWN AS FACTS: the names muted and the answers bright, the same two roles
     // the columns above use. `status_rows` is reset and refilled rather than rebuilt, so a
     // frame that says nothing new allocates nothing to say it.
-    Browser* b = browser();
+    RolltuiPickerStatus ps{};
+    const bool have_picker = rolltui_windows_picker_status(windows, kPicker, 10, &ps) != 0;
     char num[64];
     status_rows.reset();
     // The start folder, with the home directory as `~` so the keys beside it are not pushed off
@@ -2027,18 +1098,17 @@ struct App {
     // A DATA failure said the way the person who caused it will read it. The window report above
     // is the app author's channel and names a window and a content string; someone who mistyped a
     // path needs the path back, not the plumbing that carried it.
-    if (b && !b->cols.empty() && !b->cols[0].error.empty())
-      rolltui_rows_add(&status_rows, "", 0, b->cols[0].error.data(), b->cols[0].error.size());
+    if (have_picker && ps.error.n) rolltui_rows_add(&status_rows, "", 0, ps.error.p, ps.error.n);
     if (!hint.empty()) rolltui_rows_add(&status_rows, "", 0, hint.data(), hint.size());
-    if (b) {
-      const Column* c = b->focused();
-      std::snprintf(num, sizeof num, "%zu", c ? c->entries.n : 0);
+    if (have_picker) {
+      std::snprintf(num, sizeof num, "%zu", ps.entries);
       status_rows.add("entries", num);
-      std::snprintf(num, sizeof num, "%zu/%zu", b->focus_col + 1, b->cols.size());
+      std::snprintf(num, sizeof num, "%zu/%zu", ps.column, ps.columns);
       status_rows.add("column", num);
       status_rows.add("sort", opt.sort == Sort::Name ? "name" : opt.sort == Sort::Size ? "size" : "modified");
       if (opt.hidden) rolltui_rows_add(&status_rows, "", 0, "+dotfiles", 9);
     }
+    rolltui_picker_status_release(&ps);
     rolltui_frame_put_fields(f, draw_scratch, 1, h - 1, &status_rows, style(ROLLTUI_ROLE_LABEL),
                              style(ROLLTUI_ROLE_VALUE), w - 1, 0);
     apply_effects(f);
@@ -2739,8 +1809,8 @@ int main(int argc, char** argv) {
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
     // What this frame's motion touched, for a test that cannot see a colour in a text frame.
-    std::fprintf(stderr, "effects: marks=%zu drawn=%d cells=%d refused=%d faded=%zu\n", app.last_marks, app.last_fx.marks_drawn,
-                 app.last_fx.cells_touched, app.last_fx.glyphs_refused, app.browser() ? app.browser()->faded_cells : 0);
+    std::fprintf(stderr, "effects: marks=%zu drawn=%d cells=%d refused=%d\n", app.last_marks, app.last_fx.marks_drawn,
+                 app.last_fx.cells_touched, app.last_fx.glyphs_refused);
     RolltuiStr text{};
     rolltui_frame_to_text(f, &text);
     std::fwrite(text.c_str(), 1, text.size(), stdout);

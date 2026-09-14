@@ -605,6 +605,13 @@ void rolltui_effect_map_clear(RolltuiEffectMap* m) {
   }
 }
 
+void rolltui_effect_map_clear_state(RolltuiEffectMap* m, size_t state) {
+  size_t i;
+  if (!m || state >= m->states) return;
+  for (i = 0; i < m->count[state]; ++i) spec_release(&m->store[state][i]);
+  m->count[state] = 0;
+}
+
 void rolltui_effect_map_free(RolltuiEffectMap* m) {
   size_t s;
   if (!m) return;

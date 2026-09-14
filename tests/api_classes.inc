@@ -247,6 +247,7 @@ ROLLTUI_API(rolltui_effect_map_add_frame, INTERNAL)  /* an effect step; a host m
 ROLLTUI_API(rolltui_effect_map_add_role, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_at, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_clear, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
+ROLLTUI_API(rolltui_effect_map_clear_state, INTERNAL)
 ROLLTUI_API(rolltui_effect_map_clone, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_count, INTERNAL)  /* an effect step; a host marks a span and the theme maps it */
 ROLLTUI_API(rolltui_effect_map_empty, PUBLIC)
@@ -254,7 +255,7 @@ ROLLTUI_API(rolltui_effect_map_equal, INTERNAL)  /* an effect step; a host marks
 ROLLTUI_API(rolltui_effect_map_free, PUBLIC)
 ROLLTUI_API(rolltui_effect_map_new, INTERNAL)
 ROLLTUI_API(rolltui_effect_register, PUBLIC)  /* rung 2 of the kind table is a HOST's: dirktui registers three kinds of its own */
-ROLLTUI_API(rolltui_effect_state_register, PUBLIC)  /* rung 2 of the STATE table: a widget with states of its own names them, and a theme maps them by name */
+ROLLTUI_API(rolltui_effect_state_register, PUBLIC)  /* KEPT: a host whose widget has states of its own registers them by name; the library's own picker moved its three into the library, and the capability is the point, not its reach */
 ROLLTUI_API(rolltui_effect_state_resolve, INTERNAL)  /* a test reads back; no consumer marks by a name it did not register */
 ROLLTUI_API(rolltui_effect_state_count, INTERNAL)
 ROLLTUI_API(rolltui_effect_map_grow, INTERNAL)  /* a step of the merge */
@@ -550,6 +551,34 @@ ROLLTUI_API(rolltui_window_stack_has_popup, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_action_popup, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_picker_dir, PUBLIC)  /* a picker with nowhere to start looks at the working directory, which is almost never what a host means */
 ROLLTUI_API(rolltui_windows_picker_taken, PUBLIC)  /* the answer half: a chosen path is what the whole kind is for */  /* three hosts wrote the same six lines; the tell says fix the API rather than ship the wrapper a fourth time */
+ROLLTUI_API(rolltui_windows_picker_event, PUBLIC)  /* the fuller answer: a cancel and a copy are things the picker's keys say and only a host can do */
+ROLLTUI_API(rolltui_picker_event_release, PUBLIC)  /* KEPT: the release half of the event a consumer holds */
+ROLLTUI_API(rolltui_windows_set_picker_options, PUBLIC)  /* dotfiles, sort, motion, dividers, take_folders: the host's settings for the picker it shows */
+ROLLTUI_API(rolltui_picker_options_init, PUBLIC)  /* KEPT: the defaults, so a host sets only what it means to */
+ROLLTUI_API(rolltui_windows_picker_selected, PUBLIC)  /* what is under the cursor: a status line, a copy */
+ROLLTUI_API(rolltui_windows_picker_dir, PUBLIC)  /* where the cursor is: what a save dialog joins a name onto */
+ROLLTUI_API(rolltui_windows_picker_status, PUBLIC)  /* the status line's facts, and whether the columns are mid-slide for the frame timer */
+ROLLTUI_API(rolltui_picker_status_release, PUBLIC)  /* KEPT: the release half of the status a consumer holds */
+ROLLTUI_API(rolltui_picker_status, INTERNAL)
+ROLLTUI_API(rolltui_picker_default_actions, INTERNAL)  /* the picker scope's twelve names; the adapter drives the widget */
+ROLLTUI_API(rolltui_picker_new, INTERNAL)
+ROLLTUI_API(rolltui_picker_free, INTERNAL)
+ROLLTUI_API(rolltui_picker_set_options, INTERNAL)
+ROLLTUI_API(rolltui_picker_options, INTERNAL)
+ROLLTUI_API(rolltui_picker_go_to, INTERNAL)
+ROLLTUI_API(rolltui_picker_reload, INTERNAL)
+ROLLTUI_API(rolltui_picker_set_now, INTERNAL)
+ROLLTUI_API(rolltui_picker_layout, INTERNAL)
+ROLLTUI_API(rolltui_picker_draw, INTERNAL)
+ROLLTUI_API(rolltui_picker_handle, INTERNAL)
+ROLLTUI_API(rolltui_picker_event, INTERNAL)
+ROLLTUI_API(rolltui_picker_selected, INTERNAL)
+ROLLTUI_API(rolltui_picker_dir, INTERNAL)
+ROLLTUI_API(rolltui_picker_hidden_count, INTERNAL)
+ROLLTUI_API(rolltui_picker_scroll_extent, INTERNAL)
+ROLLTUI_API(rolltui_picker_scroll_to, INTERNAL)
+ROLLTUI_API(rolltui_picker_scrolling, INTERNAL)
+ROLLTUI_API(rolltui_picker_faded_cells, INTERNAL)
 ROLLTUI_API(rolltui_window_stack_layer, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_new, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_pop, PUBLIC)
@@ -622,8 +651,8 @@ ROLLTUI_API(rolltui_rows_release, PUBLIC)  /* KEPT: a public C++ member in the d
 ROLLTUI_API(rolltui_rows_reset, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
-ROLLTUI_API(rolltui_scroll_first_for_cell, PUBLIC)  /* the drag half of the thumb pair a widget with several lists needs: dirktui */
-ROLLTUI_API(rolltui_scroll_thumb, PUBLIC)  /* a widget scrolling several lists draws a thumb per list with the window's arithmetic: dirktui */
+ROLLTUI_API(rolltui_scroll_first_for_cell, INTERNAL)  /* the drag half of the thumb pair, likewise */
+ROLLTUI_API(rolltui_scroll_thumb, INTERNAL)  /* scrollbar arithmetic; the widget that draws thumbs of its own is the library's picker */
 ROLLTUI_API(rolltui_context_add_help_scope, PUBLIC)
 ROLLTUI_API(rolltui_context_add_menu, PUBLIC)
 ROLLTUI_API(rolltui_windows_at, INTERNAL)  /* a hit-test the stack already routes */
@@ -679,7 +708,7 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
-ROLLTUI_API(rolltui_windows_scrollbar_glyphs, PUBLIC)  /* the same widget draws the same capsule the window does */
+ROLLTUI_API(rolltui_windows_scrollbar_glyphs, INTERNAL)  /* what the draw path reads; the picker draws the same capsule the window does */
 ROLLTUI_API(rolltui_windows_set_theme_hint, INTERNAL)
 ROLLTUI_API(rolltui_windows_theme_editor, INTERNAL)
 ROLLTUI_API(rolltui_windows_set_theme_store, PUBLIC)  /* KEPT: `theme` is a library widget kind, so a

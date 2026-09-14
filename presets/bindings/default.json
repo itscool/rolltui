@@ -213,6 +213,45 @@
     ],
     "app.find": [
       "ctrl+f"
+    ],
+    "picker.up": [
+      "up",
+      "ctrl+p"
+    ],
+    "picker.down": [
+      "down",
+      "ctrl+n"
+    ],
+    "picker.out": [
+      "left",
+      "backspace"
+    ],
+    "picker.into": [
+      "right"
+    ],
+    "picker.first": [
+      "home"
+    ],
+    "picker.last": [
+      "end"
+    ],
+    "picker.page_up": [
+      "pageup"
+    ],
+    "picker.page_down": [
+      "pagedown"
+    ],
+    "picker.take": [
+      "enter"
+    ],
+    "picker.cancel": [
+      "escape"
+    ],
+    "picker.copy": [
+      "c"
+    ],
+    "picker.copy_inverse": [
+      "alt+c"
     ]
   }
 }

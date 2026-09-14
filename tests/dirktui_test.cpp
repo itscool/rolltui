@@ -552,17 +552,8 @@ int main() {
     check(col_of_word(on_beta, "a-quite-long-name") == col_of_word(in_beta, "a-quite-long-name") && col_of_word(in_beta, "a-quite-long-name") > 0,
           "a preview with no folders is already at its final place: entering it does not move it [" +
               std::to_string(col_of_word(on_beta, "a-quite-long-name")) + " = " + std::to_string(col_of_word(in_beta, "a-quite-long-name")) + "]");
-    // THE FADE: a column partly off the left edge is drawn faded, cell by cell; a window wide enough
-    // for every column fades nothing. Read from the self-test's report, since a text frame shows
-    // no colour — the CONTROL is the wide frame.
-    {
-      int frc = 0;
-      const std::string narrow = run(base + " --frame 60x10 --keys \"Right\" 2>&1 >/dev/null", frc);
-      const std::string wide_report = run(base + " --frame 300x10 --keys \"Right\" 2>&1 >/dev/null", frc);
-      auto faded_of = [](const std::string& s) { const std::size_t at = s.find("faded="); return at == std::string::npos ? -1 : std::atoi(s.c_str() + at + 6); };
-      check(faded_of(narrow) > 0, "a column clipped at the left edge is drawn faded [faded=" + std::to_string(faded_of(narrow)) + "]");
-      check(faded_of(wide_report) == 0, "…and a window that fits every column fades nothing — the control");
-    }
+    // THE FADE at the left edge is the library kind's and is asserted in `picker_test`, which can
+    // read the cell count a text frame cannot show; this app only names `filepicker`.
     // A START INSIDE A LEAF — a folder with no folders — is anchored like any other start: the leaf
     // at the right, its ancestors to the left, never the leaf alone at the far left.
     const std::string leaf_start = run(home_env + bin + " '" + (tree / "alpha" / "nested").string() + "'" + presets +
@@ -653,15 +644,18 @@ int main() {
     const std::string still = fx("Right");
     check(num(still, "marks=") >= 1, "a script with no tick is the still picture: marked, every effect at its first instant [" + still + "]");
 
-    // THE MAPPING IS A FILE, and a person's config directory shadows the embedded one: an empty
-    // mapping there leaves the marks with nothing to draw, and a state nobody registered is
-    // reported by name where a developer is looking.
+    // THE MAPPING IS A FILE, and a person's config directory shadows the embedded one. The
+    // picker's states are the library's and every shipped theme maps them, so the proof is a
+    // row that REPLACES the theme's: a person's file maps the cursor to a kind the registry does
+    // not have, and the marks then draw nothing — the theme's shimmer is gone, and the app's
+    // glow was never read. A state nobody registered is reported by name where a developer is
+    // looking.
     const fs::path cfg = scratch / "cfg";
     fs::create_directories(cfg / "rolltui" / "dirktui");
-    write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": {} }\n");
+    write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": { \"picker_cursor\": { \"kind\": \"no_such_kind\", \"period_ms\": 100 } } }\n");
     int crc = 0;
     const std::string shadowed = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", crc);
-    check(num(shadowed, "marks=") >= 1 && has(shadowed, "drawn=0"), "a user's own effects file shadows the app's: the marks are there, the theme has nothing for them [" +
+    check(num(shadowed, "marks=") >= 1 && has(shadowed, "drawn=0"), "a user's own effects file shadows the app's and REPLACES the theme's row: the marks are there and nothing draws them [" +
                                                 shadowed.substr(0, 60) + "]");
     write_file(cfg / "rolltui" / "dirktui" / "effects.json", "{ \"effects\": { \"dirk.nosuch\": { \"kind\": \"blink\" } } }\n");
     const std::string unknown = run("ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark --frame 46x10 2>&1 >/dev/null", crc);
@@ -854,10 +848,10 @@ int main() {
                   own / "bindings" / "default.json", fs::copy_options::overwrite_existing);
     write_file(own / "layouts" / "vestibule.json", R"({
   "name": "vestibule", "min_width": 10, "min_height": 4, "focus": "vestibule_cols",
-  "actions": { "app.quit": "leave", "browser.down": "down", "browser.into": "in" },
+  "actions": { "app.quit": "leave" },
   "root": { "column": [
     { "id": "vestibule_note", "content": "text:  a screen this binary has never seen", "size": 1 },
-    { "id": "vestibule_cols", "content": "browser:tree", "border": "single",
+    { "id": "vestibule_cols", "content": "filepicker", "border": "single",
       "title": "the vestibule", "focusable": true } ] }
 })");
     int vrc = 0;

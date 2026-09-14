@@ -920,7 +920,7 @@ static void commit_draft(RolltuiEffectMap* map, size_t state, const EffectDraft*
 }
 
 static void read_effects(const RolltuiJsonValue* v, const RolltuiThemeVocab* vocab, RolltuiUnicodeScratch* scratch,
-                         RolltuiThemeReport* report, RolltuiEffectMap* map) {
+                         RolltuiThemeReport* report, RolltuiEffectMap* map, int replace) {
   size_t n, i;
   if (rolltui_json_is_null(v)) return; /* no "effects" key: a still UI, and not a problem */
   if (!rolltui_json_is_object(v)) {
@@ -941,6 +941,9 @@ static void read_effects(const RolltuiJsonValue* v, const RolltuiThemeVocab* voc
       continue;
     }
     snprintf(where, sizeof where, "effects.%s", k);
+    /* A MERGED ROW REPLACES the theme's for that state — a mapping file says what a state
+     * looks like, and two answers to that would draw both, one under the other. */
+    if (replace) rolltui_effect_map_clear_state(map, state);
     if (rolltui_json_is_array(x)) {
       const size_t an = rolltui_json_array_size(x);
       size_t j;
@@ -1061,7 +1064,7 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
   effects_v = rolltui_json_get(root, K("effects"));
   map = rolltui_effect_map_new(vocab->state_count, vocab->fallback_effect_role);
   scratch = rolltui_u_scratch_new();
-  read_effects(effects_v, vocab, scratch, report, map);
+  read_effects(effects_v, vocab, scratch, report, map, 0);
   rolltui_u_scratch_free(scratch);
   return map;
 }
@@ -1085,7 +1088,7 @@ int rolltui_theme_effects_merge(RolltuiEffectMap* map, const char* text, size_t 
   if (rolltui_json_is_null(v)) v = root; /* a bare state -> spec object */
   rolltui_effect_map_grow(map, vocab->state_count);
   scratch = rolltui_u_scratch_new();
-  read_effects(v, vocab, scratch, report, map);
+  read_effects(v, vocab, scratch, report, map, 1);
   rolltui_u_scratch_free(scratch);
   rolltui_json_free(root);
   return 1;

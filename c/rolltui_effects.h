@@ -77,6 +77,10 @@ int rolltui_effect_steps(const RolltuiEffectSpec* spec, int length);
  * `ROLLTUI_INTERNAL_OPT_IN` (rolltui/CMakeLists.txt). */
 RolltuiEffectMap* rolltui_effect_map_clone(const RolltuiEffectMap* m);
 void rolltui_effect_map_clear(RolltuiEffectMap* m);
+/* Drops one state's specs and keeps the rest: what a merged mapping does before it writes its
+ * own row for that state, so an app's or a person's row REPLACES the theme's rather than
+ * stacking under it. */
+void rolltui_effect_map_clear_state(RolltuiEffectMap* m, size_t state);
 int rolltui_effect_map_equal(const RolltuiEffectMap* a, const RolltuiEffectMap* b);
 size_t rolltui_effect_map_count(const RolltuiEffectMap* m, size_t state);
 const RolltuiEffectSpec* rolltui_effect_map_at(const RolltuiEffectMap* m, size_t state, size_t i);

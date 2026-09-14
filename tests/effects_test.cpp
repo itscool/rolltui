@@ -760,10 +760,17 @@ int main() {
     check(rep3.unknown_keys_n == 1 && std::string(rep3.unknown_keys[0].c_str()).find("nosuch") != std::string::npos,
           "…a state nobody registered is reported by name, and the rest still lands");
     rolltui_theme_report_release(&rep3);
+    // A MERGED ROW REPLACES the map's for that state. A mapping file says what a state looks
+    // like, and two answers would draw both, one under the other — which is what happened the
+    // day the picker's states became the library's and every shipped theme mapped them: the
+    // theme's shimmer drew under the app's glow. A state the file does not name keeps its row.
     RolltuiThemeReport rep4{};
-    check(rolltui_theme_effects_merge(m, app_file, std::strlen(app_file), rolltui_theme_vocab(a), &rep4) == 1 &&
-              rolltui_effect_map_count(m, static_cast<std::size_t>(folder)) == 2,
-          "…and merged onto a map that already has the state, the specs STACK rather than replace");
+    const char* app_file2 = R"({ "effects": { "dirk.folder": { "kind": "pulse", "role": "accent_1" } } })";
+    check(rolltui_theme_effects_merge(m, app_file2, std::strlen(app_file2), rolltui_theme_vocab(a), &rep4) == 1 &&
+              rolltui_effect_map_count(m, static_cast<std::size_t>(folder)) == 1 &&
+              std::string(rolltui_effect_map_at(m, static_cast<std::size_t>(folder), 0)->kind,
+                          rolltui_effect_map_at(m, static_cast<std::size_t>(folder), 0)->kind_len) == "pulse",
+          "…and merged onto a map that already has the state, the file's row REPLACES it rather than stacking under it");
     rolltui_theme_report_release(&rep4);
     RolltuiThemeReport rep5{};
     check(rolltui_theme_effects_merge(m, "{ not json", 10, rolltui_theme_vocab(a), &rep5) == 0 && rep5.error.n != 0,

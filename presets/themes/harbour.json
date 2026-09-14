@@ -320,6 +320,28 @@
       }
     },
     "effects": {
+      "picker_cursor": {
+        "kind": "shimmer",
+        "roles": [
+          "accent_1"
+        ],
+        "period_ms": 2200,
+        "width": 3
+      },
+      "picker_trail": {
+        "kind": "pulse",
+        "roles": [
+          "accent_2"
+        ],
+        "period_ms": 3000
+      },
+      "picker_opened": {
+        "kind": "blink",
+        "roles": [
+          "find_current"
+        ],
+        "period_ms": 400
+      },
       "waiting": {
         "kind": "spinner",
         "frames": [
