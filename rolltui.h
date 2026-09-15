@@ -471,6 +471,10 @@ typedef enum RolltuiKeyProtocol {
 /* WHAT THE TERMINAL TURNED OUT TO BE — process-wide, and Legacy until something says
  * otherwise. It retains nothing, so it needs no shutdown releaser. */
 unsigned char rolltui_key_active_protocol(void);
+/* Whether THIS terminal, on the protocol it negotiated, can deliver a chord at all: Ctrl-. or
+ * Ctrl-Enter need the kitty protocol or xterm's modifyOtherKeys. A host that shows a chord
+ * beside an action shows the first one that can arrive, not the first one in the file. */
+int rolltui_key_deliverable(const RolltuiChord* k, unsigned char protocol);
 
 /* The bytes a terminal speaking `p` sends for this chord, into `out` (capacity `cap`,
  * at least ROLLTUI_KEY_ENCODE_MAX). Returns the length written, or -1 when `p` has no

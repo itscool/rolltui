@@ -512,8 +512,16 @@ struct App {
     for (const Row& r : rows) {
       const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
       if (n == 0) continue;
+      // THE FIRST CHORD THIS TERMINAL CAN DELIVER, not the first in the file: `ctrl+.` needs a key
+      // protocol, and where there is none the hint says `Alt-H`, which arrives anywhere.
       RolltuiChord c{};
-      rolltui_bindings_chord_at(bindings, r.action, std::strlen(r.action), 0, &c);
+      std::size_t pick = 0;
+      for (std::size_t i = 0; i < n; ++i) {
+        RolltuiChord k{};
+        rolltui_bindings_chord_at(bindings, r.action, std::strlen(r.action), i, &k);
+        if (rolltui_key_deliverable(&k, rolltui_key_active_protocol())) { pick = i; break; }
+      }
+      rolltui_bindings_chord_at(bindings, r.action, std::strlen(r.action), pick, &c);
       char buf[ROLLTUI_CHORD_STRING_MAX];
       const std::size_t bn = rolltui_chord_display(&c, buf, sizeof buf);
       rolltui_hint_bar_add(hints, buf, bn, r.what, std::strlen(r.what), r.action, std::strlen(r.action));
@@ -864,17 +872,24 @@ struct App {
   // A CHOSEN KEY-BINDINGS PRESET becomes the live table the way the start built it: the store's
   // working copy, then this app's own bindings file on top, then the layout's declarations.
   std::string bindings_json;  // the app's bindings file, kept for that rebuild
-  void rebuild_bindings() {
-    if (!keys_store) return;
+  // Judged against the key protocol IN FORCE — the one the terminal negotiated, legacy until
+  // there is a terminal — and the chords it cannot deliver come back as text, for the status line.
+  std::string rebuild_bindings() {
+    std::string undeliverable;
+    if (!keys_store) return undeliverable;
     RolltuiBindings* w = static_cast<RolltuiBindings*>(rolltui_preset_store_working(keys_store));
-    if (!w) return;
+    if (!w) return undeliverable;
     rolltui_bindings_free(bindings);
     bindings = rolltui_bindings_clone(w);
     rolltui_preset_store_value_free(keys_store, w);
     if (!bindings_json.empty()) {
       RolltuiBindingsReport brep{};
-      rolltui_bindings_load_json(bindings, bindings_json.data(), bindings_json.size(), ROLLTUI_PROTOCOL_LEGACY,
+      rolltui_bindings_load_json(bindings, bindings_json.data(), bindings_json.size(), rolltui_key_active_protocol(),
                                  rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &brep);
+      for (std::size_t i = 0; i < brep.undeliverable_n; ++i) {
+        if (!undeliverable.empty()) undeliverable += "; ";
+        undeliverable.append(brep.undeliverable[i].p ? brep.undeliverable[i].p : "", brep.undeliverable[i].n);
+      }
       rolltui_bindings_report_release(&brep);
     }
     std::size_t an = 0;
@@ -882,6 +897,34 @@ struct App {
     rolltui_bindings_declare(bindings, av, an, nullptr, 0);
     rolltui_context_set_bindings(ctx, bindings);
     hints_built = false;
+    return undeliverable;
+  }
+  // ONCE THE TERMINAL HAS SAID WHAT IT SPEAKS, the chords are judged again: a chord the file
+  // names that cannot arrive here is a note on the status line — with the one that can shown on
+  // the bar — and never a line printed before the terminal was asked.
+  void terminal_ready() {
+    const std::string cannot = rebuild_bindings();
+    // NOTHING TO SAY WHILE EVERYTHING WORKS: a chord that cannot arrive is only worth a word when
+    // its action has no other chord that can — `ctrl+.` beside `alt+h` is not a problem, it is a
+    // second spelling. The report names chords; the question is about actions.
+    std::string stranded;
+    std::size_t at = 0;
+    while (at < cannot.size()) {
+      std::size_t end = cannot.find("; ", at);
+      if (end == std::string::npos) end = cannot.size();
+      const std::string entry = cannot.substr(at, end - at);
+      const std::string action = entry.substr(0, entry.find(": '"));
+      bool any = false;
+      const std::size_t n = rolltui_bindings_chord_count(bindings, action.data(), action.size());
+      for (std::size_t i = 0; i < n && !any; ++i) {
+        RolltuiChord k{};
+        rolltui_bindings_chord_at(bindings, action.data(), action.size(), i, &k);
+        any = rolltui_key_deliverable(&k, rolltui_key_active_protocol()) != 0;
+      }
+      if (!any) { if (!stranded.empty()) stranded += "; "; stranded += entry; }
+      at = end + 2;
+    }
+    if (!stranded.empty()) hint = "no key for this on this terminal: " + stranded;
   }
   static std::string program_label(const std::string& id) {
     if (const Program* p = program_named(id)) return p->label;
@@ -2299,7 +2342,14 @@ int main(int argc, char** argv) {
       // public precisely so a host that loads its own bindings file does not hand-write them —
       // an INTERNAL summary makes every such host write the wrapper the library already has.
       RolltuiStr why{};
+      // NOT the undeliverable ones: the terminal has not been asked what it speaks yet, and a
+      // chord judged against no terminal at all is a wrong answer printed with confidence —
+      // Ctrl-. arrives fine on a terminal with a key protocol. They are judged in
+      // `terminal_ready`, on the protocol negotiated, and said on the status line.
+      const std::size_t judged_later = brep.undeliverable_n;
+      brep.undeliverable_n = 0;
       rolltui_bindings_report_summary(&brep, &why);
+      brep.undeliverable_n = judged_later;  // back for the release
       if (why.size() != 0)
         std::fprintf(stderr, "dirktui: bindings/default.json: %s\n", why.c_str());
       rolltui_str_free(&why);
@@ -2409,6 +2459,7 @@ int main(int argc, char** argv) {
   app.term = term;   // for a program that takes the terminal over
   app.swap = swap;
   app.tty_fd = tty;
+  app.terminal_ready();  // the key protocol is negotiated: judge the chords against it
   RolltuiStr out{};
   struct Pending {
     std::vector<RolltuiEvent> events;

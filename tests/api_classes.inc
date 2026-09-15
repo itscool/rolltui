@@ -453,7 +453,7 @@ ROLLTUI_API(rolltui_key_decoder_free, INTERNAL)  /* the terminal's decoder (a te
 ROLLTUI_API(rolltui_key_decoder_in_paste, INTERNAL)  /* the terminal's decoder (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_key_decoder_new, INTERNAL)  /* the terminal's decoder; a host reads events (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_key_decoder_pending, INTERNAL)  /* the terminal's decoder */
-ROLLTUI_API(rolltui_key_deliverable, INTERNAL)  /* a deliverability primitive; the library hands its own reason callback to a domain */
+ROLLTUI_API(rolltui_key_deliverable, PUBLIC)  /* a host shows the first chord that can arrive: dirktui's hint bar */
 ROLLTUI_API(rolltui_key_display_name, INTERNAL)  /* a deliverability primitive; the library hands its own reason callback to a domain */
 ROLLTUI_API(rolltui_key_encode, INTERNAL)  /* the terminal's own (a test reaches it: opt-in) */
 ROLLTUI_API(rolltui_key_from_display_name, INTERNAL)

@@ -405,6 +405,12 @@ int main() {
         const std::size_t at = last.find(word); if (at == std::string::npos) return -1;
         int cell = 0; for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(last[i]) & 0xC0) != 0x80) ++cell; return cell; };
       const int sc = cell_of(plain, "sort name"), dc = cell_of(plain, "+dotfiles");
+      // THE CHORD SHOWN IS ONE THIS TERMINAL CAN DELIVER: a headless run negotiates nothing, so the
+      // dotfiles hint says Alt-H, not the file's first chord Ctrl-. — and nothing is called
+      // undeliverable before a terminal has been asked.
+      check(has(plain, "Alt-H +dotfiles") && !has(plain, "Ctrl-."), "the hint bar shows the first chord that can arrive on this terminal");
+      const std::string quiet = run(home_env + bin + " '" + here + "' --frame 100x20 2>&1", crc);
+      check(!has(quiet, "undeliverable"), "…and a chord is never called undeliverable before the terminal has said what it speaks");
       // EACH CLICK RUN IN ITS OWN SETTINGS DIRECTORY: a click saves, and the next run would
       // otherwise start from what the last one chose.
       auto own = [&](const char* name) { return "ROLL_CONFIG_DIR='" + (scratch / name).string() + "' " + bin + " '" + here + "'"; };
