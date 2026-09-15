@@ -1120,8 +1120,19 @@ size_t rolltui_picker_hidden_count(const RolltuiPicker* p) {
   Column* c = focused((RolltuiPicker*)p);
   return c ? c->hidden_n : 0;
 }
+/* THE WINDOW'S OWN BAR, in the border, says where ONE column is scrolled: with dividers, the last
+ * column — and only while that column has no divider of its own on screen, since a divider
+ * carries the column's thumb and a second bar on the border beside it would say the same thing
+ * twice; without dividers, the focused column. */
 static Column* bar_column(RolltuiPicker* p) {
-  if (p->opt.dividers) return p->n ? &p->cols[p->n - 1] : NULL;
+  if (p->opt.dividers) {
+    const size_t last = p->n ? p->n - 1 : 0;
+    int dx;
+    if (!p->n) return NULL;
+    dx = column_x(p, last) + shown_width(p, last);
+    if (dx >= p->inner.x && dx < p->inner.x + p->inner.w) return NULL; /* its divider is there: the thumb is on it */
+    return &p->cols[last];
+  }
   return focused(p);
 }
 int rolltui_picker_scroll_extent(const RolltuiPicker* p, RolltuiScrollExtent* out) {

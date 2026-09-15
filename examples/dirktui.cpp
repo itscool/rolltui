@@ -220,7 +220,8 @@ struct Options {
   bool hidden = true;  // dotfiles shown unless a person turns them off
   Sort sort = Sort::Name;
   bool reversed = false;  // the sort's order turned around: z to a, smallest first, oldest first
-  bool motion = true;    // the effects and the column slide; off is a still app
+  bool motion = true;    // the column slide; off snaps
+  bool sparkle = true;   // the cursor's glow, the trail's sparkle, the opened burst; off is a still app
   bool dividers = true;  // a hairline in the margin between columns, in the border colour
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
@@ -533,7 +534,7 @@ struct App {
     int want = moving ? 16 : idle;
     // A note holds, then fades, then the name fades back in: frames until all of that is done.
     if (now_ms && (!hint.empty() || now_ms < title_back_since + kTitleBackMs) && want > 100) want = 100;
-    if (opt.motion && f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
+    if (opt.sparkle && f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {
       const int tick = rolltui_effects_tick_ms(ctx, f, effects);
       if (tick > 0 && tick < want) want = tick;
     }
@@ -708,6 +709,7 @@ struct App {
       RolltuiStr err{};
       if (RolltuiJsonValue* root = rolltui_json_parse(t.p ? t.p : "", t.n, &err)) {
         opt.motion = rolltui_json_as_bool(rolltui_json_get(root, "motion", 6), 1) != 0;
+        opt.sparkle = rolltui_json_as_bool(rolltui_json_get(root, "sparkle", 7), 1) != 0;
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
@@ -743,7 +745,7 @@ struct App {
     for (std::size_t i = 1; i <= dir.size(); ++i)
       if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
-    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
+    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"sparkle\": " << (opt.sparkle ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
         << ", \"show_size\": \"" << show_name(opt.show_size) << "\", \"show_modified\": \"" << show_name(opt.show_modified) << "\""
         << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"reversed\": " << (opt.reversed ? "true" : "false") << ", \"leave\": " << (opt.leave ? "true" : "false")
@@ -771,6 +773,7 @@ struct App {
     { const std::string sid = sort_id(opt.sort, opt.reversed); rolltui_menu_set_value(m, "sort", 4, sid.data(), sid.size()); }
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
+    rolltui_menu_set_checked(m, "sparkle", 7, opt.sparkle ? 1 : 0);
     rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
     rolltui_menu_set_value(m, "show_size", 9, show_name(opt.show_size), std::strlen(show_name(opt.show_size)));
     rolltui_menu_set_value(m, "show_modified", 13, show_name(opt.show_modified), std::strlen(show_name(opt.show_modified)));
@@ -1389,10 +1392,13 @@ struct App {
   }
 
   // The three settings, each changed in ONE place whether a chord or the menu asked, and saved.
+  // EVERY SETTING CHANGED SAYS SO on the status line, in the words the menu uses, whether it
+  // came from the menu, a chord or a click on the bar.
   void set_hidden(bool on) {
     opt.hidden = on;
     apply_picker_options();
     hints_built = false;  // the bar says the state
+    hint = opt.hidden ? "dotfiles shown" : "dotfiles hidden";
     save_settings();
   }
   void set_sort(Sort s, bool reversed) {
@@ -1400,6 +1406,7 @@ struct App {
     opt.reversed = reversed;
     apply_picker_options();
     hints_built = false;
+    hint = "sorted by " + sort_words(opt.sort, opt.reversed);
     save_settings();
   }
   void set_motion(bool on) {
@@ -1473,8 +1480,10 @@ struct App {
         Sort s = Sort::Name; bool rev = false;
         if (sort_from_id(v, s, rev)) set_sort(s, rev);
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && (id == "show_size" || id == "show_modified")) {
-        (id == "show_size" ? opt.show_size : opt.show_modified) = show_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
+        Show& which = id == "show_size" ? opt.show_size : opt.show_modified;
+        which = show_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
         apply_picker_options();
+        hint = std::string(id == "show_size" ? "sizes" : "modified dates") + (which == Show::Always ? ": always shown" : which == Show::Never ? ": never shown" : ": shown with the sort");
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
         const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
@@ -1496,6 +1505,7 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "exec") {
         opt.exec = exec_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
+        hint = std::string("executables: ") + (opt.exec == Exec::Run ? "run here" : opt.exec == Exec::Open ? "the system opener" : "to the command line");
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "leave") {
         opt.leave = ev.checked != 0;
@@ -1511,6 +1521,7 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "sparkle") { opt.sparkle = ev.checked != 0; hint = opt.sparkle ? "sparkle on" : "sparkle off"; save_settings(); }
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "dividers") {
         opt.dividers = ev.checked != 0;
         hint = opt.dividers ? "column dividers on" : "column dividers off";
@@ -1623,7 +1634,7 @@ struct App {
   void apply_effects(RolltuiFrame* f) {
     last_fx = RolltuiEffectReport{};
     last_marks = rolltui_frame_mark_count(f);
-    if (!opt.motion || rolltui_frame_mark_count(f) == 0 || !effects || rolltui_effect_map_empty(effects)) return;
+    if (!opt.sparkle || rolltui_frame_mark_count(f) == 0 || !effects || rolltui_effect_map_empty(effects)) return;
     rolltui_effects_apply(ctx, f, effect_scratch, styles, nullptr, effects, now_ms, ambiguous, &last_fx, nullptr, nullptr);
   }
 };

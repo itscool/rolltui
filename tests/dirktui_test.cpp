@@ -279,8 +279,8 @@ int main() {
     check(has(menu, "General") && has(menu, "Look") && has(menu, "Enter on a file") && has(menu, "Open with") &&
               has(menu, "Key bindings") && has(menu, "Theme") && has(menu, "Neovim") && has(menu, "Visual Studio Code"),
           "F2: four sections — General, Look, Enter on a file, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
-    // dotfiles, sort, keys, theme, motion, dividers, sizes, modified, leave, land, relative, executables, then Text: its dropdown
-    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
+    // dotfiles, sort, keys, theme, motion, sparkle, dividers, sizes, modified, leave, land, relative, executables, then Text: its dropdown
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
     check(has(bare_menu, "the system opener") && has(bare_menu, "Neovim") && has(bare_menu, "Helix") && has(bare_menu, "the command line"),
           "…and with nothing installed a type's dropdown still LISTS every known program — disabled, so a person sees what could open it — plus the system opener and the command line");
     // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
@@ -389,7 +389,7 @@ int main() {
       check(has(inside, "General"), "…and a click inside it leaves it open");
       // ONE LEVEL AT A TIME: with a dropdown open in the settings, Escape — or a click outside the
       // popup — closes the dropdown and leaves the settings; the next one closes the settings.
-      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down";  // twelve, since the executables choice joined "Enter on a file"
+      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down Down";  // thirteen: sparkle joined Look and the executables choice "Enter on a file"
       const std::string dd = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter\" 2>/dev/null", crc);
       check(has(dd, "Neovim") && has(dd, "General"), "the control: Enter on an open-with choice opens its dropdown over the settings");
       const std::string dd_esc = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter Escape\" 2>/dev/null", crc);
@@ -801,8 +801,11 @@ int main() {
     bool ok = false;
     const std::string saved = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(saved, "\"motion\": false"), "toggling Motion writes the settings file [" + saved.substr(0, 60) + "]");
+    // Motion is the SLIDE; the marks and their effects are Sparkle's, a setting of its own.
+    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // …and Sparkle, the row under Motion
     const std::string still = run(sbase + " --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", mrc);
-    check(has(still, "drawn=0") && !has(still, "marks=0"), "…the next run reads it: the rows are marked and nothing draws");
+    check(has(still, "drawn=0") && !has(still, "marks=0"), "…the next run reads both: the rows are marked and, with sparkle off, nothing draws");
+    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // sparkle back on
     const std::string snapped = run(sbase + " --frame 46x10 --keys \"Right Tick:30\" 2>/dev/null", mrc);
     const std::string ended = run(sbase + " --frame 46x10 --keys \"Right Tick:200\" 2>/dev/null", mrc);
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
@@ -812,7 +815,7 @@ int main() {
     // default; the checkbox under Motion turns them off, and the frame loses exactly those cells.
     auto bars = [](const std::string& frame) { std::size_t n = 0, at = 0; while ((at = frame.find("\xE2\x94\x82", at)) != std::string::npos) { ++n; at += 3; } return n; };
     const std::string with_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, motion, dividers
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, motion, sparkle, dividers
     const std::string no_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
     check(has(read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok), "\"dividers\": false"), "the dividers checkbox is saved");
     check(bars(with_lines) > bars(no_lines) && bars(with_lines) - bars(no_lines) >= 8,
@@ -826,7 +829,7 @@ int main() {
       return n;
     };
     const std::string short_off = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
+    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
     const std::string short_on = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
     check(capsules(short_off) > 0 && capsules(short_on) > capsules(short_off),
           "with dividers, each scrolled column carries its own thumb on its divider; without, one bar in the border [" +
