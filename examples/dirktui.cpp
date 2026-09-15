@@ -505,9 +505,9 @@ struct App {
     struct Row { const char* action; const char* what; };
     // The sort and the dotfiles are STATES as well as keys: their labels say the state, and the
     // bar is rebuilt when either changes.
-    const std::string sort = std::string("sort ") + sort_words(opt.sort, opt.reversed);
+    const std::string sort = std::string("sort: ") + sort_words(opt.sort, opt.reversed);
     const std::string dots = opt.hidden ? "+dotfiles" : "\xE2\x88\x92" "dotfiles";
-    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}};
+    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}, {"app.details", "details"}};
     rolltui_hint_bar_clear(hints);
     for (const Row& r : rows) {
       const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
@@ -683,9 +683,15 @@ struct App {
   // app's own facts (sort, dotfiles, motion), and a theme is a look shared by every host.
   static std::string settings_dir() { return user_presets_dir() + "/dirktui"; }
   static const char* sort_name(Sort s) { return s == Sort::Name ? "name" : s == Sort::Size ? "size" : "modified"; }
-  // The sort said in words a status line and a menu share: the key and which way it runs.
+  // The sort said in words a status line shares: the field and which way it runs, always
+  // the same width (a 4-letter field, a space, one arrow) so the hint bar does not resize
+  // as the sort cycles. `<` is ascending (a-z, smallest first, oldest first), `>` descending
+  // — one meaning for the arrow across all three fields, unlike `rev` itself, whose default
+  // (unreversed) direction is ascending for name but descending for size and modified.
   static std::string sort_words(Sort s, bool rev) {
-    return s == Sort::Name ? (rev ? "name z-a" : "name a-z") : s == Sort::Size ? (rev ? "size small-big" : "size big-small") : (rev ? "modified old-new" : "modified new-old");
+    const char* field = s == Sort::Name ? "name" : s == Sort::Size ? "size" : "date";
+    const bool ascending = s == Sort::Name ? !rev : rev;
+    return std::string(field) + (ascending ? " <" : " >");
   }
   // The menu's option id for a sort — `name`, `name_rev`, … — and back.
   static std::string sort_id(Sort s, bool rev) { return std::string(sort_name(s)) + (rev ? "_rev" : ""); }
@@ -1627,7 +1633,7 @@ struct App {
       int is_dir = 0;
       const bool can_copy = !popup && focused_content() == "filepicker" && have_picker && rolltui_windows_picker_selected(windows, kPicker, 10, &sel, &is_dir) != 0 && sel.n != 0;
       rolltui_str_free(&sel);
-      for (const char* a : {"app.help", "app.menu", "app.sort", "app.hidden"}) rolltui_hint_bar_enable(hints, a, std::strlen(a), popup ? 0 : 1);
+      for (const char* a : {"app.help", "app.menu", "app.sort", "app.hidden", "app.details"}) rolltui_hint_bar_enable(hints, a, std::strlen(a), popup ? 0 : 1);
       rolltui_hint_bar_enable(hints, "picker.copy", 11, can_copy ? 1 : 0);
     }
     rolltui_picker_status_release(&ps);

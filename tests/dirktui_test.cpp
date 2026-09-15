@@ -398,13 +398,13 @@ int main() {
       check(!has(dd_click, "Neovim") && has(dd_click, "General"), "…a click outside the popup likewise closes the dropdown only");
       const std::string dd_esc2 = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter Escape Escape\" 2>/dev/null", crc);
       check(!has(dd_esc2, "General") && has(dd_esc2, "find:"), "…and the next Escape closes the settings");
-      // THE STATUS LINE'S STATES ARE CLICKABLE: `sort name` cycles the sort, `+dotfiles` toggles.
+      // THE STATUS LINE'S STATES ARE CLICKABLE: `sort: name <` cycles the sort, `+dotfiles` toggles.
       const std::string plain = run(home_env + bin + " '" + here + "' --frame 100x20 2>/dev/null", crc);
       auto cell_of = [](const std::string& fr, const char* word) {
         std::string last; std::istringstream in(fr); for (std::string l; std::getline(in, l);) if (!l.empty()) last = l;
         const std::size_t at = last.find(word); if (at == std::string::npos) return -1;
         int cell = 0; for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(last[i]) & 0xC0) != 0x80) ++cell; return cell; };
-      const int sc = cell_of(plain, "sort name"), dc = cell_of(plain, "+dotfiles");
+      const int sc = cell_of(plain, "sort: name"), dc = cell_of(plain, "+dotfiles");
       // THE CHORD SHOWN IS ONE THIS TERMINAL CAN DELIVER: a headless run negotiates nothing, so the
       // dotfiles hint says Alt-H, not the file's first chord Ctrl-. — and nothing is called
       // undeliverable before a terminal has been asked.
@@ -415,9 +415,14 @@ int main() {
       // otherwise start from what the last one chose.
       auto own = [&](const char* name) { return "ROLL_CONFIG_DIR='" + (scratch / name).string() + "' " + bin + " '" + here + "'"; };
       const std::string cycled = run(own("click-1") + " --frame 100x20 --keys \"Click " + std::to_string(sc + 1) + ",19\" 2>/dev/null", crc);
-      check(sc >= 0 && has(cycled, "sort name z-a"), "a click on `sort name a-z` cycles the sort: the line says `sort name z-a` [" + std::to_string(sc) + "]");
+      check(sc >= 0 && has(cycled, "sort: name >"), "a click on `sort: name <` cycles the sort: the line says `sort: name >` [" + std::to_string(sc) + "]");
       const std::string cycled2 = run(own("click-2") + " --frame 100x20 --keys \"Click " + std::to_string(sc + 1) + ",19 Click " + std::to_string(sc + 1) + ",19\" 2>/dev/null", crc);
-      check(has(cycled2, "sort size big-small"), "…twice: `sort size big-small`");
+      check(has(cycled2, "sort: size >"), "…twice: `sort: size >`");
+      // F3 IS ON THE HINT BAR, LAST — the same generic app.details → popup path app.menu and
+      // app.help already use, so no host-side handler exists for it either.
+      check(has(plain, "details"), "the hint bar shows `details`, the F3 hint");
+      const std::string entry = run(own("click-f3") + " --frame 100x20 --keys \"F3\" 2>/dev/null", crc);
+      check(has(entry, "folder") && has(entry, "kind"), "F3 opens the entry popup with what is known about the selection");
       const std::string dflt = run(own("click-3") + " --frame 100x24 --keys \"F2\" 2>/dev/null", crc);
       check(has(dflt, "(default on)") && has(dflt, "(default)"), "every setting says its default: toggles as (default on/off), a choice on its default option");
       const std::string toggled = run(own("click-4") + " --frame 100x20 --keys \"Click " + std::to_string(dc + 1) + ",19\" 2>/dev/null", crc);
@@ -952,7 +957,7 @@ int main() {
                                    " --theme default-dark --frame 150x30 --keys \"AltH\" 2>&1", rc);
   check(rc == 0 && !has(dots, " .hidden"), "Alt-H hides the dotfiles");
   const std::string sorted = run(base + " --frame 150x30 --keys \"CtrlS\" 2>&1", rc);
-  check(rc == 0 && has(sorted, "sort name z-a"), "Ctrl-S cycles the sort order and the status line says which");
+  check(rc == 0 && has(sorted, "sort: name >"), "Ctrl-S cycles the sort order and the status line says which");
 
   // ---- 7. THE STANDING RULE: every view shrinks to nothing gracefully ------------------------
   for (const char* size : {"1x1", "2x1", "8x3", "40x2", "100x1"}) {
