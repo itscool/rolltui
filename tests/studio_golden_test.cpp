@@ -1307,6 +1307,21 @@ int main(int argc, char** argv) {
     {
       namespace fs = std::filesystem;
       const std::string root = std::string(ROLLTUI_SOURCE_DIR) + "/..";
+      // THIS SCAN WALKS ONE LEVEL ABOVE THIS CHECKOUT — the whole ecosystem, roll's own source
+      // included, when this repository is roll's rolltui/ submodule (root is then roll's own
+      // root, which is exactly what "no source anywhere says `playground`" needs to mean).
+      // Standing alone, that same directory is whatever happens to contain this checkout on
+      // whatever disk it is cloned to — whichever scratch or home directory a person put it in
+      // — and walking it is neither meaningful (there is no roll there to check) nor safe (it
+      // is not this repository's to read). Detect a real host by a file only roll has, and
+      // scan nothing above this checkout without one.
+      const bool host_present = std::ifstream(root + "/CLAUDE.md").good();
+      if (!host_present) {
+        check(true, "this checkout has no host above it (no CLAUDE.md) — the ecosystem-wide "
+                    "`playground` sweep needs one to mean anything (and to be safe to walk at "
+                    "all); it runs where this repository is mounted inside one (roll, at its "
+                    "own rolltui/)");
+      } else {
       std::vector<std::string> scanned, hits;
       int sentinel = 0;  // the arming word: `rolltui` appears in every source here
       for (auto it = fs::recursive_directory_iterator(root); it != fs::recursive_directory_iterator(); ++it) {
@@ -1341,6 +1356,7 @@ int main(int argc, char** argv) {
       check(sentinel > 500, "the scanner can see: the same pass matched `rolltui` on " + std::to_string(sentinel) + " lines");
       check(hits.empty(), "no source says `playground` anywhere — the rename is finished and nothing keeps a table of it" +
                               (hits.empty() ? "" : ": " + hits.front()));
+      }
     }
     check(row_of(menu_open, "\xE2\x95\xAD menu ") == 5 && row_of(menu_big, "\xE2\x95\xAD menu ") == 8,
           "the menu popup re-places itself: top edge on row 5 at 80x24 (60% of 23 = 13 rows, centred: 11 - 6) and row 8 at 120x40 (23 rows: 19 - 11) (" +

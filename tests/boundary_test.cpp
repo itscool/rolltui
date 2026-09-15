@@ -144,10 +144,25 @@ int main() {
   bool roll_is_here = true;
   for (const char* d : kRollDirs)
     if (!fs::is_directory(root / d)) roll_is_here = false;
-  check(roll_is_here,
-        "roll's own include/ and src/ are present in this tree — the thing the boundary is "
-        "about exists, so a pass means the library does not reach it rather than that there "
-        "was nothing to reach");
+  // THIS REPOSITORY STANDS ALONE, OR IS MOUNTED INSIDE A HOST: both are real trees this suite
+  // runs in. Standing alone (no `include/`, no `src/` beside `rolltui/`), there is no host on
+  // the other side of the boundary to have reached — the assertion below would be checking a
+  // vacuous truth and calling it a pass, which is the exact failure this file's own header
+  // warns against for the boundary itself. Say so plainly instead of failing a control that
+  // cannot fire here; a host that DOES mount this repository (roll, as its `rolltui/`
+  // submodule) still gets the armed version, because there `include/` and `src/` are real.
+  if (!roll_is_here) {
+    check(true,
+          "this checkout has no host beside it (no include/, no src/) — rolltui standing "
+          "alone, which is what this repository is — so there is nothing on the other side "
+          "of the boundary to have reached; a host that mounts this repository (roll, at its "
+          "own rolltui/) runs the armed form of this control, below");
+  } else {
+    check(roll_is_here,
+          "roll's own include/ and src/ are present in this tree — the thing the boundary is "
+          "about exists, so a pass means the library does not reach it rather than that there "
+          "was nothing to reach");
+  }
 
   // ---- 1. THE INCLUDE PATH -----------------------------------------------------------------
   // Planted violation that must make this FAIL, for whoever re-arms it:

@@ -525,10 +525,20 @@ int main() {
   // standard). These are the two places this rule has to exist, and they are checked
   // rather than hoped.
   {
-    const std::string claude = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/../CLAUDE.md");
-    check(claude.find("OWNED") != std::string::npos && claude.find("BORROWED") != std::string::npos &&
-              claude.find("shared_ptr") != std::string::npos,
-          "CLAUDE.md carries the ownership rule, where every session reads it");
+    // Two names for the same file, depending on which tree this checkout is in: CLAUDE.md when
+    // this repository is mounted inside roll (as its rolltui/ submodule — roll's own working
+    // agreement, one level up), README.md when it stands alone (this repository's own front
+    // door, at its own root). Either is fine; neither existing is not.
+    std::string top = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/../CLAUDE.md");
+    // Standing alone, this repository's own root IS ROLLTUI_SOURCE_DIR (a self-referential
+    // symlink is what makes "rolltui/rolltui.h" resolve there) — its README.md sits beside it,
+    // not one level up, which is where a nested mount's own host document would be instead.
+    if (top.empty()) top = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/../README.md");
+    if (top.empty()) top = read_file(std::string(ROLLTUI_SOURCE_DIR) + "/README.md");
+    check(top.find("OWNED") != std::string::npos && top.find("BORROWED") != std::string::npos &&
+              top.find("shared_ptr") != std::string::npos,
+          "the top-level doc (CLAUDE.md inside roll, README.md standing alone) carries the "
+          "ownership rule, where every reader meets it");
     // `rolltui/Widgets.hpp` previously; the type that does the owning is
     // `RolltuiWindows` in `c/rolltui_widgets.h` now, and the rule went with it. Repointed
     // rather than dropped: this check exists because a convention nobody meets is not one, and

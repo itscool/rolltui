@@ -782,6 +782,10 @@ int main() {
       if (path.find("/c/rolltui_style.") != std::string::npos) continue;
       if (path.size() >= 10 && path.compare(path.size() - 10, 10, "/rolltui.h") == 0) continue;
       if (path.find("/third_party/") != std::string::npos || path.find("/tests/") != std::string::npos) continue;
+      // Standing alone this repository's own build/ sits inside the tree this scan walks —
+      // build/embedded_presets.c is generated FROM the theme presets, so it names every role by
+      // construction, in a file that is not a source at all.
+      if (path.find("/build/") != std::string::npos || path.find("/build-") != std::string::npos) continue;
       if (read_file(path).find("\"md_code_block\"") != std::string::npos) namers.push_back(path.substr(dir.size() + 1));
     }
     check(namers.empty(), "…and no source outside it names a role in a literal of its own" +
