@@ -95,6 +95,7 @@ inline std::span<const RolltuiToolAction> studio_actions() {
   static const RolltuiToolAction t[] = {
       {"studio.cycle_theme", "cycle the shipped theme presets", "f3"},
       {"studio.reload", "reload the fixture", "f5"},
+      {"studio.save_as", "save the preset being edited as a file", "alt+s"},
       {"studio.quit", "quit", "ctrl+q"},
   };
   return t;

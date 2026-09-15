@@ -368,7 +368,7 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
 /* ---- small helpers shared by the built-ins and the loader -------------------------------- */
 
 /* A literal C string plus its length, computed once here rather than hand-counted at every
- * call site — this file's own version of `rolltui_json.c`'s `JLIT` / `rolltui_menu.c`'s
+ * call site — this file's own version of `rolltui_json.c`'s `JLIT` / `rolltui_widget_menu.c`'s
  * `K` (the same macro name, same purpose, independently duplicated for the reason both of
  * those already state: a `static`/file-local helper has no external linkage to share). Theme
  * loading happens once per file, never per frame, so the `strlen` this costs is not one this

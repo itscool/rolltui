@@ -218,14 +218,14 @@
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_lifetime.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_presets.h"
 #include "rolltui/c/rolltui_render.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_theme_analysis.h"
 #include "rolltui/c/rolltui_theme_gen.h"
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 #include "rolltui/c/rolltui_widgets.h"
@@ -673,6 +673,7 @@ struct App {
   int report_top = 0;        // the Check report is a registered kind: the studio scrolls it
   int report_lines = 0;      // its wrapped length, from the last draw
   std::string hint;
+  std::string note;  // the status line's last word about a file dialog, until the next key
   std::string window_note;   // a window that cannot draw (an unbound source, a bad kind)
   bool show_timing = false;  // the frame-time row/field (interactive only)
   RolltuiWindowStack* stack = rolltui_window_stack_new();
@@ -804,6 +805,10 @@ struct App {
     rolltui_windows_bind_rows(
         windows, "status", 6, [](void* ctx, RolltuiRows* out) { static_cast<App*>(ctx)->status_rows(*out); }, this,
         nullptr);
+    rolltui_windows_bind_submit(
+        windows, "save_name", 9,
+        [](void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->save_preset_file(std::string(text, len)); },
+        this, nullptr, /*Keep=*/1);
     rolltui_windows_bind_submit(
         windows, "prompt", 6,
         [](void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->append_prompt(std::string(text, len)); },
@@ -966,6 +971,8 @@ struct App {
       case ROLLTUI_MENU_EVENT_ACTIVATE:
         close_popup("menu");
         if (ev.id == "reload") load_fixture();
+        else if (ev.id == "open") rolltui_window_stack_action_popup(stack, &effective_layout(), "app.filepicker", 14);
+        else if (ev.id == "save_as") open_save_dialog();
         else if (ev.id == "help") toggle_help();
         else if (ev.id == "editor") toggle_editor();
         else if (ev.id == "quit") return false;
@@ -1115,6 +1122,79 @@ struct App {
     l.root = (n).clone();
     return l;
   }
+  // THE SAVE DIALOG: a name over a folder, the shape paint's is — a second picker instance
+  // (`filepicker:save`) beside the open dialog's, so each keeps its own place. A question a
+  // person answers, so it does not dismiss on a click outside.
+  static RolltuiLayer save_popup() {
+    RolltuiLayer l;
+    l.id = "save";
+    l.placement = {RolltuiDim::rel(1), RolltuiDim::abs(0), RolltuiDim::abs(kEditorPanelW), RolltuiDim::rel(1),
+                   rolltui::Anchor::TopRight, true, RolltuiDim::abs(30), RolltuiDim::abs(8), {}, {}};
+    l.modal = true;
+    l.dismiss = 0;
+    RolltuiLayoutNode col = RolltuiLayoutNode::column();
+    RolltuiLayoutNode name = RolltuiLayoutNode::window_id("save_name", "input:save_name", RolltuiSplitSize::fixed(RolltuiDim::abs(3)));
+    name.border = rolltui::Border::Rounded;
+    name.title = "save as: the name";
+    name.focusable = true;
+    name.background = to_role(ROLLTUI_ROLE_PANEL_BACKGROUND);
+    RolltuiLayoutNode folder = RolltuiLayoutNode::window_id("save_folder", "filepicker:save");
+    folder.border = rolltui::Border::Rounded;
+    folder.title = "in the folder";
+    folder.focusable = true;
+    folder.background = to_role(ROLLTUI_ROLE_PANEL_BACKGROUND);
+    col.children.push_back(std::move(name));
+    col.children.push_back(std::move(folder));
+    l.root = std::move(col);
+    l.focus = "save_name";
+    return l;
+  }
+  // THE FILE SAVE WRITES THE PRESET BEING EDITED — the open editor's working copy through its
+  // domain's own serialiser, so the file is what the store would have written by name — to a
+  // folder and a name a person chose. With no editor open there is nothing to write, and the
+  // status line says so rather than guessing.
+  bool preset_text(std::string& out, std::string& what) {
+    auto put = [](void* c, const char* s, std::size_t n) { static_cast<std::string*>(c)->append(s, n); };
+    auto from = [&](RolltuiPresetDomain* d, RolltuiPresetStore* s, std::string name) {
+      if (!d || !s) return false;
+      if (const std::size_t sp = name.find(" ("); sp != std::string::npos) name.erase(sp);
+      d->to_json(d, rolltui_preset_store_working(s), name.data(), name.size(), put, &out);
+      return true;
+    };
+    switch (editor_mode) {
+      case EditorMode::Theme: what = "theme"; return from(rolltui_preset_domain_theme(ctx), store ? store->handle() : nullptr, store ? store->label() : "");
+      case EditorMode::Layout: what = "layout"; return from(rolltui_preset_domain_layout(ctx), lstore ? lstore->handle() : nullptr, lstore ? lstore->label() : "");
+      case EditorMode::Keys: what = "key bindings"; return from(rolltui_preset_domain_bindings(ctx), bstore ? bstore->handle() : nullptr, bstore ? bstore->label() : "");
+      case EditorMode::Menu: what = "menu"; out = meditor.to_json(); return true;
+      case EditorMode::None: return false;
+    }
+    return false;
+  }
+  void open_save_dialog() {
+    std::string text, what;
+    if (!preset_text(text, what)) { note = "open an editor first: a file save writes the preset being edited"; return; }
+    if (rolltui_window_stack_has_popup(stack, "save", 4)) return;
+    const std::string at = fixture_path.empty() ? std::string(".") : fixture_path.substr(0, fixture_path.find_last_of('/') + 1);
+    rolltui_windows_set_picker_dir(windows, "filepicker:save", 15, at.data(), at.size());
+    RolltuiLayer popup = save_popup();
+    rolltui_window_stack_push(stack, &popup);
+    note = "save the " + what + ": a name, Enter";
+  }
+  void save_preset_file(const std::string& name) {
+    std::string text, what;
+    if (name.empty()) { note = "a name, then Enter"; return; }
+    if (!preset_text(text, what)) { note = "nothing being edited to save"; close_popup("save"); return; }
+    RolltuiStr dir{};
+    if (!rolltui_windows_picker_dir(windows, "filepicker:save", 15, &dir)) { note = "no folder chosen"; return; }
+    const std::string folder(dir.p ? dir.p : "", dir.n);
+    rolltui_str_free(&dir);
+    const std::string path = (folder == "/" ? "" : folder) + "/" + name;
+    std::ofstream out(path, std::ios::binary);
+    out << text;
+    note = out ? "wrote the " + what + " to " + path : "could not write " + path;
+    if (out) close_popup("save");
+  }
+
   static RolltuiLayer confirm_popup() {
     RolltuiLayer l;
     l.id = "confirm";
@@ -1753,6 +1833,7 @@ struct App {
     stacked_fallback = want_fallback;
     const RolltuiLayer& base = want_fallback ? stacked_layout_.base : layout.base;
     rolltui_window_stack_set_base(stack, &base);
+    rolltui_window_stack_set_level_fn(stack, rolltui_windows_back, windows);  // Escape closes one level: a dropdown before the menu
     declare_actions();
   }
   // The `app.*` actions are the LAYOUT's: whatever the loaded file
@@ -2081,6 +2162,9 @@ struct App {
       std::string& status = status_line;
       status.clear();
       status += ' ';
+      // A FILE DIALOG'S LAST WORD FIRST: the line is cut from the right, and "wrote the theme
+      // to …" is what a person just asked for.
+      if (!note.empty()) { status += note; status += "  "; }
       if (store) { store->label(theme_label_str); status += view_of(theme_label_str); } else status += resolved_name;
       status += editor_mode == EditorMode::Theme    ? " [theme editor]"
               : editor_mode == EditorMode::Layout ? " [layout editor]"
@@ -2159,6 +2243,7 @@ struct App {
   bool handle(const RolltuiEvent& ev) {
     // App-level keys first; everything else is routed by the stack.
     sync_look();
+    if (ev.kind == ROLLTUI_EVENT_KEY) note.clear();  // a file dialog's last word lasts until the next key
     if (ev.kind == ROLLTUI_EVENT_KEY) {
       const RolltuiChord& k = ev.key;
       if (k.key == ROLLTUI_KEY_CHAR && k.ctrl && !k.alt && k.ch == 'c') return false;  // Ctrl-C is the host's, not an action
@@ -2179,6 +2264,7 @@ struct App {
         return true;
       }
       if (st == "studio.reload") { load_fixture(); return true; }
+      if (st == "studio.save_as") { open_save_dialog(); return true; }
       if (ed == "editor.theme") { toggle_editor(); return true; }
       if (ed == "editor.layout") { toggle_layout_editor(); return true; }
       if (ed == "editor.keys") { toggle_keys_editor(); return true; }
@@ -2389,7 +2475,7 @@ int confirm_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kConfirmPlugin = {
     /*destroy=*/confirm_destroy, /*layout=*/confirm_layout, /*draw=*/confirm_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
+    /*handle=*/confirm_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 RolltuiWidget confirm_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kConfirmPlugin, ctx}; }
 
@@ -2410,7 +2496,7 @@ int report_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kReportPlugin = {
     /*destroy=*/report_destroy, /*layout=*/report_layout, /*draw=*/report_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
+    /*handle=*/report_handle, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 RolltuiWidget report_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) { return RolltuiWidget{&kReportPlugin, ctx}; }
 
@@ -2441,7 +2527,7 @@ void placeholder_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f)
 constexpr RolltuiWidgetPlugin kPlaceholderPlugin = {
     /*destroy=*/placeholder_destroy, /*layout=*/placeholder_layout, /*draw=*/placeholder_draw,
     /*problem=*/nullptr, /*note_at=*/nullptr, /*desired_outer=*/nullptr,
-    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
+    /*handle=*/nullptr, /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 RolltuiWidget placeholder_factory(void* ctx, RolltuiWindows*, const char* content, std::size_t len) {
   PlaceholderCtx* pc = new PlaceholderCtx{static_cast<App*>(ctx), "[" + std::string(content, len) + "]"};

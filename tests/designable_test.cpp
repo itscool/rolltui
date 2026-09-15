@@ -44,7 +44,7 @@
 /* INTERNAL headers, BY NAME — this suite tests the editors, and opts in via
  * ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_layout.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui_test.hpp"
 
 #ifndef ROLLTUI_SOURCE_DIR
@@ -104,6 +104,7 @@ const Covered kLayout[] = {
     {"clamp", "popup.find.clamp", "per popup"},
     {"column", "", "STRUCTURE: 'Split into a column' makes one"},
     {"content", "kind", "the kind, with Source or Menu file beside it — exactly one enabled"},
+    {"dismiss", "popup.find.dismiss", "per popup"},
     {"focus", "focus", "a choice over the focusable windows"},
     {"focusable", "focusable", ""},
     {"h", "popup.find.h", "per popup"},
@@ -197,7 +198,7 @@ int main() {
 
   // ---- the MENU format --------------------------------------------------------------------
   {
-    const std::vector<std::string> keys = loader_keys("rolltui_menu.c");
+    const std::vector<std::string> keys = loader_keys("rolltui_widget_menu.c");
     check(keys.size() >= 15, "scanned the menu loader's key set (" + std::to_string(keys.size()) + " keys)");
     MenuEditor ed(ctx);
     ed.load(ed.skeleton("probe"));

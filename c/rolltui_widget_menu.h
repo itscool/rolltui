@@ -1,16 +1,16 @@
-#ifndef ROLLTUI_C_MENU_H
-#define ROLLTUI_C_MENU_H
+#ifndef ROLLTUI_C_WIDGET_MENU_H
+#define ROLLTUI_C_WIDGET_MENU_H
 /* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND THE FILE FORMAT.
+ * rolltui/c/rolltui_widget_menu.h — THE MENU WIDGET, THE TYPED-FIELD RULES AND THE FILE FORMAT.
  *
  * Level navigation, a typed filter, a breadcrumb, palette mode, and the seven input TYPES a
  * field can be — with the three-state rule that makes them work: the committed value, the
  * editing text and the preview are never collapsed into one. Every rule is stated in
  * `rolltui/Menu.hpp` and asserted in `rolltui/tests/menu_test.cpp`; none of it is repeated
- * here. The TREE it walks and builds is `rolltui_menu_tree.h`.
+ * here. The TREE it walks and builds is `rolltui_widget_menu_tree.h`.
  *
  * ---- WHAT THIS BOUNDARY DELIBERATELY DOES NOT KNOW ------------------------------------------
  *
@@ -51,9 +51,9 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_widget_menu_tree.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_unicode.h"
@@ -83,8 +83,10 @@ void rolltui_check_input(const RolltuiInputSpec* spec, const char* text, size_t 
 const char* rolltui_input_type_name(unsigned char type, size_t* len);
 int rolltui_input_type_from_name(const char* name, size_t len, unsigned char* out);
 
+int rolltui_menu_back(RolltuiMenu* m); /* closes one inner level; 0 when none is open */
 int rolltui_menu_scroll_first(const RolltuiMenu* m);
 int rolltui_menu_scroll_visible(const RolltuiMenu* m);
+void rolltui_menu_scroll_to(RolltuiMenu* m, int first); /* the bar dragged: clamped */
 /* The flattened list, for the palette. `path` is a BORROW of the entry's index path. */
 size_t rolltui_menu_flat_count(const RolltuiMenu* m);
 const char* rolltui_menu_flat_label(const RolltuiMenu* m, size_t i, size_t* len);
@@ -160,4 +162,4 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_MENU_H */
+#endif /* ROLLTUI_C_WIDGET_MENU_H */

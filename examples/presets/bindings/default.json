@@ -37,10 +37,8 @@
     "app.keys": [
       "f5"
     ],
-    "app.jump": [
-      "ctrl+g"
-    ],
     "app.hidden": [
+      "ctrl+.",
       "alt+h"
     ],
     "app.sort": [
@@ -50,8 +48,7 @@
       "f1"
     ],
     "app.quit": [
-      "ctrl+q",
-      "ctrl+c"
+      "ctrl+q"
     ],
     "picker.take": [
       "enter"
@@ -63,7 +60,7 @@
       "f2"
     ],
     "picker.copy": [
-      "c"
+      "ctrl+c"
     ],
     "picker.copy_inverse": [
       "alt+c"

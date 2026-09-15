@@ -44,10 +44,10 @@
  *      does not care do?" has to be answered once, in writing, before the first caller exists.
  *
  *   4. **A CAPABILITY SOME WIDGETS HAVE AND OTHERS DO NOT IS TWO SLOTS, NOT ONE WITH A FLAG.**
- *      `scroll_extent` REPORTS and `scroll_to` ACCEPTS, because a menu's scroll is derived
- *      from its selection: it wants an accurate bar that is not a handle. Collapsing them
- *      would force every widget into a behaviour only some of them want. The shape enforces
- *      that rather than asking for it.
+ *      `scroll_extent` REPORTS and `scroll_to` ACCEPTS, because a widget whose scroll is
+ *      derived from something else — an input's rows follow its caret — wants an accurate bar
+ *      that is not a handle. Collapsing them would force every widget into a behaviour only
+ *      some of them want. The shape enforces that rather than asking for it.
  *
  *   5. **THE LIBRARY'S OWN SEVEN KINDS FILL THIS PLUGIN EXACTLY AS A HOST'S DOES.** There is
  *      one mechanism and no privileged path: `rolltui::Windows` registers its built-ins
@@ -107,10 +107,10 @@
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_markdown.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_layout_tree.h"
 #include "rolltui/c/rolltui_screen.h"

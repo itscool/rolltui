@@ -26,7 +26,7 @@
 #include "rolltui/c/rolltui_terminal.h"
 #include "testkit/testctl.h"
 
-/* A literal C string plus its length, the same one-time convenience `rolltui_menu.c` and
+/* A literal C string plus its length, the same one-time convenience `rolltui_widget_menu.c` and
  * `rolltui_json.c` each name locally rather than share — a load happens once per file,
  * never per frame, so the `strlen` this costs is not one this library's budget covers. */
 #define K(s) (s), strlen(s)

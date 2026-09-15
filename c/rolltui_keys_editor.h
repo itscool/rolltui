@@ -41,7 +41,7 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_str.h"
 
 #ifdef __cplusplus

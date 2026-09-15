@@ -4,7 +4,7 @@
 │     transcript transcript:session              ││ layout F6  wide-right (modified)                                   │
 │     input input:prompt                         ││ size       120x40                                                  │
 │   status rows:status                           ││ line       146/180                                                 │
-│ ☒ Visible                                      ││ follow     yes                                                     │
+│ [✓] Visible                                    ││ follow     yes                                                     │
 │ Border                                single ▸ ││ depth      truecolor                                               │
 │ Background role             panel_background ▸ ││ focus      editor                                                  │
 │ Node id: status                                ││                                                                    │
@@ -13,7 +13,7 @@
 │ Source: status                                 ││                                                                    │
 │ Menu file:                                     ││                                                                    │
 │ Size (Alt+arrows nudge): 70                    ││                                                                    │
-│ ☐ Focusable                                    ││                                                                    │
+│ [ ] Focusable                                  ││                                                                    │
 │ Tree — split, swap, delete                   ▸ ││                                                                    │
 │ This screen — sizes, focus, popups, actions  ▸ ││                                                                    │
 │ Layout file — new, load, save                ▸ ││                                                                    │

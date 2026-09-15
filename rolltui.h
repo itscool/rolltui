@@ -1028,7 +1028,9 @@ typedef struct RolltuiInputOptions {
   RolltuiStr placeholder; /* drawn after the prompt while the text is empty */
   unsigned long long multi_click_ms ROLLTUI_DEFAULT(400);
   size_t history_limit ROLLTUI_DEFAULT(1000);
-  unsigned char single_line ROLLTUI_DEFAULT(0); /* a newline is dropped — a menu field */
+  /* ONE ROW: a newline is dropped, the text never wraps, and the row slides under the caret
+   * — a menu field, an address bar. Off: the text wraps and the window grows with it. */
+  unsigned char single_line ROLLTUI_DEFAULT(0);
 
 #ifdef __cplusplus
   RolltuiInputOptions();
@@ -1446,7 +1448,13 @@ inline RolltuiMenuItem RolltuiMenuItem::separator(const char* id) {
  * effects — a host registers effect kinds and holds an effect map
  * ======================================================================================== */
 
-/* Everything a kind is allowed to know about the cell it is answering for. */
+/* Everything a kind is allowed to know about the cell it is answering for.
+ *
+ * A CELL IS ABOUT TWICE AS TALL AS IT IS WIDE. An effect that travels or spreads VERTICALLY —
+ * down a column, round a border, across a block — moves in visual units, a row counting as two
+ * columns, or it visibly hurries on the vertical: the same crest ran a border's sides at twice
+ * the speed of its top until it was measured in units. `index`, `length` and `fraction` below
+ * are in cells; the kind that spans rows converts. */
 typedef struct RolltuiEffectCell {
   unsigned long long elapsed_ms ROLLTUI_DEFAULT(0); /* since the span entered the state */
   int index ROLLTUI_DEFAULT(0);                     /* 0-based, within the span */
@@ -1846,6 +1854,9 @@ int rolltui_theme_mode_setting_valid(const char* s, size_t len);
  * `to_string`: the same spelling back, into `cap` bytes (`ROLLTUI_COLOR_STRING_MAX` is enough);
  * the result is NOT terminated and the length is returned. */
 int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
+/* A style faded TOWARD a ground colour: `keep` 1 is the style itself, 0 is the ground. Only RGB
+ * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
+void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColor ground, double keep, RolltuiStyle* out);
 
 size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
 
@@ -2476,11 +2487,18 @@ typedef struct RolltuiStackActions {
 
 #define ROLLTUI_ROUTE_DELIVER 0
 
+/* The close key on a popup — or a press outside one whose layout says `"dismiss": true`. */
 #define ROLLTUI_ROUTE_CLOSED_POPUP 1
 
 #define ROLLTUI_ROUTE_FOCUS_MOVED 2
 
 #define ROLLTUI_ROUTE_DROPPED 3
+/* The close key, or a press outside a dismissing popup, closed ONE LEVEL inside the focused
+ * window's widget (a dropdown, a menu level) and the popup stays; `window` names that window. */
+#define ROLLTUI_ROUTE_CLOSED_LEVEL 4
+
+/* WHO ANSWERS "CLOSE ONE LEVEL" — the shape; the setter is with the stack's other setup. */
+typedef int (*RolltuiStackLevelFn)(void* ctx, const char* window, size_t len);
 
 /* The window a press captured the pointer for, until its release ("" when none). */
 
@@ -2538,6 +2556,11 @@ typedef struct RolltuiWidgetPlugin {
    * layout's title as it is. Read once per frame by `rolltui_windows_autosize`, the call that
    * already carries what a widget wants of its window. NULL: the layout's title. */
   int (*title)(void* ctx, const char* given, size_t given_len, RolltuiStr* out);
+  /* Closes ONE inner level of the widget's own — a dropdown, a menu level, a field being
+   * edited — and answers 1; 0 when none is open. The close key and a press outside a popup
+   * that dismisses ask the focused widget this FIRST, so they close one level at a time and
+   * the popup last. NULL: the widget has no levels. */
+  int (*back)(void* ctx);
 } RolltuiWidgetPlugin;
 
 /* One widget: what it IS and how to talk to it. The plugin is a BORROW of a table the
@@ -3296,7 +3319,7 @@ typedef struct RolltuiBuiltinRoles {
 } RolltuiBuiltinRoles;
 
 /* THE SIX ACTION NAMES the transcript SCOPE's scroll keys use ("this file knows the rule and
- * none of the words" — the same trade `rolltui_transcript.h`'s `RolltuiTranscriptActions`
+ * none of the words" — the same trade `rolltui_widget_transcript.h`'s `RolltuiTranscriptActions`
  * makes). `rolltui::scroll_by_action` (Widgets.hpp, unchanged and still used by two hosts
  * directly) hardcodes the identical six strings; this is the same one-file duplication
  * `Input.cpp`'s `kActions` and `Transcript.cpp`'s own action table already are, not a new
@@ -3426,6 +3449,10 @@ const RolltuiLayer* rolltui_layout_popup(const RolltuiLayout* l, const char* id,
  * rather than a reading: roll's `close_popup` pops until the top layer is the one it named.
  * BORROWED. */
 const char* rolltui_layer_id(const RolltuiLayer* layer, size_t* len);
+/* The window the layer's file names as its first focus ("" when it names none) — what a host
+ * hands the focus back to after its own input is done with it, without naming a window id of
+ * its own. BORROWED. */
+const char* rolltui_layer_focus(const RolltuiLayer* layer, size_t* len);
 
 /* DOOR 6 — where a layer is placed. Forced by roll: `rolltui_placement_resolve` turns it into
  * the rectangle the approval popup will take, so the input below can size itself. BORROWED. */
@@ -4122,6 +4149,11 @@ void rolltui_input_set_copy(RolltuiInput* in, RolltuiCopyFn fn, void* ctx);
 const char* rolltui_input_text(const RolltuiInput* in, size_t* len);
 
 void rolltui_input_clear(RolltuiInput* in);
+/* A host PREFILLS: a path line showing the folder the cursor is in, a name to correct. The text
+ * is copied, the caret goes to its end, the selection is dropped. `select_all` is an address
+ * bar's rule on reaching it: typing replaces the whole, a first arrow key places the caret. */
+void rolltui_input_set_text(RolltuiInput* in, const char* text, size_t len);
+void rolltui_input_select_all(RolltuiInput* in);
 
 /* The LIBRARY'S OWN thirty, so a consumer need not spell them to call `handle`.
  * BORROWS static storage. `rolltui_library_actions.c` expands one list into this and three
@@ -4627,6 +4659,10 @@ void rolltui_window_stack_free(RolltuiWindowStack* s);
 /* Replaces the base layer by COPY. Popup layers stay; the base's focus id is kept when a
  * window with that id still exists. */
 void rolltui_window_stack_set_base(RolltuiWindowStack* s, const RolltuiLayer* base);
+/* A host hands the stack the window table's `rolltui_windows_back` once, and the stack asks it —
+ * by the focused window's id — before it pops a popup: the close key and a press outside a
+ * dismissing popup close one level at a time. Without it a close is the popup's, whole. */
+void rolltui_window_stack_set_level_fn(RolltuiWindowStack* s, RolltuiStackLevelFn fn, void* ctx);
 
 
 /* PUSHES A POPUP THE LAYOUT DECLARED, BY ID — deep-copies it and pushes the copy. 1 when the
@@ -4710,6 +4746,7 @@ void rolltui_dir_list_release(RolltuiDirList* l);
  * caller that cannot tell them apart draws "(empty)" over a permission error. */
 #define ROLLTUI_DIR_HIDDEN 1  /* include `.`-prefixed names */
 #define ROLLTUI_DIR_LINKS 2   /* describe a symlink itself rather than what it points at */
+#define ROLLTUI_DIR_REVERSED 4 /* the sort's order turned around — z to a, smallest first, oldest first — folders still before files */
 
 /* READING A DIRECTORY, and it is PUBLIC because the aligned probe needs it. `filepicker` is the
  * library's answer for CHOOSING a path; a host writing a rich browser — Miller columns, metadata,
@@ -4771,7 +4808,17 @@ typedef struct RolltuiPickerOptions {
   unsigned char motion ROLLTUI_DEFAULT(1);
   unsigned char dividers ROLLTUI_DEFAULT(1);
   unsigned char take_folders ROLLTUI_DEFAULT(0);
+  /* The sort's order turned around: name z to a, smallest first, oldest first. */
+  unsigned char reversed ROLLTUI_DEFAULT(0);
+  /* A SIZE and a MODIFIED column after the name, right-aligned in the column — each one of
+   * `ROLLTUI_SHOW_*`: WITH_SORT (the default) shows the column while its key is the sort, so a
+   * list sorted by size always shows the sizes; ALWAYS and NEVER are a person's own word. */
+  unsigned char show_size ROLLTUI_DEFAULT(0);
+  unsigned char show_modified ROLLTUI_DEFAULT(0);
 } RolltuiPickerOptions;
+#define ROLLTUI_SHOW_WITH_SORT 0
+#define ROLLTUI_SHOW_ALWAYS 1
+#define ROLLTUI_SHOW_NEVER 2
 void rolltui_picker_options_init(RolltuiPickerOptions* o);
 void rolltui_windows_set_picker_options(RolltuiWindows* w, const char* content, size_t len,
                                         const RolltuiPickerOptions* o);
@@ -4783,6 +4830,13 @@ void rolltui_windows_set_picker_options(RolltuiWindows* w, const char* content, 
 int rolltui_windows_picker_selected(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* path,
                                     int* is_dir);
 int rolltui_windows_picker_dir(RolltuiWindows* w, const char* content, size_t len, RolltuiStr* out);
+/* A BUNDLE — a directory named `.app` — is a LEAF: listed without the folder's chevron, never
+ * entered, taken by Enter like a file. What a host does with it is the host's (dirktui opens it).
+ *
+ * FOCUS A COLUMN THAT IS OPEN — the i-th from the left, the root's being 0 — keeping its preview
+ * and closing the columns deeper than that, the way Left does: what a breadcrumb's segment
+ * means. Past the last column lands on the last. */
+void rolltui_windows_picker_focus_column(RolltuiWindows* w, const char* content, size_t len, size_t column);
 
 /* THE FACTS A STATUS LINE WANTS, in one query: how many entries the focused column shows and
  * hid, which column of how many the cursor is in, whether the columns are mid-slide (a host's
@@ -4853,6 +4907,15 @@ const char* rolltui_windows_menu_origin(RolltuiWindows* w, const char* source, s
  * and is not an error. */
 RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len);
 
+/* That window's widget closes one inner level (its `back` slot); 0 when it has none. The
+ * shape of `RolltuiStackLevelFn`, so `rolltui_window_stack_set_level_fn(stack,
+ * rolltui_windows_back, windows)` is the whole wiring. */
+int rolltui_windows_back(void* windows, const char* window, size_t len);
+
+/* WHERE A WINDOW LANDED this frame — its outer rectangle, border included — as the last
+ * `rolltui_windows_layout` placed it; 0 when no window has that id. A host that draws something
+ * of its own over a window (a breadcrumb over its path line) asks here rather than assuming a row. */
+int rolltui_windows_window_rect(const RolltuiWindows* w, const char* window, size_t len, RolltuiRect* out);
 /* That window's content string, a BORROW valid until the next `sync`. */
 const char* rolltui_windows_content_at(const RolltuiWindows* w, const char* window, size_t len,
                                        size_t* out_len);
@@ -5060,6 +5123,34 @@ void* rolltui_mem_alloc(size_t bytes);
 
 void rolltui_mem_free(void* p);
 
+
+/* ---- a hint bar: the keys a status line names, clickable ---------------------------------
+ * "F1 help  F2 settings  c copy": each hint is a chord's text, a label, and the ACTION they stand
+ * for. Drawn once per frame, and the bar remembers where every hint landed, so a press at a cell
+ * answers with the action and a host runs it as it would the key. A hint that does not fit whole
+ * is left out, never cut, and is not hittable. The strings are copied; `_clear` empties the bar
+ * for a rebuild when the bindings change. OWNED by the host: `_free` releases it. */
+typedef struct RolltuiHintBar RolltuiHintBar;
+RolltuiHintBar* rolltui_hint_bar_new(void);
+void rolltui_hint_bar_free(RolltuiHintBar* b);
+void rolltui_hint_bar_clear(RolltuiHintBar* b);
+void rolltui_hint_bar_add(RolltuiHintBar* b, const char* chord, size_t chord_len, const char* label, size_t label_len,
+                          const char* action, size_t action_len);
+/* What goes BETWEEN hints (two spaces by default; " › " makes a breadcrumb), and whether the
+ * bar keeps its TAIL when short of room — the last hints drawn whole and the head replaced by an
+ * ellipsis — rather than dropping whichever hints do not fit. A breadcrumb keeps its tail: the
+ * place the eye is at and the pencil after it must always be there to click. With the tail kept
+ * the LAST hint is the bar's own mark rather than a part, and a single space joins it. */
+void rolltui_hint_bar_set_separator(RolltuiHintBar* b, const char* sep, size_t len);
+void rolltui_hint_bar_set_keep_tail(RolltuiHintBar* b, int on);
+/* A hint whose action cannot be taken now is DISABLED: drawn in `muted`, never hit. Set by
+ * action name, every frame if need be — it allocates nothing. */
+void rolltui_hint_bar_enable(RolltuiHintBar* b, const char* action, size_t len, int on);
+/* Draws from (x, y) within `width` cells and returns the cells used. */
+int rolltui_hint_bar_draw(RolltuiHintBar* b, RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, int width,
+                          RolltuiStyle chord_style, RolltuiStyle label_style, RolltuiStyle muted, int ambiguous_wide);
+/* The action drawn under (x, y) on the last draw — a BORROW into the bar — or NULL. */
+const char* rolltui_hint_bar_hit(const RolltuiHintBar* b, int x, int y, size_t* len);
 
 /* ========================================================================================
  * PART 3 — THE WIDGET AUTHOR: what implementing a kind needs, and nothing else

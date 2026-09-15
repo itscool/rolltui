@@ -1,6 +1,6 @@
-/* rolltui/c/rolltui_menu_tree.c — see rolltui_menu_tree.h. Compiled into BOTH
+/* rolltui/c/rolltui_widget_menu_tree.c — see rolltui_widget_menu_tree.h. Compiled into BOTH
  * configurations: this is the DATA both implementations of the widget walk. */
-#include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_widget_menu_tree.h"
 
 #include <string.h>
 

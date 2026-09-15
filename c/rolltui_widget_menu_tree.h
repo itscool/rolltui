@@ -1,10 +1,10 @@
-#ifndef ROLLTUI_C_MENU_TREE_H
-#define ROLLTUI_C_MENU_TREE_H
+#ifndef ROLLTUI_C_WIDGET_MENU_TREE_H
+#define ROLLTUI_C_WIDGET_MENU_TREE_H
 /* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_menu_tree.h — THE MENU TREE, AS DATA.
+ * rolltui/c/rolltui_widget_menu_tree.h — THE MENU TREE, AS DATA.
  *
  * An item is an action, a submenu, a toggle, a choice or a typed input field. What each one
  * MEANS is stated in `rolltui/Menu.hpp` and asserted in `rolltui/tests/menu_test.cpp`; none
@@ -57,4 +57,4 @@ void rolltui_menu_list_copy(RolltuiMenuItemList* to, const RolltuiMenuItemList* 
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_MENU_TREE_H */
+#endif /* ROLLTUI_C_WIDGET_MENU_TREE_H */

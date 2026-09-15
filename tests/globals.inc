@@ -40,7 +40,7 @@
  * is a mutable pointer (`static const T* p` — the POINTER moves) or any mutable object. Two
  * things left the list rather than earning a row, because a constant that merely looked mutable
  * is worse than either:
- *   - `rolltui_menu.c`'s four `static const char* kHint` are literals never reassigned; they are
+ *   - `rolltui_widget_menu.c`'s four `static const char* kHint` are literals never reassigned; they are
  *     `const char* const` now.
  *   - `rolltui_theme.c`'s default vocab was FOUR function-local statics filled behind a `built`
  *     flag — correct and allocation-free, but state a boundary would have had to justify. Both

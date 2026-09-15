@@ -1,6 +1,6 @@
   a screen ▼ 2 more
 ┌ the live key tabl┐
 │ input:           •
-│   Enter     ▼204 │
+│   Enter     ▼208 │
 └──────────────────┘
  default-dark  kettl

@@ -110,5 +110,14 @@ int rolltui_dir_read(const char* path, size_t len, int sort, int flags, RolltuiD
   if (out->n > 1)
     qsort(out->v, out->n, sizeof *out->v,
           sort == ROLLTUI_SORT_SIZE ? cmp_size : sort == ROLLTUI_SORT_MODIFIED ? cmp_modified : cmp_name);
+  /* REVERSED turns the order around WITHIN the folders and within the files — folders stay
+   * first, which is what every sort here keeps — so it is a reversal of each block rather than
+   * of the comparator, which would put the files on top. */
+  if ((flags & ROLLTUI_DIR_REVERSED) && out->n > 1) {
+    size_t b = 0, lo, hi;
+    while (b < out->n && out->v[b].is_dir) ++b;
+    for (lo = 0, hi = b; lo + 1 < hi; ++lo, --hi) { RolltuiDirEntry t = out->v[lo]; out->v[lo] = out->v[hi - 1]; out->v[hi - 1] = t; }
+    for (lo = b, hi = out->n; lo + 1 < hi; ++lo, --hi) { RolltuiDirEntry t = out->v[lo]; out->v[lo] = out->v[hi - 1]; out->v[hi - 1] = t; }
+  }
   return 1;
 }

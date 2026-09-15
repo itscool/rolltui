@@ -109,6 +109,7 @@ int main() {
   write_file(tree / "cafe\xCC\x81.txt", "combining\n");                                  // e + U+0301
   write_file(tree / "a-very-long-name-that-will-not-fit-inside-one-column.txt", "long\n");
   std::filesystem::create_directories(tree / "empty-dir");
+  std::filesystem::create_directories(tree / "yapps" / "Thing.app" / "Contents");  // a bundle: a leaf to the browser
 
   const std::string bin = std::string("'") + DIRKTUI_BIN + "'";
   const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
@@ -158,7 +159,7 @@ int main() {
     const std::string bare = run(home_env + bin + " '" + tree.string() + "' --frame 70x10 2>&1", brc);
     check(!has(bare, "no layout") && !has(bare, "cannot load"),
           "dirktui runs with NO arguments: it finds its own embedded layout [" + bare.substr(0, 60) + "]");
-    check(has(bare, "go to"), "…and draws its own screen, whose titles live only in its layout file");
+    check(has(bare, "find:"), "…and draws its own screen, whose words live only in its layout file and its own prompts");
 
     int mrc = 0;
     const std::string miss = run(home_env + bin + " '" + tree.string() + "' --presets '/nonexistent-xyz' --frame 40x6 2>&1", mrc);
@@ -246,7 +247,7 @@ int main() {
     // cursor stays. Text: the first editor of the type's preference found on PATH.
     const std::string txt = run(editors + with_setting("{}") + apps_flag + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     const std::string txt_log = stublines();
-    check(status_of(crc) == 0 && has(txt, "go to") && txt_log.rfind("ran nvim ", 0) == 0 && has(txt_log, ".txt"),
+    check(status_of(crc) == 0 && has(txt, "find: ") && txt_log.rfind("ran nvim ", 0) == 0 && has(txt_log, ".txt"),
           "Enter on a text file opens it with the editor found first — Neovim — and stays: a frame is drawn [" + txt_log.substr(0, 40) + "]");
     run(no_editors + with_setting("{}") + no_apps_flag + " --frame 80x20 --keys \"End Enter\" >/dev/null 2>&1", crc);
     const std::string bare_log = stublines();
@@ -278,8 +279,8 @@ int main() {
     check(has(menu, "General") && has(menu, "Look") && has(menu, "Enter on a file") && has(menu, "Open with") &&
               has(menu, "Key bindings") && has(menu, "Theme") && has(menu, "Neovim") && has(menu, "Visual Studio Code"),
           "F2: four sections — General, Look, Enter on a file, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
-    // dotfiles, sort, keys, theme, motion, dividers, leave, land, relative, then Text: its dropdown
-    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
+    // dotfiles, sort, keys, theme, motion, dividers, sizes, modified, leave, land, relative, executables, then Text: its dropdown
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
     check(has(bare_menu, "the system opener") && has(bare_menu, "Neovim") && has(bare_menu, "Helix") && has(bare_menu, "the command line"),
           "…and with nothing installed a type's dropdown still LISTS every known program — disabled, so a person sees what could open it — plus the system opener and the command line");
     // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
@@ -293,6 +294,17 @@ int main() {
     check(status_of(crc) == 4 && script_at.find("/alpha/run.sh\n") != std::string::npos,
           "…and with the landing set to the file's folder, exit 4 with the absolute path for the shell to cd beside");
     // LEAVE: every file goes to the command line, a document included.
+    // EXECUTABLES by the `exec` setting: the command line (default), run here, or the opener.
+    const std::string ran = run(editors + with_setting("{ \"exec\": \"run\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && has(ran, "ran run.sh") && stublines().rfind("ran /", 0) == 0 && has(stublines(), "") , "`exec: run`: Enter on a script with the x bit runs it here and stays");
+    run(editors + with_setting("{ \"exec\": \"open\" }") + " --frame 80x20 --keys \"Right Down Down Enter\" >/dev/null 2>&1", crc);
+    check(status_of(crc) == 0 && has(stublines(), "/alpha/run.sh"), "`exec: open`: the system opener gets it");
+    // A BUNDLE: listed as a leaf, never entered, opened as an application.
+    const std::string bundle = run(editors + with_setting("{}") + " --frame 100x20 --keys \"Down Down Down Right\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && has(bundle, "Thing.app") && !has(bundle, "Thing.app \xE2\x80\xBA") && !has(bundle, "Contents"),
+          "a .app is listed without the chevron and Right does not enter it");
+    run(editors + with_setting("{}") + " --frame 100x20 --keys \"Down Down Down Right Enter\" >/dev/null 2>&1", crc);
+    check(status_of(crc) == 0 && has(stublines(), "Thing.app"), "…and Enter opens it as the application it is, through the opener");
     const std::string leave = run(editors + with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"End Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 3 && has(leave, ".txt\n") && stublines().empty(), "`leave` on: Enter on a document leaves with it on the command line too, opening nothing");
     // A DOUBLE-CLICK IS ENTER ON THAT ROW: the same file, chosen by the mouse, hands its path over
@@ -312,7 +324,7 @@ int main() {
     check(cx > 0 && status_of(crc) == 3 && dbl.find("/alpha/one.txt\n") != std::string::npos,
           "a double-click on a row is Enter on it [" + dbl.substr(dbl.rfind('/') + 1) + " at " + where + "]");
     const std::string single = run(with_setting("{ \"leave\": true }") + " --frame 80x20 --keys \"Click " + where + "\" 2>/dev/null", crc);
-    check(status_of(crc) == 0 && has(single, "go to"), "…while a single click only selects: the frame is still up");
+    check(status_of(crc) == 0 && has(single, "find: "), "…while a single click only selects: the frame is still up");
     // THE CURSOR REMEMBERS WHERE IT WAS, PER FOLDER: down into alpha, onto one.txt, back out,
     // over to beta and back to alpha, in again — one.txt is still under the cursor. Into beta
     // instead, and it is beta's own memory (none yet: its first entry), never alpha's.
@@ -337,29 +349,134 @@ int main() {
 
     // COPY: `c` puts the path on the clipboard, absolute by default; the Option chord inverts
     // the setting, and the setting inverts the chord.
-    run(with_setting("{}") + " --frame 80x20 --keys \"Right End c\" >/dev/null 2>&1", crc);
+    run(with_setting("{}") + " --frame 80x20 --keys \"Right End CtrlC\" >/dev/null 2>&1", crc);
     const std::string abs_log = stublines();
     check(abs_log.rfind("clip /", 0) == 0 && has(abs_log, "/alpha/"), "c copies the absolute path [" + abs_log.substr(0, 30) + "]");
     run(with_setting("{}") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
     check(stublines().rfind("clip ./alpha/", 0) == 0, "…Alt-c copies it relative to where dirk started: the inverse of the setting");
-    run(with_setting("{ \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right End c\" >/dev/null 2>&1", crc);
+    run(with_setting("{ \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right End CtrlC\" >/dev/null 2>&1", crc);
     check(stublines().rfind("clip ./alpha/", 0) == 0, "…with the setting on relative, c copies relative");
     run(with_setting("{ \"paths\": \"relative\" }") + " --frame 80x20 --keys \"Right End AltC\" >/dev/null 2>&1", crc);
     check(stublines().rfind("clip /", 0) == 0, "…and Alt-c then copies the absolute path");
     const std::string empty = run(home_env + bin + " '" + (tree / "empty-dir").string() + "' --frame 80x20 --keys \"Enter\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && empty == (tree / "empty-dir").string() + "\n",
           "Enter in an EMPTY directory prints that directory: the eye is on it and there is nothing else to choose");
-    for (const char* cancel : {"Escape", "CtrlQ", "CtrlC"}) {
+    for (const char* cancel : {"Escape", "CtrlQ"}) {  // Ctrl-C is copy, as everywhere a clipboard has one
       const std::string none = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"" + cancel + "\" 2>/dev/null", crc);
       check(status_of(crc) == 1 && none.empty(),
             std::string(cancel) + " prints NOTHING and exits 1 — the shell function's `|| return` needs both");
     }
+    // A PRESS ON A KEY HINT IS THAT KEY: the status line's "F2 settings" is a hint bar, and a
+    // click on it opens the settings popup exactly as F2 does.
+    {
+      const std::string plain = run(home_env + bin + " '" + here + "' --frame 80x20 2>/dev/null", crc);
+      std::string last;
+      { std::istringstream in(plain); for (std::string l; std::getline(in, l);) if (!l.empty()) last = l; }
+      const std::size_t at = last.find("settings");
+      int cell = -1;
+      if (at != std::string::npos) { cell = 0; for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(last[i]) & 0xC0) != 0x80) ++cell; }
+      const std::string clicked = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"Click " + std::to_string(cell + 2) + ",19\" 2>/dev/null", crc);
+      check(cell >= 0 && has(clicked, "General") && has(clicked, "Show dotfiles"),
+            "a click on the status line's 'F2 settings' opens the settings, as the key does [cell " + std::to_string(cell) + "]");
+    }
+    // A CLICK OUTSIDE THE SETTINGS CLOSES THEM — the popup's own `dismiss` — and a click inside
+    // does not.
+    {
+      const std::string outside = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"F2 Click 1,1\" 2>/dev/null", crc);
+      check(!has(outside, "General") && has(outside, "find: "), "a click outside the settings popup closes it");
+      // On its top border: a click on a row would be a choice, and a choice is saved.
+      const std::string inside = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"F2 Click 40,0\" 2>/dev/null", crc);
+      check(has(inside, "General"), "…and a click inside it leaves it open");
+      // ONE LEVEL AT A TIME: with a dropdown open in the settings, Escape — or a click outside the
+      // popup — closes the dropdown and leaves the settings; the next one closes the settings.
+      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down";  // twelve, since the executables choice joined "Enter on a file"
+      const std::string dd = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter\" 2>/dev/null", crc);
+      check(has(dd, "Neovim") && has(dd, "General"), "the control: Enter on an open-with choice opens its dropdown over the settings");
+      const std::string dd_esc = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter Escape\" 2>/dev/null", crc);
+      check(!has(dd_esc, "Neovim") && has(dd_esc, "General"), "Escape closes the dropdown only: the settings stay");
+      const std::string dd_click = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter Click 1,1\" 2>/dev/null", crc);
+      check(!has(dd_click, "Neovim") && has(dd_click, "General"), "…a click outside the popup likewise closes the dropdown only");
+      const std::string dd_esc2 = run(home_env + bin + " '" + here + "' --frame 90x24 --keys \"F2 " + eleven + " Enter Escape Escape\" 2>/dev/null", crc);
+      check(!has(dd_esc2, "General") && has(dd_esc2, "find:"), "…and the next Escape closes the settings");
+      // THE STATUS LINE'S STATES ARE CLICKABLE: `sort name` cycles the sort, `+dotfiles` toggles.
+      const std::string plain = run(home_env + bin + " '" + here + "' --frame 100x20 2>/dev/null", crc);
+      auto cell_of = [](const std::string& fr, const char* word) {
+        std::string last; std::istringstream in(fr); for (std::string l; std::getline(in, l);) if (!l.empty()) last = l;
+        const std::size_t at = last.find(word); if (at == std::string::npos) return -1;
+        int cell = 0; for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(last[i]) & 0xC0) != 0x80) ++cell; return cell; };
+      const int sc = cell_of(plain, "sort name"), dc = cell_of(plain, "+dotfiles");
+      // EACH CLICK RUN IN ITS OWN SETTINGS DIRECTORY: a click saves, and the next run would
+      // otherwise start from what the last one chose.
+      auto own = [&](const char* name) { return "ROLL_CONFIG_DIR='" + (scratch / name).string() + "' " + bin + " '" + here + "'"; };
+      const std::string cycled = run(own("click-1") + " --frame 100x20 --keys \"Click " + std::to_string(sc + 1) + ",19\" 2>/dev/null", crc);
+      check(sc >= 0 && has(cycled, "sort name z-a"), "a click on `sort name a-z` cycles the sort: the line says `sort name z-a` [" + std::to_string(sc) + "]");
+      const std::string cycled2 = run(own("click-2") + " --frame 100x20 --keys \"Click " + std::to_string(sc + 1) + ",19 Click " + std::to_string(sc + 1) + ",19\" 2>/dev/null", crc);
+      check(has(cycled2, "sort size big-small"), "…twice: `sort size big-small`");
+      const std::string dflt = run(own("click-3") + " --frame 100x24 --keys \"F2\" 2>/dev/null", crc);
+      check(has(dflt, "(default on)") && has(dflt, "(default)"), "every setting says its default: toggles as (default on/off), a choice on its default option");
+      const std::string toggled = run(own("click-4") + " --frame 100x20 --keys \"Click " + std::to_string(dc + 1) + ",19\" 2>/dev/null", crc);
+      check(dc >= 0 && has(toggled, "\xE2\x88\x92" "dotfiles") && !has(toggled, ".hidden"), "a click on `+dotfiles` hides them: the line says `−dotfiles` and .hidden is gone");
+      // A NOTE ON THE LINE — "copied …" — shows, holds two seconds, then fades out and is gone.
+      const std::string noted = run(stubs + own("click-5") + " --frame 100x20 --keys \"CtrlC Tick:500\" 2>/dev/null", crc);
+      check(has(noted, "copied"), "Ctrl-C copies the path and the line says so");
+      const std::string gone = run(stubs + own("click-6") + " --frame 100x20 --keys \"CtrlC Tick:3000\" 2>/dev/null", crc);
+      check(!has(gone, "copied") && has(gone, "copy"), "…and three seconds later the note has faded away, the copy hint still there");
+      stublines();
+      // COPY IS DISABLED WHERE THERE IS NOTHING TO COPY: in an empty folder a press on `copy` is nobody's.
+      const std::string empty_start = "'" + (tree / "empty-dir").string() + "'";
+      const std::string in_empty = run(stubs + "ROLL_CONFIG_DIR='" + (scratch / "click-7").string() + "' " + bin + " " + empty_start + " --frame 100x20 2>/dev/null", crc);
+      const int cc = cell_of(in_empty, "copy");
+      const std::string pressed = run(stubs + "ROLL_CONFIG_DIR='" + (scratch / "click-7").string() + "' " + bin + " " + empty_start + " --frame 100x20 --keys \"Click " + std::to_string(cc + 1) + ",19\" 2>/dev/null", crc);
+      check(cc >= 0 && !has(pressed, "copied") && stublines().empty(), "in an empty folder the copy hint is disabled: a press on it copies nothing");
+      // TYPE TO JUMP: a letter lands on the next name starting with it in the cursor's column;
+      // again goes on; Shift goes back; it wraps.
+      const std::string z = run(stubs + own("click-8") + " --frame 100x20 --keys \"z CtrlC\" 2>/dev/null", crc);
+      check(has(z, "copied") && stublines().find("zeta.txt") != std::string::npos, "typing z lands on zeta.txt");
+      const std::string aa = run(stubs + own("click-9") + " --frame 100x20 --keys \"a CtrlC\" 2>/dev/null", crc);
+      check(stublines().find("a-very-long-name") != std::string::npos, "a, with the cursor already on alpha, goes on to the next name starting with a");
+      const std::string back = run(stubs + own("click-10") + " --frame 100x20 --keys \"a A CtrlC\" 2>/dev/null", crc);
+      check(stublines().find("clip " + here + "/alpha\n") != std::string::npos, "…and Shift-A goes back to alpha");
+      const std::string wrap = run(stubs + own("click-11") + " --frame 100x20 --keys \"a a CtrlC\" 2>/dev/null", crc);
+      check(stublines().find("clip " + here + "/alpha\n") != std::string::npos, "…and a third a wraps round to alpha again");
+    }
     const std::string popup = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"F1 Escape\" 2>/dev/null", crc);
     check(status_of(crc) == 0 && has(popup, "alpha") && !has(popup, "the live key table"),
           "…while Escape over a POPUP closes the popup and the session goes on — cancel is the browser's key, not a global one");
-    const std::string typing = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"CtrlG Type:abc Escape\" 2>/dev/null", crc);
-    check(status_of(crc) == 0 && has(typing, "abc"),
-          "…and Escape in the path input stays the input's, so typing a path is never one key from leaving");
+    // THE PATH LINE IS A BREADCRUMB until it is edited: each part is its column, the pencil at
+    // the end opens the line as text with the whole path selected. The app's name sits at the
+    // right end of the status line, not on the columns' border.
+    {
+      const std::string deep = run(home_env + bin + " '" + (tree / "alpha" / "nested").string() + "' --frame 100x12 2>&1", crc);
+      check((has(deep, "/ \xE2\x80\xBA ") || has(deep, "\xE2\x80\xA6 \xE2\x80\xBA ")) && has(deep, "alpha \xE2\x80\xBA nested \xE2\x80\xBA deep.txt \xE2\x9C\x8E") && !has(deep, "\xE2\x94\x8C dirktui"),
+            "the path line is a breadcrumb — the folder's parts joined by ›, the entry under the cursor last, its head behind an ellipsis when long, a pencil at the end — and 'dirktui' is off the border");
+      { std::istringstream in(deep); std::string last; for (std::string l; std::getline(in, l);) if (!l.empty()) last = l; check(last.find("dirktui") != std::string::npos, "…and on the status line, at its right end"); }
+      // The x of a part: cells before it on the crumb row (the frame's first row after the two stderr lines).
+      auto cell_at = [](const std::string& fr, const std::string& word) { std::istringstream in(fr); std::string l; while (std::getline(in, l) && l.find("\xE2\x9C\x8E") == std::string::npos) {} const std::size_t at = l.find(word); if (at == std::string::npos) return -1; int c = 0; for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(l[i]) & 0xC0) != 0x80) ++c; return c; };
+      const int ax = cell_at(deep, "alpha"), px = cell_at(deep, "\xE2\x9C\x8E");
+      const std::string up = run(home_env + bin + " '" + (tree / "alpha" / "nested").string() + "' --frame 100x12 --keys \"Click " + std::to_string(ax + 1) + ",0\" 2>&1", crc);
+      check(ax >= 0 && has(up, "column ") && column_of(up).first == column_of(deep).first - 2 && column_of(up).second == column_of(up).first + 1 && has(up, "tree \xE2\x80\xBA alpha \xE2\x9C\x8E"),
+            "a click on a part puts the cursor ON it — its parent column focused, the part highlighted, its listing the preview, nothing deeper — and the breadcrumb shrinks to it [" + std::to_string(column_of(up).first) + "/" + std::to_string(column_of(up).second) + " from " + std::to_string(column_of(deep).first) + "]");
+      const std::string pen = run(home_env + bin + " '" + (tree / "alpha" / "nested").string() + "' --frame 100x12 --keys \"Click " + std::to_string(px) + ",0 Type:abc\" 2>/dev/null", crc);
+      check(px >= 0 && has(pen, "abc") && !has(pen, " \xE2\x9C\x8E"), "a click on the pencil opens the line as text, selected whole: typing replaces the path");
+      const std::string beyond = run(home_env + bin + " '" + (tree / "alpha" / "nested").string() + "' --frame 200x12 --keys \"Click 198,0 Type:abc\" 2>/dev/null", crc);  // wide: the bar ends well before the edge
+      check(has(beyond, "abc") && !has(beyond, " \xE2\x9C\x8E"), "…and so does a click anywhere right of the pencil on that row");
+      // Editing the line: Home and End, Shift-End selects to the end, Alt-C copies the selection.
+      const std::string home = run(home_env + bin + " '" + here + "' --frame 100x12 --keys \"ShiftTab Right Home Type:X\" 2>/dev/null", crc);
+      check(home.rfind("X/", 0) == 0, "Home in the path line goes to its start");
+      const std::string end = run(home_env + bin + " '" + here + "' --frame 100x12 --keys \"ShiftTab Home End Type:X\" 2>/dev/null", crc);
+      { std::istringstream in(end); std::string l; std::getline(in, l); while (!l.empty() && l.back() == ' ') l.pop_back(); check(!l.empty() && l.back() == 'X', "…and End to its end"); }
+      const std::string copied = run(stubs + home_env + bin + " '" + here + "' --frame 100x12 --keys \"ShiftTab Home ShiftEnd AltC\" 2>/dev/null", crc);
+      const std::string clip = stublines();
+      check(clip.rfind("clip " + here, 0) == 0, "Shift-End selects to the end and Alt-C copies the selection to the clipboard [" + clip.substr(0, 40) + "]");
+    }
+    // THE PATH LINE: Shift-Tab (or a click) reaches it, selected whole, so typing replaces the
+    // path; Escape puts the path back and returns to the columns — never one key from leaving.
+    const std::string typed = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"ShiftTab Type:abc\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && has(typed, "abc") && !has(typed, here),
+          "the path line, reached, is selected whole: typing replaces the path");
+    const std::string typing = run(home_env + bin + " '" + here + "' --frame 80x20 --keys \"ShiftTab Type:abc Escape\" 2>/dev/null", crc);
+    check(status_of(crc) == 0 && !has(typing, "abc") && has(typing, " \xE2\x9C\x8E") && has(typing, "alpha"),
+          "…and Escape in the path line puts the path back — a breadcrumb again — and goes on, so typing a path is never one key from leaving");
   }
 
   // ---- `dirktui init <shell>`: the shell side, parsed by each shell and RUN through a stand-in ----
@@ -486,7 +603,7 @@ int main() {
   check(has(wide, ".hidden"), "a dotfile is shown unless a person turns them off");
   {
     const std::string roomy = run(base + " --frame 220x30 --keys \"AltH\" 2>&1", rc);
-    check(rc == 0 && !has(roomy, ".hidden") && has(roomy, "1 hidden"),
+    check(rc == 0 && !has(roomy, " .hidden") && has(roomy, "1 hidden"),
           "…and once hidden the widget SAYS how many it is holding back, through the plugin's `note_at` slot");
   }
 
@@ -529,7 +646,11 @@ int main() {
     auto col_of_word = [](const std::string& frame, const char* word) {
       std::istringstream in(frame);
       std::string l;
-      while (std::getline(in, l)) { const std::size_t at = l.find(word); if (at != std::string::npos) return static_cast<int>(at); }
+      while (std::getline(in, l)) {
+        if (l.find("\xE2\x9C\x8E") != std::string::npos) continue;  // the breadcrumb row names the folder too: not a column
+        const std::size_t at = l.find(word);
+        if (at != std::string::npos) return static_cast<int>(at);
+      }
       return -1;
     };
     check(has(on_beta, "a-quite-long-name") && !has(on_alpha, "a-quite-long-name"),
@@ -674,7 +795,7 @@ int main() {
     int mrc = 0;
     const std::string sbase = env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
     const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
-    check(has(opened, "settings") && has(opened, "\xE2\x98\x92 Motion") && has(opened, "\xE2\x98\x92 Show dotfiles") && has(opened, "Sort by"),
+    check(has(opened, "settings") && has(opened, "[\xE2\x9C\x93] Motion") && has(opened, "[\xE2\x9C\x93] Show dotfiles") && has(opened, "Sort by"),
           "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles on)");
     run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, Motion
     bool ok = false;
@@ -686,7 +807,7 @@ int main() {
     const std::string ended = run(sbase + " --frame 46x10 --keys \"Right Tick:200\" 2>/dev/null", mrc);
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
     const std::string reopened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
-    check(has(reopened, "\xE2\x98\x90 Motion"), "…and the box reads back unchecked");
+    check(has(reopened, "[ ] Motion"), "…and the box reads back unchecked");
     // COLUMN DIVIDERS: a hairline in the margin after every column that has a neighbour, on by
     // default; the checkbox under Motion turns them off, and the frame loses exactly those cells.
     auto bars = [](const std::string& frame) { std::size_t n = 0, at = 0; while ((at = frame.find("\xE2\x94\x82", at)) != std::string::npos) { ++n; at += 3; } return n; };
@@ -721,7 +842,7 @@ int main() {
         std::istringstream in(tall);
         std::string l;
         for (int y = 0; std::getline(in, l); ++y) {
-          if (y != 1) continue;  // the head row: ASCII heads, 3-byte box glyphs
+          if (y != 2) continue;  // the head row (under the path line and the border): ASCII heads, 3-byte box glyphs
           const std::size_t head = l.find(" tree");
           const std::size_t bar = head == std::string::npos ? std::string::npos : l.find("\xE2\x94\x82", head);
           if (bar == std::string::npos) break;
@@ -731,17 +852,17 @@ int main() {
         }
       }
       const std::string at = std::to_string(dx);
-      const std::string jumped = run(sbase + " --frame 100x10 --keys \"Right Click " + at + ",5\" 2>/dev/null", mrc);
+      const std::string jumped = run(sbase + " --frame 100x10 --keys \"Right Click " + at + ",6\" 2>/dev/null", mrc);
       check(dx > 0 && !has(tall, "zeta.txt") && has(jumped, "zeta.txt") && has(jumped, "nested"),
             "a click at the bottom of a divider's track scrolls THAT column to its end — the tree shows zeta.txt — while the cursor stays in alpha [x " + at + "]");
-      const std::string dragged = run(sbase + " --frame 100x10 --keys \"Right Click " + at + ",5 Drag " + at + ",2 Release\" 2>/dev/null", mrc);
+      const std::string dragged = run(sbase + " --frame 100x10 --keys \"Right Click " + at + ",6 Drag " + at + ",3 Release\" 2>/dev/null", mrc);
       check(!has(dragged, "zeta.txt") && has(dragged, "alpha"), "…and dragging the thumb back to the top of the track scrolls it back");
-      const std::string wheeled = run(sbase + " --frame 100x10 --keys \"Right WheelDown " + std::to_string(dx - 1) + ",3 WheelDown " + std::to_string(dx - 1) + ",3\" 2>/dev/null", mrc);
+      const std::string wheeled = run(sbase + " --frame 100x10 --keys \"Right WheelDown " + std::to_string(dx - 1) + ",4 WheelDown " + std::to_string(dx - 1) + ",4\" 2>/dev/null", mrc);
       check(has(wheeled, "zeta.txt"), "the wheel scrolls the column under the pointer — the tree — not the focused alpha");
     }
     run(sbase + " --frame 60x18 --keys \"F2 Down Enter Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, Sort by: its dropdown, the second option
     const std::string sorted = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
-    check(ok && has(sorted, "\"sort\": \"size\""), "a sort chosen in the menu is saved too [" + sorted.substr(0, 60) + "]");
+    check(ok && has(sorted, "\"sort\": \"name\"") && has(sorted, "\"reversed\": true"), "a sort chosen in the menu is saved too — the second option is name, z to a [" + sorted.substr(0, 80) + "]");
   }
 
   // ---- THE SLIDE, at the script's clock: a moment into it the columns are between ---------------
@@ -750,10 +871,11 @@ int main() {
       int src = 0;
       const std::string out = run(base + " --frame 46x10 --keys \"" + keys + "\" 2>/dev/null", src);
       std::istringstream in(out);
-      std::string l0, l1;
-      std::getline(in, l0);
-      std::getline(in, l1);
-      return l1;
+      std::string l0, l1, l2;
+      std::getline(in, l0);  // the path line
+      std::getline(in, l1);  // the border
+      std::getline(in, l2);  // the head row
+      return l2;
     };
     const std::size_t at0 = row("Right Tick:0").find("alpha"), at30 = row("Right Tick:30").find("alpha"),
                       done = row("Right Tick:200").find("alpha"), still = row("Right").find("alpha");
@@ -775,23 +897,53 @@ int main() {
         "Ctrl-D opens the details page the layout declares, and it names the selection's kind");
   check(has(details, "modified") && has(details, "mode"), "…with the modified time and the permissions");
 
-  // ---- 5. the path entry, and a bad path as a NAMED problem ----------------------------------
-  const std::string jump = run(base + " --frame 150x30 --keys \"CtrlG Type:" + (tree / "alpha").string() +
+  // ---- 5. the path line, and a bad path as a NAMED problem ------------------------------------
+  // PASTED, not typed, with every underscore escaped: the script spells `_` as a space and `\_`
+  // as an underscore, and a scratch path has underscores in it.
+  auto script_path = [](const std::string& s) { std::string o; for (char c : s) { if (c == '_') o += "\\_"; else o += c; } return o; };
+  const std::string jump = run(base + " --frame 150x30 --keys \"ShiftTab Paste:" + script_path((tree / "alpha").string()) +
                                    " Enter\" 2>&1",
                                rc);
-  check(rc == 0 && has(jump, "one.txt"), "a path typed into the input jumps there");
-  const std::string bad = run(base + " --frame 150x30 --keys \"CtrlG Type:/no/such/place Enter\" 2>&1", rc);
-  check(rc == 0 && has(bad, "no such path"),
-        "a bad path is a NAMED problem on the screen — never a crash and never silence");
+  check(rc == 0 && has(jump, "alpha \xE2\x80\xBA nested \xE2\x9C\x8E"), "a folder's path put onto the path line goes there: the breadcrumb ends in it and its first entry");
+  const std::string to_file = run(base + " --frame 150x30 --keys \"ShiftTab Paste:" + script_path((tree / "alpha" / "two.txt").string()) + " Enter\" 2>&1", rc);
+  check(rc == 0 && has(to_file, "alpha \xE2\x80\xBA two.txt \xE2\x9C\x8E"), "a file's path put onto the line selects that file in its folder");
+  const std::string bad = run(base + " --frame 150x30 --keys \"ShiftTab Type:/no/such/place Enter\" 2>&1", rc);
+  check(rc == 0 && has(bad, "no such path") && has(bad, "/no/such/place"),
+        "a bad path is a NAMED problem on the screen, the text kept for correcting — never a crash and never silence");
+
+  // ---- 5b. FIND: a query on the find line, Enter, a dialog of what matches under this folder --
+  {
+    const std::string listed = run(base + " --frame 100x20 --keys \"Tab Type:one Enter\" 2>&1", rc);
+    check(rc == 0 && has(listed, "matches for 'one' under") && has(listed, "alpha/one.txt") && has(listed, "leaf-file-long-name.txt"),
+          "Enter on the find line opens a dialog of the names under this folder that match, fuzzily, with their paths");
+    check(listed.find("alpha/one.txt") < listed.find("leaf-file-long-name.txt"), "…the closest match first");
+    const std::string picked = run(base + " --frame 100x20 --keys \"Tab Type:one Enter Enter\" 2>&1", rc);
+    check(rc == 0 && !has(picked, "' under") && has(picked, "one.txt") && has(picked, "alpha \xE2\x80\xBA one.txt \xE2\x9C\x8E"),
+          "Enter on a match goes there: a file is selected in its folder, the path line says so, the dialog is gone");
+    const std::string none = run(base + " --frame 100x20 --keys \"Tab Type:qqqqqq Enter\" 2>&1", rc);
+    check(rc == 0 && has(none, "nothing matched 'qqqqqq'"), "a query nothing matches says so in the dialog");
+    const std::string clicked_off = run(base + " --frame 100x20 --keys \"Tab Type:one Enter Click 1,1\" 2>&1", rc);
+    check(rc == 0 && !has(clicked_off, "' under") && has(clicked_off, "find: one"),
+          "a click outside the dialog closes it — its layout says `dismiss` — and the query stays on the find line to refine");
+    // THE WHEEL OVER THE DIALOG SCROLLS ITS LIST, the cursor staying on the first match: at ten
+    // rows the dialog shows a few of the many names with a 't', and two turns bring later ones up.
+    const std::string before = run(base + " --frame 100x10 --keys \"Tab Type:t Enter\" 2>&1", rc);
+    const std::string wheeled = run(base + " --frame 100x10 --keys \"Tab Type:t Enter WheelDown 50,4 WheelDown 50,4\" 2>&1", rc);
+    auto first_row = [](const std::string& fr) { const std::size_t at = fr.find("' under"); const std::size_t nl = fr.find('\n', at); return fr.substr(nl + 1, fr.find('\n', nl + 1) - nl - 1); };
+    check(rc == 0 && has(before, "' under") && has(wheeled, "' under") && first_row(before) != first_row(wheeled),
+          "the wheel over the find dialog scrolls its list [" + first_row(before).substr(0, 40) + " -> " + first_row(wheeled).substr(0, 40) + "]");
+    const std::string escaped = run(base + " --frame 100x20 --keys \"Tab Type:one Escape\" 2>&1", rc);
+    check(rc == 0 && has(escaped, "find: one") && !has(escaped, "' under"), "Escape on the find line hands the focus back to the columns and keeps the query");
+  }
 
   // ---- 6. dotfiles and the sort order are the app's, driven from the bindings FILE ------------
   // Its own config directory: the setting persists, and an earlier press in this suite must not
   // decide what this press toggles.
   const std::string dots = run("ROLL_CONFIG_DIR='" + (scratch / "dots-home").string() + "' " + bin + " '" + tree.string() + "'" + presets +
                                    " --theme default-dark --frame 150x30 --keys \"AltH\" 2>&1", rc);
-  check(rc == 0 && !has(dots, ".hidden"), "Alt-H hides the dotfiles");
+  check(rc == 0 && !has(dots, " .hidden"), "Alt-H hides the dotfiles");
   const std::string sorted = run(base + " --frame 150x30 --keys \"CtrlS\" 2>&1", rc);
-  check(rc == 0 && has(sorted, "size"), "Ctrl-S cycles the sort order and the status line says which");
+  check(rc == 0 && has(sorted, "sort name z-a"), "Ctrl-S cycles the sort order and the status line says which");
 
   // ---- 7. THE STANDING RULE: every view shrinks to nothing gracefully ------------------------
   for (const char* size : {"1x1", "2x1", "8x3", "40x2", "100x1"}) {
@@ -827,9 +979,8 @@ int main() {
       int ln = 0;
       while (std::getline(in, line)) {
         ++ln;
-        // `"where"` is deliberately NOT in this list, and its absence is wall 4's evidence:
-        // `rolltui_window_stack_focus` takes an ID, so `app.jump` must name the layout's input
-        // window in the source. Every other id and every title stays in the file.
+        // Every window id and every title stays in the file: the source focuses the columns
+        // through the layout's own `focus` (`rolltui_layer_focus`) rather than by naming them.
         for (const char* w : {"\"columns\"", "go to", "the live key table", "the vestibule", "Go to the parent", "Show dotfiles"})
           if (line.find(w) != std::string::npos) hits.push_back(rel + ":" + std::to_string(ln) + ": " + w);
       }

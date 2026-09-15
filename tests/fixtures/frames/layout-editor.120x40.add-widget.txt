@@ -11,7 +11,7 @@
 │ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ popup help                                     │
 │ │ windows +  │            │ hand        │ │ before the caret        │   help help                                    │
 │ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ popup approval                                 │
-│ │ + content  │            │ hot-        │ │ after the caret         │ ☒ Visible                                      │
+│ │ + content  │            │ hot-        │ │ after the caret         │ [✓] Visible                                    │
 │ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Border                                single ▸ │
 │ │ Markdown   │ build      │ single      │ │ start of the line       │ Background role                   background ▸ │
 │ │ block      │            │ header over │ │   Ctrl-K                │ Node id: transcript-2                          │
@@ -20,7 +20,7 @@
 │ │ styled     │            │             │ │ grapheme left           │ Source:                                        │
 │ │ wrapped    │            │             │ │   Right                 │ Menu file:                                     │
 │ │ lines)     │            │             │ │ grapheme right          │ Size (Alt+arrows nudge): fill                  │
-│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ ☒ Focusable                                    │
+│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ [✓] Focusable                                  │
 │ │ (roles →   │            │ header      │ │ left                    │ Tree — split, swap, delete                   ▸ │
 │ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ This screen — sizes, focus, popups, actions  ▸ │
 │ │ JSON       │            │             │ │ right                   │ Layout file — new, load, save                ▸ │

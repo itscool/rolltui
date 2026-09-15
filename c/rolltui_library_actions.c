@@ -20,10 +20,10 @@
 
 #include <stddef.h>
 
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_layout.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
 
 typedef struct { const char* name; const char* desc; } LibAction;

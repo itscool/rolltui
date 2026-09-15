@@ -5,7 +5,6 @@
   "focus": "columns",
   "actions": {
     "app.details": "show what is known about the selected entry",
-    "app.jump": "type a path and go to it",
     "app.hidden": "show or hide dotfiles",
     "app.sort": "cycle name / size / modified",
     "app.help": "the live key table",
@@ -17,25 +16,50 @@
   "root": {
     "column": [
       {
-        "id": "columns",
-        "content": "filepicker",
-        "border": "single",
-        "title": "dirktui",
+        "id": "path",
+        "content": "input:path",
+        "size": 1,
+        "border": "none",
         "focusable": true
       },
       {
-        "id": "where",
-        "content": "input:path",
-        "size": 3,
+        "id": "columns",
+        "content": "filepicker",
         "border": "single",
-        "title": "go to",
+        "focusable": true
+      },
+      {
+        "id": "find",
+        "content": "input:find",
+        "size": 1,
+        "border": "none",
         "focusable": true
       }
     ]
   },
   "popups": [
     {
+      "id": "matches",
+      "dismiss": true,
+      "x": "50%",
+      "y": "50%",
+      "w": "70%",
+      "h": "70%",
+      "anchor": "center",
+      "min_w": 30,
+      "min_h": 5,
+      "modal": true,
+      "root": {
+        "id": "matches",
+        "content": "menu:matches",
+        "border": "rounded",
+        "focusable": true,
+        "background": "panel_background"
+      }
+    },
+    {
       "id": "menu",
+      "dismiss": true,
       "x": "50%",
       "y": "50%",
       "w": "72%",
@@ -56,6 +80,7 @@
     },
     {
       "id": "details",
+      "dismiss": true,
       "x": "50%",
       "y": "50%",
       "w": "60%",
@@ -75,6 +100,7 @@
     },
     {
       "id": "help",
+      "dismiss": true,
       "x": "50%",
       "y": "50%",
       "w": "60%",
@@ -93,6 +119,7 @@
     },
     {
       "id": "theme",
+      "dismiss": false,
       "x": "50%",
       "y": "50%",
       "w": "60%",
@@ -111,6 +138,7 @@
     },
     {
       "id": "keys",
+      "dismiss": false,
       "x": "50%",
       "y": "50%",
       "w": "60%",

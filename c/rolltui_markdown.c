@@ -1752,7 +1752,7 @@ void rolltui_md_render(RolltuiMdLines* out, const RolltuiMdDoc* doc, const Rollt
 /* ============================================================================================
  * THE STYLING VOCABULARY — moved from `Markdown.cpp`, where it was a C symbol
  * (`extern "C" rolltui_md_roles`) defined in a C++ file that a C file already called
- * (`rolltui_transcript.c`). The C library could not link without it.
+ * (`rolltui_widget_transcript.c`). The C library could not link without it.
  *
  * Its stated reason for living there was the same one `Diff.cpp`'s role table had:
  * *"`rolltui/Style.hpp` is the one place these names exist ... the reason neither

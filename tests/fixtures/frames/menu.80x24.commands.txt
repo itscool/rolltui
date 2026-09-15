@@ -5,11 +5,11 @@
 │ │ (blocks →    │             │              │ │ size       80x24             │
 │ │ styled       │  ╭ menu › Commands ─────────────────────╮ 173/191           │
 │ │ wrapped      │  │ ◂ Back                               │ yes               │
-│ │ lines)       │  │ Reload the fixture                F5 │ truecolor         │
-│ │ Theme (roles │ b│ Help                           F1, ? │ menu              │
-│ │ → styles,    │  │ Quit                          Ctrl-Q │                   │
-│ │ JSON loader, │  │                                      │                   │
-│ │ built-ins)   │  │                                      │                   │
+│ │ lines)       │  │ Open a document or a preset f Ctrl-E │ truecolor         │
+│ │ Theme (roles │ b│ Save the preset being edited a Alt-S │ menu              │
+│ │ → styles,    │  │ Reload the fixture                F5 │                   │
+│ │ JSON loader, │  │ Help                           F1, ? │                   │
+│ │ built-ins)   │  │ Quit                          Ctrl-Q │                   │
 │ └──────────────┴──│                                      │                   │
 │                   │                                      │                   │
 │ Here is the functi│                                      │                   │

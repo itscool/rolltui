@@ -11,7 +11,7 @@
 │ │ mouse mode)                      │             │                  │ popup approval                                 │
 │ │ Key + mouse decoding             │ build       │ single header, pu│   approval approval                            │
 │ │                                  │             │ Event, table-test│ popup menu                                     │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ ☒ Visible                                      │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ [✓] Visible                                    │
 │ │ colour downgrade                 │             │ tested           │ Border                                single ▸ │
 │ │ Wrap engine                      │ build       │ single header ove│ Background role                   background ▸ │
 │ │                                  │             │ header           │ Node id: transcript                            │
@@ -20,7 +20,7 @@
 │ │                                  │             │ Rect is a pure fu│ Source: session                                │
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│ Menu file:                                     │
 │ │ filterable) + list/text widgets  │             │ set is deliberate│ Size (Alt+arrows nudge): fill                  │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ ☒ Focusable                                    │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ [✓] Focusable                                  │
 │ │ placements + content slots)      │             │ parser; hot-reloa│ Tree — split, swap, delete                   ▸ │
 │ │ Markdown block renderer (blocks  │ build       │ single header ove│ This screen — sizes, focus, popups, actions  ▸ │
 │ │ → styled wrapped lines)          │             │                  │ Layout file — new, load, save                ▸ │

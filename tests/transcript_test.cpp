@@ -26,7 +26,7 @@
 #include "rolltui/c/rolltui_render.h"  // INTERNAL: this test opts in
 #include "rolltui/c/rolltui_screen.h"  // INTERNAL: this test opts in
 #include "rolltui/c/rolltui_theme.h"  // INTERNAL: this test opts in
-#include "rolltui/c/rolltui_transcript.h"  // INTERNAL: this test opts in
+#include "rolltui/c/rolltui_widget_transcript.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
 using namespace testkit;

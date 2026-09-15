@@ -10,10 +10,10 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_effects.h"
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_json.h"
 #include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_theme_analysis.h"

@@ -90,6 +90,16 @@
       "label": "Commands",
       "items": [
         {
+          "id": "open",
+          "label": "Open a document or a preset file\u2026",
+          "action": "app.filepicker"
+        },
+        {
+          "id": "save_as",
+          "label": "Save the preset being edited as a file\u2026",
+          "action": "studio.save_as"
+        },
+        {
           "id": "reload",
           "label": "Reload the fixture",
           "action": "studio.reload"

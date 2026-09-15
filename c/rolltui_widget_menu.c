@@ -1,6 +1,6 @@
-/* rolltui/c/rolltui_menu.c — the menu widget, the typed-field rules and the file format.
- * See rolltui_menu.h. */
-#include "rolltui/c/rolltui_menu.h"
+/* rolltui/c/rolltui_widget_menu.c — the menu widget, the typed-field rules and the file format.
+ * See rolltui_widget_menu.h. */
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_frame_ops.h"
 
 #include <ctype.h>
@@ -13,9 +13,9 @@
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_json.h"
-#include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_widget_menu_tree.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_terminal.h"
@@ -1274,6 +1274,12 @@ static int action_is(const char* a, size_t n, const char* name) {
   return name && strlen(name) == n && memcmp(a, name, n) == 0;
 }
 
+/* The edit dropped, the committed value untouched. */
+static void cancel_edit(RolltuiMenu* m) {
+  m->editing = 0;
+  rolltui_str_clear(&m->edit_reason);
+}
+
 static void handle_edit(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBindings* b,
                         const RolltuiMenuActions* A, RolltuiMenuEvent* out) {
   RolltuiMenuItem* it = item_at(m, m->sel);
@@ -1326,11 +1332,7 @@ static void handle_edit(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBind
     rolltui_input_check_release(&c);
     return;
   }
-  if (a && action_is(a, alen, A->cancel)) {
-    m->editing = 0;
-    rolltui_str_clear(&m->edit_reason);
-    return;
-  }
+  if (a && action_is(a, alen, A->cancel)) { cancel_edit(m); return; }
   if (a && action_is(a, alen, A->step_up)) {
     step(m, +1);
     return;
@@ -1387,6 +1389,12 @@ static void close_dropdown(RolltuiMenu* m) {
 }
 
 int rolltui_menu_dropdown_open(const RolltuiMenu* m) { return m->dd_open; }
+/* ONE LEVEL: a dropdown closes; then a field being edited is cancelled; then a level ascends. */
+int rolltui_menu_back(RolltuiMenu* m) {
+  if (m->dd_open) { close_dropdown(m); return 1; }
+  if (m->editing) { cancel_edit(m); return 1; }
+  return ascend(m);
+}
 size_t rolltui_menu_dropdown_selected(const RolltuiMenu* m) { return m->dd_sel; }
 
 /* The Choice a dropdown is open over: the item under the menu's cursor, or NULL if that item
@@ -1461,6 +1469,15 @@ static void handle_dropdown_key(RolltuiMenu* m, RolltuiMenuItem* it, const Rollt
   dropdown_box(m, it, &box, &rows);
   if (action_is(a, alen, A->up)) m->dd_sel = dd_step(it, m->dd_sel, -1);
   else if (action_is(a, alen, A->down)) m->dd_sel = dd_step(it, m->dd_sel, 1);
+  else if (action_is(a, alen, A->page_up) || action_is(a, alen, A->page_down)) {
+    /* A PAGE is the box's rows: land that far along, then on the nearest option that can be
+     * chosen, toward the end being moved to (a disabled one is never landed on). */
+    const int dir = action_is(a, alen, A->page_up) ? -1 : 1;
+    const size_t page = (size_t)imax(rows, 1);
+    size_t to = dir < 0 ? (m->dd_sel < page ? 0 : m->dd_sel - page) : (n ? zmin(m->dd_sel + page, n - 1) : 0);
+    if (n && !it->children.v[to]->enabled) { const size_t stepped = dd_step(it, to, dir); to = stepped == to ? dd_step(it, to, -dir) : stepped; }
+    m->dd_sel = to;
+  }
   else if (action_is(a, alen, A->first)) { m->dd_sel = n && it->children.v[0]->enabled ? 0 : dd_step(it, 0, 1); }
   else if (action_is(a, alen, A->last)) { m->dd_sel = n ? n - 1 : 0; if (n && !it->children.v[m->dd_sel]->enabled) m->dd_sel = dd_step(it, m->dd_sel, -1); }
   else if (action_is(a, alen, A->activate) || action_is(a, alen, A->descend)) { dropdown_choose(m, it, m->dd_sel, out); return; }
@@ -1474,8 +1491,11 @@ static void handle_dropdown_mouse(RolltuiMenu* m, RolltuiMenuItem* it, const Rol
   RolltuiRect box;
   int rows = 1;
   if (!dropdown_box(m, it, &box, &rows)) { close_dropdown(m); return; }
-  if (e->kind == 4 /* WheelUp */) { m->dd_sel = dd_step(it, m->dd_sel, -1); dropdown_ensure_visible(m, rows); return; }
-  if (e->kind == 5 /* WheelDown */) { m->dd_sel = dd_step(it, m->dd_sel, 1); dropdown_ensure_visible(m, rows); return; }
+  /* The wheel scrolls the box, as it scrolls the menu: the answer stays where it is. */
+  if (e->kind == 4 /* WheelUp */ || e->kind == 5 /* WheelDown */) {
+    if (rows > 0 && (int)it->children.n > rows) m->dd_top = iclamp(m->dd_top + (e->kind == 4 ? -1 : 1), 0, (int)it->children.n - rows);
+    return;
+  }
   if (e->kind != 0 /* Press */ || e->button != 1) return;
   if (e->x >= box.x + 1 && e->x < box.x + box.w - 1 && e->y >= box.y + 2 && e->y < box.y + 2 + rows) {
     const size_t option = (size_t)m->dd_top + (size_t)(e->y - (box.y + 2));
@@ -1730,21 +1750,13 @@ static void handle_key(RolltuiMenu* m, const RolltuiChord* k, const RolltuiBindi
 static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenuEvent* out) {
   size_t n, idx;
   int first_item_row;
-  if (e->kind == 4 /* WheelUp */) {
-    if (m->sel > 0) {
-      --m->sel;
-      settle(m, -1);
-      ensure_visible(m);
-    }
-    return;
-  }
-  if (e->kind == 5 /* WheelDown */) {
+  /* THE WHEEL SCROLLS THE VIEW AND LEAVES THE CURSOR WHERE IT IS: a wheel turned over a menu is
+   * a person looking, not choosing, and a cursor that followed it would land on a toggle they
+   * never meant. With every row in view there is nothing to scroll and the wheel does nothing. */
+  if (e->kind == 4 /* WheelUp */ || e->kind == 5 /* WheelDown */) {
+    const int rows = item_rows(m);
     n = build_visible(m);
-    if (n && m->sel + 1 < n) {
-      ++m->sel;
-      settle(m, 1);
-      ensure_visible(m);
-    }
+    if (rows > 0 && (int)n > rows) m->top = iclamp(m->top + (e->kind == 4 ? -1 : 1), 0, (int)n - rows);
     return;
   }
   if (e->kind != 0 /* Press */ || e->button != 1) return;
@@ -1753,6 +1765,17 @@ static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenu
     return;
   first_item_row = first_item_y(m);
   if (e->y < first_item_row || e->y >= first_item_row + item_rows(m)) return;
+  /* THE SCROLL MARKERS ARE BUTTONS: a press on a drawn ▲ or ▼ scrolls the view a page and goes
+   * no further — the row under the marker is not what was pressed. */
+  {
+    const int rows = item_rows(m);
+    const int marker_x = m->area.x + m->area.w - 1 - m->opt.inset;
+    n = build_visible(m);
+    if (e->x == marker_x && rows >= 1) {
+      if (e->y == first_item_row && m->top > 0) { m->top = imax(0, m->top - rows); return; }
+      if (e->y == first_item_row + rows - 1 && (size_t)(m->top + rows) < n) { m->top = iclamp(m->top + rows, 0, (int)n - rows); return; }
+    }
+  }
   idx = (size_t)m->top + (size_t)(e->y - first_item_row);
   if (!selectable_row(m, idx)) return; /* out of range, or a divider */
   m->sel = idx;
@@ -1807,8 +1830,23 @@ void rolltui_menu_set_options_struct(RolltuiMenu* m, const RolltuiMenuOptions* o
 const RolltuiMenuOptions* rolltui_menu_options(const RolltuiMenu* m) { return &m->opt; }
 
 void rolltui_menu_layout(RolltuiMenu* m, RolltuiRect area) {
+  /* A NEW AREA brings the cursor back into view; the SAME area, laid out again for the next
+   * frame, only keeps the view in range — a wheel turn or a dragged bar has moved it on
+   * purpose, away from the cursor, and a layout per frame must not undo that. */
+  const int changed = area.x != m->area.x || area.y != m->area.y || area.w != m->area.w || area.h != m->area.h;
   m->area = area;
-  ensure_visible(m);
+  if (changed) ensure_visible(m);
+  else {
+    const int rows = item_rows(m);
+    const int n = (int)build_visible(m);
+    m->top = rows > 0 ? iclamp(m->top, 0, imax(0, n - rows)) : 0;
+  }
+}
+/* The window's bar is a HANDLE: the view goes where it is dragged, the cursor stays. */
+void rolltui_menu_scroll_to(RolltuiMenu* m, int first) {
+  const int rows = item_rows(m);
+  const int n = (int)build_visible(m);
+  m->top = rows > 0 ? iclamp(first, 0, imax(0, n - rows)) : 0;
 }
 
 /* The row's text, into a caller's string. */
@@ -1819,10 +1857,11 @@ static void row_text(const RolltuiMenu* m, const RolltuiMenuItem* it, int in_pal
                      RolltuiStr* out, size_t* value_at) {
   rolltui_str_clear(out);
   if (value_at) *value_at = 0;
-  /* A CHECKBOX IS A GLYPH: a ballot box, empty or with an X — both narrow everywhere, and the
-   * shape survives mono. Under `ambiguous_wide` the row is ASCII, the same rule the scrollbar's
-   * capsule and the border's box-drawing follow. */
-  const char* box = it->checked ? (m->opt.ambiguous_wide ? "[x] " : "\xE2\x98\x92 ") : (m->opt.ambiguous_wide ? "[ ] " : "\xE2\x98\x90 ");
+  /* A CHECKBOX IS BRACKETS WITH A CHECK MARK IN THEM: the brackets keep the two states the same
+   * size in every font (the ballot-box glyphs U+2610/U+2612 come from different fonts on the
+   * common terminals and do not match), and U+2713 is East Asian NARROW, one cell everywhere.
+   * Under `ambiguous_wide` the check is an `x`, the same rule the scrollbar's capsule follows. */
+  const char* box = it->checked ? (m->opt.ambiguous_wide ? "[x] " : "[\xE2\x9C\x93] ") : "[ ] ";
   if (in_palette) {
     if (it->kind == ROLLTUI_MENU_TOGGLE) str_add(out, box);
     rolltui_str_append_str(out, &m->flat[m->vis[vis_index]].label);

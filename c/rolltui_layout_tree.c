@@ -150,6 +150,7 @@ void rolltui_layer_copy(RolltuiLayer* to, const RolltuiLayer* from) {
   rolltui_str_set(&to->focus, from->focus.p, from->focus.n);
   to->placement = from->placement;
   to->modal = from->modal;
+  to->dismiss = from->dismiss;
   rolltui_layout_node_copy(&to->root, &from->root);
 }
 

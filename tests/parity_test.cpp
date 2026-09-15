@@ -207,7 +207,7 @@ std::string row_text(HostMenu* m, const RolltuiMenuItem* it, std::size_t* value_
   *value_at = 0;
   switch (static_cast<unsigned char>(it->kind)) {
     case ROLLTUI_MENU_TOGGLE:
-      out += it->checked ? (m->ambiguous ? "[x] " : "\xE2\x98\x92 ") : (m->ambiguous ? "[ ] " : "\xE2\x98\x90 ");
+      out += it->checked ? (m->ambiguous ? "[x] " : "[\xE2\x9C\x93] ") : "[ ] ";
       out += str_of(it->label);
       break;
     case ROLLTUI_MENU_INPUT:

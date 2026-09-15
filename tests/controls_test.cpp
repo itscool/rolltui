@@ -51,17 +51,17 @@
 // guarantee, which is the one failure this mechanism exists to rule out.
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_effects.h"
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_markdown.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_presets.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_style.h"
 #include "rolltui/c/rolltui_theme.h"  // rolltui_sgr: an internal header, the way the
                                       // library's own suites reach what no host needs.
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_widgets.h"
 #include "rolltui_test.hpp"
 
@@ -529,7 +529,7 @@ TESTKIT_TEST(a_modal_popup_keeps_focus_off_the_layers_under_it) {
   // is exactly that): with the guarantee, nothing takes keys; without it, the input behind does.
   const std::string json =
       R"({"name":"t","focus":"prompt","root":{"id":"prompt","content":"input:prompt","focusable":true},)"
-      R"("popups":[{"id":"note","x":"50%","y":"50%","w":20,"h":5,"anchor":"center","modal":true,)"
+      R"("popups":[{"id":"note","dismiss":false,"x":"50%","y":"50%","w":20,"h":5,"anchor":"center","modal":true,)"
       R"("root":{"id":"note","content":"text:note","border":"rounded"}}]})";
   Screen s(json);
   check(s.loaded && rolltui_window_stack_focused(s.stack) != nullptr,

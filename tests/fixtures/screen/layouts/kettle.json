@@ -18,7 +18,7 @@
     { "id": "kettle_keys", "content": "help", "size": 8, "border": "single",
       "title": "the live key table", "focusable": true } ] },
   "popups": [
-    { "id": "find", "x": "50%", "y": 0, "w": "60%", "h": 3, "anchor": "top",
+    { "id": "find", "dismiss": false, "x": "50%", "y": 0, "w": "60%", "h": 3, "anchor": "top",
       "min_w": 24, "max_w": 72,
       "root": { "id": "find", "content": "input:find", "border": "rounded", "title": "find",
                 "focusable": true, "background": "panel_background" } } ]

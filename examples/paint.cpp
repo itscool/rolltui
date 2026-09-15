@@ -98,7 +98,8 @@ constexpr const char* kToolsMenu = R"({
       "min": 1, "max": 5, "step": 1, "value": "1", "hint": "cells across" },
     { "id": "shape", "label": "Shape", "kind": "choice", "value": "square",
       "items": [ { "id": "square", "label": "square" }, { "id": "round", "label": "round" } ] },
-    { "id": "open", "label": "Open a picture", "kind": "input", "type": "text", "value": "" },
+    { "id": "open", "label": "Open a picture\u2026", "action": "app.filepicker" },
+    { "id": "save", "label": "Save the sheet as text\u2026", "action": "app.save" },
     { "id": "clear", "label": "Clear the sheet" } ] }
 )";
 
@@ -170,20 +171,20 @@ constexpr const char* kDefaultLayout = R"({
   "actions": { "app.theme": "Edit the theme", "app.keys": "Edit the keys",
                "app.filepicker": "Open a picture", "app.save": "Save the sheet as text" },
   "popups": [
-    { "id": "theme", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+    { "id": "theme", "dismiss": false, "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
       "root": { "id": "theme", "content": "theme", "border": "rounded",
                 "focusable": true, "background": "panel_background" } },
-    { "id": "keys", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+    { "id": "keys", "dismiss": false, "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 34, "modal": true,
       "root": { "id": "keys", "content": "keys", "border": "rounded",
                 "focusable": true, "background": "panel_background" } },
-    { "id": "filepicker", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+    { "id": "filepicker", "dismiss": false, "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 40, "max_w": 100, "modal": true,
       "root": { "id": "filepicker", "content": "filepicker", "border": "rounded",
                 "title": "open a picture", "focusable": true,
                 "background": "panel_background" } },
-    { "id": "save", "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
+    { "id": "save", "dismiss": false, "x": "100%", "y": 0, "w": "50%", "h": "100%", "anchor": "top-right",
       "min_w": 40, "max_w": 100, "modal": true,
       "root": { "column": [
         { "id": "save_name", "content": "input:save_name", "size": 3, "border": "rounded",
@@ -506,7 +507,7 @@ constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*desired_outer=*/nullptr,
     /*handle=*/canvas_handle,
     /*scroll_extent=*/nullptr,
-    /*scroll_to=*/nullptr, nullptr /* title: the layout's */
+    /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 
 // What the factory is registered WITH: the two borrows a canvas needs and nothing else. One
@@ -682,6 +683,7 @@ struct App {
         this, nullptr);
     set_help_scopes();
     rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
+    rolltui_window_stack_set_level_fn(stack, rolltui_windows_back, windows);  // Escape closes one level: a dropdown before the menu
     declare_actions();  // the SCREEN says what this app can do (Phase 10 m4)
   }
 
@@ -908,9 +910,11 @@ struct App {
         const std::string v = str_of(ev.value);
         if (view_of(ev.id) == "size") tool.size = std::atoi(v.c_str());
         if (view_of(ev.id) == "ink") rolltui_color_parse(v.data(), v.size(), &tool.color);
-        if (view_of(ev.id) == "open") open_picture(v);
       }
       if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "clear" && canvas()) canvas()->pixels.clear();
+      // OPEN AND SAVE ARE THE DIALOGS the layout declares — the same popups the chords open.
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "open") rolltui_window_stack_action_popup(stack, layout, "app.filepicker", 14);
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "save") rolltui_window_stack_action_popup(stack, layout, "app.save", 8);
       rolltui_menu_event_release(&ev);
     }
   }

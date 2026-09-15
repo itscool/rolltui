@@ -1,9 +1,11 @@
-/* rolltui/c/rolltui_picker.c — the column browser behind `filepicker`. The rules and the shape
+/* rolltui/c/rolltui_widget_picker.c — the column browser behind `filepicker`. The rules and the shape
  * are in the header; what is below is the widget. */
-#include "rolltui/c/rolltui_picker.h"
+#include "rolltui/c/rolltui_widget_picker.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -120,6 +122,7 @@ static int rows_visible(const RolltuiPicker* p) { return p->inner.h > 1 ? p->inn
 
 /* `dir` + "/" + `name`, with the root's slash not doubled. */
 static void join(const RolltuiStr* dir, const RolltuiStr* name, RolltuiStr* out) {
+  if (dir->n == 0) { rolltui_str_set(out, name->p ? name->p : "", name->n); return; } /* the top: its one entry is the root itself */
   rolltui_str_set(out, dir->p ? dir->p : "", dir->n);
   if (!(dir->n == 1 && dir->p && dir->p[0] == '/')) rolltui_str_append(out, "/", 1);
   rolltui_str_append(out, name->p ? name->p : "", name->n);
@@ -129,8 +132,14 @@ static void join(const RolltuiStr* dir, const RolltuiStr* name, RolltuiStr* out)
  * disk), so a symlinked folder reads as "not a directory" and could never be entered — `/var`
  * on macOS, every `node_modules/.bin`. Entering follows the link; the column is still named by
  * the path a person walked, never by where the link went. */
+/* A BUNDLE — a directory named `.app` — is a LEAF to a browser: what it holds is an
+ * application's own business, and Enter on it opens the application. */
+static int is_bundle(const RolltuiDirEntry* e) {
+  return e->is_dir && e->name.n > 4 && e->name.p && memcmp(e->name.p + e->name.n - 4, ".app", 4) == 0;
+}
 static int folder_like(RolltuiPicker* p, const Column* c, const RolltuiDirEntry* e) {
   struct stat st;
+  if (is_bundle(e)) return 0;
   if (e->is_dir) return 1;
   if (!S_ISLNK(e->mode)) return 0;
   join(&c->dir, &e->name, &p->s3);
@@ -152,13 +161,67 @@ static void selected_path(RolltuiPicker* p, RolltuiStr* out) {
  * than what it points at, and it keeps the count of what it hid so a note can say so. */
 static void read_column(RolltuiPicker* p, Column* c) {
   RolltuiStr err;
-  const int flags = (p->opt.hidden ? ROLLTUI_DIR_HIDDEN : 0) | ROLLTUI_DIR_LINKS;
+  const int flags = (p->opt.hidden ? ROLLTUI_DIR_HIDDEN : 0) | ROLLTUI_DIR_LINKS | (p->opt.reversed ? ROLLTUI_DIR_REVERSED : 0);
   memset(&err, 0, sizeof err);
   rolltui_str_clear(&c->error);
+  /* THE TOP COLUMN holds one entry, the root itself, so the root can be CHOSEN like any other
+   * folder — selected in the column to its left, then taken — rather than being the one place
+   * the cursor can only be in. Nothing is read for it. */
+  if (c->dir.n == 0) {
+    size_t i;
+    for (i = 0; i < c->entries.n; ++i) rolltui_str_free(&c->entries.v[i].name);
+    c->entries.v = (RolltuiDirEntry*)rolltui_grow_zeroed(c->entries.v, &c->entries.cap, 1, sizeof *c->entries.v);
+    memset(&c->entries.v[0], 0, sizeof c->entries.v[0]);
+    rolltui_str_set(&c->entries.v[0].name, p->root.p ? p->root.p : "/", p->root.n ? p->root.n : 1);
+    c->entries.v[0].is_dir = 1;
+    c->entries.n = 1;
+    c->entries.hidden_n = 0;
+    c->hidden_n = 0;
+    return;
+  }
   if (!rolltui_dir_read(c->dir.p ? c->dir.p : "/", c->dir.n, p->opt.sort, flags, &c->entries, &err))
     rolltui_str_set(&c->error, err.p ? err.p : "", err.n);
   c->hidden_n = c->entries.hidden_n;
   rolltui_str_free(&err);
+}
+
+/* ---- the two facts a row may carry after its name ---------------------------------------- */
+#define SIZE_CELLS 5     /* "3.2M", right-aligned, a space before it */
+#define MODIFIED_CELLS 8 /* "14 Sep" this year, "Sep 2024" before it */
+static int show_size(const RolltuiPicker* p) {
+  return p->opt.show_size == ROLLTUI_SHOW_ALWAYS || (p->opt.show_size == ROLLTUI_SHOW_WITH_SORT && p->opt.sort == ROLLTUI_SORT_SIZE);
+}
+static int show_modified(const RolltuiPicker* p) {
+  return p->opt.show_modified == ROLLTUI_SHOW_ALWAYS || (p->opt.show_modified == ROLLTUI_SHOW_WITH_SORT && p->opt.sort == ROLLTUI_SORT_MODIFIED);
+}
+/* How many cells the extra columns take, spaces before each included. */
+/* The size and date columns, each a space then its cells, and ONE CELL OF MARGIN after the last
+ * — the names sit one in from the left, and a date jammed against the divider reads as part of
+ * the next column. */
+static int extras_width(const RolltuiPicker* p) {
+  const int w = (show_size(p) ? 1 + SIZE_CELLS : 0) + (show_modified(p) ? 1 + MODIFIED_CELLS : 0);
+  return w ? w + 1 : 0;
+}
+static void size_text(long long n, char* out, size_t cap) {
+  const char* unit = "";
+  double v = (double)n;
+  if (v >= 1024.0) { v /= 1024.0; unit = "K"; }
+  if (v >= 1024.0) { v /= 1024.0; unit = "M"; }
+  if (v >= 1024.0) { v /= 1024.0; unit = "G"; }
+  if (!*unit) snprintf(out, cap, "%lld", n);
+  else if (v < 10.0) snprintf(out, cap, "%.1f%s", v, unit);
+  else snprintf(out, cap, "%.0f%s", v, unit);
+}
+static void modified_text(long long when, char* out, size_t cap) {
+  time_t t = (time_t)when, now = time(NULL);
+  struct tm tm_when, tm_now;
+  if (when <= 0) { snprintf(out, cap, "-"); return; }
+  localtime_r(&t, &tm_when);
+  localtime_r(&now, &tm_now);
+  if (tm_when.tm_year == tm_now.tm_year) strftime(out, cap, "%e %b", &tm_when);
+  else strftime(out, cap, "%b %Y", &tm_when);
+  /* `%e` pads with a space: the column is right-aligned, so the pad is dropped */
+  if (out[0] == ' ') memmove(out, out + 1, strlen(out));
 }
 
 static void measure_width(RolltuiPicker* p, Column* c) {
@@ -166,9 +229,12 @@ static void measure_width(RolltuiPicker* p, Column* c) {
   size_t i;
   for (i = 0; i < c->entries.n; ++i) {
     const RolltuiDirEntry* e = &c->entries.v[i];
-    longest = imax(longest, width_of(p, e->name.p ? e->name.p : "", e->name.n) + (e->is_dir ? 2 : 0));
+    longest = imax(longest, width_of(p, e->name.p ? e->name.p : "", e->name.n) + (e->is_dir && !is_bundle(e) ? 2 : 0));
   }
-  c->width = imin(MAX_COLUMN_WIDTH, imax(12, longest + 2));
+  /* ONE CAP, whatever the columns show: the size and date fit INSIDE it, taking their cells
+   * from the names, so a column is never wider than the last slot is and nothing jumps when
+   * they appear or go. The floor keeps a few cells for the name beside them. */
+  c->width = imin(MAX_COLUMN_WIDTH, imax(imax(12, extras_width(p) + 6), longest + 2 + extras_width(p)));
   /* A COLUMN THAT COULD NOT BE OPENED IS AS WIDE AS ITS REASON, up to the window: it is the last
    * column and the anchor puts it at the right edge, so a name-sized width would leave
    * "cannot ope…" of a message whose whole point is the path. */
@@ -313,10 +379,14 @@ static void set_root(RolltuiPicker* p, const char* path, size_t len) {
   rolltui_str_set(&p->root, path, len);
   cols_resize(p, 0);
   p->focus_col = 0;
+  /* Column 0 is the top — the root as its one entry — and column 1 the root's listing, which
+   * is where the cursor starts. */
   c = cols_push(p);
-  rolltui_str_set(&c->dir, path, len);
+  rolltui_str_clear(&c->dir);
   read_column(p, c);
   measure_width(p, c);
+  open_selected(p);
+  if (p->n > 1) p->focus_col = 1;
   open_selected(p);
   eye_moved(p);
   retarget(p);
@@ -425,9 +495,11 @@ void rolltui_picker_options_init(RolltuiPickerOptions* o) {
   o->take_folders = 0;
 }
 void rolltui_picker_set_options(RolltuiPicker* p, const RolltuiPickerOptions* o) {
-  const int reread = o->hidden != p->opt.hidden || o->sort != p->opt.sort;
+  const int reread = o->hidden != p->opt.hidden || o->sort != p->opt.sort || o->reversed != p->opt.reversed;
+  const int remeasure = o->show_size != p->opt.show_size || o->show_modified != p->opt.show_modified;
   p->opt = *o;
   if (reread) rolltui_picker_reload(p);
+  else if (remeasure) { size_t i; for (i = 0; i < p->n; ++i) measure_width(p, &p->cols[i]); retarget(p); }
 }
 const RolltuiPickerOptions* rolltui_picker_options(const RolltuiPicker* p) { return &p->opt; }
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms) { p->now_ms = now_ms; }
@@ -465,7 +537,14 @@ void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len) {
     for (i = 0; i < c->entries.n; ++i)
       if (rolltui_str_eq(&c->entries.v[i].name, rest, plen)) { c->sel = i; found = 1; break; }
     if (found) remember(p, c);
-    if (!found || !folder_like(p, c, &c->entries.v[c->sel])) {
+    /* A FILE AT THE END OF THE PATH IS SELECTED, NOT ENTERED: `dirk notes/todo.txt` lands on
+     * that file with its folder's column open, which is where a name a person typed leads. */
+    if (found && !folder_like(p, c, &c->entries.v[c->sel])) {
+      clamp_scroll(p, c);
+      open_selected(p);
+      break;
+    }
+    if (!found) {
       Column* bad;
       cols_resize(p, p->focus_col + 1);
       bad = cols_push(p);
@@ -524,17 +603,10 @@ void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner) {
  * the border reads as a tear: its cells are pulled toward the panel's background, most at the
  * border and none a dozen cells in, on a cosine that bottoms one step above nothing. ONLY IN
  * 24-BIT COLOUR: a blend is a colour the theme did not name. */
-static RolltuiStyleColor toward(RolltuiStyleColor c, RolltuiStyleColor ground, double keep) {
-  if (c.kind != 2 /* Rgb */ || ground.kind != 2) return c;
-  c.r = (unsigned char)(ground.r + (c.r - ground.r) * keep + 0.5);
-  c.g = (unsigned char)(ground.g + (c.g - ground.g) * keep + 0.5);
-  c.b = (unsigned char)(ground.b + (c.b - ground.b) * keep + 0.5);
-  return c;
-}
 static RolltuiStyle faded(RolltuiStyle st, RolltuiStyleColor ground, double keep) {
-  st.fg = toward(st.fg, ground, keep);
-  st.bg = toward(st.bg, ground, keep);
-  return st;
+  RolltuiStyle out;
+  rolltui_style_fade(&st, ground, keep, &out);
+  return out;
 }
 static double keep_at(const RolltuiRect* r, int sx) {
   const double t = (sx - r->x + 0.5) / FADE_CELLS;
@@ -640,9 +712,12 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
                          const RolltuiScrollbarGlyphs* glyphs, int ambiguous_wide) {
   Draw d;
   size_t ci;
+  int first_drawn = 0;
   const RolltuiStyle text = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
   const RolltuiStyle dim = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT_MUTED);
-  const RolltuiStyle head = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_LABEL);
+  /* THE HEAD ROW IS A TITLE ROW: one background across every column, the panel's, so the row
+   * that does not scroll reads as the row that names the columns rather than as their first line. */
+  RolltuiStyle head = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_LABEL);
   const RolltuiStyle here = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_MENU_SELECTED);
   const RolltuiStyle trail = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SELECTION);
   const RolltuiStyle err_style = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_ERROR);
@@ -655,7 +730,17 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   d.ds = p->draw;
   d.r = p->inner;
   d.ground = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_BACKGROUND)->bg;
+  head.bg = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_PANEL_BACKGROUND)->bg;
   if (d.r.w <= 0 || d.r.h <= 0) return;
+  d.clipped = 0;
+  /* THE TITLE ROW'S BAND, laid column by column below (so a column clipped at the left edge
+   * fades, band and name alike); what is right of the last column is laid here, unclipped. */
+  {
+    int band_from = d.r.x;
+    if (p->n) { const size_t last = p->n - 1; band_from = imax(d.r.x, column_x(p, last) + shown_width(p, last) + 1); }
+    d.clipped = 0;
+    if (band_from < d.r.x + d.r.w) fill_row(&d, band_from, d.r.y, d.r.x + d.r.w - band_from, head);
+  }
   for (ci = 0; ci < p->n; ++ci) {
     const Column* c = &p->cols[ci];
     const int x = column_x(p, ci);
@@ -667,12 +752,21 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
     if (x + sw <= d.r.x) continue; /* wholly off the left edge */
     cw = imin(sw, d.r.x + d.r.w - x);
     if (cw <= 0) break;
-    d.clipped = x < d.r.x;
+    /* THE LEFTMOST COLUMN ON SCREEN FADES AT THE EDGE whenever there is more to its left —
+     * clipped or not, so the cue that ancestors continue is always there — and only the TOP
+     * column, which has nothing to its left, is drawn whole. */
+    d.clipped = x < d.r.x || (!first_drawn && ci > 0);
+    first_drawn = 1;
+    /* This column's cells of the title row's band, and the margin after it: faded with the
+     * column when it is clipped at the left edge, cell by cell, as its rows are. */
+    { const int bx = imax(x, d.r.x); fill_row(&d, bx, d.r.y, imin(x + sw + 1, d.r.x + d.r.w) - bx, head); }
     /* THE DIVIDER: a hairline in the one-cell margin after this column, the full height, in the
-     * border colour — chrome, so it fades with a clipped column. Only between columns. And THIS
-     * COLUMN'S OWN THUMB ON IT, over the rows, in the window's capsule by the window's
-     * arithmetic, so every column says where it is scrolled, in place. */
-    if (p->opt.dividers && ci + 1 < p->n) {
+     * border colour — chrome, so it fades with a clipped column. After the LAST column too, when
+     * there is room right of it: the empty stretch is the slot the next column will take, and a
+     * divider already standing where that column's edge will be means nothing jumps when it
+     * opens. And THIS COLUMN'S OWN THUMB ON IT, over the rows, in the window's capsule by the
+     * window's arithmetic, so every column says where it is scrolled, in place. */
+    if (p->opt.dividers) {
       const int dx = x + sw;
       if (dx >= d.r.x && dx < d.r.x + d.r.w) {
         RolltuiStyle line = border, bar = bar_role, ls, bs;
@@ -681,7 +775,14 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
         int y;
         line.bg = d.ground;
         ls = d.clipped ? faded(line, d.ground, keep_at(&d.r, dx)) : line;
-        for (y = d.r.y; y < d.r.y + d.r.h; ++y) rolltui_frame_put_text(f, d.ds, dx, y, "\xE2\x94\x82", 3, ls, 1, 0, 0);
+        for (y = d.r.y; y < d.r.y + d.r.h; ++y) {
+          /* ON THE TITLE ROW the divider sits on the title's own band, so the band runs
+           * unbroken across the columns; the window's border, not this widget's, is the one
+           * line that keeps its own ground. */
+          RolltuiStyle at_y = ls;
+          if (y == d.r.y) { RolltuiStyle on_band = line; on_band.bg = head.bg; at_y = d.clipped ? faded(on_band, d.ground, keep_at(&d.r, dx)) : on_band; }
+          rolltui_frame_put_text(f, d.ds, dx, y, "\xE2\x94\x82", 3, at_y, 1, 0, 0);
+        }
         e.first = c->top;
         e.visible = (size_t)rows;
         e.total = c->entries.n;
@@ -706,9 +807,21 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
     /* The column's own head: the directory's last component, one in like the rows. */
     slash = c->dir.n;
     while (slash > 0 && c->dir.p[slash - 1] != '/') --slash;
-    if (c->dir.n == 1 && c->dir.p[0] == '/') fit_into(p, "/", 1, cw - 1, &p->s1);
+    if (c->dir.n == 0) rolltui_str_clear(&p->s1); /* the top: unnamed, uncounted */
+    else if (c->dir.n == 1 && c->dir.p[0] == '/') fit_into(p, "/", 1, cw - 1, &p->s1);
     else fit_into(p, c->dir.p + slash, c->dir.n - slash, cw - 1, &p->s1);
     put_clipped(&d, x + 1, d.r.y, p->s1.p ? p->s1.p : "", p->s1.n, head, cw - 1);
+    /* THE COUNT, right-aligned on the head: how many entries this column holds (dotfiles as the
+     * setting says), where the eye already is — a status line's "entries N" said it once for
+     * one column and could not be clicked for anything. Only when it fits after the name. */
+    {
+      char num[32];
+      const int nl = snprintf(num, sizeof num, "%zu %s", c->entries.n, c->entries.n == 1 ? "entry" : "entries");
+      const int name_w = width_of(p, p->s1.p ? p->s1.p : "", p->s1.n);
+      /* Said in words — a bare number beside a name is not obviously a count — and only whole:
+       * a column too narrow for the words shows no count rather than a number. */
+      if (c->dir.n != 0 && nl > 0 && 1 + name_w + 1 + nl <= cw - 1) put_clipped(&d, x + cw - 1 - nl, d.r.y, num, (size_t)nl, head, nl);
+    }
     for (row = 0; row < rows; ++row) {
       const size_t i = c->top + (size_t)row;
       const int y = d.r.y + 1 + row;
@@ -729,8 +842,8 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       /* A directory is marked with a trailing chevron rather than a colour, so the shape
        * survives `mono` and a colour-blind reader alike. */
       rolltui_str_set(&p->s2, e->name.p ? e->name.p : "", e->name.n);
-      if (e->is_dir) rolltui_str_append(&p->s2, " \xE2\x80\xBA", 4);
-      fit_into(p, p->s2.p ? p->s2.p : "", p->s2.n, cw - 1, &p->s1);
+      if (e->is_dir && !is_bundle(e)) rolltui_str_append(&p->s2, " \xE2\x80\xBA", 4);
+      fit_into(p, p->s2.p ? p->s2.p : "", p->s2.n, cw - 1 - extras_width(p), &p->s1);
       if (is_sel && (is_focus_col || is_trail)) {
         const int fx = imax(x, d.r.x);
         const unsigned long long opened_age = p->now_ms >= p->opened_since_ms ? p->now_ms - p->opened_since_ms : 0;
@@ -742,7 +855,32 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
                    is_focus_col ? ROLLTUI_EFFECT_STATE_PICKER_CURSOR : ROLLTUI_EFFECT_STATE_PICKER_TRAIL,
                    is_focus_col ? p->cursor_since_ms : 0, opened_now, p->opened_since_ms);
       }
-      put_clipped(&d, x + 1, y, p->s1.p ? p->s1.p : "", p->s1.n, st, cw - 1);
+      put_clipped(&d, x + 1, y, p->s1.p ? p->s1.p : "", p->s1.n, st, cw - 1 - extras_width(p));
+      if (extras_width(p) > 0) {
+        /* THE FACTS, right-aligned at the column's edge, muted unless the row is the cursor's:
+         * a folder has no size to say; a "-" keeps the column's shape. */
+        char buf[32];
+        int ex = x + cw - extras_width(p);
+        /* On a highlighted row — the cursor's, or a trail selection with motion off — the facts
+         * sit on the row's own ground: muted lettering, the highlight's background, so the block
+         * runs the row's whole width. */
+        RolltuiStyle fs = is_sel && is_focus_col && still ? st : dim;
+        if (is_trail && still) fs.bg = st.bg;
+        if (show_size(p)) {
+          int wdt;
+          if (e->is_dir) snprintf(buf, sizeof buf, "-");
+          else size_text(e->size, buf, sizeof buf);
+          wdt = (int)strlen(buf);
+          put_clipped(&d, ex + 1 + (SIZE_CELLS - imin(wdt, SIZE_CELLS)), y, buf, (size_t)imin(wdt, SIZE_CELLS), fs, SIZE_CELLS);
+          ex += 1 + SIZE_CELLS;
+        }
+        if (show_modified(p)) {
+          int wdt;
+          modified_text(e->modified, buf, sizeof buf);
+          wdt = (int)strlen(buf);
+          put_clipped(&d, ex + 1 + (MODIFIED_CELLS - imin(wdt, MODIFIED_CELLS)), y, buf, (size_t)imin(wdt, MODIFIED_CELLS), fs, MODIFIED_CELLS);
+        }
+      }
     }
     if (c->entries.n == 0 && d.r.h > 1) {
       /* A DIRECTORY THAT COULD NOT BE OPENED MUST NOT LOOK LIKE AN EMPTY ONE, and an error is not
@@ -793,6 +931,34 @@ static void take(RolltuiPicker* p) {
 static void accept(RolltuiPicker* p) {
   if (selected_is_folder(p) && !p->opt.take_folders) { into(p); return; }
   take(p);
+}
+
+/* The code point of a name a typed key is matched against, ASCII case folded: the first — or,
+ * for a dotfile, the one after the dot, so `g` reaches `.gitignore` among the g's — unless the
+ * key IS the dot, which cycles the dotfiles themselves. */
+static RolltuiCodepoint name_head(const RolltuiStr* name, RolltuiCodepoint want) {
+  RolltuiDecodedChar d;
+  size_t at = 0;
+  if (name->n == 0 || !name->p) return 0;
+  if (want != '.' && name->p[0] == '.' && name->n > 1) at = 1;
+  rolltui_u_decode_one(name->p, name->n, at, &d);
+  return d.cp >= 'A' && d.cp <= 'Z' ? d.cp - 'A' + 'a' : d.cp;
+}
+static int type_to_jump(RolltuiPicker* p, RolltuiCodepoint ch, int reverse) {
+  Column* c = focused(p);
+  size_t n, k, start;
+  const RolltuiCodepoint want = ch >= 'A' && ch <= 'Z' ? ch - 'A' + 'a' : ch;
+  int on_one;
+  if (!c || (n = c->entries.n) == 0) return 1;
+  on_one = c->sel < n && name_head(&c->entries.v[c->sel].name, want) == want;
+  if (!reverse) {
+    start = on_one ? c->sel + 1 : 0;
+    for (k = 0; k < n; ++k) { const size_t i = (start + k) % n; if (name_head(&c->entries.v[i].name, want) == want) { select_row(p, i); return 1; } }
+  } else {
+    start = on_one ? (c->sel + n - 1) % n : n - 1;
+    for (k = 0; k < n; ++k) { const size_t i = (start + n - k) % n; if (name_head(&c->entries.v[i].name, want) == want) { select_row(p, i); return 1; } }
+  }
+  return 1;
 }
 
 static int action_is(const char* a, size_t n, const char* name) {
@@ -856,6 +1022,11 @@ int rolltui_picker_handle(RolltuiPicker* p, const RolltuiEvent* e, const Rolltui
       const int cw = shown_width(p, ci);
       if (m->x >= x && m->x < x + cw && m->x >= p->inner.x) {
         const int row = m->y - p->inner.y - 1;
+        /* A PRESS ON EMPTY SPACE below a column's entries is nobody's: it chooses nothing, so it
+         * moves nothing — the focus and the columns to the right stay as they were. A press on
+         * an entry selects it; one on the head row is the folder's name, and focuses it. */
+        if (row >= 0 && p->cols[ci].top + (size_t)row >= p->cols[ci].entries.n) return 1;
+        if (row < 0) { rolltui_picker_focus_column(p, ci); return 1; } /* the head: as its breadcrumb part */
         p->focus_col = ci;
         cols_resize(p, ci + 1);
         if (row >= 0) select_row(p, p->cols[ci].top + (size_t)row);
@@ -873,6 +1044,12 @@ int rolltui_picker_handle(RolltuiPicker* p, const RolltuiEvent* e, const Rolltui
     size_t len = 0;
     const char* act = rolltui_bindings_action_for(b, &e->key, "picker", 6, &len);
     const int page = imax(1, rows_visible(p) - 1);
+    /* TYPE TO JUMP: a bare printable key nothing is bound to lands on the next entry in the focused
+     * column whose name starts with it — the first when the cursor is not on one, the one after
+     * when it is, wrapping; a shifted key (an upper-case letter) goes backwards, starting from the
+     * end. A key no name starts with is consumed and moves nothing. */
+    if ((!act || len == 0) && e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt && e->key.ch >= 0x20 && e->key.ch != 0x7f)
+      return type_to_jump(p, e->key.ch, e->key.shift || (e->key.ch >= 'A' && e->key.ch <= 'Z'));
     if (!act || len == 0) return 0;
     if (action_is(act, len, a->up)) move_by(p, -1);
     else if (action_is(act, len, a->down)) move_by(p, 1);
@@ -889,6 +1066,15 @@ int rolltui_picker_handle(RolltuiPicker* p, const RolltuiEvent* e, const Rolltui
     else return 0;
     return 1;
   }
+}
+
+void rolltui_picker_focus_column(RolltuiPicker* p, size_t column) {
+  if (p->n == 0) return;
+  p->focus_col = column < p->n ? column : p->n - 1;
+  /* AS LEFT DOES: the focused column keeps its preview, the columns deeper than that go. */
+  cols_resize(p, p->focus_col + 2 <= p->n ? p->focus_col + 2 : p->n);
+  eye_moved(p);
+  retarget(p);
 }
 
 int rolltui_picker_event(RolltuiPicker* p, RolltuiPickerEvent* out) {

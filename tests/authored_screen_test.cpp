@@ -262,7 +262,7 @@ int main() {
     const std::size_t before = stderr_size();
     int rc2 = 0;
     const std::string frame = run(std::string("'") + ROLLTUI_PAINT_BIN + "' --presets '" + scratch +
-                                      "/with' --layout easel --frame 76x22 --stroke 3,2-24,9" + err,
+                                      "/with' --layout easel --frame 240x22 --stroke 3,2-24,9" + err,  // wide: the status line carries the palette's note (it names open and save, which this screen does not declare) AND the marks
                                   rc2);
     check(rc2 == 0 && !frame.empty(), "rolltui-paint rendered the authored screen (rc " + std::to_string(rc2) + ")");
     check(has(frame, "easel sheet") && has(frame, "easel tools") && has(frame, "easel keys"),

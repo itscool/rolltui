@@ -51,8 +51,8 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   spells keys; the routing, the precedence and the
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
-                  c/rolltui_input.c c/rolltui_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_picker.c c/rolltui_transcript.c
+                  c/rolltui_widget_input.c c/rolltui_widget_menu.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_hints.c c/rolltui_widget_transcript.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the
@@ -134,7 +134,7 @@ set(ROLLTUI_SOURCES
   c/rolltui_frame_ops.c       # put_text / fill / tint, reachable by the C widgets that draw.
   c/rolltui_layout_tree.c     # THE SPLIT TREE, as data — the shape of a node, never the
                               #   placement algorithm over it.
-  c/rolltui_menu_tree.c       # THE MENU TREE, the second recursive owning tree, same shape.
+  c/rolltui_widget_menu_tree.c       # THE MENU TREE, the second recursive owning tree, same shape.
   c/rolltui_document.c        # THE DOCUMENT MODEL, as data. A HOST fills it, so two shapes
                               #   of an entry would be two things to disagree.
   c/rolltui_undo.c            # opaque-snapshot undo. The editors keep a C++ adapter of
@@ -311,7 +311,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp
-  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp
+  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp hints_test.cpp
   # the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
@@ -366,6 +366,7 @@ add_rolltui_test(rolltui-budget-test tests/budget_test.cpp)
 # "no wakeups with no marks".
 add_rolltui_test(rolltui-effects-test tests/effects_test.cpp)
 add_rolltui_test(rolltui-picker-test tests/picker_test.cpp)
+add_rolltui_test(rolltui-hints-test tests/hints_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
 # (table), and Terminal on a real pty with a forked child killed by SIGTERM.
@@ -483,11 +484,12 @@ set(DIRKTUI_FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/layouts/dirktui.json
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/bindings/default.json
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/menus/places.json
+  ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/menus/matches.json
   ${CMAKE_CURRENT_SOURCE_DIR}/examples/presets/effects/dirktui.json)
 set(DIRKTUI_EMBEDDED ${CMAKE_CURRENT_BINARY_DIR}/embedded_dirktui.c)
 add_custom_command(OUTPUT ${DIRKTUI_EMBEDDED}
   COMMAND ${CMAKE_COMMAND} -DOUT=${DIRKTUI_EMBEDDED} -DTABLE=kAppFiles -DPREFIX=dirktui_
-          "-DFILES=${DIRKTUI_FILES}" "-DNAMES=layout;bindings;menu;effects"
+          "-DFILES=${DIRKTUI_FILES}" "-DNAMES=layout;bindings;menu;matches;effects"
           -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
   DEPENDS ${DIRKTUI_FILES} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_presets.cmake
   COMMENT "Embedding dirktui's own files"
@@ -499,15 +501,19 @@ add_library(rolltui_dirktui_embedded OBJECT ${DIRKTUI_EMBEDDED})
 target_include_directories(rolltui_dirktui_embedded PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_options(rolltui_dirktui_embedded PRIVATE -Wall -Wextra)
 
+# dirktui's VERSION lives in one file, `examples/dirktui.version`, read here for `--version` and
+# by `tools/release_dirktui.sh` for the release tag, the tarball name and the Homebrew formula.
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/examples/dirktui.version DIRKTUI_VERSION LIMIT_COUNT 1)
 add_executable(dirktui examples/dirktui.cpp $<TARGET_OBJECTS:rolltui_dirktui_embedded>)
 target_link_libraries(dirktui PRIVATE rolltui)
+target_compile_definitions(dirktui PRIVATE DIRKTUI_VERSION="${DIRKTUI_VERSION}")
 
 # The SELF-TEST build: the same source plus the script vocabulary, so a golden frame has a driver
 # and the shipped binary has none. Additive rather than compiled out, so the app code the product
 # runs is the code the tests ran.
 add_executable(dirktui-selftest examples/dirktui.cpp $<TARGET_OBJECTS:rolltui_dirktui_embedded>)
 target_link_libraries(dirktui-selftest PRIVATE rolltui)
-target_compile_definitions(dirktui-selftest PRIVATE ROLLTUI_SELFTEST=1)
+target_compile_definitions(dirktui-selftest PRIVATE ROLLTUI_SELFTEST=1 DIRKTUI_VERSION="${DIRKTUI_VERSION}")
 target_compile_options(dirktui-selftest PRIVATE -Wall -Wextra)
 target_compile_options(dirktui PRIVATE -Wall -Wextra)
 

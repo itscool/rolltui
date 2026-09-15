@@ -20,7 +20,7 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_keys_editor.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <string>

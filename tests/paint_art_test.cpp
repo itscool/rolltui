@@ -50,6 +50,19 @@ int count(const std::string& h, const std::string& n) {
   for (std::size_t i = h.find(n); i != std::string::npos; i = h.find(n, i + n.size())) ++c;
   return c;
 }
+// Ink on the SHEET only: the tools palette to its right shows the live chords ("Ctrl-S"), whose
+// hyphens are not strokes. The sheet is the first 38 cells of a 64-cell frame.
+int count_sheet(const std::string& frame, const std::string& n) {
+  int c = 0;
+  std::istringstream in(frame);
+  for (std::string l; std::getline(in, l);) {
+    std::size_t cut = 0; int cells = 0;
+    while (cut < l.size() && cells < 38) { if ((static_cast<unsigned char>(l[cut]) & 0xC0) != 0x80) ++cells; ++cut; }
+    while (cut < l.size() && (static_cast<unsigned char>(l[cut]) & 0xC0) == 0x80) ++cut;
+    c += count(l.substr(0, cut), n);
+  }
+  return c;
+}
 
 // One scene: water in three block shades, a shoreline, two hills and a sun. Every tool change
 // is a flag and the order is the order they were written, which is the whole of paint's script.
@@ -255,6 +268,15 @@ int main() {
   const std::string after = run(pen + " --stroke 2,2-30,2 --drag 2,5-30,5 2>&1", rc);
   check(rc == 0 && after == line, "a release ENDS the stroke: drags after it paint nothing");
 
+  // ---- 4b. THE PALETTE OPENS THE DIALOGS the layout declares: Open… and Save… are the same popups
+  // the chords open, not a path typed into a field.
+  {
+    const std::string opened = run(bin + " --frame 100x16 --keys \"Tab Down Down Down Down Enter\" 2>&1", rc);
+    check(rc == 0 && has(opened, "open a picture"), "the palette's Open… opens the file dialog");
+    const std::string saving = run(bin + " --frame 100x16 --keys \"Tab Down Down Down Down Down Enter\" 2>&1", rc);
+    check(rc == 0 && has(saving, "save the sheet as text: the name"), "…and its Save… opens the save dialog");
+  }
+
   // ---- 5. SHADING IS A CONSEQUENCE OF DRAWING ----------------------------------------------
   // The step is per distinct cell ENTRY, never per event, and that distinction is the whole of
   // "not too sensitive": a slow hand reports one cell a dozen times and a fast one reports it
@@ -269,7 +291,7 @@ int main() {
   // A CROSS, drawn as one horizontal and one vertical stroke: every cell is one pass except the
   // one they share, which is two. That single darker cell is the gradient, in a golden frame.
   const std::string cross = run(pen + " --stroke 2,4-30,4 --stroke 16,1-16,9 2>&1", rc);
-  check(rc == 0 && has(cross, ":::-:::") && count(cross, "-") == 1,
+  check(rc == 0 && has(cross, ":::-:::") && count_sheet(cross, "-") == 1,
         "a stroke crossing another leaves exactly one deeper cell where they meet");
 
   // AND THE SENSITIVITY, WHICH IS WHERE A WIDE BRUSH SHOWS IT. A three-cell brush covers every
@@ -278,16 +300,16 @@ int main() {
   // moved rather than of where it went. A cell still under the brush from the last stamp is not
   // entered again, so the line is one darkness across.
   const std::string fat = run(pen + " --size 3 --stroke 2,4-30,4 2>&1", rc);
-  check(rc == 0 && has(fat, "marks 93") && count(fat, "-") == 0 && count(fat, "=") == 0,
+  check(rc == 0 && has(fat, "marks 93") && count_sheet(fat, "-") == 0 && count_sheet(fat, "=") == 0,
         "a WIDE brush lays a line of ONE darkness: a cell the brush has not left is not re-entered");
   check(rc == 0 && has(fat, std::string(31, ':')), "…and that one darkness is the light first pass, across its full width");
 
   // A NEW PRESS IS ALWAYS A NEW ENTRY, including on ink the last stroke just laid. That is the
   // only way to deepen, and it is deliberate: lifting and pressing again is the gesture.
   const std::string slow = run(pen + " --stroke 2,2-8,2 --stroke 8,2-16,2 --stroke 16,2-30,2 2>&1", rc);
-  check(rc == 0 && count(slow, "-") == 2,
+  check(rc == 0 && count_sheet(slow, "-") == 2,
         "a stroke reported in three pieces deepens only where a press LANDS on painted ink (" +
-            std::to_string(count(slow, "-")) + " cells)");
+            std::to_string(count_sheet(slow, "-")) + " cells)");
 
   // ---- 6. THE WAY OUT OF A SUBMENU, WITH THE MOUSE --------------------------------------
   // The palette is a menu FILE and it declares no way back, because no file does: the widget

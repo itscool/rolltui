@@ -1,5 +1,5 @@
 //
-// input_test.cpp — the input widget's state machine (rolltui_input.h), table-tested with
+// input_test.cpp — the input widget's state machine (rolltui_widget_input.h), table-tested with
 // no terminal: the key table line by line, grapheme-boundary caret and erasure, word
 // motions, the logical-line keys, vertical movement with a goal column, history with
 // a draft and immutable entries, selection by keys and by mouse (both drag
@@ -36,7 +36,7 @@
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_unicode.h"
-#include "rolltui/c/rolltui_input.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_widget_input.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using testkit::check;
@@ -722,6 +722,36 @@ void test_mouse() {
   check(handle(nl.get(), right, 2000) == InputAction::Ignored, "a right-button press is Ignored");
 }
 
+// ONE ROW: a `single_line` input never wraps — the row slides so the caret is in view, and a
+// press maps back through the same slide.
+void test_one_row() {
+  ThemeFixture th;
+  builtin_theme_c("default-dark", th);
+  InputPtr in = fresh(10, 1);
+  RolltuiInputOptions o;
+  init_options(o);
+  o.single_line = 1;
+  o.prompt = "";
+  rolltui_input_set_options(in.get(), &o);
+  rolltui_input_options_release(&o);
+  set_text(in.get(), "abcdefghijklmnop");
+  rolltui_input_layout(in.get(), {0, 0, 10, 1});
+  check(rolltui_input_rows_for(in.get(), 10) == 1, "a one-row input never wraps: sixteen cells in ten columns are one row");
+  FrameC f(10, 1);
+  rolltui_input_draw(in.get(), f, draw_scratch(), th.styles, &kRoles, true);
+  check(f.glyph(0, 0) == "h" && f.glyph(8, 0) == "p" && f.cursor().visible && f.cursor().x == 9,
+        "…drawn slid so the caret is in view: the tail of the text, the cursor after it [" + std::string(f.glyph(0, 0)) + std::string(f.glyph(8, 0)) + "]");
+  std::size_t b = 0, e = 0;
+  rolltui_input_hit(in.get(), 0, 0, &b, &e);
+  check(b == 7, "a press maps through the slide: the first column is the eighth grapheme [" + std::to_string(b) + "]");
+  rolltui_input_move_line_start(in.get(), 0);
+  FrameC g(10, 1);
+  rolltui_input_draw(in.get(), g, draw_scratch(), th.styles, &kRoles, true);
+  check(g.glyph(0, 0) == "a" && g.glyph(9, 0) == "j" && g.cursor().x == 0, "…and the caret at the start brings the head back into view");
+  rolltui_input_hit(in.get(), 3, 0, &b, &e);
+  check(b == 3, "…where a press maps straight");
+}
+
 void test_frame() {
   ThemeFixture th;
   builtin_theme_c("default-dark", th);
@@ -792,7 +822,7 @@ void test_frame() {
         "a one-row window after a full row shows the caret's (empty) row — the host grows the window instead");
 }
 
-// undo/redo. The grouping rule, stated in rolltui_input.h, as a table driven
+// undo/redo. The grouping rule, stated in rolltui_widget_input.h, as a table driven
 // through the widget: each row performs a sequence of edits on a fresh input, then walks
 // undo() to the bottom recording the text after every step. The sequence of texts is a
 // direct read of where the widget drew a group boundary.
@@ -1035,6 +1065,7 @@ int main() {
   test_scroll_keeps_the_caret_visible();
   test_mouse();
   test_frame();
+  test_one_row();
   test_undo_redo_grouping_rule();
   test_undo_redo_restores_caret_and_selection_exactly();
   test_undo_redo_new_edit_drops_the_redo_branch();

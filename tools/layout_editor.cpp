@@ -5,7 +5,7 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_layout.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_style.h" /* INTERNAL: the role VOCABULARY, for the background choice */
 #include "layout_editor.hpp"
 
@@ -395,6 +395,7 @@ void LayoutEditor::rebuild_menu() {
                                        od.present ? dim_to_string(od.d).c_str() : ""));
     fields.push_back(MenuItem::toggle((base + ".clamp").c_str(), "clamp to the screen", p.placement.clamp != 0));
     fields.push_back(MenuItem::toggle((base + ".modal").c_str(), "modal", p.modal != 0));
+    fields.push_back(MenuItem::toggle((base + ".dismiss").c_str(), "a click outside closes it", p.dismiss != 0));
     fields.push_back(MenuItem::action((base + ".remove").c_str(), "remove this popup"));
     popups.push_back(submenu_of(base.c_str(), id.c_str(), std::move(fields)));
   }
@@ -915,6 +916,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
         if (view_of(p.id) == pid) {
           begin_preview();
           if (field == "clamp") p.placement.clamp = checked ? 1 : 0;
+          else if (field == "dismiss") p.dismiss = checked ? 1 : 0;
           else p.modal = checked;
           return commit_current();
         }
@@ -1039,6 +1041,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       set_str(l.id, value);
       l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(8), Anchor::Center, true, {}, {}, {}, {}};
       l.modal = true;
+      l.dismiss = 0;  // stated, never defaulted: the file always carries it
       Node n = Node::window(("text:" + value).c_str());
       set_str(n.id, value);
       n.border = Border::Rounded;

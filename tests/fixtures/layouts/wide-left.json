@@ -15,7 +15,7 @@
     { "id": "input", "content": "input:prompt", "size": 3, "border": "double", "focusable": true }
   ] },
   "popups": [
-    { "id": "help", "x": "100%", "y": 0, "w": 36, "h": "50%", "anchor": "top-right", "modal": false,
+    { "id": "help", "dismiss": true, "x": "100%", "y": 0, "w": 36, "h": "50%", "anchor": "top-right", "modal": false,
       "root": { "content": "help", "border": "heavy", "title": "keys", "focusable": true,
                 "background": "panel_background" } }
   ]

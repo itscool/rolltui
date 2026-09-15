@@ -84,9 +84,9 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_screen.h"
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_presets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_widgets.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
@@ -188,7 +188,8 @@ struct RouteC {
   bool operator==(const RouteC& o) const { return kind == o.kind && window == o.window; }
   struct Kind {
     static constexpr unsigned char Deliver = ROLLTUI_ROUTE_DELIVER, ClosedPopup = ROLLTUI_ROUTE_CLOSED_POPUP,
-                                    FocusMoved = ROLLTUI_ROUTE_FOCUS_MOVED, Dropped = ROLLTUI_ROUTE_DROPPED;
+                                    FocusMoved = ROLLTUI_ROUTE_FOCUS_MOVED, Dropped = ROLLTUI_ROUTE_DROPPED,
+                                    ClosedLevel = ROLLTUI_ROUTE_CLOSED_LEVEL;
   };
 };
 
@@ -791,7 +792,7 @@ void mine_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
 constexpr RolltuiWidgetPlugin kMinePlugin = {
     /*destroy=*/mine_destroy, /*layout=*/mine_layout, /*draw=*/mine_draw,
     /*problem=*/nullptr,      /*note_at=*/nullptr,    /*desired_outer=*/nullptr,
-    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
+    /*handle=*/nullptr,       /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 RolltuiWidget mine_factory(void* ctx, RolltuiWindows*, const char*, std::size_t) {
   return RolltuiWidget{&kMinePlugin, new MineCtx(*static_cast<const MineCtx*>(ctx))};
@@ -844,7 +845,7 @@ int canvas_handle(void* ctx, const RolltuiEvent* e) {
 constexpr RolltuiWidgetPlugin kCanvasPlugin = {
     /*destroy=*/canvas_destroy,   /*layout=*/canvas_layout, /*draw=*/canvas_draw,
     /*problem=*/canvas_problem,   /*note_at=*/nullptr,      /*desired_outer=*/canvas_desired_outer,
-    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */
+    /*handle=*/canvas_handle,     /*scroll_extent=*/nullptr, /*scroll_to=*/nullptr, nullptr /* title: the layout's */, nullptr /* back: no levels */
 };
 struct CanvasFactoryCtx {
   RolltuiWindows* windows;
@@ -1009,7 +1010,7 @@ int main() {
   {
     LayoutReport rep;
     auto l = load_layout_c(R"({"name": "x", "colour": 1, "root": {"content": "a", "size": "50", "shade": true, "border": "thick"},
-                             "popups": [{"id": "p", "x": "50%", "w": 3.5, "anchor": "middle", "root": {"content": "b"}}]})", rep);
+                             "popups": [{"id": "p", "dismiss": false, "x": "50%", "w": 3.5, "anchor": "middle", "root": {"content": "b"}}]})", rep);
     check(l.has_value(), "a layout with problems still loads");
     auto has = [&](StrSpan v, std::string_view s) {
       for (const RolltuiStr& x : v) if (view_of(x).find(s) != std::string::npos) return true;
@@ -1021,6 +1022,20 @@ int main() {
     check(has(StrSpan{rep.bad_values, rep.bad_values_n}, "popups[0].w: a number is whole cells"), "a fractional cell count is a bad value");
     check(has(StrSpan{rep.bad_values, rep.bad_values_n}, "popups[0].anchor"), "a bad anchor is a bad value");
     check(l && l->base.root.content == "a" && l->base.root.border == Border::None, "bad fields keep their defaults");
+  }
+  {
+    // WHETHER A CLICK OUTSIDE CLOSES A POPUP IS NEVER A DEFAULT: a popup that says nothing is a
+    // named problem, loaded as if it said false; one that says either is clean.
+    LayoutReport rep;
+    auto l = load_layout_c(R"({"root": {"content": "a"}, "popups": [{"id": "p", "root": {"content": "b"}}]})", rep);
+    bool named = false;
+    for (const RolltuiStr& x : StrSpan{rep.bad_values, rep.bad_values_n}) if (view_of(x).find("popups[0]: says nothing about \"dismiss\"") != std::string::npos) named = true;
+    check(l && rep.bad_values_n == 1 && named,
+          "a popup that does not say whether a click outside closes it is a named problem [" + std::to_string(rep.bad_values_n) + "]");
+    check(l && l->popups.size() == 1 && l->popups[0].dismiss == 0, "…and loads as if it said false");
+    LayoutReport rep2;
+    auto l2 = load_layout_c(R"({"root": {"content": "a"}, "popups": [{"id": "p", "dismiss": false, "root": {"content": "b"}}]})", rep2);
+    check(l2 && rep2.bad_values_n == 0 && rep2.unknown_keys_n == 0, "…while one that says false is clean: explicit, both ways");
   }
   {
     LayoutReport rep;
@@ -1229,6 +1244,7 @@ int main() {
 
     // A modal popup.
     RolltuiLayer help_popup = (*builtin_layout_c("default")->popup("help", 4)).clone();
+    help_popup.dismiss = 0;  // this block is about a MODAL's confinement; dismissing is the block after it
     rolltui_window_stack_push(s.s, &help_popup);
     check(rolltui_window_stack_depth(s.s) == 2 && has_popup_c(s.s, "help") && rolltui_window_stack_focused(s.s)->id == "help" && rolltui_window_stack_focus_layer(s.s) == 1, "a modal focusable popup takes focus");
     check(route_c(s.s, key_ev(ROLLTUI_KEY_TAB), scr) == RouteC{RouteC::Kind::Deliver, "help"}, "Tab with one focusable window in the layer is delivered");
@@ -1239,6 +1255,51 @@ int main() {
     check(route_c(s.s, key_ev(ROLLTUI_KEY_ESCAPE), scr) == RouteC{RouteC::Kind::ClosedPopup, "help"} && rolltui_window_stack_depth(s.s) == 1, "Escape closes the topmost popup");
     check(rolltui_window_stack_focused(s.s)->id == "input", "focus returns to the base layer's window");
     check(!rolltui_window_stack_pop(s.s), "pop() on the base alone is false");
+
+    // A popup that DISMISSES: a press outside it closes it, as Escape would, and the press is
+    // spent. A press inside is delivered; a drag outside is not a press; and the same popup
+    // without the flag is the modal above — dropped, still open.
+    {
+      RolltuiLayer d = (*builtin_layout_c("default")->popup("help", 4)).clone();
+      d.dismiss = 1;
+      rolltui_window_stack_push(s.s, &d);
+      m.x = 20; m.y = 8;
+      check(route_c(s.s, mouse_ev(m), scr) == RouteC{RouteC::Kind::Deliver, "help"} && rolltui_window_stack_depth(s.s) == 2,
+            "a press inside a dismissable popup is delivered to it");
+      RolltuiMouseEvent out = m;
+      out.x = 5; out.y = 22;
+      RolltuiMouseEvent up = m;
+      up.kind = RolltuiMouseEvent::Kind::Release;
+      route_c(s.s, mouse_ev(up), scr);  // the press captured the popup; its release ends that
+      RolltuiMouseEvent drag_out = out;
+      drag_out.kind = RolltuiMouseEvent::Kind::Drag;
+      check(route_c(s.s, mouse_ev(drag_out), scr) == RouteC{RouteC::Kind::Dropped, ""} && rolltui_window_stack_depth(s.s) == 2,
+            "a drag outside it is not a press: dropped, and the popup stays");
+      check(route_c(s.s, mouse_ev(out), scr) == RouteC{RouteC::Kind::ClosedPopup, "help"} && rolltui_window_stack_depth(s.s) == 1,
+            "a press outside a dismissable popup closes it, answered as the close key is");
+      check(rolltui_window_stack_focused(s.s)->id == "input", "…and focus returns to the base");
+      check(builtin_layout_c("default")->popup("approval", 8)->dismiss == 0, "the approval popup does not dismiss: a question must be answered");
+    }
+    // ONE LEVEL AT A TIME: with a level function attached, the close key and a press outside a
+    // dismissing popup ask the focused window first; while it answers 1 the popup stays and the
+    // verdict is CLOSED_LEVEL; when it answers 0 the popup closes as before.
+    {
+      struct Levels { int open; std::string asked; };
+      Levels lv{2, ""};
+      auto fn = [](void* ctx, const char* w, std::size_t n) -> int { Levels& l = *static_cast<Levels*>(ctx); l.asked.assign(w, n); if (l.open > 0) { --l.open; return 1; } return 0; };
+      rolltui_window_stack_set_level_fn(s.s, fn, &lv);
+      RolltuiLayer d = (*builtin_layout_c("default")->popup("help", 4)).clone();
+      d.dismiss = 1;
+      rolltui_window_stack_push(s.s, &d);
+      check(route_c(s.s, key_ev(ROLLTUI_KEY_ESCAPE), scr) == RouteC{RouteC::Kind::ClosedLevel, "help"} && rolltui_window_stack_depth(s.s) == 2 && lv.asked == "help",
+            "Escape with an inner level open closes that level: the popup stays, the focused window is named");
+      m.x = 5; m.y = 22;
+      check(route_c(s.s, mouse_ev(m), scr) == RouteC{RouteC::Kind::ClosedLevel, "help"} && rolltui_window_stack_depth(s.s) == 2,
+            "…a press outside a dismissing popup likewise closes one level, wherever outside it lands");
+      check(route_c(s.s, key_ev(ROLLTUI_KEY_ESCAPE), scr) == RouteC{RouteC::Kind::ClosedPopup, "help"} && rolltui_window_stack_depth(s.s) == 1,
+            "…and with no level left, the close closes the popup");
+      rolltui_window_stack_set_level_fn(s.s, nullptr, nullptr);
+    }
 
     // the same push, BY ID out of the layout — the operation two hosts had each
     // hand-written and a pure-C consumer could not write at all (the copy above is a deep one

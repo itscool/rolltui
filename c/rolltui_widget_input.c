@@ -1,6 +1,6 @@
-/* rolltui/c/rolltui_input.c — the C side of the input widget. See rolltui_input.h; the
+/* rolltui/c/rolltui_widget_input.c — the C side of the input widget. See rolltui_widget_input.h; the
  * rules are rolltui/Input.hpp's. */
-#include "rolltui/c/rolltui_input.h"
+#include "rolltui/c/rolltui_widget_input.h"
 #include "rolltui/c/rolltui_str.h"
 
 #include <stdlib.h>
@@ -67,6 +67,7 @@ struct RolltuiInput {
 
   RolltuiRect area;
   int width, top, dirty;
+  int scroll_x; /* ONE-ROW mode: cells slid off the left so the caret is in view */
 
   struct {
     int active;
@@ -670,7 +671,9 @@ static void row_end_push(RolltuiInput* in, size_t v) {
  * and takes a flag saying whether to keep what it computed. */
 static int build_flow(RolltuiInput* in, int width, int keep) {
   const int indent = in->prompt_w;
-  const int cap = imax(width - 2 * in->opt.inset, indent + 1);
+  /* ONE ROW (`single_line`): nothing wraps — the flow is one row of any length and the draw
+   * slides it under the caret, an address bar's rule rather than a prompt's. */
+  const int cap = in->opt.single_line ? 0x3fffffff : imax(width - 2 * in->opt.inset, indent + 1);
   const int tab = imax(in->opt.tab_width, 1);
   int row = 0, col = indent;
   size_t i;
@@ -847,7 +850,7 @@ int rolltui_input_hit(const RolltuiInput* in, int x, int y, size_t* begin, size_
   if (in->area.w <= 0 && in->area.h <= 0) return 0;
   ensure(m);
   row = iclamp(in->top + (y - in->area.y), 0, in->rows - 1);
-  col = x - in->area.x;
+  col = x - in->area.x + (in->opt.single_line ? in->scroll_x : 0);
   for (i = 0; i < in->g_len; ++i) {
     const FlowCell* c = &in->cells[i];
     int newline;
@@ -1136,6 +1139,20 @@ unsigned char rolltui_input_handle(RolltuiInput* in, const RolltuiEvent* e, cons
 
 /* ---- drawing ----------------------------------------------------------------------------- */
 
+/* ONE-ROW mode: how many cells the row is slid left so the caret is in the area — kept on the
+ * object, so a press after the draw maps back through the same shift. 0 when rows wrap. */
+static int view_shift(RolltuiInput* in) {
+  int row, col;
+  const int w = in->area.w;
+  if (!in->opt.single_line) return 0;
+  if (w <= in->prompt_w) { in->scroll_x = 0; return 0; }
+  rolltui_input_cell_of(in, in->caret, &row, &col);
+  if (col - in->scroll_x >= w) in->scroll_x = col - w + 1;
+  if (col - in->scroll_x < in->prompt_w) in->scroll_x = col - in->prompt_w;
+  if (in->scroll_x < 0) in->scroll_x = 0;
+  return in->scroll_x;
+}
+
 void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScratch* draw,
                         const RolltuiStyle* styles, const RolltuiInputRoles* roles, int focused) {
   RolltuiInput* m = (RolltuiInput*)in;
@@ -1150,7 +1167,9 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
   const size_t se = in->sel.anchor < in->sel.head ? in->sel.head : in->sel.anchor;
   const int has_sel = in->sel.active && sb != se;
   size_t i;
+  int shift;
   ensure(m);
+  shift = view_shift(m);
 #define VISIBLE(r) ((r) >= in->top && (r) < in->top + h)
   if (VISIBLE(0))
     rolltui_frame_put_text(f, draw, a.x, a.y, in->opt.prompt.p, in->opt.prompt.n, prompt, imax(a.w, 0), aw, 0);
@@ -1166,7 +1185,8 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
     char c0;
     if (!VISIBLE(c->row)) continue;
     y = a.y + (c->row - in->top);
-    x = a.x + c->col;
+    x = a.x + c->col - shift;
+    if (c->col - shift < in->prompt_w) continue; /* slid under the prompt */
     off = in->g[i].offset;
     in_sel = has_sel && off >= sb && off < se;
     st = in_sel ? sel : txt;
@@ -1176,16 +1196,16 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
       continue;
     }
     if (c0 == '\t') {
-      for (k = 0; k < c->width && c->col + k < a.w; ++k) rolltui_frame_put(f, x + k, y, " ", 1, 1, st, 0);
+      for (k = 0; k < c->width && c->col - shift + k < a.w; ++k) rolltui_frame_put(f, x + k, y, " ", 1, 1, st, 0);
       continue;
     }
-    if (c->width <= 0 || c->col + c->width > a.w) continue; /* nothing to draw, or the area's edge */
+    if (c->width <= 0 || c->col - shift + c->width > a.w) continue; /* nothing to draw, or the area's edge */
     rolltui_frame_put(f, x, y, in->text.p + off, in->g[i].length, c->width, st, 0);
   }
   if (focused) {
     int row, col;
     rolltui_input_cell_of(in, in->caret, &row, &col);
-    if (VISIBLE(row)) rolltui_frame_set_cursor(f, a.x + imin(col, imax(a.w - 1, 0)), a.y + (row - in->top), 1);
+    if (VISIBLE(row)) rolltui_frame_set_cursor(f, a.x + imin(col - shift, imax(a.w - 1, 0)), a.y + (row - in->top), 1);
   }
 #undef VISIBLE
 }

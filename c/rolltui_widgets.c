@@ -10,12 +10,12 @@
 #include "rolltui/c/rolltui_layout.h"
 #include "rolltui/c/rolltui_map.h"
 #include "rolltui/c/rolltui_widget_kinds.h"
-#include "rolltui/c/rolltui_input.h"
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_input.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_terminal.h"
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "testkit/testctl.h"
 
 static int iclamp(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
@@ -474,7 +474,7 @@ RolltuiInput* rolltui_windows_input(RolltuiWindows* w, const char* source, size_
 RolltuiTranscript* rolltui_windows_transcript(RolltuiWindows* w, const char* source, size_t len) {
   RolltuiTranscript* t = (RolltuiTranscript*)rolltui_map_get(&w->transcripts, source, len);
   if (t) return t;
-  t = rolltui_transcript_new(); /* its roles are its own defaults now (rolltui_transcript.c) */
+  t = rolltui_transcript_new(); /* its roles are its own defaults now (rolltui_widget_transcript.c) */
   /* The live highlighter, applied at CREATION so a transcript first asked for after
    * `set_highlight` is not silently the one that misses it. */
   if (w->highlight_fn) rolltui_transcript_set_highlight(t, w->highlight_fn, w->highlight_ctx);
@@ -500,7 +500,7 @@ void rolltui_windows_set_highlight(RolltuiWindows* w, RolltuiMdHighlightFn fn, v
 static RolltuiMenu* menu_for_source(RolltuiWindows* w, const char* source, size_t len) {
   RolltuiMenu* m = (RolltuiMenu*)rolltui_map_get(&w->menus, source, len);
   if (m) return m;
-  m = rolltui_menu_new(); /* single-line editor, no prompt: the menu's own (rolltui_menu.c) */
+  m = rolltui_menu_new(); /* single-line editor, no prompt: the menu's own (rolltui_widget_menu.c) */
   rolltui_map_put(&w->menus, source, len, m);
   return m;
 }
@@ -578,6 +578,21 @@ RolltuiInput* rolltui_windows_input_at(const RolltuiWindows* w, const char* wind
 RolltuiTranscript* rolltui_windows_transcript_at(const RolltuiWindows* w, const char* window, size_t len) {
   return (RolltuiTranscript*)typed_at(w, &w->transcripts, "transcript", 10, window, len);
 }
+int rolltui_windows_window_rect(const RolltuiWindows* w, const char* window, size_t len, RolltuiRect* out) {
+  size_t i;
+  for (i = 0; i < w->node_n; ++i) {
+    const RolltuiResolvedNode* rn = &w->nodes[i];
+    if (rn->node->kind == 0 && rolltui_str_eq(&rn->node->id, window, len)) { *out = rn->outer; return 1; }
+  }
+  return 0;
+}
+
+int rolltui_windows_back(void* windows, const char* window, size_t len) {
+  RolltuiWindows* w = (RolltuiWindows*)windows;
+  RolltuiWidget* wd = rolltui_windows_at(w, window, len);
+  return wd && wd->vt && wd->vt->back ? wd->vt->back(wd->ctx) : 0;
+}
+
 RolltuiMenu* rolltui_windows_menu_at(const RolltuiWindows* w, const char* window, size_t len) {
   return (RolltuiMenu*)typed_at(w, &w->menus, "menu", 4, window, len);
 }

@@ -835,7 +835,7 @@ void rolltui_widget_kind_clear(RolltuiContext* c) {
 }
 
 /* ---- small local helpers shared by content-parsing and the loader below ---------------------
- * `K`/`streq` mirror `rolltui_menu.c`'s own (its own copy, not shared: a static helper
+ * `K`/`streq` mirror `rolltui_widget_menu.c`'s own (its own copy, not shared: a static helper
  * has no external linkage, and each is a two-line wrapper, not a strategy worth a header). */
 #define K(s) (s), strlen(s)
 
@@ -1297,6 +1297,10 @@ const char* rolltui_layer_id(const RolltuiLayer* layer, size_t* len) {
   if (len) *len = layer ? layer->id.n : 0;
   return layer && layer->id.p ? layer->id.p : "";
 }
+const char* rolltui_layer_focus(const RolltuiLayer* layer, size_t* len) {
+  if (!layer) { if (len) *len = 0; return ""; }
+  return rolltui_str_get(&layer->focus, len);
+}
 
 const char* rolltui_layout_node_id(const RolltuiLayoutNode* n, size_t* len) {
   if (len) *len = n ? n->id.n : 0;
@@ -1595,7 +1599,7 @@ static void node_from_json(const RolltuiJsonValue* v, const char* where, size_t 
  * Direct port of `layer_from_json`. */
 static void layer_from_json(const RolltuiJsonValue* v, const char* where, size_t where_len, int is_popup,
                             const RolltuiLayoutHooks* hooks, RolltuiLayoutReport* report, RolltuiLayer* l) {
-  int have_root = 0;
+  int have_root = 0, have_dismiss = 0;
   size_t i, n;
   SeenIds ids = {0};
 
@@ -1624,6 +1628,9 @@ static void layer_from_json(const RolltuiJsonValue* v, const char* where, size_t
       else set_str_field(&l->id, x);
     } else if (is_popup && streq(k, klen, "modal")) {
       bool_from_json(x, at.p, at.n, report, &l->modal);
+    } else if (is_popup && streq(k, klen, "dismiss")) {
+      bool_from_json(x, at.p, at.n, report, &l->dismiss);
+      have_dismiss = 1;
     } else if (is_popup && streq(k, klen, "clamp")) {
       bool_from_json(x, at.p, at.n, report, &l->placement.clamp);
     } else if (is_popup && streq(k, klen, "anchor")) {
@@ -1661,6 +1668,11 @@ static void layer_from_json(const RolltuiJsonValue* v, const char* where, size_t
     rolltui_str_free(&at);
   }
   if (!have_root) bad_at(report, where, where_len, ": no \"root\" node");
+  /* WHETHER A CLICK OUTSIDE CLOSES A POPUP IS NEVER A DEFAULT: a popup that asks a question
+   * must be answered and one that only shows something may be clicked away, and only the file
+   * knows which this one is. A popup that does not say is a named problem, loaded as if it
+   * said false. */
+  if (is_popup && !have_dismiss) bad_at(report, where, where_len, ": says nothing about \"dismiss\" — a popup states whether a click outside closes it: true | false");
   {
     RolltuiStr rwhere = {0};
     appn(&rwhere, where, where_len);
@@ -1973,6 +1985,7 @@ static RolltuiJsonValue* layer_to_json(const RolltuiLayer* l, int is_popup, cons
     if (l->placement.max_w.present) rolltui_json_set(o, K("max_w"), dim_to_json(l->placement.max_w.d));
     if (l->placement.max_h.present) rolltui_json_set(o, K("max_h"), dim_to_json(l->placement.max_h.d));
     if (l->modal) rolltui_json_set(o, K("modal"), rolltui_json_bool(1));
+    rolltui_json_set(o, K("dismiss"), rolltui_json_bool(l->dismiss ? 1 : 0)); /* always: it is never a default */
   }
   if (l->focus.n) rolltui_json_set(o, K("focus"), rolltui_json_string(l->focus.p, l->focus.n));
   rolltui_json_set(o, K("root"), node_to_json(&l->root, hooks));
@@ -2028,7 +2041,21 @@ struct RolltuiWindowStack {
   RolltuiLayer* layers; /* OWNED; always at least one (the base) */
   size_t n, cap;
   RolltuiStr captured;
+  RolltuiStackLevelFn level_fn; /* BORROWED with its ctx: the window table's `back` */
+  void* level_ctx;
 };
+
+void rolltui_window_stack_set_level_fn(RolltuiWindowStack* s, RolltuiStackLevelFn fn, void* ctx) {
+  s->level_fn = fn;
+  s->level_ctx = ctx;
+}
+/* ONE LEVEL AT A TIME: the focused widget closes an inner level of its own if it has one. */
+static int close_a_level(RolltuiWindowStack* s, RolltuiStr* window) {
+  const RolltuiLayoutNode* f = s->level_fn ? rolltui_window_stack_focused(s) : NULL;
+  if (!f || !s->level_fn(s->level_ctx, f->id.p, f->id.n)) return 0;
+  rolltui_str_set(window, f->id.p, f->id.n);
+  return 1;
+}
 
 static const RolltuiLayoutNode* find_in(const RolltuiLayoutNode* n, const char* id, size_t len) {
   size_t i;
@@ -2093,6 +2120,8 @@ RolltuiWindowStack* rolltui_window_stack_new(void) {
   s->layers = (RolltuiLayer*)rolltui_grow_zeroed(s->layers, &s->cap, 1, sizeof *s->layers);
   rolltui_layer_init(&s->layers[0]);
   s->n = 1;
+  s->level_fn = NULL;
+  s->level_ctx = NULL;
   return s;
 }
 
@@ -2340,6 +2369,7 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       const RolltuiResolvedNode* rn = &c.v[k];
       if (rn->node->kind != ROLLTUI_NODE_WINDOW || !rect_contains(rect_intersect(rn->outer, screen), m->x, m->y))
         continue;
+      if (rn->layer != top && m->kind == 0 && s->layers[top].dismiss) break; /* outside: closes, below */
       if (s->layers[top].modal && rn->layer != top) break; /* dropped under a modal */
       if (m->kind == 0 /* Press */) {
         if (rn->node->focusable && rn->layer == rolltui_window_stack_focus_layer(s))
@@ -2351,6 +2381,15 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
       break;
     }
     rolltui_mem_free(c.v);
+    /* A PRESS OUTSIDE A POPUP THAT DISMISSES closes it, exactly as the close key does: the
+     * popup's id is the answer and the press is spent — it does not also land on what was
+     * under it, so closing a menu never chooses a file. A drag or a release is not a press. */
+    if (verdict == ROLLTUI_ROUTE_DROPPED && m->kind == 0 && top > 0 && s->layers[top].dismiss) {
+      if (close_a_level(s, window)) return ROLLTUI_ROUTE_CLOSED_LEVEL;
+      rolltui_str_set(window, s->layers[top].id.p, s->layers[top].id.n);
+      rolltui_window_stack_pop(s);
+      return ROLLTUI_ROUTE_CLOSED_POPUP;
+    }
     return verdict;
   }
   if (e->kind == ROLLTUI_EVENT_KEY) {
@@ -2358,6 +2397,7 @@ unsigned char rolltui_window_stack_route(RolltuiWindowStack* s, const RolltuiEve
     const char* action = rolltui_bindings_action_for(bindings, &e->key, "stack", 5, &alen);
     if (action) {
       if (alen == strlen(actions->close_popup) && memcmp(action, actions->close_popup, alen) == 0 && s->n > 1) {
+        if (close_a_level(s, window)) return ROLLTUI_ROUTE_CLOSED_LEVEL;
         rolltui_str_set(window, s->layers[s->n - 1].id.p, s->layers[s->n - 1].id.n);
         rolltui_window_stack_pop(s);
         return ROLLTUI_ROUTE_CLOSED_POPUP;

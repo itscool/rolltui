@@ -1,10 +1,10 @@
-#ifndef ROLLTUI_C_TRANSCRIPT_H
-#define ROLLTUI_C_TRANSCRIPT_H
+#ifndef ROLLTUI_C_WIDGET_TRANSCRIPT_H
+#define ROLLTUI_C_WIDGET_TRANSCRIPT_H
 /* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_transcript.h — THE TRANSCRIPT WIDGET.
+ * rolltui/c/rolltui_widget_transcript.h — THE TRANSCRIPT WIDGET.
  *
  * A document laid out into styled lines, scrolled by an ANCHOR rather than a line number,
  * selected in logical coordinates, searched, folded, and drawn. Every rule — why the anchor
@@ -37,7 +37,7 @@
 
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_bindings.h"
-#include "rolltui/c/rolltui_input.h" /* RolltuiCopyFn: one clipboard seam, not two */
+#include "rolltui/c/rolltui_widget_input.h" /* RolltuiCopyFn: one clipboard seam, not two */
 #include "rolltui/c/rolltui_keys.h"
 #include "rolltui/c/rolltui_markdown.h"
 #include "rolltui/c/rolltui_md_lines.h"
@@ -135,4 +135,4 @@ size_t rolltui_transcript_current_match_number(const RolltuiTranscript* t);
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_TRANSCRIPT_H */
+#endif /* ROLLTUI_C_WIDGET_TRANSCRIPT_H */

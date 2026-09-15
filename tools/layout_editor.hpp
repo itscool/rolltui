@@ -44,7 +44,8 @@
 //   focusable                      toggle
 //   delete                         removes the node; a split left with one child collapses
 //   popups                         a level per popup: x, y, w, h (dims), anchor (choice),
-//                                 modal (toggle), remove; and "add a popup" (input: id)
+//                                 modal (toggle), a click outside closes it (toggle),
+//                                 remove; and "add a popup" (input: id)
 //   minimum width / height        input, Int — the smallest screen this SCREEN is designed
 //                                 for (0 = it states none)
 //   focused window                choice over the base layer's focusable windows, plus
@@ -114,7 +115,7 @@
  * rolltui's own authoring tool for rolltui's own files, and a suite that tests implementation
  * opts in by listing itself in ROLLTUI_INTERNAL_OPT_IN (rolltui/CMakeLists.txt). */
 #include "rolltui/c/rolltui_layout_tree.h"  /* INTERNAL: this editor opts in — it walks and MUTATES a tree */
-#include "rolltui/c/rolltui_menu.h"
+#include "rolltui/c/rolltui_widget_menu.h"
 #include "tool_str.hpp"
 #include <cstddef>
 #include <optional>

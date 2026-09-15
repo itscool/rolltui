@@ -288,13 +288,14 @@ int main() {
         {"c/rolltui_diff.h", 0},
         {"c/rolltui_json.h", 0},
         {"c/rolltui_widgets.h", 0},
-        {"c/rolltui_picker.h", 0}, /* an opaque handle: every pointer is a parameter, none is stored */
+        {"c/rolltui_widget_picker.h", 0}, /* an opaque handle: every pointer is a parameter, none is stored */
+        {"c/rolltui_hints.h", 0},  /* likewise */
         {"c/rolltui_str.h", 0},
         {"c/rolltui_layout.h", 0},
-        {"c/rolltui_input.h", 0},
+        {"c/rolltui_widget_input.h", 0},
         {"c/rolltui_theme.h", 0},
         {"c/rolltui_undo.h", 0},
-        {"c/rolltui_menu.h", 0},
+        {"c/rolltui_widget_menu.h", 0},
         {"c/rolltui_theme_analysis.h", 0},
         {"c/rolltui_presets.h", 0},
         /* `RolltuiDirList::v` — the entries array, OWNED by the list and freed by `_release`,
@@ -310,7 +311,7 @@ int main() {
         {"c/rolltui_markdown.h", 0},
         {"c/rolltui_widget_kinds.h", 0},
         {"c/rolltui_theme_gen.h", 0},
-        {"c/rolltui_transcript.h", 0},
+        {"c/rolltui_widget_transcript.h", 0},
         {"c/rolltui_effects.h", 0},
         {"c/rolltui_bindings.h", 0},
         {"c/rolltui_alloc.h", 0},
@@ -319,7 +320,7 @@ int main() {
         {"c/rolltui_document.h", 0},
         {"c/rolltui_terminal.h", 0},
         {"c/rolltui_unicode.h", 0},
-        {"c/rolltui_menu_tree.h", 0},
+        {"c/rolltui_widget_menu_tree.h", 0},
         {"c/rolltui_lifetime.h", 0},
     };
     // A continuation line of a WRAPPED declaration (`const char* name, size_t len);`) has no

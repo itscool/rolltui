@@ -6,8 +6,8 @@
 //
 // converted off the C++ shim (`rolltui/Menu.hpp`/`Menu.cpp`, and the
 // `rolltui/Bindings.hpp`/`Bindings.cpp` it in turn depended on for `default_bindings()`),
-// both being deleted — this file now calls `rolltui/c/rolltui_menu.h`,
-// `rolltui/c/rolltui_menu_tree.h` and `rolltui/c/rolltui_bindings.h` directly, reached
+// both being deleted — this file now calls `rolltui/c/rolltui_widget_menu.h`,
+// `rolltui/c/rolltui_widget_menu_tree.h` and `rolltui/c/rolltui_bindings.h` directly, reached
 // only through the umbrella `rolltui/rolltui.h`. `Frame`/`Theme`/`Rect`/`Role`/`Style`
 // (Screen.hpp/Theme.hpp) are NOT part of that layer and are unchanged — they are either
 // one-definition aliases of the C structs already, or permanent C++-only vocabulary with
@@ -45,7 +45,7 @@
 #include "rolltui/c/rolltui_theme.h"
 #include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
-#include "rolltui/c/rolltui_menu.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_widget_menu.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -62,7 +62,7 @@ namespace {
 // reads the way a C++ caller writes it. ----
 using MenuItem = RolltuiMenuItem;
 using InputSpec = RolltuiInputSpec;
-// `rolltui::InputType` is a genuine permanent C++ enum (rolltui/c/rolltui_menu_tree.h,
+// `rolltui::InputType` is a genuine permanent C++ enum (rolltui/c/rolltui_widget_menu_tree.h,
 // namespace rolltui — not a shim type), so a targeted using-declaration replaces the
 // `using namespace rolltui;` this file no longer has, precisely for the one name it names.
 using rolltui::InputType;
@@ -81,6 +81,7 @@ enum class Key : unsigned char {
   Home = ROLLTUI_KEY_HOME,
   Left = ROLLTUI_KEY_LEFT,
   PageUp = ROLLTUI_KEY_PAGEUP,
+  PageDown = ROLLTUI_KEY_PAGEDOWN,
   Right = ROLLTUI_KEY_RIGHT,
   Up = ROLLTUI_KEY_UP,
 };
@@ -685,6 +686,23 @@ int main() {
     rolltui_menu_handle(m, &esc, b, A, &ev);  // the box stayed open on the choice: close it, then Right reopens it
     rolltui_menu_handle(m, &right, b, A, &ev);
     check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_dropdown_selected(m) == 1, "Right opens it too, on the answer just chosen");
+    // ONE LEVEL AT A TIME: `back` closes the dropdown; then it ascends a level; at the root
+    // with nothing open it answers 0, and the popup is the stack's to close.
+    check(rolltui_menu_back(m) == 1 && rolltui_menu_dropdown_open(m) == 0 && rolltui_menu_path(m, &path) == 0, "back with a dropdown open closes the dropdown only");
+    check(rolltui_menu_back(m) == 0 && rolltui_menu_path(m, &path) == 0, "…and at the root with nothing open it has no level to close");
+    // A PAGE in a dropdown: Page Down lands a box-height further along, on an option that can be
+    // chosen; Page Up comes back.
+    {
+      RolltuiEvent home = key(Key::Home), pgdn = key(Key::PageDown), pgup = key(Key::PageUp);
+      rolltui_menu_handle(m, &home, b, A, &ev);
+      rolltui_menu_handle(m, &enter, b, A, &ev);
+      check(rolltui_menu_dropdown_open(m) != 0, "the control: Home then Enter opens the Theme dropdown");
+      rolltui_menu_handle(m, &pgdn, b, A, &ev);
+      check(rolltui_menu_dropdown_open(m) != 0 && rolltui_menu_dropdown_selected(m) == 2, "Page Down in a three-option dropdown lands on the last [" + std::to_string(rolltui_menu_dropdown_selected(m)) + "]");
+      rolltui_menu_handle(m, &pgup, b, A, &ev);
+      check(rolltui_menu_dropdown_selected(m) == 0, "…and Page Up on the first");
+    }
+    rolltui_menu_handle(m, &down, b, A, &ev);  // back onto the chosen answer, as the checks below expect
     rolltui_menu_handle(m, &esc, b, A, &ev);
     check(rolltui_menu_dropdown_open(m) == 0 && ev.kind == ROLLTUI_MENU_EVENT_NONE, "Escape closes it without choosing and without closing the menu");
     rolltui_menu_event_release(&ev);
@@ -834,7 +852,7 @@ int main() {
     check(m.breadcrumb() == "settings" && row(f, 0) != "settings", "the breadcrumb is not a row: at the root there is nothing to say twice");
     check(row(f, 0) == "Theme                default \xE2\x96\xB8", "a choice shows its value and the arrow [" + row(f, 0) + "]");
     check(row(f, 1) == "Layout                       \xE2\x96\xB8", "a submenu ends in the arrow [" + row(f, 1) + "]");
-    check(row(f, 2) == "\xE2\x98\x90 Wrap long lines", "a toggle shows its box — a ballot box, narrow everywhere [" + row(f, 2) + "]");
+    check(row(f, 2) == "[ ] Wrap long lines", "a toggle shows its box [" + row(f, 2) + "]");
     check(row(f, 3) == "Save as:", "an input shows label: value [" + row(f, 3) + "]");
     check(row(f, 4) == "Quit                    Ctrl-Q", "a shortcut is right-aligned [" + row(f, 4) + "]");
     check(f.at(0, 0).style == theme.style(Role::menu_selected) && f.at(0, 1).style == theme.style(Role::menu_item) &&
@@ -900,11 +918,55 @@ int main() {
     p.y = 8;  // below the last item
     ev = m.handle(p);
     check(ev.kind == MenuEvent::Kind::None, "a click on an empty row does nothing");
+    // THE WHEEL SCROLLS THE VIEW, NEVER THE CURSOR: a person turning the wheel is looking, and a
+    // cursor that followed it would land on a toggle they never meant.
     MouseEvent w;
     w.kind = MouseEvent::Kind::WheelDown;
     m.handle(key(Key::Home));
     m.handle(w);
-    check(m.selected() == 1, "the wheel moves the selection");
+    check(m.selected() == 0 && rolltui_menu_scroll_first(m.raw()) == 0, "the wheel over a menu that fits leaves the selection and the view alone");
+    m.layout({0, 0, 40, 3});  // three rows for five items: there is something to scroll
+    m.handle(w);
+    check(m.selected() == 0 && rolltui_menu_scroll_first(m.raw()) == 1, "…and over one that does not, it scrolls the view by a row and the cursor stays [" + std::to_string(rolltui_menu_scroll_first(m.raw())) + "]");
+    w.kind = MouseEvent::Kind::WheelUp;
+    m.handle(w);
+    check(rolltui_menu_scroll_first(m.raw()) == 0, "…back up");
+    // A LAYOUT PER FRAME at the same area keeps a scrolled view where it is; a new area brings
+    // the cursor back. And the bar is a handle: `scroll_to` lands, clamped, cursor unmoved.
+    w.kind = MouseEvent::Kind::WheelDown;
+    m.handle(w);
+    m.layout({0, 0, 40, 3});
+    check(rolltui_menu_scroll_first(m.raw()) == 1 && m.selected() == 0, "the same area laid out again leaves a wheeled view alone");
+    m.layout({0, 0, 40, 4});
+    check(rolltui_menu_scroll_first(m.raw()) == 0, "…a new area brings the cursor back into view");
+    m.layout({0, 0, 40, 3});
+    // THE MARKERS ARE BUTTONS: a press on the ▼ scrolls a page and is NOT the row under it — no
+    // item is activated — and a press on the ▲ brings the page back.
+    {
+      MouseEvent press;
+      press.kind = MouseEvent::Kind::Press;
+      press.button = 1;
+      press.x = 39;
+      press.y = 2;
+      MenuEvent me = m.handle(press);
+      check(me.kind == MenuEvent::Kind::None && rolltui_menu_scroll_first(m.raw()) == 3 && m.selected() == 0,
+            "a press on the ▼ marker scrolls a page, activates nothing, moves no cursor [" + std::to_string(rolltui_menu_scroll_first(m.raw())) + "]");
+      press.y = 0;
+      me = m.handle(press);
+      check(me.kind == MenuEvent::Kind::None && rolltui_menu_scroll_first(m.raw()) == 0, "…and a press on the ▲ brings it back");
+    }
+    rolltui_menu_scroll_to(m.raw(), 99);
+    check(rolltui_menu_scroll_first(m.raw()) == 3 && m.selected() == 0, "the bar dragged past the end lands on the last page (six rows, three showing), the cursor where it was [" + std::to_string(rolltui_menu_scroll_first(m.raw())) + "]");
+  }
+  // ---- one level at a time, in a menu with a submenu ----
+  {
+    Menu m(sample());
+    m.handle(key(Key::Down));  // onto Layout, a submenu
+    m.handle(key(Key::Enter));
+    const size_t* path = nullptr;
+    check(rolltui_menu_path(m.raw(), &path) == 1, "the control: Enter on a submenu descends");
+    check(rolltui_menu_back(m.raw()) == 1 && rolltui_menu_path(m.raw(), &path) == 0, "…and back ascends one level");
+    check(rolltui_menu_back(m.raw()) == 0, "…and at the root it has none to close: the popup is the stack's");
   }
   // ---- palette mode ----
   {

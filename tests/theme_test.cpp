@@ -750,7 +750,7 @@ int main() {
       //   - `markdown_test.cpp` DEFINES one and expands `ROLLTUI_ROLE_LIST` inside it. That is
       //     exactly the shape the old `Style.hpp` assertion demanded — flagged by the first
       //     draft, which looked only for the words "enum class Role".
-      //   - `c/rolltui_input.h` FORWARD-DECLARES one (`enum class Role : unsigned char;`) so a
+      //   - `c/rolltui_widget_input.h` FORWARD-DECLARES one (`enum class Role : unsigned char;`) so a
       //     C++ field can be a typed byte. An opaque enum has no enumerators to drift.
       // So: find a definition (a `{` before the `;`) and require the list inside it.
       for (std::size_t at = text.find("enum class Role"); at != std::string::npos;

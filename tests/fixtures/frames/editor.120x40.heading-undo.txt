@@ -4,11 +4,11 @@
 │ │ Extended_Pictographic, InCB)     │             │                  │ bg                                   #14161a ▸ │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ custom fg:                                     │
 │ │ grapheme clusters, display width │             │ Unicode conforman│ custom bg:                                     │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ ☒ bold                                         │
-│ │                                  │             │ block tree is the│ ☐ italic                                       │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ ☐ underline                                    │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ ☐ dim                                          │
-│ │ mouse mode)                      │             │                  │ ☐ reverse                                      │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ [✓] bold                                       │
+│ │                                  │             │ block tree is the│ [ ] italic                                     │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ [ ] underline                                  │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ [ ] dim                                        │
+│ │ mouse mode)                      │             │                  │ [ ] reverse                                    │
 │ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
 │ │                                  │             │ Event, table-test│                                                │
 │ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │

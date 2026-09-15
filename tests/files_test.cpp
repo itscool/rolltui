@@ -77,6 +77,10 @@ int main() {
   check(by_size == "alpha zeta z-huge.txt a-tiny.txt",
         "…by SIZE the largest file comes first — the REVERSE of the name order, so this cannot pass "
         "under a name sort [" + by_size + "]");
+  rolltui_dir_read(root.c_str(), std::strlen(root.c_str()), ROLLTUI_SORT_SIZE, ROLLTUI_DIR_REVERSED, &l, &err);
+  const std::string by_size_rev = names_of(l);
+  check(by_size_rev == "zeta alpha a-tiny.txt z-huge.txt",
+        "REVERSED turns each block around — folders still first, smallest file first [" + by_size_rev + "]");
 
   // ---- 4. THE DISTINCTION THAT MATTERS MOST -------------------------------------------------
   // An unreadable directory and an empty one both yield no entries. A caller that cannot tell

@@ -1,10 +1,10 @@
-#ifndef ROLLTUI_C_INPUT_H
-#define ROLLTUI_C_INPUT_H
+#ifndef ROLLTUI_C_WIDGET_INPUT_H
+#define ROLLTUI_C_WIDGET_INPUT_H
 /* INTERNAL: the public declarations of this module live in `rolltui/rolltui.h`. What is below is
  * the library's own — reached by its `.c` files, and by a suite that opts in by including this
  * header by name. */
 /*
- * rolltui/c/rolltui_input.h — THE INPUT WIDGET, AS A STATE MACHINE.
+ * rolltui/c/rolltui_widget_input.h — THE INPUT WIDGET, AS A STATE MACHINE.
  *
  * A multi-line text field with a caret, a selection, undo, history, mouse and paste. Every
  * rule — what may enter the text, where a boundary lies, how a row wraps, what closes an
@@ -121,4 +121,4 @@ void rolltui_input_draw(const RolltuiInput* in, RolltuiFrame* f, RolltuiDrawScra
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_INPUT_H */
+#endif /* ROLLTUI_C_WIDGET_INPUT_H */

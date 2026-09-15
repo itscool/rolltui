@@ -24,7 +24,7 @@
  *                      property `theme_gen_test.cpp`'s determinism check depends on and
  *                      the reason this generator does not use `<random>`.
  *   the ruleset name   a `Ruleset` is a `std::uint8_t` enum with a fixed set of 8 spellings
- *                      ("analogous", "complementary", ...) — the exact shape `rolltui_menu.c`
+ *                      ("analogous", "complementary", ...) — the exact shape `rolltui_widget_menu.c`
  *                      already has for `RolltuiInputType`, copied rather than re-invented.
  *
  * `rolltui_theme_generate` does NOT print a role's name anywhere (the hue/lightness picks

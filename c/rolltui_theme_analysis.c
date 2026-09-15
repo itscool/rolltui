@@ -221,11 +221,11 @@ enum { ROLLTUI_ROLE_LIST(ROLLTUI_R_ALIAS_) };
  *   accent_1..4, pairwise (six)      four accents exist to be four distinguishable classes;
  *                                    `rolltui_diff.c` and roll's escalation entry take one
  *                                    each, and a highlighter assigns them to token classes.
- *   menu_item / menu_selected        `rolltui_menu.c`: the selected row's style is the ONLY
+ *   menu_item / menu_selected        `rolltui_widget_menu.c`: the selected row's style is the ONLY
  *                                    selection cue; no marker glyph is drawn.
- *   input_text / input_placeholder   `rolltui_input.c`: the placeholder is drawn where the
+ *   input_text / input_placeholder   `rolltui_widget_input.c`: the placeholder is drawn where the
  *                                    text goes; style is the only cue.
- *   find_match / find_current        `rolltui_transcript.c`: the current match differs from
+ *   find_match / find_current        `rolltui_widget_transcript.c`: the current match differs from
  *                                    the others by style alone.
  *   NOT a pair, by the same criterion: diff_added_word / diff_added — the word role is an
  *   emphasis ON its line (same hue, bold; `studio_golden_test.cpp` asserts the rendering).

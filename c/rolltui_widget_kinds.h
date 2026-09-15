@@ -8,8 +8,8 @@
  *
  * `rows`, `text`, `file`, `help`, `input`, `transcript`, `menu`, `theme` and `keys`, and the error/panel
  * fallbacks, fill the plugin contract (`rolltui/c/rolltui_widgets.h`) here, in real C11,
- * calling only the already-C engines (`rolltui_input.h`, `rolltui_transcript.h`,
- * `rolltui_menu.h`, `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`,
+ * calling only the already-C engines (`rolltui_widget_input.h`, `rolltui_widget_transcript.h`,
+ * `rolltui_widget_menu.h`, `rolltui_wrap.h`, `rolltui_frame_ops.h`, `rolltui_bindings.h`,
  * `rolltui_marker.h`, `rolltui_embedded.h`) — never `rolltui::Transcript`/`Input`/`Menu`/
  * `Theme`/`Bindings`. Every rule these kinds obey (the input's auto-sizing and note
  * placement, the `file:`/`help` re-read and scope rules, the never-blank error panel, the
@@ -54,9 +54,9 @@
  */
 
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_input.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_transcript.h"
+#include "rolltui/c/rolltui_widget_input.h"
+#include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/c/rolltui_widget_transcript.h"
 #include "rolltui/c/rolltui_widgets.h"
 
 #ifdef __cplusplus

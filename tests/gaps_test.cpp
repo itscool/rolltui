@@ -201,7 +201,7 @@ int main() {
       "name": "deferred",
       "root": { "column": [ { "id": "log", "content": "transcript:session" } ] },
       "popups": [
-        { "id": "details", "x": "50%", "y": "50%", "w": 20, "h": 6, "anchor": "center",
+        { "id": "details", "dismiss": false, "x": "50%", "y": "50%", "w": 20, "h": 6, "anchor": "center",
           "root": { "id": "details", "content": "inspector" } } ] })");
     check(static_cast<bool>(l), "a screen whose gap is inside a declared popup loads");
     if (l) {

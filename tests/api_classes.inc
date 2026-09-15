@@ -274,6 +274,7 @@ ROLLTUI_API(rolltui_color_depth_name, INTERNAL)
 ROLLTUI_API(rolltui_color_depth_setting_valid, PUBLIC)
 ROLLTUI_API(rolltui_color_downgrade, INTERNAL)  /* a theme-loading step */
 ROLLTUI_API(rolltui_color_parse, PUBLIC)    /* KEPT: the menu's typed color field hands a host TEXT, so without this its value is unusable (Phase 21, rolltui-paint) */
+ROLLTUI_API(rolltui_style_fade, PUBLIC)  /* a fading status note: dirktui; the picker's edge fade */
 ROLLTUI_API(rolltui_color_to_string, PUBLIC) /* KEPT: the other half of that round trip — a host that stores a colour writes it back to its own file */
 ROLLTUI_API(rolltui_detect_color_depth, PUBLIC)
 ROLLTUI_API(rolltui_mode_for_background, PUBLIC)
@@ -557,6 +558,7 @@ ROLLTUI_API(rolltui_windows_set_picker_options, PUBLIC)  /* dotfiles, sort, moti
 ROLLTUI_API(rolltui_picker_options_init, PUBLIC)  /* KEPT: the defaults, so a host sets only what it means to */
 ROLLTUI_API(rolltui_windows_picker_selected, PUBLIC)  /* what is under the cursor: a status line, a copy */
 ROLLTUI_API(rolltui_windows_picker_dir, PUBLIC)  /* where the cursor is: what a save dialog joins a name onto */
+ROLLTUI_API(rolltui_windows_picker_focus_column, PUBLIC)  /* a breadcrumb's segment: dirktui */
 ROLLTUI_API(rolltui_windows_picker_status, PUBLIC)  /* the status line's facts, and whether the columns are mid-slide for the frame timer */
 ROLLTUI_API(rolltui_picker_status_release, PUBLIC)  /* KEPT: the release half of the status a consumer holds */
 ROLLTUI_API(rolltui_picker_status, INTERNAL)
@@ -566,6 +568,7 @@ ROLLTUI_API(rolltui_picker_free, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_options, INTERNAL)
 ROLLTUI_API(rolltui_picker_options, INTERNAL)
 ROLLTUI_API(rolltui_picker_go_to, INTERNAL)
+ROLLTUI_API(rolltui_picker_focus_column, INTERNAL)
 ROLLTUI_API(rolltui_picker_reload, INTERNAL)
 ROLLTUI_API(rolltui_picker_set_now, INTERNAL)
 ROLLTUI_API(rolltui_picker_layout, INTERNAL)
@@ -587,6 +590,7 @@ ROLLTUI_API(rolltui_window_stack_push_popup, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_resolve, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_route, PUBLIC)
 ROLLTUI_API(rolltui_window_stack_set_base, PUBLIC)
+ROLLTUI_API(rolltui_window_stack_set_level_fn, PUBLIC)  /* a close closes one level: every host with a menu */
 
 /* ---- rolltui_layout_tree.h — the tree inside RolltuiLayout: a public type, so its lifecycle is public; default PUBLIC --- */
 ROLLTUI_API(rolltui_layer_copy, INTERNAL)
@@ -692,6 +696,8 @@ ROLLTUI_API(rolltui_windows_input_at, INTERNAL)  /* a hit-test the stack already
 ROLLTUI_API(rolltui_windows_layout, PUBLIC)
 ROLLTUI_API(rolltui_windows_menu, PUBLIC)
 ROLLTUI_API(rolltui_windows_menu_at, PUBLIC)
+ROLLTUI_API(rolltui_windows_back, PUBLIC)  /* the level function a host hands the stack */
+ROLLTUI_API(rolltui_windows_window_rect, PUBLIC)  /* where a window landed: dirktui draws its breadcrumb over one */
 ROLLTUI_API(rolltui_windows_menu_origin, PUBLIC)  /* KEPT: matching part — `rolltui_windows_add_menu` is consumer-used, and without the origin a host cannot tell whether its own file or a user's shadow won the three-rung resolution */
 ROLLTUI_API(rolltui_windows_new, PUBLIC)
 ROLLTUI_API(rolltui_windows_on_submit, INTERNAL)  /* only the library's own .c reaches it */
@@ -708,6 +714,16 @@ ROLLTUI_API(rolltui_windows_set_highlight, PUBLIC)
 ROLLTUI_API(rolltui_windows_set_input_min_outer, PUBLIC)
 ROLLTUI_API(rolltui_context_set_panel_factory, INTERNAL)  /* only the library's own .c reaches it */
 ROLLTUI_API(rolltui_windows_styles, PUBLIC)
+ROLLTUI_API(rolltui_hint_bar_new, PUBLIC)  /* a status line's keys, clickable: dirktui */
+ROLLTUI_API(rolltui_hint_bar_free, PUBLIC)  /* KEPT: the release half of a pair a consumer holds */
+ROLLTUI_API(rolltui_hint_bar_clear, PUBLIC)  /* rebuilt when the bindings change */
+ROLLTUI_API(rolltui_hint_bar_add, PUBLIC)
+ROLLTUI_API(rolltui_hint_bar_draw, PUBLIC)
+ROLLTUI_API(rolltui_hint_bar_hit, PUBLIC)
+ROLLTUI_API(rolltui_hint_bar_set_separator, PUBLIC)  /* a breadcrumb: dirktui */
+ROLLTUI_API(rolltui_hint_bar_set_keep_tail, PUBLIC)  /* a breadcrumb: dirktui */
+ROLLTUI_API(rolltui_hint_bar_enable, PUBLIC)  /* a hint that cannot be taken now: dirktui */  /* the press half: a hint answers with its action */
+ROLLTUI_API(rolltui_hint_bar_count, INTERNAL)
 ROLLTUI_API(rolltui_windows_scrollbar_glyphs, INTERNAL)  /* what the draw path reads; the picker draws the same capsule the window does */
 ROLLTUI_API(rolltui_windows_set_theme_hint, INTERNAL)
 ROLLTUI_API(rolltui_windows_theme_editor, INTERNAL)
@@ -782,7 +798,7 @@ ROLLTUI_API(rolltui_document_copy, PUBLIC)  /* KEPT: a public C++ member in the 
 ROLLTUI_API(rolltui_document_count, INTERNAL)  /* a public type's read API */
 ROLLTUI_API(rolltui_document_release, PUBLIC)  /* KEPT: rule 1's pair: roll holds a RolltuiDocument and C has no destructor */
 
-/* ---- rolltui_input.h — the input widget: a host sets, selects, undoes and reads; default PUBLIC --- */
+/* ---- rolltui_widget_input.h — the input widget: a host sets, selects, undoes and reads; default PUBLIC --- */
 ROLLTUI_API(rolltui_input_can_redo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_can_undo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_caret, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
@@ -827,13 +843,13 @@ ROLLTUI_API(rolltui_input_push_history, INTERNAL)  /* the input widget's own edi
 ROLLTUI_API(rolltui_input_redo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_rows, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_rows_for, INTERNAL)  /* a step of the input's layout (a test reaches it: opt-in) */
-ROLLTUI_API(rolltui_input_select_all, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_select_all, PUBLIC)  /* an address bar's rule on reaching it: dirktui's path line */
 ROLLTUI_API(rolltui_input_selected_text, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_selection, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_set_caret, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_set_copy, PUBLIC)
 ROLLTUI_API(rolltui_input_set_options, PUBLIC)
-ROLLTUI_API(rolltui_input_set_text, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
+ROLLTUI_API(rolltui_input_set_text, PUBLIC)  /* a host prefills: dirktui's path line */
 ROLLTUI_API(rolltui_input_text, PUBLIC)
 ROLLTUI_API(rolltui_input_top_row, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
 ROLLTUI_API(rolltui_input_undo, INTERNAL)  /* the input widget's own editing step; a host sends events and reads rolltui_input_text */
@@ -841,7 +857,7 @@ ROLLTUI_API(rolltui_input_word_left_of, INTERNAL)  /* the handler's step */
 ROLLTUI_API(rolltui_input_word_right_of, INTERNAL)  /* the handler's step */
 ROLLTUI_API(rolltui_str_set, PUBLIC)
 
-/* ---- rolltui_menu.h — the menu widget; default PUBLIC ------------------------------------ */
+/* ---- rolltui_widget_menu.h — the menu widget; default PUBLIC ------------------------------------ */
 ROLLTUI_API(rolltui_check_input, INTERNAL)  /* a step of the menu loader */
 ROLLTUI_API(rolltui_input_check_release, INTERNAL)  /* a step of the menu loader */
 ROLLTUI_API(rolltui_input_hint, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
@@ -883,6 +899,8 @@ ROLLTUI_API(rolltui_menu_reset, PUBLIC)
 ROLLTUI_API(rolltui_menu_root, PUBLIC)  /* KEPT: matching part — `rolltui_windows_menu` is consumer-used and hands back a RolltuiMenu*; a menu you can obtain but whose tree you cannot reach is a hole, and `_find` only answers "is this id present" */
 ROLLTUI_API(rolltui_menu_scroll_first, INTERNAL)  /* a step of the menu widget */
 ROLLTUI_API(rolltui_menu_scroll_visible, INTERNAL)  /* a step of the menu widget */
+ROLLTUI_API(rolltui_menu_scroll_to, INTERNAL)  /* the window's bar, a handle: the kind adapter's */
+ROLLTUI_API(rolltui_menu_back, INTERNAL)  /* the menu kind's `back` slot */
 ROLLTUI_API(rolltui_menu_selected, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 ROLLTUI_API(rolltui_menu_selected_item, INTERNAL)
 ROLLTUI_API(rolltui_menu_dropdown_open, INTERNAL)  /* a test reads the dropdown back */
@@ -897,7 +915,7 @@ ROLLTUI_API(rolltui_menu_set_validator_fn, INTERNAL)  /* the menu widget's own n
 ROLLTUI_API(rolltui_menu_set_value, PUBLIC)
 ROLLTUI_API(rolltui_menu_visible, INTERNAL)  /* the menu widget's own navigation state; a host drives it with events */
 
-/* ---- rolltui_menu_tree.h — the menu item tree a host builds and walks; default PUBLIC ---- */
+/* ---- rolltui_widget_menu_tree.h — the menu item tree a host builds and walks; default PUBLIC ---- */
 ROLLTUI_API(rolltui_input_spec_copy, PUBLIC)  /* KEPT: a public C++ member in the definition calls it, so a C consumer must be able to
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
@@ -932,7 +950,7 @@ ROLLTUI_API(rolltui_menu_list_release, PUBLIC)  /* KEPT: a public C++ member in 
    perform the same operation. No reach bucket can see this; only compiling the definition
    can, which is how every row with this reason was found. */  /* rule 1: a public type's lifecycle; only the library reaches it today */
 
-/* ---- rolltui_transcript.h — the transcript widget; default PUBLIC ------------------------ */
+/* ---- rolltui_widget_transcript.h — the transcript widget; default PUBLIC ------------------------ */
 ROLLTUI_API(rolltui_entry_layout_release, INTERNAL)  /* the transcript's own store */
 ROLLTUI_API(rolltui_entry_layout_store, INTERNAL)  /* the transcript's own store */
 ROLLTUI_API(rolltui_selection_range_in, INTERNAL)  /* a step of select */
@@ -1170,6 +1188,7 @@ ROLLTUI_API(rolltui_layout_min_size, PUBLIC)
 ROLLTUI_API(rolltui_layout_name, PUBLIC)
 ROLLTUI_API(rolltui_layer_placement, PUBLIC)
 ROLLTUI_API(rolltui_layer_id, PUBLIC)
+ROLLTUI_API(rolltui_layer_focus, PUBLIC)  /* a host hands the focus back to the layout's own first window: dirktui */
 ROLLTUI_API(rolltui_layout_node_id, PUBLIC)
 ROLLTUI_API(rolltui_layout_node_is_window, PUBLIC)
 ROLLTUI_API(rolltui_load_layout_text_into, INTERNAL)

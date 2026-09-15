@@ -1,7 +1,7 @@
-#ifndef ROLLTUI_C_PICKER_H
-#define ROLLTUI_C_PICKER_H
+#ifndef ROLLTUI_C_WIDGET_PICKER_H
+#define ROLLTUI_C_WIDGET_PICKER_H
 /*
- * rolltui/c/rolltui_picker.h — INTERNAL: the column browser behind the `filepicker` kind.
+ * rolltui/c/rolltui_widget_picker.h — INTERNAL: the column browser behind the `filepicker` kind.
  *
  * The PUBLIC surface is in `rolltui/rolltui.h`: a host names `filepicker` in a layout and makes
  * the window calls (`rolltui_windows_set_picker_dir`, `_picker_event`, `_picker_selected`,
@@ -45,6 +45,7 @@ const RolltuiPickerOptions* rolltui_picker_options(const RolltuiPicker* p);
  * every ancestor's component selected. A component that cannot be entered ends the walk with a
  * column that says why. */
 void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len);
+void rolltui_picker_focus_column(RolltuiPicker* p, size_t column); /* the i-th open column, clamped */
 /* Re-reads every column in place, keeping each selection BY NAME — after an option changed. */
 void rolltui_picker_reload(RolltuiPicker* p);
 
@@ -80,4 +81,4 @@ size_t rolltui_picker_faded_cells(const RolltuiPicker* p);
 } /* extern "C" */
 #endif
 
-#endif /* ROLLTUI_C_PICKER_H */
+#endif /* ROLLTUI_C_WIDGET_PICKER_H */

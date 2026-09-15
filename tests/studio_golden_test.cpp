@@ -747,6 +747,35 @@ int main(int argc, char** argv) {
       std::string wc = read_file(scratch + "/p/theme.working.json", ok);
       check(ok && wc.find("\"preset\": \"mine\"") != std::string::npos, "the working copy written by the save-as records preset 'mine' — and nothing wrote it before that (the earlier frames' edits did not persist)");
     }
+    // ---- the FILE save dialog: Alt-S writes the preset being edited where a person points ----
+    // A name over a folder, like paint's; the folder starts where the document came from, so
+    // the document is copied out of the fixtures first — a save beside the original would dirty
+    // the tree.
+    {
+      const std::string doc = scratch + "/doc";
+      std::filesystem::create_directories(doc);
+      std::filesystem::copy_file(std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md", doc + "/demo.md", std::filesystem::copy_options::overwrite_existing);
+      int rc = 0;
+      const std::string base = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + doc + "/demo.md' --frame 120x30 --presets '" + scratch + "/p3'";
+      const std::string dialog = run(base + " --keys \"F4 AltS\" 2>/dev/null", rc);
+      check(rc == 0 && dialog.find("save as: the name") != std::string::npos && dialog.find("in the folder") != std::string::npos,
+            "Alt-S with the theme editor open opens the save dialog: a name over the folder the document came from");
+      const std::string saved = run(base + " --keys \"F4 AltS Type:mine-theme.json Enter\" 2>/dev/null", rc);
+      bool ok = false;
+      const std::string file = read_file(doc + "/mine-theme.json", ok);
+      check(rc == 0 && ok && file.find("\"colours\"") != std::string::npos && saved.find("wrote the theme to") != std::string::npos,
+            "Enter on the name writes the theme being edited beside the document, and the status line says where");
+      const std::string again = run(std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + doc + "/demo.md' --frame 80x24 --presets '" + scratch + "/p4' --theme '" + doc +
+                                        "/mine-theme.json' --dump-role md_heading", rc);
+      check(rc == 0 && role_part(again) == "md_heading fg=#84b7f9 bg=#14161a bold", "…and the file is a theme a relaunch loads [" + role_part(again) + "]");
+      run(base + " --keys \"F6 AltS Type:screen.json Enter\" 2>/dev/null", rc);
+      const std::string lf = read_file(doc + "/screen.json", ok);
+      check(rc == 0 && ok && lf.find("\"root\"") != std::string::npos && lf.find("\"dismiss\"") != std::string::npos,
+            "with the layout editor open it writes the layout, every popup saying whether it dismisses");
+      const std::string none = run(base + " --keys \"AltS\" 2>/dev/null", rc);
+      check(rc == 0 && none.find("open an editor first") != std::string::npos && none.find("save as: the name") == std::string::npos,
+            "with no editor open there is nothing to write, and the status line says so instead of guessing");
+    }
     // ---- milestone 17: bindings as data, asserted beyond the bytes ----
     // ---- find (milestone 12.4) — what the golden alone does not say -----------------
     // The bar is a POPUP with an `input:` window, not a mode: the studio pushes a layout
@@ -1066,7 +1095,7 @@ int main(int argc, char** argv) {
       }
       std::ofstream(scratch + "/declared-layout.json", std::ios::binary) << R"({"name":"declared",
         "actions":{"app.help":"open help","app.zoom":"zoom the transcript"},
-        "popups":[{"id":"help","x":0,"y":0,"w":"100%","h":"100%","modal":true,
+        "popups":[{"id":"help","dismiss":true,"x":0,"y":0,"w":"100%","h":"100%","modal":true,
                    "root":{"content":"help","border":"single","title":"help","focusable":true}}],
         "root":{"column":[
           {"id":"m","content":"menu:decl","size":5,"border":"single","title":"declared menu"},

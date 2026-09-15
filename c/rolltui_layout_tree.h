@@ -239,6 +239,10 @@ typedef struct RolltuiLayer {
   RolltuiPlacement placement;
   RolltuiLayoutNode root;
   unsigned char modal ROLLTUI_DEFAULT(0);
+  /* A press outside the popup closes it, as the close key would — the stack answers
+   * ROLLTUI_ROUTE_CLOSED_POPUP with its id and the press goes no further. Off by default: a
+   * popup that asks a question (an approval) must be answered, not clicked away. */
+  unsigned char dismiss ROLLTUI_DEFAULT(0);
   RolltuiStr focus; /* the focused window id; "" → first focusable in tree order */
 
 #ifdef __cplusplus
@@ -409,8 +413,10 @@ inline RolltuiLayer::RolltuiLayer(RolltuiLayer&& o) noexcept
       placement(o.placement),
       root(std::move(o.root)),
       modal(o.modal),
+      dismiss(o.dismiss),
       focus(std::move(o.focus)) {
   o.modal = 0;
+  o.dismiss = 0;
 }
 inline RolltuiLayer RolltuiLayer::clone() const {
   RolltuiLayer out;
@@ -424,8 +430,10 @@ inline RolltuiLayer& RolltuiLayer::operator=(RolltuiLayer&& o) noexcept {
     placement = o.placement;
     root = std::move(o.root);
     modal = o.modal;
+    dismiss = o.dismiss;
     focus = std::move(o.focus);
     o.modal = 0;
+    o.dismiss = 0;
   }
   return *this;
 }

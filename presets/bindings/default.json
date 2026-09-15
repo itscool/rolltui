@@ -248,7 +248,7 @@
       "escape"
     ],
     "picker.copy": [
-      "c"
+      "ctrl+c"
     ],
     "picker.copy_inverse": [
       "alt+c"

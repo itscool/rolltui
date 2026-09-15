@@ -10,8 +10,8 @@
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_bindings.h"
 #include "rolltui/c/rolltui_keys.h"
-#include "rolltui/c/rolltui_menu.h"
-#include "rolltui/c/rolltui_menu_tree.h"
+#include "rolltui/c/rolltui_widget_menu.h"
+#include "rolltui/c/rolltui_widget_menu_tree.h"
 #include "rolltui/c/rolltui_undo.h"
 
 #define K(s) (s), strlen(s)

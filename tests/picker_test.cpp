@@ -8,11 +8,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <string>
 #include <vector>
 #include "rolltui/rolltui.h"
-#include "rolltui/c/rolltui_picker.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_widget_picker.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_screen.h"  /* INTERNAL: a frame of its own to draw into */
 #include "rolltui_test.hpp"
 namespace {
@@ -158,11 +159,162 @@ int main() {
     check(!has(text_of(f), "\xE2\x94\x82"), "…and with dividers off there is none");
     rolltui_frame_free(f);
   }
+  // ---- type to jump: a key lands on the next name starting with it; a dotfile counts by the
+  // letter after its dot, and the dot itself cycles the dotfiles -------------------------------
+  {
+    // Two names for the rule, added for this block and removed after it so the counts elsewhere
+    // stay what they were: a dotfile, and a second name starting with a.
+    write_file(root / ".hidden", "h");
+    write_file(root / "avocado.txt", "a");
+    const std::string top = root.string();
+    rolltui_picker_go_to(p, top.data(), top.size());
+    auto typed = [&](RolltuiCodepoint ch, bool shift) {
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_KEY;
+      e.key.key = ROLLTUI_KEY_CHAR;
+      e.key.ch = ch;
+      e.key.shift = shift ? 1 : 0;
+      rolltui_picker_handle(p, &e, b, A);
+      RolltuiStr path{};
+      int is_dir = 0;
+      rolltui_picker_selected(p, &path, &is_dir);
+      const std::string s(path.p ? path.p : "", path.n);
+      rolltui_str_free(&path);
+      return s.substr(s.rfind('/') + 1);
+    };
+    check(typed('z', false) == "zeta.txt", "z lands on zeta.txt");
+    check(typed('h', false) == ".hidden", "h reaches .hidden by the letter after its dot");
+    check(typed('.', false) == ".hidden", "…and the dot itself cycles the dotfiles");
+    check(typed('a', false) == "alpha" && typed('a', false) != "alpha", "a: alpha, then the next a — the cursor moves on when already on one");
+    check(typed('A', false) == "alpha", "Shift-A goes back");
+    check(typed('q', false) == "alpha", "a key no name starts with moves nothing");
+    fs::remove(root / ".hidden");
+    fs::remove(root / "avocado.txt");
+    rolltui_picker_go_to(p, top.data(), top.size());
+  }
+  // ---- a press on empty space chooses nothing, so it moves nothing ----------------------------
+  {
+    const std::string deep = (root / "alpha").string();
+    rolltui_picker_go_to(p, deep.data(), deep.size());
+    rolltui_frame_free(draw(120, 20));  // laid out: the columns have places
+    RolltuiPickerStatus before{};
+    rolltui_picker_status(p, &before);
+    RolltuiEvent e{};
+    e.kind = ROLLTUI_EVENT_MOUSE;
+    e.mouse.kind = RolltuiMouseEvent::Kind::Press;
+    e.mouse.button = 1;
+    e.mouse.x = 2;   // the first column, well inside it
+    e.mouse.y = 15;  // far below its few entries
+    rolltui_picker_handle(p, &e, b, A);
+    RolltuiPickerStatus after{};
+    rolltui_picker_status(p, &after);
+    check(after.column == before.column && after.columns == before.columns,
+          "a press on the empty space below a column's entries leaves the focus and the columns where they were [" +
+              std::to_string(after.column) + "/" + std::to_string(after.columns) + "]");
+    e.mouse.y = 0;  // the head row of that first column: the folder's name
+    rolltui_picker_handle(p, &e, b, A);
+    rolltui_picker_status_release(&after);
+    rolltui_picker_status(p, &after);
+    check(after.column <= before.column && after.columns == after.column + 1, "…while a press on a head row focuses that folder (the one under the press), with its preview and nothing deeper [" + std::to_string(after.column) + "/" + std::to_string(after.columns) + "]");
+    rolltui_picker_status_release(&before);
+    rolltui_picker_status_release(&after);
+  }
+  // ---- focusing a column by index: a breadcrumb's segment ------------------------------------
+  {
+    const std::string deep = (root / "alpha").string();
+    rolltui_picker_go_to(p, deep.data(), deep.size());
+    RolltuiPickerStatus st{};
+    rolltui_picker_status(p, &st);
+    const std::size_t was = st.column;
+    rolltui_picker_status_release(&st);
+    rolltui_picker_focus_column(p, 1);
+    rolltui_picker_status(p, &st);
+    RolltuiStr d{};
+    rolltui_picker_dir(p, &d);
+    check(was > 2 && st.column == 2 && std::string(d.p ? d.p : "", d.n) == "/" && st.columns == 3,
+          "focus_column(1) puts the focus on the root's listing and, as Left does, keeps only its preview [" + std::to_string(st.column) + "/" + std::to_string(st.columns) + "]");
+    // THE TOP COLUMN: one entry, the root itself, so the root can be chosen like any folder.
+    rolltui_picker_focus_column(p, 0);
+    rolltui_picker_status_release(&st);
+    rolltui_picker_status(p, &st);
+    rolltui_str_free(&d);
+    {
+      RolltuiStr sel{};
+      int is_dir = 0;
+      rolltui_picker_selected(p, &sel, &is_dir);
+      check(st.column == 1 && st.entries == 1 && std::string(sel.p ? sel.p : "", sel.n) == "/" && is_dir,
+            "…and column 0 is the top, holding the root as its one entry, selected [" + std::string(sel.p ? sel.p : "", sel.n) + "]");
+      rolltui_str_free(&sel);
+    }
+    rolltui_picker_dir(p, &d);
+    rolltui_str_free(&d);
+    rolltui_picker_status_release(&st);
+    rolltui_picker_focus_column(p, 999);
+    rolltui_picker_status(p, &st);
+    check(st.column == st.columns, "…and past the last column lands on the last");
+    rolltui_picker_status_release(&st);
+  }
+  // ---- a size column when sorting by size, a modified column on request ----------------------
+  {
+    write_file(root / "beta" / "big.bin", std::string(2048, 'x'));
+    const std::string bdir = (root / "beta").string();
+    RolltuiPickerOptions o{};
+    rolltui_picker_options_init(&o);
+    o.sort = ROLLTUI_SORT_SIZE;
+    rolltui_picker_set_options(p, &o);
+    rolltui_picker_go_to(p, bdir.data(), bdir.size());
+    RolltuiFrame* f = draw(80, 20);
+    const std::string frame = text_of(f);
+    check(has(frame, "big.bin") && has(frame, "2.0K"), "sorted by size, the sizes show beside the names without being asked for [2.0K]");
+    rolltui_frame_free(f);
+    rolltui_picker_options_init(&o);
+    rolltui_picker_set_options(p, &o);
+    f = draw(80, 20);
+    check(!has(text_of(f), "2.0K"), "…and sorted by name they are hidden again");
+    rolltui_frame_free(f);
+    o.sort = ROLLTUI_SORT_SIZE;
+    o.show_size = ROLLTUI_SHOW_NEVER;
+    rolltui_picker_set_options(p, &o);
+    f = draw(80, 20);
+    check(!has(text_of(f), "2.0K"), "NEVER is a person's own word: sorted by size with sizes never shown, none show");
+    rolltui_frame_free(f);
+    o.show_size = ROLLTUI_SHOW_ALWAYS;
+    o.sort = ROLLTUI_SORT_NAME;
+    rolltui_picker_set_options(p, &o);
+    f = draw(80, 20);
+    check(has(text_of(f), "2.0K"), "…and ALWAYS shows them under any sort");
+    rolltui_frame_free(f);
+    rolltui_picker_options_init(&o);
+    o.sort = ROLLTUI_SORT_SIZE;
+    o.reversed = 1;
+    rolltui_picker_set_options(p, &o);
+    f = draw(80, 20);
+    {
+      const std::string t = text_of(f);
+      check(t.find("big.bin") != std::string::npos && t.find("big.bin") > t.find("beta"), "reversed, the largest file comes last");
+    }
+    rolltui_frame_free(f);
+    rolltui_picker_options_init(&o);
+    o.show_modified = ROLLTUI_SHOW_ALWAYS;
+    rolltui_picker_set_options(p, &o);
+    f = draw(80, 20);
+    {
+      char today[16];
+      time_t now = time(nullptr);
+      struct tm tm_now;
+      localtime_r(&now, &tm_now);
+      strftime(today, sizeof today, "%b", &tm_now);
+      check(has(text_of(f), std::string(today)), "asked for, the modified column shows the month a file just written carries [" + std::string(today) + "]");
+    }
+    rolltui_frame_free(f);
+    rolltui_picker_options_init(&o);
+    rolltui_picker_set_options(p, &o);
+  }
   // ---- the status line's facts ---------------------------------------------------------------
   {
     RolltuiPickerStatus st{};
     rolltui_picker_status(p, &st);
-    check(st.entries == 12 && st.columns >= 2 && st.column == st.columns && st.error.n == 0,
+    check(st.entries == 13 && st.columns >= 2 && st.column == st.columns && st.error.n == 0,
           "the status says how many entries, which column of how many, and no error (" + std::to_string(st.entries) + ", " + std::to_string(st.column) + "/" + std::to_string(st.columns) + ")");
     rolltui_picker_status_release(&st);
     const std::string nosuch = (root / "nowhere").string();
