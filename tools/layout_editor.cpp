@@ -361,11 +361,15 @@ void LayoutEditor::rebuild_menu() {
   for (const char* b : {"none", "single", "rounded", "double", "heavy"}) borders.push_back(MenuItem::action(b, b));
   for (const char* a : {"top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"}) anchors.push_back(MenuItem::action(a, a));
   for (const std::string& n : layouts_) loads.push_back(MenuItem::action(std::string(n).c_str(), std::string(n).c_str()));
-  InputSpec dim, opt_dim, size, name, text, threshold;
+  InputSpec dim, opt_dim, size, name, text, threshold, margin;
   dim.type = InputType::Dim;
   opt_dim.type = InputType::Dim;
   opt_dim.optional = true;  // a bound may be absent, and empty is how you take one off
   size.type = InputType::Size;
+  margin.type = InputType::Int;
+  margin.min = 0;
+  margin.max = 255;
+  margin.hint = "0 = flush with the screen edge";
   name.type = InputType::Name;
   text.type = InputType::Text;
   text.optional = true;  // a window may have no title
@@ -394,6 +398,8 @@ void LayoutEditor::rebuild_menu() {
       fields.push_back(MenuItem::input((base + "." + suffix).c_str(), label, opt_dim.clone(),
                                        od.present ? dim_to_string(od.d).c_str() : ""));
     fields.push_back(MenuItem::toggle((base + ".clamp").c_str(), "clamp to the screen", p.placement.clamp != 0));
+    fields.push_back(MenuItem::input((base + ".margin").c_str(), "margin from the screen edge", margin.clone(),
+                                     std::to_string(p.placement.edge_margin).c_str()));
     fields.push_back(MenuItem::toggle((base + ".modal").c_str(), "modal", p.modal != 0));
     fields.push_back(MenuItem::toggle((base + ".dismiss").c_str(), "a click outside closes it", p.dismiss != 0));
     fields.push_back(MenuItem::action((base + ".remove").c_str(), "remove this popup"));
@@ -561,6 +567,10 @@ void LayoutEditor::sync_content_fields() {
 }
 
 void LayoutEditor::sync_values() {
+  // Undo/redo are never a pick-and-see-a-status control: disabled when there is nothing to
+  // walk to, same as the layout-wide fields below — true whether or not a node is selected.
+  rolltui_menu_set_enabled(menu_, "undo", 4, undo_.can_undo());
+  rolltui_menu_set_enabled(menu_, "redo", 4, undo_.can_redo());
   // The three LAYOUT-WIDE fields first, because they are true whether or not a node is
   // selected — and because the focus choice's options are the tree's, which every split,
   // delete and rename changes. Rebuilding them here is what keeps a stale window id from
@@ -1039,7 +1049,7 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
       begin_preview();
       Layer l{};
       set_str(l.id, value);
-      l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(8), Anchor::Center, true, {}, {}, {}, {}};
+      l.placement = {Dim::rel(0.5), Dim::rel(0.5), Dim::rel(0.5), Dim::abs(8), Anchor::Center, true, 0, {}, {}, {}, {}};
       l.modal = true;
       l.dismiss = 0;  // stated, never defaulted: the file always carries it
       Node n = Node::window(("text:" + value).c_str());
@@ -1069,6 +1079,15 @@ LayoutEditor::Outcome LayoutEditor::handle(const RolltuiEvent* e, const RolltuiB
                                                   : p.placement.max_h;
             t.reset();
             status_ = "popup '" + pid + "' " + field + " is now unbounded";
+            return commit_current();
+          }
+      }
+      if (field == "margin") {
+        // The Int spec already refused anything that is not a whole number 0..255.
+        for (Layer& p : current_.popups)
+          if (view_of(p.id) == pid) {
+            begin_preview();
+            p.placement.edge_margin = static_cast<unsigned char>(std::atoi(value.c_str()));
             return commit_current();
           }
       }

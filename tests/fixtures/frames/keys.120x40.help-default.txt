@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default-dark      │
+│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default           │
 │ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys F7    default           │
 │ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout F6  default           │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size       120x40            │
@@ -15,8 +15,8 @@
 │ │ colour downgrade    │   Right                   move one grapheme right                    │                       │
 │ │ Wrap engine         │   Ctrl-Left, Alt-Left     move one word left                         •                       │
 │ │                     │   Ctrl-Right, Alt-Right   move one word right                        │                       │
-│ │ Windows, layers, pla│   Home                    start of the line (scrolls when empty)     │                       │
-│ │ abs/rel per axis), f│   End                     end of the line (scrolls when empty)       │                       │
+│ │ Windows, layers, pla│   Home, Ctrl-A            start of the line (scrolls when empty)     │                       │
+│ │ abs/rel per axis), f│   End, Ctrl-E             end of the line (scrolls when empty)       │                       │
 │ │                     │   Up                      up a row, or the previous history entry    │                       │
 │ │ Menu widget (hierarc│   Down                    down a row, or the next history entry      │                       │
 │ │ filterable) + list/t│   Shift-Left              extend the selection one grapheme left     │                       │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 75/109  follow  truecolor  focus:help
+ default  default  120x40  line 75/109  follow  truecolor  focus:help

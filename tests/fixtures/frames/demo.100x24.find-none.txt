@@ -1,5 +1,5 @@
 ┌ transcript ───────╭ find ────────────────────────────────────────────────────╮───────────────────┐
-│ │ filterable) + li│ > zzzznope                                               │ default-dark      │
+│ │ filterable) + li│ > zzzznope                                               │ default           │
 │ │ text widgets    ╰──────────────────────────────────────────────────────────╯ default           │
 │ │ Layout files (JSON:    │ build       │ reuses the theme       │ │ layout F6  default           │
 │ │ windows + placements + │             │ loader's hand parser;  │ │ size       100x24            │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                       │                              │
 └───────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  100x24  line 114/132  follow  truecolor  focus:find  find 0/0
+ default  default  100x24  line 114/132  follow  truecolor  focus:find  find 0/0

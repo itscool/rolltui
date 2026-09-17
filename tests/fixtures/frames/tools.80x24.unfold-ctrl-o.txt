@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > read the manager header and tell me what    ╻ theme F4   default-dark      │
+│ > read the manager header and tell me what    ╻ theme F4   default           │
 │   stop_heartbeat does                         ┃ keys F7    default           │
 │                                               ┃ layout F6  default           │
 │ ▾ read_file include/ResilientModelManager.hpp ┃ size       80x24             │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 1/40  truecolor  focus:input
+ default  default  80x24  line 1/40  truecolor  focus:input

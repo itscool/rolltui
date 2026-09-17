@@ -42,9 +42,14 @@ int rolltui_resolve_dim(RolltuiDim d, int extent) {
 static int align_h(unsigned char a) { return (int)(a % 3); } /* 0 start, 1 centre, 2 end */
 static int align_v(unsigned char a) { return (int)(a / 3); }
 
-/* One axis of resolve(): {start, size} relative to the parent. */
+/* One axis of resolve(): {start, size} relative to the parent. `min`/`max` must land BEFORE a
+ * centre or end alignment turns `len` into `start`: a popup that grows past its natural size to
+ * fit its content (`min_w`) still has to centre on the GROWN width, not the width it grew from —
+ * center on the pre-growth len and only the growth's own half shows up on one side, off-centre by
+ * exactly what it grew. */
 static void resolve_axis(RolltuiDim pos, RolltuiDim size, int align, const RolltuiOptDim* min,
-                         const RolltuiOptDim* max, int clamp, int extent, int* out_start, int* out_len) {
+                         const RolltuiOptDim* max, int clamp, int margin, int extent, int* out_start,
+                         int* out_len) {
   int start, len;
   if (align == 0) {
     RolltuiDim sum;
@@ -53,16 +58,21 @@ static void resolve_axis(RolltuiDim pos, RolltuiDim size, int align, const Rollt
     start = rolltui_resolve_dim(pos, extent);
     len = rolltui_resolve_dim(sum, extent) - start;
   } else {
-    int point = rolltui_resolve_dim(pos, extent);
     len = rolltui_resolve_dim(size, extent);
-    start = (align == 1) ? point - len / 2 : point - len;
   }
   if (len < 0) len = 0;
   if (max->present) len = imin(len, imax(rolltui_resolve_dim(max->d, extent), 0));
   if (min->present) len = imax(len, rolltui_resolve_dim(min->d, extent));
+  if (align != 0) {
+    const int point = rolltui_resolve_dim(pos, extent);
+    start = (align == 1) ? point - len / 2 : point - len;
+  }
   if (clamp) {
-    len = imin(len, imax(extent, 0));
-    start = iclamp(start, 0, imax(extent - len, 0));
+    /* `margin` shrinks itself on an extent too narrow to hold two of it AND at least one cell
+     * between them, rather than push the popup off the edge it exists to stay clear of. */
+    const int m = extent > 2 * margin ? margin : 0;
+    len = imin(len, imax(extent - 2 * m, 0));
+    start = iclamp(start, m, imax(extent - m - len, m));
   }
   *out_start = start;
   *out_len = len;
@@ -70,8 +80,8 @@ static void resolve_axis(RolltuiDim pos, RolltuiDim size, int align, const Rollt
 
 void rolltui_placement_resolve(const RolltuiPlacement* p, RolltuiRect parent, RolltuiRect* out) {
   int x, w, y, h;
-  resolve_axis(p->x, p->w, align_h(p->anchor), &p->min_w, &p->max_w, p->clamp, parent.w, &x, &w);
-  resolve_axis(p->y, p->h, align_v(p->anchor), &p->min_h, &p->max_h, p->clamp, parent.h, &y, &h);
+  resolve_axis(p->x, p->w, align_h(p->anchor), &p->min_w, &p->max_w, p->clamp, p->edge_margin, parent.w, &x, &w);
+  resolve_axis(p->y, p->h, align_v(p->anchor), &p->min_h, &p->max_h, p->clamp, 0, parent.h, &y, &h);
   out->x = parent.x + x;
   out->y = parent.y + y;
   out->w = w;
@@ -1633,6 +1643,11 @@ static void layer_from_json(const RolltuiJsonValue* v, const char* where, size_t
       have_dismiss = 1;
     } else if (is_popup && streq(k, klen, "clamp")) {
       bool_from_json(x, at.p, at.n, report, &l->placement.clamp);
+    } else if (is_popup && streq(k, klen, "margin")) {
+      const double num = rolltui_json_is_number(x) ? rolltui_json_as_number(x, -1) : -1;
+      if (num != floor(num) || num < 0 || num > 255)
+        bad_at(report, at.p, at.n, ": expected a whole number of columns, 0 to 255");
+      else l->placement.edge_margin = (unsigned char)num;
     } else if (is_popup && streq(k, klen, "anchor")) {
       unsigned char a;
       size_t sl = 0;
@@ -1980,6 +1995,7 @@ static RolltuiJsonValue* layer_to_json(const RolltuiLayer* l, int is_popup, cons
       rolltui_json_set(o, K("anchor"), rolltui_json_string(an, al));
     }
     if (!l->placement.clamp) rolltui_json_set(o, K("clamp"), rolltui_json_bool(0));
+    if (l->placement.edge_margin) rolltui_json_set(o, K("margin"), rolltui_json_number(l->placement.edge_margin));
     if (l->placement.min_w.present) rolltui_json_set(o, K("min_w"), dim_to_json(l->placement.min_w.d));
     if (l->placement.min_h.present) rolltui_json_set(o, K("min_h"), dim_to_json(l->placement.min_h.d));
     if (l->placement.max_w.present) rolltui_json_set(o, K("max_w"), dim_to_json(l->placement.max_w.d));

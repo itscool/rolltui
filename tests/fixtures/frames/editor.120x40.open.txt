@@ -1,20 +1,20 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ Roles                                        ▸ │
-│ │ grapheme property,               │             │ unicode_tables.hp│ Mode (edit + preview)                   dark ▸ │
-│ │ Extended_Pictographic, InCB)     │             │                  │ Check: contrast, colour-vision, badges         │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Fixes (proposals; Enter applies one, undoabl ▸ │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ Generate a theme (seeded)                    ▸ │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Undo                                    Ctrl-Z │
-│ │                                  │             │ block tree is the│ Redo                                    Ctrl-Y │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ Load theme                                   ▸ │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Save theme as:                                 │
-│ │ mouse mode)                      │             │                  │ Write a SHIPPED preset (the editor's privil  ▸ │
-│ │ Key + mouse decoding             │ build       │ single header, pu│ Reset to the loaded preset…                    │
-│ │                                  │             │ Event, table-test│ Reset to the built-in default…                 │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
-│ │ colour downgrade                 │             │ tested           │                                                │
-│ │ Wrap engine                      │ build       │ single header ove│                                                │
-│ │                                  │             │ header           │                                                │
+│ │ class, East-Asian width,         │             │ +, not Python) → │ Edit — applies live, everywhere ────────────── │
+│ │ grapheme property,               │             │ unicode_tables.hp│ Roles                                        ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ Preview variant (dark/light)            dark ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Check: contrast, colour-vision, badges         │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ Fixes (proposals; Enter applies one, undoabl ▸ │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Generate a theme (seeded)                    ▸ │
+│ │                                  │             │ block tree is the│                                                │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ History ────────────────────────────────────── │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ Undo                                    Ctrl-Z │
+│ │ mouse mode)                      │             │                  │ Redo                                    Ctrl-Y │
+│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
+│ │                                  │             │ Event, table-test│ File ───────────────────────────────────────── │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ Load theme                                   ▸ │
+│ │ colour downgrade                 │             │ tested           │ Save theme as:                                 │
+│ │ Wrap engine                      │ build       │ single header ove│ Reset to the loaded preset…                    │
+│ │                                  │             │ header           │ Reset to the built-in default…                 │
 │ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
 │ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
 │ │                                  │             │ Rect is a pure fu│                                                │
@@ -30,11 +30,11 @@
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ default-dark                                   │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ default                                        │
 │ │ int add(int a, int b) {                                           │ Roles › a role › fg › a colour; the screen is  │
 │ │   return a + b;                                                   │ type to filter · Enter commits · Esc cancels · │
 │ └───────────────────────────────────────────────────────────────────│ loaded · undo 0 · redo 0 · dark                │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+ default [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor

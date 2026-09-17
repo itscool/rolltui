@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ renderer     │             │ md4c + wrap  │ │ theme F4   default-dark      │
+│ │ renderer     │             │ md4c + wrap  │ │ theme F4   default           │
 │ │ (blocks →    │             │              │ │ keys F7    default           │
 │ │ styled       │             │              │ │ layout F6  default           │
 │ │ wrapped      │             │              │ │ size       80x24             │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 175/193  follow  truecolor  focus:input
+ default  default  80x24  line 175/193  follow  truecolor  focus:input

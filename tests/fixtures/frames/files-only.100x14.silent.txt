@@ -11,4 +11,4 @@
 │ and the two actions this screen emits (app.kettle and           │                                │
 │ app.find).                                           ▼ 32 more  │                                │
 └─────────────────────────────────────────────────────────────────┴────────────────────────────────┘
- default-dark  kettle-silent  100x14  line 0/0  follow  truecolor  focus:kettle_menu  [window 'kettl
+ default  kettle-silent  100x14  line 0/0  follow  truecolor  focus:kettle_menu  [window 'kettle_men

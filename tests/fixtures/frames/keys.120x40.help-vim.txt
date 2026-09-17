@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default-dark      │
+│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default           │
 │ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys F7    vim-ish           │
 │ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout F6  default           │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size       120x40            │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 75/109  follow  truecolor  focus:help
+ default  default  120x40  line 75/109  follow  truecolor  focus:help

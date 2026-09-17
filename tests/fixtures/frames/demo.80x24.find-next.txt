@@ -1,5 +1,5 @@
 ┌ transcript ───╭ find ────────────────────────────────────────╮───────────────┐
-│ │ per axis),  │ > wrap                                       │ault-dark      │
+│ │ per axis),  │ > wrap                                       │ault           │
 │ │ focus       ╰──────────────────────────────────────────────╯ault           │
 │ │              │             │ pure         │ │ layout F6  default           │
 │ │              │             │ function     │ │ size       80x24             │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 157/191  truecolor  focus:find  find 4/4
+ default  default  80x24  line 157/191  truecolor  focus:find  find 4/4

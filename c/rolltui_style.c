@@ -76,3 +76,8 @@ void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColor ground, double
   s.bg = color_toward(s.bg, ground, keep);
   *out = s;
 }
+
+void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColor ground) {
+  if (st->fg.kind == 0) st->fg = ground;
+  if (st->bg.kind == 0) st->bg = ground;
+}

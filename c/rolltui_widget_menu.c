@@ -1902,6 +1902,13 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
   const RolltuiRect a = m->area;
   const int aw = m->opt.ambiguous_wide;
   const int x0 = a.x + m->opt.inset, w = a.w - 2 * m->opt.inset;
+  /* `shortcut`'s OWN role states "none" for a background that means "whatever I am drawn on" —
+   * a theme file's word for it, not a value this widget invents. Every site below that borrows
+   * the role for something other than a selected row's own solid block (the status line, an
+   * unselected item's chord, the Back row) resolves it against the menu's ambient row ground,
+   * the same move `name_style.bg = base.bg` already makes a few lines down for the VALUE role —
+   * this is that same fix, generalised so the next role that says "none" gets it for free. */
+  const RolltuiStyleColor ground = styles[roles->item].bg;
   size_t vis_n;
   int y = a.y, rows, r;
   RolltuiStr line;
@@ -1926,25 +1933,31 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
         else str_add(&line, "Enter commits, Esc cancels");
         rolltui_str_free(&hint);
       }
-      rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n,
-                             styles[m->edit_reason.n ? roles->warning : roles->shortcut], w, aw, 0);
+      {
+        RolltuiStyle st = styles[m->edit_reason.n ? roles->warning : roles->shortcut];
+        rolltui_style_on(&st, ground);
+        rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n, st, w, aw, 0);
+      }
     } else if (m->palette) {
       /* The prompt: where the search is rooted, then what has been typed. */
       int used;
       rolltui_menu_breadcrumb(m, &line);
       used = rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n, styles[roles->breadcrumb], w, aw, 0);
       if (m->filter.n) {
+        RolltuiStyle st = styles[roles->shortcut];
+        rolltui_style_on(&st, ground);
         rolltui_str_clear(&line);
         str_add(&line, "  /");
         rolltui_str_append_str(&line, &m->filter);
-        rolltui_frame_put_text(f, draw, x0 + used, sy, line.p, line.n, styles[roles->shortcut],
-                               imax(w - used, 0), aw, 0);
+        rolltui_frame_put_text(f, draw, x0 + used, sy, line.p, line.n, st, imax(w - used, 0), aw, 0);
       }
     } else {
+      RolltuiStyle st = styles[roles->shortcut];
+      rolltui_style_on(&st, ground);
       rolltui_str_clear(&line);
       str_add(&line, "/");
       rolltui_str_append_str(&line, &m->filter);
-      rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n, styles[roles->shortcut], w, aw, 0);
+      rolltui_frame_put_text(f, draw, x0, sy, line.p, line.n, st, w, aw, 0);
     }
   }
   y = first_item_y(m);
@@ -1982,7 +1995,8 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
     }
     if (m->vis[i] == BACK_ROW) {
       RolltuiRect back_rect;
-      const RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut];
+      RolltuiStyle back = styles[i == m->sel ? roles->selected : roles->shortcut];
+      rolltui_style_on(&back, ground);
       back_rect.x = x0;
       back_rect.y = y + r;
       back_rect.w = w;
@@ -2107,10 +2121,11 @@ void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch
       if (rw > 0 && rw <= w) {
         /* A CHOICE's right column is its current answer, so it is a value; a submenu's marker
          * is punctuation and stays the row's own colour. */
-        const RolltuiStyle rs = is_sel ? base
-                                       : (it->kind == ROLLTUI_MENU_CHOICE
-                                              ? value_style
-                                              : (it->kind == ROLLTUI_MENU_SUBMENU ? name_style : styles[roles->shortcut]));
+        RolltuiStyle rs = is_sel ? base
+                                 : (it->kind == ROLLTUI_MENU_CHOICE
+                                        ? value_style
+                                        : (it->kind == ROLLTUI_MENU_SUBMENU ? name_style : styles[roles->shortcut]));
+        rolltui_style_on(&rs, base.bg); /* the row's OWN ground — it may not be `ground` above (selected, disabled) */
         rx = imax(w - rw, used + 1);
         rolltui_frame_put_text(f, draw, x0 + rx, y + r, right.p, right.n, rs, imax(w - rx, 0), aw, 0);
       }

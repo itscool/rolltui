@@ -341,9 +341,19 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     return rolltui_frame_put_text(f, m->draw, x, y, s.data(), s.size(), st, max_cells, aw, 0);
   };
 
+  // `shortcut`'s own role states "none" for a background — the library resolves it against the
+  // row it is drawn on before using it, through the one public call that does that
+  // (`rolltui_style_on`), so a host mirrors the same move rather than drawing raw "none".
+  const RolltuiStyleColor ground = style(m->roles.item).bg;
+  auto shortcut_style = [&](RolltuiStyleColor on) {
+    RolltuiStyle st = style(m->roles.shortcut);
+    rolltui_style_on(&st, on);
+    return st;
+  };
+
   const std::size_t vis_n = build_visible(m);
   int y = a.y;
-  if (status_rows(m)) put(a.x, a.y + a.h - 1, "/" + m->filter, style(m->roles.shortcut), a.w);
+  if (status_rows(m)) put(a.x, a.y + a.h - 1, "/" + m->filter, shortcut_style(ground), a.w);
   const int rows = item_rows(m);
   if (vis_n == 0) {
     if (rows > 0)
@@ -356,7 +366,7 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     if (i >= vis_n) break;
     const RolltuiRect row_rect{a.x, y + r, a.w, 1};
     if (m->vis[i] == kBackRow) {
-      const RolltuiStyle back = style(i == m->sel ? m->roles.selected : m->roles.shortcut);
+      const RolltuiStyle back = i == m->sel ? style(m->roles.selected) : shortcut_style(ground);
       rolltui_frame_fill(f, m->draw, row_rect, back, nullptr, 0);
       put(a.x, y + r, "\xE2\x97\x82 Back", back, a.w);
       continue;
@@ -403,7 +413,7 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
                  : (static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_CHOICE
                         ? value_style
                         : (static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_SUBMENU ? name_style
-                                                                                        : style(m->roles.shortcut)));
+                                                                                        : shortcut_style(base.bg)));
       const int rx = imax(a.w - rw, used + 1);
       put(a.x + rx, y + r, right, rs, imax(a.w - rx, 0));
     }

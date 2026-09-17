@@ -136,6 +136,15 @@ int main() {
   table("\x1b[1;2C", "Shift+Right");
   table("\x1b[1;3D", "Alt+Left");
   table("\x1b[1;7B", "Ctrl+Alt+Down");
+  // Super+arrow: a Windows-keyboard remap's macOS-equivalent keypress for Home/End/
+  // PageUp/PageDown (see rolltui_keys.c). Up/Down give PageUp/PageDown, Left/Right give
+  // Home/End (macOS's own line-start/line-end pairing), and any co-occurring shift/alt/
+  // ctrl still applies since only the Super bit itself has no chord field.
+  table("\x1b[1;9A", "PageUp");
+  table("\x1b[1;9B", "PageDown");
+  table("\x1b[1;9C", "End");
+  table("\x1b[1;9D", "Home");
+  table("\x1b[1;10D", "Shift+Home");
   table("\x1b[3~", "Delete");
   table("\x1b[3;5~", "Ctrl+Delete");
   table("\x1b[2~", "Insert");

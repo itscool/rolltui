@@ -1094,7 +1094,7 @@ struct App {
     l.placement = {left ? RolltuiDim::abs(0) : RolltuiDim::rel(1), RolltuiDim::abs(0),
                    RolltuiDim::abs(kEditorPanelW), RolltuiDim::rel(1),
                    left ? rolltui::Anchor::TopLeft : rolltui::Anchor::TopRight,
-                   true, RolltuiDim::abs(24), RolltuiDim::abs(6), {}, {}};
+                   true, 0, RolltuiDim::abs(24), RolltuiDim::abs(6), {}, {}};
     l.modal = false;
     // The window id stays `editor` so focus and routing are unchanged; the CONTENT is what
     // decides who draws. The theme editor names the library's `theme` kind rather than the
@@ -1112,7 +1112,7 @@ struct App {
     RolltuiLayer l;
     l.id = "report";
     l.placement = {RolltuiDim::rel(0.5), RolltuiDim::rel(0.5), RolltuiDim::rel(0.8), RolltuiDim::rel(0.85),
-                   rolltui::Anchor::Center, true, RolltuiDim::abs(30), RolltuiDim::abs(5), {}, {}};
+                   rolltui::Anchor::Center, true, 0, RolltuiDim::abs(30), RolltuiDim::abs(5), {}, {}};
     l.modal = true;
     RolltuiLayoutNode n = RolltuiLayoutNode::window_id("report", "report");
     n.border = rolltui::Border::Rounded;
@@ -1129,7 +1129,7 @@ struct App {
     RolltuiLayer l;
     l.id = "save";
     l.placement = {RolltuiDim::rel(1), RolltuiDim::abs(0), RolltuiDim::abs(kEditorPanelW), RolltuiDim::rel(1),
-                   rolltui::Anchor::TopRight, true, RolltuiDim::abs(30), RolltuiDim::abs(8), {}, {}};
+                   rolltui::Anchor::TopRight, true, 0, RolltuiDim::abs(30), RolltuiDim::abs(8), {}, {}};
     l.modal = true;
     l.dismiss = 0;
     RolltuiLayoutNode col = RolltuiLayoutNode::column();
@@ -1199,7 +1199,7 @@ struct App {
     RolltuiLayer l;
     l.id = "confirm";
     l.placement = {RolltuiDim::rel(0.5), RolltuiDim::rel(0.5), RolltuiDim::rel(0.5), RolltuiDim::abs(5),
-                   rolltui::Anchor::Center, true, RolltuiDim::abs(20), {}, RolltuiDim::abs(70), {}};
+                   rolltui::Anchor::Center, true, 0, RolltuiDim::abs(20), {}, RolltuiDim::abs(70), {}};
     l.modal = true;
     RolltuiLayoutNode n = RolltuiLayoutNode::window_id("confirm", "confirm");
     n.border = rolltui::Border::Rounded;
@@ -2644,6 +2644,24 @@ void on_term_event(void* vctx, const RolltuiTermEvent* te) {
   }
 }
 
+// `default-dark`/`default-light` are not shipped presets of their own any more (see
+// rolltui_theme.c's `builtin_source`): both are `default.json` at a pinned mode. A host filling
+// a style table directly (`rolltui_theme_builtin_fill`) already resolves that; a name reaching
+// the preset STORE — `--theme`, `--check` — has no `default-dark` to find there, so the alias is
+// resolved here instead, one level up, to the same (preset, mode) pair. `mode` is set only when
+// non-null: `--check` reports both variants of whatever it is given and has no single mode to pin.
+std::string resolve_builtin_theme_alias(const std::string& name, std::optional<unsigned char>* mode) {
+  if (name == "default-dark") {
+    if (mode) *mode = ROLLTUI_MODE_DARK;
+    return "default";
+  }
+  if (name == "default-light") {
+    if (mode) *mode = ROLLTUI_MODE_LIGHT;
+    return "default";
+  }
+  return name;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2680,7 +2698,7 @@ int main(int argc, char** argv) {
     // hook: a theme author checks a theme from a script, and CI checks one without a terminal.
     // A feature nothing but a golden frame happens to call today is still a feature — what a
     // caller reaches is evidence about the API, never the reason a capability exists.
-    else if (a == "--check") check_arg = next();
+    else if (a == "--check") check_arg = resolve_builtin_theme_alias(next(), nullptr);
     else if (a == "--generate") generate_arg = next();
     else if (a == "--seed") seed_arg = next();
     else if (a == "--chaos") chaos_arg = next();
@@ -2690,7 +2708,9 @@ int main(int argc, char** argv) {
     else if (a == "--dump-role") dump_role = next();
     // A test still has to pin a theme and point at a scratch directory, so these do not vanish;
     // they leave the PRODUCT. Pointing a person at a directory is what ROLL_CONFIG_DIR is for.
-    else if (a == "--theme") app.theme_arg = next();
+    // A later `--mode` on the command line still wins over the alias's own pin, same as it
+    // always could.
+    else if (a == "--theme") app.theme_arg = resolve_builtin_theme_alias(next(), &app.mode_flag);
     else if (a == "--layout") app.layout_arg = next();
     else if (a == "--presets") presets_dir = next();
     else if (a == "--shipped") shipped_dir = next();

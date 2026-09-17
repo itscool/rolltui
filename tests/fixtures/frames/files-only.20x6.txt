@@ -3,4 +3,4 @@
 │ input:           •
 │   Enter     ▼208 │
 └──────────────────┘
- default-dark  kettl
+ default  kettle  20

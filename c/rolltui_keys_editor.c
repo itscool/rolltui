@@ -34,6 +34,7 @@ struct RolltuiKeysEditor {
   RolltuiStr capture;
   RolltuiStrList presets, shipped;
   int may_write_shipped;
+  int show_presets; /* default on; rolltui_keys_editor_set_show_presets */
   RolltuiStr status;
   /* CALLER-FILLED working strings the editor owns and REFILLS (rolltui_alloc.h strategy 3),
    * one per ROLE so a builder cannot alias its own caller's buffer: ids, labels, and the
@@ -110,6 +111,15 @@ static void append_count(RolltuiStr* out, size_t n) {
   rolltui_str_append(out, buf, len > 0 ? (size_t)len : 0);
 }
 
+/* Undo and redo are never a pick-and-see-a-status control: a menu with nothing to walk to
+ * disables the row rather than let it be chosen for "nothing to undo"/"nothing to redo" to
+ * report back. Called after every commit, undo and redo — not just the full rebuilds — since
+ * a plain edit changes both depths without rebuilding the rest of the menu. */
+static void sync_undo_redo_enabled(RolltuiKeysEditor* e) {
+  rolltui_menu_set_enabled(e->menu, K("undo"), rolltui_undo_undo_depth(e->undo) != 0);
+  rolltui_menu_set_enabled(e->menu, K("redo"), rolltui_undo_redo_depth(e->undo) != 0);
+}
+
 /* ---- construction --------------------------------------------------------------------------*/
 
 static void rebuild_menu(RolltuiKeysEditor* e);
@@ -117,6 +127,7 @@ static void rebuild_menu(RolltuiKeysEditor* e);
 RolltuiKeysEditor* rolltui_keys_editor_new(const RolltuiBindings* baseline) {
   RolltuiKeysEditor* e = (RolltuiKeysEditor*)rolltui_mem_alloc(sizeof *e);
   memset(e, 0, sizeof *e);
+  e->show_presets = 1;
   e->menu = rolltui_menu_new();
   e->undo = rolltui_undo_new((size_t)-1, bindings_free_owned);
   e->current = baseline ? rolltui_bindings_clone(baseline) : rolltui_bindings_new_seeded();
@@ -166,12 +177,20 @@ void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrList*
 
 void rolltui_keys_editor_set_shipped(RolltuiKeysEditor* e, const RolltuiStrList* names, int may_write) {
   RolltuiMenuItemList opts;
+  const int privilege_changed = e->may_write_shipped != (may_write != 0);
   memset(&opts, 0, sizeof opts);
   copy_str_list(&e->shipped, names);
-  e->may_write_shipped = may_write;
+  e->may_write_shipped = may_write != 0;
+  if (privilege_changed) { rebuild_menu(e); return; } /* the item's EXISTENCE changed, not just its options */
   names_to_options(&e->shipped, &opts);
   set_options_list(e->menu, K("write_shipped"), &opts);
   rolltui_menu_set_enabled(e->menu, K("write_shipped"), may_write && e->shipped.n != 0);
+}
+
+void rolltui_keys_editor_set_show_presets(RolltuiKeysEditor* e, int show) {
+  if (e->show_presets == (show != 0)) return;
+  e->show_presets = show != 0;
+  rebuild_menu(e); /* whether the items EXIST, not just their options — needs the full rebuild */
 }
 
 const RolltuiBindings* rolltui_keys_editor_current(const RolltuiKeysEditor* e) { return e->current; }
@@ -304,18 +323,24 @@ static void rebuild_menu(RolltuiKeysEditor* e) {
   it = list_add(&top, ROLLTUI_MENU_ACTION, K("redo"), K("Redo"));
   rolltui_str_set(&it->shortcut, K("Ctrl-Y"));
 
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load keys"));
-  memset(&opts, 0, sizeof opts);
-  names_to_options(&e->presets, &opts);
-  adopt_children(it, &opts);
+  if (e->show_presets) {
+    it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load keys"));
+    memset(&opts, 0, sizeof opts);
+    names_to_options(&e->presets, &opts);
+    adopt_children(it, &opts);
 
-  it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save keys as"));
-  it->spec.type = ROLLTUI_INPUT_TYPE_NAME;
+    it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save keys as"));
+    it->spec.type = ROLLTUI_INPUT_TYPE_NAME;
 
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));
-  memset(&opts, 0, sizeof opts);
-  names_to_options(&e->shipped, &opts);
-  adopt_children(it, &opts);
+    /* A row that can NEVER be actioned by this host is not a disabled control, it is clutter —
+     * shown only when the privilege that would ever enable it is there at all. */
+    if (e->may_write_shipped) {
+      it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));
+      memset(&opts, 0, sizeof opts);
+      names_to_options(&e->shipped, &opts);
+      adopt_children(it, &opts);
+    }
+  }
 
   list_add_action(&top, K("reset_loaded"), K("Reset to the loaded preset\xE2\x80\xA6"));
 
@@ -325,6 +350,7 @@ static void rebuild_menu(RolltuiKeysEditor* e) {
   rolltui_menu_set_root(e->menu, &root);
   rolltui_menu_item_release(&root);
   rolltui_menu_set_enabled(e->menu, K("write_shipped"), e->may_write_shipped && e->shipped.n != 0);
+  sync_undo_redo_enabled(e);
 }
 
 /* Refreshes ONE action's level in place — its label and its remove items — so the navigation
@@ -356,6 +382,7 @@ static void commit_current(RolltuiKeysEditor* e, RolltuiKeysEditorOutcome* out) 
   }
   rolltui_undo_commit(e->undo, rolltui_bindings_clone(e->current));
   out->kind = ROLLTUI_KEYS_EDIT_COMMITTED;
+  sync_undo_redo_enabled(e);
 }
 
 /* An undo or a redo replaces the whole table, so the menu is rebuilt rather than patched. */

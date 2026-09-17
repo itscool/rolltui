@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ styled       │             │              │ │ theme F4   default-dark      │
+│ │ styled       │             │              │ │ theme F4   default           │
 │ │ wrapped      │             │              │ │ keys F7    default           │
 │ │ lines)       │             │              │ │ layout F6  default           │
 │ │ Theme (roles │ build       │ single       │ │ size       80x24             │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────┤                              │
 │ > first                                       │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 177/195  follow  truecolor  focus:input
+ default  default  80x24  line 177/195  follow  truecolor  focus:input

@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > show me what a state looks like             │ theme F4   default-dark      │
+│ > show me what a state looks like             │ theme F4   default           │
 │                                               │ keys F7    default           │
 │ ⠋ waiting for the first token                 │ layout F6  default           │
 │                                               │ size       80x24             │
@@ -21,6 +21,6 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 1/15  follow  truecolor  focus:input
+ default  default  80x24  line 1/15  follow  truecolor  focus:input
 --- tick ---
 38

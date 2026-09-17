@@ -220,8 +220,13 @@ struct Options {
   bool hidden = true;  // dotfiles shown unless a person turns them off
   Sort sort = Sort::Name;
   bool reversed = false;  // the sort's order turned around: z to a, smallest first, oldest first
-  bool motion = true;    // the column slide; off snaps
-  bool sparkle = true;   // the cursor's glow, the trail's sparkle, the opened burst; off is a still app
+  bool motion = true;    // the column slide; off snaps. Purely the slide: it says nothing about
+                          // whether the cursor and trail are marked, which `sparkle` and
+                          // `highlight` answer between them.
+  bool sparkle = true;   // the cursor's glow, the trail's sparkle, the opened burst
+  bool highlight = true; // a background block on the cursor's row and the trail's. `sparkle` and
+                          // `highlight` are never both off — the app flips the other one on
+                          // rather than leave the cursor with no marker at all.
   bool dividers = true;  // a hairline in the margin between columns, in the border colour
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
@@ -507,7 +512,7 @@ struct App {
     // bar is rebuilt when either changes.
     const std::string sort = std::string("sort: ") + sort_words(opt.sort, opt.reversed);
     const std::string dots = opt.hidden ? "+dotfiles" : "\xE2\x88\x92" "dotfiles";
-    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}, {"app.details", "details"}};
+    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"app.details", "details"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}};
     rolltui_hint_bar_clear(hints);
     for (const Row& r : rows) {
       const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
@@ -665,6 +670,7 @@ struct App {
     o.sort = opt.sort == Sort::Size ? ROLLTUI_SORT_SIZE : opt.sort == Sort::Modified ? ROLLTUI_SORT_MODIFIED : ROLLTUI_SORT_NAME;
     o.reversed = opt.reversed ? 1 : 0;
     o.motion = opt.motion ? 1 : 0;
+    o.highlight = opt.highlight ? 1 : 0;
     o.dividers = opt.dividers ? 1 : 0;
     o.show_size = show_code(opt.show_size);
     o.show_modified = show_code(opt.show_modified);
@@ -724,6 +730,8 @@ struct App {
       if (RolltuiJsonValue* root = rolltui_json_parse(t.p ? t.p : "", t.n, &err)) {
         opt.motion = rolltui_json_as_bool(rolltui_json_get(root, "motion", 6), 1) != 0;
         opt.sparkle = rolltui_json_as_bool(rolltui_json_get(root, "sparkle", 7), 1) != 0;
+        opt.highlight = rolltui_json_as_bool(rolltui_json_get(root, "highlight", 9), 1) != 0;
+        if (!opt.sparkle && !opt.highlight) opt.highlight = true;  // never both off, even from a hand-edited file
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
@@ -759,7 +767,8 @@ struct App {
     for (std::size_t i = 1; i <= dir.size(); ++i)
       if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
-    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"sparkle\": " << (opt.sparkle ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
+    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"sparkle\": " << (opt.sparkle ? "true" : "false")
+        << ", \"highlight\": " << (opt.highlight ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
         << ", \"show_size\": \"" << show_name(opt.show_size) << "\", \"show_modified\": \"" << show_name(opt.show_modified) << "\""
         << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"reversed\": " << (opt.reversed ? "true" : "false") << ", \"leave\": " << (opt.leave ? "true" : "false")
@@ -788,6 +797,7 @@ struct App {
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
     rolltui_menu_set_checked(m, "sparkle", 7, opt.sparkle ? 1 : 0);
+    rolltui_menu_set_checked(m, "highlight", 9, opt.highlight ? 1 : 0);
     rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
     rolltui_menu_set_value(m, "show_size", 9, show_name(opt.show_size), std::strlen(show_name(opt.show_size)));
     rolltui_menu_set_value(m, "show_modified", 13, show_name(opt.show_modified), std::strlen(show_name(opt.show_modified)));
@@ -797,7 +807,18 @@ struct App {
     rolltui_menu_set_checked(m, "relative", 8, opt.copy_relative ? 1 : 0);
     // THE THEME AND THE KEY BINDINGS are the stores' presets, listed live — a preset saved a
     // moment ago in the editor is in the list — with the current one as the value.
-    fill_store_choice(m, "theme", 5, theme_store, "default-dark");
+    fill_store_choice(m, "theme", 5, theme_store, "default");
+    // Light or dark is a SETTING beside the theme's colours, not a preset of its own — the
+    // working value's own "mode" field, same as the library's own authoring tool reads it.
+    if (theme_store) {
+      RolltuiThemePresetValue* w = (RolltuiThemePresetValue*)rolltui_preset_store_working(theme_store);
+      if (w) {
+        const char* mv = w->mode.p && w->mode.n ? w->mode.p : "auto";
+        const size_t mvlen = w->mode.p && w->mode.n ? w->mode.n : 4;
+        rolltui_menu_set_value(m, "mode", 4, mv, mvlen);
+        rolltui_preset_store_value_free(theme_store, w);
+      }
+    }
     fill_store_choice(m, "keys", 4, keys_store, "default");
     // THE "OPEN WITH" CHOICES ARE FILLED HERE, not in the file: their options are what this
     // machine has. The skeleton (one choice per type group) is the file's; the contents are
@@ -874,6 +895,14 @@ struct App {
     if (const std::size_t sp = cur.find(" ("); sp != std::string::npos) cur.erase(sp);
     rolltui_menu_set_value(m, id, id_len, cur.data(), cur.size());
     rolltui_str_free(&label);
+  }
+  // `rolltui_preset_store_edit`'s callback: the Theme domain's value is a `RolltuiThemePresetValue`,
+  // and light/dark/auto is its own "mode" field beside the colours, not a preset of its own
+  // (the same setting the library's own authoring tool edits, `tools/studio.cpp`'s `set_mode`).
+  static void set_theme_mode(void* value, void* ctx) {
+    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
+    const std::string* mode = static_cast<const std::string*>(ctx);
+    rolltui_str_set(&v->mode, mode->data(), mode->size());
   }
   // A CHOSEN KEY-BINDINGS PRESET becomes the live table the way the start built it: the store's
   // working copy, then this app's own bindings file on top, then the layout's declarations.
@@ -1464,6 +1493,29 @@ struct App {
     hint = on ? "motion on" : "motion off";
     save_settings();
   }
+  // `sparkle` and `highlight` are never both off: turning off the one that is currently the only
+  // marker left flips the other one on instead, so the cursor never goes unmarked. `menu_dirty`
+  // is how every other handler here would ask for a resync, but that flag is for the NEXT frame's
+  // popup, not this one already on screen — the checkbox this toggle didn't touch needs to update
+  // right now, so this calls `sync_menu()` directly instead of waiting a frame behind the click.
+  void set_sparkle(bool on) {
+    opt.sparkle = on;
+    const bool forced = !opt.sparkle && !opt.highlight;
+    if (forced) opt.highlight = true;
+    sync_menu();
+    apply_picker_options();
+    hint = opt.sparkle ? "sparkle on" : forced ? "sparkle off, highlight on (never both off)" : "sparkle off";
+    save_settings();
+  }
+  void set_highlight(bool on) {
+    opt.highlight = on;
+    const bool forced = !opt.highlight && !opt.sparkle;
+    if (forced) opt.sparkle = true;
+    sync_menu();
+    apply_picker_options();
+    hint = opt.highlight ? "highlight on" : forced ? "highlight off, sparkle on (never both off)" : "highlight off";
+    save_settings();
+  }
 
   void handle(const RolltuiEvent& e) {
     // The moment an event lands is this frame's: the widgets read the clock from the env.
@@ -1541,6 +1593,11 @@ struct App {
         else hint = "could not load the theme " + name;
         rolltui_theme_preset_report_release(&trep);
         menu_dirty = true;
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "mode") {
+        std::string mode(ev.value.p ? ev.value.p : "", ev.value.n);
+        if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_mode, &mode, 1);
+        hint = "light or dark: " + mode;
+        menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "keys") {
         const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
         RolltuiBindingsPresetReport brep{};
@@ -1570,7 +1627,8 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
-      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "sparkle") { opt.sparkle = ev.checked != 0; hint = opt.sparkle ? "sparkle on" : "sparkle off"; save_settings(); }
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "sparkle") set_sparkle(ev.checked != 0);
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "highlight") set_highlight(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "dividers") {
         opt.dividers = ev.checked != 0;
         hint = opt.dividers ? "column dividers on" : "column dividers off";
@@ -1593,9 +1651,25 @@ struct App {
                                  compose_scratch);
     if (h <= 1) return;
     // THE BREADCRUMB over the path line's row while nobody is editing it: the parts in the value
-    // colour, the separators and the ellipsis muted. While editing, the input draws itself.
+    // colour, the separators and the ellipsis muted. While editing, the input draws itself. Drawn
+    // the same whether or not a popup is open — a popup elsewhere on screen is no reason for the
+    // row under it to go plain — but only ever CLICKABLE at `depth == 1` (below, and at the
+    // press handler). A popup that DOES cover this row already painted over it during compose
+    // above; drawing on top of that popup here would un-paint its own top border, which is what
+    // covered_by_popup catches — the one case still worth falling back to plain text for.
     RolltuiRect pr{};
-    if (!editing_path() && rolltui_window_stack_depth(stack) == 1 && path_rect(pr)) {
+    bool covered_by_popup = false;
+    const bool have_pr = path_rect(pr);
+    if (have_pr) {
+      if (const std::size_t depth = rolltui_window_stack_depth(stack); depth > 1) {
+        if (const RolltuiLayer* top = rolltui_window_stack_layer(stack, depth - 1)) {
+          RolltuiRect box{};
+          rolltui_placement_resolve(rolltui_layer_placement(top), area(), &box);
+          covered_by_popup = !box.intersect(pr).empty();
+        }
+      }
+    }
+    if (!editing_path() && !covered_by_popup && have_pr) {
       // ONE BAND THE ROW'S WHOLE WIDTH, the panel's, the parts and the separators and the pencil
       // all on it — the title row's rule, one row up.
       const RolltuiStyle band = style(ROLLTUI_ROLE_PANEL_BACKGROUND);
@@ -1669,7 +1743,18 @@ struct App {
       }
       const int right = w - 2 - right_w;
       int at = 1;
-      if (at < right) at += rolltui_hint_bar_draw(hints, f, draw_scratch, at, h - 1, right - at, style(ROLLTUI_ROLE_VALUE), style(ROLLTUI_ROLE_LABEL), style(ROLLTUI_ROLE_TEXT_MUTED), 0);
+      // `text_muted`'s own background is the plain background, not the panel one this line
+      // sits on (see default-dark.json: the two differ) — a disabled hint drawn in it verbatim
+      // is a patch of the wrong ground, exactly where a popup's own hints go muted while it is
+      // open. On the line's ground instead, same as `value`/`label` already are by the theme.
+      RolltuiStyle muted = style(ROLLTUI_ROLE_TEXT_MUTED);
+      muted.bg = ground;
+      // The chord half of each hint is the same role a menu draws its own shortcuts in — the
+      // theme's one convention for "this text names a key" — resolved against this line's own
+      // ground exactly as the menu widget resolves it against a row's.
+      RolltuiStyle chord = style(ROLLTUI_ROLE_MENU_SHORTCUT);
+      rolltui_style_on(&chord, ground);
+      if (at < right) at += rolltui_hint_bar_draw(hints, f, draw_scratch, at, h - 1, right - at, chord, style(ROLLTUI_ROLE_LABEL), muted, 0);
       at += 2;
       if (at < right)
         rolltui_frame_put_fields(f, draw_scratch, at, h - 1, &status_facts, style(ROLLTUI_ROLE_LABEL), style(ROLLTUI_ROLE_VALUE), right - at, 0);
@@ -2262,6 +2347,10 @@ int main(int argc, char** argv) {
     rolltui_bindings_preset_report_release(&brep);
     rolltui_windows_set_theme_store(app.windows, "theme", 5, app.theme_store, /*persist=*/1);
     rolltui_windows_set_bindings_store(app.windows, "keys", 4, app.keys_store, /*persist=*/1);
+    // dirktui ships exactly one binding table — there is nothing to Load, and Save-as/Write-
+    // shipped invent a multi-preset feature nobody asked for here. Edit, undo/redo and Reset to
+    // the loaded preset are the whole job.
+    rolltui_windows_set_keys_editor_show_presets(app.windows, "keys", 4, 0);
     app.sync_theme();
   }
 

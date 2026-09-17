@@ -500,10 +500,7 @@
           "dark": "#cba63a",
           "light": "#401459"
         },
-        "bg": {
-          "dark": "#22252b",
-          "light": "#e3e4e6"
-        }
+        "bg": "none"
       },
       "find_match": {
         "fg": {

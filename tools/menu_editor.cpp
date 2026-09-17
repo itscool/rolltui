@@ -379,6 +379,10 @@ void MenuEditor::sync_fields() {
 }
 
 void MenuEditor::sync_values() {
+  // Undo/redo are never a pick-and-see-a-status control: disabled when there is nothing to
+  // walk to, regardless of what is selected — so this runs before the early return below.
+  rolltui_menu_set_enabled(menu_, "undo", 4, undo_.can_undo());
+  rolltui_menu_set_enabled(menu_, "redo", 4, undo_.can_redo());
   const MenuItem* it = selected_item();
   if (!it) return;
   set_value(menu_, "kind", kind_name(static_cast<unsigned char>(it->kind)));

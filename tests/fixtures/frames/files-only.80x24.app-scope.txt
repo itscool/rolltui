@@ -21,4 +21,4 @@
 │   Ctrl-T      find in the transcript                                         │
 │ editor:                                                           ▼ 19 more  │
 └──────────────────────────────────────────────────────────────────────────────┘
- default-dark  kettle  80x24  line 34/41  follow  truecolor  focus:kettle_keys
+ default  kettle  80x24  line 34/41  follow  truecolor  focus:kettle_keys

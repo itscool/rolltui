@@ -1,5 +1,5 @@
 ╭ session ─────────────────────╮╭ chat ────────────────────────────────────────╮
-│ theme F4   default-dark      ││ │ styled      │             │              │ │
+│ theme F4   default           ││ │ styled      │             │              │ │
 │ keys F7    default           ││ │ wrapped     │             │              │ │
 │ layout F6  wide-left         ││ │ lines)      │             │              │ │
 │ size       80x24             ││ │ Theme       │ build       │ single       │ │
@@ -21,4 +21,4 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║ > type here                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
- default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:input
+ default  wide-left  80x24  line 181/197  follow  truecolor  focus:input

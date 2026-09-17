@@ -37,4 +37,4 @@
 │   Delete                  erase after the caret (or the selection)                                                   │
 │   Ctrl-W, Alt-Backspace   kill the word before the caret                                                  ▼ 58 more  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- default-dark  kettle  120x40  line 1/31  truecolor  focus:kettle_talk
+ default  kettle  120x40  line 1/31  truecolor  focus:kettle_talk

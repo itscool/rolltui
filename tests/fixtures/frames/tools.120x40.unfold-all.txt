@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ > read the manager header and tell me what stop_heartbeat does                        │ theme F4   default-dark      │
+│ > read the manager header and tell me what stop_heartbeat does                        │ theme F4   default           │
 │                                                                                       │ keys F7    default           │
 │ ▾ read_file include/ResilientModelManager.hpp (lines 40-52)                           │ layout F6  default           │
 │   void stop_heartbeat() {                                                             │ size       120x40            │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 1/30  follow  truecolor  focus:transcript
+ default  default  120x40  line 1/30  follow  truecolor  focus:transcript

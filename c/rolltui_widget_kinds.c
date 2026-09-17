@@ -1888,6 +1888,25 @@ static void theme_ctx_write_back(RolltuiThemeCtx* tc) {
                             rolltui_theme_editor_colours_json(tc->ed, origin ? origin : "", olen), tc->persist);
 }
 
+static void theme_set_mode(void* value, void* ctx) {
+  RolltuiThemePresetValue* v = (RolltuiThemePresetValue*)value;
+  const char* mode = (const char*)ctx;
+  rolltui_str_set(&v->mode, mode, strlen(mode));
+}
+
+/* "Preview variant" picks which of a theme's two looks the EDITOR shows while you work on
+ * either — the sample box, the role list's own colours. On its own that is a preview of
+ * nothing a person watching the rest of the screen can see, which is the gap this closes: the
+ * variant being looked at is pushed to the store's WORKING value too, UNPERSISTED (`persist=0`,
+ * regardless of what this mount was given), so the whole app shows it live the same way a
+ * committed colour already does, but a restart still comes back to whatever was actually
+ * saved — a preview stays a preview. */
+static void theme_ctx_preview_mode(RolltuiThemeCtx* tc) {
+  const char* word = rolltui_theme_editor_mode(tc->ed) == ROLLTUI_MODE_LIGHT ? "light" : "dark";
+  if (!tc->store) return;
+  rolltui_preset_store_edit(tc->store, theme_set_mode, (void*)word, 0);
+}
+
 static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome* o) {
   char buf[192];
   rolltui_str_clear(&tc->hint);
@@ -2007,9 +2026,11 @@ static void theme_ctx_apply(RolltuiThemeCtx* tc, const RolltuiThemeEditorOutcome
 static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
   RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
   RolltuiThemeEditorOutcome o;
+  const unsigned char mode_before = rolltui_theme_editor_mode(tc->ed);
   memset(&o, 0, sizeof o);
   rolltui_theme_editor_handle(tc->ed, e, rolltui_windows_bindings(tc->w), &o);
   theme_ctx_apply(tc, &o);
+  if (rolltui_theme_editor_mode(tc->ed) != mode_before) theme_ctx_preview_mode(tc);
   {
     const int consumed = o.kind != ROLLTUI_THEME_EDIT_NONE;
     rolltui_theme_editor_outcome_release(&o);
@@ -2613,6 +2634,12 @@ void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, 
   kc->persist = persist;
   keys_ctx_refresh(kc);
   keys_ctx_sync_store(kc);
+}
+
+void rolltui_windows_set_keys_editor_show_presets(RolltuiWindows* w, const char* content, size_t len, int show) {
+  RolltuiKeysCtx* kc = keys_ctx_for(w, content, len);
+  if (!kc) return;
+  rolltui_keys_editor_set_show_presets(kc->ed, show);
 }
 
 

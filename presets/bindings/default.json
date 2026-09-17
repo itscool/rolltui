@@ -42,10 +42,12 @@
       "alt+right"
     ],
     "input.line_start": [
-      "home"
+      "home",
+      "ctrl+a"
     ],
     "input.line_end": [
-      "end"
+      "end",
+      "ctrl+e"
     ],
     "input.up": [
       "up"
@@ -80,7 +82,7 @@
       "shift+down"
     ],
     "input.select_all": [
-      "ctrl+a"
+      "alt+shift+a"
     ],
     "input.clear_selection": [
       "escape"
@@ -98,18 +100,22 @@
       "ctrl+y"
     ],
     "transcript.page_up": [
-      "pageup"
+      "pageup",
+      "alt+pageup"
     ],
     "transcript.page_down": [
-      "pagedown"
+      "pagedown",
+      "alt+pagedown"
     ],
     "transcript.top": [
       "home",
-      "ctrl+home"
+      "ctrl+home",
+      "ctrl+a"
     ],
     "transcript.bottom": [
       "end",
-      "ctrl+end"
+      "ctrl+end",
+      "ctrl+e"
     ],
     "transcript.line_up": [
       "up"
@@ -139,16 +145,20 @@
       "down"
     ],
     "menu.page_up": [
-      "pageup"
+      "pageup",
+      "alt+pageup"
     ],
     "menu.page_down": [
-      "pagedown"
+      "pagedown",
+      "alt+pagedown"
     ],
     "menu.first": [
-      "home"
+      "home",
+      "ctrl+a"
     ],
     "menu.last": [
-      "end"
+      "end",
+      "ctrl+e"
     ],
     "menu.activate": [
       "enter"
@@ -230,16 +240,20 @@
       "right"
     ],
     "picker.first": [
-      "home"
+      "home",
+      "ctrl+a"
     ],
     "picker.last": [
-      "end"
+      "end",
+      "ctrl+e"
     ],
     "picker.page_up": [
-      "pageup"
+      "pageup",
+      "alt+pageup"
     ],
     "picker.page_down": [
-      "pagedown"
+      "pagedown",
+      "alt+pagedown"
     ],
     "picker.take": [
       "enter"

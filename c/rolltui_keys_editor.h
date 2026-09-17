@@ -86,6 +86,12 @@ void rolltui_keys_editor_load(RolltuiKeysEditor* e, const RolltuiBindings* b);
 void rolltui_keys_editor_set_presets(RolltuiKeysEditor* e, const RolltuiStrList* names);
 void rolltui_keys_editor_set_shipped(RolltuiKeysEditor* e, const RolltuiStrList* names, int may_write);
 
+/* Whether "Load keys", "Save keys as" and "Write a SHIPPED preset" appear at all — on (the
+ * default) for a host with more than one binding table worth switching between, off for one
+ * that has exactly one and wants only edit, undo/redo and "Reset to the loaded preset" left.
+ * Off does not clear `presets`/`shipped`: turning it back on shows whatever was set last. */
+void rolltui_keys_editor_set_show_presets(RolltuiKeysEditor* e, int show);
+
 /* The table being edited, and the one the undo stack is standing on. Both BORROWS of the
  * editor's own storage, valid until the next event, load, undo, redo or replace. */
 const RolltuiBindings* rolltui_keys_editor_current(const RolltuiKeysEditor* e);

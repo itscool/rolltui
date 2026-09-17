@@ -491,6 +491,7 @@ void rolltui_picker_options_init(RolltuiPickerOptions* o) {
   o->hidden = 1;
   o->sort = ROLLTUI_SORT_NAME;
   o->motion = 1;
+  o->highlight = 1;
   o->dividers = 1;
   o->take_folders = 0;
 }
@@ -723,7 +724,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   const RolltuiStyle err_style = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_ERROR);
   const RolltuiStyle border = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_BORDER);
   const RolltuiStyle bar_role = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SCROLLBAR);
-  const int still = !p->opt.motion;
+  const int show_highlight = p->opt.highlight;
   p->faded_cells = 0;
   d.p = p;
   d.f = f;
@@ -834,11 +835,12 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       is_sel = i == c->sel;
       is_focus_col = ci == p->focus_col;
       /* A TRAIL ROW — the selection in a column LEFT of the focus, the path we came down. The
-       * column to the RIGHT is a preview the cursor has not entered and draws no selection. With
-       * motion on, neither selection is a block of background: the theme's effect on the NAME is
-       * the marker. With motion off both are highlights, as a still screen needs. */
+       * column to the RIGHT is a preview the cursor has not entered and draws no selection.
+       * `highlight` draws both as a block of background; independently, the host's own glow
+       * effect (marked below regardless) may also be lit. A host is expected to keep at least
+       * one of the two on, or neither row reads as the cursor's. */
       is_trail = is_sel && ci < p->focus_col;
-      st = is_sel && is_focus_col && still ? here : is_trail && still ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
+      st = is_sel && is_focus_col && show_highlight ? here : is_trail && show_highlight ? trail : (e->is_dir ? text : (e->unreadable ? dim : text));
       /* A directory is marked with a trailing chevron rather than a colour, so the shape
        * survives `mono` and a colour-blind reader alike. */
       rolltui_str_set(&p->s2, e->name.p ? e->name.p : "", e->name.n);
@@ -849,7 +851,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
         const unsigned long long opened_age = p->now_ms >= p->opened_since_ms ? p->now_ms - p->opened_since_ms : 0;
         const int opened_now = ci == p->opened_col && i == p->opened_sel && opened_age < OPENED_MS;
         size_t name_n = p->s1.n;
-        if (still) fill_row(&d, fx, y, x + cw - fx, st);
+        if (show_highlight) fill_row(&d, fx, y, x + cw - fx, st);
         if (e->is_dir && name_n >= 4 && memcmp(p->s1.p + name_n - 4, " \xE2\x80\xBA", 4) == 0) name_n -= 4;
         mark_words(&d, p->s1.p ? p->s1.p : "", name_n, x, cw, y,
                    is_focus_col ? ROLLTUI_EFFECT_STATE_PICKER_CURSOR : ROLLTUI_EFFECT_STATE_PICKER_TRAIL,
@@ -861,11 +863,11 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
          * a folder has no size to say; a "-" keeps the column's shape. */
         char buf[32];
         int ex = x + cw - extras_width(p);
-        /* On a highlighted row — the cursor's, or a trail selection with motion off — the facts
-         * sit on the row's own ground: muted lettering, the highlight's background, so the block
-         * runs the row's whole width. */
-        RolltuiStyle fs = is_sel && is_focus_col && still ? st : dim;
-        if (is_trail && still) fs.bg = st.bg;
+        /* On a highlighted row — the cursor's, or a trail selection — the facts sit on the
+         * row's own ground: muted lettering, the highlight's background, so the block runs the
+         * row's whole width. */
+        RolltuiStyle fs = is_sel && is_focus_col && show_highlight ? st : dim;
+        if (is_trail && show_highlight) fs.bg = st.bg;
         if (show_size(p)) {
           int wdt;
           if (e->is_dir) snprintf(buf, sizeof buf, "-");

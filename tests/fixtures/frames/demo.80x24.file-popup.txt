@@ -1,5 +1,5 @@
 ╭ session ─────────────────────╮╭ chat ─────┏ keys ━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ theme F4   default-dark      ││ │ styled  ┃ input:                           •
+│ theme F4   default           ││ │ styled  ┃ input:                           •
 │ keys F7    default           ││ │ wrapped ┃   Enter                   send   ┃
 │ layout F6  wide-left         ││ │ lines)  ┃ the line (always Enter)          ┃
 │ size       80x24             ││ │ Theme   ┃   Alt-Enter               insert ┃
@@ -21,4 +21,4 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║ > type here                                                                  ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
- default-dark  wide-left  80x24  line 181/197  follow  truecolor  focus:help
+ default  wide-left  80x24  line 181/197  follow  truecolor  focus:help

@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│                                               │ theme F4   default-dark      │
+│                                               │ theme F4   default           │
 │ 3. Third struck step                          │ keys F7    default           │
 │                                               ╻ layout F6  default           │
 │ [ ] todo item                                 ╹ size       80x24             │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 19/191  truecolor  focus:input
+ default  default  80x24  line 19/191  truecolor  focus:input

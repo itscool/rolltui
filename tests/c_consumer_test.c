@@ -159,12 +159,14 @@ int main(void) {
   /* THE SAME FILE THE OTHER WAY ROUND: its BYTES, through the whole preset chain, with no C++
    * anywhere in it. This is the rung a host that ships its own theme files stands on, and it
    * is three calls rather than one because a PRESET FILE IS NOT A THEME FILE — the shipped
-   * `default-dark.json` is `{name, mode, depth, colours:{roles:{…}}}` and `rolltui_theme_load`
-   * wants the `colours` object. `rolltui_theme_preset_parse` is what knows that, and it takes
-   * the two setting validators as callbacks; a C caller passes the library's own, which
-   * `rolltui_theme.h` says is exactly what they became once a C file could spell the names. */
+   * `default.json` (the built-in `default-dark` reads it at a pinned mode — `builtin_source`,
+   * rolltui_theme.c — rather than shipping its own file any more) is
+   * `{name, mode, depth, colours:{roles:{…}}}` and `rolltui_theme_load` wants the `colours`
+   * object. `rolltui_theme_preset_parse` is what knows that, and it takes the two setting
+   * validators as callbacks; a C caller passes the library's own, which `rolltui_theme.h` says
+   * is exactly what they became once a C file could spell the names. */
   {
-    const char* text = rolltui_embedded_text(rolltui_kThemePresets, rolltui_kThemePresetCount, "default-dark", 12);
+    const char* text = rolltui_embedded_text(rolltui_kThemePresets, rolltui_kThemePresetCount, "default", 7);
     check(text != NULL && text[0] != '\0', "the shipped theme FILE's bytes are reachable from C");
     if (text != NULL) {
       RolltuiStr err = {0};
@@ -638,13 +640,13 @@ int main(void) {
       }
 
       /* LOAD a shipped preset into the working copy: the origin follows it. */
-      check(rolltui_preset_store_load(ts, "default-dark", 12, &rep, /*persist=*/1) != 0 &&
+      check(rolltui_preset_store_load(ts, "mono", 4, &rep, /*persist=*/1) != 0 &&
                 rolltui_theme_preset_report_clean(&rep) != 0 && rolltui_preset_store_modified(ts) == 0,
             "load a shipped preset from C: the working copy is replaced whole, unmodified");
       {
         size_t n = 0;
         const char* o = rolltui_preset_store_origin(ts, &n);
-        check(n == 12 && memcmp(o, "default-dark", 12) == 0, "…and the origin followed it");
+        check(n == 4 && memcmp(o, "mono", 4) == 0, "…and the origin followed it");
       }
 
       /* THE ROUND TRIP: a second store on the same directory starts from what the first one
@@ -655,7 +657,7 @@ int main(void) {
         const char* o;
         rolltui_preset_store_start(again, &rep);
         o = rolltui_preset_store_origin(again, &n);
-        if (rolltui_theme_preset_report_clean(&rep) == 0 || n != 12 || memcmp(o, "default-dark", 12) != 0 ||
+        if (rolltui_theme_preset_report_clean(&rep) == 0 || n != 4 || memcmp(o, "mono", 4) != 0 ||
             rolltui_preset_store_modified(again) != 0) {
           RolltuiStr why = {0};
           rolltui_theme_preset_report_summary(&rep, &why);
@@ -663,7 +665,7 @@ int main(void) {
                  rolltui_preset_store_modified(again), (int)why.n, why.p != NULL ? why.p : "", rep.notes_n);
           rolltui_str_free(&why);
         }
-        check(rolltui_theme_preset_report_clean(&rep) != 0 && n == 12 && memcmp(o, "default-dark", 12) == 0 &&
+        check(rolltui_theme_preset_report_clean(&rep) != 0 && n == 4 && memcmp(o, "mono", 4) == 0 &&
                   rolltui_preset_store_modified(again) == 0,
               "a SECOND store on the same directory starts from the autosaved working copy, origin included");
         rolltui_preset_store_free(again);

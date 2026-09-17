@@ -559,27 +559,16 @@ int main() {
     check(!rolltui_effect_map_empty(dark.effects) && !rolltui_effect_map_empty(mono.effects) && !rolltui_effect_map_equal(dark.effects, mono.effects),
           "…and the two are genuinely different looks, not one map copied twice");
     // The EMBEDDED copy is the same file too — the shipped preset a chooser offers and the
-    // built-in a host falls back to are now one thing under two names, which is what the
-    // by-name-and-mode table above buys.
+    // built-in a host falls back to are one thing under two names: `default-dark` and
+    // `default-light` are not shipped presets of their own any more (no `default-dark.json` /
+    // `default-light.json` on disk — `builtin_source`, rolltui_theme.c, reads `default.json` at
+    // a pinned mode for both), so there is exactly one file left that COULD disagree with
+    // itself, and this is the check that it does not.
     ResolvedTheme embedded_dark;
     check(resolve_colours_c(d->colours, ROLLTUI_MODE_DARK, embedded_dark) &&
               styles_eq(embedded_dark.styles, builtin_dark.styles),
           "the shipped preset 'default' and the built-in 'default-dark' are one look, not two");
     check(d->mode == "auto" && d->depth == "auto", "shipped 'default' is mode auto, depth auto");
-    // `default-dark` and `default-light` are the shipped `default` with `mode` pinned — one
-    // design under three names, and pinning a mode is what the mode setting already does. They
-    // carry BOTH variants like every other theme file, so the equality holds at both modes; a
-    // colour changed in one of the three and not the others fails here.
-    for (const char* pinned : {"default-dark", "default-light"}) {
-      const RolltuiThemePresetValue* p = ThemeStore::shipped(pinned);
-      ResolvedTheme pd, pl;
-      const bool same = p && resolve_colours_c(p->colours, ROLLTUI_MODE_DARK, pd) &&
-                        resolve_colours_c(p->colours, ROLLTUI_MODE_LIGHT, pl) &&
-                        styles_eq(pd.styles, builtin_dark.styles) && styles_eq(pl.styles, builtin_light.styles);
-      check(same, std::string("'") + pinned + "' is the shipped 'default', colour for colour, at both modes");
-    }
-    check(ThemeStore::shipped("default-dark")->mode == "dark" && ThemeStore::shipped("default-light")->mode == "light",
-          "…and each pins the mode its name says");
     // rolltui_theme_dump(both variants) round-trips both exactly (the shipped file was
     // produced by it) — theme_pair_to_json_value's own port.
     RolltuiJsonValue* pair = rolltui_theme_dump(builtin_dark.styles, builtin_dark.effects, builtin_light.styles, builtin_light.effects,

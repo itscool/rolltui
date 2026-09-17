@@ -145,7 +145,13 @@ int main() {
   // ---- every role reachable ----
   {
     const MenuItem* roles = find(ed.menu(), "roles");
-    check(roles && roles->children.size() == ROLLTUI_ROLE_COUNT, "the Roles level lists every role (" + std::to_string(roles ? roles->children.size() : 0) + " of " + std::to_string(ROLLTUI_ROLE_COUNT) + ")");
+    // Section headers (Text & backgrounds, Markdown, …) sit among the children too, grouping
+    // the role table's own thematic order; only the actual role submenus count against it.
+    std::size_t role_children = 0;
+    if (roles)
+      for (const MenuItem& c : roles->children)
+        if (c.kind != MenuItem::Kind::Section) ++role_children;
+    check(roles && role_children == ROLLTUI_ROLE_COUNT, "the Roles level lists every role (" + std::to_string(role_children) + " of " + std::to_string(ROLLTUI_ROLE_COUNT) + ")");
     bool all = true;
     for (std::size_t i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
       const std::string base = "role." + role_name(static_cast<unsigned char>(i));
@@ -290,7 +296,7 @@ int main() {
     o = handle(ed, key(ROLLTUI_KEY_ENTER));
     check(o == ThemeEditor::Outcome{ThemeEditor::Outcome::Kind::WriteShipped, "default"}, "Write a shipped preset asks the host (with the privilege set)");
     ed.set_shipped({"default"}, false);
-    check(!find(ed.menu(), "write_shipped")->enabled, "…and is disabled without it");
+    check(find(ed.menu(), "write_shipped") == nullptr, "…and is gone, not just disabled, without it");
     handle(ed, key(ROLLTUI_KEY_ESCAPE));
     handle(ed, key(ROLLTUI_KEY_HOME));
     type(ed, "reset to the built");

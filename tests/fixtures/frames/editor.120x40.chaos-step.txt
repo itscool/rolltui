@@ -30,11 +30,11 @@
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │ editing — 0.00..1.00 (2 digits)                │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ default-dark                                   │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ default                                        │
 │ │ int add(int a, int b) {                                           │ Roles › a role › fg › a colour; the screen is  │
 │ │   return a + b;                                                   │ type to filter · Enter commits · Esc cancels · │
 │ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+ default [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor

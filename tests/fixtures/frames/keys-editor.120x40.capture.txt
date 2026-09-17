@@ -37,4 +37,4 @@
 ├─────────────────────────────────────────────────────────────────────│ press the chord for input.word_left (Esc cance │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [keys editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+ default [keys editor]  default  120x40  line 75/109  follow  truecolor  focus:editor

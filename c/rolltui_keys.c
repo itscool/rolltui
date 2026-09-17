@@ -269,6 +269,27 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
   }
 
   e = chord_key(ROLLTUI_KEY_CHAR, 0, 0, 0);
+  /* Super+arrow, alone among the modifiers, has no bit on `RolltuiChord` (see Keys.hpp: "the
+   * three modifiers"). It reaches here anyway, because a Windows-keyboard remap on macOS turns
+   * physical Home/End/PageUp/PageDown into Cmd+Left/Right/Up/Down — the "macOS equivalent
+   * keypress" for that behaviour — so a host bound to Home/End/PageUp/PageDown would otherwise
+   * see a bare, unmodified arrow instead and the remapped keys would silently do nothing. Fold
+   * the pair into the one canonical chord, the same way ESC+uppercase already folds into
+   * Alt+Shift+<letter>: both encodings mean the same key, so both produce it. */
+  if ((mod - 1) & 8) {
+    switch (final) {
+      case 'A': e = chord_key(ROLLTUI_KEY_PAGEUP, 0, 0, 0); break;
+      case 'B': e = chord_key(ROLLTUI_KEY_PAGEDOWN, 0, 0, 0); break;
+      case 'C': e = chord_key(ROLLTUI_KEY_END, 0, 0, 0); break;
+      case 'D': e = chord_key(ROLLTUI_KEY_HOME, 0, 0, 0); break;
+      default: break;
+    }
+    if (e.key != ROLLTUI_KEY_CHAR) {
+      apply_modifier(&e, mod);
+      emit_key(emit, ctx, e, NULL, 0);
+      return 1;
+    }
+  }
   switch (final) {
     case 'A': e = chord_key(ROLLTUI_KEY_UP, 0, 0, 0); break;
     case 'B': e = chord_key(ROLLTUI_KEY_DOWN, 0, 0, 0); break;

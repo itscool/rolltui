@@ -1862,6 +1862,16 @@ int rolltui_color_parse(const char* text, size_t len, RolltuiStyleColor* out);
  * colours fade; a palette colour stays as it is. A fading status note, a column clipped at an edge. */
 void rolltui_style_fade(const RolltuiStyle* st, RolltuiStyleColor ground, double keep, RolltuiStyle* out);
 
+/* A style ON a ground: `fg`/`bg` "none" (kind 0 — `parse`'s own word for it) become `ground`,
+ * a stated colour is left exactly as the theme wrote it. This is what "none" in a theme file
+ * MEANS for a role meant to sit on whatever it is drawn over rather than one true background —
+ * a shortcut highlighted in a menu's own row and in a host's status line are different grounds,
+ * and a role that states "none" is saying it does not choose between them. Mutates in place;
+ * `ground` is typically the caller's own already-resolved background. The bug this generalises
+ * already happened once by hand (a hint bar's muted style against its own panel) before every
+ * "this role rides on the caller's ground" site was made to ask the same way. */
+void rolltui_style_on(RolltuiStyle* st, RolltuiStyleColor ground);
+
 size_t rolltui_color_to_string(RolltuiStyleColor c, char* out, size_t cap);
 
 /* The SGR sequence that selects `style` at `depth`, into `out`. Always starts from a reset,
@@ -2260,6 +2270,11 @@ typedef struct RolltuiPlacement {
   unsigned char anchor;
 #endif
   unsigned char clamp ROLLTUI_DEFAULT(1);
+  /* Columns kept clear of the screen's left and right edges when `clamp` fits this popup on
+   * screen — 0 (the default) clamps flush to the edge, as a docked editor panel wants; a
+   * popup that centres over the whole screen wants a gutter instead, so it never grows (via
+   * `min_w`) all the way to either edge. Width only: a popup's height is never inset this way. */
+  unsigned char edge_margin ROLLTUI_DEFAULT(0);
   RolltuiOptDim min_w, min_h, max_w, max_h;
 #ifdef __cplusplus
   bool operator==(const RolltuiPlacement&) const = default;
@@ -3896,6 +3911,12 @@ void rolltui_windows_set_theme_store(RolltuiWindows* w, const char* content, siz
 void rolltui_windows_set_bindings_store(RolltuiWindows* w, const char* content, size_t len,
                                         RolltuiPresetStore* store, int persist);
 
+/* Whether the editor's "Load keys" / "Save keys as" / "Write a SHIPPED preset" appear at all —
+ * on by default, matching the editor's own default. An app with exactly one binding table (no
+ * presets to switch between) turns this off and keeps edit, undo/redo and "Reset to the loaded
+ * preset". `content` as above. */
+void rolltui_windows_set_keys_editor_show_presets(RolltuiWindows* w, const char* content, size_t len, int show);
+
 void rolltui_theme_preset_value_release(RolltuiThemePresetValue* v); /* frees `colours`; zeroes */
 
 void rolltui_layout_preset_report_release(RolltuiLayoutPresetReport* r); /* frees everything; zeroes */
@@ -4803,13 +4824,16 @@ void rolltui_picker_event_release(RolltuiPickerEvent* e);
 int rolltui_windows_picker_event(RolltuiWindows* w, const char* content, size_t len, RolltuiPickerEvent* out);
 
 /* THE PICKER'S SETTINGS, a host's to set: dotfiles shown, the sort (`ROLLTUI_SORT_*`), motion
- * (the slide and the marks; off is a still picker), the dividers, and whether Enter on a folder
- * TAKES it (a directory picker) or ENTERS it (a file dialog, the default). `_init` fills the
- * defaults, so a host sets only what it means to. */
+ * (the column slide, only; off snaps), highlight (a background block on the cursor's row and the
+ * trail's, independent of motion — a host that also turns its own glow effect off should leave
+ * at least one of the two on, or the cursor stops being visible at all), the dividers, and
+ * whether Enter on a folder TAKES it (a directory picker) or ENTERS it (a file dialog, the
+ * default). `_init` fills the defaults, so a host sets only what it means to. */
 typedef struct RolltuiPickerOptions {
   unsigned char hidden ROLLTUI_DEFAULT(1);
   unsigned char sort ROLLTUI_DEFAULT(0);
   unsigned char motion ROLLTUI_DEFAULT(1);
+  unsigned char highlight ROLLTUI_DEFAULT(1);
   unsigned char dividers ROLLTUI_DEFAULT(1);
   unsigned char take_folders ROLLTUI_DEFAULT(0);
   /* The sort's order turned around: name z to a, smallest first, oldest first. */

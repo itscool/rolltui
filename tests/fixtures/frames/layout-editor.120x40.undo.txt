@@ -37,4 +37,4 @@
 ├─────────────────────────────────────────────────────────────────────│ undone · undo 0 · redo 1                       │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [layout editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+ default [layout editor]  default  120x40  line 75/109  follow  truecolor  focus:editor

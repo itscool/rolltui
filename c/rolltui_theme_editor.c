@@ -214,6 +214,15 @@ static void rebuild_menu(RolltuiThemeEditor* e);
 static void sync_values(RolltuiThemeEditor* e);
 static void refresh_fixes(RolltuiThemeEditor* e);
 
+/* Undo and redo are never a pick-and-see-a-status control: a menu with nothing to walk to
+ * disables the row rather than let it be chosen for "nothing to undo"/"nothing to redo" to
+ * report back. Called after every commit, undo and redo — not just the full rebuilds — since
+ * a plain edit changes both depths without rebuilding the rest of the menu. */
+static void sync_undo_redo_enabled(RolltuiThemeEditor* e) {
+  rolltui_menu_set_enabled(e->menu, K("undo"), rolltui_undo_undo_depth(e->undo) != 0);
+  rolltui_menu_set_enabled(e->menu, K("redo"), rolltui_undo_redo_depth(e->undo) != 0);
+}
+
 RolltuiThemeEditor* rolltui_theme_editor_new(void) {
   RolltuiThemeEditor* e = (RolltuiThemeEditor*)rolltui_mem_alloc(sizeof *e);
   memset(e, 0, sizeof *e);
@@ -340,9 +349,11 @@ void rolltui_theme_editor_set_presets(RolltuiThemeEditor* e, const RolltuiStrLis
 
 void rolltui_theme_editor_set_shipped(RolltuiThemeEditor* e, const RolltuiStrList* names, int may_write) {
   RolltuiMenuItemList opts;
+  const int privilege_changed = e->may_write_shipped != (may_write != 0);
   memset(&opts, 0, sizeof opts);
   copy_str_list(&e->shipped, names);
-  e->may_write_shipped = may_write;
+  e->may_write_shipped = may_write != 0;
+  if (privilege_changed) { rebuild_menu(e); return; } /* the item's EXISTENCE changed, not just its options */
   names_to_options(&e->shipped, &opts);
   set_options_list(e->menu, "write_shipped", &opts);
   rolltui_menu_set_enabled(e->menu, K("write_shipped"), may_write && e->shipped.n != 0);
@@ -523,6 +534,23 @@ static void role_base(unsigned char role, char* out, size_t cap, size_t* len) {
   *len = n > 0 ? (size_t)n : 0;
 }
 
+/* THE ROLE TABLE'S OWN DECLARATION ORDER IS ALREADY THEMATIC (`ROLLTUI_ROLE_LIST`,
+ * rolltui_style.h) — text roles together, then backgrounds, borders, accents, markdown, diff,
+ * input, menus. This names where each theme runs a new one starts, so 49 roles in one flat
+ * list become several a person can actually hold in mind, WITHOUT a second, driftable copy of
+ * the table: a role a future list adds keeps whatever section its neighbours are already in
+ * unless it opens one of its own, which is one line here rather than 49 kept in sync by hand. */
+static const struct {
+  const char* role;
+  const char* label;
+} kRoleSections[] = {
+    {"text", "Text & backgrounds"},        {"border", "Borders & labels"},
+    {"accent_1", "Accents & status"},      {"md_heading", "Markdown"},
+    {"diff_added", "Diff"},                {"input_text", "Input & selection"},
+    {"menu_item", "Menus, find & scrollbar"},
+};
+#define ROLLTUI_ROLE_SECTION_COUNT (sizeof kRoleSections / sizeof kRoleSections[0])
+
 static void rebuild_menu(RolltuiThemeEditor* e) {
   RolltuiMenuItemList top, roles, fields, opts, modes, rulesets, gen;
   RolltuiMenuItem root, *it;
@@ -535,7 +563,17 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   for (i = 0; i < ROLLTUI_ROLE_COUNT; ++i) {
     size_t blen = 0, rn = 0;
     const char* rname = rolltui_role_name((unsigned char)i, &rn);
-    size_t a;
+    size_t a, s;
+    for (s = 0; s < ROLLTUI_ROLE_SECTION_COUNT; ++s) {
+      const size_t sl = strlen(kRoleSections[s].role);
+      if (rn == sl && memcmp(rname, kRoleSections[s].role, rn) == 0) {
+        char sec_id[24];
+        const int sn = snprintf(sec_id, sizeof sec_id, "rolesec.%s", kRoleSections[s].role);
+        list_add(&roles, ROLLTUI_MENU_SECTION, sec_id, (size_t)sn, kRoleSections[s].label,
+                 strlen(kRoleSections[s].label));
+        break;
+      }
+    }
     role_base((unsigned char)i, base, sizeof base, &blen);
     memset(&fields, 0, sizeof fields);
     for (a = 0; a < 2; ++a) {
@@ -565,6 +603,8 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
     memset(&fields, 0, sizeof fields);
   }
 
+  list_add(&top, ROLLTUI_MENU_SECTION, K("sec_edit"), K("Edit \xE2\x80\x94 applies live, everywhere"));
+
   it = list_add(&top, ROLLTUI_MENU_SUBMENU, K("roles"), K("Roles"));
   rolltui_menu_list_release(&it->children);
   it->children = roles;
@@ -573,13 +613,14 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   memset(&modes, 0, sizeof modes);
   list_add_action(&modes, K("dark"), K("dark"));
   list_add_action(&modes, K("light"), K("light"));
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("mode"), K("Mode (edit + preview)"));
+  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("mode"), K("Preview variant (dark/light)"));
   rolltui_menu_list_release(&it->children);
   it->children = modes;
   memset(&modes, 0, sizeof modes);
   rolltui_str_set(&it->value, K(mode_word(e->mode)));
 
   list_add_action(&top, K("check"), K("Check: contrast, colour-vision, badges"));
+
   list_add(&top, ROLLTUI_MENU_SUBMENU, K("fixes"), K("Fixes (proposals; Enter applies one, undoable)"));
 
   memset(&gen, 0, sizeof gen);
@@ -611,10 +652,14 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   it->children = gen;
   memset(&gen, 0, sizeof gen);
 
+  list_add(&top, ROLLTUI_MENU_SECTION, K("sec_history"), K("History"));
+
   it = list_add(&top, ROLLTUI_MENU_ACTION, K("undo"), K("Undo"));
   rolltui_str_set(&it->shortcut, K("Ctrl-Z"));
   it = list_add(&top, ROLLTUI_MENU_ACTION, K("redo"), K("Redo"));
   rolltui_str_set(&it->shortcut, K("Ctrl-Y"));
+
+  list_add(&top, ROLLTUI_MENU_SECTION, K("sec_file"), K("File"));
 
   it = list_add(&top, ROLLTUI_MENU_CHOICE, K("load"), K("Load theme"));
   memset(&opts, 0, sizeof opts);
@@ -626,12 +671,16 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   it = list_add(&top, ROLLTUI_MENU_INPUT, K("save"), K("Save theme as"));
   it->spec.type = ROLLTUI_INPUT_TYPE_NAME;
 
-  it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));
-  memset(&opts, 0, sizeof opts);
-  names_to_options(&e->shipped, &opts);
-  rolltui_menu_list_release(&it->children);
-  it->children = opts;
-  memset(&opts, 0, sizeof opts);
+  /* A row that can NEVER be actioned by this host is not a disabled control, it is clutter —
+   * shown only when the privilege that would ever enable it is there at all. */
+  if (e->may_write_shipped) {
+    it = list_add(&top, ROLLTUI_MENU_CHOICE, K("write_shipped"), K("Write a SHIPPED preset (the editor's privilege)"));
+    memset(&opts, 0, sizeof opts);
+    names_to_options(&e->shipped, &opts);
+    rolltui_menu_list_release(&it->children);
+    it->children = opts;
+    memset(&opts, 0, sizeof opts);
+  }
 
   list_add_action(&top, K("reset_loaded"), K("Reset to the loaded preset\xE2\x80\xA6"));
   list_add_action(&top, K("reset_builtin"), K("Reset to the built-in default\xE2\x80\xA6"));
@@ -646,6 +695,7 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
   rolltui_menu_set_root(e->menu, &root);
   rolltui_menu_item_release(&root);
   rolltui_menu_set_enabled(e->menu, K("write_shipped"), e->may_write_shipped && e->shipped.n != 0);
+  sync_undo_redo_enabled(e);
   sync_values(e);
   refresh_fixes(e);
 }
@@ -797,6 +847,7 @@ static void commit_current(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out
   }
   sync_values(e);
   refresh_fixes(e);
+  sync_undo_redo_enabled(e);
   out->kind = ROLLTUI_THEME_EDIT_COMMITTED;
 }
 
@@ -826,6 +877,7 @@ static int restore_from_undo(RolltuiThemeEditor* e) {
   edit_copy(&e->current, committed_of(e));
   sync_values(e);
   refresh_fixes(e);
+  sync_undo_redo_enabled(e);
   return 1;
 }
 

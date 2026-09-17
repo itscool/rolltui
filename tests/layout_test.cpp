@@ -930,6 +930,15 @@ int main() {
     expect_rect("help popup at 40x12 (min_w, clamp)", place(p, {0, 0, 40, 12}), {8, 0, 24, 12});
     expect_rect("help popup at 20x8 (clamped to the parent)", place(p, {0, 0, 20, 8}), {0, 0, 20, 8});
   }
+  {
+    // min_w growing PAST the natural width must still centre on the grown width, not the width
+    // it grew from — a screen wide enough that the grown popup never reaches the clamp's own
+    // edge, so a stale start (centred on the pre-growth 20) would show up uncaught: {30, 30}
+    // rather than {25, 30}, all the growth on one side instead of split around the centre.
+    RolltuiPlacement p = P(RolltuiDim::rel(0.5), RolltuiDim::rel(0.5), RolltuiDim::abs(20), RolltuiDim::abs(10), Anchor::Center);
+    p.min_w = RolltuiDim::abs(30);
+    expect_rect("min_w growth re-centres, not just clamps, at 80x24", place(p, scr), {25, 7, 30, 10});
+  }
 
   // ---- 1b. the tiling properties at every width ----------------------------------------
   std::printf("-- tiling properties over widths 0..300\n");

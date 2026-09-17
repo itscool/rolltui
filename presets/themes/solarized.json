@@ -268,7 +268,7 @@
       },
       "menu_shortcut": {
         "fg": "a3",
-        "bg": "panel"
+        "bg": "none"
       },
       "find_match": {
         "fg": "fg",

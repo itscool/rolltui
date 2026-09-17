@@ -17,16 +17,20 @@
       "right"
     ],
     "picker.first": [
-      "home"
+      "home",
+      "ctrl+a"
     ],
     "picker.last": [
-      "end"
+      "end",
+      "ctrl+e"
     ],
     "picker.page_up": [
-      "pageup"
+      "pageup",
+      "alt+pageup"
     ],
     "picker.page_down": [
-      "pagedown"
+      "pagedown",
+      "alt+pagedown"
     ],
     "app.details": [
       "ctrl+d"

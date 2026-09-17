@@ -239,6 +239,18 @@ RolltuiEvent alt(char c) {
   e.key.alt = true;
   return e;
 }
+// select_all's own chord: ctrl+shift+<letter> cannot be told apart from ctrl+<letter> on a
+// legacy terminal (see the default bindings), so the shipped default is alt+shift, the one
+// multi-modifier combination the legacy encoding does carry for a letter.
+RolltuiEvent alt_shift(char c) {
+  RolltuiEvent e{};
+  e.kind = ROLLTUI_EVENT_KEY;
+  e.key.key = ROLLTUI_KEY_CHAR;
+  e.key.ch = static_cast<char32_t>(c);
+  e.key.alt = true;
+  e.key.shift = true;
+  return e;
+}
 RolltuiEvent mouse(RolltuiMouseEvent::Kind k, int x, int y, bool shift = false) {
   RolltuiEvent e{};
   e.kind = ROLLTUI_EVENT_MOUSE;
@@ -537,12 +549,12 @@ void test_selection_by_keys() {
   handle(in.get(), key(ROLLTUI_KEY_BACKSPACE));
   check(text_of(in.get()) == "X", "Backspace removes the selection");
   set_text(in.get(), "abc");
-  handle(in.get(), ctrl('a'));
-  check(sel_of(in.get()) == "abc" && rolltui_input_caret(in.get()) == 3, "Ctrl+A selects all, caret at the end");
+  handle(in.get(), alt_shift('a'));
+  check(sel_of(in.get()) == "abc" && rolltui_input_caret(in.get()) == 3, "Alt+Shift+A selects all, caret at the end");
   handle(in.get(), key(ROLLTUI_KEY_DELETE));
   check(text_of(in.get()).empty(), "Delete removes the selection");
   set_text(in.get(), "abc");
-  handle(in.get(), ctrl('a'));
+  handle(in.get(), alt_shift('a'));
   check(handle(in.get(), key(ROLLTUI_KEY_ESCAPE)) == InputAction::Handled && selection_of(in.get()).empty() &&
             text_of(in.get()) == "abc",
         "Escape clears the selection and keeps the text");
@@ -552,7 +564,7 @@ void test_selection_by_keys() {
   CopyCtx ctx{[&](const std::string& s) { copied = s; }};
   rolltui_input_set_copy(in.get(), call_copy, &ctx);
   check(handle(in.get(), alt('c')) == InputAction::Ignored, "Alt+C with no selection is Ignored (the transcript may copy)");
-  handle(in.get(), ctrl('a'));
+  handle(in.get(), alt_shift('a'));
   check(handle(in.get(), alt('c')) == InputAction::Handled && copied == "abc", "Alt+C copies the selection through on_copy");
   set_caret(in.get(), 1, true);
   check(sel_of(in.get()) == "a" && rolltui_input_caret(in.get()) == 1,

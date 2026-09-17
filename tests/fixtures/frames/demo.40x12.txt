@@ -7,6 +7,6 @@ Here is the function you asked for:
 │ int add(int a, int b) {              │
 │   return a + b;                      │
 └──────────────────────────────────────┘
- theme F4 default-dark  keys F7 default
+ theme F4 default  keys F7 default  layo
 > type here
- default-dark  stacked (fallback)  40x12
+ default  stacked (fallback)  40x12  lin

@@ -24,9 +24,9 @@
 │ │ (roles →   │            │ header      │ │ left                    │ Tree — split, swap, delete                   ▸ │
 │ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ This screen — sizes, focus, popups, actions  ▸ │
 │ │ JSON       │            │             │ │ right                   │ Layout file — new, load, save                ▸ │
-│ │ loader,    │            │             │ │   Home                  │ Undo                                    Ctrl-Z │
+│ │ loader,    │            │             │ │   Home, Ctrl-A          │ Undo                                    Ctrl-Z │
 │ │ built-ins) │            │             │ │ line (scrolls when empty│ Redo                                    Ctrl-Y │
-│ └────────────┴────────────┴─────────────┘ │   End                   │                                                │
+│ └────────────┴────────────┴─────────────┘ │   End, Ctrl-E           │                                                │
 │                                           │ (scrolls when empty)    │                                                │
 │ Here is the function you asked for:       ╻   Up                    │                                                │
 │                                           ┃ the previous history ent│                                                │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [layout editor]  default (modified)  120x40  line 181/215  follow  truecolor  focus:editor
+ default [layout editor]  default (modified)  120x40  line 181/215  follow  truecolor  focus:editor

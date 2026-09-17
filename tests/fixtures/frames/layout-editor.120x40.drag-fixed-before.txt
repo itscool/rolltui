@@ -1,16 +1,16 @@
 ┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor • status ────────────────────────┐
-│ theme F4 default- │ │ component                             │ decisi│ (row) row                                      │
-│          dark     │ ├───────────────────────────────────────┼───────│   status rows:status                           │
-│ keys F7  default  │ │ Unicode tables (line-break class,     │ genera│   (column) column                              │
-│ layout F6panel-   │ │ East-Asian width, grapheme property,  │       │     transcript transcript:session              │
-│          left     │ │ Extended_Pictographic, InCB)          │       │     input input:prompt                         │
-│          (modified│ │ UAX #14 line breaking, UAX #29        │ build │ popup find                                     │
-│          )        │ │ grapheme clusters, display width      │       │   find input:find                              │
-│ size     120x40   │ │ CommonMark + GFM parsing              │ vendor│ popup help                                     │
-│ line     69/103   │ │                                       │       │   help help                                    │
-│ follow   yes      │ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
-│ depth    truecolor│ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
-│ focus    editor   │ │ mode)                                 │       │ popup menu                                     │
+│ theme F4 default  │ │ component                             │ decisi│ (row) row                                      │
+│ keys F7  default  │ ├───────────────────────────────────────┼───────│   status rows:status                           │
+│ layout F6panel-   │ │ Unicode tables (line-break class,     │ genera│   (column) column                              │
+│          left     │ │ East-Asian width, grapheme property,  │       │     transcript transcript:session              │
+│          (modified│ │ Extended_Pictographic, InCB)          │       │     input input:prompt                         │
+│          )        │ │ UAX #14 line breaking, UAX #29        │ build │ popup find                                     │
+│ size     120x40   │ │ grapheme clusters, display width      │       │   find input:find                              │
+│ line     69/103   │ │ CommonMark + GFM parsing              │ vendor│ popup help                                     │
+│ follow   yes      │ │                                       │       │   help help                                    │
+│ depth    truecolor│ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
+│ focus    editor   │ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
+│                   │ │ mode)                                 │       │ popup menu                                     │
 │                   │ │ Key + mouse decoding                  │ build │ [✓] Visible                                    │
 │                   │ │                                       │       │ Border                                single ▸ │
 │                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Background role             panel_background ▸ │
@@ -37,4 +37,4 @@
 │                   ├─────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
 │                   │ > type here                                     │                                                │
 └───────────────────┴─────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default-dark [layout editor]  panel-left (modified)  120x40  line 69/103  follow  truecolor  focus:editor
+ default [layout editor]  panel-left (modified)  120x40  line 69/103  follow  truecolor  focus:editor

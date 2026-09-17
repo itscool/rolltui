@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > write me a plan for the wrap engine, with a ╻ theme F4   default-dark      │
+│ > write me a plan for the wrap engine, with a ╻ theme F4   default           │
 │   table and some code                         ╹ keys F7    default           │
 │                                               │ layout F6  default           │
 │ # Plan                                        │ size       80x24             │
@@ -21,6 +21,6 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 1/191  truecolor  focus:input
+ default  default  80x24  line 1/191  truecolor  focus:input
 --- tick ---
 none

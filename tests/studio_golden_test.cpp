@@ -314,7 +314,7 @@ int main(int argc, char** argv) {
       {"input.80x24.multiline", "--frame 80x24 --theme default-dark --keys \"Type:one AltEnter Type:two\""},
       {"input.80x24.wrap", "--frame 80x24 --theme default-dark --keys \"Type:the_quick_brown_fox_jumps_over_the_lazy_dog_and_keeps_running_until_it_wraps\""},
       {"input.80x24.stacked-multiline", "--frame 80x24 --theme default-dark --layout stacked --keys \"Type:one AltEnter Type:two\""},
-      {"input.80x24.select-all", "--frame 80x24 --theme default-dark --keys \"Type:hello_world CtrlA AltC\""},
+      {"input.80x24.select-all", "--frame 80x24 --theme default-dark --keys \"Type:hello_world AltShiftA AltC\""},
       {"input.80x24.drag", "--frame 80x24 --theme default-dark --keys \"Type:hello_world Click 4,21 Drag 8,21 Release\""},
       {"input.80x24.dblclick", "--frame 80x24 --theme default-dark --keys \"Type:hello_world DblClick 10,21 Release\""},
       {"input.80x24.submit", "--frame 80x24 --theme default-dark --keys \"Type:hi_there Enter\""},
@@ -335,7 +335,13 @@ int main(int argc, char** argv) {
       // milestone 11 (the menu widget)
       {"menu.80x24.open", "--frame 80x24 --theme default-dark --keys \"F2\""},
       {"menu.80x24.theme", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:theme Enter\""},
-      {"menu.80x24.choose-light", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:theme Enter Type:default-light Enter\""},
+      // `default-light` is not a theme NAME any more — `default` is the one shipped theme, and
+      // light/dark/auto is the separate "Light or dark" choice beside it (Appearance › mode).
+      // Picking a value returns to the menu's TOP level (still open, `focus:menu`), so the next
+      // filter reaches "Light or dark" directly — no second F2 needed.
+      {"menu.80x24.choose-light",
+       "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:theme Enter Type:default Enter "
+       "Type:Light_or_dark Enter Type:light Enter\""},
       {"menu.80x24.filter", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Type:lay\""},
       {"menu.80x24.left", "--frame 80x24 --theme default-dark --keys \"F2 Type:Appearance Enter Left\""},
       {"menu.80x24.escape", "--frame 80x24 --theme default-dark --keys \"F2 Escape\""},
@@ -645,7 +651,7 @@ int main(int argc, char** argv) {
     check(row(wrapped, 20).find("over the lazy dog") != std::string::npos && row(wrapped, 21).rfind("\xE2\x94\x82    and keeps running", 0) == 0,
           "a long line cell-wraps at the window's width (43 text cells: the space after 'dog' starts the second row, under the hanging indent)");
     check(row(stacked_ml, 21) == "> one" && row(stacked_ml, 22) == "  two", "the stacked layout's borderless input grows the same way");
-    check(select_all_copy == "hello world", "Ctrl-A then Alt-C copies the whole input [" + select_all_copy + "]");
+    check(select_all_copy == "hello world", "Alt-Shift-A then Alt-C copies the whole input [" + select_all_copy + "]");
     check(in_drag_copy == "hello", "a drag inside the input from h to o copies hello [" + in_drag_copy + "]");
     check(in_dbl_copy == "world", "a double-click inside the input copies the word [" + in_dbl_copy + "]");
     check(submitted.find("\xE2\x94\x82 > hi there") != std::string::npos && row(submitted, 21).rfind("\xE2\x94\x82 > type here", 0) == 0,
@@ -668,11 +674,11 @@ int main(int argc, char** argv) {
               menu_open.find("Editors") != std::string::npos && menu_open.find("Appearance") != std::string::npos &&
               menu_open.find("Commands") != std::string::npos,
           "F2 opens the menu popup, and its top level names the app's own tools rather than burying them under a category");
-    check(menu_theme.find("Appearance \xE2\x80\xBA Theme") != std::string::npos && menu_theme.find("\xE2\x80\xA2 default-dark") != std::string::npos,
+    check(menu_theme.find("Appearance \xE2\x80\xBA Theme") != std::string::npos && menu_theme.find("\xE2\x80\xA2 default") != std::string::npos,
           "Enter descends into the Theme choice: the breadcrumb grows and the current option is marked •");
-    check(menu_light.find("theme F4   default-light") != std::string::npos && menu_light.find("default-light \xE2\x96\xB8") != std::string::npos &&
+    check(menu_light.find("theme F4   default") != std::string::npos && menu_light.find("Light or dark                light \xE2\x96\xB8") != std::string::npos &&
               menu_light.find("Appearance \xE2\x80\xBA Theme") == std::string::npos,
-          "choosing default-light BY NAME four levels deep by keyboard alone: the status says so, the choice shows its value, the menu is back at the top");
+          "choosing default and then light BY NAME, five levels deep by keyboard alone: the status says so, the choice shows its value, the menu is back at its own top level");
     check(!menu_light.empty() && menu_light != menu_open, "…and the frame changed (it went light)");
 
     // ---- THE PANEL TEACHES AND THE CHORD IS THE BINDINGS' TO SAY --------------------------
@@ -1248,7 +1254,7 @@ int main(int argc, char** argv) {
           return a == std::string::npos ? std::string() : line.substr(a, b - a);
         };
         const std::string start = theme_after(0);
-        check(start == "default-dark", "the studio starts on the theme it was given [" + start + "]");
+        check(start == "default", "the studio starts on the theme it was given [" + start + "]");
         check(theme_after(1) != start, "F3 changes the theme (studio.cycle_theme)");
         int closed_at = 0;
         std::vector<std::string> seen{start};

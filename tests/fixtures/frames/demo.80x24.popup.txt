@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme F4   default-dark      │
+│ │ Markdown     │ build       │ single       │ │ theme F4   default           │
 │ │ block        │             │ header over  │ │ keys F7    default           │
 │ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
 │ │ (blocks →    │             │              │ │ size       80x24             │
@@ -13,7 +13,7 @@
 │ └─────────────│   Delete                  erase after the    │               │
 │               │ caret (or the selection)                     │               │
 │ Here is the fu│   Ctrl-W, Alt-Backspace   kill the word      │               │
-│               │ before the caret                  ▼ 95 more  │               │
+│               │ before the caret                 ▼ 100 more  │               │
 │ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
 │ │ int add(int a, int b) {                   │ │                              │
 │ │   return a + b;                           │ ╻                              │
@@ -21,4 +21,4 @@
 ├───────────────────────────────────────────────┤                              │
 │ > type here                                   │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 173/191  follow  truecolor  focus:help
+ default  default  80x24  line 173/191  follow  truecolor  focus:help

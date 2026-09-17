@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ → styles,    │             │ header       │ │ theme F4   default-dark      │
+│ │ → styles,    │             │ header       │ │ theme F4   default           │
 │ │ JSON loader, │             │              │ │ keys F7    default           │
 │ │ built-ins)   │             │              │ │ layout F6  default           │
 │ └──────────────┴─────────────┴──────────────┘ │ size       80x24             │
@@ -21,4 +21,4 @@
 │   l13                                         │                              │
 │   l14                                         │                              │
 └───────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  80x24  line 181/191  follow  truecolor  focus:input
+ default  default  80x24  line 181/191  follow  truecolor  focus:input

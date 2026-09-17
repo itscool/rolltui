@@ -1,5 +1,5 @@
 ┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ # Two blocks that look identical, and are not                                         │ theme F4   default-dark      │
+│ # Two blocks that look identical, and are not                                         │ theme F4   default           │
 │                                                                                       │ keys F7    default           │
 │ The first is under a ```diff fence, so it colours through the diff roles. The second  │ layout F6  default           │
 │ is under a bare fence and holds the SAME SHAPE of text, so it must render plain —     │ size       120x40            │
@@ -37,4 +37,4 @@
 ├───────────────────────────────────────────────────────────────────────────────────────┤                              │
 │ > type here                                                                           │                              │
 └───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default-dark  default  120x40  line 1/25  follow  truecolor  focus:input
+ default  default  120x40  line 1/25  follow  truecolor  focus:input
