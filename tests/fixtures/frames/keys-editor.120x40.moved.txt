@@ -1,35 +1,35 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ keys editor › Actions by scope › input › word_l┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ ◂ Back                                         │
-│ │ grapheme property,               │             │ unicode_tables.hp│ add a chord (press it)…                        │
-│ │ Extended_Pictographic, InCB)     │             │                  │ remove Ctrl-Left                               │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ remove Alt-Left                                │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ remove Alt-D                                   │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ clear every chord                              │
-│ │                                  │             │ block tree is the│                                                │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
-│ │ mouse mode)                      │             │                  │                                                │
-│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
-│ │                                  │             │ Event, table-test│                                                │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
-│ │ colour downgrade                 │             │ tested           │                                                │
-│ │ Wrap engine                      │ build       │ single header ove│                                                │
-│ │                                  │             │ header           │                                                │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
-│ │                                  │             │ Rect is a pure fu│                                                │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
-│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
-│ │ → styled wrapped lines)          │             │                  │                                                │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
-│ │ loader, built-ins)               │             │                  │                                                │
-│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
-│                                                                     │                                                │
-│ Here is the function you asked for:                                 │                                                │
-│                                                                     │                                                │
+│ │ grapheme property,               │             │ unicode_tables.hp│ submit  Enter                                ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ newline  Alt-Enter                           ▸ │
+│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ backspace  Backspace                         ▸ │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ delete  Delete                               ▸ │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ kill_word_backward  Ctrl-W, Alt-Backspace    ▸ │
+│ │                                  │             │ block tree is the│ kill_word_forward  Ctrl-Delete               ▸ │
+│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ kill_to_line_start  Ctrl-U                   ▸ │
+│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│ kill_to_line_end  Ctrl-K                     ▸ │
+│ │ mouse mode)                      │             │                  │ left  Left                                   ▸ │
+│ │ Key + mouse decoding             │ build       │ single header, pu│ right  Right                                 ▸ │
+│ │                                  │             │ Event, table-test│ word_left  Ctrl-Left, Alt-Left, Alt-D        ▸ │
+│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│ word_right  Ctrl-Right, Alt-Right            ▸ │
+│ │ colour downgrade                 │             │ tested           │ li╭───────────────────────────────────────╮  ▸ │
+│ │ Wrap engine                      │ build       │ single header ove│ li│◂ Back                                 │  ▸ │
+│ │                                  │             │ header           │ up│add a chord (press it)…                │  ▸ │
+│ │ Windows, layers, placement (Dim  │ build       │ single header;   │ do│remove Ctrl-Left                       │  ▸ │
+│ │ abs/rel per axis), focus         │             │ resolve(Placement│ se│remove Alt-Left                        │  ▸ │
+│ │                                  │             │ Rect is a pure fu│ se│remove Alt-D                          ▼│  ▸ │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ se╰───────────────────────────────────────╯t ▸ │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ select_word_right  Ctrl-Shift-Right, Alt-Shi ▸ │
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ select_line_start  Shift-Home                ▸ │
+│ │ placements + content slots)      │             │ parser; hot-reloa│ select_line_end  Shift-End                   ▸ │
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ select_up  Shift-Up                          ▸ │
+│ │ → styled wrapped lines)          │             │                  │ select_down  Shift-Down                      ▸ │
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │ select_all  Alt-Shift-A                      ▸ │
+│ │ loader, built-ins)               │             │                  │ clear_selection  Escape                      ▸ │
+│ └──────────────────────────────────┴─────────────┴──────────────────│ copy  Alt-C                                  ▸ │
+│                                                                     │ eof  Ctrl-D                                  ▸ │
+│ Here is the function you asked for:                                 │ undo  Ctrl-Z                                 ▸ │
+│                                                                     │ redo  Ctrl-Y                                 ▸ │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
 │ │ int add(int a, int b) {                                           │                                                │
 │ │   return a + b;                                                   │                                                │

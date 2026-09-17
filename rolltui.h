@@ -1317,6 +1317,17 @@ typedef struct RolltuiMenuItem {
    * and never chosen; a choice whose every option is disabled is disabled itself. File key:
    * `"dropdown": true`. */
   unsigned char dropdown ROLLTUI_DEFAULT(0);
+  /* Submenu: descending into it floats it as its own box over the level it was entered from —
+   * the SAME "a small box over the menu, the menu still in view" treatment `dropdown` gives a
+   * Choice — rather than replacing the view the way a plain Submenu does. Right for a level that
+   * is somewhere you ACT (the chords bound to one action: add one, remove one, clear them),
+   * where losing the level you drilled in from loses the "which scope, which action" context the
+   * acting belongs to; wrong for a level that is just a PLACE to keep navigating through (a
+   * scope's own list of actions), which nests as deep as the tree goes and a box cannot. Nests
+   * ONE level: a popup Submenu entered from another popup Submenu still replaces the view, the
+   * same as a plain one — two boxes stacked over a third is a smaller and smaller window onto
+   * the thing being edited, not context kept in view. File key: `"popup": true`. */
+  unsigned char popup ROLLTUI_DEFAULT(0);
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpec spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */

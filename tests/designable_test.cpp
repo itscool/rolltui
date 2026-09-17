@@ -144,6 +144,7 @@ const Covered kMenu[] = {
     {"min", "min", "Int and Float only"},
     {"min_len", "min_len", "Text and Name only"},
     {"optional", "optional", "Input only"},
+    {"popup", "popup", "Submenu only — floats over its parent, nests one level"},
     {"precision", "precision", "Float only"},
     {"shortcut", "shortcut", "display only; a live chord wins where an action is set"},
     {"step", "step", "Int and Float only"},

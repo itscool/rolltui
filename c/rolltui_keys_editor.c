@@ -306,6 +306,11 @@ static void rebuild_menu(RolltuiKeysEditor* e) {
       rolltui_str_append(&e->id_buf, K("action."));
       rolltui_str_append(&e->id_buf, a, alen);
       it = list_add(&actions, ROLLTUI_MENU_SUBMENU, e->id_buf.p, e->id_buf.n, e->label_buf.p, e->label_buf.n);
+      /* One action's chords: a place you ACT (add one, remove one, clear them), not a place to
+       * keep navigating through — floats over the scope's action list the way a Choice's options
+       * float over the menu, so which scope and which action stay in view while a chord is
+       * added or removed. */
+      it->popup = 1;
       adopt_children(it, &items);
     }
     rolltui_str_clear(&e->id_buf);

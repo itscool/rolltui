@@ -692,6 +692,26 @@ static RolltuiMenuItem* level_mut(RolltuiMenu* m) {
   return it ? it : &m->root;
 }
 
+/* Whether the CURRENT level was entered through a `popup` Submenu, and so is drawn floating over
+ * its parent rather than replacing it. Nests ONE deep only: a level entered through a popup
+ * Submenu that was ITSELF entered through one still replaces the view, the same as a plain
+ * Submenu would — two boxes stacked over a third is a smaller and smaller window onto the level
+ * being edited, not the parent's context kept in view, which is the whole point of floating. */
+static int current_level_is_popup(const RolltuiMenu* m) {
+  const RolltuiMenuItem* parent;
+  if (m->path_n == 0) return 0;
+  parent = by_path((RolltuiMenu*)m, m->path, m->path_n - 1);
+  if (!parent || m->path[m->path_n - 1] >= parent->children.n) return 0;
+  if (!parent->children.v[m->path[m->path_n - 1]]->popup) return 0;
+  if (m->path_n >= 2) {
+    const RolltuiMenuItem* grandparent = by_path((RolltuiMenu*)m, m->path, m->path_n - 2);
+    if (grandparent && m->path[m->path_n - 2] < grandparent->children.n &&
+        grandparent->children.v[m->path[m->path_n - 2]]->popup)
+      return 0;
+  }
+  return 1;
+}
+
 const RolltuiMenuItem* rolltui_menu_level(const RolltuiMenu* m) { return level_mut((RolltuiMenu*)m); }
 
 size_t rolltui_menu_path(const RolltuiMenu* m, const size_t** out) {
@@ -1435,6 +1455,37 @@ static int dropdown_box(const RolltuiMenu* m, const RolltuiMenuItem* it, Rolltui
   return 1;
 }
 
+/* ---- the popup level ---------------------------------------------------------------------- */
+/* Sized the same way `dropdown_box` sizes a Choice's options: as wide as the widest row (its
+ * label, plus a shortcut where one is shown) and as tall as the level's own rows need, plus a
+ * border and whatever status row `rolltui_menu_draw` will put inside it — clamped to the parent
+ * level's area and centred in it, "a smaller thing in the middle" so the level it floats over
+ * stays in view around it. */
+static int popup_level_box(const RolltuiMenu* m, RolltuiRect* box) {
+  const RolltuiMenuItem* level = level_mut((RolltuiMenu*)m);
+  const RolltuiRect a = m->area;
+  int widest = rolltui_u_display_width(m->u, level->label.p ? level->label.p : "", level->label.n, m->opt.ambiguous_wide);
+  int w, h;
+  size_t i;
+  for (i = 0; i < level->children.n; ++i) {
+    const RolltuiMenuItem* c = level->children.v[i];
+    const RolltuiStr* l = c->label.n ? &c->label : &c->id;
+    int lw = rolltui_u_display_width(m->u, l->p ? l->p : "", l->n, m->opt.ambiguous_wide);
+    if (c->shortcut.n) lw += 1 + rolltui_u_display_width(m->u, c->shortcut.p, c->shortcut.n, m->opt.ambiguous_wide);
+    if (lw > widest) widest = lw;
+  }
+  w = widest + 4;                                  /* border + a space each side */
+  h = (int)level->children.n + 2 + status_rows(m);  /* border, the status row(s), the rows, border */
+  if (w > a.w) w = a.w;
+  if (h > a.h) h = a.h;
+  if (w < 4 || h < 4) return 0;
+  box->x = a.x + (a.w - w) / 2;
+  box->y = a.y + (a.h - h) / 2;
+  box->w = w;
+  box->h = h;
+  return 1;
+}
+
 static void dropdown_ensure_visible(RolltuiMenu* m, int rows) {
   if (rows < 1) rows = 1;
   if ((int)m->dd_sel < m->dd_top) m->dd_top = (int)m->dd_sel;
@@ -1782,6 +1833,28 @@ static void handle_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenu
   act(m, m->sel, out);
 }
 
+/* A click inside the popup box acts on it exactly as `handle_mouse` would at full size — the
+ * area is substituted to the box's interior for the call, the same substitution `rolltui_menu_draw`
+ * makes to draw it there. A click outside the box closes it and is consumed — the level underneath
+ * does not act on a click that was aimed at closing the box over it. */
+static void handle_popup_mouse(RolltuiMenu* m, const RolltuiMouseEvent* e, RolltuiMenuEvent* out) {
+  RolltuiRect box, inner;
+  const RolltuiRect saved_area = m->area;
+  if (!popup_level_box(m, &box)) { ascend(m); return; }
+  if (e->kind == 0 /* Press */ && e->button == 1 &&
+      !(e->x >= box.x && e->x < box.x + box.w && e->y >= box.y && e->y < box.y + box.h)) {
+    ascend(m);
+    return;
+  }
+  inner.x = box.x + 1;
+  inner.y = box.y + 1;
+  inner.w = box.w - 2;
+  inner.h = box.h - 2;
+  m->area = inner;
+  handle_mouse(m, e, out);
+  m->area = saved_area;
+}
+
 void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBindings* b,
                          const RolltuiMenuActions* A, RolltuiMenuEvent* out) {
   out->kind = ROLLTUI_MENU_EVENT_NONE;
@@ -1805,7 +1878,8 @@ void rolltui_menu_handle(RolltuiMenu* m, const RolltuiEvent* e, const RolltuiBin
     return;
   }
   if (e->kind == ROLLTUI_EVENT_MOUSE) {
-    handle_mouse(m, &e->mouse, out);
+    if (current_level_is_popup(m)) handle_popup_mouse(m, &e->mouse, out);
+    else handle_mouse(m, &e->mouse, out);
     return;
   }
   if (e->kind == ROLLTUI_EVENT_PASTE) {
@@ -1895,9 +1969,67 @@ static void row_text(const RolltuiMenu* m, const RolltuiMenuItem* it, int in_pal
   }
 }
 
+/* The level's own draw — status row, item rows, the dropdown over it — at whatever `m->area`
+ * currently is. `rolltui_menu_draw` calls this directly for the popup box's OWN content: a
+ * second call to `rolltui_menu_draw` there would re-run the popup check against the same
+ * unchanged path and float the same level over itself, once per call, forever. */
+static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
+                            const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
+                            const RolltuiInputRoles* input_roles, int focused);
+
 void rolltui_menu_draw(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
                        const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
                        const RolltuiInputRoles* input_roles, int focused) {
+  RolltuiMenu* mm = (RolltuiMenu*)m;
+  RolltuiRect pbox;
+  /* A popup LEVEL floats the way a dropdown's answer floats: the level it was entered from is
+   * drawn once more at its own size, shaded behind it, so the context around the popup never
+   * goes blank — then the popup's own draw (breadcrumb, status row, rows) happens inside a
+   * border, at its own smaller area, exactly as it would if it were the whole menu. */
+  if (current_level_is_popup(m) && popup_level_box(m, &pbox)) {
+    const RolltuiRect saved_area = m->area;
+    RolltuiRect pinner;
+    RolltuiStr pline;
+    int pr;
+    const int paw = m->opt.ambiguous_wide;
+    RolltuiStyle pground = styles[roles->item];
+    RolltuiStyle pframe = styles[roles->breadcrumb];
+    mm->path_n -= 1;
+    rolltui_menu_draw(m, f, draw, styles, roles, input_roles, focused);
+    mm->path_n += 1;
+    rolltui_frame_shade(f, saved_area, styles[ROLLTUI_ROLE_OVERLAY], ROLLTUI_SHADE_DROPDOWN);
+    pframe.bg = pground.bg;
+    memset(&pline, 0, sizeof pline);
+    rolltui_frame_fill(f, draw, pbox, pground, NULL, 0);
+    str_add(&pline, "\xE2\x95\xAD");
+    for (pr = 0; pr < pbox.w - 2; ++pr) str_add(&pline, "\xE2\x94\x80");
+    str_add(&pline, "\xE2\x95\xAE");
+    rolltui_frame_put_text(f, draw, pbox.x, pbox.y, pline.p, pline.n, pframe, pbox.w, paw, 0);
+    rolltui_str_clear(&pline);
+    str_add(&pline, "\xE2\x95\xB0");
+    for (pr = 0; pr < pbox.w - 2; ++pr) str_add(&pline, "\xE2\x94\x80");
+    str_add(&pline, "\xE2\x95\xAF");
+    rolltui_frame_put_text(f, draw, pbox.x, pbox.y + pbox.h - 1, pline.p, pline.n, pframe, pbox.w, paw, 0);
+    for (pr = 1; pr < pbox.h - 1; ++pr) {
+      rolltui_frame_put_text(f, draw, pbox.x, pbox.y + pr, "\xE2\x94\x82", 3, pframe, 1, paw, 0);
+      rolltui_frame_put_text(f, draw, pbox.x + pbox.w - 1, pbox.y + pr, "\xE2\x94\x82", 3, pframe, 1, paw, 0);
+    }
+    rolltui_str_free(&pline);
+    pinner.x = pbox.x + 1;
+    pinner.y = pbox.y + 1;
+    pinner.w = pbox.w - 2;
+    pinner.h = pbox.h - 2;
+    mm->area = pinner;
+    draw_menu_plain(m, f, draw, styles, roles, input_roles, focused);
+    mm->area = saved_area;
+    return;
+  }
+  draw_menu_plain(m, f, draw, styles, roles, input_roles, focused);
+}
+
+static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw,
+                            const RolltuiStyle* styles, const RolltuiMenuRoles* roles,
+                            const RolltuiInputRoles* input_roles, int focused) {
   RolltuiMenu* mm = (RolltuiMenu*)m;
   const RolltuiRect a = m->area;
   const int aw = m->opt.ambiguous_wide;
@@ -2314,13 +2446,15 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         it->kind = kd;
         kind_given = 1;
       }
-    } else if (streq(k, klen, "enabled") || streq(k, klen, "checked") || streq(k, klen, "dropdown")) {
+    } else if (streq(k, klen, "enabled") || streq(k, klen, "checked") || streq(k, klen, "dropdown") ||
+              streq(k, klen, "popup")) {
       if (!rolltui_json_is_bool(x)) {
         bad_value_at(rep, at.p, at.n, K(": expected true or false"));
       } else {
         const unsigned char bv = (unsigned char)rolltui_json_as_bool(x, 0);
         if (streq(k, klen, "enabled")) it->enabled = bv;
         else if (streq(k, klen, "dropdown")) it->dropdown = bv;
+        else if (streq(k, klen, "popup")) it->popup = bv;
         else it->checked = bv;
       }
     } else if (streq(k, klen, "items")) {
@@ -2509,6 +2643,7 @@ static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
   if (!it->enabled) rolltui_json_set(o, K("enabled"), rolltui_json_bool(0));
   if (it->checked) rolltui_json_set(o, K("checked"), rolltui_json_bool(1));
   if (it->dropdown) rolltui_json_set(o, K("dropdown"), rolltui_json_bool(1));
+  if (it->popup) rolltui_json_set(o, K("popup"), rolltui_json_bool(1));
   if (it->value.n != 0) rolltui_json_set(o, K("value"), rolltui_json_string(it->value.p, it->value.n));
 
   if (it->kind == ROLLTUI_MENU_INPUT) {
