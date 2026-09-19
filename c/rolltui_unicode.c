@@ -28,6 +28,7 @@
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/unicode_tables.h"
 
 /* ---- the caller's working memory --------------------------------------------------------- */
@@ -241,7 +242,9 @@ int rolltui_u_codepoint_width(RolltuiCodepoint cp, int ambiguous_wide) {
   if (gc == ROLLTUI_GENERALCATEGORY_Zl || gc == ROLLTUI_GENERALCATEGORY_Zp) return 0;
   ea = ea_width(cp);
   if (ea == ROLLTUI_EASTASIANWIDTH_W || ea == ROLLTUI_EASTASIANWIDTH_F) return 2;
-  if (ea == ROLLTUI_EASTASIANWIDTH_A && ambiguous_wide) return 2;
+  /* THE TERMINAL'S MEASURED WIDTH IS ORed IN HERE, at the one place a glyph's width is decided (see
+   * rolltui_termfacts.h): no host has to remember to pass it, and a host that says two still gets two. */
+  if (ea == ROLLTUI_EASTASIANWIDTH_A && (ambiguous_wide || rolltui_termfacts_active_wide())) return 2;
   return 1;
 }
 

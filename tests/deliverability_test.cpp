@@ -259,6 +259,7 @@ KeyProtocol negotiated_with(const std::string& reply) {
   {
     RolltuiTerminalOptions opts{};
     opts.handle_signals = false;  // this is a test process, not an application
+    opts.no_cache = true;         // it asks every time: the answer under test is the terminal's, not a remembered one
     RolltuiTerminal* t = rolltui_terminal_new(pty.slave, pty.slave, opts);
     p = static_cast<KeyProtocol>(rolltui_terminal_key_protocol(t));
     rolltui_terminal_free(t);  // restores the terminal, exactly as ~Terminal did

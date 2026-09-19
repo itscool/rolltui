@@ -758,6 +758,37 @@ int main() {
     rolltui_str_free(&e2);
     check(editor.label() == "default", "…and the working copy is 'default' again (the file it just wrote)");
   }
+  // ---- a working copy saved by an EARLIER RELEASE still names `default-light` ----
+  // Those two shipped as presets of their own and are now `default` read at a mode. A person who had
+  // chosen the light theme must start in light, not silently in dark because the name resolves to nothing.
+  {
+    for (const char* legacy : {"default-light", "default-dark"}) {
+      const std::string dir = (world / (std::string("legacy-") + legacy)).string();
+      write_file(fs::path(dir) / "theme.working.json", std::string("{\n  \"preset\": \"") + legacy + "\",\n  \"follows_origin\": true\n}\n");
+      ThemeStore s(dir, false, "");
+      ThemePresetReport rep;
+      s.start(rep);
+      const bool light = std::string(legacy) == "default-light";
+      check(rep.error.empty() && str_of(s.working()->mode) == (light ? "light" : "dark"),
+            std::string("a saved working copy that follows '") + legacy + "' starts in " + (light ? "light" : "dark") + " [" + str_of(s.working()->mode) + "]");
+      check(!s.modified() && s.label() == legacy, "…and is not reported as modified: it IS that preset");
+    }
+    // A person's OWN file of that name is theirs, and is not shadowed by the alias.
+    const std::string own = (world / "legacy-own").string();
+    ThemeStore seed(own, false, "");
+    ThemePresetReport rep0;
+    seed.start(rep0);
+    seed.set_mode("light", false);
+    RolltuiStr saved_err{};
+    seed.save_as("default-dark", false, saved_err);
+    rolltui_str_free(&saved_err);
+    ThemeStore s2(own, false, "");
+    ThemePresetReport rep2;
+    s2.start(rep2);
+    ThemePresetReport rep3;
+    ThemeValueHandle mine = s2.get("default-dark", rep3);
+    check(mine.v != nullptr && str_of(mine.v->mode) == "light", "a person's own default-dark.json is theirs: the alias never shadows it");
+  }
   // ---- a broken working copy is reported, not served ----
   {
     const std::string bad = (world / "bad").string();

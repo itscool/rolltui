@@ -600,6 +600,25 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
   else store_preset_path(s, name, len, &path);
   if (!rolltui_preset_read_file(path.p, path.len, buf_put, &text)) {
     Buf msg = {NULL, 0, 0};
+    /* TWO NAMES THAT WERE FILES AND ARE NOT. `default-dark` and `default-light` shipped as presets of
+     * their own — byte-identical copies of `default`, each pinned to a mode — and are now `default` read
+     * at a mode. A working copy saved by an earlier release still names one of them, and a name that
+     * resolves to nothing falls back to the shipped `default`: a person who had chosen the LIGHT theme
+     * would start in dark with no word said. Resolved here, after a person's own file of that name has
+     * had its chance, so it can never shadow one. */
+    if (s->d->kind_len == 5 && memcmp(s->d->kind, "theme", 5) == 0 &&
+        ((len == 12 && memcmp(name, "default-dark", 12) == 0) || (len == 13 && memcmp(name, "default-light", 13) == 0))) {
+      const void* base = rolltui_preset_shipped(self->d, "default", 7);
+      if (base) {
+        RolltuiThemePresetValue* tv = (RolltuiThemePresetValue*)s->d->clone(base);
+        if (len == 12) rolltui_str_set(&tv->mode, "dark", 4);
+        else rolltui_str_set(&tv->mode, "light", 5);
+        s->rep->reset(report);
+        buf_free(&path);
+        buf_free(&text);
+        return tv;
+      }
+    }
     buf_add(&msg, "no ", 3);
     buf_add(&msg, s->d->kind, s->d->kind_len);
     buf_add(&msg, " preset '", 9);

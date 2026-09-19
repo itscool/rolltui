@@ -2620,6 +2620,7 @@ struct PollCtx {
   RolltuiSwap* swap;
   bool* running;
   bool stop = false;
+  bool facts = false;
 };
 void on_term_event(void* vctx, const RolltuiTermEvent* te) {
   PollCtx* c = static_cast<PollCtx*>(vctx);
@@ -2630,6 +2631,11 @@ void on_term_event(void* vctx, const RolltuiTermEvent* te) {
     rolltui_swap_invalidate(c->swap);
     return;
   }
+  if (te->kind == ROLLTUI_TERM_EVENT_FACTS) {
+    c->facts = true;
+    return;
+  }
+  if (te->kind > ROLLTUI_TERM_EVENT_FACTS) return;  // a kind this program does not know is not an input
   RolltuiEvent e{};
   e.kind = te->kind;
   e.key = te->key;
@@ -2939,23 +2945,26 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, RolltuiTerminalOptions{});
+  RolltuiTerminalOptions topts{};
+  topts.facts_events = 1;
+  RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, topts);
   if (!rolltui_terminal_is_tty(term)) {
     std::fprintf(stderr, "not a terminal (rolltui-studio-selftest --frame WxH renders one)\n");
     rolltui_terminal_free(term);
     return 1;
   }
-  if (!app.mode_flag && app.store->working()->mode == "auto") {
-    RolltuiStyleColor bg{};
-    const int have_bg = rolltui_terminal_query_background(term, 150, &bg);
-    app.detected_mode = have_bg ? rolltui_mode_for_background(bg) : ROLLTUI_MODE_DARK;
-  }
-  // ASK THE TERMINAL HOW WIDE IT DRAWS AN AMBIGUOUS GLYPH rather than making a person say. A
-  // silent terminal leaves the value alone, so the default stands.
-  {
-    int wide = app.ambiguous ? 1 : 0;
-    if (rolltui_terminal_query_ambiguous_wide(term, 100, &wide)) app.ambiguous = wide != 0;
-  }
+  // WHAT THE TERMINAL IS — its colour depth, its light or dark, how wide it draws an ambiguous glyph —
+  // was asked by the library when the terminal was entered, and is remembered per terminal. A
+  // `--ambiguous-wide` on the command line says two cells outright.
+  const bool ambiguous_flag = app.ambiguous;
+  auto apply_facts = [&] {
+    RolltuiTermFacts tf;
+    rolltui_terminal_facts(term, &tf);
+    app.depth = tf.depth;
+    if (!app.mode_flag && app.store->working()->mode == "auto") app.detected_mode = tf.mode;
+    if (!ambiguous_flag) app.ambiguous = tf.ambiguous_wide != 0;
+  };
+  apply_facts();
   app.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
   app.load_layout_arg();
   app.sync_look();
@@ -2984,6 +2993,11 @@ int main(int argc, char** argv) {
     rolltui_str_free(&out);
     PollCtx ctx{&app, swap, &running};
     rolltui_terminal_poll(term, timeout, on_term_event, &ctx);
+    if (ctx.facts) {  // a remembered answer about the terminal turned out to be stale
+      apply_facts();
+      app.sync_look();
+      rolltui_swap_invalidate(swap);
+    }
     if (ticking) app.tick();
   }
   rolltui_swap_free(swap);

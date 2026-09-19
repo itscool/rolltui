@@ -204,9 +204,49 @@ int main() {
   table("\x1b[<4;1;1M", "Mouse Shift+Press 1 @0,0");
   table("\x1b[200~hello\x1b[201~", "Paste(5 bytes)");
   table("\x1b[200~a\x1b" "b\x1b[201~x", "Paste(3 bytes) | x");
-  table("\x1b[?1;2c", "Unknown(\x1b[?1;2c)");
+  // A TERMINAL'S ANSWER IS NEVER A KEY. These used to surface as Unknown keys (and, for the OSC and
+  // DCS forms, as Alt-] and Alt-Shift-P followed by stray characters) whenever a reply arrived
+  // after the exchange that asked for it had stopped listening.
+  table("\x1b[?1;2c", "");                       // Primary DA
+  table("\x1b[>1;95;0c", "");                    // Secondary DA
+  table("\x1b[?1u", "");                         // kitty: the flags in force
+  table("\x1b[>4;2m", "");                       // xterm: modifyOtherKeys
+  table("\x1b]11;rgb:1414/1616/1a1a\x1b\\", "");  // OSC 11, ST-terminated
+  table("\x1b]11;rgb:ffff/ffff/ffff\x07", "");   // OSC 11, BEL-terminated
+  table("\x1bP1$r0;48:2::1:2:3m\x1b\\", "");     // DECRQSS: the SGR state
+  table("\x1bP>|ghostty 1.1.3\x1b\\", "");       // XTVERSION
+  table("a\x1b]11;rgb:0000/0000/0000\x07" "b", "a | b");  // typing on either side of one is kept
+  table("\x1b[?1;2ca", "a");
+  // ...and the keys that SHARE a leading byte with a reply are still keys: Alt-] and Alt-Shift-P
+  // are `ESC ]` and `ESC P`, and a terminal never sends either without a parameter behind it.
+  table("\x1b]", "Alt+]");
+  table("\x1b]a", "Alt+] | a");
+  table("\x1bP", "Alt+Shift+p");
+  table("\x1bPa", "Alt+Shift+p | a");
   table("\x1b[99~", "Unknown(\x1b[99~)");
   table("a\x1b[Ab", "a | Up | b");
+
+  // THE SINK: a reply is dropped from the keys AND handed, whole, to whoever asked.
+  {
+    struct Got { std::vector<std::string> replies; } got;
+    RolltuiKeyDecoder* d = rolltui_key_decoder_new();
+    rolltui_key_decoder_set_reply_sink(
+        d, [](void* ctx, const char* bytes, size_t len) { static_cast<Got*>(ctx)->replies.emplace_back(bytes, len); }, &got);
+    std::vector<std::string> keys = feed_events(d, "x\x1b]11;rgb:1/2/3\x07y\x1b[?1;2c");
+    check(names(keys) == "x | y", "a reply is not among the keys");
+    check(got.replies.size() == 2 && got.replies[0] == "\x1b]11;rgb:1/2/3\x07" && got.replies[1] == "\x1b[?1;2c",
+          "…and the sink is handed each whole, ESC included, in order");
+    // An OSC reply cut at the read boundary completes on the next feed and is still one reply.
+    std::vector<std::string> a = feed_events(d, "\x1b]11;rgb:aa/bb");
+    std::vector<std::string> b = feed_events(d, "/cc\x1b\\z");
+    check(a.empty() && names(b) == "z" && got.replies.size() == 3 && got.replies[2] == "\x1b]11;rgb:aa/bb/cc\x1b\\",
+          "an OSC reply split across feeds arrives once, whole");
+    rolltui_key_decoder_free(d);
+    // With no sink the reply is still dropped.
+    RolltuiKeyDecoder* e = rolltui_key_decoder_new();
+    check(names(feed_events(e, "\x1b]11;rgb:1/2/3\x07")).empty(), "with no sink a reply is dropped, not turned into keys");
+    rolltui_key_decoder_free(e);
+  }
 
   // Split feeds: sequences cut at the read boundary complete on the next feed.
   {

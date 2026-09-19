@@ -3161,6 +3161,27 @@ typedef struct RolltuiTerminalOptions {
   unsigned char bracketed_paste ROLLTUI_DEFAULT(1);
   unsigned char hide_cursor ROLLTUI_DEFAULT(1);
   unsigned char handle_signals ROLLTUI_DEFAULT(1); /* restore-and-reraise on INT/TERM/HUP/QUIT */
+  /* WHAT THE TERMINAL IS — colour depth, light or dark, how wide an ambiguous glyph draws — is
+   * found out at entry and remembered (see `RolltuiTermFacts`), which is why every option below
+   * is spelled as an opt OUT: a host that says nothing gets the right answer, and a struct that
+   * is zero-initialised in C means the same as one that is default-initialised in C++. */
+  unsigned char no_probe ROLLTUI_DEFAULT(0); /* ask the terminal nothing but the keyboard question */
+  unsigned char no_cache ROLLTUI_DEFAULT(0); /* neither read nor write the remembered answers */
+  /* Added to what the remembered answers are filed under. A program's own name, size and
+   * modification time are ALWAYS part of it, so a new build asks the terminal again without a host
+   * saying so; this is for a host that wants more (a configuration name, say). A BORROW for the
+   * `rolltui_terminal_new` call only. */
+  const char* app_key ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* Tell me (`ROLLTUI_TERM_EVENT_FACTS`) when a remembered answer turns out to have gone stale and it
+   * changes what I draw. Off by default because a host that does not know the event is better off
+   * never being sent one; the facts themselves are corrected either way, and the library's own
+   * consumers of them (the depth `present` draws at, the width every glyph is measured at, the mode
+   * `rolltui_theme_load` follows) see the correction whether or not the host is listening. */
+  unsigned char facts_events ROLLTUI_DEFAULT(0);
+  /* Where the remembered answers live. A BORROW for the call only. NULL: the person's rolltui
+   * configuration directory (ROLL_CONFIG_DIR, else XDG_CONFIG_HOME/roll/rolltui, else
+   * ~/.config/roll/rolltui). */
+  const char* cache_dir ROLLTUI_DEFAULT(ROLLTUI_NULL);
 } RolltuiTerminalOptions;
 
 typedef struct RolltuiTerminal RolltuiTerminal;
@@ -3174,6 +3195,43 @@ typedef struct RolltuiTerminal RolltuiTerminal;
 #define ROLLTUI_TERM_EVENT_PASTE ROLLTUI_EVENT_PASTE
 
 #define ROLLTUI_TERM_EVENT_RESIZE 3
+
+/* THE TERMINAL LEARNED SOMETHING that changes what a host should draw — today, that its
+ * background flipped between light and dark since the answers were remembered. Read
+ * `rolltui_terminal_facts` again and re-resolve the theme. Sent only to a host that asked
+ * (`RolltuiTerminalOptions::facts_events`), and only after a remembered answer was used and then
+ * checked against the terminal, so a host that asks fresh every time never sees one. A host
+ * ignores kinds it does not know. */
+#define ROLLTUI_TERM_EVENT_FACTS 4
+
+/* ---- what the terminal is ------------------------------------------------------------------
+ * Facts about the terminal that no host should have to remember to ask: how many colours it can
+ * show, whether its background is light or dark, how wide it draws an East Asian AMBIGUOUS glyph.
+ * Found out at entry, remembered per terminal, and re-checked in the background when they were
+ * remembered rather than asked — so a wrong answer costs one frame, not a session, and a
+ * right one costs nothing. Every fact says WHERE IT CAME FROM, because "the environment said so"
+ * and "the terminal said so" deserve different amounts of trust, and a person debugging a
+ * terminal that draws nonsense needs to know which was consulted. */
+#define ROLLTUI_FACT_DEFAULT 0 /* nothing said anything; the conservative answer */
+#define ROLLTUI_FACT_ENV 1     /* read from the environment */
+#define ROLLTUI_FACT_PROBE 2   /* the terminal answered a question */
+#define ROLLTUI_FACT_CACHE 3   /* remembered from an earlier run on this same terminal */
+#define ROLLTUI_FACT_FORCED 4  /* said outright: ROLL_COLOR_DEPTH, a theme's depth, a host's call */
+
+typedef struct RolltuiTermFacts {
+  unsigned char depth;          /* ROLLTUI_DEPTH_*: what to draw at */
+  unsigned char depth_source;   /* ROLLTUI_FACT_* */
+  unsigned char mode;           /* ROLLTUI_MODE_DARK or ROLLTUI_MODE_LIGHT: what the background is */
+  unsigned char mode_source;
+  unsigned char has_background; /* `background` is a colour the terminal reported */
+  RolltuiStyleColor background;
+  unsigned char ambiguous_wide; /* 1: an ambiguous-width glyph takes two cells */
+  unsigned char ambiguous_source;
+  unsigned char keyboard;       /* ROLLTUI_PROTOCOL_*: how keys arrive */
+  unsigned char responsive;     /* the terminal answered a question at all; 0 for a pipe or a silent one */
+  unsigned char remembered;     /* this run used remembered answers rather than asking */
+  char name[64];                /* how the terminal introduced itself, for humans: "Apple_Terminal 455" */
+} RolltuiTermFacts;
 
 /* ONE event. `text` is a BORROW valid only for the `emit` call (rule 3): an Unknown key's
  * raw bytes (kind KEY, key UNKNOWN) or a paste's contents (kind PASTE). NULL otherwise.
@@ -5104,6 +5162,39 @@ int rolltui_terminal_query_background(RolltuiTerminal* t, int timeout_ms, Rolltu
  * keeps the caller's default instead of becoming a wrong answer. Draws and erases one glyph at
  * the home position inside a save/restore pair. */
 int rolltui_terminal_query_ambiguous_wide(RolltuiTerminal* t, int timeout_ms, int* out);
+
+/* ---- what the terminal is: the facts, and drawing at the right depth ---------------------- */
+/* `rolltui_terminal_new` finds these out — in the same round trip that negotiates the keyboard,
+ * so a fresh terminal costs one exchange and a remembered one costs none — and a host reads
+ * them; it no longer calls the two queries above itself. The answers are remembered under a
+ * fingerprint of the terminal (its names and versions, the operating system, whether it is
+ * reached over ssh or a multiplexer, the program's own version), so a new terminal, a new
+ * release or a new operating system asks again, and a remembered answer is re-checked in the
+ * background and corrected at the next `ROLLTUI_TERM_EVENT_FACTS` if it has gone stale.
+ * Reading marks the facts as seen: a later change is what a FACTS event reports. */
+void rolltui_terminal_facts(RolltuiTerminal* t, RolltuiTermFacts* out);
+
+/* SAYS THE DEPTH OUTRIGHT, over whatever was detected: a theme file's `depth` other than
+ * "auto", or a person who knows better than the environment. A ROLLTUI_DEPTH_* value, or a
+ * negative one to go back to what was detected. */
+void rolltui_terminal_set_depth(RolltuiTerminal* t, int depth);
+
+/* Diffs the swap's drawn frame, downgrades its colours to the facts' depth, and writes the
+ * bytes — `rolltui_swap_present` and `rolltui_terminal_write` as ONE call whose depth cannot be
+ * forgotten. `scratch` is the caller's reusable byte buffer: it is cleared and left holding what
+ * was written, so a frame that changed nothing allocates nothing. `rolltui_swap_present` stays for
+ * a caller with no terminal — a golden test wants a depth it chose, not the one it is run under. */
+void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* scratch);
+
+/* ASKS AGAIN NOW, ignoring what was remembered, and remembers the new answers. Waits up to
+ * `timeout_ms` for the terminal. 1 when the terminal answered, 0 when it did not (a pipe, a
+ * silent terminal); either way the facts are as good as they can be made. For a diagnostic
+ * (`dirktui probe`) and for a host that knows the terminal changed under it. */
+int rolltui_terminal_reprobe(RolltuiTerminal* t, int timeout_ms);
+
+/* Where the remembered answers are read and written, or "" when this terminal was opened with
+ * `no_cache`. A BORROW into the handle, valid until it is freed. */
+const char* rolltui_terminal_cache_path(const RolltuiTerminal* t);
 
 
 /* ========================================================================================

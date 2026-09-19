@@ -1045,6 +1045,7 @@ struct Pending {
   bool quit = false;
   int w = 0, h = 0;
   bool resized = false;
+  bool facts = false;
 
   void begin(int cur_w, int cur_h) {
     events.clear();
@@ -1052,6 +1053,7 @@ struct Pending {
     text_of.clear();
     quit = false;
     resized = false;
+    facts = false;
     w = cur_w;
     h = cur_h;
   }
@@ -1065,6 +1067,11 @@ void collect_event(void* ctx, const RolltuiTermEvent* e) {
     p.resized = true;
     return;
   }
+  if (e->kind == ROLLTUI_TERM_EVENT_FACTS) {
+    p.facts = true;
+    return;
+  }
+  if (e->kind > ROLLTUI_TERM_EVENT_FACTS) return;  // a kind this program does not know is not an input
   if (e->kind == ROLLTUI_TERM_EVENT_KEY && e->key.ctrl && e->key.key == ROLLTUI_KEY_CHAR && e->key.ch == 'q') {
     p.quit = true;
     return;
@@ -1141,6 +1148,7 @@ int main(int argc, char** argv) {
 
   App app;
   app.tool.ambiguous = ambiguous ? 1 : 0;
+  const bool ambiguous_flag = ambiguous;  // said outright: not to be overridden by what the terminal measures
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");  // an unknown --theme keeps the app's own look
   rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
@@ -1312,12 +1320,21 @@ int main(int argc, char** argv) {
 #endif
 
   RolltuiTerminalOptions opts{};
+  opts.facts_events = 1;
   RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
   if (!rolltui_terminal_is_tty(term)) {
     rolltui_terminal_free(term);
     std::fprintf(stderr, "not a terminal (rolltui-paint-selftest --frame WxH renders one)\n");
     return 1;
   }
+  // WHAT THIS TERMINAL IS: how wide it draws an ambiguous glyph (a canvas of FULL BLOCKs cares a great
+  // deal), asked and remembered by the library rather than by a flag the person has to know to pass.
+  auto apply_facts = [&] {
+    RolltuiTermFacts f;
+    rolltui_terminal_facts(term, &f);
+    if (!ambiguous_flag) app.tool.ambiguous = f.ambiguous_wide ? 1 : 0;
+  };
+  apply_facts();
   app.w = rolltui_terminal_width(term);
   app.h = rolltui_terminal_height(term);
 
@@ -1336,9 +1353,9 @@ int main(int argc, char** argv) {
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
     const int timeout = app.poll_timeout_ms(f, 250);
-    out.clear();
-    rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &out);
-    rolltui_terminal_write(term, out.p ? out.p : "", out.n);
+    // At the depth the terminal HAS: a hand-picked RGB sent to a terminal that cannot draw 24-bit
+    // colour is misread as stray attributes, and a painting app's colours are all user data.
+    rolltui_terminal_present(term, swap, &out);
 
     pending.begin(app.w, app.h);
     rolltui_terminal_poll(term, timeout, collect_event, &pending);
@@ -1347,6 +1364,10 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < pending.events.size(); ++i)
       if (pending.text_of[i] != Pending::kNone) pending.events[i].text = pending.texts[pending.text_of[i]].data();
     for (const RolltuiEvent& e : pending.events) app.handle(e);
+    if (pending.facts) {
+      apply_facts();
+      rolltui_swap_invalidate(swap);
+    }
     if (pending.resized) {
       app.w = pending.w;
       app.h = pending.h;

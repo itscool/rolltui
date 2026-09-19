@@ -18,6 +18,7 @@
  * property moving fails a test instead of passing everywhere. */
 #include "testkit/testctl.h"
 
+#include "rolltui/c/rolltui_termfacts.h"
 #include "rolltui/c/rolltui_widgets.h"  /* the scrollbar glyph default, filled for a theme that states none */
 #include "rolltui/c/rolltui_theme.h"
 
@@ -971,6 +972,15 @@ RolltuiEffectMap* rolltui_theme_load(const RolltuiJsonValue* root, int mode, con
   size_t i, n;
 
   rolltui_theme_report_release(report); /* full reset, mirrors `report = ThemeLoadReport{};` */
+
+  /* A MODE BELOW ZERO IS "AUTO": follow the terminal's own light or dark once it has been asked
+   * (rolltui_termfacts.h), and dark when there is no terminal — a headless run, a golden test. It is
+   * what `rolltui_theme_mode_from_name` answers for "auto", so a host that passes that answer straight
+   * through gets the terminal's mode without knowing there was a question. */
+  if (mode < 0) {
+    mode = rolltui_termfacts_active_mode();
+    if (mode < 0) mode = ROLLTUI_MODE_DARK;
+  }
 
   if (!rolltui_json_is_object(root)) {
     rolltui_theme_report_set_error(report, K("theme file must be a JSON object"));

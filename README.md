@@ -44,6 +44,30 @@ widgets — is this repository's own.
 ./build/rolltui-paint            # the text-mode painting app
 ```
 
+## What the terminal is, so no host has to ask
+
+A terminal is not what its environment says it is. Apple's Terminal on macOS 15 cannot draw
+24-bit colour and is sent it anyway by any program that trusts `COLORTERM`, which a shell rc
+file may export for every terminal it ever meets; the colours come out as nonsense.
+`rolltui_terminal_new` therefore finds out what the terminal is — how many colours it draws,
+whether its background is light or dark, how wide it draws an ambiguous-width glyph — in the
+same round trip that negotiates the keyboard, remembers the answers per terminal, and applies
+them itself:
+
+- **the depth** `rolltui_swap_present` draws at is a request, never more than the terminal has;
+- **the width** of every glyph is measured the way this terminal draws it;
+- **a theme that says `auto`** follows the terminal's own light or dark.
+
+A host does nothing. The answers are filed under the terminal's names and versions, the
+operating system, the program's own build, and whether the session came over ssh or a
+multiplexer, so a new terminal, release or machine asks again; a remembered answer is asked
+about nothing at entry and re-checked after the first frame. Measured, a terminal that answers
+costs 0.6 ms fresh and 0.2 ms remembered; one that answers nothing costs 80 ms once.
+
+When it is wrong, say so: `ROLL_COLOR_DEPTH=truecolor|256|16|mono`, `ROLL_AMBIGUOUS_WIDE=1`,
+`ROLL_TERM_PROBE=0` (ask only the keyboard question). `dirktui probe` asks the terminal again
+and says what it found and where each answer came from.
+
 ## Ownership, in three shapes and no fourth
 
 Every pointer in this library is one of three things, and `rolltui-ownership-test` checks it:

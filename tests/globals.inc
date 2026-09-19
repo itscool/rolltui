@@ -131,3 +131,15 @@ ROLLTUI_GLOBAL("rolltui_terminal.c", "g_leave_len", PROCESS)
 ROLLTUI_GLOBAL("rolltui_terminal.c", "g_saved_tio", PROCESS)
 ROLLTUI_GLOBAL("rolltui_terminal.c", "g_have_tio", PROCESS)
 ROLLTUI_GLOBAL("rolltui_terminal.c", "g_handlers_installed", PROCESS)
+
+/* THE DEPTH OF THE TERMINAL THIS PROCESS DRAWS TO, published so that `rolltui_swap_present` can hold
+ * every host to it (a depth handed to `present` is a request, not a fact). Like the keyboard
+ * protocol above it describes THE TTY, of which a process has one; -1 means no terminal is entered,
+ * which is what a golden test or a tool writing to a pipe sees. `_Atomic`: written by the thread that
+ * owns the terminal, read by whichever thread presents. */
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_depth", PROCESS)
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_forced", PROCESS)
+/* …and the same terminal's glyph width and light-or-dark: what every width the library computes is
+ * ORed with, and what a theme that says `auto` follows. Both -1 when no terminal is entered. */
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_wide", PROCESS)
+ROLLTUI_GLOBAL("rolltui_termfacts.c", "g_active_mode", PROCESS)

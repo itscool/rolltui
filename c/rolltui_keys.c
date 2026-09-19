@@ -28,6 +28,8 @@ struct RolltuiKeyDecoder {
   char* paste;
   size_t paste_len, paste_cap;
   int in_paste;
+  RolltuiKeyReplyFn reply;
+  void* reply_ctx;
 };
 
 static void buf_append(char** p, size_t* len, size_t* cap, const char* bytes, size_t n) {
@@ -336,6 +338,36 @@ static int decode_csi(const char* seq, size_t len, RolltuiEventFn emit, void* ct
   return 1;
 }
 
+void rolltui_key_decoder_set_reply_sink(RolltuiKeyDecoder* d, RolltuiKeyReplyFn fn, void* ctx) {
+  d->reply = fn;
+  d->reply_ctx = ctx;
+}
+
+/* A STRING REPLY — OSC (`ESC ]`) or DCS (`ESC P`) — at the front of `s`: its length, 0 when it has
+ * begun and not finished, -1 when it is not a reply at all. What separates a reply from a key is
+ * the third byte: `ESC ]` and `ESC P` alone are Alt-] and Alt-Shift-P, and a terminal never sends
+ * either without a parameter after it (a digit for an OSC; a digit or one of `> + = < $` for a
+ * DCS). Terminated by ST (`ESC \`) or, for an OSC, BEL. An unterminated one that has grown past
+ * anything a terminal writes is not waited for. */
+static long string_reply_length(const char* s, size_t len, int osc) {
+  enum { kMax = 4096 };
+  size_t i, limit = len < (size_t)kMax ? len : (size_t)kMax;
+  if (len < 3) return -1; /* `ESC ]` or `ESC P` and nothing behind it yet: a key, as it always was */
+  if (osc) {
+    if (s[2] < '0' || s[2] > '9') return -1;
+  } else if (!s[2] || !strchr("0123456789>+=<$", s[2])) {
+    return -1;
+  }
+  for (i = 2; i < limit; ++i) {
+    if (osc && s[i] == '\a') return (long)(i + 1);
+    if (s[i] == '\x1b') {
+      if (i + 1 >= len) return 0;
+      if (s[i + 1] == '\\') return (long)(i + 2);
+    }
+  }
+  return len >= (size_t)kMax ? (long)kMax : 0;
+}
+
 void rolltui_key_decoder_feed(RolltuiKeyDecoder* d, const char* bytes, size_t len, RolltuiEventFn emit, void* ctx) {
   buf_append(&d->buf, &d->buf_len, &d->buf_cap, bytes, len);
   for (;;) {
@@ -395,6 +427,15 @@ void rolltui_key_decoder_feed(RolltuiKeyDecoder* d, const char* bytes, size_t le
         continue;
       }
       seq_len = (size_t)n;
+      /* A REPLY, not a key: Primary and Secondary DA (`CSI ? ... c`, `CSI > ... c`), kitty's
+       * flags (`CSI ? ... u`), xterm's modifyOtherKeys (`CSI > ... m`). No key is ever spelled
+       * with one of these leads, so dropping them is never dropping typing. */
+      if (seq_len >= 4 && ((d->buf[2] == '?' && (d->buf[seq_len - 1] == 'c' || d->buf[seq_len - 1] == 'u')) ||
+                           (d->buf[2] == '>' && (d->buf[seq_len - 1] == 'm' || d->buf[seq_len - 1] == 'c')))) {
+        if (d->reply) d->reply(d->reply_ctx, d->buf, seq_len);
+        buf_drop_front(d->buf, &d->buf_len, seq_len);
+        continue;
+      }
       if (seq_len == 6 && memcmp(d->buf, "\x1b[200~", 6) == 0) {
         buf_drop_front(d->buf, &d->buf_len, seq_len);
         d->in_paste = 1;
@@ -410,6 +451,16 @@ void rolltui_key_decoder_feed(RolltuiKeyDecoder* d, const char* bytes, size_t le
        * window closes here, which is why the drop comes after it. */
       buf_drop_front(d->buf, &d->buf_len, seq_len);
       continue;
+    }
+    if (c1 == ']' || c1 == 'P') {
+      const long n = string_reply_length(d->buf, d->buf_len, c1 == ']');
+      if (n == 0) break; /* begun, not finished: wait, and flush() resolves it as keys if nothing comes */
+      if (n > 0) {
+        if (d->reply) d->reply(d->reply_ctx, d->buf, (size_t)n);
+        buf_drop_front(d->buf, &d->buf_len, (size_t)n);
+        continue;
+      }
+      /* -1: not a reply — Alt-] or Alt-Shift-P — falls through to the Alt+key branch below. */
     }
     if (c1 == 'O') {
       RolltuiChord e;

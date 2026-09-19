@@ -638,10 +638,12 @@ struct App {
     RolltuiThemeReport rep{};
     RolltuiStyle got[ROLLTUI_ROLE_COUNT]{};
     RolltuiStr name{};
-    // "auto" is not a mode, so it resolves to dark here; a terminal probe would do better and
-    // this app does not have one yet.
-    const int named = rolltui_theme_mode_from_name(w->mode.p ? w->mode.p : "", w->mode.n);
-    const int mode = named >= 0 ? named : ROLLTUI_MODE_DARK;
+    // "auto" is not a mode, and `mode_from_name` says so by answering -1 — which `theme_load` reads as
+    // "follow the terminal's own light or dark", and as dark where there is no terminal (a headless run).
+    const int mode = rolltui_theme_mode_from_name(w->mode.p ? w->mode.p : "", w->mode.n);
+    // A THEME'S `depth` other than "auto" is said outright and beats what was detected; "auto" is
+    // not a depth, so it clears any earlier say-so and the detected one stands again.
+    if (term) rolltui_terminal_set_depth(term, rolltui_color_depth_from_name(w->depth.p ? w->depth.p : "", w->depth.n));
     // The SESSION's vocabulary, so a person's theme may map this app's states by name.
     RolltuiEffectMap* eff = rolltui_theme_load(w->colours, mode, rolltui_theme_vocab(ctx), got, &name, &rep);
     if (eff) {
@@ -816,6 +818,11 @@ struct App {
         const char* mv = w->mode.p && w->mode.n ? w->mode.p : "auto";
         const size_t mvlen = w->mode.p && w->mode.n ? w->mode.n : 4;
         rolltui_menu_set_value(m, "mode", 4, mv, mvlen);
+        // Colours likewise: the working value's own "depth" field. "auto" is what the terminal said it can draw;
+        // anything else is said outright and beats it (`sync_theme` hands it to the terminal).
+        const char* dv = w->depth.p && w->depth.n ? w->depth.p : "auto";
+        const size_t dvlen = w->depth.p && w->depth.n ? w->depth.n : 4;
+        rolltui_menu_set_value(m, "depth", 5, dv, dvlen);
         rolltui_preset_store_value_free(theme_store, w);
       }
     }
@@ -903,6 +910,11 @@ struct App {
     RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
     const std::string* mode = static_cast<const std::string*>(ctx);
     rolltui_str_set(&v->mode, mode->data(), mode->size());
+  }
+  static void set_theme_depth(void* value, void* ctx) {
+    RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
+    const std::string* depth = static_cast<const std::string*>(ctx);
+    rolltui_str_set(&v->depth, depth->data(), depth->size());
   }
   // A CHOSEN KEY-BINDINGS PRESET becomes the live table the way the start built it: the store's
   // working copy, then this app's own bindings file on top, then the layout's declarations.
@@ -1221,6 +1233,21 @@ struct App {
   // it is a fact about the terminal the process cannot yet ask for, and a widget that guesses it
   // wrong cuts a two-cell glyph into one column.
   int ambiguous = 0;
+  // `--ambiguous-wide` says two cells OUTRIGHT, over whatever the terminal measured: a person who
+  // knows their terminal better than a cursor-position report does is not argued with.
+  bool ambiguous_flag = false;
+
+  // WHAT THIS PROGRAM READS FROM THE TERMINAL ITSELF — everything the library can apply without being
+  // asked (the depth drawn at, the width every glyph is measured at, the mode `auto` follows) it
+  // already has. What is left is a choice of GLYPH: a pencil where an ambiguous glyph is one cell,
+  // the word where it is two. Called at start and again when a remembered answer turns out stale.
+  void apply_facts() {
+    if (!term) return;
+    RolltuiTermFacts f;
+    rolltui_terminal_facts(term, &f);
+    if (!ambiguous_flag) ambiguous = f.ambiguous_wide ? 1 : 0;
+    sync_theme();  // an `auto` theme follows the terminal's light or dark: the library resolves it
+  }
 
   void prepare() {
     // RE-RESOLVE ONLY WHEN THE STORE MOVED. An edit made in the theme editor bumps the store's
@@ -1598,6 +1625,11 @@ struct App {
         if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_mode, &mode, 1);
         hint = "light or dark: " + mode;
         menu_dirty = true;
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "depth") {
+        std::string depth(ev.value.p ? ev.value.p : "", ev.value.n);
+        if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_depth, &depth, 1);
+        hint = "colours: " + depth;
+        menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "keys") {
         const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
         RolltuiBindingsPresetReport brep{};
@@ -1832,6 +1864,8 @@ int usage() {
                "       dirktui install [zsh|bash|fish]     link this binary into ~/.local/bin and put the shell\n"
                "                                           side into the shell's rc file ($SHELL's by default);\n"
                "                                           `dirktui uninstall` takes both out again\n"
+               "       dirktui probe                       asks this terminal what it is (colours, light or dark,\n"
+               "                                           glyph width), remembers it, and says what it found\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
                "                                           fish: dirktui init fish | source\n"
@@ -2127,6 +2161,104 @@ static std::string with_block(const std::string& text, const std::string& block)
   if (!out.empty()) out += '\n';
   return out + block;
 }
+const char* fact_source(unsigned char s) {
+  switch (s) {
+    case ROLLTUI_FACT_ENV: return "from the environment";
+    case ROLLTUI_FACT_PROBE: return "the terminal said so";
+    case ROLLTUI_FACT_CACHE: return "remembered from an earlier run";
+    case ROLLTUI_FACT_FORCED: return "said outright";
+    default: return "assumed: nothing said otherwise";
+  }
+}
+
+const char* depth_words(unsigned char d) {
+  switch (d) {
+    case ROLLTUI_DEPTH_TRUECOLOR: return "24-bit colour";
+    case ROLLTUI_DEPTH_ANSI256: return "256 colours";
+    case ROLLTUI_DEPTH_ANSI16: return "16 colours";
+    default: return "no colour";
+  }
+}
+
+// A terminal on the controlling tty that draws NOTHING — no alternate screen, no mouse — so it can be
+// asked what it is and set down again, leaving the screen as it found it. NULL when there is none.
+RolltuiTerminal* open_probe_terminal(int* tty_out) {
+  const int tty = open("/dev/tty", O_RDWR | O_CLOEXEC);
+  if (tty < 0) return nullptr;
+  RolltuiTerminalOptions opts{};
+  opts.alt_screen = 0;
+  opts.mouse = 0;
+  opts.bracketed_paste = 0;
+  opts.hide_cursor = 0;
+  opts.no_probe = 1;  // entry asks the keyboard only: the caller asks the rest itself, once, with `reprobe`
+  RolltuiTerminal* t = rolltui_terminal_new(tty, tty, opts);
+  if (!rolltui_terminal_is_tty(t)) {
+    rolltui_terminal_free(t);
+    close(tty);
+    return nullptr;
+  }
+  *tty_out = tty;
+  return t;
+}
+
+// `dirktui probe`: asks the terminal again NOW, ignoring what was remembered, remembers the new
+// answers, and says what it found and where each answer came from. It is what to run when the
+// colours look wrong — the report names the terminal, how many colours it will be drawn to and why.
+int probe_command() {
+  int tty = -1;
+  RolltuiTerminal* t = open_probe_terminal(&tty);
+  if (!t) {
+    std::fprintf(stderr, "dirktui: no terminal to ask (no /dev/tty)\n");
+    return 2;
+  }
+  const bool answered = rolltui_terminal_reprobe(t, 600) != 0;
+  RolltuiTermFacts f;
+  rolltui_terminal_facts(t, &f);
+  const std::string cache = rolltui_terminal_cache_path(t);
+  rolltui_terminal_free(t);
+  close(tty);
+
+  auto env = [](const char* n) { const char* v = std::getenv(n); return v && *v ? v : "(unset)"; };
+  std::printf("dirktui probe — what this terminal is\n\n");
+  std::printf("  terminal     %s\n", f.name[0] ? f.name : "(it did not say)");
+  std::printf("  environment  TERM=%s  COLORTERM=%s  TERM_PROGRAM=%s %s\n", env("TERM"), env("COLORTERM"), env("TERM_PROGRAM"),
+              std::getenv("TERM_PROGRAM_VERSION") ? std::getenv("TERM_PROGRAM_VERSION") : "");
+  std::printf("  answered     %s\n", answered ? "yes: it replied to the questions" : "no: it did not reply, so everything below is the environment's guess");
+  std::printf("  colours      %s   (%s)\n", depth_words(f.depth), fact_source(f.depth_source));
+  const char* colorterm = std::getenv("COLORTERM");
+  if (colorterm && (std::string(colorterm) == "truecolor" || std::string(colorterm) == "24bit") && f.depth < ROLLTUI_DEPTH_TRUECOLOR &&
+      f.depth_source != ROLLTUI_FACT_FORCED)
+    std::printf("               COLORTERM claims 24-bit colour, and it is not being believed here — this terminal did not confirm it\n");
+  if (f.has_background) {
+    char col[ROLLTUI_COLOR_STRING_MAX];
+    const std::size_t n = rolltui_color_to_string(f.background, col, sizeof col);
+    std::printf("  background   %s   %.*s (%s)\n", f.mode == ROLLTUI_MODE_LIGHT ? "light" : "dark", static_cast<int>(n), col, fact_source(f.mode_source));
+  } else {
+    std::printf("  background   %s   (%s)\n", f.mode == ROLLTUI_MODE_LIGHT ? "light" : "dark", fact_source(f.mode_source));
+  }
+  std::printf("  glyph width  an ambiguous-width glyph takes %d cell%s   (%s)\n", f.ambiguous_wide ? 2 : 1, f.ambiguous_wide ? "s" : "", fact_source(f.ambiguous_source));
+  std::printf("  keyboard     %s\n", f.keyboard == ROLLTUI_PROTOCOL_KITTY ? "kitty" : f.keyboard == ROLLTUI_PROTOCOL_MODIFY_OTHER_KEYS ? "modifyOtherKeys" : "legacy");
+  std::printf("  remembered   %s\n", cache.empty() ? "nowhere (no configuration directory)" : cache.c_str());
+  std::printf("\nOverride any of it:  ROLL_COLOR_DEPTH=truecolor|256|16|mono   ROLL_AMBIGUOUS_WIDE=1\n");
+  return 0;
+}
+
+// The end of `dirktui install`: the terminal it was run in is asked once, so the first `dirk` is as
+// fast as the second. One line, on stderr with the rest of install's words; silent when there is no
+// terminal to ask.
+void warm_terminal_cache() {
+  int tty = -1;
+  RolltuiTerminal* t = open_probe_terminal(&tty);
+  if (!t) return;
+  rolltui_terminal_reprobe(t, 600);
+  RolltuiTermFacts f;
+  rolltui_terminal_facts(t, &f);
+  rolltui_terminal_free(t);
+  close(tty);
+  std::fprintf(stderr, "dirktui: this terminal: %s, %s, %s background\n", f.name[0] ? f.name : "unnamed", depth_words(f.depth),
+               f.mode == ROLLTUI_MODE_LIGHT ? "light" : "dark");
+}
+
 int install_command(int argc, char** argv, bool remove) {
   const std::string shell = shell_of(argc, argv);
   const bool known = shell == "zsh" || shell == "bash" || shell == "fish";
@@ -2234,6 +2366,7 @@ int install_command(int argc, char** argv, bool remove) {
       std::fprintf(stderr, "dirktui: note: a terminal here opens a LOGIN bash, which reads ~/.bash_profile and not ~/.bashrc — create it with:  [ -f ~/.bashrc ] && . ~/.bashrc\n");
   }
   if (!remove) std::fprintf(stderr, "dirktui: open a new shell, or: %s\n", shell == "fish" ? "source ~/.config/fish/conf.d/dirk.fish" : ("source " + rc).c_str());
+  if (!remove && isatty(STDIN_FILENO)) warm_terminal_cache();
   return 0;
 }
 
@@ -2262,6 +2395,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (argc >= 2 && std::string(argv[1]) == "init") return init_command(argc, argv);
+  if (argc >= 2 && std::string(argv[1]) == "probe") return probe_command();
   if (argc >= 2 && std::string(argv[1]) == "install") return install_command(argc, argv, false);
   if (argc >= 2 && std::string(argv[1]) == "uninstall") return install_command(argc, argv, true);
   std::string start;
@@ -2301,6 +2435,7 @@ int main(int argc, char** argv) {
 
   App app;
   app.ambiguous = ambiguous ? 1 : 0;
+  app.ambiguous_flag = ambiguous;
   {
     // The app's own MOTION file, through the same three rungs as its layout — embedded, beside
     // the binary, a person's config directory — and read BEFORE any theme, since every theme
@@ -2541,6 +2676,7 @@ int main(int argc, char** argv) {
     return 2;
   }
   RolltuiTerminalOptions opts{};
+  opts.facts_events = 1;  // a theme that says `auto` should follow the terminal if its background is switched
   RolltuiTerminal* term = rolltui_terminal_new(tty, tty, opts);
   if (!rolltui_terminal_is_tty(term)) {
     rolltui_terminal_free(term);
@@ -2555,6 +2691,7 @@ int main(int argc, char** argv) {
   app.swap = swap;
   app.tty_fd = tty;
   app.terminal_ready();  // the key protocol is negotiated: judge the chords against it
+  app.apply_facts();     // and so is everything else about the terminal: its glyph width, its light or dark
   RolltuiStr out{};
   struct Pending {
     std::vector<RolltuiEvent> events;
@@ -2562,6 +2699,7 @@ int main(int argc, char** argv) {
     std::vector<std::size_t> text_of;
     int w = 0, h = 0;
     bool resized = false;
+    bool facts = false;
   } pending;
   const std::size_t kNone = static_cast<std::size_t>(-1);
   while (!app.quit) {
@@ -2570,13 +2708,14 @@ int main(int argc, char** argv) {
     RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
     app.render_into(f);
     const int timeout = app.poll_timeout_ms(f, 250);
-    out.clear();
-    rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &out);
-    rolltui_terminal_write(term, out.c_str(), out.size());
+    // AT THE DEPTH THE TERMINAL HAS: a terminal that cannot draw 24-bit colour and is sent it
+    // anyway draws nonsense. The library knows the depth; this call cannot forget it.
+    rolltui_terminal_present(term, swap, &out);
     pending.events.clear();
     pending.texts.clear();
     pending.text_of.clear();
     pending.resized = false;
+    pending.facts = false;
     pending.w = app.w;
     pending.h = app.h;
     rolltui_terminal_poll(
@@ -2584,6 +2723,8 @@ int main(int argc, char** argv) {
         [](void* ctx, const RolltuiTermEvent* e) {
           Pending& p = *static_cast<Pending*>(ctx);
           if (e->kind == ROLLTUI_TERM_EVENT_RESIZE) { p.w = e->w; p.h = e->h; p.resized = true; return; }
+          if (e->kind == ROLLTUI_TERM_EVENT_FACTS) { p.facts = true; return; }
+          if (e->kind > ROLLTUI_TERM_EVENT_FACTS) return;  // a kind this program does not know is not an input
           RolltuiEvent ev{};
           ev.kind = e->kind;
           ev.key = e->key;
@@ -2599,6 +2740,10 @@ int main(int argc, char** argv) {
     for (const RolltuiEvent& e : pending.events) app.handle(e);
     app.settle();
     if (pending.resized) { app.w = pending.w; app.h = pending.h; }
+    if (pending.facts) {  // the terminal turned out not to be what was remembered: colours change, so repaint whole
+      app.apply_facts();
+      rolltui_swap_invalidate(swap);
+    }
   }
   rolltui_str_free(&out);
   rolltui_swap_free(swap);

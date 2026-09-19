@@ -64,6 +64,15 @@ void rolltui_key_decoder_flush(RolltuiKeyDecoder* d, RolltuiEventFn emit, void* 
 int rolltui_key_decoder_pending(const RolltuiKeyDecoder* d);
 int rolltui_key_decoder_in_paste(const RolltuiKeyDecoder* d);
 
+/* A TERMINAL'S ANSWER IS NEVER A KEY. What a terminal writes back when it is asked something — an
+ * OSC colour report, a DCS status string, Primary or Secondary DA, kitty's flags, xterm's
+ * modifyOtherKeys — arrives on the same descriptor as typing, and a decoder that does not know
+ * it turns it into Alt-], Alt-Shift-P and a string of stray characters. The decoder recognises
+ * those replies, drops them from the key stream, and hands each whole sequence (ESC included) to
+ * this sink so whoever asked can read it. `fn` may be NULL: the replies are still dropped. */
+typedef void (*RolltuiKeyReplyFn)(void* ctx, const char* bytes, size_t len);
+void rolltui_key_decoder_set_reply_sink(RolltuiKeyDecoder* d, RolltuiKeyReplyFn fn, void* ctx);
+
 long rolltui_key_encode(const RolltuiChord* k, unsigned char p, char* out, size_t cap);
 
 

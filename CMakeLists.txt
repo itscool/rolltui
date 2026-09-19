@@ -113,6 +113,11 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   the report, the auto-fix and generate() are
                                          #   real C++ logic over a Theme, not a binding, and
                                          #   they port when Theme and Json do.
+                  c/rolltui_termfacts.c
+                                         # WHAT A TERMINAL IS — colour depth, light or dark, the
+                                         #   width of an ambiguous glyph — as pure functions over
+                                         #   an environment and a buffer, plus the file that
+                                         #   remembers the answers. No tty in it: that is below.
                   c/rolltui_terminal.c)  # the one unit that touches a file
                                          #   descriptor — 43 POSIX calls that were wrapped in
                                          #   C++, which is the strongest argument FOR C here.
@@ -349,7 +354,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   # suites that test an implementation
   bindings_test.cpp budget_test.cpp deliverability_test.cpp effects_test.cpp grapheme_break_test.cpp
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
-  markdown_test.cpp md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp theme_gen_test.cpp
+  markdown_test.cpp md_test_helpers.hpp menu_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp
   screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp hints_test.cpp
   # the two EDITOR unit tests joined. They were in the public-only set, and an
@@ -414,6 +419,7 @@ add_rolltui_test(rolltui-screen-test tests/screen_test.cpp)
 add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+add_rolltui_test(rolltui-termfacts-test tests/termfacts_test.cpp)
 
 # DELIVERABILITY — a chord a terminal cannot deliver is refused, not bound
 # to silence. The table is measured against the ENCODINGS (encode_key fed to the real
@@ -642,6 +648,16 @@ target_compile_definitions(rolltui-product-flags-test PRIVATE
   ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
   DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
 add_dependencies(rolltui-product-flags-test rolltui-studio rolltui-paint dirktui)
+
+# THE SHIPPED PROGRAMS' LIVE LOOPS, on a terminal that cannot draw 24-bit colour (Apple's, on macOS 15) and
+# on one that can. Nothing else runs a program's own event loop, which is where the depth was hard-coded.
+add_rolltui_test(rolltui-live-terminal-test tests/live_terminal_test.cpp)
+target_compile_definitions(rolltui-live-terminal-test PRIVATE
+  ROLLTUI_STUDIO_PRODUCT_BIN="$<TARGET_FILE:rolltui-studio>"
+  ROLLTUI_PAINT_PRODUCT_BIN="$<TARGET_FILE:rolltui-paint>"
+  DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
+add_dependencies(rolltui-live-terminal-test rolltui-studio rolltui-paint dirktui)
+set_tests_properties(rolltui-live-terminal-test PROPERTIES TIMEOUT 90)
 
 add_rolltui_test(rolltui-dirktui-test tests/dirktui_test.cpp)
 target_compile_definitions(rolltui-dirktui-test PRIVATE
