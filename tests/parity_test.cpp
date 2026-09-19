@@ -340,6 +340,19 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   auto put = [&](int x, int y, const std::string& s, RolltuiStyle st, int max_cells) {
     return rolltui_frame_put_text(f, m->draw, x, y, s.data(), s.size(), st, max_cells, aw, 0);
   };
+  auto width = [&](const std::string& s) { return rolltui_u_display_width(m->u, s.data(), s.size(), aw); };
+  // A NAME THAT DOES NOT FIT ENDS IN AN ELLIPSIS, measured on this terminal — one cell, or two where
+  // ambiguous glyphs are wide — and laid down by the same public `put_text` as everything else.
+  const std::string kEllipsis = "\xE2\x80\xA6";
+  auto put_ellipsis = [&](int x, int y, const std::string& s, RolltuiStyle st, int max_cells) {
+    const int ew = width(kEllipsis);
+    if (max_cells <= 0 || s.empty()) return 0;
+    if (width(s) <= max_cells || max_cells <= ew) return put(x, y, s, st, max_cells);
+    int cells = 0;
+    const std::size_t fit = rolltui_u_fit(m->u, s.data(), s.size(), max_cells - ew, aw, &cells);
+    const int used = put(x, y, s.substr(0, fit), st, cells);
+    return used + put(x + used, y, kEllipsis, st, ew);
+  };
 
   // `shortcut`'s own role states "none" for a background — the library resolves it against the
   // row it is drawn on before using it, through the one public call that does that
@@ -392,7 +405,19 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
     std::size_t split = 0;
     const std::string line = row_text(m, it, &split);
     std::string right;
-    if (static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_CHOICE) right = str_of(it->value) + " \xE2\x96\xB8";
+    if (static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_CHOICE) {
+      // THE ANSWER YIELDS BEFORE THE NAME DOES, but never below eight cells.
+      std::string shown = str_of(it->value);
+      const std::string tail = " \xE2\x96\xB8";
+      const int room = a.w - width(line) - 1 - width(tail);
+      if (width(shown) > room && width(shown) > 8) {
+        int cells = 0;
+        const std::size_t fit =
+            rolltui_u_fit(m->u, shown.data(), shown.size(), imax(room, 8) - width(kEllipsis), aw, &cells);
+        shown = shown.substr(0, fit) + kEllipsis;
+      }
+      right = shown + tail;
+    }
     else if (static_cast<unsigned char>(it->kind) == ROLLTUI_MENU_SUBMENU) right = "\xE2\x96\xB8";
     else if (it->shortcut.n) right = str_of(it->shortcut);
 
@@ -403,7 +428,7 @@ void host_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
       used = put(a.x, y + r, line.substr(0, split), name_style, left_max);
       used += put(a.x + used, y + r, line.substr(split), value_style, imax(left_max - used, 0));
     } else {
-      used = put(a.x, y + r, line, name_style, left_max);
+      used = put_ellipsis(a.x, y + r, line, name_style, left_max);
     }
     if (rw > 0 && rw <= a.w) {
       // A CHOICE's right column is its current answer, so it is a value; a submenu's marker is

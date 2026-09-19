@@ -1328,6 +1328,12 @@ typedef struct RolltuiMenuItem {
    * same as a plain one — two boxes stacked over a third is a smaller and smaller window onto
    * the thing being edited, not context kept in view. File key: `"popup": true`. */
   unsigned char popup ROLLTUI_DEFAULT(0);
+  /* Choice or Input: what it holds is a COLOUR, so it is shown as one — `rolltui_frame_put_swatch`'s
+   * two cells beside the spelling: a Choice's own value, each of its options (their ids are
+   * spellings), and an Input's text as it is typed, hollow until it parses. An Input whose type is
+   * `color` has no need to say so; every other one that holds a colour does. File key:
+   * `"swatch": true`. */
+  unsigned char swatch ROLLTUI_DEFAULT(0);
   RolltuiStr value;       /* Choice: the current option id; Input: the COMMITTED text */
   RolltuiInputSpec spec;  /* Input: the type and its constraints */
   RolltuiMenuItemList children; /* Submenu: items; Choice: options */
@@ -5331,6 +5337,27 @@ void rolltui_draw_scratch_free(RolltuiDrawScratch* s); /* a no-op on NULL */
  * edge, or before a wide glyph that would be cut in half. Returns the cells used. */
 int rolltui_frame_put_text(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const char* utf8, size_t len,
                            RolltuiStyle style, int max_cells, int ambiguous_wide, unsigned int link);
+
+/* ---- a colour, shown ---------------------------------------------------------------------
+ * ONE WAY A COLOUR VALUE IS PUT ON THE SCREEN, wherever one is: a theme editor's role, a menu's
+ * colour input, a painter's ink. Its spelling is `rolltui_color_to_string`'s — "#rrggbb", a palette
+ * index, "none" — and beside it, its SWATCH: two cells that show the colour as it will actually be
+ * drawn (at the depth the terminal has, since it goes through the same renderer as everything
+ * else), framed in the text's own foreground so it can be seen against any ground — a colour that
+ * matches its background would otherwise vanish, and an outline is what says "this square is a
+ * colour" rather than "this is a gap". A `none` colour is the frame alone. */
+
+/* The swatch: `frame`'s foreground is the outline and its background is where a `none` colour lands.
+ * Returns the cells used — 2, or 0 where they do not fit (`max_cells` < 2) or the terminal draws no
+ * colour at all, in which case there is nothing to show. Where an ambiguous glyph is two cells the
+ * outline is a bracket pair, which is one cell wherever it is drawn. */
+int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+                             RolltuiStyle frame, int max_cells, int ambiguous_wide);
+
+/* The spelling and, before it, the swatch and a space: `▏▕ #d8dce2`. `text_style` styles the
+ * spelling and frames the swatch. Returns the cells used. */
+int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+                             RolltuiStyle text_style, int max_cells, int ambiguous_wide);
 
 /* Fills `r` (clipped) with a repeated grapheme — a space when `glyph` is NULL or has no
  * width. */

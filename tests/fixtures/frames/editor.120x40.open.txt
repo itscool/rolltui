@@ -3,7 +3,7 @@
 │ │ grapheme property,               │             │ unicode_tables.hp│ Roles                                        ▸ │
 │ │ Extended_Pictographic, InCB)     │             │                  │ Preview variant (dark/light)            dark ▸ │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Check: contrast, colour-vision, badges         │
-│ │ grapheme clusters, display width │             │ Unicode conforman│ Fixes (proposals; Enter applies one, undoabl ▸ │
+│ │ grapheme clusters, display width │             │ Unicode conforman│ Fixes (proposals; Enter applies one, undoab… ▸ │
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Generate a theme (seeded)                    ▸ │
 │ │                                  │             │ block tree is the│                                                │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │ History ────────────────────────────────────── │

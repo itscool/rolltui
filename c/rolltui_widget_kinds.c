@@ -2069,13 +2069,12 @@ static int theme_put(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, const c
   return rolltui_frame_put_text(f, tc->draw, x, y, text, len, st, max_cells, env->ambiguous_wide, 0);
 }
 
-/* One colour swatch: a run of spaces whose BACKGROUND is the colour, which is the only way to
- * show a colour that does not depend on a glyph being legible in it. */
-static int theme_swatch(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, RolltuiStyleColor c, int max_cells) {
-  RolltuiStyle st;
-  memset(&st, 0, sizeof st);
-  st.bg = c;
-  return theme_put(tc, f, x, y, "      ", 6, st, max_cells);
+/* One colour swatch — the library's one, `rolltui_frame_put_swatch`, the same outlined square a menu row shows
+ * beside a colour, so the two cannot come to disagree about what a colour looks like. */
+static int theme_swatch(RolltuiThemeCtx* tc, RolltuiFrame* f, int x, int y, RolltuiStyleColor c, RolltuiStyle frame,
+                        int max_cells) {
+  const RolltuiWidgetEnv* env = rolltui_windows_env(tc->w);
+  return rolltui_frame_put_swatch(f, tc->draw, x, y, c, frame, max_cells, env->ambiguous_wide);
 }
 
 static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
@@ -2134,12 +2133,12 @@ static void theme_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFram
     if (y < r.y + r.h) {
       int x = r.x;
       x += theme_put(tc, f, x, y, K("fg "), label, r.w - (x - r.x));
-      x += theme_swatch(tc, f, x, y, s.fg, r.w - (x - r.x));
+      x += theme_swatch(tc, f, x, y, s.fg, label, r.w - (x - r.x));
       x += theme_put(tc, f, x, y, K("  bg "), label, r.w - (x - r.x));
-      x += theme_swatch(tc, f, x, y, s.bg, r.w - (x - r.x));
+      x += theme_swatch(tc, f, x, y, s.bg, label, r.w - (x - r.x));
       if (rolltui_theme_editor_highlighted_color(tc->ed, &highlighted)) {
         x += theme_put(tc, f, x, y, K(ROLLTUI_THEME_EDITOR_SWATCH_MARK), label, r.w - (x - r.x));
-        theme_swatch(tc, f, x, y, highlighted, r.w - (x - r.x));
+        theme_swatch(tc, f, x, y, highlighted, label, r.w - (x - r.x));
       }
       ++y;
     }

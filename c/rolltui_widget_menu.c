@@ -1432,6 +1432,45 @@ static RolltuiMenuItem* dropdown_item(RolltuiMenu* m) {
 /* The box: as wide as its widest option plus its marker and border, as tall as its options plus
  * a title row and the border, clamped to the menu's area and centred in it — "a smaller thing in
  * the middle", so the answer's context stays in view around it. */
+/* ---- colours in a menu -------------------------------------------------------------------- */
+/* A colour SPELLED in a string: a plain spelling ("#d8dce2", "38", "none"), or a name followed by one
+ * ("a1 = #49b1ff", which is how the theme editor labels a palette entry). Case is folded, as the input's
+ * own colour check folds it. */
+static int menu_colour_of(const char* s, size_t n, RolltuiStyleColor* out) {
+  char buf[64];
+  size_t i, start = 0;
+  if (!s || n == 0) return 0;
+  for (i = 0; i + 3 <= n; ++i)
+    if (s[i] == ' ' && s[i + 1] == '=' && s[i + 2] == ' ') start = i + 3;
+  s += start;
+  n -= start;
+  if (n == 0 || n >= sizeof buf) return 0;
+  for (i = 0; i < n; ++i) buf[i] = (char)tolower((unsigned char)s[i]);
+  return rolltui_color_parse(buf, n, out);
+}
+
+/* Does this item hold a colour, to be SHOWN as one (rolltui_frame_put_swatch)? An Input of type `color`
+ * always does — it could hold nothing else — and any other Choice or Input says so with `swatch`. */
+static int item_shows_swatch(const RolltuiMenuItem* it) {
+  return it->swatch || (it->kind == ROLLTUI_MENU_INPUT && it->spec.type == ROLLTUI_INPUT_TYPE_COLOR);
+}
+
+/* `s` in at most `max_cells`, ending in an ellipsis where it had to be cut: a value or a label that is
+ * too long says so instead of stopping mid-word. Returns the cells used. */
+static int put_text_ellipsis(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* s,
+                             size_t n, RolltuiStyle st, int max_cells) {
+  const int aw = m->opt.ambiguous_wide;
+  const int ew = rolltui_u_display_width(m->u, ELLIPSIS, 3, aw); /* one cell, or two where ambiguous glyphs are wide */
+  int cells = 0, used;
+  size_t fit;
+  if (max_cells <= 0 || n == 0) return 0;
+  if (rolltui_u_display_width(m->u, s, n, aw) <= max_cells || max_cells <= ew)
+    return rolltui_frame_put_text(f, draw, x, y, s, n, st, max_cells, aw, 0);
+  fit = rolltui_u_fit(m->u, s, n, max_cells - ew, aw, &cells);
+  used = rolltui_frame_put_text(f, draw, x, y, s, fit, st, cells, aw, 0);
+  return used + rolltui_frame_put_text(f, draw, x + used, y, ELLIPSIS, 3, st, ew, aw, 0);
+}
+
 static int dropdown_box(const RolltuiMenu* m, const RolltuiMenuItem* it, RolltuiRect* box, int* rows) {
   const RolltuiRect a = m->area;
   int widest = rolltui_u_display_width(m->u, it->label.p ? it->label.p : "", it->label.n, m->opt.ambiguous_wide);
@@ -1439,7 +1478,7 @@ static int dropdown_box(const RolltuiMenu* m, const RolltuiMenuItem* it, Rolltui
   size_t i;
   for (i = 0; i < it->children.n; ++i) {
     const RolltuiStr* l = it->children.v[i]->label.n ? &it->children.v[i]->label : &it->children.v[i]->id;
-    const int lw = rolltui_u_display_width(m->u, l->p ? l->p : "", l->n, m->opt.ambiguous_wide) + 2; /* marker */
+    const int lw = rolltui_u_display_width(m->u, l->p ? l->p : "", l->n, m->opt.ambiguous_wide) + 2 + (it->swatch ? 3 : 0); /* marker, swatch */
     if (lw > widest) widest = lw;
   }
   w = widest + 4;                    /* border + a space each side */
@@ -1595,6 +1634,7 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
     const size_t i = (size_t)m->dd_top + (size_t)r;
     const RolltuiMenuItem* o;
     RolltuiStyle st;
+    int used_w;
     if (i >= it->children.n) break;
     o = it->children.v[i];
     /* A DISABLED option is listed, muted, and cannot be chosen: a list that shows what COULD be
@@ -1606,7 +1646,13 @@ static void draw_dropdown(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawScra
     rolltui_str_clear(&line);
     str_add(&line, rolltui_str_eq(&o->id, it->value.p, it->value.n) ? "\xE2\x97\x8F " : "\xE2\x97\x8B "); /* current / not */
     rolltui_str_append_str(&line, o->label.n ? &o->label : &o->id);
-    rolltui_frame_put_text(f, draw, box.x + 2, box.y + 2 + r, line.p, line.n, st, box.w - 4, aw, 0);
+    used_w = rolltui_frame_put_text(f, draw, box.x + 2, box.y + 2 + r, line.p, line.n, st, box.w - 4, aw, 0);
+    if (it->swatch) {
+      RolltuiStyleColor c;
+      const RolltuiStr* spelled = o->id.n ? &o->id : &o->label;
+      if (menu_colour_of(spelled->p, spelled->n, &c) && used_w + 3 <= box.w - 4)
+        rolltui_frame_put_swatch(f, draw, box.x + 2 + used_w + 1, box.y + 2 + r, c, st, 2, aw);
+    }
   }
   rolltui_str_free(&line);
 }
@@ -2179,6 +2225,17 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       field.y = y + r;
       field.w = imax(w - used, 0);
       field.h = 1;
+      /* A COLOUR BEING TYPED SHOWS AS ONE, as it is typed: the swatch takes the row's last two cells and the field
+       * gives up three, and it is hollow until the text parses. */
+      if (item_shows_swatch(it) && field.w > 8) {
+        RolltuiStyleColor typed;
+        size_t tn = 0;
+        const char* tx = rolltui_input_text(m->edit, &tn);
+        memset(&typed, 0, sizeof typed);
+        if (!menu_colour_of(tx, tn, &typed)) memset(&typed, 0, sizeof typed);
+        field.w -= 3;
+        rolltui_frame_put_swatch(f, draw, x0 + w - 2, y + r, typed, base, 2, aw);
+      }
       if (field.w > 0) {
         /* THE COMPARISON, NOT A COPY — and a stack `RolltuiInputOptions o;` is GARBAGE in C,
          * where the C++'s default member initializers made the same line safe. The first cut
@@ -2202,6 +2259,8 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       RolltuiStr right;
       int rw, left_max, used, rx;
       size_t split = 0;
+      RolltuiStyleColor swatch_colour;
+      int swatch_on = 0;
       /* A ROW THAT CARRIES AN ANSWER IS A NAME AND A VALUE. The name is drawn as every other
        * row's is — a muted name beside a bright toggle reads as a DISABLED row, which is the
        * one thing the muted role means everywhere else — and only the answer takes the value
@@ -2218,6 +2277,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
       name_style.bg = base.bg;
       value_style.bg = base.bg;
       memset(&right, 0, sizeof right);
+      memset(&swatch_colour, 0, sizeof swatch_colour);
       row_text(m, it, m->palette, i, &line, &split);
       if (!m->palette) {
         if (it->kind == ROLLTUI_MENU_CHOICE) {
@@ -2230,7 +2290,26 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
               shown = &it->children.v[k]->label;
               break;
             }
-          rolltui_str_append_str(&right, shown);
+          if (item_shows_swatch(it)) swatch_on = menu_colour_of(it->value.p, it->value.n, &swatch_colour);
+          /* THE ANSWER YIELDS BEFORE THE NAME DOES. A row says WHICH setting it is with its label and WHAT it is
+           * set to with its value, and when both cannot fit it is the value — usually the longer, and the one
+           * that can be cut without losing which row this is — that is cut, at an ellipsis. It is never cut below
+           * eight cells while the label has anything to give, so a long label still leaves the answer readable. */
+          {
+            const int label_w = rolltui_u_display_width(mm->u, line.p, line.n, aw);
+            const int shown_w = rolltui_u_display_width(mm->u, shown->p, shown->n, aw);
+            const int room = w - label_w - 1 - rolltui_u_display_width(mm->u, " \xE2\x96\xB8", 4, aw) - (swatch_on ? 3 : 0);
+            if (shown_w > room && shown_w > 8) {
+              const int keep = room > 8 ? room : 8;
+              const int ew = rolltui_u_display_width(mm->u, ELLIPSIS, 3, aw);
+              int cells = 0;
+              const size_t fit = rolltui_u_fit(mm->u, shown->p, shown->n, keep - ew, aw, &cells);
+              rolltui_str_append(&right, shown->p, fit);
+              str_add(&right, ELLIPSIS);
+            } else {
+              rolltui_str_append_str(&right, shown);
+            }
+          }
           str_add(&right, " \xE2\x96\xB8");
         } else if (it->kind == ROLLTUI_MENU_SUBMENU) {
           str_add(&right, "\xE2\x96\xB8");
@@ -2238,7 +2317,7 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
           rolltui_str_set(&right, it->shortcut.p, it->shortcut.n);
         }
       }
-      rw = right.n ? rolltui_u_display_width(mm->u, right.p, right.n, aw) : 0;
+      rw = right.n ? rolltui_u_display_width(mm->u, right.p, right.n, aw) + (swatch_on ? 3 : 0) : 0;
       left_max = right.n == 0 ? w : imax(w - rw - 1, 0);
       /* A SELECTED ROW IS DRAWN IN ONE STYLE END TO END — `two_part` is false for it. Selection
        * is the strongest signal this widget has, and splitting its colours would weaken it to
@@ -2248,7 +2327,22 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
         used += rolltui_frame_put_text(f, draw, x0 + used, y + r, line.p + split, line.n - split,
                                        value_style, imax(left_max - used, 0), aw, 0);
       } else {
-        used = rolltui_frame_put_text(f, draw, x0, y + r, line.p, line.n, name_style, left_max, aw, 0);
+        used = put_text_ellipsis(m, f, draw, x0, y + r, line.p, line.n, name_style, left_max);
+      }
+      /* THE SWATCH OF A COLOUR THAT IS THE ROW'S OWN TEXT — a colour input's value, or an option of a choice whose
+       * options are colours — sits just after it. (A choice's own answer takes its swatch in the right column.) */
+      if (!m->palette && it->kind != ROLLTUI_MENU_CHOICE) {
+        RolltuiStyleColor sc;
+        const RolltuiMenuItem* lvl = rolltui_menu_level(m);
+        int show = 0;
+        if (it->kind == ROLLTUI_MENU_INPUT && item_shows_swatch(it)) {
+          show = it->value.n != 0; /* nothing typed is not a colour, and not `none` either: no square at all */
+          if (!menu_colour_of(it->value.p, it->value.n, &sc)) memset(&sc, 0, sizeof sc);
+        } else if (lvl->kind == ROLLTUI_MENU_CHOICE && lvl->swatch) {
+          const RolltuiStr* spelled = it->id.n ? &it->id : &it->label;
+          show = menu_colour_of(spelled->p, spelled->n, &sc);
+        }
+        if (show && used + 3 <= left_max) rolltui_frame_put_swatch(f, draw, x0 + used + 1, y + r, sc, is_sel ? base : name_style, 2, aw);
       }
       if (rw > 0 && rw <= w) {
         /* A CHOICE's right column is its current answer, so it is a value; a submenu's marker
@@ -2259,7 +2353,12 @@ static void draw_menu_plain(const RolltuiMenu* m, RolltuiFrame* f, RolltuiDrawSc
                                         : (it->kind == ROLLTUI_MENU_SUBMENU ? name_style : styles[roles->shortcut]));
         rolltui_style_on(&rs, base.bg); /* the row's OWN ground — it may not be `ground` above (selected, disabled) */
         rx = imax(w - rw, used + 1);
-        rolltui_frame_put_text(f, draw, x0 + rx, y + r, right.p, right.n, rs, imax(w - rx, 0), aw, 0);
+        if (swatch_on) {
+          rolltui_frame_put_swatch(f, draw, x0 + rx, y + r, swatch_colour, rs, 2, aw);
+          rolltui_frame_put_text(f, draw, x0 + rx + 3, y + r, right.p, right.n, rs, imax(w - rx - 3, 0), aw, 0);
+        } else {
+          rolltui_frame_put_text(f, draw, x0 + rx, y + r, right.p, right.n, rs, imax(w - rx, 0), aw, 0);
+        }
       }
       rolltui_str_free(&right);
     }
@@ -2447,7 +2546,7 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         kind_given = 1;
       }
     } else if (streq(k, klen, "enabled") || streq(k, klen, "checked") || streq(k, klen, "dropdown") ||
-              streq(k, klen, "popup")) {
+              streq(k, klen, "popup") || streq(k, klen, "swatch")) {
       if (!rolltui_json_is_bool(x)) {
         bad_value_at(rep, at.p, at.n, K(": expected true or false"));
       } else {
@@ -2455,6 +2554,7 @@ static void item_from_json(const RolltuiJsonValue* v, const char* where, size_t 
         if (streq(k, klen, "enabled")) it->enabled = bv;
         else if (streq(k, klen, "dropdown")) it->dropdown = bv;
         else if (streq(k, klen, "popup")) it->popup = bv;
+        else if (streq(k, klen, "swatch")) it->swatch = bv;
         else it->checked = bv;
       }
     } else if (streq(k, klen, "items")) {
@@ -2644,6 +2744,7 @@ static RolltuiJsonValue* item_to_json(const RolltuiMenuItem* it) {
   if (it->checked) rolltui_json_set(o, K("checked"), rolltui_json_bool(1));
   if (it->dropdown) rolltui_json_set(o, K("dropdown"), rolltui_json_bool(1));
   if (it->popup) rolltui_json_set(o, K("popup"), rolltui_json_bool(1));
+  if (it->swatch) rolltui_json_set(o, K("swatch"), rolltui_json_bool(1));
   if (it->value.n != 0) rolltui_json_set(o, K("value"), rolltui_json_string(it->value.p, it->value.n));
 
   if (it->kind == ROLLTUI_MENU_INPUT) {

@@ -46,6 +46,7 @@
 #include "rolltui/c/rolltui_bindings.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_layout.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui/c/rolltui_widget_menu.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_termfacts.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
 #include "rolltui_test.hpp"
 
 using namespace rolltui_test;
@@ -1468,6 +1469,178 @@ int main() {
     check(m.selected() == 0, "…and the selection is on it, because there is nothing else to be on");
     const MenuEvent ev = m.handle(key(Key::Enter));
     check(ev.kind == MenuEvent::Kind::None && m.path().empty(), "…so Enter gets out");
+  }
+
+  // ---- A COLOUR IS SHOWN AS ONE ---------------------------------------------------------------
+  // Wherever a colour is put on the screen it takes the same two cells: an outline in the text's own
+  // foreground, so it shows against any ground, over the colour itself, drawn by the same renderer as
+  // everything else. The frame-level calls first, then every place a menu puts one.
+  {
+    RolltuiDrawScratch* draw = rolltui_draw_scratch_new();
+    const Style text = theme.style(Role::menu_item);
+    const RolltuiStyleColor red = RolltuiStyleColor::rgb(0xd0, 0x30, 0x30);
+    const std::string left = "\xE2\x96\x8F", right = "\xE2\x96\x95";
+    auto at = [](const Frame& f, int x, int y) { return std::string(f.glyph(x, y)); };
+
+    Frame f(24, 4, text);
+    check(rolltui_frame_put_swatch(f.handle(), draw, 2, 1, red, text, 2, 0) == 2, "a swatch is two cells");
+    check(at(f, 2, 1) == left && at(f, 3, 1) == right, "…an outline: a left one-eighth block and a right one");
+    check(f.at(2, 1).style.bg == red && f.at(3, 1).style.bg == red, "…standing on the colour it shows");
+    check(f.at(2, 1).style.fg == text.fg && f.at(3, 1).style.fg == text.fg,
+          "…in the text's own foreground, so a colour that matches its ground does not vanish");
+
+    check(rolltui_frame_put_swatch(f.handle(), draw, 6, 1, RolltuiStyleColor::indexed(196), text, 2, 0) == 2 &&
+              f.at(6, 1).style.bg == RolltuiStyleColor::indexed(196),
+          "a palette index is shown as that entry");
+    check(rolltui_frame_put_swatch(f.handle(), draw, 9, 1, RolltuiStyleColor::none(), text, 2, 0) == 2 &&
+              at(f, 9, 1) == left && f.at(9, 1).style.bg == text.bg && f.at(10, 1).style.bg == text.bg,
+          "`none` is the frame alone: the outline over the ground, hollow");
+
+    check(rolltui_frame_put_swatch(f.handle(), draw, 12, 1, red, text, 1, 0) == 0 && at(f, 12, 1) == " ",
+          "one cell is not room for one, and nothing is drawn");
+    check(rolltui_frame_put_swatch(f.handle(), draw, 23, 1, red, text, 2, 0) == 0 &&
+              rolltui_frame_put_swatch(f.handle(), draw, -1, 1, red, text, 2, 0) == 0 &&
+              rolltui_frame_put_swatch(f.handle(), draw, 2, 4, red, text, 2, 0) == 0,
+          "…nor is the last column, nor a cell off the frame");
+
+    check(rolltui_frame_put_swatch(f.handle(), draw, 14, 1, red, text, 2, /*ambiguous_wide=*/1) == 2 &&
+              at(f, 14, 1) == "[" && at(f, 15, 1) == "]" && f.at(14, 1).style.bg == red,
+          "where an ambiguous glyph is two cells the outline is a bracket pair — one cell wherever it is drawn");
+
+    const int used = rolltui_frame_put_colour(f.handle(), draw, 2, 2, red, text, 22, 0);
+    check(used == 2 + 1 + 7 && row(f, 2) == "  \xE2\x96\x8F\xE2\x96\x95 #d03030",
+          "a colour put as a colour is its swatch, a space and its spelling [" + row(f, 2) + "]");
+
+    rolltui_termfacts_set_active(ROLLTUI_DEPTH_MONO, 1);
+    Frame mono(8, 1, text);
+    const int mono_used = rolltui_frame_put_swatch(mono.handle(), draw, 0, 0, red, text, 2, 0);
+    rolltui_termfacts_set_active(-1, 0);
+    check(mono_used == 0 && at(mono, 0, 0) == " ", "on a terminal that draws no colour there is nothing to show, and nothing is drawn");
+    rolltui_draw_scratch_free(draw);
+  }
+  {
+    const Style text = theme.style(Role::menu_item);
+    const std::string left = "\xE2\x96\x8F";
+    // the swatch's cell on a row: the first outline glyph on it
+    auto swatch_x = [&](const Frame& f, int y) {
+      for (int x = 0; x < f.width(); ++x)
+        if (f.glyph(x, y) == left) return x;
+      return -1;
+    };
+    InputSpec cs;
+    cs.type = InputType::Color;
+
+    // a colour INPUT shows its swatch after its text, with nothing said about it in the file
+    {
+      std::vector<MenuItem> top;
+      top.push_back(MenuItem::input("col", "Colour", cs.clone(), "#3366cc"));
+      top.push_back(MenuItem::input("none", "Unset", cs.clone(), "none"));
+      top.push_back(MenuItem::input("blank", "Blank", cs.clone(), ""));
+      Menu m(submenu_of("root", "settings", std::move(top)));
+      m.layout({0, 0, 40, 6});
+      Frame f(40, 6, text);
+      m.draw(f, theme, true);
+      const int x = swatch_x(f, 0);
+      check(x > 0 && f.at(x, 0).style.bg == RolltuiStyleColor::rgb(0x33, 0x66, 0xcc) && row(f, 0).find("#3366cc \xE2\x96\x8F\xE2\x96\x95") != std::string::npos,
+            "a colour input is followed by its swatch, in its colour [" + row(f, 0) + "]");
+      const int nx = swatch_x(f, 1);
+      check(nx > 0 && f.at(nx, 1).style.bg == text.bg,
+            "…and `none` by the frame alone [" + row(f, 1) + "]");
+
+      check(swatch_x(f, 2) == -1, "…and a colour input with nothing typed has no square at all: nothing is not `none` [" + row(f, 2) + "]");
+
+      // TYPING A COLOUR SHOWS IT AS IT IS TYPED, and nothing stale while it does not parse yet
+      m.handle(key(Key::Enter));
+      check(m.editing(), "Enter opens the colour for editing");
+      RolltuiEvent ctrl_u = ch('u');
+      ctrl_u.key.ctrl = true;
+      m.handle(ctrl_u);
+      for (char c : std::string("#ff8800")) m.handle(ch(c));
+      Frame typing(40, 6, text);
+      m.draw(typing, theme, true);
+      check(typing.at(38, 0).style.bg == RolltuiStyleColor::rgb(0xff, 0x88, 0x00) && typing.glyph(38, 0) == left,
+            "…a colour being typed has its swatch in the row's last two cells, live");
+      m.handle(key(Key::Backspace));
+      Frame partial(40, 6, text);
+      m.draw(partial, theme, true);
+      check(partial.glyph(38, 0) == left && !(partial.at(38, 0).style.bg == RolltuiStyleColor::rgb(0xff, 0x88, 0x00)),
+            "…and hollow while it is not a colour yet (#ff880 is not one)");
+      m.handle(key(Key::Escape));
+    }
+
+    // a CHOICE that holds colours: the answer's swatch sits in the right column, each option carries its own
+    {
+      std::vector<MenuItem> options;
+      options.push_back(MenuItem::action("#00ff00", "green"));
+      options.push_back(MenuItem::action("#ff0000", "red"));
+      options.push_back(MenuItem::action("none", "none"));
+      MenuItem pick = choice_of("ink", "Ink", std::move(options), "#00ff00");
+      pick.swatch = 1;
+      std::vector<MenuItem> top;
+      top.push_back(std::move(pick));
+      Menu m(submenu_of("root", "settings", std::move(top)));
+      m.layout({0, 0, 40, 8});
+      Frame f(40, 8, text);
+      m.draw(f, theme, true);
+      const int x = swatch_x(f, 0);
+      check(x > 20 && f.at(x, 0).style.bg == RolltuiStyleColor::rgb(0, 0xff, 0) && row(f, 0).find("\xE2\x96\x8F\xE2\x96\x95 green \xE2\x96\xB8") != std::string::npos,
+            "a colour choice's answer takes its swatch in the right column, before the answer [" + row(f, 0) + "]");
+      m.handle(key(Key::Enter));
+      Frame level(40, 8, text);
+      m.draw(level, theme, true);
+      // row 0 is the way back; the options follow
+      const int gx = swatch_x(level, 1), rx = swatch_x(level, 2), nx = swatch_x(level, 3);
+      check(gx > 0 && level.at(gx, 1).style.bg == RolltuiStyleColor::rgb(0, 0xff, 0) && rx > 0 &&
+                level.at(rx, 2).style.bg == RolltuiStyleColor::rgb(0xff, 0, 0) && nx > 0,
+            "…and each option of the list carries the colour it names [" + row(level, 1) + " | " + row(level, 2) + " | " + row(level, 3) + "]");
+    }
+
+    // THE FILE: `"swatch": true` reads, writes, copies and compares
+    {
+      const char* json = R"({ "id": "root", "label": "r", "items": [
+        { "id": "ink", "label": "Ink", "kind": "choice", "swatch": true, "value": "#fff",
+          "items": [ { "id": "#fff", "label": "white" } ] } ] })";
+      RolltuiMenuItem root;
+      rolltui_menu_item_init(&root);
+      RolltuiMenuLoadReport rep{};
+      const int parsed = rolltui_menu_parse_json(json, std::strlen(json), &root, &rep);
+      check(parsed && rep.unknown_keys_n == 0 && root.children.v[0]->swatch == 1, "a choice may say its values are colours in the file, and the key is known");
+      RolltuiStr out;
+      rolltui_menu_dump_json(&root, &out);
+      check(str_of(out).find("\"swatch\": true") != std::string::npos || str_of(out).find("\"swatch\":true") != std::string::npos,
+            "…and is written back");
+      rolltui_str_free(&out);
+      RolltuiMenuItem copy = root.clone();
+      check(copy.children.v[0]->swatch == 1, "…and survives a copy");
+      copy.children.v[0]->swatch = 0;
+      check(!rolltui_menu_item_equal(&root, &copy), "…and a tree that differs only in it is a different tree");
+      rolltui_menu_item_release(&copy);
+      rolltui_menu_load_report_release(&rep);
+      rolltui_menu_item_release(&root);
+    }
+  }
+
+  // ---- A ROW SAYS WHICH SETTING IT IS BEFORE WHAT IT IS SET TO ------------------------------------
+  // When a label and an answer cannot both fit, the answer is what is cut, at an ellipsis, and the label
+  // is left whole — "Executables and sc…" told a person nothing about which setting they were looking at.
+  {
+    const Style text = theme.style(Role::menu_item);
+    std::vector<MenuItem> options;
+    options.push_back(MenuItem::action("all", "Show them all, sorted by modification time"));
+    options.push_back(MenuItem::action("none", "Hide them"));
+    std::vector<MenuItem> top;
+    top.push_back(choice_of("exec", "Executables and scripts", std::move(options), "all"));
+    std::vector<MenuItem> on;
+    on.push_back(MenuItem::action("a", "on"));
+    top.push_back(choice_of("x", "A label far longer than any window this could be drawn into ever is", std::move(on), "a"));
+    Menu m(submenu_of("root", "settings", std::move(top)));
+    m.layout({0, 0, 40, 4});
+    Frame f(40, 4, text);
+    m.draw(f, theme, true);
+    check(row(f, 0).rfind("Executables and scripts", 0) == 0 && row(f, 0).find("\xE2\x80\xA6 \xE2\x96\xB8") != std::string::npos,
+          "the answer yields: the name is whole and the answer ends in an ellipsis [" + row(f, 0) + "]");
+    check(row(f, 1).find("\xE2\x80\xA6") != std::string::npos && row(f, 1).find("on \xE2\x96\xB8") != std::string::npos,
+          "…and when the NAME is what is too long the answer is left readable and the name is cut [" + row(f, 1) + "]");
   }
   return report("rolltui_menu_test");
 }

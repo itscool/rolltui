@@ -1,7 +1,7 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor › Roles › md_heading ─────────────┐
 │ │ class, East-Asian width,         │             │ +, not Python) → │ ◂ Back                                         │
-│ │ grapheme property,               │             │ unicode_tables.hp│ fg                                   #adeeae ▸ │
-│ │ Extended_Pictographic, InCB)     │             │                  │ bg                                   #14161a ▸ │
+│ │ grapheme property,               │             │ unicode_tables.hp│ fg                                ▏▕ #adeeae ▸ │
+│ │ Extended_Pictographic, InCB)     │             │                  │ bg                                ▏▕ #14161a ▸ │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ custom fg:                                     │
 │ │ grapheme clusters, display width │             │ Unicode conforman│ custom bg:                                     │
 │ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ [✓] bold                                       │
@@ -32,7 +32,7 @@
 │                                                                     │                                                │
 │ ┌ cpp ──────────────────────────────────────────────────────────────│ md_heading  fg #adeeae  bg #14161a  bold       │
 │ │ int add(int a, int b) {                                           │  Aa  the quick brown fox — sample in this role │
-│ │   return a + b;                                                   │ fg         bg                                  │
+│ │   return a + b;                                                   │ fg ▏▕  bg ▏▕                                   │
 │ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 1 · redo 0 · │
 ├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │

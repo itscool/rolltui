@@ -18,8 +18,8 @@
 │ │ Windows, layers, placement (Dim  │ build       │ single header;   │ down  │add a chord (press it)…         │     ▸ │
 │ │ abs/rel per axis), focus         │             │ resolve(Placement│ select│remove Ctrl-Left                │     ▸ │
 │ │                                  │             │ Rect is a pure fu│ select│remove Alt-Left                ▼│     ▸ │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│ select╰────────────────────────────────╯hift ▸ │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ select_word_right  Ctrl-Shift-Right, Alt-Shi ▸ │
+│ │ Menu widget (hierarchical,       │ build       │ single header eac│ select╰────────────────────────────────╯hif… ▸ │
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ select_word_right  Ctrl-Shift-Right, Alt-Sh… ▸ │
 │ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ select_line_start  Shift-Home                ▸ │
 │ │ placements + content slots)      │             │ parser; hot-reloa│ select_line_end  Shift-End                   ▸ │
 │ │ Markdown block renderer (blocks  │ build       │ single header ove│ select_up  Shift-Up                          ▸ │

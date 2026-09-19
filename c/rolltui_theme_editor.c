@@ -580,6 +580,7 @@ static void rebuild_menu(RolltuiThemeEditor* e) {
       const char* which = a == 0 ? "fg" : "bg";
       int n = snprintf(id, sizeof id, "%.*s.%s", (int)blen, base, which);
       it = list_add(&fields, ROLLTUI_MENU_CHOICE, id, (size_t)n, which, strlen(which));
+      it->swatch = 1; /* the value and every option are colours: shown as colours */
       memset(&opts, 0, sizeof opts);
       palette_options(e, &opts);
       rolltui_menu_list_release(&it->children);

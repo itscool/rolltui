@@ -10,6 +10,7 @@
 #include "rolltui/c/rolltui_unicode.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_terminal.h"
+#include "rolltui/c/rolltui_termfacts.h"
 
 struct RolltuiDrawScratch {
   RolltuiUnicodeScratch* u;       /* the Unicode module's own working memory — its role */
@@ -61,6 +62,42 @@ int rolltui_frame_text_width(RolltuiDrawScratch* s, const char* utf8, size_t len
   for (i = 0; i < count; ++i)
     if (s->gs[i].width > 0) w += s->gs[i].width;
   return w;
+}
+
+/* THE SWATCH. Two cells, one row tall: a cell is about twice as tall as it is wide, so two of them
+ * are roughly a square, and an eighth-block on the outer edge of each is a thin outline round the
+ * fill. The outline is in the text's own foreground so it is there on any ground — the case it exists
+ * for is a colour that matches the background it sits on, which a bare fill would make disappear.
+ *
+ * The eighth-blocks are East Asian AMBIGUOUS, and a terminal that draws those two cells wide would
+ * smear the swatch across four. There a bracket pair is the outline instead — ASCII, one cell everywhere.
+ * A terminal that draws no colour has nothing for a swatch to show, and gets nothing. */
+int rolltui_frame_put_swatch(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+                             RolltuiStyle frame, int max_cells, int ambiguous_wide) {
+  RolltuiStyle st = frame;
+  (void)s;
+  if (max_cells < 2 || x < 0 || y < 0 || y >= rolltui_frame_height(f) || x + 2 > rolltui_frame_width(f)) return 0;
+  if (rolltui_termfacts_clamp_depth(ROLLTUI_DEPTH_TRUECOLOR) == ROLLTUI_DEPTH_MONO) return 0;
+  st.bg = colour.kind != 0 ? colour : frame.bg; /* `none` is the frame alone, on the ground it sits on */
+  st.bold = st.italic = st.underline = st.dim = st.reverse = 0; /* an outline, not text: `reverse` would swap the fill out */
+  if (ambiguous_wide || rolltui_termfacts_active_wide()) {
+    rolltui_frame_put(f, x, y, "[", 1, 1, st, 0);
+    rolltui_frame_put(f, x + 1, y, "]", 1, 1, st, 0);
+  } else {
+    rolltui_frame_put(f, x, y, "\xE2\x96\x8F", 3, 1, st, 0); /* U+258F LEFT ONE EIGHTH BLOCK */
+    rolltui_frame_put(f, x + 1, y, "\xE2\x96\x95", 3, 1, st, 0); /* U+2595 RIGHT ONE EIGHTH BLOCK */
+  }
+  return 2;
+}
+
+int rolltui_frame_put_colour(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, RolltuiStyleColor colour,
+                             RolltuiStyle text_style, int max_cells, int ambiguous_wide) {
+  char buf[ROLLTUI_COLOR_STRING_MAX];
+  const size_t n = rolltui_color_to_string(colour, buf, sizeof buf);
+  int used = rolltui_frame_put_swatch(f, s, x, y, colour, text_style, max_cells, ambiguous_wide);
+  if (used && used < max_cells)
+    used += rolltui_frame_put_text(f, s, x + used, y, " ", 1, text_style, max_cells - used, ambiguous_wide, 0);
+  return used + rolltui_frame_put_text(f, s, x + used, y, buf, n, text_style, max_cells - used, ambiguous_wide, 0);
 }
 
 int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int y, const RolltuiRows* rows,

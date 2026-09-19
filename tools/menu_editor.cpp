@@ -308,6 +308,7 @@ void MenuEditor::rebuild_menu() {
   top.push_back(MenuItem::input("action", "Action it invokes", text.clone()));
   top.push_back(MenuItem::toggle("checked", "Checked", false));
   top.push_back(MenuItem::toggle("dropdown", "Dropdown (options in a box over the menu)", false));
+  top.push_back(MenuItem::toggle("swatch", "Swatch (its values are colours, drawn as colours)", false));
   top.push_back(MenuItem::toggle("popup", "Popup (this level floats in a box over its parent)", false));
   top.push_back(MenuItem::input("value", "Value", text.clone()));
   top.push_back(MenuItem::toggle("enabled", "Enabled", true));
@@ -358,6 +359,7 @@ void MenuEditor::sync_fields() {
   set_enabled(menu_, "action", have && (k == ROLLTUI_MENU_ACTION || k == ROLLTUI_MENU_TOGGLE));
   set_enabled(menu_, "checked", have && k == ROLLTUI_MENU_TOGGLE);
   set_enabled(menu_, "dropdown", have && k == ROLLTUI_MENU_CHOICE);
+  set_enabled(menu_, "swatch", have && (k == ROLLTUI_MENU_CHOICE || is_input));
   set_enabled(menu_, "popup", have && !root && k == ROLLTUI_MENU_SUBMENU);
   set_enabled(menu_, "value", have && (k == ROLLTUI_MENU_CHOICE || is_input));
   set_enabled(menu_, "enabled", have);
@@ -393,6 +395,7 @@ void MenuEditor::sync_values() {
   set_value(menu_, "action", str_of(it->action_name));
   set_checked(menu_, "checked", it->checked != 0);
   set_checked(menu_, "dropdown", it->dropdown != 0);
+  set_checked(menu_, "swatch", it->swatch != 0);
   set_checked(menu_, "popup", it->popup != 0);
   set_value(menu_, "value", str_of(it->value));
   set_checked(menu_, "enabled", it->enabled != 0);
@@ -514,6 +517,7 @@ MenuEditor::Outcome MenuEditor::handle(const RolltuiEvent* e, const RolltuiBindi
     if (!it) return {O::None, {}};
     if (id == "checked") { it->checked = checked ? 1 : 0; return commit_current(); }
     if (id == "dropdown") { it->dropdown = checked ? 1 : 0; return commit_current(); }
+    if (id == "swatch") { it->swatch = checked ? 1 : 0; return commit_current(); }
     if (id == "popup") { it->popup = checked ? 1 : 0; return commit_current(); }
     if (id == "enabled") { it->enabled = checked ? 1 : 0; return commit_current(); }
     if (id == "optional") { it->spec.optional = checked ? 1 : 0; return commit_current(); }

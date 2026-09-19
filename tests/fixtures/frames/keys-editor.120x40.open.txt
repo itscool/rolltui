@@ -4,7 +4,7 @@
 │ │ Extended_Pictographic, InCB)     │             │                  │ Redo                                    Ctrl-Y │
 │ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│ Load keys                                    ▸ │
 │ │ grapheme clusters, display width │             │ Unicode conforman│ Save keys as:                                  │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Write a SHIPPED preset (the editor's privil  ▸ │
+│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│ Write a SHIPPED preset (the editor's privi…  ▸ │
 │ │                                  │             │ block tree is the│ Reset to the loaded preset…                    │
 │ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
 │ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │

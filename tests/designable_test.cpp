@@ -148,6 +148,7 @@ const Covered kMenu[] = {
     {"precision", "precision", "Float only"},
     {"shortcut", "shortcut", "display only; a live chord wins where an action is set"},
     {"step", "step", "Int and Float only"},
+    {"swatch", "swatch", "Choice and Input: the value, and a choice's options, are colours"},
     {"type", "input_type", "Input only"},
     {"validator", "validator", "THE SAME EXCEPTION as `action`: a name the app registers"},
     {"value", "value", "Choice and Input"},
