@@ -56,7 +56,10 @@ struct Capture {
   std::string after_probe;   // everything written AFTER the first Primary DA question: the frames, not the questions
 };
 
-Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& args, const Env& env, const Terminal& term, int run_ms) {
+// Runs until `wait_for` has been drawn (then a short settle, so the whole frame is there) or `max_ms` passes: a fixed
+// window is a race against however loaded the machine running the suite is, and this suite runs eight tests at once.
+Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& args, const Env& env, const Terminal& term, int max_ms,
+                        const char* wait_for) {
   Capture cap;
   int master = -1, slave = -1;
   winsize ws{};
@@ -85,8 +88,9 @@ Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& 
   ::close(slave);
 
   std::size_t processed = 0;
-  const long long deadline = now_ms() + run_ms;
-  while (now_ms() < deadline) {
+  const long long deadline = now_ms() + max_ms;
+  long long settle_until = 0;
+  while (now_ms() < deadline && (settle_until == 0 || now_ms() < settle_until)) {
     pollfd p{master, POLLIN, 0};
     if (::poll(&p, 1, 20) > 0 && (p.revents & POLLIN)) {
       char b[4096];
@@ -114,6 +118,10 @@ Capture run_on_terminal(const std::string& bin, const std::vector<std::string>& 
       }
       processed = cap.bytes.size();
       if (!out.empty()) (void)!::write(master, out.data(), out.size());
+      if (settle_until == 0) {
+        const std::size_t da = cap.bytes.find("\x1b[c");
+        if (da != std::string::npos && cap.bytes.find(wait_for, da) != std::string::npos) settle_until = now_ms() + 300;
+      }
     }
   }
   ::kill(pid, SIGTERM);  // restores the terminal and dies; only what it wrote matters here
@@ -198,7 +206,7 @@ int main() {
     const std::string cfg = make_dir("cfg");
 
     // ---- Apple Terminal on macOS 15: answers Primary DA, cannot draw 24-bit colour, COLORTERM lies
-    const Capture apple = run_on_terminal(p.bin, p.args, apple_sequoia(cfg), Terminal{false}, 1200);
+    const Capture apple = run_on_terminal(p.bin, p.args, apple_sequoia(cfg), Terminal{false}, 8000, p.proof_of_life);
     check(apple.started, tag + "started on the terminal (it entered the alternate screen)");
     check(has(apple.after_probe, p.proof_of_life), tag + "drew its screen (found '" + p.proof_of_life + "')");
     check(has(apple.after_probe, "38;5;") || has(apple.after_probe, "48;5;"),
@@ -208,7 +216,7 @@ int main() {
 
     // ---- the CONTROL: the same program on a terminal that confirms 24-bit colour MUST send it
     const std::string cfg2 = make_dir("cfg");
-    const Capture real = run_on_terminal(p.bin, p.args, ghostty(cfg2), Terminal{true}, 1200);
+    const Capture real = run_on_terminal(p.bin, p.args, ghostty(cfg2), Terminal{true}, 8000, p.proof_of_life);
     check(real.started && has(real.after_probe, p.proof_of_life), tag + "CONTROL: started and drew on a terminal that draws 24-bit colour");
     check(has(real.after_probe, "38;2;") || has(real.after_probe, "48;2;"),
           tag + "CONTROL: …and sent 24-bit colour there — so the absence above is the program choosing, not the program failing to draw");
@@ -218,8 +226,8 @@ int main() {
   {
     const std::string cfg = make_dir("second");
     const std::string bin = DIRKTUI_PRODUCT_BIN;
-    const Capture first = run_on_terminal(bin, {scratch_files}, apple_sequoia(cfg), Terminal{false}, 1000);
-    const Capture second = run_on_terminal(bin, {scratch_files}, apple_sequoia(cfg), Terminal{false}, 1000);
+    const Capture first = run_on_terminal(bin, {scratch_files}, apple_sequoia(cfg), Terminal{false}, 8000, "alpha.txt");
+    const Capture second = run_on_terminal(bin, {scratch_files}, apple_sequoia(cfg), Terminal{false}, 8000, "alpha.txt");
     check(has(first.bytes, "\x1b[c"), "dirktui's first launch on a new terminal asks it (one exchange)");
     check(!has(second.bytes, "\x1b[c") && !has(second.bytes, "\x1bP$qm"),
           "…its second launch asks it NOTHING: the answers were remembered");
