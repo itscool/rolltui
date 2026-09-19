@@ -36,15 +36,15 @@
     "defs": {
       "bg": {
         "dark": "#000d18",
-        "light": "#fdfcf6"
+        "light": "#f2f1e8"
       },
       "panel": {
         "dark": "#0b1e2f",
-        "light": "#eceadf"
+        "light": "#e4e1d4"
       },
       "code": {
         "dark": "#041423",
-        "light": "#f6f4ea"
+        "light": "#eceade"
       },
       "fg": {
         "dark": "#f4f8ff",
@@ -56,7 +56,7 @@
       },
       "line": {
         "dark": "#7e93a6",
-        "light": "#59646f"
+        "light": "#535d68"
       },
       "focus": {
         "dark": "#73c0ff",
@@ -68,7 +68,7 @@
       },
       "a1": {
         "dark": "#49b1ff",
-        "light": "#00529b"
+        "light": "#055096"
       },
       "a2": {
         "dark": "#ffb934",
@@ -88,7 +88,7 @@
       },
       "bad": {
         "dark": "#ff7871",
-        "light": "#a80018"
+        "light": "#a3081a"
       },
       "warn": {
         "dark": "#ffedce",
@@ -100,11 +100,11 @@
       },
       "sel": {
         "dark": "#00395f",
-        "light": "#cfe2f5"
+        "light": "#c8dbee"
       },
       "mark": {
         "dark": "#4a3600",
-        "light": "#ffe7a0"
+        "light": "#f6df98"
       }
     },
     "roles": {
