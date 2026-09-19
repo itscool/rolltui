@@ -35,17 +35,17 @@
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "text_muted": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "background": {
@@ -55,7 +55,7 @@
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "panel_background": {
@@ -65,48 +65,48 @@
         },
         "bg": {
           "dark": "#22252b",
-          "light": "#e3e4e6"
+          "light": "#d7dbe2"
         }
       },
       "border": {
         "fg": {
           "dark": "#444b55",
-          "light": "#adb1b7"
+          "light": "#a1a4aa"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "border_active": {
         "fg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "title": {
         "fg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
       "label": {
         "fg": {
           "dark": "#8f97a3",
-          "light": "#565d67"
+          "light": "#515761"
         },
         "bg": {
           "dark": "#22252b",
-          "light": "#e3e4e6"
+          "light": "#d7dbe2"
         }
       },
       "value": {
@@ -116,100 +116,100 @@
         },
         "bg": {
           "dark": "#22252b",
-          "light": "#e3e4e6"
+          "light": "#d7dbe2"
         }
       },
       "accent_1": {
         "fg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "accent_2": {
         "fg": {
           "dark": "#adeeae",
-          "light": "#507b51"
+          "light": "#11521a"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "accent_3": {
         "fg": {
           "dark": "#cba63a",
-          "light": "#5e4b0c"
+          "light": "#816400"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "accent_4": {
         "fg": {
           "dark": "#9a73b8",
-          "light": "#401459"
+          "light": "#603b7b"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "prompt": {
         "fg": {
           "dark": "#6cc8c8",
-          "light": "#007a8a"
+          "light": "#097475"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
       "note": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "italic": true
       },
       "warning": {
         "fg": {
           "dark": "#cba63a",
-          "light": "#5e4b0c"
+          "light": "#816400"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "error": {
         "fg": {
           "dark": "#c06a64",
-          "light": "#4f1a18"
+          "light": "#55050b"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
       "md_heading": {
         "fg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
@@ -220,7 +220,7 @@
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "italic": true
       },
@@ -231,18 +231,18 @@
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
       "md_code_inline": {
         "fg": {
           "dark": "#cba63a",
-          "light": "#401459"
+          "light": "#603b7b"
         },
         "bg": {
           "dark": "#32363c",
-          "light": "#cecfd1"
+          "light": "#c7ccd3"
         }
       },
       "md_code_block": {
@@ -252,152 +252,152 @@
         },
         "bg": {
           "dark": "#32363c",
-          "light": "#cecfd1"
+          "light": "#c7ccd3"
         }
       },
       "md_code_label": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "md_link": {
         "fg": {
           "dark": "#6cc8c8",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "underline": true
       },
       "md_link_url": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "md_quote": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "italic": true
       },
       "md_list_marker": {
         "fg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "md_table_border": {
         "fg": {
           "dark": "#3a404a",
-          "light": "#c8ccd2"
+          "light": "#bcbfc5"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "md_table_header": {
         "fg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
       "md_rule": {
         "fg": {
           "dark": "#3a404a",
-          "light": "#c8ccd2"
+          "light": "#bcbfc5"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "md_strikethrough": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "dim": true
       },
       "diff_added": {
         "fg": {
           "dark": "#adeeae",
-          "light": "#507b51"
+          "light": "#11521a"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "diff_removed": {
         "fg": {
           "dark": "#c06a64",
-          "light": "#4f1a18"
+          "light": "#55050b"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "diff_context": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "diff_added_word": {
         "fg": {
           "dark": "#adeeae",
-          "light": "#507b51"
+          "light": "#11521a"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
       "diff_removed_word": {
         "fg": {
           "dark": "#c06a64",
-          "light": "#4f1a18"
+          "light": "#55050b"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bold": true
       },
@@ -408,13 +408,13 @@
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       },
       "input_cursor": {
         "fg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bg": {
           "dark": "#d8dce2",
@@ -424,22 +424,22 @@
       "input_placeholder": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "italic": true
       },
       "scroll_marker": {
         "fg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bg": {
           "dark": "#cba63a",
-          "light": "#5e4b0c"
+          "light": "#816400"
         },
         "bold": true
       },
@@ -450,17 +450,17 @@
         },
         "bg": {
           "dark": "#2e4460",
-          "light": "#ccdff5"
+          "light": "#c4d6ec"
         }
       },
       "overlay": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "dim": true
       },
@@ -471,34 +471,34 @@
         },
         "bg": {
           "dark": "#22252b",
-          "light": "#e3e4e6"
+          "light": "#d7dbe2"
         }
       },
       "menu_selected": {
         "fg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bg": {
           "dark": "#84b7f9",
-          "light": "#2d4e78"
+          "light": "#3a69a6"
         },
         "bold": true
       },
       "menu_breadcrumb": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#22252b",
-          "light": "#e3e4e6"
+          "light": "#d7dbe2"
         }
       },
       "menu_shortcut": {
         "fg": {
           "dark": "#cba63a",
-          "light": "#401459"
+          "light": "#603b7b"
         },
         "bg": "none"
       },
@@ -509,28 +509,28 @@
         },
         "bg": {
           "dark": "#4a3e1c",
-          "light": "#f7e4a8"
+          "light": "#eedca0"
         }
       },
       "find_current": {
         "fg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         },
         "bg": {
           "dark": "#cba63a",
-          "light": "#5e4b0c"
+          "light": "#816400"
         },
         "bold": true
       },
       "scrollbar": {
         "fg": {
           "dark": "#858d99",
-          "light": "#5f6670"
+          "light": "#575d67"
         },
         "bg": {
           "dark": "#14161a",
-          "light": "#fafaf8"
+          "light": "#e9ecf2"
         }
       }
     },

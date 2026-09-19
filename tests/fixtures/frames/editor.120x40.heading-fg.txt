@@ -19,17 +19,17 @@
 │ │ abs/rel per axis), focus         │             │ resolve(Placement│ #2e4460                                        ┃
 │ │                                  │             │ Rect is a pure fu│ #4a3e1c                                        ┃
 │ │ Menu widget (hierarchical,       │ build       │ single header eac│ #22262c                                        ┃
-│ │ filterable) + list/text widgets  │             │ set is deliberate│ #fafaf8                                        ┃
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ #5f6670                                        ┃
-│ │ placements + content slots)      │             │ parser; hot-reloa│ #e3e4e6                                        ┃
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│ #adb1b7                                        ┃
-│ │ → styled wrapped lines)          │             │                  │ #2d4e78                                        ┃
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │ #565d67                                        ┃
-│ │ loader, built-ins)               │             │                  │ #507b51                                        ┃
-│ └──────────────────────────────────┴─────────────┴──────────────────│ #5e4b0c                                        ┃
-│                                                                     │ #401459                                        ┃
-│ Here is the function you asked for:                                 │ #007a8a                                        ┃
-│                                                                     │ #4f1a18                                      ▼ ┃
+│ │ filterable) + list/text widgets  │             │ set is deliberate│ #e9ecf2                                        ┃
+│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │ #575d67                                        ┃
+│ │ placements + content slots)      │             │ parser; hot-reloa│ #d7dbe2                                        ┃
+│ │ Markdown block renderer (blocks  │ build       │ single header ove│ #a1a4aa                                        ┃
+│ │ → styled wrapped lines)          │             │                  │ #3a69a6                                        ┃
+│ │ Theme (roles → styles, JSON      │ build       │ single header    │ #515761                                        ┃
+│ │ loader, built-ins)               │             │                  │ #11521a                                        ┃
+│ └──────────────────────────────────┴─────────────┴──────────────────│ #816400                                        ┃
+│                                                                     │ #603b7b                                        ┃
+│ Here is the function you asked for:                                 │ #097475                                        ┃
+│                                                                     │ #55050b                                      ▼ ┃
 │ ┌ cpp ──────────────────────────────────────────────────────────────│ md_heading  fg #adeeae  bg #14161a  bold       ╹
 │ │ int add(int a, int b) {                                           │  Aa  the quick brown fox — sample in this role │
 │ │   return a + b;                                                   │ fg         bg         ▶                        │
