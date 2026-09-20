@@ -81,7 +81,10 @@ drawn as the diagram it describes, in the theme's own colours, from box-drawing 
 ambiguous glyph is two cells). Flowcharts (all four directions, every node shape and edge style, subgraphs as
 frames), sequence diagrams (with their loop / alt / opt frames, notes and activations), state diagrams, class and
 ER diagrams, mind maps, timelines, user journeys, Gantt charts and pie charts are drawn; one that is not (a git
-graph, say), or is wider than the room it has, is shown as its source with a line saying why.
+graph, say), or is wider than the room it has, is shown as its source with a line saying why. A diagram that is
+too wide as written is first drawn with its nodes a column closer, then with its labels wrapped (as Mermaid wraps
+its own) to a narrower and narrower width; nothing a label says is dropped, and a diagram that fits as written is
+never touched.
 
 ## Ownership, in three shapes and no fourth
 

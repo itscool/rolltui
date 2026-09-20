@@ -153,6 +153,11 @@ int main(int argc, char** argv) {
       // THE SAME TEXT DRAWS THE SAME PICTURE
       const Drawn again = draw(m, src, kWidth, ascii != 0);
       check(again.ok && again.text == d.text, label + ": drawn twice into one handle, it is the same picture");
+      // A DIAGRAM DRAWS IN EXACTLY THE ROOM IT USES: a check that allowed for more than was drawn would refuse one that fits
+      // (a pie is the exception: its bars are scaled to the room it is given, so less room is a different picture)
+      const Drawn tight = draw(m, src, d.width, ascii != 0);
+      if (d.kind == "pie") check(tight.ok, label + ": in the " + std::to_string(d.width) + " columns it uses, it still draws [" + tight.why + "]");
+      else check(tight.ok && tight.text == d.text, label + ": in exactly the " + std::to_string(d.width) + " columns it uses, it is the same picture [" + tight.why + "]");
     }
   }
   if (record) {
@@ -389,6 +394,57 @@ int main(int argc, char** argv) {
       }
     }
     check(survived == static_cast<int>(files.size()) * 80, "every mutated diagram was drawn or refused, none crashed (" + std::to_string(drew) + " of " + std::to_string(survived) + " drew)");
+  }
+
+  // ---- COMPACT, WITHOUT LOSING WHAT A PICTURE SAYS ------------------------------------------------------------------
+  {
+    auto lines_of = [](const Drawn& d) { return count_of(d.text, "\n"); };
+    // between two boxes a plain edge is one row: the arrowhead, or the line where it has none
+    const Drawn plain = draw(m, "graph TD\n A[one] --> B[two]\n", 80, false);
+    check(plain.ok && lines_of(plain) == 7 && has(plain.text, "\xE2\x96\xBC") && !has(plain.text, "\xE2\x94\x82\n   \xE2\x96\xBC"),
+          "a plain edge between two boxes is one row, its arrowhead, directly between them");
+    const Drawn bare = draw(m, "graph TD\n A[one] --- B[two]\n", 80, false);
+    check(bare.ok && lines_of(bare) == 7 && has(bare.text, "\xE2\x94\xAC") && has(bare.text, "\xE2\x94\xB4"), "…and an edge with no head is one row of line, joined to both boxes");
+    // what needs a second row keeps it: a label beside the edge, a head at each end
+    const Drawn labelled = draw(m, "graph TD\n A[one] -->|yes| B[two]\n", 80, false);
+    check(labelled.ok && lines_of(labelled) == 8 && has(labelled.text, "yes") && has(labelled.text, "\xE2\x96\xBC"), "a labelled edge keeps its row for the label");
+    const Drawn both = draw(m, "graph TD\n A[one] <--> B[two]\n", 80, false);
+    check(both.ok && lines_of(both) == 8 && has(both.text, "\xE2\x96\xB2") && has(both.text, "\xE2\x96\xBC"), "…and an edge with a head at each end keeps a row for each");
+    // a long edge crossing layers does not make every gap it passes through two rows
+    const Drawn chain = draw(m, "graph TD\n A[a] --> B[b]\n B --> C[c]\n A -->|far| C\n", 80, false);
+    check(chain.ok && has(chain.text, "far"), "a labelled edge across layers still draws its label");
+    // left to right keeps its two columns: a line and a head
+    const Drawn lr = draw(m, "graph LR\n A[one] --> B[two]\n", 80, false);
+    check(lr.ok && has(lr.text, "\xE2\x94\x80\xE2\x96\xB6"), "left to right an edge is still a line and a head");
+
+    // A LABEL WRAPS ONLY WHEN THE DIAGRAM WOULD NOT FIT, and nothing it says is lost by it
+    const std::string longer = "flowchart LR\n  A[Start] --> B[A label that runs on and on well past what a narrow pane could hold]\n";
+    const Drawn roomy = draw(m, longer, 120, false);
+    check(roomy.ok && has(roomy.text, "A label that runs on and on well past what a narrow pane could hold"), "given room, a long label is one line, as it was written");
+    const Drawn narrow = draw(m, longer, 50, false);
+    check(narrow.ok && narrow.width <= 50 && lines_of(narrow) > lines_of(roomy) && !has(narrow.text, "A label that runs on and on well past what a narrow pane could hold"),
+          "in less room it is wrapped, on several lines [" + std::to_string(narrow.width) + " columns]");
+    bool words = true;
+    for (const char* w : {"label", "runs", "well", "past", "narrow", "pane", "could", "hold"}) words = words && has(narrow.text, w);
+    check(words, "…and every word of it is still there");
+    const Drawn tiny = draw(m, longer, 10, false);
+    check(!tiny.ok && has(tiny.why, "columns"), "…and when even wrapped it will not fit, it is refused, saying how much room it needs [" + tiny.why + "]");
+    // an edge's label wraps too, and a diagram that fits as written is never touched
+    const std::string edge = "graph TD\n A[one] -->|an edge label that is much longer than the boxes it joins are wide| B[two]\n";
+    const Drawn edge_wide = draw(m, edge, 120, false);
+    const Drawn edge_narrow = draw(m, edge, 40, false);
+    check(edge_wide.ok && has(edge_wide.text, "an edge label that is much longer than the boxes it joins are wide") && edge_narrow.ok && edge_narrow.width <= 40 && has(edge_narrow.text, "boxes"),
+          "an edge's label wraps in the room it has, and is one line in the room it wants");
+
+    // A SEQUENCE DIAGRAM'S NOTES AND SELF-MESSAGES ARE MEASURED BY WHAT IS DRAWN, so it is not refused for room it does not use
+    const std::string seq =
+        "sequenceDiagram\n  A->>B: x\n  Note over A,B: hi\n  A->>A: think it over\n  Note right of B: on the right\n  Note left of A: on the left\n";
+    const Drawn sq = draw(m, seq, 200, false);
+    check(sq.ok && sq.width == 53, "a sequence diagram with a note over two lifelines, one on each side and a message to itself is as wide as what is drawn [" + std::to_string(sq.width) + "]");
+    const Drawn sq_tight = draw(m, seq, sq.width, false);
+    check(sq_tight.ok && sq_tight.text == sq.text && has(sq_tight.text, "on the left") && has(sq_tight.text, "on the right") && has(sq_tight.text, "think it over"),
+          "…and draws whole in exactly that width, none of it cut off");
+    check(!draw(m, seq, sq.width - 1, false).ok, "…and not in one column less");
   }
 
   // ---- NOTHING IS LEFT BEHIND: every fixture, drawn and refused, then the handle freed, and the library holds what it did

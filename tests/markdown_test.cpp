@@ -947,8 +947,16 @@ int main() {
         const std::string_view t = text_of(x);
         if (t.find("Start") != std::string_view::npos && static_cast<Role>(x.role) == Role::text) text_role = true;
         if (t.find("\xE2\x94\x8C") != std::string_view::npos && static_cast<Role>(x.role) == Role::accent_1) node_role = true;
-        if (t.find("\xE2\x94\x82") != std::string_view::npos && static_cast<Role>(x.role) == Role::text_muted) edge_role = true;
       }
+    // an edge's line is muted; a plain edge is only its arrowhead, so this one has a label to keep a line of its own
+    {
+      const Lines labelled = render("```mermaid\ngraph TD\n  A[Start] -->|go| B[End]\n```\n", ro);
+      for (const RolltuiMdLine& l : labelled.lines())
+        for (const RolltuiMdSpan& x : spans_of(l)) {
+          const std::string_view t = text_of(x);
+          if (t.find("\xE2\x94\x82") != std::string_view::npos && static_cast<Role>(x.role) == Role::text_muted) edge_role = true;
+        }
+    }
     check(node_role && text_role && edge_role, "a node's border is accent, its words are text, an edge is muted [node " + std::to_string(node_role) + ", text " + std::to_string(text_role) + ", edge " + std::to_string(edge_role) + "]");
     // the tag is a word, in any case
     const Lines upper = render("```Mermaid\ngraph TD\n  A --> B\n```\n", ro);

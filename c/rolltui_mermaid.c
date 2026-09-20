@@ -936,7 +936,7 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
   size_t i, k;
   int* gap = NULL;
   int total_h = 0, row, box_h = 3, left_extra = 0, right_extra = 0, x0;
-  int frame_left_min = 0, bottom_boxes = 0, life_end = 0;
+  int frame_left_min = 0, bottom_boxes = 0, life_end = 0, box_right = 0;
   memset(&s, 0, sizeof s);
   if (!seq_parse(&s, src, first, &autonumber, reason)) goto done;
   if (s.np == 0) { reason_set(reason, "a sequence diagram with no participants"); goto done; }
@@ -1030,11 +1030,20 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
     }
     row += e->rows;
   }
-  total_h = row + 1;
+  {
+    /* the lifelines run one row past the last event; a note already ends in a blank row, which is that row */
+    int ends_in_note = 0;
+    size_t li;
+    for (li = s.ne; li-- > 0;)
+      if (s.ev[li].rows > 0) { ends_in_note = s.ev[li].kind == SEQ_NOTE; break; }
+    total_h = row + (ends_in_note ? 0 : 1);
+  }
   /* a tall diagram names its participants again at the foot, as one reads down to the end of it */
   life_end = total_h;
-  if (row - box_h >= 14) { bottom_boxes = 1; total_h += box_h + 1; }
-  /* ---- how far the frames reach beyond the lifelines they wrap, so the grid can start left of the first box */
+  if (row - box_h >= 14) { bottom_boxes = 1; total_h += box_h; }
+  /* ---- how far the frames and notes reach beyond the lifelines they wrap, so the grid can start left of the first box
+   * and is as wide as what is drawn in it: each extent is the cell the drawing below puts last, not an allowance for it */
+  box_right = s.parts[s.np - 1].cx + (s.parts[s.np - 1].w + 1) / 2 - 1;
   for (i = 0; i < s.ne; ++i) {
     const SeqEvent* e = &s.ev[i];
     if (e->kind == SEQ_BLOCK && !e->dashed) {
@@ -1055,32 +1064,39 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
         const int tw = label_extent(m, &e->text, NULL) + (int)e->keyword.n + 6;
         if (rx - lx < tw) rx = lx + tw;
         frame_left_min = imin(frame_left_min, lx - (s.parts[0].cx - s.parts[0].w / 2));
-        right_extra = imax(right_extra, rx - (s.parts[s.np - 1].cx + (s.parts[s.np - 1].w + 1) / 2));
+        right_extra = imax(right_extra, rx - box_right);
       }
     } else if (e->kind == SEQ_NOTE && e->note_side == 1) {
       const int tw = label_extent(m, &e->text, NULL) + 4;
-      const int lx = s.parts[e->from].cx - 2 - tw;
+      const int lx = s.parts[e->from].cx - 1 - tw;
       frame_left_min = imin(frame_left_min, lx - (s.parts[0].cx - s.parts[0].w / 2));
     } else if (e->kind == SEQ_NOTE && e->note_side == 2) {
       const int tw = label_extent(m, &e->text, NULL) + 4;
-      const int rx = s.parts[e->to].cx + 2 + tw;
-      right_extra = imax(right_extra, rx - (s.parts[s.np - 1].cx + (s.parts[s.np - 1].w + 1) / 2));
+      const int rx = s.parts[e->to].cx + 1 + tw;
+      right_extra = imax(right_extra, rx - box_right);
     } else if (e->kind == SEQ_NOTE && e->note_side == 0) {
       const int tw = label_extent(m, &e->text, NULL) + 4;
-      const int rx = imax(s.parts[e->to].cx + (tw + 1) / 2, s.parts[e->from].cx + tw);
-      const int lx = imin(s.parts[e->from].cx - tw / 2, s.parts[e->to].cx - 1);
-      right_extra = imax(right_extra, rx - (s.parts[s.np - 1].cx + (s.parts[s.np - 1].w + 1) / 2));
+      const int a = s.parts[e->from].cx, b = s.parts[e->to].cx;
+      int w = tw, lx = a - tw / 2;
+      if (e->from != e->to) {
+        w = imax(tw, b - a + 3);
+        lx = a - 1 - (w - (b - a + 3)) / 2;
+      }
+      right_extra = imax(right_extra, lx + w - 1 - box_right);
       frame_left_min = imin(frame_left_min, lx - (s.parts[0].cx - s.parts[0].w / 2));
     } else if (e->kind == SEQ_MSG && e->from == e->to) {
-      const int tw = label_extent(m, &e->text, NULL) + 6;
-      const int rx = s.parts[e->from].cx + 2 + tw;
-      right_extra = imax(right_extra, rx - (s.parts[s.np - 1].cx + (s.parts[s.np - 1].w + 1) / 2));
+      /* out to the right, down and back is three cells wide; its label starts two cells out */
+      char num[16];
+      const int nn = e->number ? snprintf(num, sizeof num, "%d. ", e->number) : 0;
+      const int lw = e->text.n ? label_extent(m, &e->text, NULL) + nn : 0;
+      const int rx = s.parts[e->from].cx + imax(3, lw > 0 ? 1 + lw : 0);
+      right_extra = imax(right_extra, rx - box_right);
     }
   }
   left_extra = -frame_left_min;
   x0 = left_extra;
   {
-    const int grid_w = x0 + s.parts[s.np - 1].cx + (s.parts[s.np - 1].w + 1) / 2 + 1 + imax(right_extra, 0);
+    const int grid_w = x0 + box_right + 1 + imax(right_extra, 0);
     if (grid_w > max_width) {
       reason_setf(reason, "the diagram needs %d columns; this view has %d", grid_w, max_width);
       goto done;
@@ -3210,6 +3226,21 @@ static void enforce_clusters(Lay* L) {
 
 /* ---- along the flow: layers, their gaps, and the tracks in them ---------------------------------------- */
 
+/* A gap of only straight edges needs one row when no edge has two heads to draw in it and nothing is written beside
+ * one: the arrowhead (or the line, where there is none) stands directly between the two nodes. An edge that crosses
+ * several layers puts its label beside a long run, so only an edge between neighbours needs the room for it here. */
+static int gap_is_one_row(const Graph* g, const Gap* gp) {
+  size_t k;
+  for (k = 0; k < gp->n; ++k) {
+    const GEdge* ed = &g->e[gp->seg[k].edge];
+    const int single = ed->chain_n == 2;
+    const int sh = ed->rev ? ed->head_to : ed->head_from, eh = ed->rev ? ed->head_from : ed->head_to;
+    if ((single && ed->label.n) || ed->end_a.n || ed->end_b.n) return 0;
+    if (single && sh != HEAD_NONE && eh != HEAD_NONE) return 0;
+  }
+  return 1;
+}
+
 static int lay_out_main_axis(RolltuiMermaid* m, Lay* L, Gap** gaps_out) {
   Graph* g = L->g;
   Gap* gaps = (Gap*)rolltui_mem_alloc((L->nl + 1) * sizeof *gaps);
@@ -3276,6 +3307,7 @@ static int lay_out_main_axis(RolltuiMermaid* m, Lay* L, Gap** gaps_out) {
       assign_tracks(gp);
       rows = gp->rows;
       L->gap[l] = rows > 0 ? rows + 2 : (gp->n > 0 ? 2 : 1);
+      if (!L->lr && rows == 0 && gp->n > 0 && gap_is_one_row(g, gp)) L->gap[l] = 1;
       /* along x the flow needs room for a label to lie on its edge; along y a label sits beside a vertical run */
       if (L->lr) {
         for (k = 0; k < gp->n; ++k) {
@@ -3650,6 +3682,25 @@ static void draw_edges(RolltuiMermaid* m, Lay* L, Gap* gaps) {
       }
       if (mp[np - 1] != entry_m - 1 || cp[np - 1] != cb) { mp[np] = entry_m - 1; cp[np] = cb; ++np; }
     }
+    if (np == 1) {
+      /* the one row between two nodes that stand end to end: the arrowhead, or the line where there is none */
+      int x, y, x2, y2;
+      to_real(L, g->dir, mp[0], cp[0], &x, &y);
+      to_real(L, g->dir, mp[0] + 1, cp[0], &x2, &y2);
+      {
+        const int dx = x2 - x, dy = y2 - y;
+        const int sh = ed->rev ? ed->head_to : ed->head_from, eh = ed->rev ? ed->head_from : ed->head_to;
+        const char* hs = head_glyph(m, sh, -dx, -dy);
+        const char* he = head_glyph(m, eh, dx, dy);
+        join_border(m, x - dx, y - dy, dx, dy);
+        if (he) put_glyph(&m->g, x, y, he, ROLLTUI_MERMAID_CLASS_ARROW);
+        else {
+          if (hs) put_glyph(&m->g, x, y, hs, ROLLTUI_MERMAID_CLASS_ARROW);
+          else add_mask(&m->g, x, y, M_U | M_D, ed->style == ES_THICK ? ST_HEAVY : ed->style == ES_DOTTED ? ST_DASH : ST_LIGHT, cls);
+          join_border(m, x + dx, y + dy, -dx, -dy);
+        }
+      }
+    }
     if (np < 2) { rolltui_mem_free(mp); rolltui_mem_free(cp); continue; }
     lp = (int*)rolltui_grow(lp, &lp_cap, np * 2 + 2, sizeof *lp);
     px = lp;
@@ -3707,20 +3758,53 @@ static void graph_strip(Graph* g, size_t nreal) {
   g->nn = nreal;
 }
 
+static void wrap_label(RolltuiMermaid* m, const RolltuiStr* s, int width, RolltuiStr* out);
+
 static int draw_graph(RolltuiMermaid* m, Graph* g, int max_width, RolltuiStr* reason) {
   const size_t nreal = g->nn;
-  int attempt, width = 0, ok = 0;
+  int attempt, width = 0, ok = 0, tries[8], ntries = 2, widest = 0;
   Lay L;
   Gap* gaps = NULL;
+  RolltuiStr* orig_n = NULL;
+  RolltuiStr* orig_e = NULL;
   size_t i;
   memset(&L, 0, sizeof L);
   for (i = 0; i < g->ne; ++i) {
     /* an edge to a subgraph by its name stands for its first member */
     (void)i;
   }
-  for (attempt = 0; attempt < 2; ++attempt) {
+  /* THE WAYS TO FIT, tried in turn until one does: as written; the nodes a column closer; then every label wrapped to a
+   * width, each narrower than the last, for as long as some label is wider than it. Nothing is dropped by wrapping, and
+   * Mermaid wraps its own labels the same way; a diagram that fits as written is never touched. */
+  for (i = 0; i < nreal; ++i)
+    if (g->n[i].shape != SH_RECORD && g->n[i].label.n) widest = imax(widest, label_extent(m, &g->n[i].label, NULL));
+  for (i = 0; i < g->ne; ++i)
+    if (g->e[i].label.n) widest = imax(widest, label_extent(m, &g->e[i].label, NULL));
+  tries[0] = tries[1] = 0;
+  {
+    static const int steps[] = {30, 22, 16, 12};
+    size_t q;
+    for (q = 0; q < sizeof steps / sizeof *steps; ++q)
+      if (steps[q] < widest) tries[ntries++] = steps[q];
+  }
+  for (attempt = 0; attempt < ntries; ++attempt) {
     if (attempt > 0) { gaps_release(&L, gaps); gaps = NULL; lay_release(&L); graph_strip(g, nreal); }
-    if (!layout_graph(m, g, &L, attempt == 1, &gaps, reason)) goto done;
+    if (tries[attempt] > 0) {
+      /* wrapped from the text as written each time, not from the last wrapping of it */
+      if (!orig_n) {
+        orig_n = (RolltuiStr*)rolltui_mem_alloc((nreal + 1) * sizeof *orig_n);
+        orig_e = (RolltuiStr*)rolltui_mem_alloc((g->ne + 1) * sizeof *orig_e);
+        memset(orig_n, 0, (nreal + 1) * sizeof *orig_n);
+        memset(orig_e, 0, (g->ne + 1) * sizeof *orig_e);
+        for (i = 0; i < nreal; ++i) rolltui_str_set(&orig_n[i], g->n[i].label.p ? g->n[i].label.p : "", g->n[i].label.n);
+        for (i = 0; i < g->ne; ++i) rolltui_str_set(&orig_e[i], g->e[i].label.p ? g->e[i].label.p : "", g->e[i].label.n);
+      }
+      for (i = 0; i < nreal; ++i)
+        if (g->n[i].shape != SH_RECORD && orig_n[i].n) wrap_label(m, &orig_n[i], tries[attempt], &g->n[i].label);
+      for (i = 0; i < g->ne; ++i)
+        if (orig_e[i].n) wrap_label(m, &orig_e[i], tries[attempt], &g->e[i].label);
+    }
+    if (!layout_graph(m, g, &L, attempt >= 1, &gaps, reason)) goto done;
     enforce_clusters(&L);
     if (!lay_out_main_axis(m, &L, &gaps)) goto done;
     width = L.lr ? L.main_extent : L.cross_extent;
@@ -3749,6 +3833,10 @@ done:
   gaps_release(&L, gaps);
   lay_release(&L);
   graph_strip(g, nreal);
+  if (orig_n) for (i = 0; i < nreal; ++i) rolltui_str_free(&orig_n[i]);
+  if (orig_e) for (i = 0; i < g->ne; ++i) rolltui_str_free(&orig_e[i]);
+  rolltui_mem_free(orig_n);
+  rolltui_mem_free(orig_e);
   return ok;
 }
 
