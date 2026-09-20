@@ -1,0 +1,12 @@
+flowchart TB
+  subgraph CI[CI pipeline]
+    direction LR
+    lint --> test --> build
+  end
+  subgraph CD[Deploy]
+    stage[Staging] --> prod[Production]
+  end
+  dev([Developer]) -->|push| CI
+  build --> stage
+  prod --> mon{Monitoring}
+  mon -->|alert| dev

@@ -1,0 +1,16 @@
+stateDiagram-v2
+    direction LR
+    [*] --> Idle
+    Idle --> Active : start
+    state Active {
+        [*] --> Working
+        Working --> Paused : pause
+        Paused --> Working : resume
+        Working --> [*]
+    }
+    Active --> Idle : stop
+    Idle : waits for input
+    note right of Idle : sleeps a lot
+    state fork_state <<fork>>
+    Active --> fork_state
+    fork_state --> Done

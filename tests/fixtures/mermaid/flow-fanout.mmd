@@ -1,0 +1,8 @@
+flowchart TD
+    A[Client] --> B[Load Balancer]
+    B --> C[Server1]
+    B --> D[Server2]
+    B --> E[Server3]
+    C --> F[(Database)]
+    D --> F
+    E --> F

@@ -68,6 +68,20 @@ When it is wrong, say so: `ROLL_COLOR_DEPTH=truecolor|256|16|mono`, `ROLL_AMBIGU
 `ROLL_TERM_PROBE=0` (ask only the keyboard question). `dirktui probe` asks the terminal again
 and says what it found and where each answer came from.
 
+## What a file looks like, and what a diagram in it looks like
+
+The column browser can show the file under the cursor in the right half (`RolltuiPickerOptions.preview`; in
+dirktui, Settings → Preview a file). A text file is its lines, read whole up to 256 KB; a Markdown file is
+*rendered* — headings, lists, tables, code boxes; a binary file is offsets, byte pairs and an ASCII gutter, read a
+screenful at a time so any size scrolls at once. Nothing a file holds reaches the terminal as itself: a control
+character is drawn as its picture (`␛`), a stray byte as `�`.
+
+A ```` ```mermaid ```` block in Markdown — in a preview, in a transcript, anywhere the library renders Markdown — is
+drawn as the diagram it describes, in the theme's own colours, from box-drawing glyphs (or `+ - | > v` where an
+ambiguous glyph is two cells). Flowcharts (all four directions, every node shape and edge style, subgraphs as
+frames), sequence diagrams (with their loop / alt / opt frames, notes and activations), state diagrams and pie
+charts are drawn; one that is not, or is wider than the room it has, is shown as its source with a line saying why.
+
 ## Ownership, in three shapes and no fourth
 
 Every pointer in this library is one of three things, and `rolltui-ownership-test` checks it:

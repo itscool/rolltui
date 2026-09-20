@@ -1,0 +1,6 @@
+Pets adopted by volunteers
+
+Dogs                            |###################################  386 (73.1%)
+Cats                            |#######  85 (16.1%)
+Rats                            |#  15 (2.8%)
+Rabbits and other small mammals |###  42 (8.0%)

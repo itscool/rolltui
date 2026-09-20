@@ -290,6 +290,7 @@ int main() {
         {"c/rolltui_widgets.h", 0},
         {"c/rolltui_widget_picker.h", 0}, /* an opaque handle: every pointer is a parameter, none is stored */
         {"c/rolltui_preview.h", 0},       /* an opaque handle: a path and a rect go in, a frame is drawn into; nothing borrowed is kept */
+        {"c/rolltui_mermaid.h", 1},       /* an opaque handle; the one stored pointer is a run's text, a BORROW into the handle's own pool, valid until the next render */
         {"c/rolltui_hints.h", 0},  /* likewise */
         {"c/rolltui_str.h", 0},
         {"c/rolltui_layout.h", 0},
@@ -382,7 +383,7 @@ int main() {
     // TOTAL is the check that a move invented or lost nothing: pointers redistributing between
     // rows while the total holds is a declaration changing headers, which is not a lifetime
     // event. Re-record WHOLE from the printed table rather than by arithmetic on a delta.
-    check(total == 163, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
+    check(total == 164, "the census counted the library's STORED borrows (" + std::to_string(total) + " in public headers)");
     // CONTROL 3: a member counts, a wrapped declaration's continuation line does not.
     check(count_stored("struct S {\n  const char* p;\n};\n") == 1 &&
               count_stored("void f(\n    const char* name, size_t len);\n") == 0 &&

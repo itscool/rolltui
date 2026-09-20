@@ -921,5 +921,69 @@ int main() {
     check(!any_diff_role, "a bare fence over content that looks EXACTLY like a diff renders plain");
   }
 
+  // ---- A MERMAID FENCE IS DRAWN AS THE DIAGRAM IT DESCRIBES -------------------------------------------------------------
+  // The source stays the document's text (a selection copies it, a search finds it); what is drawn is the picture, in the
+  // theme's words for each part of it, with no code box around it — its boxes are its own. A diagram that cannot be
+  // drawn falls back to the source in its box, and says why above it.
+  {
+    RolltuiMdRenderOptions ro{};
+    ro.width = 60;
+    const std::string doc = "before\n\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n\nafter\n";
+    const Lines r = render(doc, ro);
+    const std::string all = plain_text(r);
+    check(all.find("\xE2\x94\x8C\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x90") != std::string::npos &&
+              all.find("Start") != std::string::npos && all.find("End") != std::string::npos && all.find("\xE2\x96\xBC") != std::string::npos,
+          "a mermaid fence is drawn: boxes, words, an arrowhead");
+    check(all.find("graph TD") == std::string::npos && all.find("\xE2\x94\x8C mermaid") == std::string::npos,
+          "…and it is not the source in a code box");
+    check(r.text().find("graph TD\n  A[Start] --> B[End]") != std::string_view::npos,
+          "…while the document's TEXT — what a selection copies and a search finds — is still the source");
+    check(r.code_blocks().size() == 1 && lang_of(r.code_blocks()[0]) == "mermaid" && r.code_blocks()[0].lines == 2,
+          "…and it is still a numbered code block of two source lines, so it folds like one");
+    // the parts take the theme's roles
+    bool node_role = false, text_role = false, edge_role = false;
+    for (const RolltuiMdLine& l : r.lines())
+      for (const RolltuiMdSpan& x : spans_of(l)) {
+        const std::string_view t = text_of(x);
+        if (t.find("Start") != std::string_view::npos && static_cast<Role>(x.role) == Role::text) text_role = true;
+        if (t.find("\xE2\x94\x8C") != std::string_view::npos && static_cast<Role>(x.role) == Role::accent_1) node_role = true;
+        if (t.find("\xE2\x94\x82") != std::string_view::npos && static_cast<Role>(x.role) == Role::text_muted) edge_role = true;
+      }
+    check(node_role && text_role && edge_role, "a node's border is accent, its words are text, an edge is muted [node " + std::to_string(node_role) + ", text " + std::to_string(text_role) + ", edge " + std::to_string(edge_role) + "]");
+    // the tag is a word, in any case
+    const Lines upper = render("```Mermaid\ngraph TD\n  A --> B\n```\n", ro);
+    check(plain_text(upper).find("\xE2\x96\xBC") != std::string::npos, "the tag is matched in any case");
+    // a fence that is not mermaid is left alone
+    const Lines other = render("```text\ngraph TD\n  A --> B\n```\n", ro);
+    check(plain_text(other).find("graph TD") != std::string::npos, "any other tag is code, as it always was");
+    // a diagram that cannot be drawn: the source, in its box, under a line that says why
+    const Lines unknown = render("```mermaid\ngitGraph\n  commit\n```\n", ro);
+    const std::string u = plain_text(unknown);
+    check(u.find("mermaid: gitGraph diagrams are not drawn") != std::string::npos &&
+              u.find("gitGraph") != std::string::npos && u.find("\xE2\x94\x8C mermaid") != std::string::npos,
+          "a kind that is not drawn falls back to its source in a box, with a line saying why above it");
+    RolltuiMdRenderOptions narrow{};
+    narrow.width = 20;
+    const Lines wide = render("```mermaid\ngraph LR\n  A[A long name] --> B[Another long name] --> C[And a third one]\n```\n", narrow);
+    const std::string w = plain_text(wide);
+    check(w.find("needs") != std::string::npos && w.find("columns") != std::string::npos && w.find("graph LR") != std::string::npos,
+          "a diagram wider than the room falls back to its source and says how much room it wants");
+    // folding: over the threshold the block is a header row, and hides the picture like it hides code
+    RolltuiMdRenderOptions folding{};
+    folding.width = 60;
+    folding.fold_over_lines = 1;
+    const Lines folded = render("```mermaid\ngraph TD\n  A --> B\n```\n", folding);
+    check(plain_text(folded).find("\xE2\x96\xB8 mermaid") != std::string::npos && plain_text(folded).find("\xE2\x96\xBC") == std::string::npos,
+          "a folded mermaid block is its header row and no picture");
+    // in a list, the picture is indented with it
+    const Lines listed = render("- item\n\n  ```mermaid\n  graph TD\n    A --> B\n  ```\n", ro);
+    bool indented = false;
+    for (const RolltuiMdLine& l : listed.lines()) {
+      const std::string t = plain_text(l);
+      if (t.find("\xE2\x96\xBC") != std::string::npos && t.rfind("  ", 0) == 0) indented = true;
+    }
+    check(indented, "inside a list item the picture is indented with the item");
+  }
+
   return report("rolltui_markdown_test");
 }

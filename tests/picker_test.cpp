@@ -410,6 +410,27 @@ int main() {
       check(has(t, "first 256K of "), "a file over 256 KB says how much of it is shown [head]");
       check(has(t, "line number 0 of a file"), "…and starts at its first line");
     }
+    // MARKDOWN IS RENDERED, NOT LISTED: headings, a table with its borders, a code box, a diagram drawn as a diagram
+    write_file(pv / "doc.md", "# Title\n\nSome **bold** text.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n");
+    write_file(pv / "flow.mmd", "graph LR\n  X[one] --> Y[two]\n");
+    go_file("doc.md");
+    {
+      const std::string t = frame_of(110, 40);
+      check(has(t, "markdown \xC2\xB7") && has(t, "# Title") && has(t, "Some bold text."), "a Markdown file is rendered: its heading, its emphasis without the asterisks");
+      check(has(t, "\xE2\x94\x82 a") && has(t, "\xE2\x94\x9C") && !has(t, "|---|"), "…its table has borders and no pipes");
+      check(has(t, "\xE2\x94\x8C\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x90") && has(t, "Start") && has(t, "\xE2\x96\xBC") && !has(t, "graph TD"), "…and a mermaid block is the diagram, not its source");
+    }
+    go_file("flow.mmd");
+    {
+      const std::string t = frame_of(110, 12);
+      check(has(t, "diagram \xC2\xB7") && has(t, "one") && has(t, "\xE2\x96\xB6") && !has(t, "graph LR"), "a .mmd file is its diagram [head says so]");
+    }
+    // narrower than the diagram: its source, and why
+    go_file("doc.md");
+    {
+      const std::string t = frame_of(60, 40);
+      check(has(t, "# Title"), "in a narrow pane the Markdown is laid out for the width it has");
+    }
     // THE KEYS ENTER THE PREVIEW with Right on a file; Up/Down scroll it, Left returns.
     go_file("notes.txt");
     {

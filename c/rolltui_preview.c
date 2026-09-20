@@ -10,6 +10,8 @@
 #include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
+#include "rolltui/c/rolltui_markdown.h"
+#include "rolltui/c/rolltui_md_lines.h"
 #include "rolltui/c/rolltui_screen.h"
 #include "rolltui/c/rolltui_str.h"
 #include "rolltui/c/rolltui_unicode.h"
@@ -31,6 +33,13 @@ struct RolltuiPreview {
   size_t top;         /* the first row on screen, in the units of the body */
   size_t rows_vis;    /* how many rows the last draw had for the body */
   int hex_per_row;    /* how many bytes a hex row showed at the last draw */
+  /* MARKDOWN: the parsed document and its lines at the width last drawn. Both are OWNED and REUSED between files
+   * (a re-parse and a re-render keep every buffer), and the lines are laid out again only when the width, or how wide an
+   * ambiguous glyph is, changes. */
+  RolltuiMdDoc* md_doc;
+  RolltuiMdLines* md_lines;
+  int md_width, md_aw;
+  int diagram; /* MARKDOWN: the file is a diagram (`.mmd`), not a document */
   RolltuiUnicodeScratch* u; /* OWNED */
   RolltuiDrawScratch* ds;   /* OWNED */
   RolltuiStr s1;            /* scratch a row is built in */
@@ -55,6 +64,8 @@ static void release_content(RolltuiPreview* pv) {
   pv->line_n = 0;
   pv->top = 0;
   pv->rows_vis = 0;
+  pv->md_width = 0;
+  pv->diagram = 0;
   rolltui_str_clear(&pv->message);
   rolltui_str_clear(&pv->body);
 }
@@ -67,6 +78,8 @@ void rolltui_preview_free(RolltuiPreview* pv) {
   rolltui_str_free(&pv->body);
   rolltui_str_free(&pv->s1);
   rolltui_mem_free(pv->line_off);
+  rolltui_md_doc_free(pv->md_doc);
+  rolltui_md_lines_free(pv->md_lines);
   rolltui_u_scratch_free(pv->u);
   rolltui_draw_scratch_free(pv->ds);
   rolltui_mem_free(pv);
@@ -76,6 +89,17 @@ int rolltui_preview_kind(const RolltuiPreview* pv) { return pv ? pv->kind : ROLL
 const char* rolltui_preview_message(const RolltuiPreview* pv, size_t* len) {
   if (len) *len = pv ? pv->message.n : 0;
   return pv && pv->message.p ? pv->message.p : "";
+}
+
+static void human_size(long long n, char* out, size_t cap) {
+  const char* unit = "";
+  double v = (double)n;
+  if (v >= 1024.0) { v /= 1024.0; unit = "K"; }
+  if (v >= 1024.0) { v /= 1024.0; unit = "M"; }
+  if (v >= 1024.0) { v /= 1024.0; unit = "G"; }
+  if (!*unit) snprintf(out, cap, "%lld B", n);
+  else if (v < 10.0) snprintf(out, cap, "%.1f%s", v, unit);
+  else snprintf(out, cap, "%.0f%s", v, unit);
 }
 
 /* ---- reading -------------------------------------------------------------------------------- */
@@ -130,6 +154,84 @@ static int has_markdown_extension(const RolltuiStr* path) {
     if (i == en) return 1;
   }
   return 0;
+}
+
+/* A DIAGRAM FILE is a mermaid block that is the whole document: drawn by the same renderer, as the fence it would be. */
+static int has_diagram_extension(const RolltuiStr* path) {
+  static const char* const ext[] = {".mmd", ".mermaid"};
+  size_t k;
+  for (k = 0; k < sizeof ext / sizeof *ext; ++k) {
+    const size_t en = strlen(ext[k]);
+    size_t i;
+    if (path->n <= en) continue;
+    for (i = 0; i < en; ++i) {
+      char c = path->p[path->n - en + i];
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+      if (c != ext[k][i]) break;
+    }
+    if (i == en) return 1;
+  }
+  return 0;
+}
+
+/* `s` with every byte a file must not be trusted with made a picture — a control character, a stray byte, a
+ * terminal's own C1 controls, bidi overrides — but the line and the tab left alone, because Markdown is made
+ * of both. The parser and the renderer downstream then never see a byte that could reach the terminal as one. */
+static void scrub(const char* s, size_t n, RolltuiStr* out) {
+  size_t i = 0;
+  rolltui_str_clear(out);
+  while (i < n) {
+    RolltuiDecodedChar d;
+    char enc[4];
+    size_t en;
+    RolltuiCodepoint cp;
+    rolltui_u_decode_one(s, n, i, &d);
+    i += d.length ? d.length : 1;
+    cp = d.valid ? d.cp : 0xFFFD;
+    if (cp == '\n' || cp == '\t') {
+      /* Markdown is made of both: kept as they are */
+    } else if (cp == '\r') {
+      if (i < n && s[i] == '\n') continue; /* CRLF is a newline */
+      cp = '\n';
+    } else if (cp < 0x20) cp = 0x2400 + cp;
+    else if (cp == 0x7F) cp = 0x2421;
+    else if (cp >= 0x80 && cp <= 0x9F) cp = 0xFFFD;
+    else if (cp == 0x2028 || cp == 0x2029 || (cp >= 0x202A && cp <= 0x202E) || (cp >= 0x2066 && cp <= 0x2069)) cp = 0xFFFD;
+    en = rolltui_u_append_utf8(cp, enc);
+    rolltui_str_append(out, enc, en);
+  }
+}
+
+static void parse_markdown(RolltuiPreview* pv) {
+  RolltuiStr clean;
+  memset(&clean, 0, sizeof clean);
+  pv->diagram = has_diagram_extension(&pv->path);
+  if (pv->diagram) {
+    /* the file is the diagram: a document of one fenced block */
+    RolltuiStr fenced;
+    memset(&fenced, 0, sizeof fenced);
+    rolltui_str_append(&fenced, "```mermaid\n", 11);
+    scrub(pv->body.p ? pv->body.p : "", pv->body.n, &clean);
+    rolltui_str_append_str(&fenced, &clean);
+    if (clean.n == 0 || clean.p[clean.n - 1] != '\n') rolltui_str_append(&fenced, "\n", 1);
+    rolltui_str_append(&fenced, "```\n", 4);
+    rolltui_str_set(&pv->body, fenced.p, fenced.n);
+    rolltui_str_free(&fenced);
+  } else {
+    scrub(pv->body.p ? pv->body.p : "", pv->body.n, &clean);
+    rolltui_str_set(&pv->body, clean.p ? clean.p : "", clean.n);
+  }
+  rolltui_str_free(&clean);
+  if (pv->truncated) {
+    /* said in the document itself, where the reader is reading: the last line says the file goes on */
+    char note[96], sz[24];
+    human_size(pv->size, sz, sizeof sz);
+    snprintf(note, sizeof note, "\n\n*\xE2\x80\xA6 first %d KB of %s shown*\n", ROLLTUI_PREVIEW_TEXT_LIMIT / 1024, sz);
+    rolltui_str_append(&pv->body, note, strlen(note));
+  }
+  if (!pv->md_doc) pv->md_doc = rolltui_md_doc_new();
+  rolltui_md_parse(pv->md_doc, pv->body.p ? pv->body.p : "", pv->body.n);
+  pv->md_width = 0; /* laid out at the first draw, when the width is known */
 }
 
 static void index_lines(RolltuiPreview* pv) {
@@ -213,8 +315,9 @@ static void load(RolltuiPreview* pv) {
     rolltui_str_set(&pv->body, (const char*)buf, have);
     rolltui_mem_free(buf);
   }
-  pv->kind = has_markdown_extension(&pv->path) ? ROLLTUI_PREVIEW_MARKDOWN : ROLLTUI_PREVIEW_TEXT;
-  index_lines(pv);
+  pv->kind = has_markdown_extension(&pv->path) || has_diagram_extension(&pv->path) ? ROLLTUI_PREVIEW_MARKDOWN : ROLLTUI_PREVIEW_TEXT;
+  if (pv->kind == ROLLTUI_PREVIEW_MARKDOWN) parse_markdown(pv);
+  else index_lines(pv);
 }
 
 void rolltui_preview_set_path(RolltuiPreview* pv, const char* path, size_t len) {
@@ -288,17 +391,6 @@ static void put_row(RolltuiPreview* pv, RolltuiFrame* f, int x, int y, const cha
   }
 }
 
-static void human_size(long long n, char* out, size_t cap) {
-  const char* unit = "";
-  double v = (double)n;
-  if (v >= 1024.0) { v /= 1024.0; unit = "K"; }
-  if (v >= 1024.0) { v /= 1024.0; unit = "M"; }
-  if (v >= 1024.0) { v /= 1024.0; unit = "G"; }
-  if (!*unit) snprintf(out, cap, "%lld B", n);
-  else if (v < 10.0) snprintf(out, cap, "%.1f%s", v, unit);
-  else snprintf(out, cap, "%.0f%s", v, unit);
-}
-
 /* ---- hex ----------------------------------------------------------------------------------- */
 
 static int hex_digits_for(long long size) {
@@ -321,8 +413,8 @@ static int hex_bytes_that_fit(int cells, int od) {
 
 static size_t total_rows(const RolltuiPreview* pv) {
   switch (pv->kind) {
-    case ROLLTUI_PREVIEW_TEXT:
-    case ROLLTUI_PREVIEW_MARKDOWN: return pv->line_n;
+    case ROLLTUI_PREVIEW_TEXT: return pv->line_n;
+    case ROLLTUI_PREVIEW_MARKDOWN: return pv->md_lines && pv->md_width ? rolltui_md_lines_count(pv->md_lines) : 0;
     case ROLLTUI_PREVIEW_HEX: {
       const size_t per = (size_t)(pv->hex_per_row > 0 ? pv->hex_per_row : 16);
       return ((size_t)pv->size + per - 1) / per;
@@ -385,6 +477,48 @@ static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, Roll
   }
 }
 
+/* ---- markdown -------------------------------------------------------------------------------- */
+
+static void render_md(RolltuiPreview* pv, int width, int aw) {
+  RolltuiMdRenderOptions ro;
+  if (!pv->md_lines) pv->md_lines = rolltui_md_lines_new();
+  memset(&ro, 0, sizeof ro);
+  ro.width = width;
+  ro.ambiguous_wide = aw;
+  ro.tab_width = TAB_COLUMNS;
+  ro.base = ROLLTUI_ROLE_TEXT;
+  ro.roles = *rolltui_md_roles();
+  rolltui_md_render(pv->md_lines, pv->md_doc, &ro);
+  pv->md_width = width;
+  pv->md_aw = aw;
+}
+
+/* The document, laid out at this width and drawn line by line in the theme's markdown roles. A span whose role
+ * states no background stands on the ground under it, as the text of every window now does. */
+static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, const RolltuiStyle* styles,
+                          RolltuiStyleColor ground, int aw) {
+  int row;
+  size_t n;
+  if (!pv->md_doc) return;
+  if (pv->md_width != body.w || pv->md_aw != aw) render_md(pv, body.w, aw);
+  n = rolltui_md_lines_count(pv->md_lines);
+  clamp_top(pv);
+  for (row = 0; row < body.h; ++row) {
+    const size_t li = pv->top + (size_t)row;
+    const RolltuiMdLine* line;
+    int x = body.x;
+    size_t k;
+    if (li >= n) break;
+    line = rolltui_md_lines_line(pv->md_lines, li);
+    for (k = 0; k < line->span_n && x < body.x + body.w; ++k) {
+      const RolltuiMdSpan* sp = &line->span_p[k];
+      RolltuiStyle st = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, sp->role);
+      if (st.bg.kind == 0) st.bg = ground;
+      x += rolltui_frame_put_text(f, pv->ds, x, body.y + row, sp->text_p, sp->text_n, st, body.x + body.w - x, aw, 0);
+    }
+  }
+}
+
 /* ---- the draw ------------------------------------------------------------------------------- */
 
 static const char* base_name(const RolltuiStr* path, size_t* n) {
@@ -434,7 +568,7 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
     case ROLLTUI_PREVIEW_MARKDOWN: {
       char sz[24];
       human_size(pv->size, sz, sizeof sz);
-      snprintf(info, sizeof info, "markdown \xC2\xB7 %s", sz);
+      snprintf(info, sizeof info, "%s \xC2\xB7 %s", pv->diagram ? "diagram" : "markdown", sz);
       break;
     }
     case ROLLTUI_PREVIEW_HEX: {
@@ -472,6 +606,9 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       break;
     case ROLLTUI_PREVIEW_HEX:
       draw_hex(pv, f, body, text, dim, ambiguous_wide);
+      break;
+    case ROLLTUI_PREVIEW_MARKDOWN:
+      draw_markdown(pv, f, body, styles, ground, ambiguous_wide);
       break;
     default: {
       int row;

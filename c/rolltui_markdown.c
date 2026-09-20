@@ -7,10 +7,12 @@
  * out of an `MD_ATTRIBUTE` into a `std::string`.
  */
 #include "rolltui/c/rolltui_markdown.h"
+#include "rolltui/c/rolltui_mermaid.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/rolltui.h"
@@ -751,6 +753,8 @@ typedef struct Work {
   Range* cell_at; /* (first aux line, count) per column */
   size_t cell_at_cap;
   RolltuiWrapLines* wrap;
+  RolltuiMermaid* mmd; /* a mermaid block's picture, drawn into and reused */
+  RolltuiStr mmd_reason;
   int busy;
 } Work;
 
@@ -779,6 +783,8 @@ static void work_destroy(void* p) {
   rolltui_mem_free(w->col_width);
   rolltui_mem_free(w->cell_at);
   rolltui_wrap_free(w->wrap);
+  rolltui_mermaid_free(w->mmd);
+  rolltui_str_free(&w->mmd_reason);
   rolltui_mem_free(w);
 }
 
@@ -1236,6 +1242,26 @@ static void decide_fold(const RolltuiMdRenderOptions* o, size_t lines, RolltuiMd
 
 static void render_blocks(State* st, size_t first, Ctx* ctx, int tight);
 
+/* The theme's word for each part of a diagram. Every role here stands on the screen's own background, so a diagram
+ * is one ground however many colours it has. */
+static unsigned char mermaid_role(const State* st, unsigned char base, unsigned char cls) {
+  const RolltuiMdRoles* r = &st->opt->roles;
+  switch (cls) {
+    case ROLLTUI_MERMAID_CLASS_NODE: return ROLLTUI_ROLE_ACCENT_1;
+    case ROLLTUI_MERMAID_CLASS_BOX: return r->table_border;
+    case ROLLTUI_MERMAID_CLASS_EDGE: return r->text_muted;
+    case ROLLTUI_MERMAID_CLASS_ARROW: return ROLLTUI_ROLE_ACCENT_1;
+    case ROLLTUI_MERMAID_CLASS_LABEL: return r->emphasis;
+    case ROLLTUI_MERMAID_CLASS_TITLE: return r->heading;
+    case ROLLTUI_MERMAID_CLASS_MUTED: return r->text_muted;
+    case ROLLTUI_MERMAID_CLASS_ACCENT1: return ROLLTUI_ROLE_ACCENT_1;
+    case ROLLTUI_MERMAID_CLASS_ACCENT2: return ROLLTUI_ROLE_ACCENT_2;
+    case ROLLTUI_MERMAID_CLASS_ACCENT3: return ROLLTUI_ROLE_ACCENT_3;
+    case ROLLTUI_MERMAID_CLASS_ACCENT4: return ROLLTUI_ROLE_ACCENT_4;
+    default: return base;
+  }
+}
+
 /* `fold_index` < 0 means this block is NOT numbered and can never fold: the only such block
  * is the pipe-table source a too-narrow table falls back to, which exists because of the
  * WIDTH and so must not be able to own a user's fold toggle (Markdown.hpp). */
@@ -1251,12 +1277,18 @@ static void render_code(State* st, const char* code, size_t code_n, const char* 
   RolltuiMdCodeBlock info;
   size_t cap = 0, src_n, i;
   int first = 1;
+  int mermaid_ok = 0, mermaid_say_why = 0;
   RolltuiWrapOptions wo;
   memset(&wo, 0, sizeof wo);
   wo.ambiguous_wide = (unsigned char)(st->ambiguous != 0);
   wo.tab_width = st->tab_width;
   split_lines(w, code, code_n);
   src_n = w->code_lines_n;
+  if (highlightable && lang_n == 7 && strncasecmp(label, "mermaid", 7) == 0 && ctx->width >= 12) {
+    if (!w->mmd) w->mmd = rolltui_mermaid_new();
+    mermaid_ok = rolltui_mermaid_render(w->mmd, code, code_n, ctx->width, st->ambiguous, &w->mmd_reason);
+    if (!mermaid_ok) mermaid_say_why = 1;
+  }
 
   memset(&info, 0, sizeof info);
   info.header_line = ROLLTUI_MD_NO_LINE;
@@ -1300,6 +1332,55 @@ static void render_code(State* st, const char* code, size_t code_n, const char* 
     return;
   }
 
+  /* A MERMAID BLOCK IS DRAWN AS THE DIAGRAM IT DESCRIBES, in the theme's own words for its parts, with no box of its
+   * own: its boxes are its own. What a selection copies and a search finds is still the source. */
+  if (mermaid_ok) {
+    size_t i2, l2;
+    const size_t dn = rolltui_mermaid_line_count(w->mmd);
+    info.text_begin = text_size(st);
+    for (i2 = 0; i2 < src_n; ++i2) {
+      text_append(st, code + w->code_lines[i2].off, w->code_lines[i2].len);
+      end_logical_line(st, ctx);
+    }
+    info.text_end = text_size(st);
+    for (l2 = 0; l2 < dn; ++l2) {
+      const RolltuiMermaidRun* runs = NULL;
+      const size_t rn = rolltui_mermaid_line(w->mmd, l2, &runs);
+      size_t r2;
+      const size_t before = text_size(st);
+      start_line(st, ctx, first);
+      if (first) finish_chrome_first_line(st, ctx, before);
+      first = 0;
+      for (r2 = 0; r2 < rn; ++r2) emit_span(st, runs[r2].text, runs[r2].n, mermaid_role(st, ctx->base, runs[r2].cls), NULL, 0, NULL, 0);
+      rolltui_md_lines_close(st->lines);
+    }
+    if (numbered) rolltui_md_lines_add_code_block(st->out, &info);
+    return;
+  }
+  if (mermaid_say_why) {
+    /* said in words, above the source it fell back to: a person who wrote a diagram wants to know why it is not one.
+     * Wrapped to the width, because in a narrow view the reason is the number of columns it wanted. */
+    char note[260];
+    const int nn = snprintf(note, sizeof note, "mermaid: %.*s", (int)(w->mmd_reason.n < 200 ? w->mmd_reason.n : 200),
+                            w->mmd_reason.p ? w->mmd_reason.p : "");
+    size_t nl, k2;
+    if (!w->wrap) w->wrap = rolltui_wrap_new();
+    rolltui_wrap(w->wrap, note, (size_t)nn, ctx->width, wo);
+    nl = rolltui_wrap_line_count(w->wrap);
+    for (k2 = 0; k2 < nl; ++k2) {
+      const char* lt;
+      size_t ln, gn2;
+      const RolltuiWrapGrapheme* gs2;
+      int lw2, ind2, hard2;
+      const size_t before = text_size(st);
+      rolltui_wrap_line(w->wrap, k2, &lt, &ln, &gs2, &gn2, &lw2, &ind2, &hard2);
+      start_line(st, ctx, first);
+      if (first) finish_chrome_first_line(st, ctx, before);
+      first = 0;
+      emit_span(st, lt, ln, st->opt->roles.text_muted, NULL, 0, NULL, 0);
+      rolltui_md_lines_close(st->lines);
+    }
+  }
   if (boxed) { /* ┌ ┐ */
     const size_t lab_n = info.foldable ? 0 : label_n;
     size_t before = text_size(st);

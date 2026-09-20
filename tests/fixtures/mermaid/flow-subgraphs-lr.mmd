@@ -1,0 +1,9 @@
+graph LR
+    subgraph Frontend
+        A[Web App] --> B[API Client]
+    end
+    subgraph Backend
+        C[API Server] --> D[(Database)]
+        C --> E[Cache]
+    end
+    B --> C

@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant Alice
+    participant Bob as Robert
+    Alice->>Bob: Hello Bob, how are you?
+    Bob-->>Alice: Great!
+    Alice-)Bob: See you later
+    Bob->>Bob: Think about it
+    Note over Alice,Bob: A typical interaction
+    loop Every minute
+        Alice->>Bob: ping
+        Bob-->>Alice: pong
+    end
+    alt is sick
+        Bob->>Alice: Not so good :(
+    else is well
+        Bob->>Alice: Feeling fresh like a daisy
+    end
+    Alice->>+Bob: activate me
+    Bob-->>-Alice: done
+    Alice-xBob: lost

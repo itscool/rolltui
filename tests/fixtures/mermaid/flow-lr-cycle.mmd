@@ -1,0 +1,5 @@
+flowchart LR
+  A --> B & C
+  B & C --> D
+  D -->|retry| A
+  D --> E[Very long label for the last node in the chain]

@@ -151,7 +151,7 @@ int main() {
   // is a file with no reason to be — the hollow-header check below enforces that — and a
   // module whose steps move out of the definition earns a header back by the same rule.
   // The count is recorded so that a header appearing or vanishing is a deliberate act.
-  const std::size_t kInternalHeaders = 39; /* +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
+  const std::size_t kInternalHeaders = 40; /* +rolltui_mermaid.h; +rolltui_preview.h; +rolltui_termfacts.h; +rolltui_hints.h; +rolltui_widget_picker.h; +rolltui_keys_editor.h; +rolltui_theme_editor.h; +rolltui_context.h; -rolltui_app_profile.h */
   check(headers.size() == kInternalHeaders, "the internal header directory holds the recorded " + std::to_string(kInternalHeaders) + " headers [" + std::to_string(headers.size()) + "]");
   {
     std::vector<std::string> hollow;
