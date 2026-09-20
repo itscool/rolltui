@@ -436,7 +436,7 @@ static int hex_bytes_that_fit(int cells, int od) {
 
 static size_t total_rows(const RolltuiPreview* pv) {
   switch (pv->kind) {
-    case ROLLTUI_PREVIEW_TEXT: return pv->line_n;
+    case ROLLTUI_PREVIEW_TEXT: return pv->line_n + (pv->truncated ? 1 : 0); /* the row that says the file goes on */
     case ROLLTUI_PREVIEW_MARKDOWN: return pv->md_lines && pv->md_width ? rolltui_md_lines_count(pv->md_lines) : 0;
     case ROLLTUI_PREVIEW_HEX: {
       const size_t per = (size_t)(pv->hex_per_row > 0 ? pv->hex_per_row : 16);
@@ -453,10 +453,16 @@ static void clamp_top(RolltuiPreview* pv) {
   if (pv->top > max_top) pv->top = max_top;
 }
 
+/* Scrolled to the end: the last row is in view and the first is not (a file that fits whole is at its top, not its end). */
+static int pinned_to_end(const RolltuiPreview* pv) {
+  return pv->top > 0 && pv->rows_vis > 0 && pv->top + pv->rows_vis >= total_rows(pv);
+}
+
 /* THE ROWS ON SCREEN, RE-DERIVED EVERY FRAME from the width and the height this frame has: how many bytes fit a row, where
- * the top is (the same BYTE stays at the top when the row's length changes, not the same row number), and that the top
- * leaves no blank rows below the end. A resize is nothing more than the next frame. */
-static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, RolltuiStyle text, RolltuiStyle dim, int aw) {
+ * the top is (the same BYTE stays at the top when the row's length changes, not the same row number; at the end, the end
+ * stays the bottom), and that the top leaves no blank rows below the end. A resize is nothing more than the next frame. */
+static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, RolltuiStyle text, RolltuiStyle dim, int aw,
+                     int pinned) {
   const int od = hex_digits_for(pv->size);
   const int per = hex_bytes_that_fit(body.w, od);
   const size_t old_per = (size_t)(pv->hex_per_row > 0 ? pv->hex_per_row : 16);
@@ -469,6 +475,7 @@ static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, Roll
     pv->hex_per_row = per;
   }
   pv->rows_vis = (size_t)body.h;
+  if (pinned) pv->top = total_rows(pv);
   clamp_top(pv);
   first_byte = pv->top * (size_t)per;
   /* one read for the whole window, however tall it is */
@@ -561,24 +568,27 @@ static void render_md(RolltuiPreview* pv, int width, int aw) {
 /* The document, laid out at this width and drawn line by line in the theme's markdown roles. A span whose role
  * states no background stands on the ground under it, as the text of every window now does. */
 static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, const RolltuiStyle* styles,
-                          RolltuiStyleColor ground, int aw) {
+                          RolltuiStyleColor ground, int aw, int pinned) {
   int row;
   size_t n;
   if (!pv->md_doc) return;
   if (pv->md_width != body.w || pv->md_aw != aw) {
-    /* A NEW WIDTH LAYS THE DOCUMENT OUT AGAIN, and the same line number is no longer the same words: the top stays at the
-     * text it was at (or, over a picture that has no text, at the same fraction of the way down) */
+    /* A NEW WIDTH LAYS THE DOCUMENT OUT AGAIN, and the same line number is no longer the same words: a view in the
+     * middle keeps the text it had at the top (over a picture that has no text, the same fraction of the way down);
+     * the start of the document stays the start and the end stays the end */
     const int had = pv->md_lines && pv->md_width != 0;
-    const size_t anchor = had ? md_source_at(pv, pv->top) : ROLLTUI_MD_NO_SOURCE;
+    const int keep_words = had && !pinned && pv->top > 0;
+    const size_t anchor = keep_words ? md_source_at(pv, pv->top) : ROLLTUI_MD_NO_SOURCE;
     const size_t old_n = had ? rolltui_md_lines_count(pv->md_lines) : 0;
     render_md(pv, body.w, aw);
-    if (had) {
+    if (keep_words) {
       const size_t new_n = rolltui_md_lines_count(pv->md_lines);
       if (anchor != ROLLTUI_MD_NO_SOURCE) pv->top = md_line_for(pv, anchor);
       else if (old_n > 0) pv->top = (size_t)((double)pv->top * (double)new_n / (double)old_n);
     }
   }
   n = rolltui_md_lines_count(pv->md_lines);
+  if (pinned) pv->top = n;
   clamp_top(pv);
   for (row = 0; row < body.h; ++row) {
     const size_t li = pv->top + (size_t)row;
@@ -613,7 +623,7 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
   size_t name_n = 0;
   const char* name;
   char info[96];
-  int name_w, info_w;
+  int name_w, info_w, pinned;
   if (!pv || pv->kind == ROLLTUI_PREVIEW_NONE || r.w < 6 || r.h < 2) return;
   text = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
   dim = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT_MUTED);
@@ -672,6 +682,7 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
   body.w = r.w - 2;
   body.h = r.h - 1;
   if (body.w <= 0 || body.h <= 0) return;
+  pinned = pinned_to_end(pv); /* judged by the size the last frame had, before this one's is applied */
   pv->rows_vis = (size_t)body.h;
 
   switch (pv->kind) {
@@ -682,33 +693,32 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
       put_row(pv, f, body.x, body.y, pv->message.p ? pv->message.p : "", pv->message.n, err, err, body.w, ambiguous_wide);
       break;
     case ROLLTUI_PREVIEW_HEX:
-      draw_hex(pv, f, body, text, dim, ambiguous_wide);
+      draw_hex(pv, f, body, text, dim, ambiguous_wide, pinned);
       break;
     case ROLLTUI_PREVIEW_MARKDOWN:
-      draw_markdown(pv, f, body, styles, ground, ambiguous_wide);
+      draw_markdown(pv, f, body, styles, ground, ambiguous_wide, pinned);
       break;
     default: {
       int row;
+      if (pinned) pv->top = total_rows(pv);
       clamp_top(pv);
       for (row = 0; row < body.h; ++row) {
         const size_t li = pv->top + (size_t)row;
         size_t from, to;
+        if (li == pv->line_n && pv->truncated) {
+          /* the last row of a truncated file says that it stops here, and that the file does not */
+          char note[64], sz[24];
+          human_size(pv->size, sz, sizeof sz);
+          snprintf(note, sizeof note, "%s  first %d KB of %s", ELLIPSIS, ROLLTUI_PREVIEW_TEXT_LIMIT / 1024, sz);
+          put_row(pv, f, body.x, body.y + row, note, strlen(note), dim, dim, body.w, ambiguous_wide);
+          break;
+        }
         if (li >= pv->line_n) break;
         from = pv->line_off[li];
         to = li + 1 < pv->line_n ? pv->line_off[li + 1] - 1 : pv->body.n;
         if (to > from && pv->body.p[to - 1] == '\n') --to;
         if (to > from && pv->body.p[to - 1] == '\r') --to;
         put_row(pv, f, body.x, body.y + row, pv->body.p + from, to - from, text, dim, body.w, ambiguous_wide);
-      }
-      if (pv->truncated && pv->top + (size_t)body.h >= pv->line_n && body.h > 0) {
-        /* the last thing a truncated file shows is that it stops here, and that the file does not */
-        const int last = (int)(pv->line_n > pv->top ? pv->line_n - pv->top : 0);
-        if (last < body.h) {
-          char note[64], sz[24];
-          human_size(pv->size, sz, sizeof sz);
-          snprintf(note, sizeof note, "%s  first %d KB of %s", ELLIPSIS, ROLLTUI_PREVIEW_TEXT_LIMIT / 1024, sz);
-          put_row(pv, f, body.x, body.y + last, note, strlen(note), dim, dim, body.w, ambiguous_wide);
-        }
       }
       break;
     }

@@ -513,6 +513,12 @@ int main() {
             "the window's scrollbar reports the FILE's rows [" + std::to_string(ex.total) + "]");
       rolltui_picker_scroll_to(p, 500);
       check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 500, "…and dragging it scrolls the file");
+      // the last row of a truncated file is the note that it stops there: reachable, not squeezed out by the clamp
+      check(!has(frame_of(110, 12), "first 256 KB of "), "a truncated file's note is at its end, not at the top");
+      rolltui_picker_scroll_to(p, 100000000);
+      const std::string end = frame_of(110, 12);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(end, "first 256 KB of "),
+            "…and scrolled to the end the last row says the file goes on");
     }
     // A RESIZE IS THE NEXT FRAME: the hex view works out again how many bytes fit a row and keeps the same BYTE at the top,
     // leaves no blank rows below the end when the window grows taller, and fills a window taller than any it was tested in;
@@ -547,6 +553,23 @@ int main() {
       // no room at all is still a frame
       t = frame_of(30, 6);
       check(has(t, "|"), "hex: in a pane too narrow for eight bytes it is fewer to a row, not nothing");
+      // AT THE END, THE END STAYS: a shorter window, a narrower one, a taller one — the last row is the bottom one each time
+      (void)frame_of(200, 14);
+      rolltui_picker_scroll_to(p, 100000);
+      (void)frame_of(200, 14);
+      t = frame_of(200, 6);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(t, "0bb0  "),
+            "hex: at the end, a SHORTER window keeps the end at the bottom (the top moves down) [first " + std::to_string(ex.first) + " of " + std::to_string(ex.total) + "]");
+      t = frame_of(80, 6);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total, "…a narrower pane, with fewer bytes to a row, too");
+      t = frame_of(200, 14);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(t, "0bb0  "), "…and back again");
+      // NEITHER CAN BE PINNED when the whole file fits: it sits at its top, and a window that shrinks again leaves it there
+      t = frame_of(200, 200);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 0 && ex.visible >= ex.total && has(t, "0000  "),
+            "hex: in a window that holds the whole file it starts at the top");
+      t = frame_of(200, 14);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 0 && has(t, "0000  "), "…and shrunk again it is still at the top, not thrown to the end");
     }
     {
       std::string doc;
@@ -579,7 +602,35 @@ int main() {
       check(has(top_row(t), "Paragraph 30:"), "…narrowed until every paragraph wraps twice more, it is still what is at the top [" + top_row(t).substr(0, 60) + "]");
       t = frame_of(160, 20);
       check(has(top_row(t), "Paragraph 30:"), "…and widened again");
-      (void)ex;
+      // AT THE END the end stays: laid out again at another width, or in a shorter window, the last paragraph is still the bottom
+      rolltui_picker_scroll_to(p, 100000);
+      t = frame_of(160, 20);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(t, "Paragraph 59:"),
+            "markdown: scrolled to the end, the last paragraph is on screen");
+      t = frame_of(90, 20);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(t, "Paragraph 59:") && !has(top_row(t), "Paragraph 30:"),
+            "…narrowed, the document is laid out again and the end is still the bottom, not the old words at the top");
+      t = frame_of(90, 12);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(t, "Paragraph 59:"), "…and in a shorter window too");
+      // NEITHER CAN BE PINNED when the whole document fits: the top, and it stays the top when the window shrinks again
+      t = frame_of(160, 300);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 0 && ex.visible >= ex.total && has(top_row(t), "Paragraph 0:"),
+            "markdown: in a window that holds the whole document it starts at the top");
+      t = frame_of(160, 20);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 0 && has(top_row(t), "Paragraph 0:"), "…and shrunk again it is still at the top");
+    }
+    // THE START STAYS THE START: a document that opens on a diagram (a picture has no text to anchor to) keeps the diagram at the
+    // top when the width changes, instead of jumping to the first text under it
+    {
+      std::string doc = "```mermaid\ngraph TD\n  A[Start] --> B[End]\n```\n\n";
+      for (int i = 0; i < 30; ++i) doc += "Paragraph " + std::to_string(i) + " of the text under the picture.\n\n";
+      write_file(pv / "pic.md", doc);
+      go_file("pic.md");
+      (void)frame_of(110, 14);
+      std::string t = frame_of(110, 14);
+      check(has(t, "Start"), "a document that opens on a diagram shows it");
+      t = frame_of(70, 14);
+      check(has(t, "Start") && has(t, "\xE2\x94\x8C"), "…still at its top when the width lays it out again");
     }
     // NOTHING IS LEFT BEHIND by looking at files: a picker that previewed text, a diagram, hex and an error is freed whole
     {
