@@ -1,0 +1,13 @@
+classDiagram
+    direction LR
+    class Shape~T~ {
+        <<interface>>
+        +area() double
+        +draw(canvas)
+    }
+    Shape <|.. Circle
+    Shape <|.. Square
+    Circle : +double radius
+    Square : +double side
+    Square "1" o-- "4" Edge : has
+    Circle --> Point : centre

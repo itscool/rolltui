@@ -342,12 +342,14 @@ static int first_word_is(const Span* l, const char* w) {
 
 typedef struct Source {
   Span* lines;
+  int* indent; /* the width of the whitespace each line began with (a tab is four) */
   size_t n, cap;
   RolltuiStr title; /* from a `---` front matter block or a `title` line */
 } Source;
 
 static void source_release(Source* s) {
   rolltui_mem_free(s->lines);
+  rolltui_mem_free(s->indent);
   rolltui_str_free(&s->title);
   memset(s, 0, sizeof *s);
 }
@@ -356,7 +358,8 @@ static void source_release(Source* s) {
  * configure mermaid rather than say what to draw (a `title:` in the front matter is kept). */
 static int source_read(Source* s, const char* src, size_t n) {
   size_t i = 0;
-  int in_front = 0, seen_content = 0;
+  int in_front = 0, seen_content = 0, lead = 0;
+  size_t indent_cap = 0;
   memset(s, 0, sizeof *s);
   while (i <= n) {
     size_t e = i;
@@ -365,6 +368,11 @@ static int source_read(Source* s, const char* src, size_t n) {
     line.p = src + i;
     line.n = e - i;
     i = e + 1;
+    {
+      size_t k = 0;
+      lead = 0;
+      while (k < line.n && (line.p[k] == ' ' || line.p[k] == '\t')) { lead += line.p[k] == '\t' ? 4 : 1; ++k; }
+    }
     trim(&line);
     if (!seen_content && !in_front && line.n == 3 && memcmp(line.p, "---", 3) == 0) { in_front = 1; continue; }
     if (in_front) {
@@ -382,6 +390,8 @@ static int source_read(Source* s, const char* src, size_t n) {
     seen_content = 1;
     if (s->n >= MAX_LINES) return 0;
     s->lines = (Span*)rolltui_grow(s->lines, &s->cap, s->n + 1, sizeof *s->lines);
+    s->indent = (int*)rolltui_grow(s->indent, &indent_cap, s->n + 1, sizeof *s->indent);
+    s->indent[s->n] = lead;
     s->lines[s->n++] = line;
   }
   return 1;
@@ -441,28 +451,6 @@ static void clean_label(Span in, RolltuiStr* out) {
     if ((unsigned char)c < 0x20 && c != '\n') { ++i; continue; } /* a control character is not a label */
     rolltui_str_append(out, &c, 1);
     ++i;
-  }
-}
-
-/* The lines of a cleaned label, each as a Span into `s`. */
-typedef struct LabelLines {
-  Span* v;
-  size_t n, cap;
-} LabelLines;
-
-static void label_lines(const RolltuiStr* s, LabelLines* out) {
-  size_t i = 0;
-  out->n = 0;
-  while (i <= s->n) {
-    size_t e = i;
-    Span l;
-    while (e < s->n && s->p[e] != '\n') ++e;
-    l.p = s->p + i;
-    l.n = e - i;
-    trim(&l);
-    out->v = (Span*)rolltui_grow(out->v, &out->cap, out->n + 1, sizeof *out->v);
-    out->v[out->n++] = l;
-    i = e + 1;
   }
 }
 
@@ -729,7 +717,7 @@ static int seq_parse(Seq* s, const Source* src, size_t first, int* autonumber, R
           break;
         }
       trim(&id);
-      if (id.n && id.p[0] == '"') { Span q = id; clean_label(q, &s->np ? &s->parts[0].label : &s->parts[0].label); }
+      if (id.n >= 2 && id.p[0] == '"' && id.p[id.n - 1] == '"') { ++id.p; id.n -= 2; }
       if (id.n == 0) continue;
       if (seq_part(s, id, have_label ? &label : NULL) < 0) { reason_set(reason, "a sequence diagram with more than 40 participants is not drawn"); return 0; }
       continue;
@@ -1400,6 +1388,7 @@ typedef struct GEdge {
   int parallel_n;
   int* chain;         /* the nodes it passes through, in layer order (real ends and its stand-ins) */
   size_t chain_n;
+  RolltuiStr end_a, end_b; /* small text at its first end and its last (a cardinality), in the order it was written */
   int pa, pb;         /* where it attaches across the flow at its first node and at its last */
   int pa_single, pb_single; /* that end is the only kind on its side, so it can move to meet the other */
 } GEdge;
@@ -1439,6 +1428,8 @@ static void graph_release(Graph* g) {
   }
   for (i = 0; i < g->ne; ++i) {
     rolltui_str_free(&g->e[i].label);
+    rolltui_str_free(&g->e[i].end_a);
+    rolltui_str_free(&g->e[i].end_b);
     rolltui_mem_free(g->e[i].chain);
   }
   for (i = 0; i < g->ns; ++i) {
@@ -2032,6 +2023,9 @@ static void node_glyphs(const RolltuiMermaid* m, int shape, Box* b) {
   }
 }
 
+/* A record's lines: a line that is the single byte 0x01 is a rule, not text. */
+static int is_rule_line(const char* s, size_t n) { return n == 1 && (unsigned char)s[0] == 1; }
+
 /* The node's shape and its text, at its real position. */
 static void node_draw(RolltuiMermaid* m, const GNode* n) {
   const int x = n->x, y = n->y, w = n->w, h = n->h;
@@ -2094,7 +2088,14 @@ static void node_draw(RolltuiMermaid* m, const GNode* n) {
     while (i <= n->detail.n) {
       size_t e = i;
       while (e < n->detail.n && n->detail.p[e] != '\n') ++e;
-      put_text(m, x + 2, row++, n->detail.p + i, e - i, ROLLTUI_MERMAID_CLASS_TEXT);
+      if (is_rule_line(n->detail.p + i, e - i)) {
+        put_glyph(&m->g, x, row, m->ascii ? "+" : "\xE2\x94\x9C", ROLLTUI_MERMAID_CLASS_NODE);
+        put_glyph(&m->g, x + w - 1, row, m->ascii ? "+" : "\xE2\x94\xA4", ROLLTUI_MERMAID_CLASS_NODE);
+        for (c = 1; c < w - 1; ++c) put_glyph(&m->g, x + c, row, b.hz, ROLLTUI_MERMAID_CLASS_NODE);
+        ++row;
+      } else {
+        put_text(m, x + 2, row++, n->detail.p + i, e - i, ROLLTUI_MERMAID_CLASS_TEXT);
+      }
       i = e + 1;
     }
   }
@@ -2142,8 +2143,6 @@ static void lay_release(Lay* L) {
   rolltui_mem_free(L->xafter);
   memset(L, 0, sizeof *L);
 }
-
-static int node_is_real(const GNode* n) { return !n->dummy; }
 
 /* the size a node claims across the flow (its shape, and a self-loop's room beside it) */
 static int cs_res(const Lay* L, const GNode* n) { return n->cs + (L->lr ? 0 : n->halo); }
@@ -2596,10 +2595,36 @@ static int ports_needed(const Graph* g, size_t v, int side) {
     if (ed->style == ES_INVISIBLE || ed->from == ed->to) continue;
     if (!((side == 0 && start == (int)v) || (side == 1 && end == (int)v))) continue;
     k = end_key(ed, e, side);
-    for (nk = nk; seen < nk; ++seen) if (keys[seen] == k) break;
+    for (; seen < nk; ++seen) if (keys[seen] == k) break;
     if (seen == nk && nk < 64) keys[nk++] = k;
   }
   return nk;
+}
+
+/* Whether an edge may leave a node from `offset` cells along its side: not from its corners, and not from a record's
+ * rules, which are already a junction. Only a vertical side (the flow runs along x) has rows to choose among. */
+static int port_allowed(const RolltuiMermaid* m, const GNode* n, int offset, int lr) {
+  (void)m;
+  if (!lr || n->shape != SH_RECORD) return 1;
+  {
+    int title_lines = 1, k;
+    const RolltuiStr* t = n->label.n ? &n->label : &n->id;
+    size_t i;
+    for (i = 0; i < t->n; ++i) if (t->p[i] == '\n') ++title_lines;
+    if (offset <= 0 || offset >= n->h - 1) return 0;
+    if (n->detail.n && offset == title_lines + 1) return 0;
+    /* a rule inside the lines */
+    k = title_lines + 2;
+    i = 0;
+    while (i <= n->detail.n) {
+      size_t e = i;
+      while (e < n->detail.n && n->detail.p[e] != '\n') ++e;
+      if (is_rule_line(n->detail.p + i, e - i) && offset == k) return 0;
+      ++k;
+      i = e + 1;
+    }
+  }
+  return 1;
 }
 
 /* THE PORTS. Every kind of end at a node's side gets a cell of its own along it, in the order that keeps them from
@@ -2647,6 +2672,14 @@ static void assign_ports(Lay* L) {
         at = nk == 1 ? n->cpos + n->cs / 2 : lo + (int)(((2 * (size_t)idx + 1) * (size_t)(hi - lo + 1)) / (2 * nk));
         if (at > hi) at = hi;
         if (at < lo) at = lo;
+        {
+          /* on a record's side, the nearest row that is not a rule */
+          int d;
+          for (d = 0; d <= n->cs && !port_allowed(NULL, n, at - n->cpos, L->lr); ++d) {
+            if (at + d <= hi && port_allowed(NULL, n, at + d - n->cpos, L->lr)) { at += d; break; }
+            if (at - d >= lo && port_allowed(NULL, n, at - d - n->cpos, L->lr)) { at -= d; break; }
+          }
+        }
         if (side == 0) { g->e[reqs[i].edge].pa = at; g->e[reqs[i].edge].pa_single = k == 1; }
         else { g->e[reqs[i].edge].pb = at; g->e[reqs[i].edge].pb_single = k == 1; }
       }
@@ -2674,14 +2707,16 @@ static void assign_ports(Lay* L) {
       ob = ed->chain_n > 2 ? g->n[ed->chain[ed->chain_n - 2]].cpos : ed->pa;
       if (ed->chain_n == 2 && ed->pa_single && ed->pb_single) {
         const int lo = imax(alo, blo), hi = imin(ahi, bhi);
-        if (lo <= hi) { ed->pa = ed->pb = (lo + hi) / 2; }
+        int c;
+        for (c = (lo + hi) / 2; lo <= hi && c >= lo && c <= hi; ++c)
+          if (port_allowed(NULL, a, c - a->cpos, L->lr) && port_allowed(NULL, b, c - b->cpos, L->lr)) { ed->pa = ed->pb = c; break; }
       } else if (ed->chain_n == 2 && ed->pb_single && !ed->pa_single) {
-        if (ed->pa >= blo && ed->pa <= bhi) ed->pb = ed->pa;
+        if (ed->pa >= blo && ed->pa <= bhi && port_allowed(NULL, b, ed->pa - b->cpos, L->lr)) ed->pb = ed->pa;
       } else if (ed->chain_n == 2 && ed->pa_single && !ed->pb_single) {
-        if (ed->pb >= alo && ed->pb <= ahi) ed->pa = ed->pb;
+        if (ed->pb >= alo && ed->pb <= ahi && port_allowed(NULL, a, ed->pb - a->cpos, L->lr)) ed->pa = ed->pb;
       } else if (ed->chain_n > 2) {
-        if (ed->pa_single && oa >= alo && oa <= ahi) ed->pa = oa;
-        if (ed->pb_single && ob >= blo && ob <= bhi) ed->pb = ob;
+        if (ed->pa_single && oa >= alo && oa <= ahi && port_allowed(NULL, a, oa - a->cpos, L->lr)) ed->pa = oa;
+        if (ed->pb_single && ob >= blo && ob <= bhi && port_allowed(NULL, b, ob - b->cpos, L->lr)) ed->pb = ob;
       }
     }
   }
@@ -3385,6 +3420,34 @@ static void place_edge_label(RolltuiMermaid* m, const int* px, const int* py, si
   }
 }
 
+/* Small text at one end of an edge — a cardinality — beside the line where it meets its node. */
+static void place_end_label(RolltuiMermaid* m, const int* px, const int* py, size_t np, int at_end, const RolltuiStr* label) {
+  const int i = at_end ? (int)np - 1 : 0, j = at_end ? (int)np - 2 : 1;
+  const int x = px[i], y = py[i];
+  const int lw = label_extent(m, label, NULL);
+  const int vertical = px[i] == px[j];
+  int t;
+  if (lw == 0) return;
+  if (vertical) {
+    const int step = py[j] > y ? 1 : -1;
+    for (t = 0; t < 3; ++t) {
+      const int yy = y + step * t;
+      if (label_free(m, x + 2, yy, 1, lw)) { put_text(m, x + 2, yy, label->p, label->n, ROLLTUI_MERMAID_CLASS_LABEL); return; }
+      if (label_free(m, x - 1 - lw, yy, 1, lw)) { put_text(m, x - 1 - lw, yy, label->p, label->n, ROLLTUI_MERMAID_CLASS_LABEL); return; }
+    }
+  } else {
+    const int step = px[j] > x ? 1 : -1;
+    int margin;
+    for (margin = 1; margin >= 0; --margin)
+      for (t = 1; t < 5; ++t) {
+        const int xx = x + step * t;
+        const int left = step > 0 ? xx : xx - lw + 1;
+        if (label_free(m, left - margin, y - 1, 1, lw + 2 * margin)) { put_text(m, left, y - 1, label->p, label->n, ROLLTUI_MERMAID_CLASS_LABEL); return; }
+        if (label_free(m, left - margin, y + 1, 1, lw + 2 * margin)) { put_text(m, left, y + 1, label->p, label->n, ROLLTUI_MERMAID_CLASS_LABEL); return; }
+      }
+  }
+}
+
 static void draw_frames(RolltuiMermaid* m, Lay* L) {
   Graph* g = L->g;
   Frame* fr;
@@ -3494,6 +3557,8 @@ static void draw_edges(RolltuiMermaid* m, Lay* L, Gap* gaps) {
       else join_border(m, px[np - 1] + edx, py[np - 1] + edy, -edx, -edy);
     }
     if (ed->label.n) place_edge_label(m, px, py, np, &ed->label, L->lr);
+    if ((ed->rev ? ed->end_b : ed->end_a).n) place_end_label(m, px, py, np, 0, ed->rev ? &ed->end_b : &ed->end_a);
+    if ((ed->rev ? ed->end_a : ed->end_b).n) place_end_label(m, px, py, np, 1, ed->rev ? &ed->end_a : &ed->end_b);
     rolltui_mem_free(mp);
     rolltui_mem_free(cp);
   }
@@ -3805,6 +3870,1127 @@ static int state_parse(Graph* g, const Source* src, size_t first, Span head, Rol
 }
 
 /* ============================================================================================
+ * CLASS DIAGRAMS and ER DIAGRAMS: records joined by lines
+ * ============================================================================================ */
+
+typedef struct Members {
+  RolltuiStr attrs, methods, annot;
+} Members;
+
+static void members_release(Members* v, size_t n) {
+  size_t i;
+  for (i = 0; i < n; ++i) {
+    rolltui_str_free(&v[i].attrs);
+    rolltui_str_free(&v[i].methods);
+    rolltui_str_free(&v[i].annot);
+  }
+  rolltui_mem_free(v);
+}
+
+static void add_line(RolltuiStr* s, const RolltuiStr* line) {
+  if (s->n) rolltui_str_append(s, "\n", 1);
+  rolltui_str_append_str(s, line);
+}
+
+/* `Shape~T~` is `Shape<T>` */
+static void generic_text(Span in, RolltuiStr* out) {
+  RolltuiStr clean;
+  size_t i;
+  int open = 0;
+  memset(&clean, 0, sizeof clean);
+  rolltui_str_clear(out);
+  clean_label(in, &clean);
+  for (i = 0; i < clean.n; ++i) {
+    if (clean.p[i] == '~') { rolltui_str_append(out, open ? ">" : "<", 1); open = !open; }
+    else rolltui_str_append(out, clean.p + i, 1);
+  }
+  rolltui_str_free(&clean);
+}
+
+typedef struct ClassParse {
+  Graph* g;
+  Members* mem;
+  size_t mem_cap;
+  RolltuiStr* reason;
+} ClassParse;
+
+static int class_named(ClassParse* cp, Span name) {
+  Span id = name;
+  int at;
+  size_t k = 0;
+  trim(&id);
+  if (id.n >= 2 && id.p[0] == '"' && id.p[id.n - 1] == '"') { ++id.p; id.n -= 2; }
+  /* a generic's parameter is part of how it is written, not of what it is called */
+  while (k < id.n && id.p[k] != '~' && id.p[k] != '[' && id.p[k] != ' ') ++k;
+  {
+    Span bare = {id.p, k};
+    if (bare.n == 0) return -1;
+    at = graph_find(cp->g, bare);
+    if (at >= 0) return at;
+    at = graph_node(cp->g, bare, -1);
+    if (at < 0) { reason_set(cp->reason, "a diagram with more than 240 classes is not drawn"); return -1; }
+    cp->g->n[at].shape = SH_RECORD;
+    cp->mem = (Members*)rolltui_grow(cp->mem, &cp->mem_cap, (size_t)at + 1, sizeof *cp->mem);
+    memset(&cp->mem[at], 0, sizeof cp->mem[at]);
+    if (k < id.n) {
+      Span rest = {id.p + k, id.n - k};
+      RolltuiStr shown;
+      memset(&shown, 0, sizeof shown);
+      if (rest.p[0] == '~') {
+        Span gen = {id.p, id.n};
+        generic_text(gen, &shown);
+        rolltui_str_set(&cp->g->n[at].label, shown.p ? shown.p : "", shown.n);
+      } else if (rest.p[0] == '[') {
+        Span lab = {rest.p + 1, rest.n > 1 ? rest.n - 1 : 0};
+        if (lab.n && lab.p[lab.n - 1] == ']') --lab.n;
+        clean_label(lab, &cp->g->n[at].label);
+      }
+      rolltui_str_free(&shown);
+    }
+    return at;
+  }
+}
+
+static void class_member(ClassParse* cp, int at, Span line) {
+  RolltuiStr clean;
+  memset(&clean, 0, sizeof clean);
+  trim(&line);
+  if (line.n == 0) return;
+  if (span_starts(&line, "<<")) {
+    size_t e = find_close(line, ">>");
+    if (e < line.n) {
+      rolltui_str_set(&cp->mem[at].annot, line.p, e + 2); /* kept as written: `<<interface>>` is not a tag */
+      return;
+    }
+  }
+  clean_label(line, &clean);
+  add_line(memchr(line.p, '(', line.n) ? &cp->mem[at].methods : &cp->mem[at].attrs, &clean);
+  rolltui_str_free(&clean);
+}
+
+/* the relation operators, longest first: what is at each end, and whether the line is dotted */
+static size_t class_operator(Span s, size_t at, int* dotted, int* hf, int* ht) {
+  static const struct { const char* const op; int dotted; int hf; int ht; } ops[] = {
+      {"<|--", 0, HEAD_TRIANGLE, 0}, {"--|>", 0, 0, HEAD_TRIANGLE}, {"<|..", 1, HEAD_TRIANGLE, 0}, {"..|>", 1, 0, HEAD_TRIANGLE},
+      {"*--", 0, HEAD_DIAMOND, 0},   {"--*", 0, 0, HEAD_DIAMOND},   {"o--", 0, HEAD_DIAMOND_OPEN, 0}, {"--o", 0, 0, HEAD_DIAMOND_OPEN},
+      {"<--", 0, HEAD_ARROW, 0},     {"-->", 0, 0, HEAD_ARROW},     {"<..", 1, HEAD_ARROW, 0},        {"..>", 1, 0, HEAD_ARROW},
+      {"--", 0, 0, 0},               {"..", 1, 0, 0}};
+  size_t k;
+  for (k = 0; k < sizeof ops / sizeof *ops; ++k) {
+    const size_t n = strlen(ops[k].op);
+    if (s.n - at >= n && memcmp(s.p + at, ops[k].op, n) == 0) {
+      /* `o--` is an operator only after a space or a quote: `foo--bar` is not an aggregation */
+      if (ops[k].op[0] == 'o' && at > 0 && s.p[at - 1] != ' ' && s.p[at - 1] != '"') continue;
+      *dotted = ops[k].dotted;
+      *hf = ops[k].hf;
+      *ht = ops[k].ht;
+      return n;
+    }
+  }
+  return 0;
+}
+
+static int class_parse(Graph* g, const Source* src, size_t first, RolltuiStr* reason) {
+  ClassParse cp;
+  size_t i, k;
+  int in_body = -1;
+  int ok = 1;
+  memset(&cp, 0, sizeof cp);
+  cp.g = g;
+  cp.reason = reason;
+  g->dir = DIR_TD;
+  for (i = first; i < src->n && ok; ++i) {
+    Span l = src->lines[i];
+    if (in_body >= 0) {
+      if (l.n && l.p[0] == '}') { in_body = -1; continue; }
+      class_member(&cp, in_body, l);
+      continue;
+    }
+    if (first_word_is(&l, "direction")) {
+      Span w = {l.p + 9, l.n - 9};
+      const int d = (trim(&w), dir_from_word(w));
+      if (d >= 0) g->dir = d;
+      continue;
+    }
+    if (first_word_is(&l, "class") && !(l.n > 5 && memchr(l.p, '-', l.n) && 0)) {
+      Span r = {l.p + 5, l.n - 5};
+      int body = 0, at;
+      trim(&r);
+      if (r.n && r.p[r.n - 1] == '{') { body = 1; --r.n; trim(&r); }
+      at = class_named(&cp, r);
+      if (at < 0) { ok = 0; break; }
+      if (body) in_body = at;
+      continue;
+    }
+    if (first_word_is(&l, "namespace") || first_word_is(&l, "note") || first_word_is(&l, "click") || first_word_is(&l, "link") ||
+        first_word_is(&l, "callback") || first_word_is(&l, "style") || first_word_is(&l, "classDef") || first_word_is(&l, "cssClass") ||
+        first_word_is(&l, "accTitle") || first_word_is(&l, "accDescr") || (l.n == 1 && l.p[0] == '}'))
+      continue;
+    if (span_starts(&l, "<<")) {
+      size_t e = find_close(l, ">>");
+      if (e < l.n) {
+        Span tag = {l.p, e + 2}, who = {l.p + e + 2, l.n - e - 2};
+        int at;
+        trim(&who);
+        at = class_named(&cp, who);
+        if (at >= 0) rolltui_str_set(&cp.mem[at].annot, tag.p, tag.n);
+        continue;
+      }
+    }
+    {
+      /* a relation, or `Name : a member` */
+      size_t at = 0, opn = 0;
+      int dotted = 0, hf = 0, ht = 0;
+      int quoted = 0;
+      for (at = 0; at < l.n; ++at) {
+        if (l.p[at] == '"') quoted = !quoted;
+        if (quoted) continue;
+        opn = class_operator(l, at, &dotted, &hf, &ht);
+        if (opn) break;
+      }
+      if (opn) {
+        Span a = {l.p, at}, b = {l.p + at + opn, l.n - at - opn}, label = {NULL, 0};
+        RolltuiStr card_a, card_b;
+        size_t colon = 0;
+        int from, to, tmp;
+        memset(&card_a, 0, sizeof card_a);
+        memset(&card_b, 0, sizeof card_b);
+        {
+          size_t q = 0;
+          int inq = 0;
+          for (q = 0; q < b.n; ++q) { if (b.p[q] == '"') inq = !inq; if (!inq && b.p[q] == ':') { colon = q; break; } }
+          if (q >= b.n) colon = b.n;
+        }
+        if (colon < b.n) { label.p = b.p + colon + 1; label.n = b.n - colon - 1; b.n = colon; }
+        trim(&a);
+        trim(&b);
+        /* a cardinality in quotes closes the left name and opens the right */
+        if (a.n && a.p[a.n - 1] == '"') {
+          size_t q = a.n - 1;
+          while (q > 0 && a.p[q - 1] != '"') --q;
+          if (q > 0) { Span c = {a.p + q, a.n - q - 1}; clean_label(c, &card_a); a.n = q - 1; trim(&a); }
+        }
+        if (b.n && b.p[0] == '"') {
+          size_t q = 1;
+          while (q < b.n && b.p[q] != '"') ++q;
+          if (q < b.n) { Span c = {b.p + 1, q - 1}; clean_label(c, &card_b); b.p += q + 1; b.n -= q + 1; trim(&b); }
+        }
+        from = class_named(&cp, a);
+        to = class_named(&cp, b);
+        if (from < 0 || to < 0) { rolltui_str_free(&card_a); rolltui_str_free(&card_b); if (!(reason && reason->n)) reason_set(reason, "a relation needs a class at each end"); ok = 0; break; }
+        if (ht == HEAD_TRIANGLE || ht == HEAD_DIAMOND || ht == HEAD_DIAMOND_OPEN) {
+          /* a parent, a whole, stands above: the end that carries the mark is the first, however it was written */
+          tmp = from; from = to; to = tmp;
+          hf = ht; ht = 0;
+          { RolltuiStr t = card_a; card_a = card_b; card_b = t; }
+        }
+        if (graph_edge(g, from, to, dotted ? ES_DOTTED : ES_SOLID, hf, ht, 1, label)) {
+          rolltui_str_set(&g->e[g->ne - 1].end_a, card_a.p ? card_a.p : "", card_a.n);
+          rolltui_str_set(&g->e[g->ne - 1].end_b, card_b.p ? card_b.p : "", card_b.n);
+        }
+        rolltui_str_free(&card_a);
+        rolltui_str_free(&card_b);
+        continue;
+      }
+      {
+        size_t colon = 0;
+        while (colon < l.n && l.p[colon] != ':') ++colon;
+        if (colon < l.n) {
+          Span who = {l.p, colon}, mem = {l.p + colon + 1, l.n - colon - 1};
+          const int at2 = class_named(&cp, who);
+          if (at2 < 0) { ok = 0; break; }
+          class_member(&cp, at2, mem);
+          continue;
+        }
+        if (l.n) { if (class_named(&cp, l) < 0) { ok = 0; break; } continue; }
+      }
+    }
+  }
+  if (ok) {
+    for (k = 0; k < g->nn; ++k) {
+      RolltuiStr title;
+      memset(&title, 0, sizeof title);
+      if (cp.mem[k].annot.n) { rolltui_str_append_str(&title, &cp.mem[k].annot); rolltui_str_append(&title, "\n", 1); }
+      rolltui_str_append_str(&title, g->n[k].label.n ? &g->n[k].label : &g->n[k].id);
+      rolltui_str_set(&g->n[k].label, title.p ? title.p : "", title.n);
+      rolltui_str_free(&title);
+      rolltui_str_clear(&g->n[k].detail);
+      if (cp.mem[k].attrs.n) rolltui_str_append_str(&g->n[k].detail, &cp.mem[k].attrs);
+      if (cp.mem[k].attrs.n && cp.mem[k].methods.n) rolltui_str_append(&g->n[k].detail, "\n\x01\n", 3);
+      if (cp.mem[k].methods.n) rolltui_str_append_str(&g->n[k].detail, &cp.mem[k].methods);
+      if (!g->n[k].detail.n) g->n[k].shape = SH_RECT; /* a class with nothing in it is its name in a box */
+    }
+    if (g->nn == 0) { reason_set(reason, "a class diagram with no classes"); ok = 0; }
+  }
+  members_release(cp.mem, g->nn);
+  return ok;
+}
+
+/* ---- ER ---------------------------------------------------------------------------------------------- */
+
+static const char* er_card_left(const char* two) {
+  if (!strncmp(two, "||", 2)) return "1";
+  if (!strncmp(two, "|o", 2)) return "0..1";
+  if (!strncmp(two, "}o", 2)) return "0..*";
+  if (!strncmp(two, "}|", 2)) return "1..*";
+  return NULL;
+}
+static const char* er_card_right(const char* two) {
+  if (!strncmp(two, "||", 2)) return "1";
+  if (!strncmp(two, "o|", 2)) return "0..1";
+  if (!strncmp(two, "o{", 2)) return "0..*";
+  if (!strncmp(two, "|{", 2)) return "1..*";
+  return NULL;
+}
+
+static int er_entity(Graph* g, Span name) {
+  Span id = name;
+  int at;
+  trim(&id);
+  if (id.n >= 2 && id.p[0] == '"' && id.p[id.n - 1] == '"') { ++id.p; id.n -= 2; }
+  {
+    size_t k = 0;
+    while (k < id.n && id.p[k] != '[' && id.p[k] != ' ') ++k;
+    if (k < id.n && id.p[k] == '[') {
+      Span alias = {id.p + k + 1, id.n - k - 1};
+      if (alias.n && alias.p[alias.n - 1] == ']') --alias.n;
+      id.n = k;
+      at = graph_find(g, id);
+      if (at < 0) at = graph_node(g, id, -1);
+      if (at >= 0) { g->n[at].shape = SH_RECT; clean_label(alias, &g->n[at].label); }
+      return at;
+    }
+  }
+  if (id.n == 0) return -1;
+  at = graph_find(g, id);
+  if (at >= 0) return at;
+  at = graph_node(g, id, -1);
+  if (at >= 0) g->n[at].shape = SH_RECT;
+  return at;
+}
+
+static int er_parse(Graph* g, const Source* src, size_t first, RolltuiStr* reason) {
+  size_t i;
+  int body = -1;
+  typedef struct { RolltuiStr type, name, keys, comment; } Attr;
+  Attr* attrs = NULL;
+  size_t na = 0, acap = 0, k;
+  g->dir = DIR_TD;
+  for (i = first; i < src->n; ++i) {
+    Span l = src->lines[i];
+    if (body >= 0) {
+      if (l.n && l.p[0] == '}') {
+        /* the block ends: its attributes are aligned into columns */
+        int tw = 0, nw = 0, kw = 0;
+        RolltuiStr det;
+        memset(&det, 0, sizeof det);
+        for (k = 0; k < na; ++k) {
+          tw = imax(tw, (int)attrs[k].type.n);
+          nw = imax(nw, (int)attrs[k].name.n);
+          kw = imax(kw, (int)attrs[k].keys.n);
+        }
+        for (k = 0; k < na; ++k) {
+          char buf[400];
+          const int n = snprintf(buf, sizeof buf, "%-*.*s %-*.*s%s%-*.*s%s%.*s", tw, (int)attrs[k].type.n, attrs[k].type.p ? attrs[k].type.p : "", nw,
+                                 (int)attrs[k].name.n, attrs[k].name.p ? attrs[k].name.p : "", kw ? " " : "", kw, (int)attrs[k].keys.n,
+                                 attrs[k].keys.p ? attrs[k].keys.p : "", attrs[k].comment.n ? "  " : "", (int)attrs[k].comment.n, attrs[k].comment.p ? attrs[k].comment.p : "");
+          size_t len = (size_t)n;
+          while (len > 0 && buf[len - 1] == ' ') --len;
+          if (k) rolltui_str_append(&det, "\n", 1);
+          rolltui_str_append(&det, buf, len);
+        }
+        rolltui_str_set(&g->n[body].detail, det.p ? det.p : "", det.n);
+        if (det.n) g->n[body].shape = SH_RECORD;
+        rolltui_str_free(&det);
+        for (k = 0; k < na; ++k) { rolltui_str_free(&attrs[k].type); rolltui_str_free(&attrs[k].name); rolltui_str_free(&attrs[k].keys); rolltui_str_free(&attrs[k].comment); }
+        na = 0;
+        body = -1;
+        continue;
+      }
+      /* type name [keys] ["comment"] */
+      {
+        Span t = l, w[4];
+        int nw2 = 0;
+        Span comment = {NULL, 0};
+        size_t q = 0;
+        while (q < t.n && t.p[q] != '"') ++q;
+        if (q < t.n) { comment.p = t.p + q + 1; comment.n = t.n - q - 1; if (comment.n && comment.p[comment.n - 1] == '"') --comment.n; t.n = q; }
+        while (t.n && nw2 < 4) {
+          size_t e = 0;
+          skip_ws(&t);
+          if (!t.n) break;
+          while (e < t.n && t.p[e] != ' ' && t.p[e] != '\t') ++e;
+          w[nw2].p = t.p;
+          w[nw2].n = e;
+          ++nw2;
+          t.p += e;
+          t.n -= e;
+        }
+        if (nw2 >= 2) {
+          attrs = (Attr*)rolltui_grow(attrs, &acap, na + 1, sizeof *attrs);
+          memset(&attrs[na], 0, sizeof attrs[na]);
+          rolltui_str_set(&attrs[na].type, w[0].p, w[0].n);
+          rolltui_str_set(&attrs[na].name, w[1].p, w[1].n);
+          if (nw2 >= 3) {
+            RolltuiStr keys;
+            memset(&keys, 0, sizeof keys);
+            rolltui_str_append(&keys, w[2].p, w[2].n);
+            if (nw2 >= 4) { rolltui_str_append(&keys, ",", 1); rolltui_str_append(&keys, w[3].p, w[3].n); }
+            rolltui_str_set(&attrs[na].keys, keys.p, keys.n);
+            rolltui_str_free(&keys);
+          }
+          if (comment.n) clean_label(comment, &attrs[na].comment);
+          ++na;
+        }
+      }
+      continue;
+    }
+    if (first_word_is(&l, "direction")) {
+      Span w = {l.p + 9, l.n - 9};
+      const int d = (trim(&w), dir_from_word(w));
+      if (d >= 0) g->dir = d;
+      continue;
+    }
+    if (first_word_is(&l, "title") || first_word_is(&l, "accTitle") || first_word_is(&l, "accDescr") || first_word_is(&l, "style") ||
+        first_word_is(&l, "classDef") || first_word_is(&l, "class"))
+      continue;
+    if (l.n && l.p[l.n - 1] == '{') {
+      Span name = {l.p, l.n - 1};
+      const int at = er_entity(g, name);
+      if (at < 0) { reason_set(reason, "an entity needs a name"); goto fail; }
+      body = at;
+      continue;
+    }
+    {
+      /* ENTITY ||--o{ ENTITY : label */
+      size_t q;
+      int found = 0;
+      for (q = 0; q + 6 <= l.n; ++q) {
+        const char* c = l.p + q;
+        const char* lc = er_card_left(c);
+        const char* rc = er_card_right(c + 4);
+        if (lc && rc && ((c[2] == '-' && c[3] == '-') || (c[2] == '.' && c[3] == '.'))) {
+          Span a = {l.p, q}, b = {l.p + q + 6, l.n - q - 6}, label = {NULL, 0};
+          size_t colon = 0;
+          int from, to;
+          while (colon < b.n && b.p[colon] != ':') ++colon;
+          if (colon < b.n) { label.p = b.p + colon + 1; label.n = b.n - colon - 1; b.n = colon; }
+          from = er_entity(g, a);
+          to = er_entity(g, b);
+          if (from < 0 || to < 0) { reason_set(reason, "a relationship needs an entity at each end"); goto fail; }
+          if (graph_edge(g, from, to, c[2] == '.' ? ES_DOTTED : ES_SOLID, HEAD_NONE, HEAD_NONE, 1, label)) {
+            rolltui_str_set(&g->e[g->ne - 1].end_a, lc, strlen(lc));
+            rolltui_str_set(&g->e[g->ne - 1].end_b, rc, strlen(rc));
+          }
+          found = 1;
+          break;
+        }
+      }
+      if (found) continue;
+      if (l.n) { if (er_entity(g, l) < 0) { reason_set(reason, "a line of an ER diagram is not understood"); goto fail; } }
+    }
+  }
+  for (k = 0; k < na; ++k) { rolltui_str_free(&attrs[k].type); rolltui_str_free(&attrs[k].name); rolltui_str_free(&attrs[k].keys); rolltui_str_free(&attrs[k].comment); }
+  rolltui_mem_free(attrs);
+  if (g->nn == 0) { reason_set(reason, "an ER diagram with no entities"); return 0; }
+  return 1;
+fail:
+  for (k = 0; k < na; ++k) { rolltui_str_free(&attrs[k].type); rolltui_str_free(&attrs[k].name); rolltui_str_free(&attrs[k].keys); rolltui_str_free(&attrs[k].comment); }
+  rolltui_mem_free(attrs);
+  return 0;
+}
+
+/* ============================================================================================
+ * MIND MAPS, TIMELINES, JOURNEYS AND GANTT CHARTS: the ones that are a list with a shape
+ * ============================================================================================ */
+
+/* A label broken into lines at spaces, none wider than `width` cells (a word wider than that is cut). */
+static void wrap_label(RolltuiMermaid* m, const RolltuiStr* s, int width, RolltuiStr* out) {
+  size_t i = 0;
+  rolltui_str_clear(out);
+  while (i <= s->n) {
+    size_t e = i;
+    int col = 0;
+    size_t start = i;
+    while (e < s->n && s->p[e] != '\n') ++e;
+    /* one source line, greedily filled */
+    {
+      size_t w0 = start;
+      while (w0 <= e) {
+        size_t we = w0;
+        int ww;
+        while (we < e && s->p[we] != ' ') ++we;
+        ww = text_width(m, s->p + w0, we - w0);
+        if (col > 0 && col + 1 + ww > width) { rolltui_str_append(out, "\n", 1); col = 0; }
+        else if (col > 0) { rolltui_str_append(out, " ", 1); ++col; }
+        while (ww > width && width > 1) {
+          const size_t keep = rolltui_u_fit(m->u, s->p + w0, we - w0, width, m->ascii, NULL);
+          if (keep == 0) break;
+          rolltui_str_append(out, s->p + w0, keep);
+          rolltui_str_append(out, "\n", 1);
+          w0 += keep;
+          ww = text_width(m, s->p + w0, we - w0);
+          col = 0;
+        }
+        rolltui_str_append(out, s->p + w0, we - w0);
+        col += ww;
+        w0 = we + 1;
+      }
+    }
+    if (e < s->n) rolltui_str_append(out, "\n", 1);
+    i = e + 1;
+  }
+}
+
+/* rows of text placed one under another, in a grid sized afterwards: a tiny builder for the list-shaped kinds */
+typedef struct Row {
+  RolltuiStr text;
+  unsigned char cls;
+  int x;
+} Row;
+
+typedef struct Rows {
+  Row* v;
+  size_t n, cap;
+} Rows;
+
+static void rows_add(Rows* r, int x, const char* text, size_t n, unsigned char cls) {
+  r->v = (Row*)rolltui_grow(r->v, &r->cap, r->n + 1, sizeof *r->v);
+  memset(&r->v[r->n], 0, sizeof r->v[r->n]);
+  rolltui_str_set(&r->v[r->n].text, text, n);
+  r->v[r->n].cls = cls;
+  r->v[r->n].x = x;
+  ++r->n;
+}
+
+/* ---- mind map -------------------------------------------------------------------------------------- */
+
+typedef struct MindNode {
+  RolltuiStr text;
+  int depth, parent;
+  int last;            /* the last child of its parent */
+} MindNode;
+
+static void mind_text(Span l, RolltuiStr* out) {
+  Span t = l;
+  size_t k = 0;
+  RolltuiStr clean;
+  memset(&clean, 0, sizeof clean);
+  /* `id((text))`, `id(text)`, `id[text]`, `id{{text}}`, `id))text((`, or plain words; `::icon(...)` and `:::class` are dropped */
+  {
+    size_t ic = 0;
+    while (ic + 1 < t.n && !(t.p[ic] == ':' && t.p[ic + 1] == ':')) ++ic;
+    if (ic + 1 < t.n) t.n = ic;
+  }
+  trim(&t);
+  while (k < t.n && (isalnum((unsigned char)t.p[k]) || t.p[k] == '_' || t.p[k] == '-')) ++k;
+  if (k > 0 && k < t.n && (t.p[k] == '(' || t.p[k] == '[' || t.p[k] == '{' || t.p[k] == ')')) {
+    Span in = {t.p + k, t.n - k};
+    while (in.n && (in.p[0] == '(' || in.p[0] == '[' || in.p[0] == '{' || in.p[0] == ')')) { ++in.p; --in.n; }
+    while (in.n && (in.p[in.n - 1] == ')' || in.p[in.n - 1] == ']' || in.p[in.n - 1] == '}' || in.p[in.n - 1] == '(')) --in.n;
+    t = in;
+  }
+  clean_label(t, &clean);
+  rolltui_str_set(out, clean.p ? clean.p : "", clean.n);
+  rolltui_str_free(&clean);
+}
+
+static int draw_mindmap(RolltuiMermaid* m, const Source* src, size_t first, int max_width, RolltuiStr* reason) {
+  MindNode* nodes = NULL;
+  size_t nn = 0, cap = 0, i;
+  int* stack_depth = (int*)rolltui_mem_alloc(64 * sizeof *stack_depth);
+  int* stack_node = (int*)rolltui_mem_alloc(64 * sizeof *stack_node);
+  int sp = 0, ok = 0, widest = 0, y = 0;
+  Rows rows;
+  memset(&rows, 0, sizeof rows);
+  for (i = first; i < src->n; ++i) {
+    const int ind = src->indent[i];
+    int parent = -1;
+    if (first_word_is(&src->lines[i], "icon") || span_starts(&src->lines[i], "::")) continue;
+    while (sp > 0 && stack_depth[sp - 1] >= ind) --sp;
+    if (sp > 0) parent = stack_node[sp - 1];
+    if (parent < 0 && nn > 0) { reason_set(reason, "a mind map has one root, and the rest are under it"); goto done; }
+    if (nn >= 400) { reason_set(reason, "a mind map with more than 400 nodes is not drawn"); goto done; }
+    nodes = (MindNode*)rolltui_grow(nodes, &cap, nn + 1, sizeof *nodes);
+    memset(&nodes[nn], 0, sizeof nodes[nn]);
+    mind_text(src->lines[i], &nodes[nn].text);
+    nodes[nn].parent = parent;
+    nodes[nn].depth = parent < 0 ? 0 : nodes[parent].depth + 1;
+    if (sp < 64) { stack_depth[sp] = ind; stack_node[sp] = (int)nn; ++sp; }
+    ++nn;
+  }
+  if (nn == 0) { reason_set(reason, "a mind map with nothing in it"); goto done; }
+  for (i = 0; i < nn; ++i) {
+    size_t k;
+    nodes[i].last = 1;
+    for (k = i + 1; k < nn; ++k) {
+      if (nodes[k].parent == nodes[i].parent) { nodes[i].last = 0; break; }
+      if (nodes[k].depth < nodes[i].depth) break;
+    }
+  }
+  /* rows: the root, then each node under its ancestors' rails */
+  {
+    RolltuiStr root, wrapped;
+    memset(&root, 0, sizeof root);
+    memset(&wrapped, 0, sizeof wrapped);
+    wrap_label(m, &nodes[0].text, imax(max_width - 4, 8), &wrapped);
+    rolltui_str_append_str(&root, &wrapped);
+    {
+      size_t a = 0;
+      while (a <= root.n) {
+        size_t e = a;
+        while (e < root.n && root.p[e] != '\n') ++e;
+        rows_add(&rows, 0, root.p + a, e - a, ROLLTUI_MERMAID_CLASS_TITLE);
+        a = e + 1;
+      }
+    }
+    rolltui_str_free(&root);
+    rolltui_str_free(&wrapped);
+  }
+  for (i = 1; i < nn; ++i) {
+    RolltuiStr prefix, cont, wrapped;
+    int d, anc = (int)i;
+    int rails[64];
+    size_t a = 0;
+    memset(&prefix, 0, sizeof prefix);
+    memset(&cont, 0, sizeof cont);
+    memset(&wrapped, 0, sizeof wrapped);
+    /* the rails of the ancestors, outermost first: a bar while they have more to come */
+    for (d = nodes[i].depth; d > 1; --d) {
+      anc = nodes[anc].parent;
+      rails[d] = !nodes[anc].last;
+    }
+    for (d = 2; d <= nodes[i].depth; ++d) {
+      rolltui_str_append(&prefix, rails[d - 0 > 63 ? 63 : d] ? (m->ascii ? "|  " : "\xE2\x94\x82  ") : "   ", rails[d] ? (m->ascii ? 3 : 5) : 3);
+      rolltui_str_append(&cont, rails[d] ? (m->ascii ? "|  " : "\xE2\x94\x82  ") : "   ", rails[d] ? (m->ascii ? 3 : 5) : 3);
+    }
+    {
+      const char* conn = nodes[i].last ? (m->ascii ? "`- " : "\xE2\x94\x94\xE2\x94\x80 ") : (m->ascii ? "+- " : "\xE2\x94\x9C\xE2\x94\x80 ");
+      const char* under = nodes[i].last ? "   " : (m->ascii ? "|  " : "\xE2\x94\x82  ");
+      const size_t conn_n = strlen(conn), under_n = strlen(under);
+      const int pw = 3 * (nodes[i].depth - 1) + 3;
+      wrap_label(m, &nodes[i].text, imax(max_width - pw, 6), &wrapped);
+      while (a <= wrapped.n) {
+        size_t e = a;
+        RolltuiStr line;
+        memset(&line, 0, sizeof line);
+        while (e < wrapped.n && wrapped.p[e] != '\n') ++e;
+        rolltui_str_append_str(&line, a == 0 ? &prefix : &cont);
+        rolltui_str_append(&line, a == 0 ? conn : under, a == 0 ? conn_n : under_n);
+        rows_add(&rows, 0, line.p, line.n, ROLLTUI_MERMAID_CLASS_EDGE);
+        {
+          /* the text goes in its own class, after the rails */
+          const int used = text_width(m, line.p, line.n);
+          rows_add(&rows, used, wrapped.p + a, e - a, ROLLTUI_MERMAID_CLASS_TEXT);
+          widest = imax(widest, used + text_width(m, wrapped.p + a, e - a));
+        }
+        rolltui_str_free(&line);
+        a = e + 1;
+      }
+    }
+    rolltui_str_free(&prefix);
+    rolltui_str_free(&cont);
+    rolltui_str_free(&wrapped);
+  }
+  {
+    /* draw the rows: a row of class EDGE is followed by its text row, at its own x, on the same line */
+    int total = 0;
+    size_t r;
+    for (r = 0; r < rows.n; ++r) if (rows.v[r].cls != ROLLTUI_MERMAID_CLASS_TEXT || rows.v[r].x == 0) ++total;
+    (void)total;
+    for (r = 0; r < rows.n; ++r) {
+      if (rows.v[r].cls == ROLLTUI_MERMAID_CLASS_TEXT) continue;
+      ++y;
+    }
+    grid_init(&m->g, imax(widest, 1) + 1, y + 1);
+    y = 0;
+    for (r = 0; r < rows.n; ++r) {
+      if (rows.v[r].cls == ROLLTUI_MERMAID_CLASS_TEXT) continue;
+      put_text(m, rows.v[r].x, y, rows.v[r].text.p ? rows.v[r].text.p : "", rows.v[r].text.n, rows.v[r].cls);
+      if (r + 1 < rows.n && rows.v[r + 1].cls == ROLLTUI_MERMAID_CLASS_TEXT)
+        put_text(m, rows.v[r + 1].x, y, rows.v[r + 1].text.p ? rows.v[r + 1].text.p : "", rows.v[r + 1].text.n, ROLLTUI_MERMAID_CLASS_TEXT);
+      ++y;
+    }
+  }
+  m->kind = "mindmap";
+  ok = 1;
+done:
+  for (i = 0; i < nn; ++i) rolltui_str_free(&nodes[i].text);
+  rolltui_mem_free(nodes);
+  for (i = 0; i < rows.n; ++i) rolltui_str_free(&rows.v[i].text);
+  rolltui_mem_free(rows.v);
+  rolltui_mem_free(stack_depth);
+  rolltui_mem_free(stack_node);
+  return ok;
+}
+
+/* ---- timeline ---------------------------------------------------------------------------------------- */
+
+typedef struct Period {
+  RolltuiStr when;
+  RolltuiStr events; /* '\n' between */
+  int section;
+} Period;
+
+static int draw_timeline(RolltuiMermaid* m, const Source* src, size_t first, const RolltuiStr* title_in, int max_width, RolltuiStr* reason) {
+  Period* ps = NULL;
+  RolltuiStr* sections = NULL;
+  size_t np = 0, pcap = 0, ns = 0, scap = 0, i, k;
+  RolltuiStr title;
+  int wwhen = 0, y = 0, widest = 0, ok = 0, cur_section = -1;
+  memset(&title, 0, sizeof title);
+  if (title_in) rolltui_str_set(&title, title_in->p ? title_in->p : "", title_in->n);
+  for (i = first; i < src->n; ++i) {
+    Span l = src->lines[i];
+    if (span_starts_ci(&l, "title ")) { Span t = {l.p + 6, l.n - 6}; clean_label(t, &title); continue; }
+    if (first_word_is(&l, "section")) {
+      Span t = {l.p + 7, l.n - 7};
+      trim(&t);
+      sections = (RolltuiStr*)rolltui_grow(sections, &scap, ns + 1, sizeof *sections);
+      memset(&sections[ns], 0, sizeof sections[ns]);
+      clean_label(t, &sections[ns]);
+      cur_section = (int)ns++;
+      continue;
+    }
+    {
+      /* `2004 : Facebook : Google`, or `: another event` for the period above */
+      size_t at = 0;
+      Span rest = l;
+      Period* p;
+      const int cont = l.n && l.p[0] == ':';
+      if (np >= 200) { reason_set(reason, "a timeline with more than 200 periods is not drawn"); goto done; }
+      if (!cont) {
+        while (at < rest.n && rest.p[at] != ':') ++at;
+        ps = (Period*)rolltui_grow(ps, &pcap, np + 1, sizeof *ps);
+        memset(&ps[np], 0, sizeof ps[np]);
+        { Span w = {rest.p, at}; trim(&w); clean_label(w, &ps[np].when); }
+        ps[np].section = cur_section;
+        p = &ps[np++];
+        rest.p += at < rest.n ? at + 1 : rest.n;
+        rest.n -= at < rest.n ? at + 1 : rest.n;
+      } else {
+        if (np == 0) { reason_set(reason, "an event with no period above it"); goto done; }
+        p = &ps[np - 1];
+        ++rest.p;
+        --rest.n;
+      }
+      while (rest.n) {
+        size_t e = 0;
+        Span ev;
+        while (e < rest.n && rest.p[e] != ':') ++e;
+        ev.p = rest.p;
+        ev.n = e;
+        trim(&ev);
+        if (ev.n) {
+          RolltuiStr clean;
+          memset(&clean, 0, sizeof clean);
+          clean_label(ev, &clean);
+          if (p->events.n) rolltui_str_append(&p->events, "\n", 1);
+          rolltui_str_append_str(&p->events, &clean);
+          rolltui_str_free(&clean);
+        }
+        rest.p += e < rest.n ? e + 1 : rest.n;
+        rest.n -= e < rest.n ? e + 1 : rest.n;
+      }
+    }
+  }
+  if (np == 0) { reason_set(reason, "a timeline with nothing on it"); goto done; }
+  for (i = 0; i < np; ++i) wwhen = imax(wwhen, text_width(m, ps[i].when.p ? ps[i].when.p : "", ps[i].when.n));
+  {
+    /* rows: title, then per period its events (wrapped), sections as headings */
+    const int room = imax(max_width - wwhen - 6, 10);
+    int rows = (title.n ? 2 : 0);
+    RolltuiStr* wrapped = (RolltuiStr*)rolltui_mem_alloc((np + 1) * sizeof *wrapped);
+    int prev_section = -2;
+    memset(wrapped, 0, (np + 1) * sizeof *wrapped);
+    for (i = 0; i < np; ++i) {
+      wrap_label(m, &ps[i].events, room, &wrapped[i]);
+      if (ps[i].section != prev_section && ps[i].section >= 0) { rows += 1; }
+      prev_section = ps[i].section;
+      { int lines = 1; size_t q; for (q = 0; q < wrapped[i].n; ++q) if (wrapped[i].p[q] == '\n') ++lines; rows += lines; }
+    }
+    grid_init(&m->g, max_width, rows + 1);
+    prev_section = -2;
+    if (title.n) { put_text(m, 0, y, title.p, title.n, ROLLTUI_MERMAID_CLASS_TITLE); y += 2; }
+    for (i = 0; i < np; ++i) {
+      size_t a = 0;
+      int first_line = 1;
+      if (ps[i].section != prev_section && ps[i].section >= 0) {
+        put_text(m, 0, y, sections[ps[i].section].p ? sections[ps[i].section].p : "", sections[ps[i].section].n, ROLLTUI_MERMAID_CLASS_TITLE);
+        ++y;
+      }
+      prev_section = ps[i].section;
+      put_text(m, wwhen - text_width(m, ps[i].when.p ? ps[i].when.p : "", ps[i].when.n), y, ps[i].when.p ? ps[i].when.p : "", ps[i].when.n, ROLLTUI_MERMAID_CLASS_TEXT);
+      while (a <= wrapped[i].n) {
+        size_t e = a;
+        const int x = wwhen + 1;
+        while (e < wrapped[i].n && wrapped[i].p[e] != '\n') ++e;
+        if (first_line) {
+          put_str(m, x, y, m->ascii ? "o" : "\xE2\x97\x8F", ROLLTUI_MERMAID_CLASS_ARROW);
+          put_str(m, x + 1, y, m->ascii ? "-" : "\xE2\x94\x80", ROLLTUI_MERMAID_CLASS_EDGE);
+        } else {
+          put_str(m, x, y, m->ascii ? "|" : "\xE2\x94\x82", ROLLTUI_MERMAID_CLASS_EDGE);
+        }
+        put_text(m, x + 3, y, wrapped[i].p + a, e - a, ROLLTUI_MERMAID_CLASS_TEXT);
+        widest = imax(widest, x + 3 + text_width(m, wrapped[i].p + a, e - a));
+        first_line = 0;
+        ++y;
+        a = e + 1;
+      }
+      /* the rail between periods */
+      if (i + 1 < np && !ps[i + 1].section) {}
+    }
+    for (k = 0; k < np; ++k) rolltui_str_free(&wrapped[k]);
+    rolltui_mem_free(wrapped);
+  }
+  (void)widest;
+  m->kind = "timeline";
+  ok = 1;
+done:
+  for (i = 0; i < np; ++i) { rolltui_str_free(&ps[i].when); rolltui_str_free(&ps[i].events); }
+  rolltui_mem_free(ps);
+  for (i = 0; i < ns; ++i) rolltui_str_free(&sections[i]);
+  rolltui_mem_free(sections);
+  rolltui_str_free(&title);
+  return ok;
+}
+
+/* ---- user journey -------------------------------------------------------------------------------------- */
+
+typedef struct Task {
+  RolltuiStr name, actors;
+  int score, section;
+} Task;
+
+static int draw_journey(RolltuiMermaid* m, const Source* src, size_t first, int max_width, RolltuiStr* reason) {
+  Task* ts = NULL;
+  RolltuiStr* sections = NULL;
+  RolltuiStr title;
+  size_t nt = 0, tcap = 0, ns = 0, scap = 0, i;
+  int cur = -1, ok = 0, nw = 0, y = 0, rows;
+  memset(&title, 0, sizeof title);
+  for (i = first; i < src->n; ++i) {
+    Span l = src->lines[i];
+    if (span_starts_ci(&l, "title ")) { Span t = {l.p + 6, l.n - 6}; clean_label(t, &title); continue; }
+    if (first_word_is(&l, "section")) {
+      Span t = {l.p + 7, l.n - 7};
+      trim(&t);
+      sections = (RolltuiStr*)rolltui_grow(sections, &scap, ns + 1, sizeof *sections);
+      memset(&sections[ns], 0, sizeof sections[ns]);
+      clean_label(t, &sections[ns]);
+      cur = (int)ns++;
+      continue;
+    }
+    {
+      size_t c1 = 0, c2;
+      double score = 0;
+      Span name, sc, actors;
+      while (c1 < l.n && l.p[c1] != ':') ++c1;
+      if (c1 >= l.n) { reason_set(reason, "a journey's task is `name: score: who`"); goto done; }
+      c2 = c1 + 1;
+      while (c2 < l.n && l.p[c2] != ':') ++c2;
+      name.p = l.p; name.n = c1;
+      sc.p = l.p + c1 + 1; sc.n = c2 - c1 - 1;
+      actors.p = c2 < l.n ? l.p + c2 + 1 : l.p + l.n; actors.n = c2 < l.n ? l.n - c2 - 1 : 0;
+      if (!parse_double(sc, &score) || score < 0 || score > 5) { reason_set(reason, "a task's score is a number from 0 to 5"); goto done; }
+      if (nt >= 200) { reason_set(reason, "a journey with more than 200 tasks is not drawn"); goto done; }
+      ts = (Task*)rolltui_grow(ts, &tcap, nt + 1, sizeof *ts);
+      memset(&ts[nt], 0, sizeof ts[nt]);
+      trim(&name);
+      trim(&actors);
+      clean_label(name, &ts[nt].name);
+      clean_label(actors, &ts[nt].actors);
+      ts[nt].score = (int)(score + 0.5);
+      ts[nt].section = cur;
+      ++nt;
+    }
+  }
+  if (nt == 0) { reason_set(reason, "a journey with no tasks"); goto done; }
+  for (i = 0; i < nt; ++i) nw = imax(nw, text_width(m, ts[i].name.p ? ts[i].name.p : "", ts[i].name.n));
+  if (nw > max_width - 12) nw = imax(max_width - 12, 8);
+  {
+    int prev = -2;
+    rows = title.n ? 2 : 0;
+    for (i = 0; i < nt; ++i) { if (ts[i].section != prev && ts[i].section >= 0) ++rows; prev = ts[i].section; ++rows; }
+    grid_init(&m->g, max_width, rows + 1);
+    prev = -2;
+    if (title.n) { put_text(m, 0, y, title.p, title.n, ROLLTUI_MERMAID_CLASS_TITLE); y += 2; }
+    for (i = 0; i < nt; ++i) {
+      int s;
+      unsigned char cls;
+      char num[8];
+      if (ts[i].section != prev && ts[i].section >= 0) {
+        put_text(m, 0, y, sections[ts[i].section].p ? sections[ts[i].section].p : "", sections[ts[i].section].n, ROLLTUI_MERMAID_CLASS_TITLE);
+        ++y;
+      }
+      prev = ts[i].section;
+      if (text_width(m, ts[i].name.p ? ts[i].name.p : "", ts[i].name.n) > nw) {
+        const size_t keep = rolltui_u_fit(m->u, ts[i].name.p, ts[i].name.n, nw - 1, m->ascii, NULL);
+        put_text(m, 2, y, ts[i].name.p, keep, ROLLTUI_MERMAID_CLASS_TEXT);
+        put_str(m, 2 + nw - 1, y, "\xE2\x80\xA6", ROLLTUI_MERMAID_CLASS_TEXT);
+      } else {
+        put_text(m, 2, y, ts[i].name.p ? ts[i].name.p : "", ts[i].name.n, ROLLTUI_MERMAID_CLASS_TEXT);
+      }
+      cls = ts[i].score >= 4 ? ROLLTUI_MERMAID_CLASS_ACCENT2 : ts[i].score == 3 ? ROLLTUI_MERMAID_CLASS_ACCENT3 : ROLLTUI_MERMAID_CLASS_ACCENT4;
+      for (s = 0; s < 5; ++s) put_str(m, 2 + nw + 2 + s, y, s < ts[i].score ? (m->ascii ? "#" : "\xE2\x97\x8F") : (m->ascii ? "." : "\xE2\x97\x8B"), s < ts[i].score ? cls : ROLLTUI_MERMAID_CLASS_MUTED);
+      snprintf(num, sizeof num, "%d", ts[i].score);
+      put_str(m, 2 + nw + 8, y, num, cls);
+      put_text(m, 2 + nw + 10, y, ts[i].actors.p ? ts[i].actors.p : "", ts[i].actors.n, ROLLTUI_MERMAID_CLASS_MUTED);
+      ++y;
+    }
+  }
+  m->kind = "journey";
+  ok = 1;
+done:
+  for (i = 0; i < nt; ++i) { rolltui_str_free(&ts[i].name); rolltui_str_free(&ts[i].actors); }
+  rolltui_mem_free(ts);
+  for (i = 0; i < ns; ++i) rolltui_str_free(&sections[i]);
+  rolltui_mem_free(sections);
+  rolltui_str_free(&title);
+  return ok;
+}
+
+/* ---- gantt ----------------------------------------------------------------------------------------------- */
+
+typedef struct GTask {
+  RolltuiStr name, id;
+  long start, end;   /* days: [start, end) */
+  int status;        /* 0 plain, 1 done, 2 active, 3 crit */
+  int milestone;
+  int section;
+} GTask;
+
+/* days since 1970-01-01 of a civil date (the proleptic Gregorian calendar) */
+static long days_from_civil(long y, unsigned mo, unsigned d) {
+  y -= mo <= 2;
+  {
+    const long era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = (unsigned)(y - era * 400);
+    const unsigned doy = (153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (long)doe - 719468;
+  }
+}
+
+static void civil_from_days(long z, int* y, unsigned* mo, unsigned* d) {
+  z += 719468;
+  {
+    const long era = (z >= 0 ? z : z - 146096) / 146097;
+    const unsigned doe = (unsigned)(z - era * 146097);
+    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const long yy = (long)yoe + era * 400;
+    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned mp = (5 * doy + 2) / 153;
+    *d = doy - (153 * mp + 2) / 5 + 1;
+    *mo = mp < 10 ? mp + 3 : mp - 9;
+    *y = (int)(yy + (*mo <= 2));
+  }
+}
+
+static int parse_date(Span s, long* out) {
+  int y, mo, d;
+  char buf[32];
+  trim(&s);
+  if (s.n != 10 || s.n >= sizeof buf) return 0;
+  memcpy(buf, s.p, s.n);
+  buf[s.n] = 0;
+  if (sscanf(buf, "%4d-%2d-%2d", &y, &mo, &d) != 3 || buf[4] != '-' || buf[7] != '-' || mo < 1 || mo > 12 || d < 1 || d > 31) return 0;
+  *out = days_from_civil(y, (unsigned)mo, (unsigned)d);
+  return 1;
+}
+
+/* `3d`, `2w`, `12h`, `1.5w`: days (0 for an hour count too small to be one) */
+static int parse_duration(Span s, double* days) {
+  double v;
+  Span num;
+  char unit;
+  trim(&s);
+  if (s.n < 2) return 0;
+  unit = s.p[s.n - 1];
+  num.p = s.p;
+  num.n = s.n - 1;
+  if (!parse_double(num, &v) || v < 0) return 0;
+  switch (unit) {
+    case 'd': *days = v; return 1;
+    case 'w': *days = v * 7; return 1;
+    case 'h': *days = v / 24.0; return 1;
+    case 'M': *days = v * 30; return 1;
+    case 'y': *days = v * 365; return 1;
+    default: return 0;
+  }
+}
+
+static int draw_gantt(RolltuiMermaid* m, const Source* src, size_t first, int max_width, RolltuiStr* reason) {
+  GTask* ts = NULL;
+  RolltuiStr* sections = NULL;
+  RolltuiStr title;
+  size_t nt = 0, tcap = 0, ns = 0, scap = 0, i;
+  int cur = -1, ok = 0;
+  long t0 = 0, t1 = 0, prev_end = 0;
+  int have_prev = 0, name_w = 0, chart_w, rows, y = 0, prev_section = -2, ticks, tk;
+  memset(&title, 0, sizeof title);
+  for (i = first; i < src->n; ++i) {
+    Span l = src->lines[i];
+    if (span_starts_ci(&l, "title ")) { Span t = {l.p + 6, l.n - 6}; clean_label(t, &title); continue; }
+    if (first_word_is(&l, "dateFormat") || first_word_is(&l, "axisFormat") || first_word_is(&l, "tickInterval") || first_word_is(&l, "excludes") ||
+        first_word_is(&l, "includes") || first_word_is(&l, "todayMarker") || first_word_is(&l, "weekday") || first_word_is(&l, "weekend") ||
+        first_word_is(&l, "inclusiveEndDates") || first_word_is(&l, "topAxis") || first_word_is(&l, "accTitle") || first_word_is(&l, "accDescr") ||
+        first_word_is(&l, "click"))
+      continue;
+    if (first_word_is(&l, "section")) {
+      Span t = {l.p + 7, l.n - 7};
+      trim(&t);
+      sections = (RolltuiStr*)rolltui_grow(sections, &scap, ns + 1, sizeof *sections);
+      memset(&sections[ns], 0, sizeof sections[ns]);
+      clean_label(t, &sections[ns]);
+      cur = (int)ns++;
+      continue;
+    }
+    {
+      size_t colon = 0;
+      Span name, spec;
+      GTask t;
+      int have_start = 0, have_end = 0, have_dur = 0;
+      long start = 0, end = 0;
+      double dur = 0;
+      memset(&t, 0, sizeof t);
+      while (colon < l.n && l.p[colon] != ':') ++colon;
+      if (colon >= l.n) { reason_set(reason, "a task in a Gantt chart is `name : id, start, duration`"); goto done; }
+      name.p = l.p; name.n = colon;
+      spec.p = l.p + colon + 1; spec.n = l.n - colon - 1;
+      trim(&name);
+      while (spec.n) {
+        size_t e = 0;
+        Span tok;
+        long d;
+        double dv;
+        while (e < spec.n && spec.p[e] != ',') ++e;
+        tok.p = spec.p; tok.n = e;
+        trim(&tok);
+        spec.p += e < spec.n ? e + 1 : spec.n;
+        spec.n -= e < spec.n ? e + 1 : spec.n;
+        if (tok.n == 0) continue;
+        if (tok.n == 4 && !memcmp(tok.p, "done", 4)) t.status = 1;
+        else if (tok.n == 6 && !memcmp(tok.p, "active", 6)) t.status = 2;
+        else if (tok.n == 4 && !memcmp(tok.p, "crit", 4)) t.status = 3;
+        else if (tok.n == 9 && !memcmp(tok.p, "milestone", 9)) t.milestone = 1;
+        else if (span_starts_ci(&tok, "after ")) {
+          /* after another task: the latest end among those named */
+          Span ids = {tok.p + 6, tok.n - 6};
+          long latest = 0;
+          int found = 0;
+          while (ids.n) {
+            size_t q = 0;
+            Span one;
+            size_t k;
+            while (q < ids.n && ids.p[q] != ' ') ++q;
+            one.p = ids.p; one.n = q;
+            for (k = 0; k < nt; ++k)
+              if (ts[k].id.n == one.n && memcmp(ts[k].id.p, one.p, one.n) == 0) { if (!found || ts[k].end > latest) latest = ts[k].end; found = 1; }
+            ids.p += q < ids.n ? q + 1 : ids.n;
+            ids.n -= q < ids.n ? q + 1 : ids.n;
+            skip_ws(&ids);
+          }
+          if (!found) { reason_set(reason, "a task starts after one that has not been defined"); goto done; }
+          start = latest; have_start = 1;
+        } else if (parse_date(tok, &d)) {
+          if (!have_start) { start = d; have_start = 1; } else { end = d; have_end = 1; }
+        } else if (parse_duration(tok, &dv)) { dur = dv; have_dur = 1; }
+        else if (!t.id.n) rolltui_str_set(&t.id, tok.p, tok.n);
+      }
+      if (!have_start) start = have_prev ? prev_end : 0;
+      if (have_end) { if (end < start) end = start; }
+      else if (have_dur) end = start + (long)(dur + 0.999);
+      else end = start + 1;
+      if (t.milestone) end = start;
+      if (nt >= 200) { reason_set(reason, "a Gantt chart with more than 200 tasks is not drawn"); goto done; }
+      ts = (GTask*)rolltui_grow(ts, &tcap, nt + 1, sizeof *ts);
+      ts[nt] = t;
+      clean_label(name, &ts[nt].name);
+      ts[nt].start = start;
+      ts[nt].end = end;
+      ts[nt].section = cur;
+      prev_end = end;
+      have_prev = 1;
+      ++nt;
+    }
+  }
+  if (nt == 0) { reason_set(reason, "a Gantt chart with no tasks"); goto done; }
+  t0 = ts[0].start;
+  t1 = ts[0].end;
+  for (i = 0; i < nt; ++i) {
+    if (ts[i].start < t0) t0 = ts[i].start;
+    if (ts[i].end > t1) t1 = ts[i].end;
+    name_w = imax(name_w, text_width(m, ts[i].name.p ? ts[i].name.p : "", ts[i].name.n));
+  }
+  if (t1 <= t0) t1 = t0 + 1;
+  if (name_w > 28) name_w = 28;
+  chart_w = imin(max_width - name_w - 3, 64);
+  if (chart_w < 16) { reason_setf(reason, "a Gantt chart needs about %d columns; this view has %d", name_w + 20, max_width); goto done; }
+  {
+    int prev = -2;
+    rows = (title.n ? 2 : 0) + 2;
+    for (i = 0; i < nt; ++i) { if (ts[i].section != prev && ts[i].section >= 0) ++rows; prev = ts[i].section; ++rows; }
+  }
+  grid_init(&m->g, name_w + 3 + chart_w + 1, rows + 1);
+  if (title.n) { put_text(m, 0, y, title.p, title.n, ROLLTUI_MERMAID_CLASS_TITLE); y += 2; }
+  /* the axis: a rule with ticks, and the dates under them */
+  ticks = imax(2, imin(chart_w / 12, 8));
+  for (tk = 0; tk < chart_w; ++tk) put_str(m, name_w + 3 + tk, y + 1, m->ascii ? "-" : "\xE2\x94\x80", ROLLTUI_MERMAID_CLASS_BOX);
+  for (tk = 0; tk <= ticks; ++tk) {
+    const int cx = tk * (chart_w - 1) / ticks;
+    const long day = t0 + (long)((double)(t1 - t0) * cx / (double)imax(chart_w - 1, 1));
+    int yy;
+    unsigned mo, dd;
+    char lab[16];
+    static const char* const mon[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    civil_from_days(day, &yy, &mo, &dd);
+    snprintf(lab, sizeof lab, "%s %u", mon[mo - 1], dd);
+    put_str(m, name_w + 3 + cx, y + 1, m->ascii ? "+" : "\xE2\x94\xAC", ROLLTUI_MERMAID_CLASS_BOX);
+    {
+      int lx = name_w + 3 + cx - (int)strlen(lab) / 2;
+      if (lx < name_w + 3) lx = name_w + 3;
+      if (lx + (int)strlen(lab) > m->g.w) lx = m->g.w - (int)strlen(lab);
+      put_str(m, lx, y, lab, ROLLTUI_MERMAID_CLASS_MUTED);
+    }
+  }
+  y += 2;
+  for (i = 0; i < nt; ++i) {
+    unsigned char cls = ts[i].status == 1 ? ROLLTUI_MERMAID_CLASS_MUTED : ts[i].status == 2 ? ROLLTUI_MERMAID_CLASS_ACCENT1 : ts[i].status == 3 ? ROLLTUI_MERMAID_CLASS_ACCENT4 : ROLLTUI_MERMAID_CLASS_ACCENT2;
+    const double scale = (double)chart_w / (double)(t1 - t0);
+    int a = (int)((double)(ts[i].start - t0) * scale + 0.5), b = (int)((double)(ts[i].end - t0) * scale + 0.5), c;
+    if (ts[i].section != prev_section && ts[i].section >= 0) {
+      put_text(m, 0, y, sections[ts[i].section].p ? sections[ts[i].section].p : "", sections[ts[i].section].n, ROLLTUI_MERMAID_CLASS_TITLE);
+      ++y;
+    }
+    prev_section = ts[i].section;
+    if (text_width(m, ts[i].name.p ? ts[i].name.p : "", ts[i].name.n) > name_w) {
+      const size_t keep = rolltui_u_fit(m->u, ts[i].name.p, ts[i].name.n, name_w - 1, m->ascii, NULL);
+      put_text(m, 0, y, ts[i].name.p, keep, ROLLTUI_MERMAID_CLASS_TEXT);
+      put_str(m, name_w - 1, y, "\xE2\x80\xA6", ROLLTUI_MERMAID_CLASS_TEXT);
+    } else {
+      put_text(m, 0, y, ts[i].name.p ? ts[i].name.p : "", ts[i].name.n, ROLLTUI_MERMAID_CLASS_TEXT);
+    }
+    put_str(m, name_w + 1, y, m->ascii ? "|" : "\xE2\x94\x82", ROLLTUI_MERMAID_CLASS_BOX);
+    if (a >= chart_w) a = chart_w - 1;
+    if (b <= a) b = a + 1;
+    if (b > chart_w) b = chart_w;
+    if (ts[i].milestone) put_str(m, name_w + 3 + a, y, m->ascii ? "<>" : "\xE2\x97\x86", cls);
+    else for (c = a; c < b; ++c) put_str(m, name_w + 3 + c, y, m->ascii ? "#" : "\xE2\x96\x88", cls);
+    ++y;
+  }
+  m->kind = "gantt";
+  ok = 1;
+done:
+  for (i = 0; i < nt; ++i) { rolltui_str_free(&ts[i].name); rolltui_str_free(&ts[i].id); }
+  rolltui_mem_free(ts);
+  for (i = 0; i < ns; ++i) rolltui_str_free(&sections[i]);
+  rolltui_mem_free(sections);
+  rolltui_str_free(&title);
+  return ok;
+}
+
+/* ============================================================================================
  * THE ENTRY POINT
  * ============================================================================================ */
 
@@ -3892,6 +5078,26 @@ int rolltui_mermaid_render(RolltuiMermaid* m, const char* src, size_t n, int max
     if (state_parse(&g, &s, first, head, reason)) ok = draw_graph(m, &g, max_width, reason);
     if (ok) m->kind = "state";
     graph_release(&g);
+  } else if (first_word_is(&head, "classDiagram") || first_word_is(&head, "classDiagram-v2")) {
+    Graph g;
+    memset(&g, 0, sizeof g);
+    if (class_parse(&g, &s, first, reason)) ok = draw_graph(m, &g, max_width, reason);
+    if (ok) m->kind = "class";
+    graph_release(&g);
+  } else if (first_word_is(&head, "erDiagram")) {
+    Graph g;
+    memset(&g, 0, sizeof g);
+    if (er_parse(&g, &s, first, reason)) ok = draw_graph(m, &g, max_width, reason);
+    if (ok) m->kind = "er";
+    graph_release(&g);
+  } else if (first_word_is(&head, "mindmap")) {
+    ok = draw_mindmap(m, &s, first, max_width, reason);
+  } else if (first_word_is(&head, "timeline")) {
+    ok = draw_timeline(m, &s, first, s.title.n ? &s.title : NULL, max_width, reason);
+  } else if (first_word_is(&head, "journey")) {
+    ok = draw_journey(m, &s, first, max_width, reason);
+  } else if (first_word_is(&head, "gantt")) {
+    ok = draw_gantt(m, &s, first, max_width, reason);
   } else {
     char msg[120];
     size_t kn = 0;
@@ -3901,6 +5107,8 @@ int rolltui_mermaid_render(RolltuiMermaid* m, const char* src, size_t n, int max
   }
   source_release(&s);
   if (!ok) {
+    /* nothing is refused without a reason a person can read */
+    if (reason && reason->n == 0) reason_set(reason, "a line of the diagram is not understood");
     grid_init(&m->g, 0, 0);
     out_reset(m);
     return 0;

@@ -19,8 +19,11 @@
  *   stateDiagram        as a flowchart of rounded states, with the start and end markers and
  *                       composite states as frames.
  *   pie                 a bar for each slice, scaled to the width.
- *   classDiagram, erDiagram, mindmap, gantt, timeline   drawn as what they are (boxes and
- *                       relations, a tree, bars on an axis, a list of periods).
+ *   classDiagram, erDiagram   records (a name over a rule over its members) joined by the relations
+ *                       they name, with a mark at each end (a hollow triangle for a parent, a diamond
+ *                       for a whole) and a cardinality by it.
+ *   mindmap, timeline, journey, gantt   drawn as what they are: a tree, a list of periods on a
+ *                       rail, tasks with a score in dots, bars on a dated axis.
  * A diagram that cannot be drawn — a kind not listed, a syntax error, or one wider than the room it
  * was given — is not drawn, and `reason` says which. Nothing is ever half-drawn.
  *

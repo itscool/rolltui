@@ -1,0 +1,11 @@
+A Gantt Diagram
+
+               Jan 1    Jan 12       Jan 24       Feb 4       Feb 16       Mar 1
+               ┬───────────┬────────────┬───────────┬────────────┬────────────┬
+Section
+A task       │ █████████████████████████████████
+Another task │                                  █████████████████████
+Another
+Task in sec  │             █████████████
+another task │                          ██████████████████████████
+Release      │                                                                ◆

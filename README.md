@@ -79,8 +79,9 @@ character is drawn as its picture (`␛`), a stray byte as `�`.
 A ```` ```mermaid ```` block in Markdown — in a preview, in a transcript, anywhere the library renders Markdown — is
 drawn as the diagram it describes, in the theme's own colours, from box-drawing glyphs (or `+ - | > v` where an
 ambiguous glyph is two cells). Flowcharts (all four directions, every node shape and edge style, subgraphs as
-frames), sequence diagrams (with their loop / alt / opt frames, notes and activations), state diagrams and pie
-charts are drawn; one that is not, or is wider than the room it has, is shown as its source with a line saying why.
+frames), sequence diagrams (with their loop / alt / opt frames, notes and activations), state diagrams, class and
+ER diagrams, mind maps, timelines, user journeys, Gantt charts and pie charts are drawn; one that is not (a git
+graph, say), or is wider than the room it has, is shown as its source with a line saying why.
 
 ## Ownership, in three shapes and no fourth
 

@@ -85,6 +85,7 @@ int cells_of(const std::string& line) {
 
 int main(int argc, char** argv) {
   const bool record = argc > 1 && std::strcmp(argv[1], "--record") == 0;
+  constexpr int kWidth = 120;  // the room every fixture is drawn in
   const fs::path dir = fs::path(ROLLTUI_FIXTURE_DIR) / "mermaid";
   RolltuiMermaid* m = rolltui_mermaid_new();
 
@@ -93,13 +94,13 @@ int main(int argc, char** argv) {
   for (const auto& e : fs::directory_iterator(dir))
     if (e.path().extension() == ".mmd") files.push_back(e.path());
   std::sort(files.begin(), files.end());
-  check(files.size() >= 16, "the fixtures are there (" + std::to_string(files.size()) + " diagrams)");
+  check(files.size() >= 23, "the fixtures are there (" + std::to_string(files.size()) + " diagrams)");
   for (const fs::path& f : files) {
     const std::string name = f.stem().string();
     const std::string src = slurp(f);
     for (int ascii = 0; ascii < 2; ++ascii) {
       const fs::path golden = dir / (name + (ascii ? ".ascii.txt" : ".txt"));
-      const Drawn d = draw(m, src, 100, ascii != 0);
+      const Drawn d = draw(m, src, kWidth, ascii != 0);
       const std::string label = name + (ascii ? " (ascii)" : "");
       check(d.ok, label + ": it draws [" + d.why + "]");
       if (!d.ok) continue;
@@ -135,7 +136,7 @@ int main(int argc, char** argv) {
           widest = std::max(widest, cells_of(line));
           for (unsigned char c : line) if (c < 0x20 || c == 0x7f) controls = true;
         }
-        check(widest <= 100 && widest == d.width, label + ": every line fits the room it was given, and the width it reports is the widest [" + std::to_string(widest) + " / " + std::to_string(d.width) + "]");
+        check(widest <= kWidth && widest == d.width, label + ": every line fits the room it was given, and the width it reports is the widest [" + std::to_string(widest) + " / " + std::to_string(d.width) + "]");
         check(!controls, label + ": no control character is in the picture");
       }
       if (ascii) {
@@ -144,7 +145,7 @@ int main(int argc, char** argv) {
         check(all_ascii, label + ": the ASCII set is ASCII (a picture for a terminal where the box glyphs are two cells wide)");
       }
       // THE SAME TEXT DRAWS THE SAME PICTURE
-      const Drawn again = draw(m, src, 100, ascii != 0);
+      const Drawn again = draw(m, src, kWidth, ascii != 0);
       check(again.ok && again.text == d.text, label + ": drawn twice into one handle, it is the same picture");
     }
   }
@@ -163,6 +164,63 @@ int main(int argc, char** argv) {
     check(st.kind == "state" && has(st.text, "\xE2\x97\x8F") && has(st.text, "\xE2\x97\x89"), "a state diagram has its start and its end");
     const Drawn p = draw(m, slurp(dir / "pie.mmd"), 100, false);
     check(p.kind == "pie" && has(p.text, "73.1%") && has(p.text, "Pets adopted by volunteers"), "a pie chart has its percentages and its title");
+  }
+
+  // ---- THE OTHER KINDS ----------------------------------------------------------------------------------------------
+  {
+    const Drawn c = draw(m, slurp(dir / "class.mmd"), 100, false);
+    check(c.kind == "class" && has(c.text, "\xE2\x96\xB3") && has(c.text, "+isMammal()") && has(c.text, "lays") && has(c.text, "\xE2\x94\x9C"),
+          "a class diagram: records with their members under a rule, a hollow triangle at the parent, a relation's label");
+    // the parent is above however the relation was written
+    const Drawn flip = draw(m, "classDiagram\n  Duck --|> Animal\n", 100, false);
+    check(flip.text.find("Animal") < flip.text.find("Duck") && has(flip.text, "\xE2\x96\xB3"), "`Duck --|> Animal` puts the parent above, as `Animal <|-- Duck` does");
+    const Drawn ci = draw(m, slurp(dir / "class-interface.mmd"), 100, false);
+    check(has(ci.text, "<<interface>>") && has(ci.text, "Shape<T>") && has(ci.text, "\xE2\x97\x87") && has(ci.text, "\xE2\x94\x84"),
+          "an annotation is kept as written, a generic is Shape<T>, aggregation has its open diamond, realization is dotted");
+    check(has(ci.text, "\n") && has(ci.text, "4") && has(ci.text, "1"), "cardinalities in quotes are drawn at the ends of the relation");
+    const Drawn e = draw(m, slurp(dir / "er.mmd"), 100, false);
+    check(e.kind == "er" && has(e.text, "0..*") && has(e.text, "1..*") && has(e.text, "places") && has(e.text, "\xE2\x94\x84") && has(e.text, "string custNumber PK"),
+          "an ER diagram: entities with their attributes in columns, cardinalities at the ends, a dotted line for a non-identifying relationship");
+    const Drawn mm = draw(m, slurp(dir / "mindmap.mmd"), 100, false);
+    check(mm.kind == "mindmap" && has(mm.text, "\xE2\x94\x9C\xE2\x94\x80 Origins") && has(mm.text, "\xE2\x94\x94\xE2\x94\x80 Tools") && has(mm.text, "\xE2\x94\x82  \xE2\x94\x9C\xE2\x94\x80 Long history"),
+          "a mind map is a tree, its rails running while a branch has more to come");
+    const Drawn mm_narrow = draw(m, slurp(dir / "mindmap.mmd"), 30, false);
+    check(mm_narrow.ok && has(mm_narrow.text, "Tony Buzan") && has(mm_narrow.text, "ideas about learning"), "…and a narrow one wraps its words instead of running off the edge");
+    const Drawn tl = draw(m, slurp(dir / "timeline.mmd"), 100, false);
+    check(tl.kind == "timeline" && has(tl.text, "2004 \xE2\x97\x8F\xE2\x94\x80 Facebook") && has(tl.text, "\xE2\x94\x82  Google") && has(tl.text, "Later"),
+          "a timeline: the period, its first event on it, the others under it, and its sections");
+    const Drawn jr = draw(m, slurp(dir / "journey.mmd"), 100, false);
+    check(jr.kind == "journey" && has(jr.text, "\xE2\x97\x8F\xE2\x97\x8F\xE2\x97\x8F\xE2\x97\x8F\xE2\x97\x8F 5") && has(jr.text, "\xE2\x97\x8F\xE2\x97\x8B\xE2\x97\x8B\xE2\x97\x8B\xE2\x97\x8B 1") && has(jr.text, "Me, Cat"),
+          "a journey: a score is that many dots of five, and who is in it");
+    const Drawn gt = draw(m, slurp(dir / "gantt.mmd"), 100, false);
+    check(gt.kind == "gantt" && has(gt.text, "Jan 1") && has(gt.text, "\xE2\x96\x88") && has(gt.text, "\xE2\x97\x86") && has(gt.text, "Another task"),
+          "a Gantt chart: a dated axis, a bar for each task, a diamond for a milestone");
+    {
+      // `after a1` starts where a1 ends: the second bar begins on the column the first one stopped at
+      std::istringstream in(gt.text);
+      std::string line, first_bar, second_bar;
+      while (std::getline(in, line)) {
+        if (line.rfind("A task", 0) == 0) first_bar = line;
+        if (line.rfind("Another task", 0) == 0) second_bar = line;
+      }
+      auto cell_of = [](const std::string& s, bool last) {
+        int cell = 0, at = -1;
+        std::size_t i = 0;
+        while (i < s.size()) {
+          const unsigned char c = static_cast<unsigned char>(s[i]);
+          const std::size_t len = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : 4;
+          if (s.compare(i, len, "\xE2\x96\x88") == 0) { if (!last && at < 0) at = cell; if (last) at = cell; }
+          ++cell;
+          i += len;
+        }
+        return at;
+      };
+      check(cell_of(first_bar, true) + 1 == cell_of(second_bar, false), "`after a1` starts the bar where a1's stops [" + std::to_string(cell_of(first_bar, true) + 1) + " / " + std::to_string(cell_of(second_bar, false)) + "]");
+    }
+    const Drawn gt_narrow = draw(m, slurp(dir / "gantt.mmd"), 30, false);
+    check(!gt_narrow.ok && has(gt_narrow.why, "columns"), "a Gantt chart with no room says how much it wants [" + gt_narrow.why + "]");
+    const Drawn gt_bad = draw(m, "gantt\n  A :a1, after nothing, 3d\n", 100, false);
+    check(!gt_bad.ok && has(gt_bad.why, "not been defined"), "a task after one that is not there is refused in words [" + gt_bad.why + "]");
   }
 
   // ---- WHAT THE FLOWCHART DIRECTION MEANS ---------------------------------------------------------------------
