@@ -79,6 +79,19 @@ next lands on the person's own screen. An app supplies callbacks: `render` and `
 this way, and `rolltui-run-test` drives it on a real pty. A host of a different shape, with its own threads say,
 still has `rolltui_terminal_poll` and `rolltui_terminal_present` underneath.
 
+## What is shown is watched
+
+Every folder that has its insides on screen, and the file being previewed, is looked at again about twice a second, so
+the screen keeps up with the disk without a keypress. A file that is added, grows, is removed or renamed is on screen
+within the interval; the cursor and the scroll stay where they were (by name — a selection that is gone falls to the entry
+now in its place, and a reader at the top of a list stays at the top); a folder that goes takes the columns that listed it,
+and the eye comes back to the deepest folder still there; a file replaced by a folder, or the other way, is followed; a
+preview keeps the same line at the top even when the head of the file changes, and a reader at the foot of a log follows it
+as it grows. The look is a `stat` of each folder and of the rows on screen, no descriptor held, so it costs nothing when
+nothing changed (a folder of twenty thousand entries: about a tenth of a millisecond), and a folder that keeps changing
+backs the interval off rather than eating the frame. It is on unless `RolltuiPickerOptions.no_watch` says otherwise, and
+it needs a frame clock, so a golden frame stays a still.
+
 ## What a file looks like, and what a diagram in it looks like
 
 The column browser can show the file under the cursor in the right half (`RolltuiPickerOptions.preview`; in

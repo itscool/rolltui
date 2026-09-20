@@ -359,7 +359,7 @@ set(ROLLTUI_INTERNAL_OPT_IN
   input_test.cpp keys_test.cpp layout_editor_test.cpp layout_test.cpp lifetime_test.cpp line_break_test.cpp
   markdown_test.cpp md_test_helpers.hpp menu_test.cpp mermaid_test.cpp presets_test.cpp terminal_test.cpp termfacts_test.cpp theme_gen_test.cpp
   width_test.cpp word_break_test.cpp wrap_test.cpp
-  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp hints_test.cpp
+  screen_test.cpp transcript_test.cpp theme_test.cpp theme_analysis_test.cpp picker_test.cpp watch_test.cpp hints_test.cpp
   # the two EDITOR unit tests joined. They were in the public-only set, and an
   # editor's unit test is not a consumer-shaped program — it drives one editor, which is part
   # of the studio. Decision 2: only a consumer-shaped program's reach is evidence.
@@ -414,6 +414,7 @@ add_rolltui_test(rolltui-budget-test tests/budget_test.cpp)
 # "no wakeups with no marks".
 add_rolltui_test(rolltui-effects-test tests/effects_test.cpp)
 add_rolltui_test(rolltui-picker-test tests/picker_test.cpp)
+add_rolltui_test(rolltui-watch-test tests/watch_test.cpp)
 add_rolltui_test(rolltui-hints-test tests/hints_test.cpp)
 
 # Milestone 6: the cell grid + frame diff (golden bytes), the key/mouse decoder
@@ -665,6 +666,12 @@ target_compile_definitions(rolltui-live-terminal-test PRIVATE
   DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
 add_dependencies(rolltui-live-terminal-test rolltui-studio rolltui-paint dirktui)
 set_tests_properties(rolltui-live-terminal-test PROPERTIES TIMEOUT 90)
+
+# THE WATCHING, IN A PROGRAM'S OWN LOOP: the real dirktui on a pty, files changing under it while it sits idle.
+add_rolltui_test(rolltui-dirktui-watch-test tests/dirktui_watch_test.cpp)
+target_compile_definitions(rolltui-dirktui-watch-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
+add_dependencies(rolltui-dirktui-watch-test dirktui)
+set_tests_properties(rolltui-dirktui-watch-test PROPERTIES TIMEOUT 90)
 
 add_rolltui_test(rolltui-dirktui-test tests/dirktui_test.cpp)
 target_compile_definitions(rolltui-dirktui-test PRIVATE

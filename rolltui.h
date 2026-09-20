@@ -4936,6 +4936,14 @@ typedef struct RolltuiPickerOptions {
    * the wheel scrolls it wherever the keys are. A text file is read whole up to 256 KB and its first 256 KB
    * shown beyond that. */
   unsigned char preview ROLLTUI_DEFAULT(0);
+  /* WATCHING, ON UNLESS SAID OTHERWISE (spelled as an opt out, so a zeroed struct means "watch"): every folder that has its
+   * insides on screen and the file being previewed is looked at again about twice a second — by `stat`, no descriptor held
+   * — and what moved is read again. A file that grows, a file that is added, removed or renamed, a folder that goes and a
+   * folder that comes back are all on screen within the interval, with the cursor and the scroll where they were (by name;
+   * a selection that is gone falls to the entry now in its place), the columns that listed what is gone dropped, and a
+   * preview kept at the same line or at the end it was following. A slow disk backs the interval off. Nothing runs
+   * without a frame clock, so a golden frame is a still. */
+  unsigned char no_watch ROLLTUI_DEFAULT(0);
 } RolltuiPickerOptions;
 #define ROLLTUI_PREVIEW_OFF 0
 #define ROLLTUI_PREVIEW_RIGHT 1
@@ -4976,6 +4984,10 @@ typedef struct RolltuiPickerStatus {
    * are in it (Up, Down, PgUp, PgDn, Home, End scroll it; Right gives it the whole picker; Left or Escape step back), 3 it
    * has the whole picker. A status line says what the keys do from this. */
   unsigned char preview ROLLTUI_DEFAULT(0);
+  /* WHEN THE PICKER NEXT WANTS TO LOOK AT THE DISK, in milliseconds from the last frame; 0 when it never does (watching
+   * is off, or there is no frame clock). A host's wait for input is at most this, or an idle screen would notice a change
+   * only when a key was pressed. */
+  int wake_ms ROLLTUI_DEFAULT(0);
   RolltuiStr error;
 } RolltuiPickerStatus;
 void rolltui_picker_status_release(RolltuiPickerStatus* s);

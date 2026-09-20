@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "rolltui/c/rolltui_alloc.h"
@@ -43,6 +44,9 @@ struct RolltuiPreview {
   RolltuiUnicodeScratch* u; /* OWNED */
   RolltuiDrawScratch* ds;   /* OWNED */
   RolltuiStr s1;            /* scratch a row is built in */
+  /* WATCHING: the file as it was when read, and when, so `rolltui_preview_refresh` can tell that it moved. */
+  RolltuiFileSig sig;
+  long long sig_read_secs;
 };
 
 RolltuiPreview* rolltui_preview_new(void) {
@@ -279,11 +283,54 @@ static void fail(RolltuiPreview* pv, const char* why) {
   rolltui_str_set(&pv->message, why, strlen(why));
 }
 
+/* ---- a file as it was ------------------------------------------------------------------------ */
+#if defined(__APPLE__)
+#define SIG_MTIME_NS(st) ((long long)(st).st_mtimespec.tv_sec * 1000000000LL + (long long)(st).st_mtimespec.tv_nsec)
+#define SIG_CTIME_NS(st) ((long long)(st).st_ctimespec.tv_sec * 1000000000LL + (long long)(st).st_ctimespec.tv_nsec)
+#else
+#define SIG_MTIME_NS(st) ((long long)(st).st_mtim.tv_sec * 1000000000LL + (long long)(st).st_mtim.tv_nsec)
+#define SIG_CTIME_NS(st) ((long long)(st).st_ctim.tv_sec * 1000000000LL + (long long)(st).st_ctim.tv_nsec)
+#endif
+
+int rolltui_filesig_read(const char* path, RolltuiFileSig* sig) {
+  struct stat st;
+  memset(sig, 0, sizeof *sig);
+  if (!path || stat(path, &st) != 0) {
+    sig->err = errno ? errno : ENOENT;
+    return 0;
+  }
+  sig->ok = 1;
+  sig->dev = (unsigned long long)st.st_dev;
+  sig->ino = (unsigned long long)st.st_ino;
+  sig->size = (long long)st.st_size;
+  sig->mtime_ns = SIG_MTIME_NS(st);
+  sig->ctime_ns = SIG_CTIME_NS(st);
+  return 1;
+}
+
+int rolltui_filesig_same(const RolltuiFileSig* a, const RolltuiFileSig* b) {
+  if (a->ok != b->ok) return 0;
+  if (!a->ok) return a->err == b->err;
+  return a->dev == b->dev && a->ino == b->ino && a->size == b->size && a->mtime_ns == b->mtime_ns && a->ctime_ns == b->ctime_ns;
+}
+
+int rolltui_filesig_racy(const RolltuiFileSig* sig, long long read_at_secs) {
+  /* a stamp in the future is a clock that is wrong, not a write that is about to happen again: one second of slack for
+   * a server's clock beside ours, and no more, or a file dated next year would be read again forever */
+  const long long age = read_at_secs - sig->mtime_ns / 1000000000LL;
+  return sig->ok && age >= -1 && age < 2;
+}
+
 static void load(RolltuiPreview* pv) {
   struct stat st;
   unsigned char sniff[SNIFF_BYTES];
   size_t got;
-  const int fd = open(pv->path.p, O_RDONLY | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
+  int fd;
+  /* DESCRIBED BEFORE IT IS READ: a write in between leaves the description older than what was read, and the next look
+   * reads again, where the other order would trust content it never read. */
+  pv->sig_read_secs = (long long)time(NULL);
+  rolltui_filesig_read(pv->path.p, &pv->sig);
+  fd = open(pv->path.p, O_RDONLY | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
   if (fd < 0) {
     fail(pv, strerror(errno));
     return;
@@ -455,7 +502,9 @@ static void clamp_top(RolltuiPreview* pv) {
 
 /* Scrolled to the end: the last row is in view and the first is not (a file that fits whole is at its top, not its end). */
 static int pinned_to_end(const RolltuiPreview* pv) {
-  return pv->top > 0 && pv->rows_vis > 0 && pv->top + pv->rows_vis >= total_rows(pv);
+  /* no rows means no layout yet (a Markdown file just read): nothing is at the end of nothing */
+  const size_t total = total_rows(pv);
+  return pv->top > 0 && pv->rows_vis > 0 && total > 0 && pv->top + pv->rows_vis >= total;
 }
 
 /* THE ROWS ON SCREEN, RE-DERIVED EVERY FRAME from the width and the height this frame has: how many bytes fit a row, where
@@ -767,5 +816,158 @@ int rolltui_preview_scroll_to(RolltuiPreview* pv, size_t first) {
   if (!pv) return 0;
   pv->top = first;
   clamp_top(pv);
+  return 1;
+}
+
+/* ---- watching ------------------------------------------------------------------------------- */
+
+/* THE READER'S PLACE, BY WHAT THEY WERE READING. A line number is the wrong anchor once the head of a file changes: a log
+ * that drops its oldest lines, text put in above the window. So what is at the top is remembered as text, and after the
+ * file is read again it is looked for, nearest to where it was; when it is not to be found (the file is something else
+ * now) the place is the same line, or offset, as before. */
+#define ANCHOR_BYTES 96
+#define ANCHOR_WORTH 8        /* a Markdown source shorter than this (in non-blank bytes) says nothing about where it is */
+#define ANCHOR_LINES 2000     /* how far, in lines, the text is looked for */
+#define ANCHOR_REACH 131072   /* and in bytes, over a Markdown source */
+
+static int worth_anchoring(const char* b, size_t n, size_t at_least) {
+  size_t i, real = 0;
+  for (i = 0; i < n; ++i)
+    if (b[i] != ' ' && b[i] != '\t' && b[i] != '\r' && b[i] != '\n') ++real;
+  return real >= at_least;
+}
+
+/* Line `i`'s bytes in `body`, without its end of line. */
+static void line_span(const RolltuiPreview* pv, size_t i, size_t* from, size_t* to) {
+  *from = pv->line_off[i];
+  *to = i + 1 < pv->line_n ? pv->line_off[i + 1] - 1 : pv->body.n;
+  if (*to > *from && pv->body.p[*to - 1] == '\n') --*to;
+  if (*to > *from && pv->body.p[*to - 1] == '\r') --*to;
+}
+
+/* `exact`: the whole line was kept, so the line must be the same; otherwise only its start was, and a line that begins so is it. */
+static int line_is(const RolltuiPreview* pv, size_t i, const RolltuiStr* want, int exact) {
+  size_t from, to;
+  if (i >= pv->line_n) return 0;
+  line_span(pv, i, &from, &to);
+  if (exact ? to - from != want->n : to - from < want->n) return 0;
+  return memcmp(pv->body.p + from, want->p, want->n) == 0;
+}
+
+/* Whether no other line of the file is this line: the one thing that makes a line a place. (Blank lines and rules are on
+ * every page; "line 30" is on one.) */
+static int line_is_unique(const RolltuiPreview* pv, size_t j, size_t from, size_t to) {
+  size_t i;
+  for (i = 0; i < pv->line_n; ++i) {
+    size_t f, t;
+    if (i == j) continue;
+    line_span(pv, i, &f, &t);
+    if (t - f == to - from && memcmp(pv->body.p + f, pv->body.p + from, to - from) == 0) return 0;
+  }
+  return 1;
+}
+
+/* The line to find again: the first at or under the top (within a screenful) that is not blank and is not repeated
+ * anywhere else; failing that, the first that is not blank. And how far under the top it is. */
+static int text_anchor(const RolltuiPreview* pv, size_t top, RolltuiStr* snip, size_t* delta, int* exact) {
+  size_t j, pick = (size_t)-1;
+  for (j = top; j < pv->line_n && j < top + 20; ++j) {
+    size_t from, to;
+    line_span(pv, j, &from, &to);
+    if (!worth_anchoring(pv->body.p + from, to - from, 1)) continue;
+    if (pick == (size_t)-1) pick = j;
+    if (line_is_unique(pv, j, from, to)) { pick = j; break; }
+  }
+  if (pick == (size_t)-1) return 0;
+  {
+    size_t from, to;
+    line_span(pv, pick, &from, &to);
+    rolltui_str_set(snip, pv->body.p + from, to - from < ANCHOR_BYTES * 2 ? to - from : ANCHOR_BYTES * 2);
+    *exact = to - from <= ANCHOR_BYTES * 2;
+    *delta = pick - top;
+  }
+  return 1;
+}
+
+static size_t find_text_anchor(const RolltuiPreview* pv, size_t top, const RolltuiStr* snip, size_t delta, int exact) {
+  const size_t at = top + delta;
+  size_t d;
+  if (line_is(pv, at, snip, exact)) return top;
+  for (d = 1; d <= ANCHOR_LINES; ++d) {
+    if (at + d < pv->line_n && line_is(pv, at + d, snip, exact)) return at + d >= delta ? at + d - delta : 0;
+    if (d <= at && line_is(pv, at - d, snip, exact)) return at - d >= delta ? at - d - delta : 0;
+  }
+  return top;
+}
+
+/* The same, over the document's LOGICAL text (what every source offset indexes: the markup is gone), for a Markdown file:
+ * the words at the top are remembered as text and looked for in the new text, nearest to where they were. */
+static int text_snippet(const char* text, size_t text_n, size_t off, RolltuiStr* snip) {
+  size_t n;
+  if (off >= text_n) return 0;
+  n = text_n - off < ANCHOR_BYTES ? text_n - off : ANCHOR_BYTES;
+  if (!worth_anchoring(text + off, n, ANCHOR_WORTH)) return 0;
+  rolltui_str_set(snip, text + off, n);
+  return 1;
+}
+
+static size_t find_snippet(const char* text, size_t text_n, size_t off, const RolltuiStr* snip) {
+  size_t d;
+  const size_t last = text_n >= snip->n ? text_n - snip->n : 0;
+  if (text_n < snip->n) return off;
+  if (off <= last && memcmp(text + off, snip->p, snip->n) == 0) return off;
+  for (d = 1; d <= ANCHOR_REACH; ++d) {
+    if (off + d <= last && text[off + d] == snip->p[0] && memcmp(text + off + d, snip->p, snip->n) == 0) return off + d;
+    if (d <= off && off - d <= last && text[off - d] == snip->p[0] && memcmp(text + off - d, snip->p, snip->n) == 0) return off - d;
+    if (off + d > last && d > off) break;
+  }
+  return off;
+}
+
+int rolltui_preview_refresh(RolltuiPreview* pv) {
+  RolltuiFileSig now;
+  RolltuiStr snip;
+  int kind0, end0, laid_out, aw0, anchored = 0, exact = 1;
+  size_t top0, rows0, anchor0 = ROLLTUI_MD_NO_SOURCE, delta = 0;
+  int width0;
+  if (!pv || pv->path.n == 0 || pv->kind == ROLLTUI_PREVIEW_NONE) return 0;
+  rolltui_filesig_read(pv->path.p, &now);
+  if (rolltui_filesig_same(&pv->sig, &now) && !rolltui_filesig_racy(&pv->sig, pv->sig_read_secs)) return 0;
+  /* WHERE THE READER WAS, taken before the old text goes: what was at the top (the line, or the words), and whether the
+   * last row was on screen (a reader at the foot of a log stays at its foot as it grows). */
+  memset(&snip, 0, sizeof snip);
+  kind0 = pv->kind;
+  top0 = pv->top;
+  rows0 = pv->rows_vis;
+  width0 = pv->md_width;
+  aw0 = pv->md_aw;
+  end0 = pinned_to_end(pv);
+  laid_out = kind0 == ROLLTUI_PREVIEW_MARKDOWN && pv->md_lines && pv->md_width != 0;
+  if (!end0 && top0 > 0) {
+    if (kind0 == ROLLTUI_PREVIEW_TEXT) anchored = text_anchor(pv, top0, &snip, &delta, &exact);
+    else if (laid_out) {
+      anchor0 = md_source_at(pv, top0);
+      if (anchor0 != ROLLTUI_MD_NO_SOURCE)
+        anchored = text_snippet(rolltui_md_lines_text(pv->md_lines), rolltui_md_lines_text_size(pv->md_lines), anchor0, &snip);
+    }
+  }
+  release_content(pv);
+  load(pv);
+  pv->rows_vis = rows0;
+  if (pv->kind == kind0) {
+    pv->top = top0;
+    if (kind0 == ROLLTUI_PREVIEW_MARKDOWN && laid_out) {
+      /* laid out again at once, at the width the reader had, so the words can be found in the new text and the total is
+       * known; the next draw finds it laid out (or, if the width has changed, keeps the same words as it always does) */
+      render_md(pv, width0, aw0);
+      if (anchored) pv->top = md_line_for(pv, find_snippet(rolltui_md_lines_text(pv->md_lines), rolltui_md_lines_text_size(pv->md_lines), anchor0, &snip));
+    } else if (anchored && kind0 == ROLLTUI_PREVIEW_TEXT) {
+      pv->top = find_text_anchor(pv, top0, &snip, delta, exact);
+    }
+    /* THE END IS FOLLOWED: settled now, not at the next draw, so what a scrollbar reads between the two is true */
+    if (end0) pv->top = total_rows(pv);
+    clamp_top(pv);
+  }
+  rolltui_str_free(&snip);
   return 1;
 }

@@ -539,13 +539,15 @@ struct App {
   unsigned long long now_ms = 0;  // the frame clock; 0 in a headless frame, where nothing moves
   RolltuiEffectReport last_fx{};  // what the last frame's effects touched: a self-test reads it
   std::size_t last_marks = 0;
-  // How soon this frame wants redrawing: a sliding column asks for the next tick, a marked span
-  // whose effect moves asks for its own interval, else `idle`.
+  // How soon this frame wants redrawing: a sliding column asks for the next tick, the picker asks for its next look at
+  // the disk, a marked span whose effect moves asks for its own interval, else `idle`.
   int poll_timeout_ms(const RolltuiFrame* f, int idle) {
     RolltuiPickerStatus st{};
     const bool moving = rolltui_windows_picker_status(windows, kPicker, 10, &st) && st.moving;
+    const int look = st.wake_ms;  // when the picker next wants to look at the disk: an idle screen must not sleep past it
     rolltui_picker_status_release(&st);
     int want = moving ? 16 : idle;
+    if (look > 0 && look < want) want = look;
     // A note holds, then fades, then the name fades back in: frames until all of that is done.
     if (now_ms && (!hint.empty() || now_ms < title_back_since + kTitleBackMs) && want > 100) want = 100;
     if (opt.sparkle && f && rolltui_frame_mark_count(f) != 0 && effects && !rolltui_effect_map_empty(effects)) {

@@ -54,6 +54,31 @@ int rolltui_preview_kind(const RolltuiPreview* pv);
 /* The reason an UNREADABLE file could not be shown; empty otherwise. A BORROW. */
 const char* rolltui_preview_message(const RolltuiPreview* pv, size_t* len);
 
+/* A FILE AS IT WAS WHEN IT WAS LAST READ, so a later look can tell whether it changed: which file it is (a file
+ * replaced by another of the same name has another inode), how big, and when it was last written and last touched, to
+ * the nanosecond the file system keeps. */
+typedef struct RolltuiFileSig {
+  int ok;  /* the file could be described; 0: it could not, and `err` is why (an errno) */
+  int err;
+  unsigned long long dev, ino;
+  long long size, mtime_ns, ctime_ns;
+} RolltuiFileSig;
+
+/* Describes `path`, following links. Returns `sig->ok`. */
+int rolltui_filesig_read(const char* path, RolltuiFileSig* sig);
+/* The same file, in the same state: both failed the same way, or both succeeded and nothing about it moved. */
+int rolltui_filesig_same(const RolltuiFileSig* a, const RolltuiFileSig* b);
+/* WRITTEN TOO RECENTLY TO TRUST. A file system that keeps whole seconds can carry one stamp through two writes, so a
+ * description taken within two seconds of the write says nothing about a second write: it must be looked at again
+ * until it has aged out. `read_at_secs` is the wall clock when the description was taken. */
+int rolltui_filesig_racy(const RolltuiFileSig* sig, long long read_at_secs);
+
+/* WATCHING. Looks at the file again; when it is not what was read — written, replaced, truncated, gone, back — reads
+ * it again and keeps the reader's place: the same line, row or paragraph at the top, and at the very end still at the
+ * end, so a log that grows under a reader who is at its foot is followed. Returns 1 when it read again, 0 when the file
+ * was as it was. Cheap when nothing changed: one `stat`. */
+int rolltui_preview_refresh(RolltuiPreview* pv);
+
 /* Draws into `r`: a head row (the file's name, and what it is) and, under it, the body. `styles`
  * is the theme's table. `focused` marks the head so a person can tell the keys are theirs. */
 void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, const RolltuiStyle* styles,

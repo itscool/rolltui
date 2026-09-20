@@ -27,6 +27,12 @@ typedef struct Column {
   int width;       /* derived from the content, clamped */
   size_t hidden_n; /* how many entries the dotfile rule hid */
   RolltuiStr error; /* opendir failed: a NOTE, never a crash */
+  /* WATCHING: the folder as it was when read, so a later look can tell that it moved; the pass that read it (a column
+   * read in this pass is not looked at again in it); and how far the slow scan of a big folder has got. */
+  RolltuiFileSig sig;
+  long long sig_read_secs;
+  unsigned long long read_pass;
+  size_t scan_at;
 } Column;
 
 struct RolltuiPicker {
@@ -65,6 +71,9 @@ struct RolltuiPicker {
   int pv_focus;
   int pv_zoom;         /* the preview has the whole picker: the columns are not drawn */
   RolltuiRect pv_rect; /* w == 0: not on screen */
+  /* WATCHING: when the next look at the disk is due (0: not started), and the pass counter that tells a column read a
+   * moment ago from one that has waited. */
+  unsigned long long watch_next_ms, watch_pass;
   /* CALLER-FILLED scratch the draw reuses frame to frame, so a steady frame allocates nothing */
   RolltuiStr s1, s2, s3;
 };
@@ -175,6 +184,12 @@ static void read_column(RolltuiPicker* p, Column* c) {
   const int flags = (p->opt.hidden ? ROLLTUI_DIR_HIDDEN : 0) | ROLLTUI_DIR_LINKS | (p->opt.reversed ? ROLLTUI_DIR_REVERSED : 0);
   memset(&err, 0, sizeof err);
   rolltui_str_clear(&c->error);
+  /* DESCRIBED BEFORE IT IS READ, so a change made while it is being read is seen at the next look rather than trusted. */
+  c->read_pass = p->watch_pass;
+  c->scan_at = 0;
+  c->sig_read_secs = (long long)time(NULL);
+  if (c->dir.n) rolltui_filesig_read(c->dir.p, &c->sig);
+  else memset(&c->sig, 0, sizeof c->sig);
   /* THE TOP COLUMN holds one entry, the root itself, so the root can be CHOSEN like any other
    * folder — selected in the column to its left, then taken — rather than being the one place
    * the cursor can only be in. Nothing is read for it. */
@@ -475,6 +490,162 @@ static void out(RolltuiPicker* p) {
   retarget(p);
 }
 
+/* ---- watching --------------------------------------------------------------------------------- */
+/* WHAT IS SHOWN IS WATCHED: every folder that has its insides on screen, and the file that is being previewed. Not by
+ * asking the operating system to tell us (an fd per folder and per file, a different mechanism on each system, and a
+ * file changed in place is not a change to its folder anyway) but by LOOKING, cheaply and on a clock: a `stat` of each
+ * folder shown and of the rows on screen. A folder that moved is read again, a column at a time, keeping the cursor and
+ * the scroll where they were BY NAME, and whatever was drawn from what is gone is drawn again from what is there. */
+#define WATCH_MS 500ULL      /* between looks */
+#define WATCH_MAX_MS 10000ULL
+#define SCAN_ROWS 512        /* beyond the rows on screen, how many a folder sorted by size or date is checked for per look */
+
+/* Whether a row is other than it was when its folder was read: gone, a different kind of thing, another size, another
+ * date or mode. The reader describes the LINK and so does this. */
+static int entry_moved(RolltuiPicker* p, const Column* c, const RolltuiDirEntry* e) {
+  struct stat st;
+  join(&c->dir, &e->name, &p->s3);
+  if (lstat(p->s3.p, &st) != 0) return !e->unreadable;
+  if (e->unreadable) return 1;
+  return (S_ISDIR(st.st_mode) ? 1 : 0) != e->is_dir || (long long)(S_ISDIR(st.st_mode) ? 0 : st.st_size) != e->size ||
+         (long long)st.st_mtime != e->modified || (unsigned int)st.st_mode != e->mode;
+}
+
+/* Whether a column needs reading again. The folder first (a file added, removed or renamed in it moves its stamp), then
+ * the rows on screen, which is where a file that grew in place shows. When the order depends on what a row holds (by
+ * size, by date) a row off screen can move the rows on it, so the rest are looked at too, a slice per look. */
+static int column_stale(RolltuiPicker* p, Column* c) {
+  RolltuiFileSig now;
+  size_t first, last, n = c->entries.n;
+  if (c->dir.n == 0) return 0;
+  rolltui_filesig_read(c->dir.p, &now);
+  if (!rolltui_filesig_same(&c->sig, &now)) return 1;
+  if (!now.ok) return 0;                                       /* could not be read then, cannot now: as it was */
+  if (rolltui_filesig_racy(&c->sig, c->sig_read_secs)) return 1; /* written too lately to be sure a second write shows */
+  first = c->top < n ? c->top : n;
+  last = first + (size_t)rows_visible(p);
+  if (last > n) last = n;
+  {
+    size_t i;
+    for (i = first; i < last; ++i)
+      if (entry_moved(p, c, &c->entries.v[i])) return 1;
+  }
+  /* the selection, which the wheel may have scrolled off screen */
+  if (c->sel < n && (c->sel < first || c->sel >= last) && entry_moved(p, c, &c->entries.v[c->sel])) return 1;
+  if ((p->opt.sort == ROLLTUI_SORT_SIZE || p->opt.sort == ROLLTUI_SORT_MODIFIED) && n > last - first) {
+    size_t done = 0, k = c->scan_at < n ? c->scan_at : 0;
+    while (done < SCAN_ROWS && done < n) {
+      if ((k < first || k >= last) && entry_moved(p, c, &c->entries.v[k])) { c->scan_at = k; return 1; }
+      k = k + 1 < n ? k + 1 : 0;
+      ++done;
+    }
+    c->scan_at = k;
+  }
+  return 0;
+}
+
+/* READ A COLUMN AGAIN, and put the eye back: the same entry selected BY NAME, and if that entry is gone the one that
+ * now stands where it stood (the next, or the last when it was the last); the same entry at the top of the window, so a
+ * file added above the screen does not move what is on it. A selection that was on screen stays on screen; one the wheel
+ * had scrolled away from is left where the wheel put it, but never past the end. */
+static void column_refresh(RolltuiPicker* p, size_t ci) {
+  Column* c = &p->cols[ci];
+  RolltuiStr sel_name, top_name;
+  const size_t old_sel = c->sel, old_top = c->top;
+  const int vis = rows_visible(p);
+  const int was_visible = vis > 0 && old_sel >= old_top && old_sel < old_top + (size_t)vis;
+  size_t i;
+  int found = 0, top_found = 0;
+  memset(&sel_name, 0, sizeof sel_name);
+  memset(&top_name, 0, sizeof top_name);
+  if (old_sel < c->entries.n) rolltui_str_set(&sel_name, c->entries.v[old_sel].name.p, c->entries.v[old_sel].name.n);
+  if (old_top < c->entries.n) rolltui_str_set(&top_name, c->entries.v[old_top].name.p, c->entries.v[old_top].name.n);
+  read_column(p, c);
+  measure_width(p, c);
+  for (i = 0; i < c->entries.n; ++i) {
+    if (!found && sel_name.n && rolltui_str_eq(&c->entries.v[i].name, sel_name.p, sel_name.n)) { c->sel = i; found = 1; }
+    if (!top_found && top_name.n && rolltui_str_eq(&c->entries.v[i].name, top_name.p, top_name.n)) { c->top = i; top_found = 1; }
+  }
+  if (!found) c->sel = c->entries.n ? (old_sel < c->entries.n ? old_sel : c->entries.n - 1) : 0;
+  /* A reader at the very top of the list stays at the top, so what arrives above the old first entry — a new file that
+   * sorts first, one that grew to be the largest — is on screen; anyone lower keeps the same entry at the top of the
+   * window, and nothing on it moves. */
+  if (old_top == 0) c->top = 0;
+  else if (!top_found) c->top = old_top;
+  clamp_top(p, c);
+  if (was_visible) clamp_scroll(p, c);
+  if (c->sel < c->entries.n) remember(p, c);
+  if (ci == p->focus_col && (!found || c->sel != old_sel)) eye_moved(p);
+  rolltui_str_free(&sel_name);
+  rolltui_str_free(&top_name);
+}
+
+/* THE COLUMNS AFTER A ONE THAT MOVED must still be what its selection says: the column right of it lists the selected
+ * folder. When the selection no longer names a folder (deleted, renamed, replaced by a file) they go, and the eye
+ * comes back to the deepest column still standing — which then opens its own selection, as moving the cursor would. */
+static void chain_repair(RolltuiPicker* p, size_t ci) {
+  Column* c = &p->cols[ci];
+  if (ci + 1 < p->n) {
+    const RolltuiDirEntry* e = entry_at(c, c->sel);
+    if (e && folder_like(p, c, e)) {
+      join(&c->dir, &e->name, &p->s1);
+      if (rolltui_str_eq(&p->cols[ci + 1].dir, p->s1.p, p->s1.n)) return; /* still the one it lists: its own look comes next */
+    }
+    cols_resize(p, ci + 1);
+    if (p->focus_col > ci) p->focus_col = ci;
+    p->pv_focus = 0;
+  }
+  if (p->focus_col == ci) open_selected(p);
+}
+
+int rolltui_picker_refresh(RolltuiPicker* p) {
+  size_t ci;
+  int changed = 0;
+  ++p->watch_pass;
+  for (ci = 1; ci < p->n; ++ci) {
+    Column* c = &p->cols[ci];
+    if (c->read_pass == p->watch_pass || !column_stale(p, c)) continue;
+    changed = 1;
+    column_refresh(p, ci);
+    chain_repair(p, ci);
+  }
+  /* WHAT A LINK POINTS AT can go, or come, without its own folder's stamp moving (the link is still there, unchanged): so
+   * every column is checked against what the selection before it says, whether or not anything was read. */
+  for (ci = 1; ci < p->n; ++ci) {
+    const size_t n_before = p->n, focus_before = p->focus_col;
+    chain_repair(p, ci);
+    if (p->n != n_before || p->focus_col != focus_before) changed = 1;
+  }
+  if (changed) {
+    if (p->drag_col >= (long long)p->n) p->drag_col = -1;
+    retarget(p);
+  }
+  sync_preview(p);
+  if (p->pv && p->pv_path.n && rolltui_preview_refresh(p->pv)) changed = 1;
+  return changed;
+}
+
+/* The look, on a clock: at most every WATCH_MS, and never spending more than a twentieth of the time looking, so a
+ * slow disk or a huge folder backs the interval off rather than eating the frame. Nothing runs headless (the clock is 0):
+ * a frame that is a golden is a still. */
+static unsigned long long mono_ms(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (unsigned long long)ts.tv_sec * 1000ULL + (unsigned long long)(ts.tv_nsec / 1000000L);
+}
+static void watch_tick(RolltuiPicker* p) {
+  unsigned long long began, spent, wait;
+  if (p->opt.no_watch || p->now_ms == 0 || p->n == 0) return;
+  if (p->watch_next_ms > p->now_ms + WATCH_MAX_MS) p->watch_next_ms = 0; /* the clock went somewhere else */
+  if (p->watch_next_ms == 0) { p->watch_next_ms = p->now_ms + WATCH_MS; return; }
+  if (p->now_ms < p->watch_next_ms) return;
+  began = mono_ms();
+  rolltui_picker_refresh(p);
+  spent = mono_ms() - began;
+  wait = spent * 20 > WATCH_MS ? (spent * 20 < WATCH_MAX_MS ? spent * 20 : WATCH_MAX_MS) : WATCH_MS;
+  p->watch_next_ms = p->now_ms + wait;
+}
+
 /* ---- the file preview ------------------------------------------------------------------------ */
 /* Whether the cursor is on a FILE the preview should show, and if so its path in `out`. A folder, a bundle and
  * an entry that could not even be described are not: the first has a column of its own, the others nothing
@@ -628,21 +799,20 @@ void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len) {
   retarget(p);
 }
 
-/* Re-read every column in place, keeping the selection BY NAME rather than by index, so a sort
- * change or a dotfile toggle does not move the eye to a different file. */
+/* Re-read every column in place, keeping each selection BY NAME, and what is shown right of a column consistent with
+ * what that column now selects — after an option changed (sort, dotfiles) a selected folder may have gone from the list. */
 void rolltui_picker_reload(RolltuiPicker* p) {
-  size_t i, j;
-  for (i = 0; i < p->n; ++i) {
-    Column* c = &p->cols[i];
-    if (c->sel < c->entries.n) rolltui_str_set(&p->s1, c->entries.v[c->sel].name.p, c->entries.v[c->sel].name.n);
-    else rolltui_str_clear(&p->s1);
-    read_column(p, c);
-    measure_width(p, c);
-    c->sel = 0;
-    for (j = 0; j < c->entries.n; ++j)
-      if (rolltui_str_eq(&c->entries.v[j].name, p->s1.p ? p->s1.p : "", p->s1.n)) c->sel = j;
-    clamp_scroll(p, c);
+  size_t ci;
+  ++p->watch_pass;
+  if (p->n) measure_width(p, &p->cols[0]);
+  for (ci = 1; ci < p->n; ++ci) {
+    if (p->cols[ci].read_pass == p->watch_pass) continue;
+    column_refresh(p, ci);
+    chain_repair(p, ci);
   }
+  if (p->drag_col >= (long long)p->n) p->drag_col = -1;
+  retarget(p);
+  sync_preview(p);
 }
 
 void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner) {
@@ -650,6 +820,7 @@ void rolltui_picker_layout(RolltuiPicker* p, RolltuiRect inner) {
   const int resized = inner.h != was_h;
   size_t i;
   p->inner = inner;
+  watch_tick(p);
   /* A NEW HEIGHT brings every selection back on screen — a column opened before any layout had
    * no rows to clamp against, and a resize can push a selection out. The same height keeps each
    * column where the wheel or its thumb left it. */
@@ -1238,6 +1409,9 @@ void rolltui_picker_status(const RolltuiPicker* p, RolltuiPickerStatus* out) {
   out->column = p->n ? p->focus_col + 1 : 0;
   out->columns = p->n;
   out->moving = (unsigned char)(p->scrolling != 0);
+  out->wake_ms = p->opt.no_watch || p->now_ms == 0 || p->n == 0 ? 0
+                 : p->watch_next_ms > p->now_ms ? (int)(p->watch_next_ms - p->now_ms < WATCH_MAX_MS ? p->watch_next_ms - p->now_ms : WATCH_MAX_MS)
+                                                : 1;
   out->preview = (unsigned char)(!preview_shown(p) ? 0 : p->pv_zoom ? 3 : p->pv_focus ? 2 : 1);
   if (p->n && p->cols[0].error.n) rolltui_str_set(&out->error, p->cols[0].error.p, p->cols[0].error.n);
   else rolltui_str_clear(&out->error);

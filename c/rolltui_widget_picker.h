@@ -48,6 +48,11 @@ void rolltui_picker_go_to(RolltuiPicker* p, const char* path, size_t len);
 void rolltui_picker_focus_column(RolltuiPicker* p, size_t column); /* the i-th open column, clamped */
 /* Re-reads every column in place, keeping each selection BY NAME — after an option changed. */
 void rolltui_picker_reload(RolltuiPicker* p);
+/* LOOKS AT THE DISK NOW: every folder that has its insides on screen and the file being previewed, and reads again what
+ * moved, keeping the cursor and the scroll where they were by name and following the columns that depended on what is
+ * gone. 1 when something changed. The layout does this on its own clock when a frame clock is set (unless the options say
+ * `no_watch`); this is for a caller that knows better, and for a test. */
+int rolltui_picker_refresh(RolltuiPicker* p);
 
 /* The frame clock, set before layout and before an event: 0 means headless, nothing moves. */
 void rolltui_picker_set_now(RolltuiPicker* p, unsigned long long now_ms);
