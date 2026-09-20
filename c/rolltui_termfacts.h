@@ -100,7 +100,7 @@ unsigned char rolltui_termfacts_clamp_depth(unsigned char requested);
  *                    so every width in the library — a border, a scrollbar thumb, a wrapped line — is
  *                    measured the way THIS terminal draws it whether or not the host was told: a host
  *                    that says one cell on a terminal that measured two is wrong, and a host that
- *                    forgot to ask is wrong the same way. A host that says two (`--ambiguous-wide`)
+ *                    forgot to ask is wrong the same way. A host that says two (`ambiguous_wide = 1`)
  *                    still gets two.
  *   mode             is what `rolltui_theme_load` follows when it is handed a mode below zero — which is
  *                    what `rolltui_theme_mode_from_name` answers for "auto" — so the obvious line of host

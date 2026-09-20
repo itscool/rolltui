@@ -1234,13 +1234,9 @@ struct App {
     return s;
   }
 
-  // How this terminal draws East Asian AMBIGUOUS glyphs. Not a preference and not a test hook:
-  // it is a fact about the terminal the process cannot yet ask for, and a widget that guesses it
-  // wrong cuts a two-cell glyph into one column.
+  // How this terminal draws East Asian AMBIGUOUS glyphs, as the library measured it (or as a person
+  // forced it with ROLL_AMBIGUOUS_WIDE): a widget that guesses wrong cuts a two-cell glyph into one column.
   int ambiguous = 0;
-  // `--ambiguous-wide` says two cells OUTRIGHT, over whatever the terminal measured: a person who
-  // knows their terminal better than a cursor-position report does is not argued with.
-  bool ambiguous_flag = false;
 
   // WHAT THIS PROGRAM READS FROM THE TERMINAL ITSELF — everything the library can apply without being
   // asked (the depth drawn at, the width every glyph is measured at, the mode `auto` follows) it
@@ -1250,7 +1246,7 @@ struct App {
     if (!term) return;
     RolltuiTermFacts f;
     rolltui_terminal_facts(term, &f);
-    if (!ambiguous_flag) ambiguous = f.ambiguous_wide ? 1 : 0;
+    ambiguous = f.ambiguous_wide ? 1 : 0;
     sync_theme();  // an `auto` theme follows the terminal's light or dark: the library resolves it
   }
 
@@ -1867,7 +1863,7 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, Ro
 
 int usage() {
   std::fprintf(stderr,
-               "usage: dirktui [PATH] [--ambiguous-wide]   browse from PATH (default: the current directory)\n"
+               "usage: dirktui [PATH]                      browse from PATH (default: the current directory)\n"
                "                                           Enter on a folder prints it on stdout and exits 0;\n"
                "                                           on a file: a document opens with the program chosen\n"
                "                                           for its type (F2: from what is installed); a script,\n"
@@ -2414,7 +2410,6 @@ int main(int argc, char** argv) {
   if (argc >= 2 && std::string(argv[1]) == "install") return install_command(argc, argv, false);
   if (argc >= 2 && std::string(argv[1]) == "uninstall") return install_command(argc, argv, true);
   std::string start;
-  bool ambiguous = false;
   [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] std::string frame_spec, keys_spec;
   [[maybe_unused]] bool frame_sgr = false;
@@ -2422,20 +2417,19 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
-    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
+    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `dirk-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
     //      that gets verified is not the one that ships.
     //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
-    //   3. A TERMINAL FACT — something true of the terminal the process cannot yet ask for.
-    //      `--ambiguous-wide` is the last one; it becomes an auto-detected setting.
-    //   4. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
+    //   3. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
     //      depth. **These may never come back.** Each names something the preset system already
     //      holds, autosaves and offers a UI for, and a flag beside it is a second configuration
     //      system with neither discoverability nor persistence, competing with the one that has
     //      both — and winning by accident, because a flag is what a person finds first.
+    // A FACT ABOUT THE TERMINAL is none of the three: the library asks the terminal, and a person who
+    // knows better says so in ROLL_COLOR_DEPTH or ROLL_AMBIGUOUS_WIDE.
     // `rolltui-product-flags-test` holds all three products to this.
-    if (a == "--ambiguous-wide") { ambiguous = true; continue; }  // a terminal fact, not a hook
 #ifdef ROLLTUI_SELFTEST
     if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
@@ -2451,8 +2445,6 @@ int main(int argc, char** argv) {
   }
 
   App app;
-  app.ambiguous = ambiguous ? 1 : 0;
-  app.ambiguous_flag = ambiguous;
   {
     // The app's own MOTION file, through the same three rungs as its layout — embedded, beside
     // the binary, a person's config directory — and read BEFORE any theme, since every theme

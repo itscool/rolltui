@@ -106,7 +106,7 @@ constexpr const char* kToolsMenu = R"({
 // THE TWO RAMPS, and the second is a deliberate Unicode probe. CLAUDE.md records that U+2588
 // FULL BLOCK is East Asian AMBIGUOUS and overflowed a one-cell column on a wide-ambiguous
 // terminal. A painting app whose best tool is a block ramp should meet that
-// rather than avoid it, so `--ambiguous-wide` is a real mode here and a golden frame runs in it.
+// rather than avoid it, so a wide-ambiguous terminal is a real mode here and a golden frame runs in it.
 struct Ramp {
   const char* name;
   const char* cells[10];  // lightest to darkest; a cell is one grapheme
@@ -146,7 +146,7 @@ constexpr int kFirstLevel = 2;  // one pass is visible, and light
 constexpr int kMaxLevel = 9;    // the ramp's darkest step
 
 struct Tool {
-  int ambiguous = 0;  // the app's --ambiguous-wide, lent to the canvas (wall 8)
+  int ambiguous = 0;  // the terminal's ambiguous width, lent to the canvas (wall 8)
   // CELLS PAINTED, EVER. The app owns this and every canvas borrows it, so a scripted step can
   // ask "did that put ink anywhere" without reaching into a widget the window table owns.
   // `mutable` because a canvas holds the tool by const pointer: it reads a setting and reports
@@ -1012,9 +1012,9 @@ RolltuiLayout* load_layout_text(RolltuiContext* ctx, std::string_view text, Roll
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-paint [--ambiguous-wide]\n"
+               "usage: rolltui-paint\n"
 #ifdef ROLLTUI_SELFTEST
-               "                     [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
+               "                     [--ambiguous-wide] [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
                "                     [--frame WxH] [--present truecolor|256|16|mono]\n"
                "                     [--keys \"F4 Down Enter Type:name Click 5,3\"] [--open PICTURE.png]\n"
                "                     [--ramp ascii|blocks] [--ink #rrggbb] [--size N] [--shape square|round]\n"
@@ -1113,21 +1113,22 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
-    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
+    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `rolltui-paint-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
     //      that gets verified is not the one that ships.
     //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
-    //   3. A TERMINAL FACT — something true of the terminal the process cannot yet ask for.
-    //      `--ambiguous-wide` is the last one; it becomes an auto-detected setting.
-    //   4. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
+    //   3. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
     //      depth. **These may never come back.** Each names something the preset system already
     //      holds, autosaves and offers a UI for, and a flag beside it is a second configuration
     //      system with neither discoverability nor persistence, competing with the one that has
     //      both — and winning by accident, because a flag is what a person finds first.
+    // A FACT ABOUT THE TERMINAL is none of the three: the library asks the terminal, and a person who
+    // knows better says so in ROLL_COLOR_DEPTH or ROLL_AMBIGUOUS_WIDE. (The hook below is for a headless
+    // golden frame, which has no terminal to ask.)
     // `rolltui-product-flags-test` holds all three products to this.
-    if (a == "--ambiguous-wide") ambiguous = true;  // a fact about the terminal, not a test hook
 #ifdef ROLLTUI_SELFTEST
+    if (a == "--ambiguous-wide") ambiguous = true;
     else if (a == "--presets") presets_dir = next();
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
@@ -1138,13 +1139,13 @@ int main(int argc, char** argv) {
     else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||
              a == "--shape" || a == "--dot")
       script.emplace_back(a, next());
+    else
 #endif
-    else return usage();
+    return usage();
   }
 
   App app;
   app.tool.ambiguous = ambiguous ? 1 : 0;
-  const bool ambiguous_flag = ambiguous;  // said outright: not to be overridden by what the terminal measures
   app.set_theme(theme_arg.c_str());
   if (!app.effects) app.set_theme("default-dark");  // an unknown --theme keeps the app's own look
   rolltui_context_set_dir(app.ctx, presets_dir.data(), presets_dir.size());
@@ -1328,7 +1329,7 @@ int main(int argc, char** argv) {
   auto apply_facts = [&] {
     RolltuiTermFacts f;
     rolltui_terminal_facts(term, &f);
-    if (!ambiguous_flag) app.tool.ambiguous = f.ambiguous_wide ? 1 : 0;
+    app.tool.ambiguous = f.ambiguous_wide ? 1 : 0;
   };
   apply_facts();
   app.w = rolltui_terminal_width(term);

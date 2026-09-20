@@ -5,29 +5,31 @@
 // configuration system with neither discoverability nor persistence, competing with the one that
 // has both — and it wins by accident, because a flag is what a person finds first.
 //
-// EVERY FLAG ON A SHIPPED BINARY IS ONE OF FOUR THINGS, and the four are not close:
+// EVERY FLAG ON A SHIPPED BINARY IS ONE OF THREE THINGS, and the three are not close:
 //
-//   1. A SELF-TEST HOOK — `--frame`, `--keys`, `--stroke`, `--tick`, `--dump-role` and their
-//      kin exist to make a deterministic non-interactive frame for a golden test. They are
-//      ADDITIVE: `<product>-selftest` is the same source compiled again WITH them, so the
-//      shipped binary does not contain them and the binary that gets verified is not the one
-//      that ships. Asserted per app, on the artifact (`paint_art_test.cpp` section 0).
+//   1. A SELF-TEST HOOK — `--frame`, `--keys`, `--stroke`, `--tick`, `--dump-role`,
+//      `--ambiguous-wide` and their kin exist to make a deterministic non-interactive frame for a
+//      golden test. They are ADDITIVE: `<product>-selftest` is the same source compiled again WITH
+//      them, so the shipped binary does not contain them and the binary that gets verified is not
+//      the one that ships. Asserted per app, on the artifact (`paint_art_test.cpp` section 0).
 //   2. A REAL FEATURE RUN HEADLESSLY — `--check NAME|FILE` runs the accessibility checker and
 //      `--generate RULESET` the seeded generator. The theme editor offers both from inside the
 //      app, so these are a non-interactive entry to a shipped capability, not a test hook.
 //      They stay, and they stay in the product.
-//   3. A TERMINAL FACT — `--ambiguous-wide` states how a terminal draws East Asian AMBIGUOUS
-//      glyphs. It is not a preference and not a hook; it is something true of the terminal that
-//      the process cannot yet ask. It belongs with `mode` and `depth` as a setting, and until
-//      the cursor-position probe lands it is the last flag of its kind on a product.
-//   4. CONFIGURATION — `--theme`, `--layout`, `--bindings`, `--presets`, `--depth`, `--mode`.
+//   3. CONFIGURATION — `--theme`, `--layout`, `--bindings`, `--presets`, `--depth`, `--mode`.
 //      **These are what this suite exists to keep out.** Every one names a preset or a value the
 //      preset system already holds, autosaves and offers a UI for.
+//
+// A FACT ABOUT THE TERMINAL is none of the three, and so is not a flag: the library asks the
+// terminal (colour depth, light or dark, how wide it draws an ambiguous glyph) and remembers the
+// answer, and a person who knows better says so in ROLL_COLOR_DEPTH or ROLL_AMBIGUOUS_WIDE.
+// `--ambiguous-wide` was the last of these on a product, and it went when the cursor-position
+// probe arrived; it is refused below like the configuration flags.
 //
 // THE CONTROL IS THE POINT AND IT RUNS FIRST. Asking a binary "do you reject --theme?" and
 // getting a rejection proves nothing on its own: a binary that rejects EVERYTHING answers the
 // same way, and so does one that failed to start. So each product is first shown to ACCEPT a
-// flag it legitimately has, and only then shown to refuse the configuration ones.
+// command line it legitimately has, and only then shown to refuse the ones it must not.
 //
 #include <cstdio>
 #include <cstddef>
@@ -75,14 +77,17 @@ int main() {
   struct Product {
     const char* name;
     const char* bin;
-    const char* keeps;  // a flag it legitimately has, and so advertises — the control
+    const char* keeps;    // a flag it legitimately has, and so advertises — the control; "" when it has none
+    const char* accepts;  // a command line it takes (run with stdin from /dev/null), or NULL when asserted below
+    const char* shows;    // and what taking it prints: reaching this means argv was accepted
   };
-  // `--ambiguous-wide` is category 3 and every product takes it; the studio additionally keeps
-  // `--check`, which is category 2. Both are the control, not the subject.
+  // The studio keeps `--check`, which is category 2 and asserted with the real features below; dirktui keeps
+  // `--version`; paint takes no flag at all, and its control is that a bare run gets past argv to the terminal
+  // check. These are the control, not the subject.
   const std::vector<Product> products = {
-      {"rolltui-studio", ROLLTUI_STUDIO_PRODUCT_BIN, "--check"},
-      {"rolltui-paint", ROLLTUI_PAINT_PRODUCT_BIN, "--ambiguous-wide"},
-      {"dirktui", DIRKTUI_PRODUCT_BIN, "--ambiguous-wide"},
+      {"rolltui-studio", ROLLTUI_STUDIO_PRODUCT_BIN, "--check", nullptr, nullptr},
+      {"rolltui-paint", ROLLTUI_PAINT_PRODUCT_BIN, "", "", "terminal"},
+      {"dirktui", DIRKTUI_PRODUCT_BIN, "--version", "--version", "dirktui"},
   };
 
   // ---- the control: the usage line IS an inventory, and the search finds what is in it -----
@@ -95,27 +100,32 @@ int main() {
     const std::string usage = run(std::string("'") + p.bin + "' --no-such-flag 2>&1", rc);
     check(usage.find("usage:") != std::string::npos,
           std::string(p.name) + " answers an unknown flag with its usage");
-    check(usage.find(p.keeps) != std::string::npos,
-          std::string(p.name) + " advertises '" + p.keeps + "', which it keeps — so the inventory is real [" +
-              usage.substr(0, usage.find('\n')) + "]");
+    if (*p.keeps)
+      check(usage.find(p.keeps) != std::string::npos,
+            std::string(p.name) + " advertises '" + p.keeps + "', which it keeps — so the inventory is real [" +
+                usage.substr(0, usage.find('\n')) + "]");
+    else
+      check(usage.find(std::string("usage: ") + p.name) != std::string::npos,
+            std::string(p.name) + " takes no flag, and its usage says so: the product's name and nothing after it [" +
+                usage.substr(0, usage.find('\n')) + "]");
   }
 
-  // ---- and a kept flag is ACCEPTED, not merely listed ---------------------------------------
+  // ---- and what a product takes is ACCEPTED, not merely listed ------------------------------
   // Advertised and accepted are different properties, and the gap between them is a real defect
   // shape here: these argv loops close their `else` chain INSIDE the self-test `#ifdef`, so a
   // branch added above it dangles in the product build — the flag is taken and the usage prints
-  // anyway. Every product past this point reaches the terminal check, which is the first thing
-  // after argv, so "the usage did NOT print" is what says the flag was consumed.
+  // anyway. "The usage did NOT print, and the command's own output did" is what says argv was consumed.
   for (const Product& p : products) {
-    if (std::string(p.keeps) != "--ambiguous-wide") continue;  // the studio's is asserted below
+    if (!p.accepts) continue;  // the studio's `--check` is asserted with the real features below
     int rc = 0;
     // stdin from /dev/null, stated rather than inherited: a product that draws on /dev/tty (dirktui)
     // must refuse before it touches the terminal, and "stdin is not a terminal" is the
     // precondition it refuses on. Inheriting ctest's stdin would make this probe's safety depend
     // on how ctest was launched.
-    const std::string out = run(std::string("'") + p.bin + "' " + p.keeps + " < /dev/null 2>&1", rc);
-    check(out.find("usage:") == std::string::npos && out.find("terminal") != std::string::npos,
-          std::string(p.name) + " ACCEPTS '" + p.keeps + "' and gets past argv to the terminal check");
+    const std::string out = run(std::string("'") + p.bin + "' " + p.accepts + " < /dev/null 2>&1", rc);
+    check(out.find("usage:") == std::string::npos && out.find(p.shows) != std::string::npos,
+          std::string(p.name) + " ACCEPTS '" + p.accepts + "' and prints '" + p.shows + "', not its usage [" +
+              out.substr(0, out.find('\n')) + "]");
   }
 
   // ---- and the two REAL FEATURES actually run in the shipped binary ------------------------
@@ -139,7 +149,7 @@ int main() {
           "…and an unknown ruleset is refused by name, listing the ones that exist");
   }
 
-  // ---- the subject: no product takes a configuration flag ------------------------------------
+  // ---- the subject: no product takes a configuration flag, nor a fact about the terminal ------
   for (const Product& p : products) {
     for (const char* flag : {"--theme", "--layout", "--bindings", "--presets", "--depth", "--mode"}) {
       std::string why;
@@ -147,6 +157,10 @@ int main() {
             std::string(p.name) + " refuses the configuration flag " + flag +
                 (why.empty() ? "" : " — " + why));
     }
+    std::string why;
+    check(refuses(p.bin, "--ambiguous-wide", why),
+          std::string(p.name) + " refuses --ambiguous-wide: the terminal is measured, and ROLL_AMBIGUOUS_WIDE says it outright" +
+              (why.empty() ? "" : " — " + why));
   }
 
   return report("rolltui_product_flags_test");

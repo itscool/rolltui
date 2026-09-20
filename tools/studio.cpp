@@ -63,7 +63,8 @@
 //                              ("md_heading fg=#6ca0e0 bg=#14161a bold") — the
 //                              golden harness's way to see a colour
 //     --depth truecolor|256|16|mono   colour depth (default: detect from the env)
-//     --ambiguous-wide         East Asian ambiguous width = 2
+//     --ambiguous-wide         East Asian ambiguous width = 2 in a headless frame (a live
+//                              terminal is measured; ROLL_AMBIGUOUS_WIDE=1 says it outright)
 //     --code-fold FOLD,CAP     milestone 5b: fold a code block over FOLD lines to one
 //                              summary row, and cap an open one at CAP (0 disables
 //                              either). Defaults to this host's own 30,100.
@@ -2576,10 +2577,10 @@ void print_frame_plain(const RolltuiFrame* f) {
 
 int usage() {
   std::fprintf(stderr,
-               "usage: rolltui-studio [FIXTURE.md] [--ambiguous-wide]\n"
+               "usage: rolltui-studio [FIXTURE.md]\n"
                "       --check NAME|FILE | --generate RULESET [--seed N] [--chaos X]\n"
 #ifdef ROLLTUI_SELFTEST
-               "       [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
+               "       [--ambiguous-wide] [--presets DIR] [--shipped DIR] [--theme NAME|FILE] [--layout NAME|FILE] [--bindings NAME|FILE]\n"
                "       [--mode dark|light] [--depth truecolor|256|16|mono] [--frame WxH | --frame-sgr WxH]\n"
                "       [--tick MS] [--dump-tick] [--dump-role ROLE] [--code-fold FOLD,CAP]\n"
                "       [--keys \"Up Down PageDown Tab F1 F4 Type:hello_world ShiftLeft AltEnter Click 5,3 Drag 20,6 Release ...\"]\n"
@@ -2681,30 +2682,27 @@ int main(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
-    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the four are not close:
+    // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `rolltui-studio-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
     //      that gets verified is not the one that ships.
     //   2. A REAL FEATURE RUN HEADLESSLY — a shipped capability reached without a terminal. Stays.
-    //   3. A TERMINAL FACT — something true of the terminal the process cannot yet ask for.
-    //      `--ambiguous-wide` is the last one; it becomes an auto-detected setting.
-    //   4. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
+    //   3. CONFIGURATION — a theme, a layout, a bindings file, a preset directory, a mode, a
     //      depth. **These may never come back.** Each names something the preset system already
     //      holds, autosaves and offers a UI for, and a flag beside it is a second configuration
     //      system with neither discoverability nor persistence, competing with the one that has
     //      both — and winning by accident, because a flag is what a person finds first.
+    // A FACT ABOUT THE TERMINAL is none of the three: the library asks the terminal, and a person who
+    // knows better says so in ROLL_COLOR_DEPTH or ROLL_AMBIGUOUS_WIDE. (`--ambiguous-wide` below is for
+    // a headless golden frame, which has no terminal to ask.)
     // `rolltui-product-flags-test` holds all three products to this.
-    // `--ambiguous-wide` says how this terminal draws East Asian ambiguous glyphs, which is not
-    // a preference and not a hook; it belongs beside `mode` and `depth` as an auto-detected
-    // setting, and is the last thing here that should not be.
-    if (a == "--ambiguous-wide") app.ambiguous = true;
     // `--check` and `--generate` run the analyser and the seeded generator, with `--seed` and
     // `--chaos` as the generator's own parameters. The theme editor offers both from inside the
     // app, which makes these a NON-INTERACTIVE ENTRY TO A SHIPPED FEATURE rather than a test
     // hook: a theme author checks a theme from a script, and CI checks one without a terminal.
     // A feature nothing but a golden frame happens to call today is still a feature — what a
     // caller reaches is evidence about the API, never the reason a capability exists.
-    else if (a == "--check") check_arg = resolve_builtin_theme_alias(next(), nullptr);
+    if (a == "--check") check_arg = resolve_builtin_theme_alias(next(), nullptr);
     else if (a == "--generate") generate_arg = next();
     else if (a == "--seed") seed_arg = next();
     else if (a == "--chaos") chaos_arg = next();
@@ -2712,6 +2710,7 @@ int main(int argc, char** argv) {
     // Prints a role's resolved style. Reached by golden frames and nothing else — the theme
     // editor shows the same thing live, which is where a person looks.
     else if (a == "--dump-role") dump_role = next();
+    else if (a == "--ambiguous-wide") app.ambiguous = true;
     // A test still has to pin a theme and point at a scratch directory, so these do not vanish;
     // they leave the PRODUCT. Pointing a person at a directory is what ROLL_CONFIG_DIR is for.
     // A later `--mode` on the command line still wins over the alias's own pin, same as it
@@ -2954,15 +2953,13 @@ int main(int argc, char** argv) {
     return 1;
   }
   // WHAT THE TERMINAL IS — its colour depth, its light or dark, how wide it draws an ambiguous glyph —
-  // was asked by the library when the terminal was entered, and is remembered per terminal. A
-  // `--ambiguous-wide` on the command line says two cells outright.
-  const bool ambiguous_flag = app.ambiguous;
+  // was asked by the library when the terminal was entered, and is remembered per terminal.
   auto apply_facts = [&] {
     RolltuiTermFacts tf;
     rolltui_terminal_facts(term, &tf);
     app.depth = tf.depth;
     if (!app.mode_flag && app.store->working()->mode == "auto") app.detected_mode = tf.mode;
-    if (!ambiguous_flag) app.ambiguous = tf.ambiguous_wide != 0;
+    app.ambiguous = tf.ambiguous_wide != 0;
   };
   apply_facts();
   app.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
