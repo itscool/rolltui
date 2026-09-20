@@ -118,6 +118,14 @@ int rolltui_frame_put_fields(RolltuiFrame* f, RolltuiDrawScratch* s, int x, int 
                                      max_cells - used, ambiguous_wide, 0);
     if (row->label.n != 0 && row->value.n != 0)
       used += rolltui_frame_put_text(f, s, x + used, y, " ", 1, name_style, max_cells - used, ambiguous_wide, 0);
+    if (row->has_swatch && used < max_cells) {
+      /* A COLOUR'S SQUARE IS FRAMED IN THE VALUE'S OWN FOREGROUND, and where the terminal draws no colour there
+       * is none and no space is left for it. */
+      const int sw = rolltui_frame_put_swatch(f, s, x + used, y, row->swatch, value_style, max_cells - used, ambiguous_wide);
+      used += sw;
+      if (sw && used < max_cells)
+        used += rolltui_frame_put_text(f, s, x + used, y, " ", 1, name_style, max_cells - used, ambiguous_wide, 0);
+    }
     if (row->value.n != 0)
       used += rolltui_frame_put_text(f, s, x + used, y, row->value.p, row->value.n, value_style,
                                      max_cells - used, ambiguous_wide, 0);

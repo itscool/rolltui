@@ -858,7 +858,17 @@ void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const
   r->v = (RolltuiRow*)rolltui_grow_zeroed(r->v, &r->cap, r->n + 1, sizeof *r->v);
   rolltui_str_set(&r->v[r->n].label, label, label_len);
   rolltui_str_set(&r->v[r->n].value, value, value_len);
+  memset(&r->v[r->n].swatch, 0, sizeof r->v[r->n].swatch); /* a slot is reused across frames: what it held is not this row's */
+  r->v[r->n].has_swatch = 0;
   ++r->n;
+}
+
+void rolltui_rows_add_colour(RolltuiRows* r, const char* label, size_t label_len, RolltuiStyleColor colour) {
+  char buf[ROLLTUI_COLOR_STRING_MAX];
+  const size_t n = rolltui_color_to_string(colour, buf, sizeof buf);
+  rolltui_rows_add(r, label, label_len, buf, n);
+  r->v[r->n - 1].swatch = colour;
+  r->v[r->n - 1].has_swatch = 1;
 }
 
 void rolltui_rows_release(RolltuiRows* r) {

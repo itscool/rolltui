@@ -1871,7 +1871,7 @@ int usage() {
                "                                           fish: dirktui init fish | source\n"
 #ifdef ROLLTUI_SELFTEST
                "       [--presets DIR] [--layout NAME|FILE] [--theme NAME]\n"
-               "       [--frame WxH] [--keys \"Down Right CtrlD\"] [--apps DIR[:DIR]]\n"
+               "       [--frame WxH | --frame-sgr WxH] [--keys \"Down Right CtrlD\"] [--apps DIR[:DIR]]\n"
 #endif
                );
   return 2;
@@ -2402,6 +2402,7 @@ int main(int argc, char** argv) {
   bool ambiguous = false;
   [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
   [[maybe_unused]] std::string frame_spec, keys_spec;
+  [[maybe_unused]] bool frame_sgr = false;
   std::string apps_dirs = std::string("/Applications:") + (std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications";  // where application bundles live
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
@@ -2425,6 +2426,7 @@ int main(int argc, char** argv) {
     else if (a == "--layout") layout_arg = next();
     else if (a == "--theme") theme_arg = next();
     else if (a == "--frame") frame_spec = next();
+    else if (a == "--frame-sgr") { frame_spec = next(); frame_sgr = true; }  // the same frame with its colours, for a terminal `cat`
     else if (a == "--keys") keys_spec = next();
     else if (a == "--apps") apps_dirs = next();  // where application bundles are looked for, instead of /Applications
     else
@@ -2650,8 +2652,16 @@ int main(int argc, char** argv) {
     // there, so the status line does not say "column 2/3" and this line does.
     std::fprintf(stderr, "picker: entries=%zu column %zu/%zu\n", app.last_entries, app.last_column, app.last_columns);
     RolltuiStr text{};
-    rolltui_frame_to_text(f, &text);
-    std::fwrite(text.c_str(), 1, text.size(), stdout);
+    if (frame_sgr) {
+      // The bytes the live loop would send for this frame, at full colour: the same present call, so what a
+      // `cat` shows is what a terminal would be given.
+      rolltui_swap_present(swap, ROLLTUI_DEPTH_TRUECOLOR, &text);
+      std::fwrite(text.c_str(), 1, text.size(), stdout);
+      std::printf("\x1b[0m\n");
+    } else {
+      rolltui_frame_to_text(f, &text);
+      std::fwrite(text.c_str(), 1, text.size(), stdout);
+    }
     rolltui_str_free(&text);
     rolltui_swap_free(swap);
     return 0;

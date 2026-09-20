@@ -80,10 +80,32 @@ static void scroll_text_base_layout(RolltuiScrollTextBase* b, const RolltuiResol
   if (b->top > max_top) b->top = max_top;
 }
 
+/* A KIND THAT PAINTS ITS OWN LINES — the help window, whose chords and headings are not the description's style. It
+ * is handed each visible wrapped line with the source line it belongs to (a `\n`-separated line of the text
+ * given), whether this wrapped line BEGINS that source line, and `plain`: the text role's style already standing
+ * on the ground the line is drawn over. */
+typedef void (*ScrollLinePaint)(void* ctx, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* text,
+                                size_t len, int cells, size_t src_line, int first, RolltuiStyle plain,
+                                RolltuiStyleColor ground, int ambiguous_wide);
+
+/* TEXT IS DRAWN ON THE WINDOW'S OWN GROUND. A window's fill is whatever the layout gave it — the screen's
+ * background, or a popup's panel — and the text role's background is the SCREEN's; drawing every line with it
+ * cut a darker slab out of a popup, a box of text on a box. Only the text role's foreground and attributes are
+ * taken, the way a menu row takes its value's; the ground is what is already in the frame under the line. */
+static RolltuiStyleColor scroll_text_ground(const RolltuiFrame* f, int x, int y) {
+  RolltuiCell under;
+  RolltuiStyleColor none;
+  memset(&none, 0, sizeof none);
+  if (x < 0 || y < 0 || x >= rolltui_frame_width(f) || y >= rolltui_frame_height(f)) return none;
+  memset(&under, 0, sizeof under);
+  rolltui_frame_cell(f, x, y, &under);
+  return under.style.bg;
+}
+
 /* Mirrors `rolltui::draw_scrolled_text` exactly, over the C engines. Returns the total
  * wrapped line count, as that function does. */
-static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolvedNode* rn, RolltuiFrame* f,
-                                 const char* text, size_t text_len) {
+static int scroll_text_base_draw_with(RolltuiScrollTextBase* b, const RolltuiResolvedNode* rn, RolltuiFrame* f,
+                                      const char* text, size_t text_len, ScrollLinePaint paint, void* paint_ctx) {
   const RolltuiWidgetEnv* env = rolltui_windows_env(b->w);
   const RolltuiStyle* styles = rolltui_windows_styles(b->w);
   RolltuiRect r;
@@ -104,15 +126,43 @@ static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolved
 
   y = r.y;
   i = (size_t)(b->top > 0 ? b->top : 0);
-  for (; i < n && y < r.y + r.h; ++i) {
-    const char* ltext;
-    size_t ltext_len;
-    const RolltuiWrapGrapheme* g;
-    size_t gn;
-    int width, indent, hard;
-    rolltui_wrap_line(b->wrap, i, &ltext, &ltext_len, &g, &gn, &width, &indent, &hard);
-    rolltui_frame_put_text(f, b->draw, r.x + indent, y++, ltext, ltext_len, styles[b->roles.text],
-                           r.w - indent > 0 ? r.w - indent : 0, env->ambiguous_wide, 0);
+  {
+    size_t src = 0;
+    int first = 1;
+    if (paint) {
+      /* the lines scrolled off above still count: which source line a visible one belongs to is a count from the top */
+      size_t k;
+      for (k = 0; k < i && k < n; ++k) {
+        const char* lt;
+        size_t ll;
+        const RolltuiWrapGrapheme* gg;
+        size_t gnn;
+        int ww, ii, hh;
+        rolltui_wrap_line(b->wrap, k, &lt, &ll, &gg, &gnn, &ww, &ii, &hh);
+        first = hh;
+        if (hh) ++src;
+      }
+    }
+    for (; i < n && y < r.y + r.h; ++i) {
+      const char* ltext;
+      size_t ltext_len;
+      const RolltuiWrapGrapheme* g;
+      size_t gn;
+      int width, indent, hard;
+      RolltuiStyle plain = styles[b->roles.text];
+      const RolltuiStyleColor ground = scroll_text_ground(f, r.x, y);
+      rolltui_wrap_line(b->wrap, i, &ltext, &ltext_len, &g, &gn, &width, &indent, &hard);
+      plain.bg = ground;
+      if (paint)
+        paint(paint_ctx, f, b->draw, r.x + indent, y, ltext, ltext_len, r.w - indent > 0 ? r.w - indent : 0, src, first,
+              plain, ground, env->ambiguous_wide);
+      else
+        rolltui_frame_put_text(f, b->draw, r.x + indent, y, ltext, ltext_len, plain,
+                               r.w - indent > 0 ? r.w - indent : 0, env->ambiguous_wide, 0);
+      ++y;
+      first = hard;
+      if (hard) ++src;
+    }
   }
   below = total - (b->top > 0 ? b->top : 0) - r.h;
   mlen = rolltui_scroll_marker_text(below > 0 ? (size_t)below : 0, r.w, env->ambiguous_wide, marker, sizeof marker);
@@ -122,6 +172,11 @@ static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolved
                            styles[b->roles.scroll_marker], mw, env->ambiguous_wide, 0);
   }
   return total;
+}
+
+static int scroll_text_base_draw(RolltuiScrollTextBase* b, const RolltuiResolvedNode* rn, RolltuiFrame* f,
+                                 const char* text, size_t text_len) {
+  return scroll_text_base_draw_with(b, rn, f, text, text_len, NULL, NULL);
 }
 
 #define K(s) (s), strlen(s)
@@ -363,17 +418,46 @@ static const RolltuiWidgetPlugin kFilePlugin = {
  * because neither function crosses the C++/C boundary today.
  * ============================================================================================ */
 
+/* WHAT EACH LINE OF THE BUILT TEXT IS, so it can be drawn as what it is: a scope's heading, or an entry whose chord is
+ * the highlighted part. Indexed by source line (a `\n`-separated line of `built`); a line with no entry is plain. */
+enum { HELP_PLAIN = 0, HELP_HEADING = 1, HELP_ENTRY = 2, HELP_UNBOUND = 3 };
+typedef struct RolltuiHelpLine {
+  unsigned char kind;
+  size_t chord_from, chord_to; /* bytes within the line: the chord's run, after the indent */
+} RolltuiHelpLine;
+
 typedef struct RolltuiHelpCtx {
   RolltuiScrollTextBase base;
   RolltuiStr scope; /* content.source; "" = every configured scope */
   RolltuiStr built; /* text(), rebuilt each call and reused */
+  RolltuiHelpLine* meta; /* OWNED: one per source line up to the last that is not plain */
+  size_t meta_n, meta_cap;
 } RolltuiHelpCtx;
+
+static size_t count_lines_of(const RolltuiStr* s) {
+  size_t i, n = 0;
+  for (i = 0; i < s->n; ++i)
+    if (s->p[i] == '\n') ++n;
+  return n;
+}
+
+static void help_meta_set(RolltuiHelpCtx* h, size_t line, int kind, size_t from, size_t to) {
+  if (line >= h->meta_n) {
+    h->meta = (RolltuiHelpLine*)rolltui_grow(h->meta, &h->meta_cap, line + 1, sizeof *h->meta);
+    memset(h->meta + h->meta_n, 0, (line + 1 - h->meta_n) * sizeof *h->meta);
+    h->meta_n = line + 1;
+  }
+  h->meta[line].kind = (unsigned char)kind;
+  h->meta[line].chord_from = from;
+  h->meta[line].chord_to = to;
+}
 
 /* Appends "  <chord-or-'(unbound)'><pad>description\n" for every action of `scope`, column
  * aligned to the widest chord (capped at 22, minimum column 12) — `help_lines`'s own rule. */
-void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_t slen, const char* const* actions,
-                              const size_t* action_lens, size_t actions_n, const char* indent, size_t indent_len,
-                              RolltuiStr* out) {
+static void help_scope_lines_impl(const RolltuiBindings* b, const char* scope, size_t slen, const char* const* actions,
+                                  const size_t* action_lens, size_t actions_n, const char* indent, size_t indent_len,
+                                  RolltuiStr* out, RolltuiHelpCtx* meta) {
+  const size_t first_line = meta ? count_lines_of(out) : 0;
   size_t count = rolltui_bindings_action_count(b);
   size_t* idx = NULL;
   size_t idx_n = 0, idx_cap = 0;
@@ -421,6 +505,9 @@ void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_
       rolltui_str_append_str(out, &chord);
       linelen = chord.n;
     }
+    if (meta)
+      help_meta_set(meta, first_line + i, chord.n == 0 ? HELP_UNBOUND : HELP_ENTRY, indent ? indent_len : 0,
+                    (indent ? indent_len : 0) + linelen);
     if (linelen + 2 <= column) {
       size_t pad = column - linelen, k;
       for (k = 0; k < pad; ++k) rolltui_str_append(out, " ", 1);
@@ -433,6 +520,12 @@ void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_
   }
   rolltui_str_free(&chord);
   rolltui_mem_free(idx);
+}
+
+void rolltui_help_scope_lines(const RolltuiBindings* b, const char* scope, size_t slen, const char* const* actions,
+                              const size_t* action_lens, size_t actions_n, const char* indent, size_t indent_len,
+                              RolltuiStr* out) {
+  help_scope_lines_impl(b, scope, slen, actions, action_lens, actions_n, indent, indent_len, out, NULL);
 }
 
 /* `rolltui::help_document`'s port: the lead, one "<scope>:\n" section per
@@ -457,6 +550,7 @@ static void help_ctx_build_text(RolltuiHelpCtx* h) {
   const RolltuiBindings* b = rolltui_windows_bindings(h->base.w);
   const int all = (h->scope.n == 0);
   rolltui_str_clear(&h->built);
+  h->meta_n = 0; /* the storage stays; every slot is rewritten as its line is built */
   if (all) {
     size_t lead_len = 0;
     const char* lead = rolltui_windows_help_lead(h->base.w, &lead_len);
@@ -466,9 +560,10 @@ static void help_ctx_build_text(RolltuiHelpCtx* h) {
     for (i = 0; i < nscopes; ++i) {
       size_t slen = 0;
       const char* s = rolltui_windows_help_scope_at(h->base.w, i, &slen);
+      help_meta_set(h, count_lines_of(&h->built), HELP_HEADING, 0, 0);
       rolltui_str_append(&h->built, s, slen);
       rolltui_str_append(&h->built, ":\n", 2);
-      rolltui_help_scope_lines(b, s, slen, NULL, NULL, 0, "  ", 2, &h->built);
+      help_scope_lines_impl(b, s, slen, NULL, NULL, 0, "  ", 2, &h->built, h);
     }
     {
       size_t note_len = 0;
@@ -476,10 +571,43 @@ static void help_ctx_build_text(RolltuiHelpCtx* h) {
       rolltui_str_append(&h->built, note, note_len);
     }
   } else {
+    help_meta_set(h, count_lines_of(&h->built), HELP_HEADING, 0, 0);
     rolltui_str_append_str(&h->built, &h->scope);
     rolltui_str_append(&h->built, ":\n", 2);
-    rolltui_help_scope_lines(b, h->scope.p ? h->scope.p : "", h->scope.n, NULL, NULL, 0, "  ", 2, &h->built);
+    help_scope_lines_impl(b, h->scope.p ? h->scope.p : "", h->scope.n, NULL, NULL, 0, "  ", 2, &h->built, h);
   }
+}
+
+/* THE KEY LIST IS DRAWN AS WHAT IT IS, in the theme's own words for each part: a scope's name as a menu's sections
+ * are named (the breadcrumb's role, bold), a chord as a hotkey is drawn everywhere else (the shortcut role, on
+ * whatever ground it stands), `(unbound)` muted, and the description as text. */
+static void help_paint(void* ctx, RolltuiFrame* f, RolltuiDrawScratch* draw, int x, int y, const char* t, size_t n,
+                       int cells, size_t src, int first, RolltuiStyle plain, RolltuiStyleColor ground, int aw) {
+  RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
+  const RolltuiStyle* styles = rolltui_windows_styles(h->base.w);
+  const RolltuiMenuRoles* mr = rolltui_windows_menu_roles(h->base.w);
+  const RolltuiHelpLine* ln = src < h->meta_n ? &h->meta[src] : NULL;
+  if (ln && ln->kind == HELP_HEADING) {
+    RolltuiStyle head = styles[mr->breadcrumb];
+    head.bg = ground;
+    head.bold = 1;
+    rolltui_frame_put_text(f, draw, x, y, t, n, head, cells, aw, 0);
+    return;
+  }
+  if (ln && first && (ln->kind == HELP_ENTRY || ln->kind == HELP_UNBOUND)) {
+    RolltuiStyle chord = ln->kind == HELP_ENTRY ? styles[mr->shortcut] : styles[mr->text_muted];
+    size_t from = ln->chord_from, to = ln->chord_to;
+    int used;
+    if (to > n) to = n;
+    if (from > to) from = to;
+    if (ln->kind == HELP_ENTRY) rolltui_style_on(&chord, ground);
+    else chord.bg = ground;
+    used = rolltui_frame_put_text(f, draw, x, y, t, from, plain, cells, aw, 0);
+    used += rolltui_frame_put_text(f, draw, x + used, y, t + from, to - from, chord, cells - used > 0 ? cells - used : 0, aw, 0);
+    rolltui_frame_put_text(f, draw, x + used, y, t + to, n - to, plain, cells - used > 0 ? cells - used : 0, aw, 0);
+    return;
+  }
+  rolltui_frame_put_text(f, draw, x, y, t, n, plain, cells, aw, 0);
 }
 
 static int help_ctx_problem(void* ctx, RolltuiStr* out) {
@@ -522,7 +650,7 @@ static void help_ctx_layout(void* ctx, const RolltuiResolvedNode* rn) {
 static void help_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame* f) {
   RolltuiHelpCtx* h = (RolltuiHelpCtx*)ctx;
   help_ctx_layout(ctx, rn);
-  h->base.total = scroll_text_base_draw(&h->base, rn, f, h->built.p ? h->built.p : "", h->built.n);
+  h->base.total = scroll_text_base_draw_with(&h->base, rn, f, h->built.p ? h->built.p : "", h->built.n, help_paint, h);
 }
 static int help_ctx_handle(void* ctx, const RolltuiEvent* e) { return scroll_text_base_handle(&((RolltuiHelpCtx*)ctx)->base, e); }
 static int help_ctx_scroll_extent(void* ctx, unsigned char axis, RolltuiScrollExtent* out) {
@@ -536,6 +664,7 @@ static void help_ctx_destroy(void* ctx) {
   scroll_text_base_release(&h->base);
   rolltui_str_free(&h->scope);
   rolltui_str_free(&h->built);
+  rolltui_mem_free(h->meta);
   rolltui_mem_free(h);
 }
 
@@ -617,10 +746,16 @@ static void rows_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
       const RolltuiRow* row = &rc->rows.v[i];
       size_t n, j;
       if (y >= r.y + r.h) break;
+      int off = 0; /* a colour's square and its space, before the value's first line and every line under it */
       rolltui_frame_put_text(f, rc->draw, r.x + 1, y, row->label.p ? row->label.p : "", row->label.n,
                              styles[rc->role_label], labw, env->ambiguous_wide, 0);
+      if (row->has_swatch && r.x + r.w - valx >= 4) {
+        off = rolltui_frame_put_swatch(f, rc->draw, valx, y, row->swatch, styles[rc->role_value],
+                                       r.x + r.w - valx, env->ambiguous_wide);
+        if (off) ++off;
+      }
       rolltui_wrap(rc->wrap, row->value.p ? row->value.p : "", row->value.n,
-                   r.x + r.w - valx > 0 ? r.x + r.w - valx : 1, wo);
+                   r.x + r.w - valx - off > 0 ? r.x + r.w - valx - off : 1, wo);
       n = rolltui_wrap_line_count(rc->wrap);
       if (n == 0) {
         ++y;
@@ -634,8 +769,8 @@ static void rows_ctx_draw(void* ctx, const RolltuiResolvedNode* rn, RolltuiFrame
         int width, indent, hard;
         if (y >= r.y + r.h) break;
         rolltui_wrap_line(rc->wrap, j, &ltext, &ltext_len, &g, &gn, &width, &indent, &hard);
-        rolltui_frame_put_text(f, rc->draw, valx, y, ltext, ltext_len, styles[rc->role_value],
-                               r.x + r.w - valx > 0 ? r.x + r.w - valx : 0, env->ambiguous_wide, 0);
+        rolltui_frame_put_text(f, rc->draw, valx + off, y, ltext, ltext_len, styles[rc->role_value],
+                               r.x + r.w - valx - off > 0 ? r.x + r.w - valx - off : 0, env->ambiguous_wide, 0);
         ++y;
       }
     }

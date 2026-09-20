@@ -2653,10 +2653,15 @@ typedef struct RolltuiRows RolltuiRows;
  * `rolltui::Row` IS this struct. */
 typedef struct RolltuiRow {
   RolltuiStr label, value;
+  /* A row whose value IS a colour (`rolltui_rows_add_colour`): `value` holds its spelling and the row is
+   * drawn with `rolltui_frame_put_swatch`'s square before it. `has_swatch` is 0 for every other row. */
+  RolltuiStyleColor swatch;
+  unsigned char has_swatch;
 } RolltuiRow;
 
 /* ---- forward declarations the C++ members just below call ----------------------------------*/
 void rolltui_rows_add(RolltuiRows* r, const char* label, size_t label_len, const char* value, size_t value_len);
+void rolltui_rows_add_colour(RolltuiRows* r, const char* label, size_t label_len, RolltuiStyleColor colour);
 void rolltui_rows_release(RolltuiRows* r);
 void rolltui_rows_reset(RolltuiRows* r);
 
@@ -2678,6 +2683,8 @@ typedef struct RolltuiRows {
   void add(const char* label, const char* value, std::size_t value_len) { rolltui_rows_add(this, label, std::strlen(label), value, value_len); }
   void add(const char* label, const RolltuiStr& value) { rolltui_rows_add(this, label, std::strlen(label), value.p, value.n); }
   void add(const RolltuiStr& label, const RolltuiStr& value) { rolltui_rows_add(this, label.p, label.n, value.p, value.n); }
+  // A row whose value is a colour: its spelling, with its swatch before it wherever rows are drawn.
+  void add_colour(const char* label, RolltuiStyleColor colour) { rolltui_rows_add_colour(this, label, std::strlen(label), colour); }
   std::size_t size() const { return n; }
   const RolltuiRow& operator[](std::size_t i) const { return v[i]; }
   RolltuiRows() = default;

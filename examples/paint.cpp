@@ -672,9 +672,7 @@ struct App {
           App& a = *static_cast<App*>(ctx);
           const char* ramp = kRamps[a.tool.ramp % 2].name;
           rolltui_rows_add(out, "shading", 7, ramp, std::strlen(ramp));
-          char ink[ROLLTUI_COLOR_STRING_MAX];
-          const std::size_t n = rolltui_color_to_string(a.tool.color, ink, sizeof ink);
-          rolltui_rows_add(out, "ink", 3, ink, n);
+          rolltui_rows_add_colour(out, "ink", 3, a.tool.color);
           const std::string brush = std::to_string(a.tool.size) + (a.tool.round ? " round" : " square");
           rolltui_rows_add(out, "brush", 5, brush.data(), brush.size());
           const std::string marks = std::to_string(a.marks());
@@ -936,8 +934,6 @@ struct App {
       // `status_rows` is a member the app RESETS and refills — the array and every row's
       // buffer survive, so a frame in which nothing changed allocates nothing to say so.
       const RolltuiLayoutNode* focused = rolltui_window_stack_focused(stack);
-      char inkstr[ROLLTUI_COLOR_STRING_MAX];
-      const std::size_t inkn = rolltui_color_to_string(tool.color, inkstr, sizeof inkstr);
       char num[64];
       std::size_t lname_n = 0;
       const char* lname = rolltui_layout_name(layout, &lname_n);
@@ -951,7 +947,7 @@ struct App {
       // edge hides the one thing that must never be hidden — so it goes before the brush.
       if (!note.empty()) rolltui_rows_add(&status_rows, "", 0, note.data(), note.size());
       status_rows.add("texture", kRamps[tool.ramp % 2].name);
-      rolltui_rows_add(&status_rows, "ink", 3, inkstr, inkn);
+      rolltui_rows_add_colour(&status_rows, "ink", 3, tool.color);
       std::snprintf(num, sizeof num, "%d %s", tool.size, tool.round ? "round" : "square");
       status_rows.add("brush", num);
       std::snprintf(num, sizeof num, "%zu", marks());

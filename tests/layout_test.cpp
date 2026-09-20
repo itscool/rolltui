@@ -1599,6 +1599,62 @@ int main() {
     check(same && shipped_default_actions_c().size() == 9, "every shipped layout declares the same nine app actions");
   }
 
+  std::printf("-- help: the key list is drawn as what it is, on the ground it stands on\n");
+  {
+    // A THEME whose text role names a background of its own (as ember's does) and a window on the panel's:
+    // the two grounds differ, which is the whole of the bug — every line of text cut a darker slab out of a popup.
+    ThemeFixture t;
+    builtin_theme_c("default-dark", t);
+    t.styles[ROLLTUI_ROLE_TEXT].bg = RolltuiStyleColor::rgb(0x0a, 0x0b, 0x0c);
+    const RolltuiStyleColor ground = t.style(ROLLTUI_ROLE_PANEL_BACKGROUND).bg;
+    check(!(ground == t.style(ROLLTUI_ROLE_TEXT).bg) && ground.kind != RolltuiStyleColor::Kind::None,
+          "the control: the text role's background is not the window's");
+
+    LayoutReport lr;
+    std::optional<RolltuiLayout> lay = load_layout_c(
+        R"({"name":"help-only","root":{"column":[{"id":"keys","content":"help","background":"panel_background"}]}})", lr);
+    check(lay && lr.clean(), "the help-only layout loads clean");
+    WindowsC windows;
+    windows.set_help("", {"transcript"}, "");
+    StackC s(*lay);
+    const RolltuiRect box{0, 0, 60, 8};
+    windows.prepare(s, box);
+    FrameC f(60, 8, t.style(ROLLTUI_ROLE_BACKGROUND));
+    s.compose(f, box, t, [&](const RolltuiResolvedNode& rn, FrameC& fr) { windows.draw(rn, fr, t); });
+    auto first_ink = [&](int y) {
+      for (int x = 0; x < 60; ++x)
+        if (f.glyph(x, y) != " ") return x;
+      return -1;
+    };
+    auto row = [&](int y) {
+      std::string out;
+      for (int x = 0; x < 60; ++x) out += f.glyph(x, y);
+      while (!out.empty() && out.back() == ' ') out.pop_back();
+      return out;
+    };
+    check(row(0).rfind("transcript:", 0) == 0 || row(0).find("transcript:") != std::string::npos,
+          "the first line is the scope's name [" + row(0) + "]");
+    bool all_on_ground = true;
+    // (the last row carries "▼ N more", which is drawn in the scroll marker's own style on purpose)
+    for (int y = 0; y < 7; ++y)
+      for (int x = 0; x < 60; ++x)
+        if (!(f.at(x, y).style.bg == ground)) all_on_ground = false;
+    check(all_on_ground, "every cell of the help window, its text included, stands on the window's own ground — the text role's background is not painted over it");
+
+    const int hx = first_ink(0);
+    check(hx >= 0 && f.at(hx, 0).style.bold && f.at(hx, 0).style.fg == t.style(ROLLTUI_ROLE_MENU_BREADCRUMB).fg,
+          "a scope's name is a section's: the breadcrumb's colour, bold");
+    const int cx = first_ink(1);
+    check(cx >= 0 && f.at(cx, 1).style.fg == t.style(ROLLTUI_ROLE_MENU_SHORTCUT).fg,
+          "a chord is drawn as a hotkey is drawn everywhere: in the shortcut role [" + row(1) + "]");
+    // the description: the last word of the line is text, not shortcut
+    int lx = 59;
+    while (lx > 0 && f.glyph(lx, 1) == " ") --lx;
+    check(f.at(lx, 1).style.fg == t.style(ROLLTUI_ROLE_TEXT).fg && !(f.at(lx, 1).style.fg == t.style(ROLLTUI_ROLE_MENU_SHORTCUT).fg),
+          "…and what it does is text");
+    check(f.at(cx, 1).style.fg != f.at(lx, 1).style.fg, "…so the two read apart");
+  }
+
   std::printf("-- widgets: one per content, by kind\n");
   {
     // A layout with every kind in it, and a host that binds every source.
@@ -1629,7 +1685,10 @@ int main() {
     WindowsC windows;
     windows.set_dir(dir);
     windows.bind_document("session", &doc);
-    windows.bind_rows("status", [](void*, RolltuiRows* out) { out->add("label", "value"); });
+    windows.bind_rows("status", [](void*, RolltuiRows* out) {
+      out->add("label", "value");
+      out->add_colour("ink", RolltuiStyleColor::rgb(0x33, 0x66, 0xcc));
+    });
     windows.bind_submit("prompt", [](void*, const char*, std::size_t) {});
     // a kind this test registers, built by the library like any other.
     MineCtx mine_proto{&drew_own, &dark};
@@ -1654,6 +1713,16 @@ int main() {
     check(row(by_id(v, "panel")->inner.y).find("label") != std::string::npos &&
               row(by_id(v, "panel")->inner.y).find("value") != std::string::npos,
           "rows: the bound rows [" + row(by_id(v, "panel")->inner.y) + "]");
+    {
+      // A COLOUR ROW IN THE TALL PANEL: the square first, then the spelling, both under the value column
+      const int y = by_id(v, "panel")->inner.y + 1;
+      int sx = -1;
+      for (int x = 0; x < 40; ++x)
+        if (f.glyph(x, y) == "\xE2\x96\x8F") sx = x;
+      check(sx > 0 && f.at(sx, y).style.bg == RolltuiStyleColor::rgb(0x33, 0x66, 0xcc) &&
+                row(y).find("ink") != std::string::npos && row(y).find("\xE2\x96\x8F\xE2\x96\x95 #3366cc") != std::string::npos,
+            "rows: a colour row shows its swatch before its spelling, in the value column [" + row(y) + "]");
+    }
     check(row(by_id(v, "label")->inner.y) == "a literal", "text: the literal from the layout file [" + row(by_id(v, "label")->inner.y) + "]");
     check(row(by_id(v, "doc")->inner.y) == "from a file", "file: the file's text [" + row(by_id(v, "doc")->inner.y) + "]");
     check(row(by_id(v, "keys")->inner.y).rfind("transcript:", 0) == 0 &&

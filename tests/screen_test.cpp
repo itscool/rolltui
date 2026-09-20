@@ -25,6 +25,7 @@
 #include "rolltui_test.hpp"
 #include "rolltui/c/rolltui_render.h"  // INTERNAL: this test opts in
 #include "rolltui/c/rolltui_screen.h"  // INTERNAL: this test opts in
+#include "rolltui/c/rolltui_termfacts.h"  // INTERNAL: this test opts in
 
 using namespace rolltui_test;
 using namespace testkit;
@@ -475,6 +476,36 @@ int main() {
           "…the NAME is drawn in one style and the VALUE in another");
     check(cell_at(f.get(), 13, 0).style.fg.index == 8 && cell_at(f.get(), 18, 0).style.fg.index == 15,
           "…and every field after the first, so a long line stays readable end to end");
+
+    // A COLOUR IS A FACT TOO: its square comes before its spelling, in the value's own foreground, and
+    // on a terminal that draws no colour it is the spelling alone, with no gap where the square would be.
+    rows.reset();
+    rows.add("brush", "1 square");
+    rows.add_colour("ink", RolltuiStyleColor::rgb(0xe0, 0x48, 0x3c));
+    FramePtr c = new_frame(40, 1);
+    const int cused = rolltui_frame_put_fields(c.get(), draw_scratch(), 0, 0, &rows, name, value, 40, 0);
+    std::string cline;
+    for (int x = 0; x < cused; ++x) cline += glyph_at(c.get(), x, 0);
+    check(cline == "brush 1 square  ink \xE2\x96\x8F\xE2\x96\x95 #e0483c",
+          "a colour row is drawn with its swatch before its spelling [" + cline + "]");
+    check(cell_at(c.get(), 20, 0).style.bg == RolltuiStyleColor::rgb(0xe0, 0x48, 0x3c) &&
+              cell_at(c.get(), 20, 0).style.fg.index == 15,
+          "…standing on the colour, framed in the value's foreground");
+    rolltui_termfacts_set_active(ROLLTUI_DEPTH_MONO, 1);
+    FramePtr mono = new_frame(40, 1);
+    const int mused = rolltui_frame_put_fields(mono.get(), draw_scratch(), 0, 0, &rows, name, value, 40, 0);
+    rolltui_termfacts_set_active(-1, 0);
+    std::string mline;
+    for (int x = 0; x < mused; ++x) mline += glyph_at(mono.get(), x, 0);
+    check(mline == "brush 1 square  ink #e0483c", "…and with no colour to draw it is the spelling alone [" + mline + "]");
+    // A ROW SLOT IS REUSED ACROSS FRAMES: a plain row added where a colour row was must not inherit its square.
+    rows.reset();
+    rows.add("ink", "none");
+    FramePtr again = new_frame(40, 1);
+    const int aused = rolltui_frame_put_fields(again.get(), draw_scratch(), 0, 0, &rows, name, value, 40, 0);
+    std::string aline;
+    for (int x = 0; x < aused; ++x) aline += glyph_at(again.get(), x, 0);
+    check(aline == "ink none", "…and a plain row filling a colour row's old slot draws plain [" + aline + "]");
 
     // A BARE FACT AND A BARE FLAG. A title has no name and a flag has no answer; both sit in
     // the same line as the named fields rather than needing a second draw call.
