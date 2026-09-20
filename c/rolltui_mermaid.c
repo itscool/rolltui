@@ -2079,8 +2079,8 @@ static void node_draw(RolltuiMermaid* m, const GNode* n) {
       else if (bottom && left) g = b.bl;
       else if (bottom && right) g = b.br;
       else if (top || bottom) g = b.hz;
-      else if (left) g = b.left && (h == 3 || n->shape == SH_STADIUM || n->shape == SH_CIRCLE) ? b.left : b.vt;
-      else if (right) g = b.right && (h == 3 || n->shape == SH_STADIUM || n->shape == SH_CIRCLE) ? b.right : b.vt;
+      else if (left) g = b.left && (h == 3 || r == h / 2 || n->shape == SH_STADIUM || n->shape == SH_CIRCLE) ? b.left : b.vt;
+      else if (right) g = b.right && (h == 3 || r == h / 2 || n->shape == SH_STADIUM || n->shape == SH_CIRCLE) ? b.right : b.vt;
       put_glyph(&m->g, x + c, y + r, g, ROLLTUI_MERMAID_CLASS_NODE);
     }
   }
@@ -2581,7 +2581,10 @@ static int end_head_of(const GEdge* e, int side) {
 }
 
 static int end_key(const GEdge* e, size_t edge_index, int side) {
-  return end_head_of(e, side) * 4096 + (e->parallel_n > 1 ? 1 + (int)edge_index : 0);
+  /* an edge with a label has an end of its own where it leaves: its label lies by the stub, and a fork of labelled
+   * edges through one cell would put every label on the same row */
+  const int own = e->parallel_n > 1 || (side == 0 && e->label_w > 0);
+  return end_head_of(e, side) * 4096 + (own ? 1 + (int)edge_index : 0);
 }
 
 typedef struct PortReq {
@@ -2647,7 +2650,18 @@ static int label_width_needed(const Graph* g, size_t v) {
     if (seen == nk) { if (nk >= 64) continue; keys[nk] = k; lws[nk] = 0; ++nk; }
     if (ed->label_w > lws[seen]) lws[seen] = ed->label_w;
   }
-  for (q = 0; q < nk; ++q) { if (lws[q] > 0) ++labelled; total += lws[q] > 0 ? lws[q] + 3 : 2; }
+  {
+    /* the last stub's label may hang beyond the node, so what is needed is every label but one: the one that could be
+     * last, which is not known yet, is taken to be the smallest */
+    int smallest = INT_MAX;
+    for (q = 0; q < nk; ++q) {
+      const int part = lws[q] > 0 ? lws[q] + 3 : 2;
+      if (lws[q] > 0) ++labelled;
+      total += part;
+      if (part < smallest) smallest = part;
+    }
+    if (nk > 0) total -= smallest - 1;
+  }
   return labelled >= 2 ? total : 0;
 }
 

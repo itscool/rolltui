@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
           "an annotation is kept as written, a generic is Shape<T>, aggregation has its open diamond, realization is dotted");
     check(has(ci.text, "\n") && has(ci.text, "4") && has(ci.text, "1"), "cardinalities in quotes are drawn at the ends of the relation");
     const Drawn e = draw(m, slurp(dir / "er.mmd"), 100, false);
-    check(e.kind == "er" && has(e.text, "0..*") && has(e.text, "1..*") && has(e.text, "places") && has(e.text, "\xE2\x94\x84") && has(e.text, "string custNumber PK"),
+    check(e.kind == "er" && has(e.text, "0..*") && has(e.text, "1..*") && has(e.text, "places") && (has(e.text, "\xE2\x94\x84") || has(e.text, "\xE2\x94\x86")) && has(e.text, "string custNumber PK"),
           "an ER diagram: entities with their attributes in columns, cardinalities at the ends, a dotted line for a non-identifying relationship");
     const Drawn mm = draw(m, slurp(dir / "mindmap.mmd"), 100, false);
     check(mm.kind == "mindmap" && has(mm.text, "\xE2\x94\x9C\xE2\x94\x80 Origins") && has(mm.text, "\xE2\x94\x94\xE2\x94\x80 Tools") && has(mm.text, "\xE2\x94\x82  \xE2\x94\x9C\xE2\x94\x80 Long history"),
