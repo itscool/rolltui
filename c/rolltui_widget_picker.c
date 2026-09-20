@@ -63,6 +63,7 @@ struct RolltuiPicker {
   RolltuiPreview* pv; /* OWNED, made when the first file is previewed */
   RolltuiStr pv_path;
   int pv_focus;
+  int pv_zoom;         /* the preview has the whole picker: the columns are not drawn */
   RolltuiRect pv_rect; /* w == 0: not on screen */
   /* CALLER-FILLED scratch the draw reuses frame to frame, so a steady frame allocates nothing */
   RolltuiStr s1, s2, s3;
@@ -498,6 +499,7 @@ static void sync_preview(RolltuiPicker* p) {
       rolltui_str_set(&p->pv_path, p->s3.p, p->s3.n);
       rolltui_preview_set_path(p->pv, p->s3.p, p->s3.n);
       p->pv_focus = 0;
+      p->pv_zoom = 0;
     }
     return;
   }
@@ -506,6 +508,7 @@ static void sync_preview(RolltuiPicker* p) {
     rolltui_preview_set_path(p->pv, "", 0);
   }
   p->pv_focus = 0;
+  p->pv_zoom = 0;
 }
 static int preview_shown(const RolltuiPicker* p) { return p->pv && p->pv_path.n && p->pv_rect.w > 0; }
 
@@ -794,6 +797,12 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   head.bg = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_PANEL_BACKGROUND)->bg;
   if (d.r.w <= 0 || d.r.h <= 0) return;
   d.clipped = 0;
+  /* ZOOMED: the preview has the whole picker, and the columns are not drawn at all */
+  if (p->pv_zoom && p->pv && p->pv_path.n) {
+    rolltui_preview_draw(p->pv, f, d.r, styles, ambiguous_wide, p->pv_focus);
+    p->pv_rect = d.r;
+    return;
+  }
   /* THE TITLE ROW'S BAND, laid column by column below (so a column clipped at the left edge
    * fades, band and name alike); what is right of the last column is laid here, unclipped. */
   {
@@ -1145,10 +1154,14 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
         if (action_is(act, len, a->page_down)) { rolltui_preview_scroll_page(p->pv, 1); return 1; }
         if (action_is(act, len, a->first)) { rolltui_preview_scroll_edge(p->pv, 0); return 1; }
         if (action_is(act, len, a->last)) { rolltui_preview_scroll_edge(p->pv, 1); return 1; }
-        if (action_is(act, len, a->out) || action_is(act, len, a->cancel)) { p->pv_focus = 0; return 1; }
+        if (action_is(act, len, a->out) || action_is(act, len, a->cancel)) { p->pv_focus = 0; p->pv_zoom = 0; return 1; }
         if (action_is(act, len, a->into)) return 1;
+      } else if (e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt && e->key.ch == 'z') {
+        p->pv_zoom = !p->pv_zoom;
+        return 1;
       } else if (e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt && e->key.ch >= 0x20 && e->key.ch != 0x7f) {
         p->pv_focus = 0;
+        p->pv_zoom = 0;
       }
     }
     if ((!act || len == 0) && e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt && e->key.ch >= 0x20 && e->key.ch != 0x7f)
@@ -1222,6 +1235,7 @@ void rolltui_picker_status(const RolltuiPicker* p, RolltuiPickerStatus* out) {
   out->column = p->n ? p->focus_col + 1 : 0;
   out->columns = p->n;
   out->moving = (unsigned char)(p->scrolling != 0);
+  out->preview = (unsigned char)(!preview_shown(p) ? 0 : p->pv_zoom ? 3 : p->pv_focus ? 2 : 1);
   if (p->n && p->cols[0].error.n) rolltui_str_set(&out->error, p->cols[0].error.p, p->cols[0].error.n);
   else rolltui_str_clear(&out->error);
 }

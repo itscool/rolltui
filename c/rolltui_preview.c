@@ -219,6 +219,29 @@ static void parse_markdown(RolltuiPreview* pv) {
     rolltui_str_free(&fenced);
   } else {
     scrub(pv->body.p ? pv->body.p : "", pv->body.n, &clean);
+    /* FRONT MATTER — the `---` block a static-site generator reads — is configuration, not prose: shown as the YAML it
+     * is, in a code box, rather than as a rule, a line of words and another rule */
+    if (clean.n > 8 && memcmp(clean.p, "---\n", 4) == 0) {
+      const char* close = NULL;
+      size_t k;
+      for (k = 4; k + 4 <= clean.n && k < 4096; ++k)
+        if (clean.p[k - 1] == '\n' && memcmp(clean.p + k, "---", 3) == 0 && (k + 3 == clean.n || clean.p[k + 3] == '\n')) { close = clean.p + k; break; }
+      if (close) {
+        RolltuiStr fenced;
+        memset(&fenced, 0, sizeof fenced);
+        rolltui_str_append(&fenced, "```yaml\n", 8);
+        rolltui_str_append(&fenced, clean.p + 4, (size_t)(close - clean.p) - 4);
+        rolltui_str_append(&fenced, "```\n", 4);
+        {
+          const char* rest = close + 3;
+          const size_t rest_n = clean.n - (size_t)(rest - clean.p);
+          if (rest_n && rest[0] == '\n') { ++rest; }
+          rolltui_str_append(&fenced, rest, clean.n - (size_t)(rest - clean.p));
+        }
+        rolltui_str_set(&clean, fenced.p, fenced.n);
+        rolltui_str_free(&fenced);
+      }
+    }
     rolltui_str_set(&pv->body, clean.p ? clean.p : "", clean.n);
   }
   rolltui_str_free(&clean);
@@ -260,7 +283,7 @@ static void load(RolltuiPreview* pv) {
   struct stat st;
   unsigned char sniff[SNIFF_BYTES];
   size_t got;
-  const int fd = open(pv->path.p, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+  const int fd = open(pv->path.p, O_RDONLY | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
   if (fd < 0) {
     fail(pv, strerror(errno));
     return;

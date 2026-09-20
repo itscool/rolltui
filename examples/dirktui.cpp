@@ -1739,6 +1739,11 @@ struct App {
     // so the line carries a problem first (a folder that cannot be read, a bad path), then the
     // counts and the settings a glance cannot tell.
     if (have_picker && ps.error.n) rolltui_rows_add(&status_facts, "", 0, ps.error.p, ps.error.n);
+    // THE KEYS ARE IN THE FILE'S PREVIEW: say what they do there, since the hint bar is about the list
+    if (have_picker && ps.preview >= 2) {
+      const char* what = ps.preview == 3 ? "\xE2\x86\x91\xE2\x86\x93 scroll  z half  \xE2\x86\x90 back" : "\xE2\x86\x91\xE2\x86\x93 scroll  z zoom  \xE2\x86\x90 back";
+      rolltui_rows_add(&status_facts, "preview", 7, what, std::strlen(what));
+    }
     if (have_picker) { last_entries = ps.entries; last_column = ps.column; last_columns = ps.columns; }
     // WHAT CAN BE TAKEN NOW: with a popup up a press on the line is the popup's (it closes a
     // level), so every hint is muted; copy needs the columns focused and something under the

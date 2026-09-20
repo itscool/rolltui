@@ -452,6 +452,26 @@ int main() {
       key(ROLLTUI_KEY_END);
       t = frame_of(110, 4);
       check(has(t, "last line") && !has(t, "hello world"), "End is the bottom");
+      // z gives the preview the whole picker, and again gives it back; Escape leaves zoom and focus together
+      {
+        RolltuiEvent zk{};
+        zk.kind = ROLLTUI_EVENT_KEY;
+        zk.key.key = ROLLTUI_KEY_CHAR;
+        zk.key.ch = 'z';
+        RolltuiPickerStatus st{};
+        rolltui_picker_handle(p, &zk, b, A);
+        t = frame_of(110, 4);
+        rolltui_picker_status(p, &st);
+        check(st.preview == 3 && has(t, "text \xC2\xB7 5 lines") && t.find("notes.txt") < 3 && !has(t.substr(0, t.find('\n')), "\xE2\x94\x82"), "z zooms: the preview has the whole picker, and the status says so");
+        rolltui_picker_handle(p, &zk, b, A);
+        rolltui_picker_status(p, &st);
+        check(st.preview == 2, "…and z again gives the columns back, the keys still in the file");
+        rolltui_picker_handle(p, &zk, b, A);
+        key(ROLLTUI_KEY_ESCAPE);
+        rolltui_picker_status(p, &st);
+        check(st.preview == 1 && !rolltui_picker_preview_focused(p), "Escape leaves zoom and focus together");
+        key(ROLLTUI_KEY_RIGHT);
+      }
       rolltui_picker_event(p, &ev);
       key(ROLLTUI_KEY_ESCAPE);
       check(!rolltui_picker_preview_focused(p) && !rolltui_picker_event(p, &ev), "Escape goes back to the list and does NOT leave the picker");
@@ -486,6 +506,24 @@ int main() {
             "the window's scrollbar reports the FILE's rows [" + std::to_string(ex.total) + "]");
       rolltui_picker_scroll_to(p, 500);
       check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 500, "…and dragging it scrolls the file");
+    }
+    // NOTHING IS LEFT BEHIND by looking at files: a picker that previewed text, a diagram, hex and an error is freed whole
+    {
+      std::size_t before = 0, after = 0;
+      rolltui_mem_stats(nullptr, nullptr, nullptr, &before, nullptr, nullptr);
+      RolltuiPicker* q = rolltui_picker_new();
+      rolltui_picker_set_options(q, &po);
+      for (const char* name : {"notes.txt", "blob.bin", "doc.md", "flow.mmd", "empty", "pipe", "big.txt", "sub"}) {
+        const std::string path = (pv / name).string();
+        rolltui_picker_go_to(q, path.data(), path.size());
+        RolltuiFrame* fr = rolltui_frame_new(110, 30, styles[ROLLTUI_ROLE_BACKGROUND]);
+        rolltui_picker_layout(q, RolltuiRect{0, 0, 110, 30});
+        rolltui_picker_draw(q, fr, styles, &glyphs, 0);
+        rolltui_frame_free(fr);
+      }
+      rolltui_picker_free(q);
+      rolltui_mem_stats(nullptr, nullptr, nullptr, &after, nullptr, nullptr);
+      check(after == before, "a picker that previewed a text file, a diagram, a dump, a FIFO and a folder frees all of it (" + std::to_string(after) + " vs " + std::to_string(before) + ")");
     }
     ::chmod((pv / "secret.txt").c_str(), 0644);
     rolltui_picker_options_init(&po);

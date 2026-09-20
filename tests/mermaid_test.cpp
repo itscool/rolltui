@@ -28,6 +28,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
+std::size_t live_bytes() {
+  std::size_t v = 0;
+  rolltui_mem_stats(nullptr, nullptr, nullptr, &v, nullptr, nullptr);
+  return v;
+}
+
 std::string slurp(const fs::path& p) {
   std::ifstream in(p, std::ios::binary);
   std::ostringstream ss;
@@ -355,6 +361,22 @@ int main(int argc, char** argv) {
       }
     }
     check(survived == static_cast<int>(files.size()) * 80, "every mutated diagram was drawn or refused, none crashed (" + std::to_string(drew) + " of " + std::to_string(survived) + " drew)");
+  }
+
+  // ---- NOTHING IS LEFT BEHIND: every fixture, drawn and refused, then the handle freed, and the library holds what it did
+  {
+    const std::size_t base = live_bytes();
+    RolltuiMermaid* h = rolltui_mermaid_new();
+    for (const fs::path& f : files) {
+      const std::string src = slurp(f);
+      (void)draw(h, src, 120, false);
+      (void)draw(h, src, 120, true);
+      (void)draw(h, src, 24, false);  // refused for want of room: the half-built layout is released too
+      (void)draw(h, src.substr(0, src.size() / 2), 120, false);
+    }
+    rolltui_mermaid_free(h);
+    check(live_bytes() == base, "after every fixture drawn, refused and cut in half, and the handle freed, the library holds what it held before (" +
+                                    std::to_string(live_bytes()) + " vs " + std::to_string(base) + ")");
   }
 
   rolltui_mermaid_free(m);
