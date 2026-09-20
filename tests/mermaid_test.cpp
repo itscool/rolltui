@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
   for (const auto& e : fs::directory_iterator(dir))
     if (e.path().extension() == ".mmd") files.push_back(e.path());
   std::sort(files.begin(), files.end());
-  check(files.size() >= 23, "the fixtures are there (" + std::to_string(files.size()) + " diagrams)");
+  check(files.size() >= 31, "the fixtures are there (" + std::to_string(files.size()) + " diagrams)");
   for (const fs::path& f : files) {
     const std::string name = f.stem().string();
     const std::string src = slurp(f);
@@ -227,6 +227,34 @@ int main(int argc, char** argv) {
     check(!gt_narrow.ok && has(gt_narrow.why, "columns"), "a Gantt chart with no room says how much it wants [" + gt_narrow.why + "]");
     const Drawn gt_bad = draw(m, "gantt\n  A :a1, after nothing, 3d\n", 100, false);
     check(!gt_bad.ok && has(gt_bad.why, "not been defined"), "a task after one that is not there is refused in words [" + gt_bad.why + "]");
+  }
+
+  // ---- THE PICTURES THAT WERE ONCE WRONG, from diagrams other people wrote --------------------------------------------
+  {
+    // sibling frames are apart: not one border shared between two
+    const Drawn sib = draw(m, slurp(dir / "flow-sibling-subgraphs.mmd"), 120, false);
+    check(has(sib.text.substr(0, sib.text.find('\n')), "\xE2\x95\xAE \xE2\x95\xAD") && !has(sib.text.substr(0, sib.text.find('\n')), "\xE2\x94\xAC"), "two subgraphs side by side are two frames with a gap between, not one border shared");
+    // a `rect` is a colour behind its messages, not a frame with a title
+    const Drawn blocks = draw(m, slurp(dir / "sequence-blocks.mmd"), 120, false);
+    check(!has(blocks.text, "rect rgb") && has(blocks.text, "par Query one") && has(blocks.text, "and Query two") && has(blocks.text, "critical Establish connection") && has(blocks.text, "option Timeout"),
+          "a sequence diagram's par / critical frames and their dividers are drawn, and a `rect` is not a frame");
+    // a key column of two keys says two, not a doubled comma
+    const Drawn er = draw(m, slurp(dir / "er-docs.mmd"), 140, false);
+    check(has(er.text, "PK,FK") && !has(er.text, ",,"), "an attribute that is a primary and a foreign key says `PK,FK`");
+    // a tall sequence diagram names its participants again at the foot
+    const Drawn oauth = draw(m, slurp(dir / "sequence-oauth.mmd"), 120, false);
+    check(count_of(oauth.text, "Auth Server") == 2 && count_of(oauth.text, "\xE2\x94\xB4") >= 4, "a tall sequence diagram repeats its participants under the lifelines");
+    const Drawn shorter = draw(m, "sequenceDiagram\n  A->>B: hi\n", 120, false);
+    check(count_of(shorter.text, "\xE2\x95\xAD") == 2, "…and a short one does not");
+    // labels lie beside the stub they belong to, each with room: none of them runs into another edge or another label
+    const Drawn states = draw(m, slurp(dir / "state-machine-labels.mmd"), 120, false);
+    check(has(states.text, "fetch") && has(states.text, "error") && has(states.text, "retry") && has(states.text, "reset") && !has(states.text, "error\xE2\x96\xB2") && !has(states.text, "retry\xE2\x94\x82"),
+          "a state with several labelled edges leaving it is wide enough that every label has room by its stub");
+    // a fork is a bar across the flow
+    const Drawn fj = draw(m, slurp(dir / "state-fork-join.mmd"), 120, false);
+    check(has(fj.text, "\xE2\x94\x81\xE2\x94\x81\xE2\x94\x81\xE2\x94\x81"), "a fork and a join are bars across the flow");
+    const Drawn fj_lr = draw(m, "stateDiagram-v2\n  direction LR\n  state f <<fork>>\n  [*] --> f\n  f --> A\n  f --> B\n", 120, false);
+    check(has(fj_lr.text, "\xE2\x94\x83"), "…and in a left to right diagram it is a bar down the page");
   }
 
   // ---- WHAT THE FLOWCHART DIRECTION MEANS ---------------------------------------------------------------------

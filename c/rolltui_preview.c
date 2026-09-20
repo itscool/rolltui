@@ -453,38 +453,47 @@ static void clamp_top(RolltuiPreview* pv) {
   if (pv->top > max_top) pv->top = max_top;
 }
 
+/* THE ROWS ON SCREEN, RE-DERIVED EVERY FRAME from the width and the height this frame has: how many bytes fit a row, where
+ * the top is (the same BYTE stays at the top when the row's length changes, not the same row number), and that the top
+ * leaves no blank rows below the end. A resize is nothing more than the next frame. */
 static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, RolltuiStyle text, RolltuiStyle dim, int aw) {
   const int od = hex_digits_for(pv->size);
   const int per = hex_bytes_that_fit(body.w, od);
   const size_t old_per = (size_t)(pv->hex_per_row > 0 ? pv->hex_per_row : 16);
-  unsigned char buf[16 * 64];
-  int rows = body.h, r;
-  size_t first_byte;
+  int r;
+  size_t first_byte, want;
+  ssize_t got = 0;
+  unsigned char* buf;
   if ((size_t)per != old_per) {
-    /* the width changed the row's length: keep the same BYTE at the top, not the same row number */
     pv->top = (pv->top * old_per) / (size_t)per;
     pv->hex_per_row = per;
   }
   pv->rows_vis = (size_t)body.h;
   clamp_top(pv);
-  if (rows > 64) rows = 64;
   first_byte = pv->top * (size_t)per;
-  for (r = 0; r < rows; ++r) {
-    const size_t at = first_byte + (size_t)r * (size_t)per;
-    ssize_t got;
-    int x = body.x, k;
+  /* one read for the whole window, however tall it is */
+  want = (size_t)body.h * (size_t)per;
+  if (first_byte + want > (size_t)pv->size) want = (size_t)pv->size > first_byte ? (size_t)pv->size - first_byte : 0;
+  if (want == 0) return;
+  buf = (unsigned char*)rolltui_mem_alloc(want);
+  got = pread(pv->fd, buf, want, (off_t)first_byte);
+  if (got <= 0) { rolltui_mem_free(buf); return; }
+  for (r = 0; r < body.h; ++r) {
+    const size_t row_at = (size_t)r * (size_t)per;
+    const size_t at = first_byte + row_at;
+    int x = body.x, k, have;
     char tmp[32];
-    if (at >= (size_t)pv->size) break;
-    got = pread(pv->fd, buf, (size_t)per, (off_t)at);
-    if (got <= 0) break;
+    if (row_at >= (size_t)got) break;
+    have = (int)((size_t)got - row_at < (size_t)per ? (size_t)got - row_at : (size_t)per);
     snprintf(tmp, sizeof tmp, "%0*llx", od, (unsigned long long)at);
     rolltui_frame_put_text(f, pv->ds, x, body.y + r, tmp, (size_t)od, dim, od, aw, 0);
     x += od + 2;
     for (k = 0; k < per; ++k) {
-      if (k < got) {
+      if (k < have) {
         char hx[3];
-        snprintf(hx, sizeof hx, "%02x", buf[k]);
-        rolltui_frame_put_text(f, pv->ds, x, body.y + r, hx, 2, buf[k] == 0 ? dim : text, 2, aw, 0);
+        const unsigned char byte = buf[row_at + (size_t)k];
+        snprintf(hx, sizeof hx, "%02x", byte);
+        rolltui_frame_put_text(f, pv->ds, x, body.y + r, hx, 2, byte == 0 ? dim : text, 2, aw, 0);
       }
       x += 2;
       if (k < per - 1) x += 1;
@@ -492,15 +501,48 @@ static void draw_hex(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body, Roll
     }
     x += 2; /* the loop left x just past the last pair: two spaces, then the gutter */
     rolltui_frame_put_text(f, pv->ds, x, body.y + r, "|", 1, dim, 1, aw, 0);
-    for (k = 0; k < per && k < got; ++k) {
-      const char c = (char)(buf[k] >= 0x20 && buf[k] < 0x7F ? buf[k] : '.');
-      rolltui_frame_put_text(f, pv->ds, x + 1 + k, body.y + r, &c, 1, c == '.' && (buf[k] < 0x20 || buf[k] >= 0x7F) ? dim : text, 1, aw, 0);
+    for (k = 0; k < have; ++k) {
+      const unsigned char byte = buf[row_at + (size_t)k];
+      const char c = (char)(byte >= 0x20 && byte < 0x7F ? byte : '.');
+      rolltui_frame_put_text(f, pv->ds, x + 1 + k, body.y + r, &c, 1, byte < 0x20 || byte >= 0x7F ? dim : text, 1, aw, 0);
     }
-    rolltui_frame_put_text(f, pv->ds, x + 1 + (int)(got < per ? got : per), body.y + r, "|", 1, dim, 1, aw, 0);
+    rolltui_frame_put_text(f, pv->ds, x + 1 + have, body.y + r, "|", 1, dim, 1, aw, 0);
   }
+  rolltui_mem_free(buf);
 }
 
 /* ---- markdown -------------------------------------------------------------------------------- */
+
+/* the logical-text offset line `i` itself begins at, or none: a blank line, a rule and a picture's lines are chrome */
+static size_t md_line_source(const RolltuiPreview* pv, size_t i) {
+  const RolltuiMdLine* line = rolltui_md_lines_line(pv->md_lines, i);
+  size_t s;
+  for (s = 0; s < line->span_n; ++s)
+    if (line->span_p[s].src_n > 0 && line->span_p[s].src_p[0] != ROLLTUI_MD_NO_SOURCE) return line->span_p[s].src_p[0];
+  return ROLLTUI_MD_NO_SOURCE;
+}
+
+/* the offset the top of the view stands at: line `i`'s, or the next line's that has one */
+static size_t md_source_at(const RolltuiPreview* pv, size_t i) {
+  const size_t n = rolltui_md_lines_count(pv->md_lines);
+  size_t k;
+  for (k = i; k < n && k < i + 12; ++k) {
+    const size_t at = md_line_source(pv, k);
+    if (at != ROLLTUI_MD_NO_SOURCE) return at;
+  }
+  return ROLLTUI_MD_NO_SOURCE;
+}
+
+/* the first line that itself begins at or after `off` */
+static size_t md_line_for(const RolltuiPreview* pv, size_t off) {
+  const size_t n = rolltui_md_lines_count(pv->md_lines);
+  size_t k;
+  for (k = 0; k < n; ++k) {
+    const size_t at = md_line_source(pv, k);
+    if (at != ROLLTUI_MD_NO_SOURCE && at >= off) return k;
+  }
+  return n ? n - 1 : 0;
+}
 
 static void render_md(RolltuiPreview* pv, int width, int aw) {
   RolltuiMdRenderOptions ro;
@@ -523,7 +565,19 @@ static void draw_markdown(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect body,
   int row;
   size_t n;
   if (!pv->md_doc) return;
-  if (pv->md_width != body.w || pv->md_aw != aw) render_md(pv, body.w, aw);
+  if (pv->md_width != body.w || pv->md_aw != aw) {
+    /* A NEW WIDTH LAYS THE DOCUMENT OUT AGAIN, and the same line number is no longer the same words: the top stays at the
+     * text it was at (or, over a picture that has no text, at the same fraction of the way down) */
+    const int had = pv->md_lines && pv->md_width != 0;
+    const size_t anchor = had ? md_source_at(pv, pv->top) : ROLLTUI_MD_NO_SOURCE;
+    const size_t old_n = had ? rolltui_md_lines_count(pv->md_lines) : 0;
+    render_md(pv, body.w, aw);
+    if (had) {
+      const size_t new_n = rolltui_md_lines_count(pv->md_lines);
+      if (anchor != ROLLTUI_MD_NO_SOURCE) pv->top = md_line_for(pv, anchor);
+      else if (old_n > 0) pv->top = (size_t)((double)pv->top * (double)new_n / (double)old_n);
+    }
+  }
   n = rolltui_md_lines_count(pv->md_lines);
   clamp_top(pv);
   for (row = 0; row < body.h; ++row) {

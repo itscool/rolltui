@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant C as Client App
+    participant A as Auth Server
+    participant R as Resource API
+    U->>C: Click "Sign in"
+    C->>A: GET /authorize?client_id=...
+    A-->>U: Login page
+    U->>A: Credentials
+    A-->>C: 302 redirect with code
+    C->>A: POST /token (code)
+    A-->>C: access_token
+    C->>R: GET /me (Bearer token)
+    alt token valid
+        R-->>C: 200 profile
+    else token expired
+        R-->>C: 401
+        C->>A: POST /token (refresh)
+    end
+    Note over C,R: tokens are never sent to the browser

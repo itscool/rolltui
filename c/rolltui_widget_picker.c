@@ -1154,11 +1154,14 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
         if (action_is(act, len, a->page_down)) { rolltui_preview_scroll_page(p->pv, 1); return 1; }
         if (action_is(act, len, a->first)) { rolltui_preview_scroll_edge(p->pv, 0); return 1; }
         if (action_is(act, len, a->last)) { rolltui_preview_scroll_edge(p->pv, 1); return 1; }
-        if (action_is(act, len, a->out) || action_is(act, len, a->cancel)) { p->pv_focus = 0; p->pv_zoom = 0; return 1; }
-        if (action_is(act, len, a->into)) return 1;
-      } else if (e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt && e->key.ch == 'z') {
-        p->pv_zoom = !p->pv_zoom;
-        return 1;
+        /* RIGHT GOES DEEPER, LEFT AND ESCAPE STEP BACK, one place at a time: the list, the file beside it, the file
+         * with the whole picker */
+        if (action_is(act, len, a->out) || action_is(act, len, a->cancel)) {
+          if (p->pv_zoom) p->pv_zoom = 0;
+          else p->pv_focus = 0;
+          return 1;
+        }
+        if (action_is(act, len, a->into)) { p->pv_zoom = 1; return 1; }
       } else if (e->key.key == ROLLTUI_KEY_CHAR && !e->key.ctrl && !e->key.alt && e->key.ch >= 0x20 && e->key.ch != 0x7f) {
         p->pv_focus = 0;
         p->pv_zoom = 0;

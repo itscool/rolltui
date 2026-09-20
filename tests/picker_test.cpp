@@ -11,6 +11,7 @@
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <vector>
 #include "rolltui/rolltui.h"
@@ -452,24 +453,30 @@ int main() {
       key(ROLLTUI_KEY_END);
       t = frame_of(110, 4);
       check(has(t, "last line") && !has(t, "hello world"), "End is the bottom");
-      // z gives the preview the whole picker, and again gives it back; Escape leaves zoom and focus together
+      // Right AGAIN gives the preview the whole picker; Left steps back to the half, and again to the list
       {
-        RolltuiEvent zk{};
-        zk.kind = ROLLTUI_EVENT_KEY;
-        zk.key.key = ROLLTUI_KEY_CHAR;
-        zk.key.ch = 'z';
         RolltuiPickerStatus st{};
-        rolltui_picker_handle(p, &zk, b, A);
+        key(ROLLTUI_KEY_RIGHT);
         t = frame_of(110, 4);
         rolltui_picker_status(p, &st);
-        check(st.preview == 3 && has(t, "text \xC2\xB7 5 lines") && t.find("notes.txt") < 3 && !has(t.substr(0, t.find('\n')), "\xE2\x94\x82"), "z zooms: the preview has the whole picker, and the status says so");
-        rolltui_picker_handle(p, &zk, b, A);
+        check(st.preview == 3 && has(t, "text \xC2\xB7 5 lines") && t.find("notes.txt") < 3 && !has(t.substr(0, t.find('\n')), "\xE2\x94\x82"),
+              "Right again: the preview has the whole picker, and the status says so");
+        key(ROLLTUI_KEY_RIGHT);
         rolltui_picker_status(p, &st);
-        check(st.preview == 2, "…and z again gives the columns back, the keys still in the file");
-        rolltui_picker_handle(p, &zk, b, A);
+        check(st.preview == 3, "…and Right once more is nothing further");
+        key(ROLLTUI_KEY_DOWN);
+        t = frame_of(110, 4);
+        check(!has(t, "hello world"), "…the keys still scroll the file");
+        key(ROLLTUI_KEY_LEFT);
+        rolltui_picker_status(p, &st);
+        check(st.preview == 2 && rolltui_picker_preview_focused(p), "Left steps back to the half, the keys still in the file");
+        key(ROLLTUI_KEY_RIGHT);
         key(ROLLTUI_KEY_ESCAPE);
         rolltui_picker_status(p, &st);
-        check(st.preview == 1 && !rolltui_picker_preview_focused(p), "Escape leaves zoom and focus together");
+        check(st.preview == 2, "Escape steps back one place as well: from the whole picker to the half");
+        key(ROLLTUI_KEY_LEFT);
+        rolltui_picker_status(p, &st);
+        check(st.preview == 1 && !rolltui_picker_preview_focused(p), "…and Left again is the list");
         key(ROLLTUI_KEY_RIGHT);
       }
       rolltui_picker_event(p, &ev);
@@ -506,6 +513,73 @@ int main() {
             "the window's scrollbar reports the FILE's rows [" + std::to_string(ex.total) + "]");
       rolltui_picker_scroll_to(p, 500);
       check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 500, "…and dragging it scrolls the file");
+    }
+    // A RESIZE IS THE NEXT FRAME: the hex view works out again how many bytes fit a row and keeps the same BYTE at the top,
+    // leaves no blank rows below the end when the window grows taller, and fills a window taller than any it was tested in;
+    // a Markdown view keeps the same words at the top when the width lays it out again
+    {
+      RolltuiScrollExtent ex{};
+      go_file("blob.bin");
+      (void)frame_of(200, 14);  // sixteen bytes to a row
+      rolltui_picker_scroll_to(p, 20);
+      std::string t = frame_of(200, 14);
+      check(has(t, "0140  ") && !has(t, "0130  "), "hex: scrolled twenty rows down at sixteen bytes to a row, the top is offset 0x140");
+      t = frame_of(80, 14);
+      check(rolltui_picker_scroll_extent(p, &ex) && (ex.first == 40 || ex.first == 80) && has(t, "0140  ") && !has(t, "0138  "),
+            "…narrowed to fewer bytes to a row, the same byte is at the top (0x140 is row 40 at eight to a row, 80 at four) [row " + std::to_string(ex.first) + "]");
+      t = frame_of(200, 14);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 20 && has(t, "0140  "), "…and widened again, the same byte still (row 20)");
+      // taller: the end is not left with blank rows under it
+      (void)frame_of(200, 8);
+      rolltui_picker_scroll_to(p, 100000);
+      (void)frame_of(200, 8);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total, "hex: scrolled to the end, the last row is the bottom one");
+      t = frame_of(200, 30);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first + ex.visible == ex.total && has(t, "0bb0  "),
+            "…and in a taller window the top comes back up so the end is still the bottom [first " + std::to_string(ex.first) + " of " + std::to_string(ex.total) + "]");
+      // a window taller than sixty-four rows is filled
+      rolltui_picker_scroll_to(p, 0);
+      t = frame_of(200, 90);
+      check(has(t, "0580  "), "hex: a ninety-row window shows all eighty-nine rows it has room for, not the first sixty-four");
+      // shorter again: nothing to re-clamp, the same top
+      t = frame_of(200, 10);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 0 && ex.visible == 9, "…and shorter again, the same top and the new height");
+      // no room at all is still a frame
+      t = frame_of(30, 6);
+      check(has(t, "|"), "hex: in a pane too narrow for eight bytes it is fewer to a row, not nothing");
+    }
+    {
+      std::string doc;
+      for (int i = 0; i < 60; ++i)
+        doc += "Paragraph " + std::to_string(i) + ": the quick brown fox jumps over the lazy dog and keeps running past the edge of any pane that is narrow enough to make it wrap onto a second and a third line.\n\n";
+      write_file(pv / "long.md", doc);
+      go_file("long.md");
+      (void)frame_of(160, 20);
+      // scroll until Paragraph 30 is at the top of the wide layout
+      RolltuiScrollExtent ex{};
+      std::string t;
+      for (std::size_t at = 0; at < 400; ++at) {
+        rolltui_picker_scroll_to(p, at);
+        t = frame_of(160, 20);
+        std::istringstream in(t);
+        std::string l0, l1;
+        std::getline(in, l0);
+        std::getline(in, l1);
+        if (has(l1, "Paragraph 30:")) break;
+      }
+      auto top_row = [&](const std::string& frame) {
+        std::istringstream in(frame);
+        std::string l0, l1;
+        std::getline(in, l0);
+        std::getline(in, l1);
+        return l1;
+      };
+      check(has(top_row(t), "Paragraph 30:"), "markdown: Paragraph 30 is at the top in the wide layout");
+      t = frame_of(90, 20);
+      check(has(top_row(t), "Paragraph 30:"), "…narrowed until every paragraph wraps twice more, it is still what is at the top [" + top_row(t).substr(0, 60) + "]");
+      t = frame_of(160, 20);
+      check(has(top_row(t), "Paragraph 30:"), "…and widened again");
+      (void)ex;
     }
     // NOTHING IS LEFT BEHIND by looking at files: a picker that previewed text, a diagram, hex and an error is freed whole
     {

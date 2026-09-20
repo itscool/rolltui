@@ -1,0 +1,17 @@
++------------------------------+   +-----------------------------------------+
+|             CAR              |   |                 PERSON                  |
++------------------------------+   +-----------------------------------------+
+| string registrationNumber PK |   | string driversLicense PK  The license # |
+| string make                  |   | string firstName                        |
+| string model                 |   | string lastName                         |
++------------------------------+   | int    age                              |
+                | 1                +-----------------------------------------+
+                |                 1 | is
+                +------allows-------+
+                               0..* | 0..*
+                 +------------------------------------+
+                 |            NAMED-DRIVER            |
+                 +------------------------------------+
+                 | string carRegistrationNumber PK,FK |
+                 | string driverLicence         PK,FK |
+                 +------------------------------------+

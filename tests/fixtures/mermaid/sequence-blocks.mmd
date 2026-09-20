@@ -1,0 +1,23 @@
+sequenceDiagram
+    participant W as Web
+    participant S as Server
+    participant D as DB
+    W->>S: request
+    par Query one
+        S->>D: SELECT a
+    and Query two
+        S->>D: SELECT b
+    end
+    critical Establish connection
+        S-->>W: ok
+    option Timeout
+        S--xW: fail
+    end
+    rect rgb(200,200,255)
+        W->>S: again
+    end
+    loop Health check
+        S->>S: ping
+    end
+    Note right of D: cached
+    Note left of W: browser

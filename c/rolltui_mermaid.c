@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "rolltui/c/rolltui_alloc.h"
 #include "rolltui/c/rolltui_str.h"
@@ -814,6 +815,7 @@ static int seq_parse(Seq* s, const Source* src, size_t first, int* autonumber, R
       trim(&t);
       e = seq_event(s, SEQ_BLOCK);
       rolltui_str_set(&e->keyword, l.p, kn);
+      e->dashed = kn == 4 && strncasecmp(l.p, "rect", 4) == 0; /* a highlight: takes no row and draws no frame */
       clean_label(t, &e->text);
       e->depth = depth;
       if (open_n < 32) open[open_n++] = (int)s->ne - 1;
@@ -934,7 +936,7 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
   size_t i, k;
   int* gap = NULL;
   int total_h = 0, row, box_h = 3, left_extra = 0, right_extra = 0, x0;
-  int frame_left_min = 0;
+  int frame_left_min = 0, bottom_boxes = 0, life_end = 0;
   memset(&s, 0, sizeof s);
   if (!seq_parse(&s, src, first, &autonumber, reason)) goto done;
   if (s.np == 0) { reason_set(reason, "a sequence diagram with no participants"); goto done; }
@@ -1013,10 +1015,12 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
       case SEQ_NOTE: {
         int lines;
         label_extent(m, &e->text, &lines);
-        e->rows = lines + 2;
+        e->rows = lines + 3; /* a blank row after it, so what follows is not against its border */
         break;
       }
-      case SEQ_BLOCK: case SEQ_ELSE: case SEQ_END: e->rows = 1; break;
+      case SEQ_BLOCK: e->rows = e->dashed ? 0 : 1; break;
+      case SEQ_ELSE: e->rows = 1; break;
+      case SEQ_END: e->rows = e->match >= 0 && s.ev[e->match].dashed ? 0 : 1; break;
       case SEQ_ACTIVATE: case SEQ_DEACTIVATE:
         /* on the row of the message just before it, where the arrow is */
         e->rows = 0;
@@ -1027,17 +1031,20 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
     row += e->rows;
   }
   total_h = row + 1;
+  /* a tall diagram names its participants again at the foot, as one reads down to the end of it */
+  life_end = total_h;
+  if (row - box_h >= 14) { bottom_boxes = 1; total_h += box_h + 1; }
   /* ---- how far the frames reach beyond the lifelines they wrap, so the grid can start left of the first box */
   for (i = 0; i < s.ne; ++i) {
     const SeqEvent* e = &s.ev[i];
-    if (e->kind == SEQ_BLOCK) {
+    if (e->kind == SEQ_BLOCK && !e->dashed) {
       int lo = INT_MAX, hi = INT_MIN, nest = 0;
       size_t j;
       const int end = e->match >= 0 ? e->match : (int)s.ne - 1;
       int level = 0;
       for (j = i + 1; j <= (size_t)end && j < s.ne; ++j) {
         const SeqEvent* f = &s.ev[j];
-        if (f->kind == SEQ_BLOCK) { ++level; nest = imax(nest, level); }
+        if (f->kind == SEQ_BLOCK) { ++level; if (!f->dashed) nest = imax(nest, level); }
         else if (f->kind == SEQ_END) --level;
         if (f->kind == SEQ_MSG) { lo = imin(lo, imin(f->from, f->to)); hi = imax(hi, imax(f->from, f->to)); }
         if (f->kind == SEQ_NOTE) { lo = imin(lo, f->from); hi = imax(hi, f->to); }
@@ -1106,18 +1113,39 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
     /* the lifeline, from the box's foot down */
     if (!m->ascii) put_glyph(&m->g, x0 + p->cx, box_h - 1, "\xE2\x94\xAC", ROLLTUI_MERMAID_CLASS_NODE);
     else put_glyph(&m->g, x0 + p->cx, box_h - 1, "+", ROLLTUI_MERMAID_CLASS_NODE);
-    for (k = (size_t)box_h; k < (size_t)total_h; ++k) add_mask(&m->g, x0 + p->cx, (int)k, M_U | M_D, ST_DASH, ROLLTUI_MERMAID_CLASS_MUTED);
+    for (k = (size_t)box_h; k < (size_t)life_end; ++k)
+      add_mask(&m->g, x0 + p->cx, (int)k, M_U | M_D, ST_DASH, ROLLTUI_MERMAID_CLASS_MUTED);
+    if (bottom_boxes) {
+      const int top = total_h - box_h;
+      int yy;
+      for (yy = 0; yy < box_h; ++yy) {
+        int x;
+        for (x = 0; x < p->w; ++x) {
+          const int t2 = yy == 0, b2 = yy == box_h - 1, l2 = x == 0, r2 = x == p->w - 1;
+          const char* g = NULL;
+          if (t2 && l2) g = m->ascii ? "+" : "\xE2\x95\xAD";
+          else if (t2 && r2) g = m->ascii ? "+" : "\xE2\x95\xAE";
+          else if (b2 && l2) g = m->ascii ? "+" : "\xE2\x95\xB0";
+          else if (b2 && r2) g = m->ascii ? "+" : "\xE2\x95\xAF";
+          else if (t2 || b2) g = m->ascii ? "-" : "\xE2\x94\x80";
+          else if (l2 || r2) g = m->ascii ? "|" : "\xE2\x94\x82";
+          if (g) put_glyph(&m->g, bx + x, top + yy, g, ROLLTUI_MERMAID_CLASS_NODE);
+        }
+      }
+      put_label_centered(m, bx + 2, top + 1 + (box_h - 2 - lines) / 2, p->w - 4, &p->label, ROLLTUI_MERMAID_CLASS_TEXT);
+      put_glyph(&m->g, x0 + p->cx, top, m->ascii ? "+" : "\xE2\x94\xB4", ROLLTUI_MERMAID_CLASS_NODE);
+    }
   }
   /* frames */
   for (i = 0; i < s.ne; ++i) {
     const SeqEvent* e = &s.ev[i];
-    if (e->kind == SEQ_BLOCK) {
+    if (e->kind == SEQ_BLOCK && !e->dashed) {
       int lo = INT_MAX, hi = INT_MIN, nest = 0, level = 0, lx, rx, x, y, last;
       size_t j;
       const int end = e->match >= 0 ? e->match : (int)s.ne - 1;
       for (j = i + 1; j <= (size_t)end && j < s.ne; ++j) {
         const SeqEvent* f = &s.ev[j];
-        if (f->kind == SEQ_BLOCK) { ++level; nest = imax(nest, level); }
+        if (f->kind == SEQ_BLOCK) { ++level; if (!f->dashed) nest = imax(nest, level); }
         else if (f->kind == SEQ_END) --level;
         if (f->kind == SEQ_MSG) { lo = imin(lo, imin(f->from, f->to)); hi = imax(hi, imax(f->from, f->to)); }
         if (f->kind == SEQ_NOTE) { lo = imin(lo, f->from); hi = imax(hi, f->to); }
@@ -1129,7 +1157,7 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
         const int tw = label_extent(m, &e->text, NULL) + (int)e->keyword.n + 6;
         if (rx - lx < tw) rx = lx + tw;
       }
-      last = e->match >= 0 ? s.ev[e->match].row : total_h - 1;
+      last = e->match >= 0 ? s.ev[e->match].row : life_end - 1;
       for (x = lx; x <= rx; ++x) {
         add_mask(&m->g, x, e->row, (x > lx ? M_L : 0) | (x < rx ? M_R : 0), ST_LIGHT, ROLLTUI_MERMAID_CLASS_BOX);
         add_mask(&m->g, x, last, (x > lx ? M_L : 0) | (x < rx ? M_R : 0), ST_LIGHT, ROLLTUI_MERMAID_CLASS_BOX);
@@ -1156,7 +1184,7 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
       for (j = i; j-- > 0;) {
         if (s.ev[j].kind == SEQ_END) ++depth;
         else if (s.ev[j].kind == SEQ_BLOCK) {
-          if (depth == 0) { owner = (int)j; break; }
+          if (depth == 0) { if (s.ev[j].dashed) continue; owner = (int)j; break; }
           --depth;
         }
       }
@@ -1308,7 +1336,7 @@ static int draw_sequence(RolltuiMermaid* m, const Source* src, size_t first, int
     }
     if (depth > 0 && start >= 0) {
       int y;
-      for (y = start; y < total_h; ++y) {
+      for (y = start; y < life_end; ++y) {
         Cell* c = cell_at(&m->g, x0 + s.parts[i].cx, y);
         if (c && c->g[0] == 0 && c->mask != 0) { c->style = ST_HEAVY; c->cls = ROLLTUI_MERMAID_CLASS_ACCENT1; }
       }
@@ -1389,6 +1417,7 @@ typedef struct GEdge {
   int* chain;         /* the nodes it passes through, in layer order (real ends and its stand-ins) */
   size_t chain_n;
   RolltuiStr end_a, end_b; /* small text at its first end and its last (a cardinality), in the order it was written */
+  int label_w;        /* the width of its label, 0 for none: known before layout, so a node can be made wide enough for it */
   int pa, pb;         /* where it attaches across the flow at its first node and at its last */
   int pa_single, pb_single; /* that end is the only kind on its side, so it can move to meet the other */
 } GEdge;
@@ -2573,6 +2602,7 @@ typedef struct PortKey {
   double mean;
   int n;
   int at;
+  int lw;         /* the widest label among the edges sharing it */
   int first_edge; /* the smallest edge index among those sharing it: who is written first stands to the left, at both ends */
 } PortKey;
 
@@ -2599,6 +2629,26 @@ static int ports_needed(const Graph* g, size_t v, int side) {
     if (seen == nk && nk < 64) keys[nk++] = k;
   }
   return nk;
+}
+
+/* ACROSS THE FLOW, a node that sends out several labelled edges is as wide as their labels need: each edge leaves by a
+ * stub, its label lies beside the stub, and the next stub is a label further along. 0 when it needs nothing beyond
+ * what it has. */
+static int label_width_needed(const Graph* g, size_t v) {
+  int keys[64], lws[64], nk = 0, labelled = 0, total = 2, q;
+  size_t e;
+  for (e = 0; e < g->ne; ++e) {
+    const GEdge* ed = &g->e[e];
+    const int start = ed->rev ? ed->to : ed->from;
+    int k, seen = 0;
+    if (ed->style == ES_INVISIBLE || ed->from == ed->to || start != (int)v) continue;
+    k = end_key(ed, e, 0);
+    for (; seen < nk; ++seen) if (keys[seen] == k) break;
+    if (seen == nk) { if (nk >= 64) continue; keys[nk] = k; lws[nk] = 0; ++nk; }
+    if (ed->label_w > lws[seen]) lws[seen] = ed->label_w;
+  }
+  for (q = 0; q < nk; ++q) { if (lws[q] > 0) ++labelled; total += lws[q] > 0 ? lws[q] + 3 : 2; }
+  return labelled >= 2 ? total : 0;
 }
 
 /* Whether an edge may leave a node from `offset` cells along its side: not from its corners, and not from a record's
@@ -2654,7 +2704,8 @@ static void assign_ports(Lay* L) {
       }
       qsort(reqs, k, sizeof *reqs, port_cmp);
       for (i = 0; i < k; ++i) {
-        if (nk == 0 || keys[nk - 1].key != reqs[i].key) { keys[nk].key = reqs[i].key; keys[nk].mean = 0; keys[nk].n = 0; keys[nk].first_edge = reqs[i].edge; ++nk; }
+        if (nk == 0 || keys[nk - 1].key != reqs[i].key) { keys[nk].key = reqs[i].key; keys[nk].mean = 0; keys[nk].n = 0; keys[nk].lw = 0; keys[nk].first_edge = reqs[i].edge; ++nk; }
+        if (g->e[reqs[i].edge].label_w > keys[nk - 1].lw) keys[nk - 1].lw = g->e[reqs[i].edge].label_w;
         keys[nk - 1].mean += reqs[i].neighbour;
         if (reqs[i].edge < keys[nk - 1].first_edge) keys[nk - 1].first_edge = reqs[i].edge;
         ++keys[nk - 1].n;
@@ -2665,13 +2716,29 @@ static void assign_ports(Lay* L) {
       lo = n->cpos + 1;
       hi = n->cpos + n->cs - 2;
       if (hi < lo) lo = hi = n->cpos + n->cs / 2;
-      for (i = 0; i < k; ++i) {
+      {
+        /* the cell each kind of end takes: spread along the side, and where a label will lie beside each stub, far enough
+         * apart that it has room */
+        int pos_of[64];
         size_t q;
-        int at, idx = 0;
-        for (q = 0; q < nk; ++q) if (keys[q].key == reqs[i].key) { idx = keys[q].at; break; }
-        at = nk == 1 ? n->cpos + n->cs / 2 : lo + (int)(((2 * (size_t)idx + 1) * (size_t)(hi - lo + 1)) / (2 * nk));
-        if (at > hi) at = hi;
-        if (at < lo) at = lo;
+        for (q = 0; q < nk && q < 64; ++q) {
+          pos_of[q] = nk == 1 ? n->cpos + n->cs / 2 : lo + (int)(((2 * (size_t)q + 1) * (size_t)(hi - lo + 1)) / (2 * nk));
+          if (pos_of[q] > hi) pos_of[q] = hi;
+          if (pos_of[q] < lo) pos_of[q] = lo;
+        }
+        if (!L->lr && side == 0 && nk > 1 && nk <= 64) {
+          int over;
+          for (q = 1; q < nk; ++q) {
+            const int want = pos_of[q - 1] + (keys[q - 1].lw > 0 ? keys[q - 1].lw + 3 : 2);
+            if (pos_of[q] < want) pos_of[q] = want;
+          }
+          over = pos_of[nk - 1] - hi;
+          if (over > 0) for (q = 0; q < nk; ++q) { pos_of[q] -= over; if (pos_of[q] < lo) pos_of[q] = lo; }
+        }
+        for (i = 0; i < k; ++i) {
+          int at, idx = 0;
+          for (q = 0; q < nk; ++q) if (keys[q].key == reqs[i].key) { idx = keys[q].at; break; }
+          at = idx < 64 ? pos_of[idx] : n->cpos + n->cs / 2;
         {
           /* on a record's side, the nearest row that is not a rule */
           int d;
@@ -2682,6 +2749,7 @@ static void assign_ports(Lay* L) {
         }
         if (side == 0) { g->e[reqs[i].edge].pa = at; g->e[reqs[i].edge].pa_single = k == 1; }
         else { g->e[reqs[i].edge].pb = at; g->e[reqs[i].edge].pb_single = k == 1; }
+        }
       }
     }
   }
@@ -2823,6 +2891,7 @@ static int layout_graph(RolltuiMermaid* m, Graph* g, Lay* L, int compact, Gap** 
   *gaps_out = NULL;
   if (nreal == 0) { reason_set(reason, "the diagram has no nodes"); return 0; }
   for (i = 0; i < g->ns; ++i) g->s[i].tw = g->s[i].title.n ? text_width(m, g->s[i].title.p, g->s[i].title.n) : 0;
+  for (i = 0; i < g->ne; ++i) g->e[i].label_w = g->e[i].label.n ? label_extent(m, &g->e[i].label, NULL) : 0;
   for (i = 0; i < nreal; ++i) g->n[i].halo = 0;
   for (i = 0; i < g->ne; ++i)
     if (g->e[i].from == g->e[i].to) g->n[g->e[i].from].halo = imax(g->n[g->e[i].from].halo, 3 + (g->e[i].label.n ? label_extent(m, &g->e[i].label, NULL) + 3 : 0));
@@ -2837,6 +2906,20 @@ static int layout_graph(RolltuiMermaid* m, Graph* g, Lay* L, int compact, Gap** 
   if (!assign_layers(g, layer)) { rolltui_mem_free(layer); reason_set(reason, "the diagram's edges could not be layered"); return 0; }
   for (i = 0; i < nreal; ++i) g->n[i].layer = layer[i];
   rolltui_mem_free(layer);
+  /* parallel edges: several between one pair of nodes are told apart by where they attach */
+  for (i = 0; i < g->ne; ++i) {
+    size_t j;
+    int n = 0, at = 0;
+    for (j = 0; j < g->ne; ++j) {
+      const GEdge* f = &g->e[j];
+      if ((f->from == g->e[i].from && f->to == g->e[i].to) || (f->from == g->e[i].to && f->to == g->e[i].from)) {
+        if (j < i) ++at;
+        ++n;
+      }
+    }
+    g->e[i].parallel = at;
+    g->e[i].parallel_n = n;
+  }
   /* a node grows to hold its ports: two kinds of end on one side want two cells that are not the corners */
   for (i = 0; i < nreal; ++i) {
     GNode* n = &g->n[i];
@@ -2845,6 +2928,10 @@ static int layout_graph(RolltuiMermaid* m, Graph* g, Lay* L, int compact, Gap** 
       const int want = 2 * need + 1;
       if (L->lr) { if (n->h < want) { n->h = want; n->cs = want; } }
       else if (n->w < want) { n->w = want; n->cs = want; }
+    }
+    if (!L->lr && n->shape != SH_START && n->shape != SH_END && n->shape != SH_FORK) {
+      const int want = label_width_needed(g, i);
+      if (want > n->w) { n->w = want; n->cs = want; }
     }
   }
   /* each edge's chain, with a stand-in in every layer it passes through */
@@ -2876,20 +2963,6 @@ static int layout_graph(RolltuiMermaid* m, Graph* g, Lay* L, int compact, Gap** 
     }
     e->chain[span] = v;
     e->chain_n = (size_t)span + 1;
-  }
-  /* parallel edges: several between one pair of nodes are told apart by where they attach */
-  for (i = 0; i < g->ne; ++i) {
-    size_t j;
-    int n = 0, at = 0;
-    for (j = 0; j < g->ne; ++j) {
-      const GEdge* f = &g->e[j];
-      if ((f->from == g->e[i].from && f->to == g->e[i].to) || (f->from == g->e[i].to && f->to == g->e[i].from)) {
-        if (j < i) ++at;
-        ++n;
-      }
-    }
-    g->e[i].parallel = at;
-    g->e[i].parallel_n = n;
   }
   /* the layers */
   {
@@ -3052,6 +3125,20 @@ static void compute_bands(Lay* L, Band* bands) {
   }
 }
 
+/* how far the frames a node is in reach beyond it, not counting any that also hold `sub`: to be kept out of a frame
+ * is to keep one's own frames out of it too */
+static int frame_reach(const Graph* g, int node, int sub) {
+  int reach = 0, t = g->n[node].sub;
+  while (t >= 0) {
+    int s = sub, holds = 0;
+    while (s >= 0) { if (s == t) { holds = 1; break; } s = g->s[s].parent; }
+    if (holds) break;
+    reach += FRAME_MARGIN;
+    t = g->s[t].parent;
+  }
+  return reach;
+}
+
 /* Every node that is not in a subgraph is kept out of its frame, pushed to whichever side it is on, and whatever
  * is beside it in its layer moves out with it. The frames only ever move things apart, so this ends. */
 static void enforce_clusters(Lay* L) {
@@ -3072,7 +3159,8 @@ static void enforce_clusters(Lay* L) {
         for (a = 0; a < L->lcount[l]; ++a) if (in_sub(g, L->lnodes[l][a], (int)s)) { first_member = a; break; }
         for (a = 0; a < L->lcount[l]; ++a) {
           GNode* v = &g->n[L->lnodes[l][a]];
-          const int vlo = v->cpos, vhi = v->cpos + cs_res(L, v) - 1;
+          const int reach = frame_reach(g, L->lnodes[l][a], (int)s);
+          const int vlo = v->cpos - reach, vhi = v->cpos + cs_res(L, v) - 1 + reach;
           int left, k;
           if (in_sub(g, L->lnodes[l][a], (int)s)) continue;
           if (vhi < bands[s].lo - 1 || vlo > bands[s].hi + 1) continue;
@@ -3335,6 +3423,17 @@ static void place_edge_label(RolltuiMermaid* m, const int* px, const int* py, si
     const int start = x0 + 1 + (x1 - x0 - 1 - lw) / 2;
     put_label_centered(m, start, py[best_at], lw, label, ROLLTUI_MERMAID_CLASS_LABEL);
     return;
+  }
+  if (!lr && px[0] == px[1]) {
+    /* the label of an edge lies beside the stub it leaves by, on the row next to the node it leaves: nothing else is
+     * there but the stubs of its neighbours, which were given room for it */
+    const int y0 = imin(py[0], py[1]), y1 = imax(py[0], py[1]);
+    int margin, t;
+    for (margin = 1; margin >= 0; --margin)
+      for (t = 0; t <= y1 - y0 && t < 3; ++t) {
+        const int yy = py[1] > py[0] ? py[0] + t : py[0] - t;
+        if (label_free(m, px[0] + 2 - margin, yy, lines, lw + 2 * margin)) { put_label_centered(m, px[0] + 2, yy, lw, label, ROLLTUI_MERMAID_CLASS_LABEL); return; }
+      }
   }
   {
     /* beside a run: vertical ones on their right, then left; horizontal ones above, then below. The middle of the
@@ -4232,11 +4331,23 @@ static int er_parse(Graph* g, const Source* src, size_t first, RolltuiStr* reaso
           rolltui_str_set(&attrs[na].type, w[0].p, w[0].n);
           rolltui_str_set(&attrs[na].name, w[1].p, w[1].n);
           if (nw2 >= 3) {
+            /* `PK, FK` is two keys: split at commas and spaces, and say them with one comma between */
             RolltuiStr keys;
+            int q;
             memset(&keys, 0, sizeof keys);
-            rolltui_str_append(&keys, w[2].p, w[2].n);
-            if (nw2 >= 4) { rolltui_str_append(&keys, ",", 1); rolltui_str_append(&keys, w[3].p, w[3].n); }
-            rolltui_str_set(&attrs[na].keys, keys.p, keys.n);
+            for (q = 2; q < nw2; ++q) {
+              size_t a = 0;
+              while (a < w[q].n) {
+                size_t e = a;
+                while (e < w[q].n && w[q].p[e] != ',') ++e;
+                if (e > a) {
+                  if (keys.n) rolltui_str_append(&keys, ",", 1);
+                  rolltui_str_append(&keys, w[q].p + a, e - a);
+                }
+                a = e + 1;
+              }
+            }
+            rolltui_str_set(&attrs[na].keys, keys.p ? keys.p : "", keys.n);
             rolltui_str_free(&keys);
           }
           if (comment.n) clean_label(comment, &attrs[na].comment);

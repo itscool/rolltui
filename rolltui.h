@@ -4930,8 +4930,9 @@ typedef struct RolltuiPickerOptions {
    * and shows the file there — its lines as text, a Markdown file rendered (a mermaid diagram drawn as one), a
    * binary file as offsets, byte pairs and an ASCII gutter. A folder under the cursor behaves as it always did,
    * in the first cells of that same half, so nothing moves as the cursor passes from a file to a folder. Right on
-   * a file moves the keys into the preview (Up, Down, PgUp, PgDn, Home and End scroll it; `z` gives it the whole
-   * picker, for a diagram or a dump wider than half; Left or Escape return);
+   * a file moves the keys into the preview (Up, Down, PgUp, PgDn, Home and End scroll it); Right AGAIN gives it the
+   * whole picker, for a diagram or a dump wider than half; Left or Escape step back one place at a time — the whole
+   * picker, the half, the list;
    * the wheel scrolls it wherever the keys are. A text file is read whole up to 256 KB and its first 256 KB
    * shown beyond that. */
   unsigned char preview ROLLTUI_DEFAULT(0);
@@ -4972,8 +4973,8 @@ typedef struct RolltuiPickerStatus {
   size_t columns ROLLTUI_DEFAULT(0);
   unsigned char moving ROLLTUI_DEFAULT(0);
   /* THE FILE PREVIEW (`RolltuiPickerOptions.preview`): 0 nothing is shown, 1 a file is shown beside the cursor, 2 the keys
-   * are in it (Up, Down, PgUp, PgDn, Home, End scroll it; `z` gives it the whole picker; Left or Escape return), 3 it has
-   * the whole picker. A status line says what the keys do from this. */
+   * are in it (Up, Down, PgUp, PgDn, Home, End scroll it; Right gives it the whole picker; Left or Escape step back), 3 it
+   * has the whole picker. A status line says what the keys do from this. */
   unsigned char preview ROLLTUI_DEFAULT(0);
   RolltuiStr error;
 } RolltuiPickerStatus;

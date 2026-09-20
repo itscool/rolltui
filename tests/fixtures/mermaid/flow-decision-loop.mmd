@@ -1,0 +1,8 @@
+flowchart TD
+    Start([Start]) --> Input[/Read input/]
+    Input --> Valid{Valid?}
+    Valid -- Yes --> Process[Process data]
+    Valid -- No --> Error[Show error]
+    Error --> Input
+    Process --> Save[(Save to DB)]
+    Save --> Done([Done])

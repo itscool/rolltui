@@ -1,0 +1,14 @@
+flowchart LR
+    subgraph Client
+      B[Browser] --> CDN
+    end
+    subgraph Cloud[Cloud Platform]
+      CDN --> LB[Load balancer]
+      LB --> S1[Service A]
+      LB --> S2[Service B]
+      S1 --> DB[(Postgres)]
+      S2 --> DB
+      S2 --> Q[[Queue]]
+    end
+    Q --> W[Worker]
+    W --> DB

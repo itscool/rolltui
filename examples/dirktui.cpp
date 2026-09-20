@@ -1621,7 +1621,7 @@ struct App {
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "preview") {
         opt.preview = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "right";
         apply_picker_options();
-        hint = opt.preview ? "file preview: in the right half (Right on a file to scroll it)" : "file preview: off";
+        hint = opt.preview ? "file preview: in the right half (Right on a file to scroll it, Right again to zoom)" : "file preview: off";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
         const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
@@ -1741,7 +1741,7 @@ struct App {
     if (have_picker && ps.error.n) rolltui_rows_add(&status_facts, "", 0, ps.error.p, ps.error.n);
     // THE KEYS ARE IN THE FILE'S PREVIEW: say what they do there, since the hint bar is about the list
     if (have_picker && ps.preview >= 2) {
-      const char* what = ps.preview == 3 ? "\xE2\x86\x91\xE2\x86\x93 scroll  z half  \xE2\x86\x90 back" : "\xE2\x86\x91\xE2\x86\x93 scroll  z zoom  \xE2\x86\x90 back";
+      const char* what = ps.preview == 3 ? "\xE2\x86\x91\xE2\x86\x93 scroll  \xE2\x86\x90 half" : "\xE2\x86\x91\xE2\x86\x93 scroll  \xE2\x86\x92 zoom  \xE2\x86\x90 back";
       rolltui_rows_add(&status_facts, "preview", 7, what, std::strlen(what));
     }
     if (have_picker) { last_entries = ps.entries; last_column = ps.column; last_columns = ps.columns; }

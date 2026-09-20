@@ -1,0 +1,20 @@
+stateDiagram-v2
+    [*] --> First
+    state First {
+        [*] --> second
+        second --> [*]
+    }
+    First --> Second
+    state Second {
+        [*] --> Idle
+        Idle --> Busy : job
+        Busy --> Idle : done
+    }
+    state fork_state <<fork>>
+    Second --> fork_state
+    fork_state --> A
+    fork_state --> B
+    state join_state <<join>>
+    A --> join_state
+    B --> join_state
+    join_state --> [*]
