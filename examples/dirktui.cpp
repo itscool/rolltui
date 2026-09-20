@@ -228,6 +228,7 @@ struct Options {
                           // `highlight` are never both off — the app flips the other one on
                           // rather than leave the cursor with no marker at all.
   bool dividers = true;  // a hairline in the margin between columns, in the border colour
+  bool preview = false;  // a file's contents in the right half: off until a person asks (it reads the file under the cursor)
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
   // WHAT ENTER ON A FILE DOES. A folder is always entered. A file is a leaf: an EXECUTABLE goes
@@ -674,6 +675,7 @@ struct App {
     o.motion = opt.motion ? 1 : 0;
     o.highlight = opt.highlight ? 1 : 0;
     o.dividers = opt.dividers ? 1 : 0;
+    o.preview = opt.preview ? ROLLTUI_PREVIEW_RIGHT : ROLLTUI_PREVIEW_OFF;
     o.show_size = show_code(opt.show_size);
     o.show_modified = show_code(opt.show_modified);
     o.take_folders = 1;  // a directory picker: Enter on a folder CHOOSES it, and Right enters it
@@ -735,6 +737,7 @@ struct App {
         opt.highlight = rolltui_json_as_bool(rolltui_json_get(root, "highlight", 9), 1) != 0;
         if (!opt.sparkle && !opt.highlight) opt.highlight = true;  // never both off, even from a hand-edited file
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
+        { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = std::string(pv, pn) == "right"; }
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
         opt.reversed = rolltui_json_as_bool(rolltui_json_get(root, "reversed", 8), 0) != 0;
@@ -771,6 +774,7 @@ struct App {
     std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
     out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"sparkle\": " << (opt.sparkle ? "true" : "false")
         << ", \"highlight\": " << (opt.highlight ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
+        << ", \"preview\": \"" << (opt.preview ? "right" : "off") << "\""
         << ", \"show_size\": \"" << show_name(opt.show_size) << "\", \"show_modified\": \"" << show_name(opt.show_modified) << "\""
         << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"reversed\": " << (opt.reversed ? "true" : "false") << ", \"leave\": " << (opt.leave ? "true" : "false")
@@ -801,6 +805,7 @@ struct App {
     rolltui_menu_set_checked(m, "sparkle", 7, opt.sparkle ? 1 : 0);
     rolltui_menu_set_checked(m, "highlight", 9, opt.highlight ? 1 : 0);
     rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
+    rolltui_menu_set_value(m, "preview", 7, opt.preview ? "right" : "off", opt.preview ? 5 : 3);
     rolltui_menu_set_value(m, "show_size", 9, show_name(opt.show_size), std::strlen(show_name(opt.show_size)));
     rolltui_menu_set_value(m, "show_modified", 13, show_name(opt.show_modified), std::strlen(show_name(opt.show_modified)));
     rolltui_menu_set_checked(m, "leave", 5, opt.leave ? 1 : 0);
@@ -1612,6 +1617,11 @@ struct App {
         which = show_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
         apply_picker_options();
         hint = std::string(id == "show_size" ? "sizes" : "modified dates") + (which == Show::Always ? ": always shown" : which == Show::Never ? ": never shown" : ": shown with the sort");
+        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "preview") {
+        opt.preview = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "right";
+        apply_picker_options();
+        hint = opt.preview ? "file preview: in the right half (Right on a file to scroll it)" : "file preview: off";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
         const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);

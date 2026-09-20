@@ -289,6 +289,7 @@ int main() {
         {"c/rolltui_json.h", 0},
         {"c/rolltui_widgets.h", 0},
         {"c/rolltui_widget_picker.h", 0}, /* an opaque handle: every pointer is a parameter, none is stored */
+        {"c/rolltui_preview.h", 0},       /* an opaque handle: a path and a rect go in, a frame is drawn into; nothing borrowed is kept */
         {"c/rolltui_hints.h", 0},  /* likewise */
         {"c/rolltui_str.h", 0},
         {"c/rolltui_layout.h", 0},

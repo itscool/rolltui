@@ -6,6 +6,7 @@
 // slot, the dividers and their thumbs, the marks. It builds a tree of its own and reads the
 // frame it draws.
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <cstring>
 #include <ctime>
@@ -324,6 +325,150 @@ int main() {
     check(st.error.n == 0 && has(text_of(f), "cannot"), "a start that cannot be entered is a column that says why, on screen");
     rolltui_frame_free(f);
     rolltui_picker_status_release(&st);
+  }
+  // ---- THE FILE PREVIEW: what a file holds, in the right half, when a person asked for it ----------
+  {
+    const fs::path pv = root / "preview";
+    write_file(pv / "notes.txt", std::string("hello world\n\tindented\n") + std::string(300, 'x') + "\n\x1b[31mred\x1b[0m escape\nlast line\n");
+    {
+      std::string bin;
+      for (int i = 0; i < 3000; ++i) bin.push_back(static_cast<char>(i % 251 == 0 ? 0 : (i * 7 + 3) & 0xFF));
+      bin[0] = 0;  // a NUL in the first block is what makes it binary
+      write_file(pv / "blob.bin", bin);
+    }
+    write_file(pv / "empty", "");
+    write_file(pv / "bad.txt", std::string("caf\xC3\xA9 ok \xFF\xFE broken\n"));
+    {
+      std::string big;
+      for (int i = 0; i < 6000; ++i) big += "line number " + std::to_string(i) + " of a file bigger than the limit\n";
+      write_file(pv / "big.txt", big);
+    }
+    write_file(pv / "sub" / "inner.txt", "inner\n");
+    ::mkfifo((pv / "pipe").c_str(), 0644);
+    write_file(pv / "secret.txt", "nobody reads this\n");
+    ::chmod((pv / "secret.txt").c_str(), 0);
+
+    auto go_file = [&](const char* name) {
+      const std::string path = (pv / name).string();
+      rolltui_picker_go_to(p, path.data(), path.size());
+    };
+    auto frame_of = [&](int w, int h) {
+      RolltuiFrame* f = draw(w, h);
+      const std::string t = text_of(f);
+      rolltui_frame_free(f);
+      return t;
+    };
+    RolltuiPickerOptions po{};
+    rolltui_picker_options_init(&po);
+
+    // OFF is what a browser always did: nothing to the right of a file.
+    go_file("notes.txt");
+    check(!has(frame_of(110, 14), "hello world"), "with the preview off, a file shows nothing to its right — the control");
+
+    po.preview = ROLLTUI_PREVIEW_RIGHT;
+    rolltui_picker_set_options(p, &po);
+    {
+      const std::string t = frame_of(110, 14);
+      check(has(t, "hello world") && has(t, "indented"), "with it on, the file's lines are drawn beside the cursor");
+      check(has(t, "text \xC2\xB7 5 lines"), "…the head says what it is and how long [text · 5 lines]");
+      check(!has(t, "\t") && has(t, "    indented"), "…a tab is spaces, to a stop of four");
+      check(has(t, "\xE2\x80\xA6"), "…a line longer than the pane ends at an ellipsis");
+      check(has(t, "\xE2\x90\x9B[31mred"), "…an escape is its picture (␛), never itself");
+      check(!has(t, "\x1b"), "…and not one raw ESC reaches the frame");
+    }
+    // A FOLDER under the cursor is what it always was, in the same half.
+    {
+      go_file("notes.txt");
+      key(ROLLTUI_KEY_HOME);  // folders sort first: the cursor is on `sub`
+      const std::string t = frame_of(110, 14);
+      check(!has(t, "text \xC2\xB7") && !has(t, "binary \xC2\xB7") && has(t, "inner.txt"),
+            "a FOLDER under the cursor is its listing, as always — no file preview, in the same half");
+    }
+    // BINARY IS OFFSETS, BYTES AND A GUTTER — and the byte count per row fits the pane.
+    go_file("blob.bin");
+    {
+      const std::string wide = frame_of(200, 14);
+      check(has(wide, "binary \xC2\xB7") && has(wide, "0000  00 ") && has(wide, "|"), "a file with a NUL in it is a hex dump [offset, byte pairs, |gutter|]");
+      check(has(wide, "0010  ") && !has(wide, "0008  "), "…sixteen bytes to a row when the pane has the room");
+      const std::string narrow = frame_of(80, 14);
+      check(has(narrow, "0008  ") && !has(narrow, "0010  0"), "…and a narrower pane shows fewer bytes to a row, so its second row starts at 8");
+    }
+    go_file("empty");
+    check(has(frame_of(110, 10), "(empty file)"), "an empty file says so");
+    go_file("bad.txt");
+    check(has(frame_of(110, 10), "caf\xC3\xA9 ok \xEF\xBF\xBD\xEF\xBF\xBD broken"), "text with bytes that are not UTF-8 draws them as � and keeps going");
+    go_file("pipe");
+    check(has(frame_of(110, 10), "not a regular file"), "a FIFO is never read — opening it must not hang the browser");
+    if (::geteuid() != 0) {
+      go_file("secret.txt");
+      check(has(frame_of(110, 10), "Permission denied"), "a file that cannot be read says why, in words");
+    }
+    // A FILE BIGGER THAN THE LIMIT shows its first 256 KB and says so; nothing is lazy.
+    go_file("big.txt");
+    {
+      const std::string t = frame_of(110, 12);
+      check(has(t, "first 256K of "), "a file over 256 KB says how much of it is shown [head]");
+      check(has(t, "line number 0 of a file"), "…and starts at its first line");
+    }
+    // THE KEYS ENTER THE PREVIEW with Right on a file; Up/Down scroll it, Left returns.
+    go_file("notes.txt");
+    {
+      RolltuiStr sel{};
+      int dir = 0;
+      (void)frame_of(110, 4);
+      check(!rolltui_picker_preview_focused(p), "the keys start in the list");
+      key(ROLLTUI_KEY_RIGHT);
+      check(rolltui_picker_preview_focused(p), "Right on a file, with the preview on, puts the keys in it");
+      key(ROLLTUI_KEY_DOWN);
+      key(ROLLTUI_KEY_DOWN);
+      std::string t = frame_of(110, 4);
+      check(!has(t, "hello world") && has(t, "\xE2\x90\x9B[31mred"), "…Down scrolls the FILE two lines");
+      rolltui_picker_selected(p, &sel, &dir);
+      check(str(sel) == (pv / "notes.txt").string(), "…and the cursor in the list did not move");
+      key(ROLLTUI_KEY_HOME);
+      t = frame_of(110, 4);
+      check(has(t, "hello world"), "Home is the top of the file");
+      key(ROLLTUI_KEY_END);
+      t = frame_of(110, 4);
+      check(has(t, "last line") && !has(t, "hello world"), "End is the bottom");
+      rolltui_picker_event(p, &ev);
+      key(ROLLTUI_KEY_ESCAPE);
+      check(!rolltui_picker_preview_focused(p) && !rolltui_picker_event(p, &ev), "Escape goes back to the list and does NOT leave the picker");
+      key(ROLLTUI_KEY_RIGHT);
+      key(ROLLTUI_KEY_LEFT);
+      check(!rolltui_picker_preview_focused(p), "Left goes back to the list too");
+      key(ROLLTUI_KEY_RIGHT);
+      key(ROLLTUI_KEY_ENTER);
+      check(rolltui_picker_event(p, &ev) && ev.kind == ROLLTUI_PICKER_EVENT_TAKEN, "Enter in the preview still takes the file");
+      // the wheel scrolls it wherever the keys are
+      key(ROLLTUI_KEY_LEFT);
+      key(ROLLTUI_KEY_HOME);
+      (void)frame_of(110, 4);
+      {
+        RolltuiEvent w{};
+        w.kind = ROLLTUI_EVENT_MOUSE;
+        w.mouse.kind = RolltuiMouseEvent::Kind::WheelDown;
+        w.mouse.x = 100;
+        w.mouse.y = 3;
+        rolltui_picker_handle(p, &w, b, A);
+        t = frame_of(110, 4);
+        check(!has(t, "hello world"), "the wheel over the preview scrolls it, with the keys in the list");
+      }
+      rolltui_str_free(&sel);
+    }
+    // THE WINDOW'S BAR is the file's while a file is shown.
+    {
+      RolltuiScrollExtent ex{};
+      go_file("big.txt");
+      (void)frame_of(110, 12);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.total > 1000 && ex.visible > 0 && ex.first == 0,
+            "the window's scrollbar reports the FILE's rows [" + std::to_string(ex.total) + "]");
+      rolltui_picker_scroll_to(p, 500);
+      check(rolltui_picker_scroll_extent(p, &ex) && ex.first == 500, "…and dragging it scrolls the file");
+    }
+    ::chmod((pv / "secret.txt").c_str(), 0644);
+    rolltui_picker_options_init(&po);
+    rolltui_picker_set_options(p, &po);
   }
   rolltui_picker_event_release(&ev);
   rolltui_str_free(&got);

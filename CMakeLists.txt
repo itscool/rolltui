@@ -92,7 +92,7 @@ set(ROLLTUI_SLICE c/rolltui_geom.c c/rolltui_screen.c c/rolltui_wrap.c c/rolltui
                                          #   refusal sentence are all behind the handle.
                   c/rolltui_app_files.c c/rolltui_files.c c/rolltui_markdown.c c/rolltui_layout.c
                   c/rolltui_widget_input.c c/rolltui_widget_menu.c
-                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_hints.c c/rolltui_widget_transcript.c
+                  c/rolltui_widgets.c c/rolltui_widget_kinds.c c/rolltui_widget_picker.c c/rolltui_preview.c c/rolltui_hints.c c/rolltui_widget_transcript.c
                   c/rolltui_gaps.c
                                          # the gap report — what a screen NAMES
                                          #   that an app does not PROVIDE, walked over the

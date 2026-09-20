@@ -279,8 +279,8 @@ int main() {
     check(has(menu, "General") && has(menu, "Look") && has(menu, "Enter on a file") && has(menu, "Open with") &&
               has(menu, "Key bindings") && has(menu, "Theme") && has(menu, "Neovim") && has(menu, "Visual Studio Code"),
           "F2: four sections — General, Look, Enter on a file, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
-    // dotfiles, sort, keys, theme, mode, motion, sparkle, highlight, dividers, sizes, modified, leave, land, relative, executables, then Text: its dropdown
-    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
+    // dotfiles, sort, keys, theme, mode, motion, sparkle, highlight, dividers, preview, sizes, modified, leave, land, relative, executables, then Text: its dropdown
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
     check(has(bare_menu, "the system opener") && has(bare_menu, "Neovim") && has(bare_menu, "Helix") && has(bare_menu, "the command line"),
           "…and with nothing installed a type's dropdown still LISTS every known program — disabled, so a person sees what could open it — plus the system opener and the command line");
     // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
@@ -389,14 +389,14 @@ int main() {
       check(has(inside, "General"), "…and a click inside it leaves it open");
       // ONE LEVEL AT A TIME: with a dropdown open in the settings, Escape — or a click outside the
       // popup — closes the dropdown and leaves the settings; the next one closes the settings.
-      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down";  // sixteen: colours joined Look after mode, on top of highlight, sparkle and the executables choice "Enter on a file"
-      const std::string dd = run(home_env + bin + " '" + here + "' --frame 90x27 --keys \"F2 " + eleven + " Enter\" 2>/dev/null", crc);
+      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down";  // seventeen: the file preview joined Look after the dividers, on top of colours, highlight, sparkle and the executables choice "Enter on a file"
+      const std::string dd = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter\" 2>/dev/null", crc);
       check(has(dd, "Neovim") && has(dd, "General"), "the control: Enter on an open-with choice opens its dropdown over the settings");
-      const std::string dd_esc = run(home_env + bin + " '" + here + "' --frame 90x27 --keys \"F2 " + eleven + " Enter Escape\" 2>/dev/null", crc);
+      const std::string dd_esc = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter Escape\" 2>/dev/null", crc);
       check(!has(dd_esc, "Neovim") && has(dd_esc, "General"), "Escape closes the dropdown only: the settings stay");
-      const std::string dd_click = run(home_env + bin + " '" + here + "' --frame 90x27 --keys \"F2 " + eleven + " Enter Click 1,1\" 2>/dev/null", crc);
+      const std::string dd_click = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter Click 1,1\" 2>/dev/null", crc);
       check(!has(dd_click, "Neovim") && has(dd_click, "General"), "…a click outside the popup likewise closes the dropdown only");
-      const std::string dd_esc2 = run(home_env + bin + " '" + here + "' --frame 90x27 --keys \"F2 " + eleven + " Enter Escape Escape\" 2>/dev/null", crc);
+      const std::string dd_esc2 = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter Escape Escape\" 2>/dev/null", crc);
       check(!has(dd_esc2, "General") && has(dd_esc2, "find:"), "…and the next Escape closes the settings");
       // THE STATUS LINE'S STATES ARE CLICKABLE: `sort: name <` cycles the sort, `+dotfiles` toggles.
       const std::string plain = run(home_env + bin + " '" + here + "' --frame 100x20 2>/dev/null", crc);

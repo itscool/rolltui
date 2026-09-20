@@ -4925,7 +4925,18 @@ typedef struct RolltuiPickerOptions {
    * list sorted by size always shows the sizes; ALWAYS and NEVER are a person's own word. */
   unsigned char show_size ROLLTUI_DEFAULT(0);
   unsigned char show_modified ROLLTUI_DEFAULT(0);
+  /* WHAT A FILE LOOKS LIKE, beside the cursor: `ROLLTUI_PREVIEW_OFF` (the default) shows nothing to the
+   * right of a file, as a browser always did; `ROLLTUI_PREVIEW_RIGHT` reserves the right half of the picker
+   * and shows the file there — its lines as text, a Markdown file rendered (a mermaid diagram drawn as one), a
+   * binary file as offsets, byte pairs and an ASCII gutter. A folder under the cursor behaves as it always did,
+   * in the first cells of that same half, so nothing moves as the cursor passes from a file to a folder. Right on
+   * a file moves the keys into the preview (Up, Down, PgUp, PgDn, Home and End scroll it; Left or Escape return);
+   * the wheel scrolls it wherever the keys are. A text file is read whole up to 256 KB and its first 256 KB
+   * shown beyond that. */
+  unsigned char preview ROLLTUI_DEFAULT(0);
 } RolltuiPickerOptions;
+#define ROLLTUI_PREVIEW_OFF 0
+#define ROLLTUI_PREVIEW_RIGHT 1
 #define ROLLTUI_SHOW_WITH_SORT 0
 #define ROLLTUI_SHOW_ALWAYS 1
 #define ROLLTUI_SHOW_NEVER 2

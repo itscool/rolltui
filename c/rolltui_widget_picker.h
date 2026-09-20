@@ -74,6 +74,8 @@ int rolltui_picker_scroll_extent(const RolltuiPicker* p, RolltuiScrollExtent* ou
 int rolltui_picker_scroll_to(RolltuiPicker* p, size_t first);
 /* Whether a slide is in progress: the host's frame timer wants the next frame soon. */
 int rolltui_picker_scrolling(const RolltuiPicker* p);
+/* Whether the keys are in the file preview (Right on a file put them there), for a hint bar to say so. */
+int rolltui_picker_preview_focused(const RolltuiPicker* p);
 /* How many cells the last frame drew faded at the left edge — a self-test's number. */
 size_t rolltui_picker_faded_cells(const RolltuiPicker* p);
 
