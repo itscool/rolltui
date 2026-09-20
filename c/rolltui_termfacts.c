@@ -137,7 +137,7 @@ void rolltui_termfacts_from_env(const RolltuiTermEnv* e, RolltuiTermFacts* f) {
     f->ambiguous_source = ROLLTUI_FACT_FORCED;
   }
 
-  /* NAME, for a person reading `dirktui probe`. */
+  /* NAME, for a person reading `dirktui check-terminal`. */
   if (e->term_program) {
     if (e->term_program_version) snprintf(f->name, sizeof f->name, "%s %s", e->term_program, e->term_program_version);
     else snprintf(f->name, sizeof f->name, "%s", e->term_program);

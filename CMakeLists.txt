@@ -195,6 +195,9 @@ set(ROLLTUI_SOURCES
   c/rolltui_swap.c            # THE DOUBLE BUFFER, because three hosts had written it. The
                               #   per-frame lifetime stops existing and a host's repaint
                               #   lands inside the budget instead of beside it.
+  c/rolltui_run.c             # THE LOOP AROUND IT, because three hosts had written that too:
+                              #   the depth, the borrowed events and the repaint after a
+                              #   resize or a child program are the loop's, not the app's.
   c/rolltui_map.c             # THE STRING-KEYED TABLE, once.
   c/rolltui_md_lines.c        # THE SPAN STORE — pooled storage a span indexes into, which
                               #   is what makes a re-parse a refill. See its header.
@@ -419,6 +422,8 @@ add_rolltui_test(rolltui-screen-test tests/screen_test.cpp)
 add_rolltui_test(rolltui-keys-test tests/keys_test.cpp)
 add_rolltui_test(rolltui-terminal-test tests/terminal_test.cpp)
 set_tests_properties(rolltui-terminal-test PROPERTIES TIMEOUT 60)
+add_rolltui_test(rolltui-run-test tests/run_test.cpp)
+set_tests_properties(rolltui-run-test PROPERTIES TIMEOUT 60)
 add_rolltui_test(rolltui-termfacts-test tests/termfacts_test.cpp)
 add_rolltui_test(rolltui-mermaid-test tests/mermaid_test.cpp)
 target_compile_definitions(rolltui-mermaid-test PRIVATE ROLLTUI_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")

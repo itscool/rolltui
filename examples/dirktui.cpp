@@ -1403,10 +1403,10 @@ struct App {
   // a test that presses Enter on a file must not put a window on someone's screen or a path on
   // their clipboard: without a stand-in named in the environment, both are refused and said.
   static bool headless;
-  // THE TERMINAL AND THE SCREEN, for a program that takes the terminal over: set by main once
-  // there is a terminal; NULL in a headless run, where such a program is never launched.
+  // THE TERMINAL AND THE RUN, for a program that takes the terminal over: set once the loop has
+  // entered the terminal; NULL in a headless run, where such a program is never launched.
   RolltuiTerminal* term = nullptr;
-  RolltuiSwap* swap = nullptr;
+  RolltuiRun* run = nullptr;
   int tty_fd = -1;
   // Opens `path` with the program `id`. A program that takes the terminal over runs on this
   // process's own tty with dirktui stepped aside, and the screen is redrawn whole when it
@@ -1430,7 +1430,7 @@ struct App {
     else return false;
     const bool takes_terminal = ((p && p->terminal) || id == kRunProgram) && !stand_in;
     if (stand_in) cmd.insert(cmd.begin(), stand_in);
-    if (takes_terminal && (!term || tty_fd < 0)) return false;
+    if (takes_terminal && (!run || tty_fd < 0)) return false;
     std::vector<const char*> argv;
     for (const std::string& a : cmd) argv.push_back(a.c_str());
     argv.push_back(nullptr);
@@ -1442,7 +1442,7 @@ struct App {
       posix_spawn_file_actions_adddup2(&fa, tty_fd, 0);
       posix_spawn_file_actions_adddup2(&fa, tty_fd, 1);
       posix_spawn_file_actions_adddup2(&fa, tty_fd, 2);
-      rolltui_terminal_suspend(term);
+      rolltui_run_suspend(run);
     } else {
       posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
       posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
@@ -1452,10 +1452,7 @@ struct App {
     const int rc = posix_spawnp(&pid, argv[0], &fa, nullptr, const_cast<char* const*>(argv.data()), environ);
     posix_spawn_file_actions_destroy(&fa);
     if (rc == 0) waitpid(pid, nullptr, 0);
-    if (takes_terminal) {
-      rolltui_terminal_resume(term);
-      if (swap) rolltui_swap_invalidate(swap);  // the editor's screen is gone; draw ours whole
-    }
+    if (takes_terminal) rolltui_run_resume(run);  // the editor's screen is gone: ours is drawn whole
     return rc == 0;
   }
   // THE CLIPBOARD: `$DIRK_CLIPBOARD`, else the platform's, fed the text on stdin.
@@ -1875,8 +1872,9 @@ int usage() {
                "       dirktui install [zsh|bash|fish]     link this binary into ~/.local/bin and put the shell\n"
                "                                           side into the shell's rc file ($SHELL's by default);\n"
                "                                           `dirktui uninstall` takes both out again\n"
-               "       dirktui probe                       asks this terminal what it is (colours, light or dark,\n"
-               "                                           glyph width), remembers it, and says what it found\n"
+               "       dirktui check-terminal              asks this terminal again what it is (colours, light or\n"
+               "                                           dark, glyph width), replaces what was remembered, and\n"
+               "                                           says what it found and where each answer came from\n"
                "       dirktui init zsh|bash|fish          the shell side: a `dirk` function and Right Arrow\n"
                "                                           zsh:  eval \"$(dirktui init zsh)\"    (bash likewise)\n"
                "                                           fish: dirktui init fish | source\n"
@@ -2212,10 +2210,10 @@ RolltuiTerminal* open_probe_terminal(int* tty_out) {
   return t;
 }
 
-// `dirktui probe`: asks the terminal again NOW, ignoring what was remembered, remembers the new
+// `dirktui check-terminal`: asks the terminal again NOW, ignoring what was remembered, remembers the new
 // answers, and says what it found and where each answer came from. It is what to run when the
 // colours look wrong — the report names the terminal, how many colours it will be drawn to and why.
-int probe_command() {
+int check_terminal_command() {
   int tty = -1;
   RolltuiTerminal* t = open_probe_terminal(&tty);
   if (!t) {
@@ -2230,7 +2228,7 @@ int probe_command() {
   close(tty);
 
   auto env = [](const char* n) { const char* v = std::getenv(n); return v && *v ? v : "(unset)"; };
-  std::printf("dirktui probe — what this terminal is\n\n");
+  std::printf("dirktui check-terminal — what this terminal is\n\n");
   std::printf("  terminal     %s\n", f.name[0] ? f.name : "(it did not say)");
   std::printf("  environment  TERM=%s  COLORTERM=%s  TERM_PROGRAM=%s %s\n", env("TERM"), env("COLORTERM"), env("TERM_PROGRAM"),
               std::getenv("TERM_PROGRAM_VERSION") ? std::getenv("TERM_PROGRAM_VERSION") : "");
@@ -2406,7 +2404,7 @@ int main(int argc, char** argv) {
     return 0;
   }
   if (argc >= 2 && std::string(argv[1]) == "init") return init_command(argc, argv);
-  if (argc >= 2 && std::string(argv[1]) == "probe") return probe_command();
+  if (argc >= 2 && std::string(argv[1]) == "check-terminal") return check_terminal_command();
   if (argc >= 2 && std::string(argv[1]) == "install") return install_command(argc, argv, false);
   if (argc >= 2 && std::string(argv[1]) == "uninstall") return install_command(argc, argv, true);
   std::string start;
@@ -2692,79 +2690,52 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "dirktui: cannot open /dev/tty (%s): no terminal to draw on\n", std::strerror(errno));
     return 2;
   }
+  // THE LOOP IS THE LIBRARY'S: the depth a frame is presented at, the copying of borrowed events, the
+  // repaint after a resize or a child program. What is here is what only this program knows.
+  app.tty_fd = tty;
+  RolltuiRunApp hooks;
+  hooks.ctx = &app;
+  hooks.start = [](void* c, RolltuiRun* run) {
+    App& a = *static_cast<App*>(c);
+    a.run = run;  // for a program that takes the terminal over
+    a.term = rolltui_run_terminal(run);
+    a.w = rolltui_terminal_width(a.term);
+    a.h = rolltui_terminal_height(a.term);
+    a.terminal_ready();  // the key protocol is negotiated: judge the chords against it
+    a.apply_facts();     // and so is everything else about the terminal: its glyph width, its light or dark
+  };
+  hooks.ground = [](void* c, RolltuiRun*, RolltuiStyle* out) { *out = static_cast<App*>(c)->style(ROLLTUI_ROLE_BACKGROUND); };
+  hooks.render = [](void* c, RolltuiRun*, RolltuiFrame* f, int w, int h, unsigned long long now) {
+    App& a = *static_cast<App*>(c);
+    a.w = w;
+    a.h = h;
+    a.now_ms = now;
+    a.render_into(f);
+    return a.poll_timeout_ms(f, 250);
+  };
+  hooks.event = [](void* c, RolltuiRun* run, const RolltuiEvent* e) {
+    App& a = *static_cast<App*>(c);
+    a.handle(*e);
+    if (a.quit) rolltui_run_stop(run);
+  };
+  hooks.resized = [](void* c, RolltuiRun*, int w, int h) {
+    App& a = *static_cast<App*>(c);
+    a.w = w;
+    a.h = h;
+  };
+  // the terminal turned out not to be what was remembered: colours change (the loop repaints whole)
+  hooks.facts_changed = [](void* c, RolltuiRun*) { static_cast<App*>(c)->apply_facts(); };
+  hooks.settle = [](void* c, RolltuiRun* run) {
+    App& a = *static_cast<App*>(c);
+    a.settle();
+    if (a.quit) rolltui_run_stop(run);
+  };
   RolltuiTerminalOptions opts{};
-  opts.facts_events = 1;  // a theme that says `auto` should follow the terminal if its background is switched
-  RolltuiTerminal* term = rolltui_terminal_new(tty, tty, opts);
-  if (!rolltui_terminal_is_tty(term)) {
-    rolltui_terminal_free(term);
-    close(tty);
+  const int ran = rolltui_run(tty, tty, opts, &hooks);
+  close(tty);  // the screen was put back before the loop returned: what follows lands on the person's own
+  if (ran == ROLLTUI_RUN_NOT_A_TERMINAL) {
     std::fprintf(stderr, "dirktui: /dev/tty is not a terminal\n");
     return 2;
   }
-  app.w = rolltui_terminal_width(term);
-  app.h = rolltui_terminal_height(term);
-  RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
-  app.term = term;   // for a program that takes the terminal over
-  app.swap = swap;
-  app.tty_fd = tty;
-  app.terminal_ready();  // the key protocol is negotiated: judge the chords against it
-  app.apply_facts();     // and so is everything else about the terminal: its glyph width, its light or dark
-  RolltuiStr out{};
-  struct Pending {
-    std::vector<RolltuiEvent> events;
-    std::vector<std::string> texts;
-    std::vector<std::size_t> text_of;
-    int w = 0, h = 0;
-    bool resized = false;
-    bool facts = false;
-  } pending;
-  const std::size_t kNone = static_cast<std::size_t>(-1);
-  while (!app.quit) {
-    app.now_ms = static_cast<unsigned long long>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-    RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
-    app.render_into(f);
-    const int timeout = app.poll_timeout_ms(f, 250);
-    // AT THE DEPTH THE TERMINAL HAS: a terminal that cannot draw 24-bit colour and is sent it
-    // anyway draws nonsense. The library knows the depth; this call cannot forget it.
-    rolltui_terminal_present(term, swap, &out);
-    pending.events.clear();
-    pending.texts.clear();
-    pending.text_of.clear();
-    pending.resized = false;
-    pending.facts = false;
-    pending.w = app.w;
-    pending.h = app.h;
-    rolltui_terminal_poll(
-        term, timeout,
-        [](void* ctx, const RolltuiTermEvent* e) {
-          Pending& p = *static_cast<Pending*>(ctx);
-          if (e->kind == ROLLTUI_TERM_EVENT_RESIZE) { p.w = e->w; p.h = e->h; p.resized = true; return; }
-          if (e->kind == ROLLTUI_TERM_EVENT_FACTS) { p.facts = true; return; }
-          if (e->kind > ROLLTUI_TERM_EVENT_FACTS) return;  // a kind this program does not know is not an input
-          RolltuiEvent ev{};
-          ev.kind = e->kind;
-          ev.key = e->key;
-          ev.mouse = e->mouse;
-          std::size_t slot = static_cast<std::size_t>(-1);
-          if (e->text) { slot = p.texts.size(); p.texts.emplace_back(e->text, e->text_len); ev.text_len = e->text_len; }
-          p.text_of.push_back(slot);
-          p.events.push_back(ev);
-        },
-        &pending);
-    for (std::size_t i = 0; i < pending.events.size(); ++i)
-      if (pending.text_of[i] != kNone) pending.events[i].text = pending.texts[pending.text_of[i]].data();
-    for (const RolltuiEvent& e : pending.events) app.handle(e);
-    app.settle();
-    if (pending.resized) { app.w = pending.w; app.h = pending.h; }
-    if (pending.facts) {  // the terminal turned out not to be what was remembered: colours change, so repaint whole
-      app.apply_facts();
-      rolltui_swap_invalidate(swap);
-    }
-  }
-  rolltui_str_free(&out);
-  rolltui_swap_free(swap);
-  rolltui_terminal_free(term);  // restores the screen BEFORE the answer is written
-  close(tty);
   return app.finish();
 }

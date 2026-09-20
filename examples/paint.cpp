@@ -1027,69 +1027,6 @@ int usage() {
   return 2;
 }
 
-// ONE FRAME'S INPUT, held by the loop and refilled — never rebuilt per frame, so the three
-// arrays keep their capacity for the life of the run (CLAUDE.md's strategy 3, caller-filled).
-//
-// It exists because `rolltui_terminal_poll`'s events are BORROWED for the length of the emit
-// call (`rolltui_terminal.h` rule 3): a handler must not run inside the decoder — handling one
-// event can resize the app — so the bytes are copied here first and acted on after.
-struct Pending {
-  static constexpr std::size_t kNone = static_cast<std::size_t>(-1);
-  std::vector<RolltuiEvent> events;
-  std::vector<std::string> texts;    // the borrowed bytes, owned for this frame
-  std::vector<std::size_t> text_of;  // events[i]'s entry in `texts`, or kNone
-  bool quit = false;
-  int w = 0, h = 0;
-  bool resized = false;
-  bool facts = false;
-
-  void begin(int cur_w, int cur_h) {
-    events.clear();
-    texts.clear();
-    text_of.clear();
-    quit = false;
-    resized = false;
-    facts = false;
-    w = cur_w;
-    h = cur_h;
-  }
-};
-
-void collect_event(void* ctx, const RolltuiTermEvent* e) {
-  Pending& p = *static_cast<Pending*>(ctx);
-  if (e->kind == ROLLTUI_TERM_EVENT_RESIZE) {
-    p.w = e->w;
-    p.h = e->h;
-    p.resized = true;
-    return;
-  }
-  if (e->kind == ROLLTUI_TERM_EVENT_FACTS) {
-    p.facts = true;
-    return;
-  }
-  if (e->kind > ROLLTUI_TERM_EVENT_FACTS) return;  // a kind this program does not know is not an input
-  if (e->kind == ROLLTUI_TERM_EVENT_KEY && e->key.ctrl && e->key.key == ROLLTUI_KEY_CHAR && e->key.ch == 'q') {
-    p.quit = true;
-    return;
-  }
-  RolltuiEvent ev{};
-  ev.kind = e->kind;
-  ev.key = e->key;
-  ev.mouse = e->mouse;
-  // `text` is patched by the caller once `texts` has stopped growing — an INDEX is recorded
-  // here rather than the length, because an empty-but-present `text` is a real state (an
-  // Unknown key with no bytes left) and keying off the length would desynchronise the two
-  // vectors the moment one appeared.
-  std::size_t slot = Pending::kNone;
-  if (e->text) {
-    slot = p.texts.size();
-    p.texts.emplace_back(e->text, e->text_len);
-    ev.text_len = e->text_len;
-  }
-  p.text_of.push_back(slot);
-  p.events.push_back(ev);
-}
-
 [[maybe_unused]] RolltuiEvent mouse_event(RolltuiMouseEvent::Kind kind, int x, int y) {
   RolltuiEvent e{};
   e.kind = ROLLTUI_EVENT_MOUSE;
@@ -1316,62 +1253,43 @@ int main(int argc, char** argv) {
   }
 #endif
 
+  // THE LOOP IS THE LIBRARY'S: the depth a frame is presented at, the copying of borrowed events, the
+  // repaint after a resize. What is here is what only a painting app knows.
+  RolltuiRunApp hooks;
+  hooks.ctx = &app;
+  // WHAT THIS TERMINAL IS: how wide it draws an ambiguous glyph (a canvas of FULL BLOCKs cares a great
+  // deal), asked and remembered by the library rather than by a flag the person has to know to pass.
+  hooks.start = hooks.facts_changed = [](void* c, RolltuiRun* run) {
+    App& a = *static_cast<App*>(c);
+    RolltuiTermFacts f;
+    rolltui_terminal_facts(rolltui_run_terminal(run), &f);
+    a.tool.ambiguous = f.ambiguous_wide ? 1 : 0;
+  };
+  hooks.ground = [](void* c, RolltuiRun*, RolltuiStyle* out) { *out = static_cast<App*>(c)->style(ROLLTUI_ROLE_BACKGROUND); };
+  hooks.render = [](void* c, RolltuiRun*, RolltuiFrame* f, int w, int h, unsigned long long now) {
+    App& a = *static_cast<App*>(c);
+    a.w = w;
+    a.h = h;
+    a.effect_ms = now;
+    a.render_into(f);
+    return a.poll_timeout_ms(f, 250);
+  };
+  hooks.event = [](void* c, RolltuiRun* run, const RolltuiEvent* e) {
+    if (e->kind == ROLLTUI_EVENT_KEY && e->key.ctrl && e->key.key == ROLLTUI_KEY_CHAR && e->key.ch == 'q') {
+      rolltui_run_stop(run);
+      return;
+    }
+    static_cast<App*>(c)->handle(*e);
+  };
+  hooks.resized = [](void* c, RolltuiRun*, int w, int h) {
+    App& a = *static_cast<App*>(c);
+    a.w = w;
+    a.h = h;
+  };
   RolltuiTerminalOptions opts{};
-  opts.facts_events = 1;
-  RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, opts);
-  if (!rolltui_terminal_is_tty(term)) {
-    rolltui_terminal_free(term);
+  if (rolltui_run(STDIN_FILENO, STDOUT_FILENO, opts, &hooks) == ROLLTUI_RUN_NOT_A_TERMINAL) {
     std::fprintf(stderr, "not a terminal (rolltui-paint-selftest --frame WxH renders one)\n");
     return 1;
   }
-  // WHAT THIS TERMINAL IS: how wide it draws an ambiguous glyph (a canvas of FULL BLOCKs cares a great
-  // deal), asked and remembered by the library rather than by a flag the person has to know to pass.
-  auto apply_facts = [&] {
-    RolltuiTermFacts f;
-    rolltui_terminal_facts(term, &f);
-    app.tool.ambiguous = f.ambiguous_wide ? 1 : 0;
-  };
-  apply_facts();
-  app.w = rolltui_terminal_width(term);
-  app.h = rolltui_terminal_height(term);
-
-  // THE DOUBLE BUFFER IS THE LIBRARY'S.
-  // What this replaces in all three hosts: `Frame prev; bool have_prev; … Frame f =
-  // render(); write(render_diff(have_prev ? &prev : nullptr, f)); prev = std::move(f);`.
-  // Two frames for the whole run, nothing owned inside the loop, and `begin` calls
-  // `rolltui_frame_reset` — so this repaint lands INSIDE the budget rather than beside it.
-  RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
-  RolltuiStr out{};  // the caller's buffer, kept across frames and refilled — rule 3(b)
-  Pending pending;   // likewise: one per run, refilled — see its definition
-  int rc = 0;
-  for (;;) {
-    app.effect_ms = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
-    RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
-    app.render_into(f);
-    const int timeout = app.poll_timeout_ms(f, 250);
-    // At the depth the terminal HAS: a hand-picked RGB sent to a terminal that cannot draw 24-bit
-    // colour is misread as stray attributes, and a painting app's colours are all user data.
-    rolltui_terminal_present(term, swap, &out);
-
-    pending.begin(app.w, app.h);
-    rolltui_terminal_poll(term, timeout, collect_event, &pending);
-    if (pending.quit) break;
-    // The pointers only now, because `texts` reallocating would have dangled every earlier one.
-    for (std::size_t i = 0; i < pending.events.size(); ++i)
-      if (pending.text_of[i] != Pending::kNone) pending.events[i].text = pending.texts[pending.text_of[i]].data();
-    for (const RolltuiEvent& e : pending.events) app.handle(e);
-    if (pending.facts) {
-      apply_facts();
-      rolltui_swap_invalidate(swap);
-    }
-    if (pending.resized) {
-      app.w = pending.w;
-      app.h = pending.h;
-    }
-  }
-  rolltui_str_free(&out);
-  rolltui_swap_free(swap);
-  rolltui_terminal_free(term);
-  return rc;
+  return 0;
 }

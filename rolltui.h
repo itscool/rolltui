@@ -5219,12 +5219,80 @@ void rolltui_terminal_present(RolltuiTerminal* t, RolltuiSwap* s, RolltuiStr* sc
 /* ASKS AGAIN NOW, ignoring what was remembered, and remembers the new answers. Waits up to
  * `timeout_ms` for the terminal. 1 when the terminal answered, 0 when it did not (a pipe, a
  * silent terminal); either way the facts are as good as they can be made. For a diagnostic
- * (`dirktui probe`) and for a host that knows the terminal changed under it. */
+ * (`dirktui check-terminal`) and for a host that knows the terminal changed under it. */
 int rolltui_terminal_reprobe(RolltuiTerminal* t, int timeout_ms);
 
 /* Where the remembered answers are read and written, or "" when this terminal was opened with
  * `no_cache`. A BORROW into the handle, valid until it is freed. */
 const char* rolltui_terminal_cache_path(const RolltuiTerminal* t);
+
+/* ---- the run loop ------------------------------------------------------------------------- */
+/* THE LOOP EVERY TERMINAL APP WRITES, WRITTEN ONCE. Enter the terminal, make the double buffer, then for each
+ * frame: begin, draw, present at the depth the terminal has, wait for input, copy out what arrived, hand it to the
+ * app, follow a resize, follow a terminal that turned out not to be what was remembered, and at the end put the
+ * terminal back BEFORE returning — so what an app prints afterwards lands on the person's own screen.
+ *
+ * WHAT THE APP CANNOT FORGET, because it is not the app's to remember: the depth a frame is presented at, that the
+ * terminal's events are borrowed and must be copied before anything acts on them (handling one may resize the app
+ * or stop the loop), that a resize and a stale fact repaint the whole screen, and that a terminal handed to a child
+ * program is repainted when it comes back. An app supplies what only it knows: what to draw, and what a key means.
+ *
+ * ONE RUN AT A TIME PER PROCESS, on the calling thread; nothing here is thread-safe. Every callback is called on
+ * that thread, from inside `rolltui_run`, with the app's `ctx` and the run — a BORROW valid until `rolltui_run`
+ * returns, which an app may keep in its own state to call the functions below. `render` and `event` are required;
+ * every other callback may be NULL. */
+typedef struct RolltuiRun RolltuiRun;
+
+#define ROLLTUI_RUN_STOPPED 0         /* the app called `rolltui_run_stop` */
+#define ROLLTUI_RUN_NOT_A_TERMINAL 1  /* `in_fd` or `out_fd` is no terminal: nothing was drawn, nothing changed */
+#define ROLLTUI_RUN_BAD_APP 2         /* `app` is NULL, or has no `render` or no `event` */
+
+typedef struct RolltuiRunApp {
+  /* The app's own state, handed back to every callback. A BORROW for the run. */
+  void* ctx ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* Once, after the terminal is entered and what it is has been found out (`rolltui_run_terminal`, then
+   * `rolltui_terminal_facts`), before the first frame: where an app settles its theme, its glyph width and its size. */
+  void (*start)(void* ctx, RolltuiRun* run) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* What every cell nothing is drawn on is filled with, asked before each frame so a new theme takes effect at once.
+   * NULL: the terminal's own default. */
+  void (*ground)(void* ctx, RolltuiRun* run, RolltuiStyle* out) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* Draw the frame, `w` x `h` cells, at `now_ms` on a steady clock. Returns how long to wait for input: milliseconds,
+   * or -1 for as long as it takes. Asked AFTER drawing because it depends on what the frame marked — a screen with
+   * nothing moving waits, one with a cursor blinking or an effect running does not. `f` is lent for this call. */
+  int (*render)(void* ctx, RolltuiRun* run, RolltuiFrame* f, int w, int h, unsigned long long now_ms)
+      ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* One key, mouse or paste event, in the order they arrived. `e->text` (an unknown key's bytes, a paste's contents)
+   * is valid for this call, whatever the terminal did with its own buffers. Stopping here drops the rest of the
+   * batch. */
+  void (*event)(void* ctx, RolltuiRun* run, const RolltuiEvent* e) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* The terminal's size changed: this is what the next frame is drawn at. The screen is repainted whole. */
+  void (*resized)(void* ctx, RolltuiRun* run, int w, int h) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* A remembered answer about the terminal turned out to be stale (its background flipped between light and dark,
+   * say): read `rolltui_terminal_facts` again and re-resolve what depends on it. The screen is repainted whole. */
+  void (*facts_changed)(void* ctx, RolltuiRun* run) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+  /* Once per wake, after its events — and after a wake that brought none, when the wait ran out. Where an app acts on
+   * what its events led to, and advances anything that moves with time. */
+  void (*settle)(void* ctx, RolltuiRun* run) ROLLTUI_DEFAULT(ROLLTUI_NULL);
+} RolltuiRunApp;
+
+/* Runs `app` on `in_fd`/`out_fd` until it stops. `opts` is `rolltui_terminal_new`'s, and `facts_events` is always on:
+ * the loop is what listens. Returns ROLLTUI_RUN_STOPPED, ROLLTUI_RUN_NOT_A_TERMINAL or ROLLTUI_RUN_BAD_APP; in every
+ * case the terminal is as it was found and nothing is left allocated. */
+int rolltui_run(int in_fd, int out_fd, RolltuiTerminalOptions opts, const RolltuiRunApp* app);
+
+/* WHAT THE CALLBACKS CALL, all no-ops on NULL. Leave the loop after this wake: the events of the batch that follow
+ * are dropped, `settle` is still called once. */
+void rolltui_run_stop(RolltuiRun* run);
+/* The terminal the run entered, for `rolltui_terminal_facts` and the like. A BORROW valid for the run; the app never
+ * frees it, and never calls `rolltui_terminal_poll` or `rolltui_terminal_present` on it — that is the loop's. */
+RolltuiTerminal* rolltui_run_terminal(RolltuiRun* run);
+/* Repaint the whole screen at the next frame: a keypress that asks for it, a change of palette. */
+void rolltui_run_invalidate(RolltuiRun* run);
+/* HAND THE TERMINAL TO A CHILD PROGRAM AND TAKE IT BACK: an editor, a pager. `suspend` leaves the alternate screen
+ * and restores the tty's own modes; the child runs on the same descriptors; `resume` enters again AND repaints the
+ * whole screen, because what was on it is gone — the half of this an app used to forget. */
+void rolltui_run_suspend(RolltuiRun* run);
+void rolltui_run_resume(RolltuiRun* run);
 
 
 /* ========================================================================================

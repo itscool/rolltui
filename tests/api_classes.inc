@@ -149,6 +149,14 @@ ROLLTUI_API(rolltui_swap_invalidate, PUBLIC)
 ROLLTUI_API(rolltui_swap_new, PUBLIC)
 ROLLTUI_API(rolltui_swap_present, PUBLIC)
 
+/* ---- rolltui_run.c — the loop around the swap and the terminal; default PUBLIC ------------- */
+ROLLTUI_API(rolltui_run, PUBLIC)  /* dirktui and paint: the loop every terminal app wrote for itself, written once */
+ROLLTUI_API(rolltui_run_stop, PUBLIC)  /* the callbacks' half: an app that no longer owns the loop stops it by name */
+ROLLTUI_API(rolltui_run_terminal, PUBLIC)  /* dirktui reads the terminal's facts and key protocol before its first frame */
+ROLLTUI_API(rolltui_run_invalidate, PUBLIC)  /* a keypress that asks for a repaint */
+ROLLTUI_API(rolltui_run_suspend, PUBLIC)  /* dirktui hands the terminal to an editor... */
+ROLLTUI_API(rolltui_run_resume, PUBLIC)  /* ...and takes it back, repainted whole: the half an app used to forget */
+
 /* ---- rolltui_diff.h — diff highlighting a host draws; default PUBLIC --------------------- */
 ROLLTUI_API(rolltui_diff_default_roles, PUBLIC)
 ROLLTUI_API(rolltui_diff_is_language, INTERNAL)

@@ -65,8 +65,19 @@ about nothing at entry and re-checked after the first frame. Measured, a termina
 costs 0.6 ms fresh and 0.2 ms remembered; one that answers nothing costs 80 ms once.
 
 When it is wrong, say so: `ROLL_COLOR_DEPTH=truecolor|256|16|mono`, `ROLL_AMBIGUOUS_WIDE=1`,
-`ROLL_TERM_PROBE=0` (ask only the keyboard question). `dirktui probe` asks the terminal again
+`ROLL_TERM_PROBE=0` (ask only the keyboard question). `dirktui check-terminal` asks the terminal again
 and says what it found and where each answer came from.
+
+## The loop, so no host has to write it
+
+`rolltui_run` is the loop every terminal app used to write for itself. It enters the terminal, draws each frame at
+the depth the terminal has, waits for input, copies out what arrived (the terminal's events are borrowed, and
+handling one can resize the app), repaints whole after a resize or a stale fact, repaints whole when a child program
+such as an editor hands the terminal back, and puts the terminal back before it returns, so what the app prints
+next lands on the person's own screen. An app supplies callbacks: `render` and `event` are required; `start`,
+`ground`, `resized`, `facts_changed` and `settle` are not. `dirktui`, `rolltui-paint` and `rolltui-studio` all run
+this way, and `rolltui-run-test` drives it on a real pty. A host of a different shape, with its own threads say,
+still has `rolltui_terminal_poll` and `rolltui_terminal_present` underneath.
 
 ## What a file looks like, and what a diagram in it looks like
 

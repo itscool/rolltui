@@ -2611,44 +2611,14 @@ std::uint64_t now_ms() {
       std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 }
 
-// The terminal loop calls `rolltui_terminal.h` directly: a raw terminal handle crosses no
-// boundary this file must still speak a C++ shape of. `RolltuiEvent` is already the shape
-// `App::handle` takes, so this callback only copies the three fields across and folds in
-// the two invalidation sites `rolltui_swap` leaves the host's policy (a resize, and
-// Ctrl-L's explicit repaint).
-struct PollCtx {
-  App* app;
-  RolltuiSwap* swap;
-  bool* running;
-  bool stop = false;
-  bool facts = false;
-};
-void on_term_event(void* vctx, const RolltuiTermEvent* te) {
-  PollCtx* c = static_cast<PollCtx*>(vctx);
-  if (c->stop) return;  // `app.handle` already said stop; ignore the rest of this batch
-  c->app->clock_ms = now_ms();
-  if (te->kind == ROLLTUI_TERM_EVENT_RESIZE) {
-    c->app->resize(te->w, te->h);
-    rolltui_swap_invalidate(c->swap);
-    return;
-  }
-  if (te->kind == ROLLTUI_TERM_EVENT_FACTS) {
-    c->facts = true;
-    return;
-  }
-  if (te->kind > ROLLTUI_TERM_EVENT_FACTS) return;  // a kind this program does not know is not an input
-  RolltuiEvent e{};
-  e.kind = te->kind;
-  e.key = te->key;
-  e.mouse = te->mouse;
-  e.text = te->text;
-  e.text_len = te->text_len;
-  if (te->kind == ROLLTUI_TERM_EVENT_KEY && e.key.key == ROLLTUI_KEY_CHAR && e.key.ctrl && e.key.ch == 'l')
-    rolltui_swap_invalidate(c->swap);
-  if (!c->app->handle(e)) {
-    *c->running = false;
-    c->stop = true;
-  }
+// WHAT THE TERMINAL IS — its colour depth, its light or dark, how wide it draws an ambiguous glyph —
+// was asked by the library when the terminal was entered, and is remembered per terminal.
+void apply_terminal_facts(App& app, RolltuiRun* run) {
+  RolltuiTermFacts tf;
+  rolltui_terminal_facts(rolltui_run_terminal(run), &tf);
+  app.depth = tf.depth;
+  if (!app.mode_flag && app.store->working()->mode == "auto") app.detected_mode = tf.mode;
+  app.ambiguous = tf.ambiguous_wide != 0;
 }
 
 // `default-dark`/`default-light` are not shipped presets of their own any more (see
@@ -2944,60 +2914,66 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  RolltuiTerminalOptions topts{};
-  topts.facts_events = 1;
-  RolltuiTerminal* term = rolltui_terminal_new(STDIN_FILENO, STDOUT_FILENO, topts);
-  if (!rolltui_terminal_is_tty(term)) {
-    std::fprintf(stderr, "not a terminal (rolltui-studio-selftest --frame WxH renders one)\n");
-    rolltui_terminal_free(term);
-    return 1;
-  }
-  // WHAT THE TERMINAL IS — its colour depth, its light or dark, how wide it draws an ambiguous glyph —
-  // was asked by the library when the terminal was entered, and is remembered per terminal.
-  auto apply_facts = [&] {
-    RolltuiTermFacts tf;
-    rolltui_terminal_facts(term, &tf);
-    app.depth = tf.depth;
-    if (!app.mode_flag && app.store->working()->mode == "auto") app.detected_mode = tf.mode;
-    app.ambiguous = tf.ambiguous_wide != 0;
-  };
-  apply_facts();
-  app.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
-  app.load_layout_arg();
-  app.sync_look();
-  app.ensure_layout();
+  // THE LOOP IS THE LIBRARY'S: the depth a frame is presented at, the copying of borrowed events, the repaint
+  // after a resize or a stale fact. What is here is what only the studio knows.
+  struct Session {
+    App* app;
+    std::string keys_spec;
+    bool ticking = false;
+  } session{&app, keys_spec};
+  RolltuiRunApp hooks;
+  hooks.ctx = &session;
+  hooks.start = [](void* c, RolltuiRun* run) {
+    Session& x = *static_cast<Session*>(c);
+    App& a = *x.app;
+    apply_terminal_facts(a, run);
+    RolltuiTerminal* term = rolltui_run_terminal(run);
+    a.resize(rolltui_terminal_width(term), rolltui_terminal_height(term));
+    a.load_layout_arg();
+    a.sync_look();
+    a.ensure_layout();
 #ifdef ROLLTUI_SELFTEST
-  { std::vector<Step> steps = scripted_keys(keys_spec, app.w, app.h); run_steps(app, steps); }
+    { std::vector<Step> steps = scripted_keys(x.keys_spec, a.w, a.h); run_steps(a, steps); }
 #endif
-  // THE DOUBLE BUFFER IS THE LIBRARY'S: two frames for the whole run, nothing owned inside
-  // the loop, and `begin` calls `rolltui_frame_reset` — so this repaint lands INSIDE the
-  // budget rather than beside it.
-  RolltuiSwap* swap = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
-  bool running = true;
-  while (running) {
-    app.maybe_reload_theme();
-    app.maybe_reload_layout();
-    app.effect_ms = now_ms();
-    RolltuiFrame* f = rolltui_swap_begin(swap, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
-    app.render_into(f, true);
-    const bool ticking = rolltui_transcript_wants_tick(app.transcript());
+  };
+  hooks.ground = [](void* c, RolltuiRun*, RolltuiStyle* out) { *out = static_cast<Session*>(c)->app->style(ROLLTUI_ROLE_BACKGROUND); };
+  hooks.render = [](void* c, RolltuiRun*, RolltuiFrame* f, int, int, unsigned long long now) {
+    Session& x = *static_cast<Session*>(c);
+    App& a = *x.app;
+    a.effect_ms = now;
+    a.render_into(f, true);
+    x.ticking = rolltui_transcript_wants_tick(a.transcript());
     // How long this host may sleep is a function of what the frame MARKED, so an
     // idle screen still costs one wakeup every 250 ms and no more.
-    const int timeout = app.poll_timeout_ms(f, ticking ? 50 : 250);
-    RolltuiStr out{};
-    rolltui_swap_present(swap, app.depth, &out);
-    rolltui_terminal_write(term, out.p ? out.p : "", out.n);
-    rolltui_str_free(&out);
-    PollCtx ctx{&app, swap, &running};
-    rolltui_terminal_poll(term, timeout, on_term_event, &ctx);
-    if (ctx.facts) {  // a remembered answer about the terminal turned out to be stale
-      apply_facts();
-      app.sync_look();
-      rolltui_swap_invalidate(swap);
-    }
-    if (ticking) app.tick();
+    return a.poll_timeout_ms(f, x.ticking ? 50 : 250);
+  };
+  hooks.event = [](void* c, RolltuiRun* run, const RolltuiEvent* e) {
+    App& a = *static_cast<Session*>(c)->app;
+    a.clock_ms = now_ms();
+    // Ctrl-L is the explicit repaint: the loop repaints on a resize and a stale fact, and this is the person's own
+    if (e->kind == ROLLTUI_TERM_EVENT_KEY && e->key.key == ROLLTUI_KEY_CHAR && e->key.ctrl && e->key.ch == 'l') rolltui_run_invalidate(run);
+    if (!a.handle(*e)) rolltui_run_stop(run);
+  };
+  hooks.resized = [](void* c, RolltuiRun*, int w, int h) {
+    App& a = *static_cast<Session*>(c)->app;
+    a.clock_ms = now_ms();
+    a.resize(w, h);
+  };
+  hooks.facts_changed = [](void* c, RolltuiRun* run) {  // a remembered answer about the terminal turned out to be stale
+    App& a = *static_cast<Session*>(c)->app;
+    apply_terminal_facts(a, run);
+    a.sync_look();
+  };
+  hooks.settle = [](void* c, RolltuiRun*) {
+    Session& x = *static_cast<Session*>(c);
+    if (x.ticking) x.app->tick();
+    x.app->maybe_reload_theme();
+    x.app->maybe_reload_layout();
+  };
+  RolltuiTerminalOptions topts{};
+  if (rolltui_run(STDIN_FILENO, STDOUT_FILENO, topts, &hooks) == ROLLTUI_RUN_NOT_A_TERMINAL) {
+    std::fprintf(stderr, "not a terminal (rolltui-studio-selftest --frame WxH renders one)\n");
+    return 1;
   }
-  rolltui_swap_free(swap);
-  rolltui_terminal_free(term);
   return 0;
 }
