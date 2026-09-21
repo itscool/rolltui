@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme F4   default           │
-│ │ block        │             │ header over  │ │ keys F7    default           │
-│ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
-│ │ (blocks →    │             │              │ │ size       80x24             │
-│ │ styled       │  ╭ menu › Commands ─────────────────────╮ 173/191           │
-│ │ wrapped      │  │ ◂ Back                               │ yes               │
-│ │ lines)       │  │ Open a document or a preset … Ctrl-E │ truecolor         │
-│ │ Theme (roles │ b│ Save the preset being edited … Alt-S │ menu              │
-│ │ → styles,    │  │ Reload the fixture                F5 │                   │
-│ │ JSON loader, │  │ Help                           F1, ? │                   │
-│ │ built-ins)   │  │ Quit                          Ctrl-Q │                   │
-│ └──────────────┴──│                                      │                   │
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ (blocks →   │             │              │ ││ theme F4   default           │
+│ │ styled      │             │              │ ││ keys F7    default           │
+│ │ wrapped     │             │              │ ││ layout F6  default           │
+│ │ lines)      │             │              │ ││ size       80x24             │
+│ │ Theme       │ bu╭ menu › Commands ─────────────────────╮ 180/197           │
+│ │ (roles →    │   │ ◂ Back                               │ yes               │
+│ │ styles,     │   │ Open a document or a preset … Ctrl-E │ truecolor         │
+│ │ JSON        │   │ Save the preset being edited … Alt-S │ menu              │
+│ │ loader,     │   │ Reload the fixture                F5 │                   │
+│ │ built-ins)  │   │ Help                           F1, ? │                   │
+│ └─────────────┴───│ Quit                          Ctrl-Q │                   │
 │                   │                                      │                   │
 │ Here is the functi│                                      │                   │
 │                   │                                      │                   │
 │ ┌ cpp ────────────│                                      │                   │
-│ │ int add(int a, i╰──────────────────────────────────────╯                   │
-│ │   return a + b;                           │ ╻                              │
-│ └───────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 173/191  follow  truecolor  focus:menu
+│ │ int add(int a, i│                                      │                   │
+│ │   return a + b; ╰──────────────────────────────────────╯                   │
+│ └──────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 180/197  follow  truecolor  focus:menu

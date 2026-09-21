@@ -1,14 +1,14 @@
   the same screen, declaring no actions at all
-┌ docs/kettle.md ─────────────────────────────────────────────────┬ menus/kettle.json ─────────────┐
-│ A screen that exists only as files.                             ╻ Put the kettle on              │
-│                                                                 ╹ About this screen            ▸ │
-│ Nothing in the host binary knows this screen. No source file    │                                │
-│ names these window ids, this menu, this action or this          │                                │
-│ document, and no host was rebuilt to show it. Six files in a    │                                │
-│ preset directory are the whole application.                     │                                │
-│                                                                 │                                │
-│ layouts/kettle.json is the design: five windows, a find popup,  │                                │
-│ and the two actions this screen emits (app.kettle and           │                                │
-│ app.find).                                           ▼ 32 more  │                                │
-└─────────────────────────────────────────────────────────────────┴────────────────────────────────┘
+┌ docs/kettle.md ────────────────────────────────────────────────┐┌ menus/kettle.json ─────────────┐
+│ A screen that exists only as files.                            ╻│ Put the kettle on              │
+│                                                                ╹│ About this screen            ▸ │
+│ Nothing in the host binary knows this screen. No source file   ││                                │
+│ names these window ids, this menu, this action or this         ││                                │
+│ document, and no host was rebuilt to show it. Six files in a   ││                                │
+│ preset directory are the whole application.                    ││                                │
+│                                                                ││                                │
+│ layouts/kettle.json is the design: five windows, a find popup, ││                                │
+│ and the two actions this screen emits (app.kettle and          ││                                │
+│ app.find).                                          ▼ 33 more  ││                                │
+└────────────────────────────────────────────────────────────────┘└────────────────────────────────┘
  default  kettle-silent  100x14  line 0/0  follow  truecolor  focus:kettle_menu  [window 'kettle_men

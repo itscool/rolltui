@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│                                               │ theme F4   default           │
-│ 3. Third struck step                          │ keys F7    default           │
-│                                               ╻ layout F6  default           │
-│ [ ] todo item                                 ╹ size       80x24             │
-│ [x] done item                                 │ line       19/191            │
-│                                               │ follow     no                │
-│ │ A quote with emphasis that continues on a   │ depth      truecolor         │
-│ │ second line                                 │ focus      input             │
-│ │                                             │                              │
-│ │ and a second paragraph.                     │                              │
-│                                               │                              │
-│ ───────────────────────────────────────────── │                              │
-│                                               │                              │
-│ Hard break here                               │                              │
-│ next line. Entities: & < > A B © and a NUL:   │                              │
-│ ab. Autolink https://example.com/path and     │                              │
-│ https://x.y/z too.                            │                              │
-│                                               │                              │
-│ [roll] escalated to cloud: capabil▼ 154 more  │                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 19/191  truecolor  focus:input
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│    └───────────────────────────────────────┘ ││ theme F4   default           │
+│                                              ││ keys F7    default           │
+│ 3. Third struck step                         ╻│ layout F6  default           │
+│                                              ╹│ size       80x24             │
+│ [ ] todo item                                ││ line       18/197            │
+│ [x] done item                                ││ follow     no                │
+│                                              ││ depth      truecolor         │
+│ │ A quote with emphasis that continues on a  ││ focus      input             │
+│ │ second line                                ││                              │
+│ │                                            ││                              │
+│ │ and a second paragraph.                    ││                              │
+│                                              ││                              │
+│ ──────────────────────────────────────────── ││                              │
+│                                              ││                              │
+│ Hard break here                              ││                              │
+│ next line. Entities: & < > A B © and a NUL:  ││                              │
+│ ab. Autolink https://example.com/path and    ││                              │
+│ https://x.y/z too.               ▼ 162 more  ││                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 18/197  truecolor  focus:input

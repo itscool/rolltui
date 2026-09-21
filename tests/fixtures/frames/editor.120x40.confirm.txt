@@ -1,40 +1,40 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor ──────────────────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ Reset to the built-in default…                 │
-│ │ grapheme property,               │             │ unicode_tables.hp│                                                │
-│ │ Extended_Pictographic, InCB)     │             │                  │                                                │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│                                                │
-│ │ grapheme clusters, display width │             │ Unicode conforman│                                                │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│                                                │
-│ │                                  │             │ block tree is the│                                                │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
-│ │ mouse mode)                      │             │                  │                                                │
-│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
-│ │                                  │             │ Event, table-test│                                                │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
-│ │ colour downgrade                 │             │ tested           │                                                │
-│ │ Wrap engine                      │ build       │ single header ove│                                                │
-│ │                                  │             │ header           │                                                │
-│ │ Windows, layers, placement╭ confirm ─────────────────────────────────────────────────╮                             │
-│ │ abs/rel per axis), focus  │ Reset every role to the built-in default? (y/n)          │                             │
-│ │                           │ y = yes    n / Esc = no                                  │                             │
-│ │ Menu widget (hierarchical,│                                                          │                             │
-│ │ filterable) + list/text wi╰──────────────────────────────────────────────────────────╯                             │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
-│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
-│ │ → styled wrapped lines)          │             │                  │                                                │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
-│ │ loader, built-ins)               │             │                  │                                                │
-│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
+│ │ Extended_Pictographic, InCB)    │             │                   │ Reset to the built-in default…                 │
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, val│                                                │
+│ │ grapheme clusters, display      │             │ Unicode conformanc│                                                │
+│ │ width                           │             │                   │                                                │
+│ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Mar│                                                │
+│ │                                 │             │ block tree is the │                                                │
+│ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled u│                                                │
+│ │ size, SIGWINCH, bracketed       │             │ exists in LineRead│                                                │
+│ │ paste, mouse mode)              │             │                   │                                                │
+│ │ Key + mouse decoding            │ build       │ single header, pur│                                                │
+│ │                                 │             │ Event, table-teste│                                                │
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│                                                │
+│ │ colour downgrade                │             │ tested            │                                                │
+│ │ Wrap engine                     │ build       │ single header over│                                                │
+│ │                                 │             │ header            │                                                │
+│ │ Windows, layers, placement (Dim │ build       │ single header;    │                                                │
+│ │ abs/rel per axis), focus  ╭ confirm ─────────────────────────────────────────────────╮                             │
+│ │                           │ Reset every role to the built-in default? (y/n)          │                             │
+│ │ Menu widget (hierarchical,│ y = yes    n / Esc = no                                  │                             │
+│ │ filterable) + list/text wi│                                                          │                             │
+│ │ Layout files (JSON: window╰──────────────────────────────────────────────────────────╯                             │
+│ │ placements + content slots)     │             │ parser; hot-reload│                                                │
+│ │ Markdown block renderer (blocks │ build       │ single header over│                                                │
+│ │ → styled wrapped lines)         │             │                   │                                                │
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │                                                │
+│ │ loader, built-ins)              │             │                   │                                                │
+│ └─────────────────────────────────┴─────────────┴───────────────────│                                                │
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
-│                                                                     │ /built                                         │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ default                                        │
-│ │ int add(int a, int b) {                                           │ Roles › a role › fg › a colour; the screen is  │
-│ │   return a + b;                                                   │ type to filter · Enter commits · Esc cancels · │
-│ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
-├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
+│                                                                     │                                                │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│ /built                                         │
+│ │ int add(int a, int b) {                                           │ default                                        │
+│ │   return a + b;                                                   │ Roles › a role › fg › a colour; the screen is  │
+│ └───────────────────────────────────────────────────────────────────│ type to filter · Enter commits · Esc cancels · │
+└─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
+┌─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:confirm
+ default [theme editor]  default  120x40  line 77/110  follow  truecolor  focus:confirm

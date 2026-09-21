@@ -54,6 +54,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -241,9 +242,14 @@ int main() {
   // the first line of it rather than the whole sentence.
   check(has(screen, "the shadow falls where no code was"), "…the text window draws the literal source that was typed");
   // THE INTERLOCK. Four files meet in this one row and no single one of them can produce it.
-  check(has(screen, "read the shadow               Ctrl-G"),
+  std::string row_seen;
+  {
+    const std::size_t at = screen.find("read the shadow");
+    if (at != std::string::npos) row_seen = screen.substr(at, screen.find('\n', at) - at);
+  }
+  check(std::regex_search(row_seen, std::regex("^read the shadow {2,}Ctrl-G")),
         "…and one row is all four files at once: the LAYOUT declared app.sundial, the MENU named it, "
-        "the BINDINGS gave it Ctrl-G, and the THEME coloured it");
+        "the BINDINGS gave it Ctrl-G, and the THEME coloured it [" + row_seen + "]");
   check(has(status_line(screen), " sundial ") && has(status_line(screen), "focus:sundial_tools"),
         "…the status line names the authored theme and layout, focused where the layout said");
 

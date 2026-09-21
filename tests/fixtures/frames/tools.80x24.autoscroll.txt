@@ -1,27 +1,27 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ because dispatch_source_cancel does not wait  │ theme F4   default           │
-│ for a handler that is already running.        │ keys F7    default           │
-│                                               │ layout F6  default           │
-│ Without the drain a poll() blocked on the     │ size       80x24             │
-│ state lock could resume after release()       │ line       9/27              │
-│ decided it was the last client, re-register   │ follow     yes               │
-│ itself and respawn the server release just    ╻ depth      truecolor         │
-│ killed — a permanent orphan. The rule is      ┃ focus      transcript        │
-│ recorded in CLAUDE.md (https://example.com/   ┃ copied     743 bytes         │
-│ roll/CLAUDE.md#hard-constraints) under hard   ┃                              │
-│ constraints.                                  ┃                              │
-│                                               ┃                              │
-│ 1. cancel the timer                           ┃                              │
-│ 2. drain the queue                            ┃                              │
-│ 3. release the source                         ┃                              │
-│                                               ┃                              │
-│ ▸ run_tests build_only (134 ms) (2 lines)     ┃                              │
-│                                               ┃                              │
-│ > thanks                                      ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 9/27  follow  truecolor  focus:transcript  copied
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ running.                                     ││ theme F4   default           │
+│                                              ││ keys F7    default           │
+│ Without the drain a poll() blocked on the    ││ layout F6  default           │
+│ state lock could resume after release()      ││ size       80x24             │
+│ decided it was the last client, re-register  ││ line       11/28             │
+│ itself and respawn the server release just   ││ follow     yes               │
+│ killed — a permanent orphan. The rule is     ╻│ depth      truecolor         │
+│ recorded in CLAUDE.md (https://example.com/  ┃│ focus      transcript        │
+│ roll/CLAUDE.md#hard-constraints) under hard  ┃│ copied     743 bytes         │
+│ constraints.                                 ┃│                              │
+│                                              ┃│                              │
+│ 1. cancel the timer                          ┃│                              │
+│ 2. drain the queue                           ┃│                              │
+│ 3. release the source                        ┃│                              │
+│                                              ┃│                              │
+│ ▸ run_tests build_only (134 ms) (2 lines)    ┃│                              │
+│                                              ┃│                              │
+│ > thanks                                     ╹│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 11/28  follow  truecolor  focus:transcript  copie
 --- copied ---
 read the manager header and tell me what stop_heartbeat does
 read_file include/ResilientModelManager.hpp (lines 40-52)

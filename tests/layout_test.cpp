@@ -1096,27 +1096,27 @@ int main() {
     check(bad == 0, "fill 1 : fill 2 divide the remainder by weight at every height (" + std::to_string(bad) + " bad)");
   }
   {
-    // Shared edge: both bordered → overlap by one; the pair spans the extent exactly.
+    // EVERY NODE OWNS ITS BORDER: two bordered neighbours sit side by side, each with its own edge in its own cell.
     RolltuiLayoutNode root = row_of({win("a", RolltuiSplitSize::fixed(RolltuiDim::abs(32))), win("b")});
     auto v = resolve_tree_c(root, {0, 0, 80, 10}, {0, 0, 80, 10});
     expect_rect("bordered a keeps its 32", by_id(v, "a")->outer, {0, 0, 32, 10});
-    expect_rect("bordered b starts on a's right border and reaches the edge", by_id(v, "b")->outer, {31, 0, 49, 10});
-    expect_rect("b's inner excludes both borders", by_id(v, "b")->inner, {32, 1, 47, 8});
+    expect_rect("bordered b starts right after a's border and reaches the edge", by_id(v, "b")->outer, {32, 0, 48, 10});
+    expect_rect("b's inner excludes its own borders", by_id(v, "b")->inner, {33, 1, 46, 8});
     RolltuiLayoutNode root2 = row_of({win("a", RolltuiSplitSize::fixed(RolltuiDim::abs(32)), Border::None), win("b")});
     auto v2 = resolve_tree_c(root2, {0, 0, 80, 10}, {0, 0, 80, 10});
-    expect_rect("one side unbordered: no sharing", by_id(v2, "b")->outer, {32, 0, 48, 10});
+    expect_rect("one side unbordered: the same, there was never anything to share", by_id(v2, "b")->outer, {32, 0, 48, 10});
   }
   {
-    // A column whose children are all bordered is bordered on its side; a mixed one is not.
+    // A column of bordered children and a bordered neighbour: nothing is shared, so nothing overlaps.
     RolltuiLayoutNode all = row_of({column_of({win("t"), win("i", RolltuiSplitSize::fixed(RolltuiDim::abs(3)))}), win("s", RolltuiSplitSize::fixed(RolltuiDim::abs(32)))});
     auto v = resolve_tree_c(all, {0, 0, 80, 24}, {0, 0, 80, 24});
-    expect_rect("status shares the column's right edge", by_id(v, "s")->outer, {48, 0, 32, 24});
-    expect_rect("transcript spans to the shared column", by_id(v, "t")->outer, {0, 0, 49, 22});
-    expect_rect("input shares the transcript's bottom edge", by_id(v, "i")->outer, {0, 21, 49, 3});
+    expect_rect("status keeps its 32 on the right", by_id(v, "s")->outer, {48, 0, 32, 24});
+    expect_rect("transcript fills the column above the input", by_id(v, "t")->outer, {0, 0, 48, 21});
+    expect_rect("input sits below it in its own three rows", by_id(v, "i")->outer, {0, 21, 48, 3});
     RolltuiLayoutNode mixed = row_of({column_of({win("t"), win("i", RolltuiSplitSize::fixed(RolltuiDim::abs(3)), Border::None)}), win("s", RolltuiSplitSize::fixed(RolltuiDim::abs(32)))});
     auto v2 = resolve_tree_c(mixed, {0, 0, 80, 24}, {0, 0, 80, 24});
-    expect_rect("a column with an unbordered child does not share", by_id(v2, "s")->outer, {48, 0, 32, 24});
-    expect_rect("…so the transcript stops short of it", by_id(v2, "t")->outer, {0, 0, 48, 21});
+    expect_rect("a column with an unbordered child: the same split", by_id(v2, "s")->outer, {48, 0, 32, 24});
+    expect_rect("…and the transcript is the same size", by_id(v2, "t")->outer, {0, 0, 48, 21});
   }
   {
     RolltuiLayoutNode root = row_of({win("a", RolltuiSplitSize::fixed(RolltuiDim::abs(10)), Border::None), win("hidden", {}, Border::None), win("b", {}, Border::None)});
@@ -1138,8 +1138,8 @@ int main() {
     RolltuiLayoutNode root = column_of({win("a"), win("b", RolltuiSplitSize::fixed(RolltuiDim::abs(3)))});
     root.border = Border::Single;
     auto v = resolve_tree_c(root, {0, 0, 40, 10}, {0, 0, 40, 10});
-    expect_rect("a bordered container splits its inner rect", by_id(v, "a")->outer, {1, 1, 38, 6});
-    expect_rect("…bottom child shares a's edge", by_id(v, "b")->outer, {1, 6, 38, 3});
+    expect_rect("a bordered container splits its inner rect", by_id(v, "a")->outer, {1, 1, 38, 5});
+    expect_rect("…the bottom child follows directly, in rows of its own", by_id(v, "b")->outer, {1, 6, 38, 3});
     check(v.front().node == &root && v.size() == 3, "tree order: container first, then children");
   }
 
@@ -1154,10 +1154,21 @@ int main() {
     compose_c(s.s, f, scr, dark, [&](const RolltuiResolvedNode& rn, FrameC& fr) { ++slots; fr.put_text(rn.inner.x, rn.inner.y, view_of(rn.node->content), dark.style(ROLLTUI_ROLE_TEXT), rn.inner.w); });
     check(slots == 3, "three slots rendered (" + std::to_string(slots) + ")");
     check(cell(f, 0, 0) == "┌" && cell(f, 79, 0) == "┐" && cell(f, 0, 23) == "└" && cell(f, 79, 23) == "┘", "outer corners");
-    check(cell(f, 48, 0) == "┬", "top junction where status meets transcript is ┬ (" + cell(f, 48, 0) + ")");
-    check(cell(f, 48, 21) == "┤", "the input's top edge meets the status column from the left: ┤ (" + cell(f, 48, 21) + ")");
-    check(cell(f, 0, 21) == "├" && cell(f, 79, 21) == "│", "input's top edge joins the outer frame at ├; the far edge is a plain │");
-    check(cell(f, 48, 23) == "┴", "bottom junction under the status column is ┴ (" + cell(f, 48, 23) + ")");
+    check(cell(f, 47, 0) == "┐" && cell(f, 48, 0) == "┌",
+          "each panel draws its own top corner, side by side: the transcript's ┐ then the status's ┌ (" + cell(f, 47, 0) + cell(f, 48, 0) + ")");
+    check(cell(f, 47, 5) == "│" && cell(f, 48, 5) == "│", "…and two vertical edges between them, one cell each (" + cell(f, 47, 5) + cell(f, 48, 5) + ")");
+    check(cell(f, 0, 20) == "└" && cell(f, 47, 20) == "┘" && cell(f, 0, 21) == "┌" && cell(f, 47, 21) == "┐",
+          "the input is a box of its own under the transcript's: ┘ above ┐ with no shared line (" + cell(f, 47, 20) + cell(f, 47, 21) + ")");
+    check(cell(f, 47, 23) == "┘" && cell(f, 48, 23) == "└", "the bottom corners are each panel's own (" + cell(f, 47, 23) + cell(f, 48, 23) + ")");
+    {
+      int joins = 0;
+      for (int y = 0; y < 24; ++y)
+        for (int x = 0; x < 80; ++x) {
+          const std::string g = cell(f, x, y);
+          if (g == "┬" || g == "┴" || g == "├" || g == "┤" || g == "┼") ++joins;
+        }
+      check(joins == 0, "no junction glyph is drawn anywhere: a border is never shared (" + std::to_string(joins) + ")");
+    }
     check(cell(f, 2, 0) == "t" && cell(f, 1, 0) == " " && cell(f, 12, 0) == " " && cell(f, 13, 0) == "─", "title ' transcript ' sits in the top edge after the corner");
     check(cell(f, 1, 1) == "t" && cell(f, 49, 1) == "r" && cell(f, 1, 22) == "i",
           "each slot drew at its inner origin (the contents are transcript:session, rows:status, input:prompt)");

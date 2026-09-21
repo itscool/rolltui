@@ -1,9 +1,9 @@
-┌ layout editor • status ────────────────────────┐┬ status ────────────────────────────────────────────────────────────┐
+┌ layout editor • status ────────────────────────┐┌ status ────────────────────────────────────────────────────────────┐
 │ (row) row                                      ││ theme F4   default                                                 │
 │   (column) column                              ││ keys F7    default                                                 │
 │     transcript transcript:session              ││ layout F6  wide-right (modified)                                   │
 │     input input:prompt                         ││ size       120x40                                                  │
-│   status rows:status                           ││ line       146/180                                                 │
+│   status rows:status                           ││ line       155/188                                                 │
 │ [✓] Visible                                    ││ follow     yes                                                     │
 │ Border                                single ▸ ││ depth      truecolor                                               │
 │ Background role             panel_background ▸ ││ focus      editor                                                  │
@@ -27,14 +27,14 @@
 │                                                ││                                                                    │
 │                                                ││                                                                    │
 │                                                ││                                                                    │
-│                                                │╻                                                                    │
-│                                                │┃                                                                    │
-│                                                │┃                                                                    │
-│                                                │┃                                                                    │
-│                                                │┃                                                                    │
-│ selected: status  size 70  border single  rows │┃                                                                    │
-│ Tab · click · drag an edge · Alt+arrows        │╹                                                                    │
-│ loaded wide-right · undo 1 · redo 0            │┤                                                                    │
 │                                                ││                                                                    │
-└────────────────────────────────────────────────┘┴────────────────────────────────────────────────────────────────────┘
- default [layout editor]  wide-right (modified)  120x40  line 146/180  follow  truecolor  focus:editor
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│                                                ││                                                                    │
+│ selected: status  size 70  border single  rows ││                                                                    │
+│ Tab · click · drag an edge · Alt+arrows        ││                                                                    │
+│ loaded wide-right · undo 1 · redo 0            ││                                                                    │
+│                                                ││                                                                    │
+└────────────────────────────────────────────────┘└────────────────────────────────────────────────────────────────────┘
+ default [layout editor]  wide-right (modified)  120x40  line 155/188  follow  truecolor  focus:editor

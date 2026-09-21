@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ → styles,    │             │ header       │ │ theme F4   default           │
-│ │ JSON loader, │             │              │ │ keys F7    default           │
-│ │ built-ins)   │             │              │ │ layout F6  default           │
-│ └──────────────┴─────────────┴──────────────┘ │ size       80x24             │
-│                                               │ line       181/191           │
-│ Here is the function you asked for:           │ follow     yes               │
-│                                               │ depth      truecolor         │
-│ ┌ cpp ──────────────────────────────────────┐ │ focus      input             │
-│ │ int add(int a, int b) {                   │ │                              │
-│ │   return a + b;                           │ │                              │
-│ └───────────────────────────────────────────┘ •                              │
-├───────────────────────────────────────────────┤                              │
-│   l6                                          │                              │
-│   l7                                          │                              │
-│   l8                                          │                              │
-│   l9                                          │                              │
-│   l10                                         │                              │
-│   l11                                         │                              │
-│   l12                                         │                              │
-│   l13                                         │                              │
-│   l14                                         │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 181/191  follow  truecolor  focus:input
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ loader,     │             │              │ ││ theme F4   default           │
+│ │ built-ins)  │             │              │ ││ keys F7    default           │
+│ └─────────────┴─────────────┴──────────────┘ ││ layout F6  default           │
+│                                              ││ size       80x24             │
+│ Here is the function you asked for:          ││ line       188/197           │
+│                                              ││ follow     yes               │
+│ ┌ cpp ─────────────────────────────────────┐ ││ depth      truecolor         │
+│ │ int add(int a, int b) {                  │ ││ focus      input             │
+│ │   return a + b;                          │ ││                              │
+│ └──────────────────────────────────────────┘ •│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│   l6                                         ││                              │
+│   l7                                         ││                              │
+│   l8                                         ││                              │
+│   l9                                         ││                              │
+│   l10                                        ││                              │
+│   l11                                        ││                              │
+│   l12                                        ││                              │
+│   l13                                        ││                              │
+│   l14                                        ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 188/197  follow  truecolor  focus:input

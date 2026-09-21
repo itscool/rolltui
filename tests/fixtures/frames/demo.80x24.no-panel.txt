@@ -1,5 +1,4 @@
 ┌ transcript ──────────────────────────────────────────────────────────────────┐
-│ │ Menu widget (hierarchical,  │ build       │ single header each; the      │ │
 │ │ filterable) + list/text     │             │ widget set is deliberately   │ │
 │ │ widgets                     │             │ this small                   │ │
 │ │ Layout files (JSON: windows │ build       │ reuses the theme loader's    │ │
@@ -18,7 +17,8 @@
 │ │ int add(int a, int b) {                                                  │ ╻
 │ │   return a + b;                                                          │ ┃
 │ └──────────────────────────────────────────────────────────────────────────┘ ╹
-├──────────────────────────────────────────────────────────────────────────────┤
+└──────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
 │ > type here                                                                  │
 └──────────────────────────────────────────────────────────────────────────────┘
- default  no-panel  80x24  line 100/118  follow  truecolor  focus:input
+ default  no-panel  80x24  line 101/118  follow  truecolor  focus:input

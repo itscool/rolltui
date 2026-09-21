@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ renderer     │             │ md4c + wrap  │ │ theme F4   default           │
-│ │ (blocks →    │             │              │ │ keys F7    default           │
-│ │ styled       │             │              │ │ layout F6  default           │
-│ │ wrapped      │             │              │ │ size       80x24             │
-│ │ lines)       │             │              │ │ line       175/193           │
-│ │ Theme (roles │ build       │ single       │ │ follow     yes               │
-│ │ → styles,    │             │ header       │ │ depth      truecolor         │
-│ │ JSON loader, │             │              │ │ focus      input             │
-│ │ built-ins)   │             │              │ │                              │
-│ └──────────────┴─────────────┴──────────────┘ │                              │
-│                                               │                              │
-│ Here is the function you asked for:           │                              │
-│                                               │                              │
-│ ┌ cpp ──────────────────────────────────────┐ │                              │
-│ │ int add(int a, int b) {                   │ │                              │
-│ │   return a + b;                           │ │                              │
-│ └───────────────────────────────────────────┘ │                              │
-│                                               ╻                              │
-│ > hi there                                    ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 175/193  follow  truecolor  focus:input
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ wrapped     │             │              │ ││ theme F4   default           │
+│ │ lines)      │             │              │ ││ keys F7    default           │
+│ │ Theme       │ build       │ single       │ ││ layout F6  default           │
+│ │ (roles →    │             │ header       │ ││ size       80x24             │
+│ │ styles,     │             │              │ ││ line       182/199           │
+│ │ JSON        │             │              │ ││ follow     yes               │
+│ │ loader,     │             │              │ ││ depth      truecolor         │
+│ │ built-ins)  │             │              │ ││ focus      input             │
+│ └─────────────┴─────────────┴──────────────┘ ││                              │
+│                                              ││                              │
+│ Here is the function you asked for:          ││                              │
+│                                              ││                              │
+│ ┌ cpp ─────────────────────────────────────┐ ││                              │
+│ │ int add(int a, int b) {                  │ ││                              │
+│ │   return a + b;                          │ ││                              │
+│ └──────────────────────────────────────────┘ ││                              │
+│                                              ╻│                              │
+│ > hi there                                   ╹│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 182/199  follow  truecolor  focus:input

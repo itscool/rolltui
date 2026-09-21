@@ -493,31 +493,24 @@ TESTKIT_TEST(a_code_block_folds_only_when_it_is_over_the_threshold) {
         "never happens");
 }
 
-TESTKIT_TEST(two_bordered_siblings_share_the_edge_between_them) {
-  // `layout_test` asserts this as "bordered b starts on a's right border and reaches the edge".
-  // Two bordered neighbours draw ONE column between them, so the pair spans the extent exactly.
-  // The defect state is the rule inverted: every rect still lands inside its parent and the
-  // frame still composes — the columns are simply one cell wrong each, which is the kind of
-  // thing a screenshot shows and no assertion downstream does.
-  const std::string shared =
+TESTKIT_TEST(two_bordered_siblings_each_own_their_border) {
+  // Two bordered neighbours draw an edge each, side by side, so a panel's ground and its focus colour
+  // stop at its own edge. (This was once a control point: the rule that they SHARE one column, and the
+  // pair spanning the extent exactly. The rule is gone, and this is what stands in its place.)
+  const std::string owned =
       R"({"name":"t","root":{"row":[{"id":"a","content":"text:a","size":32,"border":"single"},)"
       R"({"id":"b","content":"text:b","border":"single"}]}})";
-  Screen s(shared);
+  Screen s(owned);
   check(s.loaded, "the two-window screen parsed — an unparsed layout would make every rect below zero");
-  check_controlled("layout.shared_edges_are_inverted",
-                   "the second of two bordered siblings starts ON the first's right border", [&s] {
-                     const RolltuiRect r = s.rect_of("b", {0, 0, 80, 10});
-                     return r.x == 31 && r.w == 49;
-                   });
-  // With one side UNBORDERED there is nothing to share, and the neighbour starts past the
-  // first — so the control above is about a condition rather than about a constant offset.
-  const std::string unshared =
+  const RolltuiRect r = s.rect_of("b", {0, 0, 80, 10});
+  check(r.x == 32 && r.w == 48, "the second of two bordered siblings starts after the first's border: x=" +
+                                    std::to_string(r.x) + " w=" + std::to_string(r.w));
+  const std::string unbordered =
       R"({"name":"t","root":{"row":[{"id":"a","content":"text:a","size":32,"border":"none"},)"
       R"({"id":"b","content":"text:b","border":"single"}]}})";
-  Screen u(unshared);
-  const RolltuiRect r = u.rect_of("b", {0, 0, 80, 10});
-  check(r.x == 32 && r.w == 48, "…while an unbordered neighbour is not shared with: x=" +
-                                    std::to_string(r.x) + " w=" + std::to_string(r.w));
+  Screen u(unbordered);
+  const RolltuiRect q = u.rect_of("b", {0, 0, 80, 10});
+  check(q.x == 32 && q.w == 48, "…and with one side unbordered it is the same: x=" + std::to_string(q.x) + " w=" + std::to_string(q.w));
 }
 
 TESTKIT_TEST(a_modal_popup_keeps_focus_off_the_layers_under_it) {
@@ -780,7 +773,7 @@ TESTKIT_TEST(every_control_point_the_library_reached_was_flipped_and_nothing_els
   std::vector<std::string> flipped = testkit::ctl::flipped();
   std::sort(known.begin(), known.end());
   std::sort(flipped.begin(), flipped.end());
-  check(known.size() >= 20, "the library reached at least the twenty ported control points: " +
+  check(known.size() >= 19, "the library reached at least the nineteen ported control points: " +
                                 std::to_string(known.size()) +
                                 " — a small number here means the suite above stopped running");
   for (const std::string& n : known)

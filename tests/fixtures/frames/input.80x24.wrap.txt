@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ block        │             │ header over  │ │ theme F4   default           │
-│ │ renderer     │             │ md4c + wrap  │ │ keys F7    default           │
-│ │ (blocks →    │             │              │ │ layout F6  default           │
-│ │ styled       │             │              │ │ size       80x24             │
-│ │ wrapped      │             │              │ │ line       174/191           │
-│ │ lines)       │             │              │ │ follow     yes               │
-│ │ Theme (roles │ build       │ single       │ │ depth      truecolor         │
-│ │ → styles,    │             │ header       │ │ focus      input             │
-│ │ JSON loader, │             │              │ │                              │
-│ │ built-ins)   │             │              │ │                              │
-│ └──────────────┴─────────────┴──────────────┘ │                              │
-│                                               │                              │
-│ Here is the function you asked for:           │                              │
-│                                               │                              │
-│ ┌ cpp ──────────────────────────────────────┐ │                              │
-│ │ int add(int a, int b) {                   │ │                              │
-│ │   return a + b;                           │ ╻                              │
-│ └───────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > the quick brown fox jumps over the lazy dog │                              │
-│    and keeps running until it wraps           │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 174/191  follow  truecolor  focus:input
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ styled      │             │              │ ││ theme F4   default           │
+│ │ wrapped     │             │              │ ││ keys F7    default           │
+│ │ lines)      │             │              │ ││ layout F6  default           │
+│ │ Theme       │ build       │ single       │ ││ size       80x24             │
+│ │ (roles →    │             │ header       │ ││ line       181/197           │
+│ │ styles,     │             │              │ ││ follow     yes               │
+│ │ JSON        │             │              │ ││ depth      truecolor         │
+│ │ loader,     │             │              │ ││ focus      input             │
+│ │ built-ins)  │             │              │ ││                              │
+│ └─────────────┴─────────────┴──────────────┘ ││                              │
+│                                              ││                              │
+│ Here is the function you asked for:          ││                              │
+│                                              ││                              │
+│ ┌ cpp ─────────────────────────────────────┐ ││                              │
+│ │ int add(int a, int b) {                  │ ││                              │
+│ │   return a + b;                          │ ││                              │
+│ └──────────────────────────────────────────┘ •│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > the quick brown fox jumps over the lazy do ││                              │
+│   g and keeps running until it wraps         ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 181/197  follow  truecolor  focus:input

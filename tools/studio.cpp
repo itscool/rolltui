@@ -1581,7 +1581,7 @@ struct App {
       if (rn.node->is_window() && rn.outer.contains(x, y)) best = str_of(rn.node->id);
     return best;
   }
-  // A seam: the shared edge between two visible siblings. The node that takes the new
+  // A seam: the two edge cells where two visible siblings meet (each owns one). The node that takes the new
   // size is the FIXED-size one when the other fills (dragging the fill would leave a
   // gap the fixed sibling never closes); otherwise the one before the seam.
   struct Seam { std::string id; bool after; bool horizontal; };

@@ -275,36 +275,6 @@ size_t rolltui_split_size_to_string(RolltuiSplitSize s, char* out, size_t cap) {
 
 /* ---- the split --------------------------------------------------------------------------- */
 
-#define SIDE_LEFT 0
-#define SIDE_RIGHT 1
-#define SIDE_TOP 2
-#define SIDE_BOTTOM 3
-
-static int edge_bordered(const RolltuiLayoutNode* n, int side) {
-  const RolltuiLayoutNode* first = NULL;
-  const RolltuiLayoutNode* last = NULL;
-  size_t i;
-  int along;
-  if (n->border != ROLLTUI_BORDER_NONE) return 1;
-  if (n->kind == ROLLTUI_NODE_WINDOW) return 0;
-  /* Only ever the FIRST visible child, the LAST, or a walk over all of them — none of which
-   * is a reason to build a list. This function is recursive AND called O(children²) from the
-   * shared-edge pass below. */
-  for (i = 0; i < n->children.n; ++i) {
-    RolltuiLayoutNode* c = n->children.v[i];
-    if (!c->visible) continue;
-    if (!first) first = c;
-    last = c;
-  }
-  if (!first) return 0;
-  along = (n->kind == ROLLTUI_NODE_ROW) ? (side == SIDE_LEFT || side == SIDE_RIGHT)
-                                        : (side == SIDE_TOP || side == SIDE_BOTTOM);
-  if (along) return edge_bordered((side == SIDE_LEFT || side == SIDE_TOP) ? first : last, side);
-  for (i = 0; i < n->children.n; ++i)
-    if (n->children.v[i]->visible && !edge_bordered(n->children.v[i], side)) return 0;
-  return 1;
-}
-
 /* THE PER-CONTAINER SCRATCH, and it is an INLINE ARRAY with a stated SPILL (CLAUDE.md
  * strategy 1). `place` RECURSES, so a shared reused buffer would alias across depth — each
  * frame of the recursion has its own inline array and cannot. Twelve is the C++'s number,
@@ -313,7 +283,6 @@ static int edge_bordered(const RolltuiLayoutNode* n, int side) {
 
 typedef struct ChildSlot {
   const RolltuiLayoutNode* node;
-  int shared; /* this child shares its facing border edge with the next */
   int size;
 } ChildSlot;
 
@@ -324,7 +293,7 @@ static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect scree
   ChildSlot* kid = inline_slots;
   ChildSlot* spill = NULL;
   size_t visible = 0, i, w;
-  int row, extent, shared_count = 0, ext, prev_edge = 0, fixed_total = 0, weight_total = 0;
+  int row, extent, prev_edge = 0, fixed_total = 0, weight_total = 0;
   int remainder, cum_w = 0, prev_fill_edge = 0, pos = 0;
   RolltuiDim cum;
   RolltuiRect in;
@@ -349,24 +318,14 @@ static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect scree
   for (i = 0; i < n->children.n; ++i)
     if (n->children.v[i]->visible) {
       kid[w].node = n->children.v[i];
-      kid[w].shared = 0;
       kid[w].size = 0;
       ++w;
     }
   in = inner_rect(box, n->border); /* unclipped: children resolve against the true box */
   extent = row ? in.w : in.h;
 
-  /* Shared edges between adjacent bordered siblings. */
-  for (i = 0; i + 1 < visible; ++i) {
-    kid[i].shared = row ? (edge_bordered(kid[i].node, SIDE_RIGHT) && edge_bordered(kid[i + 1].node, SIDE_LEFT))
-                        : (edge_bordered(kid[i].node, SIDE_BOTTOM) && edge_bordered(kid[i + 1].node, SIDE_TOP));
-    /* ON = the rule inverted: two bordered siblings each keep their own edge and two
-     * unbordered ones are given one to share. Every rect stays inside its parent and the
-     * frame still composes - the columns are just the wrong widths, by one cell each. */
-    if (testkit_ctl_on("layout.shared_edges_are_inverted")) kid[i].shared = !kid[i].shared;
-    if (kid[i].shared) ++shared_count;
-  }
-  ext = imax(extent, 0) + shared_count;
+  /* EVERY NODE OWNS ITS BORDER. Two bordered siblings sit side by side with their own edges in their own cells,
+   * so a panel's ground and its focus colour stop at its own edge and never fight a neighbour for a shared one. */
 
   /* Fixed children: edges of the cumulative Dim sum. */
   cum.fraction = 0;
@@ -379,13 +338,13 @@ static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect scree
     }
     cum.fraction += kid[i].node->size.dim.fraction;
     cum.cells += kid[i].node->size.dim.cells;
-    edge = rolltui_resolve_dim(cum, ext);
+    edge = rolltui_resolve_dim(cum, extent);
     kid[i].size = imax(edge - prev_edge, 0);
     prev_edge = imax(edge, prev_edge);
     fixed_total += kid[i].size;
   }
   /* Fills: cumulative weight edges over the remainder. */
-  remainder = imax(ext - fixed_total, 0);
+  remainder = imax(extent - fixed_total, 0);
   for (i = 0; i < visible; ++i) {
     RolltuiDim share;
     int edge;
@@ -397,7 +356,7 @@ static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect scree
     kid[i].size = edge - prev_fill_edge;
     prev_fill_edge = edge;
   }
-  /* Positions, sharing one cell per shared edge; clip to the extent in order. */
+  /* Positions, one after the other; clip to the extent in order. */
   for (i = 0; i < visible; ++i) {
     RolltuiRect r;
     if (pos + kid[i].size > imax(extent, 0)) kid[i].size = imax(imax(extent, 0) - pos, 0);
@@ -414,7 +373,6 @@ static void place(const RolltuiLayoutNode* n, RolltuiRect box, RolltuiRect scree
     }
     place(kid[i].node, r, screen, layer, emit, ctx);
     pos += kid[i].size;
-    if (i + 1 < visible && kid[i].shared && kid[i].size > 0) pos -= 1;
   }
   rolltui_mem_free(spill); /* NULL in the steady case: the inline array is the whole of it */
 }
@@ -483,8 +441,6 @@ static const char* glyph_for(unsigned char b, unsigned char mask, int ascii) {
   return kLight[mask];
 }
 
-static int joins(unsigned char b) { return b == ROLLTUI_BORDER_SINGLE || b == ROLLTUI_BORDER_ROUNDED; }
-
 /* The arm mask this window's own border wants at ring cell (x, y) of `o`. */
 static unsigned char own_mask(RolltuiRect o, int x, int y) {
   const int left = x == o.x, right = x == o.x + o.w - 1;
@@ -502,7 +458,7 @@ static unsigned char own_mask(RolltuiRect o, int x, int y) {
 
 static void draw_border_impl(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char b,
                              RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
-                             int ascii, unsigned char* map, const unsigned char* ring_before) {
+                             int ascii) {
   RolltuiRect clip;
   const int fw = rolltui_frame_width(f), fh = rolltui_frame_height(f);
   RolltuiRect bounds;
@@ -521,11 +477,9 @@ static void draw_border_impl(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiR
       const int ring = x == outer.x || x == outer.x + outer.w - 1 || y == outer.y || y == outer.y + outer.h - 1;
       if (!ring) continue;
       m = own_mask(outer, x, y);
-      if (map && ring_before && joins(b)) m |= ring_before[(size_t)(y * fw + x)];
       g = glyph_for(b, m, ascii);
       if (!*g) g = " ";
       rolltui_frame_put(f, x, y, g, strlen(g), 1, line, 0);
-      if (map) map[(size_t)(y * fw + x)] = joins(b) ? m : 0;
     }
   }
   /* Title on the top edge, inside the corners. */
@@ -537,18 +491,14 @@ static void draw_border_impl(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiR
     int used = rolltui_frame_put_text(f, draw, outer.x + 1, outer.y, " ", 1, title_style, avail, ascii, 0);
     used += rolltui_frame_put_text(f, draw, outer.x + 1 + used, outer.y, title, title_n, title_style,
                                    avail - used, ascii, 0);
-    used += rolltui_frame_put_text(f, draw, outer.x + 1 + used, outer.y, " ", 1, title_style, avail - used,
-                                   ascii, 0);
-    if (map)
-      for (x = outer.x + 1; x < outer.x + 1 + used && x < fw; ++x)
-        if (x >= 0) map[(size_t)(outer.y * fw + x)] = 0;
+    rolltui_frame_put_text(f, draw, outer.x + 1 + used, outer.y, " ", 1, title_style, avail - used, ascii, 0);
   }
 }
 
 void rolltui_draw_border(RolltuiFrame* f, RolltuiDrawScratch* draw, RolltuiRect outer, unsigned char border,
                          RolltuiStyle line, const char* title, size_t title_n, RolltuiStyle title_style,
                          int ambiguous_wide) {
-  draw_border_impl(f, draw, outer, border, line, title, title_n, title_style, ambiguous_wide, NULL, NULL);
+  draw_border_impl(f, draw, outer, border, line, title, title_n, title_style, ambiguous_wide);
 }
 
 /* ---- compose ----------------------------------------------------------------------------- */
@@ -568,19 +518,12 @@ static void collect_sink(void* ctx, const RolltuiResolvedNode* rn) {
 }
 
 struct RolltuiComposeScratch {
-  unsigned char* map;    /* the join arms written so far, this layer */
-  unsigned char* before; /* what was under the ring before this window cleared it */
-  size_t map_cap, before_cap;
   NodeCollect nodes;        /* ONE layer's resolved nodes — a third ROLE, reused per layer */
   RolltuiDrawScratch* draw; /* OWNED: the cluster walk a title needs — a fourth */
 };
 
 RolltuiComposeScratch* rolltui_compose_scratch_new(void) {
   RolltuiComposeScratch* s = (RolltuiComposeScratch*)rolltui_mem_alloc(sizeof *s);
-  s->map = NULL;
-  s->before = NULL;
-  s->map_cap = 0;
-  s->before_cap = 0;
   s->nodes.v = NULL;
   s->nodes.n = 0;
   s->nodes.cap = 0;
@@ -590,8 +533,6 @@ RolltuiComposeScratch* rolltui_compose_scratch_new(void) {
 
 void rolltui_compose_scratch_free(RolltuiComposeScratch* s) {
   if (!s) return;
-  rolltui_mem_free(s->map);
-  rolltui_mem_free(s->before);
   rolltui_mem_free(s->nodes.v);
   rolltui_draw_scratch_free(s->draw);
   rolltui_mem_free(s);
@@ -600,41 +541,17 @@ void rolltui_compose_scratch_free(RolltuiComposeScratch* s) {
 void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, size_t count,
                            const RolltuiStyle* styles, const RolltuiLayoutRoles* roles, RolltuiSlotFn render,
                            void* ctx, int ambiguous_wide, RolltuiComposeScratch* scratch) {
-  const int fw = rolltui_frame_width(f), fh = rolltui_frame_height(f);
-  const size_t cells = (size_t)(fw > 0 ? fw : 0) * (size_t)(fh > 0 ? fh : 0);
-  RolltuiRect bounds;
   size_t i;
-  bounds.x = 0;
-  bounds.y = 0;
-  bounds.w = fw;
-  bounds.h = fh;
-  /* GROWING, EXACT: a frame's cell count is known and a doubled map would be up to 70%
-   * overshoot on the biggest buffer here — the rolltui_alloc.h note about the cell grid,
-   * one level up. */
-  scratch->map = (unsigned char*)rolltui_fit(scratch->map, &scratch->map_cap, cells, 1);
-  scratch->before = (unsigned char*)rolltui_fit(scratch->before, &scratch->before_cap, cells, 1);
-  memset(scratch->map, 0, cells);
-  memset(scratch->before, 0, cells);
 
-  /* TWO PASSES: every node's ground and border first, then every window's CONTENT. A single
-   * pass lets a sibling's border overwrite content already drawn into a SHARED edge column —
-   * which is how a scrollbar thumb becomes invisible next to a bordered neighbour. */
+  /* TWO PASSES: every node's ground and border first, then every window's CONTENT, so a container's ground
+   * never lands on a child's content whatever order the nodes came in. */
   for (i = 0; i < count; ++i) {
     const RolltuiResolvedNode* rn = &nodes[i];
     const RolltuiLayoutNode* n = rn->node;
     const int draws = n->kind == ROLLTUI_NODE_WINDOW || n->border != ROLLTUI_BORDER_NONE;
     RolltuiStyle ground, line, title;
-    RolltuiRect clip;
-    int x, y;
     if (!draws) continue;
     ground = styles[n->background];
-    clip = rect_intersect(rn->outer, bounds);
-    for (y = clip.y; y < clip.y + clip.h; ++y)
-      for (x = clip.x; x < clip.x + clip.w; ++x) {
-        const size_t k = (size_t)(y * fw + x);
-        scratch->before[k] = scratch->map[k];
-        scratch->map[k] = 0;
-      }
     rolltui_frame_fill(f, scratch->draw, rn->outer, ground, NULL, 0);
     line = styles[rn->focused ? roles->border_active : roles->border];
     line.bg = ground.bg;
@@ -643,8 +560,7 @@ void rolltui_compose_layer(RolltuiFrame* f, const RolltuiResolvedNode* nodes, si
     /* The widget's own title when it has one this frame, else the file's. */
     {
       const RolltuiStr* t = n->live_title.n ? &n->live_title : &n->title;
-      draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title,
-                       ambiguous_wide, scratch->map, scratch->before);
+      draw_border_impl(f, scratch->draw, rn->outer, n->border, line, t->p, t->n, title, ambiguous_wide);
     }
   }
   if (!render) return;

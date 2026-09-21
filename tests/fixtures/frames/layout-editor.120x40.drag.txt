@@ -1,40 +1,40 @@
-┌ transcript ─────────────────┬ transcript-2 ─────────────────────────┌ layout editor • transcript ────────────────────┐
-│ │ nt    │        │        │ │ │ diff + SGR/colour │             │ pu│ (row) row                                      │
-│ │ slots │        │        │ │ │ downgrade         │             │ te│   (column) column                              │
-│ │ )     │        │        │ │ │ Wrap engine       │ build       │ si│     transcript-row row                         │
-│ │ Markd │ build  │ single │ │ │                   │             │ ov│       transcript transcript:session            │
-│ │ own   │        │ header │ │ │                   │             │ he│       transcript-2 transcript:session          │
-│ │ block │        │ over   │ │ │ Windows, layers,  │ build       │ si│     input input:prompt                         │
-│ │ rende │        │ md4c + │ │ │ placement (Dim    │             │ re│   status rows:status                           │
-│ │ rer   │        │ wrap   │ │ │ abs/rel per       │             │ , │ popup find                                     │
-│ │ (bloc │        │        │ │ │ axis), focus      │             │ is│   find input:find                              │
-│ │ ks →  │        │        │ │ │                   │             │ fu│ popup help                                     │
-│ │ style │        │        │ │ │ Menu widget       │ build       │ si│   help help                                    │
-│ │ d     │        │        │ │ │ (hierarchical,    │             │ ea│ popup approval                                 │
-│ │ wrapp │        │        │ │ │ filterable) +     │             │ se│ [✓] Visible                                    │
-│ │ ed    │        │        │ │ │ list/text widgets │             │ de│ Border                                single ▸ │
-│ │ lines │        │        │ │ │                   │             │ sm│ Background role                   background ▸ │
-│ │ )     │        │        │ │ │ Layout files      │ build       │ re│ Node id: transcript                            │
-│ │ Theme │ build  │ single │ │ │ (JSON: windows +  │             │ lo│ Title: transcript                              │
-│ │ (role │        │ header │ │ │ placements +      │             │ pa│ Widget kind: transcript                        │
-│ │ s →   │        │        │ │ │ content slots)    │             │ re│ Source: session                                │
-│ │ style │        │        │ │ │ Markdown block    │ build       │ si│ Menu file:                                     │
-│ │ s,    │        │        │ │ │ renderer (blocks  │             │ ov│ Size (Alt+arrows nudge): 31                    │
-│ │ JSON  │        │        │ │ │ → styled wrapped  │             │   │ [✓] Focusable                                  │
-│ │ loade │        │        │ │ │ lines)            │             │   │ Tree — split, swap, delete                   ▸ │
-│ │ r,    │        │        │ │ │ Theme (roles →    │ build       │ si│ This screen — sizes, focus, popups, actions  ▸ │
-│ │ built │        │        │ │ │ styles, JSON      │             │   │ Layout file — new, load, save                ▸ │
-│ │ -ins) │        │        │ │ │ loader, built-    │             │   │ Undo                                    Ctrl-Z │
-│ └───────┴────────┴────────┘ │ │ ins)              │             │   │ Redo                                    Ctrl-Y │
-│                             │ └───────────────────┴─────────────┴───│                                                │
-│ Here is the function you    │                                       │                                                │
-│ asked for:                  │ Here is the function you asked for:   │                                                │
-│                             │                                       │                                                │
-│ ┌ cpp ────────────────────┐ ╻ ┌ cpp ────────────────────────────────│                                                │
-│ │ int add(int a, int b) { │ ┃ │ int add(int a, int b) {             │                                                │
-│ │   return a + b;         │ ┃ │   return a + b;                     │ selected: transcript  size 31  border single   │
-│ └─────────────────────────┘ ╹ └─────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
-├─────────────────────────────┴───────────────────────────────────────│ split transcript side by side · undo 2 · redo  │
+┌ transcript ─────────────────┐┌ transcript-2 ────────────────────────┌ layout editor • transcript ────────────────────┐
+│ │ slots │        │        │ ││ │ downgrade        │             │   │ (row) row                                      │
+│ │ )     │        │        │ ││ │ Wrap engine      │ build       │ si│   (column) column                              │
+│ │ Markd │ build  │ single │ ││ │                  │             │ ov│     transcript-row row                         │
+│ │ own   │        │ header │ ││ │                  │             │ he│       transcript transcript:session            │
+│ │ block │        │ over   │ ││ │ Windows, layers, │ build       │ si│       transcript-2 transcript:session          │
+│ │ rende │        │ md4c + │ ││ │ placement (Dim   │             │ re│     input input:prompt                         │
+│ │ rer   │        │ wrap   │ ││ │ abs/rel per      │             │ t,│   status rows:status                           │
+│ │ (bloc │        │        │ ││ │ axis), focus     │             │ Re│ popup find                                     │
+│ │ ks →  │        │        │ ││ │                  │             │ fu│   find input:find                              │
+│ │ style │        │        │ ││ │ Menu widget      │ build       │ si│ popup help                                     │
+│ │ d     │        │        │ ││ │ (hierarchical,   │             │ ea│   help help                                    │
+│ │ wrapp │        │        │ ││ │ filterable) +    │             │ se│ popup approval                                 │
+│ │ ed    │        │        │ ││ │ list/text        │             │ de│ [✓] Visible                                    │
+│ │ lines │        │        │ ││ │ widgets          │             │ th│ Border                                single ▸ │
+│ │ )     │        │        │ ││ │ Layout files     │ build       │ re│ Background role                   background ▸ │
+│ │ Theme │ build  │ single │ ││ │ (JSON: windows + │             │ lo│ Node id: transcript                            │
+│ │ (role │        │ header │ ││ │ placements +     │             │ pa│ Title: transcript                              │
+│ │ s →   │        │        │ ││ │ content slots)   │             │ re│ Widget kind: transcript                        │
+│ │ style │        │        │ ││ │ Markdown block   │ build       │ si│ Source: session                                │
+│ │ s,    │        │        │ ││ │ renderer (blocks │             │ ov│ Menu file:                                     │
+│ │ JSON  │        │        │ ││ │ → styled wrapped │             │   │ Size (Alt+arrows nudge): 31                    │
+│ │ loade │        │        │ ││ │ lines)           │             │   │ [✓] Focusable                                  │
+│ │ r,    │        │        │ ││ │ Theme (roles →   │ build       │ si│ Tree — split, swap, delete                   ▸ │
+│ │ built │        │        │ ││ │ styles, JSON     │             │   │ This screen — sizes, focus, popups, actions  ▸ │
+│ │ -ins) │        │        │ ││ │ loader, built-   │             │   │ Layout file — new, load, save                ▸ │
+│ └───────┴────────┴────────┘ ││ │ ins)             │             │   │ Undo                                    Ctrl-Z │
+│                             ││ └──────────────────┴─────────────┴───│ Redo                                    Ctrl-Y │
+│ Here is the function you    ││                                      │                                                │
+│ asked for:                  ││ Here is the function you asked for:  │                                                │
+│                             ││                                      │                                                │
+│ ┌ cpp ────────────────────┐ ╻│ ┌ cpp ───────────────────────────────│                                                │
+│ │ int add(int a, int b) { │ ┃│ │ int add(int a, int b) {            │                                                │
+│ │   return a + b;         │ ┃│ │   return a + b;                    │                                                │
+│ └─────────────────────────┘ ╹│ └────────────────────────────────────│ selected: transcript  size 31  border single   │
+└─────────────────────────────┘└──────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
+┌─────────────────────────────────────────────────────────────────────│ split transcript side by side · undo 2 · redo  │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default [layout editor]  default (modified)  120x40  line 120/154  follow  truecolor  focus:editor
+ default [layout editor]  default (modified)  120x40  line 129/162  follow  truecolor  focus:editor

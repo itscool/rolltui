@@ -1,40 +1,40 @@
 ┌ transcript ─────────────────────────────────────────────────────────┌ theme editor › Fixes (proposals; Enter applies ┐
-│ │ class, East-Asian width,         │             │ +, not Python) → │ ◂ Back                                         │
-│ │ grapheme property,               │             │ unicode_tables.hp│ (nothing to fix in this variant)               │
-│ │ Extended_Pictographic, InCB)     │             │                  │                                                │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, va│                                                │
-│ │ grapheme clusters, display width │             │ Unicode conforman│                                                │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Ma│                                                │
-│ │                                  │             │ block tree is the│                                                │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled │                                                │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineRea│                                                │
-│ │ mouse mode)                      │             │                  │                                                │
-│ │ Key + mouse decoding             │ build       │ single header, pu│                                                │
-│ │                                  │             │ Event, table-test│                                                │
-│ │ Cell grid + frame diff + SGR/    │ build       │ single header, pu│                                                │
-│ │ colour downgrade                 │             │ tested           │                                                │
-│ │ Wrap engine                      │ build       │ single header ove│                                                │
-│ │                                  │             │ header           │                                                │
-│ │ Windows, layers, placement (Dim  │ build       │ single header;   │                                                │
-│ │ abs/rel per axis), focus         │             │ resolve(Placement│                                                │
-│ │                                  │             │ Rect is a pure fu│                                                │
-│ │ Menu widget (hierarchical,       │ build       │ single header eac│                                                │
-│ │ filterable) + list/text widgets  │             │ set is deliberate│                                                │
-│ │ Layout files (JSON: windows +    │ build       │ reuses the theme │                                                │
-│ │ placements + content slots)      │             │ parser; hot-reloa│                                                │
-│ │ Markdown block renderer (blocks  │ build       │ single header ove│                                                │
-│ │ → styled wrapped lines)          │             │                  │                                                │
-│ │ Theme (roles → styles, JSON      │ build       │ single header    │                                                │
-│ │ loader, built-ins)               │             │                  │                                                │
-│ └──────────────────────────────────┴─────────────┴──────────────────│                                                │
+│ │ Extended_Pictographic, InCB)    │             │                   │ ◂ Back                                         │
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, val│ (nothing to fix in this variant)               │
+│ │ grapheme clusters, display      │             │ Unicode conformanc│                                                │
+│ │ width                           │             │                   │                                                │
+│ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Mar│                                                │
+│ │                                 │             │ block tree is the │                                                │
+│ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled u│                                                │
+│ │ size, SIGWINCH, bracketed       │             │ exists in LineRead│                                                │
+│ │ paste, mouse mode)              │             │                   │                                                │
+│ │ Key + mouse decoding            │ build       │ single header, pur│                                                │
+│ │                                 │             │ Event, table-teste│                                                │
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pur│                                                │
+│ │ colour downgrade                │             │ tested            │                                                │
+│ │ Wrap engine                     │ build       │ single header over│                                                │
+│ │                                 │             │ header            │                                                │
+│ │ Windows, layers, placement (Dim │ build       │ single header;    │                                                │
+│ │ abs/rel per axis), focus        │             │ resolve(Placement,│                                                │
+│ │                                 │             │ Rect is a pure fun│                                                │
+│ │ Menu widget (hierarchical,      │ build       │ single header each│                                                │
+│ │ filterable) + list/text widgets │             │ set is deliberatel│                                                │
+│ │ Layout files (JSON: windows +   │ build       │ reuses the theme l│                                                │
+│ │ placements + content slots)     │             │ parser; hot-reload│                                                │
+│ │ Markdown block renderer (blocks │ build       │ single header over│                                                │
+│ │ → styled wrapped lines)         │             │                   │                                                │
+│ │ Theme (roles → styles, JSON     │ build       │ single header     │                                                │
+│ │ loader, built-ins)              │             │                   │                                                │
+│ └─────────────────────────────────┴─────────────┴───────────────────│                                                │
 │                                                                     │                                                │
 │ Here is the function you asked for:                                 │                                                │
 │                                                                     │                                                │
-│ ┌ cpp ──────────────────────────────────────────────────────────────│ default                                        │
-│ │ int add(int a, int b) {                                           │ Roles › a role › fg › a colour; the screen is  │
-│ │   return a + b;                                                   │ type to filter · Enter commits · Esc cancels · │
-│ └───────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
-├─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
+│ ┌ cpp ──────────────────────────────────────────────────────────────│                                                │
+│ │ int add(int a, int b) {                                           │ default                                        │
+│ │   return a + b;                                                   │ Roles › a role › fg › a colour; the screen is  │
+│ └───────────────────────────────────────────────────────────────────│ type to filter · Enter commits · Esc cancels · │
+└─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 0 · redo 0 · │
+┌─────────────────────────────────────────────────────────────────────│ badges: dark readable cvd-safe protan-safe deu │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default [theme editor]  default  120x40  line 75/109  follow  truecolor  focus:editor
+ default [theme editor]  default  120x40  line 77/110  follow  truecolor  focus:editor

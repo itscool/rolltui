@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme F4   default           │
-│ │ block        │             │ header over  │ │ keys F7    default           │
-│ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
-│ │ (blocks →    │             │              │ │ size       80x24             │
-│ │ styled       │  ╭ menu › Editors ──────────────────────╮ 173/191           │
-│ │ wrapped      │  │ ◂ Back                               │ yes               │
-│ │ lines)       │  │ Theme editor                      F4 │ truecolor         │
-│ │ Theme (roles │ b│ Layout editor                     F6 │ menu              │
-│ │ → styles,    │  │ Keys editor                       F7 │                   │
-│ │ JSON loader, │  │ Menu editor                       F8 │                   │
-│ │ built-ins)   │  │                                      │                   │
-│ └──────────────┴──│                                      │                   │
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ (blocks →   │             │              │ ││ theme F4   default           │
+│ │ styled      │             │              │ ││ keys F7    default           │
+│ │ wrapped     │             │              │ ││ layout F6  default           │
+│ │ lines)      │             │              │ ││ size       80x24             │
+│ │ Theme       │ bu╭ menu › Editors ──────────────────────╮ 180/197           │
+│ │ (roles →    │   │ ◂ Back                               │ yes               │
+│ │ styles,     │   │ Theme editor                      F4 │ truecolor         │
+│ │ JSON        │   │ Layout editor                     F6 │ menu              │
+│ │ loader,     │   │ Keys editor                       F7 │                   │
+│ │ built-ins)  │   │ Menu editor                       F8 │                   │
+│ └─────────────┴───│                                      │                   │
 │                   │                                      │                   │
 │ Here is the functi│                                      │                   │
 │                   │                                      │                   │
 │ ┌ cpp ────────────│                                      │                   │
-│ │ int add(int a, i╰──────────────────────────────────────╯                   │
-│ │   return a + b;                           │ ╻                              │
-│ └───────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 173/191  follow  truecolor  focus:menu
+│ │ int add(int a, i│                                      │                   │
+│ │   return a + b; ╰──────────────────────────────────────╯                   │
+│ └──────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 180/197  follow  truecolor  focus:menu

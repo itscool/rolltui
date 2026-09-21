@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme F4   default           │
-│ │ block        │             │ header over  │ │ keys F7    default           │
-│ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
-│ │ (blocks →    │             │              │ │ size       80x24             │
-│ │ styled      ╭ help ────────────────────────────────────────╮/191           │
-│ │ wrapped     │ input:                                       •               │
-│ │ lines)      │   Enter                   send the line      │ecolor         │
-│ │ Theme (roles│ (always Enter)                               │p              │
-│ │ → styles,   │   Alt-Enter               insert a newline   │               │
-│ │ JSON loader,│   Backspace               erase before the   │               │
-│ │ built-ins)  │ caret (or the selection)                     │               │
-│ └─────────────│   Delete                  erase after the    │               │
-│               │ caret (or the selection)                     │               │
-│ Here is the fu│   Ctrl-W, Alt-Backspace   kill the word      │               │
-│               │ before the caret                 ▼ 100 more  │               │
-│ ┌ cpp ────────╰──────────────────────────────────────────────╯               │
-│ │ int add(int a, int b) {                   │ │                              │
-│ │   return a + b;                           │ ╻                              │
-│ └───────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 173/191  follow  truecolor  focus:help
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ (blocks →   │             │              │ ││ theme F4   default           │
+│ │ styled      │             │              │ ││ keys F7    default           │
+│ │ wrapped     │             │              │ ││ layout F6  default           │
+│ │ lines)      │             │              │ ││ size       80x24             │
+│ │ Theme       ╭ help ────────────────────────────────────────╮/197           │
+│ │ (roles →    │ input:                                       •               │
+│ │ styles,     │   Enter                   send the line      │ecolor         │
+│ │ JSON        │ (always Enter)                               │p              │
+│ │ loader,     │   Alt-Enter               insert a newline   │               │
+│ │ built-ins)  │   Backspace               erase before the   │               │
+│ └─────────────│ caret (or the selection)                     │               │
+│               │   Delete                  erase after the    │               │
+│ Here is the fu│ caret (or the selection)                     │               │
+│               │   Ctrl-W, Alt-Backspace   kill the word      │               │
+│ ┌ cpp ────────│ before the caret                 ▼ 100 more  │               │
+│ │ int add(int ╰──────────────────────────────────────────────╯               │
+│ │   return a + b;                          │ ╻│                              │
+│ └──────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 180/197  follow  truecolor  focus:help

@@ -1,40 +1,40 @@
-┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default           │
-│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys F7    default           │
-│ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout F6  default           │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size       120x40            │
-│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ line       75/109            │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow     yes               │
-│ │                                  │             │ block tree is the API            │ │ depth      truecolor         │
-│ │ Terminal I/O (raw, alt screen,   │ build       │ the one compiled unit; half      │ │ focus      help              │
-│ │ size, SIGWINCH, bracketed paste, │             │ exists in LineReader/StatusPane  │ │                              │
-│ │ mouse mode)                      │             │                                  │ │                              │
-│ │ Key + mouse decoding             │ build       │ single header, pure bytes →      │ │                              │
-│ │                                  │             │ Event, table-tested              │ │                              │
-│ │ Cell grid + frame di╭ help ────────────────────────────────────────────────────────────────╮                       │
-│ │ colour downgrade    │ input:                                                               •                       │
-│ │ Wrap engine         │   Enter                   send the line (always Enter)               │                       │
-│ │                     │   Alt-Enter               insert a newline                           │                       │
-│ │ Windows, layers, pla│   Backspace               erase before the caret (or the selection)  │                       │
-│ │ abs/rel per axis), f│   Delete                  erase after the caret (or the selection)   │                       │
-│ │                     │   Ctrl-W, Alt-Backspace   kill the word before the caret             │                       │
-│ │ Menu widget (hierarc│   Alt-D, Ctrl-Delete      kill the word after the caret              │                       │
-│ │ filterable) + list/t│   Ctrl-U                  kill to the start of the line              │                       │
-│ │ Layout files (JSON: │   Ctrl-K                  kill to the end of the line                │                       │
-│ │ placements + content│   Left                    move one grapheme left          ▼ 67 more  │                       │
-│ │ Markdown block rende╰──────────────────────────────────────────────────────────────────────╯                       │
-│ │ → styled wrapped lines)          │             │                                  │ ╻                              │
-│ │ Theme (roles → styles, JSON      │ build       │ single header                    │ ┃                              │
-│ │ loader, built-ins)               │             │                                  │ ┃                              │
-│ └──────────────────────────────────┴─────────────┴──────────────────────────────────┘ ┃                              │
-│                                                                                       ┃                              │
-│ Here is the function you asked for:                                                   ┃                              │
-│                                                                                       ┃                              │
-│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ ┃                              │
-│ │ int add(int a, int b) {                                                           │ ┃                              │
-│ │   return a + b;                                                                   │ ┃                              │
-│ └───────────────────────────────────────────────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────────────────────────────────────────────┤                              │
-│ > type here                                                                           │                              │
-└───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default  default  120x40  line 75/109  follow  truecolor  focus:help
+┌ transcript ──────────────────────────────────────────────────────────────────────────┐┌ status ──────────────────────┐
+│ │ Extended_Pictographic, InCB)    │             │                                  │ ││ theme F4   default           │
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, validated by the  │ ││ keys F7    default           │
+│ │ grapheme clusters, display      │             │ Unicode conformance suites       │ ││ layout F6  default           │
+│ │ width                           │             │                                  │ ││ size       120x40            │
+│ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Markdown.hpp      │ ││ line       77/110            │
+│ │                                 │             │ block tree is the API            │ ││ follow     yes               │
+│ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled unit; half      │ ││ depth      truecolor         │
+│ │ size, SIGWINCH, bracketed       │             │ exists in LineReader/StatusPane  │ ││ focus      help              │
+│ │ paste, mouse mode)              │             │                                  │ ││                              │
+│ │ Key + mouse decoding            │ build       │ single header, pure bytes →      │ ││                              │
+│ │                                 │             │ Event, table-tested              │ ││                              │
+│ │ Cell grid + frame diff + SGR/   │ build       │ single header, pure, golden-     │ ││                              │
+│ │ colour downgrade    ╭ help ────────────────────────────────────────────────────────────────╮                       │
+│ │ Wrap engine         │ input:                                                               •                       │
+│ │                     │   Enter                   send the line (always Enter)               │                       │
+│ │ Windows, layers, pla│   Alt-Enter               insert a newline                           │                       │
+│ │ abs/rel per axis), f│   Backspace               erase before the caret (or the selection)  │                       │
+│ │                     │   Delete                  erase after the caret (or the selection)   │                       │
+│ │ Menu widget (hierarc│   Ctrl-W, Alt-Backspace   kill the word before the caret             │                       │
+│ │ filterable) + list/t│   Alt-D, Ctrl-Delete      kill the word after the caret              │                       │
+│ │ Layout files (JSON: │   Ctrl-U                  kill to the start of the line              │                       │
+│ │ placements + content│   Ctrl-K                  kill to the end of the line                │                       │
+│ │ Markdown block rende│   Left                    move one grapheme left          ▼ 67 more  │                       │
+│ │ → styled wrapped lin╰──────────────────────────────────────────────────────────────────────╯                       │
+│ │ Theme (roles → styles, JSON     │ build       │ single header                    │ ┃│                              │
+│ │ loader, built-ins)              │             │                                  │ ┃│                              │
+│ └─────────────────────────────────┴─────────────┴──────────────────────────────────┘ ┃│                              │
+│                                                                                      ┃│                              │
+│ Here is the function you asked for:                                                  ┃│                              │
+│                                                                                      ┃│                              │
+│ ┌ cpp ─────────────────────────────────────────────────────────────────────────────┐ ┃│                              │
+│ │ int add(int a, int b) {                                                          │ ┃│                              │
+│ │   return a + b;                                                                  │ ┃│                              │
+│ └──────────────────────────────────────────────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────────────────────────────────────────────┐│                              │
+│ > type here                                                                          ││                              │
+└──────────────────────────────────────────────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  120x40  line 77/110  follow  truecolor  focus:help

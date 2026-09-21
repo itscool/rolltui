@@ -1,24 +1,24 @@
 ┌ transcript ───────╭ find ────────────────────────────────────────────────────╮───────────────────┐
-│ │ filterable) + li│ > zzzznope                                               │ default           │
-│ │ text widgets    ╰──────────────────────────────────────────────────────────╯ default           │
-│ │ Layout files (JSON:    │ build       │ reuses the theme       │ │ layout F6  default           │
-│ │ windows + placements + │             │ loader's hand parser;  │ │ size       100x24            │
-│ │ content slots)         │             │ hot-reloaded           │ │ line       114/132           │
-│ │ Markdown block         │ build       │ single header over     │ │ follow     yes               │
-│ │ renderer (blocks →     │             │ md4c + wrap            │ │ depth      truecolor         │
-│ │ styled wrapped lines)  │             │                        │ │ focus      find              │
-│ │ Theme (roles → styles, │ build       │ single header          │ │                              │
-│ │ JSON loader, built-    │             │                        │ │                              │
-│ │ ins)                   │             │                        │ │                              │
-│ └────────────────────────┴─────────────┴────────────────────────┘ │                              │
-│                                                                   │                              │
-│ Here is the function you asked for:                               │                              │
-│                                                                   │                              │
-│ ┌ cpp ──────────────────────────────────────────────────────────┐ │                              │
-│ │ int add(int a, int b) {                                       │ ╻                              │
-│ │   return a + b;                                               │ ┃                              │
-│ └───────────────────────────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────────────────────────┤                              │
-│ > type here                                                       │                              │
-└───────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default  default  100x24  line 114/132  follow  truecolor  focus:find  find 0/0
+│ │ text widgets    │ > zzzznope                                               │ default           │
+│ │ Layout files (JS╰──────────────────────────────────────────────────────────╯ default           │
+│ │ windows + placements  │             │ loader's hand parser;  │ ││ layout F6  default           │
+│ │ + content slots)      │             │ hot-reloaded           │ ││ size       100x24            │
+│ │ Markdown block        │ build       │ single header over     │ ││ line       117/134           │
+│ │ renderer (blocks →    │             │ md4c + wrap            │ ││ follow     yes               │
+│ │ styled wrapped lines) │             │                        │ ││ depth      truecolor         │
+│ │ Theme (roles →        │ build       │ single header          │ ││ focus      find              │
+│ │ styles, JSON loader,  │             │                        │ ││                              │
+│ │ built-ins)            │             │                        │ ││                              │
+│ └───────────────────────┴─────────────┴────────────────────────┘ ││                              │
+│                                                                  ││                              │
+│ Here is the function you asked for:                              ││                              │
+│                                                                  ││                              │
+│ ┌ cpp ─────────────────────────────────────────────────────────┐ ││                              │
+│ │ int add(int a, int b) {                                      │ ││                              │
+│ │   return a + b;                                              │ ╻│                              │
+│ └──────────────────────────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────────────────────────┐│                              │
+│ > type here                                                      ││                              │
+└──────────────────────────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  100x24  line 117/134  follow  truecolor  focus:find  find 0/0

@@ -1,24 +1,24 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ │ Markdown     │ build       │ single       │ │ theme F4   default           │
-│ │ block        │             │ header over  │ │ keys F7    default           │
-│ │ renderer     │             │ md4c + wrap  │ │ layout F6  default           │
-│ │ (blocks →    │             │              │ │ size       80x24             │
-│ │ styled       │  ╭ menu › Appearance › Theme ───────────╮ 173/191           │
-│ │ wrapped      │  │ ◂ Back                               │ yes               │
-│ │ lines)       │  │ • default         colour-vision safe │ truecolor         │
-│ │ Theme (roles │ b│ beacon                 high contrast │ menu              │
-│ │ → styles,    │  │ catppuccin                           │                   │
-│ │ JSON loader, │  │ contrast               high contrast │                   │
-│ │ built-ins)   │  │ ember             colour-vision safe │                   │
-│ └──────────────┴──│ harbour           colour-vision safe │                   │
-│                   │ ink               colour-vision safe │                   │
-│ Here is the functi│ mono                      monochrome │                   │
-│                   │ orchard           colour-vision safe │                   │
-│ ┌ cpp ────────────│ solarized               low contrast │                   │
-│ │ int add(int a, i╰──────────────────────────────────────╯                   │
-│ │   return a + b;                           │ ╻                              │
-│ └───────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 173/191  follow  truecolor  focus:menu
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ │ (blocks →   │             │              │ ││ theme F4   default           │
+│ │ styled      │             │              │ ││ keys F7    default           │
+│ │ wrapped     │             │              │ ││ layout F6  default           │
+│ │ lines)      │             │              │ ││ size       80x24             │
+│ │ Theme       │ bu╭ menu › Appearance › Theme ───────────╮ 180/197           │
+│ │ (roles →    │   │ ◂ Back                               │ yes               │
+│ │ styles,     │   │ • default         colour-vision safe │ truecolor         │
+│ │ JSON        │   │ beacon                 high contrast │ menu              │
+│ │ loader,     │   │ catppuccin                           │                   │
+│ │ built-ins)  │   │ contrast               high contrast │                   │
+│ └─────────────┴───│ ember             colour-vision safe │                   │
+│                   │ harbour           colour-vision safe │                   │
+│ Here is the functi│ ink               colour-vision safe │                   │
+│                   │ mono                      monochrome │                   │
+│ ┌ cpp ────────────│ orchard           colour-vision safe │                   │
+│ │ int add(int a, i│ solarized               low contrast │                   │
+│ │   return a + b; ╰──────────────────────────────────────╯                   │
+│ └──────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 180/197  follow  truecolor  focus:menu

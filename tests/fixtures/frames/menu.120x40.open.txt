@@ -1,16 +1,15 @@
-┌ transcript ───────────────────────────────────────────────────────────────────────────┬ status ──────────────────────┐
-│ │ class, East-Asian width,         │             │ +, not Python) → rolltui/        │ │ theme F4   default           │
-│ │ grapheme property,               │             │ unicode_tables.hpp, checked in   │ │ keys F7    default           │
-│ │ Extended_Pictographic, InCB)     │             │                                  │ │ layout F6  default           │
-│ │ UAX #14 line breaking, UAX #29   │ build       │ single header, validated by the  │ │ size       120x40            │
-│ │ grapheme clusters, display width │             │ Unicode conformance suites       │ │ line       75/109            │
-│ │ CommonMark + GFM parsing         │ vendor md4c │ two files; our Markdown.hpp      │ │ follow     yes               │
-│ │                                  │             │ block tree is the API            │ │ depth      truecolor         │
-│ │ Terminal I/O (raw, alt scr╭ menu ────────────────────────────────────────────────────╮focus      menu              │
-│ │ size, SIGWINCH, bracketed │ Editors                                                ▸ │                             │
-│ │ mouse mode)               │ Appearance                                             ▸ │                             │
-│ │ Key + mouse decoding      │ Commands                                               ▸ │                             │
-│ │                           │                                                          │                             │
+┌ transcript ──────────────────────────────────────────────────────────────────────────┐┌ status ──────────────────────┐
+│ │ Extended_Pictographic, InCB)    │             │                                  │ ││ theme F4   default           │
+│ │ UAX #14 line breaking, UAX #29  │ build       │ single header, validated by the  │ ││ keys F7    default           │
+│ │ grapheme clusters, display      │             │ Unicode conformance suites       │ ││ layout F6  default           │
+│ │ width                           │             │                                  │ ││ size       120x40            │
+│ │ CommonMark + GFM parsing        │ vendor md4c │ two files; our Markdown.hpp      │ ││ line       77/110            │
+│ │                                 │             │ block tree is the API            │ ││ follow     yes               │
+│ │ Terminal I/O (raw, alt screen,  │ build       │ the one compiled unit; half      │ ││ depth      truecolor         │
+│ │ size, SIGWINCH, bracketed ╭ menu ────────────────────────────────────────────────────╮focus      menu              │
+│ │ paste, mouse mode)        │ Editors                                                ▸ │                             │
+│ │ Key + mouse decoding      │ Appearance                                             ▸ │                             │
+│ │                           │ Commands                                               ▸ │                             │
 │ │ Cell grid + frame diff + S│                                                          │                             │
 │ │ colour downgrade          │                                                          │                             │
 │ │ Wrap engine               │                                                          │                             │
@@ -28,13 +27,14 @@
 │ │ loader, built-ins)        │                                                          │                             │
 │ └───────────────────────────│                                                          │                             │
 │                             │                                                          │                             │
-│ Here is the function you ask╰──────────────────────────────────────────────────────────╯                             │
-│                                                                                       ┃                              │
-│ ┌ cpp ──────────────────────────────────────────────────────────────────────────────┐ ┃                              │
-│ │ int add(int a, int b) {                                                           │ ┃                              │
-│ │   return a + b;                                                                   │ ┃                              │
-│ └───────────────────────────────────────────────────────────────────────────────────┘ ╹                              │
-├───────────────────────────────────────────────────────────────────────────────────────┤                              │
-│ > type here                                                                           │                              │
-└───────────────────────────────────────────────────────────────────────────────────────┴──────────────────────────────┘
- default  default  120x40  line 75/109  follow  truecolor  focus:menu
+│ Here is the function you ask│                                                          │                             │
+│                             ╰──────────────────────────────────────────────────────────╯                             │
+│ ┌ cpp ─────────────────────────────────────────────────────────────────────────────┐ ┃│                              │
+│ │ int add(int a, int b) {                                                          │ ┃│                              │
+│ │   return a + b;                                                                  │ ┃│                              │
+│ └──────────────────────────────────────────────────────────────────────────────────┘ ╹│                              │
+└──────────────────────────────────────────────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────────────────────────────────────────────┐│                              │
+│ > type here                                                                          ││                              │
+└──────────────────────────────────────────────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  120x40  line 77/110  follow  truecolor  focus:menu

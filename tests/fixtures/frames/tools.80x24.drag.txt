@@ -1,26 +1,26 @@
-┌ transcript ───────────────────────────────────┬ status ──────────────────────┐
-│ > read the manager header and tell me what    ╻ theme F4   default           │
-│   stop_heartbeat does                         ┃ keys F7    default           │
-│                                               ┃ layout F6  default           │
-│ ▸ read_file include/ResilientModelManager.hpp ┃ size       80x24             │
-│                                               ┃ line       1/27              │
-│ stop_heartbeat cancels the heartbeat timer    ┃ follow     no                │
-│ and drains its queue: the dispatch_sync after ┃ depth      truecolor         │
-│ the cancel is what makes shutdown race-free,  ┃ focus      transcript        │
-│ because dispatch_source_cancel does not wait  ┃ copied     58 bytes          │
-│ for a handler that is already running.        ┃                              │
-│                                               ┃                              │
-│ Without the drain a poll() blocked on the     ┃                              │
-│ state lock could resume after release()       ╹                              │
-│ decided it was the last client, re-register   │                              │
-│ itself and respawn the server release just    │                              │
-│ killed — a permanent orphan. The rule is      │                              │
-│ recorded in CLAUDE.md (https://example.com/   │                              │
-│ roll/CLAUDE.md#hard-constraints) under hard   │                              │
-│ constraints.                        ▼ 8 more  │                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 1/27  truecolor  focus:transcript  copied 58B
+┌ transcript ──────────────────────────────────┐┌ status ──────────────────────┐
+│ > read the manager header and tell me what   ╻│ theme F4   default           │
+│   stop_heartbeat does                        ┃│ keys F7    default           │
+│                                              ┃│ layout F6  default           │
+│ ▸ read_file include/ResilientModelManager.hp ┃│ size       80x24             │
+│                                              ┃│ line       1/28              │
+│ stop_heartbeat cancels the heartbeat timer   ┃│ follow     no                │
+│ and drains its queue: the dispatch_sync      ┃│ depth      truecolor         │
+│ after the cancel is what makes shutdown      ┃│ focus      transcript        │
+│ race-free, because dispatch_source_cancel    ┃│ copied     58 bytes          │
+│ does not wait for a handler that is already  ┃│                              │
+│ running.                                     ┃│                              │
+│                                              ╹│                              │
+│ Without the drain a poll() blocked on the    ││                              │
+│ state lock could resume after release()      ││                              │
+│ decided it was the last client, re-register  ││                              │
+│ itself and respawn the server release just   ││                              │
+│ killed — a permanent orphan. The rule is     ││                              │
+│ recorded in CLAUDE.md (https://exa▼ 10 more  ││                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 1/28  truecolor  focus:transcript  copied 58B
 --- copied ---
 read the manager header and tell me what stop_heartbeat do

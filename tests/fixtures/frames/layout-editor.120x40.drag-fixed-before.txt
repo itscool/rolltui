@@ -1,40 +1,40 @@
-┌ status ───────────┬ transcript ─────────────────────────────────────┌ layout editor • status ────────────────────────┐
-│ theme F4 default  │ │ component                             │ decisi│ (row) row                                      │
-│ keys F7  default  │ ├───────────────────────────────────────┼───────│   status rows:status                           │
-│ layout F6panel-   │ │ Unicode tables (line-break class,     │ genera│   (column) column                              │
-│          left     │ │ East-Asian width, grapheme property,  │       │     transcript transcript:session              │
-│          (modified│ │ Extended_Pictographic, InCB)          │       │     input input:prompt                         │
-│          )        │ │ UAX #14 line breaking, UAX #29        │ build │ popup find                                     │
-│ size     120x40   │ │ grapheme clusters, display width      │       │   find input:find                              │
-│ line     69/103   │ │ CommonMark + GFM parsing              │ vendor│ popup help                                     │
-│ follow   yes      │ │                                       │       │   help help                                    │
-│ depth    truecolor│ │ Terminal I/O (raw, alt screen, size,  │ build │ popup approval                                 │
-│ focus    editor   │ │ SIGWINCH, bracketed paste, mouse      │       │   approval approval                            │
-│                   │ │ mode)                                 │       │ popup menu                                     │
-│                   │ │ Key + mouse decoding                  │ build │ [✓] Visible                                    │
-│                   │ │                                       │       │ Border                                single ▸ │
-│                   │ │ Cell grid + frame diff + SGR/colour   │ build │ Background role             panel_background ▸ │
-│                   │ │ downgrade                             │       │ Node id: status                                │
-│                   │ │ Wrap engine                           │ build │ Title: status                                  │
-│                   │ │ Windows, layers, placement (Dim abs/  │ build │ Widget kind: rows                              │
-│                   │ │ rel per axis), focus                  │       │ Source: status                                 │
-│                   │ │ Menu widget (hierarchical,            │ build │ Menu file:                                     │
-│                   │ │ filterable) + list/text widgets       │       │ Size (Alt+arrows nudge): 21                    │
-│                   │ │ Layout files (JSON: windows +         │ build │ [ ] Focusable                                  │
-│                   │ │ placements + content slots)           │       │ Tree — split, swap, delete                   ▸ │
-│                   │ │ Markdown block renderer (blocks →     │ build │ This screen — sizes, focus, popups, actions  ▸ │
-│                   │ │ styled wrapped lines)                 │       │ Layout file — new, load, save                ▸ │
-│                   │ │ Theme (roles → styles, JSON loader,   │ build │ Undo                                    Ctrl-Z │
-│                   │ │ built-ins)                            │       │ Redo                                    Ctrl-Y │
-│                   │ └───────────────────────────────────────┴───────│                                                │
-│                   │                                                 │                                                │
-│                   │ Here is the function you asked for:             │                                                │
-│                   │                                                 │                                                │
-│                   │ ┌ cpp ──────────────────────────────────────────│                                                │
-│                   │ │ int add(int a, int b) {                       │                                                │
-│                   │ │   return a + b;                               │ selected: status  size 21  border single  rows │
-│                   │ └───────────────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
-│                   ├─────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
-│                   │ > type here                                     │                                                │
-└───────────────────┴─────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default [layout editor]  panel-left (modified)  120x40  line 69/103  follow  truecolor  focus:editor
+┌ status ───────────┐┌ transcript ────────────────────────────────────┌ layout editor • status ────────────────────────┐
+│ theme F4 default  ││ ├───────────────────────────────────────┼──────│ (row) row                                      │
+│ keys F7  default  ││ │ Unicode tables (line-break class,     │ gener│   status rows:status                           │
+│ layout F6panel-   ││ │ East-Asian width, grapheme property,  │      │   (column) column                              │
+│          left     ││ │ Extended_Pictographic, InCB)          │      │     transcript transcript:session              │
+│          (modified││ │ UAX #14 line breaking, UAX #29        │ build│     input input:prompt                         │
+│          )        ││ │ grapheme clusters, display width      │      │ popup find                                     │
+│ size     120x40   ││ │ CommonMark + GFM parsing              │ vendo│   find input:find                              │
+│ line     70/103   ││ │                                       │      │ popup help                                     │
+│ follow   yes      ││ │ Terminal I/O (raw, alt screen, size,  │ build│   help help                                    │
+│ depth    truecolor││ │ SIGWINCH, bracketed paste, mouse      │      │ popup approval                                 │
+│ focus    editor   ││ │ mode)                                 │      │   approval approval                            │
+│                   ││ │ Key + mouse decoding                  │ build│ popup menu                                     │
+│                   ││ │                                       │      │ [✓] Visible                                    │
+│                   ││ │ Cell grid + frame diff + SGR/colour   │ build│ Border                                single ▸ │
+│                   ││ │ downgrade                             │      │ Background role             panel_background ▸ │
+│                   ││ │ Wrap engine                           │ build│ Node id: status                                │
+│                   ││ │ Windows, layers, placement (Dim abs/  │ build│ Title: status                                  │
+│                   ││ │ rel per axis), focus                  │      │ Widget kind: rows                              │
+│                   ││ │ Menu widget (hierarchical,            │ build│ Source: status                                 │
+│                   ││ │ filterable) + list/text widgets       │      │ Menu file:                                     │
+│                   ││ │ Layout files (JSON: windows +         │ build│ Size (Alt+arrows nudge): 21                    │
+│                   ││ │ placements + content slots)           │      │ [ ] Focusable                                  │
+│                   ││ │ Markdown block renderer (blocks →     │ build│ Tree — split, swap, delete                   ▸ │
+│                   ││ │ styled wrapped lines)                 │      │ This screen — sizes, focus, popups, actions  ▸ │
+│                   ││ │ Theme (roles → styles, JSON loader,   │ build│ Layout file — new, load, save                ▸ │
+│                   ││ │ built-ins)                            │      │ Undo                                    Ctrl-Z │
+│                   ││ └───────────────────────────────────────┴──────│ Redo                                    Ctrl-Y │
+│                   ││                                                │                                                │
+│                   ││ Here is the function you asked for:            │                                                │
+│                   ││                                                │                                                │
+│                   ││ ┌ cpp ─────────────────────────────────────────│                                                │
+│                   ││ │ int add(int a, int b) {                      │                                                │
+│                   ││ │   return a + b;                              │                                                │
+│                   ││ └──────────────────────────────────────────────│ selected: status  size 21  border single  rows │
+│                   │└────────────────────────────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
+│                   │┌────────────────────────────────────────────────│ loaded panel-left · undo 1 · redo 0            │
+│                   ││ > type here                                    │                                                │
+└───────────────────┘└────────────────────────────────────────────────└────────────────────────────────────────────────┘
+ default [layout editor]  panel-left (modified)  120x40  line 70/103  follow  truecolor  focus:editor

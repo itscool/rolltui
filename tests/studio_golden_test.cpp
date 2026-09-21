@@ -635,8 +635,8 @@ int main(int argc, char** argv) {
               auto_copy.find("\nread_file include") != std::string::npos && auto_copy.find("stop_heartbeat cancels") != std::string::npos,
           "a drag held past the bottom edge auto-scrolls and copies across entries (a folded block contributes its summary) [" +
               auto_copy.substr(0, 120) + "...]");
-    check(autoscroll_out.find("line 1/27") == std::string::npos && autoscroll_out.find("line 9/27  follow") != std::string::npos,
-          "two ticks past the bottom edge reach the end (line 9/27) and follow re-engages there");
+    check(autoscroll_out.find("line 1/28") == std::string::npos && autoscroll_out.find("line 11/28  follow") != std::string::npos,
+          "two ticks past the bottom edge reach the end (line 11/28) and follow re-engages there");
     // ---- milestone 10: the input widget, asserted beyond the bytes ----
     auto row = [](const std::string& frame, int y) {
       std::istringstream in(frame);
@@ -646,10 +646,10 @@ int main(int argc, char** argv) {
     };
     check(row(typed, 21).rfind("\xE2\x94\x82 > hello world", 0) == 0, "typed text shows after the prompt on the input row, one cell in [" + row(typed, 21) + "]");
     check(row(multiline, 20).rfind("\xE2\x94\x82 > one", 0) == 0 && row(multiline, 21).rfind("\xE2\x94\x82   two", 0) == 0 &&
-              row(multiline, 19).rfind("\xE2\x94\x9C", 0) == 0,
-          "Alt-Enter makes a second row: the window grew upward by one and the transcript's bottom border moved up");
-    check(row(wrapped, 20).find("over the lazy dog") != std::string::npos && row(wrapped, 21).rfind("\xE2\x94\x82    and keeps running", 0) == 0,
-          "a long line cell-wraps at the window's width (43 text cells: the space after 'dog' starts the second row, under the hanging indent)");
+              row(multiline, 19).rfind("\xE2\x94\x8C", 0) == 0 && row(multiline, 18).rfind("\xE2\x94\x94", 0) == 0,
+          "Alt-Enter makes a second row: the input grew upward by one, its own top border a row higher, and the transcript's bottom border moved up with it");
+    check(row(wrapped, 20).find("over the lazy do") != std::string::npos && row(wrapped, 21).rfind("\xE2\x94\x82   g and keeps running", 0) == 0,
+          "a long line cell-wraps at the window's width (42 text cells: 'dog' loses its g to the second row, under the hanging indent)");
     check(row(stacked_ml, 21) == "> one" && row(stacked_ml, 22) == "  two", "the stacked layout's borderless input grows the same way");
     check(select_all_copy == "hello world", "Alt-Shift-A then Alt-C copies the whole input [" + select_all_copy + "]");
     check(in_drag_copy == "hello", "a drag inside the input from h to o copies hello [" + in_drag_copy + "]");
@@ -662,7 +662,7 @@ int main(int argc, char** argv) {
           "Ctrl-Left, Shift-End, typing over the selection, Home, Delete, typing: \"Jello there\" [" + row(edited, 21) + "]");
     check(row(pasted, 20).rfind("\xE2\x94\x82 > line one", 0) == 0 && row(pasted, 21).rfind("\xE2\x94\x82   line two", 0) == 0,
           "a bracketed paste with a newline is inserted literally as two rows");
-    check(row(capped, 12).rfind("\xE2\x94\x9C", 0) == 0 && row(capped, 13).rfind("\xE2\x94\x82   l6", 0) == 0 &&
+    check(row(capped, 12).rfind("\xE2\x94\x8C", 0) == 0 && row(capped, 11).rfind("\xE2\x94\x94", 0) == 0 && row(capped, 13).rfind("\xE2\x94\x82   l6", 0) == 0 &&
               row(capped, 21).rfind("\xE2\x94\x82   l14", 0) == 0 && row(capped, 3).find("\xE2\x94\x82") == 0,
           "fourteen pasted lines: the input caps at half its 23-row parent (11 outer rows, 9 of text, top border on row 12), scrolled so l6..l14 show with the caret's line last; the transcript keeps the top half");
     // Degenerate sizes: every case above already asserted "ran, h rows, each within w
@@ -793,8 +793,8 @@ int main(int argc, char** argv) {
           "…and the match count and position are VISIBLE, rendered by the host from the widget's numbers");
     check(find_open.find("> wrap") != std::string::npos, "…the query is the bar's own text, typed into an ordinary input");
     // The view MOVED to a match that was not on screen — the milestone's "scrolled to".
-    check(!bottom.empty() && find_open != bottom && find_open.find("line 149/191") != std::string::npos,
-          "…and the transcript scrolled to the match (line 149, where the unsearched view sits at the bottom)");
+    check(!bottom.empty() && find_open != bottom && find_open.find("line 152/197") != std::string::npos,
+          "…and the transcript scrolled to the match (line 152, where the unsearched view sits at the bottom)");
     check(find_next.find("find 4/4") != std::string::npos,
           "Enter in the find bar is next-match, twice: 2/4 → 4/4 (its Submit, no routing rule of its own)");
     // Enter must NOT clear the bar: a find bar's text is a standing query, not a message
@@ -864,8 +864,8 @@ int main(int argc, char** argv) {
     // ---- milestone 16: the layout editor, asserted beyond the bytes ----
     check(le_open.find("\xE2\x94\x8C layout editor ") != std::string::npos && le_open.find("layout editor \xE2\x80\xA2 transcript") != std::string::npos && le_open.find("focus:editor") != std::string::npos,
           "F6 opens the layout editor with the transcript selected");
-    check(le_split.find("transcript-2") != std::string::npos && le_split.find("\xE2\x94\xAC") != std::string::npos && le_split.find("selected: transcript") != std::string::npos,
-          "split into a row: a second transcript pane appears beside the first (a ┬ junction on the top edge)");
+    check(le_split.find("transcript-2") != std::string::npos && le_split.find("\xE2\x94\x90\xE2\x94\x8C transcript-2 ") != std::string::npos && le_split.find("selected: transcript") != std::string::npos,
+          "split into a row: a second transcript pane appears beside the first, a box of its own (┐┌ side by side on the top edge)");
     check(!le_undo.empty() && le_undo.find("transcript-2") == std::string::npos && le_undo.find("(modified)") == std::string::npos && le_undo.find("redo 1") != std::string::npos,
           "Ctrl-Z after the split removes the second pane, the working copy reads unmodified again (the undo was written back), redo 1");
     check(le_preview.find("\xE2\x95\xAD transcript") != std::string::npos && le_preview.find("previewing") != std::string::npos,
@@ -886,7 +886,7 @@ int main(int argc, char** argv) {
       const std::string relaunch = std::string("'") + ROLLTUI_STUDIO_BIN + "' '" + std::string(ROLLTUI_FIXTURE_DIR) + "/session/demo.md' --frame 120x40 --presets '" +
                                    scratch + "/p4' --layout '" + scratch + "/p/layouts/two.json'";
       const std::string again = run(relaunch, rc);
-      check(rc == 0 && again.find("\xE2\x94\x8C chat ") != std::string::npos && again.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && again.find("[layout editor]") == std::string::npos,
+      check(rc == 0 && again.find("\xE2\x94\x8C chat ") != std::string::npos && again.find("\xE2\x94\x90\xE2\x94\x8C transcript-2 ") != std::string::npos && again.find("[layout editor]") == std::string::npos,
             "a relaunch with --layout <that file> shows the two panes ('chat' and 'transcript-2') with no editor open (Done-when of m16)");
     }
     // ---- the design editor ----
@@ -896,12 +896,10 @@ int main(int argc, char** argv) {
     // a chord pair only a `help` widget renders (from the LIVE bindings), so finding it
     // in the second pane is the widget itself, not a title the editor wrote — and it
     // survives the pane being narrow enough to wrap the descriptions.
-    // The seam is `┬` and not `┌`: the layout editor's selection outline used to
-    // redraw the selected window's border UNJOINED and win, which broke the join it sits
-    // on. This assertion was pinned to that broken glyph.
+    // Two panes are two boxes side by side: `┐┌` where they meet, each drawn by its own window.
     // "Widget kind: help" rather than "help ▸" now — the field is an input the
     // author types into, not a closed list they step through.
-    check(le_widget.find("\xE2\x94\xAC transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
+    check(le_widget.find("\xE2\x94\x90\xE2\x94\x8C transcript-2 ") != std::string::npos && le_widget.find("Ctrl-W, Alt-Backspace") != std::string::npos &&
               le_widget.find("Widget kind: help") != std::string::npos && le_widget.find("Source:  ") != std::string::npos,
           "a `help` widget typed into the kind field alone draws in the next frame, with the Source field emptied and disabled");
     check(le_actions.find("app.zoom") != std::string::npos && le_actions.find("add an action (name)") != std::string::npos,

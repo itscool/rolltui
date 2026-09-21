@@ -1,24 +1,24 @@
 ┌ transcript ───╭ find ────────────────────────────────────────╮───────────────┐
 │ │ Wrap engine │ > wrap                                       │ault           │
 │ │             ╰──────────────────────────────────────────────╯ault           │
-│ │              │             │ the Unicode  │ │ layout F6  default           │
-│ │              │             │ header       │ │ size       80x24             │
-│ │ Windows,     │ build       │ single       │ │ line       149/191           │
-│ │ layers,      │             │ header;      │ │ follow     no                │
-│ │ placement    │             │ resolve(Plac │ │ depth      truecolor         │
-│ │ (Dim abs/rel │             │ ement,       │ │ focus      find              │
-│ │ per axis),   │             │ parent) →    │ │                              │
-│ │ focus        │             │ Rect is a    │ │                              │
-│ │              │             │ pure         │ │                              │
-│ │              │             │ function     │ │                              │
-│ │ Menu widget  │ build       │ single       │ │                              │
-│ │ (hierarchica │             │ header each; │ │                              │
-│ │ l,           │             │ the widget   │ │                              │
-│ │ filterable)  │             │ set is       │ ╻                              │
-│ │ + list/text  │             │ deliberately │ ╹                              │
-│ │ widgets      │             │ this small   │ │                              │
-│ │ Layout files │ build       │ reus▼ 24 more  │                              │
-├───────────────────────────────────────────────┤                              │
-│ > type here                                   │                              │
-└───────────────────────────────────────────────┴──────────────────────────────┘
- default  default  80x24  line 149/191  truecolor  focus:find  find 2/4
+│ │             │             │ the Unicode  │ ││ layout F6  default           │
+│ │             │             │ header       │ ││ size       80x24             │
+│ │ Windows,    │ build       │ single       │ ││ line       152/197           │
+│ │ layers,     │             │ header;      │ ││ follow     no                │
+│ │ placement   │             │ resolve(Plac │ ││ depth      truecolor         │
+│ │ (Dim abs/   │             │ ement,       │ ││ focus      find              │
+│ │ rel per     │             │ parent) →    │ ││                              │
+│ │ axis),      │             │ Rect is a    │ ││                              │
+│ │ focus       │             │ pure         │ ││                              │
+│ │             │             │ function     │ ││                              │
+│ │ Menu widget │ build       │ single       │ ││                              │
+│ │ (hierarchic │             │ header each; │ ╻│                              │
+│ │ al,         │             │ the widget   │ ╹│                              │
+│ │ filterable) │             │ set is       │ ││                              │
+│ │ + list/text │             │ deliberately │ ││                              │
+│ │ widgets     │             │ this▼ 28 more  ││                              │
+└──────────────────────────────────────────────┘│                              │
+┌──────────────────────────────────────────────┐│                              │
+│ > type here                                  ││                              │
+└──────────────────────────────────────────────┘└──────────────────────────────┘
+ default  default  80x24  line 152/197  truecolor  focus:find  find 2/4

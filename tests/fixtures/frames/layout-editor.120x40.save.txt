@@ -1,40 +1,40 @@
-┌ chat ─────────────────────────────────────┬ transcript-2 ───────────┌ layout editor • transcript › Layout file — new,┐
-│ │ widget     │            │ header      │ │ │ widget     │          │ (row) row                                      │
-│ │ (hierarchi │            │ each; the   │ │ │ (hierarchi │          │   (column) column                              │
-│ │ cal,       │            │ widget set  │ │ │ cal,       │          │     transcript-row row                         │
-│ │ filterable │            │ is          │ │ │ filterable │          │       transcript transcript:session            │
-│ │ ) + list/  │            │ deliberatel │ │ │ ) + list/  │          │       transcript-2 transcript:session          │
-│ │ text       │            │ y this      │ │ │ text       │          │     input input:prompt                         │
-│ │ widgets    │            │ small       │ │ │ widgets    │          │   status rows:status                           │
-│ │ Layout     │ build      │ reuses the  │ │ │ Layout     │ build    │ popup find                                     │
-│ │ files      │            │ theme       │ │ │ files      │          │   find input:find                              │
-│ │ (JSON:     │            │ loader's    │ │ │ (JSON:     │          │ popup help                                     │
-│ │ windows +  │            │ hand        │ │ │ windows +  │          │   help help                                    │
-│ │ placements │            │ parser;     │ │ │ placements │          │ popup approval                                 │
-│ │ + content  │            │ hot-        │ │ │ + content  │          │ ◂ Back                                         │
-│ │ slots)     │            │ reloaded    │ │ │ slots)     │          │ Save layout as: two                            │
-│ │ Markdown   │ build      │ single      │ │ │ Markdown   │ build    │                                                │
-│ │ block      │            │ header over │ │ │ block      │          │                                                │
-│ │ renderer   │            │ md4c + wrap │ │ │ renderer   │          │                                                │
-│ │ (blocks →  │            │             │ │ │ (blocks →  │          │                                                │
-│ │ styled     │            │             │ │ │ styled     │          │                                                │
-│ │ wrapped    │            │             │ │ │ wrapped    │          │                                                │
-│ │ lines)     │            │             │ │ │ lines)     │          │                                                │
-│ │ Theme      │ build      │ single      │ │ │ Theme      │ build    │                                                │
-│ │ (roles →   │            │ header      │ │ │ (roles →   │          │                                                │
-│ │ styles,    │            │             │ │ │ styles,    │          │                                                │
-│ │ JSON       │            │             │ │ │ JSON       │          │                                                │
-│ │ loader,    │            │             │ │ │ loader,    │          │                                                │
-│ │ built-ins) │            │             │ │ │ built-ins) │          │                                                │
-│ └────────────┴────────────┴─────────────┘ │ └────────────┴──────────│                                                │
-│                                           │                         │                                                │
-│ Here is the function you asked for:       ╻ Here is the function you│                                                │
-│                                           ┃                         │                                                │
-│ ┌ cpp ──────────────────────────────────┐ ┃ ┌ cpp ──────────────────│                                                │
-│ │ int add(int a, int b) {               │ ┃ │ int add(int a, int b) │ /save                                          │
-│ │   return a + b;                       │ ┃ │   return a + b;       │ selected: transcript  size fill  border single │
-│ └───────────────────────────────────────┘ ╹ └───────────────────────│ Tab · click · drag an edge · Alt+arrows        │
-├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
+┌ chat ────────────────────────────────────┐┌ transcript-2 ───────────┌ layout editor • transcript › Layout file — new,┐
+│ │ (hierarchi │            │ each; the  │ ││ │ (hierarchi │          │ (row) row                                      │
+│ │ cal,       │            │ widget set │ ││ │ cal,       │          │   (column) column                              │
+│ │ filterable │            │ is         │ ││ │ filterable │          │     transcript-row row                         │
+│ │ ) + list/  │            │ deliberate │ ││ │ ) + list/  │          │       transcript transcript:session            │
+│ │ text       │            │ ly this    │ ││ │ text       │          │       transcript-2 transcript:session          │
+│ │ widgets    │            │ small      │ ││ │ widgets    │          │     input input:prompt                         │
+│ │ Layout     │ build      │ reuses the │ ││ │ Layout     │ build    │   status rows:status                           │
+│ │ files      │            │ theme      │ ││ │ files      │          │ popup find                                     │
+│ │ (JSON:     │            │ loader's   │ ││ │ (JSON:     │          │   find input:find                              │
+│ │ windows +  │            │ hand       │ ││ │ windows +  │          │ popup help                                     │
+│ │ placements │            │ parser;    │ ││ │ placements │          │   help help                                    │
+│ │ + content  │            │ hot-       │ ││ │ + content  │          │ popup approval                                 │
+│ │ slots)     │            │ reloaded   │ ││ │ slots)     │          │ ◂ Back                                         │
+│ │ Markdown   │ build      │ single     │ ││ │ Markdown   │ build    │ Save layout as: two                            │
+│ │ block      │            │ header     │ ││ │ block      │          │                                                │
+│ │ renderer   │            │ over md4c  │ ││ │ renderer   │          │                                                │
+│ │ (blocks →  │            │ + wrap     │ ││ │ (blocks →  │          │                                                │
+│ │ styled     │            │            │ ││ │ styled     │          │                                                │
+│ │ wrapped    │            │            │ ││ │ wrapped    │          │                                                │
+│ │ lines)     │            │            │ ││ │ lines)     │          │                                                │
+│ │ Theme      │ build      │ single     │ ││ │ Theme      │ build    │                                                │
+│ │ (roles →   │            │ header     │ ││ │ (roles →   │          │                                                │
+│ │ styles,    │            │            │ ││ │ styles,    │          │                                                │
+│ │ JSON       │            │            │ ││ │ JSON       │          │                                                │
+│ │ loader,    │            │            │ ││ │ loader,    │          │                                                │
+│ │ built-ins) │            │            │ ││ │ built-ins) │          │                                                │
+│ └────────────┴────────────┴────────────┘ ││ └────────────┴──────────│                                                │
+│                                          ││                         │                                                │
+│ Here is the function you asked for:      ││ Here is the function you│                                                │
+│                                          ╻│                         │                                                │
+│ ┌ cpp ─────────────────────────────────┐ ┃│ ┌ cpp ──────────────────│                                                │
+│ │ int add(int a, int b) {              │ ┃│ │ int add(int a, int b) │                                                │
+│ │   return a + b;                      │ ┃│ │   return a + b;       │ /save                                          │
+│ └──────────────────────────────────────┘ ╹│ └───────────────────────│ selected: transcript  size fill  border single │
+└──────────────────────────────────────────┘└─────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
+┌─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │ saved layout file /var/folders/13/ydj6w4yj2xs0 │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default [layout editor]  two  120x40  line 181/215  follow  truecolor  focus:editor
+ default [layout editor]  two  120x40  line 183/216  follow  truecolor  focus:editor

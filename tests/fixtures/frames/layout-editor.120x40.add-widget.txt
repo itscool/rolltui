@@ -1,40 +1,40 @@
-┌ transcript ───────────────────────────────┬ transcript-2 ───────────┌ layout editor • transcript-2 ──────────────────┐
-│ │ widget     │            │ header      │ │ input:                  │ (row) row                                      │
-│ │ (hierarchi │            │ each; the   │ │   Enter                 │   (column) column                              │
-│ │ cal,       │            │ widget set  │ │ (always Enter)          │     transcript-row row                         │
-│ │ filterable │            │ is          │ │   Alt-Enter             │       transcript transcript:session            │
-│ │ ) + list/  │            │ deliberatel │ │ newline                 │       transcript-2 help                        │
-│ │ text       │            │ y this      │ │   Backspace             │     input input:prompt                         │
-│ │ widgets    │            │ small       │ │ the caret (or the select│   status rows:status                           │
-│ │ Layout     │ build      │ reuses the  │ │   Delete                │ popup find                                     │
-│ │ files      │            │ theme       │ │ caret (or the selection)│   find input:find                              │
-│ │ (JSON:     │            │ loader's    │ │   Ctrl-W, Alt-Backspace │ popup help                                     │
-│ │ windows +  │            │ hand        │ │ before the caret        │   help help                                    │
-│ │ placements │            │ parser;     │ │   Alt-D, Ctrl-Delete    │ popup approval                                 │
-│ │ + content  │            │ hot-        │ │ after the caret         │ [✓] Visible                                    │
-│ │ slots)     │            │ reloaded    │ │   Ctrl-U                │ Border                                single ▸ │
-│ │ Markdown   │ build      │ single      │ │ start of the line       │ Background role                   background ▸ │
-│ │ block      │            │ header over │ │   Ctrl-K                │ Node id: transcript-2                          │
-│ │ renderer   │            │ md4c + wrap │ │ of the line             │ Title: transcript-2                            │
-│ │ (blocks →  │            │             │ │   Left                  │ Widget kind: help                              │
-│ │ styled     │            │             │ │ grapheme left           │ Source:                                        │
-│ │ wrapped    │            │             │ │   Right                 │ Menu file:                                     │
-│ │ lines)     │            │             │ │ grapheme right          │ Size (Alt+arrows nudge): fill                  │
-│ │ Theme      │ build      │ single      │ │   Ctrl-Left, Alt-Left   │ [✓] Focusable                                  │
-│ │ (roles →   │            │ header      │ │ left                    │ Tree — split, swap, delete                   ▸ │
-│ │ styles,    │            │             │ │   Ctrl-Right, Alt-Right │ This screen — sizes, focus, popups, actions  ▸ │
-│ │ JSON       │            │             │ │ right                   │ Layout file — new, load, save                ▸ │
-│ │ loader,    │            │             │ │   Home, Ctrl-A          │ Undo                                    Ctrl-Z │
-│ │ built-ins) │            │             │ │ line (scrolls when empty│ Redo                                    Ctrl-Y │
-│ └────────────┴────────────┴─────────────┘ │   End, Ctrl-E           │                                                │
-│                                           │ (scrolls when empty)    │                                                │
-│ Here is the function you asked for:       ╻   Up                    │                                                │
-│                                           ┃ the previous history ent│                                                │
-│ ┌ cpp ──────────────────────────────────┐ ┃   Down                  │                                                │
-│ │ int add(int a, int b) {               │ ┃ the next history entry  │                                                │
-│ │   return a + b;                       │ ┃   Shift-Left            │ selected: transcript-2  size fill  border sing │
-│ └───────────────────────────────────────┘ ╹ selection one grapheme l│ Tab · click · drag an edge · Alt+arrows        │
-├───────────────────────────────────────────┴─────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
+┌ transcript ──────────────────────────────┐┌ transcript-2 ───────────┌ layout editor • transcript-2 ──────────────────┐
+│ │ (hierarchi │            │ each; the  │ ││ input:                  │ (row) row                                      │
+│ │ cal,       │            │ widget set │ ││   Enter                 │   (column) column                              │
+│ │ filterable │            │ is         │ ││ (always Enter)          │     transcript-row row                         │
+│ │ ) + list/  │            │ deliberate │ ││   Alt-Enter             │       transcript transcript:session            │
+│ │ text       │            │ ly this    │ ││ newline                 │       transcript-2 help                        │
+│ │ widgets    │            │ small      │ ││   Backspace             │     input input:prompt                         │
+│ │ Layout     │ build      │ reuses the │ ││ the caret (or the select│   status rows:status                           │
+│ │ files      │            │ theme      │ ││   Delete                │ popup find                                     │
+│ │ (JSON:     │            │ loader's   │ ││ the caret (or the select│   find input:find                              │
+│ │ windows +  │            │ hand       │ ││   Ctrl-W, Alt-Backspace │ popup help                                     │
+│ │ placements │            │ parser;    │ ││ before the caret        │   help help                                    │
+│ │ + content  │            │ hot-       │ ││   Alt-D, Ctrl-Delete    │ popup approval                                 │
+│ │ slots)     │            │ reloaded   │ ││ after the caret         │ [✓] Visible                                    │
+│ │ Markdown   │ build      │ single     │ ││   Ctrl-U                │ Border                                single ▸ │
+│ │ block      │            │ header     │ ││ start of the line       │ Background role                   background ▸ │
+│ │ renderer   │            │ over md4c  │ ││   Ctrl-K                │ Node id: transcript-2                          │
+│ │ (blocks →  │            │ + wrap     │ ││ end of the line         │ Title: transcript-2                            │
+│ │ styled     │            │            │ ││   Left                  │ Widget kind: help                              │
+│ │ wrapped    │            │            │ ││ grapheme left           │ Source:                                        │
+│ │ lines)     │            │            │ ││   Right                 │ Menu file:                                     │
+│ │ Theme      │ build      │ single     │ ││ grapheme right          │ Size (Alt+arrows nudge): fill                  │
+│ │ (roles →   │            │ header     │ ││   Ctrl-Left, Alt-Left   │ [✓] Focusable                                  │
+│ │ styles,    │            │            │ ││ left                    │ Tree — split, swap, delete                   ▸ │
+│ │ JSON       │            │            │ ││   Ctrl-Right, Alt-Right │ This screen — sizes, focus, popups, actions  ▸ │
+│ │ loader,    │            │            │ ││ right                   │ Layout file — new, load, save                ▸ │
+│ │ built-ins) │            │            │ ││   Home, Ctrl-A          │ Undo                                    Ctrl-Z │
+│ └────────────┴────────────┴────────────┘ ││ line (scrolls when empty│ Redo                                    Ctrl-Y │
+│                                          ││   End, Ctrl-E           │                                                │
+│ Here is the function you asked for:      ││ line (scrolls when empty│                                                │
+│                                          ╻│   Up                    │                                                │
+│ ┌ cpp ─────────────────────────────────┐ ┃│ the previous history ent│                                                │
+│ │ int add(int a, int b) {              │ ┃│   Down                  │                                                │
+│ │   return a + b;                      │ ┃│ the next history entry  │                                                │
+│ └──────────────────────────────────────┘ ╹│   Shift-Left            │ selected: transcript-2  size fill  border sing │
+└──────────────────────────────────────────┘└─────────────────────────│ Tab · click · drag an edge · Alt+arrows        │
+┌─────────────────────────────────────────────────────────────────────│ Enter commits, Esc cancels · undo 2 · redo 0   │
 │ > type here                                                         │                                                │
 └─────────────────────────────────────────────────────────────────────└────────────────────────────────────────────────┘
- default [layout editor]  default (modified)  120x40  line 181/215  follow  truecolor  focus:editor
+ default [layout editor]  default (modified)  120x40  line 183/216  follow  truecolor  focus:editor
