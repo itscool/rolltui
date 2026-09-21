@@ -58,15 +58,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <fstream>
-#include <map>
-#include <set>
-#include <sstream>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/str.hpp"
 
 extern char** environ;  // for posix_spawnp: not declared by any header on Darwin
 
@@ -79,6 +74,11 @@ extern char** environ;  // for posix_spawnp: not declared by any header on Darwi
 #endif
 
 namespace {
+
+// THE APP'S STRINGS ARE THE LIBRARY'S: a `RolltuiStr` where text is kept, a `StrView` where it is only read, a `StrVec` where there
+// is a list of it. Nothing is converted at a call into the library or back out of one.
+using rolltui::StrVec;
+using rolltui::StrView;
 
 constexpr const char* kPicker = "filepicker";  // the library's column browser, the base window's content
 
@@ -166,51 +166,71 @@ static const TypeGroup kGroups[] = {
     {"media", "mp3 wav m4a flac mp4 mov m4v", "system"},
     {"apps", "app", "system"},  // a bundle: opened as the application it is, or handed to the command line
 };
-static const Program* program_named(const std::string& id) {
+static const Program* program_named(StrView id) {
   for (const Program& p : kPrograms) if (id == p.id) return &p;
   return nullptr;
 }
-static bool word_in(const char* list, const std::string& word) {
-  std::istringstream in(list);
-  std::string w;
-  while (in >> w) if (w == word) return true;
-  return false;
+// The words of a space-separated list, one at a time, until `f` says stop (returns false).
+template <class F>
+static void each_word(StrView list, F&& f) {
+  std::size_t at = 0;
+  while (at < list.size()) {
+    if (list[at] == ' ') { ++at; continue; }
+    std::size_t end = list.find(' ', at);
+    if (end == StrView::npos) end = list.size();
+    if (!f(list.substr(at, end - at))) return;
+    at = end;
+  }
 }
-static const TypeGroup* group_of(const std::string& name) {
+static bool word_in(StrView list, StrView word) {
+  bool found = false;
+  each_word(list, [&](StrView w) { found = w == word; return !found; });
+  return found;
+}
+static const TypeGroup* group_of(StrView name) {
   const std::size_t dot = name.rfind('.');
-  if (dot == std::string::npos || dot + 1 >= name.size()) return nullptr;
-  std::string ext = name.substr(dot + 1);
-  for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  if (dot == StrView::npos || dot + 1 >= name.size()) return nullptr;
+  RolltuiStr ext = rolltui::own(name.substr(dot + 1));
+  for (std::size_t i = 0; i < ext.n; ++i) ext.p[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(ext.p[i])));
   for (const TypeGroup& g : kGroups) if (word_in(g.exts, ext)) return &g;
+  return nullptr;
+}
+static constexpr std::size_t kGroupCount = sizeof kGroups / sizeof kGroups[0];
+static std::size_t group_index(const TypeGroup& g) { return static_cast<std::size_t>(&g - kGroups); }
+static const TypeGroup* group_by_id(StrView id) {
+  for (const TypeGroup& g : kGroups) if (id == g.id) return &g;
   return nullptr;
 }
 // Which known programs are installed, and how: `on_path` for a command, `bundled` for an
 // application bundle under one of `apps_dirs` (colon-separated). Read once; the answer is the
 // menu's contents.
 struct Installed {
-  std::set<std::string> on_path, bundled;
-  bool has(const std::string& id) const { return on_path.count(id) || bundled.count(id); }
+  StrVec on_path, bundled;
+  bool has(StrView id) const { return on_path.contains(id) || bundled.contains(id); }
 };
-static Installed detect_programs(const std::string& apps_dirs) {
+static Installed detect_programs(StrView apps_dirs) {
   Installed out;
-  std::vector<std::string> path, apps;
-  auto split = [](const char* s, std::vector<std::string>& into) {
-    std::string cur;
-    for (const char* p = s ? s : ""; ; ++p) {
-      if (*p == ':' || *p == '\0') { if (!cur.empty()) into.push_back(cur); cur.clear(); if (!*p) break; }
-      else cur += *p;
+  StrVec path, apps;
+  auto split = [](StrView s, StrVec& into) {
+    std::size_t at = 0;
+    for (;;) {
+      std::size_t end = s.find(':', at);
+      if (end == StrView::npos) end = s.size();
+      if (end > at) into.add(s.substr(at, end - at));
+      if (end >= s.size()) break;
+      at = end + 1;
     }
   };
   split(std::getenv("PATH"), path);
-  split(apps_dirs.c_str(), apps);
+  split(apps_dirs, apps);
   for (const Program& p : kPrograms) {
     if (p.exe)
-      for (const std::string& d : path)
-        if (access((d + "/" + p.exe).c_str(), X_OK) == 0) { out.on_path.insert(p.id); break; }
+      for (const RolltuiStr& d : path)
+        if (access((d + "/" + p.exe).c_str(), X_OK) == 0) { out.on_path.add(p.id); break; }
     if (p.bundle)
-      for (const std::string& d : apps) {
+      for (const RolltuiStr& d : apps) {
         struct stat st{};
-        if (stat((d + "/" + p.bundle + ".app").c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { out.bundled.insert(p.id); break; }
+        if (stat((d + "/" + p.bundle + ".app").c_str(), &st) == 0 && S_ISDIR(st.st_mode)) { out.bundled.add(p.id); break; }
       }
   }
   return out;
@@ -242,13 +262,8 @@ struct Options {
   Exec exec = Exec::Line;  // an executable or a script with the x bit: the command line (arguments can follow), run here, or the opener
   bool land_in_file_folder = false;  // the command line lands in the file's folder with `./name` (exit 4), else where dirk started (exit 3)
   bool copy_relative = false;        // paths handed out (copy, the command line): relative to where dirk started, or absolute
-  std::map<std::string, std::string> open_with;  // type group id -> program id; absent means the group's own default
+  RolltuiStr open_with[kGroupCount];  // per type group (the index `kGroups` has): the program id chosen; empty means the group's own default
 };
-
-// A `RolltuiStr` as a `std::string`, at the sites that want one. The library's own vocabulary
-// never names a std:: type, so a host that composes with std::string converts here — one line,
-// judged per call site, which is the boundary rule rather than a wrapper around the API.
-std::string str_of(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
 
 // NO `Entry` OF ITS OWN. `RolltuiDirEntry` carries exactly what this app kept — the name, whether
 // it is a directory, whether it could be described, its size, its time and its mode — so a
@@ -409,7 +424,16 @@ void fx_burst(void*, const RolltuiEffectSpec* s, const RolltuiStyle* styles, con
 
 namespace {
 
-std::string user_presets_dir();  // defined below, with the file loaders
+RolltuiStr user_presets_dir();  // defined below, with the file loaders
+static bool mkdirs(const RolltuiStr& dir);  // likewise
+
+// The digits of a view as a number: a crumb's action is "crumb:" and a column index.
+static std::size_t parse_uint(StrView v) {
+  std::size_t k = 0;
+  for (char c : v)
+    if (c >= '0' && c <= '9') k = k * 10 + static_cast<std::size_t>(c - '0');
+  return k;
+}
 
 // ---- the app ---------------------------------------------------------------------------
 // APP LIFETIME, RELEASED IN ONE DESTRUCTOR — paint's shape, and for its reason: none of these
@@ -433,10 +457,10 @@ struct App {
   RolltuiPresetStore* keys_store = nullptr;
   unsigned long long theme_seen = 0;
   Options opt;
-  std::string root;
-  std::string note;   // the library's own report for this frame
-  std::string hint;   // this app's own last word (a bad path, a copy): shown, held, then faded out
-  std::string hint_shown;              // what the line last showed, to notice a new one
+  RolltuiStr root;
+  RolltuiStr note;   // the library's own report for this frame
+  RolltuiStr hint;   // this app's own last word (a bad path, a copy): shown, held, then faded out
+  RolltuiStr hint_shown;              // what the line last showed, to notice a new one
   unsigned long long hint_since = 0;   // when it appeared, on the frame clock
   static constexpr unsigned long long kHintHoldMs = 2000, kHintFadeMs = 600, kTitleBackMs = 300;
   unsigned long long title_back_since = 0;  // when the last note went, so the name can fade back in
@@ -450,7 +474,7 @@ struct App {
   // between its parts and its tail kept: each part is that column, clicked; the pencil at the
   // end, always in view, opens the line for editing with the whole path selected.
   RolltuiHintBar* crumbs = rolltui_hint_bar_new();  // OWNED
-  std::string crumbs_for;  // the path the crumbs were last built from
+  RolltuiStr crumbs_for;  // the path the crumbs were last built from
   int crumbs_used = 0;     // how many cells the bar took on its last draw: right of that is the pencil's
   bool hints_built = false;
   RolltuiRows status_facts{};  // the fields after the bar, reset and refilled every frame
@@ -462,18 +486,19 @@ struct App {
   // deeper columns gone, and the breadcrumb shrinks to the part clicked. The last part is the
   // entry under the cursor: its action is "here" — a folder is entered by it, a file is where
   // the cursor already is.
-  void build_crumbs(const std::string& path) {
-    crumbs_for = path;
+  void build_crumbs(StrView path) {
+    crumbs_for.assign(path.data(), path.size());
     rolltui_hint_bar_clear(crumbs);
     rolltui_hint_bar_add(crumbs, "", 0, "/", 1, "crumb:0", 7);
-    const std::string dir = current_dir();
-    const bool has_sel = path != dir && path.rfind(dir == "/" ? "/" : dir + "/", 0) == 0;
+    const RolltuiStr dir = current_dir();
+    const RolltuiStr prefix = dir == "/" ? RolltuiStr("/") : dir + "/";
+    const bool has_sel = path != dir && path.starts_with(prefix);
     std::size_t at = 1, col = 1;
     while (at < path.size()) {
       const std::size_t slash = path.find('/', at);
-      const std::string part = path.substr(at, slash == std::string::npos ? std::string::npos : slash - at);
-      const bool last = slash == std::string::npos;
-      const std::string action = has_sel && last ? std::string("here") : "crumb:" + std::to_string(col++);
+      const StrView part = path.substr(at, slash == StrView::npos ? StrView::npos : slash - at);
+      const bool last = slash == StrView::npos;
+      const RolltuiStr action = has_sel && last ? RolltuiStr("here") : "crumb:" + rolltui::to_str(static_cast<long long>(col++));
       if (!part.empty()) rolltui_hint_bar_add(crumbs, "", 0, part.data(), part.size(), action.data(), action.size());
       if (last) break;
       at = slash + 1;
@@ -493,18 +518,18 @@ struct App {
     const char* a = rolltui_hint_bar_hit(crumbs, x, y, &n);
     if (!a && y >= r.y && y < r.y + r.h && x >= r.x + crumbs_used) { a = "edit"; n = 4; }  // right of the pencil is the pencil's
     if (!a) return y >= r.y && y < r.y + r.h;  // the row is the crumbs': a press beside them does nothing
-    const std::string action(a, n);
+    const StrView action(a, n);
     if (action == "edit") {
       rolltui_window_stack_focus(stack, "path", 4);
       if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4)) rolltui_input_select_all(in);
-    } else if (action.rfind("crumb:", 0) == 0) {
+    } else if (action.starts_with("crumb:")) {
       // Part k is the entry selected in column k: "/" in the top column, the first component in
       // the root's listing, and so on.
-      rolltui_windows_picker_focus_column(windows, kPicker, 10, static_cast<std::size_t>(std::atoi(action.c_str() + 6)));
+      rolltui_windows_picker_focus_column(windows, kPicker, 10, parse_uint(action.drop_front(6)));
     } else if (action == "here") {
       RolltuiStr sel{};
       int is_dir = 0;
-      if (rolltui_windows_picker_selected(windows, kPicker, 10, &sel, &is_dir) && sel.n && is_dir) jump(std::string(sel.p, sel.n));
+      if (rolltui_windows_picker_selected(windows, kPicker, 10, &sel, &is_dir) && sel.n && is_dir) jump(sel);
       rolltui_str_free(&sel);
     }
     return true;
@@ -513,9 +538,9 @@ struct App {
     struct Row { const char* action; const char* what; };
     // The sort and the dotfiles are STATES as well as keys: their labels say the state, and the
     // bar is rebuilt when either changes.
-    const std::string sort = std::string("sort: ") + sort_words(opt.sort, opt.reversed);
-    const std::string dots = opt.hidden ? "+dotfiles" : "\xE2\x88\x92" "dotfiles";
-    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}};
+    const RolltuiStr sort = "sort: " + sort_words(opt.sort, opt.reversed);
+    const char* dots = opt.hidden ? "+dotfiles" : "\xE2\x88\x92" "dotfiles";
+    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots}};
     rolltui_hint_bar_clear(hints);
     for (const Row& r : rows) {
       const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
@@ -561,21 +586,21 @@ struct App {
   // THE EXIT CONTRACT: `chosen` is printed and the status is 0 ONLY when an accept happened.
   // Every other way out — cancel, a global quit — prints nothing and exits 1. The shell function
   // reads exactly this pair, and an empty path with status 0 would send it to `cd ""`.
-  std::string chosen;
+  RolltuiStr chosen;
   int exit_code = 1;
 
   // THIS APP'S OWN MOTION VOCABULARY, on the session: three states its widget marks with, three
   // kinds a theme may name. Registered before any theme loads, because the vocabulary a theme
   // file is read against (`rolltui_theme_vocab`) is built from what has been registered.
-  std::string effects_json;  // the app's mapping file, state -> kind + role; merged onto every theme
-  std::string menu_json;     // the app's settings menu, a file like the rest of its screen
-  std::string matches_json;  // the find dialog's list, a file like the menu — empty until a find
-  std::string path_shown;    // what the path line was last set to: the folder the cursor is in
-  std::string focused_before; // the focused window's content before an event, for a focus change
+  RolltuiStr effects_json;  // the app's mapping file, state -> kind + role; merged onto every theme
+  RolltuiStr menu_json;     // the app's settings menu, a file like the rest of its screen
+  RolltuiStr matches_json;  // the find dialog's list, a file like the menu — empty until a find
+  RolltuiStr path_shown;    // what the path line was last set to: the folder the cursor is in
+  RolltuiStr focused_before; // the focused window's content before an event, for a focus change
   // A FIND: the query, and what it matched under the folder the cursor was in.
-  struct Match { std::string path, shown; int score; bool folder; };
+  struct Match { RolltuiStr path, shown; int score = 0; bool folder = false; };
   std::vector<Match> found;
-  std::string find_query, find_under;
+  RolltuiStr find_query, find_under;
   bool matches_dirty = false;  // the dialog was just opened: its list is filled at the next sync
   std::size_t last_entries = 0, last_column = 0, last_columns = 0;  // the picker's counts, for the headless report
   bool menu_dirty = false;   // the settings popup was just opened: its boxes need the live values
@@ -669,7 +694,7 @@ struct App {
   // app tells it where to start, what its settings are, and reads what its keys said; the
   // columns, the anchor, the fade, the dividers and the memory are the kind's.
   bool picker_started = false;
-  void picker_go(const std::string& path) { rolltui_windows_set_picker_dir(windows, kPicker, 10, path.data(), path.size()); }
+  void picker_go(StrView path) { rolltui_windows_set_picker_dir(windows, kPicker, 10, path.data(), path.size()); }
   void apply_picker_options() {
     RolltuiPickerOptions o{};
     rolltui_picker_options_init(&o);
@@ -688,42 +713,39 @@ struct App {
     rolltui_windows_set_picker_options(windows, kPicker, 10, &o);
   }
 
-  static const std::vector<std::string>& help_scopes() {
-    static const std::vector<std::string> s = {"app", "picker", "input", "menu", "stack"};
-    return s;
-  }
+  static constexpr const char* kHelpScopes[] = {"app", "picker", "input", "menu", "stack"};
 
   // ---- THE SETTINGS FILE: what a person chose, kept between runs ------------------------------
   // `<config>/rolltui/dirktui/settings.json`, three fields, written whole on every change and
   // read once at start through rung 3 of the app's files. Not the theme store: these are this
   // app's own facts (sort, dotfiles, motion), and a theme is a look shared by every host.
-  static std::string settings_dir() { return user_presets_dir() + "/dirktui"; }
+  static RolltuiStr settings_dir() { return user_presets_dir() + "/dirktui"; }
   static const char* sort_name(Sort s) { return s == Sort::Name ? "name" : s == Sort::Size ? "size" : "modified"; }
   // The sort said in words a status line shares: the field and which way it runs, always
   // the same width (a 4-letter field, a space, one arrow) so the hint bar does not resize
   // as the sort cycles. `<` is ascending (a-z, smallest first, oldest first), `>` descending
   // — one meaning for the arrow across all three fields, unlike `rev` itself, whose default
   // (unreversed) direction is ascending for name but descending for size and modified.
-  static std::string sort_words(Sort s, bool rev) {
+  static RolltuiStr sort_words(Sort s, bool rev) {
     const char* field = s == Sort::Name ? "name" : s == Sort::Size ? "size" : "date";
     const bool ascending = s == Sort::Name ? !rev : rev;
-    return std::string(field) + (ascending ? " <" : " >");
+    return RolltuiStr(field) + (ascending ? " <" : " >");
   }
   // The menu's option id for a sort — `name`, `name_rev`, … — and back.
-  static std::string sort_id(Sort s, bool rev) { return std::string(sort_name(s)) + (rev ? "_rev" : ""); }
-  static bool sort_from_id(const std::string& id, Sort& s, bool& rev) {
-    const bool r = id.size() > 4 && id.compare(id.size() - 4, 4, "_rev") == 0;
-    const std::string key = r ? id.substr(0, id.size() - 4) : id;
+  static RolltuiStr sort_id(Sort s, bool rev) { return RolltuiStr(sort_name(s)) + (rev ? "_rev" : ""); }
+  static bool sort_from_id(StrView id, Sort& s, bool& rev) {
+    const bool r = id.size() > 4 && id.ends_with("_rev");
+    const StrView key = r ? id.drop_back(4) : id;
     if (key != "name" && key != "size" && key != "modified") return false;
     s = key == "size" ? Sort::Size : key == "modified" ? Sort::Modified : Sort::Name;
     rev = r;
     return true;
   }
   static const char* exec_name(Exec e) { return e == Exec::Run ? "run" : e == Exec::Open ? "open" : "line"; }
-  static Exec exec_from(const std::string& v) { return v == "run" ? Exec::Run : v == "open" ? Exec::Open : Exec::Line; }
+  static Exec exec_from(StrView v) { return v == "run" ? Exec::Run : v == "open" ? Exec::Open : Exec::Line; }
   static unsigned char show_code(Show s) { return s == Show::Always ? ROLLTUI_SHOW_ALWAYS : s == Show::Never ? ROLLTUI_SHOW_NEVER : ROLLTUI_SHOW_WITH_SORT; }
   static const char* show_name(Show s) { return s == Show::Always ? "always" : s == Show::Never ? "never" : "sort"; }
-  static Show show_from(const std::string& v) { return v == "always" ? Show::Always : v == "never" ? Show::Never : Show::WithSort; }
+  static Show show_from(StrView v) { return v == "always" ? Show::Always : v == "never" ? Show::Never : Show::WithSort; }
   // A settings file from before the three-way choice said true or false: true was "always",
   // and false was "only with the sort", which is what WithSort says.
   static Show show_from_json(const RolltuiJsonValue* v) {
@@ -731,7 +753,7 @@ struct App {
     if (rolltui_json_is_bool(v)) return rolltui_json_as_bool(v, 0) ? Show::Always : Show::WithSort;
     std::size_t n = 0;
     const char* s = rolltui_json_as_string(v, "sort", 4, &n);
-    return show_from(std::string(s, n));
+    return show_from(StrView(s, n));
   }
   void load_settings(const char* argv0) {
     RolltuiStr t{};
@@ -743,7 +765,7 @@ struct App {
         opt.highlight = rolltui_json_as_bool(rolltui_json_get(root, "highlight", 9), 1) != 0;
         if (!opt.sparkle && !opt.highlight) opt.highlight = true;  // never both off, even from a hand-edited file
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
-        { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = std::string(pv, pn) == "right"; }
+        { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = StrView(pv, pn) == "right"; }
         opt.syntax = rolltui_json_as_bool(rolltui_json_get(root, "syntax", 6), 1) != 0;
         opt.info = rolltui_json_as_bool(rolltui_json_get(root, "info", 4), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
@@ -752,19 +774,19 @@ struct App {
         opt.hidden = rolltui_json_as_bool(rolltui_json_get(root, "hidden", 6), 1) != 0;
         std::size_t n = 0;
         const char* sv = rolltui_json_as_string(rolltui_json_get(root, "sort", 4), "name", 4, &n);
-        const std::string sort(sv, n);
+        const StrView sort(sv, n);
         opt.sort = sort == "size" ? Sort::Size : sort == "modified" ? Sort::Modified : Sort::Name;
         opt.leave = rolltui_json_as_bool(rolltui_json_get(root, "leave", 5), 0) != 0;
-        { const char* xv = rolltui_json_as_string(rolltui_json_get(root, "exec", 4), "line", 4, &n); opt.exec = exec_from(std::string(xv, n)); }
+        { const char* xv = rolltui_json_as_string(rolltui_json_get(root, "exec", 4), "line", 4, &n); opt.exec = exec_from(StrView(xv, n)); }
         const char* lv = rolltui_json_as_string(rolltui_json_get(root, "land", 4), "start", 5, &n);
-        opt.land_in_file_folder = std::string(lv, n) == "file";
+        opt.land_in_file_folder = StrView(lv, n) == "file";
         const char* cv = rolltui_json_as_string(rolltui_json_get(root, "paths", 5), "absolute", 8, &n);
-        opt.copy_relative = std::string(cv, n) == "relative";
-        opt.open_with.clear();
+        opt.copy_relative = StrView(cv, n) == "relative";
+        for (RolltuiStr& chosen_program : opt.open_with) chosen_program.clear();
         if (const RolltuiJsonValue* open = rolltui_json_get(root, "open", 4))  // Null when absent: every lookup below is then empty
           for (const TypeGroup& g : kGroups) {
             const char* pv = rolltui_json_as_string(rolltui_json_get(open, g.id, std::strlen(g.id)), "", 0, &n);
-            if (n) opt.open_with[g.id] = std::string(pv, n);
+            if (n) opt.open_with[group_index(g)].assign(pv, n);
           }
         rolltui_json_free(root);
       } else {
@@ -775,29 +797,34 @@ struct App {
     rolltui_str_free(&t);
   }
   void save_settings() {
-    const std::string dir = settings_dir();
-    std::string made;
-    for (std::size_t i = 1; i <= dir.size(); ++i)
-      if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
-    std::ofstream out(dir + "/settings.json", std::ios::binary | std::ios::trunc);
-    out << "{ \"motion\": " << (opt.motion ? "true" : "false") << ", \"sparkle\": " << (opt.sparkle ? "true" : "false")
-        << ", \"highlight\": " << (opt.highlight ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
-        << ", \"preview\": \"" << (opt.preview ? "right" : "off") << "\""
-        << ", \"syntax\": " << (opt.syntax ? "true" : "false")
-        << ", \"info\": " << (opt.info ? "true" : "false")
-        << ", \"show_size\": \"" << show_name(opt.show_size) << "\", \"show_modified\": \"" << show_name(opt.show_modified) << "\""
-        << ", \"hidden\": " << (opt.hidden ? "true" : "false")
-        << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"reversed\": " << (opt.reversed ? "true" : "false") << ", \"leave\": " << (opt.leave ? "true" : "false")
-        << ", \"exec\": \"" << exec_name(opt.exec) << "\""
-        << ", \"land\": \"" << (opt.land_in_file_folder ? "file" : "start")
-        << "\", \"paths\": \"" << (opt.copy_relative ? "relative" : "absolute") << "\", \"open\": {";
+    const RolltuiStr dir = settings_dir();
+    mkdirs(dir);
+    auto tf = [](bool b) { return b ? "true" : "false"; };
+    RolltuiStr out;
+    rolltui::appendf(out,
+                     "{ \"motion\": %s, \"sparkle\": %s, \"highlight\": %s, \"dividers\": %s, \"preview\": \"%s\", \"syntax\": %s, \"info\": %s, "
+                     "\"show_size\": \"%s\", \"show_modified\": \"%s\", \"hidden\": %s, \"sort\": \"%s\", \"reversed\": %s, \"leave\": %s, "
+                     "\"exec\": \"%s\", \"land\": \"%s\", \"paths\": \"%s\", \"open\": {",
+                     tf(opt.motion), tf(opt.sparkle), tf(opt.highlight), tf(opt.dividers), opt.preview ? "right" : "off", tf(opt.syntax), tf(opt.info),
+                     show_name(opt.show_size), show_name(opt.show_modified), tf(opt.hidden), sort_name(opt.sort), tf(opt.reversed), tf(opt.leave),
+                     exec_name(opt.exec), opt.land_in_file_folder ? "file" : "start", opt.copy_relative ? "relative" : "absolute");
+    // In the order of the group ids, as a sorted map would write them, so a settings file reads the same whoever wrote it.
+    std::size_t order[kGroupCount];
+    for (std::size_t i = 0; i < kGroupCount; ++i) order[i] = i;
+    std::sort(order, order + kGroupCount, [](std::size_t a, std::size_t b) { return std::strcmp(kGroups[a].id, kGroups[b].id) < 0; });
     bool first = true;
-    for (const auto& [group, prog] : opt.open_with) {
-      out << (first ? " " : ", ") << '"' << group << "\": \"" << prog << '"';
+    for (std::size_t i : order) {
+      const RolltuiStr& prog = opt.open_with[i];
+      if (prog.empty()) continue;
+      rolltui::appendf(out, "%s\"%s\": \"%.*s\"", first ? " " : ", ", kGroups[i].id, static_cast<int>(prog.n), prog.p);
       first = false;
     }
-    out << (first ? "" : " ") << "} }\n";
-    if (!out) hint = "could not write " + dir + "/settings.json";
+    rolltui::appendf(out, "%s} }\n", first ? "" : " ");
+    const RolltuiStr file = dir + "/settings.json";
+    FILE* f = std::fopen(file.c_str(), "wb");
+    const bool ok = f && std::fwrite(out.data(), 1, out.size(), f) == out.size();
+    if (f) std::fclose(f);
+    if (!ok) hint = "could not write " + file;
   }
 
   // The settings popup's boxes, set from the live values the moment the popup exists — which is
@@ -809,7 +836,7 @@ struct App {
     const char* id = n ? rolltui_layout_node_id(n, &len) : nullptr;
     RolltuiMenu* m = id ? rolltui_windows_menu_at(windows, id, len) : nullptr;
     if (!m) return;
-    { const std::string sid = sort_id(opt.sort, opt.reversed); rolltui_menu_set_value(m, "sort", 4, sid.data(), sid.size()); }
+    { const RolltuiStr sid = sort_id(opt.sort, opt.reversed); rolltui_menu_set_value(m, "sort", 4, sid.data(), sid.size()); }
     rolltui_menu_set_checked(m, "hidden", 6, opt.hidden ? 1 : 0);
     rolltui_menu_set_checked(m, "motion", 6, opt.motion ? 1 : 0);
     rolltui_menu_set_checked(m, "sparkle", 7, opt.sparkle ? 1 : 0);
@@ -848,18 +875,19 @@ struct App {
     // machine has. The skeleton (one choice per type group) is the file's; the contents are
     // what `detect_programs` found, the same move roll makes with its preset listings.
     for (const TypeGroup& g : kGroups) {
-      const std::string id = std::string("open_") + g.id;
+      const RolltuiStr id = RolltuiStr("open_") + g.id;
       RolltuiMenuItemList options{};
-      const std::string preset = default_program_for(g);  // what an unset group opens with: said on its option
+      const RolltuiStr preset = default_program_for(g);  // what an unset group opens with: said on its option
       for (const Offer& of : options_for(g)) {
         RolltuiMenuItem* o = rolltui_menu_list_add(&options);
-        const std::string label = of.id == preset ? of.label + " (default)" : of.label;
+        RolltuiStr label = rolltui::own(of.label);
+        if (of.id == preset) label += " (default)";
         rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, of.id.c_str(), of.id.size(), label.c_str(), label.size(), nullptr, 0);
         o->enabled = of.enabled ? 1 : 0;
       }
       rolltui_menu_set_options(m, id.c_str(), id.size(), &options);
       rolltui_menu_list_release(&options);
-      const std::string cur = program_for(g);
+      const RolltuiStr cur = program_for(g);
       rolltui_menu_set_value(m, id.c_str(), id.size(), cur.c_str(), cur.size());
     }
   }
@@ -870,31 +898,32 @@ struct App {
   // What the menu offers for a group: EVERY program in the group's own order, the ones not
   // installed disabled, then the system opener and the command line. What is chosen is the
   // setting when it is installed, and the first installed preference otherwise.
-  struct Offer { std::string id, label; bool enabled; };
+  struct Offer { RolltuiStr id, label; bool enabled = false; };
   std::vector<Offer> options_for(const TypeGroup& g) const {
     std::vector<Offer> out;
-    std::istringstream in(g.prefer);
-    std::string id;
-    while (in >> id) {
-      if (id == kSystemProgram) continue;
-      if (const Program* p = program_named(id)) out.push_back({id, p->label, installed.has(id)});
-    }
-    out.push_back({kSystemProgram, "the system opener", true});
-    out.push_back({kShellProgram, "the command line (not opened)", true});
+    each_word(g.prefer, [&](StrView id) {
+      if (id == kSystemProgram) return true;
+      if (const Program* p = program_named(id)) out.push_back(Offer{rolltui::own(id), RolltuiStr(p->label), installed.has(id)});
+      return true;
+    });
+    out.push_back(Offer{RolltuiStr(kSystemProgram), RolltuiStr("the system opener"), true});
+    out.push_back(Offer{RolltuiStr(kShellProgram), RolltuiStr("the command line (not opened)"), true});
     return out;
   }
   // What a group opens with when nothing is set: the first of its preferences that is installed.
-  std::string default_program_for(const TypeGroup& g) const {
-    std::istringstream in(g.prefer);
-    std::string id;
-    while (in >> id) if (id == kSystemProgram || installed.has(id)) return id;
-    return kSystemProgram;
+  RolltuiStr default_program_for(const TypeGroup& g) const {
+    RolltuiStr found;
+    each_word(g.prefer, [&](StrView id) {
+      if (id != kSystemProgram && !installed.has(id)) return true;
+      found = rolltui::own(id);
+      return false;
+    });
+    if (found.empty()) found = kSystemProgram;
+    return found;
   }
-  std::string program_for(const TypeGroup& g) const {
-    if (const auto it = opt.open_with.find(g.id); it != opt.open_with.end()) {
-      const std::string& want = it->second;
-      if (want == kSystemProgram || want == kShellProgram || installed.has(want)) return want;
-    }
+  RolltuiStr program_for(const TypeGroup& g) const {
+    const RolltuiStr& want = opt.open_with[group_index(g)];
+    if (!want.empty() && (want == kSystemProgram || want == kShellProgram || installed.has(want))) return rolltui::own(want);
     return default_program_for(g);
   }
   // The store's presets as the options, the one this app starts with marked "(default)".
@@ -906,8 +935,8 @@ struct App {
     for (std::size_t i = 0; i < presets.n; ++i) {
       const RolltuiPresetInfo& p = presets.v[i];
       RolltuiMenuItem* o = rolltui_menu_list_add(&options);
-      const std::string name(p.name.p ? p.name.p : "", p.name.n);
-      const std::string label = name == preset ? name + " (default)" : name;
+      RolltuiStr label = rolltui::own(p.name);
+      if (p.name == preset) label += " (default)";
       rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, p.name.p, p.name.n, label.data(), label.size(), p.shipped ? nullptr : "yours", p.shipped ? 0 : 5);
     }
     rolltui_preset_list_release(&presets);
@@ -915,8 +944,8 @@ struct App {
     rolltui_menu_list_release(&options);
     RolltuiStr label{};
     rolltui_preset_store_label(store, &label);  // "name", or "name (modified)": the name is the value
-    std::string cur(label.p ? label.p : "", label.n);
-    if (const std::size_t sp = cur.find(" ("); sp != std::string::npos) cur.erase(sp);
+    StrView cur = label;
+    if (const std::size_t sp = cur.find(" ("); sp != StrView::npos) cur = cur.first(sp);
     rolltui_menu_set_value(m, id, id_len, cur.data(), cur.size());
     rolltui_str_free(&label);
   }
@@ -925,21 +954,21 @@ struct App {
   // (the same setting the library's own authoring tool edits, `tools/studio.cpp`'s `set_mode`).
   static void set_theme_mode(void* value, void* ctx) {
     RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
-    const std::string* mode = static_cast<const std::string*>(ctx);
+    const RolltuiStr* mode = static_cast<const RolltuiStr*>(ctx);
     rolltui_str_set(&v->mode, mode->data(), mode->size());
   }
   static void set_theme_depth(void* value, void* ctx) {
     RolltuiThemePresetValue* v = static_cast<RolltuiThemePresetValue*>(value);
-    const std::string* depth = static_cast<const std::string*>(ctx);
+    const RolltuiStr* depth = static_cast<const RolltuiStr*>(ctx);
     rolltui_str_set(&v->depth, depth->data(), depth->size());
   }
   // A CHOSEN KEY-BINDINGS PRESET becomes the live table the way the start built it: the store's
   // working copy, then this app's own bindings file on top, then the layout's declarations.
-  std::string bindings_json;  // the app's bindings file, kept for that rebuild
+  RolltuiStr bindings_json;  // the app's bindings file, kept for that rebuild
   // Judged against the key protocol IN FORCE — the one the terminal negotiated, legacy until
   // there is a terminal — and the chords it cannot deliver come back as text, for the status line.
-  std::string rebuild_bindings() {
-    std::string undeliverable;
+  RolltuiStr rebuild_bindings() {
+    RolltuiStr undeliverable;
     if (!keys_store) return undeliverable;
     RolltuiBindings* w = static_cast<RolltuiBindings*>(rolltui_preset_store_working(keys_store));
     if (!w) return undeliverable;
@@ -967,17 +996,18 @@ struct App {
   // names that cannot arrive here is a note on the status line — with the one that can shown on
   // the bar — and never a line printed before the terminal was asked.
   void terminal_ready() {
-    const std::string cannot = rebuild_bindings();
+    const RolltuiStr cannot_owned = rebuild_bindings();
+    const StrView cannot = cannot_owned;
     // NOTHING TO SAY WHILE EVERYTHING WORKS: a chord that cannot arrive is only worth a word when
     // its action has no other chord that can — `ctrl+.` beside `alt+h` is not a problem, it is a
     // second spelling. The report names chords; the question is about actions.
-    std::string stranded;
+    RolltuiStr stranded;
     std::size_t at = 0;
     while (at < cannot.size()) {
       std::size_t end = cannot.find("; ", at);
-      if (end == std::string::npos) end = cannot.size();
-      const std::string entry = cannot.substr(at, end - at);
-      const std::string action = entry.substr(0, entry.find(": '"));
+      if (end == StrView::npos) end = cannot.size();
+      const StrView entry = cannot.substr(at, end - at);
+      const StrView action = entry.substr(0, entry.find(": '"));
       bool any = false;
       const std::size_t n = rolltui_bindings_chord_count(bindings, action.data(), action.size());
       for (std::size_t i = 0; i < n && !any; ++i) {
@@ -990,9 +1020,9 @@ struct App {
     }
     if (!stranded.empty()) hint = "no key for this on this terminal: " + stranded;
   }
-  static std::string program_label(const std::string& id) {
-    if (const Program* p = program_named(id)) return p->label;
-    return id == kSystemProgram ? "the system opener" : id;
+  static RolltuiStr program_label(StrView id) {
+    if (const Program* p = program_named(id)) return RolltuiStr(p->label);
+    return id == kSystemProgram ? RolltuiStr("the system opener") : rolltui::own(id);
   }
 
   void mount() {
@@ -1006,14 +1036,14 @@ struct App {
     rolltui_hint_bar_set_keep_tail(crumbs, 1);
     // COPY IN THE PATH LINE goes where the picker's copy goes: the clipboard.
     if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4))
-      rolltui_input_set_copy(in, [](void* ctx, const char* t, std::size_t n) { App& a = *static_cast<App*>(ctx); a.hint = copy_to_clipboard(std::string(t, n)) ? "copied" : "could not copy: no clipboard command"; }, this);
+      rolltui_input_set_copy(in, [](void* ctx, const char* t, std::size_t n) { App& a = *static_cast<App*>(ctx); a.hint = copy_to_clipboard(StrView(t, n)) ? "copied" : "could not copy: no clipboard command"; }, this);
     // THE PATH LINE IS A PATH, NOT A PROMPT: nothing before it. THE FIND LINE says what it is,
     // and what to type, as a placeholder — one row, clipped, never a note that takes a second.
     set_prompt("path", 4, "", 0, "", 0);
     set_prompt("find", 4, "find: ", 6, "a name, or part of one, under this folder; Enter lists what matches", 67);
     rolltui_context_set_help(ctx, "", 0, "", 0);
     rolltui_context_clear_help_scopes(ctx);
-    for (const std::string& s : help_scopes()) rolltui_context_add_help_scope(ctx, s.data(), s.size());
+    for (const char* sc : kHelpScopes) rolltui_context_add_help_scope(ctx, sc, std::strlen(sc));
     rolltui_window_stack_set_base(stack, rolltui_layout_base(layout));
     rolltui_window_stack_set_level_fn(stack, rolltui_windows_back, windows);  // a close closes one level
     std::size_t an = 0;
@@ -1027,17 +1057,27 @@ struct App {
   // NAMED problem on the status line and the text stays for correcting.
   static void on_submit(void* ctx, const char* text, std::size_t len) {
     App& a = *static_cast<App*>(ctx);
-    std::string path(text, len);
-    while (path.size() > 1 && path.back() == '/') path.pop_back();
+    RolltuiStr path = rolltui::own(StrView(text, len));
+    trim_slashes(path);
     if (path.empty()) { a.hint = "a path, please"; return; }
-    if (path[0] == '~') { const char* home = std::getenv("HOME"); path = (home ? home : "") + path.substr(1); }
+    expand_home(path);
     struct stat st {};
     if (stat(path.c_str(), &st) != 0) { a.hint = "no such path: " + path; return; }
     a.go_to_match(path);  // a folder is entered, a file selected in its folder; the focus goes back to the columns
   }
   static void on_find(void* ctx, const char* text, std::size_t len) {
     App& a = *static_cast<App*>(ctx);
-    a.find(std::string(text, len));
+    a.find(StrView(text, len));
+  }
+  // A path typed or pasted: its trailing slashes off (a lone "/" stays), and a leading "~" as the home directory.
+  static void trim_slashes(RolltuiStr& path) {
+    while (path.n > 1 && path.p[path.n - 1] == '/') rolltui::pop_back(path);
+  }
+  static void expand_home(RolltuiStr& path) {
+    if (path.empty() || path.p[0] != '~') return;
+    const char* home = std::getenv("HOME");
+    RolltuiStr expanded = RolltuiStr(home ? home : "") + StrView(path).drop_front(1);
+    path = std::move(expanded);
   }
 
   void set_prompt(const char* source, std::size_t len, const char* prompt, std::size_t plen, const char* holder, std::size_t hlen) {
@@ -1051,14 +1091,15 @@ struct App {
     rolltui_input_set_options(in, &o);
     rolltui_input_options_release(&o);
   }
-  bool jump(std::string path) {
-    while (path.size() > 1 && path.back() == '/') path.pop_back();
+  bool jump(StrView where) {
+    RolltuiStr path = rolltui::own(where);
+    trim_slashes(path);
     if (path.empty()) { hint = "a path, please"; return false; }
-    if (path[0] == '~') { const char* home = std::getenv("HOME"); path = (home ? home : "") + path.substr(1); }
+    expand_home(path);
     struct stat st {};
     if (stat(path.c_str(), &st) != 0) { hint = "no such path: " + path; return false; }
     if (!S_ISDIR(st.st_mode)) { hint = "not a directory: " + path; return false; }
-    root = path;
+    root.assign(path.data(), path.size());
     picker_go(path);
     hint.clear();  // the path line says where
     return true;
@@ -1069,37 +1110,41 @@ struct App {
     const char* id = rolltui_layer_focus(rolltui_layout_base(layout), &n);
     if (n) rolltui_window_stack_focus(stack, id, n);
   }
-  std::string focused_content() const {
+  // The focused window's content string, BORROWED from the library's table (no copy, no allocation): read it now, keep a copy
+  // with `rolltui::own` if it must outlive the next call into the windows.
+  StrView focused_content() const {
     const RolltuiLayoutNode* n = rolltui_window_stack_focused(stack);
-    if (!n) return std::string();
+    if (!n) return StrView();
     std::size_t idn = 0, cn = 0;
     const char* id = rolltui_layout_node_id(n, &idn);
     const char* c = rolltui_windows_content_at(windows, id, idn, &cn);
-    return c ? std::string(c, cn) : std::string();
+    return c ? StrView(c, cn) : StrView();
   }
   // WHAT THE PATH LINE SHOWS: the entry under the cursor — the full path of what Enter, Ctrl-C
   // and the pencil act on — or the folder the cursor is in when its column is empty.
-  std::string current_path() const {
+  RolltuiStr current_path() const {
     RolltuiStr sel{};
     int is_dir = 0;
-    std::string out;
+    RolltuiStr out;
     if (rolltui_windows_picker_selected(windows, kPicker, 10, &sel, &is_dir) && sel.n) out.assign(sel.p, sel.n);
     rolltui_str_free(&sel);
-    return out.empty() ? current_dir() : out;
+    if (out.empty()) return current_dir();
+    return out;
   }
-  std::string current_dir() const {
-    std::string where = root;
+  RolltuiStr current_dir() const {
+    RolltuiStr where = rolltui::own(root);
     RolltuiStr d{};
     if (rolltui_windows_picker_dir(windows, kPicker, 10, &d)) where.assign(d.p ? d.p : "", d.n);  // "" in the top column: the root's own place
     rolltui_str_free(&d);
-    return where.empty() ? std::string("/") : where;
+    if (where.empty()) where = "/";
+    return where;
   }
 
   // ---- find: what matches under the folder the cursor is in ----------------------------------
   // A FUZZY match, the shape every quick-open uses: every character of the query in order, case
   // folded; a run of adjacent hits and a hit at the start of a name or after a separator score
   // higher; a shorter path wins a tie. Not a regex and not a substring: "onetxt" finds one.txt.
-  static int fuzzy(const std::string& hay, const std::string& q) {
+  static int fuzzy(StrView hay, StrView q) {
     if (q.empty()) return 0;
     int score = 0;
     std::size_t at = 0;
@@ -1117,36 +1162,36 @@ struct App {
   }
   // WALKS under `under`, bounded: eight levels, a few thousand entries, symlinked folders not
   // followed, dotfiles as the setting says. A bound is what keeps a find at / a moment, not a wait.
-  void walk(const std::string& under, const std::string& rel, int depth, std::size_t& budget, const std::string& q) {
+  void walk(const RolltuiStr& under, const RolltuiStr& rel, int depth, std::size_t& budget, StrView q) {
     if (depth > 8 || budget == 0) return;
     DIR* d = opendir(under.c_str());
     if (!d) return;
-    std::vector<std::string> subs;
+    StrVec subs;
     while (const dirent* e = readdir(d)) {
-      const std::string name = e->d_name;
+      const StrView name(e->d_name);
       if (name == "." || name == "..") continue;
       if (!opt.hidden && name[0] == '.') continue;
       if (budget == 0) break;
       --budget;
-      const std::string full = under + "/" + name;
-      const std::string shown = rel.empty() ? name : rel + "/" + name;
+      RolltuiStr full = under + "/" + name;
+      RolltuiStr shown = rel.empty() ? rolltui::own(name) : rel + "/" + name;
       struct stat st {};
       const bool folder = lstat(full.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
       const int s = fuzzy(shown, q);
-      if (s >= 0) found.push_back(Match{full, shown, s, folder});
-      if (folder) subs.push_back(name);
+      if (s >= 0) found.push_back(Match{std::move(full), std::move(shown), s, folder});
+      if (folder) subs.add(name);
     }
     closedir(d);
-    for (const std::string& name : subs) walk(under + "/" + name, rel.empty() ? name : rel + "/" + name, depth + 1, budget, q);
+    for (const RolltuiStr& name : subs) walk(under + "/" + name, rel.empty() ? rolltui::own(name) : rel + "/" + name, depth + 1, budget, q);
   }
-  void find(const std::string& query) {
-    find_query = query;
+  void find(StrView query) {
+    find_query.assign(query.data(), query.size());
     find_under = current_dir();
     found.clear();
     if (query.empty()) { hint = "type something to find"; return; }
     std::size_t budget = 4000;
-    walk(find_under, "", 0, budget, query);
-    std::stable_sort(found.begin(), found.end(), [](const Match& a, const Match& b) { return a.score != b.score ? a.score > b.score : a.shown < b.shown; });
+    walk(find_under, RolltuiStr(), 0, budget, query);
+    std::stable_sort(found.begin(), found.end(), [](const Match& a, const Match& b) { return a.score != b.score ? a.score > b.score : StrView(a.shown) < StrView(b.shown); });
     if (found.size() > 200) found.resize(200);
     hint = budget == 0 ? "found among the first few thousand entries only" : "";  // the dialog says the rest
     rolltui_window_stack_push_popup(stack, layout, "matches", 7);
@@ -1159,7 +1204,7 @@ struct App {
     if (!m) return;
     RolltuiMenuItem* rt = rolltui_menu_root(m);
     rolltui_menu_list_release(&rt->children);
-    const std::string title = (found.empty() ? "nothing matched '" : "matches for '") + find_query + "' under " + find_under;
+    const RolltuiStr title = RolltuiStr(found.empty() ? "nothing matched '" : "matches for '") + find_query + "' under " + find_under;
     rolltui_str_set(&rt->label, title.data(), title.size());
     for (const Match& x : found) {
       RolltuiMenuItem* it = rolltui_menu_list_add(&rt->children);
@@ -1174,13 +1219,15 @@ struct App {
   }
   // A MATCH CHOSEN: a folder is entered; a file is selected in its folder. The columns take the
   // focus back.
-  void go_to_match(const std::string& path) {
+  void go_to_match(StrView where) {
+    const RolltuiStr path = rolltui::own(where);
     struct stat st {};
     const bool folder = stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
     if (folder) { jump(path); }
     else {
-      const std::size_t slash = path.rfind('/');
-      root = slash == std::string::npos ? "/" : path.substr(0, slash ? slash : 1);
+      const std::size_t slash = StrView(path).rfind('/');
+      if (slash == StrView::npos) root = "/";
+      else root.assign(path.data(), slash ? slash : 1);
       picker_go(path);
       hint.clear();
     }
@@ -1223,9 +1270,9 @@ struct App {
     if (matches_dirty) { fill_matches(); matches_dirty = false; }
     // THE PATH LINE SHOWS THE FOLDER THE CURSOR IS IN, unless a person is editing it.
     if (focused_content() != "input:path") {
-      const std::string cur = current_path();
+      const RolltuiStr cur = current_path();
       if (cur != path_shown) {
-        path_shown = cur;
+        path_shown.assign(cur.data(), cur.size());
         if (RolltuiInput* in = rolltui_windows_input(windows, "path", 4)) rolltui_input_set_text(in, cur.data(), cur.size());
       }
       if (cur != crumbs_for) build_crumbs(cur);
@@ -1237,14 +1284,14 @@ struct App {
     // reads; what a person needs (a folder that cannot be read) the status line says in its
     // own words.
     {
-      std::string now;
+      RolltuiStr now;
       if (rolltui_windows_report_count(windows) != 0) {
         RolltuiStr s{};
         rolltui_windows_report_summary(windows, &s);
         now.assign(s.c_str(), s.size());
         rolltui_str_free(&s);
       }
-      if (now != note) { note = now; if (headless && !note.empty()) std::fprintf(stderr, "windows: %s\n", note.c_str()); }
+      if (now != note) { note.assign(now.data(), now.size()); if (headless && !note.empty()) std::fprintf(stderr, "windows: %s\n", note.c_str()); }
     }
   }
 
@@ -1258,16 +1305,16 @@ struct App {
   void settle() {
     RolltuiPickerEvent ev{};
     if (!rolltui_windows_picker_event(windows, kPicker, 10, &ev)) return;
-    const std::string path(ev.path.p ? ev.path.p : "", ev.path.n);
+    const RolltuiStr& path = ev.path;  // the event's own, NUL-terminated, alive until it is released below
     if (ev.kind == ROLLTUI_PICKER_EVENT_TAKEN) {
       struct stat st {};
       const bool folder = stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-      const std::size_t slash = path.find_last_of('/');
-      const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
+      const std::size_t slash = StrView(path).rfind('/');
+      const StrView name = StrView(path).substr(slash == StrView::npos ? 0 : slash + 1);
       // A BUNDLE is a directory to the file system and an application to a person: never
       // entered, opened by the group `apps` names — the system opener, or the command line.
-      const bool bundle = folder && name.size() > 4 && name.compare(name.size() - 4, 4, ".app") == 0;
-      if ((folder && !bundle) || path.empty()) { chosen = path; exit_code = 0; quit = true; }
+      const bool bundle = folder && name.size() > 4 && name.ends_with(".app");
+      if ((folder && !bundle) || path.empty()) { chosen.assign(path.data(), path.size()); exit_code = 0; quit = true; }
       else if (opt.leave) to_command_line(path);
       else if (!bundle && is_executable(path)) {
         // AN EXECUTABLE — a binary, a script with the x bit — by the `exec` setting: to the command
@@ -1278,7 +1325,7 @@ struct App {
         else to_command_line(path);
       } else {
         const TypeGroup* g = group_of(name);
-        const std::string prog = g ? program_for(*g) : std::string(kShellProgram);
+        const RolltuiStr prog = g ? program_for(*g) : RolltuiStr(kShellProgram);
         if (prog == kShellProgram) to_command_line(path);
         else if (open_with(prog, path)) hint = "opened " + name + " with " + program_label(prog);
         else hint = "could not open " + name + " with " + program_label(prog);
@@ -1287,7 +1334,7 @@ struct App {
       quit = true;
     } else if (ev.kind == ROLLTUI_PICKER_EVENT_COPY) {
       const bool relative = opt.copy_relative != (ev.inverse != 0);  // the Option chord inverts the setting
-      const std::string text = relative ? relative_to_start(path) : path;
+      const RolltuiStr text = relative ? relative_to_start(path) : rolltui::own(path);
       hint = copy_to_clipboard(text) ? "copied " + text : "could not copy: no clipboard command";
     }
     rolltui_picker_event_release(&ev);
@@ -1305,42 +1352,48 @@ struct App {
   // An executable is never handed to an opener: the failure that must not happen — a script run
   // by the program that was meant to show it — is decided by the file's own bit, not by a list
   // of names. What a document opens with is `group_of` + `program_for`.
-  static bool is_executable(const std::string& path) {
+  static bool is_executable(const RolltuiStr& path) {
     struct stat st{};
     return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && access(path.c_str(), X_OK) == 0;
   }
   // A file to the command line: exit 3 with the path as the path setting says (from where dirk
   // started), or exit 4 with the file's absolute path for the shell to `cd` beside and type
   // `./name` — the setting `land` decides which.
-  void to_command_line(const std::string& path) {
-    if (opt.land_in_file_folder) { chosen = path; exit_code = 4; }
-    else { chosen = opt.copy_relative ? relative_to_start(path) : path; exit_code = 3; }
+  void to_command_line(StrView path) {
+    if (opt.land_in_file_folder) { chosen.assign(path.data(), path.size()); exit_code = 4; }
+    else { chosen = opt.copy_relative ? relative_to_start(path) : rolltui::own(path); exit_code = 3; }
     quit = true;
   }
 
   // ---- where dirk started, and paths said from there ------------------------------------------
-  std::string start_dir;  // absolute, set once at start
-  static std::vector<std::string> parts(const std::string& p) {
-    std::vector<std::string> v;
-    std::string cur;
-    for (char c : p) {
-      if (c == '/') { if (!cur.empty()) v.push_back(cur); cur.clear(); }
-      else cur += c;
+  RolltuiStr start_dir;  // absolute, set once at start
+  // The components of a path, as views into it: "/a//b/" is "a", "b".
+  static std::vector<StrView> parts(StrView p) {
+    std::vector<StrView> v;
+    std::size_t at = 0;
+    while (at < p.size()) {
+      std::size_t slash = p.find('/', at);
+      if (slash == StrView::npos) slash = p.size();
+      if (slash > at) v.push_back(p.substr(at, slash - at));
+      at = slash + 1;
     }
-    if (!cur.empty()) v.push_back(cur);
     return v;
   }
   // `path` as a relative path from `start_dir`, always with a leading `./` or `../` so it reads
   // as a place and never as a command.
-  std::string relative_to_start(const std::string& path) const {
-    const std::vector<std::string> a = parts(start_dir), b = parts(path);
+  RolltuiStr relative_to_start(StrView path) const {
+    const std::vector<StrView> a = parts(start_dir), b = parts(path);
     std::size_t common = 0;
     while (common < a.size() && common < b.size() && a[common] == b[common]) ++common;
-    std::string out;
+    RolltuiStr out;
     for (std::size_t i = common; i < a.size(); ++i) out += out.empty() ? ".." : "/..";
-    for (std::size_t i = common; i < b.size(); ++i) out += (out.empty() ? "" : "/") + b[i];
-    if (out.empty()) return ".";
-    return out.rfind("..", 0) == 0 ? out : "./" + out;
+    for (std::size_t i = common; i < b.size(); ++i) {
+      if (!out.empty()) out += "/";
+      out += b[i];
+    }
+    if (out.empty()) return RolltuiStr(".");
+    if (StrView(out).starts_with("..")) return out;
+    return "./" + out;
   }
 
   // THE SYSTEM OPENER: the platform's. A stand-in (`$DIRK_OPEN`) is put in front of the whole
@@ -1366,26 +1419,26 @@ struct App {
   // returns; any other returns at once (`open`, `code`, a stand-in). With `$DIRK_OPEN` set the
   // stand-in is run INSTEAD, handed the command it would have been — so a test sees "nvim
   // <path>" without a Neovim, and nothing takes the terminal over.
-  bool open_with(const std::string& id, const std::string& path) {
+  bool open_with(StrView id, StrView path) {
     const char* stand_in = std::getenv("DIRK_OPEN");
     if (stand_in && !*stand_in) stand_in = nullptr;
     if (headless && !stand_in) return false;
-    std::vector<std::string> cmd;
+    StrVec cmd;
+    if (stand_in) cmd.add(stand_in);  // run INSTEAD, handed the command it would have been
     const Program* p = program_named(id);
-    if (id == kSystemProgram) cmd = {opener(), path};
-    else if (id == kRunProgram) cmd = {path};  // the executable itself, on this terminal
+    if (id == kSystemProgram) { cmd.add(opener()); cmd.add(path); }
+    else if (id == kRunProgram) cmd.add(path);  // the executable itself, on this terminal
     else if (!p) return false;
-    else if (p->exe && installed.on_path.count(id)) {
-      cmd = {p->exe};
-      if (p->arg) cmd.push_back(p->arg);
-      cmd.push_back(path);
-    } else if (p->bundle) cmd = {"open", "-a", p->bundle, path};
+    else if (p->exe && installed.on_path.contains(id)) {
+      cmd.add(p->exe);
+      if (p->arg) cmd.add(p->arg);
+      cmd.add(path);
+    } else if (p->bundle) { cmd.add("open"); cmd.add("-a"); cmd.add(p->bundle); cmd.add(path); }
     else return false;
     const bool takes_terminal = ((p && p->terminal) || id == kRunProgram) && !stand_in;
-    if (stand_in) cmd.insert(cmd.begin(), stand_in);
     if (takes_terminal && (!run || tty_fd < 0)) return false;
     std::vector<const char*> argv;
-    for (const std::string& a : cmd) argv.push_back(a.c_str());
+    for (const RolltuiStr& a : cmd) argv.push_back(a.c_str());
     argv.push_back(nullptr);
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
@@ -1409,7 +1462,7 @@ struct App {
     return rc == 0;
   }
   // THE CLIPBOARD: `$DIRK_CLIPBOARD`, else the platform's, fed the text on stdin.
-  static bool copy_to_clipboard(const std::string& text) {
+  static bool copy_to_clipboard(StrView text) {
     const char* cmd = std::getenv("DIRK_CLIPBOARD");
     if (headless && !cmd) return false;
     if (!cmd || !*cmd) {
@@ -1431,7 +1484,7 @@ struct App {
     rolltui_window_stack_push_popup(stack, layout, id, len);
   }
 
-  void run_action(const std::string& action) {
+  void run_action(StrView action) {
     if (action == "app.quit") quit = true;
     // A panel this screen declares is the library's to open — see
     // `rolltui_window_stack_action_popup`. `help`, `theme` and `keys` are three lines
@@ -1503,21 +1556,21 @@ struct App {
     // chord would — the global scope, so it works wherever the focus is.
     if (e.kind == ROLLTUI_EVENT_MOUSE && e.mouse.kind == RolltuiMouseEvent::Kind::Press) {
       std::size_t n = 0;
-      if (const char* a = rolltui_hint_bar_hit(hints, e.mouse.x, e.mouse.y, &n)) { run_action(std::string(a, n)); return; }
+      if (const char* a = rolltui_hint_bar_hit(hints, e.mouse.x, e.mouse.y, &n)) { run_action(StrView(a, n)); return; }
       if (!editing_path() && rolltui_window_stack_depth(stack) == 1 && press_on_crumbs(e.mouse.x, e.mouse.y)) return;
     }
     // The app's OWN scope first, so a global chord works wherever the focus is — roll's rule —
     // EXCEPT a bare printable key while a line is being typed into: that is the text's.
     if (e.kind == ROLLTUI_EVENT_KEY) {
       std::size_t len = 0;
-      const bool typing = e.key.key == ROLLTUI_KEY_CHAR && !e.key.ctrl && !e.key.alt && focused_content().rfind("input:", 0) == 0;
+      const bool typing = e.key.key == ROLLTUI_KEY_CHAR && !e.key.ctrl && !e.key.alt && focused_content().starts_with("input:");
       if (const char* a = typing ? nullptr : rolltui_bindings_action_for(bindings, &e.key, "app", 3, &len)) {
-        if (len != 0) { run_action(std::string(a, len)); return; }
+        if (len != 0) { run_action(StrView(a, len)); return; }
       }
       // THE CLOSE KEY IN THE PATH LINE OR THE FIND FIELD hands the focus back to the columns —
       // the path put back as it was — the way it closes a popup: the same chord, read from the
       // stack's own table, so a rebinding moves both.
-      const std::string fc = focused_content();
+      const RolltuiStr fc = rolltui::own(focused_content());
       if (rolltui_window_stack_depth(stack) == 1 && (fc == "input:path" || fc == "input:find")) {
         std::size_t al = 0;
         const char* a = rolltui_bindings_action_for(bindings, &e.key, "stack", 5, &al);
@@ -1531,12 +1584,11 @@ struct App {
         }
       }
     }
-    focused_before = focused_content();
+    focused_before = rolltui::own(focused_content());
     RolltuiStr window{};
     const unsigned char kind =
         rolltui_window_stack_route(stack, &e, area(), bindings, rolltui_stack_default_actions(), &window);
-    const std::string target(window.c_str(), window.size());
-    rolltui_str_free(&window);
+    const StrView target = window;  // the route's answer, freed with `window` when this returns
     // THE PATH LINE, REACHED, IS SELECTED WHOLE — an address bar's rule: typing replaces the path,
     // an arrow key edits it.
     if (focused_before != "input:path" && focused_content() == "input:path") {
@@ -1548,69 +1600,70 @@ struct App {
     if (RolltuiMenu* m = rolltui_windows_menu_at(windows, target.data(), target.size())) {
       RolltuiMenuEvent ev{};
       rolltui_menu_handle(m, &e, bindings, rolltui_menu_default_actions(), &ev);
-      const std::string id(ev.id.p ? ev.id.p : "", ev.id.n);
+      const StrView id = ev.id;
       if (target == "matches") {
         if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && !id.empty() && id[0] == '/') {
           rolltui_window_stack_pop(stack);
           go_to_match(id);
         }
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "sort") {
-        const std::string v(ev.value.p ? ev.value.p : "", ev.value.n);
         Sort s = Sort::Name; bool rev = false;
-        if (sort_from_id(v, s, rev)) set_sort(s, rev);
+        if (sort_from_id(ev.value, s, rev)) set_sort(s, rev);
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && (id == "show_size" || id == "show_modified")) {
         Show& which = id == "show_size" ? opt.show_size : opt.show_modified;
-        which = show_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
+        which = show_from(ev.value);
         apply_picker_options();
-        hint = std::string(id == "show_size" ? "sizes" : "modified dates") + (which == Show::Always ? ": always shown" : which == Show::Never ? ": never shown" : ": shown with the sort");
+        hint = RolltuiStr(id == "show_size" ? "sizes" : "modified dates") + (which == Show::Always ? ": always shown" : which == Show::Never ? ": never shown" : ": shown with the sort");
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "preview") {
-        opt.preview = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "right";
+        opt.preview = ev.value == "right";
         apply_picker_options();
         hint = opt.preview ? "file preview: in the right half (Right on a file to scroll it, Right again to zoom)" : "file preview: off";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
-        const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
+        const StrView name = ev.value;
         RolltuiThemePresetReport trep{};
         if (theme_store && rolltui_preset_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = "theme: " + name;
         else hint = "could not load the theme " + name;
         rolltui_theme_preset_report_release(&trep);
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "mode") {
-        std::string mode(ev.value.p ? ev.value.p : "", ev.value.n);
+        RolltuiStr mode = rolltui::own(ev.value);
         if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_mode, &mode, 1);
         hint = "light or dark: " + mode;
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "depth") {
-        std::string depth(ev.value.p ? ev.value.p : "", ev.value.n);
+        RolltuiStr depth = rolltui::own(ev.value);
         if (theme_store) rolltui_preset_store_edit(theme_store, set_theme_depth, &depth, 1);
         hint = "colours: " + depth;
         menu_dirty = true;
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "keys") {
-        const std::string name(ev.value.p ? ev.value.p : "", ev.value.n);
+        const StrView name = ev.value;
         RolltuiBindingsPresetReport brep{};
         if (keys_store && rolltui_preset_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = "key bindings: " + name; }
         else hint = "could not load the key bindings " + name;
         rolltui_bindings_preset_report_release(&brep);
         menu_dirty = true;
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id.rfind("open_", 0) == 0) {
-        opt.open_with[id.substr(5)] = std::string(ev.value.p ? ev.value.p : "", ev.value.n);
-        hint = id.substr(5) + " opens with " + program_label(opt.open_with[id.substr(5)]);
-        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id.starts_with("open_")) {
+        if (const TypeGroup* g = group_by_id(id.drop_front(5))) {
+          opt.open_with[group_index(*g)] = rolltui::own(ev.value);
+          hint = id.drop_front(5) + " opens with " + program_label(ev.value);
+          save_settings();
+        }
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "exec") {
-        opt.exec = exec_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
-        hint = std::string("programs and scripts: ") + (opt.exec == Exec::Run ? "run here, in this terminal" : opt.exec == Exec::Open ? "the system opener" : "to the command line, so arguments can follow");
+        opt.exec = exec_from(ev.value);
+        hint = RolltuiStr("programs and scripts: ") + (opt.exec == Exec::Run ? "run here, in this terminal" : opt.exec == Exec::Open ? "the system opener" : "to the command line, so arguments can follow");
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "leave") {
-        opt.leave = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "line";
+        opt.leave = ev.value == "line";
         hint = opt.leave ? "enter on a file: leave with its path on the command line" : "enter on a file: open it with the program for its type, and stay (see Open with)";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "land") {
-        opt.land_in_file_folder = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "file";
+        opt.land_in_file_folder = ev.value == "file";
         hint = opt.land_in_file_folder ? "command line: in the file's folder, ./name" : "command line: where dirk started";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "paths") {
-        opt.copy_relative = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "relative";
+        opt.copy_relative = ev.value == "relative";
         hint = opt.copy_relative ? "paths: relative to where the command line lands" : "paths: absolute";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
@@ -1720,7 +1773,7 @@ struct App {
     // squeeze as they do beside anything else.
     {
       const RolltuiStyleColor ground = style(ROLLTUI_ROLE_PANEL_BACKGROUND).bg;
-      if (hint != hint_shown) { hint_shown = hint; hint_since = now_ms; }
+      if (hint != hint_shown) { hint_shown.assign(hint.data(), hint.size()); hint_since = now_ms; }
       int right_w = 7;  // the name's cells
       if (!hint.empty()) {
         const unsigned long long age = now_ms >= hint_since ? now_ms - hint_since : 0;
@@ -1777,12 +1830,16 @@ struct App {
 
 bool App::headless = false;
 
-std::string read_file(const std::string& path, bool& ok) {
-  std::ifstream in(path, std::ios::binary);
-  ok = static_cast<bool>(in);
-  std::stringstream ss;
-  ss << in.rdbuf();
-  return ss.str();
+// The whole of a file, and whether it could be opened.
+RolltuiStr read_file(const RolltuiStr& path, bool& ok) {
+  RolltuiStr out;
+  FILE* f = std::fopen(path.c_str(), "rb");
+  ok = f != nullptr;
+  if (!f) return out;
+  char buf[4096];
+  for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) out.append(buf, n);
+  std::fclose(f);
+  return out;
 }
 
 // The app's own files, generated at build time from `examples/presets/` by
@@ -1795,25 +1852,33 @@ extern const size_t dirktui_kAppFileCount;
 
 // Where a person's own presets live, the same three rungs `rolltui_app_file` walks for an app's
 // own files: an explicit configuration directory, then the XDG one, then the home default.
-std::string user_presets_dir() {
-  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return std::string(d) + "/rolltui";
-  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return std::string(x) + "/roll/rolltui";
+RolltuiStr user_presets_dir() {
+  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return RolltuiStr(d) + "/rolltui";
+  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return RolltuiStr(x) + "/roll/rolltui";
   const char* home = std::getenv("HOME");
-  return std::string(home && *home ? home : ".") + "/.config/roll/rolltui";
+  return RolltuiStr(home && *home ? home : ".") + "/.config/roll/rolltui";
 }
 
-RolltuiLayout* load_layout_text(RolltuiContext* ctx, const std::string& text, RolltuiLayoutReport* rep) {
+// `dir` and every folder above it made, and whether it is a folder now. Each prefix is a fresh copy: `mkdir` wants a C string.
+static bool mkdirs(const RolltuiStr& dir) {
+  for (std::size_t i = 1; i <= dir.size(); ++i)
+    if (i == dir.size() || dir.p[i] == '/') mkdir(rolltui::own(StrView(dir).first(i)).c_str(), 0755);
+  struct stat st{};
+  return stat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+RolltuiLayout* load_layout_text(RolltuiContext* ctx, StrView text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
   return rolltui_load_layout_text(text.data(), text.size(), defaults, defaults_n,
                                   rolltui_layout_default_hooks(), rep);
 }
 
-[[maybe_unused]] bool parse_size(const std::string& s, int& w, int& h) {
+[[maybe_unused]] bool parse_size(StrView s, int& w, int& h) {
   const std::size_t x = s.find('x');
-  if (x == std::string::npos) return false;
-  w = std::atoi(s.substr(0, x).c_str());
-  h = std::atoi(s.substr(x + 1).c_str());
+  if (x == StrView::npos) return false;
+  w = std::atoi(rolltui::own(s.first(x)).c_str());
+  h = std::atoi(rolltui::own(s.drop_front(x + 1)).c_str());
   return w > 0 && h > 0;
 }
 
@@ -2091,50 +2156,55 @@ bind \eOC _dirk_forward_char
 //     edited). The block is found by its markers and replaced, so a second install writes it
 //     once. The shell is the one $SHELL names unless given.
 // `uninstall` removes the block and the link. Nothing else is touched.
-static std::string self_path(const char* argv0) {
+static RolltuiStr self_path(const char* argv0) {
   char real[PATH_MAX];
 #ifdef __APPLE__
   char buf[PATH_MAX];
   uint32_t n = sizeof buf;
-  if (_NSGetExecutablePath(buf, &n) == 0) return realpath(buf, real) ? std::string(real) : std::string(buf);
+  if (_NSGetExecutablePath(buf, &n) == 0) return RolltuiStr(realpath(buf, real) ? real : buf);
 #else
   char buf[PATH_MAX];
   const ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
-  if (n > 0) { buf[n] = '\0'; return buf; }
+  if (n > 0) { buf[n] = '\0'; return RolltuiStr(buf); }
 #endif
-  return realpath(argv0, real) ? std::string(real) : std::string(argv0);
+  return RolltuiStr(realpath(argv0, real) ? real : argv0);
 }
 static const char* kInstallBegin = "# >>> dirk (written by `dirktui install`; `dirktui uninstall` removes it) >>>";
 static const char* kInstallEnd = "# <<< dirk <<<";
-static std::string shell_of(int argc, char** argv) {
-  if (argc >= 3) return argv[2];
+static RolltuiStr shell_of(int argc, char** argv) {
+  if (argc >= 3) return RolltuiStr(argv[2]);
   const char* sh = std::getenv("SHELL");
-  if (!sh) return "";
-  const std::string s(sh);
-  return s.substr(s.rfind('/') + 1);
+  if (!sh) return RolltuiStr();
+  return rolltui::own(rolltui::path_base(sh));
 }
-static bool mkdirs(const std::string& dir) {
-  for (std::size_t i = 1; i <= dir.size(); ++i)
-    if (i == dir.size() || dir[i] == '/') mkdir(dir.substr(0, i).c_str(), 0755);
-  struct stat st{};
-  return stat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+// The fields of a list separated by `sep`, one at a time, until `f` says stop (returns false). An empty field is passed as an empty view.
+template <class F>
+static void each_field(StrView list, char sep, F&& f) {
+  std::size_t at = 0;
+  for (;;) {
+    std::size_t end = list.find(sep, at);
+    if (end == StrView::npos) end = list.size();
+    if (!f(list.substr(at, end - at))) return;
+    if (end >= list.size()) return;
+    at = end + 1;
+  }
 }
 // `text` with the marked block replaced by `block` (empty: removed), or appended.
-static std::string with_block(const std::string& text, const std::string& block) {
+static RolltuiStr with_block(StrView text, StrView block) {
   const std::size_t b = text.find(kInstallBegin);
-  std::size_t e = b == std::string::npos ? std::string::npos : text.find(kInstallEnd, b);
-  if (e != std::string::npos) {
+  std::size_t e = b == StrView::npos ? StrView::npos : text.find(kInstallEnd, b);
+  if (e != StrView::npos) {
     e += std::strlen(kInstallEnd);
     if (e < text.size() && text[e] == '\n') ++e;
     std::size_t bb = b;
     if (bb > 0 && text[bb - 1] == '\n' && block.empty()) --bb;  // take the blank line the block brought
-    return text.substr(0, bb) + block + text.substr(e);
+    return text.first(bb) + block + text.drop_front(e);
   }
-  if (block.empty()) return text;
-  std::string out = text;
-  if (!out.empty() && out.back() != '\n') out += '\n';
+  if (block.empty()) return rolltui::own(text);
+  RolltuiStr out = rolltui::own(text);
+  if (!out.empty() && out.p[out.n - 1] != '\n') out += '\n';
   if (!out.empty()) out += '\n';
-  return out + block;
+  return std::move(out) + block;
 }
 const char* fact_source(unsigned char s) {
   switch (s) {
@@ -2202,7 +2272,7 @@ int check_terminal_command() {
   const bool answered = rolltui_terminal_reprobe(t, 600) != 0;
   RolltuiTermFacts f;
   rolltui_terminal_facts(t, &f);
-  const std::string cache = rolltui_terminal_cache_path(t);
+  const RolltuiStr cache = rolltui_terminal_cache_path(t);  // copied: the terminal is freed just below
   rolltui_terminal_free(t);
   close(tty);
 
@@ -2214,7 +2284,7 @@ int check_terminal_command() {
   std::printf("  answered     %s\n", answered ? "yes: it replied to the questions" : "no: it did not reply, so everything below is the environment's guess");
   std::printf("  colours      %s   (%s)\n", depth_words(f.depth), fact_source(f.depth_source));
   const char* colorterm = std::getenv("COLORTERM");
-  if (colorterm && (std::string(colorterm) == "truecolor" || std::string(colorterm) == "24bit") && f.depth < ROLLTUI_DEPTH_TRUECOLOR &&
+  if (colorterm && (StrView(colorterm) == "truecolor" || StrView(colorterm) == "24bit") && f.depth < ROLLTUI_DEPTH_TRUECOLOR &&
       f.depth_source != ROLLTUI_FACT_FORCED)
     std::printf("               COLORTERM claims 24-bit colour, and it is not being believed here — this terminal did not confirm it\n");
   if (f.has_background) {
@@ -2248,7 +2318,7 @@ void warm_terminal_cache() {
 }
 
 int install_command(int argc, char** argv, bool remove) {
-  const std::string shell = shell_of(argc, argv);
+  const RolltuiStr shell = shell_of(argc, argv);
   const bool known = shell == "zsh" || shell == "bash" || shell == "fish";
   const char* home = std::getenv("HOME");
   if (!known || !home || !*home) {
@@ -2256,16 +2326,16 @@ int install_command(int argc, char** argv, bool remove) {
                  remove ? "uninstall" : "install", home && *home ? "" : "; HOME is unset");
     return 2;
   }
-  const std::string bin_dir = std::string(home) + "/.local/bin", link = bin_dir + "/dirktui";
-  const std::string rc = shell == "zsh" ? std::string(home) + "/.zshrc"
-                       : shell == "bash" ? std::string(home) + "/.bashrc"
-                                         : std::string(home) + "/.config/fish/conf.d/dirk.fish";
-  const std::string block =
-      remove ? std::string()
+  const RolltuiStr bin_dir = RolltuiStr(home) + "/.local/bin", link = bin_dir + "/dirktui";
+  const RolltuiStr rc = shell == "zsh" ? RolltuiStr(home) + "/.zshrc"
+                      : shell == "bash" ? RolltuiStr(home) + "/.bashrc"
+                                        : RolltuiStr(home) + "/.config/fish/conf.d/dirk.fish";
+  const RolltuiStr block =
+      remove ? RolltuiStr()
       : shell == "fish"
           // GUARDED: a binary that is gone (the build tree moved) costs `dirk`, never a shell start.
-          ? std::string(kInstallBegin) + "\nfish_add_path -g $HOME/.local/bin\ncommand -q dirktui; and dirktui init fish | source\n" + kInstallEnd + "\n"
-          : std::string(kInstallBegin) + "\ncase \":$PATH:\" in *\":$HOME/.local/bin:\"*) ;; *) export PATH=\"$HOME/.local/bin:$PATH\" ;; esac\n"
+          ? RolltuiStr(kInstallBegin) + "\nfish_add_path -g $HOME/.local/bin\ncommand -q dirktui; and dirktui init fish | source\n" + kInstallEnd + "\n"
+          : RolltuiStr(kInstallBegin) + "\ncase \":$PATH:\" in *\":$HOME/.local/bin:\"*) ;; *) export PATH=\"$HOME/.local/bin:$PATH\" ;; esac\n"
                 "command -v dirktui >/dev/null 2>&1 && eval \"$(dirktui init " + shell + ")\"\n" + kInstallEnd + "\n";
   // the link
   struct stat st{};
@@ -2275,20 +2345,20 @@ int install_command(int argc, char** argv, bool remove) {
     if (is_link) { unlink(link.c_str()); std::fprintf(stderr, "dirktui: removed %s\n", link.c_str()); }
     else if (is_other) std::fprintf(stderr, "dirktui: %s is not a link this command made; left alone\n", link.c_str());
   } else {
-    const std::string self = self_path(argv[0]);
+    const RolltuiStr self = self_path(argv[0]);
     // ALREADY ON THE PATH — a Homebrew install, a system package — needs no link: the shell finds
     // it where it is, and a link to a binary a package manager may move would break later.
     bool on_path = false;
     if (const char* pv = std::getenv("PATH")) {
-      std::istringstream in(pv);
-      for (std::string dir; std::getline(in, dir, ':');) {
+      each_field(pv, ':', [&](StrView dir) {
         // A `.local/bin` on the PATH is a link this command (or a person) made, not a package:
         // it is what install writes, never what makes install unnecessary.
-        if (dir.empty() || dir == bin_dir || (dir.size() >= 11 && dir.compare(dir.size() - 11, 11, "/.local/bin") == 0)) continue;
+        if (dir.empty() || dir == bin_dir || dir.ends_with("/.local/bin")) return true;
         char real[PATH_MAX];
-        const std::string cand = dir + "/dirktui";
-        if (realpath(cand.c_str(), real) && self == real) { on_path = true; break; }
-      }
+        const RolltuiStr cand = dir + "/dirktui";
+        if (realpath(cand.c_str(), real) && self == real) { on_path = true; return false; }
+        return true;
+      });
     }
     if (on_path) {
       std::fprintf(stderr, "dirktui: already on your PATH at %s; no link made\n", self.c_str());
@@ -2307,13 +2377,10 @@ int install_command(int argc, char** argv, bool remove) {
     }
   }
   // the rc file
-  std::string text;
-  {
-    std::ifstream in(rc, std::ios::binary);
-    if (in) text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-  }
-  const std::string next = with_block(text, block);
-  if (!remove && shell == "zsh" && text.find("zsh-autosuggestions") != std::string::npos)
+  bool rc_read = false;
+  const RolltuiStr text = read_file(rc, rc_read);  // no file yet is an empty one
+  const RolltuiStr next = with_block(text, block);
+  if (!remove && shell == "zsh" && StrView(text).contains("zsh-autosuggestions"))
     // The two share Right Arrow at the end of the line. The widget defers: a suggestion that is
     // showing is accepted first, and Right again opens dirk. Said once here, at the one moment a
     // person is reading; never at shell start.
@@ -2325,11 +2392,12 @@ int install_command(int argc, char** argv, bool remove) {
     unlink(rc.c_str());
     std::fprintf(stderr, "dirktui: removed %s\n", rc.c_str());
   } else if (next != text) {
-    if (!mkdirs(rc.substr(0, rc.rfind('/')))) { std::fprintf(stderr, "dirktui: cannot create the directory of %s\n", rc.c_str()); return 1; }
-    std::ofstream out(rc, std::ios::binary | std::ios::trunc);
-    out << next;
-    if (!out) { std::fprintf(stderr, "dirktui: cannot write %s\n", rc.c_str()); return 1; }
-    std::fprintf(stderr, "dirktui: %s the dirk block in %s\n", remove ? "removed" : (text.find(kInstallBegin) != std::string::npos ? "refreshed" : "wrote"), rc.c_str());
+    if (!mkdirs(rolltui::own(rolltui::path_dir(rc)))) { std::fprintf(stderr, "dirktui: cannot create the directory of %s\n", rc.c_str()); return 1; }
+    FILE* out = std::fopen(rc.c_str(), "wb");
+    const bool wrote = out && std::fwrite(next.data(), 1, next.size(), out) == next.size();
+    if (out) std::fclose(out);
+    if (!wrote) { std::fprintf(stderr, "dirktui: cannot write %s\n", rc.c_str()); return 1; }
+    std::fprintf(stderr, "dirktui: %s the dirk block in %s\n", remove ? "removed" : (StrView(text).contains(kInstallBegin) ? "refreshed" : "wrote"), rc.c_str());
   } else {
     std::fprintf(stderr, "dirktui: %s already has the dirk block\n", rc.c_str());
   }
@@ -2337,12 +2405,14 @@ int install_command(int argc, char** argv, bool remove) {
     // A LOGIN bash reads a profile and never ~/.bashrc unless the profile sources it — and a
     // terminal on macOS opens a login shell. Said, not done: the profile is the person's.
     const char* profiles[] = {"/.bash_profile", "/.bash_login", "/.profile"};
-    std::string found, ptext;
+    RolltuiStr found, ptext;
     for (const char* pf : profiles) {
-      std::ifstream in(std::string(home) + pf, std::ios::binary);
-      if (in) { found = std::string(home) + pf; ptext.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()); break; }
+      const RolltuiStr profile = RolltuiStr(home) + pf;
+      bool opened = false;
+      RolltuiStr body = read_file(profile, opened);
+      if (opened) { found.assign(profile.data(), profile.size()); ptext = std::move(body); break; }
     }
-    const bool sources = ptext.find(".bashrc") != std::string::npos;
+    const bool sources = StrView(ptext).contains(".bashrc");
 #ifdef __APPLE__
     const bool login_shells = true;
 #else
@@ -2359,7 +2429,7 @@ int install_command(int argc, char** argv, bool remove) {
 }
 
 int init_command(int argc, char** argv) {
-  const std::string shell = argc == 3 ? argv[2] : "";
+  const StrView shell(argc == 3 ? argv[2] : "");
   const char* script = shell == "zsh" ? kZshInit : shell == "bash" ? kBashInit : shell == "fish" ? kFishInit : nullptr;
   if (!script) {
     std::fprintf(stderr, "usage: dirktui init zsh|bash|fish\n");
@@ -2374,7 +2444,7 @@ int init_command(int argc, char** argv) {
 int main(int argc, char** argv) {
   // A subcommand is the FIRST word and nothing else: a directory literally called `init` is
   // still reachable as `dirktui ./init`.
-  if (argc >= 2 && std::string(argv[1]) == "--version") {
+  if (argc >= 2 && StrView(argv[1]) == "--version") {
 #ifdef DIRKTUI_VERSION
     std::printf("dirktui %s\n", DIRKTUI_VERSION);
 #else
@@ -2382,19 +2452,19 @@ int main(int argc, char** argv) {
 #endif
     return 0;
   }
-  if (argc >= 2 && std::string(argv[1]) == "init") return init_command(argc, argv);
-  if (argc >= 2 && std::string(argv[1]) == "check-terminal") return check_terminal_command();
-  if (argc >= 2 && std::string(argv[1]) == "languages") return languages_command(argc, argv);
-  if (argc >= 2 && std::string(argv[1]) == "install") return install_command(argc, argv, false);
-  if (argc >= 2 && std::string(argv[1]) == "uninstall") return install_command(argc, argv, true);
-  std::string start;
-  [[maybe_unused]] std::string presets_dir, layout_arg, theme_arg = "default-dark";
-  [[maybe_unused]] std::string frame_spec, keys_spec;
+  if (argc >= 2 && StrView(argv[1]) == "init") return init_command(argc, argv);
+  if (argc >= 2 && StrView(argv[1]) == "check-terminal") return check_terminal_command();
+  if (argc >= 2 && StrView(argv[1]) == "languages") return languages_command(argc, argv);
+  if (argc >= 2 && StrView(argv[1]) == "install") return install_command(argc, argv, false);
+  if (argc >= 2 && StrView(argv[1]) == "uninstall") return install_command(argc, argv, true);
+  RolltuiStr start;
+  [[maybe_unused]] RolltuiStr presets_dir, layout_arg, theme_arg = "default-dark";
+  [[maybe_unused]] RolltuiStr frame_spec, keys_spec;
   [[maybe_unused]] bool frame_sgr = false;
-  std::string apps_dirs = std::string("/Applications:") + (std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications";  // where application bundles live
+  RolltuiStr apps_dirs = RolltuiStr("/Applications:") + (std::getenv("HOME") ? std::getenv("HOME") : "") + "/Applications";  // where application bundles live
   for (int i = 1; i < argc; ++i) {
-    const std::string a = argv[i];
-    [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    const StrView a(argv[i]);
+    [[maybe_unused]] auto next = [&]() -> RolltuiStr { return i + 1 < argc ? RolltuiStr(argv[++i]) : RolltuiStr(); };
     // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `dirk-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
@@ -2418,7 +2488,7 @@ int main(int argc, char** argv) {
     else if (a == "--apps") apps_dirs = next();  // where application bundles are looked for, instead of /Applications
     else
 #endif
-    if (!a.empty() && a[0] != '-' && start.empty()) start = a;
+    if (!a.empty() && a[0] != '-' && start.empty()) start = rolltui::own(a);
     else return usage();
   }
 
@@ -2454,7 +2524,7 @@ int main(int argc, char** argv) {
     // The STORES read a person's own directory whether or not one was named on the command line —
     // an explicit `--presets` points the SCREEN somewhere, and where a person's presets live is a
     // separate question with its own answer.
-    const std::string store_dir = presets_dir.empty() ? user_presets_dir() : presets_dir;
+    const RolltuiStr store_dir = presets_dir.empty() ? user_presets_dir() : rolltui::own(presets_dir);
     RolltuiPresetDomain* td = rolltui_preset_domain_theme(app.ctx);
     RolltuiPresetDomain* bd = rolltui_preset_domain_bindings(app.ctx);
     RolltuiThemePresetReport trep{};
@@ -2478,10 +2548,12 @@ int main(int argc, char** argv) {
 
   {
     char cwd[4096];
-    const std::string here = getcwd(cwd, sizeof cwd) ? cwd : ".";
-    app.root = start.empty() ? here : (start[0] == '/' ? start : here + "/" + start);
-    while (app.root.size() > 1 && app.root.back() == '/') app.root.pop_back();
-    app.start_dir = app.root;  // what a relative path is said from, for the whole session
+    const RolltuiStr here = getcwd(cwd, sizeof cwd) ? cwd : ".";
+    if (start.empty()) app.root = rolltui::own(here);
+    else if (start.p[0] == '/') app.root = rolltui::own(start);
+    else app.root = here + "/" + start;
+    App::trim_slashes(app.root);
+    app.start_dir = rolltui::own(app.root);  // what a relative path is said from, for the whole session
   }
 
   RolltuiLayoutReport rep{};
@@ -2493,11 +2565,11 @@ int main(int argc, char** argv) {
     // neither, the app asks the library where its OWN default lives, which is what lets it run bare.
     const bool named = !layout_arg.empty() || !presets_dir.empty();
     if (named) {
-      const std::string name = layout_arg.empty() ? std::string("dirktui") : layout_arg;
-      const bool path = name.find('/') != std::string::npos || name.find(".json") != std::string::npos;
-      const std::string file = path ? name : presets_dir + "/layouts/" + name + ".json";
+      const RolltuiStr name = layout_arg.empty() ? RolltuiStr("dirktui") : rolltui::own(layout_arg);
+      const bool path = StrView(name).contains('/') || StrView(name).contains(".json");
+      const RolltuiStr file = path ? rolltui::own(name) : presets_dir + "/layouts/" + name + ".json";
       bool ok = false;
-      const std::string text = read_file(file, ok);
+      const RolltuiStr text = read_file(file, ok);
       if (ok) { loaded = load_layout_text(app.ctx, text, &rep); have = loaded != nullptr; }
       if (!ok) { rolltui_str_append(&layout_tried, "  missing ", 10);
                  rolltui_str_append(&layout_tried, file.data(), file.size()); }
@@ -2505,7 +2577,7 @@ int main(int argc, char** argv) {
       RolltuiStr text{};
       if (rolltui_app_file(argv[0], "dirktui", "layout",
                            dirktui_kAppFiles, dirktui_kAppFileCount, &text, &layout_tried)) {
-        loaded = load_layout_text(app.ctx, std::string(text.p ? text.p : "", text.n), &rep);
+        loaded = load_layout_text(app.ctx, text, &rep);
         have = loaded != nullptr;
       }
       rolltui_str_free(&text);
@@ -2536,7 +2608,7 @@ int main(int argc, char** argv) {
   // load that had already been released.
   {
     bool ok = false;
-    std::string text;
+    RolltuiStr text;
     if (!presets_dir.empty()) text = read_file(presets_dir + "/bindings/default.json", ok);
     else {
       RolltuiStr t{};
@@ -2547,7 +2619,7 @@ int main(int argc, char** argv) {
     }
     if (ok) {
       RolltuiBindingsReport brep{};
-      app.bindings_json = text;
+      app.bindings_json.assign(text.data(), text.size());
       rolltui_bindings_load_json(app.bindings, text.data(), text.size(), ROLLTUI_PROTOCOL_LEGACY,
                                  rolltui_bindings_library_scope, nullptr, nullptr, nullptr, &brep);
       // EVERY category, not just the one that bit first (wall 5): a chord the library's shipped
@@ -2608,7 +2680,8 @@ int main(int argc, char** argv) {
       // press on the status line is answered by where the hint bar landed on the last draw.
       RolltuiSwap* between = rolltui_swap_new(app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND));
       app.render_into(rolltui_swap_begin(between, app.w, app.h, app.style(ROLLTUI_ROLE_BACKGROUND)));
-      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h)) {
+      // (The shared self-test harness, which three apps use and which ships in none, speaks std::string: converted here, once.)
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(std::string(keys_spec.data(), keys_spec.size()), app.w, app.h)) {
         app.now_ms = st.ms;
         if (st.tick) { moving = true; continue; }
         RolltuiEvent ev = st.ev;

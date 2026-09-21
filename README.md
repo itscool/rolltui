@@ -44,6 +44,14 @@ widgets — is this repository's own.
 ./build/rolltui-paint            # the text-mode painting app
 ```
 
+## One kind of string
+
+`RolltuiStr` is the library's string: owned, NUL-terminated, in the library's allocator, and `clear()` keeps its buffer for the
+next fill. A C++ host does its string work with it and with `rolltui/str.hpp` beside it, and never converts to `std::string`
+and back: a borrowed `StrView` (find, rfind, substr, starts_with, ends_with, compare), `a + b + c` that builds one buffer, `appendf`
+for numbers, `StrVec` for a growing list, and `path_base` / `path_dir`. It is header-only over the string's own fields and adds no
+function to `rolltui.h`. `dirktui` is written this way, and `tests/str_hpp_test.cpp` checks the view against `std::string` as an oracle.
+
 ## What the terminal is, so no host has to ask
 
 A terminal is not what its environment says it is. Apple's Terminal on macOS 15 cannot draw

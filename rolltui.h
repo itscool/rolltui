@@ -190,8 +190,9 @@ typedef struct RolltuiStr {
 
 #ifdef __cplusplus
   // THE C++ SHAPE, cut to one rule: a member may name rolltui's
-  // own types and the C standard's, never a std:: container or view. What a host wants as a
-  // std::string it converts in its own file, at the site that wants it. COPY IS DELETED:
+  // own types and the C standard's, never a std:: container or view. What a host does with text it does in
+  // `rolltui/str.hpp` (a borrowed `StrView`, `+`, `appendf`, a `StrVec`), so it holds one kind of string from the library's
+  // calls to its own logic; one that must have a std::string converts in its own file, at the site that wants it. COPY IS DELETED:
   // `RolltuiStr a = b;` is a deep copy in C++ and a shallow alias in C — the
   // double-free, one type over — and the one spelling is `a.assign(b)`, which is
   // `rolltui_str_set`. MOVE stays: it is `rolltui_str_move` as a member. THE DESTRUCTOR STAYS:

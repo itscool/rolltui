@@ -167,5 +167,34 @@ int main() {
     check(bad == 0, "path_base and path_dir split a path into its last component and everything before it");
   }
 
+  // ---- StrVec: the growing list ---------------------------------------------------------------------------------------------------
+  {
+    const std::size_t before = live_bytes();
+    {
+      StrVec v;
+      check(v.empty() && v.size() == 0 && !v.contains("x"), "a new list is empty");
+      for (int i = 0; i < 100; ++i) v.add(StrView(("item" + std::to_string(i)).c_str()));
+      RolltuiStr adopted;
+      adopted = "adopted";
+      v.add(std::move(adopted));
+      check(v.size() == 101 && v[0] == "item0" && v[99] == "item99" && v.back() == "adopted" && adopted.empty(),
+            "add copies a view and adopts a moved string, across several growths of the array");
+      check(v.contains("item57") && v.contains(StrView("adopted")) && !v.contains("item100") && !v.contains(""), "contains looks for a whole element");
+      std::size_t total = 0;
+      for (const RolltuiStr& s : v) total += s.size();
+      check(total == 10 * 5 + 90 * 6 + 7, "a range-for walks every element (" + std::to_string(total) + ")");
+      StrVec moved = std::move(v);
+      check(v.empty() && moved.size() == 101 && moved[50] == "item50", "a list moves, and the source is left empty");
+      moved.clear();
+      moved.add("again");
+      check(moved.size() == 1 && moved[0] == "again", "clear() empties it and it fills again");
+      StrVec assigned;
+      assigned.add("x");
+      assigned = std::move(moved);
+      check(assigned.size() == 1 && assigned[0] == "again", "move-assigning frees what the target held and takes the source's");
+    }
+    check(live_bytes() == before, "the list freed every string and its array (" + std::to_string(live_bytes()) + " vs " + std::to_string(before) + ")");
+  }
+
   return testkit::report("rolltui_str_hpp_test");
 }

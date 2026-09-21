@@ -10,6 +10,7 @@
  *            a literal or a `const char*`, so a function that only reads text takes one and accepts all three.
  *   `+`      builds one `RolltuiStr` and appends into it as it goes, so `dir + "/" + name + ".json"` is one buffer, not four.
  *   appendf  printf into a `RolltuiStr`, for numbers and padding.
+ *   StrVec   a growing list of owned strings, in the library's allocator, where a host used a `std::vector<std::string>`.
  *   path_*   the last component of a path and everything before it, as views.
  *
  * A VIEW DOES NOT KEEP ITS TEXT ALIVE. `StrView v = a + b;` is a view of a temporary that is gone by the next line; hold the
@@ -20,6 +21,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <new>
 #include <type_traits>
 
 #include "rolltui/rolltui.h"
@@ -114,25 +116,32 @@ inline RolltuiStr own(StrView v) {
 }
 
 inline void append(RolltuiStr& s, StrView v) { s.append(v.data(), v.size()); }
-inline RolltuiStr& operator+=(RolltuiStr& s, StrView v) {
-  append(s, v);
-  return s;
-}
 
+}  // namespace rolltui
+
+// THE OPERATORS ON A RolltuiStr LIVE BESIDE IT, in the global namespace: `RolltuiStr + "x"` has no operand in namespace `rolltui`, so
+// argument-dependent lookup would never find them there.
+//
 // `a + b` makes one string; `(a + b) + c` appends `c` into that same buffer, so a chain is one buffer that grows, never a copy
 // per `+`. A left side that is already a `RolltuiStr` temporary is USED, not copied.
-inline RolltuiStr operator+(StrView a, StrView b) {
+inline RolltuiStr& operator+=(RolltuiStr& s, rolltui::StrView v) {
+  s.append(v.data(), v.size());
+  return s;
+}
+inline RolltuiStr operator+(rolltui::StrView a, rolltui::StrView b) {
   RolltuiStr s;
   s.append(a.data(), a.size());
   s.append(b.data(), b.size());
   return s;
 }
 template <class S, class = std::enable_if_t<std::is_same_v<S, RolltuiStr>>>
-inline RolltuiStr operator+(S&& a, StrView b) {
+inline RolltuiStr operator+(S&& a, rolltui::StrView b) {
   RolltuiStr s(static_cast<RolltuiStr&&>(a));
   s.append(b.data(), b.size());
   return s;
 }
+
+namespace rolltui {
 
 #if defined(__GNUC__) || defined(__clang__)
 #define ROLLTUI_STR_PRINTF(fmt, first) __attribute__((format(printf, fmt, first)))
@@ -201,6 +210,84 @@ inline StrView path_dir(StrView p) {
   if (slash == StrView::npos) return StrView();
   return slash == 0 ? p.first(1) : p.first(slash);
 }
+
+// A GROWING LIST OF OWNED STRINGS: what a `std::vector<std::string>` was for. Each element is a `RolltuiStr` and the array is the
+// library's own allocator's (so `rolltui_mem_stats` sees it). Move-only, like the string. `add` appends a COPY of what it is
+// handed, or adopts a string that is moved in, and returns the stored element; a reference it returned is valid until the next `add`.
+class StrVec {
+ public:
+  StrVec() = default;
+  StrVec(const StrVec&) = delete;
+  StrVec& operator=(const StrVec&) = delete;
+  StrVec(StrVec&& o) noexcept : v_(o.v_), n_(o.n_), cap_(o.cap_) { o.v_ = nullptr; o.n_ = o.cap_ = 0; }
+  StrVec& operator=(StrVec&& o) noexcept {
+    if (this != &o) {
+      release();
+      v_ = o.v_;
+      n_ = o.n_;
+      cap_ = o.cap_;
+      o.v_ = nullptr;
+      o.n_ = o.cap_ = 0;
+    }
+    return *this;
+  }
+  ~StrVec() { release(); }
+
+  RolltuiStr& add(StrView v) {
+    RolltuiStr s;
+    s.assign(v.data(), v.size());
+    return adopt(static_cast<RolltuiStr&&>(s));
+  }
+  // ONLY a RolltuiStr rvalue is adopted; anything else (an lvalue, a literal) is copied by the view overload above.
+  template <class S, class = std::enable_if_t<std::is_same_v<S, RolltuiStr>>>
+  RolltuiStr& add(S&& s) {
+    return adopt(static_cast<RolltuiStr&&>(s));
+  }
+  // Every string freed, the array kept for the next fill: the reuse pattern the string has for its own buffer.
+  void clear() {
+    for (std::size_t i = 0; i < n_; ++i) v_[i].~RolltuiStr();
+    n_ = 0;
+  }
+  bool contains(StrView s) const {
+    for (std::size_t i = 0; i < n_; ++i)
+      if (StrView(v_[i]) == s) return true;
+    return false;
+  }
+  std::size_t size() const { return n_; }
+  bool empty() const { return n_ == 0; }
+  RolltuiStr& operator[](std::size_t i) { return v_[i]; }
+  const RolltuiStr& operator[](std::size_t i) const { return v_[i]; }
+  RolltuiStr& back() { return v_[n_ - 1]; }
+  RolltuiStr* begin() { return v_; }
+  RolltuiStr* end() { return v_ + n_; }
+  const RolltuiStr* begin() const { return v_; }
+  const RolltuiStr* end() const { return v_ + n_; }
+
+ private:
+  RolltuiStr& adopt(RolltuiStr&& s) {
+    grow_for(n_ + 1);
+    return *new (&v_[n_++]) RolltuiStr(static_cast<RolltuiStr&&>(s));
+  }
+  void grow_for(std::size_t need) {
+    if (need <= cap_) return;
+    std::size_t cap = cap_ ? cap_ * 2 : 4;
+    if (cap < need) cap = need;
+    RolltuiStr* fresh = static_cast<RolltuiStr*>(rolltui_mem_alloc(cap * sizeof(RolltuiStr)));
+    // A RolltuiStr is a pointer and two counts and points at nothing of its own: moving it is copying those three words.
+    if (n_) std::memcpy(static_cast<void*>(fresh), static_cast<const void*>(v_), n_ * sizeof(RolltuiStr));
+    rolltui_mem_free(v_);
+    v_ = fresh;
+    cap_ = cap;
+  }
+  void release() {
+    clear();
+    rolltui_mem_free(v_);
+    v_ = nullptr;
+    cap_ = 0;
+  }
+  RolltuiStr* v_ = nullptr;
+  std::size_t n_ = 0, cap_ = 0;
+};
 
 }  // namespace rolltui
 
