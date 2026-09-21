@@ -97,7 +97,7 @@ it needs a frame clock, so a golden frame stays a still.
 ## What a file looks like, and what a diagram in it looks like
 
 The column browser can show the file under the cursor in the right half (`RolltuiPickerOptions.preview`; in
-dirktui, Settings → Preview a file). A text file is its lines, read whole up to 256 KB; a Markdown file is
+dirktui, Settings → General → Preview). A text file is its lines, read whole up to 256 KB; a Markdown file is
 *rendered* — headings, lists, tables, code boxes; a binary file is offsets, byte pairs and an ASCII gutter, read a
 screenful at a time so any size scrolls at once. Nothing a file holds reaches the terminal as itself: a control
 character is drawn as its picture (`␛`), a stray byte as `�`.
@@ -111,6 +111,16 @@ graph, say), or is wider than the room it has, is shown as its source with a lin
 too wide as written is first drawn with its nodes a column closer, then with its labels wrapped (as Mermaid wraps
 its own) to a narrower and narrower width; nothing a label says is dropped, and a diagram that fits as written is
 never touched.
+
+## What the cursor is on, said without asking
+
+`RolltuiPickerOptions.info` (dirktui: Settings → General, on by default) adds a second row to the title band, and in it, at
+the head of whatever is right of the cursor, the entry's mode and when it was last written: a folder's own over the column
+that lists it (`drwxr-x--- 2026-06-01 12:34`), a file's under the head of its preview. With no preview the slot right of a
+file is a small pane of its own: the file's name, its size (unless a size column already says it) and that same row. The
+time is local, to the minute. It comes from what the listing already read, so it costs no `stat`, and the watcher keeps it
+current. The columns lose one row for it, and a picker too short to spare one shows none. A slot is kept right of the focus
+whatever is under the cursor, so nothing moves as the cursor passes from a file to a folder.
 
 ## Source colour
 

@@ -4984,6 +4984,13 @@ typedef struct RolltuiPickerOptions {
    * `<config>/rolltui/syntax/` (one with the name of a shipped language replaces it). A file in no known language is drawn
    * plain, as it always was. */
   unsigned char no_syntax ROLLTUI_DEFAULT(0);
+  /* WHAT THE CURSOR IS ON, SAID WITHOUT ASKING (off unless a host sets it): a second row under the column heads, and in it,
+   * at the head of whatever is right of the cursor, the entry's mode and when it was last written. A folder's own, over the
+   * column that lists it; a file's, under the head of its preview. With no preview the slot right of a file is a small pane
+   * of its own — the file's name, its size unless a size column already says it, and the same second row. The columns lose
+   * one row for it, and a picker too short to spare one shows none. A slot is kept right of the focus whatever is under the
+   * cursor, so nothing moves as it passes from a file to a folder. */
+  unsigned char info ROLLTUI_DEFAULT(0);
 } RolltuiPickerOptions;
 #define ROLLTUI_PREVIEW_OFF 0
 #define ROLLTUI_PREVIEW_RIGHT 1

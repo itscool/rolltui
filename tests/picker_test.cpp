@@ -16,6 +16,7 @@
 #include <vector>
 #include "rolltui/rolltui.h"
 #include "rolltui/c/rolltui_widget_picker.h"  /* INTERNAL: this suite is in ROLLTUI_INTERNAL_OPT_IN */
+#include "rolltui/c/rolltui_preview.h"  /* INTERNAL: the formatters the head and the info say things with */
 #include "rolltui/c/rolltui_screen.h"  /* INTERNAL: a frame of its own to draw into */
 #include "rolltui_test.hpp"
 namespace {
@@ -34,6 +35,12 @@ std::string text_of(RolltuiFrame* f) {
 }
 bool has(const std::string& s, const std::string& what) { return s.find(what) != std::string::npos; }
 std::string str(const RolltuiStr& s) { return std::string(s.p ? s.p : "", s.n); }
+std::vector<std::string> lines_of(const std::string& t) {
+  std::vector<std::string> v;
+  std::istringstream in(t);
+  for (std::string l; std::getline(in, l);) v.push_back(l);
+  return v;
+}
 }  // namespace
 int main() {
   using testkit::check;
@@ -653,6 +660,200 @@ int main() {
     ::chmod((pv / "secret.txt").c_str(), 0644);
     rolltui_picker_options_init(&po);
     rolltui_picker_set_options(p, &po);
+  }
+  // ---- WHAT THE CURSOR IS ON, SAID WITHOUT ASKING: `info` ----------------------------------------------------------------------
+  // A second row in the title band; at the head of whatever is right of the cursor, the entry's mode and when it was written. A folder's
+  // own over the column that lists it, a file's under its preview's head or, with no preview, in a small pane of its own.
+  {
+    const char* had_tz = std::getenv("TZ");
+    const std::string kept_tz = had_tz ? had_tz : "";
+    ::setenv("TZ", "UTC", 1);  // the times are said in local time, so the frame is the same on every machine
+    ::tzset();
+    const fs::path in = root / "info";
+    fs::create_directories(in / "dir");
+    fs::create_directories(in / "many");
+    write_file(in / "dir" / "note.txt", std::string(1234, 'n'));
+    write_file(in / "plain.txt", "twelve bytes");
+    for (int i = 0; i < 10; ++i) write_file(in / "many" / ("f" + std::to_string(i) + ".txt"), "x");
+    auto stamp = [](const fs::path& f, int y, int mo, int d, int h, int mi, mode_t mode) {
+      std::tm tm{};
+      tm.tm_year = y - 1900; tm.tm_mon = mo - 1; tm.tm_mday = d; tm.tm_hour = h; tm.tm_min = mi;
+      const time_t t = timegm(&tm);
+      const struct timespec ts[2] = {{t, 0}, {t, 0}};
+      ::utimensat(AT_FDCWD, f.c_str(), ts, 0);
+      ::chmod(f.c_str(), mode);
+    };
+    stamp(in / "dir" / "note.txt", 2026, 3, 14, 9, 26, 0640);
+    stamp(in / "plain.txt", 2025, 12, 31, 23, 59, 0600);
+    stamp(in / "many", 2026, 1, 2, 3, 4, 0755);
+    stamp(in / "dir", 2026, 6, 1, 12, 34, 0750);
+
+    // THE FORMATTERS, one way wherever these are said
+    {
+      char m[11];
+      rolltui_fileinfo_mode_text(040755, m);
+      check(std::string(m) == "drwxr-xr-x", "a folder's mode reads drwxr-xr-x [" + std::string(m) + "]");
+      rolltui_fileinfo_mode_text(0100644, m);
+      check(std::string(m) == "-rw-r--r--", "a file's reads -rw-r--r-- [" + std::string(m) + "]");
+      rolltui_fileinfo_mode_text(0120777, m);
+      check(std::string(m) == "lrwxrwxrwx", "a link's starts with l [" + std::string(m) + "]");
+      rolltui_fileinfo_mode_text(0100751, m);
+      check(std::string(m) == "-rwxr-x--x", "each triplet is its own bits, none run into the next [" + std::string(m) + "]");
+      std::tm tm{};
+      tm.tm_year = 2026 - 1900; tm.tm_mon = 2; tm.tm_mday = 14; tm.tm_hour = 9; tm.tm_min = 26;
+      const long long t = (long long)timegm(&tm);
+      char w[32];
+      rolltui_fileinfo_when_text(t, 0, w, sizeof w);
+      check(std::string(w) == "2026-03-14 09:26", "the time reads to the minute [" + std::string(w) + "]");
+      rolltui_fileinfo_when_text(t, 1, w, sizeof w);
+      check(std::string(w) == "2026-03-14", "…or the date alone [" + std::string(w) + "]");
+      rolltui_fileinfo_when_text(0, 0, w, sizeof w);
+      check(std::string(w) == "-", "a time that is not known is a dash [" + std::string(w) + "]");
+      rolltui_fileinfo_when_text(t, 0, w, 5);
+      check(std::string(w) == "-" || std::strlen(w) < 5, "a buffer too small for it is never overrun [" + std::string(w) + "]");
+      char z[24];
+      const struct { long long n; const char* want; } sizes[] = {{0, "0 B"}, {12, "12 B"}, {1023, "1023 B"}, {1024, "1.0K"}, {1234, "1.2K"},
+                                                                  {10240, "10K"}, {2097152, "2.0M"}, {5368709120LL, "5.0G"}};
+      for (const auto& c : sizes) {
+        rolltui_fileinfo_size_text(c.n, z, sizeof z);
+        check(std::string(z) == c.want, "size " + std::to_string(c.n) + " reads " + c.want + " [" + z + "]");
+      }
+    }
+
+    auto on = [&](unsigned char preview, unsigned char show_size) {
+      RolltuiPickerOptions o{};
+      rolltui_picker_options_init(&o);
+      o.info = 1;
+      o.preview = preview;
+      o.show_size = show_size;
+      rolltui_picker_set_options(p, &o);
+    };
+    auto plain_options = [&]() {
+      RolltuiPickerOptions o{};
+      rolltui_picker_options_init(&o);
+      rolltui_picker_set_options(p, &o);
+    };
+    const std::string dir_p = in.string(), file_p = (in / "plain.txt").string(), many_p = (in / "many").string();
+
+    // OFF BY DEFAULT: a host that never heard of it has the screen it always had
+    plain_options();
+    rolltui_picker_go_to(p, dir_p.data(), dir_p.size());
+    {
+      RolltuiFrame* f = draw(100, 12);
+      const std::string t = text_of(f);
+      check(!has(t, "drwxr-x---") && has(lines_of(t)[1], "note.txt"), "with `info` off nothing is added and the list starts on the row under the heads");
+      rolltui_frame_free(f);
+    }
+
+    // A FOLDER UNDER THE CURSOR: its own mode and time, in the second row of the band, over the column that lists it
+    on(ROLLTUI_PREVIEW_OFF, ROLLTUI_SHOW_WITH_SORT);
+    rolltui_picker_go_to(p, dir_p.data(), dir_p.size());
+    {
+      RolltuiFrame* f = draw(100, 12);
+      const auto L = lines_of(text_of(f));
+      check(has(L[0], "dir") && has(L[0], "1 entry"), "the column's head is as it was [" + L[0] + "]");
+      check(has(L[1], "drwxr-x--- 2026-06-01 12:34"), "on a folder, the row under the head says the folder's mode and time [" + L[1] + "]");
+      check(has(L[2], "note.txt") && !has(L[1], "note.txt"), "…and the list starts one row lower, under it");
+      rolltui_frame_free(f);
+    }
+    // …and follows the cursor to the next entry
+    key(ROLLTUI_KEY_DOWN);
+    {
+      RolltuiFrame* f = draw(100, 12);
+      const auto L = lines_of(text_of(f));
+      check(has(L[1], "drwxr-xr-x 2026-01-02 03:04") && !has(L[1], "2026-06-01"), "moving the cursor to another folder changes it to that folder's own [" + L[1] + "]");
+      rolltui_frame_free(f);
+    }
+
+    // A FILE, NO PREVIEW: a small pane beside the list — its name, its size, and the same second row
+    rolltui_picker_go_to(p, file_p.data(), file_p.size());
+    {
+      RolltuiFrame* f = draw(100, 12);
+      const auto L = lines_of(text_of(f));
+      check(has(L[0], "plain.txt") && has(L[0], "12 B"), "on a file with no preview, the pane's head has its name and its size [" + L[0] + "]");
+      check(has(L[1], "-rw------- 2025-12-31 23:59"), "…and the row under it its mode and time [" + L[1] + "]");
+      rolltui_frame_free(f);
+    }
+    // a size column already says the size: the pane does not say it twice
+    on(ROLLTUI_PREVIEW_OFF, ROLLTUI_SHOW_ALWAYS);
+    {
+      RolltuiFrame* f = draw(100, 12);
+      const auto L = lines_of(text_of(f));
+      check(!has(L[0], "12 B") && has(L[0], "plain.txt") && has(L[1], "-rw------- 2025-12-31 23:59"), "…unless a size column says it, and then only the size is left out [" + L[0] + "]");
+      rolltui_frame_free(f);
+    }
+    // WITH A PREVIEW: the caption sits between the preview's head and its body
+    on(ROLLTUI_PREVIEW_RIGHT, ROLLTUI_SHOW_WITH_SORT);
+    rolltui_picker_go_to(p, file_p.data(), file_p.size());
+    {
+      RolltuiFrame* f = draw(100, 12);
+      const auto L = lines_of(text_of(f));
+      check(has(L[0], "text \xC2\xB7 1 line \xC2\xB7 12 B") && has(L[1], "-rw------- 2025-12-31 23:59") && has(L[2], "twelve bytes"),
+            "with the preview on, the head, then the mode and time, then the file [" + L[0] + " / " + L[1] + " / " + L[2] + "]");
+      rolltui_frame_free(f);
+    }
+
+    // THE COLUMNS LOSE THE ROW THE BAND TOOK, and a picker too short to spare it keeps its list
+    on(ROLLTUI_PREVIEW_OFF, ROLLTUI_SHOW_WITH_SORT);
+    rolltui_picker_go_to(p, many_p.data(), many_p.size());
+    {
+      RolltuiFrame* f = draw(100, 6);
+      const std::string t = text_of(f);
+      check(has(t, "f3.txt") && !has(t, "f4.txt"), "six rows high: the head, the info, then four rows of list");
+      rolltui_frame_free(f);
+      f = draw(100, 4);
+      const std::string t4 = text_of(f);
+      check(has(t4, "f2.txt") && !has(t4, "-rw-r--r--") && !has(t4, "2026-01-02"), "four rows high: no room to spare, so no info, and all three list rows kept");
+      rolltui_frame_free(f);
+    }
+    plain_options();
+    {
+      RolltuiFrame* f = draw(100, 6);
+      const std::string t = text_of(f);
+      check(has(t, "f4.txt"), "the same six rows with `info` off hold five rows of list");
+      rolltui_frame_free(f);
+    }
+
+    // THE POINTER IS HIT-TESTED AGAINST WHAT IS ON SCREEN: with the band two rows deep, a press on a list row selects the entry drawn there.
+    // (The cursor is put back on the first entry before each press: the picker remembers where it was in every folder, and a press that
+    // landed on the wrong row must not look right because the cursor was already there.)
+    auto press_row = [&](int y) {
+      rolltui_picker_go_to(p, many_p.data(), many_p.size());
+      key(ROLLTUI_KEY_HOME);
+      RolltuiFrame* f = draw(100, 12);
+      const auto L = lines_of(text_of(f));
+      rolltui_frame_free(f);
+      int cell = -1;  // the frame's text has 3-byte box glyphs: a cell is a UTF-8 lead byte, not a byte
+      for (const std::string& l : L) {  // f1 is in the list only: the pane names the cursor's f0
+        const std::size_t at = l.find("f1.txt");
+        if (at == std::string::npos) continue;
+        cell = 0;
+        for (std::size_t i = 0; i < at; ++i) if ((static_cast<unsigned char>(l[i]) & 0xC0) != 0x80) ++cell;
+        break;
+      }
+      RolltuiEvent e{};
+      e.kind = ROLLTUI_EVENT_MOUSE;
+      e.mouse.kind = RolltuiMouseEvent::Kind::Press;
+      e.mouse.button = 1;
+      e.mouse.x = cell + 1;
+      e.mouse.y = y;
+      rolltui_picker_handle(p, &e, b, A);
+      RolltuiStr sel{};
+      int is_dir = 0;
+      rolltui_picker_selected(p, &sel, &is_dir);
+      const std::string got_path = str(sel);
+      rolltui_str_free(&sel);
+      return got_path.substr(got_path.rfind('/') + 1);
+    };
+    check(press_row(1 + 3) == "f3.txt", "with `info` off, a press on the fourth list row (row 4) selects f3.txt");
+    on(ROLLTUI_PREVIEW_OFF, ROLLTUI_SHOW_WITH_SORT);
+    { const std::string got5 = press_row(2 + 5); check(got5 == "f5.txt", "with `info` on the list is one row lower: a press on the sixth list row (row 7) selects f5.txt [" + got5 + "]"); }
+    { const std::string on_head = press_row(0), on_info = press_row(1); check(on_info == on_head && on_head == "f0.txt", "…a press on the info row is the head's, the same as a press on the head, and moves nothing [" + on_head + " / " + on_info + "]"); }
+    plain_options();
+
+    if (had_tz) ::setenv("TZ", kept_tz.c_str(), 1);
+    else ::unsetenv("TZ");
+    ::tzset();
   }
   rolltui_picker_event_release(&ev);
   rolltui_str_free(&got);

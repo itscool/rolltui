@@ -85,7 +85,19 @@ int rolltui_filesig_racy(const RolltuiFileSig* sig, long long read_at_secs);
  * was as it was. Cheap when nothing changed: one `stat`. */
 int rolltui_preview_refresh(RolltuiPreview* pv);
 
-/* Draws into `r`: a head row (the file's name, and what it is) and, under it, the body. `styles`
+/* A CAPTION UNDER THE HEAD, set by whoever hosts the preview: one dim row on the panel's ground between the head and the
+ * body, for what the host knows about the file and the preview does not (the picker's mode and time). An empty text takes
+ * the row away again. The text is the host's own, drawn as given. */
+void rolltui_preview_set_info(RolltuiPreview* pv, const char* text, size_t len);
+
+/* THE FACTS A LISTING HOLDS ABOUT AN ENTRY, said one way wherever they are shown. `size_text`: "12 B", "1.2K", "34M".
+ * `mode_text`: the type then the three rwx triplets, "drwxr-xr-x" ('l' for a link, '-' for anything else), 10 characters and
+ * a NUL. `when_text`: local time to the minute, "2026-09-20 19:52", `date_only` for "2026-09-20"; "-" when unknown (<= 0). */
+void rolltui_fileinfo_size_text(long long bytes, char* out, size_t cap);
+void rolltui_fileinfo_mode_text(unsigned int mode, char out[11]);
+void rolltui_fileinfo_when_text(long long secs, int date_only, char* out, size_t cap);
+
+/* Draws into `r`: a head row (the file's name, and what it is), under it the caption when one is set, and the body. `styles`
  * is the theme's table. `focused` marks the head so a person can tell the keys are theirs. */
 void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, const RolltuiStyle* styles,
                           int ambiguous_wide, int focused);

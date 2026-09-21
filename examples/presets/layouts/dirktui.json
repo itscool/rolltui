@@ -4,7 +4,6 @@
   "min_height": 6,
   "focus": "columns",
   "actions": {
-    "app.details": "show what is known about the selected entry",
     "app.hidden": "show or hide dotfiles",
     "app.sort": "cycle name / size / modified",
     "app.help": "the live key table",
@@ -76,27 +75,6 @@
         "content": "menu:places",
         "border": "rounded",
         "title": "settings",
-        "focusable": true,
-        "background": "panel_background"
-      }
-    },
-    {
-      "id": "details",
-      "dismiss": true,
-      "x": "50%",
-      "y": "50%",
-      "w": "60%",
-      "h": 11,
-      "anchor": "center",
-      "margin": 4,
-      "min_w": 28,
-      "max_w": 76,
-      "modal": true,
-      "root": {
-        "id": "details",
-        "content": "rows:entry",
-        "border": "rounded",
-        "title": "entry",
         "focusable": true,
         "background": "panel_background"
       }

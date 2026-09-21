@@ -55,6 +55,7 @@ struct RolltuiPreview {
   RolltuiUnicodeScratch* u; /* OWNED */
   RolltuiDrawScratch* ds;   /* OWNED */
   RolltuiStr s1;            /* scratch a row is built in */
+  RolltuiStr info;          /* the host's caption under the head; empty: none */
   SegList segs;             /* scratch: where the classes change in `s1` */
   /* COLOUR. The languages are LENT (by whoever owns them: the picker, a test) and never freed here. A text file whose
    * language is known has its whole body run through it once, at load, and `hl` holds a line of runs for every line of it. */
@@ -103,6 +104,7 @@ void rolltui_preview_free(RolltuiPreview* pv) {
   rolltui_str_free(&pv->message);
   rolltui_str_free(&pv->body);
   rolltui_str_free(&pv->s1);
+  rolltui_str_free(&pv->info);
   rolltui_mem_free(pv->segs.v);
   rolltui_highlight_free(pv->hl);
   rolltui_syntax_md_free(pv->md_syn);
@@ -129,6 +131,32 @@ static void human_size(long long n, char* out, size_t cap) {
   if (!*unit) snprintf(out, cap, "%lld B", n);
   else if (v < 10.0) snprintf(out, cap, "%.1f%s", v, unit);
   else snprintf(out, cap, "%.0f%s", v, unit);
+}
+
+void rolltui_fileinfo_size_text(long long bytes, char* out, size_t cap) { human_size(bytes, out, cap); }
+
+void rolltui_fileinfo_mode_text(unsigned int mode, char out[11]) {
+  static const char* const rwx[] = {"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"};
+  out[0] = S_ISDIR(mode) ? 'd' : S_ISLNK(mode) ? 'l' : '-';
+  memcpy(out + 1, rwx[(mode >> 6) & 7], 3);
+  memcpy(out + 4, rwx[(mode >> 3) & 7], 3);
+  memcpy(out + 7, rwx[mode & 7], 3);
+  out[10] = '\0';
+}
+
+void rolltui_fileinfo_when_text(long long secs, int date_only, char* out, size_t cap) {
+  time_t t = (time_t)secs;
+  struct tm tm;
+  if (cap == 0) return;
+  if (secs <= 0 || !localtime_r(&t, &tm) || strftime(out, cap, date_only ? "%Y-%m-%d" : "%Y-%m-%d %H:%M", &tm) == 0) {
+    snprintf(out, cap, "-");
+  }
+}
+
+void rolltui_preview_set_info(RolltuiPreview* pv, const char* text, size_t len) {
+  if (!pv) return;
+  if (len == 0) rolltui_str_clear(&pv->info);
+  else rolltui_str_set(&pv->info, text, len);
 }
 
 /* ---- reading -------------------------------------------------------------------------------- */
@@ -792,6 +820,7 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
   const char* name;
   char info[96];
   int name_w, info_w, pinned;
+  int caption = 0;
   if (!pv || pv->kind == ROLLTUI_PREVIEW_NONE || r.w < 6 || r.h < 2) return;
   text = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT);
   dim = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_TEXT_MUTED);
@@ -857,10 +886,21 @@ void rolltui_preview_draw(RolltuiPreview* pv, RolltuiFrame* f, RolltuiRect r, co
     put_row(pv, f, r.x + 1, r.y, name, name_n, head, head, r.w - 2 - (show_info ? info_w + 2 : 0), ambiguous_wide);
   }
 
+  /* THE CAPTION under the head, when the host set one and there is room for it and a row of body besides: dim, on the
+   * panel's ground, as the head's band is. */
+  if (pv->info.n && r.h >= 4) {
+    RolltuiRect band = {r.x, r.y + 1, r.w, 1};
+    RolltuiStyle cap = dim;
+    cap.bg = rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_PANEL_BACKGROUND)->bg;
+    rolltui_frame_fill(f, pv->ds, band, cap, NULL, 0);
+    put_row(pv, f, r.x + 1, r.y + 1, pv->info.p, pv->info.n, cap, cap, r.w - 2, ambiguous_wide);
+    caption = 1;
+  }
+
   body.x = r.x + 1;
-  body.y = r.y + 1;
+  body.y = r.y + 1 + caption;
   body.w = r.w - 2;
-  body.h = r.h - 1;
+  body.h = r.h - 1 - caption;
   if (body.w <= 0 || body.h <= 0) return;
   pinned = pinned_to_end(pv); /* judged by the size the last frame had, before this one's is applied */
   pv->rows_vis = (size_t)body.h;

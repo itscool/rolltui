@@ -140,7 +140,13 @@ static const RolltuiDirEntry* selected(RolltuiPicker* p) {
   Column* c = focused(p);
   return c ? entry_at(c, c->sel) : NULL;
 }
-static int rows_visible(const RolltuiPicker* p) { return p->inner.h > 1 ? p->inner.h - 1 : (p->inner.h > 0 ? p->inner.h : 0); }
+/* THE TITLE BAND is one row, or two when the picker says what the cursor is on (`info`) and has the height for it: at least
+ * three rows of list are kept. */
+static int head_rows(const RolltuiPicker* p) { return p->opt.info && p->inner.h >= 5 ? 2 : 1; }
+static int rows_visible(const RolltuiPicker* p) {
+  const int hr = head_rows(p);
+  return p->inner.h > hr ? p->inner.h - hr : (p->inner.h > 0 ? p->inner.h : 0);
+}
 
 /* `dir` + "/" + `name`, with the root's slash not doubled. */
 static void join(const RolltuiStr* dir, const RolltuiStr* name, RolltuiStr* out) {
@@ -336,7 +342,7 @@ static int shown_width(RolltuiPicker* p, size_t ci) {
   const int preview = ci == p->focus_col + 1;
   /* (With a file preview on, the slot after the focus is the preview's whether or not there are folders here, so
    * no column is ever the last thing on screen.) */
-  const int focused_leaf = ci == p->focus_col && !p->opt.preview && !column_has_folder(p, &p->cols[ci]);
+  const int focused_leaf = ci == p->focus_col && !p->opt.preview && !p->opt.info && !column_has_folder(p, &p->cols[ci]);
   return last && (preview || focused_leaf) ? imax(MAX_COLUMN_WIDTH, p->cols[ci].width) : p->cols[ci].width;
 }
 /* Column `ci`'s left edge, in the inner rect's x, at the CURRENT scroll (mid-slide included). */
@@ -358,7 +364,7 @@ static void retarget(RolltuiPicker* p) {
   if (p->inner.w <= 0) return; /* no window yet: the first layout anchors */
   for (j = 0; j < p->n; ++j) total += shown_width(p, j) + 1;
   total = total > 0 ? total - 1 : 0;
-  slot = p->n != 0 && (p->focus_col + 1 < p->n || p->opt.preview || column_has_folder(p, &p->cols[p->focus_col]));
+  slot = p->n != 0 && (p->focus_col + 1 < p->n || p->opt.preview || p->opt.info || column_has_folder(p, &p->cols[p->focus_col]));
   if (p->n != 0 && p->focus_col + 1 == p->n && slot) total += 1 + slot_w;
   if (p->anchored_once && p->n != 0 && p->focus_col + 1 == p->n && !slot) {
     int focus_x = p->scroll_target;
@@ -694,6 +700,40 @@ static void sync_preview(RolltuiPicker* p) {
 }
 static int preview_shown(const RolltuiPicker* p) { return p->pv && p->pv_path.n && p->pv_rect.w > 0; }
 
+/* ---- what the cursor is on, said without asking ------------------------------------------------------ */
+/* The entry under the cursor, when the listing described it. An entry that could not be described has no mode to say, and
+ * neither has the top column's one entry (the root, which nothing was read for). */
+static const RolltuiDirEntry* info_entry(RolltuiPicker* p) {
+  const RolltuiDirEntry* e = selected(p);
+  return e && !e->unreadable && e->mode != 0 ? e : NULL;
+}
+/* The second row of the title band: the mode, then when it was last written, cut down to what fits — the time to the minute,
+ * the date alone, the mode alone — and never a word cut in half. Empty when even the mode does not fit. */
+static void info_line(const RolltuiDirEntry* e, int cells, char* out, size_t cap) {
+  char mode[11], when[24];
+  out[0] = '\0';
+  if (cells < 10) return;
+  rolltui_fileinfo_mode_text(e->mode, mode);
+  if (cells >= 10 + 1 + 16) {
+    rolltui_fileinfo_when_text(e->modified, 0, when, sizeof when);
+    snprintf(out, cap, "%s %s", mode, when);
+  } else if (cells >= 10 + 1 + 10) {
+    rolltui_fileinfo_when_text(e->modified, 1, when, sizeof when);
+    snprintf(out, cap, "%s %s", mode, when);
+  } else {
+    snprintf(out, cap, "%s", mode);
+  }
+}
+/* Hands the preview its caption for the file under the cursor, or takes it away when the band has only one row. */
+static void preview_caption(RolltuiPicker* p, int cells) {
+  const RolltuiDirEntry* e = head_rows(p) == 2 ? info_entry(p) : NULL;
+  char line[48];
+  if (!p->pv) return;
+  if (!e) { rolltui_preview_set_info(p->pv, "", 0); return; }
+  info_line(e, cells, line, sizeof line);
+  rolltui_preview_set_info(p->pv, line, strlen(line));
+}
+
 /* ---- the public half the adapter calls ---------------------------------------------------- */
 RolltuiPicker* rolltui_picker_new(void) {
   RolltuiPicker* p = (RolltuiPicker*)rolltui_mem_alloc(sizeof *p);
@@ -740,7 +780,7 @@ void rolltui_picker_options_init(RolltuiPickerOptions* o) {
 void rolltui_picker_set_options(RolltuiPicker* p, const RolltuiPickerOptions* o) {
   const int reread = o->hidden != p->opt.hidden || o->sort != p->opt.sort || o->reversed != p->opt.reversed;
   const int remeasure = o->show_size != p->opt.show_size || o->show_modified != p->opt.show_modified;
-  const int previewing = o->preview != p->opt.preview;
+  const int previewing = o->preview != p->opt.preview || o->info != p->opt.info;
   p->opt = *o;
   if (reread) rolltui_picker_reload(p);
   else if (remeasure) { size_t i; for (i = 0; i < p->n; ++i) measure_width(p, &p->cols[i]); retarget(p); }
@@ -971,6 +1011,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   const RolltuiStyle border = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_BORDER);
   const RolltuiStyle bar_role = *rolltui_theme_style(styles, ROLLTUI_ROLE_COUNT, ROLLTUI_ROLE_SCROLLBAR);
   const int show_highlight = p->opt.highlight;
+  const int hr = head_rows(p);
   p->faded_cells = 0;
   d.p = p;
   d.f = f;
@@ -982,6 +1023,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
   d.clipped = 0;
   /* ZOOMED: the preview has the whole picker, and the columns are not drawn at all */
   if (p->pv_zoom && p->pv && p->pv_path.n) {
+    preview_caption(p, d.r.w - 2);
     rolltui_preview_draw(p->pv, f, d.r, styles, ambiguous_wide, p->pv_focus);
     p->pv_rect = d.r;
     return;
@@ -992,7 +1034,10 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
     int band_from = d.r.x;
     if (p->n) { const size_t last = p->n - 1; band_from = imax(d.r.x, column_x(p, last) + shown_width(p, last) + 1); }
     d.clipped = 0;
-    if (band_from < d.r.x + d.r.w) fill_row(&d, band_from, d.r.y, d.r.x + d.r.w - band_from, head);
+    if (band_from < d.r.x + d.r.w) {
+      int b;
+      for (b = 0; b < hr; ++b) fill_row(&d, band_from, d.r.y + b, d.r.x + d.r.w - band_from, head);
+    }
   }
   for (ci = 0; ci < p->n; ++ci) {
     const Column* c = &p->cols[ci];
@@ -1012,7 +1057,11 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
     first_drawn = 1;
     /* This column's cells of the title row's band, and the margin after it: faded with the
      * column when it is clipped at the left edge, cell by cell, as its rows are. */
-    { const int bx = imax(x, d.r.x); fill_row(&d, bx, d.r.y, imin(x + sw + 1, d.r.x + d.r.w) - bx, head); }
+    {
+      const int bx = imax(x, d.r.x);
+      int b;
+      for (b = 0; b < hr; ++b) fill_row(&d, bx, d.r.y + b, imin(x + sw + 1, d.r.x + d.r.w) - bx, head);
+    }
     /* THE DIVIDER: a hairline in the one-cell margin after this column, the full height, in the
      * border colour — chrome, so it fades with a clipped column. After the LAST column too, when
      * there is room right of it: the empty stretch is the slot the next column will take, and a
@@ -1033,7 +1082,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
            * unbroken across the columns; the window's border, not this widget's, is the one
            * line that keeps its own ground. */
           RolltuiStyle at_y = ls;
-          if (y == d.r.y) { RolltuiStyle on_band = line; on_band.bg = head.bg; at_y = d.clipped ? faded(on_band, d.ground, keep_at(&d.r, dx)) : on_band; }
+          if (y < d.r.y + hr) { RolltuiStyle on_band = line; on_band.bg = head.bg; at_y = d.clipped ? faded(on_band, d.ground, keep_at(&d.r, dx)) : on_band; }
           rolltui_frame_put_text(f, d.ds, dx, y, "\xE2\x94\x82", 3, at_y, 1, 0, 0);
         }
         e.first = c->top;
@@ -1044,7 +1093,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
           if (bar.bg.kind == 0) bar.bg = d.ground;
           bs = d.clipped ? faded(bar, d.ground, keep_at(&d.r, dx)) : bar;
           for (i = 0; i < t.length; ++i) {
-            const int ty = d.r.y + 1 + t.offset + i;
+            const int ty = d.r.y + hr + t.offset + i;
             const char* cell;
             if (ty >= d.r.y + d.r.h) break;
             if (t.length == 1) cell = ambiguous_wide ? glyphs->ascii_single : glyphs->single;
@@ -1075,9 +1124,21 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
        * a column too narrow for the words shows no count rather than a number. */
       if (c->dir.n != 0 && nl > 0 && 1 + name_w + 1 + nl <= cw - 1) put_clipped(&d, x + cw - 1 - nl, d.r.y, num, (size_t)nl, head, nl);
     }
+    /* THE SECOND ROW OF THE BAND, at the head of the column that lists what the cursor is on: that folder's own mode and time,
+     * which is what the eye is asking about when it rests on a folder. */
+    if (hr == 2 && ci == p->focus_col + 1 && selected_is_folder(p)) {
+      const RolltuiDirEntry* e = info_entry(p);
+      if (e) {
+        char line[48];
+        RolltuiStyle cap = dim;
+        cap.bg = head.bg;
+        info_line(e, cw - 1, line, sizeof line);
+        if (line[0]) put_clipped(&d, x + 1, d.r.y + 1, line, strlen(line), cap, cw - 1);
+      }
+    }
     for (row = 0; row < rows; ++row) {
       const size_t i = c->top + (size_t)row;
-      const int y = d.r.y + 1 + row;
+      const int y = d.r.y + hr + row;
       const RolltuiDirEntry* e;
       int is_sel, is_focus_col, is_trail;
       RolltuiStyle st;
@@ -1143,7 +1204,7 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       const int room = failed ? (d.r.x + d.r.w - (x + 1)) : (cw - 1);
       if (failed) fit_into(p, c->error.p, c->error.n, room, &p->s1);
       else fit_into(p, "(empty)", 7, room, &p->s1);
-      put_clipped(&d, x + 1, d.r.y + 1, p->s1.p ? p->s1.p : "", p->s1.n, failed ? err_style : dim, room);
+      put_clipped(&d, x + 1, d.r.y + hr, p->s1.p ? p->s1.p : "", p->s1.n, failed ? err_style : dim, room);
     }
   }
   /* THE FILE PREVIEW takes the slot after the focused column — what is left of the width once the column and its
@@ -1158,8 +1219,38 @@ void rolltui_picker_draw(RolltuiPicker* p, RolltuiFrame* f, const RolltuiStyle* 
       r.y = d.r.y;
       r.w = w;
       r.h = d.r.h;
+      preview_caption(p, r.w - 2);
       rolltui_preview_draw(p->pv, f, r, styles, ambiguous_wide, p->pv_focus);
       p->pv_rect = r;
+    }
+  }
+  /* NO PREVIEW ON SCREEN AND THE CURSOR ON A FILE: the slot right of it is a small pane of its own, a column that holds no
+   * list — the file's name in its head with its size beside it (unless a size column says it already), and under it the same
+   * second row a folder's column has. */
+  if (hr == 2 && p->pv_rect.w == 0 && p->n && p->focus_col + 1 == p->n && !selected_is_folder(p)) {
+    const RolltuiDirEntry* e = info_entry(p);
+    const int x0 = column_x(p, p->focus_col) + shown_width(p, p->focus_col) + 1;
+    const int w = imin(MAX_COLUMN_WIDTH, d.r.x + d.r.w - x0);
+    if (e && w >= 12 && x0 >= d.r.x) {
+      char line[48], size[24];
+      RolltuiStyle cap = dim;
+      int size_w = 0, room = w - 1;
+      cap.bg = head.bg;
+      d.clipped = 0;
+      size[0] = '\0';
+      if (!e->is_dir && !show_size(p)) {
+        rolltui_fileinfo_size_text(e->size, size, sizeof size);
+        size_w = (int)strlen(size);
+        if (1 + width_of(p, e->name.p ? e->name.p : "", e->name.n) + 2 + size_w + 1 > w) size_w = 0; /* only when whole */
+      }
+      if (size_w) {
+        room = w - 1 - (size_w + 2);
+        put_clipped(&d, x0 + w - 1 - size_w, d.r.y, size, (size_t)size_w, head, size_w);
+      }
+      fit_into(p, e->name.p ? e->name.p : "", e->name.n, room, &p->s1);
+      put_clipped(&d, x0 + 1, d.r.y, p->s1.p ? p->s1.p : "", p->s1.n, head, room);
+      info_line(e, w - 1, line, sizeof line);
+      if (line[0]) put_clipped(&d, x0 + 1, d.r.y + 1, line, strlen(line), cap, w - 1);
     }
   }
 }
@@ -1173,7 +1264,7 @@ static void extent_of(const RolltuiPicker* p, size_t ci, RolltuiScrollExtent* e)
 /* Which column's DIVIDER a cell is on: the one-cell margin after column `ci`, over its rows. */
 static long long divider_at(RolltuiPicker* p, int mx, int my) {
   size_t ci;
-  if (!p->opt.dividers || my < p->inner.y + 1 || my >= p->inner.y + 1 + rows_visible(p)) return -1;
+  if (!p->opt.dividers || my < p->inner.y + head_rows(p) || my >= p->inner.y + head_rows(p) + rows_visible(p)) return -1;
   for (ci = 0; ci + 1 < p->n; ++ci)
     if (mx == column_x(p, ci) + shown_width(p, ci) && mx >= p->inner.x) return (long long)ci;
   return -1;
@@ -1269,7 +1360,7 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
       if (ci < p->n) {
         RolltuiScrollExtent ex;
         extent_of(p, ci, &ex);
-        scroll_column(p, ci, rolltui_scroll_first_for_cell(&ex, rows_visible(p), m->y - (p->inner.y + 1) - p->drag_grab));
+        scroll_column(p, ci, rolltui_scroll_first_for_cell(&ex, rows_visible(p), m->y - (p->inner.y + head_rows(p)) - p->drag_grab));
       }
       return 1;
     }
@@ -1285,7 +1376,7 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
       ci = (size_t)dc;
       extent_of(p, ci, &ex);
       if (!rolltui_scroll_thumb(&ex, rows_visible(p), &t)) return 1; /* nothing to scroll: the press is spent */
-      cell = m->y - (p->inner.y + 1);
+      cell = m->y - (p->inner.y + head_rows(p));
       if (cell >= t.offset && cell < t.offset + t.length) p->drag_grab = cell - t.offset;
       else {
         p->drag_grab = t.length / 2;
@@ -1299,7 +1390,7 @@ static int handle_inner(RolltuiPicker* p, const RolltuiEvent* e, const RolltuiBi
       const int x = column_x(p, ci);
       const int cw = shown_width(p, ci);
       if (m->x >= x && m->x < x + cw && m->x >= p->inner.x) {
-        const int row = m->y - p->inner.y - 1;
+        const int row = m->y - p->inner.y - head_rows(p);
         /* A PRESS ON EMPTY SPACE below a column's entries is nobody's: it chooses nothing, so it
          * moves nothing — the focus and the columns to the right stay as they were. A press on
          * an entry selects it; one on the head row is the folder's name, and focuses it. */

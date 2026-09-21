@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -30,6 +31,9 @@ using namespace testkit;
 
 #if !defined(DIRKTUI_PRODUCT_BIN)
 #error "the dirktui binary must be named"
+#endif
+#if !defined(ROLLTUI_EXAMPLES_DIR)
+#error "ROLLTUI_EXAMPLES_DIR must point at rolltui/examples"
 #endif
 
 namespace {
@@ -90,6 +94,23 @@ std::vector<std::string> rep(std::vector<std::string> v, const std::string& k, i
   return v;
 }
 
+// HOW MANY DOWNS FROM THE MENU'S FIRST ROW TO A ROW, read from the menu file the app is built from, so a row moved or added
+// cannot leave this test pressing Down into the wrong one. A section heading is not a stop; a row is one line of the file that
+// starts at the top level of `items` (its choices' own options sit on lines that do not).
+int downs_to(const std::string& id) {
+  std::ifstream f(fs::path(ROLLTUI_EXAMPLES_DIR) / "presets" / "menus" / "places.json");
+  const std::regex row("^    \\{ \"id\": \"([a-z_0-9]+)\".*\"kind\": \"([a-z]+)\"");
+  std::string line;
+  int stops = 0;
+  while (std::getline(f, line)) {
+    std::smatch m;
+    if (!std::regex_search(line, m, row)) continue;
+    if (m[1] == id) return stops;
+    if (m[2] != "section") ++stops;
+  }
+  return -1;
+}
+
 }  // namespace
 
 int main() {
@@ -103,10 +124,12 @@ int main() {
   std::ofstream(cfg / "rolltui" / "dirktui" / "settings.json") << "{ \"motion\": false }";
   const fs::path working = cfg / "rolltui" / "theme.working.json";
 
-  // The settings menu opens on its first row; the rows are: dotfiles, sort, key bindings, THEME, LIGHT OR DARK, COLOURS.
-  const auto to_theme = rep({"F2"}, "Down", 3);
-  const auto to_mode = rep({"F2"}, "Down", 4);
-  const auto to_depth = rep({"F2"}, "Down", 5);
+  // The settings menu opens on its first row.
+  check(downs_to("theme") > 0 && downs_to("mode") == downs_to("theme") + 1 && downs_to("depth") == downs_to("mode") + 1,
+        "the menu file names THEME, LIGHT OR DARK and COLOURS, in that order, so the counts below are read from it");
+  const auto to_theme = rep({"F2"}, "Down", downs_to("theme"));
+  const auto to_mode = rep({"F2"}, "Down", downs_to("mode"));
+  const auto to_depth = rep({"F2"}, "Down", downs_to("depth"));
 
   // ---- CHOOSING LIGHT: the person's setting, kept beside a pointer to the theme; the colours are NOT copied out ---------------
   auto keys = to_mode;

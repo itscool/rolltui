@@ -230,6 +230,7 @@ struct Options {
   bool dividers = true;  // a hairline in the margin between columns, in the border colour
   bool preview = false;  // a file's contents in the right half: off until a person asks (it reads the file under the cursor)
   bool syntax = true;    // source in the preview drawn in colour, when it is in a language the library knows; off draws every file plain
+  bool info = true;      // what the cursor is on — its mode and time, a file's size beside its name — said at the head of the pane right of it
   Show show_size = Show::WithSort;      // a size column after the name
   Show show_modified = Show::WithSort;  // a modified column likewise
   // WHAT ENTER ON A FILE DOES. A folder is always entered. A file is a leaf: an EXECUTABLE goes
@@ -514,7 +515,7 @@ struct App {
     // bar is rebuilt when either changes.
     const std::string sort = std::string("sort: ") + sort_words(opt.sort, opt.reversed);
     const std::string dots = opt.hidden ? "+dotfiles" : "\xE2\x88\x92" "dotfiles";
-    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"app.details", "details"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}};
+    const Row rows[] = {{"app.help", "help"}, {"app.menu", "settings"}, {"picker.copy", "copy"}, {"app.sort", sort.c_str()}, {"app.hidden", dots.c_str()}};
     rolltui_hint_bar_clear(hints);
     for (const Row& r : rows) {
       const std::size_t n = rolltui_bindings_chord_count(bindings, r.action, std::strlen(r.action));
@@ -680,6 +681,7 @@ struct App {
     o.dividers = opt.dividers ? 1 : 0;
     o.preview = opt.preview ? ROLLTUI_PREVIEW_RIGHT : ROLLTUI_PREVIEW_OFF;
     o.no_syntax = opt.syntax ? 0 : 1;
+    o.info = opt.info ? 1 : 0;
     o.show_size = show_code(opt.show_size);
     o.show_modified = show_code(opt.show_modified);
     o.take_folders = 1;  // a directory picker: Enter on a folder CHOOSES it, and Right enters it
@@ -743,6 +745,7 @@ struct App {
         opt.dividers = rolltui_json_as_bool(rolltui_json_get(root, "dividers", 8), 1) != 0;
         { std::size_t pn = 0; const char* pv = rolltui_json_as_string(rolltui_json_get(root, "preview", 7), "off", 3, &pn); opt.preview = std::string(pv, pn) == "right"; }
         opt.syntax = rolltui_json_as_bool(rolltui_json_get(root, "syntax", 6), 1) != 0;
+        opt.info = rolltui_json_as_bool(rolltui_json_get(root, "info", 4), 1) != 0;
         opt.show_size = show_from_json(rolltui_json_get(root, "show_size", 9));
         opt.show_modified = show_from_json(rolltui_json_get(root, "show_modified", 13));
         opt.reversed = rolltui_json_as_bool(rolltui_json_get(root, "reversed", 8), 0) != 0;
@@ -781,6 +784,7 @@ struct App {
         << ", \"highlight\": " << (opt.highlight ? "true" : "false") << ", \"dividers\": " << (opt.dividers ? "true" : "false")
         << ", \"preview\": \"" << (opt.preview ? "right" : "off") << "\""
         << ", \"syntax\": " << (opt.syntax ? "true" : "false")
+        << ", \"info\": " << (opt.info ? "true" : "false")
         << ", \"show_size\": \"" << show_name(opt.show_size) << "\", \"show_modified\": \"" << show_name(opt.show_modified) << "\""
         << ", \"hidden\": " << (opt.hidden ? "true" : "false")
         << ", \"sort\": \"" << sort_name(opt.sort) << "\", \"reversed\": " << (opt.reversed ? "true" : "false") << ", \"leave\": " << (opt.leave ? "true" : "false")
@@ -812,13 +816,14 @@ struct App {
     rolltui_menu_set_checked(m, "highlight", 9, opt.highlight ? 1 : 0);
     rolltui_menu_set_checked(m, "dividers", 8, opt.dividers ? 1 : 0);
     rolltui_menu_set_checked(m, "syntax", 6, opt.syntax ? 1 : 0);
-    rolltui_menu_set_value(m, "preview", 7, opt.preview ? "right" : "off", opt.preview ? 5 : 3);
+    rolltui_menu_set_checked(m, "info", 4, opt.info ? 1 : 0);
+    { const char* v = opt.preview ? "right" : "off"; rolltui_menu_set_value(m, "preview", 7, v, std::strlen(v)); }
     rolltui_menu_set_value(m, "show_size", 9, show_name(opt.show_size), std::strlen(show_name(opt.show_size)));
     rolltui_menu_set_value(m, "show_modified", 13, show_name(opt.show_modified), std::strlen(show_name(opt.show_modified)));
-    rolltui_menu_set_checked(m, "leave", 5, opt.leave ? 1 : 0);
+    { const char* v = opt.leave ? "line" : "open"; rolltui_menu_set_value(m, "leave", 5, v, std::strlen(v)); }
     rolltui_menu_set_value(m, "exec", 4, exec_name(opt.exec), std::strlen(exec_name(opt.exec)));
-    rolltui_menu_set_checked(m, "land", 4, opt.land_in_file_folder ? 1 : 0);
-    rolltui_menu_set_checked(m, "relative", 8, opt.copy_relative ? 1 : 0);
+    { const char* v = opt.land_in_file_folder ? "file" : "start"; rolltui_menu_set_value(m, "land", 4, v, std::strlen(v)); }
+    { const char* v = opt.copy_relative ? "relative" : "absolute"; rolltui_menu_set_value(m, "paths", 5, v, std::strlen(v)); }
     // THE THEME AND THE KEY BINDINGS are the stores' presets, listed live — a preset saved a
     // moment ago in the editor is in the list — with the current one as the value.
     fill_store_choice(m, "theme", 5, theme_store, "default");
@@ -993,7 +998,6 @@ struct App {
   void mount() {
     if (!menu_json.empty()) rolltui_context_add_menu(ctx, "places", 6, menu_json.data(), menu_json.size());
     if (!matches_json.empty()) rolltui_context_add_menu(ctx, "matches", 7, matches_json.data(), matches_json.size());
-    rolltui_windows_bind_rows(windows, "entry", 5, entry_rows, this, nullptr);
     // THE PATH LINE keeps its text on Enter (it IS the path); THE FIND FIELD keeps its query so a
     // cancelled dialog leaves it there to refine.
     rolltui_windows_bind_submit(windows, "path", 4, on_submit, this, nullptr, /*on_submit=*/1);
@@ -1015,37 +1019,6 @@ struct App {
     std::size_t an = 0;
     const RolltuiLayoutAction* av = rolltui_layout_actions(layout, &an);
     rolltui_bindings_declare(bindings, av, an, nullptr, 0);
-  }
-
-  // `rows:entry` — what is known about the selection. A popup the LAYOUT declares, filled by
-  // an ordinary rows source, so the details page needs no host-side window code at all.
-  static void entry_rows(void* ctx, RolltuiRows* out) {
-    App& a = *static_cast<App*>(ctx);
-    RolltuiStr sel{};
-    int is_dir = 0;
-    if (!rolltui_windows_picker_selected(a.windows, kPicker, 10, &sel, &is_dir) || sel.n == 0) {
-      rolltui_rows_add(out, "entry", 5, "(none)", 6);
-      rolltui_str_free(&sel);
-      return;
-    }
-    const std::string path(sel.p, sel.n);
-    rolltui_str_free(&sel);
-    // The facts are the file's, read here: the picker answers with a PATH, and what a path
-    // is on disk is one stat away.
-    struct stat st {};
-    const bool known = lstat(path.c_str(), &st) == 0;
-    const std::size_t slash = path.find_last_of('/');
-    const std::string name = path == "/" ? path : path.substr(slash == std::string::npos ? 0 : slash + 1);
-    rolltui_rows_add(out, "name", 4, name.data(), name.size());
-    rolltui_rows_add(out, "folder", 6, path.data(), path.size());
-    const char* kind = !known ? "unreadable" : is_dir ? "directory" : "file";
-    rolltui_rows_add(out, "kind", 4, kind, std::strlen(kind));
-    const std::string size = is_dir || !known ? std::string("-") : human_size(static_cast<long long>(st.st_size));
-    rolltui_rows_add(out, "size", 4, size.data(), size.size());
-    const std::string when = stamp(known ? static_cast<long long>(st.st_mtime) : 0);
-    rolltui_rows_add(out, "modified", 8, when.data(), when.size());
-    const std::string perm = permissions(known ? static_cast<unsigned>(st.st_mode) : 0u);
-    rolltui_rows_add(out, "mode", 4, perm.data(), perm.size());
   }
 
   // A bad path is a NAMED problem in the input's own note, which is the library's standard for
@@ -1212,33 +1185,6 @@ struct App {
       hint.clear();
     }
     focus_base();
-  }
-
-  static std::string human_size(long long n) {
-    static const char* unit[] = {"B", "K", "M", "G", "T"};
-    double v = static_cast<double>(n);
-    int u = 0;
-    while (v >= 1024.0 && u < 4) { v /= 1024.0; ++u; }
-    char buf[32];
-    std::snprintf(buf, sizeof buf, u == 0 ? "%.0f %s" : "%.1f %s", v, unit[u]);
-    return buf;
-  }
-  static std::string stamp(long long t) {
-    const std::time_t tt = static_cast<std::time_t>(t);
-    std::tm tm{};
-    if (!gmtime_r(&tt, &tm)) return "-";
-    char buf[32];
-    std::strftime(buf, sizeof buf, "%Y-%m-%d %H:%M", &tm);
-    return buf;
-  }
-  static std::string permissions(unsigned int mode) {
-    static const char* rwx[] = {"---", "--x", "-w-", "-wx", "r--", "r-x", "rw-", "rwx"};
-    std::string s;
-    s += S_ISDIR(mode) ? 'd' : (S_ISLNK(mode) ? 'l' : '-');
-    s += rwx[(mode >> 6) & 7];
-    s += rwx[(mode >> 3) & 7];
-    s += rwx[mode & 7];
-    return s;
   }
 
   // How this terminal draws East Asian AMBIGUOUS glyphs, as the library measured it (or as a person
@@ -1488,7 +1434,7 @@ struct App {
   void run_action(const std::string& action) {
     if (action == "app.quit") quit = true;
     // A panel this screen declares is the library's to open — see
-    // `rolltui_window_stack_action_popup`. `details`, `help`, `theme` and `keys` are four lines
+    // `rolltui_window_stack_action_popup`. `help`, `theme` and `keys` are three lines
     // this file does not have.
     else if (rolltui_window_stack_action_popup(stack, layout, action.data(), action.size())) {
       if (action == "app.menu") menu_dirty = true;
@@ -1653,25 +1599,30 @@ struct App {
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "exec") {
         opt.exec = exec_from(std::string(ev.value.p ? ev.value.p : "", ev.value.n));
-        hint = std::string("executables: ") + (opt.exec == Exec::Run ? "run here" : opt.exec == Exec::Open ? "the system opener" : "to the command line");
+        hint = std::string("programs and scripts: ") + (opt.exec == Exec::Run ? "run here, in this terminal" : opt.exec == Exec::Open ? "the system opener" : "to the command line, so arguments can follow");
         save_settings();
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "leave") {
-        opt.leave = ev.checked != 0;
-        hint = opt.leave ? "enter on a file: leave with it on the command line" : "enter on a file: open it, stay here";
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "leave") {
+        opt.leave = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "line";
+        hint = opt.leave ? "enter on a file: leave with its path on the command line" : "enter on a file: open it with the program for its type, and stay (see Open with)";
         save_settings();
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "land") {
-        opt.land_in_file_folder = ev.checked != 0;
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "land") {
+        opt.land_in_file_folder = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "file";
         hint = opt.land_in_file_folder ? "command line: in the file's folder, ./name" : "command line: where dirk started";
         save_settings();
-      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "relative") {
-        opt.copy_relative = ev.checked != 0;
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "paths") {
+        opt.copy_relative = std::string(ev.value.p ? ev.value.p : "", ev.value.n) == "relative";
         hint = opt.copy_relative ? "paths: relative to where the command line lands" : "paths: absolute";
         save_settings();
       } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "hidden") set_hidden(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "motion") set_motion(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "sparkle") set_sparkle(ev.checked != 0);
       else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "highlight") set_highlight(ev.checked != 0);
-      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "syntax") {
+      else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "info") {
+        opt.info = ev.checked != 0;
+        apply_picker_options();
+        hint = opt.info ? "file info on: the mode and time of what the cursor is on, and a file's size" : "file info off";
+        save_settings();
+      } else if (ev.kind == ROLLTUI_MENU_EVENT_TOGGLE && id == "syntax") {
         opt.syntax = ev.checked != 0;
         hint = opt.syntax ? "source colour in the preview on" : "source colour in the preview off";
         save_settings();
@@ -1758,7 +1709,7 @@ struct App {
       int is_dir = 0;
       const bool can_copy = !popup && focused_content() == "filepicker" && have_picker && rolltui_windows_picker_selected(windows, kPicker, 10, &sel, &is_dir) != 0 && sel.n != 0;
       rolltui_str_free(&sel);
-      for (const char* a : {"app.help", "app.menu", "app.sort", "app.hidden", "app.details"}) rolltui_hint_bar_enable(hints, a, std::strlen(a), popup ? 0 : 1);
+      for (const char* a : {"app.help", "app.menu", "app.sort", "app.hidden"}) rolltui_hint_bar_enable(hints, a, std::strlen(a), popup ? 0 : 1);
       rolltui_hint_bar_enable(hints, "picker.copy", 11, can_copy ? 1 : 0);
     }
     rolltui_picker_status_release(&ps);

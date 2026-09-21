@@ -15,14 +15,17 @@
 // window or be re-recorded on every clone. The frames are asserted on what must be in them, and
 // `studio_golden_test` keeps the byte-level guarantee for the library's own rendering.
 //
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -125,6 +128,21 @@ int main() {
   // home and the next run reads it back — which is how one assertion here failed once.
   const std::string home_env = "ROLL_CONFIG_DIR='" + (scratch / "home").string() + "' ";
   const std::string base = home_env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
+  // THE KEYS TO A SETTINGS ROW: "Down Down …" from the menu's first row, counted from the menu file the app is built from, so a row
+  // moved or added cannot leave a test pressing Enter on the wrong one. A section heading is not a stop; a row is a line of the file at
+  // the top level of `items` (a choice's own options sit on lines that start deeper).
+  auto keys_down = [&](const std::string& id) {
+    std::ifstream f(fs::path(ROLLTUI_EXAMPLES_DIR) / "presets" / "menus" / "places.json");
+    const std::regex row("^    \\{ \"id\": \"([a-z_0-9]+)\".*\"kind\": \"([a-z]+)\"");
+    std::string line, out;
+    while (std::getline(f, line)) {
+      std::smatch m;
+      if (!std::regex_search(line, m, row)) continue;
+      if (m[1] == id) return out.empty() ? out : out.substr(1);
+      if (m[2] != "section") out += " Down";
+    }
+    return std::string("NO-SUCH-ROW-") + id;
+  };
 
   // ---- 0. THE LIBRARY'S EDITORS ARE THIS APP'S TOO -----------------------------------------
   // A kind is the library's; a STORE is what makes it an app's. Before this app opened one, the
@@ -283,11 +301,11 @@ int main() {
     check(stublines().rfind("ran open ", 0) == 0, "a chosen program that is not installed any more falls back to the type's default, never to nothing");
     // THE MENU OFFERS WHAT WAS FOUND, per type, with the choice shown.
     const std::string menu = run(editors + with_setting("{}") + apps_flag + " --frame 110x40 --keys \"F2\" 2>/dev/null", crc);
-    check(has(menu, "General") && has(menu, "Look") && has(menu, "Enter on a file") && has(menu, "Open with") &&
+    check(has(menu, "General") && has(menu, "Look") && has(menu, "Input") && has(menu, "Open with") &&
               has(menu, "Key bindings") && has(menu, "Theme") && has(menu, "Neovim") && has(menu, "Visual Studio Code"),
-          "F2: four sections — General, Look, Enter on a file, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
-    // dotfiles, sort, keys, theme, mode, colours, motion, sparkle, highlight, dividers, preview, syntax, sizes, modified, leave, land, relative, executables, then Text: its dropdown
-    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Enter\" 2>/dev/null", crc);
+          "F2: four sections — General, Look, Input, Open with — with the theme and the key bindings as choices, and the open-with rows showing the program chosen from what is installed");
+    // down to the first of the open-with rows, Text, and open its dropdown
+    const std::string bare_menu = run(no_editors + with_setting("{}") + no_apps_flag + " --frame 110x40 --keys \"F2 " + keys_down("open_text") + " Enter\" 2>/dev/null", crc);
     check(has(bare_menu, "the system opener") && has(bare_menu, "Neovim") && has(bare_menu, "Helix") && has(bare_menu, "the command line"),
           "…and with nothing installed a type's dropdown still LISTS every known program — disabled, so a person sees what could open it — plus the system opener and the command line");
     // SCRIPTS AND BINARIES GO TO THE COMMAND LINE, never to an opener: exit 3 with the path, so
@@ -396,7 +414,7 @@ int main() {
       check(has(inside, "General"), "…and a click inside it leaves it open");
       // ONE LEVEL AT A TIME: with a dropdown open in the settings, Escape — or a click outside the
       // popup — closes the dropdown and leaves the settings; the next one closes the settings.
-      const std::string eleven = "Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down Down";  // eighteen: the file preview and its source-colour switch joined Look after the dividers, on top of colours, highlight, sparkle and the executables choice "Enter on a file"
+      const std::string eleven = keys_down("open_text");  // (named for how many it once was) down to the first open-with choice, Text
       const std::string dd = run(home_env + bin + " '" + here + "' --frame 90x28 --keys \"F2 " + eleven + " Enter\" 2>/dev/null", crc);
       // (the settings are recognised by their own top border, not by the section title `General`: with this many rows the popup has scrolled to keep the cursor on screen, and the first title is above the top)
       const std::string popup = "\xE2\x95\xAD settings ";
@@ -427,11 +445,10 @@ int main() {
       check(sc >= 0 && has(cycled, "sort: name >"), "a click on `sort: name <` cycles the sort: the line says `sort: name >` [" + std::to_string(sc) + "]");
       const std::string cycled2 = run(own("click-2") + " --frame 100x20 --keys \"Click " + std::to_string(sc + 1) + ",19 Click " + std::to_string(sc + 1) + ",19\" 2>/dev/null", crc);
       check(has(cycled2, "sort: size >"), "…twice: `sort: size >`");
-      // F3 IS ON THE HINT BAR, THIRD (with F1 and F2 first) — the same generic app.details →
-      // popup path app.menu and app.help already use, so no host-side handler exists for it either.
-      check(has(plain, "details"), "the hint bar shows `details`, the F3 hint");
-      const std::string entry = run(own("click-f3") + " --frame 100x20 --keys \"F3\" 2>/dev/null", crc);
-      check(has(entry, "folder") && has(entry, "kind"), "F3 opens the entry popup with what is known about the selection");
+      // THERE IS NO DETAILS PAGE: what it said (mode, time, size) is shown beside the cursor without asking, and F3 and Ctrl-D open nothing.
+      check(!has(plain, "details"), "the hint bar has no `details` hint: the facts are on the screen already");
+      const std::string entry = run(own("click-f3") + " --frame 100x20 --keys \"F3 CtrlD\" 2>/dev/null", crc);
+      check(!has(entry, "kind") && !has(entry, "folder ") && has(entry, "find: "), "F3 and Ctrl-D open no popup: the details page is gone");
       const std::string dflt = run(own("click-3") + " --frame 100x24 --keys \"F2\" 2>/dev/null", crc);
       check(has(dflt, "(default on)") && has(dflt, "(default)"), "every setting says its default: toggles as (default on/off), a choice on its default option");
       // WIDER THAN THE OTHER CLICKS HERE: the toggle's own transient note ("dotfiles hidden")
@@ -686,20 +703,27 @@ int main() {
     // …AND THE SLOT IS HELD WHILE A FOLDER COULD BE SELECTED: a file under the cursor has no
     // preview, but the focused column keeps its place as long as it holds any folder; only a
     // column with no folders at all (beta: files only) gives the space up and moves right.
+    // (These are the classic browser's rules, so they are checked with the info pane off: with it on a slot is held after the focus
+    // whatever is under the cursor, and nothing "gives the slot up".)
+    const fs::path classic = scratch / "classic";
+    write_file(classic / "rolltui" / "dirktui" / "settings.json", "{ \"info\": false }");
+    const std::string classic_base = "ROLL_CONFIG_DIR='" + classic.string() + "' " + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
     const std::string on_nested = run(base + " --frame 60x10 --keys \"Right\" 2>&1", rc);
     const std::string on_one = run(base + " --frame 60x10 --keys \"Right Down\" 2>&1", rc);
     check(has(on_one, "one.txt") && col_of_word(on_nested, "nested \xE2\x80\xBA") == col_of_word(on_one, "nested \xE2\x80\xBA") &&
               col_of_word(on_one, "nested \xE2\x80\xBA") > 0,
           "a file under the cursor still reserves the slot: the focused column does not move when the cursor crosses a file");
-    const std::string in_beta = run(base + " --frame 60x10 --keys \"Down Right\" 2>&1", rc);
-    check(col_of_word(in_beta, "a-quite-long-name") > col_of_word(on_one, "one.txt"),
+    const std::string in_beta = run(classic_base + " --frame 60x10 --keys \"Down Right\" 2>&1", rc);
+    const std::string on_one_classic = run(classic_base + " --frame 60x10 --keys \"Right Down\" 2>&1", rc);
+    check(col_of_word(in_beta, "a-quite-long-name") > col_of_word(on_one_classic, "one.txt"),
           "…while a column with no folders at all gives the slot up and sits further right [" +
-              std::to_string(col_of_word(in_beta, "a-quite-long-name")) + " > " + std::to_string(col_of_word(on_one, "one.txt")) + "]");
+              std::to_string(col_of_word(in_beta, "a-quite-long-name")) + " > " + std::to_string(col_of_word(on_one_classic, "one.txt")) + "]");
     // …AND A LEAF PREVIEW IS LAID OUT AT ITS FINAL WIDTH BEFORE THE CURSOR ENTERS IT: beta, files
     // only, sits where it will sit once entered, so Right into it shifts nothing.
-    check(col_of_word(on_beta, "a-quite-long-name") == col_of_word(in_beta, "a-quite-long-name") && col_of_word(in_beta, "a-quite-long-name") > 0,
+    const std::string on_beta_classic = run(classic_base + " --frame 60x10 --keys \"Down\" 2>&1", rc);
+    check(col_of_word(on_beta_classic, "a-quite-long-name") == col_of_word(in_beta, "a-quite-long-name") && col_of_word(in_beta, "a-quite-long-name") > 0,
           "a preview with no folders is already at its final place: entering it does not move it [" +
-              std::to_string(col_of_word(on_beta, "a-quite-long-name")) + " = " + std::to_string(col_of_word(in_beta, "a-quite-long-name")) + "]");
+              std::to_string(col_of_word(on_beta_classic, "a-quite-long-name")) + " = " + std::to_string(col_of_word(in_beta, "a-quite-long-name")) + "]");
     // THE FADE at the left edge is the library kind's and is asserted in `picker_test`, which can
     // read the cell count a text frame cannot show; this app only names `filepicker`.
     // A START INSIDE A LEAF — a folder with no folders — is anchored like any other start: the leaf
@@ -828,10 +852,10 @@ int main() {
     const std::string on_txt = run(with(on_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
     const std::string off_txt = run(with(off_cfg) + " --frame 110x16" + keys + " 2>/dev/null", src);
     check(has(on_txt, "Python \xC2\xB7 1 line") && has(off_txt, "text \xC2\xB7 1 line"), "the head of the preview names the language when it is coloured, and says `text` when it is not");
-    // the checkbox: after "Preview a file" in Look; on when nothing was said, saved when toggled, read back on the next run
+    // the checkbox: under "Preview" in General; on when nothing was said, saved when toggled, read back on the next run
     const std::string boxes = run(with(def_cfg) + " --frame 70x34 --keys \"F2\" 2>/dev/null", src);
     check(has(boxes, "[\xE2\x9C\x93] Colour source code in the preview"), "the settings show `Colour source code in the preview`, checked when the file says nothing");
-    run(with(def_cfg) + " --frame 70x34 --keys \"F2 Down Down Down Down Down Down Down Down Down Down Down Enter\" >/dev/null 2>&1", src);  // dotfiles, sort, keys, theme, mode, colours, motion, sparkle, highlight, dividers, preview, syntax
+    run(with(def_cfg) + " --frame 70x34 --keys \"F2 " + keys_down("syntax") + " Enter\" >/dev/null 2>&1", src);
     bool got = false;
     const std::string saved = read_file((def_cfg / "rolltui" / "dirktui" / "settings.json").string(), got);
     check(got && has(saved, "\"syntax\": false"), "toggling it writes the settings file [" + saved.substr(0, 90) + "]");
@@ -907,7 +931,7 @@ int main() {
           "Escape while a chord is being captured cancels the capture and leaves the level where it was");
     check(title(frame(capture + " Escape Escape"), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input", "…and the next Escape leaves the level");
     // the settings menu, unchanged
-    check(title(frame("F2 Down Down Down Enter Escape"), "settings") == "settings" && title(frame("F2 Down Down Down Enter Escape Escape"), "settings").empty(),
+    check(title(frame("F2 " + keys_down("theme") + " Enter Escape"), "settings") == "settings" && title(frame("F2 " + keys_down("theme") + " Enter Escape Escape"), "settings").empty(),
           "the settings menu still closes its dropdown first and itself second");
   }
 
@@ -920,28 +944,28 @@ int main() {
     const std::string env = "ROLL_CONFIG_DIR='" + cfg.string() + "' ";
     int mrc = 0;
     const std::string sbase = env + bin + " '" + tree.string() + "'" + presets + " --theme default-dark";
-    const std::string opened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
+    const std::string opened = run(sbase + " --frame 60x40 --keys \"F2\" 2>/dev/null", mrc);  // tall: Motion is under General's rows now
     check(has(opened, "settings") && has(opened, "[\xE2\x9C\x93] Motion") && has(opened, "[\xE2\x9C\x93] Show dotfiles") && has(opened, "Sort by"),
           "F2 opens the settings menu, its boxes set from the live values (motion on, dotfiles on)");
-    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, mode, colours, Motion
+    run(sbase + " --frame 60x18 --keys \"F2 " + keys_down("motion") + " Enter\" >/dev/null 2>&1", mrc);
     bool ok = false;
     const std::string saved = read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok);
     check(ok && has(saved, "\"motion\": false"), "toggling Motion writes the settings file [" + saved.substr(0, 60) + "]");
     // Motion is the SLIDE; the marks and their effects are Sparkle's, a setting of its own.
-    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // …and Sparkle, the row under Motion
+    run(sbase + " --frame 60x18 --keys \"F2 " + keys_down("sparkle") + " Enter\" >/dev/null 2>&1", mrc);  // …and Sparkle, the row under Motion
     const std::string still = run(sbase + " --frame 46x10 --keys \"Tick:0\" 2>&1 >/dev/null", mrc);
     check(has(still, "drawn=0") && !has(still, "marks=0"), "…the next run reads both: the rows are marked and, with sparkle off, nothing draws");
-    run(sbase + " --frame 60x18 --keys \"F2 Down Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // sparkle back on
+    run(sbase + " --frame 60x18 --keys \"F2 " + keys_down("sparkle") + " Enter\" >/dev/null 2>&1", mrc);  // sparkle back on
     const std::string snapped = run(sbase + " --frame 46x10 --keys \"Right Tick:30\" 2>/dev/null", mrc);
     const std::string ended = run(sbase + " --frame 46x10 --keys \"Right Tick:200\" 2>/dev/null", mrc);
     check(snapped == ended, "…and with motion off the columns do not slide, they are simply there");
-    const std::string reopened = run(sbase + " --frame 60x14 --keys \"F2\" 2>/dev/null", mrc);
+    const std::string reopened = run(sbase + " --frame 60x40 --keys \"F2\" 2>/dev/null", mrc);
     check(has(reopened, "[ ] Motion"), "…and the box reads back unchecked");
     // COLUMN DIVIDERS: a hairline in the margin after every column that has a neighbour, on by
     // default; the checkbox under Motion turns them off, and the frame loses exactly those cells.
     auto bars = [](const std::string& frame) { std::size_t n = 0, at = 0; while ((at = frame.find("\xE2\x94\x82", at)) != std::string::npos) { ++n; at += 3; } return n; };
     const std::string with_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // dotfiles, sort, keys, theme, mode, colours, motion, sparkle, highlight, dividers
+    run(sbase + " --frame 60x14 --keys \"F2 " + keys_down("dividers") + " Enter\" >/dev/null 2>&1", mrc);
     const std::string no_lines = run(sbase + " --frame 100x12 --keys \"Right\" 2>/dev/null", mrc);
     check(has(read_file((cfg / "rolltui" / "dirktui" / "settings.json").string(), ok), "\"dividers\": false"), "the dividers checkbox is saved");
     check(bars(with_lines) > bars(no_lines) && bars(with_lines) - bars(no_lines) >= 8,
@@ -955,7 +979,7 @@ int main() {
       return n;
     };
     const std::string short_off = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
-    run(sbase + " --frame 60x14 --keys \"F2 Down Down Down Down Down Down Down Down Down Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
+    run(sbase + " --frame 60x14 --keys \"F2 " + keys_down("dividers") + " Enter\" >/dev/null 2>&1", mrc);  // back on, so the checks below see the default
     const std::string short_on = run(sbase + " --frame 100x7 --keys \"Right\" 2>/dev/null", mrc);
     check(capsules(short_off) > 0 && capsules(short_on) > capsules(short_off),
           "with dividers, each scrolled column carries its own thumb on its divider; without, one bar in the border [" +
@@ -1020,11 +1044,66 @@ int main() {
   check(has(wide, "cafe\xCC\x81") || has(wide, "caf"), "a combining sequence survives the column");
   check(has(wide, "\xE2\x80\xA6"), "a name too long for its column is cut with an ellipsis, not clipped silently");
 
-  // ---- 4. the details page — a POPUP THE LAYOUT DECLARES, filled by a rows source ------------
-  const std::string details = run(base + " --frame 150x30 --keys \"CtrlD\" 2>&1", rc);
-  check(rc == 0 && has(details, "kind") && has(details, "directory"),
-        "Ctrl-D opens the details page the layout declares, and it names the selection's kind");
-  check(has(details, "modified") && has(details, "mode"), "…with the modified time and the permissions");
+  // ---- 4. WHAT THE CURSOR IS ON, said without asking: mode and time under the columns' heads --------------------------------
+  // (This was a details page behind F3. A page nobody asked for by name is shown where the eye already is: at the head of the pane right of
+  // the cursor — a folder's own over the column that lists it, a file's under its preview's head or, with no preview, in a small pane of its
+  // own.) The times are read in UTC so the frame is the same on every machine, and the files are given times of their own.
+  {
+    const fs::path info_tree = scratch / "info-tree";
+    fs::create_directories(info_tree / "dir");
+    write_file(info_tree / "dir" / "note.txt", std::string(1234, 'n') + "\n");
+    write_file(info_tree / "plain.txt", "twelve bytes");
+    const auto stamp = [](const fs::path& f, int y, int mo, int d, int h, int mi) {
+      std::tm tm{};
+      tm.tm_year = y - 1900; tm.tm_mon = mo - 1; tm.tm_mday = d; tm.tm_hour = h; tm.tm_min = mi;
+      const std::time_t t = timegm(&tm);
+      const struct timespec ts[2] = {{t, 0}, {t, 0}};
+      utimensat(AT_FDCWD, f.c_str(), ts, 0);
+    };
+    stamp(info_tree / "dir" / "note.txt", 2026, 3, 14, 9, 26);
+    stamp(info_tree / "plain.txt", 2025, 12, 31, 23, 59);
+    stamp(info_tree / "dir", 2026, 6, 1, 12, 34);
+    ::chmod((info_tree / "dir").c_str(), 0750);
+    ::chmod((info_tree / "dir" / "note.txt").c_str(), 0640);
+    ::chmod((info_tree / "plain.txt").c_str(), 0600);
+    const auto info_run = [&](const char* name, const std::string& settings, const std::string& keys, const char* size) {
+      const fs::path cfg = scratch / name;
+      write_file(cfg / "rolltui" / "dirktui" / "settings.json", settings);
+      return run("TZ=UTC ROLL_CONFIG_DIR='" + cfg.string() + "' " + bin + " '" + info_tree.string() + "'" + presets + " --theme default-dark --frame " + size +
+                     " --keys \"" + keys + "\" 2>/dev/null", rc);
+    };
+    // the cursor starts on `dir` (a folder): the column that lists it says its own mode and time, in the second row of the band
+    const std::string on_dir = info_run("info-a", "{}", "", "100x12");
+    check(has(on_dir, "drwxr-x--- 2026-06-01 12:34"), "on a folder, the column that lists it says the folder's own mode and time under its head [" + on_dir.substr(0, 0) + "]");
+    // on a file with the preview off: a small pane of its own, with the name, the size (no size column says it) and the same second row
+    const std::string on_file = info_run("info-b", "{}", "Right Down", "100x12");
+    check(has(on_file, "note.txt") && has(on_file, "1.2K") && has(on_file, "-rw-r----- 2026-03-14 09:26"),
+          "on a file with no preview, the slot beside it is a pane with its name, its size and its mode and time");
+    const std::string on_plain = info_run("info-c", "{}", "Down", "100x12");
+    check(has(on_plain, "plain.txt") && has(on_plain, "12 B") && has(on_plain, "-rw------- 2025-12-31 23:59"), "…and the same for the other file [12 bytes]");
+    // with the sizes column on, the size is already said on the row: not said again in the pane
+    const std::string sized = info_run("info-d", "{ \"show_size\": \"always\" }", "Down", "100x12");
+    check(has(sized, "-rw------- 2025-12-31 23:59") && !has(sized, "plain.txt  12 B") && !has(sized, "plain.txt   12 B"),
+          "…unless a size column says it already on the row, and then the pane leaves it out");
+    // with the preview on: the caption sits between the preview's head and its body
+    const std::string previewed = info_run("info-e", "{ \"preview\": \"right\" }", "Right Down", "100x12");
+    check(has(previewed, "-rw-r----- 2026-03-14 09:26") && has(previewed, "text \xC2\xB7 1 line \xC2\xB7 1.2K"), "with the preview on, the mode and time are under the preview's head");
+    // and off, it is the old screen: no second row, no pane, no reserved slot
+    const std::string quiet = info_run("info-f", "{ \"info\": false }", "Right Down", "100x12");
+    check(!has(quiet, "-rw-r-----") && !has(quiet, "1.2K") && has(quiet, "note.txt"), "with `\"info\": false` in the settings there is nothing of it");
+    const std::string quiet_dir = info_run("info-g", "{ \"info\": false }", "", "100x12");
+    check(!has(quiet_dir, "drwxr-x---"), "…on a folder either");
+    // a frame too short to spare the row keeps its list and shows none
+    const std::string tiny = info_run("info-h", "{}", "", "60x6");
+    check(!has(tiny, "drwxr-x---") && has(tiny, "note.txt") == false && has(tiny, "dir"), "a picker too short to spare a row shows none, and keeps its list");
+    // the box in the settings, on by default, saved when toggled
+    const std::string boxes = info_run("info-i", "{}", "F2", "100x40");
+    check(has(boxes, "[\xE2\x9C\x93] File info: mode, time, size"), "the settings show the box, checked when the file says nothing");
+    info_run("info-j", "{}", "F2 " + keys_down("info") + " Enter", "100x40");
+    bool wrote = false;
+    const std::string saved_info = read_file((scratch / "info-j" / "rolltui" / "dirktui" / "settings.json").string(), wrote);
+    check(wrote && has(saved_info, "\"info\": false"), "…and toggling it writes the settings file [" + saved_info.substr(0, 60) + "]");
+  }
 
   // ---- 5. the path line, and a bad path as a NAMED problem ------------------------------------
   // PASTED, not typed, with every underscore escaped: the script spells `_` as a space and `\_`
