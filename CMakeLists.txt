@@ -433,6 +433,7 @@ add_rolltui_test(rolltui-watch-test tests/watch_test.cpp)
 add_rolltui_test(rolltui-regex-test tests/regex_test.cpp)
 add_rolltui_test(rolltui-syntax-test tests/syntax_test.cpp)
 add_rolltui_test(rolltui-syntax-langs-test tests/syntax_langs_test.cpp)
+add_rolltui_test(rolltui-menu-levels-test tests/menu_levels_test.cpp)
 add_rolltui_test(rolltui-preview-syntax-test tests/preview_syntax_test.cpp)
 add_rolltui_test(rolltui-hints-test tests/hints_test.cpp)
 

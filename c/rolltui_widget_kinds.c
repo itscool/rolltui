@@ -2173,6 +2173,20 @@ static int theme_ctx_handle(void* ctx, const RolltuiEvent* e) {
   }
 }
 
+/* A CLOSE KEY GOES BACK ONE LEVEL, as a `menu` window's does, and only from the top of the editor's menu does it close the
+ * popup (this returns 0, and the stack pops). The editor's menu is levels deep — "Roles › a role › fg › a colour" — and this
+ * kind once said it had none, so Escape in the third of them closed everything and the next F4 came back to that level. */
+static int theme_ctx_back(void* ctx) {
+  RolltuiThemeCtx* tc = (RolltuiThemeCtx*)ctx;
+  RolltuiThemeEditorOutcome o;
+  int did;
+  memset(&o, 0, sizeof o);
+  did = rolltui_theme_editor_back(tc->ed, &o);
+  if (did) theme_ctx_apply(tc, &o);
+  rolltui_theme_editor_outcome_release(&o);
+  return did;
+}
+
 /* The bottom six rows are the sample box and the two status lines, exactly as the menu's own
  * scrolling assumes: the menu is laid out into what is left. */
 #define ROLLTUI_THEME_BOX_ROWS 6
@@ -2334,7 +2348,7 @@ static void theme_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kThemePlugin = {
     theme_ctx_destroy, theme_ctx_layout, theme_ctx_draw, NULL, NULL,
-    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL, theme_ctx_title, NULL /* back: no levels */
+    NULL,              theme_ctx_handle, theme_ctx_scroll_extent, NULL, theme_ctx_title, theme_ctx_back
 };
 
 static RolltuiWidget theme_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {
@@ -2611,6 +2625,19 @@ static int keys_ctx_handle(void* ctx, const RolltuiEvent* e) {
   }
 }
 
+/* A CLOSE KEY GOES BACK ONE LEVEL (a chord being captured is abandoned first), and only from the top of the editor's menu
+ * does it close the popup: as the theme editor's, and a `menu` window's. */
+static int keys_ctx_back(void* ctx) {
+  RolltuiKeysCtx* kc = (RolltuiKeysCtx*)ctx;
+  RolltuiKeysEditorOutcome o;
+  int did;
+  memset(&o, 0, sizeof o);
+  did = rolltui_keys_editor_back(kc->ed, &o);
+  if (did) keys_ctx_apply(kc, &o);
+  rolltui_keys_editor_outcome_release(&o);
+  return did;
+}
+
 /* The bottom three rows are which preset this is, what the editor is doing, and whatever the
  * last outcome had to say — exactly as the menu's own scrolling assumes: the menu is laid out
  * into what is left. */
@@ -2719,7 +2746,7 @@ static void keys_ctx_destroy(void* ctx) {
 
 static const RolltuiWidgetPlugin kKeysPlugin = {
     keys_ctx_destroy, keys_ctx_layout, keys_ctx_draw, NULL, NULL,
-    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL, keys_ctx_title, NULL /* back: no levels */
+    NULL,             keys_ctx_handle, keys_ctx_scroll_extent, NULL, keys_ctx_title, keys_ctx_back
 };
 
 static RolltuiWidget keys_widget_factory(void* c, RolltuiWindows* w, const char* content, size_t n) {

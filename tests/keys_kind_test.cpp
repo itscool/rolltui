@@ -386,6 +386,33 @@ int main() {
           "Reset to the loaded preset re-reads the PRESET: the working copy is what the file says again");
   }
 
+  // ---- 10. A CLOSE GOES BACK ONE LEVEL, AS A `menu` WINDOW'S DOES; ONLY FROM THE TOP DOES IT CLOSE THE POPUP --------------
+  // This kind once said it had no levels, so Escape three deep in "Actions by scope › input › submit" closed the whole editor
+  // and the next F5 came back to that level. A chord being captured is abandoned first.
+  {
+    const fs::path dir = scratch / "back";
+    fs::create_directories(dir);
+    Screen s;
+    s.open(dir.string(), true);
+    const RolltuiEvent enter = key_event(ROLLTUI_KEY_ENTER);
+    auto back = [&]() { return rolltui_windows_back(s.windows, "anvil_edit", 10); };
+    check(back() == 0, "at the top of the editor's menu there is no level to go back from: the popup is the stack's to close");
+    for (int depth = 1; depth <= 3; ++depth) {
+      for (int i = 0; i < depth; ++i) s.send(enter);
+      int steps = 0;
+      while (back() == 1 && steps < 10) ++steps;
+      check(steps == depth, "entered " + std::to_string(depth) + " level" + (depth == 1 ? "" : "s") + " deep, back takes exactly " + std::to_string(depth) + " steps [" + std::to_string(steps) + "]");
+    }
+    // into an action's own level, start a capture, and back abandons the capture, THEN leaves the level
+    s.send(enter);  // Actions by scope
+    s.send(enter);  // a scope
+    s.send(enter);  // an action
+    s.send(enter);  // its first row: add a chord (press it)…, a capture begins if that row is the "bind" one
+    int steps = 0;
+    while (back() == 1 && steps < 10) ++steps;
+    check(steps >= 3 && steps <= 4, "with a capture possibly open, back still walks out one step at a time and then stops [" + std::to_string(steps) + "]");
+  }
+
   fs::remove_all(scratch);
   return report("rolltui_keys_kind_test");
 }

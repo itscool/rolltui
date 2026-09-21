@@ -1045,6 +1045,52 @@ static void undo_outcome(RolltuiThemeEditor* e, int did, RolltuiThemeEditorOutco
   out->kind = did ? ROLLTUI_THEME_EDIT_COMMITTED : ROLLTUI_THEME_EDIT_CHANGED;
 }
 
+/* WHAT THE PREVIEW SHOWS FOLLOWS WHAT THE MENU HIGHLIGHTS: after anything that moved the menu (a key, or a step back), the
+ * highlighted palette entry or a colour being typed is shown live, and a change that was abandoned is put back. */
+static void follow_menu(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {
+  {
+    const RolltuiMenuItem* sel = rolltui_menu_selected_item(e->menu);
+    const RolltuiMenuItem* level = rolltui_menu_level(e->menu);
+    const int editing = rolltui_menu_editing(e->menu) != 0;
+    Field level_field = level ? field_of(level->id.p ? level->id.p : "", level->id.n) : (Field){0, NULL, 0, 0};
+    if (field_is_colour(&level_field) && sel && !editing) {
+      RolltuiStyleColor c;
+      if (rolltui_color_parse(sel->id.p ? sel->id.p : "", sel->id.n, &c)) {
+        begin_preview(e);
+        apply_field(e, &level_field, c);
+        out->kind = ROLLTUI_THEME_EDIT_CHANGED;
+        return;
+      }
+    }
+    if (editing && sel) {
+      Field sf = field_of(sel->id.p ? sel->id.p : "", sel->id.n);
+      if (sf.ok) {
+        size_t len = 0;
+        const char* p = rolltui_input_text(rolltui_menu_editor(e->menu), &len);
+        RolltuiStyleColor c;
+        begin_preview(e);
+        /* The editing TEXT, never the item's value: that is the committed colour. */
+        if (rolltui_color_parse(p, len, &c)) {
+          apply_field(e, &sf, c);
+        } else {
+          /* not (yet) a colour: show the committed value while typing continues */
+          const RolltuiStyle* pt = e->mode == ROLLTUI_MODE_LIGHT ? e->preview.light : e->preview.dark;
+          apply_field(e, &sf, sf.name_len == 2 && memcmp(sf.name, "fg", 2) == 0 ? pt[sf.role].fg : pt[sf.role].bg);
+        }
+        out->kind = ROLLTUI_THEME_EDIT_CHANGED;
+        return;
+      }
+    }
+  }
+  /* Anywhere else with a preview showing: the focused change was abandoned (Escape, Left, a
+   * move away) — the field returns to its committed value. */
+  if (e->previewing) {
+    cancel_preview(e);
+    out->kind = ROLLTUI_THEME_EDIT_CHANGED;
+  }
+
+}
+
 void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, const RolltuiBindings* nav,
                                  RolltuiThemeEditorOutcome* out) {
   RolltuiMenuEvent raw;
@@ -1161,49 +1207,19 @@ void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, 
     goto done;
   }
 
-  /* ---- live preview: the highlighted palette entry, or a custom colour being typed ---- */
-  {
-    const RolltuiMenuItem* sel = rolltui_menu_selected_item(e->menu);
-    const RolltuiMenuItem* level = rolltui_menu_level(e->menu);
-    const int editing = rolltui_menu_editing(e->menu) != 0;
-    Field level_field = level ? field_of(level->id.p ? level->id.p : "", level->id.n) : (Field){0, NULL, 0, 0};
-    if (field_is_colour(&level_field) && sel && !editing) {
-      RolltuiStyleColor c;
-      if (rolltui_color_parse(sel->id.p ? sel->id.p : "", sel->id.n, &c)) {
-        begin_preview(e);
-        apply_field(e, &level_field, c);
-        out->kind = ROLLTUI_THEME_EDIT_CHANGED;
-        goto done;
-      }
-    }
-    if (editing && sel) {
-      Field sf = field_of(sel->id.p ? sel->id.p : "", sel->id.n);
-      if (sf.ok) {
-        size_t len = 0;
-        const char* p = rolltui_input_text(rolltui_menu_editor(e->menu), &len);
-        RolltuiStyleColor c;
-        begin_preview(e);
-        /* The editing TEXT, never the item's value: that is the committed colour. */
-        if (rolltui_color_parse(p, len, &c)) {
-          apply_field(e, &sf, c);
-        } else {
-          /* not (yet) a colour: show the committed value while typing continues */
-          const RolltuiStyle* pt = e->mode == ROLLTUI_MODE_LIGHT ? e->preview.light : e->preview.dark;
-          apply_field(e, &sf, sf.name_len == 2 && memcmp(sf.name, "fg", 2) == 0 ? pt[sf.role].fg : pt[sf.role].bg);
-        }
-        out->kind = ROLLTUI_THEME_EDIT_CHANGED;
-        goto done;
-      }
-    }
-  }
-  /* Anywhere else with a preview showing: the focused change was abandoned (Escape, Left, a
-   * move away) — the field returns to its committed value. */
-  if (e->previewing) {
-    cancel_preview(e);
-    out->kind = ROLLTUI_THEME_EDIT_CHANGED;
-  }
+  follow_menu(e, out);
 
 done:
   rolltui_str_free(&id);
   rolltui_str_free(&value);
+}
+
+int rolltui_theme_editor_back(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out) {
+  int did;
+  rolltui_theme_editor_outcome_release(out);
+  did = rolltui_menu_back(e->menu);
+  if (!did) return 0;
+  rolltui_str_clear(&e->status);
+  follow_menu(e, out); /* a preview left behind by the level just closed is put back */
+  return 1;
 }

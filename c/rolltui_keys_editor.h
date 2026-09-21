@@ -112,6 +112,11 @@ RolltuiMenu* rolltui_keys_editor_menu(RolltuiKeysEditor* e);
 void rolltui_keys_editor_handle(RolltuiKeysEditor* e, const RolltuiEvent* ev, const RolltuiBindings* nav,
                                 RolltuiKeysEditorOutcome* out);
 
+/* ONE LEVEL BACK, the way a close key asks for it: a chord being captured is abandoned, else a dropdown closes, a field
+ * being edited is cancelled, or a level of the menu is left. Returns 1 when it did one of those, 0 when the menu is at its
+ * top with nothing open (the popup's to close). `*out` is RESET first and is the caller's to release, as `_handle`'s. */
+int rolltui_keys_editor_back(RolltuiKeysEditor* e, RolltuiKeysEditorOutcome* out);
+
 int rolltui_keys_editor_undo(RolltuiKeysEditor* e); /* 0 when there is nothing to undo */
 int rolltui_keys_editor_redo(RolltuiKeysEditor* e);
 size_t rolltui_keys_editor_undo_depth(const RolltuiKeysEditor* e);

@@ -116,6 +116,12 @@ RolltuiMenu* rolltui_theme_editor_menu(RolltuiThemeEditor* e);
 void rolltui_theme_editor_handle(RolltuiThemeEditor* e, const RolltuiEvent* ev, const RolltuiBindings* nav,
                                  RolltuiThemeEditorOutcome* out);
 
+/* ONE LEVEL BACK, the way a close key asks for it: a dropdown closes, else a field being edited is cancelled, else a level
+ * of the menu is left ("Roles › a role › fg" goes to "Roles › a role"), and a colour that was being previewed in it is
+ * put back. Returns 1 when it did one of those, 0 when the menu is at its top with nothing open (the popup's to close).
+ * `*out` is RESET first and is the caller's to release, as `_handle`'s. */
+int rolltui_theme_editor_back(RolltuiThemeEditor* e, RolltuiThemeEditorOutcome* out);
+
 int rolltui_theme_editor_undo(RolltuiThemeEditor* e); /* 0 when there is nothing to undo */
 int rolltui_theme_editor_redo(RolltuiThemeEditor* e);
 size_t rolltui_theme_editor_undo_depth(const RolltuiThemeEditor* e);

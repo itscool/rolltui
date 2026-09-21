@@ -851,6 +851,59 @@ int main() {
     check(has(help, "dirktui languages"), "the usage lists the command");
   }
 
+  // ---- ESCAPE GOES BACK ONE LEVEL IN EVERY MENU, THE EDITORS INCLUDED ----
+  // The settings menu did; the theme editor and the key editor said they had no levels, so Escape three deep in
+  // "Roles › text › fg" closed the whole popup and F4 came back to that level. Every popup that holds a menu is now asked
+  // for one level back before it is closed, and only from its top does it close.
+  {
+    const fs::path cfg = scratch / "back-cfg";
+    const std::string env = "ROLL_CONFIG_DIR='" + cfg.string() + "' ";
+    int brc = 0;
+    auto frame = [&](const std::string& keys) { return run(env + bin + " '" + tree.string() + "' --frame 100x34 --keys \"" + keys + "\" 2>/dev/null", brc); };
+    // the popup's title, from its top border `╭ theme editor › Roles ───╮`, or "" when there is none
+    auto title = [](const std::string& fr, const std::string& popup) {
+      const std::size_t at = fr.find("\xE2\x95\xAD " + popup);
+      if (at == std::string::npos) return std::string();
+      const std::size_t from = at + 4, to = fr.find(" \xE2\x94\x80", from);
+      return fr.substr(from, to == std::string::npos ? std::string::npos : to - from);
+    };
+    // the fg the editor's sample line shows for the role in focus: `text  fg #d8dce2  bg #14161a`
+    auto sample_fg = [](const std::string& fr) {
+      const std::size_t at = fr.find(" fg #");
+      return at == std::string::npos ? std::string() : fr.substr(at + 4, 7);
+    };
+    const std::string three = "F4 Enter Enter Enter";
+    check(title(frame(three), "theme editor") == "theme editor \xE2\x80\xBA Roles \xE2\x80\xBA text \xE2\x80\xBA fg", "the theme editor opens three levels deep on a colour [" + title(frame(three), "theme editor") + "]");
+    check(title(frame(three + " Escape"), "theme editor") == "theme editor \xE2\x80\xBA Roles \xE2\x80\xBA text", "Escape goes back ONE level, to the role, and the editor stays open");
+    check(title(frame(three + " Escape Escape"), "theme editor") == "theme editor \xE2\x80\xBA Roles", "…the next to the roles");
+    check(title(frame(three + " Escape Escape Escape"), "theme editor") == "theme editor", "…the next to the top of the editor");
+    check(title(frame(three + " Escape Escape Escape Escape"), "theme editor").empty(), "…and only from the top does Escape close the popup");
+    check(title(frame("F4 Down Enter Escape Escape F4"), "theme editor") == "theme editor",
+          "closed from a sub level and opened again, the editor comes back at the TOP, not in the sub level it was left in");
+    // a colour highlighted in the list is previewed in the sample; going back puts the committed one back
+    const std::string committed = sample_fg(frame(three));
+    const std::string previewed = sample_fg(frame(three + " Down Down"));
+    const std::string reverted = sample_fg(frame(three + " Down Down Escape Enter Enter"));  // back to the role, then into fg again
+    check(!committed.empty() && previewed != committed && reverted == committed,
+          "a colour previewed in the list is put back to the committed one when Escape leaves the list [" + committed + " / " + previewed + " / " + reverted + "]");
+    // the key editor, the same
+    const std::string keys3 = "F5 Enter Enter Enter";
+    check(title(frame(keys3), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input \xE2\x80\xBA submit  Enter", "the key editor opens three levels deep on an action [" + title(frame(keys3), "keys editor") + "]");
+    check(title(frame(keys3 + " Escape"), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input", "Escape goes back one level there too");
+    check(title(frame(keys3 + " Escape Escape Escape"), "keys editor") == "keys editor" && title(frame(keys3 + " Escape Escape Escape Escape"), "keys editor").empty(),
+          "…to the top, and only from the top does it close");
+    // a chord being captured is abandoned first: the level stays, and the next Escape leaves it
+    const std::string capture = keys3 + " Enter";
+    check(has(frame(capture), "press the chord for input.submit"), "(the control: Enter on `add a chord` starts a capture)");
+    const std::string cancelled = frame(capture + " Escape");
+    check(has(cancelled, "capture cancelled") && title(cancelled, "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input \xE2\x80\xBA submit  Enter",
+          "Escape while a chord is being captured cancels the capture and leaves the level where it was");
+    check(title(frame(capture + " Escape Escape"), "keys editor") == "keys editor \xE2\x80\xBA Actions by scope \xE2\x80\xBA input", "…and the next Escape leaves the level");
+    // the settings menu, unchanged
+    check(title(frame("F2 Down Down Down Enter Escape"), "settings") == "settings" && title(frame("F2 Down Down Down Enter Escape Escape"), "settings").empty(),
+          "the settings menu still closes its dropdown first and itself second");
+  }
+
   // ---- THE SETTINGS MENU: a file, driven by the host, and a settings file the choices land in ----
   // F2 opens `menu:places`; its items are the app's three settings and a jump. A toggle writes
   // `<config>/rolltui/dirktui/settings.json`, the next run reads it, and the box reads back the

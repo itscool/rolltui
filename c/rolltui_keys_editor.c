@@ -640,3 +640,16 @@ done:
   rolltui_str_free(&id);
   rolltui_str_free(&value);
 }
+
+int rolltui_keys_editor_back(RolltuiKeysEditor* e, RolltuiKeysEditorOutcome* out) {
+  rolltui_keys_editor_outcome_release(out);
+  if (e->capturing) { /* a chord being captured is what a close abandons first, as `take_capture` does for the key itself */
+    e->capturing = 0;
+    rolltui_str_set(&e->status, K("capture cancelled"));
+    out->kind = ROLLTUI_KEYS_EDIT_CHANGED;
+    return 1;
+  }
+  if (!rolltui_menu_back(e->menu)) return 0;
+  rolltui_str_clear(&e->status);
+  return 1;
+}
