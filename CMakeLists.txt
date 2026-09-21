@@ -543,8 +543,6 @@ target_link_libraries(rolltui-paint-selftest PRIVATE rolltui ZLIB::ZLIB)
 target_compile_definitions(rolltui-paint-selftest PRIVATE ROLLTUI_SELFTEST=1)
 target_compile_options(rolltui-paint-selftest PRIVATE -Wall -Wextra)
 target_compile_options(rolltui-paint PRIVATE -Wall -Wextra)
-target_include_directories(rolltui-paint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
-target_include_directories(rolltui-paint-selftest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tools)
 
 # `dirktui` — a shell directory picker: a read-only column-view browser that prints the chosen
 # path on stdout and draws on /dev/tty, so a shell function can `cd "$(dirktui)"`. Its widget

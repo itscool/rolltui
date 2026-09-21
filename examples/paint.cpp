@@ -56,24 +56,23 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <map>
 #include <optional>
-#include <sstream>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include <zlib.h>
 
 #include "rolltui/rolltui.h"
+#include "rolltui/str.hpp"
 
 // ADDITIVE, NOT SUBTRACTIVE: the product cannot drive itself. The shared script vocabulary is the
 // same one the studio and the explorer use, so one spelling drives all three.
 #ifdef ROLLTUI_SELFTEST
 #include "rolltui/selftest/script.hpp"
 #endif
-#include "tool_str.hpp"
+
+using rolltui::StrView;
 
 namespace {
 
@@ -213,7 +212,7 @@ constexpr const char* kCanvasDescribes = "a sheet the app paints on";
 // difference from a virtual nobody was asked about.
 // Defined below, beside the other file helpers; declared here because the PNG loader is the
 // first thing that needs it.
-std::string read_file(const std::string& path, bool& ok);
+RolltuiStr read_file(const RolltuiStr& path, bool& ok);
 
 // ---- a PNG, as ASCII ------------------------------------------------------------------------
 // PNG is a documented format and zlib is a system library, so this needs nothing vendored and
@@ -226,11 +225,11 @@ struct Image {
   std::vector<unsigned char> rgb;  // GROWING HEAP, one per load: w*h*3, freed with the vector
 };
 
-std::string load_png(const std::string& path, Image& out) {
+RolltuiStr load_png(const RolltuiStr& path, Image& out) {
   bool ok = false;
-  const std::string bytes = read_file(path, ok);
-  if (!ok) return "cannot open " + path;
-  if (bytes.size() < 8 || std::memcmp(bytes.data(), "\x89PNG\r\n\x1a\n", 8) != 0) return "not a PNG: " + path;
+  const RolltuiStr bytes = read_file(path, ok);
+  if (!ok) return RolltuiStr("cannot open ") + path;
+  if (bytes.size() < 8 || std::memcmp(bytes.data(), "\x89PNG\r\n\x1a\n", 8) != 0) return RolltuiStr("not a PNG: ") + path;
   const unsigned char* p = reinterpret_cast<const unsigned char*>(bytes.data());
   const std::size_t n = bytes.size();
   auto be32 = [](const unsigned char* q) {
@@ -238,7 +237,7 @@ std::string load_png(const std::string& path, Image& out) {
            (static_cast<unsigned long>(q[2]) << 8) | static_cast<unsigned long>(q[3]);
   };
   int depth = 0, colour = 0, interlace = 0;
-  std::string idat;
+  RolltuiStr idat;
   for (std::size_t at = 8; at + 8 <= n;) {
     const unsigned long len = be32(p + at);
     if (at + 12 + len > n) break;
@@ -257,11 +256,11 @@ std::string load_png(const std::string& path, Image& out) {
     }
     at += 12 + len;
   }
-  if (out.w <= 0 || out.h <= 0) return "no image header in " + path;
-  if (depth != 8) return "only 8-bit PNGs are supported (this one is " + std::to_string(depth) + "-bit)";
-  if (colour != 2 && colour != 6) return "only truecolour PNGs are supported (colour type " + std::to_string(colour) + ")";
+  if (out.w <= 0 || out.h <= 0) return RolltuiStr("no image header in ") + path;
+  if (depth != 8) return rolltui::format("only 8-bit PNGs are supported (this one is %d-bit)", depth);
+  if (colour != 2 && colour != 6) return rolltui::format("only truecolour PNGs are supported (colour type %d)", colour);
   if (interlace != 0) return "interlaced PNGs are not supported";
-  if (idat.empty()) return "no image data in " + path;
+  if (idat.empty()) return RolltuiStr("no image data in ") + path;
 
   const int chan = colour == 6 ? 4 : 3;
   const std::size_t stride = static_cast<std::size_t>(out.w) * chan;
@@ -269,7 +268,7 @@ std::string load_png(const std::string& path, Image& out) {
   uLongf got = static_cast<uLongf>(raw.size());
   if (uncompress(raw.data(), &got, reinterpret_cast<const Bytef*>(idat.data()),
                  static_cast<uLong>(idat.size())) != Z_OK || got != raw.size())
-    return "the image data in " + path + " did not decompress";
+    return RolltuiStr("the image data in ") + path + " did not decompress";
 
   // UN-FILTER, in place, row by row. Each scanline states its own filter in its first byte and
   // refers to the row above, so this cannot be done per row in isolation.
@@ -293,7 +292,7 @@ std::string load_png(const std::string& path, Image& out) {
           v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? b : c);
           break;
         }
-        default: return "unknown scanline filter in " + path;
+        default: return RolltuiStr("unknown scanline filter in ") + path;
       }
       cur[i] = static_cast<unsigned char>(v & 0xff);
     }
@@ -309,7 +308,7 @@ std::string load_png(const std::string& path, Image& out) {
 }
 
 struct Canvas {
-  std::string source;            // what the layout named after the colon
+  RolltuiStr source;             // what the layout named after the colon
   const Tool* tool;              // the host's current tool, read at paint time — BORROWED
   RolltuiWindows* windows;       // BORROWED: where `draw` asks for the frame's style table
   RolltuiDrawScratch* draw_scratch = nullptr;
@@ -344,7 +343,7 @@ void canvas_destroy(void* ctx) {
 int canvas_problem(void* ctx, RolltuiStr* out) {
   const Canvas* c = static_cast<const Canvas*>(ctx);
   if (c->source == kCanvasSource) return 0;
-  const std::string why = "nothing is bound to '" + c->source + "'";
+  const RolltuiStr why = RolltuiStr("nothing is bound to '") + c->source + "'";
   rolltui_str_set(out, why.data(), why.size());
   return 1;
 }
@@ -573,7 +572,7 @@ RolltuiWidget canvas_factory(void* ctx, RolltuiWindows* /*w*/, const char* conte
   if (!rolltui_content_parse(rolltui_windows_context(fc->windows), content, len, nullptr, nullptr, nullptr, nullptr,
                              &source, &source_len, &problem, &why))
     return RolltuiWidget{};
-  Canvas* c = new Canvas{std::string(source, source_len), fc->tool, fc->windows, rolltui_draw_scratch_new(), {}, {}};
+  Canvas* c = new Canvas{rolltui::own(StrView(source, source_len)), fc->tool, fc->windows, rolltui_draw_scratch_new(), {}, {}};
   return RolltuiWidget{&kCanvasPlugin, c};
 }
 
@@ -583,11 +582,11 @@ RolltuiWidget canvas_factory(void* ctx, RolltuiWindows* /*w*/, const char* conte
 // created once here and freed once there; none of them is per-frame, which is why no wrapper
 // type is needed for any of them.
 // Where a person's own presets live — the same rungs `rolltui_app_file` walks for an app's files.
-std::string user_presets_dir() {
-  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return std::string(d) + "/rolltui";
-  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return std::string(x) + "/roll/rolltui";
+RolltuiStr user_presets_dir() {
+  if (const char* d = std::getenv("ROLL_CONFIG_DIR"); d && *d) return RolltuiStr(d) + "/rolltui";
+  if (const char* x = std::getenv("XDG_CONFIG_HOME"); x && *x) return RolltuiStr(x) + "/roll/rolltui";
   const char* home = std::getenv("HOME");
-  return std::string(home && *home ? home : ".") + "/.config/roll/rolltui";
+  return RolltuiStr(home && *home ? home : ".") + "/.config/roll/rolltui";
 }
 
 struct App {
@@ -612,7 +611,7 @@ struct App {
   RolltuiRows status_rows{};
   int w = 80, h = 24;
   Tool tool;
-  std::string note;
+  RolltuiStr note;
   // The clock effects are applied at — 0 under --frame, so a frame dump stays a pure
   // function of state; the real one in the event loop.
   std::uint64_t effect_ms = 0;
@@ -673,9 +672,9 @@ struct App {
           const char* ramp = kRamps[a.tool.ramp % 2].name;
           rolltui_rows_add(out, "shading", 7, ramp, std::strlen(ramp));
           rolltui_rows_add_colour(out, "ink", 3, a.tool.color);
-          const std::string brush = std::to_string(a.tool.size) + (a.tool.round ? " round" : " square");
+          const RolltuiStr brush = rolltui::format("%d%s", a.tool.size, a.tool.round ? " round" : " square");
           rolltui_rows_add(out, "brush", 5, brush.data(), brush.size());
-          const std::string marks = std::to_string(a.marks());
+          const RolltuiStr marks = rolltui::to_str(static_cast<long long>(a.marks()));
           rolltui_rows_add(out, "marks", 5, marks.data(), marks.size());
         },
         this, nullptr);
@@ -695,14 +694,11 @@ struct App {
 
   // The SCREEN's own actions first: they are the ones a person came to this app for,
   // and they are the ones no source here names.
-  static const std::vector<std::string>& help_scopes() {
-    static const std::vector<std::string> s = {"app", "menu", "stack"};
-    return s;
-  }
+  static constexpr const char* kHelpScopes[] = {"app", "menu", "stack"};
   void set_help_scopes() {
     rolltui_context_set_help(ctx, "", 0, "", 0);
     rolltui_context_clear_help_scopes(ctx);
-    for (const std::string& s : help_scopes()) rolltui_context_add_help_scope(ctx, s.data(), s.size());
+    for (const char* s : kHelpScopes) rolltui_context_add_help_scope(ctx, s, std::strlen(s));
   }
   // `RolltuiLayout::actions` is already the flat array `rolltui_bindings_declare` takes, so
   // the `action_decls()` conversion the C++ shim needed has no counterpart here at all.
@@ -782,24 +778,24 @@ struct App {
   // the loop is the one thing a host must do: the picker knows a path was chosen, and only this
   // app knows that a path means a picture.
   // ---- the save dialog -------------------------------------------------------------------------
-  static void on_save_name(void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->save_sheet(std::string(text, len)); }
-  std::string last_dir;  // where the last picture came from: where the save dialog opens
+  static void on_save_name(void* ctx, const char* text, std::size_t len) { static_cast<App*>(ctx)->save_sheet(StrView(text, len)); }
+  RolltuiStr last_dir;  // where the last picture came from: where the save dialog opens
   bool save_pointed = false;
   static constexpr const char* kSaveFolder = "filepicker:.";
-  void save_sheet(const std::string& name) {
+  void save_sheet(StrView name) {
     Canvas* c = canvas();
     if (name.empty()) { picture_note = "a name, then Enter"; return; }
     if (!c) { picture_note = "no sheet to save"; return; }
     RolltuiStr dir{};
     if (!rolltui_windows_picker_dir(windows, kSaveFolder, std::strlen(kSaveFolder), &dir)) { picture_note = "no folder chosen"; return; }
-    const std::string folder(dir.p ? dir.p : "", dir.n);
-    rolltui_str_free(&dir);
-    const std::string path = (folder == "/" ? "" : folder) + "/" + name;
+    RolltuiStr path = rolltui::own(dir == "/" ? StrView() : StrView(dir));
+    path += "/";
+    path += name;
     // THE SHEET AS TEXT: one row per row of the sheet, each cell's ramp glyph or a space, the
     // trailing spaces dropped — what a person pastes into a README.
-    std::string text;
+    RolltuiStr text;
     for (int y = 0; y < c->inner.h; ++y) {
-      std::string row;
+      RolltuiStr row;
       for (int x = 0; x < c->inner.w; ++x) {
         const auto it = c->pixels.find({x, y});
         if (it == c->pixels.end()) { row += ' '; continue; }
@@ -807,14 +803,16 @@ struct App {
         const int step = it->second.level < 0 ? 0 : (it->second.level >= ramp.steps ? ramp.steps - 1 : it->second.level);
         row += ramp.cells[step];
       }
-      while (!row.empty() && row.back() == ' ') row.pop_back();
-      text += row + '\n';
+      rolltui::trim_trailing(row, ' ');
+      text += row;
+      text += '\n';
     }
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    out << text;
-    if (!out) { picture_note = "could not write " + path; return; }
-    picture_note = "saved " + path + " (" + std::to_string(c->inner.w) + "x" + std::to_string(c->inner.h) + ")";
-    last_dir = folder;
+    FILE* out = std::fopen(path.c_str(), "wb");
+    const bool wrote = out && std::fwrite(text.data(), 1, text.size(), out) == text.size();
+    if (out) std::fclose(out);
+    if (!wrote) { picture_note = RolltuiStr("could not write ") + path; return; }
+    picture_note = rolltui::format("saved %s (%dx%d)", path.c_str(), c->inner.w, c->inner.h);
+    last_dir = std::move(dir);
     while (rolltui_window_stack_has_popup(stack, "save", 4)) rolltui_window_stack_pop(stack);
     save_pointed = false;
   }
@@ -823,7 +821,7 @@ struct App {
     const bool open = rolltui_window_stack_has_popup(stack, "save", 4) != 0;
     if (!open) { save_pointed = false; return; }
     if (save_pointed) return;
-    std::string at = last_dir;
+    RolltuiStr at = rolltui::own(last_dir);
     if (at.empty()) { char cwd[4096]; at = getcwd(cwd, sizeof cwd) ? cwd : "/"; }
     rolltui_windows_set_picker_dir(windows, kSaveFolder, std::strlen(kSaveFolder), at.data(), at.size());
     save_pointed = true;
@@ -832,7 +830,7 @@ struct App {
   void take_picked_file() {
     RolltuiStr got{};
     if (rolltui_windows_picker_taken(windows, "filepicker", 10, &got) && got.n) {
-      open_picture(std::string(got.p, got.n));
+      open_picture(got);
       while (rolltui_window_stack_has_popup(stack, "filepicker", 10)) rolltui_window_stack_pop(stack);
     }
     rolltui_str_free(&got);
@@ -862,17 +860,16 @@ struct App {
   // stroke sets, in the same ramp, which is why a loaded picture can be painted over and cleared
   // like anything else. A failure is SAID rather than swallowed — a sheet that stays blank with
   // no reason given is the wrong answer wearing a success.
-  std::string picture_note;
-  void open_picture(const std::string& path) {
+  RolltuiStr picture_note;
+  void open_picture(const RolltuiStr& path) {
     Canvas* c = canvas();
     if (!c) { picture_note = "no sheet to open it into"; return; }
     Image img;
-    const std::string why = load_png(path, img);
-    if (!why.empty()) { picture_note = why; return; }
+    RolltuiStr why = load_png(path, img);
+    if (!why.empty()) { picture_note = std::move(why); return; }
     fit_image_into(img, *c, tool.ramp);
-    picture_note = "opened " + path + " (" + std::to_string(img.w) + "x" + std::to_string(img.h) + ")";
-    const std::size_t slash = path.find_last_of('/');
-    last_dir = slash == std::string::npos ? std::string() : (slash == 0 ? "/" : path.substr(0, slash));
+    picture_note = rolltui::format("opened %s (%dx%d)", path.c_str(), img.w, img.h);
+    last_dir = rolltui::own(rolltui::path_dir(path));
   }
 
   void handle(const RolltuiEvent& e) {
@@ -887,8 +884,7 @@ struct App {
     RolltuiStr window{};
     const unsigned char kind =
         rolltui_window_stack_route(stack, &e, area(), bindings, rolltui_stack_default_actions(), &window);
-    const std::string target = str_of(window);
-    rolltui_str_free(&window);
+    const StrView target = window;  // the route's answer, freed with `window` when this returns
     if (kind != ROLLTUI_ROUTE_DELIVER) return;
     if (rolltui_windows_handle(windows, target.data(), target.size(), &e)) return;
     // A menu window is the host's to drive, exactly as in every other host.
@@ -900,19 +896,19 @@ struct App {
       // there is no range check, no re-format and no error path here — the field refused
       // anything that could not become a valid value while it was still being typed. What it
       // makes hard is only that the value is text, which `rolltui_color_parse` now answers.
+      const StrView id = ev.id;
       if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && ev.value.n != 0) {
-        if (view_of(ev.id) == "ramp") tool.ramp = view_of(ev.value) == "blocks" ? 1 : 0;
-        if (view_of(ev.id) == "shape") tool.round = view_of(ev.value) == "round";
+        if (id == "ramp") tool.ramp = ev.value == "blocks" ? 1 : 0;
+        if (id == "shape") tool.round = ev.value == "round";
       }
       if (ev.kind == ROLLTUI_MENU_EVENT_INPUT && ev.value.n != 0) {
-        const std::string v = str_of(ev.value);
-        if (view_of(ev.id) == "size") tool.size = std::atoi(v.c_str());
-        if (view_of(ev.id) == "ink") rolltui_color_parse(v.data(), v.size(), &tool.color);
+        if (id == "size") tool.size = std::atoi(ev.value.c_str());
+        if (id == "ink") rolltui_color_parse(ev.value.data(), ev.value.size(), &tool.color);
       }
-      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "clear" && canvas()) canvas()->pixels.clear();
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "clear" && canvas()) canvas()->pixels.clear();
       // OPEN AND SAVE ARE THE DIALOGS the layout declares — the same popups the chords open.
-      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "open") rolltui_window_stack_action_popup(stack, layout, "app.filepicker", 14);
-      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && view_of(ev.id) == "save") rolltui_window_stack_action_popup(stack, layout, "app.save", 8);
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "open") rolltui_window_stack_action_popup(stack, layout, "app.filepicker", 14);
+      if (ev.kind == ROLLTUI_MENU_EVENT_ACTIVATE && id == "save") rolltui_window_stack_action_popup(stack, layout, "app.save", 8);
       rolltui_menu_event_release(&ev);
     }
   }
@@ -984,26 +980,29 @@ struct App {
 
 // ---- plumbing ------------------------------------------------------------------------------
 
-std::string read_file(const std::string& path, bool& ok) {
-  std::ifstream in(path, std::ios::binary);
-  ok = static_cast<bool>(in);
-  std::stringstream ss;
-  ss << in.rdbuf();
-  return ss.str();
+RolltuiStr read_file(const RolltuiStr& path, bool& ok) {
+  RolltuiStr out;
+  FILE* f = std::fopen(path.c_str(), "rb");
+  ok = f != nullptr;
+  if (!f) return out;
+  char buf[4096];
+  for (std::size_t n; (n = std::fread(buf, 1, sizeof buf, f)) > 0;) out.append(buf, n);
+  std::fclose(f);
+  return out;
 }
 
-[[maybe_unused]] bool parse_size(const std::string& s, int& w, int& h) {
-  const std::size_t x = s.find('x');
-  if (x == std::string::npos) return false;
-  w = std::atoi(s.substr(0, x).c_str());
-  h = std::atoi(s.substr(x + 1).c_str());
+[[maybe_unused]] bool parse_size(const RolltuiStr& s, int& w, int& h) {
+  const std::size_t x = StrView(s).find('x');
+  if (x == StrView::npos) return false;
+  w = std::atoi(s.c_str());
+  h = std::atoi(s.c_str() + x + 1);
   return w > 0 && h > 0;
 }
 
 // One load, from TEXT, to the enduring `RolltuiLayout` a host holds. The report is the
 // caller's to read and release; the loaded carrier is never retained past the call, which is
 // `rolltui_loaded_layout_to_layout`'s own contract.
-RolltuiLayout* load_layout_text(RolltuiContext* ctx, std::string_view text, RolltuiLayoutReport* rep) {
+RolltuiLayout* load_layout_text(RolltuiContext* ctx, StrView text, RolltuiLayoutReport* rep) {
   std::size_t defaults_n = 0;
   const RolltuiLayoutAction* defaults = rolltui_layout_shipped_default_actions(ctx, &defaults_n);
   return rolltui_load_layout_text(text.data(), text.size(), defaults, defaults_n,
@@ -1040,16 +1039,17 @@ int usage() {
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::string presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec, open_path;
+  RolltuiStr presets_dir, layout_arg, theme_arg = "default-dark", frame_spec, present_depth, keys_spec, open_path;
   bool ambiguous = false;
   unsigned long long painted_before = 0;
   // THE SCRIPT, IN ORDER. `--stroke` used to be one shot with one tool, which could only ever
   // draw a line of one glyph. A picture needs the tool to change BETWEEN strokes, so the tool
   // flags and the strokes are collected as an ordered list and replayed after the app is built.
-  std::vector<std::pair<std::string, std::string>> script;
+  struct ScriptStep { RolltuiStr flag, val; };
+  std::vector<ScriptStep> script;
   for (int i = 1; i < argc; ++i) {
-    const std::string a = argv[i];
-    [[maybe_unused]] auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : std::string(); };
+    const StrView a = argv[i];
+    [[maybe_unused]] auto next = [&]() -> RolltuiStr { return i + 1 < argc ? RolltuiStr(argv[++i]) : RolltuiStr(); };
     // WHAT A FLAG ON THIS COMMAND LINE MAY BE, and the three are not close:
     //   1. A SELF-TEST HOOK — compiled in only for `rolltui-paint-selftest`, which is this same
     //      source built again WITH them. The shipped binary does not contain them, so the binary
@@ -1075,7 +1075,7 @@ int main(int argc, char** argv) {
     else if (a == "--present") present_depth = next();
     else if (a == "--stroke" || a == "--drag" || a == "--ramp" || a == "--ink" || a == "--size" ||
              a == "--shape" || a == "--dot")
-      script.emplace_back(a, next());
+      script.push_back(ScriptStep{rolltui::own(a), next()});
     else
 #endif
     return usage();
@@ -1091,7 +1091,7 @@ int main(int argc, char** argv) {
   // what it edits. Opened on a person's own preset directory, which is a different question from
   // where a `--presets` points the screen.
   {
-    const std::string store_dir = presets_dir.empty() ? user_presets_dir() : presets_dir;
+    const RolltuiStr store_dir = presets_dir.empty() ? user_presets_dir() : rolltui::own(presets_dir);
     RolltuiThemePresetReport trep{};
     RolltuiBindingsPresetReport brep{};
     app.theme_store = rolltui_preset_store_new(rolltui_preset_domain_theme(app.ctx),
@@ -1110,17 +1110,17 @@ int main(int argc, char** argv) {
   RolltuiLayout* loaded = nullptr;  // OWNED
   bool have = false;
   if (!layout_arg.empty()) {
-    const bool path = layout_arg.find('/') != std::string::npos || layout_arg.find(".json") != std::string::npos;
-    const std::string file = path ? layout_arg : presets_dir + "/layouts/" + layout_arg + ".json";
+    const bool path = StrView(layout_arg).contains('/') || StrView(layout_arg).contains(".json");
+    const RolltuiStr file = path ? rolltui::own(layout_arg) : presets_dir + "/layouts/" + layout_arg + ".json";
     bool ok = false;
-    const std::string text = read_file(file, ok);
+    const RolltuiStr text = read_file(file, ok);
     if (ok) {
       loaded = load_layout_text(app.ctx, text, &rep);
       have = loaded != nullptr;
     } else {
       std::size_t n = 0;
       if (const char* builtin = rolltui_layout_builtin_json(layout_arg.data(), layout_arg.size(), &n))
-        if (n != 0) { loaded = load_layout_text(app.ctx, std::string_view(builtin, n), &rep); have = loaded != nullptr; }
+        if (n != 0) { loaded = load_layout_text(app.ctx, StrView(builtin, n), &rep); have = loaded != nullptr; }
     }
     if (!have) {
       std::fprintf(stderr, "rolltui-paint: no layout '%s' (%s)\n", layout_arg.c_str(), rep.error.c_str());
@@ -1173,13 +1173,15 @@ int main(int argc, char** argv) {
       // is what runs sync/autosize/layout, so until it has run the stack has a popup that has
       // never been placed, and the router cannot deliver to a window it has not resolved. Keys
       // reached the canvas instead, silently, and a script could only ever test the first one.
-      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(keys_spec, app.w, app.h))
+      for (const rolltui_selftest::Step& st : rolltui_selftest::scripted_keys(std::string(keys_spec.data(), keys_spec.size()), app.w, app.h))
         if (!st.tick) {
           app.handle(st.ev);
           app.prepare();
         }
     }
-    for (const auto& [flag, val] : script) {
+    for (const ScriptStep& step : script) {
+      const RolltuiStr& flag = step.flag;
+      const RolltuiStr& val = step.val;
       if (flag == "--ramp") app.tool.ramp = val == "blocks" ? 1 : 0;
       else if (flag == "--size") app.tool.size = std::atoi(val.c_str());
       else if (flag == "--shape") app.tool.round = val == "round";
