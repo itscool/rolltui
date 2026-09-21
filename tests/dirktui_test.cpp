@@ -112,7 +112,14 @@ int main() {
   std::filesystem::create_directories(tree / "yapps" / "Thing.app" / "Contents");  // a bundle: a leaf to the browser
 
   const std::string bin = std::string("'") + DIRKTUI_BIN + "'";
-  const std::string presets = std::string(" --presets '") + ROLLTUI_EXAMPLES_DIR + "/presets'";
+  // A COPY, never the source tree: `--presets DIR` is also where the app's stores keep their
+  // working files, and a working file now remembers the person's mode. One left in examples/
+  // (by a hand-run frame) would silently turn every "dark" assertion below light.
+  const fs::path presets_copy = scratch / "presets";
+  fs::copy(fs::path(ROLLTUI_EXAMPLES_DIR) / "presets", presets_copy, fs::copy_options::recursive);
+  for (const fs::directory_entry& e : fs::directory_iterator(presets_copy))
+    if (e.path().filename().string().find(".working.json") != std::string::npos) fs::remove(e.path());
+  const std::string presets = " --presets '" + presets_copy.string() + "'";
   // EVERY RUN GETS ITS OWN CONFIG DIRECTORY. The app writes its settings file and its preset
   // stores under ROLL_CONFIG_DIR; without this, a test pressing Ctrl-S writes into the person's
   // home and the next run reads it back — which is how one assertion here failed once.

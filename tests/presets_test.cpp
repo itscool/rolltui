@@ -197,6 +197,28 @@ bool theme_value_eq(const RolltuiThemePresetValue* a, const RolltuiThemePresetVa
   return a && b && rolltui_preset_domain_theme(rolltui_test::test_context())->equal(a, b) != 0;
 }
 
+std::string rolltui_json_dump_text_for_test(const RolltuiJsonValue* v) {
+  RolltuiStr out{};
+  rolltui_json_dump(v, 2, &out);
+  std::string t = str_of(out);
+  rolltui_str_free(&out);
+  return t;
+}
+
+bool rolltui_style_color_equal_for_test(const RolltuiStyleColor& a, const RolltuiStyleColor& b) {
+  return a.kind == b.kind && a.index == b.index && a.r == b.r && a.g == b.g && a.b == b.b;
+}
+
+// A REAL EDIT OF A THEME: its `text` role's foreground made another colour. What a theme is is its colours; light or dark and
+// colour depth are the person's, and setting either is not an edit.
+RolltuiJsonValue* with_text_fg(const RolltuiJsonValue* colours, const char* hex) {
+  RolltuiJsonValue* c = rolltui_json_clone(colours);
+  RolltuiJsonValue* roles = const_cast<RolltuiJsonValue*>(rolltui_json_get(c, "roles", 5));
+  RolltuiJsonValue* text = const_cast<RolltuiJsonValue*>(rolltui_json_get(roles, "text", 4));
+  rolltui_json_set(text, "fg", 2, rolltui_json_string(hex, std::strlen(hex)));
+  return c;
+}
+
 class ThemeStore : public StoreBase {
   static RolltuiPresetStore* make(std::string_view dir, bool may_write_shipped, std::string_view shipped_dir) {
     return rolltui_preset_store_new(rolltui_preset_domain_theme(rolltui_test::test_context()), dir.data(), dir.size(),
@@ -507,6 +529,28 @@ int main() {
       const std::string on_disk = read_file(fs::path(ROLLTUI_PRESETS_DIR) / (n + ".json"));
       check(!on_disk.empty() && on_disk == ThemeStore::shipped_json(n), "shipped '" + n + "' embeds the file in rolltui/presets/themes verbatim");
     }
+    // ---- EVERY THEME SUPPORTS LIGHT AND DARK, AND NONE OF THEM FORCES THE PERSON'S SETTING ----------------------------------
+    // `auto` (follow the terminal) is the LIBRARY's; a theme is colours. So no shipped file carries a `mode` or a `depth` (they
+    // said "auto", and loading one put the person back on it), each resolves in BOTH modes with nothing wrong, and each that has
+    // colours at all draws its canvas differently in light than in dark.
+    {
+      int themes = 0, bad_keys = 0, broken = 0, same_canvas = 0;
+      std::string first_bad;
+      for (const std::string& n : names) {
+        OnDiskTheme file(fs::path(ROLLTUI_PRESETS_DIR) / (n + ".json"));
+        if (!file.root || !file.colours) { ++broken; first_bad = n + " does not parse"; continue; }
+        ++themes;
+        if (rolltui_json_has(file.root, "mode", 4) || rolltui_json_has(file.root, "depth", 5)) { ++bad_keys; if (first_bad.empty()) first_bad = n + " carries a mode or a depth"; }
+        ResolvedTheme in_dark, in_light;
+        const bool ok_d = resolve_colours_c(file.colours, ROLLTUI_MODE_DARK, in_dark), ok_l = resolve_colours_c(file.colours, ROLLTUI_MODE_LIGHT, in_light);
+        // (an unknown key is not a fault here: `glyphs`, the scrollbar's shapes, is read by a loader of its own)
+        auto whole = [](const ResolvedTheme& r) { return r.report.error.empty() && r.report.missing_roles_n == 0 && r.report.bad_values_n == 0; };
+        if (!ok_d || !ok_l || !whole(in_dark) || !whole(in_light)) { ++broken; if (first_bad.empty()) first_bad = n + " does not resolve cleanly in both modes"; continue; }
+        if (n != "mono" && rolltui_style_color_equal_for_test(in_dark.styles[ROLLTUI_ROLE_BACKGROUND].bg, in_light.styles[ROLLTUI_ROLE_BACKGROUND].bg)) { ++same_canvas; if (first_bad.empty()) first_bad = n + " draws the same canvas in light and dark"; }
+      }
+      check(themes >= 10 && bad_keys == 0, "no shipped theme carries a `mode` or a `depth`: " + std::to_string(themes) + " themes [" + first_bad + "]");
+      check(broken == 0 && same_canvas == 0, "…and every one resolves cleanly in BOTH light and dark, with a canvas that differs between them [" + first_bad + "]");
+    }
     // ---- ONE DEFINITION SITE FOR THE DEFAULT LOOK -------------------------------------------
     // A built-in name is a shipped FILE read at one mode: "default-dark" is default.json at
     // dark, "default-light" the same file at light, "mono" is mono.json. Nothing in the C
@@ -669,33 +713,131 @@ int main() {
     check(theme_value_eq(store.working().v, ThemeStore::shipped("default")), "the working copy IS the shipped default (rule 1: the whole domain)");
   }
   // ---- an edit autosaves and changes the label by comparison (rules 2, 4) ----
+  // WHAT AN EDIT IS: the theme's COLOURS. Light or dark and colour depth are the PERSON'S, not part of what a theme is, so
+  // choosing either is not an edit (the block after this one holds that).
   {
     const std::uint64_t v0 = store.version();
-    store.set_depth("16");
-    check(store.version() > v0 && store.label() == "default (modified)" && store.modified(), "a depth change bumps the version and the label reads 'default (modified)'");
+    store.set_colours(with_text_fg(store.working()->colours, "#123456"));
+    check(store.version() > v0 && store.label() == "default (modified)" && store.modified(), "a colour edit bumps the version and the label reads 'default (modified)'");
     check(fs::exists(store.working_path()), "…and autosaved " + store.working_path());
     RolltuiStr perr{};
     RolltuiJsonValue* v = rolltui_json_parse(read_file(store.working_path()).data(), read_file(store.working_path()).size(), &perr);
     check(v && perr.empty() && std::string_view(rolltui_json_as_string(rolltui_json_get(v, "preset", 6), "", 0, nullptr)) == "default" &&
-              std::string_view(rolltui_json_as_string(rolltui_json_get(v, "depth", 5), "", 0, nullptr)) == "16" &&
-              rolltui_json_has(v, "colours", 7),
-          "the working file records its origin preset and the whole domain");
-    check(!rolltui_json_has(v, "layout", 6), "…and NOT a layout: the Theme domain is colours + mode + depth (Phase 10 m1)");
+              rolltui_json_has(v, "colours", 7) && !rolltui_json_has(v, "follows_origin", 14),
+          "the working file of an EDITED theme records its origin preset and the whole snapshot of the colours");
+    check(!rolltui_json_has(v, "layout", 6), "…and NOT a layout: the Theme domain is colours, and the person's light or dark and depth beside them (Phase 10 m1)");
     rolltui_json_free(v);
     rolltui_str_free(&perr);
     check(fs::directory_iterator(dir) != fs::directory_iterator() && !fs::exists(store.working_path() + ".tmp." + std::to_string(::getpid())), "no temp file is left behind (written by rename)");
-    store.set_depth("auto");
-    check(store.label() == "default" && !store.modified(), "putting the depth back makes it 'default' again — identity is by comparison, not a dirty flag");
+    store.set_colours(rolltui_json_clone(ThemeStore::shipped("default")->colours));
+    check(store.label() == "default" && !store.modified(), "putting the colours back makes it 'default' again: identity is by comparison, not a dirty flag");
+  }
+  // ---- LIGHT OR DARK AND COLOUR DEPTH ARE THE PERSON'S, NOT THE THEME'S ----
+  // Choosing either used to count as editing the theme, so the working file became a frozen SNAPSHOT of the colours and a theme
+  // improved in a later release never reached the person who had chosen light. Now it is not an edit: the file stays a pointer
+  // to the preset, remembers the setting beside it, and the preset's colours come from the preset at every start.
+  {
+    const std::uint64_t v0 = store.version();
+    store.set_depth("16");
+    check(store.version() > v0 && store.label() == "default" && !store.modified(), "choosing a colour depth is not an edit of the theme: the label stays 'default'");
     store.set_mode("light");
-    check(store.label() == "default (modified)", "a mode change is a modification");
+    check(store.label() == "default" && !store.modified(), "…nor is choosing light or dark");
+    RolltuiStr perr{};
+    RolltuiJsonValue* v = rolltui_json_parse(read_file(store.working_path()).data(), read_file(store.working_path()).size(), &perr);
+    check(v && perr.empty() && rolltui_json_as_bool(rolltui_json_get(v, "follows_origin", 14), 0) &&
+              std::string_view(rolltui_json_as_string(rolltui_json_get(v, "preset", 6), "", 0, nullptr)) == "default" &&
+              std::string_view(rolltui_json_as_string(rolltui_json_get(v, "mode", 4), "", 0, nullptr)) == "light" &&
+              std::string_view(rolltui_json_as_string(rolltui_json_get(v, "depth", 5), "", 0, nullptr)) == "16" && !rolltui_json_has(v, "colours", 7),
+          "…so the working file is still a POINTER to 'default', with the person's setting beside it and no copy of the colours");
+    rolltui_json_free(v);
+    rolltui_str_free(&perr);
+    ThemeStore again(dir, false, "");
+    ThemePresetReport rep;
+    again.start(rep);
+    check(rep.clean() && again.working()->mode == "light" && again.working()->depth == "16" && again.label() == "default" && !again.modified() &&
+              rolltui_json_equal(again.working()->colours, ThemeStore::shipped("default")->colours),
+          "a restart brings the setting back, and the colours come from the PRESET: an improvement shipped since arrives [" + rep.summary() + "]");
+    store.set_mode("auto");
+    store.set_depth("auto");
+    check(read_file(store.working_path()).find("\"mode\"") == std::string::npos && read_file(store.working_path()).find("\"depth\"") == std::string::npos,
+          "'auto' is the default and is never written: a person who has chosen nothing has the file they always had");
   }
   // ---- restart picks the working copy up (rule 2: nothing is lost) ----
   {
+    store.set_colours(with_text_fg(store.working()->colours, "#123456"));
     ThemeStore again(dir, false, "");
     ThemePresetReport rep;
     again.start(rep);
     check(rep.clean() && theme_value_eq(again.working().v, store.working().v) && again.label() == "default (modified)",
           "a second store on the same directory loads the autosaved working copy with its label [" + rep.summary() + "]");
+  }
+  // ---- A THEME FILE FORCES NOTHING, AND A CHOSEN PRESET'S IMPROVEMENTS STILL ARRIVE ----
+  {
+    const std::string wdir = (world / "forces-nothing").string();
+    // an older release wrote the person's mode into every preset it saved: such a file is still a fine theme
+    ThemeStore seed(wdir, false, "");
+    ThemePresetReport srep;
+    seed.start(srep);
+    write_file(fs::path(wdir) / "themes" / "old.json", "{ \"name\": \"old\", \"mode\": \"dark\", \"depth\": \"16\", \"colours\": " + rolltui_json_dump_text_for_test(ThemeStore::shipped("default")->colours) + " }");
+    seed.set_mode("light");
+    seed.set_depth("256");
+    ThemePresetReport lrep;
+    check(seed.load("old", lrep) && seed.working()->mode == "light" && seed.working()->depth == "256" && seed.label() == "old",
+          "a preset FILE that says `mode: dark` and `depth: 16` (an older release wrote them) does not force either: the person's light and 256 stay");
+    ThemePresetReport grep;
+    ThemeValueHandle read = seed.get("old", grep);
+    check(read.v && str_of(read->mode) == "auto" && str_of(read->depth) == "auto", "…and read on its own it says `auto` for both: a theme has no opinion of its own");
+    // improvements arrive: a person who chose a preset and light follows the preset, so what changes in it reaches them
+    RolltuiJsonValue* v1 = with_text_fg(ThemeStore::shipped("default")->colours, "#111111");
+    RolltuiStr dumped1{};
+    rolltui_json_dump(v1, 2, &dumped1);
+    write_file(fs::path(wdir) / "themes" / "shifting.json", "{ \"name\": \"shifting\", \"colours\": " + str_of(dumped1) + " }");
+    rolltui_str_free(&dumped1);
+    rolltui_json_free(v1);
+    check(seed.load("shifting", lrep) && seed.label() == "shifting" && !seed.modified(), "a user preset is chosen: light is kept, and the theme is not 'modified'");
+    RolltuiJsonValue* v2 = with_text_fg(ThemeStore::shipped("default")->colours, "#222222");
+    RolltuiStr dumped2{};
+    rolltui_json_dump(v2, 2, &dumped2);
+    write_file(fs::path(wdir) / "themes" / "shifting.json", "{ \"name\": \"shifting\", \"colours\": " + str_of(dumped2) + " }");
+    rolltui_str_free(&dumped2);
+    ThemeStore later(wdir, false, "");
+    ThemePresetReport lrep2;
+    later.start(lrep2);
+    RolltuiJsonValue* want = with_text_fg(ThemeStore::shipped("default")->colours, "#222222");
+    check(later.label() == "shifting" && later.working()->mode == "light" && later.working()->depth == "256" && rolltui_json_equal(later.working()->colours, want),
+          "the preset improved after it was chosen: the next start has the NEW colours and the person's light and 256 [" + lrep2.summary() + "]");
+    rolltui_json_free(want);
+    rolltui_json_free(v2);
+  }
+  // ---- A FROZEN SNAPSHOT WRITTEN BY THE OLD BEHAVIOUR HEALS: it differed from its preset only by the person's light ----
+  {
+    const std::string hdir = (world / "frozen").string();
+    RolltuiStr dumped{};
+    rolltui_json_dump(ThemeStore::shipped("default")->colours, 2, &dumped);
+    write_file(fs::path(hdir) / "theme.working.json",
+               "{ \"name\": \"default\", \"mode\": \"light\", \"depth\": \"auto\", \"colours\": " + str_of(dumped) + ", \"preset\": \"default\" }");
+    rolltui_str_free(&dumped);
+    ThemeStore old_file(hdir, false, "");
+    ThemePresetReport orep;
+    old_file.start(orep);
+    check(old_file.working()->mode == "light" && !old_file.modified() && old_file.label() == "default",
+          "a working file the old behaviour froze (the preset's own colours, and light) starts as light and is NOT reported modified");
+    old_file.set_mode("light");  // any touch of it
+    const std::string healed = read_file(old_file.working_path());
+    check(healed.find("\"follows_origin\": true") != std::string::npos && healed.find("\"colours\"") == std::string::npos && healed.find("\"mode\": \"light\"") != std::string::npos,
+          "…and the next time it is written it is a POINTER again, with light beside it: it follows the preset from then on");
+  }
+  // ---- A THEME FILE THAT WORKS IN ONLY ONE MODE IS REFUSED, NOT DISCOVERED LATER ----
+  {
+    const std::string mdir = (world / "one-sided").string();
+    ThemeStore st(mdir, false, "");
+    ThemePresetReport r0;
+    st.start(r0);
+    // a colours-only file whose `text` foreground is given for dark only: works when tried dark, breaks when a person asks for light
+    write_file(fs::path(mdir) / "themes" / "dark-only.json", R"({"name":"dark-only","roles":{"background":{"fg":{"dark":"#eeeeee"},"bg":{"dark":"#101010"}},"text":{"fg":{"dark":"#eeeeee"},"bg":{"dark":"#101010"}}}})");
+    ThemePresetReport r1;
+    check(!st.load("dark-only", r1) && str_of(r1.error).find("light") != std::string::npos, "a colours-only theme with no light variant is refused, and the reason names light [" + str_of(r1.error) + "]");
+    check(st.label() == "default", "…and the working copy is left alone");
   }
   // ---- save as (rule 3) ----
   {
@@ -710,16 +852,23 @@ int main() {
     bool has_mine = false, shipped_first = !list.empty() && list[0].shipped && list[0].name == "default";
     for (const RolltuiPresetInfo& p : list) if (p.name == "mine" && !p.shipped && view_of(p.path) == store.preset_path("mine")) has_mine = true;
     check(shipped_first && has_mine, "list() has the shipped presets first and the user preset with its path");
-    store.set_depth("256");
+    store.set_colours(with_text_fg(store.working()->colours, "#654321"));
     check(store.label() == "mine (modified)", "an edit after saving reads 'mine (modified)'");
     check(store.save_as("mine", false, err) == ROLLTUI_SAVE_EXISTS_ASK, "save-as over an existing user preset asks once: " + str_of(err));
     check(store.save_as("mine", true, err) == ROLLTUI_SAVE_SAVED && store.label() == "mine", "…and saves with confirmation");
     // Load copies (rule 3): the preset is read-only — editing the working copy does
     // not touch the file.
-    store.set_depth("16");
+    store.set_colours(with_text_fg(store.working()->colours, "#0000ff"));
+    store.set_depth("16");  // the person's own, chosen before a preset is loaded
     ThemePresetReport rep;
-    check(store.load("mine", rep) && rep.clean() && store.working()->depth == "256" && store.label() == "mine", "load copies the preset back into the working copy");
+    check(store.load("mine", rep) && rep.clean() && rolltui_json_equal(store.working()->colours, ThemeStore::shipped("default")->colours) == 0 && store.label() == "mine",
+          "load copies the preset back into the working copy: the colours the preset was saved with, not the edit made since");
+    check(store.working()->depth == "16", "…and CHOOSING A PRESET KEEPS THE PERSON'S OWN depth: it is not the preset's to change");
+    store.set_mode("light");
     check(store.load("default", rep) && store.label() == "default" && theme_value_eq(store.working().v, ThemeStore::shipped("default")), "load 'default' restores the shipped preset whole");
+    check(store.working()->mode == "light" && store.working()->depth == "16", "…and light and the depth are still the person's: no theme has ever forced them back to auto");
+    store.set_mode("auto");
+    store.set_depth("auto");
     check(!store.load("nope", rep) && str_of(rep.error).find("no theme preset 'nope'") == 0, "loading an unknown name fails with a named error [" + str_of(rep.error) + "]");
     check(store.label() == "default", "…and leaves the working copy alone");
   }
@@ -732,11 +881,13 @@ int main() {
     check(s2.load("mono", rep, /*persist=*/false) && s2.label() == "mono" && !fs::exists(s2.working_path()),
           "load with persist=false makes the working copy 'mono' in memory and writes nothing");
     s2.set_mode("dark");
+    check(fs::exists(s2.working_path()) && s2.label() == "mono" && !s2.modified(), "choosing dark writes the person's setting beside a pointer to 'mono' (it is not an edit)");
+    s2.set_colours(with_text_fg(s2.working()->colours, "#101010"));
     check(fs::exists(s2.working_path()) && s2.label() == "mono (modified)", "the first real edit writes what was running (mono + the edit)");
     ThemeStore s3((world / "flags").string(), false, "");
     ThemePresetReport rep3;
     s3.start(rep3);
-    check(s3.origin() == "mono" && s3.working()->mode == "dark", "…and a restart comes back to it");
+    check(s3.origin() == "mono" && s3.working()->mode == "dark" && s3.label() == "mono (modified)", "…and a restart comes back to it, the person's dark with it");
   }
   // ---- the editor's privilege (rule 5) ----
   {
@@ -751,9 +902,9 @@ int main() {
     RolltuiStr e2{};
     const std::string written = read_file(fs::path(shipped_dir) / "default.json");
     RolltuiJsonValue* v = rolltui_json_parse(written.data(), written.size(), &e2);
-    check(v && e2.empty() && std::string_view(rolltui_json_as_string(rolltui_json_get(v, "mode", 4), "", 0, nullptr)) == "light" &&
+    check(v && e2.empty() && !rolltui_json_has(v, "mode", 4) && !rolltui_json_has(v, "depth", 5) && rolltui_json_has(v, "colours", 7) &&
               std::string_view(rolltui_json_as_string(rolltui_json_get(v, "name", 4), "", 0, nullptr)) == "default",
-          "…as a complete preset file");
+          "…as a complete preset file: its colours, and NOT the light the person had chosen (a theme file forces nothing on whoever loads it)");
     rolltui_json_free(v);
     rolltui_str_free(&e2);
     check(editor.label() == "default", "…and the working copy is 'default' again (the file it just wrote)");
@@ -778,7 +929,7 @@ int main() {
     ThemeStore seed(own, false, "");
     ThemePresetReport rep0;
     seed.start(rep0);
-    seed.set_mode("light", false);
+    seed.set_colours(with_text_fg(seed.working()->colours, "#abcdef"), false);
     RolltuiStr saved_err{};
     seed.save_as("default-dark", false, saved_err);
     rolltui_str_free(&saved_err);
@@ -787,7 +938,8 @@ int main() {
     s2.start(rep2);
     ThemePresetReport rep3;
     ThemeValueHandle mine = s2.get("default-dark", rep3);
-    check(mine.v != nullptr && str_of(mine.v->mode) == "light", "a person's own default-dark.json is theirs: the alias never shadows it");
+    check(mine.v != nullptr && rolltui_json_equal(mine->colours, ThemeStore::shipped("default")->colours) == 0 && str_of(mine->mode) == "auto",
+          "a person's own default-dark.json is theirs (their colours, not `default` read at dark): the alias never shadows it");
   }
   // ---- a broken working copy is reported, not served ----
   {
@@ -943,7 +1095,7 @@ int main() {
           "a key is read from whichever working copy owns it, and a key that is not a setting reads empty");
     RolltuiStr label{};
     rolltui_settings_label(set, "theme_mode", 10, &label);
-    check(str_of(label) == "default (modified)", "the label names the preset a FIELD key is being edited inside");
+    check(str_of(label) == "default", "the label names the preset a FIELD key is being edited inside (and choosing light or dark is not what makes a theme 'modified')");
     rolltui_str_free(&label);
 
     // PRECEDENCE: three rungs, each one reached and each one named. A flag is not a rung — a
@@ -1101,7 +1253,7 @@ int main() {
     ThemeStore ts(bdir, false, "");
     ThemePresetReport tsr;
     ts.start(tsr);
-    ts.set_mode("light");
+    ts.set_colours(with_text_fg(ts.working()->colours, "#123456"));
     LayoutStore ls(bdir, false, "");
     LayoutPresetReport lsr;
     ls.start(lsr);

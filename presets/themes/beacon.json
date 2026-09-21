@@ -1,7 +1,5 @@
 {
   "name": "beacon",
-  "mode": "auto",
-  "depth": "auto",
   "colours": {
     "name": "beacon",
     "meta": {

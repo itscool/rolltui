@@ -560,9 +560,14 @@ static int autosave_pointer_locked(RolltuiPresetStore* s) {
    * "line 5: trailing characters after the value", which is at least an honest error. */
   {
     static const char kHead[] = "{\n  \"preset\": \"";
-    static const char kTail[] = "\",\n  \"follows_origin\": true\n}\n";
+    static const char kMid[] = "\",\n  \"follows_origin\": true";
+    static const char kTail[] = "\n}\n";
     buf_add(&bytes, kHead, sizeof kHead - 1);
     buf_add(&bytes, s->origin.p ? s->origin.p : "default", s->origin.len ? s->origin.len : 7);
+    buf_add(&bytes, kMid, sizeof kMid - 1);
+    /* THE PERSON'S OWN SETTINGS (light or dark, colour depth) ride beside the pointer, so they survive a restart WITHOUT the
+     * copy of the colours that would freeze them: the preset's content still comes from the preset at every start. */
+    if (s->d->settings_to_json) s->d->settings_to_json(s->working, buf_put, &bytes);
     buf_add(&bytes, kTail, sizeof kTail - 1);
   }
   ok = write_file_atomic_put(path.p, path.len, bytes.p, bytes.len, buf_put, &err);
@@ -583,6 +588,13 @@ static void touch_locked(RolltuiPresetStore* s, int persist) {
   if (persist) { if (s->modified) autosave_locked(s); else autosave_pointer_locked(s); }
 }
 
+/* `default-dark` and `default-light`: names an earlier release wrote into working copies, and now `default` read at a mode. They
+ * are the one place a name PINS a mode, which is what they mean, so choosing one does not keep the person's. */
+static int legacy_pinned_theme_name(const RolltuiPresetStore* s, const char* name, size_t len) {
+  return s->d->kind_len == 5 && memcmp(s->d->kind, "theme", 5) == 0 &&
+         ((len == 12 && memcmp(name, "default-dark", 12) == 0) || (len == 13 && memcmp(name, "default-light", 13) == 0));
+}
+
 /* The one read that both `get` and `load` and `start` go through. `partial` may be NULL. */
 static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t len, void* report, int* partial) {
   RolltuiPresetStore* self = (RolltuiPresetStore*)s; /* the cache is the only mutation */
@@ -593,8 +605,10 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
   if (partial) *partial = 0;
   shipped = rolltui_preset_shipped(self->d, name, len);
   if (shipped) {
+    void* c = s->d->clone(shipped);
     s->rep->reset(report);
-    return s->d->clone(shipped);
+    if (s->d->adopt_settings) s->d->adopt_settings(c, NULL); /* a preset brings no light/dark or depth of its own */
+    return c;
   }
   if (rolltui_preset_looks_like_path(name, len)) buf_add(&path, name, len);
   else store_preset_path(s, name, len, &path);
@@ -606,8 +620,7 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
      * resolves to nothing falls back to the shipped `default`: a person who had chosen the LIGHT theme
      * would start in dark with no word said. Resolved here, after a person's own file of that name has
      * had its chance, so it can never shadow one. */
-    if (s->d->kind_len == 5 && memcmp(s->d->kind, "theme", 5) == 0 &&
-        ((len == 12 && memcmp(name, "default-dark", 12) == 0) || (len == 13 && memcmp(name, "default-light", 13) == 0))) {
+    if (legacy_pinned_theme_name(s, name, len)) {
       const void* base = rolltui_preset_shipped(self->d, "default", 7);
       if (base) {
         RolltuiThemePresetValue* tv = (RolltuiThemePresetValue*)s->d->clone(base);
@@ -680,6 +693,8 @@ static void* get_locked(const RolltuiPresetStore* s, const char* name, size_t le
     buf_add(&msg, err.p, err.len);
     s->rep->set_error(report, msg.p, msg.len);
     buf_free(&msg);
+  } else if (s->d->adopt_settings) {
+    s->d->adopt_settings(v, NULL); /* a file may say "mode": "dark" (an older release wrote it into every preset); a preset is colours */
   }
   buf_free(&path);
   buf_free(&text);
@@ -719,10 +734,11 @@ void rolltui_preset_store_start(RolltuiPresetStore* s, void* report) {
     oc = get_locked(s, s->origin.p, s->origin.len, report, NULL);
     msg.len = 0;
     if (oc) {
+      s->d->destroy(s->origin_content);
+      s->origin_content = s->d->clone(oc); /* the preset as it is: the person's settings are not part of it */
+      if (s->d->settings_from_json) s->d->settings_from_json(s->d, oc, text.p, text.len);
       s->d->destroy(s->working);
       s->working = oc;
-      s->d->destroy(s->origin_content);
-      s->origin_content = s->d->clone(oc);
       s->modified = 0;
       ++s->version;
       buf_add(&msg, "following the preset '", 22);
@@ -945,6 +961,9 @@ int rolltui_preset_store_load(RolltuiPresetStore* s, const char* name, size_t le
     pthread_mutex_unlock(&s->mu);
     return 0;
   }
+  /* CHOOSING A PRESET KEEPS THE PERSON'S OWN SETTINGS (light, dark or auto; colour depth): they are not the preset's to change.
+   * A colours-only file kept them already, and the two legacy names pin a mode by meaning to. */
+  if (!partial && s->working && s->d->adopt_settings && !legacy_pinned_theme_name(s, name, len)) s->d->adopt_settings(v, s->working);
   s->d->destroy(s->working);
   s->working = v;
   if (!partial) {
@@ -1180,9 +1199,48 @@ void rolltui_theme_preset_report_release(RolltuiThemePresetReport* r) {
  * re-zero between them. Neither call's styles or effect map is kept: this function answers
  * only "did it load, and what did it say", the same thing the two discarded `Theme`s in the
  * original C++ were kept only long enough to ask. */
+/* EVERY COLOUR GIVEN AS A LIGHT/DARK PAIR GIVES BOTH. A theme supports light AND dark or it is not a theme: a pair with one side
+ * works in the mode it was tried in and quietly falls back in the other, which is found when a person later flips light and dark.
+ * Walks `defs` and `roles` (where the colours are) and names the first pair that gives one side only. 1 when every pair is whole. */
+static int tp_pairs_whole(const RolltuiJsonValue* v, const char* path, int depth, RolltuiStr* why) {
+  size_t i, n;
+  const int has_dark = rolltui_json_has(v, K("dark")), has_light = rolltui_json_has(v, K("light"));
+  if (!rolltui_json_is_object(v) || depth > 6) return 1;
+  if (has_dark != has_light) {
+    rolltui_str_set(why, path, strlen(path));
+    rolltui_str_append(why, K(" gives a colour for "));
+    {
+      const char* side = has_dark ? "dark" : "light";
+      rolltui_str_append(why, side, strlen(side));
+    }
+    rolltui_str_append(why, K(" only: a theme must give both light and dark"));
+    return 0;
+  }
+  n = rolltui_json_object_size(v);
+  for (i = 0; i < n; ++i) {
+    size_t klen = 0;
+    const char* k = rolltui_json_object_key_at(v, i, &klen);
+    char sub[512]; /* a path into a theme: `roles.text.fg` */
+    snprintf(sub, sizeof sub, "%s.%.*s", path, (int)klen, k);
+    if (!tp_pairs_whole(rolltui_json_object_value_at(v, i), sub, depth + 1, why)) return 0;
+  }
+  return 1;
+}
+static int tp_colours_pairs_whole(const RolltuiJsonValue* colours, RolltuiStr* why) {
+  static const char* const kParts[] = {"defs", "roles"};
+  size_t i;
+  for (i = 0; i < sizeof kParts / sizeof *kParts; ++i) {
+    const RolltuiJsonValue* part = rolltui_json_get(colours, kParts[i], strlen(kParts[i]));
+    if (part && !tp_pairs_whole(part, kParts[i], 0, why)) return 0;
+  }
+  return 1;
+}
+
 static int tp_load_colours(const RolltuiJsonValue* colours, const RolltuiThemeVocab* vocab,
                            RolltuiThemePresetReport* report) {
-  RolltuiStyle* styles = (RolltuiStyle*)rolltui_mem_alloc(vocab->role_count * sizeof *styles);
+  RolltuiStyle* styles;
+  if (colours && !tp_colours_pairs_whole(colours, &report->colours.error)) return 0;
+  styles = (RolltuiStyle*)rolltui_mem_alloc(vocab->role_count * sizeof *styles);
   RolltuiStr name = {0};
   RolltuiEffectMap* dark_eff;
   RolltuiThemeReport light_rep = {0};
@@ -1293,14 +1351,34 @@ int rolltui_theme_preset_parse_partial(const RolltuiJsonValue* root, const Rollt
   if (!rolltui_json_is_object(root) || rolltui_json_has(root, K("colours")) || !rolltui_json_has(root, K("roles")))
     return 0; /* not partial: report->error stays empty, so the generic mechanics fall back
                * to rolltui_theme_preset_parse() on the same text (get_locked, above). */
+  if (!tp_colours_pairs_whole(root, &report->colours.error)) {
+    size_t elen = 0;
+    const char* etext = rolltui_str_get(&report->colours.error, &elen);
+    rolltui_str_set(&report->error, etext, elen);
+    return 0;
+  }
   styles = (RolltuiStyle*)rolltui_mem_alloc(vocab->role_count * sizeof *styles);
   eff = rolltui_theme_load(root, ROLLTUI_MODE_DARK, vocab, styles, &name, &report->colours);
   rolltui_str_free(&name);
+  if (eff) {
+    /* BOTH VARIANTS OR NO THEME, as a whole preset file has always been held to: a colours-only file that works in the mode it
+     * was tried in and fails in the other is refused now, not when a person later asks for the other. */
+    RolltuiThemeReport light = {0};
+    RolltuiEffectMap* le = rolltui_theme_load(root, ROLLTUI_MODE_LIGHT, vocab, styles, &name, &light);
+    rolltui_str_free(&name);
+    if (!le) {
+      rolltui_effect_map_free(eff);
+      eff = NULL;
+      rolltui_str_move(&report->colours.error, &light.error);
+    }
+    rolltui_effect_map_free(le);
+    rolltui_theme_report_release(&light);
+  }
   rolltui_mem_free(styles);
   if (!eff) {
     /* UNPREFIXED, unlike `_parse`'s "colours: " — the whole file IS the colours object here,
      * so there is no second thing to name (ported as found: `ThemeDomain::parse_partial`'s
-     * own asymmetry with `_parse`, which validates both modes; this validates dark only). */
+     * own asymmetry with `_parse`, which validates both modes; this now validates both as well). */
     size_t elen = 0;
     const char* etext = rolltui_str_get(&report->colours.error, &elen);
     rolltui_str_set(&report->error, etext, elen);
@@ -1321,8 +1399,10 @@ RolltuiJsonValue* rolltui_theme_preset_to_json(RolltuiJsonValue* colours, const 
                                                size_t name_len) {
   RolltuiJsonValue* o = rolltui_json_object();
   rolltui_json_set(o, K("name"), rolltui_json_string(name, name_len));
-  rolltui_json_set(o, K("mode"), rolltui_json_string(mode, mode_len));
-  rolltui_json_set(o, K("depth"), rolltui_json_string(depth, depth_len));
+  /* "auto" is what an absent key means (the parse's own default), so it is not written: a theme file that says nothing about
+   * light or dark leaves it to the person, and one written from an unset value is the same bytes. */
+  if (mode && mode_len && !(mode_len == 4 && memcmp(mode, "auto", 4) == 0)) rolltui_json_set(o, K("mode"), rolltui_json_string(mode, mode_len));
+  if (depth && depth_len && !(depth_len == 4 && memcmp(depth, "auto", 4) == 0)) rolltui_json_set(o, K("depth"), rolltui_json_string(depth, depth_len));
   rolltui_json_set(o, K("colours"), colours);
   return o;
 }
@@ -1499,9 +1579,11 @@ static void theme_domain_to_json(const RolltuiPresetDomain* d, const void* v, co
                  RolltuiPutFn put, void* ctx) {
   (void)d;
   const RolltuiThemePresetValue* p = (const RolltuiThemePresetValue*)v;
-  RolltuiJsonValue* tree = rolltui_theme_preset_to_json(rolltui_json_clone(p->colours), p->mode.p, p->mode.n,
-                                                        p->depth.p, p->depth.n, name, len);
+  /* A THEME FILE IS COLOURS: the person's light or dark and colour depth are not written into it, so nothing a person saves
+   * can force them on whoever loads it. */
+  RolltuiJsonValue* tree = rolltui_theme_preset_to_json(rolltui_json_clone(p->colours), NULL, 0, NULL, 0, name, len);
   RolltuiStr out = {0};
+  (void)p;
   rolltui_json_dump(tree, 2, &out);
   rolltui_str_append(&out, "\n", 1);
   put(ctx, out.p, out.n);
@@ -1541,11 +1623,60 @@ static void theme_domain_destroy(void* v) {
   rolltui_theme_preset_value_release((RolltuiThemePresetValue*)v);
   rolltui_mem_free(v);
 }
+/* THE THEME IS ITS COLOURS. Light or dark and colour depth are the person's, not part of what a theme is, so choosing
+ * either is not an edit: a working copy that differed from its preset only there was written out as a frozen snapshot, and a
+ * snapshot outranks the shipped file forever, so a theme improved in a release never reached the person who had asked for
+ * light. */
 static int theme_domain_equal(const void* a, const void* b) {
   const RolltuiThemePresetValue *x = (const RolltuiThemePresetValue*)a, *y = (const RolltuiThemePresetValue*)b;
-  return rolltui_json_equal(x->colours, y->colours) &&
-         rolltui_str_eq(&x->mode, y->mode.p ? y->mode.p : "", y->mode.n) &&
-         rolltui_str_eq(&x->depth, y->depth.p ? y->depth.p : "", y->depth.n);
+  return rolltui_json_equal(x->colours, y->colours);
+}
+
+static void theme_domain_adopt_settings(void* value, const void* from) {
+  RolltuiThemePresetValue* v = (RolltuiThemePresetValue*)value;
+  const RolltuiThemePresetValue* f = (const RolltuiThemePresetValue*)from;
+  if (f) {
+    rolltui_str_set(&v->mode, f->mode.p ? f->mode.p : "", f->mode.n);
+    rolltui_str_set(&v->depth, f->depth.p ? f->depth.p : "", f->depth.n);
+  } else {
+    rolltui_str_set(&v->mode, K("auto"));
+    rolltui_str_set(&v->depth, K("auto"));
+  }
+}
+
+/* ` "mode": "light"` beside the pointer; "auto" is the default and is never written, so a file that has never had a setting
+ * chosen is byte for byte what it always was. */
+static void theme_put_setting(RolltuiPutFn put, void* ctx, const char* key, const RolltuiStr* v) {
+  RolltuiJsonValue* s;
+  RolltuiStr q = {0};
+  if (v->n == 0 || (v->n == 4 && memcmp(v->p, "auto", 4) == 0)) return;
+  s = rolltui_json_string(v->p, v->n);
+  rolltui_json_dump(s, 0, &q);
+  put(ctx, K(",\n  \""));
+  put(ctx, key, strlen(key));
+  put(ctx, K("\": "));
+  put(ctx, q.p ? q.p : "\"\"", q.p ? q.n : 2);
+  rolltui_json_free(s);
+  rolltui_str_free(&q);
+}
+static void theme_domain_settings_to_json(const void* v, RolltuiPutFn put, void* ctx) {
+  const RolltuiThemePresetValue* p = (const RolltuiThemePresetValue*)v;
+  theme_put_setting(put, ctx, "mode", &p->mode);
+  theme_put_setting(put, ctx, "depth", &p->depth);
+}
+static void theme_domain_settings_from_json(const RolltuiPresetDomain* d, void* value, const char* text, size_t len) {
+  RolltuiThemePresetValue* v = (RolltuiThemePresetValue*)value;
+  RolltuiStr err = {0};
+  RolltuiJsonValue* root = rolltui_json_parse(text, len, &err);
+  if (root) {
+    size_t n = 0;
+    const char* m = rolltui_json_as_string(rolltui_json_get(root, K("mode")), "", 0, &n);
+    if (n && d->theme_mode_valid && d->theme_mode_valid(m, n)) rolltui_str_set(&v->mode, m, n);
+    m = rolltui_json_as_string(rolltui_json_get(root, K("depth")), "", 0, &n);
+    if (n && d->theme_depth_valid && d->theme_depth_valid(m, n)) rolltui_str_set(&v->depth, m, n);
+    rolltui_json_free(root);
+  }
+  rolltui_str_free(&err);
 }
 
 void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThemeVocab* vocab,
@@ -1572,6 +1703,9 @@ void rolltui_theme_preset_domain_init(RolltuiPresetDomain* out, const RolltuiThe
   out->clone = theme_domain_clone;
   out->destroy = theme_domain_destroy;
   out->equal = theme_domain_equal;
+  out->adopt_settings = theme_domain_adopt_settings;
+  out->settings_to_json = theme_domain_settings_to_json;
+  out->settings_from_json = theme_domain_settings_from_json;
   out->report = &kThemePresetReportFns;
 }
 

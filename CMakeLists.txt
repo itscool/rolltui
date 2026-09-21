@@ -692,6 +692,10 @@ add_rolltui_test(rolltui-dirktui-watch-test tests/dirktui_watch_test.cpp)
 target_compile_definitions(rolltui-dirktui-watch-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
 add_dependencies(rolltui-dirktui-watch-test dirktui)
 set_tests_properties(rolltui-dirktui-watch-test PROPERTIES TIMEOUT 90)
+add_rolltui_test(rolltui-dirktui-theme-test tests/dirktui_theme_test.cpp)
+target_compile_definitions(rolltui-dirktui-theme-test PRIVATE DIRKTUI_PRODUCT_BIN="$<TARGET_FILE:dirktui>")
+add_dependencies(rolltui-dirktui-theme-test dirktui)
+set_tests_properties(rolltui-dirktui-theme-test PROPERTIES TIMEOUT 180)
 
 add_rolltui_test(rolltui-dirktui-test tests/dirktui_test.cpp)
 target_compile_definitions(rolltui-dirktui-test PRIVATE

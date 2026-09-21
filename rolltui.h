@@ -2949,6 +2949,21 @@ typedef struct RolltuiPresetDomain {
   void* bindings_reason_ctx;                     /* bindings */
 
   RolltuiPresetShippedCache* cache;
+
+  /* ---- THE PERSON'S SETTINGS A VALUE CARRIES BESIDE ITS CONTENT ------------------------------------------------
+   * A theme's colours are the theme's. Whether they are shown light or dark, and at what colour depth, are the PERSON'S; a
+   * theme value carries them only so one working file can keep the lot. So the store asks the domain to keep the two apart
+   * (each hook is NULL for a domain with no such settings):
+   *   adopt_settings      `value`'s settings become `from`'s, or the defaults ("auto") when `from` is NULL. A preset, read from
+   *                       a file or shipped, never brings settings of its own, and choosing one keeps the person's;
+   *   settings_to_json    the settings as `,\n  "key": value` text, no braces, that a working file which only FOLLOWS its preset
+   *                       writes beside the pointer, so the choice is remembered without freezing the preset's colours;
+   *   settings_from_json  reads them back from that file's text.
+   * `equal` then compares CONTENT only: choosing light is not an edit of the theme, a working copy that has not been edited
+   * follows its preset, and what a release improves in the preset reaches everyone who ever chose it. */
+  void (*adopt_settings)(void* value, const void* from);
+  void (*settings_to_json)(const void* value, RolltuiPutFn put, void* ctx);
+  void (*settings_from_json)(const struct RolltuiPresetDomain* d, void* value, const char* text, size_t len);
 } RolltuiPresetDomain;
 
 /* Releases the parsed cache. A domain descriptor is a process-wide static on the other

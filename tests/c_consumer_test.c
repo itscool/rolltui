@@ -127,6 +127,15 @@ static void set_mode_light(void* value, void* ctx) {
   rolltui_str_set(&v->mode, "light", 5);
 }
 
+/* A REAL EDIT of the theme: its `text` role's foreground. What a theme is is its colours; light or dark is the person's. */
+static void set_text_fg(void* value, void* ctx) {
+  RolltuiThemePresetValue* v = (RolltuiThemePresetValue*)value;
+  RolltuiJsonValue* roles = (RolltuiJsonValue*)rolltui_json_get(v->colours, "roles", 5);
+  RolltuiJsonValue* text = (RolltuiJsonValue*)rolltui_json_get(roles, "text", 4);
+  (void)ctx;
+  rolltui_json_set(text, "fg", 2, rolltui_json_string("#123456", 7));
+}
+
 static RolltuiRect screen_rect(const App* a) {
   RolltuiRect r;
   r.x = 0;
@@ -571,10 +580,14 @@ int main(void) {
               "the listing is exactly the shipped themes, 'default' first, each shipped and pathless");
       }
 
-      /* AN EDIT IN PLACE, from a C callback, under the store's lock. */
+      /* LIGHT OR DARK IS THE PERSON'S: chosen in place, it moves the version and is not an edit of the theme. */
       rolltui_preset_store_edit(ts, set_mode_light, NULL, /*persist=*/1);
+      check(rolltui_preset_store_modified(ts) == 0 && rolltui_preset_store_version(ts) > v0,
+            "choosing light in place, from a C callback, bumps the version and is NOT an edit of the theme");
+      /* AN EDIT IN PLACE, from a C callback, under the store's lock. */
+      rolltui_preset_store_edit(ts, set_text_fg, NULL, /*persist=*/1);
       check(rolltui_preset_store_modified(ts) != 0 && rolltui_preset_store_version(ts) > v0,
-            "an in-place edit from a C callback marks the store modified and bumps its version");
+            "an in-place edit of the colours from a C callback marks the store modified and bumps its version");
       rolltui_preset_store_label(ts, &label);
       check(rolltui_str_eq(&label, "default (modified)", 18) != 0, "…and the label says so, in the library's one spelling");
       rolltui_preset_working_value(ts, "theme_mode", 10, &val);

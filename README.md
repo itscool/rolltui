@@ -56,7 +56,9 @@ them itself:
 
 - **the depth** `rolltui_swap_present` draws at is a request, never more than the terminal has;
 - **the width** of every glyph is measured the way this terminal draws it;
-- **a theme that says `auto`** follows the terminal's own light or dark.
+- **a mode of `auto`** follows the terminal's own light or dark. Every theme has both a light and a dark side, and the
+  mode (auto, dark or light) and the colour depth are the person's own settings, remembered beside whichever theme they
+  pick and kept when they change it; a theme never carries either, so none can force one.
 
 A host does nothing. The answers are filed under the terminal's names and versions, the
 operating system, the program's own build, and whether the session came over ssh or a

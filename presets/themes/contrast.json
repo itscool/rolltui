@@ -1,7 +1,5 @@
 {
   "name": "contrast",
-  "mode": "auto",
-  "depth": "auto",
   "colours": {
     "name": "contrast",
     "meta": {
