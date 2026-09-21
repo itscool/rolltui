@@ -1198,6 +1198,34 @@ int main() {
                             (hits.empty() ? "" : " [" + hits.front() + "]"));
   }
 
+  // ---- 8b. A PRESET IS IMMUTABLE; EDITS ARE A CHOICE OF THEIR OWN, AND THE PRESET STAYS PICKABLE -----------------------------
+  // An edited key table is kept as a snapshot that outranks the preset it began as. The row must say so — "default (modified)", never
+  // just "default" — and the dropdown must list the edits AND the plain preset, because choosing a value that is already the current
+  // one changes nothing: if the row were only relabelled, there would be no way back to the preset from the menu.
+  {
+    // Its own copy of the presets: an explicit --presets is where the stores keep their working files too.
+    const fs::path own = scratch / "modified-presets";
+    fs::copy(fs::path(ROLLTUI_EXAMPLES_DIR) / "presets", own, fs::copy_options::recursive);
+    bool ok = false;
+    std::string table = read_file((fs::path(ROLLTUI_EXAMPLES_DIR) / ".." / "presets" / "bindings" / "default.json").string(), ok);
+    const std::string left = "\"input.left\": [\n      \"left\"";
+    const std::size_t at = table.find(left);
+    check(ok && at != std::string::npos, "the shipped key table has the input.left row this test edits");
+    if (at != std::string::npos) table.replace(at, left.size(), "\"input.left\": [\n      \"left\",\n      \"ctrl+b\"");
+    write_file(own / "bindings.working.json", table);
+    const std::string app = home_env + bin + " '" + tree.string() + "' --presets '" + own.string() +
+                            "' --theme default-dark --frame 110x50 --keys \"F2 " + keys_down("keys");
+    int mrc = 0;
+    const std::string row = run(app + "\" 2>/dev/null", mrc);
+    check(has(row, "Key bindings") && has(row, "default (modified)"), "an edited key table says so on its settings row: default (modified)");
+    const std::string open = run(app + " Enter\" 2>/dev/null", mrc);
+    check(has(open, "● default (modified)") && has(open, "○ default (default)"),
+          "…and its dropdown lists the edits as the current choice with the plain preset beside them, both pickable");
+    const std::string back = run(app + " Enter Down Enter\" 2>/dev/null", mrc);
+    check(has(back, "Key bindings") && has(back, "default (default)") && !has(back, "(modified)"),
+          "choosing the plain preset puts it back: the row no longer says modified");
+  }
+
   // ---- 9. CONTROL: a screen written AFTER the build opens in it ------------------------------
   // The stronger half of the same property, and the one a single-host app can still prove: a
   // layout this binary has never seen, with ids and titles no source contains, renders.

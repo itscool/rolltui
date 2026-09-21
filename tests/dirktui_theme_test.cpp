@@ -6,6 +6,9 @@
 // preset, so the file was written as a SNAPSHOT of the colours, and a theme improved in a later release never reached that person.
 // `presets_test` holds the store to this in process; this holds the running program to it, keys and all, and reads the file it leaves.
 //
+// The same run holds the way back from an edited preset: presets are immutable, so an edited key table sits beside the preset it began
+// as in the dropdown, and choosing the preset must leave a pointer on disk, not the snapshot.
+//
 // (A `--frame` run does not autosave, so the real binary on a pty is what shows what is written.)
 #include <fcntl.h>
 #include <poll.h>
@@ -170,6 +173,26 @@ int main() {
   run_keys(cfg, tree, keys);
   file = slurp(working);
   check(!has(file, "\"mode\"") && has(file, "\"depth\": \"256\""), "choosing auto again removes the key: it is the default, and is never written [" + file + "]");
+
+  // ---- A PRESET IS IMMUTABLE: THE EDITED KEY TABLE IS PUT BACK BY CHOOSING THE PLAIN PRESET ------------------------------------------
+  // The edits are a snapshot file that outranks the preset. Choosing the preset beside them in the dropdown must replace the snapshot
+  // with a pointer, so the person is following the shipped table again and a later release of it reaches them.
+  {
+    std::string table = slurp(fs::path(ROLLTUI_EXAMPLES_DIR) / ".." / "presets" / "bindings" / "default.json");
+    const std::string left = "\"input.left\": [\n      \"left\"";
+    const std::size_t at = table.find(left);
+    check(at != std::string::npos, "the shipped key table has the input.left row this test edits");
+    if (at != std::string::npos) table.replace(at, left.size(), "\"input.left\": [\n      \"left\",\n      \"ctrl+b\"");
+    const fs::path bindings = cfg / "rolltui" / "bindings.working.json";
+    { std::ofstream out(bindings, std::ios::binary | std::ios::trunc); out << table; }
+    check(has(slurp(bindings), "\"ctrl+b\""), "an edited key table is on disk to begin with");
+    keys = rep({"F2"}, "Down", downs_to("keys"));
+    for (const char* k : {"Enter", "Down", "Enter"}) keys.push_back(k);  // the list is: the edits, then the plain preset
+    run_keys(cfg, tree, keys);
+    file = slurp(bindings);
+    check(has(file, "\"follows_origin\": true") && !has(file, "\"ctrl+b\"") && !has(file, "\"input.left\""),
+          "choosing the plain preset beside the edits replaces the snapshot with a pointer [" + file.substr(0, 120) + "]");
+  }
 
   fs::remove_all(root);
   return report("dirktui_theme_test");

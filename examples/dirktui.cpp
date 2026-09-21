@@ -926,28 +926,38 @@ struct App {
     if (!want.empty() && (want == kSystemProgram || want == kShellProgram || installed.has(want))) return rolltui::own(want);
     return default_program_for(g);
   }
-  // The store's presets as the options, the one this app starts with marked "(default)".
+  // The store's presets as the options, the one this app starts with marked "(default)". A PRESET IS IMMUTABLE: an edit (in the
+  // editor, or a file written before the shipped one changed) makes the WORKING COPY the active thing, and it is listed as an option
+  // of its own, "name (modified)", just above the preset it began as. That preset stays in the list as shipped, so the way back is
+  // to choose it: the store loads it over the edits.
+  static constexpr const char* kModifiedId = "(modified)";  // not a valid preset name, so no preset can be mistaken for it
   static void fill_store_choice(RolltuiMenu* m, const char* id, std::size_t id_len, const RolltuiPresetStore* store, const char* preset) {
     if (!store) return;
+    std::size_t on = 0;
+    const char* o = rolltui_preset_store_origin(store, &on);
+    const StrView origin(o, on);
+    const bool modified = rolltui_preset_store_modified(store) != 0;
     RolltuiMenuItemList options{};
+    auto add_working_copy = [&] {
+      const RolltuiStr label = rolltui::own(origin) + " (modified)";
+      rolltui_menu_item_set(rolltui_menu_list_add(&options), ROLLTUI_MENU_ACTION, kModifiedId, std::strlen(kModifiedId), label.data(), label.size(), nullptr, 0);
+    };
+    bool placed = false;
     RolltuiPresetList presets{};
     rolltui_preset_store_list(store, &presets);
     for (std::size_t i = 0; i < presets.n; ++i) {
       const RolltuiPresetInfo& p = presets.v[i];
-      RolltuiMenuItem* o = rolltui_menu_list_add(&options);
+      if (modified && !placed && StrView(p.name) == origin) { add_working_copy(); placed = true; }
       RolltuiStr label = rolltui::own(p.name);
       if (p.name == preset) label += " (default)";
-      rolltui_menu_item_set(o, ROLLTUI_MENU_ACTION, p.name.p, p.name.n, label.data(), label.size(), p.shipped ? nullptr : "yours", p.shipped ? 0 : 5);
+      rolltui_menu_item_set(rolltui_menu_list_add(&options), ROLLTUI_MENU_ACTION, p.name.p, p.name.n, label.data(), label.size(), p.shipped ? nullptr : "yours", p.shipped ? 0 : 5);
     }
     rolltui_preset_list_release(&presets);
+    if (modified && !placed) add_working_copy();  // the preset it began as is gone (a saved one deleted): the edits are all there is
     rolltui_menu_set_options(m, id, id_len, &options);
     rolltui_menu_list_release(&options);
-    RolltuiStr label{};
-    rolltui_preset_store_label(store, &label);  // "name", or "name (modified)": the name is the value
-    StrView cur = label;
-    if (const std::size_t sp = cur.find(" ("); sp != StrView::npos) cur = cur.first(sp);
-    rolltui_menu_set_value(m, id, id_len, cur.data(), cur.size());
-    rolltui_str_free(&label);
+    if (modified) rolltui_menu_set_value(m, id, id_len, kModifiedId, std::strlen(kModifiedId));
+    else rolltui_menu_set_value(m, id, id_len, origin.data(), origin.size());
   }
   // `rolltui_preset_store_edit`'s callback: the Theme domain's value is a `RolltuiThemePresetValue`,
   // and light/dark/auto is its own "mode" field beside the colours, not a preset of its own
@@ -1623,7 +1633,8 @@ struct App {
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "theme") {
         const StrView name = ev.value;
         RolltuiThemePresetReport trep{};
-        if (theme_store && rolltui_preset_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = "theme: " + name;
+        const bool edited = theme_store && rolltui_preset_store_modified(theme_store) != 0;
+        if (theme_store && rolltui_preset_store_load(theme_store, name.data(), name.size(), &trep, 1)) hint = edited ? "theme: " + name + " loaded over your edits" : "theme: " + name;
         else hint = "could not load the theme " + name;
         rolltui_theme_preset_report_release(&trep);
         menu_dirty = true;
@@ -1640,7 +1651,8 @@ struct App {
       } else if (ev.kind == ROLLTUI_MENU_EVENT_CHOOSE && id == "keys") {
         const StrView name = ev.value;
         RolltuiBindingsPresetReport brep{};
-        if (keys_store && rolltui_preset_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = "key bindings: " + name; }
+        const bool edited = keys_store && rolltui_preset_store_modified(keys_store) != 0;
+        if (keys_store && rolltui_preset_store_load(keys_store, name.data(), name.size(), &brep, 1)) { rebuild_bindings(); hint = edited ? "key bindings: " + name + " loaded over your edits" : "key bindings: " + name; }
         else hint = "could not load the key bindings " + name;
         rolltui_bindings_preset_report_release(&brep);
         menu_dirty = true;
