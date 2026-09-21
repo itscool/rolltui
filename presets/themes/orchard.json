@@ -30,15 +30,15 @@
     "defs": {
       "bg": {
         "dark": "#081810",
-        "light": "#e9eee0"
+        "light": "#d3ead5"
       },
       "panel": {
         "dark": "#152e22",
-        "light": "#d3ddc8"
+        "light": "#bedbc1"
       },
       "code": {
         "dark": "#0f231a",
-        "light": "#e0e8d8"
+        "light": "#c9e2cb"
       },
       "fg": {
         "dark": "#e7ece2",
@@ -46,11 +46,11 @@
       },
       "dim": {
         "dark": "#929b8a",
-        "light": "#586050"
+        "light": "#545c4c"
       },
       "line": {
         "dark": "#3a5547",
-        "light": "#a6af9a"
+        "light": "#99b19b"
       },
       "focus": {
         "dark": "#8fbd47",
@@ -82,7 +82,7 @@
       },
       "bad": {
         "dark": "#f34450",
-        "light": "#c90a3e"
+        "light": "#c8063d"
       },
       "warn": {
         "dark": "#ffc676",
@@ -94,7 +94,7 @@
       },
       "sel": {
         "dark": "#00404b",
-        "light": "#a5dce7"
+        "light": "#afd9de"
       },
       "mark": {
         "dark": "#593900",

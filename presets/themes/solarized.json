@@ -3,7 +3,7 @@
   "colours": {
     "name": "solarized",
     "meta": {
-      "description": "The Solarized palette, taken unaltered. Its own contrast targets predate WCAG 4.5:1, so it earns no readability badge here; the role mapping is ours.",
+      "description": "The Solarized palette: every ink and accent is taken unaltered, and the light canvas is a step softer than base3. Its own contrast targets predate WCAG 4.5:1, so it earns no readability badge here; the role mapping is ours.",
       "author": "Ethan Schoonover",
       "source": "https://github.com/altercation/solarized",
       "license": "MIT",
@@ -22,15 +22,15 @@
     "defs": {
       "bg": {
         "dark": "#002b36",
-        "light": "#fdf6e3"
+        "light": "#f2ecd9"
       },
       "panel": {
         "dark": "#073642",
-        "light": "#eee8d5"
+        "light": "#e9e1ca"
       },
       "code": {
         "dark": "#073642",
-        "light": "#eee8d5"
+        "light": "#ede7d1"
       },
       "fg": {
         "dark": "#839496",
@@ -59,7 +59,7 @@
       "link": "#2aa198",
       "sel": {
         "dark": "#073642",
-        "light": "#eee8d5"
+        "light": "#e3dbc4"
       },
       "mark": {
         "dark": "#586e75",

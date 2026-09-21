@@ -3,7 +3,7 @@
   "colours": {
     "name": "catppuccin",
     "meta": {
-      "description": "The Catppuccin Mocha and Latte palettes, taken unaltered. Readable at dark and indexed-safe at both; the role mapping is ours.",
+      "description": "The Catppuccin Mocha and Latte palettes: every ink and accent is taken unaltered, and the light canvas is a step softer than Latte's base, tinted lavender to match Mocha. Readable at dark and indexed-safe at both; the role mapping is ours.",
       "author": "Catppuccin",
       "source": "https://github.com/catppuccin/catppuccin",
       "license": "MIT",
@@ -25,15 +25,15 @@
     "defs": {
       "bg": {
         "dark": "#1e1e2e",
-        "light": "#eff1f5"
+        "light": "#e9ebf6"
       },
       "panel": {
         "dark": "#181825",
-        "light": "#e6e9ef"
+        "light": "#dddff0"
       },
       "code": {
         "dark": "#11111b",
-        "light": "#dce0e8"
+        "light": "#e3e5f3"
       },
       "fg": {
         "dark": "#cdd6f4",
@@ -45,7 +45,7 @@
       },
       "line": {
         "dark": "#45475a",
-        "light": "#bcc0cc"
+        "light": "#b5b8c7"
       },
       "focus": {
         "dark": "#89b4fa",
@@ -89,7 +89,7 @@
       },
       "sel": {
         "dark": "#45475a",
-        "light": "#bcc0cc"
+        "light": "#c5c8dc"
       },
       "mark": {
         "dark": "#585b70",

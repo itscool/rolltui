@@ -636,7 +636,7 @@ int main() {
   // A shipped theme's declaration is the one a person reads before choosing, so the whole set
   // is held to equality here rather than left to whoever remembers to run the analyser by
   // hand. Both variants of every theme, including the ones whose palettes are vendored: their
-  // COLOURS are not ours to change, and what those colours earn is measured the same way.
+  // inks and accents are not ours to change (only their canvas is), and what those colours earn is measured the same way.
   {
     const std::vector<std::string> shipped = ThemeStore::shipped_names();
     check(shipped.size() >= 8, "every shipped theme is measured (" + std::to_string(shipped.size()) + ")");
